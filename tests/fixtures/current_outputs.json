@@ -4,7 +4,7 @@
     "version": "v13-sprint17-fixed",
     "generated": "2026-04-28",
     "model": "oborovo_model v7",
-    "note": "Updated after shl_rate fix. Test call uses rate/2 and tenor*2 (buggy semi-annual treatment of annual model), producing 80,213. This exposes pre-existing Oborovo misconfiguration."
+    "note": "Updated after vtest fixes: shl_rate/2, trailing comma removed"
   },
   "note": "This fixture captures the CURRENT state of the model. Excel-verified targets are in oborovo_golden.json. Calibration still in progress.",
   "current_outputs": {
@@ -13,7 +13,7 @@
     "total_ebitda_keur": 188319,
     "total_tax_keur": 15481,
     "total_senior_ds_keur": 63725,
-    "total_distribution_keur": 80213,
+    "total_distribution_keur": 102426,
     "debt_keur": 43614,
     "project_irr": 0.07768,
     "equity_irr": 0.10057,
