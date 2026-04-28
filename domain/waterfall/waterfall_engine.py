@@ -689,14 +689,17 @@ def run_waterfall(
         # Ostatak: cf_after_tax (nepromijenjeno)
         if shl_repayment_method == "pik_then_sweep":
             _cf_for_shl = ebitda - senior_ds  # Excel: FCF = EBITDA - Senior DS
-            _pik_trigger = (_cf_for_shl > shl_balance * shl_rate / 2)
+            _pik_trigger = (_cf_for_shl > shl_balance * shl_rate),  # Compare FCF vs full semi-annual interest
         else:
             _cf_for_shl = cf_after_tax
             _pik_trigger = pik_switch_triggered
 
+        # TUHO (28 per, semi-annual model): shl_rate = annual/2 = semi-annual → use directly
+        # Oborovo (14 per, annual model): shl_rate = annual → divide by 2 for semi-annual interest
+        shl_rate_per = shl_rate if tenor_periods >= 20 else shl_rate / 2
         (shi, shp, shl_pik, shl_balance) = compute_shl_period(
             shl_balance=shl_balance,
-            shl_rate_per_period=shl_rate / 2,
+            shl_rate_per_period=shl_rate_per,
             cf_after_senior_ds=_cf_for_shl,
             method=shl_repayment_method,
             wht_rate=shl_wht_rate,

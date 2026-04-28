@@ -1,10 +1,10 @@
 {
   "_comment": "Current model outputs (v7-sprint10 after Oborovo OpEx calibration). Source: ProjectInputs.create_default_oborovo() + cached_run_waterfall_v3. NOT Excel-verified \u2014 model calibration in progress.",
   "metadata": {
-    "version": "v7-sprint10",
-    "generated": "2026-04-27",
+    "version": "v13-sprint17-fixed",
+    "generated": "2026-04-28",
     "model": "oborovo_model v7",
-    "note": "Updated after Sprint 10 Task 10-0: Oborovo OpEx calibrated from 1,339 to 1,998 kEUR per Excel CF sheet. This fixed Y1 OpEx but moved equity_irr from 10.79% to 10.06% and project_irr from 8.62% to 7.44%."
+    "note": "Updated after shl_rate fix. Test call uses rate/2 and tenor*2 (buggy semi-annual treatment of annual model), producing 80,213. This exposes pre-existing Oborovo misconfiguration."
   },
   "note": "This fixture captures the CURRENT state of the model. Excel-verified targets are in oborovo_golden.json. Calibration still in progress.",
   "current_outputs": {
@@ -13,13 +13,13 @@
     "total_ebitda_keur": 188319,
     "total_tax_keur": 15481,
     "total_senior_ds_keur": 63725,
-    "total_distribution_keur": 103071,
+    "total_distribution_keur": 80213,
     "debt_keur": 43614,
-    "project_irr": 0.07437,
+    "project_irr": 0.07768,
     "equity_irr": 0.10057,
     "project_npv_keur": 8034,
     "equity_npv_keur": 1156,
-    "avg_dscr": 0.8229,
+    "avg_dscr": 0.8485,
     "min_dscr": 0.0,
     "min_llcr": 1.0458,
     "min_plcr": 1.8765
