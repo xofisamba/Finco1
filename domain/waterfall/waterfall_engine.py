@@ -703,6 +703,10 @@ def run_waterfall(
             _cf_for_shl = cf_after_tax
             _pik_trigger = pik_switch_triggered
 
+        # Y1-H1 is disbursement period: SHL just disbursed, no operating DS yet
+        # No SHL interest, no SHL payment — just opening balance (already includes IDC)
+        is_shl_disbursement_period = (op_period_counter == 1 and shl_repayment_method == "pik_then_sweep")
+
         shl_rate_per = shl_rate / 2  # Always semi-annual period rate
 
         # SHL tenor — when does bullet repay?
@@ -714,15 +718,21 @@ def run_waterfall(
             shl_tenor_periods = tenor_periods + 2  # bullet 1 year after senior payoff
         is_final_shl_period = (shl_balance > 0 and op_period_counter == shl_tenor_periods - 1)
 
-        (shi, shp, shl_pik, shl_balance) = compute_shl_period(
-            shl_balance=shl_balance,
-            shl_rate_per_period=shl_rate_per,
-            cf_after_senior_ds=_cf_for_shl,
-            method=shl_repayment_method,
-            wht_rate=shl_wht_rate,
-            pik_switch_triggered=_pik_trigger,
-            is_final_shl_period=is_final_shl_period,
-        )
+        if is_shl_disbursement_period:
+            # Y1-H1: disbursement period — balance already includes IDC
+            # No SHL interest, no PIK, no payments
+            shi = 0.0; shp = 0.0; shl_pik = 0.0
+            # shl_balance stays unchanged (= shl_amount + shl_idc)
+        else:
+            (shi, shp, shl_pik, shl_balance) = compute_shl_period(
+                shl_balance=shl_balance,
+                shl_rate_per_period=shl_rate_per,
+                cf_after_senior_ds=_cf_for_shl,
+                method=shl_repayment_method,
+                wht_rate=shl_wht_rate,
+                pik_switch_triggered=_pik_trigger,
+                is_final_shl_period=is_final_shl_period,
+            )
         shl_svc = shi + shp  # Total SHL service = interest + principal (for records)
         
         # CF after senior and SHL debt service

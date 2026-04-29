@@ -725,10 +725,10 @@ class ProjectInputs:
             share_capital_keur=500.0,
             share_premium_keur=0.0,
             shl_amount_keur=29135.0,   # Shareholder Loan from Excel Inputs (39.91% of 72,994 kEUR)
-            shl_rate=0.0595,   # All-in Rate from Excel Inputs (5.95% = 3.1% base + 2.85% margin)
+            shl_rate=0.0793,   # 7.93% — per brief Sprint 22
             senior_tenor_years=14,
-            base_rate=0.033,  # Fixed Base Rate from Excel DS R37 = 3.3%
-            margin_bps=265,  # All-in = 5.95% = 3.3% + 2.65%
+            base_rate=0.031,  # Fixed Base Rate from Excel R185 = 3.1%
+            margin_bps=265,  # All-in = 5.75% = 3.1% + 2.65%
             floating_share=0.2,
             fixed_share=0.8,
             hedge_coverage=0.8,
@@ -745,6 +745,7 @@ class ProjectInputs:
             fixed_debt_keur=43359.0,  # Excel-verified debt amount (hardcoded from Excel)
             equity_irr_method="shl_plus_dividends",  # TUHO: equity CF = SHL interest only (brief Sprint 13)
             shl_repayment_method="pik_then_sweep",  # TUHO: PIK phase Y1-Y14, sweep phase Y15+
+            shl_idc_keur=3568.69,  # Construction IDC from Excel — opening SHL balance = 29,135 + 3,569 = 32,704
         )
 
         tax = TaxParams(
@@ -757,7 +758,7 @@ class ProjectInputs:
             atad_ebitda_limit=0.30,
             atad_min_interest_keur=3000.0,
             wht_sponsor_dividends=0.05,
-            wht_sponsor_shl_interest=0.18,  # 18% WHT on SHL interest per Excel (954/1165 = 0.82)
+            wht_sponsor_shl_interest=0.0,  # 0% WHT on SHL interest per Excel R406
             shl_cap_applies=True,
         )
 
