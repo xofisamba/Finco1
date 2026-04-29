@@ -200,6 +200,7 @@ def compute_shl_period(
     method: str,
     wht_rate: float = 0.0,
     pik_switch_triggered: bool = False,
+    is_final_shl_period: bool = False,
 ) -> tuple[float, float, float, float]:
     """Compute SHL cash flows for one period.
 
@@ -228,11 +229,18 @@ def compute_shl_period(
 
     if method == "bullet":
         # Pay net interest if CF available, otherwise PIK
-        if cf_after_senior_ds >= interest_net:
-            return interest_net, 0.0, 0.0, shl_balance
+        interest_paid = min(max(0.0, cf_after_senior_ds), interest_net)
+        pik = interest_full - interest_paid if interest_paid < interest_net else 0.0
+
+        # Bullet principal in final period of SHL tenor
+        if is_final_shl_period:
+            principal = shl_balance  # repay all at maturity
+            new_balance = 0.0
         else:
-            pik = interest_full
-            return 0.0, 0.0, pik, shl_balance + pik
+            principal = 0.0
+            new_balance = shl_balance + pik
+
+        return interest_paid, principal, pik, new_balance
 
     elif method == "cash_sweep":
         # Priority: interest → principal from remaining CF
@@ -290,6 +298,7 @@ def run_waterfall(
     shl_rate: float = 0,
     shl_idc_keur: float = 0.0,  # SHL IDC — added to opening balance
     shl_repayment_method: str = "bullet",  # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
+    shl_tenor_years: int = 0,  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
     shl_wht_rate: float = 0.0,  # Withholding tax rate on SHL interest (e.g., 0.18 for TUHO)
     discount_rate_project: float = 0.0641,
     discount_rate_equity: float = 0.0965,
@@ -695,6 +704,16 @@ def run_waterfall(
             _pik_trigger = pik_switch_triggered
 
         shl_rate_per = shl_rate / 2  # Always semi-annual period rate
+
+        # SHL tenor — when does bullet repay?
+        # shl_tenor_years = 0 means bullet at end of senior tenor (default)
+        # shl_tenor_years > 0 means bullet in specific year
+        if shl_tenor_years > 0:
+            shl_tenor_periods = shl_tenor_years * 2
+        else:
+            shl_tenor_periods = tenor_periods + 2  # bullet 1 year after senior payoff
+        is_final_shl_period = (shl_balance > 0 and op_period_counter == shl_tenor_periods - 1)
+
         (shi, shp, shl_pik, shl_balance) = compute_shl_period(
             shl_balance=shl_balance,
             shl_rate_per_period=shl_rate_per,
@@ -702,6 +721,7 @@ def run_waterfall(
             method=shl_repayment_method,
             wht_rate=shl_wht_rate,
             pik_switch_triggered=_pik_trigger,
+            is_final_shl_period=is_final_shl_period,
         )
         shl_svc = shi + shp  # Total SHL service = interest + principal (for records)
         
@@ -742,12 +762,13 @@ def run_waterfall(
         # 1. Senior debt service (from balance_schedule)
         # 2. SHL repayment (after senior debt repaid)
         # 3. Dividends (after SHL repaid)
-        # For "shl_plus_dividends": use 3-tier waterfall
+        # For "pik_then_sweep": use 3-tier waterfall (TUHO)
+        # For other SHL methods (bullet, cash_sweep): 2-tier (Oborovo)
         sweep_dscr_threshold = 1.35
         remaining_senior_balance = balance_schedule[period_in_tenor] if period_in_tenor < len(balance_schedule) else 0
         
-        if equity_irr_method == "shl_plus_dividends":
-            # 3-tier waterfall: senior → SHL → dividends
+        if shl_repayment_method == "pik_then_sweep":
+            # 3-tier waterfall: senior → SHL → dividends (TUHO)
             if lockup:
                 dist = 0
                 sweep_amount = 0.0
@@ -1066,6 +1087,7 @@ def cached_run_waterfall(
         shl_amount=shl_amount,
         shl_rate=shl_rate,
         shl_repayment_method=inputs.financing.shl_repayment_method,
+        shl_tenor_years=inputs.financing.shl_tenor_years,
         shl_wht_rate=inputs.tax.wht_sponsor_shl_interest,
         equity_irr_method=inputs.financing.equity_irr_method,
         discount_rate_project=discount_rate_project,

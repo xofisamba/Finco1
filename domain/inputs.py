@@ -327,6 +327,8 @@ class FinancingParams:
     # "pik_then_sweep" — PIK dok nema FCF, sweep kad ima (TUHO)
     shl_repayment_method: str = "bullet"
     shl_pik_switch_period: int = 0  # 0 = auto (kad senior_balance = 0)
+    shl_tenor_years: int = 0  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
+    shl_idc_keur: float = 0.0  # SHL IDC — added to opening balance
 
     @property
     def all_in_rate(self) -> float:
@@ -336,7 +338,7 @@ class FinancingParams:
     @property
     def total_equity_shl_keur(self) -> float:
         """Total equity + shareholder loan."""
-        return self.share_capital_keur + self.share_premium_keur + self.shl_amount_keur
+        return self.share_capital_keur + self.share_premium_keur + self.shl_amount_keur + self.shl_idc_keur
 
 
 @dataclass(frozen=True)
@@ -472,21 +474,20 @@ class ProjectInputs:
         # Technical Management = 280 kEUR (not 703 — 703 included sub-items)
         # Infrastructure Maintenance = 427 kEUR (aggregated B.02 + sub-items)
         opex_items = (
-            OpexItem(name="Technical Management", y1_amount_keur=280.0, annual_inflation=0.02),
-            OpexItem(name="Infrastructure Maintenance", y1_amount_keur=667.1, annual_inflation=0.02,
-                    step_changes=((3, 185.64),)),  # Step down in Y3
-            OpexItem(name="Maintain Site", y1_amount_keur=68.0, annual_inflation=0.02),
-            OpexItem(name="Clean Material", y1_amount_keur=5.0, annual_inflation=0.02),
-            OpexItem(name="Security", y1_amount_keur=50.0, annual_inflation=0.02),
+            OpexItem(name="Technical Management", y1_amount_keur=198.0, annual_inflation=0.02),
+            OpexItem(name="Infrastructure Maintenance", y1_amount_keur=244.0, annual_inflation=0.02),
+            OpexItem(name="Maintain Site", y1_amount_keur=45.0, annual_inflation=0.02),
+            OpexItem(name="Clean Material", y1_amount_keur=40.0, annual_inflation=0.02),
+            OpexItem(name="Security", y1_amount_keur=30.0, annual_inflation=0.02),
             OpexItem(name="Insurance", y1_amount_keur=255.0, annual_inflation=0.02),
             OpexItem(name="Lease & Property Tax", y1_amount_keur=208.08, annual_inflation=0.02),
-            OpexItem(name="Power Expenses", y1_amount_keur=93.72, annual_inflation=0.0),  # Flat
+            OpexItem(name="Power Expenses", y1_amount_keur=177.0, annual_inflation=0.0),  # Flat
             OpexItem(name="Fees", y1_amount_keur=14.0, annual_inflation=0.0),  # Flat
             OpexItem(name="Audit&Accounting&Legal", y1_amount_keur=24.0, annual_inflation=0.02),
             OpexItem(name="Bank Fees", y1_amount_keur=20.0, annual_inflation=0.02),
-            OpexItem(name="Environmental&Social", y1_amount_keur=200.0, annual_inflation=0.02,
+            OpexItem(name="Environmental&Social", y1_amount_keur=32.0, annual_inflation=0.02,
                     step_changes=((3, 5.2),)),  # Step down in Y3
-            OpexItem(name="Contingencies", y1_amount_keur=113.1, annual_inflation=0.02),
+            OpexItem(name="Contingencies", y1_amount_keur=51.0, annual_inflation=0.02),
             OpexItem(name="Taxes", y1_amount_keur=0.0, annual_inflation=0.0),
             OpexItem(name="Salary&Payroll", y1_amount_keur=0.0, annual_inflation=0.0),
         )
@@ -558,6 +559,7 @@ class ProjectInputs:
             dsra_months=6,
             equity_irr_method="combined",  # Oborovo uses combined SHL+equity method
             debt_sizing_method="gearing_cap",  # Oborovo: gearing-based sizing (not DSCR-sculpted)
+            shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790
         )
 
         tax = TaxParams(
@@ -714,7 +716,7 @@ class ProjectInputs:
             market_inflation=0.02,
             balancing_cost_pv=0.0,  # Wind: no PV balancing
             balancing_cost_bess=0.0,
-            balancing_cost_wind_eur_mwh=8.0,  # Wind balancing cost from TUHO Excel (578 kEUR/H = 8 EUR/MWh)
+            balancing_cost_wind_eur_mwh=0.0,  # 0 — balancing costs are in OpEx, NOT revenue deduction
             co2_enabled=True,  # TUHO has CO2 certificate revenue
             co2_price_eur=4.191,  # CO2 price Y1 from TUHO Excel (302.9 kEUR/H)
         )

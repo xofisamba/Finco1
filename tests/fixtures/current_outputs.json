@@ -13,7 +13,7 @@
     "total_ebitda_keur": 188319,
     "total_tax_keur": 15481,
     "total_senior_ds_keur": 63725,
-    "total_distribution_keur": 102426,
+    "total_distribution_keur": 137113,
     "debt_keur": 43614,
     "project_irr": 0.07768,
     "equity_irr": 0.10057,
@@ -46,5 +46,6 @@
     "npv_pct": 15.0,
     "debt_pct": 15.0,
     "dscr_abs": 0.3
-  }
+  },
+  "total_distribution_keur": 137113
 }

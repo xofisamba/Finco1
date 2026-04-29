@@ -1,0 +1,39 @@
+<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+ <o:shapelayout v:ext="edit">
+  <o:idmap v:ext="edit" data="75"></o:idmap>
+ </o:shapelayout><v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe">
+  <v:stroke joinstyle="miter"></v:stroke>
+  <v:path gradientshapeok="t" o:connecttype="rect"></v:path>
+ </v:shapetype><v:shape id="_x0000_s76801" type="#_x0000_t202" style="position:absolute;   margin-left:942.75pt;margin-top:202.5pt;width:228pt;height:51pt;z-index:1;   visibility:hidden;mso-wrap-style:tight" fillcolor="infoBackground [80]" strokecolor="none [81]" o:insetmode="auto">
+  <v:fill color2="infoBackground [80]"></v:fill>
+  <v:shadow color="none [81]" obscured="t"></v:shadow>
+  <v:path o:connecttype="none"></v:path>
+  <v:textbox style="mso-direction-alt:auto">
+   <div style="text-align:left"></div>
+  </v:textbox>
+  <x:ClientData ObjectType="Note">
+   <x:MoveWithCells></x:MoveWithCells>
+   <x:SizeWithCells></x:SizeWithCells>
+   <x:Anchor>
+    37, 28, 6, 60, 49, 60, 17, 8</x:Anchor>
+   <x:AutoFill>False</x:AutoFill>
+   <x:Row>6</x:Row>
+   <x:Column>10</x:Column>
+  </x:ClientData>
+ </v:shape><v:shape id="_x0000_s76802" type="#_x0000_t202" style="position:absolute;   margin-left:894pt;margin-top:81.75pt;width:199.5pt;height:39.75pt;z-index:2;   visibility:hidden;mso-wrap-style:tight" fillcolor="infoBackground [80]" strokecolor="none [81]" o:insetmode="auto">
+  <v:fill color2="infoBackground [80]"></v:fill>
+  <v:shadow color="none [81]" obscured="t"></v:shadow>
+  <v:path o:connecttype="none"></v:path>
+  <v:textbox style="mso-direction-alt:auto">
+   <div style="text-align:left"></div>
+  </v:textbox>
+  <x:ClientData ObjectType="Note">
+   <x:MoveWithCells></x:MoveWithCells>
+   <x:SizeWithCells></x:SizeWithCells>
+   <x:Anchor>
+    36, 24, 3, 44, 48, 32, 4, 32</x:Anchor>
+   <x:AutoFill>False</x:AutoFill>
+   <x:Row>6</x:Row>
+   <x:Column>14</x:Column>
+  </x:ClientData>
+ </v:shape></xml>

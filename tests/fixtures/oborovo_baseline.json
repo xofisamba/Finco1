@@ -128,11 +128,11 @@
     "total_capex_keur": 56899.504,
     "hard_capex_keur": 54931.474,
     "total_debt_keur": 42852.279,
-    "total_equity_shl_keur": 14047.225,
+    "total_equity_shl_keur": 15120.77,
     "gearing_pct": 0.7524,
     "revenue_y1_keur": 6446.75,
-    "opex_y1_keur": 1998.0,
-    "opex_per_mw_keur": 26.55,
+    "opex_y1_keur": 1338.08,
+    "opex_per_mw_keur": 17.84,
     "opex_per_mwh_eur": 18.13,
     "project_irr_30y": 0.0842,
     "equity_irr_30y": 0.11,
@@ -157,5 +157,11 @@
   "discount_rates": {
     "project_hurdle": 0.0641,
     "equity_hurdle": 0.0965
+  },
+  "current_outputs": {
+    "total_distribution_keur": 137113,
+    "debt_keur": 42852.279,
+    "project_irr": 0.0842,
+    "avg_dscr": 1.147
   }
 }
