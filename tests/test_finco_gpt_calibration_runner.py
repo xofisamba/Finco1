@@ -136,3 +136,16 @@ def test_run_calibration_debt_decomposition_shape() -> None:
     assert row["senior_ds_keur"] == row["senior_interest_keur"] + row["senior_principal_keur"]
     assert row["implied_period_rate"] >= 0
     assert "dscr" in row
+
+
+def test_run_calibration_applies_oborovo_first12_debt_split_anchors() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    first = payload["debt_decomposition"][0]
+    twelfth = payload["debt_decomposition"][11]
+
+    assert first["date"] == "2030-12-31"
+    assert abs(first["senior_principal_keur"] - 935.6501310907029) < 1e-9
+    assert abs(first["senior_interest_keur"] - 1303.483281763653) < 1e-9
+    assert twelfth["date"] == "2036-06-30"
+    assert abs(twelfth["senior_principal_keur"] - 1482.7286430265804) < 1e-9
+    assert abs(twelfth["senior_interest_keur"] - 873.148013189113) < 1e-9
