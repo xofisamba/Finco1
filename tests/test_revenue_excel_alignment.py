@@ -91,7 +91,6 @@ def _implied_excel_revenue_price(project_key: str, fixture_name: str) -> list[di
     return rows
 
 
-@pytest.mark.xfail(reason="Oborovo revenue schedule still needs exact Excel generation/PPA/CO2 mapping")
 def test_oborovo_first_three_revenue_rows_against_excel() -> None:
     failures = _revenue_failures("oborovo", "excel_oborovo_periods.json")
     assert not failures, failures
