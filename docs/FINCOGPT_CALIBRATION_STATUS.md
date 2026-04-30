@@ -27,8 +27,8 @@ Raw `.xlsm` files are intentionally not committed. Minimal JSON fixtures are com
 - `tests/fixtures/excel_calibration_targets.json`
 - `tests/fixtures/excel_golden_oborovo.json`
 - `tests/fixtures/excel_golden_tuho.json`
-- `tests/fixtures/excel_oborovo_periods.json`
-- `tests/fixtures/excel_tuho_periods.json`
+- `tests/fixtures/excel_oborovo_periods.json` now covers the first 12 Oborovo operating periods from Excel columns H:S.
+- `tests/fixtures/excel_tuho_periods.json` currently covers the first 3 TUHO operating periods.
 
 ### Project factories
 
@@ -48,12 +48,12 @@ Passing / expected-passing checks:
 - Oborovo and TUHO headless payload shape.
 - Senior debt anchoring within initial tolerance.
 - PeriodEngine first operation dates align to the extracted Oborovo and TUHO Excel period fixtures.
-- Oborovo first three period revenue reconciliation is active, not xfail.
+- Oborovo first twelve period revenue reconciliation is active, not xfail.
 
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
-- Oborovo downstream first three period core lines vs Excel: EBITDA, debt service, principal and interest.
+- Oborovo downstream first twelve period core lines vs Excel: EBITDA, debt service, principal and interest.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
@@ -83,7 +83,7 @@ This is required for the extracted Oborovo fixture:
 
 A regression test in `tests/test_period_engine_excel_alignment.py` locks the first three Oborovo and TUHO operation dates to the Excel fixture dates.
 
-### 3. Revenue formula diagnostics and first Oborovo revenue milestone
+### 3. Revenue formula diagnostics and Oborovo revenue milestone
 
 `domain/revenue/generation.py` now exposes:
 
@@ -92,7 +92,7 @@ A regression test in `tests/test_period_engine_excel_alignment.py` locks the fir
 - Revenue decomposition by period.
 - Yield-scenario aware generation schedule.
 
-`tests/test_revenue_excel_alignment.py` now promotes Oborovo first-three-period revenue from diagnostic xfail to active test.
+`tests/test_revenue_excel_alignment.py` now promotes Oborovo first-twelve-period revenue to an active test.
 
 ## Next math-fix sequence
 
@@ -100,7 +100,10 @@ Work should continue in this order. Do not jump to UI polish before these are re
 
 ### 1. Revenue and generation parity
 
-Next revenue target: extend Oborovo from first 3 periods to first 12 periods, then all periods. TUHO revenue remains diagnostic because the first-pass TUHO factory still needs exact wind production / PPA / balancing mapping.
+Next revenue targets:
+
+- Extend Oborovo beyond first 12 periods toward all operating periods.
+- Extend TUHO fixture from first 3 periods to first 12 periods, then calibrate wind production / PPA / balancing mapping.
 
 Likely areas:
 
@@ -160,4 +163,4 @@ Only after project-level cash flow and debt schedule are aligned:
 
 A green test suite on this branch does not yet mean the model is Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps.
 
-The next meaningful milestone is to extend Oborovo revenue reconciliation from first 3 periods to first 12 periods, then fix OpEx so EBITDA can be promoted from xfail to active test.
+The next meaningful milestone is to fix OpEx so Oborovo EBITDA for the first twelve periods can be promoted from xfail to active test.
