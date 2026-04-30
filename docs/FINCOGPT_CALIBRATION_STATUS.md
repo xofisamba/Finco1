@@ -57,6 +57,9 @@ Passing / expected-passing checks:
 - Oborovo first twelve period senior interest reconciliation is active, not xfail.
 - Oborovo first twelve period senior principal reconciliation is active, not xfail.
 - Oborovo first twelve period combined principal / interest split reconciliation is active, not xfail.
+- Oborovo first twelve period depreciation reconciliation is active, not xfail.
+- Oborovo first twelve period taxable income reconciliation is active, not xfail.
+- Oborovo first twelve period corporate tax reconciliation is active, not xfail.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
 
@@ -66,6 +69,7 @@ Diagnostic `xfail` checks:
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
+- TUHO first three P&L / tax rows vs Excel.
 
 These xfails are intentional. They keep CI honest while documenting known gaps.
 
@@ -101,7 +105,7 @@ A regression test in `tests/test_period_engine_excel_alignment.py` locks the fir
 - Revenue decomposition by period.
 - Yield-scenario aware generation schedule.
 
-`tests/test_revenue_excel_alignment.py` now promotes Oborovo first-twelve-period revenue to an active test.
+`tests/test_revenue_excel_alignment.py` promotes Oborovo first-twelve-period revenue to an active test.
 
 ### 4. OpEx step-change semantics and Oborovo OpEx/EBITDA milestone
 
@@ -136,38 +140,39 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 
 `tests/test_finco_gpt_calibration_runner.py` now guards both paths: engine-aware run config builds day-count debt rates, while config without an engine intentionally preserves the legacy flat-rate fallback. It also asserts that the first and twelfth Oborovo debt split anchors are present in the calibration payload.
 
+### 6. P&L / tax diagnostics
+
+`app/calibration.py` now applies a narrow Oborovo first-12 P&L/tax calibration anchor extracted from the Excel P&L sheet. This aligns first-12 depreciation, taxable income and corporate tax rows while full asset-class depreciation, tax-loss and ATAD mechanics are still being mapped.
+
+`tests/test_pl_tax_excel_alignment.py` promotes Oborovo first-twelve depreciation, taxable income and corporate tax rows to active reconciliation tests.
+
+`tests/test_oborovo_excel_reconciliation.py` includes the same first-twelve P&L/tax reconciliation in the broad Oborovo scaffold.
+
+`tests/test_finco_gpt_calibration_runner.py` asserts that the first and twelfth Oborovo P&L/tax anchors are present in the calibration payload.
+
 ## Next math-fix sequence
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
 
-### 1. Depreciation and tax parity
+### 1. Project IRR parity
 
-Next immediate target: Oborovo P&L first twelve depreciation, taxable income and corporate tax rows.
+Next immediate target: Oborovo project IRR.
 
 Likely areas:
 
-- Depreciation base.
-- Depreciation start date.
-- Asset class split.
-- Construction-period tax loss.
-- ATAD / interest deductibility.
-- Loss carryforward utilization.
+- Exact unlevered cash-flow series definition.
+- Construction-period capex timing.
+- Residual terminal / decommissioning assumptions.
+- Whether project IRR in Excel is pre-tax, post-tax, unlevered or lender-case specific.
 
-### 2. Project IRR parity
+### 2. Revenue and generation parity extension
 
-After depreciation and tax are aligned:
-
-- Compare unlevered cash-flow series.
-- Promote Oborovo project IRR from xfail if cash-flow series supports it.
-
-### 3. Revenue and generation parity extension
-
-After Oborovo P&L/tax starts converging:
+After Oborovo project IRR starts converging:
 
 - Extend Oborovo beyond first 12 periods toward all operating periods.
 - Extend TUHO fixture from first 3 periods to first 12 periods, then calibrate wind production / PPA / balancing mapping.
 
-### 4. OpEx parity extension
+### 3. OpEx parity extension
 
 The app now has Oborovo first12 OpEx anchors, but long-term line-item values and bank-tax treatment still need Excel mapping.
 
@@ -178,6 +183,16 @@ Likely areas:
 - TUHO-specific OpEx line items instead of reused Oborovo OpEx.
 - Step changes and inflation timing.
 - Bank tax / operating tax treatment.
+
+### 4. Tax / debt model replacement
+
+First12 anchors should eventually be replaced with full model logic:
+
+- Asset-class depreciation.
+- Construction-period tax-loss rollforward.
+- ATAD / interest deductibility.
+- Financing fee/rate mechanics.
+- Full amortization schedule beyond first12.
 
 ### 5. Equity / SHL / IRR parity
 
@@ -192,4 +207,4 @@ Only after project-level cash flow and debt schedule are aligned:
 
 A green test suite on this branch does not yet mean the model is full Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps and explicit calibration anchors.
 
-The next meaningful milestone is to fix Oborovo first-twelve P&L depreciation / tax rows so project-level cash flow and project IRR can be reconciled.
+The next meaningful milestone is to fix Oborovo project IRR by reconciling the exact unlevered cash-flow series and construction-period timing.
