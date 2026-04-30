@@ -55,6 +55,7 @@ Passing / expected-passing checks:
 - Oborovo first twelve period EBITDA reconciliation is active, not xfail.
 - Oborovo first twelve period debt-service reconciliation is active, not xfail.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
+- Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
 
 Diagnostic `xfail` checks:
 
@@ -116,7 +117,7 @@ The module also contains a narrow, traceable Oborovo first-12 period-level OpEx 
 
 `tests/test_debt_excel_alignment.py` now separates debt service from the principal / interest split and exposes implied Excel/app opening balance and interest rate diagnostics.
 
-The debt split failure payload now includes line failures plus per-period gap diagnostics: opening balance delta, implied period-rate delta, interest delta and principal delta.
+The debt split failure payload now includes line failures plus per-period gap diagnostics: opening balance delta, implied period-rate delta, interest delta and principal delta. `tests/test_oborovo_excel_reconciliation.py` now surfaces the same diagnostic payload for the broad Oborovo reconciliation xfail.
 
 For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1.15. This does not support using 1.20 for the first-12 Oborovo PPA rows.
 
@@ -130,6 +131,8 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 `app/calibration.py` also exposes `debt_decomposition` in the calibration payload so CLI/test output can inspect opening balance, closing balance, interest, principal, debt service and implied period rate directly.
 
 `app/waterfall_core.py` now passes operation-only periods and schedules into `run_waterfall()` for the headless calibration path. This removes construction-period zero CFADS rows from debt sculpting and aligns debt amortization timing with the extracted Excel operating period rows.
+
+`tests/test_finco_gpt_calibration_runner.py` now guards both paths: engine-aware run config builds day-count debt rates, while config without an engine intentionally preserves the legacy flat-rate fallback.
 
 ## Next math-fix sequence
 
