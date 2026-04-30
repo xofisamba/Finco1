@@ -18,7 +18,7 @@ from tests.reconciliation_helpers import collect_period_failures, period_by_date
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
-OBOROVO_DEBT_METRIC_SPECS = [
+OBOROVO_DEBT_SERVICE_METRIC_SPECS = [
     {
         "excel_sheet": "CF",
         "excel_metric": "senior_debt_service_keur",
@@ -27,6 +27,9 @@ OBOROVO_DEBT_METRIC_SPECS = [
         "app_sign": 1.0,
         "tolerance_pct": 0.005,
     },
+]
+
+OBOROVO_DEBT_SPLIT_METRIC_SPECS = [
     {
         "excel_sheet": "DS",
         "excel_metric": "senior_principal_keur",
@@ -86,13 +89,24 @@ def test_oborovo_first_twelve_excel_dscr_target_is_115() -> None:
     assert {round(float(row["excel_dscr_target_row"]), 6) for row in rows} == {1.15}
 
 
-@pytest.mark.xfail(reason="Oborovo debt schedule still needs Excel sculpting/rate/balance alignment")
-def test_oborovo_first_twelve_debt_lines_against_excel() -> None:
+def test_oborovo_first_twelve_debt_service_against_excel() -> None:
+    """Debt service should equal CFADS / DSCR target once CFADS is calibrated."""
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     failures = collect_period_failures(
         app_periods_by_date=period_by_date(payload),
         excel_periods=_period_fixture("excel_oborovo_periods.json")[:12],
-        metric_specs=OBOROVO_DEBT_METRIC_SPECS,
+        metric_specs=OBOROVO_DEBT_SERVICE_METRIC_SPECS,
+    )
+    assert not failures, failures
+
+
+@pytest.mark.xfail(reason="Oborovo principal/interest split still needs Excel rate/balance alignment")
+def test_oborovo_first_twelve_debt_principal_and_interest_against_excel() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_period_fixture("excel_oborovo_periods.json")[:12],
+        metric_specs=OBOROVO_DEBT_SPLIT_METRIC_SPECS,
     )
     assert not failures, failures
 
