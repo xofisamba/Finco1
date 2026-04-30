@@ -115,7 +115,7 @@ def load_project_inputs(project_key: str) -> ProjectInputs:
     if key in {"tuho", "tuhobic", "tuhobić"}:
         factory = _find_tuho_factory()
         if factory is None:
-            raise ValueError("TUHO default input factory is not implemented yet")
+            raise NotImplementedError("TUHO default input factory is not implemented yet")
         return factory()
     raise ValueError(f"Unknown project_key: {project_key}")
 
