@@ -4,7 +4,11 @@ from __future__ import annotations
 from dataclasses import replace
 
 from app.calibration import build_period_engine, load_project_inputs
-from domain.revenue.generation import _period_energy_revenue_keur, full_generation_schedule
+from domain.revenue.generation import (
+    _certificate_revenue_keur,
+    _period_energy_revenue_keur,
+    full_generation_schedule,
+)
 
 
 def test_period_energy_revenue_full_ppa_matches_legacy_behavior() -> None:
@@ -57,6 +61,14 @@ def test_period_energy_revenue_bounds_ppa_share() -> None:
     )
     assert over_one == 600.0
     assert below_zero == 800.0
+
+
+def test_certificate_revenue_disabled_returns_zero() -> None:
+    assert _certificate_revenue_keur(generation_mwh=10_000, enabled=False, price_eur_mwh=1.5) == 0.0
+
+
+def test_certificate_revenue_enabled_is_generation_times_price() -> None:
+    assert _certificate_revenue_keur(generation_mwh=10_000, enabled=True, price_eur_mwh=1.5) == 15.0
 
 
 def test_full_generation_schedule_defaults_to_project_yield_scenario() -> None:
