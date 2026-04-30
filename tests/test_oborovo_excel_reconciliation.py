@@ -39,7 +39,7 @@ OBOROVO_EBITDA_METRIC_SPECS = [
     },
 ]
 
-OBOROVO_DEBT_METRIC_SPECS = [
+OBOROVO_DEBT_SERVICE_METRIC_SPECS = [
     {
         "excel_sheet": "CF",
         "excel_metric": "senior_debt_service_keur",
@@ -48,6 +48,9 @@ OBOROVO_DEBT_METRIC_SPECS = [
         "app_sign": 1.0,
         "tolerance_pct": 0.005,
     },
+]
+
+OBOROVO_DEBT_SPLIT_METRIC_SPECS = [
     {
         "excel_sheet": "DS",
         "excel_metric": "senior_principal_keur",
@@ -150,12 +153,22 @@ def test_oborovo_first_twelve_period_ebitda_against_excel() -> None:
     assert not failures, failures
 
 
-@pytest.mark.xfail(reason="Known calibration gap: debt service schedule is not yet Excel-parity")
-def test_oborovo_first_twelve_periods_debt_lines_against_excel() -> None:
+def test_oborovo_first_twelve_period_debt_service_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     failures = collect_period_failures(
         app_periods_by_date=period_by_date(payload),
         excel_periods=_oborovo_periods()[:12],
-        metric_specs=OBOROVO_DEBT_METRIC_SPECS,
+        metric_specs=OBOROVO_DEBT_SERVICE_METRIC_SPECS,
+    )
+    assert not failures, failures
+
+
+@pytest.mark.xfail(reason="Known calibration gap: principal / interest split is not yet Excel-parity")
+def test_oborovo_first_twelve_periods_debt_principal_and_interest_against_excel() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_oborovo_periods()[:12],
+        metric_specs=OBOROVO_DEBT_SPLIT_METRIC_SPECS,
     )
     assert not failures, failures
