@@ -19,6 +19,7 @@
 - `app/calibration_runner.py` exposes backward-compatible run helpers.
 - `tests/reconciliation_helpers.py` centralizes Excel-vs-app comparison diagnostics.
 - Calibration payloads include `revenue_decomposition` rows for generation, PPA tariff, market price, balancing, certificate revenue and net revenue.
+- Calibration payloads include `debt_decomposition` rows for opening balance, closing balance, interest, principal, debt service, implied period rate and DSCR.
 
 ### Excel fixtures
 
@@ -121,6 +122,8 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 - Oborovo remains single-target 1.15 until later Excel rows are extracted and mapped.
 
 `app/calibration.py` now builds senior-debt `rate_schedule` from actual operation period day fractions: `annual all-in rate * period.day_fraction`. This replaces the flat `annual_rate / 2` approximation in headless calibration runs and better matches Excel interest calculations for stub/irregular periods.
+
+`app/calibration.py` also exposes `debt_decomposition` in the calibration payload so CLI/test output can inspect opening balance, closing balance, interest, principal, debt service and implied period rate directly.
 
 ## Next math-fix sequence
 
