@@ -27,7 +27,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import ColorScaleRule
 
-from core.finance.sensitivity import run_tornado_analysis, run_spider_analysis
+from domain.finance.sensitivity import run_tornado_analysis, run_spider_analysis
 
 
 # ---------------------------------------------------------------------------

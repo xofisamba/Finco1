@@ -102,9 +102,10 @@ class WaterfallRunner:
         if config is None:
             config = WaterfallRunConfig()
 
-        # S4-1: Propagate sculpt_capex_keur from inputs.capex (overrides default 0.0)
+        # S4-1: Use sculpt_capex_keur from inputs.capex, not config default
+        sculpt_capex = self.inputs.capex.sculpt_capex_keur
         if config.sculpt_capex_keur == 0.0:
-            config.sculpt_capex_keur = self.inputs.capex.sculpt_capex_keur
+            sculpt_capex = self.inputs.capex.sculpt_capex_keur
 
         # Use cached waterfall computation
         return cached_run_waterfall_v3(
@@ -129,7 +130,7 @@ class WaterfallRunner:
             rate_schedule=config.rate_schedule,
             equity_irr_method=config.equity_irr_method.value,
             share_capital_keur=config.share_capital_keur,
-            sculpt_capex_keur=config.sculpt_capex_keur,
+            sculpt_capex_keur=sculpt_capex,
             debt_sizing_method=config.debt_sizing_method.value,
             dscr_schedule=config.dscr_schedule,
         )

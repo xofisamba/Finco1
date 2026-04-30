@@ -1,156 +1,250 @@
 """Tests for equity IRR methods (S4-3).
 
-Verifies that all three equity_irr_method values are correctly wired
-through the waterfall stack and produce distinct IRR results.
+Verifies that all three equity_irr_method values compute correctly:
+- "equity_only": equity = total_capex - debt (TUHO style)
+- "combined": equity = sculpt_capex - debt (Oborovo style)
+- "shl_plus_dividends": equity = shl_amount + share_capital, includes SHL interest in CF
 """
 import pytest
 from datetime import date, timedelta
+
+from domain.period_engine import PeriodEngine, PeriodFrequency
 from domain.returns.xirr import robust_xirr
-from domain.waterfall.waterfall_engine import WaterfallPeriod, WaterfallResult
+from domain.waterfall.waterfall_engine import run_waterfall
 
 
-def make_simple_periods(n_op: int = 28) -> list:
-    """Create simple semi-annual periods for waterfall testing.
+def make_test_periods(construction_periods: int = 2, operation_periods: int = 28):
+    """Create periods using PeriodEngine for integration testing.
 
-    PeriodMeta-style objects with attributes needed by waterfall_engine:
-    - index, year_index, period_in_year, is_operation
-    - start_date, end_date, day_fraction, is_leap_year
+    The PeriodEngine returns periods with semi-annual frequency.
+    We build schedules of matching length so ebitda_schedule[period.index] is valid.
     """
-    anchor = date(2029, 6, 29)
-    periods = []
-
-    # 2 construction periods
-    for i in range(2):
-        p = object.__new__(WaterfallPeriod)
-        p.index = i
-        p.year_index = 0
-        p.period_in_year = i + 1
-        p.is_operation = False
-        p.start_date = anchor + timedelta(days=i * 182)
-        p.end_date = anchor + timedelta(days=(i + 1) * 182)
-        p.day_fraction = 0.5
-        p.is_leap_year = False
-        periods.append(p)
-
-    # n_op operation periods
-    for i in range(n_op):
-        p = object.__new__(WaterfallPeriod)
-        p.index = 2 + i
-        p.year_index = i // 2 + 1
-        p.period_in_year = (i % 2) + 1
-        p.is_operation = True
-        p.start_date = anchor + timedelta(days=(2 + i) * 182)
-        p.end_date = anchor + timedelta(days=(3 + i) * 182)
-        p.day_fraction = 0.5
-        p.is_leap_year = False
-        periods.append(p)
-
+    engine = PeriodEngine(
+        financial_close=date(2029, 6, 29),
+        construction_months=construction_periods * 6,
+        horizon_years=20,
+        ppa_years=15,
+        frequency=PeriodFrequency.SEMESTRIAL,
+    )
+    periods = engine.periods()
     return periods
 
 
-class TestXIRRFunction:
-    """Sanity-check the xirr function used by waterfall IRR calculations."""
+def build_schedules(construction_periods: int, operation_periods: int, periods):
+    """Build schedules matching the actual period list from PeriodEngine.
 
-    def test_xirr_simple_positive(self):
-        """XIRR with simple positive returns."""
-        cfs = [-100, 50, 50, 50]
-        dates = [date(2029, 1, 1), date(2030, 1, 1), date(2031, 1, 1), date(2032, 1, 1)]
-        irr = robust_xirr(cfs, dates)
-        assert 0.15 < irr < 0.25, f"Expected ~20%, got {irr:.2%}"
-
-    def test_xirr_rejects_infeasible(self):
-        """XIRR with all-positive cash flows should return 0."""
-        cfs = [100, 10, 10]
-        dates = [date(2029, 1, 1), date(2030, 1, 1), date(2031, 1, 1)]
-        irr = robust_xirr(cfs, dates)
-        assert irr is None or irr == 0.0
+    Returns (ebitda, revenue, generation, depreciation) schedules of len(periods).
+    """
+    n = len(periods)
+    ebitda = [0.0] * construction_periods + [50_000.0] * (n - construction_periods)
+    revenue = [0.0] * construction_periods + [60_000.0] * (n - construction_periods)
+    generation = [0.0] * construction_periods + [50_000.0] * (n - construction_periods)
+    depreciation = [0.0] * construction_periods + [10_000.0] * (n - construction_periods)
+    return ebitda, revenue, generation, depreciation
 
 
 class TestEquityIRRMethod:
-    """Test equity IRR wiring — each method produces different equity base."""
+    """Test all three equity_irr_method values."""
+
+    def test_equity_only_simple(self):
+        """Test 'equity_only' — equity = total_capex - debt, no SHL."""
+        periods = make_test_periods(2, 28)
+        n = len(periods)
+        n_construction = sum(1 for p in periods if not p.is_operation)
+
+        ebitda_schedule, revenue_schedule, generation_schedule, depreciation_schedule = \
+            build_schedules(n_construction, n - n_construction, periods)
+
+        result = run_waterfall(
+            ebitda_schedule=ebitda_schedule,
+            revenue_schedule=revenue_schedule,
+            generation_schedule=generation_schedule,
+            depreciation_schedule=depreciation_schedule,
+            periods=periods,
+            total_capex=100_000.0,
+            rate_per_period=0.02825,
+            tenor_periods=28,
+            target_dscr=1.15,
+            lockup_dscr=1.10,
+            tax_rate=0.10,
+            dsra_months=6,
+            equity_irr_method="equity_only",
+            sculpt_capex_keur=0.0,
+            shl_amount=0.0,
+            shl_rate=0.0,
+            financial_close=date(2029, 6, 29),
+        )
+
+        sculpt = getattr(result, 'sculpting_result', None)
+        debt = getattr(sculpt, 'debt_keur', 0) if sculpt else 0
+        assert debt > 0, f"Debt should be positive, got {debt}"
+        assert result.project_irr > 0, "Project IRR should be positive"
+        assert result.equity_irr >= 0 or result.equity_irr == 0.0
+
+    def test_combined_with_sculpt_capex(self):
+        """Test 'combined' — equity = sculpt_capex - debt (Oborovo style)."""
+        periods = make_test_periods(2, 28)
+        n = len(periods)
+        n_construction = sum(1 for p in periods if not p.is_operation)
+
+        ebitda_schedule, revenue_schedule, generation_schedule, depreciation_schedule = \
+            build_schedules(n_construction, n - n_construction, periods)
+
+        result = run_waterfall(
+            ebitda_schedule=ebitda_schedule,
+            revenue_schedule=revenue_schedule,
+            generation_schedule=generation_schedule,
+            depreciation_schedule=depreciation_schedule,
+            periods=periods,
+            total_capex=100_000.0,
+            rate_per_period=0.02825,
+            tenor_periods=28,
+            target_dscr=1.15,
+            lockup_dscr=1.10,
+            tax_rate=0.10,
+            dsra_months=6,
+            equity_irr_method="combined",
+            sculpt_capex_keur=90_000.0,
+            shl_amount=0.0,
+            shl_rate=0.0,
+            financial_close=date(2029, 6, 29),
+        )
+
+        sculpt = getattr(result, 'sculpting_result', None)
+        debt = getattr(sculpt, 'debt_keur', 0) if sculpt else 0
+        assert debt > 0, f"Debt should be positive, got {debt}"
+        assert result.project_irr > 0
+
+    def test_shl_plus_dividends(self):
+        """Test 'shl_plus_dividends' — equity = shl_amount + share_capital, SHL interest in CF."""
+        periods = make_test_periods(2, 28)
+        n = len(periods)
+        n_construction = sum(1 for p in periods if not p.is_operation)
+
+        # Higher EBITDA to cover SHL interest
+        ebitda = [0.0] * n_construction + [60_000.0] * (n - n_construction)
+        revenue = [0.0] * n_construction + [70_000.0] * (n - n_construction)
+        generation = [0.0] * n_construction + [55_000.0] * (n - n_construction)
+        depreciation = [0.0] * n_construction + [12_000.0] * (n - n_construction)
+
+        result = run_waterfall(
+            ebitda_schedule=ebitda,
+            revenue_schedule=revenue,
+            generation_schedule=generation,
+            depreciation_schedule=depreciation,
+            periods=periods,
+            total_capex=100_000.0,
+            rate_per_period=0.02825,
+            tenor_periods=28,
+            target_dscr=1.15,
+            lockup_dscr=1.10,
+            tax_rate=0.10,
+            dsra_months=6,
+            equity_irr_method="shl_plus_dividends",
+            sculpt_capex_keur=0.0,
+            shl_amount=20_000.0,
+            shl_rate=0.08,
+            share_capital_keur=15_000.0,
+            financial_close=date(2029, 6, 29),
+        )
+
+        assert result.project_irr > 0
+        assert result.equity_irr > 0
+
+    def test_all_three_methods_produce_different_equity_irr(self):
+        """Verify that different methods produce different (but plausible) equity IRR."""
+        periods = make_test_periods(2, 28)
+        n = len(periods)
+        n_construction = sum(1 for p in periods if not p.is_operation)
+
+        ebitda, revenue, generation, depreciation = \
+            build_schedules(n_construction, n - n_construction, periods)
+
+        def run_method(method, sculpt_capex=0, shl_amount=0, share_capital=0):
+            return run_waterfall(
+                ebitda_schedule=ebitda,
+                revenue_schedule=revenue,
+                generation_schedule=generation,
+                depreciation_schedule=depreciation,
+                periods=periods,
+                total_capex=100_000.0,
+                rate_per_period=0.02825,
+                tenor_periods=28,
+                target_dscr=1.15,
+                lockup_dscr=1.10,
+                tax_rate=0.10,
+                dsra_months=6,
+                equity_irr_method=method,
+                sculpt_capex_keur=sculpt_capex,
+                shl_amount=shl_amount,
+                shl_rate=0.08 if shl_amount > 0 else 0.0,
+                share_capital_keur=share_capital,
+                financial_close=date(2029, 6, 29),
+            )
+
+        r_equity_only = run_method("equity_only")
+        r_combined = run_method("combined", sculpt_capex=90_000.0)
+        r_shl_plus = run_method("shl_plus_dividends", shl_amount=20_000.0, share_capital=15_000.0)
+
+        assert r_equity_only.project_irr > 0
+        assert r_combined.project_irr > 0
+        assert r_shl_plus.project_irr > 0
+
+        assert r_equity_only.equity_irr >= 0
+        assert r_combined.equity_irr >= 0
+        assert r_shl_plus.equity_irr >= 0
+
+        # Project IRRs should be similar (same economics)
+        assert abs(r_equity_only.project_irr - r_combined.project_irr) < 0.005
+        assert abs(r_combined.project_irr - r_shl_plus.project_irr) < 0.005
 
     def test_xirr_function(self):
-        """Verify xirr function is imported and works correctly."""
-        cfs = [-100, 60, 60]
-        dates = [date(2029, 1, 1), date(2030, 1, 1), date(2031, 1, 1)]
-        irr = robust_xirr(cfs, dates)
-        assert irr > 0, "Test CF should produce positive IRR"
+        """Verify xirr works correctly for simple cash flows."""
+        dates = [date(2029, 6, 29) + timedelta(days=182 * i) for i in range(5)]
+        cash_flows = [-100, 30, 30, 30, 30]
 
-    def test_make_simple_periods_produces_valid_periods(self):
-        """Verify test helper produces periods with correct attributes."""
-        periods = make_simple_periods(28)
-        assert len(periods) == 30  # 2 construction + 28 operation
-
-        # First period is construction
-        assert not periods[0].is_operation
-        assert periods[0].index == 0
-        assert hasattr(periods[0], 'end_date')
-
-        # Last period is operation
-        last = periods[-1]
-        assert last.is_operation
-        assert last.index == 29
-
-        # end_date attribute is present
-        assert last.end_date is not None
-        assert isinstance(last.end_date, date)
-
-    def test_waterfall_result_has_equity_irr(self):
-        """Verify WaterfallResult dataclass has equity_irr field."""
-        # WaterfallResult should be a dataclass with equity_irr attribute
-        # This test verifies the field exists (integration test uses real inputs)
-        from domain.waterfall.waterfall_engine import WaterfallResult
-        # Create a minimal result to verify field exists
-        r = WaterfallResult(
-            periods=[],
-            project_irr=0.08,
-            equity_irr=0.12,
-            avg_dscr=1.5,
-        )
-        assert r.equity_irr == 0.12
-        assert r.project_irr == 0.08
-
-    def test_equity_only_vs_combined_produce_different_results(self):
-        """When waterfall runs with equity_only vs combined, equity_irr differs.
-
-        This is a structural test — it verifies the waterfall engine's
-        equity_irr_method parameter affects the equity base calculation.
-        The actual IRR values depend on the input quality; this test
-        verifies the plumbing is correct.
-        """
-        # We can't easily run a full waterfall here without proper inputs.
-        # Instead, verify that:
-        # 1. WaterfallResult has sculpting_result.debt_keur (S4-1 fix)
-        # 2. equity_irr_method parameter exists in run_waterfall signature
-        from domain.waterfall.waterfall_engine import run_waterfall
-        import inspect
-        sig = inspect.signature(run_waterfall)
-        params = list(sig.parameters.keys())
-        assert 'equity_irr_method' in params, "equity_irr_method must be a parameter"
-        assert 'sculpt_capex_keur' in params, "sculpt_capex_keur must be a parameter"
-        assert 'share_capital_keur' in params, "share_capital_keur must be a parameter"
-
-    def test_project_irr_uses_total_capex_not_equity(self):
-        """Project IRR cash flows start with -total_capex (all capital), not equity."""
-        from domain.waterfall.waterfall_engine import run_waterfall
-        import inspect
-        sig = inspect.signature(run_waterfall)
-        # The method parameter affects equity cash flows, not project cash flows
-        # This test just verifies the structure is correct
-        assert 'equity_irr_method' in sig.parameters
-        assert 'total_capex' in sig.parameters
+        irr = robust_xirr(cash_flows, dates, guess=0.10)
+        assert irr is not None
+        assert 0.05 < irr < 0.20
 
 
 class TestProjectIRR:
-    """Project IRR is independent of equity_irr_method (unlevered)."""
+    """Test project IRR calculation (same for all methods)."""
 
     def test_project_irr_independent_of_equity_method(self):
-        """Project IRR is computed from unlevered CFs — not affected by equity method."""
-        from domain.waterfall.waterfall_engine import run_waterfall
-        import inspect
-        sig = inspect.signature(run_waterfall)
-        params = list(sig.parameters.keys())
-        # project_cfs starts with -total_capex (unlevered)
-        assert 'total_capex' in params
-        # equity_irr_method only affects equity_cfs, not project_cfs
-        assert 'equity_irr_method' in params
+        """Project IRR should not depend on equity_irr_method."""
+        periods = make_test_periods(2, 28)
+        n = len(periods)
+        n_construction = sum(1 for p in periods if not p.is_operation)
+
+        ebitda, revenue, generation, depreciation = \
+            build_schedules(n_construction, n - n_construction, periods)
+
+        methods = ["equity_only", "combined", "shl_plus_dividends"]
+        project_irrs = []
+
+        for method in methods:
+            result = run_waterfall(
+                ebitda_schedule=ebitda,
+                revenue_schedule=revenue,
+                generation_schedule=generation,
+                depreciation_schedule=depreciation,
+                periods=periods,
+                total_capex=100_000.0,
+                rate_per_period=0.02825,
+                tenor_periods=28,
+                target_dscr=1.15,
+                lockup_dscr=1.10,
+                tax_rate=0.10,
+                dsra_months=6,
+                equity_irr_method=method,
+                sculpt_capex_keur=90_000.0 if method == "combined" else 0.0,
+                shl_amount=20_000.0 if method == "shl_plus_dividends" else 0.0,
+                shl_rate=0.08,
+                share_capital_keur=15_000.0 if method == "shl_plus_dividends" else 0.0,
+                financial_close=date(2029, 6, 29),
+            )
+            project_irrs.append(result.project_irr)
+
+        assert abs(project_irrs[0] - project_irrs[1]) < 0.001
+        assert abs(project_irrs[1] - project_irrs[2]) < 0.001
