@@ -3,8 +3,7 @@
 This module provides cached computation of expensive model outputs
 (revenue, generation, OPEX) that are used by multiple UI pages.
 
-NOTE: This module uses @st.cache_data but is called from the app layer.
-The actual caching happens in the UI layer, not here.
+NOTE: Called from app/cache.py (cached wrapper). No Streamlit imports here.
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -27,13 +26,13 @@ class ModelState:
 def build_model_state(inputs: ProjectInputs, engine: PeriodEngine) -> ModelState:
     """Build model state with all precomputed schedules.
 
-    This function is decorated with @st.cache_data in the UI layer.
+    NOTE: Cached by app/cache.py (not decorated here). Call via cached wrapper.
     Call it once per inputs/engine change.
-    
+
     Args:
         inputs: ProjectInputs instance
         engine: PeriodEngine instance
-    
+
     Returns:
         ModelState with all precomputed schedules
     """
@@ -49,21 +48,13 @@ def build_model_state(inputs: ProjectInputs, engine: PeriodEngine) -> ModelState
     from domain.opex.projections import opex_schedule_annual
     opex_annual = opex_schedule_annual(inputs, inputs.info.horizon_years)
 
-    # Build periods list
+    # Depreciation schedule (30-year straight-line for solar)
+    dep_per_year = inputs.capex.total_capex / inputs.info.horizon_years
+    depreciation_schedule = [dep_per_year] * inputs.info.horizon_years
+
+    # Get periods
     periods = list(engine.periods())
     op_periods = [p for p in periods if p.is_operation]
-
-    # Depreciation schedule
-    total_capex = inputs.capex.total_capex
-    horizon = inputs.info.horizon_years
-    dep_per_year = total_capex / horizon if horizon > 0 else 0.0
-
-    depreciation_schedule = []
-    for p in periods:
-        if p.is_operation:
-            depreciation_schedule.append(dep_per_year / 2)  # Semi-annual
-        else:
-            depreciation_schedule.append(0.0)
 
     return ModelState(
         revenue=revenue,

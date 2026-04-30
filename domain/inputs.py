@@ -798,13 +798,9 @@ class ProjectInputs:
         )
 
 # =============================================================================
-# Cache utilities (for @st.cache_data hash_funcs)
-# =============================================================================
-
+# Hash function for cache key generation (used by app/cache.py)
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
-    """Deterministic hash for frozen ProjectInputs.
-
-    Used for @st.cache_data hash_funcs parameter.
+    """Deterministic hash for frozen ProjectInputs (cache key).
 
     Args:
         inputs: ProjectInputs instance (must be frozen)

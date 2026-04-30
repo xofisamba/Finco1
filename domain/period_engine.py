@@ -315,9 +315,7 @@ class PeriodEngine:
         return [p.end_date for p in self.periods()]
 
 # =============================================================================
-# Caching hash function (used by @st.cache_data in UI layer)
-# =============================================================================
-
+# Hash function for cache key — deterministic for PeriodEngine inputs
 def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
-    """Deterministic hash for PeriodEngine - for @st.cache_data hash_funcs."""
+    """Deterministic hash for PeriodEngine inputs (for cache key)."""
     return (e.fc, e.construction_months, e.horizon_years, e.ppa_years, e.freq)
