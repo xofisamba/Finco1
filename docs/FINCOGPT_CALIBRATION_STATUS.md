@@ -51,11 +51,12 @@ Passing / expected-passing checks:
 - Oborovo first twelve period revenue reconciliation is active, not xfail.
 - Oborovo first twelve period OpEx reconciliation is active, not xfail.
 - Oborovo first twelve period EBITDA reconciliation is active, not xfail.
+- Oborovo first twelve period debt-service reconciliation is active, not xfail.
 
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
-- Oborovo first twelve period debt service, principal and interest vs Excel.
+- Oborovo first twelve period principal / interest split vs Excel.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
@@ -106,7 +107,18 @@ The module also contains a narrow, traceable Oborovo first-12 period-level OpEx 
 
 `tests/test_opex_excel_alignment.py` promotes Oborovo first-twelve-period OpEx to an active test.
 
-`tests/test_oborovo_excel_reconciliation.py` promotes Oborovo first-twelve-period EBITDA to an active test. Debt rows remain xfail.
+`tests/test_oborovo_excel_reconciliation.py` promotes Oborovo first-twelve-period EBITDA to an active test.
+
+### 5. Debt service diagnostics and DSCR schedule policy
+
+`tests/test_debt_excel_alignment.py` now separates debt service from the principal / interest split.
+
+For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1.15. This does not support using 1.20 for the first-12 Oborovo PPA rows.
+
+`tests/test_debt_dscr_schedule_policy.py` documents current project policy:
+
+- TUHO uses dual DSCR schedule: 1.20 for the first 24 PPA periods, then 1.40 for merchant periods.
+- Oborovo remains single-target 1.15 until later Excel rows are extracted and mapped.
 
 ## Next math-fix sequence
 
@@ -114,14 +126,14 @@ Work should continue in this order. Do not jump to UI polish before these are re
 
 ### 1. Debt schedule parity
 
-Next immediate target: Oborovo first twelve period debt service, principal and interest.
+Next immediate target: Oborovo first twelve period principal / interest split.
 
 Likely areas:
 
 - Day-count convention for interest.
-- Debt sculpting denominator and CFADS definition.
-- DSRA contribution/release logic.
-- Debt opening balance / drawdown timing.
+- Opening debt balance / drawdown timing.
+- Whether Excel interest is gross/net of fees or includes additional financing costs.
+- Difference between allowable debt service and actual interest/principal split.
 - Fixed-vs-sculpted debt service for TUHO later.
 
 ### 2. Depreciation and tax parity
@@ -169,4 +181,4 @@ Only after project-level cash flow and debt schedule are aligned:
 
 A green test suite on this branch does not yet mean the model is Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps.
 
-The next meaningful milestone is to fix Oborovo first-twelve debt service / principal / interest so senior debt mechanics can be promoted from xfail to active tests.
+The next meaningful milestone is to fix Oborovo first-twelve principal / interest split so senior debt mechanics can be promoted from xfail to active tests.
