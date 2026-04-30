@@ -46,6 +46,7 @@ Passing / expected-passing checks:
 - Headless modules do not import Streamlit.
 - Oborovo and TUHO headless payload shape.
 - Senior debt anchoring within initial tolerance.
+- PeriodEngine first operation dates align to the extracted Oborovo and TUHO Excel period fixtures.
 
 Diagnostic `xfail` checks:
 
@@ -57,13 +58,26 @@ Diagnostic `xfail` checks:
 
 These xfails are intentional. They keep CI honest while documenting known gaps.
 
-## First concrete engine fix already made
+## Concrete engine fixes already made
+
+### 1. OpEx / depreciation period weighting
 
 `app/waterfall_core.py` now uses `opex_schedule_period(inputs, engine)` instead of `annual_opex / 2`.
 
 Depreciation in the core now uses `annual_dep * period.day_fraction` instead of `annual_dep / 2`.
 
 This is closer to Excel, which uses period/day-count factors rather than a simple half-year split.
+
+### 2. COD-near-June stub handling
+
+`domain/period_engine.py` now rolls COD dates that would create a near-zero June 30 operating stub into the next Dec 31 operating period.
+
+This is required for the extracted Oborovo fixture:
+
+- COD: 2030-06-29
+- First extracted operating period end: 2030-12-31
+
+A regression test in `tests/test_period_engine_excel_alignment.py` now locks the first three Oborovo and TUHO operation dates to the Excel fixture dates.
 
 ## Next math-fix sequence
 
@@ -75,7 +89,6 @@ Compare app period revenue to Excel `CF.operating_revenues_keur` for the first 3
 
 Likely areas:
 
-- COD stub handling.
 - PPA period end and PPA term cutoff.
 - Production degradation timing.
 - Availability treatment.
