@@ -1,14 +1,20 @@
 """Tests for the FincoGPT headless calibration runner."""
 from __future__ import annotations
 
-import pytest
-
+from app.calibration import available_project_keys
 from app.calibration_runner import (
     CalibrationRunSpec,
     build_period_engine,
     build_run_config,
     load_project_inputs,
+    run_calibration,
 )
+
+
+def test_available_project_keys_include_oborovo_and_tuho() -> None:
+    keys = available_project_keys()
+    assert "oborovo" in keys
+    assert "tuho" in keys
 
 
 def test_load_project_inputs_oborovo() -> None:
@@ -17,13 +23,23 @@ def test_load_project_inputs_oborovo() -> None:
     assert inputs.capex.total_capex > 0
 
 
-def test_load_project_inputs_tuho_is_explicitly_not_implemented_yet() -> None:
-    with pytest.raises(NotImplementedError):
-        load_project_inputs("tuho")
+def test_load_project_inputs_tuho() -> None:
+    inputs = load_project_inputs("tuho")
+    assert inputs.info.name.lower().startswith("tuh")
+    assert inputs.capex.total_capex > 70_000
+    assert inputs.financing.fixed_debt_keur is not None
 
 
 def test_build_period_engine_from_oborovo_inputs() -> None:
     inputs = load_project_inputs("oborovo")
+    engine = build_period_engine(inputs)
+    periods = engine.periods()
+    assert periods
+    assert any(p.is_operation for p in periods)
+
+
+def test_build_period_engine_from_tuho_inputs() -> None:
+    inputs = load_project_inputs("tuho")
     engine = build_period_engine(inputs)
     periods = engine.periods()
     assert periods
@@ -38,7 +54,24 @@ def test_build_run_config_from_oborovo_inputs() -> None:
     assert config.sculpt_capex_keur == inputs.capex.sculpt_capex_keur
 
 
+def test_build_run_config_from_tuho_inputs() -> None:
+    inputs = load_project_inputs("tuho")
+    config = build_run_config(inputs)
+    assert config.rate_per_period > 0
+    assert config.fixed_debt_keur == inputs.financing.fixed_debt_keur
+    assert config.debt_sizing_method == "fixed"
+    assert config.equity_irr_method == "shl_plus_dividends"
+
+
 def test_calibration_run_spec_defaults() -> None:
     spec = CalibrationRunSpec(project_key="oborovo")
     assert spec.engine_version == "FincoGPT"
     assert spec.calibration_source == "headless"
+
+
+def test_run_calibration_oborovo_payload_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    assert payload["project_key"] == "oborovo"
+    assert payload["calibration_source"] == "pytest"
+    assert payload["periods"]
+    assert payload["kpis"]["senior_debt_keur"] > 0
