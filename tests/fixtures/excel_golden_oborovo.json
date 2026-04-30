@@ -1,0 +1,37 @@
+{
+  "project": "oborovo",
+  "source_workbook": "20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm",
+  "extraction_note": "First-pass golden anchors extracted from workbook cached formula values. Raw workbook is intentionally not committed.",
+  "worksheets": {
+    "FID deck outputs": {"rid": "rId1", "target": "xl/worksheets/sheet1.xml", "role": "FID / PPT export output"},
+    "Discount rate NPV": {"rid": "rId2", "target": "xl/worksheets/sheet2.xml", "role": "discount-rate analysis"},
+    "Outputs": {"rid": "rId3", "target": "xl/worksheets/sheet3.xml", "role": "dashboard / KPI summary"},
+    "Inputs": {"rid": "rId4", "target": "xl/worksheets/sheet4.xml", "role": "assumptions and scenario controls"},
+    "Scenarios": {"rid": "rId5", "target": "xl/worksheets/sheet5.xml", "role": "scenario and sensitivity controls"},
+    "CapEx": {"rid": "rId6", "target": "xl/worksheets/sheet6.xml", "role": "capex and funding requirement"},
+    "OpEx": {"rid": "rId7", "target": "xl/worksheets/sheet7.xml", "role": "operating costs"},
+    "IDC": {"rid": "rId8", "target": "xl/worksheets/sheet8.xml", "role": "construction funding, debt drawdowns and IDC"},
+    "CF": {"rid": "rId9", "target": "xl/worksheets/sheet9.xml", "role": "cash flow waterfall and IRR"},
+    "P&L": {"rid": "rId10", "target": "xl/worksheets/sheet10.xml", "role": "profit and loss"},
+    "BS": {"rid": "rId11", "target": "xl/worksheets/sheet11.xml", "role": "balance sheet"},
+    "Dep": {"rid": "rId12", "target": "xl/worksheets/sheet12.xml", "role": "depreciation"},
+    "DS": {"rid": "rId13", "target": "xl/worksheets/sheet13.xml", "role": "debt schedule, DSCR and reserve mechanics"},
+    "Eq": {"rid": "rId14", "target": "xl/worksheets/sheet14.xml", "role": "equity and SHL returns"},
+    "Macro": {"rid": "rId15", "target": "xl/worksheets/sheet15.xml", "role": "macro assumptions"},
+    "Flags": {"rid": "rId16", "target": "xl/worksheets/sheet16.xml", "role": "period flags and day-count controls"},
+    "Sheet1": {"rid": "rId17", "target": "xl/worksheets/sheet17.xml", "role": "auxiliary sheet"}
+  },
+  "golden_cells": {
+    "total_capex_keur": {"sheet": "CapEx", "cell": "C141", "formula": "SUM(C117,C121,C136)", "value": 57973.052657378626},
+    "senior_debt_keur": {"sheet": "IDC", "cell": "D48", "formula": "MAX(G48:AJ48)", "value": 42852.26672602787},
+    "unlevered_project_irr": {"sheet": "CF", "cell": "D136", "formula": "XIRR(G136:BO136,G$134:BO$134)", "value": 0.08280167281627655},
+    "senior_debt_service_p1_keur": {"sheet": "CF", "cell": "H80", "formula": "-SUM(DS!H52:H53,DS!H87:H88)", "value": -2239.133412854356},
+    "senior_debt_service_p2_keur": {"sheet": "CF", "cell": "I80", "formula": "-SUM(DS!I52:I53,DS!I87:I88)", "value": -2202.625802862166},
+    "senior_debt_service_p3_keur": {"sheet": "CF", "cell": "J80", "formula": "-SUM(DS!J52:J53,DS!J87:J88)", "value": -2240.525018558996}
+  },
+  "initial_tolerances": {
+    "senior_debt_pct": 0.01,
+    "irr_bps": 50,
+    "period_debt_service_pct": 0.005
+  }
+}
