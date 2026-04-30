@@ -100,6 +100,9 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["kpis"]["senior_debt_keur"] > 0
     assert payload["revenue_decomposition"]
     assert payload["debt_decomposition"]
+    assert payload["shl_decomposition"]
+    assert payload["sponsor_equity_shl_cash_flows"]
+    assert "sponsor_equity_shl_irr" in payload["kpis"]
 
 
 def test_run_calibration_payload_is_operation_only_for_period_rows() -> None:
@@ -136,6 +139,58 @@ def test_run_calibration_debt_decomposition_shape() -> None:
     assert row["senior_ds_keur"] == row["senior_interest_keur"] + row["senior_principal_keur"]
     assert row["implied_period_rate"] >= 0
     assert "dscr" in row
+
+
+def test_run_calibration_shl_decomposition_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    row = payload["shl_decomposition"][0]
+    assert row["date"]
+    assert row["opening_balance_keur"] >= 0
+    assert row["cash_interest_paid_keur"] >= 0
+    assert row["principal_paid_keur"] >= 0
+    assert row["service_paid_keur"] == row["cash_interest_paid_keur"] + row["principal_paid_keur"]
+    assert row["pik_or_capitalized_interest_keur"] >= 0
+    assert "cash_available_after_senior_ds_keur" in row
+
+
+def test_run_calibration_sponsor_equity_shl_cash_flow_definition() -> None:
+    inputs = load_project_inputs("oborovo")
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    definition = payload["investor_cash_flow_definition"]
+    first_cf = payload["sponsor_equity_shl_cash_flows"][0]
+    first_period_cf = payload["sponsor_equity_shl_cash_flows"][1]
+    first_period = payload["periods"][0]
+
+    expected_initial = (
+        inputs.financing.share_capital_keur
+        + inputs.financing.shl_amount_keur
+        + getattr(inputs.financing, "shl_idc_keur", 0.0)
+    )
+    assert definition["method"] == "sponsor_equity_plus_shl"
+    assert definition["initial_investment_keur"] == expected_initial
+    assert first_cf["date"] == inputs.info.financial_close.isoformat()
+    assert first_cf["cash_flow_keur"] == -expected_initial
+    assert first_period_cf["cash_flow_keur"] == (
+        first_period["distribution_keur"]
+        + first_period["shl_interest_keur"]
+        + first_period["shl_principal_keur"]
+    )
+    assert first_period_cf["cash_flow_keur"] >= first_period_cf["shl_interest_keur"]
+
+
+def test_run_calibration_sponsor_cash_flow_excludes_unpaid_pik_until_paid() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    for cf_row, period_row in zip(payload["sponsor_equity_shl_cash_flows"][1:], payload["periods"]):
+        assert cf_row["cash_flow_keur"] == (
+            period_row["distribution_keur"]
+            + period_row["shl_interest_keur"]
+            + period_row["shl_principal_keur"]
+        )
+        assert cf_row["cash_flow_keur"] == (
+            cf_row["distribution_keur"]
+            + cf_row["shl_interest_keur"]
+            + cf_row["shl_principal_keur"]
+        )
 
 
 def test_run_calibration_applies_oborovo_first12_debt_split_anchors() -> None:
