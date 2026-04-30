@@ -18,6 +18,7 @@
 - `app/calibration.py` serializes KPI and period-level waterfall rows.
 - `app/calibration_runner.py` exposes backward-compatible run helpers.
 - `tests/reconciliation_helpers.py` centralizes Excel-vs-app comparison diagnostics.
+- Calibration payloads include `revenue_decomposition` rows for generation, PPA tariff, market price, balancing, certificate revenue and net revenue.
 
 ### Excel fixtures
 
@@ -47,11 +48,12 @@ Passing / expected-passing checks:
 - Oborovo and TUHO headless payload shape.
 - Senior debt anchoring within initial tolerance.
 - PeriodEngine first operation dates align to the extracted Oborovo and TUHO Excel period fixtures.
+- Oborovo first three period revenue reconciliation is active, not xfail.
 
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
-- Oborovo first three period core lines vs Excel.
+- Oborovo downstream first three period core lines vs Excel: EBITDA, debt service, principal and interest.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
@@ -68,16 +70,29 @@ Depreciation in the core now uses `annual_dep * period.day_fraction` instead of 
 
 This is closer to Excel, which uses period/day-count factors rather than a simple half-year split.
 
-### 2. COD-near-June stub handling
+### 2. COD-near-June stub and Excel day-count handling
 
-`domain/period_engine.py` now rolls COD dates that would create a near-zero June 30 operating stub into the next Dec 31 operating period.
+`domain/period_engine.py` now rolls near-zero COD stubs to the nearby semi-annual boundary and then uses Excel period-end boundary day counts.
 
 This is required for the extracted Oborovo fixture:
 
 - COD: 2030-06-29
+- Rolled operating start boundary: 2030-06-30
 - First extracted operating period end: 2030-12-31
+- First three operating day counts: 184, 181, 184
 
-A regression test in `tests/test_period_engine_excel_alignment.py` now locks the first three Oborovo and TUHO operation dates to the Excel fixture dates.
+A regression test in `tests/test_period_engine_excel_alignment.py` locks the first three Oborovo and TUHO operation dates to the Excel fixture dates.
+
+### 3. Revenue formula diagnostics and first Oborovo revenue milestone
+
+`domain/revenue/generation.py` now exposes:
+
+- PPA share aware energy revenue.
+- Certificate / CO2 revenue as a separate pure helper.
+- Revenue decomposition by period.
+- Yield-scenario aware generation schedule.
+
+`tests/test_revenue_excel_alignment.py` now promotes Oborovo first-three-period revenue from diagnostic xfail to active test.
 
 ## Next math-fix sequence
 
@@ -85,7 +100,7 @@ Work should continue in this order. Do not jump to UI polish before these are re
 
 ### 1. Revenue and generation parity
 
-Compare app period revenue to Excel `CF.operating_revenues_keur` for the first 3, then 12, then all periods.
+Next revenue target: extend Oborovo from first 3 periods to first 12 periods, then all periods. TUHO revenue remains diagnostic because the first-pass TUHO factory still needs exact wind production / PPA / balancing mapping.
 
 Likely areas:
 
@@ -145,4 +160,4 @@ Only after project-level cash flow and debt schedule are aligned:
 
 A green test suite on this branch does not yet mean the model is Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps.
 
-The next meaningful milestone is to turn the Oborovo first-three-period core-line reconciliation from xfail to passing without loosening tolerances.
+The next meaningful milestone is to extend Oborovo revenue reconciliation from first 3 periods to first 12 periods, then fix OpEx so EBITDA can be promoted from xfail to active test.
