@@ -140,19 +140,26 @@ def _period_energy_revenue_keur(
     ppa_active: bool,
     ppa_share: float,
 ) -> float:
-    """Return energy revenue for one period before balancing and certificates.
-
-    `ppa_production_share` existed in the input schema but was previously
-    ignored. Excel models commonly support selling only a portion of generation
-    under the PPA and the balance at market. This helper makes that behavior
-    explicit while preserving the previous result when ppa_share is 1.0.
-    """
+    """Return energy revenue for one period before balancing and certificates."""
     bounded_ppa_share = min(max(ppa_share, 0.0), 1.0)
     if ppa_active:
         ppa_generation = generation_mwh * bounded_ppa_share
         merchant_generation = generation_mwh - ppa_generation
         return (ppa_generation * ppa_tariff + merchant_generation * market_price) / 1000
     return generation_mwh * market_price / 1000
+
+
+def _certificate_revenue_keur(*, generation_mwh: float, enabled: bool, price_eur_mwh: float) -> float:
+    """Return certificate/CO2 revenue for one period.
+
+    Kept as a separate pure function because Excel workbooks often expose this
+    as its own revenue row. Splitting it from energy revenue makes calibration
+    deltas explainable and prevents certificate logic from being hidden inside
+    tariff mechanics.
+    """
+    if not enabled:
+        return 0.0
+    return generation_mwh * price_eur_mwh / 1000
 
 
 def revenue_decomposition_schedule(
@@ -193,9 +200,11 @@ def revenue_decomposition_schedule(
         balancing_cost_wind_keur = 0.0
         if inputs.revenue.balancing_cost_wind_eur_mwh > 0:
             balancing_cost_wind_keur = generation_mwh * inputs.revenue.balancing_cost_wind_eur_mwh / 1000
-        co2_revenue_keur = 0.0
-        if inputs.revenue.co2_enabled:
-            co2_revenue_keur = generation_mwh * inputs.revenue.co2_price_eur / 1000
+        co2_revenue_keur = _certificate_revenue_keur(
+            generation_mwh=generation_mwh,
+            enabled=inputs.revenue.co2_enabled,
+            price_eur_mwh=inputs.revenue.co2_price_eur,
+        )
 
         decompositions[period.index] = {
             "is_operation": True,
