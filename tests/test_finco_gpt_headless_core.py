@@ -40,6 +40,12 @@ def test_waterfall_runner_does_not_import_cache_or_streamlit_at_module_import() 
     assert "cache" not in imports
 
 
+def test_calibration_module_does_not_import_streamlit() -> None:
+    """Calibration helpers must remain CLI/pytest safe."""
+    imports = _imports_from_file(ROOT / "app" / "calibration.py")
+    assert "streamlit" not in imports
+
+
 def test_waterfall_core_importable_without_streamlit_runtime() -> None:
     """Importing the core module should not require Streamlit runtime."""
     module = importlib.import_module("app.waterfall_core")
@@ -51,6 +57,24 @@ def test_waterfall_runner_importable_without_streamlit_runtime() -> None:
     module = importlib.import_module("app.waterfall_runner")
     assert hasattr(module, "WaterfallRunner")
     assert hasattr(module, "WaterfallRunConfig")
+
+
+def test_calibration_api_importable_without_streamlit_runtime() -> None:
+    """The calibration API exposes headless runner entry points."""
+    module = importlib.import_module("app.calibration")
+    assert hasattr(module, "run_project_calibration")
+    assert hasattr(module, "available_project_keys")
+    assert "oborovo" in module.available_project_keys()
+
+
+def test_calibration_cli_exists() -> None:
+    """A CLI wrapper exists for generating JSON reconciliation payloads."""
+    cli = ROOT / "scripts" / "run_calibration.py"
+    assert cli.exists()
+    content = cli.read_text(encoding="utf-8")
+    assert "run_project_calibration" in content
+    assert "--project" in content
+    assert "--output" in content
 
 
 def test_excel_calibration_targets_fixture_shape() -> None:
