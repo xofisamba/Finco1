@@ -19,7 +19,9 @@ from tests.test_debt_excel_alignment import _excel_app_debt_diagnostic_rows
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = ROOT / "tests" / "fixtures"
 TARGETS = FIXTURE_DIR / "excel_calibration_targets.json"
-OBOROVO_PERIODS = FIXTURE_DIR / "excel_oborovo_periods.json"
+OBOROVO_PERIODS = FIXTURE_DIR / "tests" / "fixtures" / "excel_oborovo_periods.json"
+if not OBOROVO_PERIODS.exists():
+    OBOROVO_PERIODS = FIXTURE_DIR / "excel_oborovo_periods.json"
 
 
 OBOROVO_REVENUE_METRIC_SPECS = [
@@ -173,7 +175,6 @@ def test_oborovo_first_twelve_period_debt_service_against_excel() -> None:
     assert not failures, failures
 
 
-@pytest.mark.xfail(reason="Known calibration gap: interest rate / fee convention is not yet Excel-parity")
 def test_oborovo_first_twelve_periods_debt_interest_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     failures = collect_period_failures(
@@ -181,14 +182,12 @@ def test_oborovo_first_twelve_periods_debt_interest_against_excel() -> None:
         excel_periods=_oborovo_periods()[:12],
         metric_specs=OBOROVO_DEBT_INTEREST_METRIC_SPECS,
     )
-    if failures:
-        raise AssertionError({
-            "interest_failures": failures,
-            "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
-        })
+    assert not failures, {
+        "interest_failures": failures,
+        "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
+    }
 
 
-@pytest.mark.xfail(reason="Known calibration gap: principal amortization timing is not yet Excel-parity")
 def test_oborovo_first_twelve_periods_debt_principal_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     failures = collect_period_failures(
@@ -196,14 +195,12 @@ def test_oborovo_first_twelve_periods_debt_principal_against_excel() -> None:
         excel_periods=_oborovo_periods()[:12],
         metric_specs=OBOROVO_DEBT_PRINCIPAL_METRIC_SPECS,
     )
-    if failures:
-        raise AssertionError({
-            "principal_failures": failures,
-            "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
-        })
+    assert not failures, {
+        "principal_failures": failures,
+        "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
+    }
 
 
-@pytest.mark.xfail(reason="Known calibration gap: principal / interest split is not yet Excel-parity")
 def test_oborovo_first_twelve_periods_debt_principal_and_interest_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     failures = collect_period_failures(
@@ -211,8 +208,7 @@ def test_oborovo_first_twelve_periods_debt_principal_and_interest_against_excel(
         excel_periods=_oborovo_periods()[:12],
         metric_specs=OBOROVO_DEBT_SPLIT_METRIC_SPECS,
     )
-    if failures:
-        raise AssertionError({
-            "line_failures": failures,
-            "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
-        })
+    assert not failures, {
+        "line_failures": failures,
+        "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
+    }
