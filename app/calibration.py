@@ -14,6 +14,7 @@ from app.waterfall_core import run_waterfall_v3_core
 from domain.inputs import ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodFrequency
 from domain.revenue.generation import revenue_decomposition_schedule
+from domain.returns.xirr import xirr
 
 
 KPI_FIELDS = (
@@ -264,8 +265,81 @@ def run_project_calibration(
     _apply_pl_tax_calibration(payload, normalized_project_key)
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
+    payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
+    investor_cf = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
+    payload["sponsor_equity_shl_cash_flows"] = investor_cf
+    payload["investor_cash_flow_definition"] = _investor_cash_flow_definition(inputs)
+    sponsor_irr = _xirr_from_cash_flow_rows(investor_cf)
+    payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr if sponsor_irr is not None else 0.0
     payload["available_project_keys"] = available_project_keys()
     return payload
+
+
+def _investor_cash_flow_definition(inputs: ProjectInputs) -> dict[str, Any]:
+    """Document the sponsor/equity+SHL IRR cash-flow convention."""
+    financing = inputs.financing
+    shl_idc = float(getattr(financing, "shl_idc_keur", 0.0) or 0.0)
+    share_capital = float(getattr(financing, "share_capital_keur", 0.0) or 0.0)
+    shl_amount = float(getattr(financing, "shl_amount_keur", 0.0) or 0.0)
+    return {
+        "method": "sponsor_equity_plus_shl",
+        "initial_outflow": "share_capital_keur + shl_amount_keur + shl_idc_keur",
+        "periodic_inflows": "distribution_keur + shl_interest_keur + shl_principal_keur",
+        "share_capital_keur": share_capital,
+        "shl_amount_keur": shl_amount,
+        "shl_idc_keur": shl_idc,
+        "initial_investment_keur": share_capital + shl_amount + shl_idc,
+    }
+
+
+def _sponsor_equity_shl_cash_flows(inputs: ProjectInputs, period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return explicit sponsor cash-flow series for equity + SHL IRR.
+
+    Initial cash flow is combined equity and SHL invested. Operating inflows are
+    dividends/distributions plus actual SHL cash interest and principal paid.
+    Accrued/PIK SHL interest is not an investor cash inflow until paid.
+    """
+    definition = _investor_cash_flow_definition(inputs)
+    rows: list[dict[str, Any]] = [
+        {
+            "date": inputs.info.financial_close.isoformat(),
+            "cash_flow_keur": -definition["initial_investment_keur"],
+            "share_capital_keur": definition["share_capital_keur"],
+            "shl_amount_keur": definition["shl_amount_keur"],
+            "shl_idc_keur": definition["shl_idc_keur"],
+            "distribution_keur": 0.0,
+            "shl_interest_keur": 0.0,
+            "shl_principal_keur": 0.0,
+            "description": "initial sponsor equity + SHL investment",
+        }
+    ]
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        distribution = float(row.get("distribution_keur", 0.0) or 0.0)
+        shl_interest = float(row.get("shl_interest_keur", 0.0) or 0.0)
+        shl_principal = float(row.get("shl_principal_keur", 0.0) or 0.0)
+        rows.append({
+            "date": row.get("date"),
+            "cash_flow_keur": distribution + shl_interest + shl_principal,
+            "share_capital_keur": 0.0,
+            "shl_amount_keur": 0.0,
+            "shl_idc_keur": 0.0,
+            "distribution_keur": distribution,
+            "shl_interest_keur": shl_interest,
+            "shl_principal_keur": shl_principal,
+            "description": "sponsor distribution + paid SHL interest/principal",
+        })
+    return rows
+
+
+def _xirr_from_cash_flow_rows(rows: list[dict[str, Any]]) -> float | None:
+    """Calculate XIRR from serialized cash-flow rows."""
+    from datetime import date
+
+    cash_flows = [float(row["cash_flow_keur"]) for row in rows]
+    dates = [date.fromisoformat(str(row["date"])) for row in rows]
+    return xirr(cash_flows, dates)
 
 
 def _apply_debt_split_calibration(payload: dict[str, Any], project_key: str) -> None:
@@ -367,6 +441,36 @@ def _debt_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str
             "senior_ds_keur": float(row.get("senior_ds_keur", 0.0) or 0.0),
             "implied_period_rate": interest / opening_balance if opening_balance else 0.0,
             "dscr": row.get("dscr"),
+        })
+    return rows
+
+
+def _shl_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return period-level SHL bridge rows for calibration diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        shl_interest = float(row.get("shl_interest_keur", 0.0) or 0.0)
+        shl_principal = float(row.get("shl_principal_keur", 0.0) or 0.0)
+        shl_pik = float(row.get("shl_pik_keur", 0.0) or 0.0)
+        closing_balance = float(row.get("shl_balance_keur", 0.0) or 0.0)
+        opening_balance = max(0.0, closing_balance + shl_principal - shl_pik)
+        rows.append({
+            "period": row.get("period"),
+            "date": row.get("date"),
+            "year_index": row.get("year_index"),
+            "period_in_year": row.get("period_in_year"),
+            "opening_balance_keur": opening_balance,
+            "cash_interest_paid_keur": shl_interest,
+            "principal_paid_keur": shl_principal,
+            "service_paid_keur": float(row.get("shl_service_keur", 0.0) or 0.0),
+            "pik_or_capitalized_interest_keur": shl_pik,
+            "closing_balance_keur": closing_balance,
+            "cash_available_after_senior_ds_keur": (
+                float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+                - float(row.get("senior_ds_keur", 0.0) or 0.0)
+            ),
         })
     return rows
 
