@@ -63,7 +63,7 @@ def _revenue_failures(project_key: str, fixture_name: str, limit: int = 3) -> li
     return failures
 
 
-def _implied_excel_revenue_price(project_key: str, fixture_name: str) -> list[dict[str, float | str]]:
+def _implied_excel_revenue_price(project_key: str, fixture_name: str, limit: int = 3) -> list[dict[str, float | str]]:
     """Return implied Excel revenue €/MWh using app generation as denominator.
 
     This is diagnostic only. It helps determine whether the remaining gap is
@@ -71,7 +71,7 @@ def _implied_excel_revenue_price(project_key: str, fixture_name: str) -> list[di
     """
     app_by_date = _schedule_by_date(project_key)
     rows: list[dict[str, float | str]] = []
-    for excel_period in _period_fixture(fixture_name)[:3]:
+    for excel_period in _period_fixture(fixture_name)[:limit]:
         date_key = excel_period["period_end_date"]
         generation_mwh = app_by_date[date_key]["generation_mwh"]
         excel_revenue_keur = excel_period["CF"]["operating_revenues_keur"]
@@ -92,13 +92,18 @@ def _implied_excel_revenue_price(project_key: str, fixture_name: str) -> list[di
 
 
 def test_oborovo_first_three_revenue_rows_against_excel() -> None:
-    failures = _revenue_failures("oborovo", "excel_oborovo_periods.json")
+    failures = _revenue_failures("oborovo", "excel_oborovo_periods.json", limit=3)
+    assert not failures, failures
+
+
+def test_oborovo_first_twelve_revenue_rows_against_excel() -> None:
+    failures = _revenue_failures("oborovo", "excel_oborovo_periods.json", limit=12)
     assert not failures, failures
 
 
 @pytest.mark.xfail(reason="TUHO first-pass factory still needs exact wind production/PPA/balancing mapping")
 def test_tuho_first_three_revenue_rows_against_excel() -> None:
-    failures = _revenue_failures("tuho", "excel_tuho_periods.json")
+    failures = _revenue_failures("tuho", "excel_tuho_periods.json", limit=3)
     assert not failures, failures
 
 
@@ -108,13 +113,13 @@ def test_revenue_schedule_contains_excel_fixture_dates() -> None:
         ("tuho", "excel_tuho_periods.json"),
     ]:
         app_dates = set(_schedule_by_date(project_key))
-        fixture_dates = {p["period_end_date"] for p in _period_fixture(fixture_name)[:3]}
+        fixture_dates = {p["period_end_date"] for p in _period_fixture(fixture_name)}
         assert fixture_dates <= app_dates
 
 
 def test_oborovo_revenue_decomposition_explains_total_revenue() -> None:
     app_by_date = _schedule_by_date("oborovo")
-    for excel_period in _period_fixture("excel_oborovo_periods.json")[:3]:
+    for excel_period in _period_fixture("excel_oborovo_periods.json"):
         row = app_by_date[excel_period["period_end_date"]]
         assert row["revenue_keur"] == (
             row["energy_revenue_keur"]
@@ -137,15 +142,15 @@ def test_tuho_revenue_decomposition_explains_total_revenue() -> None:
 
 
 def test_oborovo_implied_excel_price_diagnostics_are_available() -> None:
-    rows = _implied_excel_revenue_price("oborovo", "excel_oborovo_periods.json")
-    assert len(rows) == 3
+    rows = _implied_excel_revenue_price("oborovo", "excel_oborovo_periods.json", limit=12)
+    assert len(rows) == 12
     for row in rows:
         assert row["implied_excel_eur_mwh"] > 0
         assert row["app_net_revenue_eur_mwh"] > 0
 
 
 def test_tuho_implied_excel_price_diagnostics_are_available() -> None:
-    rows = _implied_excel_revenue_price("tuho", "excel_tuho_periods.json")
+    rows = _implied_excel_revenue_price("tuho", "excel_tuho_periods.json", limit=3)
     assert len(rows) == 3
     for row in rows:
         assert row["implied_excel_eur_mwh"] > 0
