@@ -7,11 +7,11 @@ reconciliation work.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
-from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
-from domain.inputs import DebtSizingMethod, EquityIRRMethod, ProjectInputs, SHLRepaymentMethod
+from app.waterfall_core import run_waterfall_v3_core
+from domain.inputs import ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodFrequency
 
 
@@ -65,6 +65,40 @@ PERIOD_FIELDS = (
 )
 
 
+@dataclass(frozen=True)
+class HeadlessRunConfig:
+    """Configuration for a reproducible headless waterfall run."""
+
+    rate_per_period: float
+    tenor_periods: int
+    target_dscr: float
+    lockup_dscr: float
+    tax_rate: float
+    dsra_months: int
+    shl_amount_keur: float
+    shl_rate_per_period: float
+    shl_idc_keur: float
+    shl_repayment_method: str
+    shl_tenor_years: int
+    shl_wht_rate: float
+    discount_rate_project: float = 0.0641
+    discount_rate_equity: float = 0.0965
+    fixed_debt_keur: float | None = None
+    fixed_ds_keur: float | None = None
+    equity_irr_method: str = "equity_only"
+    share_capital_keur: float = 0.0
+    sculpt_capex_keur: float = 0.0
+    debt_sizing_method: str = "dscr_sculpt"
+    dscr_schedule: list[float] | None = None
+
+
+_ENGINE_FREQUENCY_BY_NAME = {
+    "ANNUAL": PeriodFrequency.ANNUAL,
+    "SEMESTRIAL": PeriodFrequency.SEMESTRIAL,
+    "QUARTERLY": PeriodFrequency.QUARTERLY,
+}
+
+
 def available_project_keys() -> list[str]:
     """Return project keys currently supported by the headless calibration runner."""
     keys = ["oborovo"]
@@ -87,21 +121,25 @@ def load_project_inputs(project_key: str) -> ProjectInputs:
 
 
 def build_period_engine(inputs: ProjectInputs) -> PeriodEngine:
-    """Build the standard semi-annual PeriodEngine for ProjectInputs."""
+    """Build the standard PeriodEngine for ProjectInputs."""
+    input_frequency = getattr(inputs.info, "period_frequency", None)
+    frequency_name = getattr(input_frequency, "name", "SEMESTRIAL")
+    frequency = _ENGINE_FREQUENCY_BY_NAME.get(frequency_name, PeriodFrequency.SEMESTRIAL)
+
     return PeriodEngine(
         financial_close=inputs.info.financial_close,
         construction_months=inputs.info.construction_months,
         horizon_years=inputs.info.horizon_years,
         ppa_years=inputs.revenue.ppa_term_years,
-        frequency=PeriodFrequency.SEMESTRIAL,
+        frequency=frequency,
     )
 
 
-def build_run_config(inputs: ProjectInputs) -> WaterfallRunConfig:
-    """Build a WaterfallRunConfig from ProjectInputs without Streamlit."""
+def build_run_config(inputs: ProjectInputs) -> HeadlessRunConfig:
+    """Build a Streamlit-free run config from ProjectInputs."""
     financing = inputs.financing
     tax = inputs.tax
-    return WaterfallRunConfig(
+    return HeadlessRunConfig(
         rate_per_period=financing.all_in_rate / 2,
         tenor_periods=financing.senior_tenor_years * 2,
         target_dscr=financing.target_dscr,
@@ -109,17 +147,17 @@ def build_run_config(inputs: ProjectInputs) -> WaterfallRunConfig:
         tax_rate=tax.corporate_rate,
         dsra_months=financing.dsra_months,
         shl_amount_keur=financing.shl_amount_keur,
-        shl_rate=financing.shl_rate / 2,
+        shl_rate_per_period=financing.shl_rate / 2,
         shl_idc_keur=getattr(financing, "shl_idc_keur", 0.0),
-        shl_repayment_method=_enum_value(SHLRepaymentMethod, financing.shl_repayment_method, SHLRepaymentMethod.BULLET),
+        shl_repayment_method=_enum_or_string_value(getattr(financing, "shl_repayment_method", "bullet")),
         shl_tenor_years=getattr(financing, "shl_tenor_years", 0),
         shl_wht_rate=tax.wht_sponsor_shl_interest,
         fixed_debt_keur=getattr(financing, "fixed_debt_keur", None),
         fixed_ds_keur=getattr(financing, "fixed_ds_keur", None),
-        equity_irr_method=_enum_value(EquityIRRMethod, financing.equity_irr_method, EquityIRRMethod.EQUITY_ONLY),
+        equity_irr_method=_enum_or_string_value(getattr(financing, "equity_irr_method", "equity_only")),
         share_capital_keur=financing.share_capital_keur,
         sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
-        debt_sizing_method=_enum_value(DebtSizingMethod, financing.debt_sizing_method, DebtSizingMethod.DSCR_SCULPT),
+        debt_sizing_method=_enum_or_string_value(getattr(financing, "debt_sizing_method", "dscr_sculpt")),
         dscr_schedule=getattr(financing, "dscr_schedule", None),
     )
 
@@ -134,7 +172,32 @@ def run_project_calibration(
     inputs = load_project_inputs(project_key)
     engine = build_period_engine(inputs)
     config = build_run_config(inputs)
-    result = WaterfallRunner(inputs, engine).run(config)
+    result = run_waterfall_v3_core(
+        inputs=inputs,
+        engine=engine,
+        rate_per_period=config.rate_per_period,
+        tenor_periods=config.tenor_periods,
+        target_dscr=config.target_dscr,
+        lockup_dscr=config.lockup_dscr,
+        tax_rate=config.tax_rate,
+        dsra_months=config.dsra_months,
+        shl_amount=config.shl_amount_keur,
+        shl_rate=config.shl_rate_per_period,
+        shl_idc_keur=config.shl_idc_keur,
+        shl_repayment_method=config.shl_repayment_method,
+        shl_tenor_years=config.shl_tenor_years,
+        shl_wht_rate=config.shl_wht_rate,
+        discount_rate_project=config.discount_rate_project,
+        discount_rate_equity=config.discount_rate_equity,
+        fixed_debt_keur=config.fixed_debt_keur,
+        fixed_ds_keur=config.fixed_ds_keur,
+        rate_schedule=None,
+        equity_irr_method=config.equity_irr_method,
+        share_capital_keur=config.share_capital_keur,
+        sculpt_capex_keur=config.sculpt_capex_keur,
+        debt_sizing_method=config.debt_sizing_method,
+        dscr_schedule=config.dscr_schedule,
+    )
     payload = serialize_waterfall_result(
         result,
         project_key=project_key.lower().strip(),
@@ -223,14 +286,10 @@ def compare_metric(
     }
 
 
-def _enum_value(enum_cls: type, value: Any, default: Any) -> Any:
-    if isinstance(value, enum_cls):
-        return value
-    if isinstance(value, str):
-        for member in enum_cls:
-            if member.value == value:
-                return member
-    return default
+def _enum_or_string_value(value: Any) -> str:
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
 
 
 def _find_tuho_factory():
@@ -244,6 +303,7 @@ def _find_tuho_factory():
 __all__ = [
     "KPI_FIELDS",
     "PERIOD_FIELDS",
+    "HeadlessRunConfig",
     "available_project_keys",
     "build_period_engine",
     "build_run_config",
