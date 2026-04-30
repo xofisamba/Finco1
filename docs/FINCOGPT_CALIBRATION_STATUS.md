@@ -111,7 +111,7 @@ The module also contains a narrow, traceable Oborovo first-12 period-level OpEx 
 
 ### 5. Debt service diagnostics and DSCR schedule policy
 
-`tests/test_debt_excel_alignment.py` now separates debt service from the principal / interest split.
+`tests/test_debt_excel_alignment.py` now separates debt service from the principal / interest split and exposes implied Excel/app opening balance and interest rate diagnostics.
 
 For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1.15. This does not support using 1.20 for the first-12 Oborovo PPA rows.
 
@@ -119,6 +119,8 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 
 - TUHO uses dual DSCR schedule: 1.20 for the first 24 PPA periods, then 1.40 for merchant periods.
 - Oborovo remains single-target 1.15 until later Excel rows are extracted and mapped.
+
+`app/calibration.py` now builds senior-debt `rate_schedule` from actual operation period day fractions: `annual all-in rate * period.day_fraction`. This replaces the flat `annual_rate / 2` approximation in headless calibration runs and better matches Excel interest calculations for stub/irregular periods.
 
 ## Next math-fix sequence
 
@@ -130,7 +132,6 @@ Next immediate target: Oborovo first twelve period principal / interest split.
 
 Likely areas:
 
-- Day-count convention for interest.
 - Opening debt balance / drawdown timing.
 - Whether Excel interest is gross/net of fees or includes additional financing costs.
 - Difference between allowable debt service and actual interest/principal split.
