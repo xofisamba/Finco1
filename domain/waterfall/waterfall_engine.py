@@ -518,10 +518,13 @@ def run_waterfall(
     # Excel carryforward ≈ 9,000 kEUR to keep CIT=0 through Y3-H1
     # Initialize prior_tax_loss from parameter if set (>0), otherwise estimate from construction costs
     # Excel carryforward ≈ 9,000 kEUR for OBOROVO (12m construction), ≈25,000 kEUR for TUHO (18m)
+    # Use initial_tax_loss_keur from inputs.tax if available; otherwise estimate from construction costs
     if prior_tax_loss_keur > 0:
         prior_tax_loss = prior_tax_loss_keur
     else:
-        prior_tax_loss = idc_keur + bank_fees_keur + commitment_fees_keur + 7060.0  # ~9,000 kEUR default
+        # Estimate from construction-period financial costs
+        # For OBOROVO (12m construction): ≈ idc + fees + ~7060 kEUR carryforward
+        prior_tax_loss = idc_keur + bank_fees_keur + commitment_fees_keur
     fiscal_reintegration = 0.0
     fiscal_reintegration_applied = True  # Already accounted for in prior_tax_loss
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA

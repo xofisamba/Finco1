@@ -272,6 +272,7 @@ def cached_run_waterfall_v3(
         equity_irr_method=equity_irr_method,
         share_capital_keur=share_capital_keur,
         sculpt_capex_keur=sculpt_capex_keur,
+        prior_tax_loss_keur=inputs.tax.initial_tax_loss_keur,
         debt_sizing_method=debt_sizing_method,
         dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, 'dscr_schedule', None),
     )
