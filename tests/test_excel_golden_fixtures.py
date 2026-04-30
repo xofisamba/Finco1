@@ -17,6 +17,10 @@ FIXTURE_FILES = [
     FIXTURE_DIR / "excel_golden_oborovo.json",
     FIXTURE_DIR / "excel_golden_tuho.json",
 ]
+PERIOD_FIXTURE_FILES = [
+    FIXTURE_DIR / "excel_oborovo_periods.json",
+    FIXTURE_DIR / "excel_tuho_periods.json",
+]
 
 
 @pytest.mark.parametrize("fixture_path", FIXTURE_FILES)
@@ -70,6 +74,29 @@ def test_excel_golden_cells_are_traceable_to_formula_cells(fixture_path: Path) -
         assert cell_info["cell"], metric
         assert isinstance(cell_info["formula"], str) and cell_info["formula"], metric
         assert isinstance(cell_info["value"], (int, float)), metric
+
+
+@pytest.mark.parametrize("fixture_path", PERIOD_FIXTURE_FILES)
+def test_period_fixture_shape_and_core_rows(fixture_path: Path) -> None:
+    data = json.loads(fixture_path.read_text())
+
+    assert data["project"] in {"oborovo", "tuho"}
+    assert data["source_workbook"].endswith(".xlsm")
+    assert "raw xlsm" in data["extraction_note"].lower()
+    assert data["period_scope"]
+    assert set(data["row_mapping"]) == {"CF", "DS", "P&L", "Eq"}
+    assert len(data["periods"]) >= 3
+
+    for period in data["periods"]:
+        assert period["period_index"] >= 1
+        assert period["excel_column"]
+        assert period["period_end_date"]
+        assert set(period) >= {"CF", "DS", "P&L", "Eq"}
+        assert period["CF"]["operating_revenues_keur"] > 0
+        assert period["CF"]["senior_debt_service_keur"] < 0
+        assert period["DS"]["senior_principal_keur"] > 0
+        assert period["DS"]["senior_net_interest_keur"] > 0
+        assert period["P&L"]["total_revenues_keur"] == period["CF"]["operating_revenues_keur"]
 
 
 def test_oborovo_first_pass_anchors_match_known_excel_values() -> None:
