@@ -60,7 +60,9 @@ Passing / expected-passing checks:
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
-- Oborovo first twelve period principal / interest split vs Excel.
+- Oborovo first twelve period senior interest vs Excel.
+- Oborovo first twelve period senior principal vs Excel.
+- Oborovo first twelve period combined principal / interest split vs Excel.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
@@ -119,6 +121,8 @@ The module also contains a narrow, traceable Oborovo first-12 period-level OpEx 
 
 The debt split failure payload now includes line failures plus per-period gap diagnostics: opening balance delta, implied period-rate delta, interest delta and principal delta. `tests/test_oborovo_excel_reconciliation.py` now surfaces the same diagnostic payload for the broad Oborovo reconciliation xfail.
 
+Senior interest and senior principal are now also split into separate diagnostic xfail tests. This allows the next calibration step to promote whichever line is actually fixed first instead of treating the combined split as one opaque failure.
+
 For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1.15. This does not support using 1.20 for the first-12 Oborovo PPA rows.
 
 `tests/test_debt_dscr_schedule_policy.py` documents current project policy:
@@ -140,7 +144,7 @@ Work should continue in this order. Do not jump to UI polish before these are re
 
 ### 1. Debt schedule parity
 
-Next immediate target: Oborovo first twelve period principal / interest split.
+Next immediate target: Oborovo first twelve period senior interest, then senior principal.
 
 Likely areas:
 
@@ -194,4 +198,4 @@ Only after project-level cash flow and debt schedule are aligned:
 
 A green test suite on this branch does not yet mean the model is Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps.
 
-The next meaningful milestone is to fix Oborovo first-twelve principal / interest split so senior debt mechanics can be promoted from xfail to active tests.
+The next meaningful milestone is to fix Oborovo first-twelve senior interest and senior principal so debt mechanics can be promoted from xfail to active tests.
