@@ -33,10 +33,24 @@ def test_waterfall_core_does_not_import_streamlit() -> None:
     assert "streamlit" not in imports
 
 
+def test_waterfall_runner_does_not_import_cache_or_streamlit_at_module_import() -> None:
+    """WaterfallRunner must be usable by tests/CLI without Streamlit cache."""
+    imports = _imports_from_file(ROOT / "app" / "waterfall_runner.py")
+    assert "streamlit" not in imports
+    assert "cache" not in imports
+
+
 def test_waterfall_core_importable_without_streamlit_runtime() -> None:
     """Importing the core module should not require Streamlit runtime."""
     module = importlib.import_module("app.waterfall_core")
     assert hasattr(module, "run_waterfall_v3_core")
+
+
+def test_waterfall_runner_importable_without_streamlit_runtime() -> None:
+    """Importing the runner should not transitively import app.cache."""
+    module = importlib.import_module("app.waterfall_runner")
+    assert hasattr(module, "WaterfallRunner")
+    assert hasattr(module, "WaterfallRunConfig")
 
 
 def test_excel_calibration_targets_fixture_shape() -> None:
