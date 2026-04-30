@@ -16,6 +16,7 @@ from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+OBOROVO_EXCEL_SENIOR_DEBT_KEUR = 42_852.10911500986
 
 
 OBOROVO_DEBT_SERVICE_METRIC_SPECS = [
@@ -51,19 +52,52 @@ def _period_fixture(name: str) -> list[dict]:
 
 def _implied_excel_debt_rows(fixture_name: str, limit: int) -> list[dict[str, float | str]]:
     rows: list[dict[str, float | str]] = []
+    opening_balance = OBOROVO_EXCEL_SENIOR_DEBT_KEUR if fixture_name == "excel_oborovo_periods.json" else 0.0
     for period in _period_fixture(fixture_name)[:limit]:
         cfads = period["CF"]["free_cash_flow_for_banks_keur"]
         debt_service = -period["CF"]["senior_debt_service_keur"]
+        principal = period["DS"]["senior_principal_keur"]
+        interest = period["DS"]["senior_net_interest_keur"]
+        implied_rate = interest / opening_balance if opening_balance else 0.0
+        closing_balance = max(0.0, opening_balance - principal)
         rows.append({
             "period_end_date": period["period_end_date"],
+            "excel_opening_balance_keur": opening_balance,
+            "excel_closing_balance_keur": closing_balance,
             "excel_cfads_keur": cfads,
             "excel_senior_debt_service_keur": debt_service,
-            "excel_senior_principal_keur": period["DS"]["senior_principal_keur"],
-            "excel_senior_interest_keur": period["DS"]["senior_net_interest_keur"],
+            "excel_senior_principal_keur": principal,
+            "excel_senior_interest_keur": interest,
+            "excel_implied_period_rate": implied_rate,
+            "excel_implied_annual_simple_rate": implied_rate * 2,
             "excel_implied_dscr": cfads / debt_service if debt_service else 0.0,
             "excel_dscr_target_row": period["DS"]["senior_debt_dscr_target"],
             "excel_average_dscr_row": period["CF"]["average_senior_dscr_period"],
             "excel_minimum_dscr_row": period["CF"]["minimum_senior_dscr_period"],
+        })
+        opening_balance = closing_balance
+    return rows
+
+
+def _app_debt_rows(limit: int = 12) -> list[dict[str, float | str]]:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    rows = []
+    for app_row in [p for p in payload["periods"] if p.get("is_operation")][:limit]:
+        interest = app_row["senior_interest_keur"]
+        closing_balance = app_row["senior_balance_keur"]
+        principal = app_row["senior_principal_keur"]
+        opening_balance = closing_balance + principal
+        implied_rate = interest / opening_balance if opening_balance else 0.0
+        rows.append({
+            "period_end_date": app_row["date"],
+            "app_opening_balance_keur": opening_balance,
+            "app_closing_balance_keur": closing_balance,
+            "app_senior_debt_service_keur": app_row["senior_ds_keur"],
+            "app_senior_principal_keur": principal,
+            "app_senior_interest_keur": interest,
+            "app_implied_period_rate": implied_rate,
+            "app_implied_annual_simple_rate": implied_rate * 2,
+            "app_dscr": app_row["dscr"],
         })
     return rows
 
@@ -87,6 +121,20 @@ def test_oborovo_first_twelve_excel_dscr_target_is_115() -> None:
     """
     rows = _implied_excel_debt_rows("excel_oborovo_periods.json", limit=12)
     assert {round(float(row["excel_dscr_target_row"]), 6) for row in rows} == {1.15}
+
+
+def test_oborovo_excel_implied_rate_diagnostics_are_available() -> None:
+    rows = _implied_excel_debt_rows("excel_oborovo_periods.json", limit=12)
+    assert len(rows) == 12
+    assert 0.02 < rows[0]["excel_implied_period_rate"] < 0.04
+    assert all(row["excel_opening_balance_keur"] > row["excel_closing_balance_keur"] for row in rows)
+
+
+def test_oborovo_app_implied_rate_diagnostics_are_available() -> None:
+    rows = _app_debt_rows(limit=12)
+    assert len(rows) == 12
+    assert all(row["app_opening_balance_keur"] >= row["app_closing_balance_keur"] for row in rows)
+    assert all(row["app_implied_period_rate"] >= 0 for row in rows)
 
 
 def test_oborovo_first_twelve_debt_service_against_excel() -> None:
