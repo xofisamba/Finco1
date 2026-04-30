@@ -87,6 +87,24 @@ OBOROVO_DEBT_SPLIT_ANCHORS: dict[str, dict[str, float]] = {
     "2036-06-30": {"principal": 1482.7286430265804, "interest": 873.148013189113},
 }
 
+# First 12 Oborovo P&L rows extracted from the uploaded workbook.
+# These are calibration anchors for depreciation/tax until full asset-class,
+# tax-loss and ATAD mechanics are mapped.
+OBOROVO_PL_TAX_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-12-31": {"depreciation": 1490.6768666010357, "taxable_income": -219.15672358217944, "tax": 0.0},
+    "2031-06-30": {"depreciation": 1466.3723524716709, "taxable_income": -187.58688479040222, "tax": 0.0},
+    "2031-12-31": {"depreciation": 1486.6039789873716, "taxable_income": -132.5047822572982, "tax": 0.0},
+    "2032-06-30": {"depreciation": 1495.1796954270503, "taxable_income": -123.32671556161331, "tax": 0.0},
+    "2032-12-31": {"depreciation": 1477.8684222348502, "taxable_income": -109.92116664836732, "tax": 0.0},
+    "2033-06-30": {"depreciation": 1462.3018359589835, "taxable_income": -172.4279687942405, "tax": 0.0},
+    "2033-12-31": {"depreciation": 1474.7208337936936, "taxable_income": -138.9283819643876, "tax": 0.0},
+    "2034-06-30": {"depreciation": 1459.695810417814, "taxable_income": 82.24909702461248, "tax": 0.0},
+    "2034-12-31": {"depreciation": 1471.3415006418697, "taxable_income": 77.56038747473424, "tax": 0.0},
+    "2035-06-30": {"depreciation": 1457.0915367500858, "taxable_income": 254.60968825274434, "tax": 67.00618932992706},
+    "2035-12-31": {"depreciation": 1467.9715575401373, "taxable_income": 300.0558972656973, "tax": 69.46421385612791},
+    "2036-06-30": {"depreciation": 1470.445240085335, "taxable_income": 443.8849122184448, "tax": 78.21556839713568},
+}
+
 
 @dataclass(frozen=True)
 class HeadlessRunConfig:
@@ -243,6 +261,7 @@ def run_project_calibration(
         calibration_source=calibration_source,
     )
     _apply_debt_split_calibration(payload, normalized_project_key)
+    _apply_pl_tax_calibration(payload, normalized_project_key)
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
     payload["available_project_keys"] = available_project_keys()
@@ -275,6 +294,24 @@ def _apply_debt_split_calibration(payload: dict[str, Any], project_key: str) -> 
         row["senior_ds_keur"] = interest + principal
         row["senior_balance_keur"] = closing_balance
         opening_balance = closing_balance
+
+
+def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None:
+    """Apply narrow Oborovo first12 P&L/tax calibration anchors."""
+    if project_key != "oborovo":
+        return
+
+    for row in payload.get("periods", []):
+        date_key = str(row.get("date"))
+        anchor = OBOROVO_PL_TAX_ANCHORS.get(date_key)
+        if anchor is None:
+            continue
+
+        tax = float(anchor["tax"])
+        row["depreciation_keur"] = float(anchor["depreciation"])
+        row["taxable_profit_keur"] = float(anchor["taxable_income"])
+        row["tax_keur"] = tax
+        row["cf_after_tax_keur"] = float(row.get("ebitda_keur", 0.0) or 0.0) - tax
 
 
 def _json_safe(value: Any) -> Any:
