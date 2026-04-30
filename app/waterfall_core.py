@@ -45,12 +45,12 @@ def run_waterfall_v3_core(
     """
     from domain.waterfall.waterfall_engine import run_waterfall
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
-    from domain.opex.projections import opex_schedule_annual
+    from domain.opex.projections import opex_schedule_period
 
     periods_list = list(engine.periods())
     revenue_dict = full_revenue_schedule(inputs, engine)
     generation_dict = full_generation_schedule(inputs, engine)
-    opex_annual = opex_schedule_annual(inputs, inputs.info.horizon_years)
+    opex_period = opex_schedule_period(inputs, engine)
 
     horizon_years = inputs.info.horizon_years
     dep_per_year = inputs.capex.total_capex / horizon_years
@@ -66,14 +66,14 @@ def run_waterfall_v3_core(
         rev = revenue_dict.get(p.index, 0)
         gen = generation_dict.get(p.index, 0)
         if p.is_operation:
-            opex = opex_annual.get(p.year_index, 0) / 2
+            opex = opex_period.get(p.index, 0)
             ebitda = max(0, rev - opex)
             annual_dep = (
                 depreciation_schedule_annual[p.year_index - 1]
                 if p.year_index <= len(depreciation_schedule_annual)
                 else dep_per_year
             )
-            dep = annual_dep / 2
+            dep = annual_dep * p.day_fraction
         else:
             opex = 0
             ebitda = 0
