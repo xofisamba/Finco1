@@ -157,66 +157,73 @@ def _period_energy_revenue_keur(
     return generation_mwh * market_price / 1000
 
 
-def full_revenue_schedule(
+def revenue_decomposition_schedule(
     inputs: ProjectInputs,
     engine: PeriodEngine,
-) -> dict[int, float]:
-    """Generate full schedule of period revenue in kEUR.
-
-    Revenue includes:
-    - PPA revenue during PPA term
-    - Merchant revenue after PPA term, or merchant share during PPA if
-      ppa_production_share < 1.0
-    - Balancing cost deductions
-    - CO2/certificate revenue when enabled
-    """
-    revenue = {}
+) -> dict[int, dict[str, float | bool]]:
+    """Generate period-level revenue decomposition for calibration diagnostics."""
+    decompositions: dict[int, dict[str, float | bool]] = {}
+    generation_schedule = full_generation_schedule(inputs, engine)
 
     for period in engine.periods():
+        generation_mwh = generation_schedule[period.index]
         if not period.is_operation:
-            revenue[period.index] = 0.0
+            decompositions[period.index] = {
+                "is_operation": False,
+                "is_ppa_active": False,
+                "generation_mwh": 0.0,
+                "ppa_tariff_eur_mwh": 0.0,
+                "market_price_eur_mwh": 0.0,
+                "energy_revenue_keur": 0.0,
+                "balancing_cost_pv_keur": 0.0,
+                "balancing_cost_wind_keur": 0.0,
+                "co2_revenue_keur": 0.0,
+                "revenue_keur": 0.0,
+            }
             continue
-
-        if inputs.technical.yield_scenario == "P_50":
-            hours = inputs.technical.operating_hours_p50
-        else:
-            hours = inputs.technical.operating_hours_p90_10y
-
-        availability = inputs.technical.combined_availability
-        degradation = (1 - inputs.technical.pv_degradation) ** (period.year_index - 1)
-
-        generation_mwh = (
-            inputs.technical.capacity_mw
-            * hours
-            * period.day_fraction
-            * availability
-            * degradation
-        )
 
         tariff = inputs.revenue.tariff_at_year(period.year_index)
         market_price = inputs.revenue.market_price_at_year(period.year_index)
-        revenue_keur = _period_energy_revenue_keur(
+        energy_revenue_keur = _period_energy_revenue_keur(
             generation_mwh=generation_mwh,
             ppa_tariff=tariff,
             market_price=market_price,
             ppa_active=period.is_ppa_active,
             ppa_share=inputs.revenue.ppa_production_share,
         )
-
-        balancing_deduction = revenue_keur * inputs.revenue.balancing_cost_pv
-        revenue_keur -= balancing_deduction
-
+        balancing_cost_pv_keur = energy_revenue_keur * inputs.revenue.balancing_cost_pv
+        balancing_cost_wind_keur = 0.0
         if inputs.revenue.balancing_cost_wind_eur_mwh > 0:
-            wind_bal_cost = generation_mwh * inputs.revenue.balancing_cost_wind_eur_mwh / 1000
-            revenue_keur -= wind_bal_cost
-
+            balancing_cost_wind_keur = generation_mwh * inputs.revenue.balancing_cost_wind_eur_mwh / 1000
+        co2_revenue_keur = 0.0
         if inputs.revenue.co2_enabled:
-            co2_revenue = generation_mwh * inputs.revenue.co2_price_eur / 1000
-            revenue_keur += co2_revenue
+            co2_revenue_keur = generation_mwh * inputs.revenue.co2_price_eur / 1000
 
-        revenue[period.index] = revenue_keur
+        decompositions[period.index] = {
+            "is_operation": True,
+            "is_ppa_active": period.is_ppa_active,
+            "generation_mwh": generation_mwh,
+            "ppa_tariff_eur_mwh": tariff,
+            "market_price_eur_mwh": market_price,
+            "energy_revenue_keur": energy_revenue_keur,
+            "balancing_cost_pv_keur": balancing_cost_pv_keur,
+            "balancing_cost_wind_keur": balancing_cost_wind_keur,
+            "co2_revenue_keur": co2_revenue_keur,
+            "revenue_keur": energy_revenue_keur - balancing_cost_pv_keur - balancing_cost_wind_keur + co2_revenue_keur,
+        }
 
-    return revenue
+    return decompositions
+
+
+def full_revenue_schedule(
+    inputs: ProjectInputs,
+    engine: PeriodEngine,
+) -> dict[int, float]:
+    """Generate full schedule of period revenue in kEUR."""
+    return {
+        period_index: float(decomposition["revenue_keur"])
+        for period_index, decomposition in revenue_decomposition_schedule(inputs, engine).items()
+    }
 
 
 __all__ = [
@@ -225,4 +232,5 @@ __all__ = [
     "period_revenue",
     "full_generation_schedule",
     "full_revenue_schedule",
+    "revenue_decomposition_schedule",
 ]
