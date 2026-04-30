@@ -38,49 +38,49 @@ Both workbooks use the same core financial-model spine:
 
 ### TUHO workbook sheet inventory
 
-| Sheet | State | Used range | Cells | Formulas | Frozen pane |
-|---|---|---:|---:|---:|---|
-| `FID deck outputs` | visible | A1:AL113 | 1,049 | 540 | none |
-| `Discount rate NPV` | visible | A1:AW48 | 1,544 | 604 | none |
-| `Outputs` | visible | B1:AL115 | 2,060 | 779 | none |
-| `CapEx` | visible | A1:AR146 | 6,422 | 2,414 | D4 |
-| `Scenarios` | visible | A1:W250 | 3,735 | 299 | none |
-| `OpEx` | visible | A1:AL127 | 4,141 | 724 | D70 |
-| `Inputs` | visible | A1:XFD480 | 12,791 | 1,897 | A99 |
-| `IDC` | visible | A1:AJ104 | 2,393 | 1,913 | G38 |
-| `CF` | visible | A1:EP330 | 19,771 | 7,335 | G10 |
-| `P&L` | visible | A1:DX64 | 7,906 | 2,582 | G5 |
-| `BS` | visible | A1:EI46 | 5,237 | 1,851 | G5 |
-| `Dep` | visible | A1:DW176 | 4,969 | 3,723 | G5 |
-| `DS` | visible | A1:ER165 | 20,545 | 14,593 | G5 |
-| `Eq` | visible | A1:EA92 | 10,790 | 8,310 | G7 |
-| `Macro` | visible | A1:DW57 | 2,902 | 1,280 | G9 |
-| `Flags` | visible | A1:EI92 | 8,292 | 3,105 | G3 |
-| `Cash@Risk` | hidden | A1:GS297 | 53,381 | 10,333 | none |
+| Sheet | State | Used range | Role |
+|---|---|---:|---|
+| `FID deck outputs` | visible | A1:AL113 | FID / PPT export output |
+| `Discount rate NPV` | visible | A1:AW48 | discount-rate analysis |
+| `Outputs` | visible | B1:AL115 | KPI summary |
+| `CapEx` | visible | A1:AR146 | capex and funding requirement |
+| `Scenarios` | visible | A1:W250 | scenario and sensitivity controls |
+| `OpEx` | visible | A1:AL127 | operating cost detail |
+| `Inputs` | visible | A1:XFD480 | assumptions and scenario controls |
+| `IDC` | visible | A1:AJ104 | construction funding / debt drawdown / IDC |
+| `CF` | visible | A1:EP330 | cash flow waterfall and IRR |
+| `P&L` | visible | A1:DX64 | profit and loss |
+| `BS` | visible | A1:EI46 | balance sheet |
+| `Dep` | visible | A1:DW176 | depreciation |
+| `DS` | visible | A1:ER165 | debt schedule and DSCR |
+| `Eq` | visible | A1:EA92 | equity / SHL returns |
+| `Macro` | visible | A1:DW57 | macro assumptions |
+| `Flags` | visible | A1:EI92 | period flags |
+| `Cash@Risk` | hidden | A1:GS297 | hidden liquidity / risk model |
 
 TUHO has a material hidden `Cash@Risk` sheet. This should not be ignored. It implies future app scope for downside / liquidity / probabilistic risk analysis beyond the visible base-case waterfall.
 
 ### Oborovo workbook sheet inventory
 
-| Sheet | State | Used range | Cells | Formulas | Frozen pane |
-|---|---|---:|---:|---:|---|
-| `FID deck outputs` | visible | A1:AA56 | 463 | 315 | none |
-| `Discount rate NPV` | visible | A1:AW47 | 1,476 | 603 | none |
-| `Outputs` | visible | B1:AL157 | 2,099 | 792 | none |
-| `Inputs` | visible | A1:XFD497 | 13,484 | 2,058 | A110 |
-| `Scenarios` | visible | A1:V405 | 5,616 | 934 | G289 |
-| `CapEx` | visible | A1:AR164 | 7,212 | 2,862 | D96 |
-| `OpEx` | visible | A1:AL118 | 3,791 | 712 | D61 |
-| `IDC` | visible | A1:AJ75 | 2,393 | 1,913 | G5 |
-| `CF` | visible | A1:EP333 | 20,709 | 7,555 | G101 |
-| `P&L` | visible | A1:DX64 | 7,906 | 2,582 | BA23 |
-| `BS` | visible | A1:EI46 | 5,237 | 1,851 | G5 |
-| `Dep` | visible | A1:DW176 | 4,969 | 3,663 | G5 |
-| `DS` | visible | A1:ER168 | 20,921 | 7,637 | G5 |
-| `Eq` | visible | A1:EA143 | 13,740 | 11,113 | G115 |
-| `Macro` | visible | A1:DW57 | 2,900 | 1,278 | G3 |
-| `Flags` | visible | A1:EI92 | 8,292 | 3,105 | G3 |
-| `Sheet1` | visible | A1:AH3 | 97 | 31 | none |
+| Sheet | State | Used range | Role |
+|---|---|---:|---|
+| `FID deck outputs` | visible | A1:AA56 | FID / PPT export output |
+| `Discount rate NPV` | visible | A1:AW47 | discount-rate analysis |
+| `Outputs` | visible | B1:AL157 | KPI summary |
+| `Inputs` | visible | A1:XFD497 | assumptions and scenario controls |
+| `Scenarios` | visible | A1:V405 | scenario and sensitivity controls |
+| `CapEx` | visible | A1:AR164 | capex and funding requirement |
+| `OpEx` | visible | A1:AL118 | operating cost detail |
+| `IDC` | visible | A1:AJ75 | construction funding / debt drawdown / IDC |
+| `CF` | visible | A1:EP333 | cash flow waterfall and IRR |
+| `P&L` | visible | A1:DX64 | profit and loss |
+| `BS` | visible | A1:EI46 | balance sheet |
+| `Dep` | visible | A1:DW176 | depreciation |
+| `DS` | visible | A1:ER168 | debt schedule and DSCR |
+| `Eq` | visible | A1:EA143 | equity / SHL returns |
+| `Macro` | visible | A1:DW57 | macro assumptions |
+| `Flags` | visible | A1:EI92 | period flags |
+| `Sheet1` | visible | A1:AH3 | auxiliary sheet |
 
 Oborovo contains a larger `Scenarios` and `Eq` footprint than TUHO, so the app should not hardcode a single equity-return layout. The equity page needs a flexible reconciliation grid.
 
@@ -247,10 +247,15 @@ Initial tolerance targets:
 
 - Added `app/waterfall_core.py` as an uncached calculation path.
 - Updated `app/cache.py` so `cached_run_waterfall_v3` delegates to the uncached core.
-- Updated `app/waterfall_runner.py` so `WaterfallRunner` calls the uncached core instead of importing `app.cache` at module import time.
-- Added `app/calibration.py` to serialize KPI and period-level waterfall rows for Excel reconciliation.
-- Added `scripts/run_calibration.py` as a CLI entry point for JSON payload generation.
-- Added `tests/fixtures/excel_calibration_targets.json` with first-pass Excel anchors.
-- Added `tests/test_finco_gpt_headless_core.py` to protect the no-Streamlit headless boundary and fixture shape.
+- Added and cleaned `app/calibration.py` so headless calibration calls the uncached core directly without importing `WaterfallRunner`, `app.cache` or Streamlit.
+- Updated `app/calibration_runner.py` into a backward-compatible wrapper around `app.calibration`.
+- Added `tests/fixtures/excel_golden_oborovo.json` and `tests/fixtures/excel_golden_tuho.json` with first-pass Excel anchors and worksheet provenance.
+- Added `tests/test_excel_golden_fixtures.py` to protect fixture schema and source-cell traceability.
+- Added `tests/test_headless_calibration_runner.py` to protect the no-Streamlit headless boundary.
 
-The next step is to extract full period-by-period Excel rows into minimal JSON fixtures and begin line-by-line reconciliation.
+## Current limitations / next work
+
+- The raw `.xlsm` workbooks are not committed to the public repository.
+- TUHO golden targets exist, but a full `ProjectInputs.create_default_tuho()` factory still needs to be implemented from the workbook.
+- The next calibration task is to extract full period-by-period Excel rows into minimal JSON fixtures for `CF`, `DS`, `P&L`, `Dep`, and `Eq`.
+- Numeric parity tests should be added only after each Excel line item is mapped, otherwise tests can create false confidence.
