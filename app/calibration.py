@@ -225,7 +225,11 @@ def _json_safe(value: Any) -> Any:
 
 def waterfall_kpis(result: Any) -> dict[str, Any]:
     """Return stable KPI dictionary from a WaterfallResult-like object."""
-    return {field: _json_safe(getattr(result, field)) for field in KPI_FIELDS if hasattr(result, field)}
+    kpis = {field: _json_safe(getattr(result, field)) for field in KPI_FIELDS if hasattr(result, field)}
+    sculpting_result = getattr(result, "sculpting_result", None)
+    if sculpting_result is not None and hasattr(sculpting_result, "debt_keur"):
+        kpis["senior_debt_keur"] = _json_safe(getattr(sculpting_result, "debt_keur"))
+    return kpis
 
 
 def waterfall_period_rows(result: Any) -> list[dict[str, Any]]:
