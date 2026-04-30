@@ -3,6 +3,9 @@
 S2-1: Moved from utils/cache.py and domain/model_state.py
 This is the ONLY place where @st.cache_data lives.
 Domain layer must NEVER import Streamlit.
+
+FincoGPT: cached_run_waterfall_v3 now delegates to app.waterfall_core so
+Streamlit UI and headless calibration can share the same calculation path.
 """
 from __future__ import annotations
 
@@ -29,16 +32,19 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> int:
         inputs.financing.senior_tenor_years,
         inputs.revenue.ppa_base_tariff,
         inputs.revenue.ppa_term_years,
-        inputs.info.cod_date.toordinal() if hasattr(inputs.info.cod_date, 'toordinal') else 0,
+        inputs.info.cod_date.toordinal() if hasattr(inputs.info.cod_date, "toordinal") else 0,
     ))
 
 
 def hash_engine_for_cache(engine: "PeriodEngine") -> int:
     """Deterministic hash for PeriodEngine — for @st.cache_data hash_funcs."""
+    # Support both older engine attributes and the current PeriodEngine API.
     return hash((
-        engine.anchor_date.toordinal() if hasattr(engine.anchor_date, 'toordinal') else 0,
-        engine.num_periods,
-        engine.periods_per_year,
+        getattr(engine, "fc", getattr(engine, "anchor_date", None)),
+        getattr(engine, "construction_months", None),
+        getattr(engine, "horizon_years", getattr(engine, "num_periods", None)),
+        getattr(engine, "ppa_years", None),
+        getattr(engine, "freq", getattr(engine, "periods_per_year", None)),
     ))
 
 
@@ -55,16 +61,7 @@ def cached_generation_schedule(
     engine: "PeriodEngine",
     yield_scenario: str = "P50",
 ) -> dict[int, float]:
-    """Cached generation schedule.
-
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-        yield_scenario: "P50" or "P90-10y"
-
-    Returns:
-        Dict mapping period_index → generation_MWh
-    """
+    """Cached generation schedule."""
     from domain.revenue.generation import full_generation_schedule
     return full_generation_schedule(inputs, engine, yield_scenario)
 
@@ -77,15 +74,7 @@ def cached_revenue_schedule(
     inputs: "ProjectInputs",
     engine: "PeriodEngine",
 ) -> dict[int, float]:
-    """Cached revenue schedule.
-
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-
-    Returns:
-        Dict mapping period_index → revenue_kEUR
-    """
+    """Cached revenue schedule."""
     from domain.revenue.generation import full_revenue_schedule
     return full_revenue_schedule(inputs, engine)
 
@@ -97,15 +86,7 @@ def cached_opex_schedule_annual(
     inputs: "ProjectInputs",
     horizon_years: int = 30,
 ) -> dict[int, float]:
-    """Cached annual OPEX schedule.
-
-    Args:
-        inputs: Project inputs
-        horizon_years: Number of years to project
-
-    Returns:
-        Dict mapping year_index → OPEX in kEUR
-    """
+    """Cached annual OPEX schedule."""
     from domain.opex.projections import opex_schedule_annual
     return opex_schedule_annual(inputs, horizon_years)
 
@@ -118,15 +99,7 @@ def cached_model_state(
     inputs: "ProjectInputs",
     engine: "PeriodEngine",
 ):
-    """Cached model state with all precomputed schedules.
-
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-
-    Returns:
-        ModelState with all schedules
-    """
+    """Cached model state with all precomputed schedules."""
     from domain.model_state import build_model_state
     return build_model_state(inputs, engine)
 
@@ -168,85 +141,16 @@ def cached_run_waterfall_v3(
     debt_sizing_method: str = "dscr_sculpt",
     dscr_schedule: list[float] | None = None,
 ):
-    """Cached waterfall computation with proper hash_funcs.
+    """Cached waterfall computation.
 
-    This is the v3 version — uses cached schedules and proper hash_funcs
-    for both ProjectInputs and PeriodEngine.
-
-    Args:
-        inputs: ProjectInputs instance
-        engine: PeriodEngine instance
-        rate_per_period: Interest rate per period
-        tenor_periods: Senior debt tenor in periods
-        target_dscr: Target DSCR for sculpting
-        lockup_dscr: Lockup DSCR threshold
-        tax_rate: Corporate tax rate
-        dsra_months: DSRA reserve months
-        shl_amount: Subordinated hybrid loan amount
-        shl_rate: SHL interest rate
-        shl_idc_keur: SHL IDC amount
-        shl_repayment_method: "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
-        shl_tenor_years: SHL tenor (0 = bullet at senior maturity)
-        shl_wht_rate: WHT on SHL interest
-        discount_rate_project: Discount rate for project NPV
-        discount_rate_equity: Discount rate for equity NPV
-        fixed_debt_keur: Override sculpted debt
-        fixed_ds_keur: Fixed debt service per period (TUHO)
-        rate_schedule: Per-period rate schedule (Euribor curve)
-        equity_irr_method: "equity_only" | "combined" | "shl_plus_dividends"
-        share_capital_keur: Share capital (for combined method)
-        sculpt_capex_keur: CAPEX for equity base
-        debt_sizing_method: "dscr_sculpt" | "gearing_cap" | "fixed"
-        dscr_schedule: Per-period DSCR targets
-
-    Returns:
-        WaterfallResult with all computed periods and metrics
+    The calculation body lives in app.waterfall_core.run_waterfall_v3_core.
+    This wrapper should remain the only place that applies @st.cache_data.
     """
-    from domain.waterfall.waterfall_engine import run_waterfall
+    from app.waterfall_core import run_waterfall_v3_core
 
-    periods_list = list(engine.periods())
-    revenue_dict = cached_revenue_schedule(inputs, engine)
-    generation_dict = cached_generation_schedule(inputs, engine)
-    opex_annual = cached_opex_schedule_annual(inputs, inputs.info.horizon_years)
-
-    # Depreciation schedule
-    horizon_years = inputs.info.horizon_years
-    dep_per_year = inputs.capex.total_capex / horizon_years
-    depreciation_schedule_annual = [dep_per_year] * horizon_years
-
-    ebitda_schedule = []
-    revenue_schedule = []
-    generation_schedule = []
-    depreciation_schedule = []
-    opex_schedule = []
-
-    for p in periods_list:
-        rev = revenue_dict.get(p.index, 0)
-        gen = generation_dict.get(p.index, 0)
-        if p.is_operation:
-            opex = opex_annual.get(p.year_index, 0) / 2
-            ebitda = max(0, rev - opex)
-            annual_dep = depreciation_schedule_annual[p.year_index - 1] if p.year_index <= len(depreciation_schedule_annual) else dep_per_year
-            dep = annual_dep / 2
-        else:
-            opex = 0
-            ebitda = 0
-            dep = 0
-
-        revenue_schedule.append(rev)
-        generation_schedule.append(gen)
-        ebitda_schedule.append(ebitda)
-        depreciation_schedule.append(dep)
-        opex_schedule.append(opex)
-
-    return run_waterfall(
-        ebitda_schedule=ebitda_schedule,
-        revenue_schedule=revenue_schedule,
-        generation_schedule=generation_schedule,
-        depreciation_schedule=depreciation_schedule,
-        opex_schedule=opex_schedule,
-        periods=periods_list,
-        total_capex=inputs.capex.total_capex,
+    return run_waterfall_v3_core(
+        inputs=inputs,
+        engine=engine,
         rate_per_period=rate_per_period,
         tenor_periods=tenor_periods,
         target_dscr=target_dscr,
@@ -261,20 +165,14 @@ def cached_run_waterfall_v3(
         shl_wht_rate=shl_wht_rate,
         discount_rate_project=discount_rate_project,
         discount_rate_equity=discount_rate_equity,
-        financial_close=inputs.info.financial_close,
-        gearing_ratio=inputs.financing.gearing_ratio,
-        fixed_debt_keur=fixed_debt_keur if fixed_debt_keur is not None else getattr(inputs.financing, 'fixed_debt_keur', None),
-        fixed_ds_keur=fixed_ds_keur if fixed_ds_keur is not None else getattr(inputs.financing, 'fixed_ds_keur', None),
+        fixed_debt_keur=fixed_debt_keur,
+        fixed_ds_keur=fixed_ds_keur,
         rate_schedule=rate_schedule,
-        idc_keur=inputs.capex.idc_keur,
-        bank_fees_keur=inputs.capex.bank_fees_keur,
-        commitment_fees_keur=inputs.capex.commitment_fees_keur,
         equity_irr_method=equity_irr_method,
         share_capital_keur=share_capital_keur,
         sculpt_capex_keur=sculpt_capex_keur,
-        prior_tax_loss_keur=inputs.tax.initial_tax_loss_keur,
         debt_sizing_method=debt_sizing_method,
-        dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, 'dscr_schedule', None),
+        dscr_schedule=dscr_schedule,
     )
 
 
