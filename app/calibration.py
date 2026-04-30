@@ -13,6 +13,7 @@ from typing import Any
 from app.waterfall_core import run_waterfall_v3_core
 from domain.inputs import ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodFrequency
+from domain.revenue.generation import revenue_decomposition_schedule
 
 
 KPI_FIELDS = (
@@ -204,6 +205,7 @@ def run_project_calibration(
         engine_version=engine_version,
         calibration_source=calibration_source,
     )
+    payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["available_project_keys"] = available_project_keys()
     return payload
 
@@ -221,6 +223,22 @@ def _json_safe(value: Any) -> Any:
     if is_dataclass(value):
         return asdict(value)
     return value
+
+
+def _revenue_decomposition_rows(inputs: ProjectInputs, engine: PeriodEngine) -> list[dict[str, Any]]:
+    """Return JSON-safe revenue decomposition rows keyed by period/date."""
+    decomposition_by_period = revenue_decomposition_schedule(inputs, engine)
+    rows: list[dict[str, Any]] = []
+    for period in engine.periods():
+        row = {
+            "period": period.index,
+            "date": period.end_date.isoformat(),
+            "year_index": period.year_index,
+            "period_in_year": period.period_in_year,
+            **decomposition_by_period[period.index],
+        }
+        rows.append(row)
+    return rows
 
 
 def waterfall_kpis(result: Any) -> dict[str, Any]:
