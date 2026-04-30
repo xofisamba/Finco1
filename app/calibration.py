@@ -138,13 +138,7 @@ def build_period_engine(inputs: ProjectInputs) -> PeriodEngine:
 
 
 def debt_rate_schedule_from_engine(inputs: ProjectInputs, engine: PeriodEngine, tenor_periods: int) -> list[float]:
-    """Build per-period senior debt rates using actual operation day fractions.
-
-    Excel uses period day-counts for interest calculations. A flat annual_rate/2
-    approximation is wrong for stub/irregular semi-annual periods such as the
-    first Oborovo period after COD. This returns annual all-in rate multiplied
-    by each operation period's day_fraction.
-    """
+    """Build per-period senior debt rates using actual operation day fractions."""
     op_periods = engine.operation_periods()
     rates = [inputs.financing.all_in_rate * period.day_fraction for period in op_periods[:tenor_periods]]
     if len(rates) < tenor_periods:
@@ -226,6 +220,7 @@ def run_project_calibration(
         calibration_source=calibration_source,
     )
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
+    payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
     payload["available_project_keys"] = available_project_keys()
     return payload
 
@@ -258,6 +253,32 @@ def _revenue_decomposition_rows(inputs: ProjectInputs, engine: PeriodEngine) -> 
             **decomposition_by_period[period.index],
         }
         rows.append(row)
+    return rows
+
+
+def _debt_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return period-level senior debt bridge rows for calibration diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        principal = float(row.get("senior_principal_keur", 0.0) or 0.0)
+        interest = float(row.get("senior_interest_keur", 0.0) or 0.0)
+        closing_balance = float(row.get("senior_balance_keur", 0.0) or 0.0)
+        opening_balance = closing_balance + principal
+        rows.append({
+            "period": row.get("period"),
+            "date": row.get("date"),
+            "year_index": row.get("year_index"),
+            "period_in_year": row.get("period_in_year"),
+            "opening_balance_keur": opening_balance,
+            "closing_balance_keur": closing_balance,
+            "senior_interest_keur": interest,
+            "senior_principal_keur": principal,
+            "senior_ds_keur": float(row.get("senior_ds_keur", 0.0) or 0.0),
+            "implied_period_rate": interest / opening_balance if opening_balance else 0.0,
+            "dscr": row.get("dscr"),
+        })
     return rows
 
 
