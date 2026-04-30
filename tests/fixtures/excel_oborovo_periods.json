@@ -1,0 +1,149 @@
+{
+  "project": "oborovo",
+  "source_workbook": "20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm",
+  "extraction_note": "First period-level cached Excel values extracted from uploaded workbook. Raw XLSM is intentionally not committed. This fixture starts with the first three operating periods and should be expanded to the full model after row mapping sign-off.",
+  "period_scope": "first 3 operating periods from CF/DS/P&L/Eq sheets, Excel columns H:J",
+  "row_mapping": {
+    "CF": {
+      "operating_revenues_keur": 23,
+      "operating_expenses_after_bank_tax_keur": 49,
+      "ebitda_keur": 51,
+      "corporate_income_tax_keur": 77,
+      "free_cash_flow_for_banks_keur": 79,
+      "senior_debt_service_keur": 80,
+      "free_cash_flow_for_distribution_keur": 109,
+      "average_senior_dscr_period": 138,
+      "minimum_senior_dscr_period": 159
+    },
+    "DS": {
+      "senior_debt_dscr_target": 22,
+      "senior_principal_keur": 52,
+      "senior_net_interest_keur": 53
+    },
+    "P&L": {
+      "total_revenues_keur": 8,
+      "depreciation_keur": 13,
+      "senior_interests_keur": 24,
+      "shareholder_loan_interests_keur": 27,
+      "earnings_before_tax_keur": 32,
+      "taxable_income_keur": 35,
+      "corporate_income_tax_keur": 44,
+      "net_dividends_keur": 50
+    },
+    "Eq": {
+      "shl_principal_flow_keur": 18,
+      "shl_net_interest_flow_keur": 19,
+      "net_dividend_flow_keur": 20
+    }
+  },
+  "periods": [
+    {
+      "period_index": 1,
+      "excel_column": "H",
+      "period_end_date": "2030-12-31",
+      "CF": {
+        "operating_revenues_keur": 3249.870272694838,
+        "operating_expenses_after_bank_tax_keur": -674.8668479123289,
+        "ebitda_keur": 2575.0034247825092,
+        "corporate_income_tax_keur": 0,
+        "free_cash_flow_for_banks_keur": 2575.0034247825092,
+        "senior_debt_service_keur": -2239.133412854356,
+        "free_cash_flow_for_distribution_keur": 335.8700119281534,
+        "average_senior_dscr_period": 1.15,
+        "minimum_senior_dscr_period": 1.15
+      },
+      "DS": {
+        "senior_debt_dscr_target": 1.15,
+        "senior_principal_keur": 935.6501310907029,
+        "senior_net_interest_keur": 1303.483281763653
+      },
+      "P&L": {
+        "total_revenues_keur": 3249.870272694838,
+        "depreciation_keur": 1490.6768666010357,
+        "senior_interests_keur": 1303.483281763653,
+        "shareholder_loan_interests_keur": 636.8088084115645,
+        "earnings_before_tax_keur": -855.965531993744,
+        "taxable_income_keur": -219.15672358217944,
+        "corporate_income_tax_keur": 0,
+        "net_dividends_keur": 0
+      },
+      "Eq": {
+        "shl_principal_flow_keur": 0,
+        "shl_net_interest_flow_keur": 335.8700119281534,
+        "net_dividend_flow_keur": 0
+      }
+    },
+    {
+      "period_index": 2,
+      "excel_column": "I",
+      "period_end_date": "2031-06-30",
+      "CF": {
+        "operating_revenues_keur": 3196.883257379162,
+        "operating_expenses_after_bank_tax_keur": -663.8635840876713,
+        "ebitda_keur": 2533.0196732914906,
+        "corporate_income_tax_keur": 0,
+        "free_cash_flow_for_banks_keur": 2533.0196732914906,
+        "senior_debt_service_keur": -2202.625802862166,
+        "free_cash_flow_for_distribution_keur": 330.3938704293246,
+        "average_senior_dscr_period": 1.15,
+        "minimum_senior_dscr_period": 1.15
+      },
+      "DS": {
+        "senior_debt_dscr_target": 1.15,
+        "senior_principal_keur": 948.3915972519437,
+        "senior_net_interest_keur": 1254.2342056102223
+      },
+      "P&L": {
+        "total_revenues_keur": 3196.883257379162,
+        "depreciation_keur": 1466.3723524716709,
+        "senior_interests_keur": 1254.2342056102223,
+        "shareholder_loan_interests_keur": 638.3646691774373,
+        "earnings_before_tax_keur": -825.9515539678396,
+        "taxable_income_keur": -187.58688479040222,
+        "corporate_income_tax_keur": 0,
+        "net_dividends_keur": 0
+      },
+      "Eq": {
+        "shl_principal_flow_keur": 0,
+        "shl_net_interest_flow_keur": 330.3938704293246,
+        "net_dividend_flow_keur": 0
+      }
+    },
+    {
+      "period_index": 3,
+      "excel_column": "J",
+      "period_end_date": "2031-12-31",
+      "CF": {
+        "operating_revenues_keur": 3228.026882337381,
+        "operating_expenses_after_bank_tax_keur": -651.4231109945355,
+        "ebitda_keur": 2576.6037713428454,
+        "corporate_income_tax_keur": 0,
+        "free_cash_flow_for_banks_keur": 2576.6037713428454,
+        "senior_debt_service_keur": -2240.525018558996,
+        "free_cash_flow_for_distribution_keur": 336.07875278384927,
+        "average_senior_dscr_period": 1.15,
+        "minimum_senior_dscr_period": 1.15
+      },
+      "DS": {
+        "senior_debt_dscr_target": 1.15,
+        "senior_principal_keur": 1018.0204439462243,
+        "senior_net_interest_keur": 1222.5045746127719
+      },
+      "P&L": {
+        "total_revenues_keur": 3228.026882337381,
+        "depreciation_keur": 1486.6039789873716,
+        "senior_interests_keur": 1222.5045746127719,
+        "shareholder_loan_interests_keur": 661.365381676792,
+        "earnings_before_tax_keur": -793.8701639340902,
+        "taxable_income_keur": -132.5047822572982,
+        "corporate_income_tax_keur": 0,
+        "net_dividends_keur": 0
+      },
+      "Eq": {
+        "shl_principal_flow_keur": 0,
+        "shl_net_interest_flow_keur": 336.07875278384927,
+        "net_dividend_flow_keur": 0
+      }
+    }
+  ]
+}
