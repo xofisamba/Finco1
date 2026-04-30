@@ -1103,7 +1103,7 @@ def cached_run_waterfall(
         generation_schedule=generation_schedule,
         depreciation_schedule=depreciation_schedule,
         periods=periods_list,
-        total_capex=inputs.capex.sculpt_capex_keur,
+        total_capex=inputs.capex.total_capex,
         rate_per_period=rate_per_period,
         tenor_periods=tenor_periods,
         target_dscr=target_dscr,
