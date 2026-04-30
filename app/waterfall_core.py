@@ -40,14 +40,21 @@ def run_waterfall_v3_core(
 ):
     """Run the full waterfall without Streamlit cache dependencies.
 
-    This intentionally mirrors the previous app.cache.cached_run_waterfall_v3
-    calculation body so calibration tests and UI caching can share one path.
+    FincoGPT calibration note:
+    - `domain.waterfall.run_waterfall()` sculpts debt using the first
+      `tenor_periods` entries of the EBITDA schedule.
+    - If construction rows are included in that list, sculpting starts with two
+      zero-CFADS periods while debt repayment output starts at the first
+      operating period. That creates a principal/interest timing mismatch.
+    - The headless calibration core therefore passes operation-only periods and
+      operation-only schedules into the waterfall engine.
     """
     from domain.waterfall.waterfall_engine import run_waterfall
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
     from domain.opex.projections import opex_schedule_period
 
-    periods_list = list(engine.periods())
+    all_periods = list(engine.periods())
+    periods_list = [p for p in all_periods if p.is_operation]
     revenue_dict = full_revenue_schedule(inputs, engine)
     generation_dict = full_generation_schedule(inputs, engine)
     opex_period = opex_schedule_period(inputs, engine)
@@ -65,19 +72,14 @@ def run_waterfall_v3_core(
     for p in periods_list:
         rev = revenue_dict.get(p.index, 0)
         gen = generation_dict.get(p.index, 0)
-        if p.is_operation:
-            opex = opex_period.get(p.index, 0)
-            ebitda = max(0, rev - opex)
-            annual_dep = (
-                depreciation_schedule_annual[p.year_index - 1]
-                if p.year_index <= len(depreciation_schedule_annual)
-                else dep_per_year
-            )
-            dep = annual_dep * p.day_fraction
-        else:
-            opex = 0
-            ebitda = 0
-            dep = 0
+        opex = opex_period.get(p.index, 0)
+        ebitda = max(0, rev - opex)
+        annual_dep = (
+            depreciation_schedule_annual[p.year_index - 1]
+            if p.year_index <= len(depreciation_schedule_annual)
+            else dep_per_year
+        )
+        dep = annual_dep * p.day_fraction
 
         revenue_schedule.append(rev)
         generation_schedule.append(gen)
