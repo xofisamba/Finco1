@@ -49,12 +49,19 @@ def test_build_period_engine_from_tuho_inputs() -> None:
 def test_build_run_config_from_oborovo_inputs() -> None:
     inputs = load_project_inputs("oborovo")
     engine = build_period_engine(inputs)
-    config = build_run_config(inputs)
+    config = build_run_config(inputs, engine)
     assert config.rate_per_period > 0
     assert config.tenor_periods == inputs.financing.senior_tenor_years * 2
     assert config.sculpt_capex_keur == inputs.capex.sculpt_capex_keur
     assert config.rate_schedule is not None
     assert len(config.rate_schedule) == config.tenor_periods
+
+
+def test_build_run_config_without_engine_keeps_legacy_flat_rate_path() -> None:
+    inputs = load_project_inputs("oborovo")
+    config = build_run_config(inputs)
+    assert config.rate_per_period > 0
+    assert config.rate_schedule is None
 
 
 def test_day_count_debt_rate_schedule_uses_operation_day_fractions() -> None:
@@ -93,6 +100,13 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["kpis"]["senior_debt_keur"] > 0
     assert payload["revenue_decomposition"]
     assert payload["debt_decomposition"]
+
+
+def test_run_calibration_payload_is_operation_only_for_period_rows() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    assert payload["periods"]
+    assert all(row["is_operation"] for row in payload["periods"])
+    assert payload["periods"][0]["date"] == "2030-12-31"
 
 
 def test_run_calibration_revenue_decomposition_shape() -> None:
