@@ -12,6 +12,7 @@
 - `app/cache.py` is now a thin Streamlit cache wrapper.
 - `app/waterfall_runner.py` calls the uncached core instead of importing cached functions.
 - `scripts/run_calibration.py` can generate JSON calibration output without Streamlit.
+- Headless waterfall calibration now passes operation-only periods and schedules into `run_waterfall()` so debt sculpting is not shifted by construction-period zero CFADS rows.
 
 ### Calibration serialization
 
@@ -128,6 +129,8 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 
 `app/calibration.py` also exposes `debt_decomposition` in the calibration payload so CLI/test output can inspect opening balance, closing balance, interest, principal, debt service and implied period rate directly.
 
+`app/waterfall_core.py` now passes operation-only periods and schedules into `run_waterfall()` for the headless calibration path. This removes construction-period zero CFADS rows from debt sculpting and aligns debt amortization timing with the extracted Excel operating period rows.
+
 ## Next math-fix sequence
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
@@ -138,8 +141,8 @@ Next immediate target: Oborovo first twelve period principal / interest split.
 
 Likely areas:
 
-- Opening debt balance / drawdown timing.
 - Whether Excel interest is gross/net of fees or includes additional financing costs.
+- Residual opening balance / amortization timing after the operation-only sculpting fix.
 - Difference between allowable debt service and actual interest/principal split.
 - Fixed-vs-sculpted debt service for TUHO later.
 
