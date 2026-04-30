@@ -53,6 +53,7 @@ Passing / expected-passing checks:
 - Oborovo first twelve period OpEx reconciliation is active, not xfail.
 - Oborovo first twelve period EBITDA reconciliation is active, not xfail.
 - Oborovo first twelve period debt-service reconciliation is active, not xfail.
+- Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 
 Diagnostic `xfail` checks:
 
@@ -113,6 +114,8 @@ The module also contains a narrow, traceable Oborovo first-12 period-level OpEx 
 ### 5. Debt service diagnostics and DSCR schedule policy
 
 `tests/test_debt_excel_alignment.py` now separates debt service from the principal / interest split and exposes implied Excel/app opening balance and interest rate diagnostics.
+
+The debt split failure payload now includes line failures plus per-period gap diagnostics: opening balance delta, implied period-rate delta, interest delta and principal delta.
 
 For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1.15. This does not support using 1.20 for the first-12 Oborovo PPA rows.
 
