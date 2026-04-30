@@ -11,6 +11,79 @@ This document intentionally does not commit the original `.xlsm` files to the pu
 - `20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm`
 - `20260330_TUHO_BP.xlsm`
 
+## Workbook inventory
+
+### Shared model architecture
+
+Both workbooks use the same core financial-model spine:
+
+| Sheet | Role in Excel | App implication |
+|---|---|---|
+| `Inputs` | Project, technical, revenue, financing, tax and scenario assumptions | Primary editable assumptions page |
+| `CapEx` | Capex line items, financial costs and total funding requirement | CapEx page and calibration source for funding base |
+| `OpEx` | Operating cost detail and escalations | OpEx page with editable line-level costs |
+| `IDC` | Debt drawdown, IDC, commitment fees and senior debt amount | Construction funding / IDC page |
+| `CF` | Main period waterfall / project cash flow | Cash Flow page and period-by-period reconciliation source |
+| `P&L` | Accounting profit, depreciation, tax | P&L / Tax page |
+| `BS` | Balance sheet outputs | Balance Sheet page |
+| `Dep` | Depreciation logic | Depreciation submodule and audit page |
+| `DS` | Debt schedule, amortization, DSCR | Debt Schedule page |
+| `Eq` | Equity / SHL cash flows and returns | Equity Returns / Sponsors page |
+| `Macro` | Macro assumptions / scenario curves | Macro assumptions page or hidden settings section |
+| `Flags` | Date flags, period flags, maturity flags, day-count factors | Period Engine / Flags page for auditability |
+| `Outputs` | KPI summary | Overview / Dashboard |
+| `FID deck outputs` | PPT / investment committee output values | FID Export / IC View |
+| `Discount rate NPV` | Discount-rate sensitivity / NPV table | Sensitivity page |
+| `Scenarios` | Scenario switching and sensitivity cases | Scenario Manager |
+
+### TUHO workbook sheet inventory
+
+| Sheet | State | Used range | Cells | Formulas | Frozen pane |
+|---|---|---:|---:|---:|---|
+| `FID deck outputs` | visible | A1:AL113 | 1,049 | 540 | none |
+| `Discount rate NPV` | visible | A1:AW48 | 1,544 | 604 | none |
+| `Outputs` | visible | B1:AL115 | 2,060 | 779 | none |
+| `CapEx` | visible | A1:AR146 | 6,422 | 2,414 | D4 |
+| `Scenarios` | visible | A1:W250 | 3,735 | 299 | none |
+| `OpEx` | visible | A1:AL127 | 4,141 | 724 | D70 |
+| `Inputs` | visible | A1:XFD480 | 12,791 | 1,897 | A99 |
+| `IDC` | visible | A1:AJ104 | 2,393 | 1,913 | G38 |
+| `CF` | visible | A1:EP330 | 19,771 | 7,335 | G10 |
+| `P&L` | visible | A1:DX64 | 7,906 | 2,582 | G5 |
+| `BS` | visible | A1:EI46 | 5,237 | 1,851 | G5 |
+| `Dep` | visible | A1:DW176 | 4,969 | 3,723 | G5 |
+| `DS` | visible | A1:ER165 | 20,545 | 14,593 | G5 |
+| `Eq` | visible | A1:EA92 | 10,790 | 8,310 | G7 |
+| `Macro` | visible | A1:DW57 | 2,902 | 1,280 | G9 |
+| `Flags` | visible | A1:EI92 | 8,292 | 3,105 | G3 |
+| `Cash@Risk` | hidden | A1:GS297 | 53,381 | 10,333 | none |
+
+TUHO has a material hidden `Cash@Risk` sheet. This should not be ignored. It implies future app scope for downside / liquidity / probabilistic risk analysis beyond the visible base-case waterfall.
+
+### Oborovo workbook sheet inventory
+
+| Sheet | State | Used range | Cells | Formulas | Frozen pane |
+|---|---|---:|---:|---:|---|
+| `FID deck outputs` | visible | A1:AA56 | 463 | 315 | none |
+| `Discount rate NPV` | visible | A1:AW47 | 1,476 | 603 | none |
+| `Outputs` | visible | B1:AL157 | 2,099 | 792 | none |
+| `Inputs` | visible | A1:XFD497 | 13,484 | 2,058 | A110 |
+| `Scenarios` | visible | A1:V405 | 5,616 | 934 | G289 |
+| `CapEx` | visible | A1:AR164 | 7,212 | 2,862 | D96 |
+| `OpEx` | visible | A1:AL118 | 3,791 | 712 | D61 |
+| `IDC` | visible | A1:AJ75 | 2,393 | 1,913 | G5 |
+| `CF` | visible | A1:EP333 | 20,709 | 7,555 | G101 |
+| `P&L` | visible | A1:DX64 | 7,906 | 2,582 | BA23 |
+| `BS` | visible | A1:EI46 | 5,237 | 1,851 | G5 |
+| `Dep` | visible | A1:DW176 | 4,969 | 3,663 | G5 |
+| `DS` | visible | A1:ER168 | 20,921 | 7,637 | G5 |
+| `Eq` | visible | A1:EA143 | 13,740 | 11,113 | G115 |
+| `Macro` | visible | A1:DW57 | 2,900 | 1,278 | G3 |
+| `Flags` | visible | A1:EI92 | 8,292 | 3,105 | G3 |
+| `Sheet1` | visible | A1:AH3 | 97 | 31 | none |
+
+Oborovo contains a larger `Scenarios` and `Eq` footprint than TUHO, so the app should not hardcode a single equity-return layout. The equity page needs a flexible reconciliation grid.
+
 ## Workbook structure to mirror in the app
 
 The application should follow the mental model of the Excel files. A pure dashboard is not enough. The app should have spreadsheet-like pages that correspond to the core worksheets:
@@ -29,6 +102,7 @@ The application should follow the mental model of the Excel files. A pure dashbo
 | Flags | Period Engine / Flags | Date flags, period flags, maturity flags and day-count factors |
 | Scenarios | Scenario Manager | Case selection, sensitivities and side-by-side outputs |
 | FID deck outputs | Reporting | Values exported to the FID/deck format |
+| Cash@Risk | Risk / Liquidity | Hidden TUHO risk model; future probabilistic risk page |
 
 ## Initial golden KPI anchors observed
 
@@ -117,6 +191,7 @@ Recommended app navigation:
 12. Scenarios / Sensitivities
 13. FID Deck Export
 14. Calibration / Excel Reconciliation
+15. Risk / Cash@Risk, initially hidden or admin-only
 
 ## Implementation priorities
 
@@ -172,5 +247,10 @@ Initial tolerance targets:
 
 - Added `app/waterfall_core.py` as an uncached calculation path.
 - Updated `app/cache.py` so `cached_run_waterfall_v3` delegates to the uncached core.
+- Updated `app/waterfall_runner.py` so `WaterfallRunner` calls the uncached core instead of importing `app.cache` at module import time.
+- Added `app/calibration.py` to serialize KPI and period-level waterfall rows for Excel reconciliation.
+- Added `scripts/run_calibration.py` as a CLI entry point for JSON payload generation.
+- Added `tests/fixtures/excel_calibration_targets.json` with first-pass Excel anchors.
+- Added `tests/test_finco_gpt_headless_core.py` to protect the no-Streamlit headless boundary and fixture shape.
 
-This is only the first structural step. The next step is to add a CLI/test harness that loads scenario inputs and produces reconciliation JSON without importing Streamlit.
+The next step is to extract full period-by-period Excel rows into minimal JSON fixtures and begin line-by-line reconciliation.
