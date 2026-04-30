@@ -3,66 +3,66 @@
 Matches Excel Inputs rows 146-161 (15 OPEX categories).
 Each item has:
 - Y1 amount in kEUR
-- Annual escalation (2% for most, 0% for some)
-- Step changes at specific years (e.g., Infrastructure Maintenance Y3: 185.64)
+- Annual escalation
+- Step changes that become the new base from the step year onward
 
-Total Y1 OPEX for Oborovo: 1,353.91 kEUR
-
-NOTE: This module contains PURE functions only. 
-Caching is handled in utils/cache.py at the app layer.
+NOTE: This module contains PURE functions only.
+Caching is handled in the app layer.
 """
 from typing import Sequence
 from domain.inputs import OpexItem, ProjectInputs
+
+
+def opex_item_amount_at_year(item: OpexItem, year_index: int) -> float:
+    """Return one OPEX item amount for a given year.
+
+    `OpexItem.amount_at_year()` historically treated `step_changes` as a one-year
+    override only. Excel model step-change rows usually represent a new base
+    amount from that year onward. This helper implements that sustained-step
+    behavior without changing the frozen input schema.
+    """
+    if year_index <= 0:
+        return 0.0
+
+    applicable_steps = sorted(
+        ((step_year, amount) for step_year, amount in item.step_changes if step_year <= year_index),
+        key=lambda pair: pair[0],
+    )
+    if applicable_steps:
+        step_year, step_amount = applicable_steps[-1]
+        years_after_step = year_index - step_year
+        result = step_amount * (1 + item.annual_inflation) ** years_after_step
+    else:
+        result = item.y1_amount_keur * (1 + item.annual_inflation) ** (year_index - 1)
+
+    return max(0.0, result)
 
 
 def opex_year(
     items: Sequence[OpexItem],
     year_index: int,
 ) -> float:
-    """Calculate total OPEX for a given year.
-    
-    Args:
-        items: Sequence of OpexItems
-        year_index: Year index (1-based, 1=Y1)
-    
-    Returns:
-        Total OPEX in kEUR for this year
-    """
-    return sum(item.amount_at_year(year_index) for item in items)
+    """Calculate total OPEX for a given year."""
+    return sum(opex_item_amount_at_year(item, year_index) for item in items)
 
 
 def opex_schedule_annual(
     inputs: ProjectInputs,
     horizon_years: int = 30,
 ) -> dict[int, float]:
-    """Generate annual OPEX schedule.
-    
-    Args:
-        inputs: Project inputs
-        horizon_years: Number of years to project
-    
-    Returns:
-        Dict mapping year_index → OPEX in kEUR
-    """
+    """Generate annual OPEX schedule."""
     schedule = {}
-    
+
     for year in range(1, horizon_years + 1):
         schedule[year] = opex_year(inputs.opex, year)
-    
+
     return schedule
 
 
 def opex_per_mw_y1(
     inputs: ProjectInputs,
 ) -> float:
-    """Calculate OPEX per MW (Y1) in kEUR/MW.
-    
-    Args:
-        inputs: Project inputs
-    
-    Returns:
-        OPEX per MW in kEUR/MW
-    """
+    """Calculate OPEX per MW (Y1) in kEUR/MW."""
     opex_y1 = opex_year(inputs.opex, 1)
     return opex_y1 / inputs.technical.capacity_mw
 
@@ -70,22 +70,13 @@ def opex_per_mw_y1(
 def opex_per_mwh_y1(
     inputs: ProjectInputs,
 ) -> float:
-    """Calculate OPEX per MWh (Y1) in EUR/MWh.
-    
-    Args:
-        inputs: Project inputs
-    
-    Returns:
-        OPEX per MWh in EUR/MWh
-    """
+    """Calculate OPEX per MWh (Y1) in EUR/MWh."""
     opex_y1 = opex_year(inputs.opex, 1)
-    
-    # Generation Y1 in MWh
+
     hours = inputs.technical.operating_hours_p50
     availability = inputs.technical.combined_availability
     generation_y1_mwh = inputs.technical.capacity_mw * hours * availability
-    
-    # EUR/MWh = kEUR / MWh × 1000
+
     return (opex_y1 * 1000) / generation_y1_mwh
 
 
@@ -93,49 +84,26 @@ def opex_schedule_period(
     inputs: ProjectInputs,
     engine,
 ) -> dict[int, float]:
-    """Generate semi-annual period OPEX schedule.
-    
-    OPEX is typically annual, but in semi-annual model it's split:
-    - H1: 50% of annual
-    - H2: 50% of annual
-    
-    Args:
-        inputs: Project inputs
-        engine: PeriodEngine instance
-    
-    Returns:
-        Dict mapping period_index → OPEX in kEUR
-    """
+    """Generate period OPEX schedule using actual period day fractions."""
     schedule = {}
-    
-    # Get annual schedule
     annual_schedule = opex_schedule_annual(inputs, inputs.info.horizon_years)
-    
-    # Map to periods based on engine
+
     for period in engine.periods():
         if period.is_operation:
-            # Annual × day_fraction for semi-annual
             annual_opex = annual_schedule.get(period.year_index, 0.0)
             schedule[period.index] = annual_opex * period.day_fraction
         else:
             schedule[period.index] = 0.0
-    
+
     return schedule
+
 
 def opex_breakdown_year(
     inputs: ProjectInputs,
     year_index: int,
 ) -> dict[str, float]:
-    """Get breakdown of OPEX by category for a given year.
-    
-    Args:
-        inputs: Project inputs
-        year_index: Year index (1-based)
-    
-    Returns:
-        Dict mapping item name → amount in kEUR
-    """
-    return {item.name: item.amount_at_year(year_index) for item in inputs.opex}
+    """Get breakdown of OPEX by category for a given year."""
+    return {item.name: opex_item_amount_at_year(item, year_index) for item in inputs.opex}
 
 
 def total_opex_over_horizon(
@@ -143,16 +111,7 @@ def total_opex_over_horizon(
     horizon_years: int = 30,
     discount_rate: float = 0.0,
 ) -> float:
-    """Calculate total (optionally discounted) OPEX over horizon.
-    
-    Args:
-        inputs: Project inputs
-        horizon_years: Number of years
-        discount_rate: Discount rate (0 for undiscounted)
-    
-    Returns:
-        Total OPEX in kEUR (undiscounted or discounted)
-    """
+    """Calculate total (optionally discounted) OPEX over horizon."""
     total = 0.0
     for year in range(1, horizon_years + 1):
         amount = opex_year(inputs.opex, year)
@@ -167,24 +126,28 @@ def opex_growth_rate(
     start_year: int = 1,
     end_year: int = 30,
 ) -> float:
-    """Calculate average annual OPEX growth rate.
-    
-    Args:
-        inputs: Project inputs
-        start_year: Starting year (1-based)
-        end_year: Ending year (1-based)
-    
-    Returns:
-        Average annual growth rate (e.g., 0.018 for 1.8%)
-    """
+    """Calculate average annual OPEX growth rate."""
     opex_start = opex_year(inputs.opex, start_year)
     opex_end = opex_year(inputs.opex, end_year)
-    
+
     if opex_start <= 0:
         return 0.0
-    
+
     years = end_year - start_year
     if years <= 0:
         return 0.0
-    
+
     return (opex_end / opex_start) ** (1 / years) - 1
+
+
+__all__ = [
+    "opex_item_amount_at_year",
+    "opex_year",
+    "opex_schedule_annual",
+    "opex_per_mw_y1",
+    "opex_per_mwh_y1",
+    "opex_schedule_period",
+    "opex_breakdown_year",
+    "total_opex_over_horizon",
+    "opex_growth_rate",
+]
