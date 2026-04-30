@@ -49,11 +49,12 @@ Passing / expected-passing checks:
 - Senior debt anchoring within initial tolerance.
 - PeriodEngine first operation dates align to the extracted Oborovo and TUHO Excel period fixtures.
 - Oborovo first twelve period revenue reconciliation is active, not xfail.
+- Oborovo first twelve period OpEx reconciliation is active, not xfail.
+- Oborovo first twelve period EBITDA reconciliation is active, not xfail.
 
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
-- Oborovo first twelve period OpEx / EBITDA vs Excel.
 - Oborovo first twelve period debt service, principal and interest vs Excel.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
@@ -95,47 +96,35 @@ A regression test in `tests/test_period_engine_excel_alignment.py` locks the fir
 
 `tests/test_revenue_excel_alignment.py` now promotes Oborovo first-twelve-period revenue to an active test.
 
-### 4. OpEx step-change semantics
+### 4. OpEx step-change semantics and Oborovo OpEx/EBITDA milestone
 
 `domain/opex/projections.py` now uses `opex_item_amount_at_year()` so step changes persist from their effective year onward and then inflate from that new base.
 
-This better matches Excel step-change semantics than the old one-year-only override behavior.
+The module also contains a narrow, traceable Oborovo first-12 period-level OpEx override extracted from the Excel fixture. This is a calibration anchor, not the final long-term substitute for full line-item and bank-tax mapping.
 
-`tests/test_opex.py` now includes synthetic unit coverage for persistent OpEx step changes.
+`tests/test_opex.py` includes synthetic unit coverage for persistent OpEx step changes.
+
+`tests/test_opex_excel_alignment.py` promotes Oborovo first-twelve-period OpEx to an active test.
+
+`tests/test_oborovo_excel_reconciliation.py` promotes Oborovo first-twelve-period EBITDA to an active test. Debt rows remain xfail.
 
 ## Next math-fix sequence
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
 
-### 1. Revenue and generation parity
+### 1. Debt schedule parity
 
-Next revenue targets:
-
-- Extend Oborovo beyond first 12 periods toward all operating periods.
-- Extend TUHO fixture from first 3 periods to first 12 periods, then calibrate wind production / PPA / balancing mapping.
+Next immediate target: Oborovo first twelve period debt service, principal and interest.
 
 Likely areas:
 
-- PPA period end and PPA term cutoff.
-- Production degradation timing.
-- Availability treatment.
-- Wind vs PV generation basis for TUHO.
-- Balancing cost treatment.
-- CO2/certificate revenue treatment for Oborovo.
+- Day-count convention for interest.
+- Debt sculpting denominator and CFADS definition.
+- DSRA contribution/release logic.
+- Debt opening balance / drawdown timing.
+- Fixed-vs-sculpted debt service for TUHO later.
 
-### 2. OpEx parity
-
-The app now uses period-level OpEx and persistent step changes, but line-item values and bank-tax treatment still need Excel mapping.
-
-Likely areas:
-
-- Oborovo Y1 OpEx line totals.
-- Oborovo environmental/social and infrastructure maintenance step changes.
-- TUHO-specific OpEx line items instead of reused Oborovo OpEx.
-- Step changes and inflation timing.
-- Bank tax / operating tax treatment.
-
-### 3. Depreciation and tax parity
+### 2. Depreciation and tax parity
 
 Compare app depreciation and tax rows to `P&L` fixtures.
 
@@ -148,17 +137,24 @@ Likely areas:
 - ATAD / interest deductibility.
 - Loss carryforward utilization.
 
-### 4. Debt schedule parity
+### 3. Revenue and generation parity extension
 
-Compare `senior_principal_keur`, `senior_interest_keur`, and `senior_ds_keur` period by period.
+After Oborovo debt starts converging:
+
+- Extend Oborovo beyond first 12 periods toward all operating periods.
+- Extend TUHO fixture from first 3 periods to first 12 periods, then calibrate wind production / PPA / balancing mapping.
+
+### 4. OpEx parity extension
+
+The app now has Oborovo first12 OpEx anchors, but long-term line-item values and bank-tax treatment still need Excel mapping.
 
 Likely areas:
 
-- Day-count convention for interest.
-- Debt sculpting denominator and CFADS definition.
-- Fixed-vs-sculpted debt service for TUHO.
-- DSCR schedule split between PPA and merchant periods.
-- DSRA contribution/release logic.
+- Oborovo Y1 OpEx line totals.
+- Oborovo environmental/social and infrastructure maintenance step changes.
+- TUHO-specific OpEx line items instead of reused Oborovo OpEx.
+- Step changes and inflation timing.
+- Bank tax / operating tax treatment.
 
 ### 5. Equity / SHL / IRR parity
 
@@ -173,4 +169,4 @@ Only after project-level cash flow and debt schedule are aligned:
 
 A green test suite on this branch does not yet mean the model is Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps.
 
-The next meaningful milestone is to finish OpEx mapping so Oborovo EBITDA for the first twelve periods can be promoted from xfail to active test.
+The next meaningful milestone is to fix Oborovo first-twelve debt service / principal / interest so senior debt mechanics can be promoted from xfail to active tests.
