@@ -1,0 +1,69 @@
+{
+  "metadata": {
+    "source_files": [
+      "20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm",
+      "20260330_TUHO_BP.xlsm"
+    ],
+    "note": "First-pass calibration anchors extracted from uploaded Excel workbooks. Raw XLSM files are intentionally not committed. Period-by-period fixtures should be added after full sheet mapping. Monetary amounts are in kEUR unless otherwise stated."
+  },
+  "oborovo": {
+    "workbook": "20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm",
+    "anchors": {
+      "total_capex_keur": {
+        "value": 57973.052657,
+        "source": "CapEx!C141"
+      },
+      "senior_debt_keur": {
+        "value": 42852.2667,
+        "source": "IDC!D48 / debt schedule area"
+      },
+      "unlevered_project_irr": {
+        "value": 0.08280167,
+        "source": "CF!D136"
+      },
+      "first_senior_debt_service_keur": {
+        "value": [-2239.133, -2202.626, -2240.525],
+        "source": "CF!H80:J80"
+      }
+    },
+    "calibration_status": "anchor_only"
+  },
+  "tuho": {
+    "workbook": "20260330_TUHO_BP.xlsm",
+    "anchors": {
+      "total_capex_keur": {
+        "value": 72993.706786,
+        "source": "Inputs!C45 / CapEx!C123"
+      },
+      "senior_debt_keur": {
+        "value": 43359.273782,
+        "source": "Outputs!H11 / IDC!D48"
+      },
+      "project_irr": {
+        "value": 0.09304676,
+        "source": "CF!D125"
+      },
+      "unlevered_project_irr": {
+        "value": 0.09108281,
+        "source": "CF!D126"
+      },
+      "equity_irr": {
+        "value": 0.11609525,
+        "source": "Eq!D28"
+      },
+      "first_senior_debt_service_keur": {
+        "value": [-2116.361, -2151.439, -2144.692],
+        "source": "CF!H70:J70"
+      },
+      "average_dscr_ppa": {
+        "value": 1.20,
+        "source": "Inputs!G166"
+      },
+      "average_dscr_market": {
+        "value": 1.40,
+        "source": "Inputs!J166"
+      }
+    },
+    "calibration_status": "anchor_only"
+  }
+}
