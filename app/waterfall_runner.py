@@ -3,11 +3,14 @@
 S2-2: Encapsulates all waterfall computation logic.
 UI pages call WaterfallRunner.run(), not run_waterfall() directly.
 This makes testing easier and keeps UI layer thin.
+
+FincoGPT update: WaterfallRunner now calls the uncached calculation core.
+Streamlit caching remains in app/cache.py only.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from typing import Optional
 
-from app.cache import cached_run_waterfall_v3, clear_all_caches
+from app.waterfall_core import run_waterfall_v3_core
 from domain.inputs import EquityIRRMethod, DebtSizingMethod, SHLRepaymentMethod
 
 
@@ -102,13 +105,16 @@ class WaterfallRunner:
         if config is None:
             config = WaterfallRunConfig()
 
-        # S4-1: Use sculpt_capex_keur from inputs.capex, not config default
-        sculpt_capex = self.inputs.capex.sculpt_capex_keur
-        if config.sculpt_capex_keur == 0.0:
-            sculpt_capex = self.inputs.capex.sculpt_capex_keur
+        # S4-1: Use sculpt_capex_keur from inputs.capex when config does not override it.
+        sculpt_capex = (
+            self.inputs.capex.sculpt_capex_keur
+            if config.sculpt_capex_keur == 0.0
+            else config.sculpt_capex_keur
+        )
 
-        # Use cached waterfall computation
-        return cached_run_waterfall_v3(
+        # FincoGPT: call the uncached calculation core. app/cache.py is the only
+        # module that should wrap this with Streamlit @st.cache_data.
+        return run_waterfall_v3_core(
             inputs=self.inputs,
             engine=self.engine,
             rate_per_period=config.rate_per_period,
@@ -140,7 +146,12 @@ class WaterfallRunner:
         return self.run(WaterfallRunConfig())
 
     def invalidate_cache(self) -> None:
-        """Invalidate all cached computations for this project."""
+        """Invalidate all Streamlit cached computations for this project.
+
+        Imported lazily so this runner remains importable in headless contexts.
+        """
+        from app.cache import clear_all_caches
+
         clear_all_caches()
 
 
@@ -172,34 +183,10 @@ class ScenarioRunner:
         """
         results = []
         for value in param_values:
-            config = WaterfallRunConfig(
-                rate_per_period=base_config.rate_per_period,
-                tenor_periods=base_config.tenor_periods,
-                target_dscr=base_config.target_dscr,
-                lockup_dscr=base_config.lockup_dscr,
-                tax_rate=base_config.tax_rate,
-                dsra_months=base_config.dsra_months,
-                shl_amount_keur=base_config.shl_amount_keur,
-                shl_rate=base_config.shl_rate,
-                shl_idc_keur=base_config.shl_idc_keur,
-                shl_repayment_method=base_config.shl_repayment_method,
-                shl_tenor_years=base_config.shl_tenor_years,
-                shl_wht_rate=base_config.shl_wht_rate,
-                discount_rate_project=base_config.discount_rate_project,
-                discount_rate_equity=base_config.discount_rate_equity,
-                fixed_debt_keur=base_config.fixed_debt_keur,
-                fixed_ds_keur=base_config.fixed_ds_keur,
-                rate_schedule=base_config.rate_schedule,
-                equity_irr_method=base_config.equity_irr_method,
-                share_capital_keur=base_config.share_capital_keur,
-                sculpt_capex_keur=base_config.sculpt_capex_keur,
-                debt_sizing_method=base_config.debt_sizing_method,
-                dscr_schedule=base_config.dscr_schedule,
-            )
-            # Set the parameter being tested
-            if hasattr(config, param_name):
-                setattr(config, param_name, value)
+            if not hasattr(base_config, param_name):
+                raise ValueError(f"Unknown sensitivity parameter: {param_name}")
 
+            config = replace(base_config, **{param_name: value})
             runner = WaterfallRunner(self.inputs, self.engine)
             result = runner.run(config)
             results.append(result)
