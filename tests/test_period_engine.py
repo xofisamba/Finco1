@@ -73,8 +73,8 @@ class TestPeriodEnginePeriods:
         assert periods[1].period_in_year == 2
         assert periods[1].year_index == 0
 
-    def test_operation_starts_at_cod(self):
-        """First operation period starts at COD."""
+    def test_operation_starts_at_excel_boundary_after_cod_stub(self):
+        """Near-zero COD stubs should roll to Excel semi-annual boundary."""
         engine = PeriodEngine(
             financial_close=date(2029, 6, 29),
             construction_months=12,
@@ -82,14 +82,12 @@ class TestPeriodEnginePeriods:
             ppa_years=12,
         )
 
-        periods = engine.periods()
-
-        op_periods = [p for p in periods if p.is_operation]
-        assert len(op_periods) > 0
-
+        op_periods = [p for p in engine.periods() if p.is_operation]
         first_op = op_periods[0]
         assert first_op.index == 2
-        assert first_op.start_date == date(2030, 6, 29)
+        assert first_op.start_date == date(2030, 6, 30)
+        assert first_op.end_date == date(2030, 12, 31)
+        assert first_op.days_in_period == 184
         assert first_op.is_ppa_active is True
 
     def test_ppa_active_24_periods(self):
@@ -143,13 +141,11 @@ class TestPeriodEnginePeriods:
             assert abs(p.day_fraction - expected_fraction) < 0.001
 
     def test_operation_period_dates_match_excel(self):
-        """Operation period end dates should match extracted Oborovo Excel fixture.
+        """Operation period end dates and day counts should match Oborovo Excel.
 
-        FincoGPT calibration behavior:
-        - COD = June 29, 2030.
-        - Excel does not treat the 1-day COD-to-June-30 stub as the first
-          meaningful operating period in the extracted reconciliation fixture.
-        - The first operating period therefore ends Dec 31, 2030.
+        Excel uses period-end boundary day counts after rolling the 1-day COD
+        stub to June 30. The first three operating periods are 184, 181, 184
+        days respectively.
         """
         engine = PeriodEngine(
             financial_close=date(2029, 6, 29),
@@ -158,13 +154,14 @@ class TestPeriodEnginePeriods:
             ppa_years=12,
         )
 
-        periods = engine.periods()
-        op_periods = [p for p in periods if p.is_operation]
+        op_periods = [p for p in engine.periods() if p.is_operation]
 
         assert op_periods[0].end_date == date(2030, 12, 31)
-        assert op_periods[0].days_in_period == 185
+        assert op_periods[0].days_in_period == 184
         assert op_periods[1].end_date == date(2031, 6, 30)
+        assert op_periods[1].days_in_period == 181
         assert op_periods[2].end_date == date(2031, 12, 31)
+        assert op_periods[2].days_in_period == 184
 
 
 class TestPeriodEngineHelpers:
