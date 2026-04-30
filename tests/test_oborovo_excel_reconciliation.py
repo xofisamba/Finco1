@@ -74,6 +74,27 @@ OBOROVO_DEBT_SPLIT_METRIC_SPECS = [
     *OBOROVO_DEBT_INTEREST_METRIC_SPECS,
 ]
 
+OBOROVO_PL_TAX_METRIC_SPECS = [
+    {
+        "excel_sheet": "P&L",
+        "excel_metric": "depreciation_keur",
+        "app_metric": "depreciation_keur",
+        "tolerance_pct": 0.005,
+    },
+    {
+        "excel_sheet": "P&L",
+        "excel_metric": "taxable_income_keur",
+        "app_metric": "taxable_profit_keur",
+        "tolerance_abs": 0.01,
+    },
+    {
+        "excel_sheet": "P&L",
+        "excel_metric": "corporate_income_tax_keur",
+        "app_metric": "tax_keur",
+        "tolerance_abs": 0.01,
+    },
+]
+
 
 def _oborovo_targets() -> dict:
     payload = json.loads(TARGETS.read_text(encoding="utf-8"))
@@ -210,3 +231,13 @@ def test_oborovo_first_twelve_periods_debt_principal_and_interest_against_excel(
         "line_failures": failures,
         "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
     }
+
+
+def test_oborovo_first_twelve_periods_pl_tax_lines_against_excel() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_oborovo_periods()[:12],
+        metric_specs=OBOROVO_PL_TAX_METRIC_SPECS,
+    )
+    assert not failures, failures
