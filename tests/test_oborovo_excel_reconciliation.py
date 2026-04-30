@@ -13,6 +13,7 @@ import pytest
 
 from app.calibration import compare_metric, run_project_calibration
 from tests.reconciliation_helpers import collect_period_failures, period_by_date
+from tests.test_debt_excel_alignment import _excel_app_debt_diagnostic_rows
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,6 +107,7 @@ def test_oborovo_headless_payload_shape() -> None:
     assert "kpis" in payload
     assert "periods" in payload
     assert payload["periods"], "period-level output is required for reconciliation"
+    assert all(row["is_operation"] for row in payload["periods"])
 
 
 def test_oborovo_senior_debt_against_excel_initial_tolerance() -> None:
@@ -171,4 +173,8 @@ def test_oborovo_first_twelve_periods_debt_principal_and_interest_against_excel(
         excel_periods=_oborovo_periods()[:12],
         metric_specs=OBOROVO_DEBT_SPLIT_METRIC_SPECS,
     )
-    assert not failures, failures
+    if failures:
+        raise AssertionError({
+            "line_failures": failures,
+            "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
+        })
