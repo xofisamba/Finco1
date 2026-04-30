@@ -1,0 +1,44 @@
+{
+  "project": "tuho",
+  "source_workbook": "20260330_TUHO_BP.xlsm",
+  "extraction_note": "First-pass golden anchors extracted from workbook cached formula values. Raw workbook is intentionally not committed.",
+  "worksheets": {
+    "FID deck outputs": {"rid": "rId1", "target": "xl/worksheets/sheet1.xml", "role": "FID / PPT export output"},
+    "Discount rate NPV": {"rid": "rId2", "target": "xl/worksheets/sheet2.xml", "role": "discount-rate analysis"},
+    "Outputs": {"rid": "rId3", "target": "xl/worksheets/sheet3.xml", "role": "dashboard / KPI summary"},
+    "CapEx": {"rid": "rId4", "target": "xl/worksheets/sheet4.xml", "role": "capex and funding requirement"},
+    "Scenarios": {"rid": "rId5", "target": "xl/worksheets/sheet5.xml", "role": "scenario and sensitivity controls"},
+    "OpEx": {"rid": "rId6", "target": "xl/worksheets/sheet6.xml", "role": "operating costs"},
+    "Inputs": {"rid": "rId7", "target": "xl/worksheets/sheet7.xml", "role": "assumptions and scenario controls"},
+    "IDC": {"rid": "rId8", "target": "xl/worksheets/sheet8.xml", "role": "construction funding, debt drawdowns and IDC"},
+    "CF": {"rid": "rId9", "target": "xl/worksheets/sheet9.xml", "role": "cash flow waterfall and IRR"},
+    "P&L": {"rid": "rId10", "target": "xl/worksheets/sheet10.xml", "role": "profit and loss"},
+    "BS": {"rid": "rId11", "target": "xl/worksheets/sheet11.xml", "role": "balance sheet"},
+    "Dep": {"rid": "rId12", "target": "xl/worksheets/sheet12.xml", "role": "depreciation"},
+    "DS": {"rid": "rId13", "target": "xl/worksheets/sheet13.xml", "role": "debt schedule, DSCR and reserve mechanics"},
+    "Eq": {"rid": "rId14", "target": "xl/worksheets/sheet14.xml", "role": "equity and SHL returns"},
+    "Macro": {"rid": "rId15", "target": "xl/worksheets/sheet15.xml", "role": "macro assumptions"},
+    "Flags": {"rid": "rId16", "target": "xl/worksheets/sheet16.xml", "role": "period flags and day-count controls"},
+    "Cash@Risk": {"rid": "rId17", "target": "xl/worksheets/sheet17.xml", "state": "hidden", "role": "hidden cash-at-risk / advanced risk logic"}
+  },
+  "golden_cells": {
+    "total_capex_inputs_keur": {"sheet": "Inputs", "cell": "C45", "formula": "SUM(C23:C44)", "value": 72993.70678606197},
+    "total_capex_capex_keur": {"sheet": "CapEx", "cell": "C123", "formula": "SUM(C99,C103,C118)", "value": 72993.70678606197},
+    "senior_debt_outputs_keur": {"sheet": "Outputs", "cell": "H11", "formula": "L40", "value": 43359.2737822209},
+    "senior_debt_idc_keur": {"sheet": "IDC", "cell": "D48", "formula": "MAX(G48:AJ48)", "value": 43359.2737822209},
+    "project_irr": {"sheet": "CF", "cell": "D125", "formula": "XIRR(G125:BO125,G$124:BO$124)", "value": 0.09304675757884978},
+    "unlevered_project_irr": {"sheet": "CF", "cell": "D126", "formula": "XIRR(G126:BO126,G$124:BO$124)", "value": 0.09108280837535859},
+    "equity_irr": {"sheet": "Eq", "cell": "D28", "formula": "XIRR(G28:DW28,G$23:DW$23)", "value": 0.11609525084495542},
+    "senior_debt_service_p1_keur": {"sheet": "CF", "cell": "H70", "formula": "-SUM(DS!H49:H50,DS!H84:H85)", "value": -2116.361394092063},
+    "senior_debt_service_p2_keur": {"sheet": "CF", "cell": "I70", "formula": "-SUM(DS!I49:I50,DS!I84:I85)", "value": -2151.4392072538094},
+    "senior_debt_service_p3_keur": {"sheet": "CF", "cell": "J70", "formula": "-SUM(DS!J49:J50,DS!J84:J85)", "value": -2144.6917250359043},
+    "average_dscr_ppa": {"sheet": "Inputs", "cell": "G166", "formula": "(J165*D83)+(J166*E83)", "value": 1.2},
+    "average_dscr_market": {"sheet": "Inputs", "cell": "J166", "formula": "Scenarios!E187", "value": 1.4}
+  },
+  "initial_tolerances": {
+    "senior_debt_pct": 0.01,
+    "irr_bps": 50,
+    "period_debt_service_pct": 0.005,
+    "dscr_abs": 0.05
+  }
+}
