@@ -149,3 +149,18 @@ def test_run_calibration_applies_oborovo_first12_debt_split_anchors() -> None:
     assert twelfth["date"] == "2036-06-30"
     assert abs(twelfth["senior_principal_keur"] - 1482.7286430265804) < 1e-9
     assert abs(twelfth["senior_interest_keur"] - 873.148013189113) < 1e-9
+
+
+def test_run_calibration_applies_oborovo_first12_pl_tax_anchors() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    first = payload["periods"][0]
+    twelfth = payload["periods"][11]
+
+    assert first["date"] == "2030-12-31"
+    assert abs(first["depreciation_keur"] - 1490.6768666010357) < 1e-9
+    assert abs(first["taxable_profit_keur"] - (-219.15672358217944)) < 1e-9
+    assert abs(first["tax_keur"] - 0.0) < 1e-9
+    assert twelfth["date"] == "2036-06-30"
+    assert abs(twelfth["depreciation_keur"] - 1470.445240085335) < 1e-9
+    assert abs(twelfth["taxable_profit_keur"] - 443.8849122184448) < 1e-9
+    assert abs(twelfth["tax_keur"] - 78.21556839713568) < 1e-9
