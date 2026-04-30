@@ -102,6 +102,10 @@ class WaterfallRunner:
         if config is None:
             config = WaterfallRunConfig()
 
+        # S4-1: Propagate sculpt_capex_keur from inputs.capex (overrides default 0.0)
+        if config.sculpt_capex_keur == 0.0:
+            config.sculpt_capex_keur = self.inputs.capex.sculpt_capex_keur
+
         # Use cached waterfall computation
         return cached_run_waterfall_v3(
             inputs=self.inputs,
