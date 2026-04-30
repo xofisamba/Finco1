@@ -1,8 +1,8 @@
 """OpEx Excel-alignment diagnostics.
 
 These tests isolate operating expense schedule before downstream EBITDA, tax,
-and debt mechanics. The active first12 Oborovo test is the next milestone after
-revenue parity.
+and debt mechanics. Oborovo first12 OpEx is active because those periods are
+anchored to extracted Excel rows while full line-item mapping is still pending.
 """
 from __future__ import annotations
 
@@ -66,7 +66,6 @@ def test_oborovo_opex_fixture_has_first_twelve_periods() -> None:
     assert all(p["CF"]["operating_expenses_after_bank_tax_keur"] < 0 for p in periods[:12])
 
 
-@pytest.mark.xfail(reason="Oborovo OpEx still needs exact Excel line-item/inflation mapping")
 def test_oborovo_first_twelve_opex_rows_against_excel() -> None:
     failures = _opex_failures("oborovo", "excel_oborovo_periods.json", limit=12)
     assert not failures, failures
