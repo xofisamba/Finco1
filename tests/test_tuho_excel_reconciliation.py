@@ -12,12 +12,49 @@ from pathlib import Path
 import pytest
 
 from app.calibration import compare_metric, run_project_calibration
+from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = ROOT / "tests" / "fixtures"
 TARGETS = FIXTURE_DIR / "excel_calibration_targets.json"
 TUHO_PERIODS = FIXTURE_DIR / "excel_tuho_periods.json"
+
+
+TUHO_PERIOD_METRIC_SPECS = [
+    {
+        "excel_sheet": "CF",
+        "excel_metric": "operating_revenues_keur",
+        "app_metric": "revenue_keur",
+        "tolerance_pct": 0.005,
+    },
+    {
+        "excel_sheet": "CF",
+        "excel_metric": "ebitda_keur",
+        "app_metric": "ebitda_keur",
+        "tolerance_pct": 0.005,
+    },
+    {
+        "excel_sheet": "CF",
+        "excel_metric": "senior_debt_service_keur",
+        "app_metric": "senior_ds_keur",
+        "excel_sign": -1.0,
+        "app_sign": 1.0,
+        "tolerance_pct": 0.005,
+    },
+    {
+        "excel_sheet": "DS",
+        "excel_metric": "senior_principal_keur",
+        "app_metric": "senior_principal_keur",
+        "tolerance_pct": 0.005,
+    },
+    {
+        "excel_sheet": "DS",
+        "excel_metric": "senior_net_interest_keur",
+        "app_metric": "senior_interest_keur",
+        "tolerance_pct": 0.005,
+    },
+]
 
 
 def _tuho_targets() -> dict:
@@ -28,14 +65,6 @@ def _tuho_targets() -> dict:
 def _tuho_periods() -> list[dict]:
     payload = json.loads(TUHO_PERIODS.read_text(encoding="utf-8"))
     return payload["periods"]
-
-
-def _operation_periods(payload: dict) -> list[dict]:
-    return [p for p in payload["periods"] if p.get("is_operation")]
-
-
-def _period_by_excel_date(payload: dict) -> dict[str, dict]:
-    return {p["date"]: p for p in _operation_periods(payload)}
 
 
 def test_tuho_excel_targets_have_required_anchors() -> None:
@@ -102,15 +131,12 @@ def test_tuho_equity_irr_against_excel_initial_tolerance() -> None:
     assert comparison["passed"], comparison
 
 
-@pytest.mark.xfail(reason="TUHO period-level revenue/opex/EBITDA schedule still requires Excel row mapping and calibration")
-def test_tuho_first_period_ebitda_against_excel() -> None:
-    excel_period = _tuho_periods()[0]
+@pytest.mark.xfail(reason="TUHO period-level revenue/opex/debt service schedules are not yet Excel-parity")
+def test_tuho_first_three_periods_core_lines_against_excel() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
-    app_periods = _period_by_excel_date(payload)
-    app_period = app_periods[excel_period["period_end_date"]]
-    comparison = compare_metric(
-        app_value=app_period["ebitda_keur"],
-        excel_value=excel_period["CF"]["ebitda_keur"],
-        tolerance_pct=0.005,
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_tuho_periods()[:3],
+        metric_specs=TUHO_PERIOD_METRIC_SPECS,
     )
-    assert comparison["passed"], comparison
+    assert not failures, failures
