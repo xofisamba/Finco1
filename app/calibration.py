@@ -297,11 +297,11 @@ def _enum_or_string_value(value: Any) -> str:
 
 
 def _find_tuho_factory():
-    for name in ("create_default_tuho", "create_default_tuhobic", "create_default_tuhobić"):
-        factory = getattr(ProjectInputs, name, None)
-        if callable(factory):
-            return factory
-    return None
+    try:
+        from app.project_factories import create_default_tuho
+    except Exception:
+        return None
+    return create_default_tuho
 
 
 __all__ = [
