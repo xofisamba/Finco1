@@ -82,24 +82,43 @@ def _implied_excel_debt_rows(fixture_name: str, limit: int) -> list[dict[str, fl
 def _app_debt_rows(limit: int = 12) -> list[dict[str, float | str]]:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     rows = []
-    for app_row in [p for p in payload["periods"] if p.get("is_operation")][:limit]:
-        interest = app_row["senior_interest_keur"]
-        closing_balance = app_row["senior_balance_keur"]
-        principal = app_row["senior_principal_keur"]
-        opening_balance = closing_balance + principal
-        implied_rate = interest / opening_balance if opening_balance else 0.0
+    for app_row in payload["debt_decomposition"][:limit]:
         rows.append({
             "period_end_date": app_row["date"],
-            "app_opening_balance_keur": opening_balance,
-            "app_closing_balance_keur": closing_balance,
+            "app_opening_balance_keur": app_row["opening_balance_keur"],
+            "app_closing_balance_keur": app_row["closing_balance_keur"],
             "app_senior_debt_service_keur": app_row["senior_ds_keur"],
-            "app_senior_principal_keur": principal,
-            "app_senior_interest_keur": interest,
-            "app_implied_period_rate": implied_rate,
-            "app_implied_annual_simple_rate": implied_rate * 2,
+            "app_senior_principal_keur": app_row["senior_principal_keur"],
+            "app_senior_interest_keur": app_row["senior_interest_keur"],
+            "app_implied_period_rate": app_row["implied_period_rate"],
+            "app_implied_annual_simple_rate": app_row["implied_period_rate"] * 2,
             "app_dscr": app_row["dscr"],
         })
     return rows
+
+
+def _excel_app_debt_diagnostic_rows(limit: int = 12) -> list[dict[str, float | str]]:
+    excel_rows = {row["period_end_date"]: row for row in _implied_excel_debt_rows("excel_oborovo_periods.json", limit)}
+    app_rows = {row["period_end_date"]: row for row in _app_debt_rows(limit)}
+    diagnostics: list[dict[str, float | str]] = []
+    for date_key, excel in excel_rows.items():
+        app = app_rows[date_key]
+        diagnostics.append({
+            "period_end_date": date_key,
+            "excel_opening_balance_keur": excel["excel_opening_balance_keur"],
+            "app_opening_balance_keur": app["app_opening_balance_keur"],
+            "opening_balance_delta_keur": app["app_opening_balance_keur"] - excel["excel_opening_balance_keur"],
+            "excel_implied_period_rate": excel["excel_implied_period_rate"],
+            "app_implied_period_rate": app["app_implied_period_rate"],
+            "implied_period_rate_delta": app["app_implied_period_rate"] - excel["excel_implied_period_rate"],
+            "excel_interest_keur": excel["excel_senior_interest_keur"],
+            "app_interest_keur": app["app_senior_interest_keur"],
+            "interest_delta_keur": app["app_senior_interest_keur"] - excel["excel_senior_interest_keur"],
+            "excel_principal_keur": excel["excel_senior_principal_keur"],
+            "app_principal_keur": app["app_senior_principal_keur"],
+            "principal_delta_keur": app["app_senior_principal_keur"] - excel["excel_senior_principal_keur"],
+        })
+    return diagnostics
 
 
 def test_oborovo_excel_debt_fixture_has_first_twelve_periods() -> None:
@@ -113,12 +132,7 @@ def test_oborovo_excel_debt_fixture_has_first_twelve_periods() -> None:
 
 
 def test_oborovo_first_twelve_excel_dscr_target_is_115() -> None:
-    """Current extracted Oborovo first12 Excel rows use 1.15 DSCR, not 1.20.
-
-    The PPA=1.20 / merchant-higher hypothesis may still apply to TUHO or later
-    Oborovo periods, but it is not visible in the first 12 Oborovo rows currently
-    extracted into the fixture.
-    """
+    """Current extracted Oborovo first12 Excel rows use 1.15 DSCR, not 1.20."""
     rows = _implied_excel_debt_rows("excel_oborovo_periods.json", limit=12)
     assert {round(float(row["excel_dscr_target_row"]), 6) for row in rows} == {1.15}
 
@@ -135,6 +149,17 @@ def test_oborovo_app_implied_rate_diagnostics_are_available() -> None:
     assert len(rows) == 12
     assert all(row["app_opening_balance_keur"] >= row["app_closing_balance_keur"] for row in rows)
     assert all(row["app_implied_period_rate"] >= 0 for row in rows)
+
+
+def test_oborovo_debt_gap_diagnostics_are_available() -> None:
+    diagnostics = _excel_app_debt_diagnostic_rows(limit=12)
+    assert len(diagnostics) == 12
+    first = diagnostics[0]
+    assert first["period_end_date"] == "2030-12-31"
+    assert "opening_balance_delta_keur" in first
+    assert "implied_period_rate_delta" in first
+    assert "interest_delta_keur" in first
+    assert "principal_delta_keur" in first
 
 
 def test_oborovo_first_twelve_debt_service_against_excel() -> None:
@@ -156,7 +181,11 @@ def test_oborovo_first_twelve_debt_principal_and_interest_against_excel() -> Non
         excel_periods=_period_fixture("excel_oborovo_periods.json")[:12],
         metric_specs=OBOROVO_DEBT_SPLIT_METRIC_SPECS,
     )
-    assert not failures, failures
+    if failures:
+        raise AssertionError({
+            "line_failures": failures,
+            "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
+        })
 
 
 def test_oborovo_app_payload_contains_debt_diagnostics() -> None:
