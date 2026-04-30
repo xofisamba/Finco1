@@ -2,17 +2,17 @@
 
 Matches Excel CF sheet row 21 formula:
     G21 = $B21 × G$7 × G$6 × G$20 × (1-G$19) × (1-Degradation)
-    
+
 Where:
 - B21: capacity (MW)
-- G7: day_fraction (period days / 365)
+- G7: day_fraction (period days / 365 or leap-year denominator)
 - G6: operation flag (1 if operating, 0 if not)
 - G20: operating hours for yield scenario
 - G19: curtailment assumption
 - Degradation: annual degradation factor
 
 NOTE: This module contains PURE functions only.
-Caching is handled in utils/cache.py at the app layer.
+Caching is handled in the app layer.
 """
 from typing import Sequence, Optional
 from domain.inputs import TechnicalParams, ProjectInputs
@@ -25,37 +25,19 @@ def period_generation(
     year_index: int,
     yield_scenario: str = "P50",
 ) -> float:
-    """Calculate annual generation (sum of H1 + H2) in MWh.
-
-    For semi-annual models, year has 2 periods. Sum both H1 and H2.
-
-    Args:
-        tech: Technical parameters
-        periods: All periods (for looking up year_index)
-        year_index: Year index (1-based, 1=Y1)
-        yield_scenario: "P50" or "P90-10y"
-
-    Returns:
-        Generation in MWh for this year (H1 + H2)
-    """
-    # Find all operation periods for this year_index (H1 + H2)
+    """Calculate annual generation (sum of all operating periods in one year)."""
     op_periods = [p for p in periods if p.is_operation and p.year_index == year_index]
     if not op_periods:
         return 0.0
 
-    # Operating hours based on scenario
     if yield_scenario == "P90-10y":
         hours = tech.operating_hours_p90_10y
     else:
         hours = tech.operating_hours_p50
 
-    # Combined availability (plant × grid)
     availability = tech.plant_availability * tech.grid_availability
-
-    # Degradation factor: (1 - degradation)^(year_index - 1)
     degradation_factor = (1 - tech.pv_degradation) ** (year_index - 1)
 
-    # Sum generation for all periods in this year (H1 + H2)
     total_generation = 0.0
     for period in op_periods:
         generation = (
@@ -75,29 +57,15 @@ def annual_generation_mwh(
     year_index: int,
     yield_scenario: str = "P50",
 ) -> float:
-    """Calculate annual generation in MWh.
-    
-    Simplified version that doesn't need period engine.
-    Uses P50 or P90-10y hours and assumes full year (no degradation in year 1).
-    
-    Args:
-        tech: Technical parameters
-        year_index: Year (1-based, 1=Y1)
-        yield_scenario: "P50" or "P90-10y"
-    
-    Returns:
-        Annual generation in MWh
-    """
+    """Calculate annual generation in MWh."""
     if yield_scenario == "P90-10y":
         hours = tech.operating_hours_p90_10y
     else:
         hours = tech.operating_hours_p50
-    
+
     availability = tech.plant_availability * tech.grid_availability
-    
-    # Degradation from previous years
     degradation = (1 - tech.pv_degradation) ** (year_index - 1)
-    
+
     return tech.capacity_mw * hours * availability * degradation
 
 
@@ -108,45 +76,28 @@ def period_revenue(
     market_price_eur_mwh: Optional[float] = None,
     ppa_active: bool = True,
 ) -> float:
-    """Calculate revenue for a single period.
-    
-    Args:
-        tech: Technical parameters
-        period: Period metadata
-        ppa_tariff_eur_mwh: PPA tariff in EUR/MWh
-        market_price_eur_mwh: Market price if not PPA
-        ppa_active: Whether PPA tariff applies
-    
-    Returns:
-        Revenue in kEUR for this period
-    """
+    """Calculate revenue for a single period."""
     if not period.is_operation:
         return 0.0
-    
-    # Generation for this period
+
     if period.period_in_year == 1:
-        # H1
         hours = tech.operating_hours_p50 if tech.yield_scenario == "P_50" else tech.operating_hours_p90_10y
     else:
-        # H2 (same hours)
         hours = tech.operating_hours_p50 if tech.yield_scenario == "P_50" else tech.operating_hours_p90_10y
-    
+
     availability = tech.plant_availability * tech.grid_availability
     degradation = (1 - tech.pv_degradation) ** (period.year_index - 1)
-    
+
     generation_mwh = tech.capacity_mw * hours * period.day_fraction * availability * degradation
-    
-    # Revenue = generation × price
+
     if ppa_active:
         price = ppa_tariff_eur_mwh
     elif market_price_eur_mwh is not None:
         price = market_price_eur_mwh
     else:
-        price = ppa_tariff_eur_mwh  # fallback
-    
-    revenue_keur = generation_mwh * price / 1000
-    
-    return revenue_keur
+        price = ppa_tariff_eur_mwh
+
+    return generation_mwh * price / 1000
 
 
 def full_generation_schedule(
@@ -154,31 +105,22 @@ def full_generation_schedule(
     engine: PeriodEngine,
     yield_scenario: str = "P50",
 ) -> dict[int, float]:
-    """Generate full schedule of period generation in MWh.
-    
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-        yield_scenario: "P50" or "P90-10y"
-    
-    Returns:
-        Dict mapping period_index → generation_MWh
-    """
+    """Generate full schedule of period generation in MWh."""
     schedule = {}
-    
+
     for period in engine.periods():
         if not period.is_operation:
             schedule[period.index] = 0.0
             continue
-        
+
         if yield_scenario == "P90-10y":
             hours = inputs.technical.operating_hours_p90_10y
         else:
             hours = inputs.technical.operating_hours_p50
-        
+
         availability = inputs.technical.combined_availability
         degradation = (1 - inputs.technical.pv_degradation) ** (period.year_index - 1)
-        
+
         generation = (
             inputs.technical.capacity_mw
             * hours
@@ -186,10 +128,33 @@ def full_generation_schedule(
             * availability
             * degradation
         )
-        
+
         schedule[period.index] = generation
-    
+
     return schedule
+
+
+def _period_energy_revenue_keur(
+    *,
+    generation_mwh: float,
+    ppa_tariff: float,
+    market_price: float,
+    ppa_active: bool,
+    ppa_share: float,
+) -> float:
+    """Return energy revenue for one period before balancing and certificates.
+
+    `ppa_production_share` existed in the input schema but was previously
+    ignored. Excel models commonly support selling only a portion of generation
+    under the PPA and the balance at market. This helper makes that behavior
+    explicit while preserving the previous result when ppa_share is 1.0.
+    """
+    bounded_ppa_share = min(max(ppa_share, 0.0), 1.0)
+    if ppa_active:
+        ppa_generation = generation_mwh * bounded_ppa_share
+        merchant_generation = generation_mwh - ppa_generation
+        return (ppa_generation * ppa_tariff + merchant_generation * market_price) / 1000
+    return generation_mwh * market_price / 1000
 
 
 def full_revenue_schedule(
@@ -197,36 +162,29 @@ def full_revenue_schedule(
     engine: PeriodEngine,
 ) -> dict[int, float]:
     """Generate full schedule of period revenue in kEUR.
-    
+
     Revenue includes:
-    - PPA revenue (during PPA term)
-    - Spot/market revenue (after PPA)
-    - Balancing cost deduction (PV)
-    - CO2 certificates (if enabled)
-    
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-    
-    Returns:
-        Dict mapping period_index → revenue_kEUR
+    - PPA revenue during PPA term
+    - Merchant revenue after PPA term, or merchant share during PPA if
+      ppa_production_share < 1.0
+    - Balancing cost deductions
+    - CO2/certificate revenue when enabled
     """
     revenue = {}
-    
+
     for period in engine.periods():
         if not period.is_operation:
             revenue[period.index] = 0.0
             continue
-        
-        # Generation
+
         if inputs.technical.yield_scenario == "P_50":
             hours = inputs.technical.operating_hours_p50
         else:
             hours = inputs.technical.operating_hours_p90_10y
-        
+
         availability = inputs.technical.combined_availability
         degradation = (1 - inputs.technical.pv_degradation) ** (period.year_index - 1)
-        
+
         generation_mwh = (
             inputs.technical.capacity_mw
             * hours
@@ -234,31 +192,37 @@ def full_revenue_schedule(
             * availability
             * degradation
         )
-        
-        # Determine price
-        if period.is_ppa_active:
-            # PPA active: use tariff with PPA index
-            tariff = inputs.revenue.tariff_at_year(period.year_index)
-            revenue_keur = generation_mwh * tariff / 1000
-        else:
-            # Post-PPA: use market price
-            market_price = inputs.revenue.market_price_at_year(period.year_index)
-            revenue_keur = generation_mwh * market_price / 1000
-        
-        # Apply balancing cost deduction (PV - % of revenue)
+
+        tariff = inputs.revenue.tariff_at_year(period.year_index)
+        market_price = inputs.revenue.market_price_at_year(period.year_index)
+        revenue_keur = _period_energy_revenue_keur(
+            generation_mwh=generation_mwh,
+            ppa_tariff=tariff,
+            market_price=market_price,
+            ppa_active=period.is_ppa_active,
+            ppa_share=inputs.revenue.ppa_production_share,
+        )
+
         balancing_deduction = revenue_keur * inputs.revenue.balancing_cost_pv
         revenue_keur -= balancing_deduction
 
-        # Wind balancing cost (EUR/MWh absolute, e.g. 8.0 EUR/MWh for TUHO)
         if inputs.revenue.balancing_cost_wind_eur_mwh > 0:
             wind_bal_cost = generation_mwh * inputs.revenue.balancing_cost_wind_eur_mwh / 1000
             revenue_keur -= wind_bal_cost
-        
-        # CO2 certificates (if enabled)
+
         if inputs.revenue.co2_enabled:
             co2_revenue = generation_mwh * inputs.revenue.co2_price_eur / 1000
             revenue_keur += co2_revenue
-        
+
         revenue[period.index] = revenue_keur
-    
+
     return revenue
+
+
+__all__ = [
+    "period_generation",
+    "annual_generation_mwh",
+    "period_revenue",
+    "full_generation_schedule",
+    "full_revenue_schedule",
+]
