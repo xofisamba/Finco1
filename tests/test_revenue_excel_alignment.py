@@ -63,6 +63,34 @@ def _revenue_failures(project_key: str, fixture_name: str, limit: int = 3) -> li
     return failures
 
 
+def _implied_excel_revenue_price(project_key: str, fixture_name: str) -> list[dict[str, float | str]]:
+    """Return implied Excel revenue €/MWh using app generation as denominator.
+
+    This is diagnostic only. It helps determine whether the remaining gap is
+    mainly generation volume or price / certificate / balancing treatment.
+    """
+    app_by_date = _schedule_by_date(project_key)
+    rows: list[dict[str, float | str]] = []
+    for excel_period in _period_fixture(fixture_name)[:3]:
+        date_key = excel_period["period_end_date"]
+        generation_mwh = app_by_date[date_key]["generation_mwh"]
+        excel_revenue_keur = excel_period["CF"]["operating_revenues_keur"]
+        rows.append({
+            "period_end_date": date_key,
+            "app_generation_mwh": generation_mwh,
+            "excel_revenue_keur": excel_revenue_keur,
+            "implied_excel_eur_mwh": excel_revenue_keur * 1000 / generation_mwh,
+            "app_ppa_tariff_eur_mwh": app_by_date[date_key]["ppa_tariff_eur_mwh"],
+            "app_market_price_eur_mwh": app_by_date[date_key]["market_price_eur_mwh"],
+            "app_co2_eur_mwh": (
+                app_by_date[date_key]["co2_revenue_keur"] * 1000 / generation_mwh
+                if generation_mwh else 0.0
+            ),
+            "app_net_revenue_eur_mwh": app_by_date[date_key]["revenue_keur"] * 1000 / generation_mwh,
+        })
+    return rows
+
+
 @pytest.mark.xfail(reason="Oborovo revenue schedule still needs exact Excel generation/PPA/CO2 mapping")
 def test_oborovo_first_three_revenue_rows_against_excel() -> None:
     failures = _revenue_failures("oborovo", "excel_oborovo_periods.json")
@@ -107,3 +135,19 @@ def test_tuho_revenue_decomposition_explains_total_revenue() -> None:
             - row["balancing_cost_wind_keur"]
             + row["co2_revenue_keur"]
         )
+
+
+def test_oborovo_implied_excel_price_diagnostics_are_available() -> None:
+    rows = _implied_excel_revenue_price("oborovo", "excel_oborovo_periods.json")
+    assert len(rows) == 3
+    for row in rows:
+        assert row["implied_excel_eur_mwh"] > 0
+        assert row["app_net_revenue_eur_mwh"] > 0
+
+
+def test_tuho_implied_excel_price_diagnostics_are_available() -> None:
+    rows = _implied_excel_revenue_price("tuho", "excel_tuho_periods.json")
+    assert len(rows) == 3
+    for row in rows:
+        assert row["implied_excel_eur_mwh"] > 0
+        assert row["app_net_revenue_eur_mwh"] > 0
