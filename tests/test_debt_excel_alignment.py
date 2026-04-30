@@ -151,6 +151,12 @@ def test_oborovo_app_implied_rate_diagnostics_are_available() -> None:
     assert all(row["app_implied_period_rate"] >= 0 for row in rows)
 
 
+def test_oborovo_first_period_app_opening_balance_matches_excel_debt_anchor() -> None:
+    diagnostics = _excel_app_debt_diagnostic_rows(limit=1)
+    first = diagnostics[0]
+    assert abs(first["opening_balance_delta_keur"]) / OBOROVO_EXCEL_SENIOR_DEBT_KEUR < 0.005, first
+
+
 def test_oborovo_debt_gap_diagnostics_are_available() -> None:
     diagnostics = _excel_app_debt_diagnostic_rows(limit=12)
     assert len(diagnostics) == 12
