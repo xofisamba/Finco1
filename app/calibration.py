@@ -91,6 +91,7 @@ class HeadlessRunConfig:
     sculpt_capex_keur: float = 0.0
     debt_sizing_method: str = "dscr_sculpt"
     dscr_schedule: list[float] | None = None
+    rate_schedule: list[float] | None = None
 
 
 _ENGINE_FREQUENCY_BY_NAME = {
@@ -136,13 +137,31 @@ def build_period_engine(inputs: ProjectInputs) -> PeriodEngine:
     )
 
 
-def build_run_config(inputs: ProjectInputs) -> HeadlessRunConfig:
+def debt_rate_schedule_from_engine(inputs: ProjectInputs, engine: PeriodEngine, tenor_periods: int) -> list[float]:
+    """Build per-period senior debt rates using actual operation day fractions.
+
+    Excel uses period day-counts for interest calculations. A flat annual_rate/2
+    approximation is wrong for stub/irregular semi-annual periods such as the
+    first Oborovo period after COD. This returns annual all-in rate multiplied
+    by each operation period's day_fraction.
+    """
+    op_periods = engine.operation_periods()
+    rates = [inputs.financing.all_in_rate * period.day_fraction for period in op_periods[:tenor_periods]]
+    if len(rates) < tenor_periods:
+        fallback = inputs.financing.all_in_rate / 2
+        rates.extend([fallback] * (tenor_periods - len(rates)))
+    return rates
+
+
+def build_run_config(inputs: ProjectInputs, engine: PeriodEngine | None = None) -> HeadlessRunConfig:
     """Build a Streamlit-free run config from ProjectInputs."""
     financing = inputs.financing
     tax = inputs.tax
+    tenor_periods = financing.senior_tenor_years * 2
+    rate_schedule = debt_rate_schedule_from_engine(inputs, engine, tenor_periods) if engine is not None else None
     return HeadlessRunConfig(
         rate_per_period=financing.all_in_rate / 2,
-        tenor_periods=financing.senior_tenor_years * 2,
+        tenor_periods=tenor_periods,
         target_dscr=financing.target_dscr,
         lockup_dscr=financing.lockup_dscr,
         tax_rate=tax.corporate_rate,
@@ -160,6 +179,7 @@ def build_run_config(inputs: ProjectInputs) -> HeadlessRunConfig:
         sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
         debt_sizing_method=_enum_or_string_value(getattr(financing, "debt_sizing_method", "dscr_sculpt")),
         dscr_schedule=getattr(financing, "dscr_schedule", None),
+        rate_schedule=rate_schedule,
     )
 
 
@@ -172,7 +192,7 @@ def run_project_calibration(
     """Run one calibration project and return a serializable reconciliation payload."""
     inputs = load_project_inputs(project_key)
     engine = build_period_engine(inputs)
-    config = build_run_config(inputs)
+    config = build_run_config(inputs, engine)
     result = run_waterfall_v3_core(
         inputs=inputs,
         engine=engine,
@@ -192,7 +212,7 @@ def run_project_calibration(
         discount_rate_equity=config.discount_rate_equity,
         fixed_debt_keur=config.fixed_debt_keur,
         fixed_ds_keur=config.fixed_ds_keur,
-        rate_schedule=None,
+        rate_schedule=config.rate_schedule,
         equity_irr_method=config.equity_irr_method,
         share_capital_keur=config.share_capital_keur,
         sculpt_capex_keur=config.sculpt_capex_keur,
@@ -329,6 +349,7 @@ __all__ = [
     "available_project_keys",
     "build_period_engine",
     "build_run_config",
+    "debt_rate_schedule_from_engine",
     "load_project_inputs",
     "run_project_calibration",
     "waterfall_kpis",
