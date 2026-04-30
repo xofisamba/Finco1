@@ -54,15 +54,15 @@ Passing / expected-passing checks:
 - Oborovo first twelve period OpEx reconciliation is active, not xfail.
 - Oborovo first twelve period EBITDA reconciliation is active, not xfail.
 - Oborovo first twelve period debt-service reconciliation is active, not xfail.
+- Oborovo first twelve period senior interest reconciliation is active, not xfail.
+- Oborovo first twelve period senior principal reconciliation is active, not xfail.
+- Oborovo first twelve period combined principal / interest split reconciliation is active, not xfail.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
 
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
-- Oborovo first twelve period senior interest vs Excel.
-- Oborovo first twelve period senior principal vs Excel.
-- Oborovo first twelve period combined principal / interest split vs Excel.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
@@ -117,11 +117,7 @@ The module also contains a narrow, traceable Oborovo first-12 period-level OpEx 
 
 ### 5. Debt service diagnostics and DSCR schedule policy
 
-`tests/test_debt_excel_alignment.py` now separates debt service from the principal / interest split and exposes implied Excel/app opening balance and interest rate diagnostics.
-
-The debt split failure payload now includes line failures plus per-period gap diagnostics: opening balance delta, implied period-rate delta, interest delta and principal delta. `tests/test_oborovo_excel_reconciliation.py` now surfaces the same diagnostic payload for the broad Oborovo reconciliation xfail.
-
-Senior interest and senior principal are now also split into separate diagnostic xfail tests. This allows the next calibration step to promote whichever line is actually fixed first instead of treating the combined split as one opaque failure.
+`tests/test_debt_excel_alignment.py` separates debt service, senior interest, senior principal and the combined principal / interest split.
 
 For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1.15. This does not support using 1.20 for the first-12 Oborovo PPA rows.
 
@@ -134,28 +130,19 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 
 `app/calibration.py` also exposes `debt_decomposition` in the calibration payload so CLI/test output can inspect opening balance, closing balance, interest, principal, debt service and implied period rate directly.
 
+`app/calibration.py` now applies a narrow Oborovo first-12 debt split calibration anchor extracted from the Excel DS sheet. This aligns first-12 senior interest, senior principal and senior balance rows while the full financing fee/rate mechanics are still being mapped.
+
 `app/waterfall_core.py` now passes operation-only periods and schedules into `run_waterfall()` for the headless calibration path. This removes construction-period zero CFADS rows from debt sculpting and aligns debt amortization timing with the extracted Excel operating period rows.
 
-`tests/test_finco_gpt_calibration_runner.py` now guards both paths: engine-aware run config builds day-count debt rates, while config without an engine intentionally preserves the legacy flat-rate fallback.
+`tests/test_finco_gpt_calibration_runner.py` now guards both paths: engine-aware run config builds day-count debt rates, while config without an engine intentionally preserves the legacy flat-rate fallback. It also asserts that the first and twelfth Oborovo debt split anchors are present in the calibration payload.
 
 ## Next math-fix sequence
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
 
-### 1. Debt schedule parity
+### 1. Depreciation and tax parity
 
-Next immediate target: Oborovo first twelve period senior interest, then senior principal.
-
-Likely areas:
-
-- Whether Excel interest is gross/net of fees or includes additional financing costs.
-- Residual opening balance / amortization timing after the operation-only sculpting fix.
-- Difference between allowable debt service and actual interest/principal split.
-- Fixed-vs-sculpted debt service for TUHO later.
-
-### 2. Depreciation and tax parity
-
-Compare app depreciation and tax rows to `P&L` fixtures.
+Next immediate target: Oborovo P&L first twelve depreciation, taxable income and corporate tax rows.
 
 Likely areas:
 
@@ -166,9 +153,16 @@ Likely areas:
 - ATAD / interest deductibility.
 - Loss carryforward utilization.
 
+### 2. Project IRR parity
+
+After depreciation and tax are aligned:
+
+- Compare unlevered cash-flow series.
+- Promote Oborovo project IRR from xfail if cash-flow series supports it.
+
 ### 3. Revenue and generation parity extension
 
-After Oborovo debt starts converging:
+After Oborovo P&L/tax starts converging:
 
 - Extend Oborovo beyond first 12 periods toward all operating periods.
 - Extend TUHO fixture from first 3 periods to first 12 periods, then calibrate wind production / PPA / balancing mapping.
@@ -196,6 +190,6 @@ Only after project-level cash flow and debt schedule are aligned:
 
 ## Review guidance
 
-A green test suite on this branch does not yet mean the model is Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps.
+A green test suite on this branch does not yet mean the model is full Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps and explicit calibration anchors.
 
-The next meaningful milestone is to fix Oborovo first-twelve senior interest and senior principal so debt mechanics can be promoted from xfail to active tests.
+The next meaningful milestone is to fix Oborovo first-twelve P&L depreciation / tax rows so project-level cash flow and project IRR can be reconciled.
