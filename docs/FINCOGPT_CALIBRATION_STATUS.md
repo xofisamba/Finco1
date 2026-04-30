@@ -53,7 +53,8 @@ Passing / expected-passing checks:
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
-- Oborovo downstream first twelve period core lines vs Excel: EBITDA, debt service, principal and interest.
+- Oborovo first twelve period OpEx / EBITDA vs Excel.
+- Oborovo first twelve period debt service, principal and interest vs Excel.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
@@ -94,6 +95,14 @@ A regression test in `tests/test_period_engine_excel_alignment.py` locks the fir
 
 `tests/test_revenue_excel_alignment.py` now promotes Oborovo first-twelve-period revenue to an active test.
 
+### 4. OpEx step-change semantics
+
+`domain/opex/projections.py` now uses `opex_item_amount_at_year()` so step changes persist from their effective year onward and then inflate from that new base.
+
+This better matches Excel step-change semantics than the old one-year-only override behavior.
+
+`tests/test_opex.py` now includes synthetic unit coverage for persistent OpEx step changes.
+
 ## Next math-fix sequence
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
@@ -116,11 +125,12 @@ Likely areas:
 
 ### 2. OpEx parity
 
-The app now uses period-level OpEx, but line-item values still need Excel mapping.
+The app now uses period-level OpEx and persistent step changes, but line-item values and bank-tax treatment still need Excel mapping.
 
 Likely areas:
 
 - Oborovo Y1 OpEx line totals.
+- Oborovo environmental/social and infrastructure maintenance step changes.
 - TUHO-specific OpEx line items instead of reused Oborovo OpEx.
 - Step changes and inflation timing.
 - Bank tax / operating tax treatment.
@@ -163,4 +173,4 @@ Only after project-level cash flow and debt schedule are aligned:
 
 A green test suite on this branch does not yet mean the model is Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps.
 
-The next meaningful milestone is to fix OpEx so Oborovo EBITDA for the first twelve periods can be promoted from xfail to active test.
+The next meaningful milestone is to finish OpEx mapping so Oborovo EBITDA for the first twelve periods can be promoted from xfail to active test.
