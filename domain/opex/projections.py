@@ -112,13 +112,13 @@ def opex_schedule_period(
     annual_schedule = opex_schedule_annual(inputs, inputs.info.horizon_years)
     
     # Map to periods based on engine
-    for p in engine.periods():
-        if p.is_operation:
-            # Annual / 2 for semi-annual
-            annual_opex = annual_schedule.get(p.year_index, 0.0)
-            schedule[p.index] = annual_opex / 2
+    for period in engine.periods():
+        if period.is_operation:
+            # Annual × day_fraction for semi-annual
+            annual_opex = annual_schedule.get(period.year_index, 0.0)
+            schedule[period.index] = annual_opex * period.day_fraction
         else:
-            schedule[p.index] = 0.0
+            schedule[period.index] = 0.0
     
     return schedule
 

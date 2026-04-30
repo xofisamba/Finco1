@@ -143,7 +143,7 @@ class TestPeriodEnginePeriods:
         periods = engine.periods()
         
         for p in periods:
-            expected_fraction = p.days_in_period / 365.0
+            expected_fraction = p.days_in_period / (366.0 if p.is_leap_year else 365.0)
             assert abs(p.day_fraction - expected_fraction) < 0.001
     
     def test_operation_period_dates_match_excel(self):

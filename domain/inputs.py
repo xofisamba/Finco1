@@ -16,6 +16,26 @@ class PeriodFrequency(Enum):
     QUARTERLY = "Quarterly"
 
 
+class EquityIRRMethod(Enum):
+    EQUITY_ONLY = "equity_only"
+    COMBINED = "combined"
+    SHL_PLUS_DIVIDENDS = "shl_plus_dividends"
+
+
+class DebtSizingMethod(Enum):
+    DSCR_SCULPT = "dscr_sculpt"
+    GEARING_CAP = "gearing_cap"
+    FIXED = "fixed"
+
+
+class SHLRepaymentMethod(Enum):
+    BULLET = "bullet"
+    CASH_SWEEP = "cash_sweep"
+    PIK = "pik"
+    ACCRUED = "accrued"
+    PIK_THEN_SWEEP = "pik_then_sweep"
+
+
 class YieldScenario(Enum):
     """Yield scenario selection matching Excel Inputs!D52."""
     P50 = "P_50"

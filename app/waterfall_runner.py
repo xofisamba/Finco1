@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.cache import cached_run_waterfall_v3, clear_all_caches
+from domain.inputs import EquityIRRMethod, DebtSizingMethod, SHLRepaymentMethod
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,7 @@ class WaterfallRunConfig:
     shl_amount_keur: float = 0.0
     shl_rate: float = 0.0
     shl_idc_keur: float = 0.0
-    shl_repayment_method: str = "bullet"    # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
+    shl_repayment_method: SHLRepaymentMethod = SHLRepaymentMethod.BULLET
     shl_tenor_years: int = 0               # 0 = bullet at senior maturity
     shl_wht_rate: float = 0.0              # WHT on SHL interest
 
@@ -51,12 +52,12 @@ class WaterfallRunConfig:
     rate_schedule: Optional[list[float]] = None  # Per-period Euribor curve
 
     # Equity IRR method
-    equity_irr_method: str = "equity_only"   # "equity_only" | "combined" | "shl_plus_dividends"
+    equity_irr_method: EquityIRRMethod = EquityIRRMethod.EQUITY_ONLY
     share_capital_keur: float = 0.0          # Only for "combined" method
     sculpt_capex_keur: float = 0.0            # CAPEX for equity base
 
     # Debt sizing
-    debt_sizing_method: str = "dscr_sculpt"  # "dscr_sculpt" | "gearing_cap" | "fixed"
+    debt_sizing_method: DebtSizingMethod = DebtSizingMethod.DSCR_SCULPT
 
     # Per-period DSCR targets (dual-DSCR sculpting)
     dscr_schedule: Optional[list[float]] = None
@@ -77,7 +78,7 @@ class WaterfallRunner:
             lockup_dscr=1.10,
             shl_amount_keur=29_135,
             shl_rate=0.03965,
-            shl_repayment_method="pik_then_sweep",
+            shl_repayment_method=SHLRepaymentMethod.PIK_THEN_SWEEP,
         )
         result = runner.run(config)
     """
@@ -114,7 +115,7 @@ class WaterfallRunner:
             shl_amount=config.shl_amount_keur,
             shl_rate=config.shl_rate,
             shl_idc_keur=config.shl_idc_keur,
-            shl_repayment_method=config.shl_repayment_method,
+            shl_repayment_method=config.shl_repayment_method.value,
             shl_tenor_years=config.shl_tenor_years,
             shl_wht_rate=config.shl_wht_rate,
             discount_rate_project=config.discount_rate_project,
@@ -122,10 +123,10 @@ class WaterfallRunner:
             fixed_debt_keur=config.fixed_debt_keur,
             fixed_ds_keur=config.fixed_ds_keur,
             rate_schedule=config.rate_schedule,
-            equity_irr_method=config.equity_irr_method,
+            equity_irr_method=config.equity_irr_method.value,
             share_capital_keur=config.share_capital_keur,
             sculpt_capex_keur=config.sculpt_capex_keur,
-            debt_sizing_method=config.debt_sizing_method,
+            debt_sizing_method=config.debt_sizing_method.value,
             dscr_schedule=config.dscr_schedule,
         )
 

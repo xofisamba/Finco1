@@ -19,6 +19,7 @@ from datetime import date
 from enum import Enum
 from typing import List
 from dateutil.relativedelta import relativedelta
+import calendar
 
 
 class PeriodFrequency(Enum):
@@ -42,7 +43,8 @@ class PeriodMeta:
         is_operation: True if period is during operational phase
         is_ppa_active: True if PPA tariff applies in this period
         days_in_period: Number of days in this period
-        day_fraction: days_in_period / 365 (for annualizing)
+        day_fraction: days_in_period / (366 if leap year else 365) — for annualizing
+        is_leap_year: True if the period falls in a leap year
     """
     index: int
     start_date: date
@@ -54,6 +56,7 @@ class PeriodMeta:
     is_ppa_active: bool
     days_in_period: int
     day_fraction: float
+    is_leap_year: bool
 
 
 def _semestrial_end(from_date: date, period_in_year: int) -> date:
@@ -165,6 +168,7 @@ class PeriodEngine:
         
         # Y0-H1: FC to end of first 6 months
         days_y0h1 = self._days_between(self.fc, y0_h1_end)
+        y0_h1_is_leap = calendar.isleap(y0_h1_end.year)
         periods.append(PeriodMeta(
             index=0,
             start_date=self.fc,
@@ -175,11 +179,13 @@ class PeriodEngine:
             is_operation=False,
             is_ppa_active=False,
             days_in_period=days_y0h1,
-            day_fraction=days_y0h1 / 365.0,
+            day_fraction=days_y0h1 / (366.0 if y0_h1_is_leap else 365.0),
+            is_leap_year=y0_h1_is_leap,
         ))
         
         # Y0-H2: end of first 6 months to COD
         days_y0h2 = self._days_between(y0_h1_end, y0_h2_end)
+        y0_h2_is_leap = calendar.isleap(y0_h2_end.year)
         periods.append(PeriodMeta(
             index=1,
             start_date=y0_h1_end,
@@ -190,7 +196,8 @@ class PeriodEngine:
             is_operation=False,
             is_ppa_active=False,
             days_in_period=days_y0h2,
-            day_fraction=days_y0h2 / 365.0,
+            day_fraction=days_y0h2 / (366.0 if y0_h2_is_leap else 365.0),
+            is_leap_year=y0_h2_is_leap,
         ))
         
         # === Operation periods: COD to horizon_end ===
@@ -249,6 +256,7 @@ class PeriodEngine:
                 end = self._horizon_end
             days = self._days_between(current_date, end)
             ppa_active = current_date < self._ppa_end
+            is_leap = calendar.isleap(end.year)
             periods.append(PeriodMeta(
                 index=period_index,
                 start_date=current_date,
@@ -259,7 +267,8 @@ class PeriodEngine:
                 is_operation=True,
                 is_ppa_active=ppa_active,
                 days_in_period=days,
-                day_fraction=days / 365.0,
+                day_fraction=days / (366.0 if is_leap else 365.0),
+                is_leap_year=is_leap,
             ))
             period_index += 1
             current_date = date(end.year, end.month, end.day) + __import__('datetime').timedelta(days=1)
@@ -283,6 +292,7 @@ class PeriodEngine:
                     end = self._horizon_end
                 days = self._days_between(current_date, end)
                 ppa_active = current_date < self._ppa_end
+                is_leap = calendar.isleap(end.year)
                 periods.append(PeriodMeta(
                     index=period_index,
                     start_date=current_date,
@@ -293,7 +303,8 @@ class PeriodEngine:
                     is_operation=True,
                     is_ppa_active=ppa_active,
                     days_in_period=days,
-                    day_fraction=days / 365.0,
+                    day_fraction=days / (366.0 if is_leap else 365.0),
+                    is_leap_year=is_leap,
                 ))
                 period_index += 1
                 current_date = date(end.year, end.month, end.day) + __import__('datetime').timedelta(days=1)

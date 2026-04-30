@@ -20,6 +20,7 @@ from app.cache import (
     clear_all_caches,
 )
 from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner, ScenarioRunner
+from domain.inputs import EquityIRRMethod, DebtSizingMethod, SHLRepaymentMethod
 
 
 class TestDomainLayerClean:
@@ -121,9 +122,9 @@ class TestWaterfallRunConfig:
         assert config.dsra_months == 6
         assert config.rate_per_period == 0.02825
         assert config.tenor_periods == 28
-        assert config.shl_repayment_method == "bullet"
-        assert config.equity_irr_method == "equity_only"
-        assert config.debt_sizing_method == "dscr_sculpt"
+        assert config.shl_repayment_method is SHLRepaymentMethod.BULLET
+        assert config.equity_irr_method is EquityIRRMethod.EQUITY_ONLY
+        assert config.debt_sizing_method is DebtSizingMethod.DSCR_SCULPT
 
     def test_cache_key_generation(self):
         """cache_key() generates a deterministic string."""
