@@ -19,22 +19,32 @@ from domain.inputs import TechnicalParams, ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodMeta
 
 
+def _is_p90_10y_scenario(yield_scenario: str) -> bool:
+    """Normalize common P90-10y spellings used across Excel/app inputs."""
+    normalized = str(yield_scenario).replace("_", "-").upper()
+    return normalized in {"P90-10Y", "P90-10-Y", "P90 10Y"}
+
+
+def _selected_operating_hours(tech: TechnicalParams, yield_scenario: str | None = None) -> float:
+    """Return operating hours for the selected yield scenario."""
+    selected = yield_scenario if yield_scenario is not None else tech.yield_scenario
+    if _is_p90_10y_scenario(str(selected)):
+        return tech.operating_hours_p90_10y
+    return tech.operating_hours_p50
+
+
 def period_generation(
     tech: TechnicalParams,
     periods: Sequence[PeriodMeta],
     year_index: int,
-    yield_scenario: str = "P50",
+    yield_scenario: str | None = None,
 ) -> float:
     """Calculate annual generation (sum of all operating periods in one year)."""
     op_periods = [p for p in periods if p.is_operation and p.year_index == year_index]
     if not op_periods:
         return 0.0
 
-    if yield_scenario == "P90-10y":
-        hours = tech.operating_hours_p90_10y
-    else:
-        hours = tech.operating_hours_p50
-
+    hours = _selected_operating_hours(tech, yield_scenario)
     availability = tech.plant_availability * tech.grid_availability
     degradation_factor = (1 - tech.pv_degradation) ** (year_index - 1)
 
@@ -55,14 +65,10 @@ def period_generation(
 def annual_generation_mwh(
     tech: TechnicalParams,
     year_index: int,
-    yield_scenario: str = "P50",
+    yield_scenario: str | None = None,
 ) -> float:
     """Calculate annual generation in MWh."""
-    if yield_scenario == "P90-10y":
-        hours = tech.operating_hours_p90_10y
-    else:
-        hours = tech.operating_hours_p50
-
+    hours = _selected_operating_hours(tech, yield_scenario)
     availability = tech.plant_availability * tech.grid_availability
     degradation = (1 - tech.pv_degradation) ** (year_index - 1)
 
@@ -80,11 +86,7 @@ def period_revenue(
     if not period.is_operation:
         return 0.0
 
-    if period.period_in_year == 1:
-        hours = tech.operating_hours_p50 if tech.yield_scenario == "P_50" else tech.operating_hours_p90_10y
-    else:
-        hours = tech.operating_hours_p50 if tech.yield_scenario == "P_50" else tech.operating_hours_p90_10y
-
+    hours = _selected_operating_hours(tech)
     availability = tech.plant_availability * tech.grid_availability
     degradation = (1 - tech.pv_degradation) ** (period.year_index - 1)
 
@@ -103,20 +105,16 @@ def period_revenue(
 def full_generation_schedule(
     inputs: ProjectInputs,
     engine: PeriodEngine,
-    yield_scenario: str = "P50",
+    yield_scenario: str | None = None,
 ) -> dict[int, float]:
     """Generate full schedule of period generation in MWh."""
     schedule = {}
+    hours = _selected_operating_hours(inputs.technical, yield_scenario)
 
     for period in engine.periods():
         if not period.is_operation:
             schedule[period.index] = 0.0
             continue
-
-        if yield_scenario == "P90-10y":
-            hours = inputs.technical.operating_hours_p90_10y
-        else:
-            hours = inputs.technical.operating_hours_p50
 
         availability = inputs.technical.combined_availability
         degradation = (1 - inputs.technical.pv_degradation) ** (period.year_index - 1)
