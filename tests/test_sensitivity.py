@@ -1,6 +1,6 @@
 """Tests for sensitivity analysis (Task 3.4)."""
 import pytest
-from core.finance.sensitivity import (
+from domain.finance.sensitivity import (
     SensitivityResult,
     run_tornado_analysis,
     run_spider_analysis,
