@@ -21,13 +21,16 @@ TARGETS = FIXTURE_DIR / "excel_calibration_targets.json"
 OBOROVO_PERIODS = FIXTURE_DIR / "excel_oborovo_periods.json"
 
 
-OBOROVO_PERIOD_METRIC_SPECS = [
+OBOROVO_REVENUE_METRIC_SPECS = [
     {
         "excel_sheet": "CF",
         "excel_metric": "operating_revenues_keur",
         "app_metric": "revenue_keur",
         "tolerance_pct": 0.005,
     },
+]
+
+OBOROVO_DOWNSTREAM_METRIC_SPECS = [
     {
         "excel_sheet": "CF",
         "excel_metric": "ebitda_keur",
@@ -120,12 +123,22 @@ def test_oborovo_project_irr_against_excel_initial_tolerance() -> None:
     assert comparison["passed"], comparison
 
 
-@pytest.mark.xfail(reason="Known calibration gap: revenue/opex/debt service schedules are not yet Excel-parity")
-def test_oborovo_first_three_periods_core_lines_against_excel() -> None:
+def test_oborovo_first_three_period_revenue_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     failures = collect_period_failures(
         app_periods_by_date=period_by_date(payload),
         excel_periods=_oborovo_periods()[:3],
-        metric_specs=OBOROVO_PERIOD_METRIC_SPECS,
+        metric_specs=OBOROVO_REVENUE_METRIC_SPECS,
+    )
+    assert not failures, failures
+
+
+@pytest.mark.xfail(reason="Known calibration gap: opex/debt service schedules are not yet Excel-parity")
+def test_oborovo_first_three_periods_downstream_lines_against_excel() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_oborovo_periods()[:3],
+        metric_specs=OBOROVO_DOWNSTREAM_METRIC_SPECS,
     )
     assert not failures, failures
