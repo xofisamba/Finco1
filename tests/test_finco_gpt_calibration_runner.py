@@ -92,6 +92,7 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["periods"]
     assert payload["kpis"]["senior_debt_keur"] > 0
     assert payload["revenue_decomposition"]
+    assert payload["debt_decomposition"]
 
 
 def test_run_calibration_revenue_decomposition_shape() -> None:
@@ -111,3 +112,13 @@ def test_run_calibration_revenue_decomposition_shape() -> None:
         - row["balancing_cost_wind_keur"]
         + row["co2_revenue_keur"]
     )
+
+
+def test_run_calibration_debt_decomposition_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    row = payload["debt_decomposition"][0]
+    assert row["date"]
+    assert row["opening_balance_keur"] >= row["closing_balance_keur"]
+    assert row["senior_ds_keur"] == row["senior_interest_keur"] + row["senior_principal_keur"]
+    assert row["implied_period_rate"] >= 0
+    assert "dscr" in row
