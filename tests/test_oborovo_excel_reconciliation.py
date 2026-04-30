@@ -30,13 +30,16 @@ OBOROVO_REVENUE_METRIC_SPECS = [
     },
 ]
 
-OBOROVO_DOWNSTREAM_METRIC_SPECS = [
+OBOROVO_EBITDA_METRIC_SPECS = [
     {
         "excel_sheet": "CF",
         "excel_metric": "ebitda_keur",
         "app_metric": "ebitda_keur",
         "tolerance_pct": 0.005,
     },
+]
+
+OBOROVO_DEBT_METRIC_SPECS = [
     {
         "excel_sheet": "CF",
         "excel_metric": "senior_debt_service_keur",
@@ -87,6 +90,10 @@ def test_oborovo_period_fixture_has_reconciliation_rows() -> None:
         assert period["DS"]["senior_principal_keur"] > 0
         assert period["DS"]["senior_net_interest_keur"] > 0
         assert period["P&L"]["total_revenues_keur"] == period["CF"]["operating_revenues_keur"]
+        assert period["CF"]["ebitda_keur"] == (
+            period["CF"]["operating_revenues_keur"]
+            + period["CF"]["operating_expenses_after_bank_tax_keur"]
+        )
 
 
 def test_oborovo_headless_payload_shape() -> None:
@@ -133,12 +140,22 @@ def test_oborovo_first_twelve_period_revenue_against_excel() -> None:
     assert not failures, failures
 
 
-@pytest.mark.xfail(reason="Known calibration gap: opex/debt service schedules are not yet Excel-parity")
-def test_oborovo_first_twelve_periods_downstream_lines_against_excel() -> None:
+def test_oborovo_first_twelve_period_ebitda_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     failures = collect_period_failures(
         app_periods_by_date=period_by_date(payload),
         excel_periods=_oborovo_periods()[:12],
-        metric_specs=OBOROVO_DOWNSTREAM_METRIC_SPECS,
+        metric_specs=OBOROVO_EBITDA_METRIC_SPECS,
+    )
+    assert not failures, failures
+
+
+@pytest.mark.xfail(reason="Known calibration gap: debt service schedule is not yet Excel-parity")
+def test_oborovo_first_twelve_periods_debt_lines_against_excel() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_oborovo_periods()[:12],
+        metric_specs=OBOROVO_DEBT_METRIC_SPECS,
     )
     assert not failures, failures
