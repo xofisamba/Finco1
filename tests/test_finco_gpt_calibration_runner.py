@@ -75,3 +75,23 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["calibration_source"] == "pytest"
     assert payload["periods"]
     assert payload["kpis"]["senior_debt_keur"] > 0
+    assert payload["revenue_decomposition"]
+
+
+def test_run_calibration_revenue_decomposition_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    row = next(r for r in payload["revenue_decomposition"] if r["is_operation"])
+    assert row["date"]
+    assert row["generation_mwh"] > 0
+    assert row["ppa_tariff_eur_mwh"] > 0
+    assert row["market_price_eur_mwh"] > 0
+    assert "energy_revenue_keur" in row
+    assert "balancing_cost_pv_keur" in row
+    assert "balancing_cost_wind_keur" in row
+    assert "co2_revenue_keur" in row
+    assert row["revenue_keur"] == (
+        row["energy_revenue_keur"]
+        - row["balancing_cost_pv_keur"]
+        - row["balancing_cost_wind_keur"]
+        + row["co2_revenue_keur"]
+    )
