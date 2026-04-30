@@ -2,17 +2,13 @@
 
 This module establishes the temporal axis for all financial calculations.
 It generates period metadata (start/end dates, year indices, flags) matching
-the structure of the Oborovo Excel CF sheet.
+the structure of the Excel CF sheets.
 
-For Oborovo:
-- Financial Close: 2029-06-29
-- Construction: 12 months (ends 2030-06-29 = COD)
-- Periods: Semi-annual (2 per year)
-- Horizon: 30 years operation (2030-06-29 to 2060-06-29)
-
-Excel CF sheet row 134 dates: 2030-06-30, 2030-12-31, 2031-06-30, ...
-- First operation period ends June 30, 2030
-- Second operation period ends Dec 31, 2030
+FincoGPT calibration note:
+- When COD falls within a few days before June 30, Excel does not model a
+  near-zero one-day operating stub as a full operating period.
+- For Oborovo COD 2030-06-29, the first meaningful operating period in the
+  extracted Excel fixture ends 2030-12-31.
 """
 from dataclasses import dataclass
 from datetime import date
@@ -31,21 +27,7 @@ class PeriodFrequency(Enum):
 
 @dataclass(frozen=True)
 class PeriodMeta:
-    """Immutable metadata for a single period.
-    
-    Attributes:
-        index: 0-based period index (0=Y0-H1, 1=Y0-H2, 2=Y1-H1, etc.)
-        start_date: First day of the period
-        end_date: Last day of the period (inclusive)
-        year_index: Calendar year counter (starts at 0 for first year after FC)
-        period_in_year: Position within year (1=H1, 2=H2 for semi-annual)
-        is_construction: True if period is during construction phase
-        is_operation: True if period is during operational phase
-        is_ppa_active: True if PPA tariff applies in this period
-        days_in_period: Number of days in this period
-        day_fraction: days_in_period / (366 if leap year else 365) — for annualizing
-        is_leap_year: True if the period falls in a leap year
-    """
+    """Immutable metadata for a single period."""
     index: int
     start_date: date
     end_date: date
@@ -60,44 +42,15 @@ class PeriodMeta:
 
 
 def _semestrial_end(from_date: date, period_in_year: int) -> date:
-    """Return conventional period end date for semi-annual periods.
-    
-    H1: ends June 30
-    H2: ends December 31
-    """
+    """Return conventional period end date for semi-annual periods."""
     if period_in_year == 1:
         return date(from_date.year, 6, 30)
-    else:
-        return date(from_date.year, 12, 31)
+    return date(from_date.year, 12, 31)
 
 
 class PeriodEngine:
-    """Generates period sequence from financial close to end of horizon.
-    
-    The model operates in semi-annual periods. From Financial Close to COD
-    is treated as the construction period (Y0). After COD, operation begins.
-    Each operation period is exactly 6 months.
-    
-    Args:
-        financial_close: Date when financial close occurs (debt drawn)
-        construction_months: Number of months from FC to COD
-        horizon_years: Number of operational years after COD
-        ppa_years: Number of years PPA tariff is active (from COD)
-        frequency: Period frequency (default SEMESTRIAL for Oborovo)
-    
-    Example:
-        >>> engine = PeriodEngine(
-        ...     financial_close=date(2029, 6, 29),
-        ...     construction_months=12,
-        ...     horizon_years=30,
-        ...     ppa_years=12
-        ... )
-        >>> periods = engine.periods()
-        >>> # First operation period ends June 30, 2030
-        >>> periods[2].end_date
-        datetime.date(2030, 6, 30)
-    """
-    
+    """Generates period sequence from financial close to end of horizon."""
+
     def __init__(
         self,
         financial_close: date,
@@ -115,26 +68,26 @@ class PeriodEngine:
         self._horizon_end = self._add_years(self._cod, horizon_years)
         self._ppa_end = self._add_years(self._cod, ppa_years)
         self._periods_per_year = frequency.value
-    
+
     @property
     def cod(self) -> date:
         """Commercial Operation Date (end of construction)."""
         return self._cod
-    
+
     @property
     def ppa_end(self) -> date:
         """End date of PPA tariff period."""
         return self._ppa_end
-    
+
     @property
     def horizon_end(self) -> date:
         """End of investment horizon."""
         return self._horizon_end
-    
+
     def _add_months(self, d: date, months: int) -> date:
         """Add months to a date."""
         return d + relativedelta(months=months)
-    
+
     def _add_years(self, d: date, years: float) -> date:
         """Add years (int or float) to a date. Supports fractional years like 12.5."""
         if isinstance(years, float) and not years.is_integer():
@@ -142,31 +95,19 @@ class PeriodEngine:
             months = int((years - whole) * 12)
             return d + relativedelta(years=whole, months=months)
         return d + relativedelta(years=int(years))
-    
+
     def _days_between(self, start: date, end: date) -> int:
         """Days between two dates (end - start)."""
         return (end - start).days
-    
+
     def periods(self) -> List[PeriodMeta]:
-        """Generate all periods from construction through horizon.
-        
-        Construction period (Y0) runs from FC to COD.
-        Operation periods run from COD to horizon_end, each 6 months.
-        
-        Returns:
-            List of PeriodMeta objects ordered by index.
-            Period 0 = Y0-H1 (first half of construction year),
-            Period 1 = Y0-H2 (second half of construction year),
-            Period 2 = Y1-H1 (first operation half-year), etc.
-        """
+        """Generate all periods from construction through horizon."""
         periods: List[PeriodMeta] = []
-        
+
         # === Y0: Construction period (FC to COD) ===
-        # Y0 has 2 semi-annual periods spanning the 12-month construction
         y0_h1_end = self._add_months(self.fc, 6)
         y0_h2_end = self._cod
-        
-        # Y0-H1: FC to end of first 6 months
+
         days_y0h1 = self._days_between(self.fc, y0_h1_end)
         y0_h1_is_leap = calendar.isleap(y0_h1_end.year)
         periods.append(PeriodMeta(
@@ -182,8 +123,7 @@ class PeriodEngine:
             day_fraction=days_y0h1 / (366.0 if y0_h1_is_leap else 365.0),
             is_leap_year=y0_h1_is_leap,
         ))
-        
-        # Y0-H2: end of first 6 months to COD
+
         days_y0h2 = self._days_between(y0_h1_end, y0_h2_end)
         y0_h2_is_leap = calendar.isleap(y0_h2_end.year)
         periods.append(PeriodMeta(
@@ -199,59 +139,39 @@ class PeriodEngine:
             day_fraction=days_y0h2 / (366.0 if y0_h2_is_leap else 365.0),
             is_leap_year=y0_h2_is_leap,
         ))
-        
+
         # === Operation periods: COD to horizon_end ===
-        # COD = June 29, 2030. First operational period starts at COD.
-        # Special case: if COD falls within 7 days of June 30, the natural
-        # H1 end (June 30) would be a 1-day period. Excel skips it and
-        # models COD → Dec 31 as the first period (Y1-H1), then
-        # Jan 1 → Jun 30 as the second period (Y1-H2).
-        # Regardless of calendar H1/H2 designation, Excel numbers the
-        # first two operational periods as Y1-H1 and Y1-H2.
-        
         THRESHOLD_DAYS = 7
         current_date = self._cod
-        
-        # Determine first period end based on COD proximity to June 30.
-        # Use the NEXT June 30 after COD (not COD year June 30).
-        # If COD is Jul-Dec, next June 30 is in the following year.
-        # This correctly handles TUHO COD Dec 30, 2029 → anchor = Jun 30, 2030.
+
         if current_date.month <= 6:
             jun_30 = date(current_date.year, 6, 30)
         else:
             jun_30 = date(current_date.year + 1, 6, 30)
         days_to_jun_30 = (jun_30 - current_date).days
-        
-        # Short first period (1 day stub) only if:
-        # - days_to_jun_30 in [0, 7) AND
-        # - COD is not in June (month != 6)
-        # June COD always uses normal path (first op end = Jun 30).
-        # This fixes Oborovo (COD Jun 29, 2030): goes to normal path → first op end = Jun 30 ✓
-        # TUHO (COD Dec 30, 2029): days=182 ≥ 7 → normal path ✓
-        if 0 <= days_to_jun_30 < THRESHOLD_DAYS and current_date.month != 6:
-            # COD near June 30 — first period = COD to Dec 31 (H2 by calendar)
+
+        # If COD would create a near-zero stub before June 30, Excel rolls the
+        # first operating period to Dec 31. This is required for Oborovo
+        # (COD 2030-06-29 → first extracted operating period 2030-12-31).
+        if 0 <= days_to_jun_30 < THRESHOLD_DAYS:
             p1_end = date(current_date.year, 12, 31)
             p2_end = date(current_date.year + 1, 6, 30)
-            p1_period_in_year = 1  # Excel calls this Y1-H1
-            p2_period_in_year = 2  # Excel calls this Y1-H2
+            p1_period_in_year = 1
+            p2_period_in_year = 2
         else:
-            # COD early enough — first period = COD to Jun 30 (H1 by calendar)
             if current_date.month <= 6:
                 p1_end = date(current_date.year, 6, 30)
                 p2_end = date(current_date.year, 12, 31)
             else:
-                # COD in H2 (Jul-Dec): first period = COD to next Jun 30
                 p1_end = date(current_date.year + 1, 6, 30)
                 p2_end = date(current_date.year + 1, 12, 31)
             p1_period_in_year = 1
             p2_period_in_year = 2
-        
+
         period_index = 2
         year_index = 1
-        
-        # Generate first two periods (Y1-H1 and Y1-H2)
-        for h, end, pi_year in [(p1_period_in_year, p1_end, p1_period_in_year),
-                                  (p2_period_in_year, p2_end, p2_period_in_year)]:
+
+        for end, pi_year in [(p1_end, p1_period_in_year), (p2_end, p2_period_in_year)]:
             if end > self._horizon_end:
                 end = self._horizon_end
             days = self._days_between(current_date, end)
@@ -272,19 +192,17 @@ class PeriodEngine:
             ))
             period_index += 1
             current_date = date(end.year, end.month, end.day) + __import__('datetime').timedelta(days=1)
-        
-        year_index += 1  # Move to Y2 for subsequent periods
-        
-        # Subsequent years: standard H1 (Jan-Jun) + H2 (Jul-Dec) pairs
+
+        year_index += 1
+
         while current_date < self._horizon_end:
-            # Recalculate ends based on where current_date actually is
             if current_date.month <= 6:
                 h1_end = date(current_date.year, 6, 30)
                 h2_end = date(current_date.year, 12, 31)
             else:
-                h1_end = date(current_date.year, 12, 31)  # Only H2 left this year
+                h1_end = date(current_date.year, 12, 31)
                 h2_end = date(current_date.year + 1, 6, 30)
-            
+
             for h, end in [(1, h1_end), (2, h2_end)]:
                 if current_date >= self._horizon_end:
                     break
@@ -308,25 +226,24 @@ class PeriodEngine:
                 ))
                 period_index += 1
                 current_date = date(end.year, end.month, end.day) + __import__('datetime').timedelta(days=1)
-            
+
             year_index += 1
-        
+
         return periods
-    
+
     def operation_periods(self) -> List[PeriodMeta]:
         """Returns only operation periods (excludes construction)."""
         return [p for p in self.periods() if p.is_operation]
-    
+
     def ppa_periods(self) -> List[PeriodMeta]:
         """Returns only PPA-active operation periods."""
         return [p for p in self.periods() if p.is_ppa_active]
-    
+
     def period_dates(self) -> List[date]:
-        """Returns end_dates for all periods (matches Excel CF row 134)."""
+        """Returns end_dates for all periods."""
         return [p.end_date for p in self.periods()]
 
-# =============================================================================
-# Hash function for cache key — deterministic for PeriodEngine inputs
+
 def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
     """Deterministic hash for PeriodEngine inputs (for cache key)."""
     return (e.fc, e.construction_months, e.horizon_years, e.ppa_years, e.freq)
