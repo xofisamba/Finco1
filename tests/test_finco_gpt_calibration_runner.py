@@ -1,7 +1,7 @@
 """Tests for the FincoGPT headless calibration runner."""
 from __future__ import annotations
 
-from app.calibration import available_project_keys
+from app.calibration import available_project_keys, debt_rate_schedule_from_engine
 from app.calibration_runner import (
     CalibrationRunSpec,
     build_period_engine,
@@ -48,19 +48,35 @@ def test_build_period_engine_from_tuho_inputs() -> None:
 
 def test_build_run_config_from_oborovo_inputs() -> None:
     inputs = load_project_inputs("oborovo")
+    engine = build_period_engine(inputs)
     config = build_run_config(inputs)
     assert config.rate_per_period > 0
     assert config.tenor_periods == inputs.financing.senior_tenor_years * 2
     assert config.sculpt_capex_keur == inputs.capex.sculpt_capex_keur
+    assert config.rate_schedule is not None
+    assert len(config.rate_schedule) == config.tenor_periods
+
+
+def test_day_count_debt_rate_schedule_uses_operation_day_fractions() -> None:
+    inputs = load_project_inputs("oborovo")
+    engine = build_period_engine(inputs)
+    config = build_run_config(inputs, engine)
+    first_op = engine.operation_periods()[0]
+
+    assert config.rate_schedule is not None
+    assert abs(config.rate_schedule[0] - inputs.financing.all_in_rate * first_op.day_fraction) < 1e-12
+    assert config.rate_schedule[0] != inputs.financing.all_in_rate / 2
 
 
 def test_build_run_config_from_tuho_inputs() -> None:
     inputs = load_project_inputs("tuho")
-    config = build_run_config(inputs)
+    engine = build_period_engine(inputs)
+    config = build_run_config(inputs, engine)
     assert config.rate_per_period > 0
     assert config.fixed_debt_keur == inputs.financing.fixed_debt_keur
     assert config.debt_sizing_method == "fixed"
     assert config.equity_irr_method == "shl_plus_dividends"
+    assert config.rate_schedule is not None
 
 
 def test_calibration_run_spec_defaults() -> None:
