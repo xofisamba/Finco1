@@ -19,9 +19,7 @@ from tests.test_debt_excel_alignment import _excel_app_debt_diagnostic_rows
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = ROOT / "tests" / "fixtures"
 TARGETS = FIXTURE_DIR / "excel_calibration_targets.json"
-OBOROVO_PERIODS = FIXTURE_DIR / "tests" / "fixtures" / "excel_oborovo_periods.json"
-if not OBOROVO_PERIODS.exists():
-    OBOROVO_PERIODS = FIXTURE_DIR / "excel_oborovo_periods.json"
+OBOROVO_PERIODS = FIXTURE_DIR / "excel_oborovo_periods.json"
 
 
 OBOROVO_REVENUE_METRIC_SPECS = [
