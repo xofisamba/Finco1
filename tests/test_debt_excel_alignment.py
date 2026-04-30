@@ -30,19 +30,27 @@ OBOROVO_DEBT_SERVICE_METRIC_SPECS = [
     },
 ]
 
-OBOROVO_DEBT_SPLIT_METRIC_SPECS = [
-    {
-        "excel_sheet": "DS",
-        "excel_metric": "senior_principal_keur",
-        "app_metric": "senior_principal_keur",
-        "tolerance_pct": 0.005,
-    },
+OBOROVO_DEBT_INTEREST_METRIC_SPECS = [
     {
         "excel_sheet": "DS",
         "excel_metric": "senior_net_interest_keur",
         "app_metric": "senior_interest_keur",
         "tolerance_pct": 0.005,
     },
+]
+
+OBOROVO_DEBT_PRINCIPAL_METRIC_SPECS = [
+    {
+        "excel_sheet": "DS",
+        "excel_metric": "senior_principal_keur",
+        "app_metric": "senior_principal_keur",
+        "tolerance_pct": 0.005,
+    },
+]
+
+OBOROVO_DEBT_SPLIT_METRIC_SPECS = [
+    *OBOROVO_DEBT_PRINCIPAL_METRIC_SPECS,
+    *OBOROVO_DEBT_INTEREST_METRIC_SPECS,
 ]
 
 
@@ -177,6 +185,36 @@ def test_oborovo_first_twelve_debt_service_against_excel() -> None:
         metric_specs=OBOROVO_DEBT_SERVICE_METRIC_SPECS,
     )
     assert not failures, failures
+
+
+@pytest.mark.xfail(reason="Oborovo senior interest still needs Excel rate/fee alignment")
+def test_oborovo_first_twelve_debt_interest_against_excel() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_period_fixture("excel_oborovo_periods.json")[:12],
+        metric_specs=OBOROVO_DEBT_INTEREST_METRIC_SPECS,
+    )
+    if failures:
+        raise AssertionError({
+            "interest_failures": failures,
+            "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
+        })
+
+
+@pytest.mark.xfail(reason="Oborovo senior principal still needs Excel amortization timing alignment")
+def test_oborovo_first_twelve_debt_principal_against_excel() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    failures = collect_period_failures(
+        app_periods_by_date=period_by_date(payload),
+        excel_periods=_period_fixture("excel_oborovo_periods.json")[:12],
+        metric_specs=OBOROVO_DEBT_PRINCIPAL_METRIC_SPECS,
+    )
+    if failures:
+        raise AssertionError({
+            "principal_failures": failures,
+            "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
+        })
 
 
 @pytest.mark.xfail(reason="Oborovo principal/interest split still needs Excel rate/balance alignment")
