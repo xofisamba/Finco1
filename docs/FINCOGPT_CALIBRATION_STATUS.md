@@ -65,6 +65,8 @@ Passing / expected-passing checks:
 - Oborovo first twelve period corporate tax reconciliation is active, not xfail.
 - Oborovo first twelve SHL cash-flow reconciliation is active, not xfail: SHL principal flow, SHL net interest flow and net dividend flow from the Eq sheet.
 - Oborovo first twelve SHL gross interest reconciliation is active, not xfail: shareholder-loan interest from the P&L sheet.
+- Oborovo first twelve post-tax unlevered operating cash-flow reconciliation is active, not xfail: Excel CF free cash flow for banks vs app `cf_after_tax_keur`.
+- Oborovo total capex anchor is active for project IRR diagnostics.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
 - Sponsor equity + SHL cash-flow definition is serialized and tested so unpaid PIK/accrued SHL is not treated as investor cash inflow until paid.
@@ -174,20 +176,30 @@ The new sponsor IRR cash-flow convention is explicit:
 
 `tests/test_finco_gpt_calibration_runner.py` guards the serialized sponsor cash-flow definition, SHL decomposition shape and the first/twelfth Oborovo SHL cash-flow anchors.
 
+### 8. Project IRR diagnostics
+
+`tests/test_project_irr_excel_alignment.py` now isolates the project IRR problem instead of treating it as a black-box KPI mismatch.
+
+Active checks:
+
+- Oborovo first-twelve operating project cash flow: Excel CF `free_cash_flow_for_banks_keur` vs app `cf_after_tax_keur`.
+- Oborovo total capex anchor vs app total capex.
+- Explicit diagnostic helper showing project operating cash-flow rows use post-tax unlevered operating CF.
+
+The full Oborovo project IRR test remains xfail until exact construction-period capex timing and the complete operating / terminal cash-flow series are extracted from Excel.
+
 ## Next math-fix sequence
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
 
-### 1. Project IRR parity
+### 1. Full project IRR parity
 
-Next immediate target: Oborovo project IRR.
+Extract additional Excel rows for:
 
-Likely areas:
-
-- Exact unlevered cash-flow series definition.
 - Construction-period capex timing.
-- Residual terminal / decommissioning assumptions.
-- Whether project IRR in Excel is pre-tax, post-tax, unlevered or lender-case specific.
+- Full operating cash-flow series beyond first12.
+- Terminal / decommissioning / residual assumptions.
+- The exact Excel IRR row and whether it is pre-tax, post-tax, nominal, real, unlevered or lender-case specific.
 
 ### 2. Full SHL balance schedule parity
 
@@ -231,4 +243,4 @@ First12 anchors should eventually be replaced with full model logic:
 
 A green test suite on this branch does not yet mean the model is full Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps and explicit calibration anchors.
 
-The next meaningful milestone is to fix Oborovo project IRR by reconciling the exact unlevered cash-flow series and construction-period timing, while using the new sponsor equity + SHL cash-flow payload for sponsor IRR diagnostics.
+The next meaningful milestone is to extract and reconcile the full Oborovo project cash-flow series so project IRR can move from xfail to active parity.
