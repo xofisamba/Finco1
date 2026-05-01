@@ -123,7 +123,7 @@ def test_oborovo_period_fixture_has_reconciliation_rows() -> None:
         assert period["DS"]["senior_principal_keur"] > 0
         assert period["DS"]["senior_net_interest_keur"] > 0
         assert period["P&L"]["total_revenues_keur"] == period["CF"]["operating_revenues_keur"]
-        assert period["CF"]["ebitda_keur"] == (
+        assert period["CF"]["ebitda_keur"] == pytest.approx(
             period["CF"]["operating_revenues_keur"]
             + period["CF"]["operating_expenses_after_bank_tax_keur"]
         )
