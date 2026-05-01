@@ -55,8 +55,8 @@ class TestPeriodEngine:
         )
 
     def test_period_count(self, engine):
-        """30 godina x 2 perioda + 2 construction = 63 perioda ukupno (ukljucujuci kratak prvi operation period)."""
-        assert len(engine.periods()) == 63
+        """30 godina x 2 perioda + 2 construction = 62 perioda ukupno."""
+        assert len(engine.periods()) == 62
 
     def test_construction_periods(self, engine):
         """2 construction perioda."""
@@ -77,13 +77,13 @@ class TestPeriodEngine:
         assert op[3].year_index == 2
 
     def test_last_year_index(self, engine):
-        """Zadnji period ima year_index=31."""
+        """Zadnji period ima year_index=30."""
         op = engine.operation_periods()
-        assert op[-1].year_index == 31
+        assert op[-1].year_index == 30
 
     def test_ppa_period_count(self, engine):
-        """PPA traje 12 godina = 25 perioda (ukljucujuci kratki prvi period)."""
-        assert len(engine.ppa_periods()) == 25
+        """PPA traje 12 godina = 24 semi-annual perioda."""
+        assert len(engine.ppa_periods()) == 24
 
     def test_cod_date(self, engine):
         """COD = FC + 12 months."""
