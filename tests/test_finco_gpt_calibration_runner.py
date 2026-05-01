@@ -1,6 +1,8 @@
 """Tests for the FincoGPT headless calibration runner."""
 from __future__ import annotations
 
+import pytest
+
 from app.calibration import available_project_keys, debt_rate_schedule_from_engine
 from app.calibration_runner import (
     CalibrationRunSpec,
@@ -101,8 +103,79 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["revenue_decomposition"]
     assert payload["debt_decomposition"]
     assert payload["shl_decomposition"]
+    assert payload["excel_full_model_shl"]["rows"]
     assert payload["sponsor_equity_shl_cash_flows"]
+    assert payload["excel_full_model_sponsor_equity_shl_cash_flows"]["rows"]
     assert "sponsor_equity_shl_irr" in payload["kpis"]
+    assert "excel_full_model_sponsor_equity_shl_irr" in payload["kpis"]
+    assert payload["excel_full_model_project_irr"]["rows"]
+    assert "excel_full_model_project_irr" in payload["kpis"]
+    assert "excel_full_model_unlevered_project_irr" in payload["kpis"]
+
+
+def test_run_calibration_excel_full_model_project_irr_payload_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    excel_full = payload["excel_full_model_project_irr"]
+
+    assert excel_full["source"] == "excel_full_model_extract"
+    assert excel_full["columns"] == [
+        "date",
+        "project_irr_cf",
+        "unlevered_project_irr_cf",
+        "fcf_for_banks",
+    ]
+    assert len(excel_full["rows"]) == 61
+    assert excel_full["computed_project_irr"] == pytest.approx(excel_full["excel_project_irr"], abs=1e-8)
+    assert excel_full["computed_unlevered_project_irr"] == pytest.approx(
+        excel_full["excel_unlevered_project_irr"],
+        abs=1e-8,
+    )
+    assert payload["kpis"]["excel_full_model_project_irr"] == pytest.approx(
+        excel_full["computed_project_irr"],
+        abs=1e-8,
+    )
+    assert payload["kpis"]["excel_full_model_unlevered_project_irr"] == pytest.approx(
+        excel_full["computed_unlevered_project_irr"],
+        abs=1e-8,
+    )
+
+
+def test_run_calibration_excel_full_model_shl_payload_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    excel_full = payload["excel_full_model_shl"]
+
+    assert excel_full["source"] == "excel_full_model_extract"
+    assert excel_full["columns"] == [
+        "date",
+        "opening",
+        "closing",
+        "gross_interest",
+        "principal_flow",
+        "paid_net_interest",
+        "capitalized_interest",
+        "net_dividend",
+    ]
+    assert len(excel_full["rows"]) == 61
+    assert excel_full["first_draw_date"] == "2029-12-31"
+    assert excel_full["first_principal_repayment_date"] == "2042-06-30"
+    assert excel_full["first_dividend_date"] == "2047-12-31"
+    assert excel_full["final_closing_balance"] == 0.0
+
+
+def test_run_calibration_excel_full_model_sponsor_equity_shl_payload_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    excel_full = payload["excel_full_model_sponsor_equity_shl_cash_flows"]
+
+    assert excel_full["source"] == "excel_full_model_extract"
+    assert excel_full["definition"] == (
+        "shl_principal_flow_keur + paid_net_interest_keur + net_dividend_keur"
+    )
+    assert len(excel_full["rows"]) == 61
+    assert excel_full["rows"][0]["cash_flow_keur"] < 0
+    assert excel_full["computed_sponsor_equity_shl_irr"] == pytest.approx(
+        payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"],
+        abs=1e-8,
+    )
 
 
 def test_run_calibration_payload_is_operation_only_for_period_rows() -> None:

@@ -7,11 +7,13 @@ and P&L rows until the full SHL balance schedule is mapped.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from app.calibration import run_project_calibration
+from domain.returns.xirr import xirr
 from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
 
@@ -111,6 +113,52 @@ def test_oborovo_first_twelve_shl_decomposition_matches_cash_flow_definition() -
         )
 
 
+def test_oborovo_excel_full_model_shl_payload_matches_lifecycle_fixture() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    extract = _full_model_extract("excel_oborovo_full_model_extract.json")
+    excel_full = payload["excel_full_model_shl"]
+
+    assert excel_full["source"] == "excel_full_model_extract"
+    assert excel_full["workbook_sha256"] == extract["workbook_sha256"]
+    assert excel_full["columns"] == extract["shl_columns"]
+    assert len(excel_full["rows"]) == len(extract["shl"]) == 61
+    assert excel_full["first_draw_date"] == "2030-06-30"
+    assert excel_full["first_principal_repayment_date"] == "2042-12-31"
+    assert excel_full["first_dividend_date"] == "2050-06-30"
+    assert excel_full["final_closing_balance"] == 0.0
+
+    first = excel_full["rows"][0]
+    first_operation = excel_full["rows"][1]
+    final = excel_full["rows"][-1]
+    assert first["opening"] == 0.0
+    assert first["principal_flow"] < 0
+    assert first["capitalized_interest"] == pytest.approx(first["gross_interest"] - first["paid_net_interest"])
+    assert first_operation["opening"] == first["closing"]
+    assert final["date"] == "2060-06-30"
+    assert final["closing"] == 0.0
+
+
+def test_oborovo_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    excel_full = payload["excel_full_model_sponsor_equity_shl_cash_flows"]
+    rows = excel_full["rows"]
+
+    dates = [date.fromisoformat(row["date"]) for row in rows]
+    cash_flows = [row["cash_flow_keur"] for row in rows]
+
+    assert excel_full["definition"] == (
+        "shl_principal_flow_keur + paid_net_interest_keur + net_dividend_keur"
+    )
+    assert len(rows) == 61
+    assert sum(1 for value in cash_flows if value < 0) == 1
+    assert rows[0]["date"] == "2030-06-30"
+    assert rows[0]["cash_flow_keur"] < 0
+    assert xirr(cash_flows, dates) == pytest.approx(
+        payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"],
+        abs=1e-8,
+    )
+
+
 @pytest.mark.xfail(reason="App SHL bridge does not yet reproduce the full extracted Excel lifecycle")
 def test_oborovo_first_twelve_shl_balance_schedule_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
@@ -150,3 +198,46 @@ def test_tuho_first_three_shl_cash_flows_against_excel() -> None:
         metric_specs=OBOROVO_SHL_CASH_FLOW_METRIC_SPECS,
     )
     assert not failures, failures
+
+
+def test_tuho_excel_full_model_shl_payload_matches_lifecycle_fixture() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    extract = _full_model_extract("excel_tuho_full_model_extract.json")
+    excel_full = payload["excel_full_model_shl"]
+
+    assert excel_full["source"] == "excel_full_model_extract"
+    assert excel_full["workbook_sha256"] == extract["workbook_sha256"]
+    assert excel_full["columns"] == extract["shl_columns"]
+    assert len(excel_full["rows"]) == len(extract["shl"]) == 61
+    assert excel_full["first_draw_date"] == "2029-12-31"
+    assert excel_full["first_principal_repayment_date"] == "2042-06-30"
+    assert excel_full["first_dividend_date"] == "2047-12-31"
+    assert excel_full["final_closing_balance"] == 0.0
+
+    first = excel_full["rows"][0]
+    first_operation = excel_full["rows"][1]
+    final = excel_full["rows"][-1]
+    assert first["opening"] == 0.0
+    assert first["principal_flow"] < 0
+    assert first["capitalized_interest"] == pytest.approx(first["gross_interest"] - first["paid_net_interest"])
+    assert first_operation["opening"] == first["closing"]
+    assert final["date"] == "2059-12-31"
+    assert final["closing"] == 0.0
+
+
+def test_tuho_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    excel_full = payload["excel_full_model_sponsor_equity_shl_cash_flows"]
+    rows = excel_full["rows"]
+
+    dates = [date.fromisoformat(row["date"]) for row in rows]
+    cash_flows = [row["cash_flow_keur"] for row in rows]
+
+    assert len(rows) == 61
+    assert sum(1 for value in cash_flows if value < 0) == 1
+    assert rows[0]["date"] == "2029-12-31"
+    assert rows[0]["cash_flow_keur"] < 0
+    assert xirr(cash_flows, dates) == pytest.approx(
+        payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"],
+        abs=1e-8,
+    )

@@ -219,3 +219,23 @@ def test_oborovo_full_project_cash_flow_series_has_one_initial_outflow() -> None
 
     assert sum(1 for value in unlevered if value < 0) == 1
     assert all(value > 0 for value in unlevered[1:])
+
+
+def test_tuho_full_project_cash_flow_series_has_one_initial_outflow() -> None:
+    payload = _fixture("excel_tuho_full_model_extract.json")
+    project = [row[1] for row in payload["project_cf"]]
+    unlevered = [row[2] for row in payload["project_cf"]]
+
+    assert sum(1 for value in project if value < 0) == 1
+    assert sum(1 for value in unlevered if value < 0) == 1
+    assert all(value > 0 for value in project[1:])
+    assert all(value > 0 for value in unlevered[1:])
+
+
+def test_tuho_full_sponsor_shl_cash_flow_series_has_one_initial_outflow() -> None:
+    payload = _fixture("excel_tuho_full_model_extract.json")
+    sponsor_cash_flows = [row[4] + row[5] + row[7] for row in payload["shl"]]
+
+    assert sum(1 for value in sponsor_cash_flows if value < 0) == 1
+    assert sponsor_cash_flows[0] < 0
+    assert all(value >= 0 for value in sponsor_cash_flows[1:])

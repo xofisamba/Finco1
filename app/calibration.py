@@ -7,7 +7,10 @@ reconciliation work.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, is_dataclass, replace
+from datetime import date
+from pathlib import Path
 from typing import Any
 
 from app.waterfall_core import run_waterfall_v3_core
@@ -320,13 +323,117 @@ def run_project_calibration(
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
     payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
+    _attach_excel_full_model_shl(payload, normalized_project_key)
     investor_cf = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
     payload["sponsor_equity_shl_cash_flows"] = investor_cf
     payload["investor_cash_flow_definition"] = _investor_cash_flow_definition(inputs)
     sponsor_irr = _xirr_from_cash_flow_rows(investor_cf)
     payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr if sponsor_irr is not None else 0.0
+    _attach_excel_full_model_sponsor_equity_shl_irr(payload, normalized_project_key)
+    _attach_excel_full_model_project_irr(payload, normalized_project_key)
     payload["available_project_keys"] = available_project_keys()
     return payload
+
+
+def _attach_excel_full_model_project_irr(payload: dict[str, Any], project_key: str) -> None:
+    """Attach Excel-sourced full-horizon project IRR diagnostics when available."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    columns = extract["project_cf_columns"]
+    rows = [
+        {column: value for column, value in zip(columns, row)}
+        for row in extract["project_cf"]
+    ]
+    project_irr = _xirr_from_named_cash_flow_rows(rows, "project_irr_cf")
+    unlevered_project_irr = _xirr_from_named_cash_flow_rows(rows, "unlevered_project_irr_cf")
+
+    payload["excel_full_model_project_irr"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "columns": columns,
+        "rows": rows,
+        "excel_project_irr": extract.get("excel_project_irr"),
+        "excel_unlevered_project_irr": extract.get("excel_unlevered_project_irr"),
+        "computed_project_irr": project_irr,
+        "computed_unlevered_project_irr": unlevered_project_irr,
+    }
+    payload["kpis"]["excel_full_model_project_irr"] = (
+        project_irr if project_irr is not None else extract.get("excel_project_irr", 0.0)
+    )
+    payload["kpis"]["excel_full_model_unlevered_project_irr"] = unlevered_project_irr
+
+
+def _attach_excel_full_model_shl(payload: dict[str, Any], project_key: str) -> None:
+    """Attach Excel-sourced full-horizon SHL lifecycle diagnostics when available."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    columns = extract["shl_columns"]
+    rows = [
+        {column: value for column, value in zip(columns, row)}
+        for row in extract["shl"]
+    ]
+    principal_repayment_rows = [row for row in rows if row["principal_flow"] > 0]
+    dividend_rows = [row for row in rows if row["net_dividend"] > 0]
+
+    payload["excel_full_model_shl"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "columns": columns,
+        "rows": rows,
+        "first_draw_date": next((row["date"] for row in rows if row["principal_flow"] < 0), None),
+        "first_principal_repayment_date": (
+            principal_repayment_rows[0]["date"] if principal_repayment_rows else None
+        ),
+        "first_dividend_date": dividend_rows[0]["date"] if dividend_rows else None,
+        "final_closing_balance": rows[-1]["closing"] if rows else None,
+    }
+
+
+def _attach_excel_full_model_sponsor_equity_shl_irr(payload: dict[str, Any], project_key: str) -> None:
+    """Attach Excel-sourced sponsor equity plus SHL cash-flow diagnostics."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    rows = []
+    for row in extract["shl"]:
+        cash_flow = float(row[4] or 0.0) + float(row[5] or 0.0) + float(row[7] or 0.0)
+        rows.append({
+            "date": row[0],
+            "cash_flow_keur": cash_flow,
+            "shl_principal_flow_keur": row[4],
+            "paid_net_interest_keur": row[5],
+            "net_dividend_keur": row[7],
+        })
+
+    sponsor_irr = _xirr_from_cash_flow_rows(rows)
+    payload["excel_full_model_sponsor_equity_shl_cash_flows"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "definition": "shl_principal_flow_keur + paid_net_interest_keur + net_dividend_keur",
+        "rows": rows,
+        "computed_sponsor_equity_shl_irr": sponsor_irr,
+    }
+    payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"] = sponsor_irr
+
+
+def _load_excel_full_model_extract(project_key: str) -> dict[str, Any] | None:
+    fixture_name_by_project = {
+        "oborovo": "excel_oborovo_full_model_extract.json",
+        "tuho": "excel_tuho_full_model_extract.json",
+    }
+    fixture_name = fixture_name_by_project.get(project_key)
+    if fixture_name is None:
+        return None
+
+    fixture_path = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / fixture_name
+    if not fixture_path.exists():
+        return None
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 
 def _investor_cash_flow_definition(inputs: ProjectInputs) -> dict[str, Any]:
@@ -389,9 +496,14 @@ def _sponsor_equity_shl_cash_flows(inputs: ProjectInputs, period_rows: list[dict
 
 def _xirr_from_cash_flow_rows(rows: list[dict[str, Any]]) -> float | None:
     """Calculate XIRR from serialized cash-flow rows."""
-    from datetime import date
-
     cash_flows = [float(row["cash_flow_keur"]) for row in rows]
+    dates = [date.fromisoformat(str(row["date"])) for row in rows]
+    return xirr(cash_flows, dates)
+
+
+def _xirr_from_named_cash_flow_rows(rows: list[dict[str, Any]], cash_flow_key: str) -> float | None:
+    """Calculate XIRR from serialized rows with a named cash-flow column."""
+    cash_flows = [float(row[cash_flow_key]) for row in rows]
     dates = [date.fromisoformat(str(row["date"])) for row in rows]
     return xirr(cash_flows, dates)
 

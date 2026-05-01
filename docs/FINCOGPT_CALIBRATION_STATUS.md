@@ -24,6 +24,9 @@
 - Calibration payloads include `shl_decomposition` rows for opening SHL balance, gross interest, cash-paid interest, principal paid, PIK/capitalized interest and closing SHL balance.
 - Calibration payloads include `sponsor_equity_shl_cash_flows`, an explicit investor cash-flow series where initial outflow is share capital + SHL + SHL IDC and inflows are distributions + paid SHL interest + paid SHL principal.
 - Calibration KPIs include `sponsor_equity_shl_irr`, calculated from the explicit sponsor equity + SHL cash-flow series using XIRR dates.
+- Calibration payloads include `excel_full_model_project_irr`, an Excel-sourced full-horizon project cash-flow block for Oborovo and TUHO, plus `excel_full_model_project_irr` and `excel_full_model_unlevered_project_irr` KPI diagnostics.
+- Calibration payloads include `excel_full_model_shl`, an Excel-sourced full-horizon SHL lifecycle block for Oborovo and TUHO.
+- Calibration payloads include `excel_full_model_sponsor_equity_shl_cash_flows` plus `excel_full_model_sponsor_equity_shl_irr`, calculated from the full extracted Excel SHL principal, paid net interest and dividend rows.
 
 ### Excel fixtures
 
@@ -46,7 +49,7 @@ The TUHO factory is intentionally marked as first-pass. It matches key anchors s
 
 Latest local regression gate:
 
-- Full pytest suite: `461 passed, 4 skipped, 6 xfailed`.
+- Full pytest suite: `472 passed, 4 skipped, 6 xfailed`.
 
 ## Current calibration truth
 
@@ -74,11 +77,16 @@ Passing / expected-passing checks:
 - Oborovo first twelve post-tax unlevered operating cash-flow reconciliation is active, not xfail: Excel CF free cash flow for banks vs app `cf_after_tax_keur`.
 - Oborovo full Excel model extract shape is active: 61 SHL rows and 61 project IRR cash-flow rows.
 - Oborovo full SHL lifecycle is active in fixture tests: construction draw, capitalized interest, first principal repayment, SHL zero balance and first dividends.
+- Oborovo full SHL lifecycle is active in the headless calibration payload via `excel_full_model_shl`.
 - Oborovo full unlevered project IRR cash-flow fixture is active and tied to Excel unlevered project IRR anchor `8.2801672816%`.
+- Oborovo full unlevered project IRR parity is active in the headless calibration payload via `excel_full_model_project_irr`.
 - TUHO full Excel model extract shape is active: 61 SHL rows and 61 project IRR cash-flow rows.
 - TUHO full SHL lifecycle is active in fixture tests: construction draw, capitalized interest, first principal repayment, SHL zero balance and first dividends.
+- TUHO full SHL lifecycle is active in the headless calibration payload via `excel_full_model_shl`.
 - TUHO full unlevered project IRR cash-flow fixture is active and tied to Excel unlevered project IRR anchor `9.1082808375%`.
 - TUHO full project IRR cash-flow fixture is active and tied to Excel project IRR anchor `9.3046757579%`.
+- TUHO full project and unlevered project IRR parity is active in the headless calibration payload via `excel_full_model_project_irr`.
+- Oborovo and TUHO Excel full-model sponsor equity + SHL cash-flow diagnostics are active and recompute `excel_full_model_sponsor_equity_shl_irr` from SHL principal flow, paid net interest and net dividend rows.
 - Oborovo total capex anchor is active for project IRR diagnostics.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
@@ -92,10 +100,10 @@ Passing / expected-passing checks:
 
 Diagnostic `xfail` checks:
 
-- Oborovo project IRR vs app engine remains diagnostic until the app calculation uses the full extracted Excel cash-flow series or the engine is rebuilt to reproduce it.
-- Oborovo first twelve full SHL opening/closing balance schedule now compares against the extracted full model lifecycle and remains diagnostic until the app SHL bridge reproduces that lifecycle.
-- TUHO project IRR vs Excel.
-- TUHO equity IRR vs Excel.
+- Native Oborovo project IRR vs Excel remains diagnostic until the app engine reproduces the full extracted Excel cash-flow series without fixture-backed diagnostics.
+- Native Oborovo first twelve full SHL opening/closing balance schedule still compares app SHL bridge rows against the extracted full model lifecycle and remains diagnostic until the app SHL bridge reproduces that lifecycle.
+- Native TUHO project IRR vs Excel remains diagnostic until the app engine uses the full extracted Excel project cash-flow series.
+- Native TUHO equity IRR vs Excel remains diagnostic until the app engine uses the full extracted Excel sponsor cash-flow series.
 
 These xfails are intentional. They keep CI honest while documenting known gaps.
 
@@ -188,7 +196,9 @@ The new sponsor IRR cash-flow convention is explicit:
 
 `app/calibration.py` applies narrow Oborovo first-12 and TUHO first-3 SHL cash-flow calibration anchors extracted from the Eq and P&L sheets. This aligns paid SHL net interest, SHL principal flow, net dividend flow and gross P&L shareholder-loan interest.
 
-`tests/test_shl_excel_alignment.py` promotes Oborovo first-twelve and TUHO first-three SHL cash-flow rows to active reconciliation tests. Full SHL opening/closing balance remains xfail until the app SHL bridge reproduces the full extracted lifecycle.
+`tests/test_shl_excel_alignment.py` promotes Oborovo first-twelve and TUHO first-three SHL cash-flow rows to active reconciliation tests. It also validates the full Excel-sourced Oborovo and TUHO SHL lifecycle payloads and the Excel-sourced sponsor equity + SHL cash-flow diagnostics.
+
+The native app SHL opening/closing balance bridge remains xfail until it reproduces the extracted full SHL lifecycle without fixture-backed diagnostics.
 
 `tests/test_shl_waterfall_priority.py` locks the confirmed business rule: SHL opening balance includes capitalized IDC; available post-senior cash pays SHL interest first, then SHL principal, then dividends only from residual cash; unpaid interest is capitalized/accrued.
 
@@ -206,22 +216,26 @@ Active checks:
 
 `tests/test_full_model_extracts.py` now validates the full extracted Oborovo and TUHO model fixtures: 61-period SHL lifecycles and 61-row project/unlevered IRR cash-flow series directly from the uploaded `.xlsm` models.
 
-The full Oborovo project IRR test remains xfail until the app calculation uses this complete extracted series or the engine is rebuilt to reproduce it.
+`tests/test_project_irr_excel_alignment.py` now validates that `run_project_calibration()` exposes the full extracted Excel cash-flow series and recomputes the Excel-sourced full-horizon project/unlevered IRR diagnostics.
+
+The native app-engine project IRR tests remain xfail until the engine is rebuilt to reproduce the complete extracted series without Excel-sourced diagnostic payloads.
 
 ## Next math-fix sequence
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
 
-### 1. Full project IRR parity
+### 1. Native engine project IRR parity
 
-Use the extracted full Oborovo project cash-flow series to either:
+The extracted full Oborovo and TUHO project cash-flow series are now exposed in the headless calibration payload and recomputed with XIRR. The remaining task is to rebuild native app project cash-flow generation so it reproduces those extracted Excel series without fixture-backed diagnostics:
 
-- compute a separate Excel-sourced `excel_unlevered_project_irr` parity KPI, or
-- rebuild app project cash-flow generation so it reproduces the extracted Excel series without fixture anchors.
+- exact construction-period capex timing;
+- exact project vs unlevered cash-flow definitions;
+- full operating and terminal cash-flow series;
+- app `project_irr` KPI replacement once native parity is reached.
 
-### 2. Full SHL balance schedule parity
+### 2. Native SHL balance schedule parity
 
-Use the extracted Oborovo SHL lifecycle fixture to replace first-12-only SHL diagnostics:
+The extracted Oborovo and TUHO SHL lifecycle fixtures are now exposed in the headless calibration payload. The remaining task is to rebuild native app SHL bridge logic so it reproduces the extracted full lifecycle without fixture-backed diagnostics:
 
 - SHL opening balance.
 - Gross interest.
@@ -231,12 +245,13 @@ Use the extracted Oborovo SHL lifecycle fixture to replace first-12-only SHL dia
 - Closing balance.
 - Dividend timing after SHL repayment.
 
-### 3. Sponsor equity / SHL IRR parity
+### 3. Native sponsor equity / SHL IRR parity
 
-After the full sponsor equity + SHL cash-flow series is validated against Excel rows:
+Excel-sourced sponsor equity + SHL cash-flow diagnostics are now active. The remaining task is to make native app sponsor cash-flow generation reproduce those rows:
 
-- Compare dividend/distribution timing.
-- Compare `sponsor_equity_shl_irr` to the relevant Excel equity / sponsor IRR anchor.
+- exact dividend/distribution timing;
+- exact SHL paid-interest and principal timing;
+- replacement of native `sponsor_equity_shl_irr` once parity is reached.
 
 ### 4. TUHO full-horizon parity
 
@@ -257,4 +272,4 @@ First12 / first3 anchors should eventually be replaced with full model logic:
 
 A green test suite on this branch does not yet mean the model is full Excel-parity. It means the branch has a reliable calibration harness with known xfail gaps and explicit calibration anchors.
 
-The next meaningful milestone is to use the extracted 61-row Oborovo and TUHO project cash-flow series and SHL lifecycles to move from first-period anchoring toward full-horizon parity.
+The next meaningful milestone is native full-horizon SHL balance parity: replacing first-period anchors with engine logic that reproduces the extracted 61-row Oborovo and TUHO SHL lifecycles.
