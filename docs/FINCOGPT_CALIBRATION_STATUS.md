@@ -70,6 +70,7 @@ Passing / expected-passing checks:
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
 - Sponsor equity + SHL cash-flow definition is serialized and tested so unpaid PIK/accrued SHL is not treated as investor cash inflow until paid.
+- SHL waterfall priority is now explicitly tested: opening balance includes SHL IDC, cash after senior debt pays SHL interest first, then SHL principal, and dividends are residual after SHL service.
 
 Diagnostic `xfail` checks:
 
@@ -173,6 +174,8 @@ The new sponsor IRR cash-flow convention is explicit:
 `app/calibration.py` applies a narrow Oborovo first-12 SHL cash-flow calibration anchor extracted from the Eq and P&L sheets. This aligns first-12 paid SHL net interest, SHL principal flow, net dividend flow and gross P&L shareholder-loan interest.
 
 `tests/test_shl_excel_alignment.py` promotes Oborovo first-twelve SHL cash-flow and gross-interest rows to active reconciliation tests. Full SHL opening/closing balance remains xfail until the Excel balance schedule is extracted.
+
+`tests/test_shl_waterfall_priority.py` locks the confirmed business rule: SHL opening balance includes capitalized IDC; available post-senior cash pays SHL interest first, then SHL principal, then dividends only from residual cash; unpaid interest is capitalized/accrued.
 
 `tests/test_finco_gpt_calibration_runner.py` guards the serialized sponsor cash-flow definition, SHL decomposition shape and the first/twelfth Oborovo SHL cash-flow anchors.
 
