@@ -36,7 +36,7 @@ class TestDomainLayerClean:
                 continue
 
             try:
-                with open(py_file) as f:
+                with open(py_file, encoding="utf-8") as f:
                     content = f.read()
                     tree = ast.parse(content)
 
@@ -64,7 +64,7 @@ class TestDomainLayerClean:
                 continue
 
             try:
-                with open(py_file) as f:
+                with open(py_file, encoding="utf-8") as f:
                     content = f.read()
                     if "@st.cache_data" in content or "@st.cache" in content:
                         # Check if it's actually a decorator (starts with @)
