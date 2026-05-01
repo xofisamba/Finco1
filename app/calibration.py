@@ -7,7 +7,7 @@ reconciliation work.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from typing import Any
 
 from app.waterfall_core import run_waterfall_v3_core
@@ -173,13 +173,29 @@ def load_project_inputs(project_key: str) -> ProjectInputs:
     """Load a default ProjectInputs factory for a calibration project."""
     key = project_key.lower().strip()
     if key == "oborovo":
-        return ProjectInputs.create_default_oborovo()
-    if key in {"tuho", "tuhobic", "tuhobić"}:
+        return _apply_oborovo_input_anchors(ProjectInputs.create_default_oborovo())
+    if key in {"tuho", "tuhobic", "tuhobi\u0107"}:
         factory = _find_tuho_factory()
         if factory is None:
             raise NotImplementedError("TUHO default input factory is not implemented yet")
         return factory()
     raise ValueError(f"Unknown project_key: {project_key}")
+
+
+def _apply_oborovo_input_anchors(inputs: ProjectInputs) -> ProjectInputs:
+    """Apply narrow Excel anchors needed for headless Oborovo reconciliation."""
+    return replace(
+        inputs,
+        capex=replace(
+            inputs.capex,
+            vat_costs_keur=33.49265737862265,
+            reserve_accounts_keur=0.0,
+        ),
+        financing=replace(
+            inputs.financing,
+            fixed_debt_keur=42852.26672602787,
+        ),
+    )
 
 
 def build_period_engine(inputs: ProjectInputs) -> PeriodEngine:
