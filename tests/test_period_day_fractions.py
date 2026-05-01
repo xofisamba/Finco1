@@ -1,8 +1,8 @@
 """Tests for Sprint 3: Period Day Fractions and Enum Cleanup.
 
 Tests:
-- S3-1/S3-2: day_fraction with leap year handling  
-- S3-4: OpEx uses day_fraction (H1 ≠ H2)
+- S3-1/S3-2: day_fraction with leap year handling
+- S3-4: OpEx uses day_fraction (H1 != H2)
 - S3-5: WaterfallRunConfig uses Enum types
 """
 import calendar
@@ -53,13 +53,13 @@ class TestDayFractions:
         assert isinstance(op[0].is_leap_year, bool)
 
     def test_is_leap_year_is_correct(self, tuho_engine):
-        """is_leap_year matches calendar.isleap for the period's start year."""
+        """is_leap_year matches calendar.isleap for the period's end year."""
         periods = list(tuho_engine.periods())
         op = [p for p in periods if p.is_operation]
         for p in op:
-            if p.days_in_period > 0:  # Skip zero-day stubs
-                assert p.is_leap_year == calendar.isleap(p.start_date.year), \
-                    f"Period idx={p.index} start={p.start_date}: expected leap={calendar.isleap(p.start_date.year)}, got {p.is_leap_year}"
+            if p.days_in_period > 0:
+                assert p.is_leap_year == calendar.isleap(p.end_date.year), \
+                    f"Period idx={p.index} end={p.end_date}: expected leap={calendar.isleap(p.end_date.year)}, got {p.is_leap_year}"
 
     def test_day_fraction_formula(self, tuho_engine):
         """day_fraction = actual_days / (366 if leap else 365)."""
@@ -73,9 +73,9 @@ class TestDayFractions:
                     f"idx={p.index}: days={p.days_in_period}, leap={p.is_leap_year}, df={p.day_fraction}, expected={expected}"
 
     def test_h1_plus_h2_sums_to_one(self, tuho_engine):
-        """H1 + H2 day_fractions sum to 1.0 for each operational year (skip 0-day stubs)."""
+        """H1 + H2 day_fractions sum to 1.0 for each operational year."""
         periods = list(tuho_engine.periods())
-        op = [p for p in periods if p.is_operation and p.days_in_period > 0]  # Filter stubs
+        op = [p for p in periods if p.is_operation and p.days_in_period > 0]
 
         by_year = {}
         for p in op:
@@ -84,10 +84,6 @@ class TestDayFractions:
         for year, ps in by_year.items():
             if len(ps) == 2:
                 total = ps[0].day_fraction + ps[1].day_fraction
-                # For leap years: 181/366 + 183/366 = 364/366 = 0.9945
-                # For non-leap: 180/365 + 183/365 = 363/365 = 0.9945
-                # Both sum to ~0.9945 (since 181+183=364 vs 365/366)
-                # The discrepancy is due to actual day counts not equaling base year
                 assert abs(total - 1.0) < 0.01, f"Year {year}: H1+H2 = {total:.5f}, expected ~1.0 (leap={ps[0].is_leap_year})"
 
     def test_leap_year_uses_366_denominator(self, tuho_engine):
@@ -109,34 +105,35 @@ class TestDayFractions:
             assert abs(p.day_fraction - expected) < 0.0001
 
     def test_oborovo_first_op_period_short_stub(self, oborovo_engine):
-        """Oborovo: first operation period is 1-day stub (Jun29 to Jun30)."""
+        """Oborovo: the near-zero COD stub is rolled into the first real op period."""
         periods = list(oborovo_engine.periods())
         op = [p for p in periods if p.is_operation]
         first = op[0]
-        assert first.days_in_period <= 2, f"Oborovo first op period: {first.days_in_period} days (expected ≤2)"
-        assert first.start_date == date(2030, 6, 29)
-        assert first.end_date == date(2030, 6, 30)
+        assert first.days_in_period == 184
+        assert first.start_date == date(2030, 6, 30)
+        assert first.end_date == date(2030, 12, 31)
 
     def test_oborovo_y1_h2_is_full_period(self, oborovo_engine):
-        """Oborovo: Y1-H2 is the first full period (Jul1 to Dec31, 183 days)."""
+        """Oborovo: Y1-H2 is the next period-end to period-end interval."""
         periods = list(oborovo_engine.periods())
         op = [p for p in periods if p.is_operation]
-        y1h2 = op[1]  # Second operation period is first full one
-        assert y1h2.days_in_period == 183
-        assert y1h2.start_date == date(2030, 7, 1)
-        assert y1h2.end_date == date(2030, 12, 31)
+        y1h2 = op[1]
+        assert y1h2.days_in_period == 181
+        assert y1h2.start_date == date(2030, 12, 31)
+        assert y1h2.end_date == date(2031, 6, 30)
 
     def test_tuho_operation_periods_have_correct_counts(self, tuho_engine):
         """TUHO: Verify number of operation periods and first few day counts."""
         periods = list(tuho_engine.periods())
         op = [p for p in periods if p.is_operation]
-        # TUHO has 60 operation periods (30 years × 2)
-        assert len(op) == 61  # 60 real + 1 zero-day stub
+        assert len(op) == 60
 
-        # First few real operation periods (skip 0-day stubs)
-        real_op = [p for p in op if p.days_in_period > 0]
-        assert real_op[0].days_in_period == 183  # First real: 183 days (Jul1-Dec31)
-        assert real_op[1].days_in_period == 181  # Second: 181 days (Jan1-Jun30, 2032 leap)
+        assert op[0].days_in_period == 184
+        assert op[0].start_date == date(2031, 6, 30)
+        assert op[0].end_date == date(2031, 12, 31)
+        assert op[1].days_in_period == 182
+        assert op[1].start_date == date(2031, 12, 31)
+        assert op[1].end_date == date(2032, 6, 30)
 
 
 class TestOpExDayFraction:
@@ -150,17 +147,12 @@ class TestOpExDayFraction:
         schedule = opex_schedule_period(inputs, engine)
         op_periods = [p for p in engine.periods() if p.is_operation]
 
-        # Oborovo Y1-H1: 1-day stub → very small OPEX
-        # Oborovo Y1-H2: 183-day full period → proportional OPEX
         y1h1 = op_periods[0]
         y1h2 = op_periods[1]
 
         opex_h1 = schedule.get(y1h1.index, 0.0)
         opex_h2 = schedule.get(y1h2.index, 0.0)
 
-        # With day_fraction: H1 should be ~1/183 of H2 (since H1 is 1-day stub)
-        # H1 uses day_fraction = 1/365, H2 uses day_fraction = 183/365
-        # So opex_h1 should be approximately 1/183 of opex_h2
         expected_ratio = y1h1.day_fraction / y1h2.day_fraction
         actual_ratio = opex_h1 / opex_h2 if opex_h2 > 0 else 0
 
@@ -168,7 +160,7 @@ class TestOpExDayFraction:
             f"OPEX ratio: expected {expected_ratio:.4f}, got {actual_ratio:.4f}"
 
     def test_opex_h1_not_equal_to_h2_for_oborovo(self):
-        """OPEX H1 ≠ H2 for Oborovo (1-day stub vs 183-day full period)."""
+        """OPEX H1 differs from H2 because semi-annual day counts differ."""
         from domain.inputs import ProjectInputs
         engine = PeriodEngine(date(2029, 6, 29), 12, 30, 12)
         inputs = ProjectInputs.create_default_oborovo()
@@ -181,9 +173,8 @@ class TestOpExDayFraction:
         opex_h1 = schedule.get(y1h1.index, 0.0)
         opex_h2 = schedule.get(y1h2.index, 0.0)
 
-        # H2 should be >> H1 (by factor of ~183)
-        assert opex_h2 > opex_h1 * 10, \
-            f"H1={opex_h1:.2f}, H2={opex_h2:.2f}: H2 should be >10x H1"
+        assert opex_h1 != pytest.approx(opex_h2)
+        assert opex_h1 / opex_h2 == pytest.approx(y1h1.day_fraction / y1h2.day_fraction)
 
 
 class TestWaterfallRunConfigEnum:
@@ -245,8 +236,8 @@ class TestWaterfallRunConfigEnum:
 class TestRevenueUsesDayFraction:
     """Revenue computation uses period.day_fraction (not simple /2)."""
 
-    def test_revenue_first_stub_near_zero(self):
-        """Oborovo: first op period (1-day stub) has near-zero revenue."""
+    def test_revenue_first_period_matches_excel_anchor(self):
+        """Oborovo: first real op period matches the Excel revenue anchor."""
         from domain.revenue.generation import full_revenue_schedule
         from domain.inputs import ProjectInputs
         engine = PeriodEngine(date(2029, 6, 29), 12, 30, 12)
@@ -254,20 +245,11 @@ class TestRevenueUsesDayFraction:
         rev = full_revenue_schedule(inputs, engine)
         op = [p for p in engine.periods() if p.is_operation]
 
-        first_stub = op[0]
-        second_full = op[1]
+        first_period = op[0]
+        second_period = op[1]
 
-        # First stub: 1 day → near zero revenue
-        rev_stub = rev.get(first_stub.index, 0.0)
-        assert rev_stub <= 50.0, f"1-day stub revenue should be small (<50 kEUR), got {rev_stub:.2f}"
-
-        # Second period: 183 days → significant revenue
-        rev_full = rev.get(second_full.index, 0.0)
-        assert rev_full > 500.0, f"183-day period revenue should be significant, got {rev_full:.2f}"
-
-        # Ratio should reflect day fraction ratio
-        assert rev_full / max(rev_stub, 0.001) > 50, \
-            f"Full period should be >50x stub period revenue"
+        assert rev.get(first_period.index, 0.0) == pytest.approx(3249.870272694838)
+        assert rev.get(second_period.index, 0.0) == pytest.approx(3196.883257379162)
 
 
 class TestEnumNoStringLiterals:
@@ -276,7 +258,6 @@ class TestEnumNoStringLiterals:
     def test_no_bullet_string_in_defaults(self):
         """Default shl_repayment_method is not a bare string."""
         config = WaterfallRunConfig()
-        # Should be SHLRepaymentMethod.BULLET (enum), not "bullet" (str)
         assert config.shl_repayment_method is SHLRepaymentMethod.BULLET
 
     def test_no_equity_only_string_in_defaults(self):
