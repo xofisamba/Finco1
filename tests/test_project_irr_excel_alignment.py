@@ -124,6 +124,8 @@ def test_oborovo_excel_full_model_unlevered_project_irr_payload_matches_anchor()
         payload["kpis"]["excel_full_model_unlevered_project_irr"],
         abs=1e-8,
     )
+    assert payload["project_cash_flows"]["rows"] == excel_full["rows"]
+    assert payload["project_cash_flows"]["rows"][0]["date"] == "2029-06-29"
 
 
 def test_tuho_excel_full_model_project_irr_payload_matches_anchors() -> None:
@@ -158,9 +160,10 @@ def test_tuho_excel_full_model_project_irr_payload_matches_anchors() -> None:
         _targets("tuho")["unlevered_project_irr"]["value"],
         abs=1e-8,
     )
+    assert payload["project_cash_flows"]["rows"] == excel_full["rows"]
+    assert payload["project_cash_flows"]["rows"][0]["project_irr_cf"] < 0
 
 
-@pytest.mark.xfail(reason="Native Oborovo project IRR has not yet been rebuilt from the full extracted Excel cash-flow series")
 def test_oborovo_project_irr_against_excel() -> None:
     anchors = _targets("oborovo")
     payload = run_project_calibration("oborovo", calibration_source="pytest")
@@ -172,7 +175,6 @@ def test_oborovo_project_irr_against_excel() -> None:
     assert comparison["passed"], comparison
 
 
-@pytest.mark.xfail(reason="Native TUHO project IRR has not yet been rebuilt from the full extracted Excel cash-flow series")
 def test_tuho_project_irr_against_excel() -> None:
     anchors = _targets("tuho")
     payload = run_project_calibration("tuho", calibration_source="pytest")

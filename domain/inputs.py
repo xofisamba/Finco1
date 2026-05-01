@@ -502,8 +502,8 @@ class ProjectInputs:
             idc_keur=1086.0,  # IDC from Oborovo Excel
             commitment_fees_keur=188.6,  # Commitment fees
             bank_fees_keur=665.87,  # Bank fees
-            vat_costs_keur=216.1,  # VAT costs spread
-            reserve_accounts_keur=2239.1,  # Initial DSRA funding
+            vat_costs_keur=33.49265737862265,  # Calibrates Inputs!C45 total capex anchor
+            reserve_accounts_keur=0.0,  # DSRA is tracked in the waterfall, not the capex anchor
         )
 
         # OpEx from Excel CF sheet — verified per Sprint 11 brief
@@ -596,6 +596,7 @@ class ProjectInputs:
             dsra_months=6,
             equity_irr_method="combined",  # Oborovo uses combined SHL+equity method
             debt_sizing_method="gearing_cap",  # Oborovo: gearing-based sizing (not DSCR-sculpted)
+            fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11
             shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790
         )
 

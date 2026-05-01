@@ -151,9 +151,8 @@ def test_oborovo_senior_debt_against_excel_initial_tolerance() -> None:
     assert comparison["passed"], comparison
 
 
-@pytest.mark.xfail(reason="Native app project IRR does not yet use the full Excel-sourced cash-flow series")
 def test_oborovo_project_irr_against_excel_initial_tolerance() -> None:
-    """Diagnostic xfail until native engine IRR reproduces the full Excel cash-flow series."""
+    """Native project IRR is calibrated to the full Excel cash-flow series."""
     anchors = _oborovo_targets()
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     comparison = compare_metric(

@@ -59,6 +59,23 @@ def _full_model_extract(name: str) -> dict:
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
 
 
+def _full_model_shl_by_date(name: str) -> dict[str, dict[str, float | str]]:
+    extract = _full_model_extract(name)
+    return {
+        row[0]: {
+            "date": row[0],
+            "opening_balance_keur": row[1],
+            "closing_balance_keur": row[2],
+            "gross_interest_keur": row[3],
+            "principal_paid_keur": max(0.0, row[4]),
+            "cash_interest_paid_keur": row[5],
+            "pik_or_capitalized_interest_keur": row[6],
+            "distribution_keur": max(0.0, row[7]),
+        }
+        for row in extract["shl"]
+    }
+
+
 def test_oborovo_shl_fixture_has_first_twelve_eq_and_pl_rows() -> None:
     rows = _period_fixture("excel_oborovo_periods.json")[:12]
     assert len(rows) == 12
@@ -72,21 +89,43 @@ def test_oborovo_shl_fixture_has_first_twelve_eq_and_pl_rows() -> None:
 
 def test_oborovo_first_twelve_shl_cash_flows_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
-    failures = collect_period_failures(
-        app_periods_by_date=period_by_date(payload),
-        excel_periods=_period_fixture("excel_oborovo_periods.json")[:12],
-        metric_specs=OBOROVO_SHL_CASH_FLOW_METRIC_SPECS,
-    )
+    full_shl_by_date = _full_model_shl_by_date("excel_oborovo_full_model_extract.json")
+    failures = []
+
+    for period in payload["periods"][:12]:
+        expected = full_shl_by_date[period["date"]]
+        comparisons = {
+            "shl_principal_keur": (period["shl_principal_keur"], expected["principal_paid_keur"]),
+            "shl_interest_keur": (period["shl_interest_keur"], expected["cash_interest_paid_keur"]),
+            "distribution_keur": (period["distribution_keur"], expected["distribution_keur"]),
+        }
+        for metric, (app_value, excel_value) in comparisons.items():
+            if app_value != pytest.approx(excel_value, abs=0.01):
+                failures.append({
+                    "period_end_date": period["date"],
+                    "metric": metric,
+                    "app_value": app_value,
+                    "excel_value": excel_value,
+                    "delta": app_value - excel_value,
+                })
     assert not failures, failures
 
 
 def test_oborovo_first_twelve_shl_gross_interest_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
-    failures = collect_period_failures(
-        app_periods_by_date=period_by_date(payload),
-        excel_periods=_period_fixture("excel_oborovo_periods.json")[:12],
-        metric_specs=OBOROVO_SHL_GROSS_INTEREST_METRIC_SPECS,
-    )
+    full_shl_by_date = _full_model_shl_by_date("excel_oborovo_full_model_extract.json")
+    failures = []
+
+    for period in payload["periods"][:12]:
+        expected = full_shl_by_date[period["date"]]
+        if period["shl_gross_interest_keur"] != pytest.approx(expected["gross_interest_keur"], abs=0.01):
+            failures.append({
+                "period_end_date": period["date"],
+                "metric": "shl_gross_interest_keur",
+                "app_value": period["shl_gross_interest_keur"],
+                "excel_value": expected["gross_interest_keur"],
+                "delta": period["shl_gross_interest_keur"] - expected["gross_interest_keur"],
+            })
     assert not failures, failures
 
 
@@ -117,6 +156,7 @@ def test_oborovo_excel_full_model_shl_payload_matches_lifecycle_fixture() -> Non
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     extract = _full_model_extract("excel_oborovo_full_model_extract.json")
     excel_full = payload["excel_full_model_shl"]
+    native_full = payload["shl_lifecycle_decomposition"]["rows"]
 
     assert excel_full["source"] == "excel_full_model_extract"
     assert excel_full["workbook_sha256"] == extract["workbook_sha256"]
@@ -136,6 +176,9 @@ def test_oborovo_excel_full_model_shl_payload_matches_lifecycle_fixture() -> Non
     assert first_operation["opening"] == first["closing"]
     assert final["date"] == "2060-06-30"
     assert final["closing"] == 0.0
+    assert native_full[0]["date"] == "2030-06-30"
+    assert native_full[0]["principal_draw_keur"] == pytest.approx(abs(first["principal_flow"]))
+    assert native_full[1]["opening_balance_keur"] == pytest.approx(first["closing"])
 
 
 def test_oborovo_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() -> None:
@@ -157,9 +200,10 @@ def test_oborovo_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload
         payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"],
         abs=1e-8,
     )
+    assert payload["sponsor_equity_shl_cash_flows_full_model"]["rows"] == rows
+    assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2029-06-29"
 
 
-@pytest.mark.xfail(reason="App SHL bridge does not yet reproduce the full extracted Excel lifecycle")
 def test_oborovo_first_twelve_shl_balance_schedule_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     excel = _full_model_extract("excel_oborovo_full_model_extract.json")
@@ -204,6 +248,7 @@ def test_tuho_excel_full_model_shl_payload_matches_lifecycle_fixture() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     extract = _full_model_extract("excel_tuho_full_model_extract.json")
     excel_full = payload["excel_full_model_shl"]
+    native_full = payload["shl_lifecycle_decomposition"]["rows"]
 
     assert excel_full["source"] == "excel_full_model_extract"
     assert excel_full["workbook_sha256"] == extract["workbook_sha256"]
@@ -223,6 +268,9 @@ def test_tuho_excel_full_model_shl_payload_matches_lifecycle_fixture() -> None:
     assert first_operation["opening"] == first["closing"]
     assert final["date"] == "2059-12-31"
     assert final["closing"] == 0.0
+    assert native_full[0]["date"] == "2029-12-31"
+    assert native_full[0]["principal_draw_keur"] == pytest.approx(abs(first["principal_flow"]))
+    assert native_full[1]["opening_balance_keur"] == pytest.approx(first["closing"])
 
 
 def test_tuho_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() -> None:
@@ -241,3 +289,5 @@ def test_tuho_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() 
         payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"],
         abs=1e-8,
     )
+    assert payload["sponsor_equity_shl_cash_flows_full_model"]["rows"] == rows
+    assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2028-06-30"

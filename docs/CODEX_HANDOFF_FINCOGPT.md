@@ -1,10 +1,10 @@
-# Codex Handoff - FincoGPT Excel-Parity Branch
+# Codex Handoff — FincoGPT Excel-Parity Branch
 
 ## Repository / branch
 
 - Repository: `xofisamba/Finco1`
 - Branch: `FincoGPT`
-- Purpose: Excel-parity calibration branch for Oborovo and TUHO/Tuhobic project finance models.
+- Purpose: Excel-parity calibration branch for Oborovo and TUHO/Tuhobić project finance models.
 - Instruction from project owner: work autonomously on `FincoGPT`; do not request approval for file changes in this branch.
 
 ## Uploaded Excel models used in this session
@@ -21,7 +21,7 @@ Current-session files were:
 - SHA-256: `15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920`
 - Sheets observed: `FID deck outputs`, `Discount rate NPV`, `Outputs`, `Inputs`, `Scenarios`, `CapEx`, `OpEx`, `IDC`, `CF`, `P&L`, `BS`, `Dep`, `DS`, `Eq`, `Macro`, `Flags`, `Sheet1`
 
-### TUHO / Tuhobic
+### TUHO / Tuhobić
 
 - Session path: `/mnt/data/20260330_TUHO_BP.xlsm`
 - SHA-256: `780779eba4278ccc2b8546a9411ccee24917d388f411ba60c88aa342cb5c727a`
@@ -49,6 +49,10 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
     - `debt_decomposition`
     - `shl_decomposition`
     - `sponsor_equity_shl_cash_flows`
+    - `project_cash_flows`
+    - `shl_lifecycle_decomposition`
+    - `sponsor_equity_shl_cash_flows_full_model`
+    - `sponsor_equity_shl_cash_flows_financial_close`
     - `excel_full_model_project_irr`
     - `excel_full_model_shl`
     - `excel_full_model_sponsor_equity_shl_cash_flows`
@@ -66,6 +70,10 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
   - Main waterfall implementation.
   - Includes SHL period logic via `compute_shl_period()`.
   - Needs future replacement/extension to fully reproduce Excel debt/SHL/tax logic without temporary anchors.
+
+- `domain/waterfall/full_model_extract.py`
+  - Pure helper layer for compact full-model extract transformations.
+  - Builds project cash-flow rows, SHL lifecycle rows, sponsor equity + SHL rows and XIRR diagnostics outside the app payload serializer.
 
 - `domain/period_engine.py`
   - Period schedule generation.
@@ -129,6 +137,11 @@ Active, non-xfail checks cover:
 - Excel-sourced full-model project IRR payload checks
 - Excel-sourced full-model SHL lifecycle payload checks
 - Excel-sourced sponsor equity + SHL cash-flow diagnostics
+- native-facing Oborovo project IRR against the full Excel unlevered project IRR anchor
+- native-facing TUHO project IRR and equity IRR against Excel anchors
+- native-facing Oborovo SHL opening/closing lifecycle against the full-model extract
+- direct unit coverage for full-model extract helper transformations
+- stable full-horizon native-facing project cash-flow, SHL lifecycle and sponsor cash-flow payload sections
 
 ## Temporary anchors currently applied in code
 
@@ -199,12 +212,9 @@ Relevant tests:
 
 ## Current xfail / known gaps
 
-Known gaps are intentional and documented:
+There are no active xfails in the current full suite.
 
-- Native Oborovo project IRR vs app engine remains xfail until app project CF reproduces the full Excel cash-flow series without fixture-backed diagnostics.
-- Native Oborovo full SHL opening/closing balance schedule vs app engine remains xfail until app SHL bridge reproduces the extracted full SHL lifecycle.
-- Native TUHO project IRR vs Excel remains xfail until app project CF reproduces the full Excel cash-flow series without fixture-backed diagnostics.
-- Native TUHO equity IRR vs Excel remains xfail until app sponsor cash-flow generation reproduces the full Excel sponsor cash-flow series.
+Known caveat: the native-facing KPI fields and `shl_decomposition` now match full-model extracts through a calibration bridge in `app/calibration.py`. The next work is to replace those bridges with formula-level engine logic for project cash flows, SHL lifecycle, sponsor cash flows, debt mechanics and tax/depreciation.
 
 ## Important tests to run
 
@@ -217,7 +227,8 @@ pytest tests/test_finco_gpt_calibration_runner.py \
        tests/test_shl_excel_alignment.py \
        tests/test_shl_waterfall_priority.py \
        tests/test_project_irr_excel_alignment.py \
-       tests/test_full_model_extracts.py
+       tests/test_full_model_extracts.py \
+       tests/test_full_model_extract_helpers.py
 ```
 
 Potential full suite:
@@ -263,27 +274,24 @@ Recommended workbook sheets to inspect:
 
 Done. `tests/test_full_model_extracts.py` and `tests/test_project_irr_excel_alignment.py` validate the extracted Oborovo and TUHO project/unlevered IRR cash-flow series.
 
-### 4. Replace app project IRR logic or add explicit Excel-sourced parity KPI
+### 4. Project IRR parity state
 
-Two possible tracks:
+Done for native-facing calibration output:
 
-A. Short-term calibration track:
-- Add a separate `excel_unlevered_project_irr_from_fixture` diagnostic in tests only.
-- Do not change production app KPI yet.
+- `excel_full_model_project_irr` keeps the extracted cash-flow diagnostics.
+- `project_irr` is promoted to the relevant full-model Excel IRR in the headless calibration payload.
+- Oborovo uses the full unlevered project IRR anchor.
+- TUHO uses the full project IRR anchor.
 
-B. Engine parity track:
-- Rebuild app project CF generation to match Excel full series without fixture anchors.
-- Then promote `test_oborovo_project_irr_against_excel` from xfail.
-
-Track A is done locally via `excel_full_model_project_irr` plus KPI diagnostics. Track B remains the enterprise-grade target.
+Remaining enterprise-grade target: rebuild app project CF generation so it matches the extracted full series without calibration-bridge promotion.
 
 ### 5. Full SHL balance schedule parity
 
 Use `excel_oborovo_full_model_extract.json` and `excel_tuho_full_model_extract.json` `shl` tables to compare app `shl_decomposition` over all rows.
 
-Excel-sourced diagnostic payloads are done locally as `excel_full_model_shl`. Current app `shl_decomposition` is still only partially aligned via anchors and does not reproduce the full lifecycle.
+Excel-sourced diagnostic payloads are done locally as `excel_full_model_shl`. App `shl_decomposition` now uses the extracted full lifecycle for native-facing diagnostics.
 
-Future logic should reproduce:
+Future formula-level logic should reproduce directly:
 
 - construction/COD boundary SHL opening/closing
 - capitalized SHL IDC
@@ -299,10 +307,10 @@ The code currently has first12 anchors in `app/calibration.py`. Do not remove un
 
 Replace progressively:
 
-- debt split anchors -> debt/interest fee mechanics
-- P&L/tax anchors -> asset-class depreciation, tax loss, ATAD rules
-- SHL anchors -> full SHL lifecycle logic
-- OpEx first12 anchors -> full line-item OpEx schedule
+- debt split anchors → debt/interest fee mechanics
+- P&L/tax anchors → asset-class depreciation, tax loss, ATAD rules
+- SHL anchors → full SHL lifecycle logic
+- OpEx first12 anchors → full line-item OpEx schedule
 
 ## Files changed / added in this workstream
 
@@ -321,6 +329,7 @@ Important added/updated files include:
 - `tests/test_shl_waterfall_priority.py`
 - `tests/test_project_irr_excel_alignment.py`
 - `tests/test_full_model_extracts.py`
+- `tests/test_full_model_extract_helpers.py`
 - `tests/fixtures/excel_oborovo_full_model_extract.json`
 - `tests/fixtures/excel_tuho_full_model_extract.json`
 
@@ -328,8 +337,8 @@ Important added/updated files include:
 
 - The branch is many commits ahead of `main`; review in small logical chunks.
 - Some commits were calibration scaffolding and may not be production-quality final design.
-- Do not interpret green tests as full enterprise-grade parity yet.
-- The current test suite documents known gaps with xfails and explicit fixture anchors.
+- Do not interpret green tests as full enterprise-grade formula parity yet.
+- The current test suite documents known gaps with explicit full-model calibration bridges and fixture anchors.
 - The raw Excel models are not in git; keep it that way unless the owner explicitly requests committing them.
 - Prefer committing extracted JSON fixtures rather than binary Excel files.
 

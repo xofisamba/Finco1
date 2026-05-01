@@ -107,7 +107,6 @@ def test_tuho_senior_debt_against_excel_initial_tolerance() -> None:
     assert comparison["passed"], comparison
 
 
-@pytest.mark.xfail(reason="Native TUHO project IRR does not yet use the full Excel-sourced cash-flow series")
 def test_tuho_project_irr_against_excel_initial_tolerance() -> None:
     anchors = _tuho_targets()
     payload = run_project_calibration("tuho", calibration_source="pytest")
@@ -119,7 +118,6 @@ def test_tuho_project_irr_against_excel_initial_tolerance() -> None:
     assert comparison["passed"], comparison
 
 
-@pytest.mark.xfail(reason="Native TUHO equity IRR does not yet use the full Excel-sourced sponsor cash-flow series")
 def test_tuho_equity_irr_against_excel_initial_tolerance() -> None:
     anchors = _tuho_targets()
     payload = run_project_calibration("tuho", calibration_source="pytest")

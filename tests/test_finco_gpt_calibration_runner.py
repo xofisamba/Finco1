@@ -138,6 +138,8 @@ def test_run_calibration_excel_full_model_project_irr_payload_shape() -> None:
         excel_full["computed_unlevered_project_irr"],
         abs=1e-8,
     )
+    assert payload["project_cash_flows"]["source"] == "full_model_extract_bridge"
+    assert payload["project_cash_flows"]["rows"] == excel_full["rows"]
 
 
 def test_run_calibration_excel_full_model_shl_payload_shape() -> None:
@@ -160,6 +162,9 @@ def test_run_calibration_excel_full_model_shl_payload_shape() -> None:
     assert excel_full["first_principal_repayment_date"] == "2042-06-30"
     assert excel_full["first_dividend_date"] == "2047-12-31"
     assert excel_full["final_closing_balance"] == 0.0
+    assert payload["shl_lifecycle_decomposition"]["source"] == "full_model_extract_bridge"
+    assert len(payload["shl_lifecycle_decomposition"]["rows"]) == 61
+    assert payload["shl_lifecycle_decomposition"]["rows"][0]["principal_draw_keur"] > 0
 
 
 def test_run_calibration_excel_full_model_sponsor_equity_shl_payload_shape() -> None:
@@ -176,6 +181,8 @@ def test_run_calibration_excel_full_model_sponsor_equity_shl_payload_shape() -> 
         payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"],
         abs=1e-8,
     )
+    assert payload["sponsor_equity_shl_cash_flows_full_model"]["rows"] == excel_full["rows"]
+    assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2028-06-30"
 
 
 def test_run_calibration_payload_is_operation_only_for_period_rows() -> None:

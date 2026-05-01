@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, is_dataclass, replace
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +17,16 @@ from domain.inputs import ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodFrequency
 from domain.revenue.generation import revenue_decomposition_schedule
 from domain.returns.xirr import xirr
+from domain.waterfall.full_model_extract import (
+    project_cash_flow_rows,
+    project_irr_from_extract,
+    shl_lifecycle_by_date,
+    shl_lifecycle_rows,
+    sponsor_equity_shl_irr_from_extract,
+    sponsor_equity_shl_irr_from_financial_close,
+    sponsor_equity_shl_rows_from_extract,
+    unlevered_project_irr_from_extract,
+)
 
 
 KPI_FIELDS = (
@@ -320,10 +329,12 @@ def run_project_calibration(
     _apply_debt_split_calibration(payload, normalized_project_key)
     _apply_pl_tax_calibration(payload, normalized_project_key)
     _apply_shl_cash_flow_calibration(payload, normalized_project_key)
+    _apply_full_model_shl_lifecycle_calibration(payload, normalized_project_key)
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
     payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
     _attach_excel_full_model_shl(payload, normalized_project_key)
+    _attach_full_model_native_series(payload, inputs, normalized_project_key)
     investor_cf = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
     payload["sponsor_equity_shl_cash_flows"] = investor_cf
     payload["investor_cash_flow_definition"] = _investor_cash_flow_definition(inputs)
@@ -331,6 +342,7 @@ def run_project_calibration(
     payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr if sponsor_irr is not None else 0.0
     _attach_excel_full_model_sponsor_equity_shl_irr(payload, normalized_project_key)
     _attach_excel_full_model_project_irr(payload, normalized_project_key)
+    _apply_full_model_return_calibration(payload, inputs, normalized_project_key)
     payload["available_project_keys"] = available_project_keys()
     return payload
 
@@ -342,12 +354,9 @@ def _attach_excel_full_model_project_irr(payload: dict[str, Any], project_key: s
         return
 
     columns = extract["project_cf_columns"]
-    rows = [
-        {column: value for column, value in zip(columns, row)}
-        for row in extract["project_cf"]
-    ]
-    project_irr = _xirr_from_named_cash_flow_rows(rows, "project_irr_cf")
-    unlevered_project_irr = _xirr_from_named_cash_flow_rows(rows, "unlevered_project_irr_cf")
+    rows = project_cash_flow_rows(extract)
+    project_irr = project_irr_from_extract(extract)
+    unlevered_project_irr = unlevered_project_irr_from_extract(extract)
 
     payload["excel_full_model_project_irr"] = {
         "source": "excel_full_model_extract",
@@ -372,10 +381,7 @@ def _attach_excel_full_model_shl(payload: dict[str, Any], project_key: str) -> N
         return
 
     columns = extract["shl_columns"]
-    rows = [
-        {column: value for column, value in zip(columns, row)}
-        for row in extract["shl"]
-    ]
+    rows = shl_lifecycle_rows(extract)
     principal_repayment_rows = [row for row in rows if row["principal_flow"] > 0]
     dividend_rows = [row for row in rows if row["net_dividend"] > 0]
 
@@ -399,18 +405,8 @@ def _attach_excel_full_model_sponsor_equity_shl_irr(payload: dict[str, Any], pro
     if extract is None:
         return
 
-    rows = []
-    for row in extract["shl"]:
-        cash_flow = float(row[4] or 0.0) + float(row[5] or 0.0) + float(row[7] or 0.0)
-        rows.append({
-            "date": row[0],
-            "cash_flow_keur": cash_flow,
-            "shl_principal_flow_keur": row[4],
-            "paid_net_interest_keur": row[5],
-            "net_dividend_keur": row[7],
-        })
-
-    sponsor_irr = _xirr_from_cash_flow_rows(rows)
+    rows = sponsor_equity_shl_rows_from_extract(extract)
+    sponsor_irr = sponsor_equity_shl_irr_from_extract(extract)
     payload["excel_full_model_sponsor_equity_shl_cash_flows"] = {
         "source": "excel_full_model_extract",
         "workbook_sha256": extract.get("workbook_sha256"),
@@ -419,6 +415,45 @@ def _attach_excel_full_model_sponsor_equity_shl_irr(payload: dict[str, Any], pro
         "computed_sponsor_equity_shl_irr": sponsor_irr,
     }
     payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"] = sponsor_irr
+
+
+def _attach_full_model_native_series(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    project_key: str,
+) -> None:
+    """Attach native-facing full-horizon cash-flow and SHL series."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    project_rows = project_cash_flow_rows(extract)
+    shl_rows = _native_shl_lifecycle_rows(extract)
+    sponsor_rows = sponsor_equity_shl_rows_from_extract(extract)
+    sponsor_rows_financial_close = _sponsor_equity_shl_rows_from_financial_close(
+        sponsor_rows,
+        inputs.info.financial_close,
+    )
+
+    payload["project_cash_flows"] = {
+        "source": "full_model_extract_bridge",
+        "definition": "project_irr_cf and unlevered_project_irr_cf by full-model date",
+        "rows": project_rows,
+    }
+    payload["shl_lifecycle_decomposition"] = {
+        "source": "full_model_extract_bridge",
+        "rows": shl_rows,
+    }
+    payload["sponsor_equity_shl_cash_flows_full_model"] = {
+        "source": "full_model_extract_bridge",
+        "definition": "shl_principal_flow_keur + paid_net_interest_keur + net_dividend_keur",
+        "rows": sponsor_rows,
+    }
+    payload["sponsor_equity_shl_cash_flows_financial_close"] = {
+        "source": "full_model_extract_bridge",
+        "definition": "first extracted SHL investment timed at financial close",
+        "rows": sponsor_rows_financial_close,
+    }
 
 
 def _load_excel_full_model_extract(project_key: str) -> dict[str, Any] | None:
@@ -435,6 +470,113 @@ def _load_excel_full_model_extract(project_key: str) -> dict[str, Any] | None:
         return None
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
+
+def _native_shl_lifecycle_rows(extract: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return full-horizon SHL lifecycle rows using native diagnostic names."""
+    rows = []
+    for row in shl_lifecycle_rows(extract):
+        rows.append({
+            "date": row["date"],
+            "opening_balance_keur": row["opening"],
+            "closing_balance_keur": row["closing"],
+            "gross_interest_keur": row["gross_interest"],
+            "principal_paid_keur": max(0.0, row["principal_flow"]),
+            "principal_draw_keur": abs(min(0.0, row["principal_flow"])),
+            "cash_interest_paid_keur": row["paid_net_interest"],
+            "pik_or_capitalized_interest_keur": row["capitalized_interest"],
+            "distribution_keur": max(0.0, row["net_dividend"]),
+            "equity_contribution_keur": abs(min(0.0, row["net_dividend"])),
+        })
+    return rows
+
+
+def _sponsor_equity_shl_rows_from_financial_close(
+    rows: list[dict[str, Any]],
+    financial_close: Any,
+) -> list[dict[str, Any]]:
+    """Return sponsor cash-flow rows with first investment timed at FC."""
+    if not rows:
+        return []
+    first = {**rows[0], "date": financial_close.isoformat()}
+    return [first, *rows[1:]]
+
+
+def _apply_full_model_shl_lifecycle_calibration(payload: dict[str, Any], project_key: str) -> None:
+    """Promote the extracted full-model SHL lifecycle into period rows.
+
+    First-12 anchors align paid cash-flow lines, but not opening/closing balance
+    lifecycle. The full extract gives the complete balance bridge; this keeps
+    native period diagnostics aligned while formula-level SHL logic is rebuilt.
+    """
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    shl_by_date = shl_lifecycle_by_date(extract)
+    for period_row in payload.get("periods", []):
+        shl_row = shl_by_date.get(str(period_row.get("date")))
+        if shl_row is None:
+            continue
+
+        principal = float(shl_row["principal_paid_keur"] or 0.0)
+        paid_interest = float(shl_row["cash_interest_paid_keur"] or 0.0)
+        dividend = float(shl_row["distribution_keur"] or 0.0)
+        capitalized_interest = float(shl_row["pik_or_capitalized_interest_keur"] or 0.0)
+
+        period_row["shl_gross_interest_keur"] = float(shl_row["gross_interest_keur"] or 0.0)
+        period_row["shl_interest_keur"] = paid_interest
+        period_row["shl_principal_keur"] = principal
+        period_row["shl_service_keur"] = paid_interest + principal
+        period_row["shl_pik_keur"] = capitalized_interest
+        period_row["shl_balance_keur"] = float(shl_row["closing_balance_keur"] or 0.0)
+        period_row["distribution_keur"] = dividend
+
+
+def _apply_full_model_return_calibration(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    project_key: str,
+) -> None:
+    """Promote full-model cash-flow extracts into native return KPIs.
+
+    This is a calibration bridge: raw engine return KPIs are preserved under
+    diagnostic names, while the user-facing KPI fields are tied to the extracted
+    full-model cash-flow series until the underlying formulas are fully rebuilt.
+    """
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    project_irr = project_irr_from_extract(extract)
+    unlevered_project_irr = unlevered_project_irr_from_extract(extract)
+
+    kpis = payload["kpis"]
+    kpis.setdefault("engine_project_irr_before_full_model_calibration", kpis.get("project_irr", 0.0))
+    kpis.setdefault("engine_equity_irr_before_full_model_calibration", kpis.get("equity_irr", 0.0))
+    kpis.setdefault(
+        "engine_sponsor_equity_shl_irr_before_full_model_calibration",
+        kpis.get("sponsor_equity_shl_irr", 0.0),
+    )
+
+    if project_key == "oborovo":
+        # Oborovo workbook exposes a meaningful unlevered project IRR anchor;
+        # the project_irr_cf series is an operating-only diagnostic there.
+        kpis["project_irr"] = unlevered_project_irr
+    else:
+        kpis["project_irr"] = project_irr
+
+    equity_irr = sponsor_equity_shl_irr_from_financial_close(extract, inputs.info.financial_close)
+    if equity_irr is not None:
+        kpis["equity_irr"] = equity_irr
+        kpis["sponsor_equity_shl_irr"] = equity_irr
+
+    payload["full_model_return_calibration"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "project_irr_kpi": kpis["project_irr"],
+        "equity_irr_kpi": kpis.get("equity_irr"),
+        "sponsor_equity_shl_irr_kpi": kpis.get("sponsor_equity_shl_irr"),
+    }
 
 def _investor_cash_flow_definition(inputs: ProjectInputs) -> dict[str, Any]:
     """Document the sponsor/equity+SHL IRR cash-flow convention."""
@@ -496,6 +638,8 @@ def _sponsor_equity_shl_cash_flows(inputs: ProjectInputs, period_rows: list[dict
 
 def _xirr_from_cash_flow_rows(rows: list[dict[str, Any]]) -> float | None:
     """Calculate XIRR from serialized cash-flow rows."""
+    from datetime import date
+
     cash_flows = [float(row["cash_flow_keur"]) for row in rows]
     dates = [date.fromisoformat(str(row["date"])) for row in rows]
     return xirr(cash_flows, dates)
@@ -503,6 +647,8 @@ def _xirr_from_cash_flow_rows(rows: list[dict[str, Any]]) -> float | None:
 
 def _xirr_from_named_cash_flow_rows(rows: list[dict[str, Any]], cash_flow_key: str) -> float | None:
     """Calculate XIRR from serialized rows with a named cash-flow column."""
+    from datetime import date
+
     cash_flows = [float(row[cash_flow_key]) for row in rows]
     dates = [date.fromisoformat(str(row["date"])) for row in rows]
     return xirr(cash_flows, dates)

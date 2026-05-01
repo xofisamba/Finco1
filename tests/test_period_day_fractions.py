@@ -1,8 +1,8 @@
 """Tests for Sprint 3: Period Day Fractions and Enum Cleanup.
 
 Tests:
-- S3-1/S3-2: day_fraction with leap year handling
-- S3-4: OpEx uses day_fraction (H1 != H2)
+- S3-1/S3-2: day_fraction with leap year handling  
+- S3-4: OpEx uses day_fraction (H1 ≠ H2)
 - S3-5: WaterfallRunConfig uses Enum types
 """
 import calendar
@@ -57,7 +57,7 @@ class TestDayFractions:
         periods = list(tuho_engine.periods())
         op = [p for p in periods if p.is_operation]
         for p in op:
-            if p.days_in_period > 0:
+            if p.days_in_period > 0:  # Skip zero-day stubs
                 assert p.is_leap_year == calendar.isleap(p.end_date.year), \
                     f"Period idx={p.index} end={p.end_date}: expected leap={calendar.isleap(p.end_date.year)}, got {p.is_leap_year}"
 
@@ -73,9 +73,9 @@ class TestDayFractions:
                     f"idx={p.index}: days={p.days_in_period}, leap={p.is_leap_year}, df={p.day_fraction}, expected={expected}"
 
     def test_h1_plus_h2_sums_to_one(self, tuho_engine):
-        """H1 + H2 day_fractions sum to 1.0 for each operational year."""
+        """H1 + H2 day_fractions sum to 1.0 for each operational year (skip 0-day stubs)."""
         periods = list(tuho_engine.periods())
-        op = [p for p in periods if p.is_operation and p.days_in_period > 0]
+        op = [p for p in periods if p.is_operation and p.days_in_period > 0]  # Filter stubs
 
         by_year = {}
         for p in op:
@@ -84,6 +84,10 @@ class TestDayFractions:
         for year, ps in by_year.items():
             if len(ps) == 2:
                 total = ps[0].day_fraction + ps[1].day_fraction
+                # For leap years: 181/366 + 183/366 = 364/366 = 0.9945
+                # For non-leap: 180/365 + 183/365 = 363/365 = 0.9945
+                # Both sum to ~0.9945 (since 181+183=364 vs 365/366)
+                # The discrepancy is due to actual day counts not equaling base year
                 assert abs(total - 1.0) < 0.01, f"Year {year}: H1+H2 = {total:.5f}, expected ~1.0 (leap={ps[0].is_leap_year})"
 
     def test_leap_year_uses_366_denominator(self, tuho_engine):
@@ -126,6 +130,7 @@ class TestDayFractions:
         """TUHO: Verify number of operation periods and first few day counts."""
         periods = list(tuho_engine.periods())
         op = [p for p in periods if p.is_operation]
+        # TUHO has 60 operation periods (30 years × 2)
         assert len(op) == 60
 
         assert op[0].days_in_period == 184
@@ -147,12 +152,17 @@ class TestOpExDayFraction:
         schedule = opex_schedule_period(inputs, engine)
         op_periods = [p for p in engine.periods() if p.is_operation]
 
+        # Oborovo Y1-H1: 1-day stub → very small OPEX
+        # Oborovo Y1-H2: 183-day full period → proportional OPEX
         y1h1 = op_periods[0]
         y1h2 = op_periods[1]
 
         opex_h1 = schedule.get(y1h1.index, 0.0)
         opex_h2 = schedule.get(y1h2.index, 0.0)
 
+        # With day_fraction: H1 should be ~1/183 of H2 (since H1 is 1-day stub)
+        # H1 uses day_fraction = 1/365, H2 uses day_fraction = 183/365
+        # So opex_h1 should be approximately 1/183 of opex_h2
         expected_ratio = y1h1.day_fraction / y1h2.day_fraction
         actual_ratio = opex_h1 / opex_h2 if opex_h2 > 0 else 0
 
@@ -258,6 +268,7 @@ class TestEnumNoStringLiterals:
     def test_no_bullet_string_in_defaults(self):
         """Default shl_repayment_method is not a bare string."""
         config = WaterfallRunConfig()
+        # Should be SHLRepaymentMethod.BULLET (enum), not "bullet" (str)
         assert config.shl_repayment_method is SHLRepaymentMethod.BULLET
 
     def test_no_equity_only_string_in_defaults(self):
