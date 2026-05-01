@@ -1,7 +1,7 @@
 """Generation calculation - period-based production in MWh.
 
 Matches Excel CF sheet row 21 formula:
-    G21 = $B21 Ã— G$7 Ã— G$6 Ã— G$20 Ã— (1-G$19) Ã— (1-Degradation)
+    G21 = $B21 x G$7 x G$6 x G$20 x (1-G$19) x (1-Degradation)
 
 Where:
 - B21: capacity (MW)
