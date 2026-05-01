@@ -1,9 +1,9 @@
 {
   "oborovo": {
-    "project_irr": 0.05249,
-    "equity_irr": 0.068492,
-    "debt_keur": 42797.0,
-    "avg_dscr": 1.407651,
-    "total_distribution_keur": 63759.0
+    "project_irr": 0.08809591600107142,
+    "equity_irr": 0.10145017253091189,
+    "debt_keur": 42852.26672602787,
+    "avg_dscr": 1.1144420578232375,
+    "total_distribution_keur": 130515.73895222072
   }
 }
