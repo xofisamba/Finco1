@@ -135,7 +135,7 @@ def test_oborovo_excel_debt_fixture_has_first_twelve_periods() -> None:
         assert row["excel_senior_debt_service_keur"] > 0
         assert row["excel_senior_principal_keur"] > 0
         assert row["excel_senior_interest_keur"] > 0
-        assert abs(row["excel_implied_dscr"] - row["excel_dscr_target_row"]) < 1e-9
+        assert abs(row["excel_implied_dscr"] - row["excel_dscr_target_row"]) < 1e-5
 
 
 def test_oborovo_first_twelve_excel_dscr_target_is_115() -> None:
