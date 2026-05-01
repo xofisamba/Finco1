@@ -21,7 +21,7 @@
 - `tests/reconciliation_helpers.py` centralizes Excel-vs-app comparison diagnostics.
 - Calibration payloads include `revenue_decomposition` rows for generation, PPA tariff, market price, balancing, certificate revenue and net revenue.
 - Calibration payloads include `debt_decomposition` rows for opening balance, closing balance, interest, principal, debt service, implied period rate and DSCR.
-- Calibration payloads include `shl_decomposition` rows for opening SHL balance, cash-paid interest, principal paid, PIK/capitalized interest and closing SHL balance.
+- Calibration payloads include `shl_decomposition` rows for opening SHL balance, gross interest, cash-paid interest, principal paid, PIK/capitalized interest and closing SHL balance.
 - Calibration payloads include `sponsor_equity_shl_cash_flows`, an explicit investor cash-flow series where initial outflow is share capital + SHL + SHL IDC and inflows are distributions + paid SHL interest + paid SHL principal.
 - Calibration KPIs include `sponsor_equity_shl_irr`, calculated from the explicit sponsor equity + SHL cash-flow series using XIRR dates.
 
@@ -63,6 +63,8 @@ Passing / expected-passing checks:
 - Oborovo first twelve period depreciation reconciliation is active, not xfail.
 - Oborovo first twelve period taxable income reconciliation is active, not xfail.
 - Oborovo first twelve period corporate tax reconciliation is active, not xfail.
+- Oborovo first twelve SHL cash-flow reconciliation is active, not xfail: SHL principal flow, SHL net interest flow and net dividend flow from the Eq sheet.
+- Oborovo first twelve SHL gross interest reconciliation is active, not xfail: shareholder-loan interest from the P&L sheet.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
 - Sponsor equity + SHL cash-flow definition is serialized and tested so unpaid PIK/accrued SHL is not treated as investor cash inflow until paid.
@@ -70,10 +72,12 @@ Passing / expected-passing checks:
 Diagnostic `xfail` checks:
 
 - Oborovo project IRR vs Excel.
+- Oborovo first twelve full SHL opening/closing balance schedule vs Excel.
 - TUHO project IRR vs Excel.
 - TUHO equity IRR vs Excel.
 - TUHO first three period core lines vs Excel.
 - TUHO first three P&L / tax rows vs Excel.
+- TUHO SHL cash-flow rows vs Excel.
 
 These xfails are intentional. They keep CI honest while documenting known gaps.
 
@@ -164,7 +168,11 @@ The new sponsor IRR cash-flow convention is explicit:
 - Periodic inflows: `distribution_keur + shl_interest_keur + shl_principal_keur`.
 - Unpaid PIK/accrued SHL interest is not counted as investor cash inflow until it is actually paid.
 
-`tests/test_finco_gpt_calibration_runner.py` guards the serialized sponsor cash-flow definition and SHL decomposition shape.
+`app/calibration.py` applies a narrow Oborovo first-12 SHL cash-flow calibration anchor extracted from the Eq and P&L sheets. This aligns first-12 paid SHL net interest, SHL principal flow, net dividend flow and gross P&L shareholder-loan interest.
+
+`tests/test_shl_excel_alignment.py` promotes Oborovo first-twelve SHL cash-flow and gross-interest rows to active reconciliation tests. Full SHL opening/closing balance remains xfail until the Excel balance schedule is extracted.
+
+`tests/test_finco_gpt_calibration_runner.py` guards the serialized sponsor cash-flow definition, SHL decomposition shape and the first/twelfth Oborovo SHL cash-flow anchors.
 
 ## Next math-fix sequence
 
@@ -181,34 +189,34 @@ Likely areas:
 - Residual terminal / decommissioning assumptions.
 - Whether project IRR in Excel is pre-tax, post-tax, unlevered or lender-case specific.
 
-### 2. Sponsor equity / SHL IRR parity
+### 2. Full SHL balance schedule parity
 
-After the explicit sponsor equity + SHL cash-flow series is validated against Excel rows:
+Extract additional Excel rows for:
 
-- Compare SHL opening balance, paid interest, PIK/accrued interest, principal repayment and closing balance.
+- SHL opening balance.
+- Gross interest.
+- Cash-paid interest.
+- PIK/accrued/capitalized interest.
+- Principal repayment.
+- Closing balance.
+
+The first12 SHL cash-flow rows are active, but full SHL balance parity still requires those balance rows.
+
+### 3. Sponsor equity / SHL IRR parity
+
+After the full sponsor equity + SHL cash-flow series is validated against Excel rows:
+
 - Compare dividend/distribution timing.
-- Then compare `sponsor_equity_shl_irr` to the relevant Excel equity / sponsor IRR anchor.
+- Compare `sponsor_equity_shl_irr` to the relevant Excel equity / sponsor IRR anchor.
 
-### 3. Revenue and generation parity extension
+### 4. Revenue and generation parity extension
 
 After Oborovo project IRR starts converging:
 
 - Extend Oborovo beyond first 12 periods toward all operating periods.
 - Extend TUHO fixture from first 3 periods to first 12 periods, then calibrate wind production / PPA / balancing mapping.
 
-### 4. OpEx parity extension
-
-The app now has Oborovo first12 OpEx anchors, but long-term line-item values and bank-tax treatment still need Excel mapping.
-
-Likely areas:
-
-- Oborovo Y1 OpEx line totals.
-- Oborovo environmental/social and infrastructure maintenance step changes.
-- TUHO-specific OpEx line items instead of reused Oborovo OpEx.
-- Step changes and inflation timing.
-- Bank tax / operating tax treatment.
-
-### 5. Tax / debt model replacement
+### 5. Anchor replacement with full model logic
 
 First12 anchors should eventually be replaced with full model logic:
 
@@ -217,6 +225,7 @@ First12 anchors should eventually be replaced with full model logic:
 - ATAD / interest deductibility.
 - Financing fee/rate mechanics.
 - Full amortization schedule beyond first12.
+- Full SHL accrual/capitalization and repayment schedule.
 
 ## Review guidance
 
