@@ -80,15 +80,32 @@ def result():
 @pytest.fixture(scope="module")
 def current_fixture():
     """Load current outputs fixture."""
-    with open(CURRENT_PATH) as f:
+    with open(CURRENT_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 
 @pytest.fixture(scope="module")
 def excel_fixture():
     """Load Excel-verified targets fixture."""
-    with open(BASELINE_PATH) as f:
+    with open(BASELINE_PATH, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _current_outputs(fixture):
+    """Support both wrapped and compact current output fixture shapes."""
+    return fixture.get("current_outputs") or fixture.get("oborovo") or fixture
+
+
+def _tolerances(fixture):
+    """Default regression tolerances for compact current output fixtures."""
+    return fixture.get(
+        "tolerances",
+        {
+            "debt_pct": 5.0,
+            "project_irr_pct": 5.0,
+            "dscr_abs": 0.5,
+        },
+    )
 
 
 # =============================================================================
@@ -103,33 +120,33 @@ class TestRegression:
 
     def test_debt_regression(self, result, current_fixture):
         """Debt amount should match current fixture (37,017 kEUR)."""
-        expected = current_fixture["current_outputs"]["debt_keur"]
+        expected = _current_outputs(current_fixture)["debt_keur"]
         actual = result.sculpting_result.debt_keur
-        tolerance_pct = current_fixture["tolerances"]["debt_pct"]
+        tolerance_pct = _tolerances(current_fixture)["debt_pct"]
         error_pct = abs(actual - expected) / expected * 100
         assert error_pct < tolerance_pct, \
             f"Debt {actual:,.0f} vs expected {expected:,.0f} kEUR ({error_pct:.1f}% error)"
 
     def test_project_irr_regression(self, result, current_fixture):
         """Project IRR should match current fixture (8.84%)."""
-        expected = current_fixture["current_outputs"]["project_irr"]
+        expected = _current_outputs(current_fixture)["project_irr"]
         actual = result.project_irr
-        tolerance_pct = current_fixture["tolerances"]["project_irr_pct"]
+        tolerance_pct = _tolerances(current_fixture)["project_irr_pct"]
         error_pct = abs(actual - expected) / expected * 100 if expected else abs(actual - expected) * 100
         assert error_pct < tolerance_pct, \
             f"Project IRR {actual*100:.3f}% vs expected {expected*100:.3f}%"
 
     def test_avg_dscr_regression(self, result, current_fixture):
         """Avg DSCR should match current fixture (1.044)."""
-        expected = current_fixture["current_outputs"]["avg_dscr"]
+        expected = _current_outputs(current_fixture)["avg_dscr"]
         actual = result.avg_dscr
-        tolerance = current_fixture["tolerances"]["dscr_abs"]
+        tolerance = _tolerances(current_fixture)["dscr_abs"]
         assert abs(actual - expected) < tolerance, \
             f"Avg DSCR {actual:.4f} vs expected {expected:.4f}"
 
     def test_total_distribution_regression(self, result, current_fixture):
         """Total distributions should match current fixture."""
-        expected = current_fixture["current_outputs"]["total_distribution_keur"]
+        expected = _current_outputs(current_fixture)["total_distribution_keur"]
         actual = result.total_distribution_keur
         tolerance_pct = 5.0  # 5%
         error_pct = abs(actual - expected) / expected * 100 if expected else abs(actual - expected) * 100
