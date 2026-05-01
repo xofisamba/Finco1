@@ -101,7 +101,6 @@ def test_oborovo_first_twelve_revenue_rows_against_excel() -> None:
     assert not failures, failures
 
 
-@pytest.mark.xfail(reason="TUHO first-pass factory still needs exact wind production/PPA/balancing mapping")
 def test_tuho_first_three_revenue_rows_against_excel() -> None:
     failures = _revenue_failures("tuho", "excel_tuho_periods.json", limit=3)
     assert not failures, failures

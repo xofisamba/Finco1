@@ -22,6 +22,10 @@ def _fixture(name: str) -> dict:
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
 
 
+def _targets() -> dict:
+    return _fixture("excel_calibration_targets.json")
+
+
 def test_oborovo_full_model_extract_shape() -> None:
     payload = _fixture("excel_oborovo_full_model_extract.json")
     assert payload["project_key"] == "oborovo"
@@ -161,6 +165,50 @@ def test_tuho_full_unlevered_project_irr_recomputes_from_fixture_series() -> Non
     assert payload["excel_unlevered_project_irr"] == 0.09108280837535859
     assert xirr(unlevered_cash_flows, dates) == pytest.approx(
         payload["excel_unlevered_project_irr"],
+        abs=1e-8,
+    )
+
+
+def test_oborovo_full_project_irr_series_is_operating_only_diagnostic() -> None:
+    payload = _fixture("excel_oborovo_full_model_extract.json")
+    project_cf = payload["project_cf"]
+
+    project_cash_flows = [row[1] for row in project_cf]
+
+    assert payload["excel_project_irr"] == 0.0
+    assert project_cash_flows[0] == 0.0
+    assert all(value >= 0 for value in project_cash_flows)
+
+
+def test_tuho_full_project_irr_recomputes_from_fixture_series() -> None:
+    payload = _fixture("excel_tuho_full_model_extract.json")
+    project_cf = payload["project_cf"]
+
+    dates = [date.fromisoformat(row[0]) for row in project_cf]
+    project_cash_flows = [row[1] for row in project_cf]
+
+    assert payload["excel_project_irr"] == pytest.approx(0.09304675757884978)
+    assert xirr(project_cash_flows, dates) == pytest.approx(
+        payload["excel_project_irr"],
+        abs=1e-8,
+    )
+
+
+def test_full_model_irr_extracts_match_calibration_targets() -> None:
+    targets = _targets()
+    oborovo = _fixture("excel_oborovo_full_model_extract.json")
+    tuho = _fixture("excel_tuho_full_model_extract.json")
+
+    assert oborovo["excel_unlevered_project_irr"] == pytest.approx(
+        targets["oborovo"]["anchors"]["unlevered_project_irr"]["value"],
+        abs=1e-8,
+    )
+    assert tuho["excel_project_irr"] == pytest.approx(
+        targets["tuho"]["anchors"]["project_irr"]["value"],
+        abs=1e-8,
+    )
+    assert tuho["excel_unlevered_project_irr"] == pytest.approx(
+        targets["tuho"]["anchors"]["unlevered_project_irr"]["value"],
         abs=1e-8,
     )
 

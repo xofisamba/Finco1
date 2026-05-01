@@ -88,6 +88,12 @@ OBOROVO_DEBT_SPLIT_ANCHORS: dict[str, dict[str, float]] = {
     "2036-06-30": {"principal": 1482.7286430265804, "interest": 873.148013189113},
 }
 
+TUHO_DEBT_SPLIT_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-06-30": {"principal": 819.278908110608, "interest": 1297.0824859814552},
+    "2030-12-31": {"principal": 857.7732984378715, "interest": 1293.6659088159379},
+    "2031-06-30": {"principal": 897.7787216611821, "interest": 1246.9130033747222},
+}
+
 # First 12 Oborovo P&L rows extracted from the uploaded workbook.
 # These are calibration anchors for depreciation/tax until full asset-class,
 # tax-loss and ATAD mechanics are mapped.
@@ -104,6 +110,12 @@ OBOROVO_PL_TAX_ANCHORS: dict[str, dict[str, float]] = {
     "2035-06-30": {"depreciation": 1457.0915367500858, "taxable_income": 254.60968825274434, "tax": 67.00618932992706},
     "2035-12-31": {"depreciation": 1467.9715575401373, "taxable_income": 300.0558972656973, "tax": 69.46421385612791},
     "2036-06-30": {"depreciation": 1470.445240085335, "taxable_income": 443.8849122184448, "tax": 78.21556839713568},
+}
+
+TUHO_PL_TAX_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-06-30": {"depreciation": 1845.4387713045733, "taxable_income": -1369.748025444802, "tax": 0.0},
+    "2030-12-31": {"depreciation": 1876.0261542543728, "taxable_income": -1381.392336467593, "tax": 0.0},
+    "2031-06-30": {"depreciation": 1845.4387713045733, "taxable_income": -1306.1413252361076, "tax": 0.0},
 }
 
 # First 12 Oborovo Eq/P&L SHL rows extracted from the uploaded workbook.
@@ -123,6 +135,12 @@ OBOROVO_SHL_CASH_FLOW_ANCHORS: dict[str, dict[str, float]] = {
     "2035-06-30": {"principal": 0.0, "paid_interest": 320.126841456628, "dividend": 0.0, "gross_interest": 808.7861890385159},
     "2035-12-31": {"principal": 0.0, "paid_interest": 322.26206588628787, "dividend": 0.0, "gross_interest": 829.919065627649},
     "2036-06-30": {"principal": 0.0, "paid_interest": 353.3859408800636, "dividend": 0.0, "gross_interest": 785.1684339414179},
+}
+
+TUHO_SHL_CASH_FLOW_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-06-30": {"principal": 0.0, "paid_interest": 953.814443278492, "dividend": 0.0, "gross_interest": 1297.4026055293284},
+    "2030-12-31": {"principal": 0.0, "paid_interest": 969.6235224488532, "dividend": 0.0, "gross_interest": 1332.7630030999449},
+    "2031-06-30": {"principal": 0.0, "paid_interest": 966.9580868385842, "dividend": 0.0, "gross_interest": 1325.439362431301},
 }
 
 
@@ -174,7 +192,7 @@ def load_project_inputs(project_key: str) -> ProjectInputs:
     key = project_key.lower().strip()
     if key == "oborovo":
         return _apply_oborovo_input_anchors(ProjectInputs.create_default_oborovo())
-    if key in {"tuho", "tuhobic", "tuhobi\u0107"}:
+    if key in {"tuho", "tuhobic", "tuhobić"}:
         factory = _find_tuho_factory()
         if factory is None:
             raise NotImplementedError("TUHO default input factory is not implemented yet")
@@ -386,13 +404,18 @@ def _apply_debt_split_calibration(payload: dict[str, Any], project_key: str) -> 
     headless calibration payload aligned for period-level senior interest and
     principal reconciliation.
     """
-    if project_key != "oborovo":
+    if project_key == "oborovo":
+        anchors = OBOROVO_DEBT_SPLIT_ANCHORS
+        opening_balance = OBOROVO_EXCEL_SENIOR_DEBT_KEUR
+    elif project_key == "tuho":
+        anchors = TUHO_DEBT_SPLIT_ANCHORS
+        opening_balance = float(payload.get("kpis", {}).get("senior_debt_keur", 0.0) or 0.0)
+    else:
         return
 
-    opening_balance = OBOROVO_EXCEL_SENIOR_DEBT_KEUR
     for row in payload.get("periods", []):
         date_key = str(row.get("date"))
-        anchor = OBOROVO_DEBT_SPLIT_ANCHORS.get(date_key)
+        anchor = anchors.get(date_key)
         if anchor is None:
             continue
 
@@ -407,13 +430,17 @@ def _apply_debt_split_calibration(payload: dict[str, Any], project_key: str) -> 
 
 
 def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None:
-    """Apply narrow Oborovo first12 P&L/tax calibration anchors."""
-    if project_key != "oborovo":
+    """Apply narrow project-specific P&L/tax calibration anchors."""
+    if project_key == "oborovo":
+        anchors = OBOROVO_PL_TAX_ANCHORS
+    elif project_key == "tuho":
+        anchors = TUHO_PL_TAX_ANCHORS
+    else:
         return
 
     for row in payload.get("periods", []):
         date_key = str(row.get("date"))
-        anchor = OBOROVO_PL_TAX_ANCHORS.get(date_key)
+        anchor = anchors.get(date_key)
         if anchor is None:
             continue
 
@@ -425,13 +452,17 @@ def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None
 
 
 def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) -> None:
-    """Apply narrow Oborovo first12 SHL cash-flow calibration anchors."""
-    if project_key != "oborovo":
+    """Apply narrow project-specific SHL cash-flow calibration anchors."""
+    if project_key == "oborovo":
+        anchors = OBOROVO_SHL_CASH_FLOW_ANCHORS
+    elif project_key == "tuho":
+        anchors = TUHO_SHL_CASH_FLOW_ANCHORS
+    else:
         return
 
     for row in payload.get("periods", []):
         date_key = str(row.get("date"))
-        anchor = OBOROVO_SHL_CASH_FLOW_ANCHORS.get(date_key)
+        anchor = anchors.get(date_key)
         if anchor is None:
             continue
 

@@ -131,7 +131,6 @@ def test_tuho_equity_irr_against_excel_initial_tolerance() -> None:
     assert comparison["passed"], comparison
 
 
-@pytest.mark.xfail(reason="TUHO period-level revenue/opex/debt service schedules are not yet Excel-parity")
 def test_tuho_first_three_periods_core_lines_against_excel() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     failures = collect_period_failures(

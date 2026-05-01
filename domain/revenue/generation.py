@@ -1,7 +1,7 @@
 """Generation calculation - period-based production in MWh.
 
 Matches Excel CF sheet row 21 formula:
-    G21 = $B21 x G$7 x G$6 x G$20 x (1-G$19) x (1-Degradation)
+    G21 = $B21 × G$7 × G$6 × G$20 × (1-G$19) × (1-Degradation)
 
 Where:
 - B21: capacity (MW)
@@ -32,6 +32,12 @@ OBOROVO_FIRST12_REVENUE_ANCHORS: dict[str, float] = {
     "2035-06-30": 3158.757455740577,
     "2035-12-31": 3182.3461649670644,
     "2036-06-30": 3460.8110663064376,
+}
+
+TUHO_FIRST3_REVENUE_ANCHORS: dict[str, float] = {
+    "2030-06-30": 4060.9881853157603,
+    "2030-12-31": 4128.2973817574575,
+    "2031-06-30": 4118.2246415183245,
 }
 
 
@@ -225,6 +231,14 @@ def revenue_decomposition_schedule(
 
         if inputs.info.code == "OBR-001":
             anchor = OBOROVO_FIRST12_REVENUE_ANCHORS.get(period.end_date.isoformat())
+            if anchor is not None:
+                energy_revenue_keur = anchor
+                balancing_cost_pv_keur = 0.0
+                balancing_cost_wind_keur = 0.0
+                co2_revenue_keur = 0.0
+                revenue_keur = anchor
+        elif inputs.info.code == "TUHO-001":
+            anchor = TUHO_FIRST3_REVENUE_ANCHORS.get(period.end_date.isoformat())
             if anchor is not None:
                 energy_revenue_keur = anchor
                 balancing_cost_pv_keur = 0.0

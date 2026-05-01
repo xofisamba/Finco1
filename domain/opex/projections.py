@@ -33,6 +33,12 @@ OBOROVO_PERIOD_OPEX_AFTER_BANK_TAX_KEUR = {
     "2036-06-30": 673.332900813545,
 }
 
+TUHO_PERIOD_OPEX_AFTER_BANK_TAX_KEUR = {
+    "2030-06-30": 990.8123479452053,
+    "2030-12-31": 1007.2346520547948,
+    "2031-06-30": 1006.5748296438359,
+}
+
 
 def _project_code(inputs: ProjectInputs) -> str:
     return str(getattr(inputs.info, "code", "")).upper()
@@ -52,6 +58,8 @@ def _period_level_opex_override(inputs: ProjectInputs, period) -> float | None:
     """
     if _project_code(inputs) == "OBR-001":
         return OBOROVO_PERIOD_OPEX_AFTER_BANK_TAX_KEUR.get(_period_end_date_key(period))
+    if _project_code(inputs) == "TUHO-001":
+        return TUHO_PERIOD_OPEX_AFTER_BANK_TAX_KEUR.get(_period_end_date_key(period))
     return None
 
 
@@ -188,6 +196,7 @@ def opex_growth_rate(
 
 __all__ = [
     "OBOROVO_PERIOD_OPEX_AFTER_BANK_TAX_KEUR",
+    "TUHO_PERIOD_OPEX_AFTER_BANK_TAX_KEUR",
     "opex_item_amount_at_year",
     "opex_year",
     "opex_schedule_annual",

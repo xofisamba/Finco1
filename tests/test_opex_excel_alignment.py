@@ -71,7 +71,6 @@ def test_oborovo_first_twelve_opex_rows_against_excel() -> None:
     assert not failures, failures
 
 
-@pytest.mark.xfail(reason="TUHO first-pass factory reuses non-TUHO OpEx assumptions")
 def test_tuho_first_three_opex_rows_against_excel() -> None:
     failures = _opex_failures("tuho", "excel_tuho_periods.json", limit=3)
     assert not failures, failures

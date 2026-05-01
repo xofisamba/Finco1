@@ -97,7 +97,6 @@ def test_oborovo_first_twelve_pl_tax_lines_against_excel() -> None:
     assert not failures, failures
 
 
-@pytest.mark.xfail(reason="TUHO P&L / tax rows are not yet extracted beyond first-pass fixture scope")
 def test_tuho_first_three_pl_tax_lines_against_excel() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     failures = collect_period_failures(

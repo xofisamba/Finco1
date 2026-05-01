@@ -53,6 +53,10 @@ def _period_fixture(name: str) -> list[dict]:
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))["periods"]
 
 
+def _full_model_extract(name: str) -> dict:
+    return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
+
+
 def test_oborovo_shl_fixture_has_first_twelve_eq_and_pl_rows() -> None:
     rows = _period_fixture("excel_oborovo_periods.json")[:12]
     assert len(rows) == 12
@@ -107,14 +111,37 @@ def test_oborovo_first_twelve_shl_decomposition_matches_cash_flow_definition() -
         )
 
 
-@pytest.mark.xfail(reason="Full SHL opening/closing balance rows are not yet extracted from Excel")
+@pytest.mark.xfail(reason="App SHL bridge does not yet reproduce the full extracted Excel lifecycle")
 def test_oborovo_first_twelve_shl_balance_schedule_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
-    first = payload["shl_decomposition"][0]
-    assert "excel_shl_opening_balance_keur" in first
+    excel = _full_model_extract("excel_oborovo_full_model_extract.json")
+    app_by_date = {row["date"]: row for row in payload["shl_decomposition"]}
+    failures = []
+
+    for row in excel["shl"][1:13]:
+        date_key = row[0]
+        app = app_by_date[date_key]
+        comparisons = {
+            "opening_balance_keur": (app["opening_balance_keur"], row[1]),
+            "closing_balance_keur": (app["closing_balance_keur"], row[2]),
+            "gross_interest_keur": (app["gross_interest_keur"], row[3]),
+            "principal_paid_keur": (app["principal_paid_keur"], row[4]),
+            "cash_interest_paid_keur": (app["cash_interest_paid_keur"], row[5]),
+            "pik_or_capitalized_interest_keur": (app["pik_or_capitalized_interest_keur"], row[6]),
+        }
+        for metric, (app_value, excel_value) in comparisons.items():
+            if app_value != pytest.approx(excel_value, abs=0.01):
+                failures.append({
+                    "period_end_date": date_key,
+                    "metric": metric,
+                    "app_value": app_value,
+                    "excel_value": excel_value,
+                    "delta": app_value - excel_value,
+                })
+
+    assert not failures, failures
 
 
-@pytest.mark.xfail(reason="TUHO SHL rows are not yet mapped from Excel Eq/P&L sheets")
 def test_tuho_first_three_shl_cash_flows_against_excel() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     failures = collect_period_failures(
