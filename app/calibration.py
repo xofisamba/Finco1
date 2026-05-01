@@ -106,6 +106,25 @@ OBOROVO_PL_TAX_ANCHORS: dict[str, dict[str, float]] = {
     "2036-06-30": {"depreciation": 1470.445240085335, "taxable_income": 443.8849122184448, "tax": 78.21556839713568},
 }
 
+# First 12 Oborovo Eq/P&L SHL rows extracted from the uploaded workbook.
+# Paid interest, principal and dividends come from Eq sheet cash-flow rows. Gross
+# P&L shareholder-loan interest is retained so unpaid/accrued/capitalized SHL is
+# visible, but not treated as investor cash inflow until paid.
+OBOROVO_SHL_CASH_FLOW_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-12-31": {"principal": 0.0, "paid_interest": 335.8700119281534, "dividend": 0.0, "gross_interest": 636.8088084115645},
+    "2031-06-30": {"principal": 0.0, "paid_interest": 330.3938704293246, "dividend": 0.0, "gross_interest": 638.3646691774373},
+    "2031-12-31": {"principal": 0.0, "paid_interest": 336.07875278384927, "dividend": 0.0, "gross_interest": 661.365381676792},
+    "2032-06-30": {"principal": 0.0, "paid_interest": 337.46414212452903, "dividend": 0.0, "gross_interest": 684.3005895972307},
+    "2032-12-31": {"principal": 0.0, "paid_interest": 333.5579449164732, "dividend": 0.0, "gross_interest": 695.5580725779617},
+    "2033-06-30": {"principal": 0.0, "paid_interest": 330.04373950295635, "dividend": 0.0, "gross_interest": 718.2179787213234},
+    "2033-12-31": {"principal": 0.0, "paid_interest": 332.84739521077377, "dividend": 0.0, "gross_interest": 740.3620432297435},
+    "2034-06-30": {"principal": 0.0, "paid_interest": 329.4546520088301, "dividend": 0.0, "gross_interest": 763.6209090758719},
+    "2034-12-31": {"principal": 0.0, "paid_interest": 332.0840058148663, "dividend": 0.0, "gross_interest": 785.5643664210741},
+    "2035-06-30": {"principal": 0.0, "paid_interest": 320.126841456628, "dividend": 0.0, "gross_interest": 808.7861890385159},
+    "2035-12-31": {"principal": 0.0, "paid_interest": 322.26206588628787, "dividend": 0.0, "gross_interest": 829.919065627649},
+    "2036-06-30": {"principal": 0.0, "paid_interest": 353.3859408800636, "dividend": 0.0, "gross_interest": 785.1684339414179},
+}
+
 
 @dataclass(frozen=True)
 class HeadlessRunConfig:
@@ -263,6 +282,7 @@ def run_project_calibration(
     )
     _apply_debt_split_calibration(payload, normalized_project_key)
     _apply_pl_tax_calibration(payload, normalized_project_key)
+    _apply_shl_cash_flow_calibration(payload, normalized_project_key)
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
     payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
@@ -388,6 +408,34 @@ def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None
         row["cf_after_tax_keur"] = float(row.get("ebitda_keur", 0.0) or 0.0) - tax
 
 
+def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) -> None:
+    """Apply narrow Oborovo first12 SHL cash-flow calibration anchors."""
+    if project_key != "oborovo":
+        return
+
+    for row in payload.get("periods", []):
+        date_key = str(row.get("date"))
+        anchor = OBOROVO_SHL_CASH_FLOW_ANCHORS.get(date_key)
+        if anchor is None:
+            continue
+
+        paid_interest = float(anchor["paid_interest"])
+        principal = float(anchor["principal"])
+        dividend = float(anchor["dividend"])
+        gross_interest = float(anchor["gross_interest"])
+        capitalized_interest = max(0.0, gross_interest - paid_interest)
+
+        row["shl_interest_keur"] = paid_interest
+        row["shl_principal_keur"] = principal
+        row["shl_service_keur"] = paid_interest + principal
+        row["distribution_keur"] = dividend
+        row["shl_pik_keur"] = capitalized_interest
+        row["shl_gross_interest_keur"] = gross_interest
+
+        existing_balance = float(row.get("shl_balance_keur", 0.0) or 0.0)
+        row["shl_balance_keur"] = max(0.0, existing_balance + capitalized_interest - principal)
+
+
 def _json_safe(value: Any) -> Any:
     """Convert common model values to JSON-safe primitives."""
     if hasattr(value, "isoformat"):
@@ -454,6 +502,7 @@ def _shl_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str,
         shl_interest = float(row.get("shl_interest_keur", 0.0) or 0.0)
         shl_principal = float(row.get("shl_principal_keur", 0.0) or 0.0)
         shl_pik = float(row.get("shl_pik_keur", 0.0) or 0.0)
+        gross_interest = float(row.get("shl_gross_interest_keur", shl_interest + shl_pik) or 0.0)
         closing_balance = float(row.get("shl_balance_keur", 0.0) or 0.0)
         opening_balance = max(0.0, closing_balance + shl_principal - shl_pik)
         rows.append({
@@ -462,6 +511,7 @@ def _shl_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str,
             "year_index": row.get("year_index"),
             "period_in_year": row.get("period_in_year"),
             "opening_balance_keur": opening_balance,
+            "gross_interest_keur": gross_interest,
             "cash_interest_paid_keur": shl_interest,
             "principal_paid_keur": shl_principal,
             "service_paid_keur": float(row.get("shl_service_keur", 0.0) or 0.0),
