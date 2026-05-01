@@ -146,6 +146,7 @@ def test_run_calibration_shl_decomposition_shape() -> None:
     row = payload["shl_decomposition"][0]
     assert row["date"]
     assert row["opening_balance_keur"] >= 0
+    assert row["gross_interest_keur"] >= row["cash_interest_paid_keur"]
     assert row["cash_interest_paid_keur"] >= 0
     assert row["principal_paid_keur"] >= 0
     assert row["service_paid_keur"] == row["cash_interest_paid_keur"] + row["principal_paid_keur"]
@@ -219,3 +220,25 @@ def test_run_calibration_applies_oborovo_first12_pl_tax_anchors() -> None:
     assert abs(twelfth["depreciation_keur"] - 1470.445240085335) < 1e-9
     assert abs(twelfth["taxable_profit_keur"] - 443.8849122184448) < 1e-9
     assert abs(twelfth["tax_keur"] - 78.21556839713568) < 1e-9
+
+
+def test_run_calibration_applies_oborovo_first12_shl_cash_flow_anchors() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
+    first = payload["periods"][0]
+    twelfth = payload["periods"][11]
+    first_shl = payload["shl_decomposition"][0]
+    twelfth_shl = payload["shl_decomposition"][11]
+
+    assert first["date"] == "2030-12-31"
+    assert abs(first["shl_interest_keur"] - 335.8700119281534) < 1e-9
+    assert abs(first["shl_principal_keur"] - 0.0) < 1e-9
+    assert abs(first["distribution_keur"] - 0.0) < 1e-9
+    assert abs(first_shl["gross_interest_keur"] - 636.8088084115645) < 1e-9
+    assert abs(first_shl["pik_or_capitalized_interest_keur"] - (636.8088084115645 - 335.8700119281534)) < 1e-9
+
+    assert twelfth["date"] == "2036-06-30"
+    assert abs(twelfth["shl_interest_keur"] - 353.3859408800636) < 1e-9
+    assert abs(twelfth["shl_principal_keur"] - 0.0) < 1e-9
+    assert abs(twelfth["distribution_keur"] - 0.0) < 1e-9
+    assert abs(twelfth_shl["gross_interest_keur"] - 785.1684339414179) < 1e-9
+    assert abs(twelfth_shl["pik_or_capitalized_interest_keur"] - (785.1684339414179 - 353.3859408800636)) < 1e-9
