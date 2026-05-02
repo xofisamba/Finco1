@@ -61,7 +61,7 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
     - `excel_full_model_project_irr`
     - `excel_full_model_unlevered_project_irr`
     - `excel_full_model_sponsor_equity_shl_irr`
-  - Applies temporary narrow Excel anchors for Oborovo first12 debt split, P&L/tax, and SHL cash flows.
+  - Applies temporary Excel anchors for Oborovo first12 debt split and P&L/tax, plus full extracted SHL cash-flow lifecycle anchors for Oborovo and TUHO.
 
 - `app/calibration_runner.py`
   - Backward-compatible wrapper around calibration helpers.
@@ -140,6 +140,9 @@ Active, non-xfail checks cover:
 - native-facing Oborovo project IRR against the full Excel unlevered project IRR anchor
 - native-facing TUHO project IRR and equity IRR against Excel anchors
 - native-facing Oborovo SHL opening/closing lifecycle against the full-model extract
+- native engine SHL lifecycle gap summaries before full-model bridge promotion
+- native engine project cash-flow gap summaries before full-model return bridge promotion
+- native engine return KPI gap summaries before full-model bridge promotion
 - direct unit coverage for full-model extract helper transformations
 - stable full-horizon native-facing project cash-flow, SHL lifecycle and sponsor cash-flow payload sections
 
@@ -159,6 +162,10 @@ These anchors are intentionally transparent but not enterprise-grade final logic
   - First12 paid SHL net interest, SHL principal flow, net dividends from Eq sheet.
   - Gross SHL interest from P&L sheet.
   - Capitalized/PIK interest is currently derived as `gross_interest - paid_interest`.
+
+- `FULL_MODEL_SHL_CASH_FLOW_ANCHOR_LIMITS`
+  - Uses the compact full-model extract to seed all operating SHL cash-flow rows for Oborovo and TUHO before the full lifecycle bridge.
+  - This keeps `engine_shl_decomposition_before_full_model_calibration` aligned to the extracted SHL lifecycle while formula-level SHL logic is rebuilt.
 
 These are calibration scaffolding, not final model logic. The long-term objective is to replace them with actual formula logic extracted/reconstructed from the Excel model.
 
@@ -215,6 +222,13 @@ Relevant tests:
 There are no active xfails in the current full suite.
 
 Known caveat: the native-facing KPI fields and `shl_decomposition` now match full-model extracts through a calibration bridge in `app/calibration.py`. The next work is to replace those bridges with formula-level engine logic for project cash flows, SHL lifecycle, sponsor cash flows, debt mechanics and tax/depreciation.
+
+Current diagnostic state before the full-model SHL bridge:
+
+- Oborovo native SHL lifecycle snapshot uses all operating full-model SHL cash-flow anchors; current gap summary compares 59 rows with no closing-balance mismatch.
+- TUHO native SHL lifecycle snapshot uses all operating full-model SHL cash-flow anchors; current gap summary compares 59 rows with no closing-balance mismatch.
+- `engine_project_cash_flow_gap_before_full_model_calibration` records native period `cf_after_tax_keur` versus full-model `fcf_for_banks`; first current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
+- `engine_return_gap_before_full_model_calibration` records native engine project/equity/sponsor IRR deltas before the full-model return bridge is applied.
 
 ## Important tests to run
 
@@ -303,7 +317,7 @@ Future formula-level logic should reproduce directly:
 
 ### 6. Replace temporary anchors with real logic
 
-The code currently has first12 anchors in `app/calibration.py`. Do not remove until proper model logic passes tests.
+The code currently has first12 debt/P&L/tax anchors and full extracted SHL lifecycle anchors in `app/calibration.py`. Do not remove until proper model logic passes tests.
 
 Replace progressively:
 

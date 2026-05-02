@@ -17,6 +17,7 @@ from domain.inputs import ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodFrequency
 from domain.revenue.generation import revenue_decomposition_schedule
 from domain.returns.xirr import xirr
+from domain.waterfall.shl_engine import compute_shl_period_v3
 from domain.waterfall.full_model_extract import (
     project_cash_flow_rows,
     project_irr_from_extract,
@@ -153,6 +154,11 @@ TUHO_SHL_CASH_FLOW_ANCHORS: dict[str, dict[str, float]] = {
     "2030-06-30": {"principal": 0.0, "paid_interest": 953.814443278492, "dividend": 0.0, "gross_interest": 1297.4026055293284},
     "2030-12-31": {"principal": 0.0, "paid_interest": 969.6235224488532, "dividend": 0.0, "gross_interest": 1332.7630030999449},
     "2031-06-30": {"principal": 0.0, "paid_interest": 966.9580868385842, "dividend": 0.0, "gross_interest": 1325.439362431301},
+}
+
+FULL_MODEL_SHL_CASH_FLOW_ANCHOR_LIMITS: dict[str, int | None] = {
+    "oborovo": None,
+    "tuho": None,
 }
 
 
@@ -330,11 +336,19 @@ def run_project_calibration(
     )
     _apply_debt_split_calibration(payload, normalized_project_key)
     _apply_pl_tax_calibration(payload, normalized_project_key)
-    _apply_shl_cash_flow_calibration(payload, normalized_project_key)
+    _apply_shl_cash_flow_calibration(payload, inputs, engine, normalized_project_key)
     payload["engine_shl_decomposition_before_full_model_calibration"] = {
         "source": "native_engine_before_full_model_calibration",
         "rows": _shl_decomposition_rows(payload["periods"]),
     }
+    payload["engine_shl_lifecycle_gap_before_full_model_calibration"] = _shl_lifecycle_gap_summary(
+        payload["engine_shl_decomposition_before_full_model_calibration"]["rows"],
+        normalized_project_key,
+    )
+    payload["engine_project_cash_flow_gap_before_full_model_calibration"] = _project_cash_flow_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
     _apply_full_model_shl_lifecycle_calibration(payload, normalized_project_key)
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
@@ -563,6 +577,18 @@ def _apply_full_model_return_calibration(
         "engine_sponsor_equity_shl_irr_before_full_model_calibration",
         kpis.get("sponsor_equity_shl_irr", 0.0),
     )
+    equity_irr = sponsor_equity_shl_irr_from_financial_close(extract, inputs.info.financial_close)
+    payload["engine_return_gap_before_full_model_calibration"] = _return_gap_summary(
+        project_key=project_key,
+        engine_project_irr=float(kpis.get("engine_project_irr_before_full_model_calibration", 0.0) or 0.0),
+        engine_equity_irr=float(kpis.get("engine_equity_irr_before_full_model_calibration", 0.0) or 0.0),
+        engine_sponsor_equity_shl_irr=float(
+            kpis.get("engine_sponsor_equity_shl_irr_before_full_model_calibration", 0.0) or 0.0
+        ),
+        excel_project_irr=project_irr,
+        excel_unlevered_project_irr=unlevered_project_irr,
+        excel_sponsor_equity_shl_irr=equity_irr,
+    )
 
     if project_key == "oborovo":
         # Oborovo workbook exposes a meaningful unlevered project IRR anchor;
@@ -571,7 +597,6 @@ def _apply_full_model_return_calibration(
     else:
         kpis["project_irr"] = project_irr
 
-    equity_irr = sponsor_equity_shl_irr_from_financial_close(extract, inputs.info.financial_close)
     if equity_irr is not None:
         kpis["equity_irr"] = equity_irr
         kpis["sponsor_equity_shl_irr"] = equity_irr
@@ -582,6 +607,87 @@ def _apply_full_model_return_calibration(
         "project_irr_kpi": kpis["project_irr"],
         "equity_irr_kpi": kpis.get("equity_irr"),
         "sponsor_equity_shl_irr_kpi": kpis.get("sponsor_equity_shl_irr"),
+    }
+
+
+def _return_gap_summary(
+    *,
+    project_key: str,
+    engine_project_irr: float,
+    engine_equity_irr: float,
+    engine_sponsor_equity_shl_irr: float,
+    excel_project_irr: float | None,
+    excel_unlevered_project_irr: float | None,
+    excel_sponsor_equity_shl_irr: float | None,
+) -> dict[str, Any]:
+    """Return compact return KPI deltas before the full-model bridge."""
+    project_anchor = excel_unlevered_project_irr if project_key == "oborovo" else excel_project_irr
+    return {
+        "source": "native_engine_before_full_model_calibration",
+        "project_irr": _return_gap_row(engine_project_irr, project_anchor),
+        "equity_irr": _return_gap_row(engine_equity_irr, excel_sponsor_equity_shl_irr),
+        "sponsor_equity_shl_irr": _return_gap_row(
+            engine_sponsor_equity_shl_irr,
+            excel_sponsor_equity_shl_irr,
+        ),
+    }
+
+
+def _return_gap_row(engine_value: float, excel_value: float | None) -> dict[str, float | None]:
+    """Return one return KPI delta row."""
+    if excel_value is None:
+        return {
+            "engine_value": engine_value,
+            "excel_value": None,
+            "delta": None,
+        }
+    return {
+        "engine_value": engine_value,
+        "excel_value": excel_value,
+        "delta": engine_value - excel_value,
+    }
+
+
+def _project_cash_flow_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+    """Return compact full-model project cash-flow deltas before KPI bridge promotion."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return {
+            "source": "native_engine_before_full_model_calibration",
+            "compared_rows": 0,
+            "max_abs_fcf_for_banks_delta_keur": None,
+            "first_fcf_for_banks_mismatch": None,
+        }
+
+    full_model_by_date = {
+        str(row["date"]): row
+        for row in project_cash_flow_rows(extract)
+    }
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    for row in period_rows:
+        expected = full_model_by_date.get(str(row.get("date")))
+        if expected is None:
+            continue
+        compared_rows += 1
+        native_fcf = float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+        excel_fcf = float(expected.get("fcf_for_banks", 0.0) or 0.0)
+        delta = native_fcf - excel_fcf
+        max_abs_delta = max(max_abs_delta, abs(delta))
+        if first_mismatch is None and abs(delta) > 0.01:
+            first_mismatch = {
+                "date": row.get("date"),
+                "native_fcf_for_banks_keur": native_fcf,
+                "excel_fcf_for_banks_keur": excel_fcf,
+                "delta_keur": delta,
+            }
+
+    return {
+        "source": "native_engine_before_full_model_calibration",
+        "compared_rows": compared_rows,
+        "max_abs_fcf_for_banks_delta_keur": max_abs_delta,
+        "first_fcf_for_banks_mismatch": first_mismatch,
     }
 
 def _investor_cash_flow_definition(inputs: ProjectInputs) -> dict[str, Any]:
@@ -715,7 +821,12 @@ def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None
         row["cf_after_tax_keur"] = float(row.get("ebitda_keur", 0.0) or 0.0) - tax
 
 
-def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) -> None:
+def _apply_shl_cash_flow_calibration(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    engine: PeriodEngine,
+    project_key: str,
+) -> None:
     """Apply narrow project-specific SHL cash-flow calibration anchors."""
     if project_key == "oborovo":
         anchors = OBOROVO_SHL_CASH_FLOW_ANCHORS
@@ -723,12 +834,43 @@ def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) 
         anchors = TUHO_SHL_CASH_FLOW_ANCHORS
     else:
         return
+    anchors = _full_model_shl_cash_flow_anchors(project_key, fallback_anchors=anchors)
 
     running_shl_balance: float | None = None
+    operation_period_by_date = {
+        period.end_date.isoformat(): period
+        for period in engine.operation_periods()
+    }
+    financing = inputs.financing
+    shl_method = _enum_or_string_value(getattr(financing, "shl_repayment_method", "bullet"))
+    annual_shl_rate = float(getattr(financing, "shl_rate", 0.0) or 0.0)
+    shl_wht_rate = float(getattr(inputs.tax, "wht_sponsor_shl_interest", 0.0) or 0.0)
+
     for row in payload.get("periods", []):
         date_key = str(row.get("date"))
         anchor = anchors.get(date_key)
         if anchor is None:
+            if running_shl_balance is None:
+                continue
+            operation_period = operation_period_by_date.get(date_key)
+            day_fraction = getattr(operation_period, "day_fraction", 0.5) if operation_period is not None else 0.5
+            cf_available = _cash_available_for_shl_continuation(row, shl_method)
+            result = compute_shl_period_v3(
+                shl_balance=running_shl_balance,
+                shl_rate_per_period=annual_shl_rate * day_fraction,
+                cf_available=cf_available,
+                method=shl_method,
+                wht_rate=shl_wht_rate,
+                pik_switch_triggered=False,
+                is_final_period=False,
+            )
+            row["shl_interest_keur"] = result.interest_paid_keur
+            row["shl_principal_keur"] = result.principal_keur
+            row["shl_service_keur"] = result.interest_paid_keur + result.principal_keur
+            row["shl_pik_keur"] = result.pik_addition_keur
+            row["shl_gross_interest_keur"] = result.interest_paid_keur + result.pik_addition_keur
+            row["shl_balance_keur"] = result.new_balance_keur
+            running_shl_balance = result.new_balance_keur
             continue
 
         paid_interest = float(anchor["paid_interest"])
@@ -751,6 +893,84 @@ def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) 
         row["shl_gross_interest_keur"] = gross_interest
         row["shl_balance_keur"] = closing_balance
         running_shl_balance = closing_balance
+
+
+def _cash_available_for_shl_continuation(row: dict[str, Any], shl_method: str) -> float:
+    """Return cash available for SHL when continuing after explicit anchors."""
+    cf_after_tax = float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+    senior_ds = float(row.get("senior_ds_keur", 0.0) or 0.0)
+    if shl_method == "pik_then_sweep":
+        return max(0.0, cf_after_tax - senior_ds)
+    return max(0.0, cf_after_tax)
+
+
+def _full_model_shl_cash_flow_anchors(
+    project_key: str,
+    *,
+    fallback_anchors: dict[str, dict[str, float]],
+) -> dict[str, dict[str, float]]:
+    """Return cash-flow anchors from the full SHL extract for operating dates."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return fallback_anchors
+
+    explicit_limit = FULL_MODEL_SHL_CASH_FLOW_ANCHOR_LIMITS.get(project_key, len(fallback_anchors))
+    operation_rows = extract.get("shl", [])[1:]
+    if explicit_limit is not None:
+        operation_rows = operation_rows[:explicit_limit]
+    anchor_dates = {str(row[0]) for row in operation_rows}
+    anchors: dict[str, dict[str, float]] = {}
+    for row in extract.get("shl", []):
+        date_key = str(row[0])
+        if date_key not in anchor_dates:
+            continue
+        anchors[date_key] = {
+            "principal": max(0.0, float(row[4] or 0.0)),
+            "paid_interest": float(row[5] or 0.0),
+            "dividend": max(0.0, float(row[7] or 0.0)),
+            "gross_interest": float(row[3] or 0.0),
+        }
+    return anchors or fallback_anchors
+
+
+def _shl_lifecycle_gap_summary(native_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+    """Return compact SHL lifecycle deltas before the full-model bridge."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return {
+            "source": "native_engine_before_full_model_calibration",
+            "compared_rows": 0,
+            "max_abs_closing_balance_delta_keur": None,
+            "first_closing_balance_mismatch": None,
+        }
+
+    full_model_by_date = shl_lifecycle_by_date(extract)
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    for row in native_rows:
+        expected = full_model_by_date.get(str(row.get("date")))
+        if expected is None:
+            continue
+        compared_rows += 1
+        native_closing = float(row.get("closing_balance_keur", 0.0) or 0.0)
+        excel_closing = float(expected.get("closing_balance_keur", 0.0) or 0.0)
+        delta = native_closing - excel_closing
+        max_abs_delta = max(max_abs_delta, abs(delta))
+        if first_mismatch is None and abs(delta) > 0.01:
+            first_mismatch = {
+                "date": row.get("date"),
+                "native_closing_balance_keur": native_closing,
+                "excel_closing_balance_keur": excel_closing,
+                "delta_keur": delta,
+            }
+
+    return {
+        "source": "native_engine_before_full_model_calibration",
+        "compared_rows": compared_rows,
+        "max_abs_closing_balance_delta_keur": max_abs_delta,
+        "first_closing_balance_mismatch": first_mismatch,
+    }
 
 
 def _json_safe(value: Any) -> Any:

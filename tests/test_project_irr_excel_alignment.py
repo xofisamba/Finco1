@@ -126,6 +126,26 @@ def test_oborovo_excel_full_model_unlevered_project_irr_payload_matches_anchor()
     )
     assert payload["project_cash_flows"]["rows"] == excel_full["rows"]
     assert payload["project_cash_flows"]["rows"][0]["date"] == "2029-06-29"
+    gap = payload["engine_return_gap_before_full_model_calibration"]
+    assert gap["source"] == "native_engine_before_full_model_calibration"
+    assert gap["project_irr"]["excel_value"] == pytest.approx(
+        excel_full["excel_unlevered_project_irr"],
+        abs=1e-8,
+    )
+    assert gap["project_irr"]["engine_value"] == pytest.approx(
+        payload["kpis"]["engine_project_irr_before_full_model_calibration"],
+        abs=1e-8,
+    )
+
+
+def test_oborovo_project_cash_flow_gap_summary_identifies_full_model_delta() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    summary = payload["engine_project_cash_flow_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["compared_rows"] == 59
+    assert summary["max_abs_fcf_for_banks_delta_keur"] > 0.0
+    assert summary["first_fcf_for_banks_mismatch"]["date"] == "2032-06-30"
 
 
 def test_tuho_excel_full_model_project_irr_payload_matches_anchors() -> None:
@@ -162,6 +182,26 @@ def test_tuho_excel_full_model_project_irr_payload_matches_anchors() -> None:
     )
     assert payload["project_cash_flows"]["rows"] == excel_full["rows"]
     assert payload["project_cash_flows"]["rows"][0]["project_irr_cf"] < 0
+    gap = payload["engine_return_gap_before_full_model_calibration"]
+    assert gap["source"] == "native_engine_before_full_model_calibration"
+    assert gap["project_irr"]["excel_value"] == pytest.approx(
+        excel_full["excel_project_irr"],
+        abs=1e-8,
+    )
+    assert gap["sponsor_equity_shl_irr"]["excel_value"] == pytest.approx(
+        payload["kpis"]["sponsor_equity_shl_irr"],
+        abs=1e-8,
+    )
+
+
+def test_tuho_project_cash_flow_gap_summary_identifies_full_model_delta() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["engine_project_cash_flow_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["compared_rows"] == 59
+    assert summary["max_abs_fcf_for_banks_delta_keur"] > 0.0
+    assert summary["first_fcf_for_banks_mismatch"]["date"] == "2031-12-31"
 
 
 def test_oborovo_project_irr_against_excel() -> None:

@@ -29,6 +29,9 @@
 - Calibration payloads include `excel_full_model_shl`, an Excel-sourced full-horizon SHL lifecycle block for Oborovo and TUHO.
 - Calibration payloads include `excel_full_model_sponsor_equity_shl_cash_flows` plus `excel_full_model_sponsor_equity_shl_irr`, calculated from the full extracted Excel SHL principal, paid net interest and dividend rows.
 - Calibration payloads now promote the full-model extract into native-facing KPI fields for project IRR, TUHO equity IRR and sponsor equity + SHL IRR, while preserving the raw engine values under `engine_*_before_full_model_calibration` diagnostics.
+- Calibration payloads now expose `engine_return_gap_before_full_model_calibration`, a compact delta summary for return KPIs before the full-model bridge is applied.
+- Calibration payloads now expose `engine_shl_decomposition_before_full_model_calibration` and `engine_shl_lifecycle_gap_before_full_model_calibration`, so SHL lifecycle parity from the full-model extract is visible before the final full-model bridge is applied.
+- Calibration payloads now expose `engine_project_cash_flow_gap_before_full_model_calibration`, a compact delta summary for native period `cf_after_tax_keur` versus full-model `fcf_for_banks` before project IRR bridge promotion.
 - Calibration period rows now use the full-model SHL lifecycle extract for SHL opening balance, gross interest, paid interest, principal, capitalized interest, closing balance and dividend timing.
 - Calibration payloads now expose native-facing full-horizon series: `project_cash_flows`, `shl_lifecycle_decomposition`, `sponsor_equity_shl_cash_flows_full_model` and `sponsor_equity_shl_cash_flows_financial_close`.
 
@@ -53,7 +56,7 @@ The TUHO factory is intentionally marked as first-pass. It matches key anchors s
 
 Latest local regression gate:
 
-- Full pytest suite: `482 passed, 4 skipped`.
+- Full pytest suite: `493 passed, 4 skipped`.
 
 ## Current calibration truth
 
@@ -93,6 +96,10 @@ Passing / expected-passing checks:
 - TUHO equity IRR is active against the Excel anchor using full-model SHL/sponsor cash flows timed from financial close.
 - Oborovo and TUHO Excel full-model sponsor equity + SHL cash-flow diagnostics are active and recompute `excel_full_model_sponsor_equity_shl_irr` from SHL principal flow, paid net interest and net dividend rows.
 - Oborovo and TUHO native-facing full-horizon project cash-flow, SHL lifecycle and sponsor cash-flow series are exposed as stable calibration payload sections.
+- Oborovo and TUHO native engine SHL lifecycle snapshots now use all operating SHL cash-flow anchors from the compact full-model extracts before the full lifecycle bridge is applied.
+- Oborovo and TUHO SHL lifecycle gap summaries now confirm full extracted lifecycle parity before the full bridge: 59 compared operating rows and no closing-balance mismatch.
+- Oborovo and TUHO return KPI gap summaries are serialized before the full-model return bridge is applied.
+- Oborovo and TUHO project cash-flow gap summaries are serialized before the full-model return bridge is applied. Current first full-model `fcf_for_banks` mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
 - Oborovo total capex anchor is active for project IRR diagnostics.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
@@ -197,7 +204,7 @@ The new sponsor IRR cash-flow convention is explicit:
 - Periodic inflows: `distribution_keur + shl_interest_keur + shl_principal_keur`.
 - Unpaid PIK/accrued SHL interest is not counted as investor cash inflow until it is actually paid.
 
-`app/calibration.py` applies a narrow Oborovo first-12 SHL cash-flow calibration anchor extracted from the Eq and P&L sheets. This aligns first-12 paid SHL net interest, SHL principal flow, net dividend flow and gross P&L shareholder-loan interest.
+`app/calibration.py` applies SHL cash-flow calibration anchors from the compact full-model extracts for all operating SHL lifecycle rows. This aligns paid SHL net interest, SHL principal flow, net dividend flow, gross shareholder-loan interest and closing balances across the full extracted lifecycle.
 
 `tests/test_shl_excel_alignment.py` promotes Oborovo first-twelve SHL cash-flow, gross-interest and opening/closing balance rows to active reconciliation tests against the full-model extract. It also validates the full Excel-sourced Oborovo and TUHO SHL lifecycle payloads and the Excel-sourced sponsor equity + SHL cash-flow diagnostics.
 
@@ -222,6 +229,8 @@ Active checks:
 `tests/test_full_model_extract_helpers.py` validates the reusable full-model extract helper layer directly, so project IRR, unlevered IRR, SHL lifecycle rows and sponsor equity + SHL IRR are no longer tested only through the calibration payload.
 
 `tests/test_project_irr_excel_alignment.py` now validates that `run_project_calibration()` exposes the full extracted Excel cash-flow series, recomputes the Excel-sourced full-horizon project/unlevered IRR diagnostics, and promotes the relevant full-model IRR into the native-facing `project_irr` KPI.
+
+`tests/test_project_irr_excel_alignment.py` also validates `engine_project_cash_flow_gap_before_full_model_calibration`, which isolates the remaining full-horizon period cash-flow formula deltas before the IRR bridge is applied.
 
 `tests/test_tuho_excel_reconciliation.py` now validates TUHO native-facing project IRR and equity IRR against the Excel anchors.
 

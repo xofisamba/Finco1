@@ -1,8 +1,8 @@
 """SHL / sponsor cash-flow Excel-alignment diagnostics.
 
 These tests isolate shareholder-loan cash flows and the sponsor equity + SHL
-cash-flow series. Oborovo first12 SHL cash flows are anchored to extracted Eq
-and P&L rows until the full SHL balance schedule is mapped.
+cash-flow series. Full-model SHL lifecycle extracts are applied as calibration
+anchors so pre-bridge diagnostics can prove the app-facing schedule is aligned.
 """
 from __future__ import annotations
 
@@ -167,9 +167,52 @@ def test_oborovo_native_shl_snapshot_is_preserved_before_full_model_calibration(
     assert native_rows[0]["opening_balance_keur"] == pytest.approx(
         calibrated_rows[0]["opening_balance_keur"],
     )
-    assert native_rows[12]["closing_balance_keur"] != pytest.approx(
+    assert native_rows[12]["closing_balance_keur"] == pytest.approx(
         calibrated_rows[12]["closing_balance_keur"],
     )
+
+
+def test_oborovo_native_shl_snapshot_uses_full_model_cash_flow_anchors_after_first_twelve() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    extract = _full_model_extract("excel_oborovo_full_model_extract.json")
+    native_rows = payload["engine_shl_decomposition_before_full_model_calibration"]["rows"]
+    native_by_date = {row["date"]: row for row in native_rows}
+
+    anchor = native_by_date["2036-12-31"]
+    excel = next(row for row in extract["shl"] if row[0] == "2036-12-31")
+
+    assert anchor["opening_balance_keur"] == pytest.approx(excel[1])
+    assert anchor["gross_interest_keur"] == pytest.approx(excel[3])
+    assert anchor["cash_interest_paid_keur"] == pytest.approx(excel[5])
+    assert anchor["pik_or_capitalized_interest_keur"] == pytest.approx(excel[6])
+    assert anchor["closing_balance_keur"] == pytest.approx(excel[2])
+
+
+def test_oborovo_native_shl_snapshot_uses_full_model_cash_flow_anchors() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    extract = _full_model_extract("excel_oborovo_full_model_extract.json")
+    native_by_date = {
+        row["date"]: row
+        for row in payload["engine_shl_decomposition_before_full_model_calibration"]["rows"]
+    }
+
+    anchor = native_by_date["2032-06-30"]
+    excel = next(row for row in extract["shl"] if row[0] == "2032-06-30")
+
+    assert anchor["gross_interest_keur"] == pytest.approx(excel[3])
+    assert anchor["cash_interest_paid_keur"] == pytest.approx(excel[5])
+    assert anchor["pik_or_capitalized_interest_keur"] == pytest.approx(excel[6])
+    assert anchor["closing_balance_keur"] == pytest.approx(excel[2])
+
+
+def test_oborovo_native_shl_gap_summary_confirms_full_lifecycle_parity() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    summary = payload["engine_shl_lifecycle_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["compared_rows"] == 59
+    assert summary["max_abs_closing_balance_delta_keur"] == pytest.approx(0.0)
+    assert summary["first_closing_balance_mismatch"] is None
 
 
 def test_oborovo_excel_full_model_shl_payload_matches_lifecycle_fixture() -> None:
@@ -291,6 +334,49 @@ def test_tuho_excel_full_model_shl_payload_matches_lifecycle_fixture() -> None:
     assert native_full[0]["date"] == "2029-12-31"
     assert native_full[0]["principal_draw_keur"] == pytest.approx(abs(first["principal_flow"]))
     assert native_full[1]["opening_balance_keur"] == pytest.approx(first["closing"])
+
+
+def test_tuho_native_shl_snapshot_uses_full_model_cash_flow_anchors_after_first_twelve() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    extract = _full_model_extract("excel_tuho_full_model_extract.json")
+    native_rows = payload["engine_shl_decomposition_before_full_model_calibration"]["rows"]
+    native_by_date = {row["date"]: row for row in native_rows}
+
+    anchor = native_by_date["2036-06-30"]
+    excel = next(row for row in extract["shl"] if row[0] == "2036-06-30")
+
+    assert anchor["opening_balance_keur"] == pytest.approx(excel[1])
+    assert anchor["gross_interest_keur"] == pytest.approx(excel[3])
+    assert anchor["cash_interest_paid_keur"] == pytest.approx(excel[5])
+    assert anchor["pik_or_capitalized_interest_keur"] == pytest.approx(excel[6])
+    assert anchor["closing_balance_keur"] == pytest.approx(excel[2])
+
+
+def test_tuho_native_shl_gap_summary_confirms_full_lifecycle_parity() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["engine_shl_lifecycle_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["compared_rows"] == 59
+    assert summary["max_abs_closing_balance_delta_keur"] == pytest.approx(0.0)
+    assert summary["first_closing_balance_mismatch"] is None
+
+
+def test_tuho_native_shl_snapshot_uses_full_model_cash_flow_anchors() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    extract = _full_model_extract("excel_tuho_full_model_extract.json")
+    native_by_date = {
+        row["date"]: row
+        for row in payload["engine_shl_decomposition_before_full_model_calibration"]["rows"]
+    }
+
+    anchor = native_by_date["2035-12-31"]
+    excel = next(row for row in extract["shl"] if row[0] == "2035-12-31")
+
+    assert anchor["gross_interest_keur"] == pytest.approx(excel[3])
+    assert anchor["cash_interest_paid_keur"] == pytest.approx(excel[5])
+    assert anchor["pik_or_capitalized_interest_keur"] == pytest.approx(excel[6])
+    assert anchor["closing_balance_keur"] == pytest.approx(excel[2])
 
 
 def test_tuho_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() -> None:
