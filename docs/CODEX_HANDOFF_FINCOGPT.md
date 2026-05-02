@@ -61,6 +61,11 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
     - `excel_full_model_project_irr`
     - `excel_full_model_unlevered_project_irr`
     - `excel_full_model_sponsor_equity_shl_irr`
+    - `raw_engine_shl_lifecycle_gap_before_cash_flow_anchors`
+    - `sponsor_equity_shl_cash_flow_gap_before_full_model_calibration`
+    - `full_model_period_diagnostics`
+    - `engine_debt_gap_before_full_model_calibration`
+    - `engine_pl_tax_gap_before_full_model_calibration`
   - Applies temporary Excel anchors for Oborovo first12 debt split and P&L/tax, plus full extracted SHL cash-flow lifecycle anchors for Oborovo and TUHO.
 
 - `app/calibration_runner.py`
@@ -101,11 +106,13 @@ Existing / important fixtures:
 - `tests/fixtures/excel_oborovo_full_model_extract.json`
   - Compact full extract from Oborovo workbook.
   - Contains 61 SHL rows and 61 project/unlevered IRR cash-flow rows.
+  - Contains 60 operating-period CF/DS/P&L/Dep diagnostic rows.
   - Important: 61 rows = 1 construction/COD boundary row + 60 operating semiannual rows.
   - First SHL row `2030-06-30` is not an operating revenue row; it forms opening SHL balance from SHL draw + capitalized construction-period SHL interest/IDC.
 - `tests/fixtures/excel_tuho_full_model_extract.json`
   - Compact full extract from TUHO workbook.
   - Contains 61 SHL rows and 61 project/unlevered IRR cash-flow rows.
+  - Contains 60 operating-period CF/DS/P&L/Dep diagnostic rows.
 
 ## Current Oborovo active reconciliation coverage
 
@@ -142,7 +149,9 @@ Active, non-xfail checks cover:
 - native-facing Oborovo project IRR against the full Excel unlevered project IRR anchor
 - native-facing TUHO project IRR and equity IRR against Excel anchors
 - native-facing Oborovo SHL opening/closing lifecycle against the full-model extract
+- raw native SHL lifecycle gap summaries before cash-flow anchors
 - native engine SHL lifecycle gap summaries before full-model bridge promotion
+- native sponsor equity + SHL cash-flow gap summaries before full-model bridge promotion
 - native engine project cash-flow gap summaries before full-model return bridge promotion
 - native engine return KPI gap summaries before full-model bridge promotion
 - direct unit coverage for full-model extract helper transformations
@@ -229,9 +238,15 @@ Current diagnostic state before the full-model SHL bridge:
 
 - Oborovo native SHL lifecycle snapshot uses all operating full-model SHL cash-flow anchors; current gap summary compares 59 rows with no closing-balance mismatch.
 - TUHO native SHL lifecycle snapshot uses all operating full-model SHL cash-flow anchors; current gap summary compares 59 rows with no closing-balance mismatch.
+- Raw native SHL snapshots before cash-flow anchors remain exposed for formula-replacement work; first raw mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`.
+- Raw SHL gap tests now lock first mismatch values and max absolute deltas for both Oborovo and TUHO.
 - `engine_project_cash_flow_gap_before_full_model_calibration` records native period `cf_after_tax_keur` versus full-model `fcf_for_banks`; first current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
+- Project cash-flow gap tests now lock first mismatch values and max absolute deltas for both Oborovo and TUHO.
+- `engine_debt_gap_before_full_model_calibration` records native debt rows versus full-model DS/CF period diagnostics; it includes compared metrics, mismatch counts, first mismatch and max-delta location. First current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
+- `engine_pl_tax_gap_before_full_model_calibration` records native depreciation/tax rows versus full-model P&L diagnostics; it includes compared metrics, mismatch counts, first mismatch and max-delta location. First current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
 - Senior debt diagnostics now continue from the last explicit Excel debt split anchor using day-count interest and target-DSCR service instead of reverting to a one-period native balloon repayment.
 - P&L/tax diagnostics now keep non-anchor post-tax cash flow consistent with tax charges by setting `cf_after_tax_keur = ebitda_keur - tax_keur` when tax is present.
+- `sponsor_equity_shl_cash_flow_gap_before_full_model_calibration` records native sponsor cash-flow convention deltas; current first mismatch is the initial IDC treatment for both Oborovo and TUHO.
 - `engine_return_gap_before_full_model_calibration` records native engine project/equity/sponsor IRR deltas before the full-model return bridge is applied.
 
 ## Important tests to run

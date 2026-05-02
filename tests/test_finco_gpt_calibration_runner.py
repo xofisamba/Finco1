@@ -113,6 +113,15 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["excel_full_model_project_irr"]["rows"]
     assert "excel_full_model_project_irr" in payload["kpis"]
     assert "excel_full_model_unlevered_project_irr" in payload["kpis"]
+    assert payload["raw_engine_shl_decomposition_before_cash_flow_anchors"]["rows"]
+    assert payload["raw_engine_shl_lifecycle_gap_before_cash_flow_anchors"]["compared_rows"] > 0
+    assert payload["engine_shl_lifecycle_gap_before_full_model_calibration"]["compared_rows"] > 0
+    assert payload["engine_project_cash_flow_gap_before_full_model_calibration"]["compared_rows"] > 0
+    assert payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"]["compared_rows"] > 0
+    assert payload["engine_debt_gap_before_full_model_calibration"]["compared_rows"] > 0
+    assert payload["engine_pl_tax_gap_before_full_model_calibration"]["compared_rows"] > 0
+    assert payload["full_model_period_diagnostics"]["source"] == "excel_full_model_extract"
+    assert len(payload["full_model_period_diagnostics"]["rows"]) == 60
 
 
 def test_run_calibration_excel_full_model_project_irr_payload_shape() -> None:
@@ -185,6 +194,46 @@ def test_run_calibration_excel_full_model_sponsor_equity_shl_payload_shape() -> 
     )
     assert payload["sponsor_equity_shl_cash_flows_full_model"]["rows"] == excel_full["rows"]
     assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2028-06-30"
+
+
+def test_run_calibration_gap_payloads_are_serialized_for_tuho() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+
+    raw_shl_gap = payload["raw_engine_shl_lifecycle_gap_before_cash_flow_anchors"]
+    anchored_shl_gap = payload["engine_shl_lifecycle_gap_before_full_model_calibration"]
+    project_cf_gap = payload["engine_project_cash_flow_gap_before_full_model_calibration"]
+    sponsor_cf_gap = payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"]
+
+    assert raw_shl_gap["source"] == "native_engine_before_cash_flow_anchors"
+    assert raw_shl_gap["compared_rows"] == 59
+    assert raw_shl_gap["first_closing_balance_mismatch"]["date"] == "2030-06-30"
+    assert anchored_shl_gap["source"] == "native_engine_before_full_model_calibration"
+    assert anchored_shl_gap["first_closing_balance_mismatch"] is None
+    assert project_cf_gap["first_fcf_for_banks_mismatch"]["date"] == "2031-12-31"
+    assert sponsor_cf_gap["first_cash_flow_mismatch"]["index"] == 0
+    assert sponsor_cf_gap["first_cash_flow_mismatch"]["delta_keur"] == pytest.approx(
+        -payload["investor_cash_flow_definition"]["shl_idc_keur"],
+    )
+
+
+def test_run_calibration_full_model_period_diagnostics_payload_shape() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    diagnostics = payload["full_model_period_diagnostics"]
+
+    assert diagnostics["source"] == "excel_full_model_extract"
+    assert diagnostics["definition"] == "operating-period CF, DS, P&L and Dep rows from the full workbook extract"
+    assert diagnostics["columns"][0] == "date"
+    assert "CF.free_cash_flow_for_banks_keur" in diagnostics["columns"]
+    assert "DS.senior_principal_keur" in diagnostics["columns"]
+    assert "P&L.taxable_income_keur" in diagnostics["columns"]
+    assert "Dep.depreciation_keur" in diagnostics["columns"]
+    assert diagnostics["source_detail"]["sheets"] == ["CF", "DS", "P&L", "Dep"]
+    assert diagnostics["source_detail"]["scope"] == "all operating periods flagged TRUE in the CF sheet"
+    assert diagnostics["source_detail"]["row_mapping"]["CF"]["free_cash_flow_for_banks_keur"] == 69
+    assert diagnostics["source_detail"]["row_mapping"]["DS"]["senior_principal_keur"] == 49
+    assert len(diagnostics["rows"]) == 60
+    assert diagnostics["rows"][0]["date"] == "2030-06-30"
+    assert diagnostics["rows"][-1]["date"] == "2059-12-31"
 
 
 def test_run_calibration_payload_is_operation_only_for_period_rows() -> None:

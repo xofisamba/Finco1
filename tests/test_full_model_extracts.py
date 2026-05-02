@@ -42,6 +42,10 @@ def test_oborovo_full_model_extract_shape() -> None:
     ]
     assert len(payload["shl"]) == 61
     assert len(payload["project_cf"]) == 61
+    assert len(payload["period_diagnostics"]) == 60
+    assert payload["period_diagnostic_columns"][0] == "date"
+    assert payload["period_diagnostics"][0][0] == "2030-12-31"
+    assert payload["period_diagnostics"][-1][0] == "2060-06-30"
 
 
 def test_tuho_full_model_extract_shape() -> None:
@@ -60,6 +64,52 @@ def test_tuho_full_model_extract_shape() -> None:
     ]
     assert len(payload["shl"]) == 61
     assert len(payload["project_cf"]) == 61
+    assert len(payload["period_diagnostics"]) == 60
+    assert payload["period_diagnostic_columns"][0] == "date"
+    assert payload["period_diagnostics"][0][0] == "2030-06-30"
+    assert payload["period_diagnostics"][-1][0] == "2059-12-31"
+
+
+def test_full_period_diagnostics_cover_existing_period_fixture_dates() -> None:
+    checks = [
+        ("excel_oborovo_full_model_extract.json", "excel_oborovo_periods.json", 12),
+        ("excel_tuho_full_model_extract.json", "excel_tuho_periods.json", 3),
+    ]
+
+    for full_name, period_name, limit in checks:
+        full = _fixture(full_name)
+        period_fixture = _fixture(period_name)["periods"][:limit]
+        columns = full["period_diagnostic_columns"]
+        rows = [
+            {column: value for column, value in zip(columns, row)}
+            for row in full["period_diagnostics"]
+        ]
+        by_date = {row["date"]: row for row in rows}
+        for period in period_fixture:
+            full_row = by_date[period["period_end_date"]]
+            assert full_row["date"] == period["period_end_date"]
+            assert "CF.free_cash_flow_for_banks_keur" in full_row
+            assert "DS.senior_principal_keur" in full_row
+            assert "P&L.taxable_income_keur" in full_row
+            assert "Dep.depreciation_keur" in full_row
+
+
+def test_oborovo_full_period_diagnostics_preserve_known_cfads_gap() -> None:
+    full = _fixture("excel_oborovo_full_model_extract.json")
+    period_fixture = _fixture("excel_oborovo_periods.json")
+    columns = full["period_diagnostic_columns"]
+    rows = [
+        {column: value for column, value in zip(columns, row)}
+        for row in full["period_diagnostics"]
+    ]
+    by_date = {row["date"]: row for row in rows}
+    fixture_by_date = {row["period_end_date"]: row for row in period_fixture["periods"]}
+
+    full_row = by_date["2032-06-30"]
+    fixture_row = fixture_by_date["2032-06-30"]
+
+    assert full_row["CF.free_cash_flow_for_banks_keur"] == pytest.approx(2610.818596342869)
+    assert fixture_row["CF"]["free_cash_flow_for_banks_keur"] == pytest.approx(2587.225095914724)
 
 
 def test_oborovo_full_shl_balance_schedule_has_expected_lifecycle() -> None:

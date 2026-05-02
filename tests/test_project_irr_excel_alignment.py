@@ -144,8 +144,12 @@ def test_oborovo_project_cash_flow_gap_summary_identifies_full_model_delta() -> 
 
     assert summary["source"] == "native_engine_before_full_model_calibration"
     assert summary["compared_rows"] == 59
-    assert summary["max_abs_fcf_for_banks_delta_keur"] > 0.0
-    assert summary["first_fcf_for_banks_mismatch"]["date"] == "2032-06-30"
+    assert summary["max_abs_fcf_for_banks_delta_keur"] == pytest.approx(1271.3217453242419)
+    first_mismatch = summary["first_fcf_for_banks_mismatch"]
+    assert first_mismatch["date"] == "2032-06-30"
+    assert first_mismatch["native_fcf_for_banks_keur"] == pytest.approx(2587.2250959147236)
+    assert first_mismatch["excel_fcf_for_banks_keur"] == pytest.approx(2610.818596342869)
+    assert first_mismatch["delta_keur"] == pytest.approx(-23.59350042814549)
 
 
 def test_tuho_excel_full_model_project_irr_payload_matches_anchors() -> None:
@@ -200,8 +204,12 @@ def test_tuho_project_cash_flow_gap_summary_identifies_full_model_delta() -> Non
 
     assert summary["source"] == "native_engine_before_full_model_calibration"
     assert summary["compared_rows"] == 59
-    assert summary["max_abs_fcf_for_banks_delta_keur"] > 0.0
-    assert summary["first_fcf_for_banks_mismatch"]["date"] == "2031-12-31"
+    assert summary["max_abs_fcf_for_banks_delta_keur"] == pytest.approx(2567.650754178724)
+    first_mismatch = summary["first_fcf_for_banks_mismatch"]
+    assert first_mismatch["date"] == "2031-12-31"
+    assert first_mismatch["native_fcf_for_banks_keur"] == pytest.approx(3901.390057946259)
+    assert first_mismatch["excel_fcf_for_banks_keur"] == pytest.approx(3163.2241181486525)
+    assert first_mismatch["delta_keur"] == pytest.approx(738.1659397976064)
 
 
 def test_oborovo_project_irr_against_excel() -> None:

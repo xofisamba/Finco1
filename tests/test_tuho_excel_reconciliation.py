@@ -137,3 +137,24 @@ def test_tuho_first_three_periods_core_lines_against_excel() -> None:
         metric_specs=TUHO_PERIOD_METRIC_SPECS,
     )
     assert not failures, failures
+
+
+def test_tuho_full_horizon_project_cash_flow_gap_is_exposed() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["engine_project_cash_flow_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["compared_rows"] == 59
+    assert summary["first_fcf_for_banks_mismatch"]["date"] == "2031-12-31"
+    assert summary["max_abs_fcf_for_banks_delta_keur"] > 0.0
+
+
+def test_tuho_full_horizon_native_series_are_available_for_period_parity() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+
+    assert payload["project_cash_flows"]["source"] == "full_model_extract_bridge"
+    assert len(payload["project_cash_flows"]["rows"]) == 61
+    assert payload["project_cash_flows"]["rows"][0]["date"] == "2028-06-30"
+    assert payload["project_cash_flows"]["rows"][-1]["date"] == "2059-12-31"
+    assert payload["shl_lifecycle_decomposition"]["source"] == "full_model_extract_bridge"
+    assert len(payload["shl_lifecycle_decomposition"]["rows"]) == 61

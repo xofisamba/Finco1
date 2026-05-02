@@ -19,6 +19,8 @@ from domain.revenue.generation import revenue_decomposition_schedule
 from domain.returns.xirr import xirr
 from domain.waterfall.shl_engine import compute_shl_period_v3
 from domain.waterfall.full_model_extract import (
+    period_diagnostic_by_date,
+    period_diagnostic_rows,
     project_cash_flow_rows,
     project_irr_from_extract,
     shl_lifecycle_by_date,
@@ -336,6 +338,23 @@ def run_project_calibration(
     )
     _apply_debt_split_calibration(payload, inputs, engine, normalized_project_key)
     _apply_pl_tax_calibration(payload, normalized_project_key)
+    payload["engine_debt_gap_before_full_model_calibration"] = _debt_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    payload["engine_pl_tax_gap_before_full_model_calibration"] = _pl_tax_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    payload["raw_engine_shl_decomposition_before_cash_flow_anchors"] = {
+        "source": "native_engine_before_cash_flow_anchors",
+        "rows": _shl_decomposition_rows(payload["periods"]),
+    }
+    payload["raw_engine_shl_lifecycle_gap_before_cash_flow_anchors"] = _shl_lifecycle_gap_summary(
+        payload["raw_engine_shl_decomposition_before_cash_flow_anchors"]["rows"],
+        normalized_project_key,
+        source="native_engine_before_cash_flow_anchors",
+    )
     _apply_shl_cash_flow_calibration(payload, inputs, engine, normalized_project_key)
     payload["engine_shl_decomposition_before_full_model_calibration"] = {
         "source": "native_engine_before_full_model_calibration",
@@ -361,6 +380,9 @@ def run_project_calibration(
     sponsor_irr = _xirr_from_cash_flow_rows(investor_cf)
     payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr if sponsor_irr is not None else 0.0
     _attach_excel_full_model_sponsor_equity_shl_irr(payload, normalized_project_key)
+    payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"] = (
+        _sponsor_equity_shl_cash_flow_gap_summary(payload, normalized_project_key)
+    )
     _attach_excel_full_model_project_irr(payload, normalized_project_key)
     _apply_full_model_return_calibration(payload, inputs, normalized_project_key)
     payload["available_project_keys"] = available_project_keys()
@@ -474,6 +496,14 @@ def _attach_full_model_native_series(
         "definition": "first extracted SHL investment timed at financial close",
         "rows": sponsor_rows_financial_close,
     }
+    if "period_diagnostics" in extract:
+        payload["full_model_period_diagnostics"] = {
+            "source": "excel_full_model_extract",
+            "definition": "operating-period CF, DS, P&L and Dep rows from the full workbook extract",
+            "columns": extract["period_diagnostic_columns"],
+            "rows": period_diagnostic_rows(extract),
+            "source_detail": extract.get("period_diagnostic_source"),
+        }
 
 
 def _load_excel_full_model_extract(project_key: str) -> dict[str, Any] | None:
@@ -689,6 +719,162 @@ def _project_cash_flow_gap_summary(period_rows: list[dict[str, Any]], project_ke
         "max_abs_fcf_for_banks_delta_keur": max_abs_delta,
         "first_fcf_for_banks_mismatch": first_mismatch,
     }
+
+
+def _debt_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+    """Return compact senior-debt deltas against full-model DS diagnostics."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return _empty_metric_gap("native_engine_before_full_model_calibration", "debt")
+
+    full_model_by_date = period_diagnostic_by_date(extract)
+    specs = [
+        ("senior_principal_keur", "DS.senior_principal_keur", 1.0),
+        ("senior_interest_keur", "DS.senior_net_interest_keur", 1.0),
+        ("senior_ds_keur", "CF.senior_debt_service_keur", -1.0),
+    ]
+    return _period_metric_gap_summary(
+        period_rows,
+        full_model_by_date,
+        specs,
+        "native_engine_before_full_model_calibration",
+        "debt",
+    )
+
+
+def _pl_tax_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+    """Return compact P&L/tax deltas against full-model P&L/Dep diagnostics."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return _empty_metric_gap("native_engine_before_full_model_calibration", "pl_tax")
+
+    full_model_by_date = period_diagnostic_by_date(extract)
+    specs = [
+        ("depreciation_keur", "P&L.depreciation_keur", 1.0),
+        ("taxable_profit_keur", "P&L.taxable_income_keur", 1.0),
+        ("tax_keur", "P&L.corporate_income_tax_keur", 1.0),
+    ]
+    return _period_metric_gap_summary(
+        period_rows,
+        full_model_by_date,
+        specs,
+        "native_engine_before_full_model_calibration",
+        "pl_tax",
+    )
+
+
+def _period_metric_gap_summary(
+    period_rows: list[dict[str, Any]],
+    full_model_by_date: dict[str, dict[str, Any]],
+    specs: list[tuple[str, str, float]],
+    source: str,
+    gap_type: str,
+) -> dict[str, Any]:
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    max_abs_delta_location: dict[str, Any] | None = None
+    mismatch_count = 0
+    for row in period_rows:
+        expected = full_model_by_date.get(str(row.get("date")))
+        if expected is None:
+            continue
+        compared_rows += 1
+        for native_key, excel_key, excel_sign in specs:
+            native_value = float(row.get(native_key, 0.0) or 0.0)
+            excel_value = float(expected.get(excel_key, 0.0) or 0.0) * excel_sign
+            delta = native_value - excel_value
+            abs_delta = abs(delta)
+            if abs_delta > max_abs_delta:
+                max_abs_delta = abs_delta
+                max_abs_delta_location = {
+                    "date": row.get("date"),
+                    "metric": native_key,
+                    "excel_metric": excel_key,
+                    "native_value": native_value,
+                    "excel_value": excel_value,
+                    "delta": delta,
+                }
+            if abs_delta > 0.01:
+                mismatch_count += 1
+            if first_mismatch is None and abs_delta > 0.01:
+                first_mismatch = {
+                    "date": row.get("date"),
+                    "metric": native_key,
+                    "excel_metric": excel_key,
+                    "native_value": native_value,
+                    "excel_value": excel_value,
+                    "delta": delta,
+                }
+
+    return {
+        "source": source,
+        "type": gap_type,
+        "compared_metrics": [
+            {"native_metric": native_key, "excel_metric": excel_key, "excel_sign": excel_sign}
+            for native_key, excel_key, excel_sign in specs
+        ],
+        "compared_rows": compared_rows,
+        "mismatch_count": mismatch_count,
+        "max_abs_delta": max_abs_delta,
+        "max_abs_delta_location": max_abs_delta_location,
+        "first_mismatch": first_mismatch,
+    }
+
+
+def _empty_metric_gap(source: str, gap_type: str) -> dict[str, Any]:
+    return {
+        "source": source,
+        "type": gap_type,
+        "compared_metrics": [],
+        "compared_rows": 0,
+        "mismatch_count": 0,
+        "max_abs_delta": None,
+        "max_abs_delta_location": None,
+        "first_mismatch": None,
+    }
+
+
+def _sponsor_equity_shl_cash_flow_gap_summary(payload: dict[str, Any], project_key: str) -> dict[str, Any]:
+    """Return sponsor cash-flow deltas before sponsor return KPI bridge promotion."""
+    native_rows = payload.get("sponsor_equity_shl_cash_flows", [])
+    full_model = payload.get("sponsor_equity_shl_cash_flows_financial_close", {}).get("rows", [])
+    if not native_rows or not full_model:
+        return {
+            "source": "native_engine_before_full_model_calibration",
+            "compared_rows": 0,
+            "max_abs_cash_flow_delta_keur": None,
+            "first_cash_flow_mismatch": None,
+        }
+
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    for native, expected in zip(native_rows, full_model):
+        compared_rows += 1
+        native_cf = float(native.get("cash_flow_keur", 0.0) or 0.0)
+        excel_cf = float(expected.get("cash_flow_keur", 0.0) or 0.0)
+        delta = native_cf - excel_cf
+        max_abs_delta = max(max_abs_delta, abs(delta))
+        date_mismatch = str(native.get("date")) != str(expected.get("date"))
+        if first_mismatch is None and (date_mismatch or abs(delta) > 0.01):
+            first_mismatch = {
+                "index": compared_rows - 1,
+                "native_date": native.get("date"),
+                "excel_date": expected.get("date"),
+                "native_cash_flow_keur": native_cf,
+                "excel_cash_flow_keur": excel_cf,
+                "delta_keur": delta,
+            }
+
+    return {
+        "source": "native_engine_before_full_model_calibration",
+        "project_key": project_key,
+        "compared_rows": compared_rows,
+        "max_abs_cash_flow_delta_keur": max_abs_delta,
+        "first_cash_flow_mismatch": first_mismatch,
+    }
+
 
 def _investor_cash_flow_definition(inputs: ProjectInputs) -> dict[str, Any]:
     """Document the sponsor/equity+SHL IRR cash-flow convention."""
@@ -964,12 +1150,17 @@ def _full_model_shl_cash_flow_anchors(
     return anchors or fallback_anchors
 
 
-def _shl_lifecycle_gap_summary(native_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+def _shl_lifecycle_gap_summary(
+    native_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
     """Return compact SHL lifecycle deltas before the full-model bridge."""
     extract = _load_excel_full_model_extract(project_key)
     if extract is None:
         return {
-            "source": "native_engine_before_full_model_calibration",
+            "source": source,
             "compared_rows": 0,
             "max_abs_closing_balance_delta_keur": None,
             "first_closing_balance_mismatch": None,
@@ -997,7 +1188,7 @@ def _shl_lifecycle_gap_summary(native_rows: list[dict[str, Any]], project_key: s
             }
 
     return {
-        "source": "native_engine_before_full_model_calibration",
+        "source": source,
         "compared_rows": compared_rows,
         "max_abs_closing_balance_delta_keur": max_abs_delta,
         "first_closing_balance_mismatch": first_mismatch,

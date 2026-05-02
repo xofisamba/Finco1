@@ -242,6 +242,38 @@ def test_oborovo_debt_schedule_continues_from_last_excel_anchor() -> None:
     assert first_continuation["senior_ds_keur"] < 3_000.0
 
 
+def test_oborovo_full_model_debt_gap_summary_identifies_first_formula_delta() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    summary = payload["engine_debt_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["type"] == "debt"
+    assert summary["compared_rows"] == 59
+    assert summary["compared_metrics"] == [
+        {
+            "native_metric": "senior_principal_keur",
+            "excel_metric": "DS.senior_principal_keur",
+            "excel_sign": 1.0,
+        },
+        {
+            "native_metric": "senior_interest_keur",
+            "excel_metric": "DS.senior_net_interest_keur",
+            "excel_sign": 1.0,
+        },
+        {
+            "native_metric": "senior_ds_keur",
+            "excel_metric": "CF.senior_debt_service_keur",
+            "excel_sign": -1.0,
+        },
+    ]
+    assert summary["mismatch_count"] == 72
+    assert summary["max_abs_delta"] == pytest.approx(1477.126670339582)
+    assert summary["max_abs_delta_location"]["date"] == "2042-12-31"
+    assert summary["max_abs_delta_location"]["metric"] == "senior_principal_keur"
+    assert summary["first_mismatch"]["date"] == "2032-06-30"
+    assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
+
+
 def test_tuho_debt_schedule_continues_from_last_excel_anchor() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     debt_by_date = {row["date"]: row for row in payload["debt_decomposition"]}
@@ -254,6 +286,21 @@ def test_tuho_debt_schedule_continues_from_last_excel_anchor() -> None:
     )
     assert first_continuation["closing_balance_keur"] > 0.0
     assert first_continuation["senior_principal_keur"] < first_continuation["opening_balance_keur"]
+
+
+def test_tuho_full_model_debt_gap_summary_identifies_first_formula_delta() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["engine_debt_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["type"] == "debt"
+    assert summary["compared_rows"] == 59
+    assert summary["mismatch_count"] == 75
+    assert summary["max_abs_delta"] == pytest.approx(23046.29068918135)
+    assert summary["max_abs_delta_location"]["date"] == "2038-12-31"
+    assert summary["max_abs_delta_location"]["metric"] == "senior_principal_keur"
+    assert summary["first_mismatch"]["date"] == "2031-12-31"
+    assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
 
 
 def test_oborovo_app_payload_contains_debt_diagnostics() -> None:

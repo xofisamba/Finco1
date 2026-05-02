@@ -30,6 +30,19 @@ def shl_lifecycle_rows(extract: dict[str, Any]) -> list[dict[str, Any]]:
     return rows_from_columns(extract["shl_columns"], extract["shl"])
 
 
+def period_diagnostic_rows(extract: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return full-model CF/DS/P&L/Dep operating rows keyed by column name."""
+    return rows_from_columns(extract["period_diagnostic_columns"], extract["period_diagnostics"])
+
+
+def period_diagnostic_by_date(extract: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return full-model operating period diagnostics keyed by period end date."""
+    return {
+        str(row["date"]): row
+        for row in period_diagnostic_rows(extract)
+    }
+
+
 def project_irr_from_extract(extract: dict[str, Any]) -> float | None:
     """Calculate project IRR from extracted full-model project cash flows."""
     return _xirr_from_named_rows(project_cash_flow_rows(extract), "project_irr_cf")
@@ -113,6 +126,8 @@ def _xirr_from_cash_flow_rows(rows: list[dict[str, Any]]) -> float | None:
 __all__ = [
     "project_cash_flow_rows",
     "project_irr_from_extract",
+    "period_diagnostic_by_date",
+    "period_diagnostic_rows",
     "rows_from_columns",
     "shl_lifecycle_by_date",
     "shl_lifecycle_rows",

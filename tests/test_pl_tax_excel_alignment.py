@@ -117,6 +117,38 @@ def test_oborovo_non_anchor_cf_after_tax_reflects_tax_charge() -> None:
     )
 
 
+def test_oborovo_full_model_pl_tax_gap_summary_identifies_first_formula_delta() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    summary = payload["engine_pl_tax_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["type"] == "pl_tax"
+    assert summary["compared_rows"] == 59
+    assert summary["compared_metrics"] == [
+        {
+            "native_metric": "depreciation_keur",
+            "excel_metric": "P&L.depreciation_keur",
+            "excel_sign": 1.0,
+        },
+        {
+            "native_metric": "taxable_profit_keur",
+            "excel_metric": "P&L.taxable_income_keur",
+            "excel_sign": 1.0,
+        },
+        {
+            "native_metric": "tax_keur",
+            "excel_metric": "P&L.corporate_income_tax_keur",
+            "excel_sign": 1.0,
+        },
+    ]
+    assert summary["mismatch_count"] == 161
+    assert summary["max_abs_delta"] == pytest.approx(1399.6919484904292)
+    assert summary["max_abs_delta_location"]["date"] == "2049-12-31"
+    assert summary["max_abs_delta_location"]["metric"] == "taxable_profit_keur"
+    assert summary["first_mismatch"]["date"] == "2032-06-30"
+    assert summary["first_mismatch"]["metric"] == "depreciation_keur"
+
+
 def test_tuho_non_anchor_cf_after_tax_reflects_tax_charge() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     row = period_by_date(payload)["2037-06-30"]
@@ -125,3 +157,18 @@ def test_tuho_non_anchor_cf_after_tax_reflects_tax_charge() -> None:
     assert row["cf_after_tax_keur"] == pytest.approx(
         row["ebitda_keur"] - row["tax_keur"],
     )
+
+
+def test_tuho_full_model_pl_tax_gap_summary_identifies_first_formula_delta() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["engine_pl_tax_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["type"] == "pl_tax"
+    assert summary["compared_rows"] == 59
+    assert summary["mismatch_count"] == 168
+    assert summary["max_abs_delta"] == pytest.approx(5045.90874270812)
+    assert summary["max_abs_delta_location"]["date"] == "2041-12-31"
+    assert summary["max_abs_delta_location"]["metric"] == "taxable_profit_keur"
+    assert summary["first_mismatch"]["date"] == "2031-12-31"
+    assert summary["first_mismatch"]["metric"] == "depreciation_keur"

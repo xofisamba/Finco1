@@ -172,6 +172,20 @@ def test_oborovo_native_shl_snapshot_is_preserved_before_full_model_calibration(
     )
 
 
+def test_oborovo_raw_engine_shl_gap_is_visible_before_cash_flow_anchors() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    summary = payload["raw_engine_shl_lifecycle_gap_before_cash_flow_anchors"]
+
+    assert summary["source"] == "native_engine_before_cash_flow_anchors"
+    assert summary["compared_rows"] == 59
+    assert summary["max_abs_closing_balance_delta_keur"] == pytest.approx(24148.468479513922)
+    first_mismatch = summary["first_closing_balance_mismatch"]
+    assert first_mismatch["date"] == "2030-12-31"
+    assert first_mismatch["native_closing_balance_keur"] == pytest.approx(15790.435806400885)
+    assert first_mismatch["excel_closing_balance_keur"] == pytest.approx(16091.374602884296)
+    assert first_mismatch["delta_keur"] == pytest.approx(-300.93879648341135)
+
+
 def test_oborovo_native_shl_snapshot_uses_full_model_cash_flow_anchors_after_first_twelve() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     extract = _full_model_extract("excel_oborovo_full_model_extract.json")
@@ -267,6 +281,18 @@ def test_oborovo_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload
     assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2029-06-29"
 
 
+def test_oborovo_sponsor_cash_flow_gap_identifies_initial_idc_difference() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    summary = payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["compared_rows"] == 61
+    assert summary["first_cash_flow_mismatch"]["index"] == 0
+    assert summary["first_cash_flow_mismatch"]["delta_keur"] == pytest.approx(
+        -payload["investor_cash_flow_definition"]["shl_idc_keur"],
+    )
+
+
 def test_oborovo_first_twelve_shl_balance_schedule_against_excel() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     excel = _full_model_extract("excel_oborovo_full_model_extract.json")
@@ -352,6 +378,20 @@ def test_tuho_native_shl_snapshot_uses_full_model_cash_flow_anchors_after_first_
     assert anchor["closing_balance_keur"] == pytest.approx(excel[2])
 
 
+def test_tuho_raw_engine_shl_gap_is_visible_before_cash_flow_anchors() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["raw_engine_shl_lifecycle_gap_before_cash_flow_anchors"]
+
+    assert summary["source"] == "native_engine_before_cash_flow_anchors"
+    assert summary["compared_rows"] == 59
+    assert summary["max_abs_closing_balance_delta_keur"] == pytest.approx(101724.16528697769)
+    first_mismatch = summary["first_closing_balance_mismatch"]
+    assert first_mismatch["date"] == "2030-06-30"
+    assert first_mismatch["native_closing_balance_keur"] == pytest.approx(32703.864020594257)
+    assert first_mismatch["excel_closing_balance_keur"] == pytest.approx(33047.452182845096)
+    assert first_mismatch["delta_keur"] == pytest.approx(-343.58816225083865)
+
+
 def test_tuho_native_shl_gap_summary_confirms_full_lifecycle_parity() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     summary = payload["engine_shl_lifecycle_gap_before_full_model_calibration"]
@@ -397,3 +437,15 @@ def test_tuho_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() 
     )
     assert payload["sponsor_equity_shl_cash_flows_full_model"]["rows"] == rows
     assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2028-06-30"
+
+
+def test_tuho_sponsor_cash_flow_gap_identifies_initial_idc_difference() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"]
+
+    assert summary["source"] == "native_engine_before_full_model_calibration"
+    assert summary["compared_rows"] == 61
+    assert summary["first_cash_flow_mismatch"]["index"] == 0
+    assert summary["first_cash_flow_mismatch"]["delta_keur"] == pytest.approx(
+        -payload["investor_cash_flow_definition"]["shl_idc_keur"],
+    )

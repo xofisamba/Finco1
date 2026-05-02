@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from domain.waterfall.full_model_extract import (
+    period_diagnostic_by_date,
+    period_diagnostic_rows,
     project_cash_flow_rows,
     project_irr_from_extract,
     shl_lifecycle_by_date,
@@ -37,6 +39,19 @@ def test_project_cash_flow_rows_are_keyed_by_extract_columns() -> None:
         "fcf_for_banks": 0.0,
     }
     assert len(rows) == 61
+
+
+def test_period_diagnostic_rows_are_keyed_by_extract_columns() -> None:
+    extract = _fixture("excel_tuho_full_model_extract.json")
+    rows = period_diagnostic_rows(extract)
+    by_date = period_diagnostic_by_date(extract)
+
+    assert len(rows) == 60
+    assert rows[0]["date"] == "2030-06-30"
+    assert rows[0]["CF.free_cash_flow_for_banks_keur"] == pytest.approx(3070.175837370555)
+    assert rows[0]["DS.senior_principal_keur"] == pytest.approx(819.278908110608)
+    assert rows[0]["P&L.corporate_income_tax_keur"] == pytest.approx(0.0)
+    assert by_date["2059-12-31"]["Dep.depreciation_keur"] >= 0.0
 
 
 def test_project_irr_helpers_recompute_full_model_anchors() -> None:
