@@ -62,10 +62,15 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
     - `excel_full_model_unlevered_project_irr`
     - `excel_full_model_sponsor_equity_shl_irr`
     - `raw_engine_shl_lifecycle_gap_before_cash_flow_anchors`
+    - `raw_engine_debt_gap_before_split_anchors`
+    - `raw_engine_pl_tax_gap_before_pl_tax_anchors`
     - `sponsor_equity_shl_cash_flow_gap_before_full_model_calibration`
     - `full_model_period_diagnostics`
     - `engine_debt_gap_before_full_model_calibration`
     - `engine_pl_tax_gap_before_full_model_calibration`
+    - `native_project_cash_flows_before_full_model_calibration`
+    - `native_shl_lifecycle_decomposition_before_full_model_calibration`
+    - `native_sponsor_equity_shl_cash_flows_before_full_model_calibration`
   - Applies temporary Excel anchors for Oborovo first12 debt split and P&L/tax, plus full extracted SHL cash-flow lifecycle anchors for Oborovo and TUHO.
 
 - `app/calibration_runner.py`
@@ -240,6 +245,7 @@ Current diagnostic state before the full-model SHL bridge:
 - TUHO native SHL lifecycle snapshot uses all operating full-model SHL cash-flow anchors; current gap summary compares 59 rows with no closing-balance mismatch.
 - Raw native SHL snapshots before cash-flow anchors remain exposed for formula-replacement work; first raw mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`.
 - Raw SHL gap tests now lock first mismatch values and max absolute deltas for both Oborovo and TUHO.
+- Raw native debt and P&L/tax snapshots before calibration anchors remain exposed for formula-replacement work; tests lock the first raw mismatch values for both Oborovo and TUHO.
 - `engine_project_cash_flow_gap_before_full_model_calibration` records native period `cf_after_tax_keur` versus full-model `fcf_for_banks`; first current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
 - Project cash-flow gap tests now lock first mismatch values and max absolute deltas for both Oborovo and TUHO.
 - `engine_debt_gap_before_full_model_calibration` records native debt rows versus full-model DS/CF period diagnostics; it includes compared metrics, mismatch counts, first mismatch and max-delta location. First current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
@@ -247,6 +253,7 @@ Current diagnostic state before the full-model SHL bridge:
 - Senior debt diagnostics now continue from the last explicit Excel debt split anchor using day-count interest and target-DSCR service instead of reverting to a one-period native balloon repayment.
 - P&L/tax diagnostics now keep non-anchor post-tax cash flow consistent with tax charges by setting `cf_after_tax_keur = ebitda_keur - tax_keur` when tax is present.
 - `sponsor_equity_shl_cash_flow_gap_before_full_model_calibration` records native sponsor cash-flow convention deltas; current first mismatch is the initial IDC treatment for both Oborovo and TUHO.
+- Native formula-candidate series are now serialized before full-model bridge promotion for the first three bridge-replacement workstreams: project cash flows, SHL lifecycle and sponsor equity + SHL cash flows.
 - `engine_return_gap_before_full_model_calibration` records native engine project/equity/sponsor IRR deltas before the full-model return bridge is applied.
 
 ## Important tests to run

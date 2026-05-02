@@ -31,9 +31,11 @@
 - Calibration payloads now promote the full-model extract into native-facing KPI fields for project IRR, TUHO equity IRR and sponsor equity + SHL IRR, while preserving the raw engine values under `engine_*_before_full_model_calibration` diagnostics.
 - Calibration payloads now expose `engine_return_gap_before_full_model_calibration`, a compact delta summary for return KPIs before the full-model bridge is applied.
 - Calibration payloads now expose `raw_engine_shl_decomposition_before_cash_flow_anchors` and `raw_engine_shl_lifecycle_gap_before_cash_flow_anchors`, so formula-level SHL gaps remain visible before full-model SHL cash-flow anchors are applied.
+- Calibration payloads now expose raw native debt split and P&L/tax rows before their calibration anchors, plus gap summaries against full-model period diagnostics.
 - Calibration payloads now expose `engine_shl_decomposition_before_full_model_calibration` and `engine_shl_lifecycle_gap_before_full_model_calibration`, so SHL lifecycle parity from the full-model extract is visible before the final full-model bridge is applied.
 - Calibration payloads now expose `engine_project_cash_flow_gap_before_full_model_calibration`, a compact delta summary for native period `cf_after_tax_keur` versus full-model `fcf_for_banks` before project IRR bridge promotion.
 - Calibration payloads now expose `sponsor_equity_shl_cash_flow_gap_before_full_model_calibration`, so the remaining native sponsor cash-flow convention gap is explicit before sponsor return KPI bridge promotion.
+- Calibration payloads now expose native formula-candidate series before full-model bridge promotion for project cash flows, SHL lifecycle and sponsor equity + SHL cash flows.
 - Calibration payloads now expose `full_model_period_diagnostics`, a 60-row operating-period extract from CF, DS, P&L and Dep sheets for Oborovo and TUHO.
 - Calibration payloads now expose `engine_debt_gap_before_full_model_calibration` and `engine_pl_tax_gap_before_full_model_calibration`, compact deltas against the full-model period diagnostics, including compared metrics, mismatch counts, first mismatch and max-delta location.
 - Calibration period rows now use the full-model SHL lifecycle extract for SHL opening balance, gross interest, paid interest, principal, capitalized interest, closing balance and dividend timing.
@@ -60,7 +62,7 @@ The TUHO factory is intentionally marked as first-pass. It matches key anchors s
 
 Latest local regression gate:
 
-- Full pytest suite: `512 passed, 4 skipped`.
+- Full pytest suite: `517 passed, 4 skipped`.
 
 ## Current calibration truth
 
@@ -104,9 +106,11 @@ Passing / expected-passing checks:
 - TUHO equity IRR is active against the Excel anchor using full-model SHL/sponsor cash flows timed from financial close.
 - Oborovo and TUHO Excel full-model sponsor equity + SHL cash-flow diagnostics are active and recompute `excel_full_model_sponsor_equity_shl_irr` from SHL principal flow, paid net interest and net dividend rows.
 - Oborovo and TUHO native-facing full-horizon project cash-flow, SHL lifecycle and sponsor cash-flow series are exposed as stable calibration payload sections.
+- Oborovo and TUHO native formula-candidate project cash-flow, SHL lifecycle and sponsor cash-flow sections are serialized before bridge promotion, so formula replacement can now target explicit native rows rather than only KPI deltas.
 - Oborovo and TUHO native engine SHL lifecycle snapshots now use all operating SHL cash-flow anchors from the compact full-model extracts before the full lifecycle bridge is applied.
 - Oborovo and TUHO SHL lifecycle gap summaries now confirm full extracted lifecycle parity before the full bridge: 59 compared operating rows and no closing-balance mismatch.
 - Oborovo and TUHO raw SHL formula gap summaries are preserved before cash-flow anchors. Current first raw mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`; the tests now lock the raw mismatch values and max absolute deltas.
+- Oborovo and TUHO raw debt split and P&L/tax formula gaps are preserved before calibration anchors. Current first raw debt mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`; current first raw P&L/tax mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`.
 - Oborovo and TUHO return KPI gap summaries are serialized before the full-model return bridge is applied.
 - Oborovo and TUHO sponsor cash-flow gap summaries now identify the initial IDC convention difference before sponsor return bridge promotion.
 - Oborovo and TUHO project cash-flow gap summaries are serialized before the full-model return bridge is applied. Current first full-model `fcf_for_banks` mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`; the tests now lock the mismatch values and max absolute deltas.

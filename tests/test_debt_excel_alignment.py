@@ -274,6 +274,25 @@ def test_oborovo_full_model_debt_gap_summary_identifies_first_formula_delta() ->
     assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
 
 
+def test_oborovo_raw_debt_gap_before_split_anchors_is_visible() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    summary = payload["raw_engine_debt_gap_before_split_anchors"]
+    rows = payload["raw_engine_debt_decomposition_before_split_anchors"]["rows"]
+
+    assert payload["raw_engine_debt_decomposition_before_split_anchors"]["source"] == (
+        "native_engine_before_debt_split_anchors"
+    )
+    assert rows[0]["date"] == "2030-12-31"
+    assert rows[0]["senior_principal_keur"] == pytest.approx(36042.31415219492)
+    assert summary["source"] == "native_engine_before_debt_split_anchors"
+    assert summary["type"] == "debt"
+    assert summary["compared_rows"] == 59
+    assert summary["mismatch_count"] == 84
+    assert summary["max_abs_delta"] == pytest.approx(35137.19095560885)
+    assert summary["first_mismatch"]["date"] == "2030-12-31"
+    assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
+
+
 def test_tuho_debt_schedule_continues_from_last_excel_anchor() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     debt_by_date = {row["date"]: row for row in payload["debt_decomposition"]}
@@ -300,6 +319,22 @@ def test_tuho_full_model_debt_gap_summary_identifies_first_formula_delta() -> No
     assert summary["max_abs_delta_location"]["date"] == "2038-12-31"
     assert summary["max_abs_delta_location"]["metric"] == "senior_principal_keur"
     assert summary["first_mismatch"]["date"] == "2031-12-31"
+    assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
+
+
+def test_tuho_raw_debt_gap_before_split_anchors_is_visible() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    summary = payload["raw_engine_debt_gap_before_split_anchors"]
+    rows = payload["raw_engine_debt_decomposition_before_split_anchors"]["rows"]
+
+    assert rows[0]["date"] == "2030-06-30"
+    assert rows[0]["senior_principal_keur"] == pytest.approx(34896.39488640291)
+    assert summary["source"] == "native_engine_before_debt_split_anchors"
+    assert summary["type"] == "debt"
+    assert summary["compared_rows"] == 59
+    assert summary["mismatch_count"] == 84
+    assert summary["max_abs_delta"] == pytest.approx(34077.1159782923)
+    assert summary["first_mismatch"]["date"] == "2030-06-30"
     assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
 
 

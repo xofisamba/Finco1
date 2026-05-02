@@ -113,6 +113,10 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["excel_full_model_project_irr"]["rows"]
     assert "excel_full_model_project_irr" in payload["kpis"]
     assert "excel_full_model_unlevered_project_irr" in payload["kpis"]
+    assert payload["raw_engine_debt_decomposition_before_split_anchors"]["rows"]
+    assert payload["raw_engine_debt_gap_before_split_anchors"]["compared_rows"] > 0
+    assert payload["raw_engine_pl_tax_rows_before_pl_tax_anchors"]["rows"]
+    assert payload["raw_engine_pl_tax_gap_before_pl_tax_anchors"]["compared_rows"] > 0
     assert payload["raw_engine_shl_decomposition_before_cash_flow_anchors"]["rows"]
     assert payload["raw_engine_shl_lifecycle_gap_before_cash_flow_anchors"]["compared_rows"] > 0
     assert payload["engine_shl_lifecycle_gap_before_full_model_calibration"]["compared_rows"] > 0
@@ -120,6 +124,9 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"]["compared_rows"] > 0
     assert payload["engine_debt_gap_before_full_model_calibration"]["compared_rows"] > 0
     assert payload["engine_pl_tax_gap_before_full_model_calibration"]["compared_rows"] > 0
+    assert payload["native_project_cash_flows_before_full_model_calibration"]["rows"]
+    assert payload["native_shl_lifecycle_decomposition_before_full_model_calibration"]["rows"]
+    assert payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"]["rows"]
     assert payload["full_model_period_diagnostics"]["source"] == "excel_full_model_extract"
     assert len(payload["full_model_period_diagnostics"]["rows"]) == 60
 
@@ -214,6 +221,45 @@ def test_run_calibration_gap_payloads_are_serialized_for_tuho() -> None:
     assert sponsor_cf_gap["first_cash_flow_mismatch"]["delta_keur"] == pytest.approx(
         -payload["investor_cash_flow_definition"]["shl_idc_keur"],
     )
+
+
+def test_run_calibration_native_formula_candidate_payloads_are_serialized_for_tuho() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+
+    project_rows = payload["native_project_cash_flows_before_full_model_calibration"]["rows"]
+    shl_rows = payload["native_shl_lifecycle_decomposition_before_full_model_calibration"]["rows"]
+    sponsor_rows = payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"]["rows"]
+
+    assert payload["native_project_cash_flows_before_full_model_calibration"]["source"] == (
+        "native_engine_before_full_model_calibration"
+    )
+    assert len(project_rows) == 61
+    assert project_rows[0]["date"] == "2028-06-30"
+    assert project_rows[0]["project_irr_cf"] < 0.0
+    assert project_rows[1]["fcf_for_banks"] == pytest.approx(payload["periods"][0]["cf_after_tax_keur"])
+    assert payload["native_project_cash_flows_before_full_model_calibration"]["computed_project_irr"] > 0.0
+
+    assert payload["native_shl_lifecycle_decomposition_before_full_model_calibration"]["source"] == (
+        "native_engine_before_full_model_calibration"
+    )
+    assert len(shl_rows) == 61
+    assert shl_rows[0]["date"] == "2028-06-30"
+    assert shl_rows[0]["principal_draw_keur"] == pytest.approx(
+        payload["investor_cash_flow_definition"]["shl_amount_keur"]
+        + payload["investor_cash_flow_definition"]["shl_idc_keur"],
+    )
+    assert shl_rows[1]["date"] == payload["engine_shl_decomposition_before_full_model_calibration"]["rows"][0]["date"]
+
+    assert payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"]["source"] == (
+        "native_engine_before_full_model_calibration"
+    )
+    assert len(sponsor_rows) == 61
+    assert sponsor_rows[0]["cash_flow_keur"] == pytest.approx(
+        -payload["investor_cash_flow_definition"]["initial_investment_keur"],
+    )
+    assert payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"][
+        "computed_sponsor_equity_shl_irr"
+    ] > 0.0
 
 
 def test_run_calibration_full_model_period_diagnostics_payload_shape() -> None:

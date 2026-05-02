@@ -336,6 +336,25 @@ def run_project_calibration(
         engine_version=engine_version,
         calibration_source=calibration_source,
     )
+    raw_periods_before_debt_pl_anchors = _copy_period_rows(payload["periods"])
+    payload["raw_engine_debt_decomposition_before_split_anchors"] = {
+        "source": "native_engine_before_debt_split_anchors",
+        "rows": _debt_decomposition_rows(raw_periods_before_debt_pl_anchors),
+    }
+    payload["raw_engine_debt_gap_before_split_anchors"] = _debt_gap_summary(
+        raw_periods_before_debt_pl_anchors,
+        normalized_project_key,
+        source="native_engine_before_debt_split_anchors",
+    )
+    payload["raw_engine_pl_tax_rows_before_pl_tax_anchors"] = {
+        "source": "native_engine_before_pl_tax_anchors",
+        "rows": _pl_tax_rows(raw_periods_before_debt_pl_anchors),
+    }
+    payload["raw_engine_pl_tax_gap_before_pl_tax_anchors"] = _pl_tax_gap_summary(
+        raw_periods_before_debt_pl_anchors,
+        normalized_project_key,
+        source="native_engine_before_pl_tax_anchors",
+    )
     _apply_debt_split_calibration(payload, inputs, engine, normalized_project_key)
     _apply_pl_tax_calibration(payload, normalized_project_key)
     payload["engine_debt_gap_before_full_model_calibration"] = _debt_gap_summary(
@@ -368,6 +387,31 @@ def run_project_calibration(
         payload["periods"],
         normalized_project_key,
     )
+    native_project_rows = _native_project_cash_flow_rows(inputs, payload["periods"])
+    payload["native_project_cash_flows_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "definition": "initial total capex plus native cf_after_tax_keur operating rows",
+        "rows": native_project_rows,
+        "computed_project_irr": _xirr_from_named_cash_flow_rows(native_project_rows, "project_irr_cf"),
+        "computed_unlevered_project_irr": _xirr_from_named_cash_flow_rows(
+            native_project_rows,
+            "unlevered_project_irr_cf",
+        ),
+    }
+    payload["native_shl_lifecycle_decomposition_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "rows": _native_shl_lifecycle_rows_from_decomposition(
+            inputs,
+            payload["engine_shl_decomposition_before_full_model_calibration"]["rows"],
+        ),
+    }
+    native_sponsor_rows = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
+    payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "definition": "share capital + SHL + SHL IDC at financial close; distributions plus paid SHL service",
+        "rows": native_sponsor_rows,
+        "computed_sponsor_equity_shl_irr": _xirr_from_cash_flow_rows(native_sponsor_rows),
+    }
     _apply_full_model_shl_lifecycle_calibration(payload, normalized_project_key)
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
@@ -538,6 +582,78 @@ def _native_shl_lifecycle_rows(extract: dict[str, Any]) -> list[dict[str, Any]]:
             "equity_contribution_keur": abs(min(0.0, row["net_dividend"])),
         })
     return rows
+
+
+def _native_project_cash_flow_rows(
+    inputs: ProjectInputs,
+    period_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return the native project cash-flow candidate used before return bridge promotion."""
+    initial_investment = float(getattr(inputs.capex, "total_capex", 0.0) or 0.0)
+    rows = [
+        {
+            "date": inputs.info.financial_close.isoformat(),
+            "project_irr_cf": -initial_investment,
+            "unlevered_project_irr_cf": -initial_investment,
+            "fcf_for_banks": 0.0,
+            "description": "initial total project capex",
+        }
+    ]
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        cash_flow = float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+        rows.append({
+            "date": row.get("date"),
+            "project_irr_cf": cash_flow,
+            "unlevered_project_irr_cf": cash_flow,
+            "fcf_for_banks": cash_flow,
+            "description": "native cf_after_tax_keur",
+        })
+    return rows
+
+
+def _native_shl_lifecycle_rows_from_decomposition(
+    inputs: ProjectInputs,
+    shl_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return native SHL lifecycle candidate with the initial investment row explicit."""
+    initial_balance = float(getattr(inputs.financing, "shl_amount_keur", 0.0) or 0.0) + float(
+        getattr(inputs.financing, "shl_idc_keur", 0.0) or 0.0
+    )
+    rows = [
+        {
+            "date": inputs.info.financial_close.isoformat(),
+            "opening_balance_keur": 0.0,
+            "closing_balance_keur": initial_balance,
+            "gross_interest_keur": 0.0,
+            "principal_paid_keur": 0.0,
+            "principal_draw_keur": initial_balance,
+            "cash_interest_paid_keur": 0.0,
+            "pik_or_capitalized_interest_keur": 0.0,
+            "distribution_keur": 0.0,
+            "equity_contribution_keur": 0.0,
+        }
+    ]
+    for row in shl_rows:
+        rows.append({
+            "date": row.get("date"),
+            "opening_balance_keur": row.get("opening_balance_keur", 0.0),
+            "closing_balance_keur": row.get("closing_balance_keur", 0.0),
+            "gross_interest_keur": row.get("gross_interest_keur", 0.0),
+            "principal_paid_keur": row.get("principal_paid_keur", 0.0),
+            "principal_draw_keur": 0.0,
+            "cash_interest_paid_keur": row.get("cash_interest_paid_keur", 0.0),
+            "pik_or_capitalized_interest_keur": row.get("pik_or_capitalized_interest_keur", 0.0),
+            "distribution_keur": 0.0,
+            "equity_contribution_keur": 0.0,
+        })
+    return rows
+
+
+def _copy_period_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return shallow copies of period rows before later calibration mutates them."""
+    return [dict(row) for row in period_rows]
 
 
 def _sponsor_equity_shl_rows_from_financial_close(
@@ -721,11 +837,16 @@ def _project_cash_flow_gap_summary(period_rows: list[dict[str, Any]], project_ke
     }
 
 
-def _debt_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+def _debt_gap_summary(
+    period_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
     """Return compact senior-debt deltas against full-model DS diagnostics."""
     extract = _load_excel_full_model_extract(project_key)
     if extract is None or "period_diagnostics" not in extract:
-        return _empty_metric_gap("native_engine_before_full_model_calibration", "debt")
+        return _empty_metric_gap(source, "debt")
 
     full_model_by_date = period_diagnostic_by_date(extract)
     specs = [
@@ -737,16 +858,21 @@ def _debt_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> di
         period_rows,
         full_model_by_date,
         specs,
-        "native_engine_before_full_model_calibration",
+        source,
         "debt",
     )
 
 
-def _pl_tax_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+def _pl_tax_gap_summary(
+    period_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
     """Return compact P&L/tax deltas against full-model P&L/Dep diagnostics."""
     extract = _load_excel_full_model_extract(project_key)
     if extract is None or "period_diagnostics" not in extract:
-        return _empty_metric_gap("native_engine_before_full_model_calibration", "pl_tax")
+        return _empty_metric_gap(source, "pl_tax")
 
     full_model_by_date = period_diagnostic_by_date(extract)
     specs = [
@@ -758,7 +884,7 @@ def _pl_tax_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> 
         period_rows,
         full_model_by_date,
         specs,
-        "native_engine_before_full_model_calibration",
+        source,
         "pl_tax",
     )
 
@@ -1248,6 +1374,30 @@ def _debt_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str
             "senior_ds_keur": float(row.get("senior_ds_keur", 0.0) or 0.0),
             "implied_period_rate": interest / opening_balance if opening_balance else 0.0,
             "dscr": row.get("dscr"),
+        })
+    return rows
+
+
+def _pl_tax_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return period-level P&L/tax rows for calibration diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        rows.append({
+            "period": row.get("period"),
+            "date": row.get("date"),
+            "year_index": row.get("year_index"),
+            "period_in_year": row.get("period_in_year"),
+            "revenue_keur": float(row.get("revenue_keur", 0.0) or 0.0),
+            "opex_keur": float(row.get("opex_keur", 0.0) or 0.0),
+            "ebitda_keur": float(row.get("ebitda_keur", 0.0) or 0.0),
+            "depreciation_keur": float(row.get("depreciation_keur", 0.0) or 0.0),
+            "senior_interest_keur": float(row.get("senior_interest_keur", 0.0) or 0.0),
+            "shl_interest_keur": float(row.get("shl_interest_keur", 0.0) or 0.0),
+            "taxable_profit_keur": float(row.get("taxable_profit_keur", 0.0) or 0.0),
+            "tax_keur": float(row.get("tax_keur", 0.0) or 0.0),
+            "cf_after_tax_keur": float(row.get("cf_after_tax_keur", 0.0) or 0.0),
         })
     return rows
 
