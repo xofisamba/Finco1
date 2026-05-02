@@ -429,6 +429,12 @@ def run_project_calibration(
     )
     _attach_excel_full_model_project_irr(payload, normalized_project_key)
     _apply_full_model_return_calibration(payload, inputs, normalized_project_key)
+    payload["formula_parity_workstreams"] = _formula_parity_workstreams(payload)
+    payload["calibration_scaffolding_inventory"] = _calibration_scaffolding_inventory(payload)
+    payload["full_horizon_period_parity"] = _full_horizon_period_parity_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
     payload["available_project_keys"] = available_project_keys()
     return payload
 
@@ -794,6 +800,126 @@ def _return_gap_row(engine_value: float, excel_value: float | None) -> dict[str,
     }
 
 
+def _formula_parity_workstreams(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return a compact backlog of formula streams that still rely on bridge/anchor layers."""
+    return [
+        {
+            "name": "project_cash_flow",
+            "status": "bridge_active",
+            "native_payload": "native_project_cash_flows_before_full_model_calibration",
+            "excel_payload": "excel_full_model_project_irr",
+            "gap_payload": "engine_project_cash_flow_gap_before_full_model_calibration",
+            "first_mismatch": payload.get("engine_project_cash_flow_gap_before_full_model_calibration", {}).get(
+                "first_fcf_for_banks_mismatch"
+            ),
+            "gap_snapshot": _gap_snapshot(
+                payload.get("engine_project_cash_flow_gap_before_full_model_calibration", {}),
+                max_key="max_abs_fcf_for_banks_delta_keur",
+            ),
+            "next_target": "replace project_irr_cf and unlevered_project_irr_cf bridge with native formula rows",
+        },
+        {
+            "name": "shl_lifecycle",
+            "status": "bridge_active",
+            "native_payload": "native_shl_lifecycle_decomposition_before_full_model_calibration",
+            "excel_payload": "excel_full_model_shl",
+            "gap_payload": "raw_engine_shl_lifecycle_gap_before_cash_flow_anchors",
+            "first_mismatch": payload.get("raw_engine_shl_lifecycle_gap_before_cash_flow_anchors", {}).get(
+                "first_closing_balance_mismatch"
+            ),
+            "gap_snapshot": _gap_snapshot(
+                payload.get("raw_engine_shl_lifecycle_gap_before_cash_flow_anchors", {}),
+                max_key="max_abs_closing_balance_delta_keur",
+            ),
+            "next_target": "replace SHL cash-flow and lifecycle bridge with native accrual/repayment logic",
+        },
+        {
+            "name": "sponsor_equity_shl_cash_flow",
+            "status": "bridge_active",
+            "native_payload": "native_sponsor_equity_shl_cash_flows_before_full_model_calibration",
+            "excel_payload": "excel_full_model_sponsor_equity_shl_cash_flows",
+            "gap_payload": "sponsor_equity_shl_cash_flow_gap_before_full_model_calibration",
+            "first_mismatch": payload.get("sponsor_equity_shl_cash_flow_gap_before_full_model_calibration", {}).get(
+                "first_cash_flow_mismatch"
+            ),
+            "gap_snapshot": _gap_snapshot(
+                payload.get("sponsor_equity_shl_cash_flow_gap_before_full_model_calibration", {}),
+                max_key="max_abs_cash_flow_delta_keur",
+            ),
+            "next_target": "align native sponsor cash-flow timing and IDC treatment with Excel",
+        },
+        {
+            "name": "debt",
+            "status": "anchors_active",
+            "native_payload": "raw_engine_debt_decomposition_before_split_anchors",
+            "excel_payload": "full_model_period_diagnostics",
+            "gap_payload": "raw_engine_debt_gap_before_split_anchors",
+            "first_mismatch": payload.get("raw_engine_debt_gap_before_split_anchors", {}).get("first_mismatch"),
+            "gap_snapshot": _gap_snapshot(payload.get("raw_engine_debt_gap_before_split_anchors", {})),
+            "next_target": "replace first-period debt split anchors with Excel financing mechanics",
+        },
+        {
+            "name": "pl_tax",
+            "status": "anchors_active",
+            "native_payload": "raw_engine_pl_tax_rows_before_pl_tax_anchors",
+            "excel_payload": "full_model_period_diagnostics",
+            "gap_payload": "raw_engine_pl_tax_gap_before_pl_tax_anchors",
+            "first_mismatch": payload.get("raw_engine_pl_tax_gap_before_pl_tax_anchors", {}).get("first_mismatch"),
+            "gap_snapshot": _gap_snapshot(payload.get("raw_engine_pl_tax_gap_before_pl_tax_anchors", {})),
+            "next_target": "replace depreciation/tax anchors with asset-class depreciation and tax-loss logic",
+        },
+    ]
+
+
+def _gap_snapshot(gap: dict[str, Any], *, max_key: str = "max_abs_delta") -> dict[str, Any]:
+    """Return a normalized gap summary used by parity dashboards."""
+    compared_rows = int(gap.get("compared_rows", 0) or 0)
+    mismatch_count = gap.get("mismatch_count")
+    if mismatch_count is None:
+        mismatch_count = 1 if _first_gap_mismatch(gap) is not None else 0
+    max_abs_gap = gap.get(max_key)
+    ready_to_remove = compared_rows > 0 and (max_abs_gap == 0 or max_abs_gap == 0.0) and int(mismatch_count or 0) == 0
+    return {
+        "compared_rows": compared_rows,
+        "mismatch_count": int(mismatch_count or 0),
+        "max_abs_gap": max_abs_gap,
+        "ready_to_remove": ready_to_remove,
+    }
+
+
+def _first_gap_mismatch(gap: dict[str, Any]) -> Any:
+    for key in (
+        "first_mismatch",
+        "first_fcf_for_banks_mismatch",
+        "first_closing_balance_mismatch",
+        "first_cash_flow_mismatch",
+    ):
+        value = gap.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _calibration_scaffolding_inventory(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return active bridge/anchor inventory for deciding when scaffolding can be removed."""
+    workstreams = payload.get("formula_parity_workstreams", [])
+    bridge_streams = [row["name"] for row in workstreams if row.get("status") == "bridge_active"]
+    anchor_streams = [row["name"] for row in workstreams if row.get("status") == "anchors_active"]
+    removal_ready = [
+        row["name"]
+        for row in workstreams
+        if row.get("gap_snapshot", {}).get("ready_to_remove")
+    ]
+    return {
+        "source": "formula_parity_workstreams",
+        "active_bridge_streams": bridge_streams,
+        "active_anchor_streams": anchor_streams,
+        "removal_ready_streams": removal_ready,
+        "remaining_stream_count": len(workstreams) - len(removal_ready),
+        "all_scaffolding_removed": len(workstreams) > 0 and len(removal_ready) == len(workstreams),
+    }
+
+
 def _project_cash_flow_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
     """Return compact full-model project cash-flow deltas before KPI bridge promotion."""
     extract = _load_excel_full_model_extract(project_key)
@@ -887,6 +1013,48 @@ def _pl_tax_gap_summary(
         source,
         "pl_tax",
     )
+
+
+def _full_horizon_period_parity_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+    """Return full-horizon operating-period parity summaries by metric group."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return {
+            "source": "full_model_period_diagnostics",
+            "groups": {},
+            "remaining_group_count": 0,
+        }
+
+    full_model_by_date = period_diagnostic_by_date(extract)
+    groups = {
+        "operating_cf": _period_metric_gap_summary(
+            period_rows,
+            full_model_by_date,
+            [
+                ("revenue_keur", "CF.operating_revenues_keur", 1.0),
+                ("opex_keur", "CF.operating_expenses_after_bank_tax_keur", -1.0),
+                ("ebitda_keur", "CF.ebitda_keur", 1.0),
+                ("cf_after_tax_keur", "CF.free_cash_flow_for_banks_keur", 1.0),
+            ],
+            "native_engine_period_rows",
+            "operating_cf",
+        ),
+        "debt": _debt_gap_summary(
+            period_rows,
+            project_key,
+            source="native_engine_period_rows",
+        ),
+        "pl_tax": _pl_tax_gap_summary(
+            period_rows,
+            project_key,
+            source="native_engine_period_rows",
+        ),
+    }
+    return {
+        "source": "full_model_period_diagnostics",
+        "groups": groups,
+        "remaining_group_count": sum(1 for group in groups.values() if group.get("mismatch_count", 0) > 0),
+    }
 
 
 def _period_metric_gap_summary(

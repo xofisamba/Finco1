@@ -71,6 +71,9 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
     - `native_project_cash_flows_before_full_model_calibration`
     - `native_shl_lifecycle_decomposition_before_full_model_calibration`
     - `native_sponsor_equity_shl_cash_flows_before_full_model_calibration`
+    - `formula_parity_workstreams`
+    - `calibration_scaffolding_inventory`
+    - `full_horizon_period_parity`
   - Applies temporary Excel anchors for Oborovo first12 debt split and P&L/tax, plus full extracted SHL cash-flow lifecycle anchors for Oborovo and TUHO.
 
 - `app/calibration_runner.py`
@@ -254,6 +257,9 @@ Current diagnostic state before the full-model SHL bridge:
 - P&L/tax diagnostics now keep non-anchor post-tax cash flow consistent with tax charges by setting `cf_after_tax_keur = ebitda_keur - tax_keur` when tax is present.
 - `sponsor_equity_shl_cash_flow_gap_before_full_model_calibration` records native sponsor cash-flow convention deltas; current first mismatch is the initial IDC treatment for both Oborovo and TUHO.
 - Native formula-candidate series are now serialized before full-model bridge promotion for the first three bridge-replacement workstreams: project cash flows, SHL lifecycle and sponsor equity + SHL cash flows.
+- `formula_parity_workstreams` serializes the next five formula-replacement streams and links each stream to its native candidate payload, Excel payload, gap payload and first mismatch.
+- `calibration_scaffolding_inventory` summarizes active bridge streams, active anchor streams and whether any stream is ready for scaffolding removal.
+- `full_horizon_period_parity` summarizes full-period operating CF, debt and P&L/tax parity against `full_model_period_diagnostics`.
 - `engine_return_gap_before_full_model_calibration` records native engine project/equity/sponsor IRR deltas before the full-model return bridge is applied.
 
 ## Important tests to run

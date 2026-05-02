@@ -127,6 +127,9 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["native_project_cash_flows_before_full_model_calibration"]["rows"]
     assert payload["native_shl_lifecycle_decomposition_before_full_model_calibration"]["rows"]
     assert payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"]["rows"]
+    assert len(payload["formula_parity_workstreams"]) == 5
+    assert payload["calibration_scaffolding_inventory"]["remaining_stream_count"] == 5
+    assert payload["full_horizon_period_parity"]["remaining_group_count"] == 3
     assert payload["full_model_period_diagnostics"]["source"] == "excel_full_model_extract"
     assert len(payload["full_model_period_diagnostics"]["rows"]) == 60
 
@@ -260,6 +263,70 @@ def test_run_calibration_native_formula_candidate_payloads_are_serialized_for_tu
     assert payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"][
         "computed_sponsor_equity_shl_irr"
     ] > 0.0
+
+
+def test_run_calibration_formula_parity_workstreams_cover_next_five_items() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    workstreams = {row["name"]: row for row in payload["formula_parity_workstreams"]}
+
+    assert list(workstreams) == [
+        "project_cash_flow",
+        "shl_lifecycle",
+        "sponsor_equity_shl_cash_flow",
+        "debt",
+        "pl_tax",
+    ]
+    assert workstreams["project_cash_flow"]["status"] == "bridge_active"
+    assert workstreams["project_cash_flow"]["gap_payload"] == "engine_project_cash_flow_gap_before_full_model_calibration"
+    assert workstreams["project_cash_flow"]["first_mismatch"]["date"] == "2031-12-31"
+    assert workstreams["project_cash_flow"]["gap_snapshot"]["max_abs_gap"] == pytest.approx(2567.650754178724)
+    assert workstreams["project_cash_flow"]["gap_snapshot"]["ready_to_remove"] is False
+    assert workstreams["shl_lifecycle"]["native_payload"] == (
+        "native_shl_lifecycle_decomposition_before_full_model_calibration"
+    )
+    assert workstreams["shl_lifecycle"]["first_mismatch"]["date"] == "2030-06-30"
+    assert workstreams["shl_lifecycle"]["gap_snapshot"]["max_abs_gap"] == pytest.approx(101724.16528697769)
+    assert workstreams["sponsor_equity_shl_cash_flow"]["first_mismatch"]["index"] == 0
+    assert workstreams["debt"]["status"] == "anchors_active"
+    assert workstreams["debt"]["first_mismatch"]["date"] == "2030-06-30"
+    assert workstreams["debt"]["gap_snapshot"]["mismatch_count"] == 84
+    assert workstreams["pl_tax"]["status"] == "anchors_active"
+    assert workstreams["pl_tax"]["first_mismatch"]["metric"] == "depreciation_keur"
+    assert workstreams["pl_tax"]["gap_snapshot"]["mismatch_count"] == 175
+
+
+def test_run_calibration_scaffolding_inventory_tracks_remaining_bridge_and_anchor_layers() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    inventory = payload["calibration_scaffolding_inventory"]
+
+    assert inventory["source"] == "formula_parity_workstreams"
+    assert inventory["active_bridge_streams"] == [
+        "project_cash_flow",
+        "shl_lifecycle",
+        "sponsor_equity_shl_cash_flow",
+    ]
+    assert inventory["active_anchor_streams"] == ["debt", "pl_tax"]
+    assert inventory["removal_ready_streams"] == []
+    assert inventory["remaining_stream_count"] == 5
+    assert inventory["all_scaffolding_removed"] is False
+
+
+def test_run_calibration_full_horizon_period_parity_groups_are_serialized_for_tuho() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    parity = payload["full_horizon_period_parity"]
+    groups = parity["groups"]
+
+    assert parity["source"] == "full_model_period_diagnostics"
+    assert parity["remaining_group_count"] == 3
+    assert set(groups) == {"operating_cf", "debt", "pl_tax"}
+    assert groups["operating_cf"]["compared_rows"] == 59
+    assert groups["operating_cf"]["mismatch_count"] == 224
+    assert groups["operating_cf"]["first_mismatch"]["date"] == "2031-12-31"
+    assert groups["operating_cf"]["first_mismatch"]["metric"] == "revenue_keur"
+    assert groups["debt"]["mismatch_count"] == 75
+    assert groups["debt"]["first_mismatch"]["metric"] == "senior_principal_keur"
+    assert groups["pl_tax"]["mismatch_count"] == 168
+    assert groups["pl_tax"]["first_mismatch"]["metric"] == "depreciation_keur"
 
 
 def test_run_calibration_full_model_period_diagnostics_payload_shape() -> None:
