@@ -152,6 +152,26 @@ def test_oborovo_first_twelve_shl_decomposition_matches_cash_flow_definition() -
         )
 
 
+def test_oborovo_native_shl_snapshot_is_preserved_before_full_model_calibration() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    native = payload["engine_shl_decomposition_before_full_model_calibration"]
+    native_rows = native["rows"]
+    calibrated_rows = payload["shl_decomposition"]
+
+    assert native["source"] == "native_engine_before_full_model_calibration"
+    assert len(native_rows) == len(calibrated_rows)
+    assert native_rows[0]["date"] == calibrated_rows[0]["date"] == "2030-12-31"
+    assert native_rows[0]["cash_interest_paid_keur"] == pytest.approx(
+        calibrated_rows[0]["cash_interest_paid_keur"],
+    )
+    assert native_rows[0]["opening_balance_keur"] == pytest.approx(
+        calibrated_rows[0]["opening_balance_keur"],
+    )
+    assert native_rows[12]["closing_balance_keur"] != pytest.approx(
+        calibrated_rows[12]["closing_balance_keur"],
+    )
+
+
 def test_oborovo_excel_full_model_shl_payload_matches_lifecycle_fixture() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     extract = _full_model_extract("excel_oborovo_full_model_extract.json")

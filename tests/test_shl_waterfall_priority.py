@@ -57,6 +57,25 @@ def test_cash_sweep_capitalizes_unpaid_interest_when_cash_is_insufficient() -> N
     assert closing_balance == 10_100.0
 
 
+def test_cash_sweep_capitalizes_unpaid_gross_interest_with_wht() -> None:
+    shl_balance = 1_000.0
+    shl_rate_per_period = 0.10
+    cf_after_senior_ds = 50.0
+
+    interest_paid, principal_paid, pik, closing_balance = compute_shl_period(
+        shl_balance=shl_balance,
+        shl_rate_per_period=shl_rate_per_period,
+        cf_after_senior_ds=cf_after_senior_ds,
+        method="cash_sweep",
+        wht_rate=0.20,
+    )
+
+    assert interest_paid == 50.0
+    assert principal_paid == 0.0
+    assert pik == 50.0
+    assert closing_balance == 1_050.0
+
+
 def test_sponsor_cash_flow_priority_is_shl_before_dividend() -> None:
     """Dividend is residual after SHL service, not parallel to SHL service."""
     cash_after_senior_debt = 1_000.0

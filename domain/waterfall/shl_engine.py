@@ -142,7 +142,8 @@ def compute_shl_period_v3(
 
     elif method == "cash_sweep":
         # Pay interest first, then principal from remaining CF
-        interest_paid = min(net_interest, cf_available)
+        available_cash = max(0.0, cf_available)
+        interest_paid = min(net_interest, available_cash)
         remaining = max(0.0, cf_available - interest_paid)
         principal = min(remaining, shl_balance)
         # PIK = gross interest - cash paid

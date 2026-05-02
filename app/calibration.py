@@ -167,7 +167,7 @@ class HeadlessRunConfig:
     tax_rate: float
     dsra_months: int
     shl_amount_keur: float
-    shl_rate_per_period: float
+    shl_rate: float
     shl_idc_keur: float
     shl_repayment_method: str
     shl_tenor_years: int
@@ -224,6 +224,8 @@ def _apply_oborovo_input_anchors(inputs: ProjectInputs) -> ProjectInputs:
         financing=replace(
             inputs.financing,
             fixed_debt_keur=42852.26672602787,
+            shl_amount_keur=14620.773894815633,
+            shl_idc_keur=1169.6619115852516,
         ),
     )
 
@@ -267,7 +269,7 @@ def build_run_config(inputs: ProjectInputs, engine: PeriodEngine | None = None) 
         tax_rate=tax.corporate_rate,
         dsra_months=financing.dsra_months,
         shl_amount_keur=financing.shl_amount_keur,
-        shl_rate_per_period=financing.shl_rate / 2,
+        shl_rate=financing.shl_rate,
         shl_idc_keur=getattr(financing, "shl_idc_keur", 0.0),
         shl_repayment_method=_enum_or_string_value(getattr(financing, "shl_repayment_method", "bullet")),
         shl_tenor_years=getattr(financing, "shl_tenor_years", 0),
@@ -304,7 +306,7 @@ def run_project_calibration(
         tax_rate=config.tax_rate,
         dsra_months=config.dsra_months,
         shl_amount=config.shl_amount_keur,
-        shl_rate=config.shl_rate_per_period,
+        shl_rate=config.shl_rate,
         shl_idc_keur=config.shl_idc_keur,
         shl_repayment_method=config.shl_repayment_method,
         shl_tenor_years=config.shl_tenor_years,
@@ -329,6 +331,10 @@ def run_project_calibration(
     _apply_debt_split_calibration(payload, normalized_project_key)
     _apply_pl_tax_calibration(payload, normalized_project_key)
     _apply_shl_cash_flow_calibration(payload, normalized_project_key)
+    payload["engine_shl_decomposition_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "rows": _shl_decomposition_rows(payload["periods"]),
+    }
     _apply_full_model_shl_lifecycle_calibration(payload, normalized_project_key)
     payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
@@ -718,6 +724,7 @@ def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) 
     else:
         return
 
+    running_shl_balance: float | None = None
     for row in payload.get("periods", []):
         date_key = str(row.get("date"))
         anchor = anchors.get(date_key)
@@ -729,6 +736,12 @@ def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) 
         dividend = float(anchor["dividend"])
         gross_interest = float(anchor["gross_interest"])
         capitalized_interest = max(0.0, gross_interest - paid_interest)
+        opening_balance = (
+            running_shl_balance
+            if running_shl_balance is not None
+            else float(row.get("shl_balance_keur", 0.0) or 0.0)
+        )
+        closing_balance = max(0.0, opening_balance + capitalized_interest - principal)
 
         row["shl_interest_keur"] = paid_interest
         row["shl_principal_keur"] = principal
@@ -736,9 +749,8 @@ def _apply_shl_cash_flow_calibration(payload: dict[str, Any], project_key: str) 
         row["distribution_keur"] = dividend
         row["shl_pik_keur"] = capitalized_interest
         row["shl_gross_interest_keur"] = gross_interest
-
-        existing_balance = float(row.get("shl_balance_keur", 0.0) or 0.0)
-        row["shl_balance_keur"] = max(0.0, existing_balance + capitalized_interest - principal)
+        row["shl_balance_keur"] = closing_balance
+        running_shl_balance = closing_balance
 
 
 def _json_safe(value: Any) -> Any:

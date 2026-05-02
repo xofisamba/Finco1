@@ -120,6 +120,20 @@ class TestSHLv3GrossPIK:
         # New balance = 15,000 - 200 + 0 = 14,800
         assert result.new_balance_keur == 14_800.0
 
+    def test_shl_cash_sweep_negative_cash_does_not_pay_negative_interest(self):
+        """Cash sweep floors available cash at zero before paying interest."""
+        result = compute_shl_period_v3(
+            shl_balance=10_000.0,
+            shl_rate_per_period=0.04,
+            cf_available=-100.0,
+            method="cash_sweep",
+            wht_rate=0.0,
+        )
+        assert result.interest_paid_keur == 0.0
+        assert result.principal_keur == 0.0
+        assert result.pik_addition_keur == 400.0
+        assert result.new_balance_keur == 10_400.0
+
     def test_shl_accrued_no_change(self):
         """Accrued: balance unchanged, nothing paid."""
         result = compute_shl_period_v3(

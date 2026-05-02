@@ -30,6 +30,7 @@ from domain.financing.schedule import senior_debt_amount
 from domain.returns.xirr import xirr, xnpv
 from domain.period_engine import hash_engine_for_cache
 from domain.tax.engine import atad_adjustment
+from domain.waterfall.shl_engine import compute_shl_period_v3
 from utils.logging_config import get_logger
 
 _log = get_logger(__name__)  # Module-level logger (defined once, not per-function)
@@ -202,7 +203,7 @@ def compute_shl_period(
     pik_switch_triggered: bool = False,
     is_final_shl_period: bool = False,
 ) -> tuple[float, float, float, float]:
-    """Compute SHL cash flows for one period.
+    """Compatibility wrapper for the v3 SHL engine.
 
     Args:
         shl_balance: Current SHL balance
@@ -214,71 +215,26 @@ def compute_shl_period(
 
     Returns:
         (shl_interest_paid, shl_principal, shl_pik_addition, new_shl_balance)
-        shl_interest_paid = neto iznos koji investitor prima (after WHT)
-        shl_principal = otplata glavnice (smanjuje balance)
-        shl_pik_addition = kapitalizacija (povećava balance)
-        new_shl_balance = ažurirani balance
+        shl_interest_paid = net amount investor receives after WHT
+        shl_principal = principal repayment
+        shl_pik_addition = gross PIK capitalized
+        new_shl_balance = updated balance
     """
-    if shl_balance <= 0:
-        return 0.0, 0.0, 0.0, 0.0
-
-    # Full (gross) interest on SHL balance
-    interest_full = shl_balance * shl_rate_per_period
-    # Net interest after WHT
-    interest_net = interest_full * (1 - wht_rate)
-
-    if method == "bullet":
-        # Pay net interest if CF available, otherwise PIK
-        interest_paid = min(max(0.0, cf_after_senior_ds), interest_net)
-        pik = interest_full - interest_paid if interest_paid < interest_net else 0.0
-
-        # Bullet principal in final period of SHL tenor
-        if is_final_shl_period:
-            principal = shl_balance  # repay all at maturity
-            new_balance = 0.0
-        else:
-            principal = 0.0
-            new_balance = shl_balance + pik
-
-        return interest_paid, principal, pik, new_balance
-
-    elif method == "cash_sweep":
-        # Priority: interest → principal from remaining CF
-        interest_paid = min(interest_net, cf_after_senior_ds)
-        remaining = cf_after_senior_ds - interest_paid
-        principal = min(remaining, shl_balance)
-        # PIK = full interest - interest paid
-        pik = max(0.0, interest_full - interest_paid / (1 - wht_rate)) if wht_rate > 0 else max(0.0, interest_full - interest_paid)
-        new_bal = shl_balance - principal + pik
-        return interest_paid, principal, pik, max(0.0, new_bal)
-
-    elif method == "pik":
-        # Everything capitalizes, no cash outflow
-        pik = interest_full
-        return 0.0, 0.0, pik, shl_balance + pik
-
-    elif method == "accrued":
-        # Nothing is paid or capitalized (liability for later)
-        return 0.0, 0.0, 0.0, shl_balance
-
-    elif method == "pik_then_sweep":
-        # cofix fix: PIK → SWITCH trigger is FCF > accrued (NOT senior_balance=0)
-        interest_full = shl_balance * shl_rate_per_period
-        interest_net = interest_full * (1 - wht_rate)
-        if not pik_switch_triggered:
-            # PIK: plati što možeš, razlika se kapitalizira
-            interest_paid = min(max(0.0, cf_after_senior_ds), interest_net)
-            pik = interest_full - interest_paid  # kapitalizira se GROSS razlika (full - paid_net)
-            return interest_paid, 0.0, pik, shl_balance + pik
-        else:
-            # SWEEP: plati punu kamatu + principal iz viška
-            interest_paid = interest_net
-            remaining = cf_after_senior_ds - interest_net
-            principal = min(remaining, shl_balance)
-            return interest_paid, principal, 0.0, max(0.0, shl_balance - principal)
-
-    else:
-        raise ValueError(f"Unknown SHL method: {method}")
+    result = compute_shl_period_v3(
+        shl_balance=shl_balance,
+        shl_rate_per_period=shl_rate_per_period,
+        cf_available=cf_after_senior_ds,
+        method=method,
+        wht_rate=wht_rate,
+        pik_switch_triggered=pik_switch_triggered,
+        is_final_period=is_final_shl_period,
+    )
+    return (
+        result.interest_paid_keur,
+        result.principal_keur,
+        result.pik_addition_keur,
+        result.new_balance_keur,
+    )
 
 
 def run_waterfall(
@@ -723,7 +679,7 @@ def run_waterfall(
         # No SHL interest, no SHL payment — just opening balance (already includes IDC)
         is_shl_disbursement_period = (op_period_counter == 1 and shl_repayment_method == "pik_then_sweep")
 
-        shl_rate_per = shl_rate / 2  # Always semi-annual period rate
+        shl_rate_per = shl_rate * getattr(period, "day_fraction", 0.5)
 
         # SHL tenor — when does bullet repay?
         # shl_tenor_years = 0 means bullet at end of senior tenor (default)

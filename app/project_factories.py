@@ -27,6 +27,7 @@ from domain.inputs import (
 TUHO_TOTAL_CAPEX_TARGET_KEUR = 72_993.70678606197
 TUHO_SENIOR_DEBT_TARGET_KEUR = 43_359.2737822209
 TUHO_SHL_PRINCIPAL_KEUR = 29_135.176217946093
+TUHO_SHL_IDC_KEUR = 3_568.6878026481627
 
 
 def create_default_tuho() -> ProjectInputs:
@@ -115,7 +116,7 @@ def create_default_tuho() -> ProjectInputs:
         shl_repayment_method=SHLRepaymentMethod.PIK_THEN_SWEEP.value,
         shl_pik_switch_period=0,
         shl_tenor_years=0,
-        shl_idc_keur=0.0,
+        shl_idc_keur=TUHO_SHL_IDC_KEUR,
     )
 
     tax = TaxParams(

@@ -57,6 +57,7 @@ def test_build_run_config_from_oborovo_inputs() -> None:
     assert config.sculpt_capex_keur == inputs.capex.sculpt_capex_keur
     assert config.rate_schedule is not None
     assert len(config.rate_schedule) == config.tenor_periods
+    assert config.shl_rate == inputs.financing.shl_rate
 
 
 def test_build_run_config_without_engine_keeps_legacy_flat_rate_path() -> None:
@@ -64,6 +65,7 @@ def test_build_run_config_without_engine_keeps_legacy_flat_rate_path() -> None:
     config = build_run_config(inputs)
     assert config.rate_per_period > 0
     assert config.rate_schedule is None
+    assert config.shl_rate == inputs.financing.shl_rate
 
 
 def test_day_count_debt_rate_schedule_uses_operation_day_fractions() -> None:
