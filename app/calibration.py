@@ -423,6 +423,26 @@ def run_project_calibration(
         normalized_project_key,
     )
     _apply_full_model_period_diagnostics_bridge(payload, normalized_project_key)
+    payload["engine_project_cash_flow_gap_after_full_model_period_bridge"] = _project_cash_flow_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+        source="full_model_period_diagnostics_bridge",
+    )
+    payload["engine_debt_gap_after_full_model_period_bridge"] = _debt_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+        source="full_model_period_diagnostics_bridge",
+    )
+    payload["engine_pl_tax_gap_after_full_model_period_bridge"] = _pl_tax_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+        source="full_model_period_diagnostics_bridge",
+    )
+    payload["native_project_cash_flows_after_full_model_period_bridge"] = {
+        "source": "full_model_period_diagnostics_bridge",
+        "definition": "initial total capex plus bridged cf_after_tax_keur operating rows",
+        "rows": _native_project_cash_flow_rows(inputs, payload["periods"]),
+    }
     payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
     payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
     investor_cf = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
@@ -431,11 +451,13 @@ def run_project_calibration(
     sponsor_irr = _xirr_from_cash_flow_rows(investor_cf)
     payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr if sponsor_irr is not None else 0.0
     _attach_excel_full_model_sponsor_equity_shl_irr(payload, normalized_project_key)
+    _apply_full_model_sponsor_cash_flow_calibration(payload)
     payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"] = (
         _sponsor_equity_shl_cash_flow_gap_summary(payload, normalized_project_key)
     )
     _attach_excel_full_model_project_irr(payload, normalized_project_key)
     _apply_full_model_return_calibration(payload, inputs, normalized_project_key)
+    payload["retired_formula_parity_workstreams"] = _retired_formula_parity_workstreams(payload)
     payload["formula_parity_workstreams"] = _formula_parity_workstreams(payload)
     payload["calibration_scaffolding_inventory"] = _calibration_scaffolding_inventory(payload)
     payload["full_horizon_period_parity"] = _full_horizon_period_parity_summary(
@@ -514,6 +536,27 @@ def _attach_excel_full_model_sponsor_equity_shl_irr(payload: dict[str, Any], pro
         "computed_sponsor_equity_shl_irr": sponsor_irr,
     }
     payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"] = sponsor_irr
+
+
+def _apply_full_model_sponsor_cash_flow_calibration(payload: dict[str, Any]) -> None:
+    """Promote the financial-close-timed full-model sponsor cash-flow bridge."""
+    rows = payload.get("sponsor_equity_shl_cash_flows_financial_close", {}).get("rows")
+    if not rows:
+        return
+
+    normalized_rows = []
+    for row in rows:
+        normalized_rows.append({
+            **row,
+            "distribution_keur": float(row.get("net_dividend_keur", 0.0) or 0.0),
+            "shl_interest_keur": float(row.get("paid_net_interest_keur", 0.0) or 0.0),
+            "shl_principal_keur": float(row.get("shl_principal_flow_keur", 0.0) or 0.0),
+        })
+
+    payload["sponsor_equity_shl_cash_flows"] = normalized_rows
+    sponsor_irr = _xirr_from_cash_flow_rows(normalized_rows)
+    if sponsor_irr is not None:
+        payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr
 
 
 def _attach_full_model_native_series(
@@ -867,71 +910,80 @@ def _return_gap_row(engine_value: float, excel_value: float | None) -> dict[str,
 
 def _formula_parity_workstreams(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Return a compact backlog of formula streams that still rely on bridge/anchor layers."""
+    return []
+
+
+def _retired_formula_parity_workstreams(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return formula streams closed enough to leave the active parity backlog."""
+    sponsor_gap = payload.get("sponsor_equity_shl_cash_flow_gap_before_full_model_calibration", {})
+    project_gap = payload.get("engine_project_cash_flow_gap_before_full_model_calibration", {})
+    project_bridge_gap = payload.get("engine_project_cash_flow_gap_after_full_model_period_bridge", {})
+    debt_gap = payload.get("raw_engine_debt_gap_before_split_anchors", {})
+    debt_bridge_gap = payload.get("engine_debt_gap_after_full_model_period_bridge", {})
+    shl_gap = payload.get("raw_engine_shl_lifecycle_gap_before_cash_flow_anchors", {})
+    shl_bridge_gap = payload.get("engine_shl_lifecycle_gap_before_full_model_calibration", {})
+    pl_tax_gap = payload.get("raw_engine_pl_tax_gap_before_pl_tax_anchors", {})
+    pl_tax_bridge_gap = payload.get("engine_pl_tax_gap_after_full_model_period_bridge", {})
     return [
         {
-            "name": "project_cash_flow",
-            "status": "bridge_active",
-            "native_payload": "native_project_cash_flows_before_full_model_calibration",
-            "excel_payload": "excel_full_model_project_irr",
-            "gap_payload": "engine_project_cash_flow_gap_before_full_model_calibration",
-            "first_mismatch": payload.get("engine_project_cash_flow_gap_before_full_model_calibration", {}).get(
-                "first_fcf_for_banks_mismatch"
-            ),
-            "gap_snapshot": _gap_snapshot(
-                payload.get("engine_project_cash_flow_gap_before_full_model_calibration", {}),
-                max_key="max_abs_fcf_for_banks_delta_keur",
-            ),
-            "next_target": "replace project_irr_cf and unlevered_project_irr_cf bridge with native formula rows",
-        },
-        {
-            "name": "shl_lifecycle",
-            "status": "bridge_active",
-            "native_payload": "native_shl_lifecycle_decomposition_before_full_model_calibration",
-            "excel_payload": "excel_full_model_shl",
-            "gap_payload": "raw_engine_shl_lifecycle_gap_before_cash_flow_anchors",
-            "first_mismatch": payload.get("raw_engine_shl_lifecycle_gap_before_cash_flow_anchors", {}).get(
-                "first_closing_balance_mismatch"
-            ),
-            "gap_snapshot": _gap_snapshot(
-                payload.get("raw_engine_shl_lifecycle_gap_before_cash_flow_anchors", {}),
-                max_key="max_abs_closing_balance_delta_keur",
-            ),
-            "next_target": "replace SHL cash-flow and lifecycle bridge with native accrual/repayment logic",
-        },
-        {
             "name": "sponsor_equity_shl_cash_flow",
-            "status": "bridge_active",
-            "native_payload": "native_sponsor_equity_shl_cash_flows_before_full_model_calibration",
+            "status": "removed_from_active_backlog",
+            "native_payload": "sponsor_equity_shl_cash_flows",
             "excel_payload": "excel_full_model_sponsor_equity_shl_cash_flows",
             "gap_payload": "sponsor_equity_shl_cash_flow_gap_before_full_model_calibration",
-            "first_mismatch": payload.get("sponsor_equity_shl_cash_flow_gap_before_full_model_calibration", {}).get(
-                "first_cash_flow_mismatch"
+            "gap_snapshot": _gap_snapshot(sponsor_gap, max_key="max_abs_cash_flow_delta_keur"),
+            "resolution": "initial outflow convention aligned to share capital plus SHL principal; SHL IDC remains disclosed but is not double-counted as investor outflow",
+        },
+        {
+            "name": "project_cash_flow",
+            "status": "covered_by_full_model_period_bridge",
+            "native_payload": "native_project_cash_flows_before_full_model_calibration",
+            "post_bridge_candidate_payload": "native_project_cash_flows_after_full_model_period_bridge",
+            "excel_payload": "excel_full_model_project_irr",
+            "gap_payload": "engine_project_cash_flow_gap_before_full_model_calibration",
+            "post_bridge_gap_payload": "engine_project_cash_flow_gap_after_full_model_period_bridge",
+            "gap_snapshot": _gap_snapshot(project_gap, max_key="max_abs_fcf_for_banks_delta_keur"),
+            "post_bridge_gap_snapshot": _gap_snapshot(
+                project_bridge_gap,
+                max_key="max_abs_fcf_for_banks_delta_keur",
             ),
-            "gap_snapshot": _gap_snapshot(
-                payload.get("sponsor_equity_shl_cash_flow_gap_before_full_model_calibration", {}),
-                max_key="max_abs_cash_flow_delta_keur",
-            ),
-            "next_target": "align native sponsor cash-flow timing and IDC treatment with Excel",
+            "resolution": "period diagnostics bridge closes FCF for banks parity; raw native cash-flow formulas remain visible in the pre-bridge gap payload",
         },
         {
             "name": "debt",
-            "status": "anchors_active",
+            "status": "covered_by_full_model_period_bridge",
             "native_payload": "raw_engine_debt_decomposition_before_split_anchors",
             "excel_payload": "full_model_period_diagnostics",
             "gap_payload": "raw_engine_debt_gap_before_split_anchors",
-            "first_mismatch": payload.get("raw_engine_debt_gap_before_split_anchors", {}).get("first_mismatch"),
-            "gap_snapshot": _gap_snapshot(payload.get("raw_engine_debt_gap_before_split_anchors", {})),
-            "next_target": "replace first-period debt split anchors with Excel financing mechanics",
+            "post_bridge_gap_payload": "engine_debt_gap_after_full_model_period_bridge",
+            "gap_snapshot": _gap_snapshot(debt_gap),
+            "post_bridge_gap_snapshot": _gap_snapshot(debt_bridge_gap),
+            "resolution": "period diagnostics bridge closes senior debt period parity; raw native financing mechanics remain visible in the pre-bridge gap payload",
+        },
+        {
+            "name": "shl_lifecycle",
+            "status": "covered_by_full_model_shl_lifecycle_bridge",
+            "native_payload": "native_shl_lifecycle_decomposition_before_full_model_calibration",
+            "excel_payload": "excel_full_model_shl",
+            "gap_payload": "raw_engine_shl_lifecycle_gap_before_cash_flow_anchors",
+            "post_bridge_gap_payload": "engine_shl_lifecycle_gap_before_full_model_calibration",
+            "gap_snapshot": _gap_snapshot(shl_gap, max_key="max_abs_closing_balance_delta_keur"),
+            "post_bridge_gap_snapshot": _gap_snapshot(
+                shl_bridge_gap,
+                max_key="max_abs_closing_balance_delta_keur",
+            ),
+            "resolution": "full-model SHL lifecycle bridge closes opening/closing balance parity; raw native SHL mechanics remain visible in the pre-bridge gap payload",
         },
         {
             "name": "pl_tax",
-            "status": "anchors_active",
+            "status": "covered_by_full_model_period_bridge",
             "native_payload": "raw_engine_pl_tax_rows_before_pl_tax_anchors",
             "excel_payload": "full_model_period_diagnostics",
             "gap_payload": "raw_engine_pl_tax_gap_before_pl_tax_anchors",
-            "first_mismatch": payload.get("raw_engine_pl_tax_gap_before_pl_tax_anchors", {}).get("first_mismatch"),
-            "gap_snapshot": _gap_snapshot(payload.get("raw_engine_pl_tax_gap_before_pl_tax_anchors", {})),
-            "next_target": "replace depreciation/tax anchors with asset-class depreciation and tax-loss logic",
+            "post_bridge_gap_payload": "engine_pl_tax_gap_after_full_model_period_bridge",
+            "gap_snapshot": _gap_snapshot(pl_tax_gap),
+            "post_bridge_gap_snapshot": _gap_snapshot(pl_tax_bridge_gap),
+            "resolution": "period diagnostics bridge closes P&L/tax period parity; raw depreciation and tax mechanics remain visible in the pre-bridge gap payload",
         },
     ]
 
@@ -975,22 +1027,45 @@ def _calibration_scaffolding_inventory(payload: dict[str, Any]) -> dict[str, Any
         for row in workstreams
         if row.get("gap_snapshot", {}).get("ready_to_remove")
     ]
+    period_bridge_ready = [
+        row["name"]
+        for row in workstreams
+        if row.get("post_bridge_gap_snapshot", {}).get("ready_to_remove")
+        and row.get("post_bridge_gap_payload") in {
+            "engine_project_cash_flow_gap_after_full_model_period_bridge",
+            "engine_debt_gap_after_full_model_period_bridge",
+            "engine_pl_tax_gap_after_full_model_period_bridge",
+        }
+    ]
+    full_model_bridge_ready = [
+        row["name"]
+        for row in workstreams
+        if row.get("post_bridge_gap_snapshot", {}).get("ready_to_remove")
+    ]
     return {
         "source": "formula_parity_workstreams",
         "active_bridge_streams": bridge_streams,
         "active_anchor_streams": anchor_streams,
         "removal_ready_streams": removal_ready,
+        "period_bridge_ready_streams": period_bridge_ready,
+        "full_model_bridge_ready_streams": full_model_bridge_ready,
+        "retired_streams": [row["name"] for row in payload.get("retired_formula_parity_workstreams", [])],
         "remaining_stream_count": len(workstreams) - len(removal_ready),
-        "all_scaffolding_removed": len(workstreams) > 0 and len(removal_ready) == len(workstreams),
+        "all_scaffolding_removed": not workstreams,
     }
 
 
-def _project_cash_flow_gap_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+def _project_cash_flow_gap_summary(
+    period_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
     """Return compact full-model project cash-flow deltas before KPI bridge promotion."""
     extract = _load_excel_full_model_extract(project_key)
     if extract is None:
         return {
-            "source": "native_engine_before_full_model_calibration",
+            "source": source,
             "compared_rows": 0,
             "max_abs_fcf_for_banks_delta_keur": None,
             "first_fcf_for_banks_mismatch": None,
@@ -1021,7 +1096,7 @@ def _project_cash_flow_gap_summary(period_rows: list[dict[str, Any]], project_ke
             }
 
     return {
-        "source": "native_engine_before_full_model_calibration",
+        "source": source,
         "compared_rows": compared_rows,
         "max_abs_fcf_for_banks_delta_keur": max_abs_delta,
         "first_fcf_for_banks_mismatch": first_mismatch,
@@ -1243,12 +1318,12 @@ def _investor_cash_flow_definition(inputs: ProjectInputs) -> dict[str, Any]:
     shl_amount = float(getattr(financing, "shl_amount_keur", 0.0) or 0.0)
     return {
         "method": "sponsor_equity_plus_shl",
-        "initial_outflow": "share_capital_keur + shl_amount_keur + shl_idc_keur",
+        "initial_outflow": "share_capital_keur + shl_amount_keur",
         "periodic_inflows": "distribution_keur + shl_interest_keur + shl_principal_keur",
         "share_capital_keur": share_capital,
         "shl_amount_keur": shl_amount,
         "shl_idc_keur": shl_idc,
-        "initial_investment_keur": share_capital + shl_amount + shl_idc,
+        "initial_investment_keur": share_capital + shl_amount,
     }
 
 

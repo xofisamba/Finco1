@@ -41,6 +41,8 @@
 - Calibration payloads now expose `full_horizon_period_parity`, grouped operating-period parity summaries for operating CF, debt and P&L/tax against the full-model period diagnostics.
 - Calibration payloads now preserve `full_horizon_period_parity_before_full_model_period_bridge` before promoting the full-model period diagnostics, then expose post-bridge `full_horizon_period_parity` with operating CF, debt and P&L/tax period rows reconciled to the full-model extract.
 - Calibration payloads now expose `full_model_period_diagnostics_bridge`, a transparent bridge summary showing how many CF/DS/P&L period diagnostic rows were promoted into serialized period rows.
+- Calibration payloads now expose post-period-bridge gap summaries for project cash flow, debt and P&L/tax, plus `native_project_cash_flows_after_full_model_period_bridge`, so the workstream inventory can distinguish raw native formula gaps from streams already reconciled by the period diagnostics bridge.
+- Calibration payloads now align the sponsor equity + SHL initial cash-flow convention with the Excel extract: initial outflow is share capital plus SHL principal, while SHL IDC remains disclosed but is not double-counted as an investor cash-flow outflow.
 - Calibration payloads now expose `full_model_period_diagnostics`, a 60-row operating-period extract from CF, DS, P&L and Dep sheets for Oborovo and TUHO.
 - Calibration payloads now expose `engine_debt_gap_before_full_model_calibration` and `engine_pl_tax_gap_before_full_model_calibration`, compact deltas against the full-model period diagnostics, including compared metrics, mismatch counts, first mismatch and max-delta location.
 - Calibration period rows now use the full-model SHL lifecycle extract for SHL opening balance, gross interest, paid interest, principal, capitalized interest, closing balance and dividend timing.
@@ -120,6 +122,11 @@ Passing / expected-passing checks:
 - `calibration_scaffolding_inventory` currently shows three active bridge streams and two active anchor streams; no stream is marked ready for scaffolding removal yet.
 - `full_horizon_period_parity_before_full_model_period_bridge` currently has remaining native formula mismatches in all three tracked groups for TUHO: operating CF, debt and P&L/tax.
 - `full_horizon_period_parity` now confirms full-model period bridge parity for Oborovo and TUHO: operating CF, debt and P&L/tax groups have zero post-bridge mismatches.
+- `calibration_scaffolding_inventory.period_bridge_ready_streams` currently identifies `project_cash_flow`, `debt` and `pl_tax` as reconciled by the full-model period diagnostics bridge.
+- `calibration_scaffolding_inventory.full_model_bridge_ready_streams` currently identifies `project_cash_flow`, `shl_lifecycle`, `debt` and `pl_tax` as reconciled by an explicit full-model bridge.
+- All five tracked formula workstreams have moved out of the active formula backlog into `retired_formula_parity_workstreams`; remaining active stream count is now 0.
+- `project_cash_flow` and `debt` are retired as bridge-covered streams, not as raw native formula parity: their raw gap payloads remain serialized, while their post-bridge snapshots are zero-gap.
+- `shl_lifecycle` and `pl_tax` are also retired as bridge-covered streams, not as raw native formula parity: their raw gap payloads remain serialized, while their post-bridge snapshots are zero-gap.
 - Oborovo and TUHO return KPI gap summaries are serialized before the full-model return bridge is applied.
 - Oborovo and TUHO sponsor cash-flow gap summaries now identify the initial IDC convention difference before sponsor return bridge promotion.
 - Oborovo and TUHO project cash-flow gap summaries are serialized before the full-model return bridge is applied. Current first full-model `fcf_for_banks` mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`; the tests now lock the mismatch values and max absolute deltas.

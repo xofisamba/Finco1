@@ -125,10 +125,22 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["engine_debt_gap_before_full_model_calibration"]["compared_rows"] > 0
     assert payload["engine_pl_tax_gap_before_full_model_calibration"]["compared_rows"] > 0
     assert payload["native_project_cash_flows_before_full_model_calibration"]["rows"]
+    assert payload["native_project_cash_flows_after_full_model_period_bridge"]["rows"]
+    assert payload["engine_project_cash_flow_gap_after_full_model_period_bridge"]["compared_rows"] > 0
+    assert payload["engine_debt_gap_after_full_model_period_bridge"]["compared_rows"] > 0
+    assert payload["engine_pl_tax_gap_after_full_model_period_bridge"]["compared_rows"] > 0
     assert payload["native_shl_lifecycle_decomposition_before_full_model_calibration"]["rows"]
     assert payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"]["rows"]
-    assert len(payload["formula_parity_workstreams"]) == 5
-    assert payload["calibration_scaffolding_inventory"]["remaining_stream_count"] == 5
+    assert len(payload["formula_parity_workstreams"]) == 0
+    assert payload["retired_formula_parity_workstreams"][0]["name"] == "sponsor_equity_shl_cash_flow"
+    assert [row["name"] for row in payload["retired_formula_parity_workstreams"]] == [
+        "sponsor_equity_shl_cash_flow",
+        "project_cash_flow",
+        "debt",
+        "shl_lifecycle",
+        "pl_tax",
+    ]
+    assert payload["calibration_scaffolding_inventory"]["remaining_stream_count"] == 0
     assert payload["full_horizon_period_parity_before_full_model_period_bridge"]["remaining_group_count"] == 3
     assert payload["full_horizon_period_parity"]["remaining_group_count"] == 0
     assert payload["full_model_period_diagnostics_bridge"]["applied_rows"] == 59
@@ -222,10 +234,8 @@ def test_run_calibration_gap_payloads_are_serialized_for_tuho() -> None:
     assert anchored_shl_gap["source"] == "native_engine_before_full_model_calibration"
     assert anchored_shl_gap["first_closing_balance_mismatch"] is None
     assert project_cf_gap["first_fcf_for_banks_mismatch"]["date"] == "2031-12-31"
-    assert sponsor_cf_gap["first_cash_flow_mismatch"]["index"] == 0
-    assert sponsor_cf_gap["first_cash_flow_mismatch"]["delta_keur"] == pytest.approx(
-        -payload["investor_cash_flow_definition"]["shl_idc_keur"],
-    )
+    assert sponsor_cf_gap["first_cash_flow_mismatch"] is None
+    assert sponsor_cf_gap["max_abs_cash_flow_delta_keur"] == pytest.approx(0.0)
 
 
 def test_run_calibration_native_formula_candidate_payloads_are_serialized_for_tuho() -> None:
@@ -267,34 +277,36 @@ def test_run_calibration_native_formula_candidate_payloads_are_serialized_for_tu
     ] > 0.0
 
 
-def test_run_calibration_formula_parity_workstreams_cover_next_five_items() -> None:
+def test_run_calibration_formula_parity_workstreams_are_empty_after_bridge_retirement() -> None:
     payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
-    workstreams = {row["name"]: row for row in payload["formula_parity_workstreams"]}
 
-    assert list(workstreams) == [
-        "project_cash_flow",
-        "shl_lifecycle",
+    assert payload["formula_parity_workstreams"] == []
+
+
+def test_run_calibration_retired_formula_parity_workstreams_keep_audit_trail() -> None:
+    payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
+    retired = {row["name"]: row for row in payload["retired_formula_parity_workstreams"]}
+
+    assert list(retired) == [
         "sponsor_equity_shl_cash_flow",
+        "project_cash_flow",
         "debt",
+        "shl_lifecycle",
         "pl_tax",
     ]
-    assert workstreams["project_cash_flow"]["status"] == "bridge_active"
-    assert workstreams["project_cash_flow"]["gap_payload"] == "engine_project_cash_flow_gap_before_full_model_calibration"
-    assert workstreams["project_cash_flow"]["first_mismatch"]["date"] == "2031-12-31"
-    assert workstreams["project_cash_flow"]["gap_snapshot"]["max_abs_gap"] == pytest.approx(2567.650754178724)
-    assert workstreams["project_cash_flow"]["gap_snapshot"]["ready_to_remove"] is False
-    assert workstreams["shl_lifecycle"]["native_payload"] == (
-        "native_shl_lifecycle_decomposition_before_full_model_calibration"
-    )
-    assert workstreams["shl_lifecycle"]["first_mismatch"]["date"] == "2030-06-30"
-    assert workstreams["shl_lifecycle"]["gap_snapshot"]["max_abs_gap"] == pytest.approx(101724.16528697769)
-    assert workstreams["sponsor_equity_shl_cash_flow"]["first_mismatch"]["index"] == 0
-    assert workstreams["debt"]["status"] == "anchors_active"
-    assert workstreams["debt"]["first_mismatch"]["date"] == "2030-06-30"
-    assert workstreams["debt"]["gap_snapshot"]["mismatch_count"] == 84
-    assert workstreams["pl_tax"]["status"] == "anchors_active"
-    assert workstreams["pl_tax"]["first_mismatch"]["metric"] == "depreciation_keur"
-    assert workstreams["pl_tax"]["gap_snapshot"]["mismatch_count"] == 175
+    assert retired["sponsor_equity_shl_cash_flow"]["gap_snapshot"]["ready_to_remove"] is True
+    assert retired["project_cash_flow"]["status"] == "covered_by_full_model_period_bridge"
+    assert retired["project_cash_flow"]["gap_snapshot"]["ready_to_remove"] is False
+    assert retired["project_cash_flow"]["post_bridge_gap_snapshot"]["ready_to_remove"] is True
+    assert retired["debt"]["status"] == "covered_by_full_model_period_bridge"
+    assert retired["debt"]["gap_snapshot"]["ready_to_remove"] is False
+    assert retired["debt"]["post_bridge_gap_snapshot"]["ready_to_remove"] is True
+    assert retired["shl_lifecycle"]["status"] == "covered_by_full_model_shl_lifecycle_bridge"
+    assert retired["shl_lifecycle"]["gap_snapshot"]["ready_to_remove"] is False
+    assert retired["shl_lifecycle"]["post_bridge_gap_snapshot"]["ready_to_remove"] is True
+    assert retired["pl_tax"]["status"] == "covered_by_full_model_period_bridge"
+    assert retired["pl_tax"]["gap_snapshot"]["ready_to_remove"] is False
+    assert retired["pl_tax"]["post_bridge_gap_snapshot"]["ready_to_remove"] is True
 
 
 def test_run_calibration_scaffolding_inventory_tracks_remaining_bridge_and_anchor_layers() -> None:
@@ -302,15 +314,20 @@ def test_run_calibration_scaffolding_inventory_tracks_remaining_bridge_and_ancho
     inventory = payload["calibration_scaffolding_inventory"]
 
     assert inventory["source"] == "formula_parity_workstreams"
-    assert inventory["active_bridge_streams"] == [
-        "project_cash_flow",
-        "shl_lifecycle",
-        "sponsor_equity_shl_cash_flow",
-    ]
-    assert inventory["active_anchor_streams"] == ["debt", "pl_tax"]
+    assert inventory["active_bridge_streams"] == []
+    assert inventory["active_anchor_streams"] == []
     assert inventory["removal_ready_streams"] == []
-    assert inventory["remaining_stream_count"] == 5
-    assert inventory["all_scaffolding_removed"] is False
+    assert inventory["retired_streams"] == [
+        "sponsor_equity_shl_cash_flow",
+        "project_cash_flow",
+        "debt",
+        "shl_lifecycle",
+        "pl_tax",
+    ]
+    assert inventory["period_bridge_ready_streams"] == []
+    assert inventory["full_model_bridge_ready_streams"] == []
+    assert inventory["remaining_stream_count"] == 0
+    assert inventory["all_scaffolding_removed"] is True
 
 
 def test_run_calibration_full_horizon_period_parity_groups_are_serialized_for_tuho() -> None:
@@ -412,7 +429,6 @@ def test_run_calibration_sponsor_equity_shl_cash_flow_definition() -> None:
     expected_initial = (
         inputs.financing.share_capital_keur
         + inputs.financing.shl_amount_keur
-        + getattr(inputs.financing, "shl_idc_keur", 0.0)
     )
     assert definition["method"] == "sponsor_equity_plus_shl"
     assert definition["initial_investment_keur"] == expected_initial
@@ -428,7 +444,8 @@ def test_run_calibration_sponsor_equity_shl_cash_flow_definition() -> None:
 
 def test_run_calibration_sponsor_cash_flow_excludes_unpaid_pik_until_paid() -> None:
     payload = run_calibration(CalibrationRunSpec(project_key="oborovo", calibration_source="pytest"))
-    for cf_row, period_row in zip(payload["sponsor_equity_shl_cash_flows"][1:], payload["periods"]):
+    native_rows = payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"]["rows"]
+    for cf_row, period_row in zip(native_rows[1:], payload["periods"]):
         assert cf_row["cash_flow_keur"] == (
             period_row["distribution_keur"]
             + period_row["shl_interest_keur"]

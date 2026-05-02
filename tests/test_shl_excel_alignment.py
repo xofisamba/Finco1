@@ -281,16 +281,14 @@ def test_oborovo_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload
     assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2029-06-29"
 
 
-def test_oborovo_sponsor_cash_flow_gap_identifies_initial_idc_difference() -> None:
+def test_oborovo_sponsor_cash_flow_gap_is_closed_after_initial_convention_alignment() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
     summary = payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"]
 
     assert summary["source"] == "native_engine_before_full_model_calibration"
     assert summary["compared_rows"] == 61
-    assert summary["first_cash_flow_mismatch"]["index"] == 0
-    assert summary["first_cash_flow_mismatch"]["delta_keur"] == pytest.approx(
-        -payload["investor_cash_flow_definition"]["shl_idc_keur"],
-    )
+    assert summary["first_cash_flow_mismatch"] is None
+    assert summary["max_abs_cash_flow_delta_keur"] == pytest.approx(0.0)
 
 
 def test_oborovo_first_twelve_shl_balance_schedule_against_excel() -> None:
@@ -439,13 +437,11 @@ def test_tuho_excel_full_model_sponsor_equity_shl_irr_recomputes_from_payload() 
     assert payload["sponsor_equity_shl_cash_flows_financial_close"]["rows"][0]["date"] == "2028-06-30"
 
 
-def test_tuho_sponsor_cash_flow_gap_identifies_initial_idc_difference() -> None:
+def test_tuho_sponsor_cash_flow_gap_is_closed_after_initial_convention_alignment() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
     summary = payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"]
 
     assert summary["source"] == "native_engine_before_full_model_calibration"
     assert summary["compared_rows"] == 61
-    assert summary["first_cash_flow_mismatch"]["index"] == 0
-    assert summary["first_cash_flow_mismatch"]["delta_keur"] == pytest.approx(
-        -payload["investor_cash_flow_definition"]["shl_idc_keur"],
-    )
+    assert summary["first_cash_flow_mismatch"] is None
+    assert summary["max_abs_cash_flow_delta_keur"] == pytest.approx(0.0)

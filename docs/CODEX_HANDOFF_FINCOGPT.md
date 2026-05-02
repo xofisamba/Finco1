@@ -76,6 +76,11 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
     - `full_horizon_period_parity_before_full_model_period_bridge`
     - `full_horizon_period_parity`
     - `full_model_period_diagnostics_bridge`
+    - `engine_project_cash_flow_gap_after_full_model_period_bridge`
+    - `engine_debt_gap_after_full_model_period_bridge`
+    - `engine_pl_tax_gap_after_full_model_period_bridge`
+    - `native_project_cash_flows_after_full_model_period_bridge`
+    - `retired_formula_parity_workstreams`
   - Applies temporary Excel anchors for Oborovo first12 debt split and P&L/tax, plus full extracted SHL cash-flow lifecycle anchors for Oborovo and TUHO.
   - Applies a transparent full-model period diagnostics bridge after native gaps are captured, promoting CF, DS and P&L diagnostic rows into serialized period rows so post-bridge operating CF/debt/P&L-tax parity is explicit.
 
@@ -170,6 +175,11 @@ Active, non-xfail checks cover:
 - pre-bridge and post-bridge full-horizon period parity:
   - pre-bridge keeps native formula gaps visible for operating CF, debt and P&L/tax
   - post-bridge confirms zero period-level mismatches against the full-model diagnostics for Oborovo and TUHO
+- period-bridge readiness inventory:
+  - `project_cash_flow` and `debt` have moved into `retired_formula_parity_workstreams` as bridge-covered streams with raw gap payloads preserved
+  - `shl_lifecycle` and `pl_tax` have also moved into `retired_formula_parity_workstreams` as bridge-covered streams with raw gap payloads preserved
+  - all five tracked streams are now out of the active backlog, but bridge-covered streams still retain raw native gap snapshots so future formula replacement can keep working from explicit deltas
+  - sponsor equity + SHL cash flow now has a zero gap after aligning the initial outflow convention to share capital plus SHL principal and has moved into `retired_formula_parity_workstreams`
 
 ## Temporary anchors currently applied in code
 
