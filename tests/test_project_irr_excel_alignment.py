@@ -35,6 +35,21 @@ OBOROVO_PROJECT_OPERATING_CF_METRIC_SPECS = [
 
 
 def _period_fixture(name: str) -> list[dict]:
+    full_model_name = name.replace("_periods.json", "_full_model_extract.json")
+    full_model_path = FIXTURE_DIR / full_model_name
+    if full_model_path.exists():
+        extract = json.loads(full_model_path.read_text(encoding="utf-8"))
+        columns = extract["period_diagnostic_columns"]
+        rows = []
+        for raw in extract["period_diagnostics"]:
+            row = {column: value for column, value in zip(columns, raw)}
+            rows.append({
+                "period_end_date": row["date"],
+                "CF": {
+                    "free_cash_flow_for_banks_keur": row["CF.free_cash_flow_for_banks_keur"],
+                },
+            })
+        return rows
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))["periods"]
 
 

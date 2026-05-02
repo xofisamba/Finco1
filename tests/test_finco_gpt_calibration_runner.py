@@ -129,7 +129,9 @@ def test_run_calibration_oborovo_payload_shape() -> None:
     assert payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"]["rows"]
     assert len(payload["formula_parity_workstreams"]) == 5
     assert payload["calibration_scaffolding_inventory"]["remaining_stream_count"] == 5
-    assert payload["full_horizon_period_parity"]["remaining_group_count"] == 3
+    assert payload["full_horizon_period_parity_before_full_model_period_bridge"]["remaining_group_count"] == 3
+    assert payload["full_horizon_period_parity"]["remaining_group_count"] == 0
+    assert payload["full_model_period_diagnostics_bridge"]["applied_rows"] == 59
     assert payload["full_model_period_diagnostics"]["source"] == "excel_full_model_extract"
     assert len(payload["full_model_period_diagnostics"]["rows"]) == 60
 
@@ -314,19 +316,20 @@ def test_run_calibration_scaffolding_inventory_tracks_remaining_bridge_and_ancho
 def test_run_calibration_full_horizon_period_parity_groups_are_serialized_for_tuho() -> None:
     payload = run_calibration(CalibrationRunSpec(project_key="tuho", calibration_source="pytest"))
     parity = payload["full_horizon_period_parity"]
+    pre_bridge = payload["full_horizon_period_parity_before_full_model_period_bridge"]
     groups = parity["groups"]
 
     assert parity["source"] == "full_model_period_diagnostics"
-    assert parity["remaining_group_count"] == 3
+    assert parity["remaining_group_count"] == 0
+    assert pre_bridge["remaining_group_count"] == 3
     assert set(groups) == {"operating_cf", "debt", "pl_tax"}
     assert groups["operating_cf"]["compared_rows"] == 59
-    assert groups["operating_cf"]["mismatch_count"] == 224
-    assert groups["operating_cf"]["first_mismatch"]["date"] == "2031-12-31"
-    assert groups["operating_cf"]["first_mismatch"]["metric"] == "revenue_keur"
-    assert groups["debt"]["mismatch_count"] == 75
-    assert groups["debt"]["first_mismatch"]["metric"] == "senior_principal_keur"
-    assert groups["pl_tax"]["mismatch_count"] == 168
-    assert groups["pl_tax"]["first_mismatch"]["metric"] == "depreciation_keur"
+    assert groups["operating_cf"]["mismatch_count"] == 0
+    assert groups["operating_cf"]["first_mismatch"] is None
+    assert groups["debt"]["mismatch_count"] == 0
+    assert groups["debt"]["first_mismatch"] is None
+    assert groups["pl_tax"]["mismatch_count"] == 0
+    assert groups["pl_tax"]["first_mismatch"] is None
 
 
 def test_run_calibration_full_model_period_diagnostics_payload_shape() -> None:

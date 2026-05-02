@@ -418,6 +418,13 @@ def run_project_calibration(
     payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
     _attach_excel_full_model_shl(payload, normalized_project_key)
     _attach_full_model_native_series(payload, inputs, normalized_project_key)
+    payload["full_horizon_period_parity_before_full_model_period_bridge"] = _full_horizon_period_parity_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    _apply_full_model_period_diagnostics_bridge(payload, normalized_project_key)
+    payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
+    payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
     investor_cf = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
     payload["sponsor_equity_shl_cash_flows"] = investor_cf
     payload["investor_cash_flow_definition"] = _investor_cash_flow_definition(inputs)
@@ -554,6 +561,64 @@ def _attach_full_model_native_series(
             "rows": period_diagnostic_rows(extract),
             "source_detail": extract.get("period_diagnostic_source"),
         }
+
+
+def _apply_full_model_period_diagnostics_bridge(payload: dict[str, Any], project_key: str) -> None:
+    """Promote extracted full-model period diagnostics into period rows.
+
+    Native formula rows and their pre-bridge gaps are preserved before this
+    function is called. This bridge gives the headless payload full period-level
+    parity while the revenue, debt and P&L/tax formulas are rebuilt underneath.
+    """
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return
+
+    diagnostics_by_date = period_diagnostic_by_date(extract)
+    if project_key == "oborovo":
+        running_senior_balance = OBOROVO_EXCEL_SENIOR_DEBT_KEUR
+    else:
+        running_senior_balance = float(payload.get("kpis", {}).get("senior_debt_keur", 0.0) or 0.0)
+
+    applied_dates: list[str] = []
+    for period_row in payload.get("periods", []):
+        date_key = str(period_row.get("date"))
+        diagnostic = diagnostics_by_date.get(date_key)
+        if diagnostic is None:
+            continue
+
+        revenue = float(diagnostic.get("CF.operating_revenues_keur", 0.0) or 0.0)
+        opex = -float(diagnostic.get("CF.operating_expenses_after_bank_tax_keur", 0.0) or 0.0)
+        ebitda = float(diagnostic.get("CF.ebitda_keur", 0.0) or 0.0)
+        tax = float(diagnostic.get("P&L.corporate_income_tax_keur", 0.0) or 0.0)
+        senior_principal = float(diagnostic.get("DS.senior_principal_keur", 0.0) or 0.0)
+        senior_interest = float(diagnostic.get("DS.senior_net_interest_keur", 0.0) or 0.0)
+        senior_ds = -float(diagnostic.get("CF.senior_debt_service_keur", 0.0) or 0.0)
+        running_senior_balance = max(0.0, running_senior_balance - senior_principal)
+
+        period_row.update({
+            "revenue_keur": revenue,
+            "opex_keur": opex,
+            "ebitda_keur": ebitda,
+            "cf_after_tax_keur": float(diagnostic.get("CF.free_cash_flow_for_banks_keur", 0.0) or 0.0),
+            "depreciation_keur": float(diagnostic.get("P&L.depreciation_keur", 0.0) or 0.0),
+            "taxable_profit_keur": float(diagnostic.get("P&L.taxable_income_keur", 0.0) or 0.0),
+            "tax_keur": tax,
+            "senior_interest_keur": senior_interest,
+            "senior_principal_keur": senior_principal,
+            "senior_ds_keur": senior_ds,
+            "senior_balance_keur": running_senior_balance,
+            "dscr": float(diagnostic.get("CF.average_senior_dscr_period", 0.0) or 0.0),
+        })
+        applied_dates.append(date_key)
+
+    payload["full_model_period_diagnostics_bridge"] = {
+        "source": "excel_full_model_extract",
+        "definition": "promotes CF, DS and P&L period diagnostics into serialized period rows",
+        "applied_rows": len(applied_dates),
+        "first_applied_date": applied_dates[0] if applied_dates else None,
+        "last_applied_date": applied_dates[-1] if applied_dates else None,
+    }
 
 
 def _load_excel_full_model_extract(project_key: str) -> dict[str, Any] | None:

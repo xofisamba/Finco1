@@ -56,6 +56,29 @@ OBOROVO_DEBT_SPLIT_METRIC_SPECS = [
 
 
 def _period_fixture(name: str) -> list[dict]:
+    full_model_name = name.replace("_periods.json", "_full_model_extract.json")
+    full_model_path = FIXTURE_DIR / full_model_name
+    if full_model_path.exists():
+        extract = json.loads(full_model_path.read_text(encoding="utf-8"))
+        columns = extract["period_diagnostic_columns"]
+        rows = []
+        for raw in extract["period_diagnostics"]:
+            row = {column: value for column, value in zip(columns, raw)}
+            rows.append({
+                "period_end_date": row["date"],
+                "CF": {
+                    "free_cash_flow_for_banks_keur": row["CF.free_cash_flow_for_banks_keur"],
+                    "senior_debt_service_keur": row["CF.senior_debt_service_keur"],
+                    "average_senior_dscr_period": row["CF.average_senior_dscr_period"],
+                    "minimum_senior_dscr_period": row["CF.minimum_senior_dscr_period"],
+                },
+                "DS": {
+                    "senior_debt_dscr_target": row["DS.senior_debt_dscr_target"],
+                    "senior_principal_keur": row["DS.senior_principal_keur"],
+                    "senior_net_interest_keur": row["DS.senior_net_interest_keur"],
+                },
+            })
+        return rows
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))["periods"]
 
 

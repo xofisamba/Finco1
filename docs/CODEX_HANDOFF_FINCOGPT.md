@@ -73,8 +73,11 @@ Core goal is not UI polish yet. The goal is first to make financial logic reprod
     - `native_sponsor_equity_shl_cash_flows_before_full_model_calibration`
     - `formula_parity_workstreams`
     - `calibration_scaffolding_inventory`
+    - `full_horizon_period_parity_before_full_model_period_bridge`
     - `full_horizon_period_parity`
+    - `full_model_period_diagnostics_bridge`
   - Applies temporary Excel anchors for Oborovo first12 debt split and P&L/tax, plus full extracted SHL cash-flow lifecycle anchors for Oborovo and TUHO.
+  - Applies a transparent full-model period diagnostics bridge after native gaps are captured, promoting CF, DS and P&L diagnostic rows into serialized period rows so post-bridge operating CF/debt/P&L-tax parity is explicit.
 
 - `app/calibration_runner.py`
   - Backward-compatible wrapper around calibration helpers.
@@ -164,6 +167,9 @@ Active, non-xfail checks cover:
 - native engine return KPI gap summaries before full-model bridge promotion
 - direct unit coverage for full-model extract helper transformations
 - stable full-horizon native-facing project cash-flow, SHL lifecycle and sponsor cash-flow payload sections
+- pre-bridge and post-bridge full-horizon period parity:
+  - pre-bridge keeps native formula gaps visible for operating CF, debt and P&L/tax
+  - post-bridge confirms zero period-level mismatches against the full-model diagnostics for Oborovo and TUHO
 
 ## Temporary anchors currently applied in code
 

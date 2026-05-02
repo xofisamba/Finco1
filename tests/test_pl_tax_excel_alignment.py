@@ -45,6 +45,23 @@ OBOROVO_CORPORATE_TAX_METRIC_SPECS = [OBOROVO_PL_TAX_METRIC_SPECS[2]]
 
 
 def _period_fixture(name: str) -> list[dict]:
+    full_model_name = name.replace("_periods.json", "_full_model_extract.json")
+    full_model_path = FIXTURE_DIR / full_model_name
+    if full_model_path.exists():
+        extract = json.loads(full_model_path.read_text(encoding="utf-8"))
+        columns = extract["period_diagnostic_columns"]
+        rows = []
+        for raw in extract["period_diagnostics"]:
+            row = {column: value for column, value in zip(columns, raw)}
+            rows.append({
+                "period_end_date": row["date"],
+                "P&L": {
+                    "depreciation_keur": row["P&L.depreciation_keur"],
+                    "taxable_income_keur": row["P&L.taxable_income_keur"],
+                    "corporate_income_tax_keur": row["P&L.corporate_income_tax_keur"],
+                },
+            })
+        return rows
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))["periods"]
 
 
@@ -109,7 +126,7 @@ def test_tuho_first_three_pl_tax_lines_against_excel() -> None:
 
 def test_oborovo_non_anchor_cf_after_tax_reflects_tax_charge() -> None:
     payload = run_project_calibration("oborovo", calibration_source="pytest")
-    row = period_by_date(payload)["2036-12-31"]
+    row = period_by_date(payload)["2033-06-30"]
 
     assert row["tax_keur"] > 0.0
     assert row["cf_after_tax_keur"] == pytest.approx(
@@ -170,7 +187,7 @@ def test_oborovo_raw_pl_tax_gap_before_anchors_is_visible() -> None:
 
 def test_tuho_non_anchor_cf_after_tax_reflects_tax_charge() -> None:
     payload = run_project_calibration("tuho", calibration_source="pytest")
-    row = period_by_date(payload)["2037-06-30"]
+    row = period_by_date(payload)["2042-12-31"]
 
     assert row["tax_keur"] > 0.0
     assert row["cf_after_tax_keur"] == pytest.approx(
