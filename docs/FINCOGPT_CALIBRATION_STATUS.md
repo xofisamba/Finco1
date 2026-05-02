@@ -56,7 +56,7 @@ The TUHO factory is intentionally marked as first-pass. It matches key anchors s
 
 Latest local regression gate:
 
-- Full pytest suite: `493 passed, 4 skipped`.
+- Full pytest suite: `497 passed, 4 skipped`.
 
 ## Current calibration truth
 
@@ -68,6 +68,7 @@ Passing / expected-passing checks:
 - Headless modules do not import Streamlit.
 - Oborovo and TUHO headless payload shape.
 - Senior debt anchoring within initial tolerance.
+- Senior debt now continues from the last Excel debt split anchor instead of reverting to a balloon-style native repayment after the anchor window.
 - PeriodEngine first operation dates align to the extracted Oborovo and TUHO Excel period fixtures.
 - Oborovo first twelve period revenue reconciliation is active, not xfail.
 - Oborovo first twelve period OpEx reconciliation is active, not xfail.
@@ -100,6 +101,7 @@ Passing / expected-passing checks:
 - Oborovo and TUHO SHL lifecycle gap summaries now confirm full extracted lifecycle parity before the full bridge: 59 compared operating rows and no closing-balance mismatch.
 - Oborovo and TUHO return KPI gap summaries are serialized before the full-model return bridge is applied.
 - Oborovo and TUHO project cash-flow gap summaries are serialized before the full-model return bridge is applied. Current first full-model `fcf_for_banks` mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
+- Oborovo and TUHO non-anchor period `cf_after_tax_keur` now reflects tax charges as `ebitda_keur - tax_keur`.
 - Oborovo total capex anchor is active for project IRR diagnostics.
 - Oborovo first-period opening debt balance is checked against the Excel senior debt anchor.
 - Calibration period rows are explicitly operation-only and begin on 2030-12-31 for Oborovo.
@@ -178,7 +180,7 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 
 `app/calibration.py` also exposes `debt_decomposition` in the calibration payload so CLI/test output can inspect opening balance, closing balance, interest, principal, debt service and implied period rate directly.
 
-`app/calibration.py` now applies a narrow Oborovo first-12 debt split calibration anchor extracted from the Excel DS sheet. This aligns first-12 senior interest, senior principal and senior balance rows while the full financing fee/rate mechanics are still being mapped.
+`app/calibration.py` now applies a narrow Oborovo first-12 debt split calibration anchor extracted from the Excel DS sheet. This aligns first-12 senior interest, senior principal and senior balance rows while the full financing fee/rate mechanics are still being mapped. After the last explicit anchor, the diagnostic debt schedule now continues from the anchored closing balance using actual period day-count rates and the configured target DSCR instead of falling back to a one-period native balloon repayment.
 
 `app/waterfall_core.py` now passes operation-only periods and schedules into `run_waterfall()` for the headless calibration path. This removes construction-period zero CFADS rows from debt sculpting and aligns debt amortization timing with the extracted Excel operating period rows.
 
@@ -186,7 +188,7 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 
 ### 6. P&L / tax diagnostics
 
-`app/calibration.py` now applies a narrow Oborovo first-12 P&L/tax calibration anchor extracted from the Excel P&L sheet. This aligns first-12 depreciation, taxable income and corporate tax rows while full asset-class depreciation, tax-loss and ATAD mechanics are still being mapped.
+`app/calibration.py` now applies a narrow Oborovo first-12 P&L/tax calibration anchor extracted from the Excel P&L sheet. This aligns first-12 depreciation, taxable income and corporate tax rows while full asset-class depreciation, tax-loss and ATAD mechanics are still being mapped. Non-anchor rows now consistently recompute post-tax cash flow from EBITDA less tax when tax is present.
 
 `tests/test_pl_tax_excel_alignment.py` promotes Oborovo first-twelve depreciation, taxable income and corporate tax rows to active reconciliation tests.
 

@@ -105,3 +105,23 @@ def test_tuho_first_three_pl_tax_lines_against_excel() -> None:
         metric_specs=OBOROVO_PL_TAX_METRIC_SPECS,
     )
     assert not failures, failures
+
+
+def test_oborovo_non_anchor_cf_after_tax_reflects_tax_charge() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    row = period_by_date(payload)["2036-12-31"]
+
+    assert row["tax_keur"] > 0.0
+    assert row["cf_after_tax_keur"] == pytest.approx(
+        row["ebitda_keur"] - row["tax_keur"],
+    )
+
+
+def test_tuho_non_anchor_cf_after_tax_reflects_tax_charge() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    row = period_by_date(payload)["2037-06-30"]
+
+    assert row["tax_keur"] > 0.0
+    assert row["cf_after_tax_keur"] == pytest.approx(
+        row["ebitda_keur"] - row["tax_keur"],
+    )

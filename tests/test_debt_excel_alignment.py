@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from app.calibration import run_project_calibration
 from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
@@ -223,6 +225,35 @@ def test_oborovo_first_twelve_debt_principal_and_interest_against_excel() -> Non
         "line_failures": failures,
         "debt_gap_diagnostics": _excel_app_debt_diagnostic_rows(limit=12),
     }
+
+
+def test_oborovo_debt_schedule_continues_from_last_excel_anchor() -> None:
+    payload = run_project_calibration("oborovo", calibration_source="pytest")
+    debt_by_date = {row["date"]: row for row in payload["debt_decomposition"]}
+
+    last_anchor = debt_by_date["2036-06-30"]
+    first_continuation = debt_by_date["2036-12-31"]
+
+    assert first_continuation["opening_balance_keur"] == pytest.approx(
+        last_anchor["closing_balance_keur"],
+    )
+    assert first_continuation["closing_balance_keur"] > 0.0
+    assert first_continuation["senior_principal_keur"] < first_continuation["opening_balance_keur"]
+    assert first_continuation["senior_ds_keur"] < 3_000.0
+
+
+def test_tuho_debt_schedule_continues_from_last_excel_anchor() -> None:
+    payload = run_project_calibration("tuho", calibration_source="pytest")
+    debt_by_date = {row["date"]: row for row in payload["debt_decomposition"]}
+
+    last_anchor = debt_by_date["2031-06-30"]
+    first_continuation = debt_by_date["2031-12-31"]
+
+    assert first_continuation["opening_balance_keur"] == pytest.approx(
+        last_anchor["closing_balance_keur"],
+    )
+    assert first_continuation["closing_balance_keur"] > 0.0
+    assert first_continuation["senior_principal_keur"] < first_continuation["opening_balance_keur"]
 
 
 def test_oborovo_app_payload_contains_debt_diagnostics() -> None:

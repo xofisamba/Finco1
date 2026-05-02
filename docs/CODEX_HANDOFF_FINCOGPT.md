@@ -117,10 +117,12 @@ Active, non-xfail checks cover:
 - first12 senior debt service
 - first12 senior interest
 - first12 senior principal
+- senior debt continuation from the last explicit Excel anchor without a one-period native balloon repayment
 - first12 combined senior principal/interest split
 - first12 depreciation
 - first12 taxable income
 - first12 corporate tax
+- non-anchor post-tax cash flow recomputes as EBITDA less tax when tax is present
 - first12 SHL cash-flow rows from Eq sheet:
   - SHL principal flow
   - SHL net interest flow
@@ -228,6 +230,8 @@ Current diagnostic state before the full-model SHL bridge:
 - Oborovo native SHL lifecycle snapshot uses all operating full-model SHL cash-flow anchors; current gap summary compares 59 rows with no closing-balance mismatch.
 - TUHO native SHL lifecycle snapshot uses all operating full-model SHL cash-flow anchors; current gap summary compares 59 rows with no closing-balance mismatch.
 - `engine_project_cash_flow_gap_before_full_model_calibration` records native period `cf_after_tax_keur` versus full-model `fcf_for_banks`; first current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
+- Senior debt diagnostics now continue from the last explicit Excel debt split anchor using day-count interest and target-DSCR service instead of reverting to a one-period native balloon repayment.
+- P&L/tax diagnostics now keep non-anchor post-tax cash flow consistent with tax charges by setting `cf_after_tax_keur = ebitda_keur - tax_keur` when tax is present.
 - `engine_return_gap_before_full_model_calibration` records native engine project/equity/sponsor IRR deltas before the full-model return bridge is applied.
 
 ## Important tests to run

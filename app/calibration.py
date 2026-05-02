@@ -334,7 +334,7 @@ def run_project_calibration(
         engine_version=engine_version,
         calibration_source=calibration_source,
     )
-    _apply_debt_split_calibration(payload, normalized_project_key)
+    _apply_debt_split_calibration(payload, inputs, engine, normalized_project_key)
     _apply_pl_tax_calibration(payload, normalized_project_key)
     _apply_shl_cash_flow_calibration(payload, inputs, engine, normalized_project_key)
     payload["engine_shl_decomposition_before_full_model_calibration"] = {
@@ -766,7 +766,12 @@ def _xirr_from_named_cash_flow_rows(rows: list[dict[str, Any]], cash_flow_key: s
     return xirr(cash_flows, dates)
 
 
-def _apply_debt_split_calibration(payload: dict[str, Any], project_key: str) -> None:
+def _apply_debt_split_calibration(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    engine: PeriodEngine,
+    project_key: str,
+) -> None:
     """Apply narrow project-specific debt split calibration anchors.
 
     The first 12 Oborovo DS rows are available as extracted fixture anchors.
@@ -783,10 +788,32 @@ def _apply_debt_split_calibration(payload: dict[str, Any], project_key: str) -> 
     else:
         return
 
+    operation_period_by_date = {
+        period.end_date.isoformat(): period
+        for period in engine.operation_periods()
+    }
+    annual_rate = float(getattr(inputs.financing, "all_in_rate", 0.0) or 0.0)
+    target_dscr = float(getattr(inputs.financing, "target_dscr", 0.0) or 0.0)
+    running_balance: float | None = None
+
     for row in payload.get("periods", []):
         date_key = str(row.get("date"))
         anchor = anchors.get(date_key)
         if anchor is None:
+            if running_balance is None or running_balance <= 0.0:
+                continue
+            operation_period = operation_period_by_date.get(date_key)
+            day_fraction = getattr(operation_period, "day_fraction", 0.5) if operation_period is not None else 0.5
+            interest = running_balance * annual_rate * day_fraction
+            cfads = max(0.0, float(row.get("cf_after_tax_keur", 0.0) or 0.0))
+            debt_service = cfads / target_dscr if target_dscr else interest
+            principal = min(running_balance, max(0.0, debt_service - interest))
+            closing_balance = max(0.0, running_balance - principal)
+            row["senior_interest_keur"] = interest
+            row["senior_principal_keur"] = principal
+            row["senior_ds_keur"] = interest + principal
+            row["senior_balance_keur"] = closing_balance
+            running_balance = closing_balance
             continue
 
         principal = float(anchor["principal"])
@@ -797,6 +824,7 @@ def _apply_debt_split_calibration(payload: dict[str, Any], project_key: str) -> 
         row["senior_ds_keur"] = interest + principal
         row["senior_balance_keur"] = closing_balance
         opening_balance = closing_balance
+        running_balance = closing_balance
 
 
 def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None:
@@ -812,6 +840,9 @@ def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None
         date_key = str(row.get("date"))
         anchor = anchors.get(date_key)
         if anchor is None:
+            tax = float(row.get("tax_keur", 0.0) or 0.0)
+            if tax:
+                row["cf_after_tax_keur"] = float(row.get("ebitda_keur", 0.0) or 0.0) - tax
             continue
 
         tax = float(anchor["tax"])
