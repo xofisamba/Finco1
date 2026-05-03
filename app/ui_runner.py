@@ -23,7 +23,7 @@ def _run_waterfall(project_inputs, engine):
     return runner.run_with_defaults()
 
 
-def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
+def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_override=None) -> DemoResult:
     """Create and run a demo project, returning results for UI display."""
     from app.project_factories import (
         create_default_solar_project,
@@ -42,7 +42,7 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
 
     try:
         if project_type == "Solar":
-            proj = create_default_solar_project()
+            proj = create_default_solar_project() if project_inputs_override is None else project_inputs_override
             engine = PeriodEngine(
                 financial_close=proj.info.financial_close,
                 construction_months=proj.info.construction_months,
@@ -54,7 +54,7 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             result.integration_status = "full"
             result.integration_note = None
         elif project_type == "Wind":
-            proj = create_default_wind_project()
+            proj = create_default_wind_project() if project_inputs_override is None else project_inputs_override
             engine = PeriodEngine(
                 financial_close=proj.info.financial_close,
                 construction_months=proj.info.construction_months,
@@ -66,7 +66,7 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             result.integration_status = "full"
             result.integration_note = None
         elif project_type == "BESS":
-            proj = create_default_bess_project()
+            proj = create_default_bess_project() if project_inputs_override is None else project_inputs_override
             engine = PeriodEngine(
                 financial_close=proj.info.financial_close,
                 construction_months=proj.info.construction_months,
@@ -78,7 +78,7 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             result.integration_status = "partial"
             result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
         elif project_type == "Solar+BESS":
-            proj = create_default_solar_bess_project()
+            proj = create_default_solar_bess_project() if project_inputs_override is None else project_inputs_override
             engine = PeriodEngine(
                 financial_close=proj.info.financial_close,
                 construction_months=proj.info.construction_months,
@@ -90,7 +90,7 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             result.integration_status = "partial"
             result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
         elif project_type == "Wind+BESS":
-            proj = create_default_wind_bess_project()
+            proj = create_default_wind_bess_project() if project_inputs_override is None else project_inputs_override
             engine = PeriodEngine(
                 financial_close=proj.info.financial_close,
                 construction_months=proj.info.construction_months,
