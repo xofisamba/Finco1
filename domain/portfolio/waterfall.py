@@ -1,130 +1,152 @@
-"""Portfolio aggregation — aggregate multiple project waterfalls."""
-from dataclasses import dataclass, field
-from typing import Optional
+"""Pooled-financing portfolio waterfall skeleton.
 
-from domain.portfolio.inputs import PortfolioInputs, AggregationMethod
+Scope:
+- Aligns periods across project waterfalls
+- Pools CFADS (EBITDA - tax) by period
+- Computes portfolio DSCR against one pooled debt service
+- Returns PortfolioResult with per-project results exposed
+
+Limitations:
+- Debt sizing is a skeleton (deterministic schedule for tests)
+- No cross-default enforcement logic yet
+"""
+from dataclasses import dataclass
+from typing import Optional
+from datetime import date
+
+from domain.waterfall.waterfall_engine import WaterfallResult
+
+
+@dataclass(frozen=True)
+class PortfolioPeriod:
+    period: int
+    date: date
+    pooled_revenue_keur: float
+    pooled_ebitda_keur: float
+    pooled_tax_keur: float
+    pooled_cfads_keur: float
+    portfolio_senior_ds_keur: float
+    dscr: float
 
 
 @dataclass(frozen=True)
 class PortfolioResult:
-    """Aggregated portfolio result across all projects."""
-    # Per-project summary metrics (name → value)
-    project_revenues_keur: dict[str, float]
-    project_ebitdas_keur: dict[str, float]
-    project_irr: dict[str, float]
-    project_npv: dict[str, float]
-    # Portfolio-level aggregates
+    """Result of a portfolio pooled-financing waterfall."""
+    periods: tuple[PortfolioPeriod, ...]
+    project_results: tuple[tuple[str, WaterfallResult], ...]
     total_revenue_keur: float
     total_ebitda_keur: float
     total_tax_keur: float
-    avg_project_irr: float
-    min_project_irr: float
-    max_project_irr: float
-    equity_irr: float
-    sponsor_irr: float
-    # Weighted capacity
-    capacity_weighted_irr: float
+    total_senior_ds_keur: float
+    avg_dscr: float
+    min_dscr: float
+    # IRR placeholders (require full cash-flow aggregation — not yet)
+    portfolio_project_irr: float = 0.0
+    portfolio_sponsor_irr: float = 0.0
 
 
-def _weighted_irr(results: list, weights: list[float]) -> float:
-    """Return weighted average IRR across projects."""
-    if not results:
-        return 0.0
-    total_weight = sum(weights)
-    if total_weight <= 0:
-        return 0.0
-    return sum(r * w for r, w in zip(results, weights)) / total_weight
+def aggregate_project_results(
+    project_results: tuple[tuple[str, WaterfallResult], ...],
+) -> list[dict]:
+    """Align project waterfalls by date, sum revenue/EBITDA/tax/CFADS."""
+    # Collect all unique dates across projects
+    date_map: dict[date, dict] = {}
+    for name, result in project_results:
+        for pr in result.periods:
+            if not pr.is_operation:
+                continue
+            d = pr.date
+            if d not in date_map:
+                date_map[d] = dict(revenue=0.0, ebitda=0.0, tax=0.0, cfads=0.0)
+            date_map[d]["revenue"] += getattr(pr, "revenue_keur", 0.0)
+            date_map[d]["ebitda"] += pr.ebitda_keur
+            date_map[d]["tax"] += pr.tax_keur
+            date_map[d]["cfads"] += pr.ebitda_keur - pr.tax_keur
+
+    periods = []
+    for d in sorted(date_map.keys()):
+        m = date_map[d]
+        periods.append({
+            "date": d,
+            "pooled_revenue_keur": m["revenue"],
+            "pooled_ebitda_keur": m["ebitda"],
+            "pooled_tax_keur": m["tax"],
+            "pooled_cfads_keur": m["cfads"],
+        })
+    return periods
+
+
+def portfolio_cfads_schedule(pooled_periods: list[dict]) -> list[float]:
+    return [p["pooled_cfads_keur"] for p in pooled_periods]
 
 
 def run_portfolio_waterfall(
-    portfolio: PortfolioInputs,
-    project_results: dict[str, dict],
+    portfolio_inputs,  # PortfolioInputs object
+    project_results: tuple[tuple[str, WaterfallResult], ...],
+    portfolio_debt_service_schedule: Optional[tuple[float, ...]] = None,
 ) -> PortfolioResult:
-    """Aggregate multiple project waterfall results into a portfolio view.
+    """Run pooled-financing portfolio waterfall.
 
     Args:
-        portfolio: PortfolioInputs describing the projects and weights
-        project_results: dict keyed by project name, each containing:
-            - 'revenue_keur': total revenue float
-            - 'ebitda_keur': total EBITDA float
-            - 'tax_keur': total tax float
-            - 'project_irr': project IRR float
-            - 'equity_irr': equity IRR float
-            - 'sponsor_irr': sponsor IRR float
-            - 'project_npv': project NPV float
+        portfolio_inputs: PortfolioInputs (provides cash_pooling flag)
+        project_results: (name, WaterfallResult) tuples
+        portfolio_debt_service_schedule: optional explicit debt service
 
     Returns:
-        PortfolioResult with aggregated metrics.
-
-    Aggregation logic:
-    - Revenue/EBITDA/tax: summed across all projects
-    - IRRs: weighted average by project weight
+        PortfolioResult with pooled periods, per-project results, DSCR
     """
-    project_revenues: dict[str, float] = {}
-    project_ebitdas: dict[str, float] = {}
-    project_irr: dict[str, float] = {}
-    project_npvs: dict[str, float] = {}
-    total_revenue = 0.0
-    total_ebitda = 0.0
-    total_tax = 0.0
-    irr_values: list[float] = []
-    irr_weights: list[float] = []
+    pooled = aggregate_project_results(project_results)
 
-    for proj in portfolio.projects:
-        name = proj.name
-        if name not in project_results:
-            continue
-        res = project_results[name]
+    n = len(pooled)
+    # Deterministic skeleton debt service if not supplied
+    if portfolio_debt_service_schedule:
+        ds_schedule = list(portfolio_debt_service_schedule)
+    else:
+        # Simple: equal annual debt service for n periods
+        ds_schedule = [1000.0] * n  # skeleton value
 
-        rev = res.get("revenue_keur", 0.0)
-        ebitda = res.get("ebitda_keur", 0.0)
-        tax = res.get("tax_keur", 0.0)
-        irr = res.get("project_irr", 0.0)
-        npv = res.get("project_npv", 0.0)
+    total_rev = sum(p["pooled_revenue_keur"] for p in pooled)
+    total_ebitda = sum(p["pooled_ebitda_keur"] for p in pooled)
+    total_tax = sum(p["pooled_tax_keur"] for p in pooled)
+    total_ds = sum(ds_schedule[:n])
 
-        project_revenues[name] = rev
-        project_ebitdas[name] = ebitda
-        project_irr[name] = irr
-        project_npvs[name] = npv
+    result_periods = []
+    dscrs = []
+    for i, p in enumerate(pooled):
+        ds = ds_schedule[i] if i < len(ds_schedule) else 0.0
+        cfads = p["pooled_cfads_keur"]
+        dscr = cfads / ds if ds > 0 else 999.0
+        dscrs.append(dscr)
+        result_periods.append(PortfolioPeriod(
+            period=i + 1,
+            date=p["date"],
+            pooled_revenue_keur=p["pooled_revenue_keur"],
+            pooled_ebitda_keur=p["pooled_ebitda_keur"],
+            pooled_tax_keur=p["pooled_tax_keur"],
+            pooled_cfads_keur=cfads,
+            portfolio_senior_ds_keur=ds,
+            dscr=dscr,
+        ))
 
-        total_revenue += rev
-        total_ebitda += ebitda
-        total_tax += tax
-
-        if irr != 0.0:
-            irr_values.append(irr)
-            irr_weights.append(proj.weight)
-
-    # Weighted IRR
-    cap_weighted_irr = 0.0
-    avg_irr = 0.0
-    min_irr = 0.0
-    max_irr = 0.0
-    if irr_values:
-        total_w = sum(irr_weights)
-        avg_irr = sum(v * w for v, w in zip(irr_values, irr_weights)) / total_w
-        cap_weighted_irr = avg_irr  # same when weighting by project weight
-        min_irr = min(irr_values)
-        max_irr = max(irr_values)
+    avg_d = sum(dscrs) / len(dscrs) if dscrs else 0.0
+    min_d = min(dscrs) if dscrs else 0.0
 
     return PortfolioResult(
-        project_revenues_keur=project_revenues,
-        project_ebitdas_keur=project_ebitdas,
-        project_irr=project_irr,
-        project_npv=project_npvs,
-        total_revenue_keur=total_revenue,
+        periods=tuple(result_periods),
+        project_results=project_results,
+        total_revenue_keur=total_rev,
         total_ebitda_keur=total_ebitda,
         total_tax_keur=total_tax,
-        avg_project_irr=avg_irr,
-        min_project_irr=min_irr,
-        max_project_irr=max_irr,
-        equity_irr=0.0,  # placeholder — requires full equity CF aggregation
-        sponsor_irr=0.0,
-        capacity_weighted_irr=cap_weighted_irr,
+        total_senior_ds_keur=total_ds,
+        avg_dscr=avg_d,
+        min_dscr=min_d,
     )
 
 
 __all__ = [
+    "PortfolioPeriod",
     "PortfolioResult",
+    "aggregate_project_results",
+    "portfolio_cfads_schedule",
     "run_portfolio_waterfall",
 ]

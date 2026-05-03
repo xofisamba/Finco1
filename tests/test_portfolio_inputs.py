@@ -1,113 +1,123 @@
-"""Tests for domain/portfolio/inputs.py."""
+"""Tests for real PortfolioInputs (not weighted aggregation)."""
 import pytest
-from domain.portfolio.inputs import (
-    AggregationMethod,
-    PortfolioInputs,
-    ProjectWeight,
+from domain.portfolio.inputs import PortfolioInputs
+from domain.inputs import (
+    ProjectInfo, CapexStructure, FinancingParams, TaxParams,
+    RevenueParams, TechnicalParams, CapexItem, AssetClass,
+    ProjectInputs,
 )
+from datetime import date
 
 
-class TestProjectWeight:
-    """Test suite for ProjectWeight."""
-
-    def test_valid_weight(self):
-        w = ProjectWeight(name="Solar", weight=0.6, capacity_mw=50.0)
-        assert w.name == "Solar"
-        assert w.weight == 0.6
-        assert w.capacity_mw == 50.0
-
-    def test_weight_default_capacity(self):
-        w = ProjectWeight(name="Wind", weight=0.4)
-        assert w.capacity_mw is None
+def _epc_item(name: str, amount: float) -> CapexItem:
+    return CapexItem(name=name, amount_keur=amount, y0_share=0.0, asset_class=AssetClass.CIVIL_GRID)
 
 
-class TestPortfolioInputs:
-    """Test suite for PortfolioInputs validation."""
+def _minimal_project(code: str) -> ProjectInputs:
+    """Create a minimal ProjectInputs for testing."""
+    epc = _epc_item("epc_contract", 1000.0)
+    return ProjectInputs(
+        info=ProjectInfo(
+            name=code, code=code, company="TestCo",
+            country_iso="XX",
+            financial_close=date(2030, 1, 1),
+            construction_months=12,
+            cod_date=date(2031, 1, 1),
+            horizon_years=25,
+            period_frequency=None,
+        ),
+        technical=TechnicalParams(capacity_mw=50.0, yield_scenario="P_50",
+                                  operating_hours_p50=1500.0),
+        capex=CapexStructure(epc_contract=epc, production_units=epc,
+                              epc_other=epc, grid_connection=epc,
+                              ops_prep=epc, insurances=epc, lease_tax=epc,
+                              construction_mgmt_a=epc, commissioning=epc,
+                              audit_legal=epc, construction_mgmt_b=epc,
+                              contingencies=epc, taxes=epc,
+                              project_acquisition=epc, project_rights=epc),
+        opex=(),
+        revenue=RevenueParams(ppa_base_tariff=60.0, ppa_term_years=10.0),
+        financing=FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                                  base_rate=0.03, margin_bps=500, senior_tenor_years=10,
+                                  target_dscr=1.3),
+        tax=TaxParams(corporate_rate=0.10),
+    )
 
-    def test_valid_two_project_portfolio(self):
-        portfolio = PortfolioInputs(
-            name="Test Portfolio",
-            projects=(
-                ProjectWeight(name="Solar", weight=0.6, capacity_mw=50.0),
-                ProjectWeight(name="Wind", weight=0.4, capacity_mw=80.0),
-            ),
+
+def test_portfolio_requires_at_least_two_projects():
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             base_rate=0.03, margin_bps=500, senior_tenor_years=10,
+                             target_dscr=1.3)
+    with pytest.raises(ValueError, match="at least 2"):
+        PortfolioInputs(
+            projects=(_minimal_project("SOL001"),),
+            portfolio_name="Test",
+            shared_financing=shared,
         )
-        assert portfolio.num_projects == 2
-        assert portfolio.project_names == ("Solar", "Wind")
 
-    def test_weights_must_sum_to_one(self):
-        with pytest.raises(ValueError, match="weights must sum to ~1.0"):
-            PortfolioInputs(
-                name="Bad Portfolio",
-                projects=(
-                    ProjectWeight(name="Solar", weight=0.3),
-                    ProjectWeight(name="Wind", weight=0.3),
-                ),
-            )
 
-    def test_each_weight_must_be_positive(self):
-        with pytest.raises(ValueError, match="weight must be in"):
-            PortfolioInputs(
-                name="Bad Portfolio",
-                projects=(
-                    ProjectWeight(name="Solar", weight=0.0),
-                    ProjectWeight(name="Wind", weight=1.0),
-                ),
-            )
+def test_portfolio_requires_unique_project_codes():
+    p1 = _minimal_project("SOL001")
+    p2 = _minimal_project("SOL001")  # duplicate
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             base_rate=0.03, margin_bps=500, senior_tenor_years=10,
+                             target_dscr=1.3)
+    with pytest.raises(ValueError, match="unique"):
+        PortfolioInputs(projects=(p1, p2), portfolio_name="Test", shared_financing=shared)
 
-    def test_each_weight_must_be_at_most_one(self):
-        with pytest.raises(ValueError, match="weights must sum to ~1.0"):
-            PortfolioInputs(
-                name="Bad Portfolio",
-                projects=(
-                    ProjectWeight(name="Solar", weight=1.5),
-                ),
-            )
 
-    def test_total_weighted_capacity_mw(self):
-        portfolio = PortfolioInputs(
-            name="Test",
-            projects=(
-                ProjectWeight(name="Solar", weight=0.6, capacity_mw=50.0),
-                ProjectWeight(name="Wind", weight=0.4, capacity_mw=80.0),
-            ),
-        )
-        # 0.6*50 + 0.4*80 = 30 + 32 = 62
-        assert portfolio.total_weighted_capacity_mw() == 62.0
+def test_portfolio_accepts_solar_and_wind_projects():
+    solar = _minimal_project("SOL001")
+    wind = _minimal_project("WIND001")
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             base_rate=0.03, margin_bps=500, senior_tenor_years=10,
+                             target_dscr=1.3)
+    pf = PortfolioInputs(projects=(solar, wind), portfolio_name="Mixed", shared_financing=shared)
+    assert len(pf.projects) == 2
 
-    def test_total_weighted_capacity_mw_no_capacity(self):
-        """When capacity is None, weight contributes weight value."""
-        portfolio = PortfolioInputs(
-            name="Test",
-            projects=(
-                ProjectWeight(name="Solar", weight=0.6, capacity_mw=50.0),
-                ProjectWeight(name="Wind", weight=0.4, capacity_mw=None),
-            ),
-        )
-        # 0.6*50 + 0.4*1 = 30 + 0.4
-        assert portfolio.total_weighted_capacity_mw() == 30.4
 
-    def test_default_aggregation_method(self):
-        portfolio = PortfolioInputs(
-            name="Test",
-            projects=(ProjectWeight(name="Solar", weight=1.0),),
-        )
-        assert portfolio.aggregation_method == AggregationMethod.WEIGHTED_AVERAGE
+def test_portfolio_cash_pooling_defaults_true():
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             base_rate=0.03, margin_bps=500, senior_tenor_years=10,
+                             target_dscr=1.3)
+    pf = PortfolioInputs(
+        projects=(_minimal_project("A"), _minimal_project("B")),
+        portfolio_name="Test", shared_financing=shared,
+    )
+    assert pf.cash_pooling is True
 
-    def test_project_names_tuple(self):
-        portfolio = PortfolioInputs(
-            name="Test",
-            projects=(
-                ProjectWeight(name="A", weight=0.5),
-                ProjectWeight(name="B", weight=0.5),
-            ),
-        )
-        assert portfolio.project_names == ("A", "B")
 
-    def test_single_project_full_weight(self):
-        portfolio = PortfolioInputs(
-            name="Solo",
-            projects=(ProjectWeight(name="Solo", weight=1.0),),
-        )
-        assert portfolio.num_projects == 1
-        assert portfolio.total_weighted_capacity_mw() == 1.0  # no capacity → weight
+def test_portfolio_cross_default_defaults_true():
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             base_rate=0.03, margin_bps=500, senior_tenor_years=10,
+                             target_dscr=1.3)
+    pf = PortfolioInputs(
+        projects=(_minimal_project("A"), _minimal_project("B")),
+        portfolio_name="Test", shared_financing=shared,
+    )
+    assert pf.cross_default is True
+
+
+def test_portfolio_requires_shared_financing():
+    p1 = _minimal_project("SOL001")
+    p2 = _minimal_project("WIND001")
+    with pytest.raises(TypeError):  # missing required field
+        PortfolioInputs(projects=(p1, p2), portfolio_name="Test")
+
+
+def test_weighted_aggregation_model_not_used_as_portfolio_inputs():
+    """Verify the real PortfolioInputs does not use ProjectWeight."""
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             base_rate=0.03, margin_bps=500, senior_tenor_years=10,
+                             target_dscr=1.3)
+    pf = PortfolioInputs(
+        projects=(_minimal_project("A"), _minimal_project("B")),
+        portfolio_name="Test", shared_financing=shared,
+    )
+    # Real PortfolioInputs has projects as tuple[ProjectInputs, ...]
+    assert hasattr(pf, "projects")
+    assert hasattr(pf, "shared_financing")
+    assert hasattr(pf, "cash_pooling")
+    # It should NOT have 'weights' or 'aggregation_method'
+    assert not hasattr(pf, "weights")
+    assert not hasattr(pf, "aggregation_method")

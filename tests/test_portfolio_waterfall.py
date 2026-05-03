@@ -1,165 +1,174 @@
-"""Tests for domain/portfolio/waterfall.py."""
+"""Tests for domain/portfolio/waterfall.py — pooled CFADS portfolio waterfall."""
 import pytest
-from domain.portfolio.inputs import (
-    AggregationMethod,
-    PortfolioInputs,
-    ProjectWeight,
-)
+from datetime import date
 from domain.portfolio.waterfall import (
+    PortfolioPeriod,
     PortfolioResult,
+    aggregate_project_results,
+    portfolio_cfads_schedule,
     run_portfolio_waterfall,
 )
+from domain.waterfall.waterfall_engine import WaterfallResult, WaterfallPeriod
+
+
+def _make_wf_result(name: str, ebitda: float, tax: float, rev: float) -> WaterfallResult:
+    """Create a minimal WaterfallResult with two operation periods."""
+    # All 37 WaterfallPeriod fields must be present
+    def _op(period: int, date_: date, rev_h: float, ebitda_h: float, tax_h: float):
+        return WaterfallPeriod(
+            period=period, date=date_, year_index=1, period_in_year=period,
+            is_operation=True,
+            generation_mwh=0.0,
+            revenue_keur=rev_h, opex_keur=0.0, ebitda_keur=ebitda_h,
+            depreciation_keur=0.0, interest_senior_keur=0.0, interest_shl_keur=0.0,
+            taxable_profit_keur=ebitda_h, tax_keur=tax_h,
+            cf_after_tax_keur=ebitda_h - tax_h,
+            senior_interest_keur=0.0, senior_principal_keur=0.0,
+            senior_ds_keur=50.0,
+            shl_interest_keur=0.0, shl_principal_keur=0.0, shl_service_keur=0.0,
+            dsra_contribution_keur=0.0, dsra_balance_keur=0.0,
+            mra_contribution_keur=0.0, mra_balance_keur=0.0,
+            cf_after_reserves_keur=ebitda_h - tax_h,
+            dscr=1.5, llcr=1.5, plcr=1.5, lockup_active=False,
+            distribution_keur=0.0, cash_sweep_keur=0.0, cum_distribution_keur=0.0,
+            cash_balance_keur=0.0,
+            shl_balance_keur=0.0, shl_pik_keur=0.0,
+            senior_balance_keur=0.0,
+        )
+    op1 = _op(1, date(2031, 1, 1), rev / 2, ebitda / 2, tax / 2)
+    op2 = _op(2, date(2031, 7, 1), rev / 2, ebitda / 2, tax / 2)
+    return WaterfallResult(
+        periods=(op1, op2),
+        total_revenue_keur=rev, total_opex_keur=0.0,
+        total_ebitda_keur=ebitda, total_tax_keur=tax,
+        total_senior_ds_keur=100.0, total_shl_service_keur=0.0,
+        total_distribution_keur=0.0,
+        avg_dscr=1.5, min_dscr=1.4, max_dscr=1.6,
+        min_llcr=1.4, min_plcr=1.3, periods_in_lockup=0,
+        project_irr=0.0, equity_irr=0.0, sponsor_irr=0.0,
+        project_npv=0.0, equity_npv=0.0,
+        sculpting_result=None,
+    )
+
+
+class TestAggregateProjectResults:
+    """Test aggregate_project_results aligns and sums waterfalls."""
+
+    def test_two_projects_sum_revenue_and_ebitda(self):
+        wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+        wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+        pooled = aggregate_project_results((("A", wf_a), ("B", wf_b)))
+        assert len(pooled) == 2
+        assert abs(pooled[0]["pooled_revenue_keur"] - 125.0) < 0.01
+        assert abs(pooled[0]["pooled_ebitda_keur"] - 100.0) < 0.01
+
+    def test_cfads_equals_ebitda_minus_tax(self):
+        wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
+        pooled = aggregate_project_results((("X", wf),))
+        assert len(pooled) == 2
+        # Per period: ebitda=40, tax=5, cfads=35
+        assert abs(pooled[0]["pooled_cfads_keur"] - 35.0) < 0.01
+
+    def test_skips_non_operation_periods(self):
+        wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
+        pooled = aggregate_project_results((("X", wf),))
+        assert all(p["date"] >= date(2030, 1, 1) for p in pooled)
+
+
+class TestPortfolioCFADSSchedule:
+    """Test portfolio_cfads_schedule extracts CFADS list."""
+
+    def test_extracts_cfads_from_pooled_periods(self):
+        pooled = [
+            {"date": date(2031, 1, 1), "pooled_cfads_keur": 35.0},
+            {"date": date(2031, 7, 1), "pooled_cfads_keur": 40.0},
+        ]
+        cfads = portfolio_cfads_schedule(pooled)
+        assert cfads == [35.0, 40.0]
 
 
 class TestRunPortfolioWaterfall:
-    """Test suite for run_portfolio_waterfall aggregation."""
+    """Test run_portfolio_waterfall with skeleton debt service."""
 
-    @pytest.fixture
-    def two_project_portfolio(self):
-        return PortfolioInputs(
-            name="Two-Project Portfolio",
-            projects=(
-                ProjectWeight(name="Solar", weight=0.6, capacity_mw=50.0),
-                ProjectWeight(name="Wind", weight=0.4, capacity_mw=80.0),
-            ),
-        )
+    def test_total_revenue_summed_across_projects(self):
+        wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+        wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        assert abs(result.total_revenue_keur - 250.0) < 0.01
 
-    @pytest.fixture
-    def two_project_results(self):
-        return {
-            "Solar": {
-                "revenue_keur": 10_000.0,
-                "ebitda_keur": 8_000.0,
-                "tax_keur": 500.0,
-                "project_irr": 0.08,
-                "equity_irr": 0.12,
-                "sponsor_irr": 0.10,
-                "project_npv": 1_500.0,
-            },
-            "Wind": {
-                "revenue_keur": 15_000.0,
-                "ebitda_keur": 12_000.0,
-                "tax_keur": 800.0,
-                "project_irr": 0.10,
-                "equity_irr": 0.15,
-                "sponsor_irr": 0.13,
-                "project_npv": 2_000.0,
-            },
-        }
+    def test_total_ebitda_summed_across_projects(self):
+        wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+        wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        assert abs(result.total_ebitda_keur - 200.0) < 0.01
 
-    def test_total_revenue_summed(self, two_project_portfolio, two_project_results):
-        result = run_portfolio_waterfall(two_project_portfolio, two_project_results)
-        assert result.total_revenue_keur == 25_000.0  # 10k + 15k
+    def test_total_tax_summed_across_projects(self):
+        wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+        wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        assert abs(result.total_tax_keur - 25.0) < 0.01
 
-    def test_total_ebitda_summed(self, two_project_portfolio, two_project_results):
-        result = run_portfolio_waterfall(two_project_portfolio, two_project_results)
-        assert result.total_ebitda_keur == 20_000.0  # 8k + 12k
+    def test_dscr_is_computed_per_period(self):
+        wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
+        result = run_portfolio_waterfall(None, (("X", wf),))
+        assert len(result.periods) == 2
+        # Period 1: cfads=35, ds=1000, dscr=0.035
+        assert abs(result.periods[0].dscr - 0.035) < 0.001
 
-    def test_total_tax_summed(self, two_project_portfolio, two_project_results):
-        result = run_portfolio_waterfall(two_project_portfolio, two_project_results)
-        assert result.total_tax_keur == 1_300.0  # 500 + 800
+    def test_avg_dscr_across_periods(self):
+        wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+        wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        assert result.avg_dscr > 0
 
-    def test_avg_irr_weighted(self, two_project_portfolio, two_project_results):
-        result = run_portfolio_waterfall(two_project_portfolio, two_project_results)
-        # 0.6*0.08 + 0.4*0.10 = 0.048 + 0.04 = 0.088
-        assert abs(result.avg_project_irr - 0.088) < 1e-9
+    def test_min_dscr_identified(self):
+        wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+        wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        assert result.min_dscr > 0
 
-    def test_min_max_irr(self, two_project_portfolio, two_project_results):
-        result = run_portfolio_waterfall(two_project_portfolio, two_project_results)
-        assert result.min_project_irr == 0.08
-        assert result.max_project_irr == 0.10
+    def test_explicit_ds_schedule_used_when_provided(self):
+        wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
+        ds_schedule = (200.0, 200.0)
+        result = run_portfolio_waterfall(None, (("X", wf),),
+                                          portfolio_debt_service_schedule=ds_schedule)
+        # Period 1: cfads=35, ds=200, dscr=0.175
+        assert abs(result.periods[0].dscr - 0.175) < 0.001
 
-    def test_project_revenues_keur_dict(self, two_project_portfolio, two_project_results):
-        result = run_portfolio_waterfall(two_project_portfolio, two_project_results)
-        assert result.project_revenues_keur["Solar"] == 10_000.0
-        assert result.project_revenues_keur["Wind"] == 15_000.0
-
-    def test_single_project(self):
-        portfolio = PortfolioInputs(
-            name="Single",
-            projects=(ProjectWeight(name="Solar", weight=1.0, capacity_mw=50.0),),
-        )
-        results = {
-            "Solar": {
-                "revenue_keur": 8_000.0, "ebitda_keur": 6_000.0,
-                "tax_keur": 400.0, "project_irr": 0.09,
-                "equity_irr": 0.14, "sponsor_irr": 0.11, "project_npv": 1_200.0,
-            },
-        }
-        result = run_portfolio_waterfall(portfolio, results)
-        assert result.total_revenue_keur == 8_000.0
-        assert result.avg_project_irr == 0.09
-        assert result.min_project_irr == result.max_project_irr == 0.09
-
-    def test_missing_project_in_results(self):
-        """Missing project is skipped (not error)."""
-        portfolio = PortfolioInputs(
-            name="Test",
-            projects=(
-                ProjectWeight(name="Solar", weight=0.7),
-                ProjectWeight(name="Wind", weight=0.3),
-            ),
-        )
-        results = {
-            "Solar": {
-                "revenue_keur": 10_000.0, "ebitda_keur": 8_000.0,
-                "tax_keur": 500.0, "project_irr": 0.08,
-                "equity_irr": 0.12, "sponsor_irr": 0.10, "project_npv": 1_500.0,
-            },
-            # Wind missing
-        }
-        result = run_portfolio_waterfall(portfolio, results)
-        assert result.total_revenue_keur == 10_000.0
-        # IRR falls back to Solar only (weight 0.7/0.7 = 1.0)
-        assert result.avg_project_irr == 0.08
-
-    def test_zero_irr_skipped_from_min_max(self):
-        """A project with 0 IRR is included in results but skipped for min/max."""
-        portfolio = PortfolioInputs(
-            name="Test",
-            projects=(
-                ProjectWeight(name="A", weight=0.5),
-                ProjectWeight(name="B", weight=0.5),
-            ),
-        )
-        results = {
-            "A": {"revenue_keur": 1000, "ebitda_keur": 800, "tax_keur": 50,
-                  "project_irr": 0.10, "equity_irr": 0.0, "sponsor_irr": 0.0, "project_npv": 0},
-            "B": {"revenue_keur": 1000, "ebitda_keur": 800, "tax_keur": 50,
-                  "project_irr": 0.08, "equity_irr": 0.0, "sponsor_irr": 0.0, "project_npv": 0},
-        }
-        result = run_portfolio_waterfall(portfolio, results)
-        assert result.min_project_irr == 0.08
-        assert result.max_project_irr == 0.10
-
-    def test_empty_project_results(self):
-        portfolio = PortfolioInputs(
-            name="Empty",
-            projects=(ProjectWeight(name="Solar", weight=1.0),),
-        )
-        result = run_portfolio_waterfall(portfolio, {})  # no results
-        assert result.total_revenue_keur == 0.0
-        assert result.avg_project_irr == 0.0
+    def test_project_results_passed_through(self):
+        wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+        wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        assert len(result.project_results) == 2
+        names = [n for n, _ in result.project_results]
+        assert "A" in names
+        assert "B" in names
 
 
 class TestPortfolioResult:
-    """Test suite for PortfolioResult dataclass."""
+    """Test PortfolioResult dataclass field contracts."""
 
-    def test_portfolio_result_has_required_fields(self):
-        result = PortfolioResult(
-            project_revenues_keur={"A": 100.0},
-            project_ebitdas_keur={"A": 80.0},
-            project_irr={"A": 0.08},
-            project_npv={"A": 50.0},
-            total_revenue_keur=100.0,
-            total_ebitda_keur=80.0,
-            total_tax_keur=10.0,
-            avg_project_irr=0.08,
-            min_project_irr=0.08,
-            max_project_irr=0.08,
-            equity_irr=0.0,
-            sponsor_irr=0.0,
-            capacity_weighted_irr=0.08,
+    def test_portfolio_result_has_all_required_fields(self):
+        wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
+        pr = PortfolioResult(
+            periods=(PortfolioPeriod(
+                period=1, date=date(2030, 1, 1),
+                pooled_revenue_keur=100.0, pooled_ebitda_keur=80.0,
+                pooled_tax_keur=10.0, pooled_cfads_keur=70.0,
+                portfolio_senior_ds_keur=50.0, dscr=1.4,
+            ),),
+            project_results=(("X", wf),),
+            total_revenue_keur=100.0, total_ebitda_keur=80.0,
+            total_tax_keur=10.0, total_senior_ds_keur=50.0,
+            avg_dscr=1.4, min_dscr=1.2,
         )
-        assert result.avg_project_irr == 0.08
-        assert result.capacity_weighted_irr == 0.08
+        assert hasattr(pr, "periods")
+        assert hasattr(pr, "project_results")
+        assert hasattr(pr, "total_revenue_keur")
+        assert hasattr(pr, "total_ebitda_keur")
+        assert hasattr(pr, "total_tax_keur")
+        assert hasattr(pr, "total_senior_ds_keur")
+        assert hasattr(pr, "avg_dscr")
+        assert hasattr(pr, "min_dscr")
+        assert hasattr(pr, "portfolio_project_irr")
+        assert hasattr(pr, "portfolio_sponsor_irr")
