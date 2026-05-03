@@ -81,7 +81,8 @@ class HybridRevenueBreakdown:
     # Backward-compatible aliases (read-only properties)
     @property
     def clipped_mwh(self) -> float:
-        return self.exported_mwh
+        """Backward-compatible alias for curtailed/clipped energy (energy lost due to grid constraint)."""
+        return self.curtailment_mwh
     @property
     def ppa_revenue_keur(self) -> float:
         return self.renewable_revenue_keur
