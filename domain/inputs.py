@@ -173,6 +173,24 @@ class CapexStructure:
     vat_costs_keur: float = 0.0    # VAT costs spread over Y0-Y3
     reserve_accounts_keur: float = 0.0  # Initial reserve account funding
 
+    # === Explicit CapexItem accessor ===
+    _CAPEX_ITEM_FIELDS = (
+        "epc_contract", "production_units", "epc_other", "grid_connection",
+        "ops_prep", "insurances", "lease_tax", "construction_mgmt_a",
+        "commissioning", "audit_legal", "construction_mgmt_b", "contingencies",
+        "taxes", "project_acquisition", "project_rights",
+    )
+
+    def capex_items(self) -> tuple[CapexItem, ...]:
+        """Return all CapexItem entries that have non-zero amounts.
+
+        Excludes scalar float fields (idc_keur, bank_fees_keur, etc.).
+        """
+        return tuple(
+            getattr(self, field) for field in self._CAPEX_ITEM_FIELDS
+            if getattr(self, field).amount_keur != 0
+        )
+
     @property
     def hard_capex_keur(self) -> float:
         """Sum of all hard CAPEX items (excluding dynamic items)."""

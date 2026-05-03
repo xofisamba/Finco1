@@ -62,15 +62,8 @@ def run_waterfall_v3_core(
 
     horizon_years = inputs.info.horizon_years
     
-    # Build proper depreciation schedule from individual capex items (asset-class based)
-    # Collect all CapexItem fields from CapexStructure as a tuple
-    from domain.inputs import CapexItem
-    capex_items: tuple[CapexItem, ...] = tuple(
-        getattr(inputs.capex, field)
-        for field in inputs.capex.__dataclass_fields__
-        if field.isidentifier() and not field.startswith('_')
-        and isinstance(getattr(inputs.capex, field, None), CapexItem)
-    )
+    # Build proper depreciation schedule from asset-class CapexItems
+    capex_items = inputs.capex.capex_items()
     dep_schedule_annual = build_depreciation_schedule(
         capex_items=capex_items,
         horizon_years=horizon_years,
