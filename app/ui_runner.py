@@ -12,6 +12,9 @@ class DemoResult:
     messages: list[str] = field(default_factory=list)
     project_type: str = ""
     is_portfolio: bool = False
+    validation_issues: list = field(default_factory=list)
+    integration_status: str = "full"  # "full" | "partial" | "experimental"
+    integration_note: str | None = None
 
 def _run_waterfall(project_inputs, engine):
     """Run waterfall via WaterfallRunner with default config."""
@@ -37,15 +40,6 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
     result = DemoResult(project_type=project_type)
     messages = []
 
-    # BESS/hybrid — clearly partial, not bankable waterfall
-    bess_hybrid = ("BESS", "Solar+BESS", "Wind+BESS")
-    if project_type in bess_hybrid:
-        messages.append(
-            "⚠️ PARTIAL — BESS/hybrid results are revenue-only. "
-            "Full bankable waterfall model is in progress and not yet validated. "
-            "Do not use these outputs as definitive project economics."
-        )
-
     try:
         if project_type == "Solar":
             proj = create_default_solar_project()
@@ -57,6 +51,8 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             )
             result.result = _run_waterfall(proj, engine)
             result.project_inputs = proj
+            result.integration_status = "full"
+            result.integration_note = None
         elif project_type == "Wind":
             proj = create_default_wind_project()
             engine = PeriodEngine(
@@ -67,6 +63,8 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             )
             result.result = _run_waterfall(proj, engine)
             result.project_inputs = proj
+            result.integration_status = "full"
+            result.integration_note = None
         elif project_type == "BESS":
             proj = create_default_bess_project()
             engine = PeriodEngine(
@@ -77,6 +75,8 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             )
             result.result = _run_waterfall(proj, engine)
             result.project_inputs = proj
+            result.integration_status = "partial"
+            result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
         elif project_type == "Solar+BESS":
             proj = create_default_solar_bess_project()
             engine = PeriodEngine(
@@ -87,6 +87,8 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             )
             result.result = _run_waterfall(proj, engine)
             result.project_inputs = proj
+            result.integration_status = "partial"
+            result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
         elif project_type == "Wind+BESS":
             proj = create_default_wind_bess_project()
             engine = PeriodEngine(
@@ -97,6 +99,8 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             )
             result.result = _run_waterfall(proj, engine)
             result.project_inputs = proj
+            result.integration_status = "partial"
+            result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
         elif project_type == "Portfolio":
             proj_solar = create_default_solar_project()
             proj_wind = create_default_wind_project()
@@ -114,8 +118,21 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
             result.portfolio_result = run_portfolio_from_inputs(pf)
             result.project_inputs = pf
             result.is_portfolio = True
+            result.integration_status = "experimental"
+            result.integration_note = "Portfolio IRR and pooling are experimental."
         else:
             messages.append(f"Unknown project type: {project_type}")
+
+        # Validation
+        if project_type in ("Solar", "Wind", "BESS", "Solar+BESS", "Wind+BESS"):
+            from domain.validation import validate_project_inputs
+            validation_issues = list(validate_project_inputs(proj))
+            result.validation_issues = validation_issues
+        elif project_type == "Portfolio":
+            from domain.validation import validate_portfolio_inputs
+            validation_issues = list(validate_portfolio_inputs(pf))
+            result.validation_issues = validation_issues
+
     except Exception as e:
         messages.append(f"Error running {project_type}: {str(e)}")
 

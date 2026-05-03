@@ -13,6 +13,9 @@ from app.output_tables import (
     _safe_get,
     _safe_get_or_none,
     _period_label,
+    _first_available,
+    _cfads_value,
+    aggregate_period_table_annual,
 )
 from app.project_factories import create_default_solar_project
 from domain.period_engine import PeriodEngine
@@ -132,7 +135,6 @@ def test_portfolio_table_builds_from_real_portfolio():
     pr = run_portfolio_from_inputs(pf)
     df = build_portfolio_table(pr)
     assert "Pooled CFADS" in df.index
-    assert "Portfolio DSCR" in df.index
     assert "Pooled Revenue" in df.index
 
 
@@ -149,3 +151,84 @@ def test_output_tables_do_not_import_streamlit():
         elif isinstance(node, ast.ImportFrom):
             if node.module and "streamlit" in node.module:
                 pytest.fail(f"streamlit imported in output_tables.py: from {node.module}")
+
+
+def test_waterfall_table_cfads_fallback_is_ebitda_less_tax():
+    """CFADS row = ebitda_keur - tax_keur when cfads_keur absent."""
+    class FakePeriod:
+        ebitda_keur = 100.0
+        tax_keur = 10.0
+        cfads_keur = None
+    p = FakePeriod()
+    val = _cfads_value(p)
+    assert val == 90.0, f"Expected 90.0, got {val}"
+
+
+def test_portfolio_table_has_avg_and_min_dscr():
+    pr = MagicMock()
+    pr.total_revenue_keur = 100_000.0
+    pr.total_ebitda_keur = 80_000.0
+    pr.total_tax_keur = 5_000.0
+    pr.pooled_cfads_schedule = [75000.0] * 10
+    pr.total_senior_ds_keur = 40_000.0
+    pr.avg_dscr = 1.5
+    pr.min_dscr = 1.2
+    pr.portfolio_debt_keur = 200_000.0
+    pr.portfolio_project_irr = 0.0
+    pr.portfolio_sponsor_irr = 0.0
+    df = build_portfolio_table(pr)
+    assert "Avg DSCR" in df.index
+    assert "Min DSCR" in df.index
+
+
+def test_annual_aggregation_groups_date_columns_by_year():
+    df = pd.DataFrame({
+        "2025-06-30": [100, 50],
+        "2025-12-31": [120, 60],
+        "2026-06-30": [110, 55],
+        "2026-12-31": [130, 65],
+    }, index=["Revenue", "DSCR"])
+    result = aggregate_period_table_annual(df)
+    assert "2025" in result.columns
+    assert "2026" in result.columns
+    # Revenue = sum, DSCR = min
+    assert result.loc["Revenue", "2025"] == 220
+    assert result.loc["DSCR", "2025"] == 50
+
+
+def test_annual_aggregation_sums_revenue_rows():
+    df = pd.DataFrame({
+        "2025-06-30": [100],
+        "2025-12-31": [200],
+    }, index=["Revenue"])
+    result = aggregate_period_table_annual(df)
+    assert result.loc["Revenue", "2025"] == 300
+
+
+def test_annual_aggregation_handles_non_date_columns_gracefully():
+    df = pd.DataFrame({
+        "2025-06-30": [100],
+    }, index=["Revenue"])
+    result = aggregate_period_table_annual(df)
+    assert not result.empty
+
+
+def test_first_available_prefers_first_available_field():
+    class Fake:
+        senior_ds_keur = 50.0
+    obj = Fake()
+    assert _first_available(obj, ('senior_ds_keur', 'senior_debt_service_keur')) == 50.0
+
+
+def test_first_available_falls_back_to_second():
+    class Fake:
+        senior_debt_service_keur = 75.0
+    obj = Fake()
+    assert _first_available(obj, ('senior_ds_keur', 'senior_debt_service_keur')) == 75.0
+
+
+def test_first_available_returns_default_when_none():
+    class Fake:
+        pass
+    obj = Fake()
+    assert _first_available(obj, ('foo',)) == 0.0

@@ -12,6 +12,7 @@ from app.ui.pages import (
     render_portfolio,
     render_inputs,
     render_capex,
+    render_validation_panel,
 )
 
 st.set_page_config(page_title="FincoGPT", layout="wide")
@@ -29,6 +30,7 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     project_type = st.selectbox("Project Type", PROJECT_TYPES)
     scenario = st.selectbox("Scenario", SCENARIOS)
+    period_view = st.selectbox("Period View", ["Semiannual", "Annual"])
     run_button = st.button("🚀 Run Model", use_container_width=True)
 
 if run_button or st.session_state.demo_result is not None:
@@ -44,6 +46,10 @@ if run_button or st.session_state.demo_result is not None:
         for msg in demo.messages:
             st.warning(msg)
 
+    # Validation panel
+    with st.expander("🔍 Validation", expanded=False):
+        render_validation_panel(demo.validation_issues)
+
     tabs = st.tabs([
         "📊 Dashboard",
         "📥 Inputs",
@@ -57,19 +63,20 @@ if run_button or st.session_state.demo_result is not None:
     ])
 
     with tabs[0]:
-        render_dashboard(demo.result, demo.portfolio_result, demo.is_portfolio)
+        render_dashboard(demo.result, demo.portfolio_result, demo.is_portfolio,
+                         demo.integration_status, demo.integration_note)
     with tabs[1]:
         render_inputs(demo.project_inputs)
     with tabs[2]:
         render_capex(demo.project_inputs)
     with tabs[3]:
-        render_revenue(demo.result)
+        render_revenue(demo.result, period_view)
     with tabs[4]:
-        render_debt(demo.result)
+        render_debt(demo.result, period_view)
     with tabs[5]:
-        render_tax_depreciation(demo.result)
+        render_tax_depreciation(demo.result, period_view)
     with tabs[6]:
-        render_waterfall(demo.result)
+        render_waterfall(demo.result, period_view)
     with tabs[7]:
         render_returns(demo.result)
     with tabs[8]:

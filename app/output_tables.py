@@ -1,6 +1,7 @@
 """Output table adapters — stable bridge between engine results and UI."""
 from __future__ import annotations
 import pandas as pd
+import re
 from typing import Any
 
 
@@ -48,6 +49,25 @@ def _safe_get_or_none(obj: Any, name: str) -> float | None:
     return None
 
 
+def _first_available(obj, names: tuple[str, ...], default: float = 0.0) -> float:
+    """Return first available attribute from obj, or default."""
+    for name in names:
+        if hasattr(obj, name):
+            val = getattr(obj, name)
+            if val is not None:
+                return float(val)
+    return default
+
+
+def _cfads_value(period) -> float:
+    """CFADS: use explicit cfads_keur if present, else ebitda_keur - tax_keur."""
+    if hasattr(period, 'cfads_keur') and period.cfads_keur is not None:
+        return float(period.cfads_keur)
+    ebitda = _safe_get(period, 'ebitda_keur', 0.0)
+    tax = _safe_get(period, 'tax_keur', 0.0)
+    return max(0.0, ebitda - tax)
+
+
 def build_dashboard_kpis(result) -> dict[str, float | str | None]:
     if result is None:
         return {}
@@ -81,14 +101,14 @@ def build_waterfall_table(result) -> pd.DataFrame:
         "EBITDA": row_values(lambda p: _safe_get(p, 'ebitda_keur')),
         "Depreciation": row_values(lambda p: _safe_get(p, 'depreciation_keur')),
         "Taxable Profit": row_values(lambda p: _safe_get(p, 'taxable_profit_keur')),
-        "Cash Tax": row_values(lambda p: _safe_get(p, 'cash_tax_keur')),
-        "CFADS": row_values(lambda p: _safe_get(p, 'cfads_keur') if hasattr(p, 'cfads_keur') else max(0, _safe_get(p, 'ebitda_keur') - _safe_get(p, 'tax_keur'))),
-        "Senior Debt Service": row_values(lambda p: _safe_get(p, 'senior_debt_service_keur')),
+        "Cash Tax": row_values(lambda p: _first_available(p, ('tax_keur', 'cash_tax_keur'))),
+        "CFADS": row_values(_cfads_value),
+        "Senior Debt Service": row_values(lambda p: _first_available(p, ('senior_ds_keur', 'senior_debt_service_keur'))),
         "SHL Service": row_values(lambda p: _safe_get(p, 'shl_service_keur')),
         "DSRA Contribution": row_values(lambda p: _safe_get(p, 'dsra_contribution_keur')),
-        "Distributions": row_values(lambda p: _safe_get(p, 'distributions_keur')),
+        "Distributions": row_values(lambda p: _first_available(p, ('distribution_keur', 'distributions_keur'))),
         "Cash Balance": row_values(lambda p: _safe_get(p, 'cash_balance_keur')),
-        "Senior Debt Balance": row_values(lambda p: _safe_get(p, 'senior_debt_balance_keur')),
+        "Senior Debt Balance": row_values(lambda p: _first_available(p, ('senior_balance_keur', 'senior_debt_balance_keur'))),
         "SHL Balance": row_values(lambda p: _safe_get(p, 'shl_balance_keur')),
     }
 
@@ -189,26 +209,80 @@ def build_portfolio_table(portfolio_result) -> pd.DataFrame:
     if portfolio_result is None:
         return pd.DataFrame(columns=["Value"])
 
-    # Pooled CFADS: sum of the schedule or fallback to total_cfads
-    pooled_cfads = (
-        sum(portfolio_result.pooled_cfads_schedule)
-        if portfolio_result.pooled_cfads_schedule
-        else 0.0
-    )
     labels = [
-        "Pooled Revenue", "Pooled EBITDA", "Pooled Tax", "Pooled CFADS",
-        "Portfolio Senior Debt Service", "Portfolio DSCR", "Portfolio Debt",
+        "Pooled Revenue",
+        "Pooled EBITDA",
+        "Pooled Tax",
+        "Pooled CFADS",
+        "Portfolio Senior Debt Service",
+        "Avg DSCR",
+        "Min DSCR",
+        "Portfolio Debt",
     ]
+    portfolio_sponsor = portfolio_result.portfolio_sponsor_irr
+    sponsor_label = (
+        "Sponsor IRR (placeholder)"
+        if portfolio_sponsor == 0.0 or portfolio_sponsor is None
+        else f"Sponsor IRR"
+    )
+    if portfolio_result.portfolio_project_irr not in (None, 0.0):
+        labels.append("Portfolio Project IRR")
+    labels.append(sponsor_label)
+
     values = [
         _safe_get_or_none(portfolio_result, 'total_revenue_keur'),
         _safe_get_or_none(portfolio_result, 'total_ebitda_keur'),
         _safe_get_or_none(portfolio_result, 'total_tax_keur'),
-        pooled_cfads,
+        sum(portfolio_result.pooled_cfads_schedule) if portfolio_result.pooled_cfads_schedule else 0.0,
         _safe_get_or_none(portfolio_result, 'total_senior_ds_keur'),
         _safe_get_or_none(portfolio_result, 'avg_dscr'),
+        _safe_get_or_none(portfolio_result, 'min_dscr'),
         _safe_get_or_none(portfolio_result, 'portfolio_debt_keur'),
     ]
+    if portfolio_result.portfolio_project_irr not in (None, 0.0):
+        values.append(_safe_get_or_none(portfolio_result, 'portfolio_project_irr'))
+    values.append(portfolio_sponsor if portfolio_sponsor is not None else 0.0)
 
     df = pd.DataFrame({"Value": values}, index=labels)
     df.index.name = "Metric"
     return df
+
+
+def aggregate_period_table_annual(df: pd.DataFrame, ratio_rows: tuple[str, ...] = ("DSCR", "LLCR", "PLCR")) -> pd.DataFrame:
+    """Aggregate semiannual DataFrame to annual by summing or taking min for ratio rows.
+
+    Columns are expected to be date-like (YYYY-MM-DD).
+    Groups by year prefix (first 4 chars) and sums numeric rows.
+    For ratio rows, takes the minimum over the year.
+    """
+    if df.empty or len(df.columns) == 0:
+        return df
+
+    # Identify year groups from column names
+    year_groups: dict[str, list[str]] = {}
+    for col in df.columns:
+        col_str = str(col)
+        # Try to extract year
+        m = re.match(r"(\d{4})", col_str)
+        if m:
+            year = m.group(1)
+        else:
+            year = col_str  # fallback: treat as-is
+        year_groups.setdefault(year, []).append(col_str)
+
+    result_rows = {}
+    for row_label in df.index:
+        row = df.loc[row_label]
+        is_ratio = row_label in ratio_rows
+        agg_values = []
+        for year, cols in sorted(year_groups.items()):
+            year_vals = [row[c] for c in cols if c in row.index]
+            if is_ratio:
+                agg_values.append(min(year_vals))
+            else:
+                agg_values.append(sum(year_vals))
+        result_rows[row_label] = agg_values
+
+    result_df = pd.DataFrame(result_rows, index=sorted(year_groups.keys())).T
+    result_df.index.name = df.index.name or "Line Item"
+    return result_df
