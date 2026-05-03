@@ -190,3 +190,84 @@ def test_wind_bess_hand_checkable():
     assert result.total_generation_mwh == 196_020.0
     assert result.curtailment_mwh == 98_010.0
     assert abs(result.renewable_revenue_keur - 6_860.7) < 0.1
+
+def test_bess_grid_arb_zero_when_no_grid_charge():
+    """Grid arbitrage revenue is 0 when grid_charge_allowed=False."""
+    inputs = HybridInputs(
+        solar_capacity_mw=100.0, operating_hours_p50=1000.0,
+        grid_connection_mw=50.0, tariff_eur_mwh=60.0,
+        grid_charge_allowed=False,
+        grid_charge_mwh=100.0,
+        grid_arbitrage_spread_eur_mwh=30.0,
+        bess=BessParams(
+            power_mw=10.0, energy_mwh=100.0,
+            cycles_per_year=10.0, round_trip_efficiency=0.90,
+        ),
+    )
+    result = hybrid_period_revenue(inputs, 1, 1.0)
+    assert result.bess_grid_arbitrage_revenue_keur == 0.0
+
+
+def test_bess_grid_arb_zero_when_spread_is_zero():
+    """Grid arbitrage revenue is 0 when spread is 0 even if grid charge allowed."""
+    inputs = HybridInputs(
+        solar_capacity_mw=100.0, operating_hours_p50=1000.0,
+        grid_connection_mw=50.0, tariff_eur_mwh=60.0,
+        grid_charge_allowed=True,
+        grid_charge_mwh=100.0,
+        grid_arbitrage_spread_eur_mwh=0.0,
+        bess=BessParams(
+            power_mw=10.0, energy_mwh=100.0,
+            cycles_per_year=10.0, round_trip_efficiency=0.90,
+        ),
+    )
+    result = hybrid_period_revenue(inputs, 1, 1.0)
+    assert result.bess_grid_arbitrage_revenue_keur == 0.0
+
+
+def test_bess_grid_arb_limited_by_remaining_throughput():
+    """Grid arbitrage is capped by remaining BESS throughput after curtailment charge."""
+    inputs = HybridInputs(
+        solar_capacity_mw=100.0, operating_hours_p50=1000.0,
+        grid_connection_mw=50.0, tariff_eur_mwh=60.0,
+        grid_charge_allowed=True,
+        grid_charge_mwh=200.0,              # Request 200 MWh grid charge
+        grid_arbitrage_spread_eur_mwh=30.0, # 30 €/MWh spread
+        bess=BessParams(
+            power_mw=10.0, energy_mwh=100.0,
+            cycles_per_year=10.0,            # 1000 MWh max throughput
+            round_trip_efficiency=0.90,
+        ),
+    )
+    result = hybrid_period_revenue(inputs, 1, 1.0)
+    # curtailment ≈ 49005 MWh, max throughput = 1000 MWh
+    # curtail_charged = 1000 (capped), remaining = 0
+    # grid_charge_limited = min(200, 0) = 0
+    assert result.bess_grid_arbitrage_revenue_keur == 0.0
+
+
+def test_bess_grid_arb_nonzero_when_throughput_remains():
+    """Grid arbitrage > 0 when BESS has remaining throughput after curtailment charge."""
+    # cycles_per_year=10, energy=100 → max_throughput = 1000 MWh
+    # curtailment ≈ 49005 MWh
+    # With charge_from_curtailment_share=0.01:
+    #   curtail_charged = min(49005*0.01, 1000) = 490 MWh
+    #   remaining = max(0, 1000 - 490) = 510 MWh
+    #   grid_charge = min(1000, 510) = 510 MWh
+    #   grid_discharge = 510 * 0.90 = 459 MWh
+    #   grid_arb = 459 * 30 / 1000 ≈ 13.77 kEUR
+    inputs = HybridInputs(
+        solar_capacity_mw=100.0, operating_hours_p50=1000.0,
+        grid_connection_mw=50.0, tariff_eur_mwh=60.0,
+        grid_charge_allowed=True,
+        grid_charge_mwh=1000.0,
+        grid_arbitrage_spread_eur_mwh=30.0,
+        charge_from_curtailment_share=0.01,
+        bess=BessParams(
+            power_mw=10.0, energy_mwh=100.0,
+            cycles_per_year=10.0, round_trip_efficiency=0.90,
+        ),
+    )
+    result = hybrid_period_revenue(inputs, 1, 1.0)
+    assert result.bess_grid_arbitrage_revenue_keur > 0.0
+    assert abs(result.bess_grid_arbitrage_revenue_keur - 13.77) < 0.1
