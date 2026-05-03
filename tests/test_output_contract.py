@@ -78,9 +78,9 @@ class TestOutputContract:
             assert hasattr(pr, 'distribution_keur')
             assert hasattr(pr, 'dscr')
 
-    def test_sponsor_irr_field_exists_if_defined(self):
-        """If sponsor_irr is defined on the result, it must be a float."""
+    def test_sponsor_irr_field_is_float(self):
+        """sponsor_irr must be a float (required field)."""
         p = create_default_solar_project()
         result = _run_waterfall_for_inputs(p)
-        if hasattr(result, 'sponsor_irr'):
-            assert isinstance(result.sponsor_irr, float)
+        assert hasattr(result, 'sponsor_irr'), "sponsor_irr must be on WaterfallResult"
+        assert isinstance(result.sponsor_irr, float), "sponsor_irr must be float"

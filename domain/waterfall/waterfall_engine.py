@@ -28,6 +28,7 @@ from domain.financing.sculpting_iterative import (
 )
 from domain.financing.schedule import senior_debt_amount
 from domain.returns.xirr import xirr, xnpv
+from domain.returns.sponsor_cashflows import build_sponsor_cashflows
 from domain.period_engine import hash_engine_for_cache
 from domain.tax.engine import atad_adjustment
 from domain.waterfall.shl_engine import compute_shl_period_v3
@@ -466,6 +467,10 @@ def run_waterfall(
     # Start with initial investment - dates array now includes financial_close
     # project_cfs: all capital invested (total_capex, including debt)
     project_cfs = [-total_capex]
+    equity_cf_list = []
+    shi_list = []
+    shp_list = []
+    shl_balance_list = []
     # Sponsor CF: same initial outflow as equity (share_capital + shl + shl_idc)
     sponsor_investment = share_capital_keur + shl_amount + shl_idc_keur
     sponsor_cfs = [-sponsor_investment]
@@ -843,11 +848,24 @@ def run_waterfall(
             # combined/equity_only: equity CF = distributions to equity
             equity_cf_for_period = dist
         equity_cfs.append(equity_cf_for_period)
+        equity_cf_list.append(equity_cf_for_period)
+        shi_list.append(shi)
+        shp_list.append(shp)
+        shl_balance_list.append(shl_balance)
 
-    # Sponsor CF: equity_cf_for_period + shi + shp
-        # (sponsor receives distributions PLUS actual SHL cash payments)
-        sponsor_cf_for_period = equity_cf_for_period + shi + shp
-        sponsor_cfs.append(sponsor_cf_for_period)
+    # Build sponsor cash flows (uses pure function from sponsor_cashflows.py)
+    sponsor_cfs = build_sponsor_cashflows(
+        equity_irr_method=equity_irr_method,
+        share_capital_keur=share_capital_keur,
+        shl_amount_keur=shl_amount,
+        shl_idc_keur=shl_idc_keur,
+        shl_balance_by_period=shl_balance_list,
+        equity_cf_per_period=equity_cf_list,
+        shl_interest_paid_per_period=shi_list,
+        shl_principal_paid_per_period=shp_list,
+    )
+
+    # Calculate returns
 
     # Calculate returns - prepend financial_close date for initial investment
     # This makes dates array match project_cfs/equity_cfs (initial + per-period)
