@@ -4,6 +4,13 @@ import pandas as pd
 import re
 from typing import Any
 
+# Re-export input helpers for convenience
+from app.input_helpers import (
+    build_inputs_summary_table,
+    build_capex_summary_table,
+    build_capex_items_table,
+)
+
 
 def _period_label(period: Any) -> str:
     """Return a period label string from a period object."""

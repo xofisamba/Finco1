@@ -76,3 +76,39 @@ def test_excel_export_with_portfolio_result_and_project_inputs():
     wb = openpyxl.load_workbook(BytesIO(data))
     assert "Portfolio" in wb.sheetnames
     assert "Dashboard" in wb.sheetnames
+
+
+def test_excel_export_contains_validation_and_notes_sheets():
+    import openpyxl
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        validation_issues=[],
+        integration_status="full",
+        period_view="Semiannual",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    assert "Validation" in wb.sheetnames
+    assert "Notes" in wb.sheetnames
+
+
+def test_excel_export_values_only_no_formulas():
+    """Excel file should have no formula cells."""
+    import openpyxl
+    result = run_demo_project("Solar")
+    data = build_excel_export(result=result.result, project_inputs=result.project_inputs)
+    wb = openpyxl.load_workbook(BytesIO(data))
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]
+        for row in ws.iter_rows():
+            for cell in row:
+                assert cell.data_type != 'f', f"Formula found in {sheet}: {cell.coordinate}"
+
+
+def test_excel_export_handles_project_without_capex_items():
+    """Export should not crash if capex has no items."""
+    result = run_demo_project("Solar")
+    data = build_excel_export(result=result.result, project_inputs=result.project_inputs)
+    assert isinstance(data, bytes)
+    assert len(data) > 0

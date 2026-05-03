@@ -1,7 +1,50 @@
 """Pure input summary builders — used by both UI and Excel export."""
 from __future__ import annotations
-from typing import Any
 import pandas as pd
+
+
+def _get_technology(project_inputs):
+    """Get technology from project inputs with fallback chain."""
+    technical = getattr(project_inputs, 'technical', None)
+    info = getattr(project_inputs, 'info', None)
+    if technical:
+        for field in ('technology', 'technology_type', 'pv_technology'):
+            val = getattr(technical, field, None)
+            if val and val != 'n/a':
+                return val
+    if info:
+        for field in ('technology', 'project_type', 'name'):
+            val = getattr(info, field, None)
+            if val and val != 'n/a':
+                return val
+    return 'n/a'
+
+
+def _get_p50_hours(technical):
+    """Get P50 hours with field name fallback."""
+    for field in ('p50_hours', 'operating_hours_p50', 'full_load_hours', 'equivalent_hours'):
+        val = getattr(technical, field, None)
+        if val is not None:
+            return val
+    return 'n/a'
+
+
+def _get_availability(technical):
+    """Get availability with field name fallback."""
+    for field in ('availability', 'plant_availability', 'capex_availability'):
+        val = getattr(technical, field, None)
+        if val is not None:
+            return val
+    return 'n/a'
+
+
+def _get_degradation(technical):
+    """Get degradation with field name fallback."""
+    for field in ('degradation', 'pv_degradation', 'annual_degradation'):
+        val = getattr(technical, field, None)
+        if val is not None:
+            return val
+    return 'n/a'
 
 
 def build_inputs_summary_table(project_inputs) -> pd.DataFrame:
@@ -25,11 +68,11 @@ def build_inputs_summary_table(project_inputs) -> pd.DataFrame:
         ])
     if technical:
         rows.extend([
-            ("Technology", getattr(technical, 'yield_scenario', 'n/a')),
+            ("Technology", _get_technology(project_inputs)),
             ("Capacity (MW)", getattr(technical, 'capacity_mw', 'n/a')),
-            ("P50 Hours", getattr(technical, 'operating_hours_p50', 'n/a')),
-            ("Availability", getattr(technical, 'plant_availability', 'n/a')),
-            ("Degradation", getattr(technical, 'pv_degradation', 'n/a')),
+            ("P50 Hours", _get_p50_hours(technical)),
+            ("Availability", _get_availability(technical)),
+            ("Degradation", _get_degradation(technical)),
         ])
     if revenue:
         rows.extend([
@@ -64,13 +107,23 @@ def build_capex_summary_table(project_inputs) -> pd.DataFrame:
 
 
 def build_capex_items_table(project_inputs) -> pd.DataFrame:
-    """Build CapEx items table if available."""
+    """Build CapEx items table if available — safe, no None() calls."""
     if project_inputs is None:
         return pd.DataFrame(columns=["Name", "Asset Class", "Amount (kEUR)", "Life (years)"])
     capex = getattr(project_inputs, 'capex', None)
     if capex is None:
         return pd.DataFrame(columns=["Name", "Asset Class", "Amount (kEUR)", "Life (years)"])
-    items = getattr(capex, 'capex_items', None)()
+    # Safe: check if callable before calling
+    capex_items_attr = getattr(capex, 'capex_items', None)
+    if callable(capex_items_attr):
+        items = capex_items_attr()
+    else:
+        items = (
+            getattr(capex, 'asset_items', None)
+            or getattr(capex, 'items', None)
+            or getattr(capex, 'capex_items', None)
+            or []
+        )
     if not items:
         return pd.DataFrame(columns=["Name", "Asset Class", "Amount (kEUR)", "Life (years)"])
     rows = []
@@ -78,7 +131,7 @@ def build_capex_items_table(project_inputs) -> pd.DataFrame:
         rows.append((
             getattr(item, 'name', getattr(item, 'description', 'n/a')),
             str(getattr(item, 'asset_class', 'n/a')),
-            getattr(item, 'amount_keur', 'n/a'),
-            getattr(item, 'useful_life_override', 'n/a'),
+            getattr(item, 'amount_keur', getattr(item, 'total_keur', 'n/a')),
+            getattr(item, 'useful_life_override', getattr(item, 'useful_life_years', 'n/a')),
         ))
     return pd.DataFrame(rows, columns=["Name", "Asset Class", "Amount (kEUR)", "Life (years)"])

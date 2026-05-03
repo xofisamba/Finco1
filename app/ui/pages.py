@@ -176,58 +176,20 @@ def render_inputs(project_inputs):
     if project_inputs is None:
         st.info("No inputs available.")
         return
-    if hasattr(project_inputs, 'info'):
-        info = project_inputs.info
-        technical = getattr(project_inputs, 'technical', None)
-        rows = []
-        rows.append(("Name", getattr(info, 'name', 'n/a')))
-        rows.append(("Code", getattr(info, 'code', 'n/a')))
-        rows.append(("Technology", getattr(technical, 'technology', 'n/a') if technical else 'n/a'))
-        rows.append(("Country", getattr(info, 'country_iso', 'n/a')))
-        rows.append(("Capacity (MW)", getattr(technical, 'capacity_mw', getattr(info, 'capacity_mw', 'n/a'))))
-        rows.append(("Horizon Years", getattr(info, 'horizon_years', 'n/a')))
-        rows.append(("Construction Months", getattr(info, 'construction_months', 'n/a')))
-        rows.append(("PPA Term (years)", getattr(info, 'ppa_term_years', 'n/a')))
-        rows.append(("Financial Close", getattr(info, 'financial_close', 'n/a')))
-        df = pd.DataFrame(rows, columns=["Field", "Value"])
-        st.dataframe(df, hide_index=True, use_container_width=True)
-    else:
-        st.json(str(project_inputs), expanded=False)
+    from app.input_helpers import build_inputs_summary_table
+    df = build_inputs_summary_table(project_inputs)
+    st.dataframe(df, hide_index=True, use_container_width=True)
 
 
 def render_capex(project_inputs):
     """Render read-only CapEx summary."""
     if project_inputs is None:
-        st.info("No inputs available.")
+        st.info("No CapEx data available.")
         return
-    capex = getattr(project_inputs, 'capex', None)
-    if capex is None:
-        st.info("CapEx data not available.")
-        return
-
-    total_capex = getattr(capex, 'total_capex_keur', getattr(capex, 'total_capex', 'n/a'))
-    sculpt_capex = getattr(capex, 'sculpt_capex_keur', 'n/a')
-    construction_months = getattr(project_inputs.info, 'construction_months', 'n/a') if hasattr(project_inputs, 'info') else 'n/a'
-
-    summary = [
-        ("Total CapEx (kEUR)", total_capex),
-        ("Sculpt CapEx (kEUR)", sculpt_capex),
-        ("Construction Months", construction_months),
-    ]
-    df = pd.DataFrame(summary, columns=["Field", "Value"])
+    from app.input_helpers import build_capex_summary_table, build_capex_items_table
+    df = build_capex_summary_table(project_inputs)
     st.dataframe(df, hide_index=True, use_container_width=True)
-
-    # Asset items if available
-    asset_items = getattr(capex, 'asset_items', None) or getattr(capex, 'capex_items', None)
-    if asset_items:
-        item_rows = []
-        for item in asset_items:
-            item_rows.append((
-                getattr(item, 'name', getattr(item, 'description', 'n/a')),
-                getattr(item, 'asset_class', 'n/a'),
-                getattr(item, 'amount_keur', getattr(item, 'total_keur', 'n/a')),
-                getattr(item, 'useful_life_years', 'n/a'),
-            ))
-        items_df = pd.DataFrame(item_rows, columns=["Name", "Asset Class", "Amount (kEUR)", "Life (years)"])
+    items_df = build_capex_items_table(project_inputs)
+    if items_df.shape[0] > 0:
         with st.expander("CapEx Items"):
             st.dataframe(items_df, hide_index=True, use_container_width=True)

@@ -40,6 +40,23 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
     result = DemoResult(project_type=project_type)
     messages = []
 
+    # NEW: validate overrides before running
+    if project_inputs_override is not None:
+        from domain.validation import validate_project_inputs
+        issues = validate_project_inputs(project_inputs_override)
+        error_issues = [i for i in issues if i.severity == "error"]
+        if error_issues:
+            return DemoResult(
+                project_inputs=project_inputs_override,
+                result=None,
+                portfolio_result=None,
+                messages=["Edited inputs contain validation errors; model was not run."] + [i.message for i in error_issues],
+                integration_status="full",
+                integration_note=None,
+                validation_issues=issues,
+            )
+        # warnings only — continue to run
+
     try:
         if project_type == "Solar":
             proj = create_default_solar_project() if project_inputs_override is None else project_inputs_override

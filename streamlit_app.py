@@ -19,7 +19,7 @@ st.set_page_config(page_title="FincoGPT", layout="wide")
 st.title("🏗️ FincoGPT — Financial Model")
 
 # Session state for results
-for key in ["demo_result", "last_project_type", "last_scenario", "editable_inputs"]:
+for key in ["demo_result", "last_project_type", "last_scenario", "editable_inputs", "use_editable_inputs"]:
     if key not in st.session_state:
         st.session_state[key] = None
 
@@ -32,39 +32,41 @@ with st.sidebar:
     scenario = st.selectbox("Scenario", SCENARIOS)
     period_view = st.selectbox("Period View", ["Semiannual", "Annual"])
     st.divider()
-    st.markdown("### ✏️ Inputs")
     use_editable = st.checkbox("Use editable inputs", value=False, help="Override default Solar/Wind assumptions")
-
-    editable_inputs = None
-    was_modified = False
-    if use_editable and project_type in ("Solar", "Wind"):
-        from app.input_forms import render_solar_input_form, render_wind_input_form
-        from app.project_factories import create_default_solar_project, create_default_wind_project
-
-        default_proj = create_default_solar_project() if project_type == "Solar" else create_default_wind_project()
-
-        if project_type == "Solar":
-            editable_inputs, was_modified = render_solar_input_form(default_proj)
-        else:
-            editable_inputs, was_modified = render_wind_input_form(default_proj)
-
-        if was_modified:
-            st.session_state["editable_inputs"] = editable_inputs
-            st.session_state["last_project_type"] = None  # Force rerun
-
+    st.session_state["use_editable_inputs"] = use_editable
     st.divider()
-    st.markdown("### 📥 Export")
     run_button = st.button("🚀 Run Model", use_container_width=True)
     st.caption("Scenario selector is informational in this MVP.")
+    
+    # Excel export (only if results exist)
+    if st.session_state.demo_result and (st.session_state.demo_result.result or st.session_state.demo_result.portfolio_result):
+        demo_exp = st.session_state.demo_result
+        from app.excel_export import build_excel_export
+        excel_data = build_excel_export(
+            result=demo_exp.result,
+            portfolio_result=demo_exp.portfolio_result,
+            project_inputs=demo_exp.project_inputs,
+            validation_issues=demo_exp.validation_issues,
+            integration_status=demo_exp.integration_status,
+            integration_note=demo_exp.integration_note,
+            scenario=scenario,
+            period_view=period_view,
+        )
+        st.download_button(
+            "📊 Download Excel Export",
+            data=excel_data,
+            file_name=f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
 
 if run_button or st.session_state.demo_result is not None:
     if run_button or st.session_state.last_project_type != project_type or st.session_state.get("last_scenario") != scenario:
         with st.spinner("Running model..."):
-            override = st.session_state.get("editable_inputs")
+            override = st.session_state.get("editable_inputs") if st.session_state.get("use_editable_inputs") else None
             st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override)
             st.session_state.last_project_type = project_type
             st.session_state["last_scenario"] = scenario
-            st.session_state.last_scenario = scenario
 
     demo: DemoResult = st.session_state.demo_result
 
@@ -88,14 +90,26 @@ if run_button or st.session_state.demo_result is not None:
         "🌐 Portfolio",
     ])
 
+    use_ed = st.session_state.get("use_editable_inputs", False)
+    inputs_to_show = st.session_state.get("editable_inputs") or demo.project_inputs
 
     with tabs[0]:
         render_dashboard(demo.result, demo.portfolio_result, demo.is_portfolio,
                          demo.integration_status, demo.integration_note)
     with tabs[1]:
-        render_inputs(demo.project_inputs)
+        if use_ed and project_type in ("Solar", "Wind"):
+            from app.input_forms import render_project_input_form
+            edited_inputs, was_modified = render_project_input_form(inputs_to_show, project_type)
+            if was_modified:
+                st.session_state["editable_inputs"] = edited_inputs
+                st.session_state["demo_result"] = None  # clear result to force rerun
+                st.rerun()
+        else:
+            if project_type not in ("Solar", "Wind") and use_ed:
+                st.info("Editable inputs are available for Solar/Wind in this MVP.")
+            render_inputs(inputs_to_show)
     with tabs[2]:
-        render_capex(demo.project_inputs)
+        render_capex(inputs_to_show)
     with tabs[3]:
         render_revenue(demo.result, period_view)
     with tabs[4]:
@@ -109,22 +123,5 @@ if run_button or st.session_state.demo_result is not None:
     with tabs[8]:
         render_portfolio(demo.portfolio_result)
 
-    # Excel export in sidebar
-    with st.sidebar:
-        if demo.result or demo.portfolio_result:
-            from app.excel_export import build_excel_export
-            excel_data = build_excel_export(
-                result=demo.result,
-                portfolio_result=demo.portfolio_result,
-                project_inputs=demo.project_inputs,
-                integration_status=demo.integration_status,
-                integration_note=demo.integration_note,
-            )
-            st.download_button(
-                "📊 Download Excel Export",
-                data=excel_data,
-                file_name=f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
 else:
     st.info("👈 Configure a project in the sidebar and click **Run Model** to begin.")
