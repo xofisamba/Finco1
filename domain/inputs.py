@@ -43,6 +43,38 @@ class YieldScenario(Enum):
     P99_1Y = "P99-1y"
 
 
+class AssetClass(Enum):
+    """Asset class for depreciation — determines useful life.
+
+    Industry standard useful lives:
+    - Solar panels: 25 years
+    - Wind turbines: 25 years
+    - BESS cells: 10 years
+    - BESS power electronics: 15 years
+    - Civil/grid: 30 years
+    - Soft costs: 5 years
+    - Financial costs: amortized over senior debt tenor
+    """
+    SOLAR_PANELS = "solar_panels"
+    WIND_TURBINES = "wind_turbines"
+    BESS_CELLS = "bess_cells"
+    BESS_POWER_ELECTRONICS = "bess_pe"
+    CIVIL_GRID = "civil_grid"
+    SOFT_COSTS = "soft_costs"
+    FINANCIAL_COSTS = "financial_costs"
+
+
+ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
+    AssetClass.SOLAR_PANELS: 25,
+    AssetClass.WIND_TURBINES: 25,
+    AssetClass.BESS_CELLS: 10,
+    AssetClass.BESS_POWER_ELECTRONICS: 15,
+    AssetClass.CIVIL_GRID: 30,
+    AssetClass.SOFT_COSTS: 5,
+    AssetClass.FINANCIAL_COSTS: 14,  # default: senior tenor
+}
+
+
 @dataclass(frozen=True)
 class ProjectInfo:
     """Basic project metadata. Corresponds to Excel Inputs sheet rows 2-18."""
@@ -72,6 +104,8 @@ class CapexItem:
     amount_keur: float             # Total amount in kEUR
     y0_share: float = 0.0          # % paid in Y0 (construction year 0)
     spending_profile: tuple[float, ...] = ()  # Shares for Y1, Y2, Y3, Y4
+    asset_class: AssetClass = AssetClass.CIVIL_GRID  # For depreciation useful life
+    useful_life_override: Optional[int] = None  # Override default useful life
 
     @property
     def total_spending_shares(self) -> float:
