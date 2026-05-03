@@ -145,3 +145,70 @@ class TestDepreciationPerPeriod:
 
         assert result[1] == 0.0
         assert abs(result[2] - 20.0) < 0.01
+
+class TestCapexStructureCapexItems:
+    """CapexStructure.capex_items() unit tests."""
+
+    def test_capex_items_returns_only_non_zero(self):
+        """capex_items() excludes zero-amount entries."""
+        from domain.inputs import CapexStructure, CapexItem
+
+        cs = CapexStructure(
+            epc_contract=CapexItem(name="EPC", amount_keur=1000.0, asset_class=AssetClass.SOLAR_PANELS),
+            production_units=CapexItem(name="Prod", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            epc_other=CapexItem(name="Other", amount_keur=500.0, asset_class=AssetClass.SOLAR_PANELS),
+            grid_connection=CapexItem(name="Grid", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            ops_prep=CapexItem(name="Ops", amount_keur=200.0, asset_class=AssetClass.SOLAR_PANELS),
+            insurances=CapexItem(name="Ins", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            lease_tax=CapexItem(name="Lease", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            construction_mgmt_a=CapexItem(name="CM_A", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            commissioning=CapexItem(name="Com", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            audit_legal=CapexItem(name="Audit", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            construction_mgmt_b=CapexItem(name="CM_B", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            contingencies=CapexItem(name="Cont", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            taxes=CapexItem(name="Tax", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            project_acquisition=CapexItem(name="Acq", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            project_rights=CapexItem(name="Rights", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+        )
+
+        items = cs.capex_items()
+        assert len(items) == 3
+        amounts = [item.amount_keur for item in items]
+        assert 1000.0 in amounts
+        assert 500.0 in amounts
+        assert 200.0 in amounts
+        assert 0.0 not in amounts
+
+    def test_capex_items_excludes_scalars(self):
+        """capex_items() does not include scalar float fields."""
+        from domain.inputs import CapexStructure, CapexItem
+
+        cs = CapexStructure(
+            epc_contract=CapexItem(name="EPC", amount_keur=1000.0, asset_class=AssetClass.SOLAR_PANELS),
+            production_units=CapexItem(name="Prod", amount_keur=350.0, asset_class=AssetClass.SOLAR_PANELS),
+            epc_other=CapexItem(name="Other", amount_keur=500.0, asset_class=AssetClass.SOLAR_PANELS),
+            grid_connection=CapexItem(name="Grid", amount_keur=100.0, asset_class=AssetClass.SOLAR_PANELS),
+            ops_prep=CapexItem(name="Ops", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            insurances=CapexItem(name="Ins", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            lease_tax=CapexItem(name="Lease", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            construction_mgmt_a=CapexItem(name="CM_A", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            commissioning=CapexItem(name="Com", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            audit_legal=CapexItem(name="Audit", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            construction_mgmt_b=CapexItem(name="CM_B", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            contingencies=CapexItem(name="Cont", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            taxes=CapexItem(name="Tax", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            project_acquisition=CapexItem(name="Acq", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            project_rights=CapexItem(name="Rights", amount_keur=0.0, asset_class=AssetClass.SOLAR_PANELS),
+            idc_keur=5000.0,  # scalar float, not a CapexItem
+            bank_fees_keur=300.0,  # scalar float, not a CapexItem
+        )
+
+        items = cs.capex_items()
+        from domain.inputs import CapexItem as CI
+        assert all(isinstance(item, CI) for item in items)
+        amounts = [item.amount_keur for item in items]
+        # idc=5000 and bank_fees=300 are scalar floats, should not appear
+        assert 5000.0 not in amounts
+        assert 300.0 not in amounts
+        # But 350 (production_units CapexItem) should appear
+        assert 350.0 in amounts

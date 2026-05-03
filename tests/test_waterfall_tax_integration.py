@@ -46,12 +46,10 @@ class TestWaterfallTaxIntegration:
         )
 
         # Deductible limited to max(30%*1000, 3000) = 3000
-        # interest=4000, deductible=3000, addback=1000
-        # taxable = 1000 - 0 - 3000 + 1000 = 0 (profit not enough to absorb)
-        # Wait: taxable = ebitda - dep - deductible + addback - loss_cf
-        #       = 1000 - 0 - 3000 + 1000 = 0
+        # interest=4000, deductible=3000, disallowed=1000 (ATAD addback)
+        # taxable = 1000 - 0 - 3000 + 1000 = 0
         # tax = 0 * 0.10 = 0
-        assert result.atad_addback_keur == 1000.0
+        assert result.disallowed_interest_keur == 1000.0
         assert result.taxable_income_keur == 0.0
         assert result.tax_keur == 0.0
 
