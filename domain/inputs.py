@@ -1,7 +1,8 @@
-"""Project finance input models - immutable dataclasses for the runtime engine.
+"""Generic project-finance input models for the runtime engine.
 
-All classes use @dataclass(frozen=True) for immutability.
-Each field documents its purpose for the runtime engine.
+The dataclasses in this module define immutable inputs for project,
+portfolio, and scenario calculations. They intentionally contain schema and
+validation only; project-specific defaults live outside the domain layer.
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -10,25 +11,28 @@ from typing import Optional
 
 
 class PeriodFrequency(Enum):
-    """Period frequency for period frequency."""
+    """Supported reporting and calculation period frequencies."""
     SEMESTRIAL = "Semestrial"
     ANNUAL = "Annual"
     QUARTERLY = "Quarterly"
 
 
 class EquityIRRMethod(Enum):
+    """Supported equity return cash-flow conventions."""
     EQUITY_ONLY = "equity_only"
     COMBINED = "combined"
     SHL_PLUS_DIVIDENDS = "shl_plus_dividends"
 
 
 class DebtSizingMethod(Enum):
+    """Supported senior-debt sizing approaches."""
     DSCR_SCULPT = "dscr_sculpt"
     GEARING_CAP = "gearing_cap"
     FIXED = "fixed"
 
 
 class SHLRepaymentMethod(Enum):
+    """Supported shareholder-loan repayment conventions."""
     BULLET = "bullet"
     CASH_SWEEP = "cash_sweep"
     PIK = "pik"
@@ -37,24 +41,14 @@ class SHLRepaymentMethod(Enum):
 
 
 class YieldScenario(Enum):
-    """Yield scenario selection for yield scenario selection."""
+    """Supported production-yield scenarios."""
     P50 = "P_50"
     P90_10Y = "P90-10y"
     P99_1Y = "P99-1y"
 
 
 class AssetClass(Enum):
-    """Asset class for depreciation — determines useful life.
-
-    Industry standard useful lives:
-    - Solar panels: 25 years
-    - Wind turbines: 25 years
-    - BESS cells: 10 years
-    - BESS power electronics: 15 years
-    - Civil/grid: 30 years
-    - Soft costs: 5 years
-    - Financial costs: amortized over senior debt tenor
-    """
+    """Asset class for depreciation and useful-life selection."""
     SOLAR_PANELS = "solar_panels"
     WIND_TURBINES = "wind_turbines"
     BESS_CELLS = "bess_cells"
@@ -71,13 +65,13 @@ ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
     AssetClass.BESS_POWER_ELECTRONICS: 15,
     AssetClass.CIVIL_GRID: 30,
     AssetClass.SOFT_COSTS: 5,
-    AssetClass.FINANCIAL_COSTS: 14,  # default: senior tenor
+    AssetClass.FINANCIAL_COSTS: 14,
 }
 
 
 @dataclass(frozen=True)
 class ProjectInfo:
-    """Basic project metadata. Basic project metadata."""
+    """Basic project metadata and project timeline."""
     name: str
     company: str
     code: str
@@ -91,29 +85,21 @@ class ProjectInfo:
 
 @dataclass(frozen=True)
 class CapexItem:
-    """Single CAPEX line item with spending profile.
-
-    CAPEX item definitions.
-    Each item has an amount and spending profile across periods.
-
-    Example:
-        EPC Contract: 26,430 k€ → Y0:0%, Y1:8.3%, Y2:8.3% ... (12 month linear)
-        Project Rights: 3,024.5 k€ → Y0:100%, rest: 0%
-    """
-    name: str                      # Item description
-    amount_keur: float             # Total amount in kEUR
-    y0_share: float = 0.0          # % paid in Y0 (construction year 0)
-    spending_profile: tuple[float, ...] = ()  # Shares for Y1, Y2, Y3, Y4
-    asset_class: AssetClass = AssetClass.CIVIL_GRID  # For depreciation useful life
-    useful_life_override: Optional[int] = None  # Override default useful life
+    """Single capital-expenditure line item with a spending profile."""
+    name: str
+    amount_keur: float
+    y0_share: float = 0.0
+    spending_profile: tuple[float, ...] = ()
+    asset_class: AssetClass = AssetClass.CIVIL_GRID
+    useful_life_override: Optional[int] = None
 
     @property
     def total_spending_shares(self) -> float:
-        """Sum of all spending shares (y0 + profile). Should equal 1.0."""
+        """Sum of all spending shares across construction periods."""
         return self.y0_share + sum(self.spending_profile)
 
     def __post_init__(self):
-        """Validate spending shares sum to approximately 1.0."""
+        """Validate that non-zero spending profiles sum to 100%."""
         total = self.total_spending_shares
         if total > 0 and abs(total - 1.0) > 0.001:
             raise ValueError(
@@ -122,13 +108,14 @@ class CapexItem:
             )
 
     def amount_in_period(self, period: int) -> float:
-        """Return CAPEX amount for a given period.
+        """Return the capital-expenditure amount for a construction period.
 
         Args:
-            period: 0=Y0, 1=Y1, 2=Y2, 3=Y3, 4=Y4+
+            period: 0 for the initial period, 1 for the first profile period,
+                and so on.
 
         Returns:
-            Amount in kEUR for that period
+            Amount in kEUR for the requested period.
         """
         if period == 0:
             return self.amount_keur * self.y0_share
@@ -140,16 +127,12 @@ class CapexItem:
 
 @dataclass(frozen=True)
 class CapexStructure:
-    """Complete CAPEX structure with 22 items CAPEX item schema.
+    """Capital-expenditure structure used by the financial model.
 
-    CAPEX item definitions (22 CAPEX categories).
-
-    Items marked as "dynamic" are computed iteratively:
-    - IDC: Solved via fixed-point iteration (circular with debt)
-    - Commitment Fees: Based on undrawn debt during construction
-    - Reserve Accounts: DSRA, J-DSRA, MRA funded at financial close
+    The named fields provide a stable schema for UI tables, imports, and
+    existing callers. Generic factories may map individual technologies to
+    these fields while preserving asset-class metadata on each CapexItem.
     """
-    # === Hard CAPEX items ===
     epc_contract: CapexItem
     production_units: CapexItem
     epc_other: CapexItem
@@ -165,15 +148,14 @@ class CapexStructure:
     taxes: CapexItem
     project_acquisition: CapexItem
     project_rights: CapexItem
-    # === Dynamic items (computed, not direct input) ===
-    idc_keur: float = 0.0          # Interest During Construction (computed)
-    commitment_fees_keur: float = 0.0  # Commitment fees on undrawn debt
-    bank_fees_keur: float = 0.0   # Bank fees (upfront)
-    other_financial_keur: float = 0.0  # Other financial costs
-    vat_costs_keur: float = 0.0    # VAT costs spread over Y0-Y3
-    reserve_accounts_keur: float = 0.0  # Initial reserve account funding
 
-    # === Explicit CapexItem accessor ===
+    idc_keur: float = 0.0
+    commitment_fees_keur: float = 0.0
+    bank_fees_keur: float = 0.0
+    other_financial_keur: float = 0.0
+    vat_costs_keur: float = 0.0
+    reserve_accounts_keur: float = 0.0
+
     _CAPEX_ITEM_FIELDS = (
         "epc_contract", "production_units", "epc_other", "grid_connection",
         "ops_prep", "insurances", "lease_tax", "construction_mgmt_a",
@@ -182,10 +164,7 @@ class CapexStructure:
     )
 
     def capex_items(self) -> tuple[CapexItem, ...]:
-        """Return all CapexItem entries that have non-zero amounts.
-
-        Excludes scalar float fields (idc_keur, bank_fees_keur, etc.).
-        """
+        """Return all non-zero CapexItem entries."""
         return tuple(
             getattr(self, field) for field in self._CAPEX_ITEM_FIELDS
             if getattr(self, field).amount_keur != 0
@@ -193,7 +172,7 @@ class CapexStructure:
 
     @property
     def hard_capex_keur(self) -> float:
-        """Sum of all hard CAPEX items (excluding dynamic items)."""
+        """Sum of all hard-capex items, excluding financing and reserve costs."""
         items = [
             self.epc_contract, self.production_units, self.epc_other,
             self.grid_connection, self.ops_prep, self.insurances,
@@ -205,80 +184,58 @@ class CapexStructure:
 
     @property
     def hard_capex(self) -> float:
-        """Alias for hard_capex_keur for backward compatibility."""
+        """Backward-compatible alias for hard_capex_keur."""
         return self.hard_capex_keur
 
     @property
     def sculpt_capex_keur(self) -> float:
-        """CAPEX used for debt sizing / gearing cap computation.
+        """Capital cost base used for debt sizing.
 
-        Excludes reserve accounts (DSRA, MRA, J-DSRA) which are funded separately
-        and not part of the project's capital cost for debt sizing purposes.
-        Total CAPEX for sculpting: hard_capex + idc + bank_fees + vat_costs.
+        Reserve accounts are excluded because they are funded separately from
+        the project's hard capital cost.
         """
         return (self.hard_capex_keur + self.idc_keur +
                 self.bank_fees_keur + self.other_financial_keur + self.vat_costs_keur)
 
     @property
     def total_capex_before_idc(self) -> float:
-        """Total CAPEX excluding IDC."""
+        """Total capital cost before interest during construction."""
         return self.hard_capex_keur + self.commitment_fees_keur + \
                self.bank_fees_keur + self.other_financial_keur + \
                self.vat_costs_keur + self.reserve_accounts_keur
 
     @property
     def total_capex(self) -> float:
-        """Total CAPEX including IDC."""
+        """Total capital cost including interest during construction."""
         return self.total_capex_before_idc + self.idc_keur
 
 
 @dataclass(frozen=True)
 class OpexItem:
-    """Single OPEX line item with individual escalation.
-
-    OPEX item rows (15 OPEX categories).
-    Each item has Y1 amount and annual escalation rate.
-
-    Example:
-        Technical Management: 198 k€ Y1, 2% annual index
-        Power Expenses: 126.86 k€ Y1, 0% index (flat)
-    """
-    name: str                      # Item description
-    y1_amount_keur: float         # Amount in kEUR for Year 1
-    annual_inflation: float = 0.02  # Annual escalation rate (0.02 = 2%)
+    """Single operating-cost line item with escalation and optional steps."""
+    name: str
+    y1_amount_keur: float
+    annual_inflation: float = 0.02
     step_changes: tuple[tuple[int, float], ...] = field(default_factory=lambda: ())
-    # e.g. ((3, 185.64),) means Y3 OPEX is hardcoded to 185.64 k€
 
     def amount_at_year(self, year: int) -> float:
-        """Return OPEX amount for a given year with escalation.
-
-        Args:
-            year: 1-based year index (1=Y1, 2=Y2, etc.)
-
-        Returns:
-            Amount in kEUR for that year
-        """
-        # Check for step change
+        """Return operating cost for a 1-based operating year."""
         for step_year, amount in self.step_changes:
             if year == step_year:
                 return amount
-        # Apply escalation from Y1
         result = self.y1_amount_keur * (1 + self.annual_inflation) ** (year - 1)
-        return max(0.0, result)  # Guard against negative OPEX from negative inflation
+        return max(0.0, result)
 
 
 @dataclass(frozen=True)
 class TechnicalParams:
-    """Technical parameters for the project.
-
-    Technical parameter rows.
-    """
+    """Technical production and availability assumptions."""
     capacity_mw: float
     yield_scenario: str
     operating_hours_p50: float = 0.0
-    operating_hours_p90_1y: float | None = None  # P90-1y hours (single year exceedance)
+    operating_hours_p90_1y: float | None = None
     operating_hours_p90_10y: float = 0.0
-    operating_hours_p99_1y: float | None = None  # P99-1y hours (scenario engine)
+    operating_hours_p99_1y: float | None = None
     pv_degradation: float = 0.004
     bess_degradation: float = 0.003
     plant_availability: float = 0.99
@@ -287,72 +244,49 @@ class TechnicalParams:
 
     @property
     def combined_availability(self) -> float:
-        """Combined plant × grid availability (98% for )."""
+        """Combined plant and grid availability."""
         return self.plant_availability * self.grid_availability
 
 
 @dataclass(frozen=True)
 class RevenueParams:
-    """Revenue parameters including PPA and market pricing.
-
-    Revenue parameter rows.
-    """
+    """Revenue parameters for contracted and merchant sales."""
     ppa_base_tariff: float
     ppa_term_years: float
     ppa_index: float = 0.02
     ppa_production_share: float = 1.0
     market_scenario: str = "Central"
-    market_prices_curve: tuple[float, ...] = ()  # Inputs row 107 - Market price curve
+    market_prices_curve: tuple[float, ...] = ()
     market_inflation: float = 0.02
     balancing_cost_pv: float = 0.025
     balancing_cost_bess: float = 0.025
-    balancing_cost_wind_eur_mwh: float = 0.0  # Wind balancing cost (EUR/MWh), e.g. 8.0 for 
+    balancing_cost_wind_eur_mwh: float = 0.0
     co2_enabled: bool = False
     co2_price_eur: float = 1.5
 
     def tariff_at_year(self, year: int) -> float:
-        """Return PPA tariff in year with escalation.
-
-        Args:
-            year: 1-based year index (1=Y1, 2=Y2, etc.)
-
-        Returns:
-            Tariff in €/MWh
-        """
+        """Return indexed contract tariff for a 1-based operating year."""
         return self.ppa_base_tariff * (1 + self.ppa_index) ** (year - 1)
 
     def market_price_at_year(self, year: int) -> float:
-        """Return market price in year.
-
-        Args:
-            year: 1-based year index
-
-        Returns:
-            Market price in €/MWh
-        """
+        """Return merchant market price for a 1-based operating year."""
         idx = year - 1
         if idx < len(self.market_prices_curve):
             return self.market_prices_curve[idx]
-        # Extrapolate with market inflation
         if self.market_prices_curve:
             base = self.market_prices_curve[-1]
             return base * (1 + self.market_inflation) ** (idx - len(self.market_prices_curve) + 1)
-        return self.ppa_base_tariff  # Fallback
+        return self.ppa_base_tariff
 
 
 @dataclass(frozen=True)
 class FinancingParams:
-    """Financing parameters including debt and equity structure.
-
-    Financing parameter rows.
-    """
-    # Equity structure
+    """Debt, equity, reserve, and shareholder-loan assumptions."""
     share_capital_keur: float = 500.0
     share_premium_keur: float = 0.0
     shl_amount_keur: float = 13547.2
     shl_rate: float = 0.08
 
-    # Debt structure
     gearing_ratio: float = 0.7524
     senior_debt_amount_keur: float = 0.0
     senior_tenor_years: int = 14
@@ -362,106 +296,72 @@ class FinancingParams:
     fixed_share: float = 0.8
     hedge_coverage: float = 0.8
 
-    # Fees
     commitment_fee: float = 0.0105
     arrangement_fee: float = 0.0
     structuring_fee: float = 0.01
 
-    # Covenants
     target_dscr: float = 1.15
     lockup_dscr: float = 1.10
     min_llcr: float = 1.15
 
-    # Amortization type: "sculpted" (DSCR-sculpted or fixed debt service)
-    amortization_type: str = "sculpted"  # "sculpted" | "fixed_ds"
-    fixed_ds_keur: float = 0.0           # Fixed debt service per period (kEUR) — for fixed_ds type
+    amortization_type: str = "sculpted"
+    fixed_ds_keur: float = 0.0
 
-    # Reserve accounts
     dsra_months: int = 6
 
-    # Equity IRR calculation method:
-    # "equity_only" → IRR base = capex - debt - SHL ( style)
-    # "combined" → IRR base = share_capital + SHL, cash flows include SHL interest + principal ( style)
     equity_irr_method: str = "equity_only"
 
-    # Debt sizing method:
-    # "dscr_sculpt" → debt = min(DSCR-constrained, gearing_cap) — default
-    # "gearing_cap" → debt = max(DSCR-constrained, gearing_cap) — gearing wins ( style)
-    # "fixed" → debt = fixed_debt_keur (override)
     debt_sizing_method: str = "dscr_sculpt"
-    fixed_debt_keur: float | None = None  # Override sculpted debt with fixed amount
-    # Per-period DSCR targets for dual-DSCR sculpting (PPA vs merchant)
-    # e.g., [1.20] * 24 + [1.45] * 40 for : 24 PPA periods at 1.20x, then merchant at 1.45x
+    fixed_debt_keur: float | None = None
     dscr_schedule: list[float] | None = None
 
-    # SHL repayment method:
-    # "bullet" — sav principal na kraju tenora, kamate cash
-    # "cash_sweep" — principal iz FCF nakon senior DS (po prioritetu)
-    # "pik" — kamate i principal se kapitaliziraju uvijek
-    # "accrued" — ništa se ne plaća, sve do exit/refinanciranja
-    # "pik_then_sweep" — PIK dok nema FCF, sweep kad ima ()
     shl_repayment_method: str = "bullet"
-    shl_pik_switch_period: int = 0  # 0 = auto (kad senior_balance = 0)
-    shl_tenor_years: int = 0  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
-    shl_idc_keur: float = 0.0  # SHL IDC — added to opening balance
+    shl_pik_switch_period: int = 0
+    shl_tenor_years: int = 0
+    shl_idc_keur: float = 0.0
 
     @property
     def all_in_rate(self) -> float:
-        """All-in interest rate (base + margin)."""
+        """All-in senior debt interest rate."""
         return self.base_rate + self.margin_bps / 10000
 
     @property
     def total_equity_shl_keur(self) -> float:
-        """Total equity + shareholder loan."""
+        """Total sponsor equity and shareholder-loan funding."""
         return self.share_capital_keur + self.share_premium_keur + self.shl_amount_keur + self.shl_idc_keur
 
 
 @dataclass(frozen=True)
 class TaxParams:
-    """Tax parameters including corporate tax and loss carryforward.
-
-    Tax parameter rows.
-    """
+    """Tax, withholding, and interest-deductibility assumptions."""
     corporate_rate: float = 0.10
     loss_carryforward_years: int = 5
     loss_carryforward_cap: float = 1.0
-    prior_tax_loss_keur: float = 0.0   # Deprecated: use construction_pl instead
+    prior_tax_loss_keur: float = 0.0
     legal_reserve_cap: float = 0.10
 
-    # Construction P&L — deterministically computed tax loss
     construction_pl: Optional["ConstructionPLStatement"] = None
 
-    # Thin cap / ATAD
     thin_cap_enabled: bool = False
     thin_cap_de_ratio: float = 0.8
-    atad_ebitda_limit: float = 0.30    # ATAD EBITDA interest limit (30%)
-    atad_min_interest_keur: float = 3000.0  # ATAD minimum interest threshold
+    atad_ebitda_limit: float = 0.30
+    atad_min_interest_keur: float = 3000.0
 
-    # Withholding taxes
     wht_sponsor_dividends: float = 0.05
     wht_sponsor_shl_interest: float = 0.0
 
-    # SHL interest cap (for foreign sovereign)
     shl_cap_applies: bool = True
 
     @property
     def initial_tax_loss_keur(self) -> float:
-        """Initial tax loss carryforward from construction period.
-
-        Uses construction_pl if set (deterministic), otherwise falls back
-        to prior_tax_loss_keur (for backward compatibility).
-        """
+        """Initial tax loss carryforward available at commercial operation."""
         if self.construction_pl is not None:
             return self.construction_pl.initial_tax_loss_keur
         return self.prior_tax_loss_keur
 
     @classmethod
     def from_generic_config(cls, cfg: "GenericTaxConfig") -> "TaxParams":
-        """Create TaxParams from a GenericTaxConfig.
-
-        Provides backward compatibility: GenericTaxConfig fields map to TaxParams.
-        """
-        # Import here to avoid circular import
+        """Create TaxParams from a GenericTaxConfig."""
         from core.tax.generic_tax import GenericTaxConfig
 
         if not isinstance(cfg, GenericTaxConfig):
@@ -471,9 +371,9 @@ class TaxParams:
             corporate_rate=cfg.cit_rate,
             loss_carryforward_years=cfg.loss_carryforward_years,
             loss_carryforward_cap=cfg.loss_carryforward_cap_pct,
-            legal_reserve_cap=0.10,  # Default legal reserve
+            legal_reserve_cap=0.10,
             thin_cap_enabled=cfg.interest_cap_enabled,
-            thin_cap_de_ratio=0.80,  # Default DE ratio
+            thin_cap_de_ratio=0.80,
             atad_ebitda_limit=cfg.interest_cap_ebitda_ratio,
             atad_min_interest_keur=cfg.interest_cap_min_keur,
             wht_sponsor_dividends=cfg.wht_dividends,
@@ -484,32 +384,18 @@ class TaxParams:
 
 @dataclass(frozen=True)
 class ProjectInputs:
-    """Complete project inputs combining all parameter classes.
-
-    This is the root input structure for the entire model.
-    All values are frozen after construction (immutable).
-    """
+    """Root immutable project input object."""
     info: ProjectInfo
     technical: TechnicalParams
     capex: CapexStructure
-    opex: tuple[OpexItem, ...]  # 15 OPEX items
+    opex: tuple[OpexItem, ...]
     revenue: RevenueParams
     financing: FinancingParams
     tax: TaxParams
 
-# =============================================================================
-# Hash function for cache key generation (used by app/cache.py)
 
-    # -------------------------------------------------------------------------
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
-    """Deterministic hash for frozen ProjectInputs (cache key).
-
-    Args:
-        inputs: ProjectInputs instance (must be frozen)
-
-    Returns:
-        Tuple of values for hashing
-    """
+    """Build a deterministic cache key from stable input fields."""
     return (
         inputs.info.financial_close,
         inputs.technical.capacity_mw,
