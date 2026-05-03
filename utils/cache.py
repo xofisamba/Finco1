@@ -397,55 +397,20 @@ def cached_run_waterfall_v3(
     Returns:
         WaterfallResult with all computed periods and metrics
     """
-    from domain.waterfall.waterfall_engine import run_waterfall
-    from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
-    from domain.opex.projections import opex_schedule_annual
+    """Cached waterfall computation — delegates to app.waterfall_core.run_waterfall_v3_core.
 
-    # Use cached schedules
-    periods_list = list(engine.periods())
-    revenue_dict = cached_revenue_schedule(inputs, engine)
-    generation_dict = cached_generation_schedule(inputs, engine)
-    opex_annual = cached_opex_schedule_annual(inputs, inputs.info.horizon_years)
+    This function previously built OPEX and depreciation schedules using stale flat
+    logic (annual / 2). It now delegates entirely to run_waterfall_v3_core(), which
+    uses opex_schedule_period() with day_fraction and asset-class depreciation.
 
-    # Build proper depreciation schedule (30-year straight-line for solar)
-    # B3 fix: Use realistic schedule instead of uniform dep_per_year
-    horizon_years = inputs.info.horizon_years
-    dep_per_year = inputs.capex.total_capex / horizon_years  # fallback
-    depreciation_schedule_annual = [dep_per_year] * horizon_years
+    All parameters are passed through unchanged. The @st.cache_data decorator and
+    hash_funcs remain intact.
+    """
+    from app.waterfall_core import run_waterfall_v3_core
 
-    ebitda_schedule = []
-    revenue_schedule = []
-    generation_schedule = []
-    depreciation_schedule = []
-    opex_schedule = []
-
-    for p in periods_list:
-        rev = revenue_dict.get(p.index, 0)
-        gen = generation_dict.get(p.index, 0)
-        if p.is_operation:
-            opex = opex_annual.get(p.year_index, 0) / 2
-            ebitda = max(0, rev - opex)
-            annual_dep = depreciation_schedule_annual[p.year_index - 1] if p.year_index <= len(depreciation_schedule_annual) else dep_per_year
-            dep = annual_dep / 2
-        else:
-            opex = 0
-            ebitda = 0
-            dep = 0
-
-        revenue_schedule.append(rev)
-        generation_schedule.append(gen)
-        ebitda_schedule.append(ebitda)
-        depreciation_schedule.append(dep)
-        opex_schedule.append(opex)
-
-    return run_waterfall(
-        ebitda_schedule=ebitda_schedule,
-        revenue_schedule=revenue_schedule,
-        generation_schedule=generation_schedule,
-        depreciation_schedule=depreciation_schedule,
-        opex_schedule=opex_schedule,
-        periods=periods_list,
-        total_capex=inputs.capex.total_capex,
+    return run_waterfall_v3_core(
+        inputs=inputs,
+        engine=engine,
         rate_per_period=rate_per_period,
         tenor_periods=tenor_periods,
         target_dscr=target_dscr,
@@ -454,23 +419,18 @@ def cached_run_waterfall_v3(
         dsra_months=dsra_months,
         shl_amount=shl_amount,
         shl_rate=shl_rate,
-        shl_idc_keur=inputs.financing.shl_idc_keur,
+        shl_idc_keur=shl_idc_keur,
         shl_repayment_method=shl_repayment_method,
         shl_tenor_years=shl_tenor_years,
         shl_wht_rate=shl_wht_rate,
         discount_rate_project=discount_rate_project,
         discount_rate_equity=discount_rate_equity,
-        financial_close=inputs.info.financial_close,
-        gearing_ratio=inputs.financing.gearing_ratio,
-        fixed_debt_keur=fixed_debt_keur if fixed_debt_keur is not None else getattr(inputs.financing, 'fixed_debt_keur', None),
-        fixed_ds_keur=fixed_ds_keur if fixed_ds_keur is not None else getattr(inputs.financing, 'fixed_ds_keur', None),
+        fixed_debt_keur=fixed_debt_keur,
+        fixed_ds_keur=fixed_ds_keur,
         rate_schedule=rate_schedule,
-        idc_keur=inputs.capex.idc_keur,
-        bank_fees_keur=inputs.capex.bank_fees_keur,
-        commitment_fees_keur=inputs.capex.commitment_fees_keur,
         equity_irr_method=equity_irr_method,
         share_capital_keur=share_capital_keur,
         sculpt_capex_keur=sculpt_capex_keur,
         debt_sizing_method=debt_sizing_method,
-        dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, 'dscr_schedule', None),
+        dscr_schedule=dscr_schedule,
     )

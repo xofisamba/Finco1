@@ -492,30 +492,9 @@ def _write_sensitivity_sheet(
 
     # Run two-way analysis: X = PPA Tariff (±20%, 5 values), Y = CAPEX (±20%, 5 values)
     if hasattr(inputs, 'revenue') and hasattr(inputs, 'capex'):
-        ppa_tariff_vals = [
-            inputs.revenue.ppa_base_tariff * 0.8,
-            inputs.revenue.ppa_base_tariff * 0.9,
-            inputs.revenue.ppa_base_tariff,
-            inputs.revenue.ppa_base_tariff * 1.1,
-            inputs.revenue.ppa_base_tariff * 1.2,
-        ]
-        # CAPEX: scale all items by factor
-        base_capex_total = inputs.capex.total_capex
-        capex_factors = [0.8, 0.9, 1.0, 1.1, 1.2]
-        from dataclasses import replace as dc_replace
-        from core.finance.sensitivity import _scale_capex, _run_with_inputs, _get_irr
-
-        matrix_2d: list[list[float]] = []
-        for capex_f in capex_factors:
-            row = []
-            for ppa_t in ppa_tariff_vals:
-                mod_rev = dc_replace(inputs.revenue, ppa_base_tariff=ppa_t)
-                mod_capex = _scale_capex(inputs.capex, capex_f)
-                mod_inputs = dc_replace(inputs, revenue=mod_rev, capex=mod_capex)
-                res = _run_with_inputs(mod_inputs)
-                irr = _get_irr(res, basis="equity")
-                row.append(irr)
-            matrix_2d.append(row)
+        # Two-way sensitivity (CAPEX vs PPA tariff) — placeholder, core.finance.sensitivity not yet implemented
+        ws_heat["A5"] = "Two-way sensitivity: coming soon"
+        ws_heat["A5"].font = Font(size=10, italic=True, color="808080")
     else:
         matrix_2d = []
 

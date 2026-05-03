@@ -28,9 +28,10 @@ import json
 import pytest
 from pathlib import Path
 
-from domain.inputs import ProjectInputs, PeriodFrequency
+from domain.inputs import PeriodFrequency
 from domain.period_engine import PeriodEngine, PeriodFrequency as PF
 from utils.cache import cached_run_waterfall_v3
+from app.project_factories import create_default_oborovo
 
 
 BASELINE_PATH = Path(__file__).parent / "fixtures" / "oborovo_baseline.json"
@@ -39,7 +40,7 @@ CURRENT_PATH = Path(__file__).parent / "fixtures" / "current_outputs.json"
 
 def _run_waterfall():
     """Run waterfall with default Oborovo inputs. Cached per session."""
-    inputs = ProjectInputs.create_default_oborovo()
+    inputs = create_default_oborovo()
     fin = inputs.financing
     capex = inputs.capex
     freq = PF.SEMESTRIAL if inputs.info.period_frequency == PeriodFrequency.SEMESTRIAL else PF.ANNUAL
