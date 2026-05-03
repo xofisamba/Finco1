@@ -183,8 +183,9 @@ class TestHybridOutputContract:
         assert hasattr(bd, 'solar_generation_mwh')
         assert hasattr(bd, 'wind_generation_mwh')
         assert hasattr(bd, 'total_generation_mwh')
-        assert hasattr(bd, 'clipped_mwh')
+        assert hasattr(bd, 'exported_mwh')
         assert hasattr(bd, 'curtailment_mwh')
+        assert hasattr(bd, 'clipped_mwh')  # alias for curtailment_mwh
         assert hasattr(bd, 'renewable_revenue_keur')
         assert hasattr(bd, 'bess_charge_from_curtailment_mwh')
         assert hasattr(bd, 'bess_discharge_from_curtailment_mwh')
@@ -308,6 +309,12 @@ class TestPortfolioOutputContract:
         assert hasattr(result, 'total_senior_ds_keur')
         assert hasattr(result, 'avg_dscr')
         assert hasattr(result, 'min_dscr')
+        assert hasattr(result, 'portfolio_debt_keur')
+        assert hasattr(result, 'pooled_cfads_schedule')
+        assert hasattr(result, 'portfolio_debt_service_schedule')
+        assert isinstance(result.pooled_cfads_schedule, tuple)
+        assert isinstance(result.portfolio_debt_service_schedule, tuple)
+        assert result.portfolio_debt_keur >= 0
 
     def test_portfolio_irr_weighted_by_project_weight(self):
         # Portfolio-level weighted IRR not yet implemented — skip assertion
@@ -362,12 +369,17 @@ def test_portfolio_result_contract():
             period=1, date=date(2030, 1, 1),
             pooled_revenue_keur=100.0, pooled_ebitda_keur=80.0,
             pooled_tax_keur=10.0, pooled_cfads_keur=70.0,
+            portfolio_senior_interest_keur=40.0,
+            portfolio_senior_principal_keur=10.0,
             portfolio_senior_ds_keur=50.0, dscr=1.4,
         ),),
         project_results=(("A", None),),
         total_revenue_keur=100.0, total_ebitda_keur=80.0,
         total_tax_keur=10.0, total_senior_ds_keur=50.0,
         avg_dscr=1.4, min_dscr=1.4,
+        portfolio_debt_keur=500.0,
+        pooled_cfads_schedule=(70.0,),
+        portfolio_debt_service_schedule=(50.0,),
     )
     assert hasattr(pr, "periods")
     assert hasattr(pr, "project_results")
@@ -377,3 +389,6 @@ def test_portfolio_result_contract():
     assert hasattr(pr, "total_senior_ds_keur")
     assert hasattr(pr, "avg_dscr")
     assert hasattr(pr, "min_dscr")
+    assert hasattr(pr, "portfolio_debt_keur")
+    assert hasattr(pr, "pooled_cfads_schedule")
+    assert hasattr(pr, "portfolio_debt_service_schedule")
