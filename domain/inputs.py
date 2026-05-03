@@ -1,4 +1,4 @@
-"""Project finance input models - immutable dataclasses matching Excel structure.
+"""Project finance input models - immutable dataclasses for the runtime engine.
 
 All classes use @dataclass(frozen=True) for immutability.
 Each field documents the corresponding Excel cell reference.
@@ -10,7 +10,7 @@ from typing import Optional
 
 
 class PeriodFrequency(Enum):
-    """Period frequency matching Excel Inputs!D18."""
+    """Period frequency for period frequency."""
     SEMESTRIAL = "Semestrial"
     ANNUAL = "Annual"
     QUARTERLY = "Quarterly"
@@ -37,7 +37,7 @@ class SHLRepaymentMethod(Enum):
 
 
 class YieldScenario(Enum):
-    """Yield scenario selection matching Excel Inputs!D52."""
+    """Yield scenario selection for yield scenario selection."""
     P50 = "P_50"
     P90_10Y = "P90-10y"
     P99_1Y = "P99-1y"
@@ -77,23 +77,23 @@ ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
 
 @dataclass(frozen=True)
 class ProjectInfo:
-    """Basic project metadata. Corresponds to Excel Inputs sheet rows 2-18."""
-    name: str                       # Inputs!D2 - Project name
-    company: str                   # Inputs!D3 - Company name
-    code: str                      # Inputs!D4 - Project code
-    country_iso: str                # Inputs!D5 - Country code (e.g., "HR")
-    financial_close: date           # Inputs!D9 - Financial close date
-    construction_months: int       # Inputs!D10 - Construction duration in months
-    cod_date: date                  # Inputs!D11 - Commercial operation date
-    horizon_years: int             # Inputs!D14 - Investment horizon in years
-    period_frequency: PeriodFrequency  # Inputs!D18 - "Semestrial", "Annual", etc.
+    """Basic project metadata. Basic project metadata."""
+    name: str                       #
+    company: str                   #
+    code: str                      #
+    country_iso: str                #
+    financial_close: date           #
+    construction_months: int       #
+    cod_date: date                  #
+    horizon_years: int             #
+    period_frequency: PeriodFrequency  #
 
 
 @dataclass(frozen=True)
 class CapexItem:
     """Single CAPEX line item with spending profile.
 
-    Corresponds to Excel Inputs rows 23-44.
+    CAPEX item definitions.
     Each item has an amount and spending profile across periods.
 
     Example:
@@ -140,9 +140,9 @@ class CapexItem:
 
 @dataclass(frozen=True)
 class CapexStructure:
-    """Complete CAPEX structure with 22 items from Oborovo Excel.
+    """Complete CAPEX structure with 22 items CAPEX item schema.
 
-    Corresponds to Excel Inputs rows 23-44 (22 CAPEX categories).
+    CAPEX item definitions (22 CAPEX categories).
 
     Items marked as "dynamic" are computed iteratively:
     - IDC: Solved via fixed-point iteration (circular with debt)
@@ -150,21 +150,21 @@ class CapexStructure:
     - Reserve Accounts: DSRA, J-DSRA, MRA funded at financial close
     """
     # === Hard CAPEX items ===
-    epc_contract: CapexItem        # Inputs!C23 - EPC Contract (26,430 k€)
-    production_units: CapexItem    # Inputs!C24 - Production Units (10,912.7 k€)
-    epc_other: CapexItem           # Inputs!C25 - Other EPC (3,200 k€)
-    grid_connection: CapexItem     # Inputs!C26 - Grid Connection (1,800 k€)
-    ops_prep: CapexItem            # Inputs!C27 - Operations Preparation (500 k€)
-    insurances: CapexItem          # Inputs!C28 - Insurances (400 k€)
-    lease_tax: CapexItem           # Inputs!C29 - Lease & Property Tax (200 k€)
-    construction_mgmt_a: CapexItem  # Inputs!C30 - Construction Management A
-    commissioning: CapexItem       # Inputs!C31 - Commissioning (300 k€)
-    audit_legal: CapexItem         # Inputs!C32 - Audit & Legal (200 k€)
-    construction_mgmt_b: CapexItem  # Inputs!C33 - Construction Management B
-    contingencies: CapexItem       # Inputs!C34 - Contingencies (1,986.4 k€)
-    taxes: CapexItem               # Inputs!C35 - Taxes & Duties (150 k€)
-    project_acquisition: CapexItem  # Inputs!C36 - Project Acquisition (1,000 k€)
-    project_rights: CapexItem      # Inputs!C37 - Project Rights (3,024.5 k€)
+    epc_contract: CapexItem        #
+    production_units: CapexItem    #
+    epc_other: CapexItem           #
+    grid_connection: CapexItem     #
+    ops_prep: CapexItem            #
+    insurances: CapexItem          #
+    lease_tax: CapexItem           #
+    construction_mgmt_a: CapexItem  #
+    commissioning: CapexItem       #
+    audit_legal: CapexItem         #
+    construction_mgmt_b: CapexItem  #
+    contingencies: CapexItem       #
+    taxes: CapexItem               #
+    project_acquisition: CapexItem  #
+    project_rights: CapexItem      #
     # === Dynamic items (computed, not direct input) ===
     idc_keur: float = 0.0          # Interest During Construction (computed)
     commitment_fees_keur: float = 0.0  # Commitment fees on undrawn debt
@@ -236,7 +236,7 @@ class CapexStructure:
 class OpexItem:
     """Single OPEX line item with individual escalation.
 
-    Corresponds to Excel Inputs rows 146-161 (15 OPEX categories).
+    OPEX item rows (15 OPEX categories).
     Each item has Y1 amount and annual escalation rate.
 
     Example:
@@ -271,23 +271,23 @@ class OpexItem:
 class TechnicalParams:
     """Technical parameters for the project.
 
-    Corresponds to Excel Inputs rows 51-68.
+    Technical parameter rows.
     """
-    capacity_mw: float             # Inputs!D51 - Installed capacity (75.26 MW)
-    yield_scenario: str            # Inputs!D52 - "P_50", "P90-10y", etc.
-    operating_hours_p50: float = 0.0    # Inputs!D64 - P50 yield hours (1,494)
+    capacity_mw: float             #
+    yield_scenario: str            #
+    operating_hours_p50: float = 0.0    #
     operating_hours_p90_1y: float | None = None  # P90-1y hours (single year exceedance)
-    operating_hours_p90_10y: float = 0.0  # Inputs!D68 - P90-10y hours (1,410)
+    operating_hours_p90_10y: float = 0.0  #
     operating_hours_p99_1y: float | None = None  # P99-1y hours (scenario engine)
-    pv_degradation: float = 0.004  # Inputs!D56 - Annual degradation (0.4%)
-    bess_degradation: float = 0.003  # Inputs!D57 - BESS degradation (0.3%)
-    plant_availability: float = 0.99  # Inputs!D58 - Plant availability (99%)
-    grid_availability: float = 0.99   # Inputs!D59 - Grid availability (99%)
-    bess_enabled: bool = False     # Inputs!D140 - BESS enabled flag
+    pv_degradation: float = 0.004  #
+    bess_degradation: float = 0.003  #
+    plant_availability: float = 0.99  #
+    grid_availability: float = 0.99   #
+    bess_enabled: bool = False     #
 
     @property
     def combined_availability(self) -> float:
-        """Combined plant × grid availability (98% for Oborovo)."""
+        """Combined plant × grid availability (98% for )."""
         return self.plant_availability * self.grid_availability
 
 
@@ -295,20 +295,20 @@ class TechnicalParams:
 class RevenueParams:
     """Revenue parameters including PPA and market pricing.
 
-    Corresponds to Excel Inputs rows 78-141.
+    Revenue parameter rows.
     """
-    ppa_base_tariff: float         # Inputs!D78 - Base PPA tariff (57 €/MWh)
-    ppa_term_years: float       # Inputs!D81 - PPA term in years (supports 12.5 for mid-year expiry)
-    ppa_index: float = 0.02        # Inputs!D83 - PPA annual index (2%)
-    ppa_production_share: float = 1.0  # Inputs!D80 - Share of production in PPA
-    market_scenario: str = "Central"  # Inputs!B103 - Market scenario name
+    ppa_base_tariff: float         #
+    ppa_term_years: float       #
+    ppa_index: float = 0.02        #
+    ppa_production_share: float = 1.0  #
+    market_scenario: str = "Central"  #
     market_prices_curve: tuple[float, ...] = ()  # Inputs row 107 - Market price curve
-    market_inflation: float = 0.02  # Inputs!B129 - Market price inflation (2%)
-    balancing_cost_pv: float = 0.025  # Inputs!D114 - Balancing cost % (2.5%)
-    balancing_cost_bess: float = 0.025  # Inputs!D115 - BESS balancing cost
-    balancing_cost_wind_eur_mwh: float = 0.0  # Wind balancing cost (EUR/MWh), e.g. 8.0 for TUHO
-    co2_enabled: bool = False      # Inputs!D139 - CO2 certificates enabled
-    co2_price_eur: float = 1.5     # Inputs!E141 - CO2 price (1.5 €/ton)
+    market_inflation: float = 0.02  #
+    balancing_cost_pv: float = 0.025  #
+    balancing_cost_bess: float = 0.025  #
+    balancing_cost_wind_eur_mwh: float = 0.0  # Wind balancing cost (EUR/MWh), e.g. 8.0 for 
+    co2_enabled: bool = False      #
+    co2_price_eur: float = 1.5     #
 
     def tariff_at_year(self, year: int) -> float:
         """Return PPA tariff in year with escalation.
@@ -344,54 +344,54 @@ class RevenueParams:
 class FinancingParams:
     """Financing parameters including debt and equity structure.
 
-    Corresponds to Excel Inputs rows 168-349.
+    Financing parameter rows.
     """
     # Equity structure
-    share_capital_keur: float = 500.0   # Inputs!D312 - Share capital (500 k€)
-    share_premium_keur: float = 0.0     # Inputs!D313 - Share premium
-    shl_amount_keur: float = 13547.2     # Inputs!D325 - Shareholder loan (13,547.2 k€)
-    shl_rate: float = 0.08              # Inputs!F328 - SHL interest rate (8%)
+    share_capital_keur: float = 500.0   #
+    share_premium_keur: float = 0.0     #
+    shl_amount_keur: float = 13547.2     #
+    shl_rate: float = 0.08              #
 
     # Debt structure
-    gearing_ratio: float = 0.7524       # Inputs!D168 - Gearing ratio (75.24%)
-    senior_debt_amount_keur: float = 0.0  # Inputs!D192 - Senior debt (computed)
-    senior_tenor_years: int = 14        # Inputs!D196 - Senior debt tenor (14 years)
-    base_rate: float = 0.03             # Inputs!D202 - Base rate (3%)
-    margin_bps: int = 265               # Inputs!D203 - Margin in basis points (265)
-    floating_share: float = 0.2         # Inputs!B39 - Floating rate share (20%)
-    fixed_share: float = 0.8            # Inputs!B40 - Fixed rate share (80%)
-    hedge_coverage: float = 0.8         # Inputs!D230 - Hedge coverage (80%)
+    gearing_ratio: float = 0.7524       #
+    senior_debt_amount_keur: float = 0.0  #
+    senior_tenor_years: int = 14        #
+    base_rate: float = 0.03             #
+    margin_bps: int = 265               #
+    floating_share: float = 0.2         #
+    fixed_share: float = 0.8            #
+    hedge_coverage: float = 0.8         #
 
     # Fees
-    commitment_fee: float = 0.0105      # Inputs!D214 - Commitment fee (1.05%)
-    arrangement_fee: float = 0.0        # Inputs!D218 - Arrangement fee
-    structuring_fee: float = 0.01       # Inputs!D217 - Structuring fee (1%)
+    commitment_fee: float = 0.0105      #
+    arrangement_fee: float = 0.0        #
+    structuring_fee: float = 0.01       #
 
     # Covenants
-    target_dscr: float = 1.15           # Inputs!D221 - Target DSCR (1.15x)
-    lockup_dscr: float = 1.10           # Inputs!D223 - Lockup DSCR threshold (1.10x)
-    min_llcr: float = 1.15             # Inputs!D224 - Minimum LLCR (1.15x)
+    target_dscr: float = 1.15           #
+    lockup_dscr: float = 1.10           #
+    min_llcr: float = 1.15             #
 
-    # Amortization type: "sculpted" (DSCR-based, OBOROVO) or "fixed_ds" (fixed debt service, TUHO)
+    # Amortization type: "sculpted" (DSCR-sculpted or fixed debt service)
     amortization_type: str = "sculpted"  # "sculpted" | "fixed_ds"
     fixed_ds_keur: float = 0.0           # Fixed debt service per period (kEUR) — for fixed_ds type
 
     # Reserve accounts
-    dsra_months: int = 6               # Inputs!D348 - DSRA funding months (6)
+    dsra_months: int = 6               #
 
     # Equity IRR calculation method:
-    # "equity_only" → IRR base = capex - debt - SHL (TUHO style)
-    # "combined" → IRR base = share_capital + SHL, cash flows include SHL interest + principal (Oborovo style)
+    # "equity_only" → IRR base = capex - debt - SHL ( style)
+    # "combined" → IRR base = share_capital + SHL, cash flows include SHL interest + principal ( style)
     equity_irr_method: str = "equity_only"
 
     # Debt sizing method:
     # "dscr_sculpt" → debt = min(DSCR-constrained, gearing_cap) — default
-    # "gearing_cap" → debt = max(DSCR-constrained, gearing_cap) — gearing wins (Oborovo style)
+    # "gearing_cap" → debt = max(DSCR-constrained, gearing_cap) — gearing wins ( style)
     # "fixed" → debt = fixed_debt_keur (override)
     debt_sizing_method: str = "dscr_sculpt"
     fixed_debt_keur: float | None = None  # Override sculpted debt with fixed amount
     # Per-period DSCR targets for dual-DSCR sculpting (PPA vs merchant)
-    # e.g., [1.20] * 24 + [1.45] * 40 for TUHO: 24 PPA periods at 1.20x, then merchant at 1.45x
+    # e.g., [1.20] * 24 + [1.45] * 40 for : 24 PPA periods at 1.20x, then merchant at 1.45x
     dscr_schedule: list[float] | None = None
 
     # SHL repayment method:
@@ -399,7 +399,7 @@ class FinancingParams:
     # "cash_sweep" — principal iz FCF nakon senior DS (po prioritetu)
     # "pik" — kamate i principal se kapitaliziraju uvijek
     # "accrued" — ništa se ne plaća, sve do exit/refinanciranja
-    # "pik_then_sweep" — PIK dok nema FCF, sweep kad ima (TUHO)
+    # "pik_then_sweep" — PIK dok nema FCF, sweep kad ima ()
     shl_repayment_method: str = "bullet"
     shl_pik_switch_period: int = 0  # 0 = auto (kad senior_balance = 0)
     shl_tenor_years: int = 0  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
@@ -420,29 +420,29 @@ class FinancingParams:
 class TaxParams:
     """Tax parameters including corporate tax and loss carryforward.
 
-    Corresponds to Excel Inputs rows 403-426.
+    Tax parameter rows.
     """
-    corporate_rate: float = 0.10       # Inputs!D403 - Corporate tax rate (10%)
-    loss_carryforward_years: int = 5   # Inputs!D407 - Loss carryforward years (5)
-    loss_carryforward_cap: float = 1.0  # Inputs!D408 - Cap as % of profit (100%)
+    corporate_rate: float = 0.10       #
+    loss_carryforward_years: int = 5   #
+    loss_carryforward_cap: float = 1.0  #
     prior_tax_loss_keur: float = 0.0   # Deprecated: use construction_pl instead
-    legal_reserve_cap: float = 0.10    # Inputs!D410 - Legal reserve cap (% of capital)
+    legal_reserve_cap: float = 0.10    #
 
     # Construction P&L — deterministically computed tax loss
     construction_pl: Optional["ConstructionPLStatement"] = None
 
     # Thin cap / ATAD
-    thin_cap_enabled: bool = False     # Inputs!D414 - Thin cap enabled
-    thin_cap_de_ratio: float = 0.8     # Inputs!D415 - DE/equity ratio threshold
+    thin_cap_enabled: bool = False     #
+    thin_cap_de_ratio: float = 0.8     #
     atad_ebitda_limit: float = 0.30    # ATAD EBITDA interest limit (30%)
     atad_min_interest_keur: float = 3000.0  # ATAD minimum interest threshold
 
     # Withholding taxes
-    wht_sponsor_dividends: float = 0.05  # Inputs!D426 - WHT on dividends (5%)
-    wht_sponsor_shl_interest: float = 0.0  # Inputs!D423 - WHT on SHL interest (0%)
+    wht_sponsor_dividends: float = 0.05  #
+    wht_sponsor_shl_interest: float = 0.0  #
 
     # SHL interest cap (for foreign sovereign)
-    shl_cap_applies: bool = True       # Inputs!D412 - SHL interest cap applies
+    shl_cap_applies: bool = True       #
 
     @property
     def initial_tax_loss_keur(self) -> float:
@@ -501,31 +501,6 @@ class ProjectInputs:
 # Hash function for cache key generation (used by app/cache.py)
 
     # -------------------------------------------------------------------------
-    # Compatibility shims — project factories moved to app/project_factories.py
-    # These exist only for backward compatibility with existing tests/examples.
-    # Do not add new project-specific logic here.
-    # -------------------------------------------------------------------------
-    @classmethod
-    def create_default_oborovo(cls) -> "ProjectInputs":
-        """Deprecated: use app.project_factories.create_default_oborovo() directly."""
-        import warnings
-        warnings.warn("ProjectInputs.create_default_oborovo is deprecated; "
-                      "use app.project_factories.create_default_oborovo()",
-                      DeprecationWarning, stacklevel=2)
-        from app.project_factories import create_default_oborovo as factory
-        return factory()
-
-    @classmethod
-    def create_default_tuho_wind1(cls) -> "ProjectInputs":
-        """Deprecated: use app.project_factories.create_default_tuho_wind1() directly."""
-        import warnings
-        warnings.warn("ProjectInputs.create_default_tuho_wind1 is deprecated; "
-                      "use app.project_factories.create_default_tuho_wind1()",
-                      DeprecationWarning, stacklevel=2)
-        from app.project_factories import create_default_tuho_wind1 as factory
-        return factory()
-
-
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
     """Deterministic hash for frozen ProjectInputs (cache key).
 

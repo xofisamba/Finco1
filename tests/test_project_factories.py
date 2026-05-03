@@ -88,20 +88,6 @@ class TestProjectFactories:
         # Market prices should be simple (not Excel exact 57.0, 66.3, etc.)
         assert len(p.revenue.market_prices_curve) == 30
 
-    def test_project_factory_shims_have_deprecation_warnings(self):
-        """ProjectInputs factory shims emit DeprecationWarning when called."""
-        import warnings
-        from domain.inputs import ProjectInputs
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            try:
-                p = ProjectInputs.create_default_oborovo()
-            except DeprecationWarning:
-                pass  # expected
-            found = any(issubclass(x.category, DeprecationWarning) for x in w)
-            assert found, "No DeprecationWarning raised for create_default_oborovo"
-
-
 def _run_waterfall_for_inputs(inputs):
     """Helper: run headless waterfall for generic project inputs."""
     from domain.period_engine import PeriodEngine

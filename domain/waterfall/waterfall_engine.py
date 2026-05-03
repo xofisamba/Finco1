@@ -134,39 +134,6 @@ def compute_ebitda_schedule(
     return ebitda_by_period
 
 
-def compute_tax(
-    ebitda_keur: float,
-    depreciation_keur: float,
-    interest_senior_keur: float,
-    interest_shl_keur: float,
-    fiscal_reintegration_keur: float,
-    tax_rate: float,
-    prior_tax_loss: float,
-    loss_carryforward_cap: float = 1.0,
-) -> tuple[float, float]:
-    """Compute tax liability with loss carryforward.
-
-    Returns:
-        (tax_keur, new_tax_loss)
-    """
-    # Taxable profit = EBITDA - depreciation - interest + fiscal reintegration
-    taxable = ebitda_keur - depreciation_keur - interest_senior_keur - interest_shl_keur + fiscal_reintegration_keur
-
-    # Apply prior tax losses
-    taxable_after_loss = max(0, taxable - prior_tax_loss)
-
-    # Tax
-    tax = taxable_after_loss * tax_rate
-
-    # New tax loss = unused portion of prior loss + current year loss
-    new_loss = max(0, prior_tax_loss - taxable) + max(0, -taxable_after_loss)
-
-    # Cap loss carryforward
-    new_loss = min(new_loss, ebitda_keur * loss_carryforward_cap)
-
-    return tax, new_loss
-
-
 def compute_llcr(
     fcf_schedule: list[float],
     debt_balance: float,
@@ -480,17 +447,13 @@ def run_waterfall(
         prior_tax_loss = prior_tax_loss_keur
     else:
         # Estimate from construction-period financial costs
-        # For OBOROVO (12m construction): ≈ idc + fees + ~7060 kEUR carryforward
+        # Estimate from construction-period financial costs as conservative fallback
         prior_tax_loss = idc_keur + bank_fees_keur + commitment_fees_keur
     fiscal_reintegration = 0.0
     fiscal_reintegration_applied = True  # Already accounted for in prior_tax_loss
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
     op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
 
-    # Phase 3B: additional amount calibrated to match model CIT
-    # In production, calculate from: construction-period interest (capitalized + depreciated)
-    # + any other book-vs-tax differences. The current model doesn't track construction-period
-    # interest separately, so this is an approximation.
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
     op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
 
