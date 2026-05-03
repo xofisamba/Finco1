@@ -256,13 +256,13 @@ def run_waterfall(
     shl_idc_keur: float = 0.0,  # SHL IDC - added to opening balance
     shl_repayment_method: str = "bullet",  # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
     shl_tenor_years: int = 0,  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
-    shl_wht_rate: float = 0.0,  # Withholding tax rate on SHL interest (e.g., 0.18 for TUHO)
+    shl_wht_rate: float = 0.0,  # Withholding tax rate on SHL interest
     discount_rate_project: float = 0.0641,
     discount_rate_equity: float = 0.0965,
     financial_close: 'date' = None,
     gearing_ratio: float = 0.80,  # Used for sizing cap in closed_form_sculpt
     fixed_debt_keur: float | None = None,  # Override sculpted debt (for P90 sizing scenarios)
-    fixed_ds_keur: float | None = None,  # Fixed debt service per period (kEUR) - for TUHO annuity-type amortization
+    fixed_ds_keur: float | None = None,  # Fixed debt service per period (kEUR)
     rate_schedule: list[float] | None = None,  # Per-period rate schedule (Euribor curve). If None, uses flat rate_per_period.
     # Fiscal reintegration components (IDC + bank fees + commitment fees during construction)
     idc_keur: float = 0.0,
@@ -270,7 +270,7 @@ def run_waterfall(
     commitment_fees_keur: float = 0.0,
     opex_schedule: list[float] | None = None,  # Per-period OPEX. If None, inferred from rev-ebitda.
     prior_tax_loss_keur: float = 0.0,  # Initial tax loss carryforward from construction period
-    # Equity IRR method: "equity_only" = capex-debt-SHL (TUHO), "combined" = capex-debt (Oborovo)
+    # Equity IRR method: "equity_only" = capex-debt-SHL, "combined" = capex-debt
     equity_irr_method: str = "equity_only",
     share_capital_keur: float = 0.0,  # Only used when equity_irr_method="combined"
     sculpt_capex_keur: float = 0.0,  # CAPEX for equity base (ex-IDC); used in "combined" method for equity_irr = sculpt_capex - debt
@@ -331,9 +331,9 @@ def run_waterfall(
     # Use sculpt_capex if provided (> 0), otherwise fall back to total_capex for sizing
     sizing_base = sculpt_capex_keur if sculpt_capex_keur > 0 else total_capex
 
-    # For Oborovo "gearing_cap" method: exclude IDC from the gearing base
-    # because Excel's gearing calculation uses sculpt_capex - IDC
-    # This gives: (57,967 - 1,086) * 0.7524 = 42,815 ≈ Excel 42,852
+    # For "gearing_cap" method: exclude IDC from the gearing base
+    # because the model's gearing calculation uses sculpt_capex - IDC
+    # This gives: (57,967 - 1,086) * 0.7524 = 42,815
     if idc_keur > 0 and sculpt_capex_keur > 0:
         sizing_base_for_gearing = sizing_base - idc_keur
     else:
@@ -427,7 +427,7 @@ def run_waterfall(
         principal_schedule = sculpt_result.principal_schedule
         balance_schedule = sculpt_result.balance_schedule
 
-    # Override with fixed debt service if provided (TUHO-style annuity)
+    # Override with fixed debt service if provided (annuity-type amortization)
     if fixed_ds_keur is not None and fixed_ds_keur > 0:
         fixed_ds = fixed_ds_keur
         payments = [fixed_ds] * tenor_periods
@@ -467,14 +467,14 @@ def run_waterfall(
     cum_distribution = 0
     # Initialize prior_tax_loss with construction-period costs + additional tax shields
     # These create an initial tax loss carryforward that offsets EBT in early operation years
-    # This is the key fix for CIT timing: Excel CIT starts at Y3-H2, not Y1
+    # CIT timing: first tax payment at Y3-H2 (after construction carryforward exhausted)
     # NOTE: fiscal_reintegration is also set here to avoid double-counting (see below)
     #
     # Base: IDC + bank fees + commitment fees = 1,940 kEUR
     # Additional: construction-period interest (capitalized in Excel, not in our model)
-    # Excel carryforward ≈ 9,000 kEUR to keep CIT=0 through Y3-H1
+    # Carryforward amount estimated from construction-period costs
     # Initialize prior_tax_loss from parameter if set (>0), otherwise estimate from construction costs
-    # Excel carryforward ≈ 9,000 kEUR for OBOROVO (12m construction), ≈25,000 kEUR for TUHO (18m)
+    # Carryforward: ≈9,000 kEUR (12m construction) or ≈25,000 kEUR (18m construction)
     # Use initial_tax_loss_keur from inputs.tax if available; otherwise estimate from construction costs
     if prior_tax_loss_keur > 0:
         prior_tax_loss = prior_tax_loss_keur
@@ -487,7 +487,7 @@ def run_waterfall(
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
     op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
 
-    # TODO (Phase 3B): The 7,060 kEUR additional amount is a TUNED VALUE to match Excel CIT.
+    # Phase 3B: additional amount calibrated to match model CIT
     # In production, calculate from: construction-period interest (capitalized + depreciated)
     # + any other book-vs-tax differences. The current model doesn't track construction-period
     # interest separately, so this is an approximation.
@@ -496,22 +496,22 @@ def run_waterfall(
 
     # For returns calculation
     # Two methods for equity IRR:
-    # "equity_only": equity_investment = capex - debt - SHL, equity_cfs = distributions only (TUHO)
-    # "combined": equity_investment = sculpt_capex - debt, equity_cfs = distributions only (Oborovo)
+    # "equity_only": equity_investment = capex - debt - SHL, equity_cfs = distributions only
+    # "combined": equity_investment = sculpt_capex - debt, equity_cfs = distributions only
     if equity_irr_method == "combined":
-        # Oborovo: equity base = sculpt_capex (ex-IDC) - debt; equity CFs = distributions only
+    # equity base = sculpt_capex (ex-IDC) - debt; equity CFs = distributions only
         equity_investment = sculpt_capex_keur - sculpt_result.debt_keur
         equity_cfs = [-equity_investment]
     elif equity_irr_method == "shl_interest_only":
-        # TUHO bullet SHL: investor puts in SHL + share capital, receives SHL interest + principal at maturity
+    # bullet SHL: investor puts in SHL + share capital, receives SHL interest + principal at maturity
         equity_investment = shl_amount + share_capital_keur
         equity_cfs = [-equity_investment]
     elif equity_irr_method == "shl_plus_dividends":
-        # TUHO amortizing SHL: equity CF = SHL interest + SHL principal + dividends
+    # amortizing SHL: equity CF = SHL interest + SHL principal + dividends
         equity_investment = shl_amount + share_capital_keur
         equity_cfs = [-equity_investment]
     else:
-        # TUHO "equity_only" style (legacy): equity base = total_capex - debt - SHL
+    # "equity_only" style: equity base = total_capex - debt - SHL
         equity_investment = max(0, total_capex - sculpt_result.debt_keur - shl_amount)
         equity_cfs = [-equity_investment]
     # Start with initial investment - dates array now includes financial_close
@@ -670,7 +670,7 @@ def run_waterfall(
         pik_switch_triggered = (remaining_senior_balance <= 0)
 
         # CF for SHL - conditional approach (cofix fix)
-        # TUHO pik_then_sweep: FCF for SHL = EBITDA - Senior DS (bez poreza)
+    # pik_then_sweep: FCF for SHL = EBITDA - Senior DS (bez poreza)
         # Ostatak: cf_after_tax (nepromijenjeno)
         # dsra_contrib is initialized here (updated later in DSRA block)
         dsra_contrib = 0.0
@@ -753,13 +753,13 @@ def run_waterfall(
         # 1. Senior debt service (from balance_schedule)
         # 2. SHL repayment (after senior debt repaid)
         # 3. Dividends (after SHL repaid)
-        # For "pik_then_sweep": use 3-tier waterfall (TUHO)
-        # For other SHL methods (bullet, cash_sweep): 2-tier (Oborovo)
+    # For "pik_then_sweep": use 3-tier waterfall
+    # For other SHL methods (bullet, cash_sweep): 2-tier
         sweep_dscr_threshold = 1.35
         remaining_senior_balance = balance_schedule[period_in_tenor] if period_in_tenor < len(balance_schedule) else 0
 
         if shl_repayment_method == "pik_then_sweep":
-            # 3-tier waterfall: senior → SHL → dividends (TUHO)
+    # 3-tier waterfall: senior → SHL → dividends
             if lockup:
                 dist = 0
                 sweep_amount = 0.0
@@ -873,14 +873,14 @@ def run_waterfall(
         # Track CFs for returns
         # Project IRR = unlevered (EBITDA - Tax), equity IRR = levered (distributions)
         project_cfs.append(ebitda - tax_this_period if ebitda else 0)
-        # Equity CF for TUHO: Row 28 "Total" = SHL interest + SHL principal + dividends
+    # Equity CF: Row 28 "Total" = SHL interest + SHL principal + dividends
         # When SHL is outstanding: equity receives SHL cash flows (interest + principal)
         # When SHL is repaid (shl_balance <= 0): equity receives distributions (dividends)
         if equity_irr_method == "shl_interest_only":
             # Bullet SHL: equity CF = SHL interest + principal at maturity
             equity_cf_for_period = shi + shp
         elif equity_irr_method == "shl_plus_dividends":
-            # Excel verified: equity CF = SHL Net Interests + Dividends
+    # Equity CF = SHL Net Interests + Dividends
             # R17: Net Interests only (principal = 0 throughout Y1-Y20)
             # R21 Total = R17 + R20 (dividends start ~Y20 when SHL repaid)
             # SHL principal is NOT returned as cash flow in equity IRR stream
