@@ -5,6 +5,9 @@ from dataclasses import replace
 
 from app.calibration import build_period_engine, load_project_inputs
 from domain.revenue.generation import (
+import pytest
+pytestmark = pytest.mark.legacy_excel
+
     _certificate_revenue_keur,
     _period_energy_revenue_keur,
     full_generation_schedule,

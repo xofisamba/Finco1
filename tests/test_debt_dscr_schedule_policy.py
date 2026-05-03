@@ -7,6 +7,9 @@ DSCR policy remains pending until later period rows are extracted.
 """
 from __future__ import annotations
 
+import pytest
+pytestmark = pytest.mark.legacy_excel
+
 from app.calibration import build_run_config, load_project_inputs
 
 
