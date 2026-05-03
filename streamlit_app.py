@@ -34,10 +34,11 @@ with st.sidebar:
     run_button = st.button("🚀 Run Model", use_container_width=True)
 
 if run_button or st.session_state.demo_result is not None:
-    if run_button or st.session_state.last_project_type != project_type:
+    if run_button or st.session_state.last_project_type != project_type or st.session_state.get("last_scenario") != scenario:
         with st.spinner("Running model..."):
             st.session_state.demo_result = run_demo_project(project_type, scenario)
             st.session_state.last_project_type = project_type
+            st.session_state["last_scenario"] = scenario
             st.session_state.last_scenario = scenario
 
     demo: DemoResult = st.session_state.demo_result

@@ -29,3 +29,15 @@ def test_status_labels_has_required_keys():
     assert "ok" in STATUS_LABELS
     assert "partial" in STATUS_LABELS
     assert "experimental" in STATUS_LABELS
+
+
+def test_status_labels_include_full_partial_experimental():
+    from app.ui.components import STATUS_LABELS
+    assert STATUS_LABELS["full"] == "✅ Full model"
+    assert STATUS_LABELS["partial"] == "⚠️ Partial integration"
+    assert STATUS_LABELS["experimental"] == "🧪 Experimental"
+
+
+def test_format_metric_value_handles_none():
+    from app.ui.components import format_metric_value
+    assert format_metric_value(None) == "n/a"

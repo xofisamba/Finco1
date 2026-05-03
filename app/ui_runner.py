@@ -123,6 +123,13 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
         else:
             messages.append(f"Unknown project type: {project_type}")
 
+        # Scenario informational notice
+        if scenario != "Base":
+            messages.append(
+                "Scenario selector is informational only. "
+                "Downside/Upside scaling is not yet implemented."
+            )
+
         # Validation
         if project_type in ("Solar", "Wind", "BESS", "Solar+BESS", "Wind+BESS"):
             from domain.validation import validate_project_inputs

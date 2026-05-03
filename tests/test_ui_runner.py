@@ -39,3 +39,15 @@ def test_wind_has_no_error_severity_issues():
     result = run_demo_project("Wind")
     errors = [i for i in result.validation_issues if i.severity == "error"]
     assert len(errors) == 0, f"Unexpected validation errors: {errors}"
+
+
+def test_downside_scenario_returns_inactive_notice():
+    from app.ui_runner import run_demo_project
+    result = run_demo_project("Solar", "Downside")
+    assert any("informational" in m.lower() or "not yet implemented" in m.lower() for m in result.messages)
+
+
+def test_upside_scenario_returns_inactive_notice():
+    from app.ui_runner import run_demo_project
+    result = run_demo_project("Solar", "Upside")
+    assert any("informational" in m.lower() or "not yet implemented" in m.lower() for m in result.messages)
