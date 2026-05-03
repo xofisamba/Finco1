@@ -202,18 +202,14 @@ def run_portfolio_waterfall(
     avg_d = sum(dscrs) / len(dscrs) if dscrs else 0.0
     min_d = min(dscrs) if dscrs else 0.0
 
-    # Compute portfolio debt from sculpted schedule (or 0 if not available)
-    if portfolio_inputs is not None:
-        if portfolio_debt_service_schedule is not None:
-            # Explicit schedule provided — sculpt just for debt amount
-            sculpted = closed_form_sculpt(
-                cfads_list, [rate_per_period] * n, n,
-                portfolio_inputs.shared_financing.target_dscr,
-            )
-            portfolio_debt = sculpted.debt_keur
-        else:
-            # Already built pds above
-            portfolio_debt = pds.debt_keur
+    # Compute portfolio debt: 0.0 when explicit schedule is supplied,
+    # sculpted pds.debt_keur otherwise (built above via build_portfolio_debt_service_schedule)
+    if portfolio_debt_service_schedule is not None:
+        # Explicit schedule provided — debt amount is not inferred from CFADS
+        portfolio_debt = 0.0
+    elif portfolio_inputs is not None:
+        # Use sculpted debt from build_portfolio_debt_service_schedule()
+        portfolio_debt = pds.debt_keur
     else:
         portfolio_debt = 0.0
 

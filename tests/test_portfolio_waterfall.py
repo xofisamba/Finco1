@@ -198,6 +198,24 @@ class TestPortfolioResult:
         assert hasattr(pr, "portfolio_sponsor_irr")
 
 
+def test_explicit_debt_service_schedule_overrides_sculpting():
+    """When explicit portfolio_debt_service_schedule is supplied, portfolio_debt_keur = 0.0."""
+    wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
+    ds_schedule = (200.0, 200.0)
+    result = run_portfolio_waterfall(None, (("X", wf),),
+                                     portfolio_debt_service_schedule=ds_schedule)
+    assert result.portfolio_debt_keur == 0.0
+
+
+def test_portfolio_uses_sculpted_debt_service_when_no_schedule_supplied():
+    """When no explicit schedule is given, portfolio_debt_keur comes from sculpted schedule (>0)."""
+    wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+    wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+    result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
+    assert result.portfolio_debt_keur > 0
+
+
 def test_portfolio_irr_fields_are_documented_placeholders():
     """portfolio_project_irr and portfolio_sponsor_irr are not yet implemented."""
-    pass  # placeholder until portfolio-level IRR aggregation is ready
+    assert PortfolioResult.__dataclass_fields__["portfolio_project_irr"].default == 0.0
+    assert PortfolioResult.__dataclass_fields__["portfolio_sponsor_irr"].default == 0.0
