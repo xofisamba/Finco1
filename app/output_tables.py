@@ -197,7 +197,7 @@ def build_portfolio_table(portfolio_result) -> pd.DataFrame:
     )
     labels = [
         "Pooled Revenue", "Pooled EBITDA", "Pooled Tax", "Pooled CFADS",
-        "Portfolio Senior Debt Service", "Portfolio DSCR",
+        "Portfolio Senior Debt Service", "Portfolio DSCR", "Portfolio Debt",
     ]
     values = [
         _safe_get_or_none(portfolio_result, 'total_revenue_keur'),
@@ -206,6 +206,7 @@ def build_portfolio_table(portfolio_result) -> pd.DataFrame:
         pooled_cfads,
         _safe_get_or_none(portfolio_result, 'total_senior_ds_keur'),
         _safe_get_or_none(portfolio_result, 'avg_dscr'),
+        _safe_get_or_none(portfolio_result, 'portfolio_debt_keur'),
     ]
 
     df = pd.DataFrame({"Value": values}, index=labels)

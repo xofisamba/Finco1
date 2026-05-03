@@ -5,6 +5,19 @@ Provides @st.cache_data wrappers for waterfall and other expensive functions.
 import streamlit as st
 from typing import Optional
 
+
+def deprecated(msg):
+    """Decorator to mark functions as deprecated."""
+    import warnings
+    def wrapper(func):
+        def inner(*args, **kwargs):
+            warnings.warn(f"{func.__name__} is deprecated. {msg}", DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+        inner.__name__ = func.__name__
+        return inner
+    return wrapper
+
+
 # This module should only be imported in UI context (Streamlit)
 
 
@@ -139,6 +152,7 @@ def get_waterfall_cache() -> WaterfallCache:
     return _waterfall_cache
 
 
+@deprecated("Use cached_run_waterfall_v3() instead. This function will be removed.")
 def compute_waterfall_cached(
     inputs_key: str,
     inputs,
@@ -152,93 +166,28 @@ def compute_waterfall_cached(
     discount_rate_project: float = 0.0641,
     discount_rate_equity: float = 0.0965,
 ):
-    """Compute waterfall with caching.
-
-    This function manages the cache lifecycle. Call this instead of
-    run_waterfall directly in UI pages.
-
-    Args:
-        inputs_key: Unique key for current inputs (e.g., hash of key params)
-        inputs: ProjectInputs instance (used to rebuild schedules)
-        engine: PeriodEngine instance
-        target_dscr: Target DSCR
-        lockup_dscr: Lockup DSCR threshold
-        tax_rate: Tax rate
-        dsra_months: DSRA months
-        shl_amount: SHL amount
-        shl_rate: SHL rate
-        discount_rate_project: Discount rate for project NPV
-        discount_rate_equity: Discount rate for equity NPV
-
-    Returns:
-        WaterfallResult
-    """
-    cache = get_waterfall_cache()
-
-    # Check cache
-    cached_result = cache.get(inputs_key)
-    if cached_result is not None:
-        return cached_result
-
-    # Compute schedules from inputs
-    from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
-    from domain.opex.projections import opex_schedule_annual
-
-    revenue = full_revenue_schedule(inputs, engine)
-    generation = full_generation_schedule(inputs, engine)
-    opex_annual = opex_schedule_annual(inputs, inputs.info.horizon_years)
-
-    # Build per-period schedules aligned with periods_list
-    periods_list = list(engine.periods())
-    dep_per_year = inputs.capex.total_capex / inputs.info.horizon_years
-
-    ebitda_schedule = []
-    depreciation_schedule = []
-    opex_schedule = []
-    for p in periods_list:
-        if not p.is_operation:
-            ebitda_schedule.append(0.0)
-            depreciation_schedule.append(0.0)
-            opex_schedule.append(0.0)
-        else:
-            rev = revenue.get(p.index, 0.0)
-            opex = opex_annual.get(p.year_index, 0.0) / 2
-            ebitda_schedule.append(max(0.0, rev - opex))
-            depreciation_schedule.append(dep_per_year / 2)
-            opex_schedule.append(opex)
-
-    # Compute waterfall
-    from domain.waterfall.waterfall_engine import run_waterfall
-
+    """Deprecated. Delegates to cached_run_waterfall_v3()."""
+    from app.waterfall_core import run_waterfall_v3_core
     periods_list = list(engine.periods())
     op_periods = [p for p in periods_list if p.is_operation]
-    tenor_periods = min(len(op_periods), inputs.financing.senior_tenor_years * 2)
-
-    rate_per_period = inputs.financing.all_in_rate / 2  # Semi-annual
-
-    result = run_waterfall(
-        ebitda_schedule=ebitda_schedule,
-        revenue_schedule=[revenue.get(p.index, 0.0) for p in periods_list],
-        generation_schedule=[generation.get(p.index, 0.0) for p in periods_list],
-        opex_schedule=opex_schedule,
-        periods=periods_list,
-        total_capex=inputs.capex.total_capex,
-        rate_per_period=rate_per_period,
-        tenor_periods=tenor_periods,
+    return run_waterfall_v3_core(
+        inputs=inputs,
+        engine=engine,
+        rate_per_period=inputs.financing.all_in_rate / 2,
+        tenor_periods=len(op_periods),
         target_dscr=target_dscr,
         lockup_dscr=lockup_dscr,
         tax_rate=tax_rate,
         dsra_months=dsra_months,
         shl_amount=shl_amount,
         shl_rate=shl_rate,
-        discount_rate_project=discount_rate_project,
-        discount_rate_equity=discount_rate_equity,
+        shl_idc_keur=0.0,
+        shl_repayment_method="bullet",
+        equity_irr_method="equity_only",
+        share_capital_keur=inputs.financing.share_capital_keur,
+        sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
+        debt_sizing_method=inputs.financing.debt_sizing_method,
     )
-
-    cache.set(inputs_key, result)
-
-    return result
-
 
 def invalidate_waterfall_cache() -> None:
     """Invalidate waterfall cache. Call when inputs change."""

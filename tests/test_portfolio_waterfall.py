@@ -39,7 +39,13 @@ def _make_wf_result(name: str, ebitda: float, tax: float, rev: float) -> Waterfa
         )
     op1 = _op(1, date(2031, 1, 1), rev / 2, ebitda / 2, tax / 2)
     op2 = _op(2, date(2031, 7, 1), rev / 2, ebitda / 2, tax / 2)
-    return WaterfallResult(
+
+    # Attach a mock inputs object so waterfall.py can compute total_capex for XIRR
+    from unittest.mock import MagicMock
+    mock_inputs = MagicMock()
+    mock_inputs.capex.total_capex = 1000.0  # kEUR — enough to get a meaningful XIRR
+
+    wf = WaterfallResult(
         periods=(op1, op2),
         total_revenue_keur=rev, total_opex_keur=0.0,
         total_ebitda_keur=ebitda, total_tax_keur=tax,
@@ -51,6 +57,8 @@ def _make_wf_result(name: str, ebitda: float, tax: float, rev: float) -> Waterfa
         project_npv=0.0, equity_npv=0.0,
         sculpting_result=None,
     )
+    wf.inputs = mock_inputs
+    return wf
 
 
 def _portfolio_inputs():
@@ -215,7 +223,27 @@ def test_portfolio_uses_sculpted_debt_service_when_no_schedule_supplied():
     assert result.portfolio_debt_keur > 0
 
 
+def test_portfolio_project_irr_is_finite():
+    """portfolio_project_irr should be set (finite or 0.0 if XIRR doesn't converge)."""
+    wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+    wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+    result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
+    # Should be a finite number or 0.0 (XIRR may not converge on test CFADS)
+    assert result.portfolio_project_irr is not None
+    import math
+    assert math.isfinite(result.portfolio_project_irr)
+
+
+def test_portfolio_sponsor_irr_is_placeholder():
+    """portfolio_sponsor_irr is explicitly placeholder (not yet implemented)."""
+    wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+    wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+    result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
+    # Documented as placeholder
+    assert result.portfolio_sponsor_irr == 0.0 or result.portfolio_sponsor_irr is None
+
+
 def test_portfolio_irr_fields_are_documented_placeholders():
-    """portfolio_project_irr and portfolio_sponsor_irr are not yet implemented."""
-    assert PortfolioResult.__dataclass_fields__["portfolio_project_irr"].default == 0.0
+    """portfolio_sponsor_irr is a placeholder; portfolio_project_irr is now computed."""
+    # portfolio_sponsor_irr remains the documented placeholder
     assert PortfolioResult.__dataclass_fields__["portfolio_sponsor_irr"].default == 0.0

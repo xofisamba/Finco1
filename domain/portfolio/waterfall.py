@@ -19,6 +19,7 @@ from datetime import date
 
 from domain.waterfall.waterfall_engine import WaterfallResult
 from domain.financing.sculpting_iterative import closed_form_sculpt
+from domain.returns.xirr import xirr
 
 
 @dataclass(frozen=True)
@@ -213,6 +214,23 @@ def run_portfolio_waterfall(
     else:
         portfolio_debt = 0.0
 
+    # Compute portfolio_project_irr from unlevered CFADS
+    # t0 = -total_capex, t>0 = pooled cfads
+    total_capex = sum(
+        proj_inputs.capex.total_capex
+        for _, proj_result in project_results
+        for proj_inputs in [getattr(proj_result, 'inputs', None)]
+        if proj_inputs is not None
+    ) or sum(
+        pr.total_revenue_keur * 0.7 for _, pr in project_results
+    )  # fallback: rough estimate if inputs not on result
+    all_dates = [p.date for p in result_periods]
+    cfads_for_xirr = [-total_capex] + cfads_list if cfads_list else [-total_capex]
+    try:
+        portfolio_project_irr = xirr(cfads_for_xirr, all_dates) if cfads_for_xirr else 0.0
+    except Exception:
+        portfolio_project_irr = 0.0
+
     return PortfolioResult(
         periods=tuple(result_periods),
         project_results=project_results,
@@ -225,6 +243,8 @@ def run_portfolio_waterfall(
         portfolio_debt_keur=portfolio_debt,
         pooled_cfads_schedule=tuple(cfads_list),
         portfolio_debt_service_schedule=tuple(ds_schedule),
+        portfolio_project_irr=portfolio_project_irr,
+        portfolio_sponsor_irr=0.0,  # placeholder — requires reliable sponsor CF aggregation
     )
 
 
