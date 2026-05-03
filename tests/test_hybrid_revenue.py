@@ -21,8 +21,10 @@ def test_no_grid_constraint_means_no_clipping():
         tariff_eur_mwh=60.0,
     )
     result = hybrid_period_revenue(inputs, 1, 1.0)
-    assert result.clipped_mwh == result.total_generation_mwh
+    # clipped_mwh aliases curtailment_mwh; no constraint → no curtailment
+    assert result.clipped_mwh == 0.0
     assert result.curtailment_mwh == 0.0
+    assert result.exported_mwh == result.total_generation_mwh
 
 
 def test_grid_constraint_creates_clipped_energy():

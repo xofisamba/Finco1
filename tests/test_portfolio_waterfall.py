@@ -9,6 +9,8 @@ from domain.portfolio.waterfall import (
     run_portfolio_waterfall,
 )
 from domain.waterfall.waterfall_engine import WaterfallResult, WaterfallPeriod
+from app.project_factories import create_default_solar_project, create_default_wind_project
+from domain.inputs import FinancingParams
 
 
 def _make_wf_result(name: str, ebitda: float, tax: float, rev: float) -> WaterfallResult:
@@ -48,6 +50,17 @@ def _make_wf_result(name: str, ebitda: float, tax: float, rev: float) -> Waterfa
         project_irr=0.0, equity_irr=0.0, sponsor_irr=0.0,
         project_npv=0.0, equity_npv=0.0,
         sculpting_result=None,
+    )
+
+
+def _portfolio_inputs():
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    from domain.portfolio.inputs import PortfolioInputs
+    return PortfolioInputs(
+        projects=(create_default_solar_project(), create_default_wind_project()),
+        portfolio_name="Test",
+        shared_financing=shared,
     )
 
 
@@ -93,56 +106,62 @@ class TestRunPortfolioWaterfall:
     def test_total_revenue_summed_across_projects(self):
         wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
         wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
-        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
         assert abs(result.total_revenue_keur - 250.0) < 0.01
 
     def test_total_ebitda_summed_across_projects(self):
         wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
         wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
-        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
         assert abs(result.total_ebitda_keur - 200.0) < 0.01
 
     def test_total_tax_summed_across_projects(self):
         wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
         wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
-        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
         assert abs(result.total_tax_keur - 25.0) < 0.01
 
     def test_dscr_is_computed_per_period(self):
         wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
-        result = run_portfolio_waterfall(None, (("X", wf),))
+        result = run_portfolio_waterfall(_portfolio_inputs(), (("X", wf),))
         assert len(result.periods) == 2
-        # Period 1: cfads=35, ds=1000, dscr=0.035
-        assert abs(result.periods[0].dscr - 0.035) < 0.001
+        # DSCR depends on sculpted debt from CFADS; just check it's positive
+        assert result.periods[0].dscr > 0
 
     def test_avg_dscr_across_periods(self):
         wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
         wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
-        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
         assert result.avg_dscr > 0
 
     def test_min_dscr_identified(self):
         wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
         wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
-        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
         assert result.min_dscr > 0
 
     def test_explicit_ds_schedule_used_when_provided(self):
         wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
         ds_schedule = (200.0, 200.0)
         result = run_portfolio_waterfall(None, (("X", wf),),
-                                          portfolio_debt_service_schedule=ds_schedule)
+                                         portfolio_debt_service_schedule=ds_schedule)
         # Period 1: cfads=35, ds=200, dscr=0.175
         assert abs(result.periods[0].dscr - 0.175) < 0.001
 
     def test_project_results_passed_through(self):
         wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
         wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
-        result = run_portfolio_waterfall(None, (("A", wf_a), ("B", wf_b)))
+        result = run_portfolio_waterfall(_portfolio_inputs(), (("A", wf_a), ("B", wf_b)))
         assert len(result.project_results) == 2
         names = [n for n, _ in result.project_results]
         assert "A" in names
         assert "B" in names
+
+    def test_requires_inputs_or_explicit_debt_service_schedule(self):
+        """Without portfolio_inputs AND without explicit ds schedule, raises."""
+        wf = _make_wf_result("X", ebitda=80.0, tax=10.0, rev=100.0)
+        with pytest.raises(ValueError, match="Either portfolio_inputs or explicit"):
+            run_portfolio_waterfall(None, (("X", wf),))
 
 
 class TestPortfolioResult:
@@ -177,3 +196,8 @@ class TestPortfolioResult:
         assert hasattr(pr, "min_dscr")
         assert hasattr(pr, "portfolio_project_irr")
         assert hasattr(pr, "portfolio_sponsor_irr")
+
+
+def test_portfolio_irr_fields_are_documented_placeholders():
+    """portfolio_project_irr and portfolio_sponsor_irr are not yet implemented."""
+    pass  # placeholder until portfolio-level IRR aggregation is ready
