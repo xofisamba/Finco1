@@ -40,6 +40,8 @@ class HybridInputs:
     bess: Optional[BessParams] = None
     charge_from_curtailment_share: float = 1.0  # 0..1
     grid_charge_allowed: bool = True
+    grid_charge_mwh: float = 0.0               # grid charge limit for arbitrage
+    grid_arbitrage_spread_eur_mwh: float = 0.0  # buy/sell spread for grid arbitrage
     discharge_price_eur_mwh: float = 0.0  # if 0, uses tariff
 
     @property
@@ -59,8 +61,8 @@ class HybridRevenueBreakdown:
     wind_generation_mwh: float
     total_generation_mwh: float
     # Clipping / curtailment
-    clipped_mwh: float
-    curtailment_mwh: float
+    exported_mwh: float          # generation exported (total - curtailment)
+    curtailment_mwh: float       # energy not exported
     # Renewable revenue
     renewable_revenue_keur: float
     # BESS charge from curtailment
@@ -77,6 +79,9 @@ class HybridRevenueBreakdown:
     total_hybrid_revenue_keur: float
 
     # Backward-compatible aliases (read-only properties)
+    @property
+    def clipped_mwh(self) -> float:
+        return self.exported_mwh
     @property
     def ppa_revenue_keur(self) -> float:
         return self.renewable_revenue_keur
@@ -128,14 +133,13 @@ def hybrid_period_revenue(inputs: HybridInputs, year_index: int, day_fraction: f
     cap = inputs.total_capacity_mw
     grid_conn = inputs.grid_connection_mw
     if cap <= grid_conn or grid_conn <= 0:
-        clipped = total
+        exported = total
         curtailment = 0.0
     else:
-        clipped = total * (cap - grid_conn) / cap
-        curtailment = total - clipped
+        exported = total * grid_conn / cap
+        curtailment = total - exported
 
     # Renewable revenue: exported MWh × tariff
-    exported = total - curtailment
     indexed_tariff = inputs.tariff_eur_mwh * (1 + inputs.tariff_escalation) ** max(year_index - 1, 0)
     renewable_rev = exported * indexed_tariff / 1000
 
@@ -156,12 +160,16 @@ def hybrid_period_revenue(inputs: HybridInputs, year_index: int, day_fraction: f
         discharge_price = inputs.effective_discharge_price
         bess_curtail_rev = bess_discharge * discharge_price / 1000
 
-        # Grid arbitrage (if allowed)
+        # Grid arbitrage (after curtailment charge)
         if inputs.grid_charge_allowed:
-            # Simple grid arbitrage: BESS charges from grid at low price, discharges at high price
-            # Here we use a fraction of standalone BESS arbitrage as proxy
-            # (the full model would need grid price data)
-            bess_grid_arb = 0.0  # No separate grid price data; set to 0 for clarity
+            total_limit = bess.energy_mwh * bess.cycles_per_year * day_fraction
+            # First charge from curtailment
+            curtail_charged = bess_charge
+            remaining_throughput = max(0.0, total_limit - curtail_charged)
+            # Then grid charge limited by remaining throughput
+            grid_charge_limited = min(inputs.grid_charge_mwh, remaining_throughput)
+            grid_discharge = grid_charge_limited * bess.round_trip_efficiency
+            bess_grid_arb = grid_discharge * inputs.grid_arbitrage_spread_eur_mwh / 1000
 
         ancillary = bess.power_mw * bess.ancillary_revenue_eur_mw_year * day_fraction / 1000
         capacity = bess.power_mw * bess.capacity_revenue_eur_mw_year * day_fraction / 1000
@@ -173,7 +181,7 @@ def hybrid_period_revenue(inputs: HybridInputs, year_index: int, day_fraction: f
         solar_generation_mwh=solar,
         wind_generation_mwh=wind,
         total_generation_mwh=total,
-        clipped_mwh=clipped,
+        exported_mwh=exported,
         curtailment_mwh=curtailment,
         renewable_revenue_keur=renewable_rev,
         bess_charge_from_curtailment_mwh=bess_charge,
@@ -195,7 +203,7 @@ def annual_hybrid_revenue(inputs: HybridInputs, year_index: int) -> HybridRevenu
         solar_generation_mwh=h1.solar_generation_mwh + h2.solar_generation_mwh,
         wind_generation_mwh=h1.wind_generation_mwh + h2.wind_generation_mwh,
         total_generation_mwh=h1.total_generation_mwh + h2.total_generation_mwh,
-        clipped_mwh=h1.clipped_mwh + h2.clipped_mwh,
+        exported_mwh=h1.exported_mwh + h2.exported_mwh,
         curtailment_mwh=h1.curtailment_mwh + h2.curtailment_mwh,
         renewable_revenue_keur=h1.renewable_revenue_keur + h2.renewable_revenue_keur,
         bess_charge_from_curtailment_mwh=h1.bess_charge_from_curtailment_mwh + h2.bess_charge_from_curtailment_mwh,
