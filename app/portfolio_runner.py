@@ -44,15 +44,19 @@ def run_portfolio_from_inputs(
         )
         all_periods = list(engine.periods())
         op_periods = [p for p in all_periods if p.is_operation]
+        # Use project-level and shared financing inputs, not hard-coded values
+        lockup_dscr = getattr(portfolio_inputs.shared_financing, 'lockup_dscr', 1.10)
+        dsra_months = getattr(proj.financing, 'dsra_months', 6)
+        tax_rate = getattr(proj.tax, 'corporate_rate', 0.10) if hasattr(proj, 'tax') else 0.10
         result = run_waterfall_v3_core(
             inputs=proj,
             engine=engine,
             rate_per_period=rate_per_period,
             tenor_periods=len(op_periods),
             target_dscr=portfolio_inputs.shared_financing.target_dscr,
-            lockup_dscr=1.10,
-            tax_rate=0.10,
-            dsra_months=6,
+            lockup_dscr=lockup_dscr,
+            tax_rate=tax_rate,
+            dsra_months=dsra_months,
             shl_amount=0.0,
             shl_rate=0.0,
             shl_idc_keur=0.0,
