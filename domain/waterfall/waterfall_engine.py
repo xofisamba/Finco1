@@ -471,7 +471,7 @@ def run_waterfall(
     # NOTE: fiscal_reintegration is also set here to avoid double-counting (see below)
     #
     # Base: IDC + bank fees + commitment fees = 1,940 kEUR
-    # Additional: construction-period interest (capitalized in Excel, not in our model)
+    # Additional: construction-period interest (capitalized during construction, not in our model)
     # Carryforward amount estimated from construction-period costs
     # Initialize prior_tax_loss from parameter if set (>0), otherwise estimate from construction costs
     # Carryforward: ≈9,000 kEUR (12m construction) or ≈25,000 kEUR (18m construction)
@@ -624,7 +624,7 @@ def run_waterfall(
         # ATAD-based tax calculation with fiscal reintegration
         # Interest deductibility limited to 30% of EBITDA (ATAD directive)
         # NOTE: atad_min_interest_keur=3000 keeps all interest deductible for this project
-        # (interest < 3000 kEUR per period). This is a project-specific override.
+        # (interest < 3000 kEUR per period). .
         # ATAD-based tax calculation using domain tax engine
         total_interest = si + shi
 

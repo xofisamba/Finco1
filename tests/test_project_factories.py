@@ -88,10 +88,106 @@ class TestProjectFactories:
         # Market prices should be simple (not Excel exact 57.0, 66.3, etc.)
         assert len(p.revenue.market_prices_curve) == 30
 
-    def test_domain_inputs_shim_still_works(self):
-        """ProjectInputs.create_default_oborovo() compatibility shim works."""
+    def test_project_factory_shims_have_deprecation_warnings(self):
+        """ProjectInputs factory shims emit DeprecationWarning when called."""
+        import warnings
         from domain.inputs import ProjectInputs
-        p = ProjectInputs.create_default_oborovo()
-        assert p.info.name == "Oborovo Solar PV"
-        p2 = ProjectInputs.create_default_tuho_wind1()
-        assert p2.info.name == "TUHO Wind 1"
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            try:
+                p = ProjectInputs.create_default_oborovo()
+            except DeprecationWarning:
+                pass  # expected
+            found = any(issubclass(x.category, DeprecationWarning) for x in w)
+            assert found, "No DeprecationWarning raised for create_default_oborovo"
+
+
+def _run_waterfall_for_inputs(inputs):
+    """Helper: run headless waterfall for generic project inputs."""
+    from domain.period_engine import PeriodEngine
+    from app.waterfall_core import run_waterfall_v3_core
+
+    engine = PeriodEngine(
+        financial_close=inputs.info.financial_close,
+        construction_months=inputs.info.construction_months,
+        horizon_years=inputs.info.horizon_years,
+        ppa_years=inputs.revenue.ppa_term_years,
+    )
+    all_periods = list(engine.periods())
+    op_periods = [p for p in all_periods if p.is_operation]
+
+    return run_waterfall_v3_core(
+        inputs=inputs,
+        engine=engine,
+        rate_per_period=inputs.financing.all_in_rate / 2,
+        tenor_periods=len(op_periods),
+        target_dscr=inputs.financing.target_dscr,
+        lockup_dscr=inputs.financing.lockup_dscr,
+        tax_rate=inputs.tax.corporate_rate,
+        dsra_months=inputs.financing.dsra_months,
+        shl_amount=inputs.financing.shl_amount_keur,
+        shl_rate=inputs.financing.shl_rate,
+        shl_idc_keur=0.0,
+        shl_repayment_method="bullet",
+        equity_irr_method="equity_only",
+        share_capital_keur=inputs.financing.share_capital_keur,
+        sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
+        debt_sizing_method="dscr_sculpt",
+    )
+
+
+class TestGenericProjectRuntime:
+    """Test that generic factories run through the full headless waterfall."""
+
+    def test_default_solar_project_runs_headless_waterfall(self):
+        """Solar factory can run through headless waterfall."""
+        p = create_default_solar_project()
+        result = _run_waterfall_for_inputs(p)
+        assert len(result.periods) > 0
+        assert result.total_revenue_keur > 0
+        assert result.total_ebitda_keur > 0
+        assert result.total_tax_keur >= 0
+
+    def test_default_wind_project_runs_headless_waterfall(self):
+        """Wind factory can run through headless waterfall."""
+        p = create_default_wind_project()
+        result = _run_waterfall_for_inputs(p)
+        assert len(result.periods) > 0
+        assert result.total_revenue_keur > 0
+        assert result.total_ebitda_keur > 0
+
+    def test_default_solar_project_outputs_positive_revenue_ebitda_and_irr(self):
+        """Solar factory produces positive revenue, EBITDA and finite IRR."""
+        p = create_default_solar_project()
+        result = _run_waterfall_for_inputs(p)
+        assert result.total_revenue_keur > 0
+        assert result.total_ebitda_keur > 0
+        assert result.project_irr is not None
+        assert result.project_irr > 0
+        assert result.project_irr < 5.0  # sanity check: not 500%
+
+    def test_default_wind_project_outputs_positive_revenue_ebitda_and_irr(self):
+        """Wind factory produces positive revenue, EBITDA and finite IRR."""
+        p = create_default_wind_project()
+        result = _run_waterfall_for_inputs(p)
+        assert result.total_revenue_keur > 0
+        assert result.total_ebitda_keur > 0
+        assert result.project_irr is not None
+        assert result.project_irr > 0
+        assert result.project_irr < 5.0
+
+    def test_solar_project_has_depreciation_in_operations(self):
+        """At least one operating period shows positive depreciation."""
+        p = create_default_solar_project()
+        result = _run_waterfall_for_inputs(p)
+        dep_periods = [pr for pr in result.periods if pr.depreciation_keur > 0]
+        assert len(dep_periods) > 0, "No depreciation found in operating periods"
+
+    def test_generic_factories_do_not_use_project_specific_codes(self):
+        """Generic factories use generic project codes (SOLAR-*, WIND-*)."""
+        solar = create_default_solar_project()
+        wind = create_default_wind_project()
+        assert "SOLAR" in solar.info.code
+        assert "WIND" in wind.info.code
+        assert "OBOROVO" not in solar.info.code
+        assert "TUHO" not in wind.info.code

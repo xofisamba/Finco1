@@ -49,7 +49,7 @@ class WaterfallRunConfig:
 
     # Debt overrides
     fixed_debt_keur: Optional[float] = None   # Override sculpted debt
-    fixed_ds_keur: Optional[float] = None     # Fixed DS per period (TUHO)
+    fixed_ds_keur: Optional[float] = None     # Fixed DS per period (fixed debt service)
 
     # Rate schedule
     rate_schedule: Optional[list[float]] = None  # Per-period Euribor curve

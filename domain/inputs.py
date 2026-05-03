@@ -507,13 +507,21 @@ class ProjectInputs:
     # -------------------------------------------------------------------------
     @classmethod
     def create_default_oborovo(cls) -> "ProjectInputs":
-        """Compatibility shim — actual factory moved to app.project_factories.create_default_oborovo()."""
+        """Deprecated: use app.project_factories.create_default_oborovo() directly."""
+        import warnings
+        warnings.warn("ProjectInputs.create_default_oborovo is deprecated; "
+                      "use app.project_factories.create_default_oborovo()",
+                      DeprecationWarning, stacklevel=2)
         from app.project_factories import create_default_oborovo as factory
         return factory()
 
     @classmethod
     def create_default_tuho_wind1(cls) -> "ProjectInputs":
-        """Compatibility shim — actual factory moved to app.project_factories.create_default_tuho_wind1()."""
+        """Deprecated: use app.project_factories.create_default_tuho_wind1() directly."""
+        import warnings
+        warnings.warn("ProjectInputs.create_default_tuho_wind1 is deprecated; "
+                      "use app.project_factories.create_default_tuho_wind1()",
+                      DeprecationWarning, stacklevel=2)
         from app.project_factories import create_default_tuho_wind1 as factory
         return factory()
 

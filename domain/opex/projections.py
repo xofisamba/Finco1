@@ -1,6 +1,6 @@
 """OPEX projections - per-year and per-period operational costs.
 
-Matches Excel Inputs rows 146-161 (15 OPEX categories).
+OPEX projections - per-year and per-period operational costs..
 Each item has:
 - Y1 amount in kEUR
 - Annual escalation
