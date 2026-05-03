@@ -432,7 +432,6 @@ def run_waterfall(
     mra_balance = 0
     cash_balance = 0
     cum_distribution = 0
-    cum_distribution = 0
     # Initialize prior_tax_loss: use inputs value if supplied, otherwise
     # estimate from construction-period financial costs (IDC + bank fees + commitment fees)
     if prior_tax_loss_keur > 0:
@@ -448,19 +447,19 @@ def run_waterfall(
     # For returns calculation
     # "combined": equity_investment = sculpt_capex - debt, equity_cfs = distributions only
     if equity_irr_method == "combined":
-    # equity base = sculpt_capex (ex-IDC) - debt; equity CFs = distributions only
+        # equity base = sculpt_capex (ex-IDC) - debt; equity CFs = distributions only
         equity_investment = sculpt_capex_keur - sculpt_result.debt_keur
         equity_cfs = [-equity_investment]
     elif equity_irr_method == "shl_interest_only":
-    # bullet SHL: investor puts in SHL + share capital, receives SHL interest + principal at maturity
+        # bullet SHL: investor puts in SHL + share capital, receives SHL interest + principal at maturity
         equity_investment = shl_amount + share_capital_keur
         equity_cfs = [-equity_investment]
     elif equity_irr_method == "shl_plus_dividends":
-    # amortizing SHL: equity CF = SHL interest + SHL principal + dividends
+        # amortizing SHL: equity CF = SHL interest + SHL principal + dividends
         equity_investment = shl_amount + share_capital_keur
         equity_cfs = [-equity_investment]
     else:
-    # "equity_only" style: equity base = total_capex - debt - SHL
+        # "equity_only" style: equity base = total_capex - debt - SHL
         equity_investment = max(0, total_capex - sculpt_result.debt_keur - shl_amount)
         equity_cfs = [-equity_investment]
     # Start with initial investment - dates array now includes financial_close
@@ -579,7 +578,7 @@ def run_waterfall(
 
         # Fiscal reintegration: IDC + bank fees + commitment fees capitalized during
         # construction, added back to taxable profit in first year of operation
-        # (HR tax law - only once in first operational year)
+        # Applied once in the first operational year when fiscal reintegration is enabled.
         if not fiscal_reintegration_applied:
             fiscal_reintegration = idc_keur + bank_fees_keur + commitment_fees_keur
             fiscal_reintegration_applied = True
@@ -607,7 +606,7 @@ def run_waterfall(
         tax = tax_result.tax_keur
         prior_tax_loss = tax_result.loss_carryforward_remaining_keur
 
-        # Tax paid only in H2 (second half of year) - HR tax law
+        # Cash tax is paid in the second period of each fiscal year.
         is_tax_period = period.period_in_year == 2
         tax_this_period = tax if is_tax_period else 0.0
 
@@ -618,15 +617,14 @@ def run_waterfall(
         # Pik switch triggers when senior debt is fully repaid (for pik_then_sweep)
         pik_switch_triggered = (remaining_senior_balance <= 0)
 
-        # CF for SHL - conditional approach (cofix fix)
-    # pik_then_sweep: FCF for SHL = EBITDA - Senior DS (bez poreza)
-        # Ostatak: cf_after_tax (nepromijenjeno)
+        # Determine cash available for SHL service.
+        # For pik_then_sweep, use post-tax cash after senior debt service and reserves.
+        # Other methods use post-tax cash before senior debt service.
         # dsra_contrib is initialized here (updated later in DSRA block)
         dsra_contrib = 0.0
         if shl_repayment_method == "pik_then_sweep":
-            # R115 formula: cf_for_shl = cf_after_tax - senior_ds - dsra_contrib
-            # dsra_contrib je negatifan kod oslobađanja (withdrawal)
-            # cf_for_shl = cf_after_tax - senior_ds - dsra_contrib
+            # Available SHL cash is reduced by senior debt service and DSRA funding.
+            # Negative DSRA contribution represents reserve release.
             _cf_for_shl = max(0.0, cf_after_tax - senior_ds - dsra_contrib)
             _pik_trigger = (_cf_for_shl > shl_balance * shl_rate)  # Compare FCF vs full annual interest (not /2)
         else:
@@ -666,7 +664,7 @@ def run_waterfall(
         shl_svc = shi + shp  # Total SHL service = interest + principal (for records)
 
         # CF after senior and SHL debt service
-        cf_after_ds = cf_after_tax - senior_ds - shi  # shi only (principal is balance sheet, not cash outflow)  # shi only, not shp (principal is balance sheet, not cash flow)
+        cf_after_ds = cf_after_tax - senior_ds - shi  # SHL principal repayment reduces the balance sheet, not P&L cash flow.
 
         # DSRA funding (6 months of debt service)
         # DSRA funding - rolling target based on future debt service
