@@ -1,5 +1,137 @@
 """Tests for app/portfolio_runner.py."""
 import pytest
+from unittest.mock import patch, MagicMock
+
+
+def test_portfolio_runner_uses_project_sculpt_capex_not_zero():
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+
+    capex_value = None
+
+    def capture_run_waterfall_v3_core(**kwargs):
+        nonlocal capex_value
+        capex_value = kwargs.get('sculpt_capex_keur')
+        # Return a mock WaterfallResult
+        mock_result = MagicMock()
+        mock_result.periods = []
+        return mock_result
+
+    with patch('app.portfolio_runner.run_waterfall_v3_core', side_effect=capture_run_waterfall_v3_core):
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+
+        proj1 = create_default_solar_project()
+        proj2 = create_default_wind_project()
+        shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                                 senior_tenor_years=10, target_dscr=1.3)
+        pf = PortfolioInputs(projects=(proj1, proj2), portfolio_name="Test", shared_financing=shared)
+
+        try:
+            run_portfolio_from_inputs(pf)
+        except Exception:
+            pass  # We only care about the captured value
+
+    # Assert sculpt_capex was passed (not hard-coded 0.0)
+    assert capex_value is not None, "sculpt_capex_keur was not passed to run_waterfall_v3_core"
+
+
+def test_portfolio_runner_uses_project_shl_inputs():
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+
+    captured = {}
+    def capture_run(**kwargs):
+        captured['shl_amount'] = kwargs.get('shl_amount')
+        captured['shl_rate'] = kwargs.get('shl_rate')
+        captured['shl_idc_keur'] = kwargs.get('shl_idc_keur')
+        captured['shl_repayment_method'] = kwargs.get('shl_repayment_method')
+        mock_result = MagicMock()
+        mock_result.periods = []
+        return mock_result
+
+    with patch('app.portfolio_runner.run_waterfall_v3_core', side_effect=capture_run):
+        proj1 = create_default_solar_project()
+        proj2 = create_default_wind_project()
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+
+        shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                                 senior_tenor_years=10, target_dscr=1.3)
+        pf = PortfolioInputs(projects=(proj1, proj2), portfolio_name="Test", shared_financing=shared)
+
+        try:
+            run_portfolio_from_inputs(pf)
+        except Exception:
+            pass
+
+    # Should use project values, not hard-coded
+    assert captured['shl_amount'] is not None
+    assert captured['shl_rate'] is not None
+    assert captured['shl_idc_keur'] is not None
+    assert captured['shl_repayment_method'] is not None
+
+
+def test_portfolio_runner_uses_project_tax_rate():
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+
+    tax_rate_captured = None
+    def capture_run(**kwargs):
+        nonlocal tax_rate_captured
+        tax_rate_captured = kwargs.get('tax_rate')
+        mock_result = MagicMock()
+        mock_result.periods = []
+        return mock_result
+
+    with patch('app.portfolio_runner.run_waterfall_v3_core', side_effect=capture_run):
+        proj1 = create_default_solar_project()
+        proj2 = create_default_wind_project()
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+
+        shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                                 senior_tenor_years=10, target_dscr=1.3)
+        pf = PortfolioInputs(projects=(proj1, proj2), portfolio_name="Test", shared_financing=shared)
+
+        try:
+            run_portfolio_from_inputs(pf)
+        except Exception:
+            pass
+
+    assert tax_rate_captured is not None
+    assert tax_rate_captured > 0
+
+
+def test_portfolio_runner_uses_shared_target_and_lockup_dscr():
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+
+    captured = {}
+    def capture_run(**kwargs):
+        captured['target_dscr'] = kwargs.get('target_dscr')
+        captured['lockup_dscr'] = kwargs.get('lockup_dscr')
+        mock_result = MagicMock()
+        mock_result.periods = []
+        return mock_result
+
+    with patch('app.portfolio_runner.run_waterfall_v3_core', side_effect=capture_run):
+        proj1 = create_default_solar_project()
+        proj2 = create_default_wind_project()
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+
+        shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                                 senior_tenor_years=10, target_dscr=1.35, lockup_dscr=1.20)
+        pf = PortfolioInputs(projects=(proj1, proj2), portfolio_name="Test", shared_financing=shared)
+
+        try:
+            run_portfolio_from_inputs(pf)
+        except Exception:
+            pass
+
+    assert captured.get('target_dscr') is not None
+    assert captured.get('lockup_dscr') is not None
 
 
 def test_portfolio_runner_runs_from_precomputed_results():

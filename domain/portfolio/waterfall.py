@@ -1,14 +1,17 @@
-"""Pooled-financing portfolio waterfall skeleton.
+"""Pooled-financing portfolio waterfall.
 
 Scope:
-- Aligns periods across project waterfalls
-- Pools CFADS (EBITDA - tax) by period
-- Computes portfolio DSCR against one pooled debt service
+- Aligns project waterfall periods by date
+- Pools CFADS (EBITDA - tax) per period
+- Computes portfolio DSCR against pooled debt service
 - Returns PortfolioResult with per-project results exposed
 
-Limitations:
-- Debt sizing is a skeleton (deterministic schedule for tests)
-- No cross-default enforcement logic yet
+Behavior:
+- Uses explicit portfolio_debt_service_schedule if provided
+- Otherwise sculpts portfolio debt from pooled CFADS using
+  shared_financing.target_dscr via closed_form_sculpt
+- Does not yet implement cross-default enforcement
+- portfolio_project_irr and portfolio_sponsor_irr are placeholders
 """
 from dataclasses import dataclass
 from typing import Optional

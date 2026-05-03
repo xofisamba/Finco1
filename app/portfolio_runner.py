@@ -15,6 +15,11 @@ def run_portfolio_from_inputs(
 ) -> PortfolioResult:
     """Run portfolio waterfall — either precomputed results or fresh from ProjectInputs.
 
+    Note on input mapping:
+    - Portfolio-level: target_dscr, lockup_dscr from shared_financing
+    - Project-level: tax_rate, shl_*, equity_irr_method, sculpt_capex, debt_sizing_method
+      from each project's own inputs (preserves project economics)
+
     Args:
         portfolio_inputs: PortfolioInputs with projects and shared financing
         project_results: Optional precomputed (name, WaterfallResult) tuples.
@@ -57,14 +62,15 @@ def run_portfolio_from_inputs(
             lockup_dscr=lockup_dscr,
             tax_rate=tax_rate,
             dsra_months=dsra_months,
-            shl_amount=0.0,
-            shl_rate=0.0,
-            shl_idc_keur=0.0,
-            shl_repayment_method="bullet",
-            equity_irr_method="equity_only",
-            share_capital_keur=portfolio_inputs.shared_financing.share_capital_keur,
-            sculpt_capex_keur=0.0,
-            debt_sizing_method="dscr_sculpt",
+            shl_amount=proj.financing.shl_amount_keur,
+            shl_rate=proj.financing.shl_rate,
+            shl_idc_keur=proj.financing.shl_idc_keur,
+            shl_repayment_method=proj.financing.shl_repayment_method,
+            shl_tenor_years=getattr(proj.financing, 'shl_tenor_years', 0),
+            equity_irr_method=proj.financing.equity_irr_method,
+            share_capital_keur=proj.financing.share_capital_keur,
+            sculpt_capex_keur=proj.capex.sculpt_capex_keur,
+            debt_sizing_method=proj.financing.debt_sizing_method,
         )
         results.append((proj.info.code, result))
 
