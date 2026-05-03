@@ -17,8 +17,8 @@ def render_dashboard(result, portfolio_result=None, is_portfolio=False):
         kpis = {
             "Total Revenue": _safe_val(portfolio_result, 'total_revenue_keur'),
             "EBITDA": _safe_val(portfolio_result, 'total_ebitda_keur'),
-            "Portfolio DSCR": _safe_val(portfolio_result, 'portfolio_dscr'),
-            "Portfolio Senior Debt": _safe_val(portfolio_result, 'portfolio_senior_debt_keur'),
+            "Portfolio DSCR": _safe_val(portfolio_result, 'avg_dscr'),
+            "Portfolio Senior Debt": _safe_val(portfolio_result, 'portfolio_debt_keur'),
         }
     elif result is not None:
         kpis = {

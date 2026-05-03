@@ -16,14 +16,23 @@ def _period_label(period: Any) -> str:
 
 
 def _safe_get(obj: Any, name: str, default: float = 0.0) -> float:
-    """Safely get a numeric attribute or dict key."""
+    """Safely get a numeric attribute or dict key, with common aliases."""
     if obj is None:
         return default
-    if hasattr(obj, name):
-        val = getattr(obj, name)
+    # Aliases
+    alias_map = {
+        "cash_tax_keur": "tax_keur",
+        "cfads_keur": "cf_after_tax_keur",
+        "senior_debt_service_keur": "senior_ds_keur",
+        "senior_debt_balance_keur": "senior_balance_keur",
+        "distributions_keur": "distribution_keur",
+    }
+    resolved_name = alias_map.get(name, name)
+    if hasattr(obj, resolved_name):
+        val = getattr(obj, resolved_name)
         return float(val) if val is not None else default
     if isinstance(obj, dict):
-        return float(obj.get(name, default))
+        return float(obj.get(resolved_name, default))
     return default
 
 
@@ -180,15 +189,23 @@ def build_portfolio_table(portfolio_result) -> pd.DataFrame:
     if portfolio_result is None:
         return pd.DataFrame(columns=["Value"])
 
-    labels = ["Pooled Revenue", "Pooled EBITDA", "Pooled Tax", "Pooled CFADS",
-              "Portfolio Senior Debt Service", "Portfolio DSCR"]
+    # Pooled CFADS: sum of the schedule or fallback to total_cfads
+    pooled_cfads = (
+        sum(portfolio_result.pooled_cfads_schedule)
+        if portfolio_result.pooled_cfads_schedule
+        else 0.0
+    )
+    labels = [
+        "Pooled Revenue", "Pooled EBITDA", "Pooled Tax", "Pooled CFADS",
+        "Portfolio Senior Debt Service", "Portfolio DSCR",
+    ]
     values = [
         _safe_get_or_none(portfolio_result, 'total_revenue_keur'),
         _safe_get_or_none(portfolio_result, 'total_ebitda_keur'),
         _safe_get_or_none(portfolio_result, 'total_tax_keur'),
-        _safe_get_or_none(portfolio_result, 'total_cfads_keur'),
-        _safe_get_or_none(portfolio_result, 'portfolio_senior_debt_service_keur'),
-        _safe_get_or_none(portfolio_result, 'portfolio_dscr'),
+        pooled_cfads,
+        _safe_get_or_none(portfolio_result, 'total_senior_ds_keur'),
+        _safe_get_or_none(portfolio_result, 'avg_dscr'),
     ]
 
     df = pd.DataFrame({"Value": values}, index=labels)
