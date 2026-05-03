@@ -6,7 +6,11 @@ calibration tests once all workbook line items are mapped.
 """
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
+
+pytestmark = pytest.mark.legacy_excel
 
 
 ROOT = Path(__file__).resolve().parents[1]

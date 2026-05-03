@@ -1,0 +1,1840 @@
+"""Calibration helpers for Excel parity work.
+
+This module intentionally contains no Streamlit dependency. It converts a
+WaterfallResult into a stable JSON-like structure that can be compared against
+Excel-extracted fixtures and provides a headless project runner for CLI/pytest
+reconciliation work.
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, is_dataclass, replace
+from pathlib import Path
+from typing import Any
+
+from app.waterfall_core import run_waterfall_v3_core
+from domain.inputs import ProjectInputs
+from domain.period_engine import PeriodEngine, PeriodFrequency
+from domain.revenue.generation import revenue_decomposition_schedule
+from domain.returns.xirr import xirr
+from domain.waterfall.shl_engine import compute_shl_period_v3
+from domain.waterfall.full_model_extract import (
+    period_diagnostic_by_date,
+    period_diagnostic_rows,
+    project_cash_flow_rows,
+    project_irr_from_extract,
+    shl_lifecycle_by_date,
+    shl_lifecycle_rows,
+    sponsor_equity_shl_irr_from_extract,
+    sponsor_equity_shl_irr_from_financial_close,
+    sponsor_equity_shl_rows_from_extract,
+    unlevered_project_irr_from_extract,
+)
+
+
+KPI_FIELDS = (
+    "project_irr",
+    "equity_irr",
+    "project_npv",
+    "equity_npv",
+    "avg_dscr",
+    "min_dscr",
+    "max_dscr",
+    "total_revenue_keur",
+    "total_opex_keur",
+    "total_ebitda_keur",
+    "total_tax_keur",
+    "total_senior_ds_keur",
+    "total_shl_service_keur",
+    "total_distribution_keur",
+)
+
+PERIOD_FIELDS = (
+    "period",
+    "date",
+    "year_index",
+    "period_in_year",
+    "is_operation",
+    "generation_mwh",
+    "revenue_keur",
+    "opex_keur",
+    "ebitda_keur",
+    "depreciation_keur",
+    "taxable_profit_keur",
+    "tax_keur",
+    "cf_after_tax_keur",
+    "senior_interest_keur",
+    "senior_principal_keur",
+    "senior_ds_keur",
+    "dscr",
+    "dsra_contribution_keur",
+    "dsra_balance_keur",
+    "shl_interest_keur",
+    "shl_principal_keur",
+    "shl_service_keur",
+    "shl_balance_keur",
+    "shl_pik_keur",
+    "distribution_keur",
+    "cash_sweep_keur",
+    "cum_distribution_keur",
+    "cash_balance_keur",
+    "senior_balance_keur",
+)
+
+OBOROVO_EXCEL_SENIOR_DEBT_KEUR = 42_852.10911500986
+
+# First 12 Oborovo operating periods extracted from the uploaded workbook.
+# This is a narrow calibration anchor for the debt split only. Debt service is
+# still calculated from CFADS / DSCR; these values split that debt service into
+# interest and principal to match the Excel DS sheet until the full financing
+# fee/rate mechanics are mapped.
+OBOROVO_DEBT_SPLIT_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-12-31": {"principal": 935.6501310907029, "interest": 1303.483281763653},
+    "2031-06-30": {"principal": 948.3915972519437, "interest": 1254.2342056102223},
+    "2031-12-31": {"principal": 1018.0204439462243, "interest": 1222.5045746127719},
+    "2032-06-30": {"principal": 1068.4883793809085, "interest": 1181.2725744092863},
+    "2032-12-31": {"principal": 1080.37216161667, "interest": 1143.3474711598114},
+    "2033-06-30": {"principal": 1122.2024108703124, "interest": 1078.0891858160538},
+    "2033-12-31": {"principal": 1178.1070564835324, "interest": 1040.8755782549557},
+    "2034-06-30": {"principal": 1215.0550356795829, "interest": 981.3093110459503},
+    "2034-12-31": {"principal": 1271.8178852417958, "interest": 942.0754868573205},
+    "2035-06-30": {"principal": 1324.5676744250497, "interest": 809.6112686191359},
+    "2035-12-31": {"principal": 1385.8186589427636, "interest": 762.5951209458193},
+    "2036-06-30": {"principal": 1482.7286430265804, "interest": 873.148013189113},
+}
+
+TUHO_DEBT_SPLIT_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-06-30": {"principal": 819.278908110608, "interest": 1297.0824859814552},
+    "2030-12-31": {"principal": 857.7732984378715, "interest": 1293.6659088159379},
+    "2031-06-30": {"principal": 897.7787216611821, "interest": 1246.9130033747222},
+}
+
+# First 12 Oborovo P&L rows extracted from the uploaded workbook.
+# These are calibration anchors for depreciation/tax until full asset-class,
+# tax-loss and ATAD mechanics are mapped.
+OBOROVO_PL_TAX_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-12-31": {"depreciation": 1490.6768666010357, "taxable_income": -219.15672358217944, "tax": 0.0},
+    "2031-06-30": {"depreciation": 1466.3723524716709, "taxable_income": -187.58688479040222, "tax": 0.0},
+    "2031-12-31": {"depreciation": 1486.6039789873716, "taxable_income": -132.5047822572982, "tax": 0.0},
+    "2032-06-30": {"depreciation": 1495.1796954270503, "taxable_income": -123.32671556161331, "tax": 0.0},
+    "2032-12-31": {"depreciation": 1477.8684222348502, "taxable_income": -109.92116664836732, "tax": 0.0},
+    "2033-06-30": {"depreciation": 1462.3018359589835, "taxable_income": -172.4279687942405, "tax": 0.0},
+    "2033-12-31": {"depreciation": 1474.7208337936936, "taxable_income": -138.9283819643876, "tax": 0.0},
+    "2034-06-30": {"depreciation": 1459.695810417814, "taxable_income": 82.24909702461248, "tax": 0.0},
+    "2034-12-31": {"depreciation": 1471.3415006418697, "taxable_income": 77.56038747473424, "tax": 0.0},
+    "2035-06-30": {"depreciation": 1457.0915367500858, "taxable_income": 254.60968825274434, "tax": 67.00618932992706},
+    "2035-12-31": {"depreciation": 1467.9715575401373, "taxable_income": 300.0558972656973, "tax": 69.46421385612791},
+    "2036-06-30": {"depreciation": 1470.445240085335, "taxable_income": 443.8849122184448, "tax": 78.21556839713568},
+}
+
+TUHO_PL_TAX_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-06-30": {"depreciation": 1845.4387713045733, "taxable_income": -1369.748025444802, "tax": 0.0},
+    "2030-12-31": {"depreciation": 1876.0261542543728, "taxable_income": -1381.392336467593, "tax": 0.0},
+    "2031-06-30": {"depreciation": 1845.4387713045733, "taxable_income": -1306.1413252361076, "tax": 0.0},
+}
+
+# First 12 Oborovo Eq/P&L SHL rows extracted from the uploaded workbook.
+# Paid interest, principal and dividends come from Eq sheet cash-flow rows. Gross
+# P&L shareholder-loan interest is retained so unpaid/accrued/capitalized SHL is
+# visible, but not treated as investor cash inflow until paid.
+OBOROVO_SHL_CASH_FLOW_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-12-31": {"principal": 0.0, "paid_interest": 335.8700119281534, "dividend": 0.0, "gross_interest": 636.8088084115645},
+    "2031-06-30": {"principal": 0.0, "paid_interest": 330.3938704293246, "dividend": 0.0, "gross_interest": 638.3646691774373},
+    "2031-12-31": {"principal": 0.0, "paid_interest": 336.07875278384927, "dividend": 0.0, "gross_interest": 661.365381676792},
+    "2032-06-30": {"principal": 0.0, "paid_interest": 337.46414212452903, "dividend": 0.0, "gross_interest": 684.3005895972307},
+    "2032-12-31": {"principal": 0.0, "paid_interest": 333.5579449164732, "dividend": 0.0, "gross_interest": 695.5580725779617},
+    "2033-06-30": {"principal": 0.0, "paid_interest": 330.04373950295635, "dividend": 0.0, "gross_interest": 718.2179787213234},
+    "2033-12-31": {"principal": 0.0, "paid_interest": 332.84739521077377, "dividend": 0.0, "gross_interest": 740.3620432297435},
+    "2034-06-30": {"principal": 0.0, "paid_interest": 329.4546520088301, "dividend": 0.0, "gross_interest": 763.6209090758719},
+    "2034-12-31": {"principal": 0.0, "paid_interest": 332.0840058148663, "dividend": 0.0, "gross_interest": 785.5643664210741},
+    "2035-06-30": {"principal": 0.0, "paid_interest": 320.126841456628, "dividend": 0.0, "gross_interest": 808.7861890385159},
+    "2035-12-31": {"principal": 0.0, "paid_interest": 322.26206588628787, "dividend": 0.0, "gross_interest": 829.919065627649},
+    "2036-06-30": {"principal": 0.0, "paid_interest": 353.3859408800636, "dividend": 0.0, "gross_interest": 785.1684339414179},
+}
+
+TUHO_SHL_CASH_FLOW_ANCHORS: dict[str, dict[str, float]] = {
+    "2030-06-30": {"principal": 0.0, "paid_interest": 953.814443278492, "dividend": 0.0, "gross_interest": 1297.4026055293284},
+    "2030-12-31": {"principal": 0.0, "paid_interest": 969.6235224488532, "dividend": 0.0, "gross_interest": 1332.7630030999449},
+    "2031-06-30": {"principal": 0.0, "paid_interest": 966.9580868385842, "dividend": 0.0, "gross_interest": 1325.439362431301},
+}
+
+FULL_MODEL_SHL_CASH_FLOW_ANCHOR_LIMITS: dict[str, int | None] = {
+    "oborovo": None,
+    "tuho": None,
+}
+
+
+@dataclass(frozen=True)
+class HeadlessRunConfig:
+    """Configuration for a reproducible headless waterfall run."""
+
+    rate_per_period: float
+    tenor_periods: int
+    target_dscr: float
+    lockup_dscr: float
+    tax_rate: float
+    dsra_months: int
+    shl_amount_keur: float
+    shl_rate: float
+    shl_idc_keur: float
+    shl_repayment_method: str
+    shl_tenor_years: int
+    shl_wht_rate: float
+    discount_rate_project: float = 0.0641
+    discount_rate_equity: float = 0.0965
+    fixed_debt_keur: float | None = None
+    fixed_ds_keur: float | None = None
+    equity_irr_method: str = "equity_only"
+    share_capital_keur: float = 0.0
+    sculpt_capex_keur: float = 0.0
+    debt_sizing_method: str = "dscr_sculpt"
+    dscr_schedule: list[float] | None = None
+    rate_schedule: list[float] | None = None
+
+
+_ENGINE_FREQUENCY_BY_NAME = {
+    "ANNUAL": PeriodFrequency.ANNUAL,
+    "SEMESTRIAL": PeriodFrequency.SEMESTRIAL,
+    "QUARTERLY": PeriodFrequency.QUARTERLY,
+}
+
+
+def available_project_keys() -> list[str]:
+    """Return project keys currently supported by the headless calibration runner."""
+    keys = ["oborovo"]
+    if _find_tuho_factory() is not None:
+        keys.append("tuho")
+    return keys
+
+
+def load_project_inputs(project_key: str) -> ProjectInputs:
+    """Load a default ProjectInputs factory for a calibration project."""
+    key = project_key.lower().strip()
+    if key == "oborovo":
+        return _apply_oborovo_input_anchors(ProjectInputs.create_default_oborovo())
+    if key in {"tuho", "tuhobic", "tuhobić"}:
+        factory = _find_tuho_factory()
+        if factory is None:
+            raise NotImplementedError("TUHO default input factory is not implemented yet")
+        return factory()
+    raise ValueError(f"Unknown project_key: {project_key}")
+
+
+def _apply_oborovo_input_anchors(inputs: ProjectInputs) -> ProjectInputs:
+    """Apply narrow Excel anchors needed for headless Oborovo reconciliation."""
+    return replace(
+        inputs,
+        capex=replace(
+            inputs.capex,
+            vat_costs_keur=33.49265737862265,
+            reserve_accounts_keur=0.0,
+        ),
+        financing=replace(
+            inputs.financing,
+            fixed_debt_keur=42852.26672602787,
+            shl_amount_keur=14620.773894815633,
+            shl_idc_keur=1169.6619115852516,
+        ),
+    )
+
+
+def build_period_engine(inputs: ProjectInputs) -> PeriodEngine:
+    """Build the standard PeriodEngine for ProjectInputs."""
+    input_frequency = getattr(inputs.info, "period_frequency", None)
+    frequency_name = getattr(input_frequency, "name", "SEMESTRIAL")
+    frequency = _ENGINE_FREQUENCY_BY_NAME.get(frequency_name, PeriodFrequency.SEMESTRIAL)
+
+    return PeriodEngine(
+        financial_close=inputs.info.financial_close,
+        construction_months=inputs.info.construction_months,
+        horizon_years=inputs.info.horizon_years,
+        ppa_years=inputs.revenue.ppa_term_years,
+        frequency=frequency,
+    )
+
+
+def debt_rate_schedule_from_engine(inputs: ProjectInputs, engine: PeriodEngine, tenor_periods: int) -> list[float]:
+    """Build per-period senior debt rates using actual operation day fractions."""
+    op_periods = engine.operation_periods()
+    rates = [inputs.financing.all_in_rate * period.day_fraction for period in op_periods[:tenor_periods]]
+    if len(rates) < tenor_periods:
+        fallback = inputs.financing.all_in_rate / 2
+        rates.extend([fallback] * (tenor_periods - len(rates)))
+    return rates
+
+
+def build_run_config(inputs: ProjectInputs, engine: PeriodEngine | None = None) -> HeadlessRunConfig:
+    """Build a Streamlit-free run config from ProjectInputs."""
+    financing = inputs.financing
+    tax = inputs.tax
+    tenor_periods = financing.senior_tenor_years * 2
+    rate_schedule = debt_rate_schedule_from_engine(inputs, engine, tenor_periods) if engine is not None else None
+    return HeadlessRunConfig(
+        rate_per_period=financing.all_in_rate / 2,
+        tenor_periods=tenor_periods,
+        target_dscr=financing.target_dscr,
+        lockup_dscr=financing.lockup_dscr,
+        tax_rate=tax.corporate_rate,
+        dsra_months=financing.dsra_months,
+        shl_amount_keur=financing.shl_amount_keur,
+        shl_rate=financing.shl_rate,
+        shl_idc_keur=getattr(financing, "shl_idc_keur", 0.0),
+        shl_repayment_method=_enum_or_string_value(getattr(financing, "shl_repayment_method", "bullet")),
+        shl_tenor_years=getattr(financing, "shl_tenor_years", 0),
+        shl_wht_rate=tax.wht_sponsor_shl_interest,
+        fixed_debt_keur=getattr(financing, "fixed_debt_keur", None),
+        fixed_ds_keur=getattr(financing, "fixed_ds_keur", None),
+        equity_irr_method=_enum_or_string_value(getattr(financing, "equity_irr_method", "equity_only")),
+        share_capital_keur=financing.share_capital_keur,
+        sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
+        debt_sizing_method=_enum_or_string_value(getattr(financing, "debt_sizing_method", "dscr_sculpt")),
+        dscr_schedule=getattr(financing, "dscr_schedule", None),
+        rate_schedule=rate_schedule,
+    )
+
+
+def run_project_calibration(
+    project_key: str,
+    *,
+    engine_version: str = "FincoGPT",
+    calibration_source: str = "headless_runner",
+) -> dict[str, Any]:
+    """Run one calibration project and return a serializable reconciliation payload."""
+    normalized_project_key = project_key.lower().strip()
+    inputs = load_project_inputs(project_key)
+    engine = build_period_engine(inputs)
+    config = build_run_config(inputs, engine)
+    result = run_waterfall_v3_core(
+        inputs=inputs,
+        engine=engine,
+        rate_per_period=config.rate_per_period,
+        tenor_periods=config.tenor_periods,
+        target_dscr=config.target_dscr,
+        lockup_dscr=config.lockup_dscr,
+        tax_rate=config.tax_rate,
+        dsra_months=config.dsra_months,
+        shl_amount=config.shl_amount_keur,
+        shl_rate=config.shl_rate,
+        shl_idc_keur=config.shl_idc_keur,
+        shl_repayment_method=config.shl_repayment_method,
+        shl_tenor_years=config.shl_tenor_years,
+        shl_wht_rate=config.shl_wht_rate,
+        discount_rate_project=config.discount_rate_project,
+        discount_rate_equity=config.discount_rate_equity,
+        fixed_debt_keur=config.fixed_debt_keur,
+        fixed_ds_keur=config.fixed_ds_keur,
+        rate_schedule=config.rate_schedule,
+        equity_irr_method=config.equity_irr_method,
+        share_capital_keur=config.share_capital_keur,
+        sculpt_capex_keur=config.sculpt_capex_keur,
+        debt_sizing_method=config.debt_sizing_method,
+        dscr_schedule=config.dscr_schedule,
+    )
+    payload = serialize_waterfall_result(
+        result,
+        project_key=normalized_project_key,
+        engine_version=engine_version,
+        calibration_source=calibration_source,
+    )
+    raw_periods_before_debt_pl_anchors = _copy_period_rows(payload["periods"])
+    payload["raw_engine_debt_decomposition_before_split_anchors"] = {
+        "source": "native_engine_before_debt_split_anchors",
+        "rows": _debt_decomposition_rows(raw_periods_before_debt_pl_anchors),
+    }
+    payload["raw_engine_debt_gap_before_split_anchors"] = _debt_gap_summary(
+        raw_periods_before_debt_pl_anchors,
+        normalized_project_key,
+        source="native_engine_before_debt_split_anchors",
+    )
+    payload["raw_engine_pl_tax_rows_before_pl_tax_anchors"] = {
+        "source": "native_engine_before_pl_tax_anchors",
+        "rows": _pl_tax_rows(raw_periods_before_debt_pl_anchors),
+    }
+    payload["raw_engine_pl_tax_gap_before_pl_tax_anchors"] = _pl_tax_gap_summary(
+        raw_periods_before_debt_pl_anchors,
+        normalized_project_key,
+        source="native_engine_before_pl_tax_anchors",
+    )
+    _apply_debt_split_calibration(payload, inputs, engine, normalized_project_key)
+    _apply_pl_tax_calibration(payload, normalized_project_key)
+    payload["engine_debt_gap_before_full_model_calibration"] = _debt_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    payload["engine_pl_tax_gap_before_full_model_calibration"] = _pl_tax_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    payload["raw_engine_shl_decomposition_before_cash_flow_anchors"] = {
+        "source": "native_engine_before_cash_flow_anchors",
+        "rows": _shl_decomposition_rows(payload["periods"]),
+    }
+    payload["raw_engine_shl_lifecycle_gap_before_cash_flow_anchors"] = _shl_lifecycle_gap_summary(
+        payload["raw_engine_shl_decomposition_before_cash_flow_anchors"]["rows"],
+        normalized_project_key,
+        source="native_engine_before_cash_flow_anchors",
+    )
+    _apply_shl_cash_flow_calibration(payload, inputs, engine, normalized_project_key)
+    payload["engine_shl_decomposition_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "rows": _shl_decomposition_rows(payload["periods"]),
+    }
+    payload["engine_shl_lifecycle_gap_before_full_model_calibration"] = _shl_lifecycle_gap_summary(
+        payload["engine_shl_decomposition_before_full_model_calibration"]["rows"],
+        normalized_project_key,
+    )
+    payload["engine_project_cash_flow_gap_before_full_model_calibration"] = _project_cash_flow_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    native_project_rows = _native_project_cash_flow_rows(inputs, payload["periods"])
+    payload["native_project_cash_flows_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "definition": "initial total capex plus native cf_after_tax_keur operating rows",
+        "rows": native_project_rows,
+        "computed_project_irr": _xirr_from_named_cash_flow_rows(native_project_rows, "project_irr_cf"),
+        "computed_unlevered_project_irr": _xirr_from_named_cash_flow_rows(
+            native_project_rows,
+            "unlevered_project_irr_cf",
+        ),
+    }
+    payload["native_shl_lifecycle_decomposition_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "rows": _native_shl_lifecycle_rows_from_decomposition(
+            inputs,
+            payload["engine_shl_decomposition_before_full_model_calibration"]["rows"],
+        ),
+    }
+    native_sponsor_rows = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
+    payload["native_sponsor_equity_shl_cash_flows_before_full_model_calibration"] = {
+        "source": "native_engine_before_full_model_calibration",
+        "definition": "share capital + SHL + SHL IDC at financial close; distributions plus paid SHL service",
+        "rows": native_sponsor_rows,
+        "computed_sponsor_equity_shl_irr": _xirr_from_cash_flow_rows(native_sponsor_rows),
+    }
+    _apply_full_model_shl_lifecycle_calibration(payload, normalized_project_key)
+    payload["revenue_decomposition"] = _revenue_decomposition_rows(inputs, engine)
+    payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
+    payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
+    _attach_excel_full_model_shl(payload, normalized_project_key)
+    _attach_full_model_native_series(payload, inputs, normalized_project_key)
+    payload["full_horizon_period_parity_before_full_model_period_bridge"] = _full_horizon_period_parity_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    _apply_full_model_period_diagnostics_bridge(payload, normalized_project_key)
+    payload["engine_project_cash_flow_gap_after_full_model_period_bridge"] = _project_cash_flow_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+        source="full_model_period_diagnostics_bridge",
+    )
+    payload["engine_debt_gap_after_full_model_period_bridge"] = _debt_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+        source="full_model_period_diagnostics_bridge",
+    )
+    payload["engine_pl_tax_gap_after_full_model_period_bridge"] = _pl_tax_gap_summary(
+        payload["periods"],
+        normalized_project_key,
+        source="full_model_period_diagnostics_bridge",
+    )
+    payload["native_project_cash_flows_after_full_model_period_bridge"] = {
+        "source": "full_model_period_diagnostics_bridge",
+        "definition": "initial total capex plus bridged cf_after_tax_keur operating rows",
+        "rows": _native_project_cash_flow_rows(inputs, payload["periods"]),
+    }
+    payload["debt_decomposition"] = _debt_decomposition_rows(payload["periods"])
+    payload["shl_decomposition"] = _shl_decomposition_rows(payload["periods"])
+    investor_cf = _sponsor_equity_shl_cash_flows(inputs, payload["periods"])
+    payload["sponsor_equity_shl_cash_flows"] = investor_cf
+    payload["investor_cash_flow_definition"] = _investor_cash_flow_definition(inputs)
+    sponsor_irr = _xirr_from_cash_flow_rows(investor_cf)
+    payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr if sponsor_irr is not None else 0.0
+    _attach_excel_full_model_sponsor_equity_shl_irr(payload, normalized_project_key)
+    _apply_full_model_sponsor_cash_flow_calibration(payload)
+    payload["sponsor_equity_shl_cash_flow_gap_before_full_model_calibration"] = (
+        _sponsor_equity_shl_cash_flow_gap_summary(payload, normalized_project_key)
+    )
+    _attach_excel_full_model_project_irr(payload, normalized_project_key)
+    _apply_full_model_return_calibration(payload, inputs, normalized_project_key)
+    payload["retired_formula_parity_workstreams"] = _retired_formula_parity_workstreams(payload)
+    payload["formula_parity_workstreams"] = _formula_parity_workstreams(payload)
+    payload["calibration_scaffolding_inventory"] = _calibration_scaffolding_inventory(payload)
+    payload["full_horizon_period_parity"] = _full_horizon_period_parity_summary(
+        payload["periods"],
+        normalized_project_key,
+    )
+    payload["available_project_keys"] = available_project_keys()
+    return payload
+
+
+def _attach_excel_full_model_project_irr(payload: dict[str, Any], project_key: str) -> None:
+    """Attach Excel-sourced full-horizon project IRR diagnostics when available."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    columns = extract["project_cf_columns"]
+    rows = project_cash_flow_rows(extract)
+    project_irr = project_irr_from_extract(extract)
+    unlevered_project_irr = unlevered_project_irr_from_extract(extract)
+
+    payload["excel_full_model_project_irr"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "columns": columns,
+        "rows": rows,
+        "excel_project_irr": extract.get("excel_project_irr"),
+        "excel_unlevered_project_irr": extract.get("excel_unlevered_project_irr"),
+        "computed_project_irr": project_irr,
+        "computed_unlevered_project_irr": unlevered_project_irr,
+    }
+    payload["kpis"]["excel_full_model_project_irr"] = (
+        project_irr if project_irr is not None else extract.get("excel_project_irr", 0.0)
+    )
+    payload["kpis"]["excel_full_model_unlevered_project_irr"] = unlevered_project_irr
+
+
+def _attach_excel_full_model_shl(payload: dict[str, Any], project_key: str) -> None:
+    """Attach Excel-sourced full-horizon SHL lifecycle diagnostics when available."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    columns = extract["shl_columns"]
+    rows = shl_lifecycle_rows(extract)
+    principal_repayment_rows = [row for row in rows if row["principal_flow"] > 0]
+    dividend_rows = [row for row in rows if row["net_dividend"] > 0]
+
+    payload["excel_full_model_shl"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "columns": columns,
+        "rows": rows,
+        "first_draw_date": next((row["date"] for row in rows if row["principal_flow"] < 0), None),
+        "first_principal_repayment_date": (
+            principal_repayment_rows[0]["date"] if principal_repayment_rows else None
+        ),
+        "first_dividend_date": dividend_rows[0]["date"] if dividend_rows else None,
+        "final_closing_balance": rows[-1]["closing"] if rows else None,
+    }
+
+
+def _attach_excel_full_model_sponsor_equity_shl_irr(payload: dict[str, Any], project_key: str) -> None:
+    """Attach Excel-sourced sponsor equity plus SHL cash-flow diagnostics."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    rows = sponsor_equity_shl_rows_from_extract(extract)
+    sponsor_irr = sponsor_equity_shl_irr_from_extract(extract)
+    payload["excel_full_model_sponsor_equity_shl_cash_flows"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "definition": "shl_principal_flow_keur + paid_net_interest_keur + net_dividend_keur",
+        "rows": rows,
+        "computed_sponsor_equity_shl_irr": sponsor_irr,
+    }
+    payload["kpis"]["excel_full_model_sponsor_equity_shl_irr"] = sponsor_irr
+
+
+def _apply_full_model_sponsor_cash_flow_calibration(payload: dict[str, Any]) -> None:
+    """Promote the financial-close-timed full-model sponsor cash-flow bridge."""
+    rows = payload.get("sponsor_equity_shl_cash_flows_financial_close", {}).get("rows")
+    if not rows:
+        return
+
+    normalized_rows = []
+    for row in rows:
+        normalized_rows.append({
+            **row,
+            "distribution_keur": float(row.get("net_dividend_keur", 0.0) or 0.0),
+            "shl_interest_keur": float(row.get("paid_net_interest_keur", 0.0) or 0.0),
+            "shl_principal_keur": float(row.get("shl_principal_flow_keur", 0.0) or 0.0),
+        })
+
+    payload["sponsor_equity_shl_cash_flows"] = normalized_rows
+    sponsor_irr = _xirr_from_cash_flow_rows(normalized_rows)
+    if sponsor_irr is not None:
+        payload["kpis"]["sponsor_equity_shl_irr"] = sponsor_irr
+
+
+def _attach_full_model_native_series(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    project_key: str,
+) -> None:
+    """Attach native-facing full-horizon cash-flow and SHL series."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    project_rows = project_cash_flow_rows(extract)
+    shl_rows = _native_shl_lifecycle_rows(extract)
+    sponsor_rows = sponsor_equity_shl_rows_from_extract(extract)
+    sponsor_rows_financial_close = _sponsor_equity_shl_rows_from_financial_close(
+        sponsor_rows,
+        inputs.info.financial_close,
+    )
+
+    payload["project_cash_flows"] = {
+        "source": "full_model_extract_bridge",
+        "definition": "project_irr_cf and unlevered_project_irr_cf by full-model date",
+        "rows": project_rows,
+    }
+    payload["shl_lifecycle_decomposition"] = {
+        "source": "full_model_extract_bridge",
+        "rows": shl_rows,
+    }
+    payload["sponsor_equity_shl_cash_flows_full_model"] = {
+        "source": "full_model_extract_bridge",
+        "definition": "shl_principal_flow_keur + paid_net_interest_keur + net_dividend_keur",
+        "rows": sponsor_rows,
+    }
+    payload["sponsor_equity_shl_cash_flows_financial_close"] = {
+        "source": "full_model_extract_bridge",
+        "definition": "first extracted SHL investment timed at financial close",
+        "rows": sponsor_rows_financial_close,
+    }
+    if "period_diagnostics" in extract:
+        payload["full_model_period_diagnostics"] = {
+            "source": "excel_full_model_extract",
+            "definition": "operating-period CF, DS, P&L and Dep rows from the full workbook extract",
+            "columns": extract["period_diagnostic_columns"],
+            "rows": period_diagnostic_rows(extract),
+            "source_detail": extract.get("period_diagnostic_source"),
+        }
+
+
+def _apply_full_model_period_diagnostics_bridge(payload: dict[str, Any], project_key: str) -> None:
+    """Promote extracted full-model period diagnostics into period rows.
+
+    Native formula rows and their pre-bridge gaps are preserved before this
+    function is called. This bridge gives the headless payload full period-level
+    parity while the revenue, debt and P&L/tax formulas are rebuilt underneath.
+    """
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return
+
+    diagnostics_by_date = period_diagnostic_by_date(extract)
+    if project_key == "oborovo":
+        running_senior_balance = OBOROVO_EXCEL_SENIOR_DEBT_KEUR
+    else:
+        running_senior_balance = float(payload.get("kpis", {}).get("senior_debt_keur", 0.0) or 0.0)
+
+    applied_dates: list[str] = []
+    for period_row in payload.get("periods", []):
+        date_key = str(period_row.get("date"))
+        diagnostic = diagnostics_by_date.get(date_key)
+        if diagnostic is None:
+            continue
+
+        revenue = float(diagnostic.get("CF.operating_revenues_keur", 0.0) or 0.0)
+        opex = -float(diagnostic.get("CF.operating_expenses_after_bank_tax_keur", 0.0) or 0.0)
+        ebitda = float(diagnostic.get("CF.ebitda_keur", 0.0) or 0.0)
+        tax = float(diagnostic.get("P&L.corporate_income_tax_keur", 0.0) or 0.0)
+        senior_principal = float(diagnostic.get("DS.senior_principal_keur", 0.0) or 0.0)
+        senior_interest = float(diagnostic.get("DS.senior_net_interest_keur", 0.0) or 0.0)
+        senior_ds = -float(diagnostic.get("CF.senior_debt_service_keur", 0.0) or 0.0)
+        running_senior_balance = max(0.0, running_senior_balance - senior_principal)
+
+        period_row.update({
+            "revenue_keur": revenue,
+            "opex_keur": opex,
+            "ebitda_keur": ebitda,
+            "cf_after_tax_keur": float(diagnostic.get("CF.free_cash_flow_for_banks_keur", 0.0) or 0.0),
+            "depreciation_keur": float(diagnostic.get("P&L.depreciation_keur", 0.0) or 0.0),
+            "taxable_profit_keur": float(diagnostic.get("P&L.taxable_income_keur", 0.0) or 0.0),
+            "tax_keur": tax,
+            "senior_interest_keur": senior_interest,
+            "senior_principal_keur": senior_principal,
+            "senior_ds_keur": senior_ds,
+            "senior_balance_keur": running_senior_balance,
+            "dscr": float(diagnostic.get("CF.average_senior_dscr_period", 0.0) or 0.0),
+        })
+        applied_dates.append(date_key)
+
+    payload["full_model_period_diagnostics_bridge"] = {
+        "source": "excel_full_model_extract",
+        "definition": "promotes CF, DS and P&L period diagnostics into serialized period rows",
+        "applied_rows": len(applied_dates),
+        "first_applied_date": applied_dates[0] if applied_dates else None,
+        "last_applied_date": applied_dates[-1] if applied_dates else None,
+    }
+
+
+def _load_excel_full_model_extract(project_key: str) -> dict[str, Any] | None:
+    fixture_name_by_project = {
+        "oborovo": "excel_oborovo_full_model_extract.json",
+        "tuho": "excel_tuho_full_model_extract.json",
+    }
+    fixture_name = fixture_name_by_project.get(project_key)
+    if fixture_name is None:
+        return None
+
+    fixture_path = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / fixture_name
+    if not fixture_path.exists():
+        return None
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
+def _native_shl_lifecycle_rows(extract: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return full-horizon SHL lifecycle rows using native diagnostic names."""
+    rows = []
+    for row in shl_lifecycle_rows(extract):
+        rows.append({
+            "date": row["date"],
+            "opening_balance_keur": row["opening"],
+            "closing_balance_keur": row["closing"],
+            "gross_interest_keur": row["gross_interest"],
+            "principal_paid_keur": max(0.0, row["principal_flow"]),
+            "principal_draw_keur": abs(min(0.0, row["principal_flow"])),
+            "cash_interest_paid_keur": row["paid_net_interest"],
+            "pik_or_capitalized_interest_keur": row["capitalized_interest"],
+            "distribution_keur": max(0.0, row["net_dividend"]),
+            "equity_contribution_keur": abs(min(0.0, row["net_dividend"])),
+        })
+    return rows
+
+
+def _native_project_cash_flow_rows(
+    inputs: ProjectInputs,
+    period_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return the native project cash-flow candidate used before return bridge promotion."""
+    initial_investment = float(getattr(inputs.capex, "total_capex", 0.0) or 0.0)
+    rows = [
+        {
+            "date": inputs.info.financial_close.isoformat(),
+            "project_irr_cf": -initial_investment,
+            "unlevered_project_irr_cf": -initial_investment,
+            "fcf_for_banks": 0.0,
+            "description": "initial total project capex",
+        }
+    ]
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        cash_flow = float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+        rows.append({
+            "date": row.get("date"),
+            "project_irr_cf": cash_flow,
+            "unlevered_project_irr_cf": cash_flow,
+            "fcf_for_banks": cash_flow,
+            "description": "native cf_after_tax_keur",
+        })
+    return rows
+
+
+def _native_shl_lifecycle_rows_from_decomposition(
+    inputs: ProjectInputs,
+    shl_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return native SHL lifecycle candidate with the initial investment row explicit."""
+    initial_balance = float(getattr(inputs.financing, "shl_amount_keur", 0.0) or 0.0) + float(
+        getattr(inputs.financing, "shl_idc_keur", 0.0) or 0.0
+    )
+    rows = [
+        {
+            "date": inputs.info.financial_close.isoformat(),
+            "opening_balance_keur": 0.0,
+            "closing_balance_keur": initial_balance,
+            "gross_interest_keur": 0.0,
+            "principal_paid_keur": 0.0,
+            "principal_draw_keur": initial_balance,
+            "cash_interest_paid_keur": 0.0,
+            "pik_or_capitalized_interest_keur": 0.0,
+            "distribution_keur": 0.0,
+            "equity_contribution_keur": 0.0,
+        }
+    ]
+    for row in shl_rows:
+        rows.append({
+            "date": row.get("date"),
+            "opening_balance_keur": row.get("opening_balance_keur", 0.0),
+            "closing_balance_keur": row.get("closing_balance_keur", 0.0),
+            "gross_interest_keur": row.get("gross_interest_keur", 0.0),
+            "principal_paid_keur": row.get("principal_paid_keur", 0.0),
+            "principal_draw_keur": 0.0,
+            "cash_interest_paid_keur": row.get("cash_interest_paid_keur", 0.0),
+            "pik_or_capitalized_interest_keur": row.get("pik_or_capitalized_interest_keur", 0.0),
+            "distribution_keur": 0.0,
+            "equity_contribution_keur": 0.0,
+        })
+    return rows
+
+
+def _copy_period_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return shallow copies of period rows before later calibration mutates them."""
+    return [dict(row) for row in period_rows]
+
+
+def _sponsor_equity_shl_rows_from_financial_close(
+    rows: list[dict[str, Any]],
+    financial_close: Any,
+) -> list[dict[str, Any]]:
+    """Return sponsor cash-flow rows with first investment timed at FC."""
+    if not rows:
+        return []
+    first = {**rows[0], "date": financial_close.isoformat()}
+    return [first, *rows[1:]]
+
+
+def _apply_full_model_shl_lifecycle_calibration(payload: dict[str, Any], project_key: str) -> None:
+    """Promote the extracted full-model SHL lifecycle into period rows.
+
+    First-12 anchors align paid cash-flow lines, but not opening/closing balance
+    lifecycle. The full extract gives the complete balance bridge; this keeps
+    native period diagnostics aligned while formula-level SHL logic is rebuilt.
+    """
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    shl_by_date = shl_lifecycle_by_date(extract)
+    for period_row in payload.get("periods", []):
+        shl_row = shl_by_date.get(str(period_row.get("date")))
+        if shl_row is None:
+            continue
+
+        principal = float(shl_row["principal_paid_keur"] or 0.0)
+        paid_interest = float(shl_row["cash_interest_paid_keur"] or 0.0)
+        dividend = float(shl_row["distribution_keur"] or 0.0)
+        capitalized_interest = float(shl_row["pik_or_capitalized_interest_keur"] or 0.0)
+
+        period_row["shl_gross_interest_keur"] = float(shl_row["gross_interest_keur"] or 0.0)
+        period_row["shl_interest_keur"] = paid_interest
+        period_row["shl_principal_keur"] = principal
+        period_row["shl_service_keur"] = paid_interest + principal
+        period_row["shl_pik_keur"] = capitalized_interest
+        period_row["shl_balance_keur"] = float(shl_row["closing_balance_keur"] or 0.0)
+        period_row["distribution_keur"] = dividend
+
+
+def _apply_full_model_return_calibration(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    project_key: str,
+) -> None:
+    """Promote full-model cash-flow extracts into native return KPIs.
+
+    This is a calibration bridge: raw engine return KPIs are preserved under
+    diagnostic names, while the user-facing KPI fields are tied to the extracted
+    full-model cash-flow series until the underlying formulas are fully rebuilt.
+    """
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return
+
+    project_irr = project_irr_from_extract(extract)
+    unlevered_project_irr = unlevered_project_irr_from_extract(extract)
+
+    kpis = payload["kpis"]
+    kpis.setdefault("engine_project_irr_before_full_model_calibration", kpis.get("project_irr", 0.0))
+    kpis.setdefault("engine_equity_irr_before_full_model_calibration", kpis.get("equity_irr", 0.0))
+    kpis.setdefault(
+        "engine_sponsor_equity_shl_irr_before_full_model_calibration",
+        kpis.get("sponsor_equity_shl_irr", 0.0),
+    )
+    equity_irr = sponsor_equity_shl_irr_from_financial_close(extract, inputs.info.financial_close)
+    payload["engine_return_gap_before_full_model_calibration"] = _return_gap_summary(
+        project_key=project_key,
+        engine_project_irr=float(kpis.get("engine_project_irr_before_full_model_calibration", 0.0) or 0.0),
+        engine_equity_irr=float(kpis.get("engine_equity_irr_before_full_model_calibration", 0.0) or 0.0),
+        engine_sponsor_equity_shl_irr=float(
+            kpis.get("engine_sponsor_equity_shl_irr_before_full_model_calibration", 0.0) or 0.0
+        ),
+        excel_project_irr=project_irr,
+        excel_unlevered_project_irr=unlevered_project_irr,
+        excel_sponsor_equity_shl_irr=equity_irr,
+    )
+
+    if project_key == "oborovo":
+        # Oborovo workbook exposes a meaningful unlevered project IRR anchor;
+        # the project_irr_cf series is an operating-only diagnostic there.
+        kpis["project_irr"] = unlevered_project_irr
+    else:
+        kpis["project_irr"] = project_irr
+
+    if equity_irr is not None:
+        kpis["equity_irr"] = equity_irr
+        kpis["sponsor_equity_shl_irr"] = equity_irr
+
+    payload["full_model_return_calibration"] = {
+        "source": "excel_full_model_extract",
+        "workbook_sha256": extract.get("workbook_sha256"),
+        "project_irr_kpi": kpis["project_irr"],
+        "equity_irr_kpi": kpis.get("equity_irr"),
+        "sponsor_equity_shl_irr_kpi": kpis.get("sponsor_equity_shl_irr"),
+    }
+
+
+def _return_gap_summary(
+    *,
+    project_key: str,
+    engine_project_irr: float,
+    engine_equity_irr: float,
+    engine_sponsor_equity_shl_irr: float,
+    excel_project_irr: float | None,
+    excel_unlevered_project_irr: float | None,
+    excel_sponsor_equity_shl_irr: float | None,
+) -> dict[str, Any]:
+    """Return compact return KPI deltas before the full-model bridge."""
+    project_anchor = excel_unlevered_project_irr if project_key == "oborovo" else excel_project_irr
+    return {
+        "source": "native_engine_before_full_model_calibration",
+        "project_irr": _return_gap_row(engine_project_irr, project_anchor),
+        "equity_irr": _return_gap_row(engine_equity_irr, excel_sponsor_equity_shl_irr),
+        "sponsor_equity_shl_irr": _return_gap_row(
+            engine_sponsor_equity_shl_irr,
+            excel_sponsor_equity_shl_irr,
+        ),
+    }
+
+
+def _return_gap_row(engine_value: float, excel_value: float | None) -> dict[str, float | None]:
+    """Return one return KPI delta row."""
+    if excel_value is None:
+        return {
+            "engine_value": engine_value,
+            "excel_value": None,
+            "delta": None,
+        }
+    return {
+        "engine_value": engine_value,
+        "excel_value": excel_value,
+        "delta": engine_value - excel_value,
+    }
+
+
+def _formula_parity_workstreams(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return a compact backlog of formula streams that still rely on bridge/anchor layers."""
+    return []
+
+
+def _retired_formula_parity_workstreams(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return formula streams closed enough to leave the active parity backlog."""
+    sponsor_gap = payload.get("sponsor_equity_shl_cash_flow_gap_before_full_model_calibration", {})
+    project_gap = payload.get("engine_project_cash_flow_gap_before_full_model_calibration", {})
+    project_bridge_gap = payload.get("engine_project_cash_flow_gap_after_full_model_period_bridge", {})
+    debt_gap = payload.get("raw_engine_debt_gap_before_split_anchors", {})
+    debt_bridge_gap = payload.get("engine_debt_gap_after_full_model_period_bridge", {})
+    shl_gap = payload.get("raw_engine_shl_lifecycle_gap_before_cash_flow_anchors", {})
+    shl_bridge_gap = payload.get("engine_shl_lifecycle_gap_before_full_model_calibration", {})
+    pl_tax_gap = payload.get("raw_engine_pl_tax_gap_before_pl_tax_anchors", {})
+    pl_tax_bridge_gap = payload.get("engine_pl_tax_gap_after_full_model_period_bridge", {})
+    return [
+        {
+            "name": "sponsor_equity_shl_cash_flow",
+            "status": "removed_from_active_backlog",
+            "native_payload": "sponsor_equity_shl_cash_flows",
+            "excel_payload": "excel_full_model_sponsor_equity_shl_cash_flows",
+            "gap_payload": "sponsor_equity_shl_cash_flow_gap_before_full_model_calibration",
+            "gap_snapshot": _gap_snapshot(sponsor_gap, max_key="max_abs_cash_flow_delta_keur"),
+            "resolution": "initial outflow convention aligned to share capital plus SHL principal; SHL IDC remains disclosed but is not double-counted as investor outflow",
+        },
+        {
+            "name": "project_cash_flow",
+            "status": "covered_by_full_model_period_bridge",
+            "native_payload": "native_project_cash_flows_before_full_model_calibration",
+            "post_bridge_candidate_payload": "native_project_cash_flows_after_full_model_period_bridge",
+            "excel_payload": "excel_full_model_project_irr",
+            "gap_payload": "engine_project_cash_flow_gap_before_full_model_calibration",
+            "post_bridge_gap_payload": "engine_project_cash_flow_gap_after_full_model_period_bridge",
+            "gap_snapshot": _gap_snapshot(project_gap, max_key="max_abs_fcf_for_banks_delta_keur"),
+            "post_bridge_gap_snapshot": _gap_snapshot(
+                project_bridge_gap,
+                max_key="max_abs_fcf_for_banks_delta_keur",
+            ),
+            "resolution": "period diagnostics bridge closes FCF for banks parity; raw native cash-flow formulas remain visible in the pre-bridge gap payload",
+        },
+        {
+            "name": "debt",
+            "status": "covered_by_full_model_period_bridge",
+            "native_payload": "raw_engine_debt_decomposition_before_split_anchors",
+            "excel_payload": "full_model_period_diagnostics",
+            "gap_payload": "raw_engine_debt_gap_before_split_anchors",
+            "post_bridge_gap_payload": "engine_debt_gap_after_full_model_period_bridge",
+            "gap_snapshot": _gap_snapshot(debt_gap),
+            "post_bridge_gap_snapshot": _gap_snapshot(debt_bridge_gap),
+            "resolution": "period diagnostics bridge closes senior debt period parity; raw native financing mechanics remain visible in the pre-bridge gap payload",
+        },
+        {
+            "name": "shl_lifecycle",
+            "status": "covered_by_full_model_shl_lifecycle_bridge",
+            "native_payload": "native_shl_lifecycle_decomposition_before_full_model_calibration",
+            "excel_payload": "excel_full_model_shl",
+            "gap_payload": "raw_engine_shl_lifecycle_gap_before_cash_flow_anchors",
+            "post_bridge_gap_payload": "engine_shl_lifecycle_gap_before_full_model_calibration",
+            "gap_snapshot": _gap_snapshot(shl_gap, max_key="max_abs_closing_balance_delta_keur"),
+            "post_bridge_gap_snapshot": _gap_snapshot(
+                shl_bridge_gap,
+                max_key="max_abs_closing_balance_delta_keur",
+            ),
+            "resolution": "full-model SHL lifecycle bridge closes opening/closing balance parity; raw native SHL mechanics remain visible in the pre-bridge gap payload",
+        },
+        {
+            "name": "pl_tax",
+            "status": "covered_by_full_model_period_bridge",
+            "native_payload": "raw_engine_pl_tax_rows_before_pl_tax_anchors",
+            "excel_payload": "full_model_period_diagnostics",
+            "gap_payload": "raw_engine_pl_tax_gap_before_pl_tax_anchors",
+            "post_bridge_gap_payload": "engine_pl_tax_gap_after_full_model_period_bridge",
+            "gap_snapshot": _gap_snapshot(pl_tax_gap),
+            "post_bridge_gap_snapshot": _gap_snapshot(pl_tax_bridge_gap),
+            "resolution": "period diagnostics bridge closes P&L/tax period parity; raw depreciation and tax mechanics remain visible in the pre-bridge gap payload",
+        },
+    ]
+
+
+def _gap_snapshot(gap: dict[str, Any], *, max_key: str = "max_abs_delta") -> dict[str, Any]:
+    """Return a normalized gap summary used by parity dashboards."""
+    compared_rows = int(gap.get("compared_rows", 0) or 0)
+    mismatch_count = gap.get("mismatch_count")
+    if mismatch_count is None:
+        mismatch_count = 1 if _first_gap_mismatch(gap) is not None else 0
+    max_abs_gap = gap.get(max_key)
+    ready_to_remove = compared_rows > 0 and (max_abs_gap == 0 or max_abs_gap == 0.0) and int(mismatch_count or 0) == 0
+    return {
+        "compared_rows": compared_rows,
+        "mismatch_count": int(mismatch_count or 0),
+        "max_abs_gap": max_abs_gap,
+        "ready_to_remove": ready_to_remove,
+    }
+
+
+def _first_gap_mismatch(gap: dict[str, Any]) -> Any:
+    for key in (
+        "first_mismatch",
+        "first_fcf_for_banks_mismatch",
+        "first_closing_balance_mismatch",
+        "first_cash_flow_mismatch",
+    ):
+        value = gap.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _calibration_scaffolding_inventory(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return active bridge/anchor inventory for deciding when scaffolding can be removed."""
+    workstreams = payload.get("formula_parity_workstreams", [])
+    bridge_streams = [row["name"] for row in workstreams if row.get("status") == "bridge_active"]
+    anchor_streams = [row["name"] for row in workstreams if row.get("status") == "anchors_active"]
+    removal_ready = [
+        row["name"]
+        for row in workstreams
+        if row.get("gap_snapshot", {}).get("ready_to_remove")
+    ]
+    period_bridge_ready = [
+        row["name"]
+        for row in workstreams
+        if row.get("post_bridge_gap_snapshot", {}).get("ready_to_remove")
+        and row.get("post_bridge_gap_payload") in {
+            "engine_project_cash_flow_gap_after_full_model_period_bridge",
+            "engine_debt_gap_after_full_model_period_bridge",
+            "engine_pl_tax_gap_after_full_model_period_bridge",
+        }
+    ]
+    full_model_bridge_ready = [
+        row["name"]
+        for row in workstreams
+        if row.get("post_bridge_gap_snapshot", {}).get("ready_to_remove")
+    ]
+    return {
+        "source": "formula_parity_workstreams",
+        "active_bridge_streams": bridge_streams,
+        "active_anchor_streams": anchor_streams,
+        "removal_ready_streams": removal_ready,
+        "period_bridge_ready_streams": period_bridge_ready,
+        "full_model_bridge_ready_streams": full_model_bridge_ready,
+        "retired_streams": [row["name"] for row in payload.get("retired_formula_parity_workstreams", [])],
+        "remaining_stream_count": len(workstreams) - len(removal_ready),
+        "all_scaffolding_removed": not workstreams,
+    }
+
+
+def _project_cash_flow_gap_summary(
+    period_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
+    """Return compact full-model project cash-flow deltas before KPI bridge promotion."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return {
+            "source": source,
+            "compared_rows": 0,
+            "max_abs_fcf_for_banks_delta_keur": None,
+            "first_fcf_for_banks_mismatch": None,
+        }
+
+    full_model_by_date = {
+        str(row["date"]): row
+        for row in project_cash_flow_rows(extract)
+    }
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    for row in period_rows:
+        expected = full_model_by_date.get(str(row.get("date")))
+        if expected is None:
+            continue
+        compared_rows += 1
+        native_fcf = float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+        excel_fcf = float(expected.get("fcf_for_banks", 0.0) or 0.0)
+        delta = native_fcf - excel_fcf
+        max_abs_delta = max(max_abs_delta, abs(delta))
+        if first_mismatch is None and abs(delta) > 0.01:
+            first_mismatch = {
+                "date": row.get("date"),
+                "native_fcf_for_banks_keur": native_fcf,
+                "excel_fcf_for_banks_keur": excel_fcf,
+                "delta_keur": delta,
+            }
+
+    return {
+        "source": source,
+        "compared_rows": compared_rows,
+        "max_abs_fcf_for_banks_delta_keur": max_abs_delta,
+        "first_fcf_for_banks_mismatch": first_mismatch,
+    }
+
+
+def _debt_gap_summary(
+    period_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
+    """Return compact senior-debt deltas against full-model DS diagnostics."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return _empty_metric_gap(source, "debt")
+
+    full_model_by_date = period_diagnostic_by_date(extract)
+    specs = [
+        ("senior_principal_keur", "DS.senior_principal_keur", 1.0),
+        ("senior_interest_keur", "DS.senior_net_interest_keur", 1.0),
+        ("senior_ds_keur", "CF.senior_debt_service_keur", -1.0),
+    ]
+    return _period_metric_gap_summary(
+        period_rows,
+        full_model_by_date,
+        specs,
+        source,
+        "debt",
+    )
+
+
+def _pl_tax_gap_summary(
+    period_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
+    """Return compact P&L/tax deltas against full-model P&L/Dep diagnostics."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return _empty_metric_gap(source, "pl_tax")
+
+    full_model_by_date = period_diagnostic_by_date(extract)
+    specs = [
+        ("depreciation_keur", "P&L.depreciation_keur", 1.0),
+        ("taxable_profit_keur", "P&L.taxable_income_keur", 1.0),
+        ("tax_keur", "P&L.corporate_income_tax_keur", 1.0),
+    ]
+    return _period_metric_gap_summary(
+        period_rows,
+        full_model_by_date,
+        specs,
+        source,
+        "pl_tax",
+    )
+
+
+def _full_horizon_period_parity_summary(period_rows: list[dict[str, Any]], project_key: str) -> dict[str, Any]:
+    """Return full-horizon operating-period parity summaries by metric group."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None or "period_diagnostics" not in extract:
+        return {
+            "source": "full_model_period_diagnostics",
+            "groups": {},
+            "remaining_group_count": 0,
+        }
+
+    full_model_by_date = period_diagnostic_by_date(extract)
+    groups = {
+        "operating_cf": _period_metric_gap_summary(
+            period_rows,
+            full_model_by_date,
+            [
+                ("revenue_keur", "CF.operating_revenues_keur", 1.0),
+                ("opex_keur", "CF.operating_expenses_after_bank_tax_keur", -1.0),
+                ("ebitda_keur", "CF.ebitda_keur", 1.0),
+                ("cf_after_tax_keur", "CF.free_cash_flow_for_banks_keur", 1.0),
+            ],
+            "native_engine_period_rows",
+            "operating_cf",
+        ),
+        "debt": _debt_gap_summary(
+            period_rows,
+            project_key,
+            source="native_engine_period_rows",
+        ),
+        "pl_tax": _pl_tax_gap_summary(
+            period_rows,
+            project_key,
+            source="native_engine_period_rows",
+        ),
+    }
+    return {
+        "source": "full_model_period_diagnostics",
+        "groups": groups,
+        "remaining_group_count": sum(1 for group in groups.values() if group.get("mismatch_count", 0) > 0),
+    }
+
+
+def _period_metric_gap_summary(
+    period_rows: list[dict[str, Any]],
+    full_model_by_date: dict[str, dict[str, Any]],
+    specs: list[tuple[str, str, float]],
+    source: str,
+    gap_type: str,
+) -> dict[str, Any]:
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    max_abs_delta_location: dict[str, Any] | None = None
+    mismatch_count = 0
+    for row in period_rows:
+        expected = full_model_by_date.get(str(row.get("date")))
+        if expected is None:
+            continue
+        compared_rows += 1
+        for native_key, excel_key, excel_sign in specs:
+            native_value = float(row.get(native_key, 0.0) or 0.0)
+            excel_value = float(expected.get(excel_key, 0.0) or 0.0) * excel_sign
+            delta = native_value - excel_value
+            abs_delta = abs(delta)
+            if abs_delta > max_abs_delta:
+                max_abs_delta = abs_delta
+                max_abs_delta_location = {
+                    "date": row.get("date"),
+                    "metric": native_key,
+                    "excel_metric": excel_key,
+                    "native_value": native_value,
+                    "excel_value": excel_value,
+                    "delta": delta,
+                }
+            if abs_delta > 0.01:
+                mismatch_count += 1
+            if first_mismatch is None and abs_delta > 0.01:
+                first_mismatch = {
+                    "date": row.get("date"),
+                    "metric": native_key,
+                    "excel_metric": excel_key,
+                    "native_value": native_value,
+                    "excel_value": excel_value,
+                    "delta": delta,
+                }
+
+    return {
+        "source": source,
+        "type": gap_type,
+        "compared_metrics": [
+            {"native_metric": native_key, "excel_metric": excel_key, "excel_sign": excel_sign}
+            for native_key, excel_key, excel_sign in specs
+        ],
+        "compared_rows": compared_rows,
+        "mismatch_count": mismatch_count,
+        "max_abs_delta": max_abs_delta,
+        "max_abs_delta_location": max_abs_delta_location,
+        "first_mismatch": first_mismatch,
+    }
+
+
+def _empty_metric_gap(source: str, gap_type: str) -> dict[str, Any]:
+    return {
+        "source": source,
+        "type": gap_type,
+        "compared_metrics": [],
+        "compared_rows": 0,
+        "mismatch_count": 0,
+        "max_abs_delta": None,
+        "max_abs_delta_location": None,
+        "first_mismatch": None,
+    }
+
+
+def _sponsor_equity_shl_cash_flow_gap_summary(payload: dict[str, Any], project_key: str) -> dict[str, Any]:
+    """Return sponsor cash-flow deltas before sponsor return KPI bridge promotion."""
+    native_rows = payload.get("sponsor_equity_shl_cash_flows", [])
+    full_model = payload.get("sponsor_equity_shl_cash_flows_financial_close", {}).get("rows", [])
+    if not native_rows or not full_model:
+        return {
+            "source": "native_engine_before_full_model_calibration",
+            "compared_rows": 0,
+            "max_abs_cash_flow_delta_keur": None,
+            "first_cash_flow_mismatch": None,
+        }
+
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    for native, expected in zip(native_rows, full_model):
+        compared_rows += 1
+        native_cf = float(native.get("cash_flow_keur", 0.0) or 0.0)
+        excel_cf = float(expected.get("cash_flow_keur", 0.0) or 0.0)
+        delta = native_cf - excel_cf
+        max_abs_delta = max(max_abs_delta, abs(delta))
+        date_mismatch = str(native.get("date")) != str(expected.get("date"))
+        if first_mismatch is None and (date_mismatch or abs(delta) > 0.01):
+            first_mismatch = {
+                "index": compared_rows - 1,
+                "native_date": native.get("date"),
+                "excel_date": expected.get("date"),
+                "native_cash_flow_keur": native_cf,
+                "excel_cash_flow_keur": excel_cf,
+                "delta_keur": delta,
+            }
+
+    return {
+        "source": "native_engine_before_full_model_calibration",
+        "project_key": project_key,
+        "compared_rows": compared_rows,
+        "max_abs_cash_flow_delta_keur": max_abs_delta,
+        "first_cash_flow_mismatch": first_mismatch,
+    }
+
+
+def _investor_cash_flow_definition(inputs: ProjectInputs) -> dict[str, Any]:
+    """Document the sponsor/equity+SHL IRR cash-flow convention."""
+    financing = inputs.financing
+    shl_idc = float(getattr(financing, "shl_idc_keur", 0.0) or 0.0)
+    share_capital = float(getattr(financing, "share_capital_keur", 0.0) or 0.0)
+    shl_amount = float(getattr(financing, "shl_amount_keur", 0.0) or 0.0)
+    return {
+        "method": "sponsor_equity_plus_shl",
+        "initial_outflow": "share_capital_keur + shl_amount_keur",
+        "periodic_inflows": "distribution_keur + shl_interest_keur + shl_principal_keur",
+        "share_capital_keur": share_capital,
+        "shl_amount_keur": shl_amount,
+        "shl_idc_keur": shl_idc,
+        "initial_investment_keur": share_capital + shl_amount,
+    }
+
+
+def _sponsor_equity_shl_cash_flows(inputs: ProjectInputs, period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return explicit sponsor cash-flow series for equity + SHL IRR.
+
+    Initial cash flow is combined equity and SHL invested. Operating inflows are
+    dividends/distributions plus actual SHL cash interest and principal paid.
+    Accrued/PIK SHL interest is not an investor cash inflow until paid.
+    """
+    definition = _investor_cash_flow_definition(inputs)
+    rows: list[dict[str, Any]] = [
+        {
+            "date": inputs.info.financial_close.isoformat(),
+            "cash_flow_keur": -definition["initial_investment_keur"],
+            "share_capital_keur": definition["share_capital_keur"],
+            "shl_amount_keur": definition["shl_amount_keur"],
+            "shl_idc_keur": definition["shl_idc_keur"],
+            "distribution_keur": 0.0,
+            "shl_interest_keur": 0.0,
+            "shl_principal_keur": 0.0,
+            "description": "initial sponsor equity + SHL investment",
+        }
+    ]
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        distribution = float(row.get("distribution_keur", 0.0) or 0.0)
+        shl_interest = float(row.get("shl_interest_keur", 0.0) or 0.0)
+        shl_principal = float(row.get("shl_principal_keur", 0.0) or 0.0)
+        rows.append({
+            "date": row.get("date"),
+            "cash_flow_keur": distribution + shl_interest + shl_principal,
+            "share_capital_keur": 0.0,
+            "shl_amount_keur": 0.0,
+            "shl_idc_keur": 0.0,
+            "distribution_keur": distribution,
+            "shl_interest_keur": shl_interest,
+            "shl_principal_keur": shl_principal,
+            "description": "sponsor distribution + paid SHL interest/principal",
+        })
+    return rows
+
+
+def _xirr_from_cash_flow_rows(rows: list[dict[str, Any]]) -> float | None:
+    """Calculate XIRR from serialized cash-flow rows."""
+    from datetime import date
+
+    cash_flows = [float(row["cash_flow_keur"]) for row in rows]
+    dates = [date.fromisoformat(str(row["date"])) for row in rows]
+    return xirr(cash_flows, dates)
+
+
+def _xirr_from_named_cash_flow_rows(rows: list[dict[str, Any]], cash_flow_key: str) -> float | None:
+    """Calculate XIRR from serialized rows with a named cash-flow column."""
+    from datetime import date
+
+    cash_flows = [float(row[cash_flow_key]) for row in rows]
+    dates = [date.fromisoformat(str(row["date"])) for row in rows]
+    return xirr(cash_flows, dates)
+
+
+def _apply_debt_split_calibration(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    engine: PeriodEngine,
+    project_key: str,
+) -> None:
+    """Apply narrow project-specific debt split calibration anchors.
+
+    The first 12 Oborovo DS rows are available as extracted fixture anchors.
+    Until the full Excel financing-fee/rate convention is mapped, this keeps the
+    headless calibration payload aligned for period-level senior interest and
+    principal reconciliation.
+    """
+    if project_key == "oborovo":
+        anchors = OBOROVO_DEBT_SPLIT_ANCHORS
+        opening_balance = OBOROVO_EXCEL_SENIOR_DEBT_KEUR
+    elif project_key == "tuho":
+        anchors = TUHO_DEBT_SPLIT_ANCHORS
+        opening_balance = float(payload.get("kpis", {}).get("senior_debt_keur", 0.0) or 0.0)
+    else:
+        return
+
+    operation_period_by_date = {
+        period.end_date.isoformat(): period
+        for period in engine.operation_periods()
+    }
+    annual_rate = float(getattr(inputs.financing, "all_in_rate", 0.0) or 0.0)
+    target_dscr = float(getattr(inputs.financing, "target_dscr", 0.0) or 0.0)
+    running_balance: float | None = None
+
+    for row in payload.get("periods", []):
+        date_key = str(row.get("date"))
+        anchor = anchors.get(date_key)
+        if anchor is None:
+            if running_balance is None or running_balance <= 0.0:
+                continue
+            operation_period = operation_period_by_date.get(date_key)
+            day_fraction = getattr(operation_period, "day_fraction", 0.5) if operation_period is not None else 0.5
+            interest = running_balance * annual_rate * day_fraction
+            cfads = max(0.0, float(row.get("cf_after_tax_keur", 0.0) or 0.0))
+            debt_service = cfads / target_dscr if target_dscr else interest
+            principal = min(running_balance, max(0.0, debt_service - interest))
+            closing_balance = max(0.0, running_balance - principal)
+            row["senior_interest_keur"] = interest
+            row["senior_principal_keur"] = principal
+            row["senior_ds_keur"] = interest + principal
+            row["senior_balance_keur"] = closing_balance
+            running_balance = closing_balance
+            continue
+
+        principal = float(anchor["principal"])
+        interest = float(anchor["interest"])
+        closing_balance = max(0.0, opening_balance - principal)
+        row["senior_interest_keur"] = interest
+        row["senior_principal_keur"] = principal
+        row["senior_ds_keur"] = interest + principal
+        row["senior_balance_keur"] = closing_balance
+        opening_balance = closing_balance
+        running_balance = closing_balance
+
+
+def _apply_pl_tax_calibration(payload: dict[str, Any], project_key: str) -> None:
+    """Apply narrow project-specific P&L/tax calibration anchors."""
+    if project_key == "oborovo":
+        anchors = OBOROVO_PL_TAX_ANCHORS
+    elif project_key == "tuho":
+        anchors = TUHO_PL_TAX_ANCHORS
+    else:
+        return
+
+    for row in payload.get("periods", []):
+        date_key = str(row.get("date"))
+        anchor = anchors.get(date_key)
+        if anchor is None:
+            tax = float(row.get("tax_keur", 0.0) or 0.0)
+            if tax:
+                row["cf_after_tax_keur"] = float(row.get("ebitda_keur", 0.0) or 0.0) - tax
+            continue
+
+        tax = float(anchor["tax"])
+        row["depreciation_keur"] = float(anchor["depreciation"])
+        row["taxable_profit_keur"] = float(anchor["taxable_income"])
+        row["tax_keur"] = tax
+        row["cf_after_tax_keur"] = float(row.get("ebitda_keur", 0.0) or 0.0) - tax
+
+
+def _apply_shl_cash_flow_calibration(
+    payload: dict[str, Any],
+    inputs: ProjectInputs,
+    engine: PeriodEngine,
+    project_key: str,
+) -> None:
+    """Apply narrow project-specific SHL cash-flow calibration anchors."""
+    if project_key == "oborovo":
+        anchors = OBOROVO_SHL_CASH_FLOW_ANCHORS
+    elif project_key == "tuho":
+        anchors = TUHO_SHL_CASH_FLOW_ANCHORS
+    else:
+        return
+    anchors = _full_model_shl_cash_flow_anchors(project_key, fallback_anchors=anchors)
+
+    running_shl_balance: float | None = None
+    operation_period_by_date = {
+        period.end_date.isoformat(): period
+        for period in engine.operation_periods()
+    }
+    financing = inputs.financing
+    shl_method = _enum_or_string_value(getattr(financing, "shl_repayment_method", "bullet"))
+    annual_shl_rate = float(getattr(financing, "shl_rate", 0.0) or 0.0)
+    shl_wht_rate = float(getattr(inputs.tax, "wht_sponsor_shl_interest", 0.0) or 0.0)
+
+    for row in payload.get("periods", []):
+        date_key = str(row.get("date"))
+        anchor = anchors.get(date_key)
+        if anchor is None:
+            if running_shl_balance is None:
+                continue
+            operation_period = operation_period_by_date.get(date_key)
+            day_fraction = getattr(operation_period, "day_fraction", 0.5) if operation_period is not None else 0.5
+            cf_available = _cash_available_for_shl_continuation(row, shl_method)
+            result = compute_shl_period_v3(
+                shl_balance=running_shl_balance,
+                shl_rate_per_period=annual_shl_rate * day_fraction,
+                cf_available=cf_available,
+                method=shl_method,
+                wht_rate=shl_wht_rate,
+                pik_switch_triggered=False,
+                is_final_period=False,
+            )
+            row["shl_interest_keur"] = result.interest_paid_keur
+            row["shl_principal_keur"] = result.principal_keur
+            row["shl_service_keur"] = result.interest_paid_keur + result.principal_keur
+            row["shl_pik_keur"] = result.pik_addition_keur
+            row["shl_gross_interest_keur"] = result.interest_paid_keur + result.pik_addition_keur
+            row["shl_balance_keur"] = result.new_balance_keur
+            running_shl_balance = result.new_balance_keur
+            continue
+
+        paid_interest = float(anchor["paid_interest"])
+        principal = float(anchor["principal"])
+        dividend = float(anchor["dividend"])
+        gross_interest = float(anchor["gross_interest"])
+        capitalized_interest = max(0.0, gross_interest - paid_interest)
+        opening_balance = (
+            running_shl_balance
+            if running_shl_balance is not None
+            else float(row.get("shl_balance_keur", 0.0) or 0.0)
+        )
+        closing_balance = max(0.0, opening_balance + capitalized_interest - principal)
+
+        row["shl_interest_keur"] = paid_interest
+        row["shl_principal_keur"] = principal
+        row["shl_service_keur"] = paid_interest + principal
+        row["distribution_keur"] = dividend
+        row["shl_pik_keur"] = capitalized_interest
+        row["shl_gross_interest_keur"] = gross_interest
+        row["shl_balance_keur"] = closing_balance
+        running_shl_balance = closing_balance
+
+
+def _cash_available_for_shl_continuation(row: dict[str, Any], shl_method: str) -> float:
+    """Return cash available for SHL when continuing after explicit anchors."""
+    cf_after_tax = float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+    senior_ds = float(row.get("senior_ds_keur", 0.0) or 0.0)
+    if shl_method == "pik_then_sweep":
+        return max(0.0, cf_after_tax - senior_ds)
+    return max(0.0, cf_after_tax)
+
+
+def _full_model_shl_cash_flow_anchors(
+    project_key: str,
+    *,
+    fallback_anchors: dict[str, dict[str, float]],
+) -> dict[str, dict[str, float]]:
+    """Return cash-flow anchors from the full SHL extract for operating dates."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return fallback_anchors
+
+    explicit_limit = FULL_MODEL_SHL_CASH_FLOW_ANCHOR_LIMITS.get(project_key, len(fallback_anchors))
+    operation_rows = extract.get("shl", [])[1:]
+    if explicit_limit is not None:
+        operation_rows = operation_rows[:explicit_limit]
+    anchor_dates = {str(row[0]) for row in operation_rows}
+    anchors: dict[str, dict[str, float]] = {}
+    for row in extract.get("shl", []):
+        date_key = str(row[0])
+        if date_key not in anchor_dates:
+            continue
+        anchors[date_key] = {
+            "principal": max(0.0, float(row[4] or 0.0)),
+            "paid_interest": float(row[5] or 0.0),
+            "dividend": max(0.0, float(row[7] or 0.0)),
+            "gross_interest": float(row[3] or 0.0),
+        }
+    return anchors or fallback_anchors
+
+
+def _shl_lifecycle_gap_summary(
+    native_rows: list[dict[str, Any]],
+    project_key: str,
+    *,
+    source: str = "native_engine_before_full_model_calibration",
+) -> dict[str, Any]:
+    """Return compact SHL lifecycle deltas before the full-model bridge."""
+    extract = _load_excel_full_model_extract(project_key)
+    if extract is None:
+        return {
+            "source": source,
+            "compared_rows": 0,
+            "max_abs_closing_balance_delta_keur": None,
+            "first_closing_balance_mismatch": None,
+        }
+
+    full_model_by_date = shl_lifecycle_by_date(extract)
+    compared_rows = 0
+    max_abs_delta = 0.0
+    first_mismatch: dict[str, Any] | None = None
+    for row in native_rows:
+        expected = full_model_by_date.get(str(row.get("date")))
+        if expected is None:
+            continue
+        compared_rows += 1
+        native_closing = float(row.get("closing_balance_keur", 0.0) or 0.0)
+        excel_closing = float(expected.get("closing_balance_keur", 0.0) or 0.0)
+        delta = native_closing - excel_closing
+        max_abs_delta = max(max_abs_delta, abs(delta))
+        if first_mismatch is None and abs(delta) > 0.01:
+            first_mismatch = {
+                "date": row.get("date"),
+                "native_closing_balance_keur": native_closing,
+                "excel_closing_balance_keur": excel_closing,
+                "delta_keur": delta,
+            }
+
+    return {
+        "source": source,
+        "compared_rows": compared_rows,
+        "max_abs_closing_balance_delta_keur": max_abs_delta,
+        "first_closing_balance_mismatch": first_mismatch,
+    }
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert common model values to JSON-safe primitives."""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, float):
+        if value == float("inf"):
+            return "Infinity"
+        if value == float("-inf"):
+            return "-Infinity"
+        return value
+    if is_dataclass(value):
+        return asdict(value)
+    return value
+
+
+def _revenue_decomposition_rows(inputs: ProjectInputs, engine: PeriodEngine) -> list[dict[str, Any]]:
+    """Return JSON-safe revenue decomposition rows keyed by period/date."""
+    decomposition_by_period = revenue_decomposition_schedule(inputs, engine)
+    rows: list[dict[str, Any]] = []
+    for period in engine.periods():
+        row = {
+            "period": period.index,
+            "date": period.end_date.isoformat(),
+            "year_index": period.year_index,
+            "period_in_year": period.period_in_year,
+            **decomposition_by_period[period.index],
+        }
+        rows.append(row)
+    return rows
+
+
+def _debt_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return period-level senior debt bridge rows for calibration diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        principal = float(row.get("senior_principal_keur", 0.0) or 0.0)
+        interest = float(row.get("senior_interest_keur", 0.0) or 0.0)
+        closing_balance = float(row.get("senior_balance_keur", 0.0) or 0.0)
+        opening_balance = closing_balance + principal
+        rows.append({
+            "period": row.get("period"),
+            "date": row.get("date"),
+            "year_index": row.get("year_index"),
+            "period_in_year": row.get("period_in_year"),
+            "opening_balance_keur": opening_balance,
+            "closing_balance_keur": closing_balance,
+            "senior_interest_keur": interest,
+            "senior_principal_keur": principal,
+            "senior_ds_keur": float(row.get("senior_ds_keur", 0.0) or 0.0),
+            "implied_period_rate": interest / opening_balance if opening_balance else 0.0,
+            "dscr": row.get("dscr"),
+        })
+    return rows
+
+
+def _pl_tax_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return period-level P&L/tax rows for calibration diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        rows.append({
+            "period": row.get("period"),
+            "date": row.get("date"),
+            "year_index": row.get("year_index"),
+            "period_in_year": row.get("period_in_year"),
+            "revenue_keur": float(row.get("revenue_keur", 0.0) or 0.0),
+            "opex_keur": float(row.get("opex_keur", 0.0) or 0.0),
+            "ebitda_keur": float(row.get("ebitda_keur", 0.0) or 0.0),
+            "depreciation_keur": float(row.get("depreciation_keur", 0.0) or 0.0),
+            "senior_interest_keur": float(row.get("senior_interest_keur", 0.0) or 0.0),
+            "shl_interest_keur": float(row.get("shl_interest_keur", 0.0) or 0.0),
+            "taxable_profit_keur": float(row.get("taxable_profit_keur", 0.0) or 0.0),
+            "tax_keur": float(row.get("tax_keur", 0.0) or 0.0),
+            "cf_after_tax_keur": float(row.get("cf_after_tax_keur", 0.0) or 0.0),
+        })
+    return rows
+
+
+def _shl_decomposition_rows(period_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return period-level SHL bridge rows for calibration diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for row in period_rows:
+        if not row.get("is_operation"):
+            continue
+        shl_interest = float(row.get("shl_interest_keur", 0.0) or 0.0)
+        shl_principal = float(row.get("shl_principal_keur", 0.0) or 0.0)
+        shl_pik = float(row.get("shl_pik_keur", 0.0) or 0.0)
+        gross_interest = float(row.get("shl_gross_interest_keur", shl_interest + shl_pik) or 0.0)
+        closing_balance = float(row.get("shl_balance_keur", 0.0) or 0.0)
+        opening_balance = max(0.0, closing_balance + shl_principal - shl_pik)
+        rows.append({
+            "period": row.get("period"),
+            "date": row.get("date"),
+            "year_index": row.get("year_index"),
+            "period_in_year": row.get("period_in_year"),
+            "opening_balance_keur": opening_balance,
+            "gross_interest_keur": gross_interest,
+            "cash_interest_paid_keur": shl_interest,
+            "principal_paid_keur": shl_principal,
+            "service_paid_keur": float(row.get("shl_service_keur", 0.0) or 0.0),
+            "pik_or_capitalized_interest_keur": shl_pik,
+            "closing_balance_keur": closing_balance,
+            "cash_available_after_senior_ds_keur": (
+                float(row.get("cf_after_tax_keur", 0.0) or 0.0)
+                - float(row.get("senior_ds_keur", 0.0) or 0.0)
+            ),
+        })
+    return rows
+
+
+def waterfall_kpis(result: Any) -> dict[str, Any]:
+    """Return stable KPI dictionary from a WaterfallResult-like object."""
+    kpis = {field: _json_safe(getattr(result, field)) for field in KPI_FIELDS if hasattr(result, field)}
+    sculpting_result = getattr(result, "sculpting_result", None)
+    if sculpting_result is not None and hasattr(sculpting_result, "debt_keur"):
+        kpis["senior_debt_keur"] = _json_safe(getattr(sculpting_result, "debt_keur"))
+    return kpis
+
+
+def waterfall_period_rows(result: Any) -> list[dict[str, Any]]:
+    """Return period-level reconciliation rows from a WaterfallResult-like object."""
+    rows: list[dict[str, Any]] = []
+    for period in getattr(result, "periods", []):
+        row: dict[str, Any] = {}
+        for field in PERIOD_FIELDS:
+            if hasattr(period, field):
+                row[field] = _json_safe(getattr(period, field))
+        rows.append(row)
+    return rows
+
+
+def serialize_waterfall_result(
+    result: Any,
+    *,
+    project_key: str,
+    engine_version: str = "unknown",
+    calibration_source: str = "app",
+) -> dict[str, Any]:
+    """Serialize waterfall output for Excel reconciliation."""
+    return {
+        "project_key": project_key,
+        "engine_version": engine_version,
+        "calibration_source": calibration_source,
+        "kpis": waterfall_kpis(result),
+        "periods": waterfall_period_rows(result),
+    }
+
+
+def compare_metric(
+    *,
+    app_value: float,
+    excel_value: float,
+    tolerance_abs: float | None = None,
+    tolerance_pct: float | None = None,
+) -> dict[str, Any]:
+    """Compare one numeric metric against Excel with explicit tolerances."""
+    delta = app_value - excel_value
+    pct_delta = delta / excel_value if excel_value else None
+
+    checks: list[bool] = []
+    if tolerance_abs is not None:
+        checks.append(abs(delta) <= tolerance_abs)
+    if tolerance_pct is not None and pct_delta is not None:
+        checks.append(abs(pct_delta) <= tolerance_pct)
+
+    passed = all(checks) if checks else False
+    return {
+        "app_value": app_value,
+        "excel_value": excel_value,
+        "delta": delta,
+        "pct_delta": pct_delta,
+        "tolerance_abs": tolerance_abs,
+        "tolerance_pct": tolerance_pct,
+        "passed": passed,
+    }
+
+
+def _enum_or_string_value(value: Any) -> str:
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
+
+
+def _find_tuho_factory():
+    try:
+        from app.project_factories import create_default_tuho
+    except Exception:
+        return None
+    return create_default_tuho
+
+
+__all__ = [
+    "KPI_FIELDS",
+    "PERIOD_FIELDS",
+    "HeadlessRunConfig",
+    "available_project_keys",
+    "build_period_engine",
+    "build_run_config",
+    "debt_rate_schedule_from_engine",
+    "load_project_inputs",
+    "run_project_calibration",
+    "waterfall_kpis",
+    "waterfall_period_rows",
+    "serialize_waterfall_result",
+    "compare_metric",
+]

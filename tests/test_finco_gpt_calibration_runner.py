@@ -12,6 +12,8 @@ from app.calibration_runner import (
     run_calibration,
 )
 
+pytestmark = pytest.mark.legacy_excel
+
 
 def test_available_project_keys_include_oborovo_and_tuho() -> None:
     keys = available_project_keys()

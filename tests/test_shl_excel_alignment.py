@@ -16,6 +16,8 @@ from app.calibration import run_project_calibration
 from domain.returns.xirr import xirr
 from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
+pytestmark = pytest.mark.legacy_excel
+
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 

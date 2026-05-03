@@ -19,6 +19,8 @@ from domain.revenue.generation import (
 )
 from tests.reconciliation_helpers import compare_value
 
+pytestmark = pytest.mark.legacy_excel
+
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 

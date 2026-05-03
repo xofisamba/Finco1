@@ -19,27 +19,6 @@ from domain.inputs import TechnicalParams, ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodMeta
 
 
-OBOROVO_FIRST12_REVENUE_ANCHORS: dict[str, float] = {
-    "2030-12-31": 3249.870272694838,
-    "2031-06-30": 3196.883257379162,
-    "2031-12-31": 3228.026882337381,
-    "2032-06-30": 3241.332637554068,
-    "2032-12-31": 3203.81642805361,
-    "2033-06-30": 3170.0631113040746,
-    "2033-12-31": 3196.9920218345075,
-    "2034-06-30": 3164.404488373707,
-    "2034-12-31": 3189.660224974639,
-    "2035-06-30": 3158.757455740577,
-    "2035-12-31": 3182.3461649670644,
-    "2036-06-30": 3460.8110663064376,
-}
-
-TUHO_FIRST3_REVENUE_ANCHORS: dict[str, float] = {
-    "2030-06-30": 4060.9881853157603,
-    "2030-12-31": 4128.2973817574575,
-    "2031-06-30": 4118.2246415183245,
-}
-
 
 def _is_p90_10y_scenario(yield_scenario: str) -> bool:
     """Normalize common P90-10y spellings used across Excel/app inputs."""
@@ -228,23 +207,6 @@ def revenue_decomposition_schedule(
             price_eur_mwh=inputs.revenue.co2_price_eur,
         )
         revenue_keur = energy_revenue_keur - balancing_cost_pv_keur - balancing_cost_wind_keur + co2_revenue_keur
-
-        if inputs.info.code == "OBR-001":
-            anchor = OBOROVO_FIRST12_REVENUE_ANCHORS.get(period.end_date.isoformat())
-            if anchor is not None:
-                energy_revenue_keur = anchor
-                balancing_cost_pv_keur = 0.0
-                balancing_cost_wind_keur = 0.0
-                co2_revenue_keur = 0.0
-                revenue_keur = anchor
-        elif inputs.info.code == "TUHO-001":
-            anchor = TUHO_FIRST3_REVENUE_ANCHORS.get(period.end_date.isoformat())
-            if anchor is not None:
-                energy_revenue_keur = anchor
-                balancing_cost_pv_keur = 0.0
-                balancing_cost_wind_keur = 0.0
-                co2_revenue_keur = 0.0
-                revenue_keur = anchor
 
         decompositions[period.index] = {
             "is_operation": True,

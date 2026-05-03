@@ -15,6 +15,8 @@ import pytest
 from app.calibration import run_project_calibration
 from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
+pytestmark = pytest.mark.legacy_excel
+
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 OBOROVO_EXCEL_SENIOR_DEBT_KEUR = 42_852.10911500986

@@ -14,6 +14,8 @@ import pytest
 
 from domain.returns.xirr import xirr
 
+pytestmark = pytest.mark.legacy_excel
+
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 

@@ -14,6 +14,8 @@ import pytest
 from app.calibration import compare_metric, run_project_calibration
 from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
+pytestmark = pytest.mark.legacy_excel
+
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = ROOT / "tests" / "fixtures"

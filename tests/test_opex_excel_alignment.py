@@ -15,6 +15,8 @@ from app.calibration import build_period_engine, load_project_inputs
 from domain.opex.projections import opex_schedule_period, opex_schedule_annual
 from tests.reconciliation_helpers import compare_value
 
+pytestmark = pytest.mark.legacy_excel
+
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 

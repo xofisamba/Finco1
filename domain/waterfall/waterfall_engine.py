@@ -31,6 +31,7 @@ from domain.returns.xirr import xirr, xnpv
 from domain.period_engine import hash_engine_for_cache
 from domain.tax.engine import atad_adjustment
 from domain.waterfall.shl_engine import compute_shl_period_v3
+from domain.waterfall.tax_engine import compute_period_tax, TaxPeriodResult
 from utils.logging_config import get_logger
 
 _log = get_logger(__name__)  # Module-level logger (defined once, not per-function)
@@ -624,10 +625,8 @@ def run_waterfall(
         # Interest deductibility limited to 30% of EBITDA (ATAD directive)
         # NOTE: atad_min_interest_keur=3000 keeps all interest deductible for this project
         # (interest < 3000 kEUR per period). This is a project-specific override.
+        # ATAD-based tax calculation using domain tax engine
         total_interest = si + shi
-        deductible_interest, disallowed_addback = atad_adjustment(
-            total_interest, ebitda, atad_ebitda_limit=0.30
-        )
         
         # Fiscal reintegration: IDC + bank fees + commitment fees capitalized during
         # construction, added back to taxable profit in first year of operation
@@ -638,16 +637,25 @@ def run_waterfall(
         else:
             fiscal_reintegration = 0.0
         
-        # Taxable profit = EBITDA - deductible interest + fiscal reintegration + ATAD addback
-        taxable_profit = max(0, ebitda - deductible_interest + fiscal_reintegration + disallowed_addback)
+        # compute_period_tax handles ATAD, loss carryforward, and base taxable income
+        tax_result: TaxPeriodResult = compute_period_tax(
+            ebitda_keur=ebitda,
+            depreciation_keur=dep,
+            senior_interest_keur=si,
+            shl_interest_keur=shi,
+            loss_carryforward_keur=prior_tax_loss,
+            tax_rate=tax_rate,
+            atad_ebitda_limit=0.30,
+            atad_min_threshold_keur=3000.0,
+            loss_carryforward_cap=loss_carryforward_cap,
+        )
         
-        # Apply prior tax losses (FIFO, 5-year cap)
-        taxable_after_loss = max(0, taxable_profit - prior_tax_loss)
-        tax = taxable_after_loss * tax_rate
+        # Add fiscal_reintegration to base taxable income (project-specific HR tax law add-back)
+        taxable_profit = max(0.0, tax_result.taxable_income_keur + fiscal_reintegration)
+        tax = max(0.0, taxable_profit * tax_rate)
         
-        # Update loss carryforward
-        new_loss = max(0, prior_tax_loss - taxable_profit) + max(0, -taxable_after_loss)
-        prior_tax_loss = min(new_loss, ebitda * loss_carryforward_cap)
+        # Update loss carryforward from engine result
+        prior_tax_loss = tax_result.loss_carryforward_remaining_keur
         
         # Tax paid only in H2 (second half of year) — HR tax law
         is_tax_period = period.period_in_year == 2

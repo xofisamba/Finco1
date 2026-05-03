@@ -1,7 +1,7 @@
 """Run headless Excel calibration payload generation.
 
-Actual implementation moved to tools/calibration_legacy/run_calibration.py.
-This shim preserves the CLI interface for backward compatibility.
+Usage:
+    python scripts/run_calibration.py --project oborovo --output /tmp/oborovo.json
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import argparse
 import json
 from pathlib import Path
 
-from tools.calibration_legacy.calibration import available_project_keys, run_project_calibration as _run_project_calibration
+from app.calibration import available_project_keys, run_project_calibration
 
 
 def main() -> int:
@@ -19,7 +19,7 @@ def main() -> int:
     parser.add_argument("--indent", type=int, default=2, help="JSON indentation")
     args = parser.parse_args()
 
-    payload = _run_project_calibration(args.project)
+    payload = run_project_calibration(args.project)
     encoded = json.dumps(payload, indent=args.indent, ensure_ascii=False)
 
     if args.output:

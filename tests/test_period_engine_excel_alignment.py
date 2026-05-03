@@ -6,9 +6,12 @@ moves, every period-level reconciliation becomes meaningless.
 from __future__ import annotations
 
 import json
+import pytest
 from pathlib import Path
 
 from app.calibration import build_period_engine, load_project_inputs
+
+pytestmark = pytest.mark.legacy_excel
 
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"

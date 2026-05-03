@@ -19,6 +19,8 @@ from app.calibration_runner import load_project_inputs
 from domain.returns.xirr import xirr
 from tests.reconciliation_helpers import collect_period_failures, period_by_date
 
+pytestmark = pytest.mark.legacy_excel
+
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 TARGETS = FIXTURE_DIR / "excel_calibration_targets.json"

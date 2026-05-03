@@ -52,6 +52,7 @@ def run_waterfall_v3_core(
     from domain.waterfall.waterfall_engine import run_waterfall
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
     from domain.opex.projections import opex_schedule_period
+    from domain.financing.depreciation_schedule import build_depreciation_schedule
 
     all_periods = list(engine.periods())
     periods_list = [p for p in all_periods if p.is_operation]
@@ -60,8 +61,21 @@ def run_waterfall_v3_core(
     opex_period = opex_schedule_period(inputs, engine)
 
     horizon_years = inputs.info.horizon_years
-    dep_per_year = inputs.capex.total_capex / horizon_years
-    depreciation_schedule_annual = [dep_per_year] * horizon_years
+    
+    # Build proper depreciation schedule from individual capex items (asset-class based)
+    # Collect all CapexItem fields from CapexStructure as a tuple
+    from domain.inputs import CapexItem
+    capex_items: tuple[CapexItem, ...] = tuple(
+        getattr(inputs.capex, field)
+        for field in inputs.capex.__dataclass_fields__
+        if field.isidentifier() and not field.startswith('_')
+        and isinstance(getattr(inputs.capex, field, None), CapexItem)
+    )
+    dep_schedule_annual = build_depreciation_schedule(
+        capex_items=capex_items,
+        horizon_years=horizon_years,
+        senior_tenor_years=inputs.financing.senior_tenor_years,
+    )
 
     ebitda_schedule: list[float] = []
     revenue_schedule: list[float] = []
@@ -74,11 +88,7 @@ def run_waterfall_v3_core(
         gen = generation_dict.get(p.index, 0)
         opex = opex_period.get(p.index, 0)
         ebitda = max(0, rev - opex)
-        annual_dep = (
-            depreciation_schedule_annual[p.year_index - 1]
-            if p.year_index <= len(depreciation_schedule_annual)
-            else dep_per_year
-        )
+        annual_dep = dep_schedule_annual.get(p.year_index, 0.0)
         dep = annual_dep * p.day_fraction
 
         revenue_schedule.append(rev)

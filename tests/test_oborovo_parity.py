@@ -17,6 +17,8 @@ from domain.inputs import ProjectInputs, CapexItem
 from domain.period_engine import PeriodEngine, PeriodFrequency
 from domain.returns.xirr import xirr, xnpv
 
+pytestmark = pytest.mark.legacy_excel
+
 
 # Load baseline fixture
 BASELINE_PATH = Path(__file__).parent / "fixtures" / "oborovo_baseline.json"

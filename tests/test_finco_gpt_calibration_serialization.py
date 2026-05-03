@@ -1,10 +1,14 @@
 """Tests for FincoGPT calibration serialization helpers."""
 from __future__ import annotations
 
+import pytest
+
 from dataclasses import dataclass
 from datetime import date
 
 from app.calibration import compare_metric, serialize_waterfall_result, waterfall_kpis, waterfall_period_rows
+
+pytestmark = pytest.mark.legacy_excel
 
 
 @dataclass

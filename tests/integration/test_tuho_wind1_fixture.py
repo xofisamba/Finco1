@@ -11,6 +11,8 @@ import pytest
 import json
 from pathlib import Path
 
+pytestmark = pytest.mark.legacy_excel
+
 
 FIXTURE_PATH = Path(__file__).parent.parent / "fixtures" / "tuho_wind1_golden.json"
 

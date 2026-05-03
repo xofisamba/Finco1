@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.legacy_excel
+
 from domain.waterfall.full_model_extract import (
     period_diagnostic_by_date,
     period_diagnostic_rows,

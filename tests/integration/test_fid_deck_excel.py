@@ -10,6 +10,8 @@ Also checks:
 - File opens without errors (openpyxl load)
 """
 import json
+import pytest
+pytestmark = pytest.mark.legacy_excel
 import os
 import tempfile
 from pathlib import Path
