@@ -19,6 +19,15 @@ from domain.financing.sculpting_iterative import closed_form_sculpt
 
 
 @dataclass(frozen=True)
+class PortfolioDebtSchedule:
+    """Portfolio debt sizing result from sculpting."""
+    debt_keur: float
+    debt_service_schedule: tuple[float, ...]
+    interest_schedule: tuple[float, ...] = ()
+    principal_schedule: tuple[float, ...] = ()
+
+
+@dataclass(frozen=True)
 class PortfolioPeriod:
     period: int
     date: date
@@ -34,7 +43,11 @@ class PortfolioPeriod:
 
 @dataclass(frozen=True)
 class PortfolioResult:
-    """Result of a portfolio pooled-financing waterfall."""
+    """Result of a portfolio pooled-financing waterfall.
+
+    IRR aggregation not yet implemented — portfolio_project_irr and portfolio_sponsor_irr
+    are placeholders until full cash-flow aggregation is ready.
+    """
     periods: tuple[PortfolioPeriod, ...]
     project_results: tuple[tuple[str, WaterfallResult], ...]
     total_revenue_keur: float
@@ -96,8 +109,8 @@ def build_portfolio_debt_service_schedule(
     cfads_schedule: list[float],
     financing,  # shared FinancingParams
     rate_per_period: float,
-) -> tuple[float, ...]:
-    """Sculpt portfolio debt service from pooled CFADS using closed-form sculpting.
+) -> PortfolioDebtSchedule:
+    """Sculpt portfolio debt from pooled CFADS schedule using closed_form_sculpt.
 
     Uses target_dscr from shared_financing to size debt and compute the schedule.
     """
@@ -109,7 +122,12 @@ def build_portfolio_debt_service_schedule(
         tenor_periods=n,
         target_dscr=target_dscr,
     )
-    return tuple(result.payment_schedule)
+    return PortfolioDebtSchedule(
+        debt_keur=result.debt_keur,
+        debt_service_schedule=tuple(result.payment_schedule),
+        interest_schedule=tuple(result.interest_schedule),
+        principal_schedule=tuple(result.principal_schedule),
+    )
 
 
 def run_portfolio_waterfall(
@@ -134,19 +152,20 @@ def run_portfolio_waterfall(
     n = len(pooled)
     cfads_list = [p["pooled_cfads_keur"] for p in pooled]
 
-    # Sculpt portfolio debt service from pooled CFADS if not explicitly provided
-    if portfolio_debt_service_schedule is None:
-        if portfolio_inputs is not None:
-            portfolio_debt_service_schedule = build_portfolio_debt_service_schedule(
-                cfads_list,
-                portfolio_inputs.shared_financing,
-                rate_per_period,
-            )
-        else:
-            # Fallback for backward compatibility (only when no portfolio_inputs available)
-            portfolio_debt_service_schedule = [1000.0] * n
-
-    ds_schedule = list(portfolio_debt_service_schedule)
+    # Sculpt or require portfolio debt service schedule
+    if portfolio_debt_service_schedule is not None:
+        ds_schedule = list(portfolio_debt_service_schedule)
+    elif portfolio_inputs is not None:
+        pds = build_portfolio_debt_service_schedule(
+            cfads_list,
+            portfolio_inputs.shared_financing,
+            rate_per_period,
+        )
+        ds_schedule = list(pds.debt_service_schedule)
+    else:
+        raise ValueError(
+            "Either portfolio_inputs or explicit portfolio_debt_service_schedule is required"
+        )
 
     total_rev = sum(p["pooled_revenue_keur"] for p in pooled)
     total_ebitda = sum(p["pooled_ebitda_keur"] for p in pooled)
@@ -181,12 +200,17 @@ def run_portfolio_waterfall(
     min_d = min(dscrs) if dscrs else 0.0
 
     # Compute portfolio debt from sculpted schedule (or 0 if not available)
-    if portfolio_inputs is not None and portfolio_debt_service_schedule:
-        sculpted = closed_form_sculpt(
-            cfads_list, [rate_per_period] * n, n,
-            portfolio_inputs.shared_financing.target_dscr,
-        )
-        portfolio_debt = sculpted.debt_keur
+    if portfolio_inputs is not None:
+        if portfolio_debt_service_schedule is not None:
+            # Explicit schedule provided — sculpt just for debt amount
+            sculpted = closed_form_sculpt(
+                cfads_list, [rate_per_period] * n, n,
+                portfolio_inputs.shared_financing.target_dscr,
+            )
+            portfolio_debt = sculpted.debt_keur
+        else:
+            # Already built pds above
+            portfolio_debt = pds.debt_keur
     else:
         portfolio_debt = 0.0
 
