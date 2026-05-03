@@ -256,7 +256,7 @@ Relevant tests:
 
 There are no active xfails in the current full suite.
 
-Known caveat: the native-facing KPI fields and `shl_decomposition` now match full-model extracts through a calibration bridge in `app/calibration.py`. The next work is to replace those bridges with formula-level engine logic for project cash flows, SHL lifecycle, sponsor cash flows, debt mechanics and tax/depreciation.
+Known caveat: the native-facing KPI fields and `shl_decomposition` now match full-model extracts through a calibration bridge in `app/calibration.py`. The next work is to replace those bridges with formula-level engine logic for P&L/tax, debt mechanics, project cash flows, SHL lifecycle and sponsor cash flows.
 
 Current diagnostic state before the full-model SHL bridge:
 
@@ -269,6 +269,7 @@ Current diagnostic state before the full-model SHL bridge:
 - Project cash-flow gap tests now lock first mismatch values and max absolute deltas for both Oborovo and TUHO.
 - `engine_debt_gap_before_full_model_calibration` records native debt rows versus full-model DS/CF period diagnostics; it includes compared metrics, mismatch counts, first mismatch and max-delta location. First current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
 - `engine_pl_tax_gap_before_full_model_calibration` records native depreciation/tax rows versus full-model P&L diagnostics; it includes compared metrics, mismatch counts, first mismatch and max-delta location. First current mismatches are Oborovo `2032-06-30` and TUHO `2031-12-31`.
+- Native taxable income now follows `EBITDA - depreciation - deductible senior interest + addbacks`, with SHL interest kept out of the tax deduction path. Remaining P&L/tax deltas are mainly depreciation timing, tax-loss rollforward, ATAD and corporate-tax payment timing.
 - Senior debt diagnostics now continue from the last explicit Excel debt split anchor using day-count interest and target-DSCR service instead of reverting to a one-period native balloon repayment.
 - P&L/tax diagnostics now keep non-anchor post-tax cash flow consistent with tax charges by setting `cf_after_tax_keur = ebitda_keur - tax_keur` when tax is present.
 - `sponsor_equity_shl_cash_flow_gap_before_full_model_calibration` records native sponsor cash-flow convention deltas; current first mismatch is the initial IDC treatment for both Oborovo and TUHO.
@@ -298,6 +299,9 @@ Potential full suite:
 ```bash
 pytest
 ```
+
+Latest targeted FincoGPT calibration suite: `110 passed`.
+Latest full pytest suite: `521 passed, 4 skipped`.
 
 ## Immediate next tasks for Codex
 
@@ -368,6 +372,8 @@ Future formula-level logic should reproduce directly:
 The code currently has first12 debt/P&L/tax anchors and full extracted SHL lifecycle anchors in `app/calibration.py`. Do not remove until proper model logic passes tests.
 
 Replace progressively:
+
+Current priority is P&L/tax first, then debt, because taxable income now has its first formula-level correction and debt mechanics are the next largest dependency for project cash flow.
 
 - debt split anchors → debt/interest fee mechanics
 - P&L/tax anchors → asset-class depreciation, tax loss, ATAD rules

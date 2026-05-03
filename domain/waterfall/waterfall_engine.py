@@ -638,15 +638,18 @@ def run_waterfall(
         else:
             fiscal_reintegration = 0.0
         
-        # Taxable profit = EBITDA - deductible interest + fiscal reintegration + ATAD addback
-        taxable_profit = max(0, ebitda - deductible_interest + fiscal_reintegration + disallowed_addback)
+        # Taxable income follows the P&L convention used in the Excel model:
+        # EBITDA less depreciation and deductible senior interest. SHL interest
+        # is handled in the equity/SHL waterfall and is not deducted here.
+        taxable_profit = ebitda - dep - deductible_interest + fiscal_reintegration + disallowed_addback
+        taxable_profit_for_tax = max(0.0, taxable_profit)
         
         # Apply prior tax losses (FIFO, 5-year cap)
-        taxable_after_loss = max(0, taxable_profit - prior_tax_loss)
+        taxable_after_loss = max(0, taxable_profit_for_tax - prior_tax_loss)
         tax = taxable_after_loss * tax_rate
         
         # Update loss carryforward
-        new_loss = max(0, prior_tax_loss - taxable_profit) + max(0, -taxable_after_loss)
+        new_loss = max(0, prior_tax_loss - taxable_profit_for_tax) + max(0, -taxable_profit)
         prior_tax_loss = min(new_loss, ebitda * loss_carryforward_cap)
         
         # Tax paid only in H2 (second half of year) — HR tax law
@@ -832,7 +835,7 @@ def run_waterfall(
             depreciation_keur=dep,
             interest_senior_keur=si,
             interest_shl_keur=shi,
-            taxable_profit_keur=ebitda - dep - si - shi,
+            taxable_profit_keur=taxable_profit,
             tax_keur=tax,
             cf_after_tax_keur=cf_after_tax,
             senior_interest_keur=si,

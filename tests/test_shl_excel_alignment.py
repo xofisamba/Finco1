@@ -382,7 +382,7 @@ def test_tuho_raw_engine_shl_gap_is_visible_before_cash_flow_anchors() -> None:
 
     assert summary["source"] == "native_engine_before_cash_flow_anchors"
     assert summary["compared_rows"] == 59
-    assert summary["max_abs_closing_balance_delta_keur"] == pytest.approx(101724.16528697769)
+    assert summary["max_abs_closing_balance_delta_keur"] == pytest.approx(101503.38432179464)
     first_mismatch = summary["first_closing_balance_mismatch"]
     assert first_mismatch["date"] == "2030-06-30"
     assert first_mismatch["native_closing_balance_keur"] == pytest.approx(32703.864020594257)

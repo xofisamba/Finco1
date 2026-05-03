@@ -1,8 +1,8 @@
 """P&L / tax Excel-alignment diagnostics.
 
 These tests isolate depreciation, taxable income and corporate tax rows before
-project IRR reconciliation. Oborovo first12 rows are anchored to extracted Excel
-P&L values until full tax-loss / ATAD / depreciation mechanics are mapped.
+project IRR reconciliation. First-period anchors remain in place for Excel
+parity while the native taxable-income formula is rebuilt stream by stream.
 """
 from __future__ import annotations
 
@@ -176,11 +176,16 @@ def test_oborovo_raw_pl_tax_gap_before_anchors_is_visible() -> None:
     )
     assert rows[0]["date"] == "2030-12-31"
     assert rows[0]["depreciation_keur"] == pytest.approx(974.1590583522985)
-    assert rows[0]["taxable_profit_keur"] == pytest.approx(-256.49092111501307)
+    assert rows[0]["taxable_profit_keur"] == pytest.approx(380.31788729655136)
+    assert rows[0]["taxable_profit_keur"] == pytest.approx(
+        rows[0]["ebitda_keur"]
+        - rows[0]["depreciation_keur"]
+        - rows[0]["senior_interest_keur"],
+    )
     assert summary["source"] == "native_engine_before_pl_tax_anchors"
     assert summary["type"] == "pl_tax"
     assert summary["compared_rows"] == 59
-    assert summary["mismatch_count"] == 176
+    assert summary["mismatch_count"] == 173
     assert summary["first_mismatch"]["date"] == "2030-12-31"
     assert summary["first_mismatch"]["metric"] == "depreciation_keur"
 
@@ -218,9 +223,14 @@ def test_tuho_raw_pl_tax_gap_before_anchors_is_visible() -> None:
     assert rows[0]["date"] == "2030-06-30"
     assert rows[0]["depreciation_keur"] == pytest.approx(1206.5626418518007)
     assert rows[0]["taxable_profit_keur"] == pytest.approx(627.279930070908)
+    assert rows[0]["taxable_profit_keur"] == pytest.approx(
+        rows[0]["ebitda_keur"]
+        - rows[0]["depreciation_keur"]
+        - rows[0]["senior_interest_keur"],
+    )
     assert summary["source"] == "native_engine_before_pl_tax_anchors"
     assert summary["type"] == "pl_tax"
     assert summary["compared_rows"] == 59
-    assert summary["mismatch_count"] == 175
+    assert summary["mismatch_count"] == 174
     assert summary["first_mismatch"]["date"] == "2030-06-30"
     assert summary["first_mismatch"]["metric"] == "depreciation_keur"

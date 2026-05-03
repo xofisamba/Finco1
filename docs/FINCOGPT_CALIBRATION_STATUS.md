@@ -69,7 +69,8 @@ The TUHO factory is intentionally marked as first-pass. It matches key anchors s
 
 Latest local regression gate:
 
-- Full pytest suite: `520 passed, 4 skipped`.
+- Targeted FincoGPT calibration suite: `110 passed`.
+- Full pytest suite: `521 passed, 4 skipped`.
 
 ## Current calibration truth
 
@@ -118,6 +119,7 @@ Passing / expected-passing checks:
 - Oborovo and TUHO SHL lifecycle gap summaries now confirm full extracted lifecycle parity before the full bridge: 59 compared operating rows and no closing-balance mismatch.
 - Oborovo and TUHO raw SHL formula gap summaries are preserved before cash-flow anchors. Current first raw mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`; the tests now lock the raw mismatch values and max absolute deltas.
 - Oborovo and TUHO raw debt split and P&L/tax formula gaps are preserved before calibration anchors. Current first raw debt mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`; current first raw P&L/tax mismatches are Oborovo `2030-12-31` and TUHO `2030-06-30`.
+- Native P&L/tax taxable income now follows the Excel-facing P&L convention more closely: EBITDA less depreciation less deductible senior interest, with SHL interest kept out of the tax deduction path. The remaining P&L/tax gap is now concentrated in depreciation timing, tax-loss rollforward and Excel tax payment timing rather than the basic taxable-income definition.
 - `formula_parity_workstreams` now points each of the next five formula-replacement streams to its native candidate payload, Excel payload, gap payload and current first mismatch.
 - `calibration_scaffolding_inventory` currently shows three active bridge streams and two active anchor streams; no stream is marked ready for scaffolding removal yet.
 - `full_horizon_period_parity_before_full_model_period_bridge` currently has remaining native formula mismatches in all three tracked groups for TUHO: operating CF, debt and P&L/tax.
@@ -221,6 +223,8 @@ For the currently extracted Oborovo first-12 period rows, Excel DSCR target is 1
 
 `app/calibration.py` now applies a narrow Oborovo first-12 P&L/tax calibration anchor extracted from the Excel P&L sheet. This aligns first-12 depreciation, taxable income and corporate tax rows while full asset-class depreciation, tax-loss and ATAD mechanics are still being mapped. Non-anchor rows now consistently recompute post-tax cash flow from EBITDA less tax when tax is present.
 
+`domain/waterfall/waterfall_engine.py` now calculates native taxable income as `EBITDA - depreciation - deductible senior interest + addbacks`, and keeps SHL interest out of the P&L/tax deduction path. This is the first formula-level replacement step for the retired `pl_tax` stream; it intentionally preserves raw gap diagnostics because Excel depreciation timing, tax-loss rollforward and corporate-tax payment timing still need mapping.
+
 `tests/test_pl_tax_excel_alignment.py` promotes Oborovo first-twelve depreciation, taxable income and corporate tax rows to active reconciliation tests.
 
 `tests/test_oborovo_excel_reconciliation.py` includes the same first-twelve P&L/tax reconciliation in the broad Oborovo scaffold.
@@ -271,7 +275,26 @@ Active checks:
 
 Work should continue in this order. Do not jump to UI polish before these are resolved.
 
-### 1. Replace project IRR calibration bridge with formula logic
+### 1. Continue P&L/tax native formula replacement
+
+The basic native taxable-income definition has been corrected. Continue this stream before removing P&L/tax bridges:
+
+- map Excel depreciation timing from the Dep/P&L diagnostics into asset-class or day-count formulas;
+- model construction-period tax-loss rollforward explicitly;
+- model ATAD / interest deductibility using annual semiannual capacity;
+- model corporate-tax payment timing so tax charges align to the extracted P&L/CF period rows;
+- only remove the P&L/tax bridge once raw native gap summaries reach zero.
+
+### 2. Replace debt calibration bridge with formula logic
+
+The debt bridge remains the next major dependency because project cash flow and SHL behavior depend on senior debt service timing:
+
+- senior principal / net interest split;
+- fee/rate and day-count mechanics beyond the first anchor window;
+- DSCR target / sculpting and terminal balloon behavior;
+- removal of the debt bridge once raw native debt gaps reach zero.
+
+### 3. Replace project IRR calibration bridge with formula logic
 
 The extracted full Oborovo and TUHO project cash-flow series are now exposed in the headless calibration payload, recomputed with XIRR and promoted into native-facing KPIs. The remaining task is to rebuild native app project cash-flow generation so it reproduces those extracted Excel series without calibration-bridge promotion:
 
@@ -280,7 +303,7 @@ The extracted full Oborovo and TUHO project cash-flow series are now exposed in 
 - full operating and terminal cash-flow series;
 - removal of the project IRR calibration bridge once native formula parity is reached.
 
-### 2. Replace SHL lifecycle calibration bridge with formula logic
+### 4. Replace SHL lifecycle calibration bridge with formula logic
 
 The extracted Oborovo and TUHO SHL lifecycle fixtures are now exposed and promoted into `shl_decomposition`. The remaining task is to rebuild native app SHL bridge logic so it reproduces the extracted full lifecycle without calibration-bridge promotion:
 
@@ -292,7 +315,7 @@ The extracted Oborovo and TUHO SHL lifecycle fixtures are now exposed and promot
 - Closing balance.
 - Dividend timing after SHL repayment.
 
-### 3. Replace sponsor equity / SHL IRR calibration bridge with formula logic
+### 5. Replace sponsor equity / SHL IRR calibration bridge with formula logic
 
 Excel-sourced sponsor equity + SHL cash-flow diagnostics are now active, and TUHO equity IRR is active against the Excel anchor. The remaining task is to make native app sponsor cash-flow generation reproduce those rows directly:
 
@@ -300,11 +323,11 @@ Excel-sourced sponsor equity + SHL cash-flow diagnostics are now active, and TUH
 - exact SHL paid-interest and principal timing;
 - removal of the sponsor/equity calibration bridge once formula parity is reached.
 
-### 4. TUHO full-horizon parity
+### 6. TUHO full-horizon parity
 
 Use the compact TUHO full-model extract to promote TUHO tests from first3 scaffolding toward full-model parity.
 
-### 5. Anchor replacement with full model logic
+### 7. Anchor replacement with full model logic
 
 First12 / first3 anchors should eventually be replaced with full model logic:
 

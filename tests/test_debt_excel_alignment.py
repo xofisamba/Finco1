@@ -290,9 +290,9 @@ def test_oborovo_full_model_debt_gap_summary_identifies_first_formula_delta() ->
         },
     ]
     assert summary["mismatch_count"] == 72
-    assert summary["max_abs_delta"] == pytest.approx(1477.126670339582)
-    assert summary["max_abs_delta_location"]["date"] == "2042-12-31"
-    assert summary["max_abs_delta_location"]["metric"] == "senior_principal_keur"
+    assert summary["max_abs_delta"] == pytest.approx(4107.304133505924)
+    assert summary["max_abs_delta_location"]["date"] == "2043-12-31"
+    assert summary["max_abs_delta_location"]["metric"] == "senior_ds_keur"
     assert summary["first_mismatch"]["date"] == "2032-06-30"
     assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
 
@@ -338,8 +338,8 @@ def test_tuho_full_model_debt_gap_summary_identifies_first_formula_delta() -> No
     assert summary["type"] == "debt"
     assert summary["compared_rows"] == 59
     assert summary["mismatch_count"] == 75
-    assert summary["max_abs_delta"] == pytest.approx(23046.29068918135)
-    assert summary["max_abs_delta_location"]["date"] == "2038-12-31"
+    assert summary["max_abs_delta"] == pytest.approx(24840.095091723415)
+    assert summary["max_abs_delta_location"]["date"] == "2038-06-30"
     assert summary["max_abs_delta_location"]["metric"] == "senior_principal_keur"
     assert summary["first_mismatch"]["date"] == "2031-12-31"
     assert summary["first_mismatch"]["metric"] == "senior_principal_keur"
