@@ -7,7 +7,10 @@ validation only; project-specific defaults live outside the domain layer.
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from domain.revenue.bess import BessParams
 
 
 class PeriodFrequency(Enum):
@@ -241,6 +244,7 @@ class TechnicalParams:
     plant_availability: float = 0.99
     grid_availability: float = 0.99
     bess_enabled: bool = False
+    bess: "BessParams | None" = None
 
     @property
     def combined_availability(self) -> float:

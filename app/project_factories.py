@@ -27,6 +27,7 @@ from domain.inputs import (
     TaxParams,
     TechnicalParams,
 )
+from domain.revenue.bess import BessParams
 
 
 # =============================================================================
@@ -528,9 +529,228 @@ def create_default_wind_project(
         opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
 
 
+def create_default_bess_project(
+    power_mw: float = 50.0,
+    energy_mwh: float = 200.0,
+    cycles_per_year: float = 300,
+    horizon_years: int = 25,
+    construction_months: int = 12,
+) -> ProjectInputs:
+    """Generic standalone BESS project — round numbers for tests/examples, not Excel calibration."""
+    z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
+    cells = CapexItem(name="BESS Cells", amount_keur=22_000.0, y0_share=0.0,
+                      spending_profile=(0.5, 0.5), asset_class=AssetClass.BESS_CELLS)
+    pe = CapexItem(name="Power Electronics", amount_keur=3_000.0, y0_share=0.0,
+                   spending_profile=(0.5, 0.5), asset_class=AssetClass.BESS_POWER_ELECTRONICS)
+    civil = CapexItem(name="Civil & Grid", amount_keur=2_000.0, y0_share=0.3,
+                      spending_profile=(0.4, 0.3), asset_class=AssetClass.CIVIL_GRID)
+    soft = CapexItem(name="Soft Costs", amount_keur=1_500.0, y0_share=1.0,
+                     asset_class=AssetClass.SOFT_COSTS)
+
+    capex = CapexStructure(
+        epc_contract=cells, production_units=pe,
+        epc_other=civil, grid_connection=z,
+        ops_prep=z, insurances=z, lease_tax=z,
+        construction_mgmt_a=z, commissioning=z,
+        audit_legal=z, construction_mgmt_b=z,
+        contingencies=z, taxes=z,
+        project_acquisition=z, project_rights=z,
+        idc_keur=500.0, bank_fees_keur=200.0,
+    )
+    opex = [
+        OpexItem(name="Technical Management", y1_amount_keur=150.0, annual_inflation=0.02),
+        OpexItem(name="Insurance", y1_amount_keur=100.0, annual_inflation=0.02),
+        OpexItem(name="Maintenance", y1_amount_keur=80.0, annual_inflation=0.02),
+        OpexItem(name="Lease & Tax", y1_amount_keur=50.0, annual_inflation=0.02),
+    ]
+    info = ProjectInfo(
+        name="Generic BESS Project", company="BessCo", code="BESS-001",
+        country_iso="DE", financial_close=date(2030, 1, 1),
+        construction_months=construction_months, cod_date=date(2031, 1, 1),
+        horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
+    technical = TechnicalParams(
+        capacity_mw=power_mw, yield_scenario="P_50",
+        operating_hours_p50=0.0, operating_hours_p90_10y=0.0,
+        pv_degradation=0.0, bess_enabled=True, bess_degradation=0.02)
+    revenue = RevenueParams(
+        ppa_base_tariff=0.0, ppa_term_years=0, ppa_index=0.0,
+        market_scenario="Central",
+        market_prices_curve=tuple(60.0 + i for i in range(30)),
+        market_inflation=0.02, co2_enabled=False)
+    financing = FinancingParams(
+        share_capital_keur=500.0, shl_amount_keur=5_000.0, shl_rate=0.08,
+        gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
+        floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
+        target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
+        equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value)
+    tax = TaxParams(
+        corporate_rate=0.25, loss_carryforward_years=5,
+        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0)
+
+    return ProjectInputs(info=info, technical=technical, capex=capex,
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
+
+
+def create_default_solar_bess_project(
+    solar_capacity_mw: float = 50.0,
+    bess_power_mw: float = 10.0,
+    bess_energy_mwh: float = 20.0,
+    bess_cycles_per_year: float = 365.0,
+    horizon_years: int = 25,
+    construction_months: int = 12,
+) -> ProjectInputs:
+    """Generic solar + BESS hybrid project."""
+    z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
+    modules = CapexItem(name="Solar Modules", amount_keur=20_000.0, y0_share=0.0,
+                        spending_profile=(0.5, 0.5), asset_class=AssetClass.SOLAR_PANELS)
+    inverters = CapexItem(name="Inverters", amount_keur=3_000.0, y0_share=0.0,
+                           spending_profile=(0.5, 0.5), asset_class=AssetClass.SOLAR_PANELS)
+    cells = CapexItem(name="BESS Cells", amount_keur=5_000.0, y0_share=0.0,
+                      spending_profile=(0.5, 0.5), asset_class=AssetClass.BESS_CELLS)
+    civil = CapexItem(name="Civil Works", amount_keur=3_000.0, y0_share=0.3,
+                      spending_profile=(0.4, 0.3), asset_class=AssetClass.CIVIL_GRID)
+    grid = CapexItem(name="Grid Connection", amount_keur=2_000.0, y0_share=0.5,
+                     spending_profile=(0.5,), asset_class=AssetClass.CIVIL_GRID)
+    capex = CapexStructure(
+        epc_contract=modules, production_units=inverters,
+        epc_other=civil, grid_connection=grid,
+        ops_prep=z, insurances=z, lease_tax=z,
+        construction_mgmt_a=z, commissioning=z,
+        audit_legal=z, construction_mgmt_b=z,
+        contingencies=z, taxes=z,
+        project_acquisition=z, project_rights=z,
+        idc_keur=500.0, bank_fees_keur=200.0,
+    )
+    opex = [
+        OpexItem(name="Technical Management", y1_amount_keur=150.0, annual_inflation=0.02),
+        OpexItem(name="Insurance", y1_amount_keur=100.0, annual_inflation=0.02),
+        OpexItem(name="Maintenance", y1_amount_keur=80.0, annual_inflation=0.02),
+        OpexItem(name="Lease & Tax", y1_amount_keur=50.0, annual_inflation=0.02),
+    ]
+    info = ProjectInfo(
+        name="Generic Solar+BESS", company="SolarBessCo", code="SOLBESS-001",
+        country_iso="DE", financial_close=date(2030, 1, 1),
+        construction_months=construction_months, cod_date=date(2031, 1, 1),
+        horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
+    bess_params = BessParams(
+        power_mw=bess_power_mw,
+        energy_mwh=bess_energy_mwh,
+        cycles_per_year=bess_cycles_per_year,
+        round_trip_efficiency=0.88,
+        availability=0.98,
+        annual_degradation=0.02,
+        arbitrage_spread_eur_mwh=40.0,
+        ancillary_revenue_eur_mw_year=25000.0,
+    )
+    technical = TechnicalParams(
+        capacity_mw=solar_capacity_mw, yield_scenario="P_50",
+        operating_hours_p50=1500.0, operating_hours_p90_10y=1400.0,
+        pv_degradation=0.004, bess_degradation=0.02,
+        plant_availability=0.99, grid_availability=0.99,
+        bess_enabled=True, bess=bess_params)
+    revenue = RevenueParams(
+        ppa_base_tariff=60.0, ppa_term_years=10, ppa_index=0.02,
+        market_scenario="Central", market_prices_curve=tuple(65.0 + i for i in range(30)),
+        market_inflation=0.02, co2_enabled=True, co2_price_eur=5.0)
+    financing = FinancingParams(
+        share_capital_keur=500.0, shl_amount_keur=5_000.0, shl_rate=0.08,
+        gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
+        floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
+        target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
+        equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value)
+    tax = TaxParams(
+        corporate_rate=0.25, loss_carryforward_years=5,
+        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0)
+
+    return ProjectInputs(info=info, technical=technical, capex=capex,
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
+
+
+
+def create_default_wind_bess_project(
+    wind_capacity_mw: float = 80.0,
+    bess_power_mw: float = 10.0,
+    bess_energy_mwh: float = 20.0,
+    bess_cycles_per_year: float = 365.0,
+    horizon_years: int = 25,
+    construction_months: int = 18,
+) -> ProjectInputs:
+    """Generic wind + BESS hybrid project."""
+    z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
+    turbines = CapexItem(name="Wind Turbines", amount_keur=30_000.0, y0_share=0.4,
+                         spending_profile=(0.6,), asset_class=AssetClass.WIND_TURBINES)
+    cells = CapexItem(name="BESS Cells", amount_keur=5_000.0, y0_share=0.0,
+                      spending_profile=(0.5, 0.5), asset_class=AssetClass.BESS_CELLS)
+    civil = CapexItem(name="Civil Works", amount_keur=4_000.0, y0_share=0.3,
+                      spending_profile=(0.4, 0.3), asset_class=AssetClass.CIVIL_GRID)
+    grid = CapexItem(name="Grid Connection", amount_keur=3_000.0, y0_share=0.5,
+                     spending_profile=(0.5,), asset_class=AssetClass.CIVIL_GRID)
+    capex = CapexStructure(
+        epc_contract=turbines, production_units=cells,
+        epc_other=civil, grid_connection=grid,
+        ops_prep=z, insurances=z, lease_tax=z,
+        construction_mgmt_a=z, commissioning=z,
+        audit_legal=z, construction_mgmt_b=z,
+        contingencies=z, taxes=z,
+        project_acquisition=z, project_rights=z,
+        idc_keur=800.0, bank_fees_keur=300.0,
+    )
+    opex = [
+        OpexItem(name="Technical Management", y1_amount_keur=200.0, annual_inflation=0.02),
+        OpexItem(name="Insurance", y1_amount_keur=150.0, annual_inflation=0.02),
+        OpexItem(name="Maintenance", y1_amount_keur=120.0, annual_inflation=0.02),
+        OpexItem(name="Lease & Tax", y1_amount_keur=80.0, annual_inflation=0.02),
+    ]
+    info = ProjectInfo(
+        name="Generic Wind+BESS", company="WindBessCo", code="WINDBESS-001",
+        country_iso="DE", financial_close=date(2030, 1, 1),
+        construction_months=construction_months, cod_date=date(2031, 7, 1),
+        horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
+    bess_params = BessParams(
+        power_mw=bess_power_mw,
+        energy_mwh=bess_energy_mwh,
+        cycles_per_year=bess_cycles_per_year,
+        round_trip_efficiency=0.88,
+        availability=0.98,
+        annual_degradation=0.02,
+        arbitrage_spread_eur_mwh=35.0,
+        ancillary_revenue_eur_mw_year=25000.0,
+    )
+    technical = TechnicalParams(
+        capacity_mw=wind_capacity_mw, yield_scenario="P_50",
+        operating_hours_p50=3000.0, operating_hours_p90_10y=2700.0,
+        pv_degradation=0.0, bess_degradation=0.02,
+        plant_availability=0.97, grid_availability=0.99,
+        bess_enabled=True, bess=bess_params)
+    revenue = RevenueParams(
+        ppa_base_tariff=65.0, ppa_term_years=12, ppa_index=0.02,
+        market_scenario="Central", market_prices_curve=tuple(60.0 + i for i in range(30)),
+        market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
+        co2_enabled=True, co2_price_eur=4.0)
+    financing = FinancingParams(
+        share_capital_keur=500.0, shl_amount_keur=6_000.0, shl_rate=0.08,
+        gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
+        floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
+        target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
+        equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value)
+    tax = TaxParams(
+        corporate_rate=0.25, loss_carryforward_years=5,
+        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0)
+
+
+    return ProjectInputs(info=info, technical=technical, capex=capex,
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
+
+
 __all__ = [
     "create_default_oborovo",
     "create_default_tuho_wind1",
     "create_default_solar_project",
     "create_default_wind_project",
+    "create_default_bess_project",
+    "create_default_solar_bess_project",
+    "create_default_wind_bess_project",
 ]
