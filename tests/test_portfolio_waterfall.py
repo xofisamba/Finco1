@@ -155,12 +155,17 @@ class TestPortfolioResult:
                 period=1, date=date(2030, 1, 1),
                 pooled_revenue_keur=100.0, pooled_ebitda_keur=80.0,
                 pooled_tax_keur=10.0, pooled_cfads_keur=70.0,
+                portfolio_senior_interest_keur=40.0,
+                portfolio_senior_principal_keur=10.0,
                 portfolio_senior_ds_keur=50.0, dscr=1.4,
             ),),
             project_results=(("X", wf),),
             total_revenue_keur=100.0, total_ebitda_keur=80.0,
             total_tax_keur=10.0, total_senior_ds_keur=50.0,
             avg_dscr=1.4, min_dscr=1.2,
+            portfolio_debt_keur=500.0,
+            pooled_cfads_schedule=(70.0,),
+            portfolio_debt_service_schedule=(50.0,),
         )
         assert hasattr(pr, "periods")
         assert hasattr(pr, "project_results")
