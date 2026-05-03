@@ -1,12 +1,12 @@
 """Iterative Debt Sculpting - DSCR-Based Sizing with Binary Search.
 
-This module implements true iterative debt sculpting matching Excel behavior:
+This module implements true iterative debt sculpting:
 - Binary search on debt amount until average DSCR ≈ target
 - Per-period payment = EBITDA / DSCR_target (or capped)
 - Lockup check per period (DSCR < 1.10 blocks distribution)
 - Balance converges within tolerance
 
-Excel uses Macro!DebtSculpting iterative approach — we replicate that here.
+Binary search on debt amount until average DSCR ≈ target:
 """
 from dataclasses import dataclass, field
 from typing import Optional
@@ -32,17 +32,17 @@ class IterativeSculptResult:
 
 def _amortize(debt: float, rate: float, periods: int) -> list[dict]:
     """Build amortization schedule for given debt.
-    
+
     Returns list of {interest, principal, balance} dicts.
     """
     schedule = []
     balance = debt
-    
+
     for _ in range(periods):
         interest = balance * rate
         principal = balance / periods  # Simplified equal principal
         closing = max(0, balance - principal)
-        
+
         schedule.append({
             "interest": interest,
             "principal": principal,
@@ -50,7 +50,7 @@ def _amortize(debt: float, rate: float, periods: int) -> list[dict]:
             "closing": closing,
         })
         balance = closing
-    
+
     return schedule
 
 
@@ -78,9 +78,9 @@ def _calculate_schedule(
     dscr_schedule: list[float] | None = None,
 ) -> tuple[list[float], list[float], list[float], list[float], float, float]:
     """Calculate sculpted schedule for a given debt amount.
-    
+
     Payment[t] = min(EBITDA[t] / dscr_target[t], required_to_cover_interest)
-    
+
     Args:
         debt: Initial debt amount (kEUR)
         ebitda_schedule: EBITDA per period (kEUR)
@@ -88,7 +88,7 @@ def _calculate_schedule(
         tenor: Number of periods
         target_dscr: Default/fallback DSCR target
         dscr_schedule: Per-period DSCR targets (optional). If provided, used instead of target_dscr.
-    
+
     Returns:
         (payments, dsrs, interests, principals, balances, avg_dscr)
     """
@@ -97,54 +97,54 @@ def _calculate_schedule(
     interests = []
     principals = []
     balances = []
-    
+
     balance = debt
     total_dscr = 0
     dscr_count = 0
-    
+
     for t in range(tenor):
         ebitda = ebitda_schedule[t]
-        
+
         # Interest on opening balance
         interest = balance * rate
-        
+
         # Per-period DSCR target (if provided)
         period_dscr = dscr_schedule[t] if dscr_schedule is not None else target_dscr
-        
+
         # Target payment = EBITDA / DSCR_target
         target_payment = ebitda / period_dscr
-        
+
         # Payment can't be less than interest (would never amortize)
         payment = max(target_payment, interest)
-        
+
         # Principal = payment - interest
         principal = payment - interest
-        
+
         # Cap principal at remaining balance
         if principal > balance:
             principal = balance
             payment = interest + principal
-        
+
         # Closing balance
         closing = max(0, balance - principal)
-        
+
         # DSCR for this period
         dscr = _dscr_of_payment(ebitda, payment)
-        
+
         payments.append(payment)
         dsrs.append(dscr)
         interests.append(interest)
         principals.append(principal)
         balances.append(balance)
-        
+
         if dscr > 0.5 and dscr < 50:  # Filter unreasonable values
             total_dscr += dscr
             dscr_count += 1
-        
+
         balance = closing
-    
+
     avg_dscr = total_dscr / dscr_count if dscr_count > 0 else 0
-    
+
     return payments, dsrs, interests, principals, balances, avg_dscr
 
 
@@ -162,15 +162,15 @@ def iterative_sculpt_debt(
     dscr_schedule: list[float] | None = None,
 ) -> IterativeSculptResult:
     """Find debt amount such that average DSCR ≈ target_dscr.
-    
+
     Uses binary search on debt amount.
-    
+
     For each debt candidate:
         1. Build payments = EBITDA / dscr_target[t]
         2. Calculate PV(payments) at debt rate
         3. Compare to debt amount
         4. Binary search until avg_dscr matches target
-    
+
     Args:
         ebitda_schedule: EBITDA per period (kEUR)
         rate: Interest rate per period (e.g., 0.02825 for ~5.65% annual semi-annual)
@@ -183,8 +183,8 @@ def iterative_sculpt_debt(
         min_debt: Lower bound for debt search
         max_debt: Upper bound for debt search
         dscr_schedule: Per-period DSCR targets (optional). If provided, used instead of target_dscr.
-            For TUHO: 24 PPA periods at 1.20, then merchant periods at 1.45.
-    
+            Dual-DSCR schedule: 24 PPA periods at 1.20, then merchant periods at 1.45.
+
     Returns:
         IterativeSculptResult with converged schedule
     """
@@ -196,21 +196,21 @@ def iterative_sculpt_debt(
             target_payments = [e / target_dscr for e in ebitda_schedule[:tenor]]
         initial_debt_guess = _pv_payments(target_payments, rate)
         initial_debt_guess = max(min_debt, min(max_debt, initial_debt_guess))
-    
+
     # Binary search for debt amount
     low = min_debt
     high = max_debt
     converged = False
     iterations = 0
-    
+
     for iteration in range(max_iterations):
         mid = (low + high) / 2
-        
+
         # Calculate schedule for this debt
         _, dsrs, _, _, _, avg_dscr = _calculate_schedule(
             mid, ebitda_schedule, rate, tenor, target_dscr, dscr_schedule
         )
-        
+
         # Check convergence - use weighted average DSCR across all periods
         if dscr_schedule is not None:
             # For dual DSCR: check that we approximate the target
@@ -226,12 +226,12 @@ def iterative_sculpt_debt(
         else:
             deviation = abs(avg_dscr - target_dscr)
             converged_flag = deviation < tolerance
-        
+
         if converged_flag:
             converged = True
             iterations = iteration + 1
             break
-        
+
         # Binary search direction
         # Higher debt -> higher payment -> lower DSCR
         # So if avg_dscr < target (DSCR too low), we need LESS debt
@@ -239,19 +239,19 @@ def iterative_sculpt_debt(
             high = mid
         else:
             low = mid
-        
+
         iterations = iteration + 1
-    
+
     # Final calculation with converged debt
     final_debt = (low + high) / 2
     payments, dsrs, interests, principals, balances, avg_dscr = _calculate_schedule(
         final_debt, ebitda_schedule, rate, tenor, target_dscr, dscr_schedule
     )
-    
+
     valid_dsrs = [d for d in dsrs if d > 0.5 and d < 50]
     min_dscr_val = min(valid_dsrs) if valid_dsrs else 0
     max_dscr_val = max(valid_dsrs) if valid_dsrs else 0
-    
+
     return IterativeSculptResult(
         debt_keur=final_debt,
         payments=payments,
@@ -275,17 +275,17 @@ def sculpt_with_lockup(
     lockup_dscr: float = 1.10,
 ) -> list[float]:
     """Calculate payments with lockup constraint per period.
-    
+
     During lockup, payment = interest only (no principal amortization)
     until DSCR recovers above lockup threshold.
-    
+
     Args:
         ebitda_schedule: EBITDA per period
         rate: Interest rate
         tenor: Number of periods
         target_dscr: Target DSCR
         lockup_dscr: Lockup threshold
-    
+
     Returns:
         List of payments per period
     """
@@ -293,41 +293,41 @@ def sculpt_with_lockup(
     balance = 0
     locked = False
     periods_locked = 0
-    
+
     for t in range(tenor):
         ebitda = ebitda_schedule[t]
         interest = balance * rate
-        
+
         # Target payment
         target_payment = ebitda / target_dscr
-        
+
         # Check lockup status
         if not locked and target_payment > 0:
             current_dscr = ebitda / target_payment
             if current_dscr < lockup_dscr:
                 locked = True
-        
+
         if locked:
             # Lockup: pay interest only, principal stays constant
             payment = interest
             periods_locked += 1
-            
+
             # Unlock when DSCR would recover
             if target_payment >= interest * 1.05:  # 5% buffer
                 # Check if we can resume amortization
                 pass
         else:
             payment = max(target_payment, interest)
-        
+
         principal = payment - interest
         balance = max(0, balance - principal)
-        
+
         payments.append(payment)
-        
+
         # Unlock if balance is paid off
         if balance <= 0:
             locked = False
-    
+
     return payments
 
 
@@ -336,11 +336,11 @@ def sizing_from_gearing(
     gearing: float,
 ) -> float:
     """Simple debt sizing from gearing ratio.
-    
+
     Args:
         total_capex: Total CAPEX in kEUR
         gearing: Gearing ratio (0.0 to 1.0)
-    
+
     Returns:
         Debt amount in kEUR
     """
@@ -356,9 +356,9 @@ def sizing_from_dscr_target(
     total_capex: float = 0,
 ) -> float:
     """Size debt to achieve target DSCR.
-    
+
     Uses iterative approach, falls back to gearing if convergence fails.
-    
+
     Args:
         ebitda_schedule: EBITDA per period
         rate: Interest rate per period
@@ -366,7 +366,7 @@ def sizing_from_dscr_target(
         target_dscr: Target DSCR
         gearing_fallback: Fallback gearing if iterative fails
         total_capex: Total CAPEX for gearing fallback
-    
+
     Returns:
         Debt amount in kEUR
     """
@@ -379,12 +379,12 @@ def sizing_from_dscr_target(
             return result.debt_keur
     except Exception:
         pass
-    
+
     # Fallback to gearing
     return sizing_from_gearing(total_capex, gearing_fallback)
 
 # =============================================================================
-# CLOSED-FORM SCULPTING (Verificado — Wind IRR = 9.108%, NPV = 29,193 k€)
+# CLOSED-FORM SCULPTING (Verificado - Wind IRR = 9.108%, NPV = 29,193 k€)
 # =============================================================================
 
 @dataclass
@@ -408,21 +408,21 @@ def closed_form_sculpt(
     gearing_cap_keur: float = float('inf'),
     dscr_schedule: list[float] | None = None,
 ) -> ClosedFormSculptResult:
-    """Closed-form debt sculpting — backward-forward pass.
+    """Closed-form debt sculpting - backward-forward pass.
 
     Algorithm (identical to legacy core/calculations.py):
 
-    BACKWARD PASS — compute debt balance from end to beginning:
+    BACKWARD PASS - compute debt balance from end to beginning:
         debt_bal[N] = 0
         debt_bal[t] = (debt_bal[t+1] + allowable_ds[t]) / (1 + r[t])
 
     where allowable_ds[t] = CFADS[t] / dscr_target[t]
 
-    FORWARD PASS — split principal/interest:
+    FORWARD PASS - split principal/interest:
         interest[t] = debt_bal[t] * r[t]
         principal[t] = allowable_ds[t] - interest[t]
 
-    This is O(n) and deterministic — no iterations, no convergence.
+    This is O(n) and deterministic - no iterations, no convergence.
 
     Args:
         cfads_schedule: Cash Flow Available for Debt Service per period
@@ -431,7 +431,7 @@ def closed_form_sculpt(
         target_dscr: Default/fallback target DSCR
         gearing_cap_keur: Max debt from gearing constraint (CAPEX × gearing_ratio)
         dscr_schedule: Per-period DSCR targets (optional). If provided, used instead of target_dscr.
-            For TUHO: 24 PPA periods at 1.20, then merchant periods at 1.45.
+            Dual-DSCR schedule: 24 PPA periods at 1.20, then merchant periods at 1.45.
 
     Returns:
         ClosedFormSculptResult with complete schedule
@@ -517,7 +517,7 @@ def cash_sweep(
     actual_dscr: float,
     sweep_pct: float = 1.0,
 ) -> tuple[float, float]:
-    """Cash sweep — excess CFADS goes to early debt repayment.
+    """Cash sweep - excess CFADS goes to early debt repayment.
 
     Activates when DSCR is above sweep_dscr threshold.
     Bank typically requires 100% sweep until LLCR reaches minimum level.
