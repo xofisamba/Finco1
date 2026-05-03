@@ -82,7 +82,7 @@ def build_waterfall_table(result) -> pd.DataFrame:
         "Depreciation": row_values(lambda p: _safe_get(p, 'depreciation_keur')),
         "Taxable Profit": row_values(lambda p: _safe_get(p, 'taxable_profit_keur')),
         "Cash Tax": row_values(lambda p: _safe_get(p, 'cash_tax_keur')),
-        "CFADS": row_values(lambda p: _safe_get(p, 'cfads_keur')),
+        "CFADS": row_values(lambda p: _safe_get(p, 'cfads_keur') if hasattr(p, 'cfads_keur') else max(0, _safe_get(p, 'ebitda_keur') - _safe_get(p, 'tax_keur'))),
         "Senior Debt Service": row_values(lambda p: _safe_get(p, 'senior_debt_service_keur')),
         "SHL Service": row_values(lambda p: _safe_get(p, 'shl_service_keur')),
         "DSRA Contribution": row_values(lambda p: _safe_get(p, 'dsra_contribution_keur')),

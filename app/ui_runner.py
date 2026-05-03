@@ -37,12 +37,13 @@ def run_demo_project(project_type: str, scenario: str = "Base") -> DemoResult:
     result = DemoResult(project_type=project_type)
     messages = []
 
-    # BESS/hybrid warning shown before run
+    # BESS/hybrid — clearly partial, not bankable waterfall
     bess_hybrid = ("BESS", "Solar+BESS", "Wind+BESS")
     if project_type in bess_hybrid:
         messages.append(
-            "Full waterfall integration for BESS/hybrid is in progress. "
-            "Showing revenue module output only."
+            "⚠️ PARTIAL — BESS/hybrid results are revenue-only. "
+            "Full bankable waterfall model is in progress and not yet validated. "
+            "Do not use these outputs as definitive project economics."
         )
 
     try:

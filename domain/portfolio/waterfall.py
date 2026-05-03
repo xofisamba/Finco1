@@ -215,19 +215,20 @@ def run_portfolio_waterfall(
         portfolio_debt = 0.0
 
     # Compute portfolio_project_irr from unlevered CFADS
-    # t0 = -total_capex, t>0 = pooled cfads
+    # t0 = -total_capex (at earliest financial_close), t>0 = pooled cfads
     total_capex = sum(
-        proj_inputs.capex.total_capex
-        for _, proj_result in project_results
-        for proj_inputs in [getattr(proj_result, 'inputs', None)]
-        if proj_inputs is not None
-    ) or sum(
-        pr.total_revenue_keur * 0.7 for _, pr in project_results
-    )  # fallback: rough estimate if inputs not on result
-    all_dates = [p.date for p in result_periods]
-    cfads_for_xirr = [-total_capex] + cfads_list if cfads_list else [-total_capex]
+        proj.capex.total_capex for proj in portfolio_inputs.projects
+    ) if portfolio_inputs else 0.0
+    # t0 date = earliest construction start among portfolio projects
+    if portfolio_inputs and portfolio_inputs.projects:
+        t0_date = min(p.info.financial_close for p in portfolio_inputs.projects)
+    else:
+        t0_date = result_periods[0].date if result_periods else None
+    all_dates = [t0_date] + [p.date for p in result_periods] if t0_date else [p.date for p in result_periods]
+    cfads_for_xirr = [-total_capex] + cfads_list if cfads_list else []
     try:
-        portfolio_project_irr = xirr(cfads_for_xirr, all_dates) if cfads_for_xirr else 0.0
+        irr = xirr(cfads_for_xirr, all_dates)
+        portfolio_project_irr = irr if irr is not None else 0.0
     except Exception:
         portfolio_project_irr = 0.0
 

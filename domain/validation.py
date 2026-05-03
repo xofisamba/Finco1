@@ -39,9 +39,10 @@ def validate_project_inputs(inputs) -> tuple[ValidationIssue, ...]:
     # BESS validation
     if hasattr(inputs, 'bess') and inputs.bess is not None:
         bess = inputs.bess
-        if bess.roundtrip_efficiency <= 0 or bess.roundtrip_efficiency > 1:
+        bess_eff = getattr(bess, 'roundtrip_efficiency', None) or getattr(bess, 'round_trip_efficiency', None)
+        if bess_eff is None or bess_eff <= 0 or bess_eff > 1:
             issues.append(ValidationIssue("error", "bess.roundtrip_efficiency", "BESS efficiency must be between 0 and 1"))
-        if bess.cycles_per_year < 0:
+        if getattr(bess, 'cycles_per_year', 0) < 0:
             issues.append(ValidationIssue("error", "bess.cycles_per_year", "BESS cycles per year cannot be negative"))
 
     # Warnings
