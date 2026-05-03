@@ -1,7 +1,7 @@
 """Project finance input models - immutable dataclasses for the runtime engine.
 
 All classes use @dataclass(frozen=True) for immutability.
-Each field documents the corresponding Excel cell reference.
+Each field documents its purpose for the runtime engine.
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -78,15 +78,15 @@ ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
 @dataclass(frozen=True)
 class ProjectInfo:
     """Basic project metadata. Basic project metadata."""
-    name: str                       #
-    company: str                   #
-    code: str                      #
-    country_iso: str                #
-    financial_close: date           #
-    construction_months: int       #
-    cod_date: date                  #
-    horizon_years: int             #
-    period_frequency: PeriodFrequency  #
+    name: str
+    company: str
+    code: str
+    country_iso: str
+    financial_close: date
+    construction_months: int
+    cod_date: date
+    horizon_years: int
+    period_frequency: PeriodFrequency
 
 
 @dataclass(frozen=True)
@@ -150,21 +150,21 @@ class CapexStructure:
     - Reserve Accounts: DSRA, J-DSRA, MRA funded at financial close
     """
     # === Hard CAPEX items ===
-    epc_contract: CapexItem        #
-    production_units: CapexItem    #
-    epc_other: CapexItem           #
-    grid_connection: CapexItem     #
-    ops_prep: CapexItem            #
-    insurances: CapexItem          #
-    lease_tax: CapexItem           #
-    construction_mgmt_a: CapexItem  #
-    commissioning: CapexItem       #
-    audit_legal: CapexItem         #
-    construction_mgmt_b: CapexItem  #
-    contingencies: CapexItem       #
-    taxes: CapexItem               #
-    project_acquisition: CapexItem  #
-    project_rights: CapexItem      #
+    epc_contract: CapexItem
+    production_units: CapexItem
+    epc_other: CapexItem
+    grid_connection: CapexItem
+    ops_prep: CapexItem
+    insurances: CapexItem
+    lease_tax: CapexItem
+    construction_mgmt_a: CapexItem
+    commissioning: CapexItem
+    audit_legal: CapexItem
+    construction_mgmt_b: CapexItem
+    contingencies: CapexItem
+    taxes: CapexItem
+    project_acquisition: CapexItem
+    project_rights: CapexItem
     # === Dynamic items (computed, not direct input) ===
     idc_keur: float = 0.0          # Interest During Construction (computed)
     commitment_fees_keur: float = 0.0  # Commitment fees on undrawn debt
@@ -214,7 +214,7 @@ class CapexStructure:
 
         Excludes reserve accounts (DSRA, MRA, J-DSRA) which are funded separately
         and not part of the project's capital cost for debt sizing purposes.
-        Corresponds to Excel 'Total CAPEX' for sculpting: hard_capex + idc + bank_fees + vat_costs.
+        Total CAPEX for sculpting: hard_capex + idc + bank_fees + vat_costs.
         """
         return (self.hard_capex_keur + self.idc_keur +
                 self.bank_fees_keur + self.other_financial_keur + self.vat_costs_keur)
@@ -273,17 +273,17 @@ class TechnicalParams:
 
     Technical parameter rows.
     """
-    capacity_mw: float             #
-    yield_scenario: str            #
-    operating_hours_p50: float = 0.0    #
+    capacity_mw: float
+    yield_scenario: str
+    operating_hours_p50: float = 0.0
     operating_hours_p90_1y: float | None = None  # P90-1y hours (single year exceedance)
-    operating_hours_p90_10y: float = 0.0  #
+    operating_hours_p90_10y: float = 0.0
     operating_hours_p99_1y: float | None = None  # P99-1y hours (scenario engine)
-    pv_degradation: float = 0.004  #
-    bess_degradation: float = 0.003  #
-    plant_availability: float = 0.99  #
-    grid_availability: float = 0.99   #
-    bess_enabled: bool = False     #
+    pv_degradation: float = 0.004
+    bess_degradation: float = 0.003
+    plant_availability: float = 0.99
+    grid_availability: float = 0.99
+    bess_enabled: bool = False
 
     @property
     def combined_availability(self) -> float:
@@ -297,18 +297,18 @@ class RevenueParams:
 
     Revenue parameter rows.
     """
-    ppa_base_tariff: float         #
-    ppa_term_years: float       #
-    ppa_index: float = 0.02        #
-    ppa_production_share: float = 1.0  #
-    market_scenario: str = "Central"  #
+    ppa_base_tariff: float
+    ppa_term_years: float
+    ppa_index: float = 0.02
+    ppa_production_share: float = 1.0
+    market_scenario: str = "Central"
     market_prices_curve: tuple[float, ...] = ()  # Inputs row 107 - Market price curve
-    market_inflation: float = 0.02  #
-    balancing_cost_pv: float = 0.025  #
-    balancing_cost_bess: float = 0.025  #
+    market_inflation: float = 0.02
+    balancing_cost_pv: float = 0.025
+    balancing_cost_bess: float = 0.025
     balancing_cost_wind_eur_mwh: float = 0.0  # Wind balancing cost (EUR/MWh), e.g. 8.0 for 
-    co2_enabled: bool = False      #
-    co2_price_eur: float = 1.5     #
+    co2_enabled: bool = False
+    co2_price_eur: float = 1.5
 
     def tariff_at_year(self, year: int) -> float:
         """Return PPA tariff in year with escalation.
@@ -347,37 +347,37 @@ class FinancingParams:
     Financing parameter rows.
     """
     # Equity structure
-    share_capital_keur: float = 500.0   #
-    share_premium_keur: float = 0.0     #
-    shl_amount_keur: float = 13547.2     #
-    shl_rate: float = 0.08              #
+    share_capital_keur: float = 500.0
+    share_premium_keur: float = 0.0
+    shl_amount_keur: float = 13547.2
+    shl_rate: float = 0.08
 
     # Debt structure
-    gearing_ratio: float = 0.7524       #
-    senior_debt_amount_keur: float = 0.0  #
-    senior_tenor_years: int = 14        #
-    base_rate: float = 0.03             #
-    margin_bps: int = 265               #
-    floating_share: float = 0.2         #
-    fixed_share: float = 0.8            #
-    hedge_coverage: float = 0.8         #
+    gearing_ratio: float = 0.7524
+    senior_debt_amount_keur: float = 0.0
+    senior_tenor_years: int = 14
+    base_rate: float = 0.03
+    margin_bps: int = 265
+    floating_share: float = 0.2
+    fixed_share: float = 0.8
+    hedge_coverage: float = 0.8
 
     # Fees
-    commitment_fee: float = 0.0105      #
-    arrangement_fee: float = 0.0        #
-    structuring_fee: float = 0.01       #
+    commitment_fee: float = 0.0105
+    arrangement_fee: float = 0.0
+    structuring_fee: float = 0.01
 
     # Covenants
-    target_dscr: float = 1.15           #
-    lockup_dscr: float = 1.10           #
-    min_llcr: float = 1.15             #
+    target_dscr: float = 1.15
+    lockup_dscr: float = 1.10
+    min_llcr: float = 1.15
 
     # Amortization type: "sculpted" (DSCR-sculpted or fixed debt service)
     amortization_type: str = "sculpted"  # "sculpted" | "fixed_ds"
     fixed_ds_keur: float = 0.0           # Fixed debt service per period (kEUR) — for fixed_ds type
 
     # Reserve accounts
-    dsra_months: int = 6               #
+    dsra_months: int = 6
 
     # Equity IRR calculation method:
     # "equity_only" → IRR base = capex - debt - SHL ( style)
@@ -422,27 +422,27 @@ class TaxParams:
 
     Tax parameter rows.
     """
-    corporate_rate: float = 0.10       #
-    loss_carryforward_years: int = 5   #
-    loss_carryforward_cap: float = 1.0  #
+    corporate_rate: float = 0.10
+    loss_carryforward_years: int = 5
+    loss_carryforward_cap: float = 1.0
     prior_tax_loss_keur: float = 0.0   # Deprecated: use construction_pl instead
-    legal_reserve_cap: float = 0.10    #
+    legal_reserve_cap: float = 0.10
 
     # Construction P&L — deterministically computed tax loss
     construction_pl: Optional["ConstructionPLStatement"] = None
 
     # Thin cap / ATAD
-    thin_cap_enabled: bool = False     #
-    thin_cap_de_ratio: float = 0.8     #
+    thin_cap_enabled: bool = False
+    thin_cap_de_ratio: float = 0.8
     atad_ebitda_limit: float = 0.30    # ATAD EBITDA interest limit (30%)
     atad_min_interest_keur: float = 3000.0  # ATAD minimum interest threshold
 
     # Withholding taxes
-    wht_sponsor_dividends: float = 0.05  #
-    wht_sponsor_shl_interest: float = 0.0  #
+    wht_sponsor_dividends: float = 0.05
+    wht_sponsor_shl_interest: float = 0.0
 
     # SHL interest cap (for foreign sovereign)
-    shl_cap_applies: bool = True       #
+    shl_cap_applies: bool = True
 
     @property
     def initial_tax_loss_keur(self) -> float:

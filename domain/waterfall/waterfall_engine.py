@@ -432,21 +432,12 @@ def run_waterfall(
     mra_balance = 0
     cash_balance = 0
     cum_distribution = 0
-    # Initialize prior_tax_loss with construction-period costs + additional tax shields
-    # These create an initial tax loss carryforward that offsets EBT in early operation years
-    # CIT timing: first tax payment at Y3-H2 (after construction carryforward exhausted)
-    # NOTE: fiscal_reintegration is also set here to avoid double-counting (see below)
-    #
-    # Base: IDC + bank fees + commitment fees = 1,940 kEUR
-    # Additional: construction-period interest (capitalized during construction, not in our model)
-    # Carryforward amount estimated from construction-period costs
-    # Initialize prior_tax_loss from parameter if set (>0), otherwise estimate from construction costs
-    # Carryforward: ≈9,000 kEUR (12m construction) or ≈25,000 kEUR (18m construction)
-    # Use initial_tax_loss_keur from inputs.tax if available; otherwise estimate from construction costs
+    cum_distribution = 0
+    # Initialize prior_tax_loss: use inputs value if supplied, otherwise
+    # estimate from construction-period financial costs (IDC + bank fees + commitment fees)
     if prior_tax_loss_keur > 0:
         prior_tax_loss = prior_tax_loss_keur
     else:
-        # Estimate from construction-period financial costs
         # Estimate from construction-period financial costs as conservative fallback
         prior_tax_loss = idc_keur + bank_fees_keur + commitment_fees_keur
     fiscal_reintegration = 0.0
@@ -454,12 +445,7 @@ def run_waterfall(
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
     op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
 
-    loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
-    op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
-
     # For returns calculation
-    # Two methods for equity IRR:
-    # "equity_only": equity_investment = capex - debt - SHL, equity_cfs = distributions only
     # "combined": equity_investment = sculpt_capex - debt, equity_cfs = distributions only
     if equity_irr_method == "combined":
     # equity base = sculpt_capex (ex-IDC) - debt; equity CFs = distributions only

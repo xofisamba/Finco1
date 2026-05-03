@@ -88,6 +88,14 @@ class TestProjectFactories:
         # Market prices should be simple (not Excel exact 57.0, 66.3, etc.)
         assert len(p.revenue.market_prices_curve) == 30
 
+
+    def test_domain_inputs_has_no_project_specific_factory_methods(self):
+        """ProjectInputs has no create_default_* classmethods."""
+        from domain.inputs import ProjectInputs
+        assert not hasattr(ProjectInputs, "create_default_oborovo")
+        assert not hasattr(ProjectInputs, "create_default_tuho_wind1")
+
+
 def _run_waterfall_for_inputs(inputs):
     """Helper: run headless waterfall for generic project inputs."""
     from domain.period_engine import PeriodEngine
