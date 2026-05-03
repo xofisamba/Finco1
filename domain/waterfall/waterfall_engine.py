@@ -112,6 +112,7 @@ class WaterfallResult:
     # Returns
     project_irr: float = 0
     equity_irr: float = 0
+    sponsor_irr: float = 0
     project_npv: float = 0
     equity_npv: float = 0
     # Sculpting
@@ -465,6 +466,9 @@ def run_waterfall(
     # Start with initial investment - dates array now includes financial_close
     # project_cfs: all capital invested (total_capex, including debt)
     project_cfs = [-total_capex]
+    # Sponsor CF: same initial outflow as equity (share_capital + shl + shl_idc)
+    sponsor_investment = share_capital_keur + shl_amount + shl_idc_keur
+    sponsor_cfs = [-sponsor_investment]
 
     # Track all periods
     all_dsrs = []
@@ -840,6 +844,11 @@ def run_waterfall(
             equity_cf_for_period = dist
         equity_cfs.append(equity_cf_for_period)
 
+    # Sponsor CF: equity_cf_for_period + shi + shp
+        # (sponsor receives distributions PLUS actual SHL cash payments)
+        sponsor_cf_for_period = equity_cf_for_period + shi + shp
+        sponsor_cfs.append(sponsor_cf_for_period)
+
     # Calculate returns - prepend financial_close date for initial investment
     # This makes dates array match project_cfs/equity_cfs (initial + per-period)
     if financial_close:
@@ -869,6 +878,12 @@ def run_waterfall(
         equity_irr = 0.0
         equity_npv = 0.0
 
+    try:
+        sponsor_irr = xirr(sponsor_cfs, dates, guess=0.10) or 0.0
+    except Exception as exc:
+        _log.warning("XIRR failed for sponsor CFs: %s", exc)
+        sponsor_irr = 0.0
+
     # Build result
     result = WaterfallResult(
         periods=waterfall_periods,
@@ -888,6 +903,7 @@ def run_waterfall(
         periods_in_lockup=lockup_count,
         project_irr=project_irr,
         equity_irr=equity_irr,
+        sponsor_irr=sponsor_irr,
         project_npv=project_npv,
         equity_npv=equity_npv,
         sculpting_result=sculpt_result,
