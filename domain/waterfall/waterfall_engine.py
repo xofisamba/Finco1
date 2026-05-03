@@ -125,12 +125,12 @@ def compute_ebitda_schedule(
 ) -> list[float]:
     """Build EBITDA schedule from revenue and OPEX."""
     ebitda_by_period = []
-    
+
     for p in periods:
         rev = revenue_schedule.get(p.index, 0)
         opex = opex_schedule.get(p.index, 0)
         ebitda_by_period.append(max(0, rev - opex))
-    
+
     return ebitda_by_period
 
 
@@ -145,25 +145,25 @@ def compute_tax(
     loss_carryforward_cap: float = 1.0,
 ) -> tuple[float, float]:
     """Compute tax liability with loss carryforward.
-    
+
     Returns:
         (tax_keur, new_tax_loss)
     """
     # Taxable profit = EBITDA - depreciation - interest + fiscal reintegration
     taxable = ebitda_keur - depreciation_keur - interest_senior_keur - interest_shl_keur + fiscal_reintegration_keur
-    
+
     # Apply prior tax losses
     taxable_after_loss = max(0, taxable - prior_tax_loss)
-    
+
     # Tax
     tax = taxable_after_loss * tax_rate
-    
+
     # New tax loss = unused portion of prior loss + current year loss
     new_loss = max(0, prior_tax_loss - taxable) + max(0, -taxable_after_loss)
-    
+
     # Cap loss carryforward
     new_loss = min(new_loss, ebitda_keur * loss_carryforward_cap)
-    
+
     return tax, new_loss
 
 
@@ -176,7 +176,7 @@ def compute_llcr(
     """Calculate LLCR = PV(FCF to debt maturity) / Debt."""
     if debt_balance <= 0:
         return float('inf')
-    
+
     pv = sum(fcf / (1 + rate) ** (t + 1) for t, fcf in enumerate(fcf_schedule[:periods_remaining]))
     return pv / debt_balance
 
@@ -190,7 +190,7 @@ def compute_plcr(
     """Calculate PLCR = PV(FCF to project end) / Debt."""
     if debt_balance <= 0:
         return float('inf')
-    
+
     pv = sum(fcf / (1 + rate) ** (t + 1) for t, fcf in enumerate(fcf_schedule[:total_periods]))
     return pv / debt_balance
 
@@ -253,7 +253,7 @@ def run_waterfall(
     dsra_months: int = 6,
     shl_amount: float = 0,
     shl_rate: float = 0,
-    shl_idc_keur: float = 0.0,  # SHL IDC — added to opening balance
+    shl_idc_keur: float = 0.0,  # SHL IDC - added to opening balance
     shl_repayment_method: str = "bullet",  # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
     shl_tenor_years: int = 0,  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
     shl_wht_rate: float = 0.0,  # Withholding tax rate on SHL interest (e.g., 0.18 for TUHO)
@@ -262,7 +262,7 @@ def run_waterfall(
     financial_close: 'date' = None,
     gearing_ratio: float = 0.80,  # Used for sizing cap in closed_form_sculpt
     fixed_debt_keur: float | None = None,  # Override sculpted debt (for P90 sizing scenarios)
-    fixed_ds_keur: float | None = None,  # Fixed debt service per period (kEUR) — for TUHO annuity-type amortization
+    fixed_ds_keur: float | None = None,  # Fixed debt service per period (kEUR) - for TUHO annuity-type amortization
     rate_schedule: list[float] | None = None,  # Per-period rate schedule (Euribor curve). If None, uses flat rate_per_period.
     # Fiscal reintegration components (IDC + bank fees + commitment fees during construction)
     idc_keur: float = 0.0,
@@ -315,22 +315,22 @@ def run_waterfall(
         elif len(rate_schedule) > tenor_periods:
             rate_schedule = rate_schedule[:tenor_periods]
     cfads_for_sculpt = ebitda_schedule[:tenor_periods]
-    
+
     # Compute DSCR-constrained debt (no gearing cap) as base
     sculpt_result = closed_form_sculpt(
         cfads_schedule=cfads_for_sculpt,
         rate_schedule=rate_schedule,
         tenor_periods=tenor_periods,
         target_dscr=target_dscr,
-        gearing_cap_keur=float('inf'),  # No gearing constraint — we handle it below
+        gearing_cap_keur=float('inf'),  # No gearing constraint - we handle it below
         dscr_schedule=dscr_schedule,
     )
     dscr_debt = sculpt_result.debt_keur
-    
+
     # Compute gearing cap based on sculpt_capex (ex-IDC capex)
     # Use sculpt_capex if provided (> 0), otherwise fall back to total_capex for sizing
     sizing_base = sculpt_capex_keur if sculpt_capex_keur > 0 else total_capex
-    
+
     # For Oborovo "gearing_cap" method: exclude IDC from the gearing base
     # because Excel's gearing calculation uses sculpt_capex - IDC
     # This gives: (57,967 - 1,086) * 0.7524 = 42,815 ≈ Excel 42,852
@@ -338,9 +338,9 @@ def run_waterfall(
         sizing_base_for_gearing = sizing_base - idc_keur
     else:
         sizing_base_for_gearing = sizing_base
-    
+
     gearing_cap_keur = sizing_base_for_gearing * gearing_ratio
-    
+
     # Apply debt sizing method
     if debt_sizing_method == "gearing_cap":
         # Gearing wins: use max of DSCR-constrained and gearing cap
@@ -348,11 +348,11 @@ def run_waterfall(
     else:
         # Default: DSCR wins (min of DSCR and gearing)
         sizing_debt = min(dscr_debt, gearing_cap_keur)
-    
+
     # If fixed_debt_keur is provided, it overrides everything
     if fixed_debt_keur is not None and fixed_debt_keur > 0:
         sizing_debt = fixed_debt_keur
-    
+
     # Rescale balance schedule if sizing_debt differs from dscr_debt
     if abs(sizing_debt - dscr_debt) > 0.01 and (fixed_debt_keur is None or fixed_debt_keur <= 0):
         scale = sizing_debt / dscr_debt if dscr_debt > 0 else 1.0
@@ -458,7 +458,7 @@ def run_waterfall(
 
     # Step 2: Run waterfall for each period
     waterfall_periods = []
-    
+
     # State variables
     dsra_balance = (dsra_months / 12) * (sculpt_result.payment_schedule[0] * 2) if dsra_months > 0 and sculpt_result.payment_schedule else 0  # noqa: E501  mathematically equivalent to: dsra_months * payment / 6, clearer intent
     shl_balance = shl_amount + shl_idc_keur  # Opening balance = disbursed + IDC
@@ -486,14 +486,14 @@ def run_waterfall(
     fiscal_reintegration_applied = True  # Already accounted for in prior_tax_loss
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
     op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
-    
+
     # TODO (Phase 3B): The 7,060 kEUR additional amount is a TUNED VALUE to match Excel CIT.
     # In production, calculate from: construction-period interest (capitalized + depreciated)
     # + any other book-vs-tax differences. The current model doesn't track construction-period
     # interest separately, so this is an approximation.
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
     op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
-    
+
     # For returns calculation
     # Two methods for equity IRR:
     # "equity_only": equity_investment = capex - debt - SHL, equity_cfs = distributions only (TUHO)
@@ -517,11 +517,11 @@ def run_waterfall(
     # Start with initial investment - dates array now includes financial_close
     # project_cfs: all capital invested (total_capex, including debt)
     project_cfs = [-total_capex]
-    
+
     # Track all periods
     all_dsrs = []
     lockup_count = 0
-    
+
     for i, period in enumerate(periods):
         if not period.is_operation:
             # Construction period: no revenue, just costs
@@ -565,25 +565,25 @@ def run_waterfall(
             project_cfs.append(0)
             equity_cfs.append(0)
             continue
-        
+
         # Operation period
         rev = revenue_schedule[i] if i < len(revenue_schedule) else 0
         gen = generation_schedule[i] if i < len(generation_schedule) else 0
         ebitda = ebitda_schedule[i]
         dep = depreciation_schedule[i] if i < len(depreciation_schedule) else 0
-        
-        # Senior debt service — compute from balance schedule + fixed DS
+
+        # Senior debt service - compute from balance schedule + fixed DS
         # For fixed_ds_keur approach: interest = balance * rate, principal = fixed_ds - interest
         period_in_tenor = op_period_counter
         if period_in_tenor < tenor_periods:
             # Get current period balance (opening balance for this period)
             opening_balance = balance_schedule[period_in_tenor] if period_in_tenor < len(balance_schedule) else 0
             si = interest_schedule[period_in_tenor]
-            
+
             # Fixed DS approach: fixed payment = interest + principal
             # Principal = fixed_ds - interest (but cap at remaining balance for balloon)
             if period_in_tenor == tenor_periods - 1:
-                # Last period: balloon — pay off entire remaining balance
+                # Last period: balloon - pay off entire remaining balance
                 sp = opening_balance
                 senior_ds = si + sp
             else:
@@ -595,7 +595,7 @@ def run_waterfall(
             sp = 0
             senior_ds = 0
         op_period_counter += 1
-        
+
         # Remaining senior debt balance for this period
         # For balloon period: this is the balance BEFORE payment (opening)
         # After balloon: remaining should be 0 since balance is paid off
@@ -612,32 +612,33 @@ def run_waterfall(
                     remaining_senior_balance = 0
         else:
             remaining_senior_balance = 0
-        
+
         # Force senior balance to 0 after tenor ends (post-tenor period has no senior debt)
         if period_in_tenor >= tenor_periods:
             remaining_senior_balance = 0.0
-        
+
         # SHL service placeholder (will be computed after tax)
         # SHL PIK logic moved to after cf_after_tax computation
         shi = 0; shp = 0; shl_svc = 0; shl_interest_pik = 0.0
-        
+
         # ATAD-based tax calculation with fiscal reintegration
         # Interest deductibility limited to 30% of EBITDA (ATAD directive)
         # NOTE: atad_min_interest_keur=3000 keeps all interest deductible for this project
         # (interest < 3000 kEUR per period). This is a project-specific override.
         # ATAD-based tax calculation using domain tax engine
         total_interest = si + shi
-        
+
         # Fiscal reintegration: IDC + bank fees + commitment fees capitalized during
         # construction, added back to taxable profit in first year of operation
-        # (HR tax law — only once in first operational year)
+        # (HR tax law - only once in first operational year)
         if not fiscal_reintegration_applied:
             fiscal_reintegration = idc_keur + bank_fees_keur + commitment_fees_keur
             fiscal_reintegration_applied = True
         else:
             fiscal_reintegration = 0.0
-        
-        # compute_period_tax handles ATAD, loss carryforward, and base taxable income
+
+        # compute_period_tax now owns: ATAD, loss carryforward, fiscal reintegration
+        # waterfall_engine just reads the result
         tax_result: TaxPeriodResult = compute_period_tax(
             ebitda_keur=ebitda,
             depreciation_keur=dep,
@@ -645,30 +646,30 @@ def run_waterfall(
             shl_interest_keur=shi,
             loss_carryforward_keur=prior_tax_loss,
             tax_rate=tax_rate,
+            fiscal_reintegration_keur=fiscal_reintegration,
+            atad_applies=True,
             atad_ebitda_limit=0.30,
             atad_min_threshold_keur=3000.0,
             loss_carryforward_cap=loss_carryforward_cap,
         )
-        
-        # Add fiscal_reintegration to base taxable income (project-specific HR tax law add-back)
-        taxable_profit = max(0.0, tax_result.taxable_income_keur + fiscal_reintegration)
-        tax = max(0.0, taxable_profit * tax_rate)
-        
-        # Update loss carryforward from engine result
+
+        # Use result directly — no manual recompute
+        taxable_profit = tax_result.taxable_income_keur
+        tax = tax_result.tax_keur
         prior_tax_loss = tax_result.loss_carryforward_remaining_keur
-        
-        # Tax paid only in H2 (second half of year) — HR tax law
+
+        # Tax paid only in H2 (second half of year) - HR tax law
         is_tax_period = period.period_in_year == 2
         tax_this_period = tax if is_tax_period else 0.0
-        
+
         # CF after tax
         cf_after_tax = ebitda - tax_this_period
-        
-        # SHL service — use compute_shl_period() with shl_repayment_method
+
+        # SHL service - use compute_shl_period() with shl_repayment_method
         # Pik switch triggers when senior debt is fully repaid (for pik_then_sweep)
         pik_switch_triggered = (remaining_senior_balance <= 0)
 
-        # CF for SHL — conditional approach (cofix fix)
+        # CF for SHL - conditional approach (cofix fix)
         # TUHO pik_then_sweep: FCF for SHL = EBITDA - Senior DS (bez poreza)
         # Ostatak: cf_after_tax (nepromijenjeno)
         # dsra_contrib is initialized here (updated later in DSRA block)
@@ -684,12 +685,12 @@ def run_waterfall(
             _pik_trigger = pik_switch_triggered
 
         # Y1-H1 is disbursement period: SHL just disbursed, no operating DS yet
-        # No SHL interest, no SHL payment — just opening balance (already includes IDC)
+        # No SHL interest, no SHL payment - just opening balance (already includes IDC)
         is_shl_disbursement_period = (op_period_counter == 1 and shl_repayment_method == "pik_then_sweep")
 
         shl_rate_per = shl_rate * getattr(period, "day_fraction", 0.5)
 
-        # SHL tenor — when does bullet repay?
+        # SHL tenor - when does bullet repay?
         # shl_tenor_years = 0 means bullet at end of senior tenor (default)
         # shl_tenor_years > 0 means bullet in specific year
         if shl_tenor_years > 0:
@@ -699,7 +700,7 @@ def run_waterfall(
         is_final_shl_period = (shl_balance > 0 and op_period_counter == shl_tenor_periods - 1)
 
         if is_shl_disbursement_period:
-            # Y1-H1: disbursement period — balance already includes IDC
+            # Y1-H1: disbursement period - balance already includes IDC
             # No SHL interest, no PIK, no payments
             shi = 0.0; shp = 0.0; shl_pik = 0.0
             # shl_balance stays unchanged (= shl_amount + shl_idc)
@@ -714,12 +715,12 @@ def run_waterfall(
                 is_final_shl_period=is_final_shl_period,
             )
         shl_svc = shi + shp  # Total SHL service = interest + principal (for records)
-        
+
         # CF after senior and SHL debt service
         cf_after_ds = cf_after_tax - senior_ds - shi  # shi only (principal is balance sheet, not cash outflow)  # shi only, not shp (principal is balance sheet, not cash flow)
-        
+
         # DSRA funding (6 months of debt service)
-        # DSRA funding — rolling target based on future debt service
+        # DSRA funding - rolling target based on future debt service
         # dsra_rolling_target() uses future payments (not historical)
         if dsra_months > 0 and period_in_tenor < tenor_periods:
             future_payments = payments[period_in_tenor:]  # Remaining payments
@@ -735,18 +736,18 @@ def run_waterfall(
             dsra_contrib = 0
             dsra_withdrawal = 0
         cf_after_reserves = cf_after_ds + dsra_withdrawal - dsra_contrib
-        
-        # DSCR — industrijski standard: CFADS / Senior Debt Service
+
+        # DSCR - industrijski standard: CFADS / Senior Debt Service
         # CFADS = EBITDA - Taxes (PRIJE debt service, PRIJE DSRA movements)
         ebitda_minus_tax = ebitda - tax_this_period if ebitda is not None else 0
         dscr = ebitda_minus_tax / senior_ds if senior_ds > 0 else float('inf')
         all_dsrs.append(dscr)
-        
+
         # Lockup check
         lockup = dscr < lockup_dscr if senior_ds > 0 else False
         if lockup:
             lockup_count += 1
-        
+
         # Distribution with SHL amortization priority
         # Cash flow waterfall priority:
         # 1. Senior debt service (from balance_schedule)
@@ -756,7 +757,7 @@ def run_waterfall(
         # For other SHL methods (bullet, cash_sweep): 2-tier (Oborovo)
         sweep_dscr_threshold = 1.35
         remaining_senior_balance = balance_schedule[period_in_tenor] if period_in_tenor < len(balance_schedule) else 0
-        
+
         if shl_repayment_method == "pik_then_sweep":
             # 3-tier waterfall: senior → SHL → dividends (TUHO)
             if lockup:
@@ -802,21 +803,21 @@ def run_waterfall(
             else:
                 dist = max(0, cf_after_reserves)
                 sweep_amount = 0.0
-        
+
         cum_distribution += dist  # jednom, na kraju svih logika
-        
-        # DSRA release in last 2 periods — add to distribution
+
+        # DSRA release in last 2 periods - add to distribution
         if i >= len(periods) - 2 and dsra_balance > 0:
             dsra_release = dsra_balance
             dsra_balance = 0.0
             dsra_contribution_keur = -dsra_release  # negative = release
             dist += dsra_release  # DSRA release goes to distributions
             cum_distribution += dsra_release
-        
-        # Cash balance — after sweep
+
+        # Cash balance - after sweep
         cash_balance = cash_balance + cf_after_reserves - dist
-        
-        # LLCR/PLCR — remaining FCF from next period onwards (not including current)
+
+        # LLCR/PLCR - remaining FCF from next period onwards (not including current)
         # Use waterfall index i (not op_period_counter) to correctly index ebitda_schedule
         remaining_fcf = ebitda_schedule[i + 1:] if i + 1 < len(ebitda_schedule) else []
         # Closing balance: next period's balance, capped at last index
@@ -866,9 +867,9 @@ def run_waterfall(
             cash_balance_keur=cash_balance,
             senior_balance_keur=max(0.0, remaining_senior_balance - sp),  # Closing balance after principal payment
         )
-        
+
         waterfall_periods.append(wp)
-        
+
         # Track CFs for returns
         # Project IRR = unlevered (EBITDA - Tax), equity IRR = levered (distributions)
         project_cfs.append(ebitda - tax_this_period if ebitda else 0)
@@ -884,14 +885,14 @@ def run_waterfall(
             # R21 Total = R17 + R20 (dividends start ~Y20 when SHL repaid)
             # SHL principal is NOT returned as cash flow in equity IRR stream
             if shl_balance > 0:
-                equity_cf_for_period = shi  # Net interest ONLY — no principal in equity CF
+                equity_cf_for_period = shi  # Net interest ONLY - no principal in equity CF
             else:
                 equity_cf_for_period = dist  # Dividends after SHL fully repaid
         else:
             # combined/equity_only: equity CF = distributions to equity
             equity_cf_for_period = dist
         equity_cfs.append(equity_cf_for_period)
-    
+
     # Calculate returns - prepend financial_close date for initial investment
     # This makes dates array match project_cfs/equity_cfs (initial + per-period)
     if financial_close:
@@ -920,7 +921,7 @@ def run_waterfall(
         _log.warning("XIRR/XNPV failed for equity CFs: %s", exc)
         equity_irr = 0.0
         equity_npv = 0.0
-    
+
     # Build result
     result = WaterfallResult(
         periods=waterfall_periods,
@@ -944,7 +945,7 @@ def run_waterfall(
         equity_npv=equity_npv,
         sculpting_result=sculpt_result,
     )
-    
+
     return result
 
 
@@ -963,7 +964,7 @@ def print_waterfall_summary(result: WaterfallResult) -> str:
         f"Total Distrib:    {result.total_distribution_keur:>12,.0f} k€",
         "-" * 60,
     ]
-    # Sculpting info — appended after list closes
+    # Sculpting info - appended after list closes
     converged_str = (
         f"{'CONVERGED' if result.sculpting_result.converged else 'FAILED'}"
         f" ({result.sculpting_result.iterations} iterations)"
