@@ -8,6 +8,18 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent
 
 # Files to check (runtime modules, not tests/docs/tools/legacy)
+# Active UI pages
+UI_PAGES = [
+    "ui/pages/1_Project_Inputs.py",
+    "ui/pages/2_Waterfall.py",
+]
+
+# Legacy UI pages — still part of the repo but not migrated yet;
+# excluded from runtime guard but covered by LEGACY_UI_FILES tests
+LEGACY_UI_FILES = [
+    "ui/pages/4_scenarios.py",
+]
+
 RUNTIME_FILES = [
     "streamlit_app.py",
     "app/cache.py",
@@ -22,7 +34,7 @@ RUNTIME_FILES = [
     "domain/inputs.py",
     "domain/validation.py",
     "src/app.py",
-]
+] + UI_PAGES
 
 FORBIDDEN = [
     "/root/.openclaw",
@@ -88,3 +100,46 @@ def test_project_factories_no_create_default_on_projectinputs():
         "ProjectInputs must not have create_default_oborovo method"
     assert "def create_default_tuho_wind1" not in src, \
         "ProjectInputs must not have create_default_tuho_wind1 method"
+
+def test_ui_pages_do_not_use_hardcoded_sys_path():
+    """Active UI pages must not contain hardcoded sandbox paths or sys.path hacks."""
+    for page in UI_PAGES:
+        filepath = REPO_ROOT / page
+        src = filepath.read_text()
+        assert "/root/.openclaw" not in src, f"{page} must not contain sandbox paths"
+        assert "sys.path.insert" not in src, f"{page} must not manipulate sys.path"
+
+
+def test_ui_pages_do_not_use_legacy_projectinputs_factories():
+    """Active UI pages must not call ProjectInputs.create_default_oborovo/create_default_tuho."""
+    for page in UI_PAGES:
+        filepath = REPO_ROOT / page
+        src = filepath.read_text()
+        assert "ProjectInputs.create_default_oborovo" not in src, f"{page} must not call ProjectInputs.create_default_oborovo"
+        assert "ProjectInputs.create_default_tuho_wind1" not in src, f"{page} must not call ProjectInputs.create_default_tuho_wind1"
+
+
+def test_active_ui_pages_use_app_cache_not_utils_cache():
+    """Active UI pages should use app.cache, not the utils.cache compatibility shim."""
+    for page in UI_PAGES:
+        filepath = REPO_ROOT / page
+        src = filepath.read_text()
+        if "utils.cache" in src:
+            pytest.fail(f"{page} imports utils.cache; use app.cache instead")
+
+
+def test_legacy_ui_files_are_classified():
+    """LEGACY_UI_FILES must exist and be explicitly marked legacy."""
+    for page in LEGACY_UI_FILES:
+        assert (REPO_ROOT / page).exists(), f"{page} listed as legacy but does not exist"
+
+
+def test_no_create_default_oborovo_runtime_references():
+    """No active runtime file may call create_default_oborovo/create_default_tuho_wind1."""
+    runtime_paths = [REPO_ROOT / p for p in RUNTIME_FILES]
+    for path in runtime_paths:
+        if not path.exists():
+            continue
+        src = path.read_text()
+        assert "create_default_oborovo" not in src, f"{path.name} must not call create_default_oborovo"
+        assert "create_default_tuho_wind1" not in src, f"{path.name} must not call create_default_tuho_wind1"

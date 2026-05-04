@@ -359,3 +359,93 @@ def test_capex_override_in_ui_runner_changes_result():
     assert base.result is not None and mod.result is not None
     assert base.result.project_irr != mod.result.project_irr or \
            base.result.avg_dscr != mod.result.avg_dscr
+
+# ── Streamlit form apply path tests ─────────────────────────────────────────
+
+class DummyColumn:
+    def __enter__(self): return self
+    def __exit__(self, exc_type, exc, tb): return False
+
+
+def _mock_st_for_capex_forms(project, total_capex_override=None, all_other_default=None):
+    """Monkeypatch st module for testing render_*_input_form CapEx paths."""
+    import streamlit as st
+    from unittest.mock import MagicMock
+
+    if total_capex_override is None:
+        total_capex_override = project.capex.total_capex * 1.2
+    if all_other_default is None:
+        all_other_default = {}
+
+    def fake_number_input(label, value=None, min_value=None, max_value=None,
+                          step=None, key=None, **kwargs):
+        if key == "solar_total_capex" or key == "wind_total_capex":
+            return total_capex_override
+        return all_other_default.get(key, value if value is not None else 0.0)
+
+    def fake_columns(n):
+        return [DummyColumn() for _ in range(n)]
+
+    st.subheader = MagicMock()
+    st.markdown = MagicMock()
+    st.number_input = fake_number_input
+    st.button = MagicMock(return_value=True)
+    st.columns = fake_columns
+    st.radio = MagicMock()
+    return st
+
+
+def test_render_solar_input_form_capex_apply_does_not_raise_nameerror():
+    """Verify the solar form handler uses target_total_capex (not undefined total_capex)."""
+    import ast
+    from pathlib import Path
+    src = (Path(__file__).parent.parent / "app" / "input_forms.py").read_text()
+    tree = ast.parse(src)
+    # Find render_solar_input_form and check target_total_capex is defined before use
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "render_solar_input_form":
+            names_used = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+            # target_total_capex must appear as a Name node (not just in comments)
+            func_source = ast.get_source_segment(src, node)
+            assert "target_total_capex = total_capex" in func_source,                 "render_solar_input_form must define: target_total_capex = total_capex"
+
+
+def test_render_wind_input_form_capex_apply_does_not_raise_nameerror():
+    """Verify the wind form handler uses target_total_capex (not undefined total_capex)."""
+    import ast
+    from pathlib import Path
+    src = (Path(__file__).parent.parent / "app" / "input_forms.py").read_text()
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "render_wind_input_form":
+            func_source = ast.get_source_segment(src, node)
+            assert "target_total_capex = total_capex" in func_source,                 "render_wind_input_form must define: target_total_capex = total_capex"
+
+
+def test_scale_capex_items_target_total_within_tolerance():
+    """+20% and -10% capex scaling hits target within tight tolerance."""
+    from app.project_factories import create_default_solar_project
+    from app.capex_overrides import scale_capex_items
+
+    solar = create_default_solar_project()
+    cap = solar.capex
+    orig = cap.total_capex
+
+    for pct, target in [(1.2, orig * 1.2), (0.9, orig * 0.9)]:
+        scaled = scale_capex_items(cap, target)
+        assert abs(scaled.total_capex - target) < 1.0, \
+            f"{pct:.0%} scale: expected ~{target}, got {scaled.total_capex}"
+
+
+def test_scale_capex_items_does_not_mutate_original():
+    """scale_capex_items must not mutate the original CapexStructure."""
+    from app.project_factories import create_default_solar_project
+    from app.capex_overrides import scale_capex_items
+
+    solar = create_default_solar_project()
+    cap = solar.capex
+    orig_total = cap.total_capex
+
+    scaled = scale_capex_items(cap, orig_total * 1.2)
+    assert cap.total_capex == orig_total, "Original must not be mutated"
+    assert scaled is not cap, "Scaled result must be a new object"

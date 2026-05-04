@@ -104,12 +104,13 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
             "Total CapEx (kEUR)", value=float(_get_total_capex_val(project_inputs.capex)),
             min_value=0.0, step=1000.0, key="solar_total_capex"
         )
+        target_total_capex = total_capex  # explicit alias; total_capex is read-only
     with capex_cols[1]:
         sculpt_capex = st.number_input(
             "Sculpt CapEx (kEUR)", value=float(getattr(project_inputs.capex, 'sculpt_capex_keur', 0.0)),
             min_value=0.0, step=1000.0, key="solar_sculpt_capex"
         )
-    
+
     # Financing
     st.markdown("**Financing**")
     fin_cols = st.columns(3)
@@ -229,12 +230,13 @@ def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
             "Total CapEx (kEUR)", value=float(_get_total_capex_val(project_inputs.capex)),
             min_value=0.0, step=1000.0, key="wind_total_capex"
         )
+        target_total_capex = total_capex  # explicit alias; total_capex is read-only
     with capex_cols[1]:
         sculpt_capex = st.number_input(
             "Sculpt CapEx (kEUR)", value=float(getattr(project_inputs.capex, 'sculpt_capex_keur', 0.0)),
             min_value=0.0, step=1000.0, key="wind_sculpt_capex"
         )
-    
+
     st.markdown("**Financing**")
     fin_cols = st.columns(3)
     with fin_cols[0]:
