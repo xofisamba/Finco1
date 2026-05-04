@@ -449,3 +449,76 @@ def test_scale_capex_items_does_not_mutate_original():
     scaled = scale_capex_items(cap, orig_total * 1.2)
     assert cap.total_capex == orig_total, "Original must not be mutated"
     assert scaled is not cap, "Scaled result must be a new object"
+
+
+class _DummyCol:
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+def test_render_solar_input_form_capex_apply_scales_capex(monkeypatch):
+    """Solar form apply button triggers CapEx scaling: +20% changes total_capex."""
+    import streamlit as st
+    from app.input_forms import render_solar_input_form
+    from app.project_factories import create_default_solar_project
+
+    project = create_default_solar_project()
+    orig = project.capex.total_capex
+    target = orig * 1.2
+
+    def fake_number_input(label, value=None, min_value=None, max_value=None,
+                          step=None, key=None, **kwargs):
+        if key and "total_capex" in key.lower():
+            return target
+        return value if value is not None else 0.0
+
+    def fake_columns(n):
+        return [_DummyCol() for _ in range(n)]
+
+    monkeypatch.setattr(st, "number_input", fake_number_input)
+    monkeypatch.setattr(st, "button", lambda *a, **k: True)
+    monkeypatch.setattr(st, "columns", fake_columns)
+    monkeypatch.setattr(st, "subheader", lambda *a, **k: None)
+    monkeypatch.setattr(st, "markdown", lambda *a, **k: None)
+    monkeypatch.setattr(st, "radio", lambda *a, **k: None)
+    monkeypatch.setattr(st, "selectbox", lambda *a, **k: None)
+    monkeypatch.setattr(st, "slider", lambda *a, **k: None)
+
+    result, was_modified = render_solar_input_form(project)
+    assert was_modified is True
+    assert result.capex.total_capex != orig
+    assert abs(result.capex.total_capex - target) < 1.0
+
+
+def test_render_wind_input_form_capex_apply_scales_capex(monkeypatch):
+    """Wind form apply button triggers CapEx scaling: +20% changes total_capex."""
+    import streamlit as st
+    from app.input_forms import render_wind_input_form
+    from app.project_factories import create_default_wind_project
+
+    project = create_default_wind_project()
+    orig = project.capex.total_capex
+    target = orig * 1.2
+
+    def fake_number_input(label, value=None, min_value=None, max_value=None,
+                          step=None, key=None, **kwargs):
+        if key and "total_capex" in key.lower():
+            return target
+        return value if value is not None else 0.0
+
+    def fake_columns(n):
+        return [_DummyCol() for _ in range(n)]
+
+    monkeypatch.setattr(st, "number_input", fake_number_input)
+    monkeypatch.setattr(st, "button", lambda *a, **k: True)
+    monkeypatch.setattr(st, "columns", fake_columns)
+    monkeypatch.setattr(st, "subheader", lambda *a, **k: None)
+    monkeypatch.setattr(st, "markdown", lambda *a, **k: None)
+    monkeypatch.setattr(st, "radio", lambda *a, **k: None)
+    monkeypatch.setattr(st, "selectbox", lambda *a, **k: None)
+    monkeypatch.setattr(st, "slider", lambda *a, **k: None)
+
+    result, was_modified = render_wind_input_form(project)
+    assert was_modified is True
+    assert result.capex.total_capex != orig
+    assert abs(result.capex.total_capex - target) < 1.0
