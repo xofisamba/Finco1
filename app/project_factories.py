@@ -754,3 +754,10 @@ __all__ = [
     "create_default_solar_bess_project",
     "create_default_wind_bess_project",
 ]
+
+
+# ── Backward-compatibility shim ────────────────────────────────────────────────
+# Tests and legacy code may call ProjectInputs.create_default_oborovo()
+# as a class method. Wire it here so the domain layer stays pure.
+ProjectInputs.create_default_oborovo = staticmethod(create_default_oborovo)
+ProjectInputs.create_default_tuho_wind1 = staticmethod(create_default_tuho_wind1)

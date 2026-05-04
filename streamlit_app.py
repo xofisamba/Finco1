@@ -65,20 +65,24 @@ if run_button or st.session_state.demo_result is not None:
         st.caption(f"_{detail}_")
 
     # Scenario summary table (shown after model run, for non-Base scenarios)
+    # Portfolio scenarios are not implemented — show a warning instead of the table
     if scenario != "Base":
-        from app.scenarios import scenario_summary
-        rows = scenario_summary(scenario)
-        has_changes = any(r.get("change") != "0%" for r in rows)
-        st.subheader(f"📋 Scenario: {scenario}")
-        if has_changes:
-            import pandas as pd
-            df = pd.DataFrame(rows)
-            st.table(df)
-            if project_type in ("BESS", "Solar+BESS", "Wind+BESS", "Portfolio"):
-                st.info("⚠️ Scenario effects are partial for this project type — revenue model uses scenario, but other modules may not.")
+        if project_type == "Portfolio":
+            st.warning("⚠️ Portfolio scenarios not implemented — Base case results shown.")
         else:
-            st.caption("No changes from Base case")
-        st.divider()
+            from app.scenarios import scenario_summary
+            rows = scenario_summary(scenario)
+            has_changes = any(r.get("change") != "0%" for r in rows)
+            st.subheader(f"📋 Scenario: {scenario}")
+            if has_changes:
+                import pandas as pd
+                df = pd.DataFrame(rows)
+                st.table(df)
+                if project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
+                    st.info("⚠️ Scenario effects are partial for this project type — revenue model uses scenario, but other modules may not.")
+            else:
+                st.caption("No changes from Base case")
+            st.divider()
 
     if demo.messages:
         for msg in demo.messages:

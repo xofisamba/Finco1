@@ -150,12 +150,19 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
             messages.append(f"Unknown project type: {project_type}")
 
         if scenario != "Base":
-            from app.scenarios import scenario_summary
-            rows = scenario_summary(scenario)
-            for row in rows:
+            if project_type == "Portfolio":
+                # Scenario NOT applied to portfolio — show explicit warning
                 messages.append(
-                    f"Scenario: {scenario} — {row['assumption']} {row['change']}"
+                    f"⚠️ Scenario '{scenario}' is not supported for Portfolio. "
+                    f"Results shown are Base case. Portfolio scenarios not yet implemented."
                 )
+            else:
+                from app.scenarios import scenario_summary
+                rows = scenario_summary(scenario)
+                for row in rows:
+                    messages.append(
+                        f"Scenario: {scenario} — {row['assumption']} {row['change']}"
+                    )
 
         # Validation for non-portfolio projects
         if project_type in FACTORY_MAP:

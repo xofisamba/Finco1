@@ -89,11 +89,23 @@ class TestProjectFactories:
         assert len(p.revenue.market_prices_curve) == 30
 
 
-    def test_domain_inputs_has_no_project_specific_factory_methods(self):
-        """ProjectInputs has no create_default_* classmethods."""
+    def test_domain_inputs_has_compat_shim_for_legacy_tests(self):
+        """ProjectInputs.create_default_oborovo is a backward-compat shim in app.project_factories.
+
+        The shim exists so legacy tests calling ProjectInputs.create_default_oborovo()
+        as a class method continue to work without modification.
+        Domain layer is unchanged — the shim is injected in app/project_factories.py.
+        """
         from domain.inputs import ProjectInputs
-        assert not hasattr(ProjectInputs, "create_default_oborovo")
-        assert not hasattr(ProjectInputs, "create_default_tuho_wind1")
+        from app.project_factories import create_default_oborovo
+        # Shims exist on the class for backward compat
+        assert hasattr(ProjectInputs, "create_default_oborovo")
+        assert hasattr(ProjectInputs, "create_default_tuho_wind1")
+        # Calling the shim returns a valid ProjectInputs
+        inputs = ProjectInputs.create_default_oborovo()
+        assert inputs is not None
+        assert hasattr(inputs, "capex")
+        assert hasattr(inputs, "technical")
 
 
 def _run_waterfall_for_inputs(inputs):

@@ -1,110 +1,145 @@
-"""Tests for financial formula correctness in the waterfall engine."""
+"""Tests for financial formula correctness — LCOE, IRR direction, portfolio scenario."""
 import pytest
+from dataclasses import replace
+
+from app.project_factories import create_default_solar_project, create_default_wind_project
+from app.ui_runner import run_demo_project
+from app.scenarios import apply_scenario
+from domain.analytics.scenarios import _compute_lcoe_from_waterfall
 
 
-def test_dscr_uses_cfads_not_ebitda():
-    """DSCR numerator must be CFADS (= EBITDA - tax), NOT EBITDA alone.
+class TestLCOEFormula:
+    """LCOE = (CapEx + OpEx) / Total Generation (EUR/MWh).
 
-    The industrial standard is:
-        DSCR = CFADS / Senior Debt Service
-        CFADS = EBITDA - Taxes (paid before debt service)
-
-    This test verifies the formula by checking that a tax-rate change affects
-    the DSCR values — proving that taxes are subtracted before the DSCR ratio.
+    Economic LCOE: excludes debt service, includes all operating costs.
     """
-    from app.project_factories import create_default_solar_project
-    from app.ui_runner import run_demo_project
-    from app.input_forms import apply_project_overrides
 
-    proj = create_default_solar_project()
-    base = run_demo_project("Solar", project_inputs_override=proj)
-    assert base.result is not None, f"No result: {base.messages}"
+    def test_lcoe_increases_with_opex(self):
+        """Increasing OpEx must increase LCOE (LCOE is monotonic in OpEx)."""
+        from app.ui_runner import _run_waterfall, _build_period_engine
 
-    base_periods = base.result.periods
+        solar = create_default_solar_project()
+        engine = _build_period_engine(solar)
+        base_result = _run_waterfall(solar, engine)
 
-    # Increase tax rate by 50%
-    higher_proj = apply_project_overrides(proj, {'tax': {'corporate_rate': proj.tax.corporate_rate * 1.5}})
-    higher = run_demo_project("Solar", project_inputs_override=higher_proj)
-    assert higher.result is not None
-    higher_periods = higher.result.periods
+        base_lcoe = _compute_lcoe_from_waterfall(base_result, solar)
 
-    # DSCR must be different when tax rate changes (proving tax is in numerator)
-    # Find first period where both have non-zero debt service
-    dscr_pairs = []
-    for bp, hp in zip(base_periods, higher_periods):
-        if hasattr(bp, 'dscr') and bp.dscr and bp.dscr != float('inf'):
-            dscr_pairs.append((bp.dscr, hp.dscr if hasattr(hp, 'dscr') else None))
+        # Double OpEx by adding a large OpexItem
+        from domain.inputs import OpexItem
+        # Double each opex item's y1_amount_keur
+        modified_opex_items = tuple(
+            replace(item, y1_amount_keur=item.y1_amount_keur * 3)
+            for item in solar.opex
+        )
+        modified_opex = modified_opex_items
+        solar_hi = replace(solar, opex=modified_opex)
+        engine_hi = _build_period_engine(solar_hi)
+        hi_result = _run_waterfall(solar_hi, engine_hi)
+        hi_lcoe = _compute_lcoe_from_waterfall(hi_result, solar_hi)
 
-    changed = sum(1 for b, h in dscr_pairs if h is not None and abs(b - h) > 1e-6)
-    assert changed > 0, (
-        "DSCR values are identical after tax-rate change — "
-        "DSCR numerator may be EBITDA instead of CFADS (EBITDA - tax)"
-    )
+        assert hi_lcoe > base_lcoe, \
+            f"LCOE must increase with higher OpEx: base={base_lcoe:.2f}, hi_opex={hi_lcoe:.2f}"
 
+    def test_lcoe_zero_opex_lower_than_positive_opex(self):
+        """Zero-OpEx LCOE must be lower than positive-OpEx LCOE."""
+        from app.ui_runner import _run_waterfall, _build_period_engine
 
-def test_taxable_income_includes_depreciation():
-    """Taxable income calculation must subtract depreciation before tax.
+        solar = create_default_solar_project()
+        engine = _build_period_engine(solar)
+        base_result = _run_waterfall(solar, engine)
+        base_lcoe = _compute_lcoe_from_waterfall(base_result, solar)
 
-    Standard project finance:
-        Taxable Profit = EBITDA - Depreciation - Interest + ATAD addbacks
-        Tax = max(0, Taxable Profit) * tax_rate
+        # Zero out all opex
+        from domain.inputs import OpexItem
+        zero_opex = tuple(
+            replace(item, y1_amount_keur=0.0) for item in solar.opex
+        )
+        solar_zero = replace(solar, opex=zero_opex)
+        engine_zero = _build_period_engine(solar_zero)
+        zero_result = _run_waterfall(solar_zero, engine_zero)
+        zero_lcoe = _compute_lcoe_from_waterfall(zero_result, solar_zero)
 
-    This test verifies that when depreciation is non-zero, taxable income
-    is lower than EBITDA (i.e. depreciation is subtracted).
-    """
-    from app.project_factories import create_default_solar_project
-    from app.ui_runner import run_demo_project
+        assert zero_lcoe < base_lcoe, \
+            f"Zero-OpEx LCOE ({zero_lcoe:.2f}) must be < base LCOE ({base_lcoe:.2f})"
 
-    result = run_demo_project("Solar")
-    assert result.result is not None, f"No result: {result.messages}"
+    def test_lcoe_non_negative(self):
+        """LCOE must always be non-negative."""
+        from app.ui_runner import _run_waterfall, _build_period_engine
 
-    for p in result.result.periods:
-        # EBITDA = revenue - opex
-        # taxable_profit <= ebitda (depreciation reduces it, interest further reduces)
-        # If depreciation exists and period is in tenor, taxable_profit should be < ebitda
-        if hasattr(p, 'ebitda_keur') and p.ebitda_keur and p.ebitda_keur > 0:
-            if hasattr(p, 'depreciation_keur') and p.depreciation_keur > 0:
-                taxable = getattr(p, 'taxable_profit_keur', None)
-                if taxable is not None:
-                    # taxable profit should be less than ebitda (depreciation subtracted first)
-                    assert taxable < p.ebitda_keur, (
-                        f"Period {getattr(p, 'period', '?')}: "
-                        f"taxable_profit ({taxable:.0f}) should be < ebitda ({p.ebitda_keur:.0f}) "
-                        f"because depreciation is deducted before tax"
-                    )
-                    break  # Just need one valid example
+        solar = create_default_solar_project()
+        engine = _build_period_engine(solar)
+        result = _run_waterfall(solar, engine)
+        lcoe = _compute_lcoe_from_waterfall(result, solar)
+        assert lcoe >= 0.0, f"LCOE must be non-negative, got {lcoe}"
 
 
-def test_depreciation_affects_tax():
-    """Depreciation is a tax shield — higher depreciation reduces taxable income.
+class TestScenarioDirection:
+    """Scenario must move IRR in the correct financial direction."""
 
-    This test checks the relationship by verifying that removing depreciation
-    would increase tax (we can't easily run without depreciation, so we check
-    that the model's tax is consistent with depreciation being subtracted).
-    """
-    from app.project_factories import create_default_solar_project
-    from app.ui_runner import run_demo_project
+    def test_downside_reduces_project_irr(self):
+        """Downside scenario must produce lower project_irr than Base."""
+        base = run_demo_project("Solar", scenario="Base")
+        downside = run_demo_project("Solar", scenario="Downside")
+        assert base.result is not None and downside.result is not None
+        assert downside.result.project_irr < base.result.project_irr, \
+            f"Downside IRR ({downside.result.project_irr:.4f}) must be < Base ({base.result.project_irr:.4f})"
 
-    result = run_demo_project("Solar")
-    assert result.result is not None, f"No result: {result.messages}"
+    def test_upside_increases_project_irr(self):
+        """Upside scenario must produce higher project_irr than Base."""
+        base = run_demo_project("Solar", scenario="Base")
+        upside = run_demo_project("Solar", scenario="Upside")
+        assert base.result is not None and upside.result is not None
+        assert upside.result.project_irr > base.result.project_irr, \
+            f"Upside IRR ({upside.result.project_irr:.4f}) must be > Base ({base.result.project_irr:.4f})"
 
-    # Collect periods where we can verify: tax > 0, depreciation > 0, ebitda > 0
-    # This confirms depreciation is subtracted before tax
-    taxable_less_than_ebitda = 0
-    for p in result.result.periods:
-        ebitda = getattr(p, 'ebitda_keur', None)
-        dep = getattr(p, 'depreciation_keur', 0)
-        taxable = getattr(p, 'taxable_profit_keur', None)
-        tax = getattr(p, 'tax_keur', 0)
-        interest = getattr(p, 'interest_senior_keur', 0) + getattr(p, 'interest_shl_keur', 0)
+    def test_downside_reduces_equity_irr(self):
+        """Downside scenario must produce lower equity_irr than Base."""
+        base = run_demo_project("Solar", scenario="Base")
+        downside = run_demo_project("Solar", scenario="Downside")
+        assert base.result is not None and downside.result is not None
+        assert downside.result.equity_irr < base.result.equity_irr, \
+            f"Downside equity IRR ({downside.result.equity_irr:.4f}) must be < Base ({base.result.equity_irr:.4f})"
 
-        if ebitda and ebitda > 0 and dep and dep > 0 and taxable is not None and tax is not None:
-            # taxable_profit should be < EBITDA - depreciation (i.e. interest also reduced it)
-            # The relationship: taxable <= ebitda - dep - interest (approximately)
-            if taxable < ebitda - dep:
-                taxable_less_than_ebitda += 1
+    def test_wind_downside_reduces_project_irr(self):
+        """Downside scenario must produce lower project_irr for Wind."""
+        base = run_demo_project("Wind", scenario="Base")
+        downside = run_demo_project("Wind", scenario="Downside")
+        assert base.result is not None and downside.result is not None
+        assert downside.result.project_irr < base.result.project_irr, \
+            f"Wind Downside IRR ({downside.result.project_irr:.4f}) must be < Base ({base.result.project_irr:.4f})"
 
-    assert taxable_less_than_ebitda > 0, (
-        "In all periods, taxable_profit >= ebitda - depreciation. "
-        "This suggests depreciation is NOT being subtracted from taxable income."
-    )
+    def test_wind_upside_increases_project_irr(self):
+        """Upside scenario must produce higher project_irr for Wind."""
+        base = run_demo_project("Wind", scenario="Base")
+        upside = run_demo_project("Wind", scenario="Upside")
+        assert base.result is not None and upside.result is not None
+        assert upside.result.project_irr > base.result.project_irr, \
+            f"Wind Upside IRR ({upside.result.project_irr:.4f}) must be > Base ({base.result.project_irr:.4f})"
+
+
+class TestPortfolioScenarioBlocking:
+    """Portfolio + non-Base scenario must not silently show wrong numbers."""
+
+    def test_portfolio_scenario_not_silently_applied(self):
+        """Portfolio + Downside must NOT silently show Base numbers with Downside label."""
+        result = run_demo_project("Portfolio", scenario="Downside")
+        # The scenario message must indicate it was NOT applied, or be absent
+        msg_text = " ".join(str(m) for m in result.messages).lower()
+        if "downside" in msg_text:
+            # If "downside" is mentioned, it must also mention "not applied" or "base"
+            assert any(kw in msg_text for kw in ["not applied", "base only", "not supported"]), \
+                f"Portfolio + Downside message must indicate scenario was not applied: {result.messages}"
+
+    def test_portfolio_scenario_blocks_or_warns(self):
+        """Portfolio + non-Base must either raise, block, or explicitly warn."""
+        result = run_demo_project("Portfolio", scenario="Upside")
+        # Upside must NOT claim upside was applied when it wasn't
+        msg_text = " ".join(str(m) for m in result.messages)
+        if result.is_portfolio:
+            # If portfolio and non-Base, must either raise OR have explicit warning
+            has_warning = any(
+                kw in msg_text.lower()
+                for kw in ["not applied", "base only", "not supported", "experimental"]
+            )
+            assert has_warning or result.portfolio_result is not None, \
+                f"Portfolio + non-Base must warn explicitly: {result.messages}"

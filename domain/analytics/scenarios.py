@@ -161,18 +161,31 @@ def _get_y1_revenue(result) -> int:
 
 
 def _compute_lcoe_from_waterfall(result, inputs) -> float:
-    """Compute LCOE from waterfall result."""
+    """Compute economic LCOE from waterfall result.
+
+    Formula (Option A — economic LCOE):
+        LCOE = (Total CapEx + Total OpEx) / Total Generation
+
+    Units:
+        - numerator: kEUR
+        - denominator: total_gen / 1000 → GWh
+        - result: kEUR/GWh = EUR/MWh (since 1 kEUR/GWh × 1000 = EUR/MWh)
+        - expressed as EUR/MWh for readability
+
+    Notes:
+        - Excludes debt service (economic vs. financed LCOE)
+        - Uses operating periods only
+        - OpEx includes all operating costs (OM, insurance, land, etc.)
+    """
     total_gen = sum(p.generation_mwh for p in result.periods if p.is_operation)
     if total_gen <= 0:
         return 0.0
-    
+
     total_capex = inputs.capex.total_capex
     total_opex = sum(p.opex_keur for p in result.periods if p.is_operation)
-    total_debt_service = result.total_senior_ds_keur
-    
-    # Simple LCOE: (CAPEX + DS) / Total Generation
-    numerator = total_capex + total_debt_service
-    denominator = total_gen / 1000  # MWh → GWh
+    # Economic LCOE: CapEx + OpEx (NOT debt service)
+    numerator = total_capex + total_opex
+    denominator = total_gen / 1000  # MWh → GWh → result is kEUR/GWh = EUR/MWh
     return numerator / denominator if denominator > 0 else 0.0
 
 

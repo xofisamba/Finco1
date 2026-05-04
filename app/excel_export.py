@@ -153,18 +153,23 @@ def _write_notes_sheet(writer, status, note, scenario, period_view) -> None:
     if status == "experimental":
         rows.append(("Portfolio Status", "Experimental — sponsor IRR is placeholder"))
 
-    # Scenario deltas (only when scenario != Base)
+    # Scenario deltas (only when scenario != Base, and NOT for portfolio)
     if scenario != "Base":
-        from app.scenarios import scenario_summary
-        deltas = scenario_summary(scenario)
-        rows.append(("Scenario Deltas", "—"))
-        for row in deltas:
-            rows.append((
-                f"  {row['assumption']}",
-                f"{row['change']} ({row['scenario']} vs base)",
-            ))
-            if row.get("note"):
-                rows.append(("  Note", row["note"]))
+        if status == "experimental":
+            # Portfolio + non-Base: scenario NOT applied, show warning
+            rows.append(("Scenario", f"{scenario} — NOT APPLIED"))
+            rows.append(("Scenario Deltas", "Base case shown — Portfolio does not support scenarios"))
+        else:
+            from app.scenarios import scenario_summary
+            deltas = scenario_summary(scenario)
+            rows.append(("Scenario Deltas", "—"))
+            for row in deltas:
+                rows.append((
+                    f"  {row['assumption']}",
+                    f"{row['change']} ({row['scenario']} vs base)",
+                ))
+                if row.get("note"):
+                    rows.append(("  Note", row["note"]))
     else:
         rows.append(("Scenario Deltas", "Base case — no adjustments"))
 
