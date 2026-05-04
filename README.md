@@ -125,3 +125,12 @@ Both are calibrated to produce:
 - [Phase 3 Roadmap](docs/phase3_roadmap.md) — what's next after Release 1
 - [Test Hygiene Report](docs/test_hygiene_report.md) — test quality audit
 - [Legacy Cleanup Inventory](docs/legacy_cleanup_inventory.md) — planned cleanup
+
+## Validation & Enterprise Roadmap
+
+- [Validation Framework](app/validation_framework.py) — run cases, compare results, generate reports
+- [Phase 3 Roadmap](docs/phase3_roadmap.md) — Sponsor IRR, Portfolio hardening, BESS, deployment
+- [Validation Reconciliation Template](docs/validation_reconciliation_template.md) — compare model vs reference
+- [Enterprise Data Model](docs/enterprise_data_model.md) — Project, Run, Result, Assumptions schema
+- [Excel Versioning Design](docs/excel_versioning_design.md) — file naming, metadata, reproducibility
+- [Demo Smoke Test Checklist](docs/demo_smoke_test_checklist.md) — pre-demo verification
