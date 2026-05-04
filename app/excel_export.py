@@ -68,6 +68,20 @@ def build_excel_export(
         
         if portfolio_result is not None:
             _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result))
+
+            # Portfolio CF sheet — audit table of cashflow breakdown per date
+            if portfolio_result.portfolio_cashflows:
+                rows = []
+                for row in portfolio_result.portfolio_cashflows:
+                    date = row.get("date", "")
+                    total = row.get("total_cashflow", 0.0)
+                    breakdown = row.get("breakdown", {})
+                    row_dict = {"Date": str(date), "Total CF (keur)": round(total, 2)}
+                    for proj, contrib in breakdown.items():
+                        row_dict[f"  {proj}"] = round(contrib, 2)
+                    rows.append(row_dict)
+                cf_df = pd.DataFrame(rows)
+                _write_sheet(writer, "Portfolio CF", cf_df)
         
         # Validation sheet
         _write_validation_sheet(writer, validation_issues)

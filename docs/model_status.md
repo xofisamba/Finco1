@@ -50,3 +50,19 @@
 ## Last Updated
 
 2026-05-04 — Sprint 22 (industry-engine-refactor)
+### Portfolio IRR Methodology
+
+**Portfolio IRR = experimental pooled CFADS IRR**
+
+The portfolio project IRR is computed as follows:
+1. Each project's CapEx is placed on its own `financial_close` date
+2. Each project's operating CFADS (EBITDA − tax) are placed on waterfall period dates
+3. All cash flows are aggregated by date across all projects
+4. XIRR is computed on the sorted (date, amount) series
+
+**Caveats:**
+- This uses CFADS as proxy for true levered equity cash flow
+- Tax is deducted at the project level; no portfolio-level tax optimization
+- SHL (Subordinated High Yield) distribution logic is not yet implemented
+- Sponsor IRR is a placeholder (0.0) — do not use for investment decisions
+- Portfolio does NOT support scenarios — always shows Base case
