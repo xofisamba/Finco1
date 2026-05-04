@@ -30,6 +30,7 @@ def build_excel_export(
         build_tax_depreciation_table,
         build_returns_table,
         build_portfolio_table,
+        aggregate_period_table_annual,
     )
     from app.input_helpers import build_inputs_summary_table, build_capex_summary_table, build_capex_items_table
     
@@ -49,10 +50,10 @@ def build_excel_export(
         if result is not None:
             # Apply annual aggregation if needed
             if period_view == "Annual":
-                rev_df = _aggregate_annual(build_revenue_table(result))
-                debt_df = _aggregate_annual(build_debt_table(result))
-                tax_df = _aggregate_annual(build_tax_depreciation_table(result))
-                wf_df = _aggregate_annual(build_waterfall_table(result))
+                rev_df = aggregate_period_table_annual(build_revenue_table(result))
+                debt_df = aggregate_period_table_annual(build_debt_table(result))
+                tax_df = aggregate_period_table_annual(build_tax_depreciation_table(result))
+                wf_df = aggregate_period_table_annual(build_waterfall_table(result))
             else:
                 rev_df = build_revenue_table(result)
                 debt_df = build_debt_table(result)
@@ -78,31 +79,6 @@ def build_excel_export(
     return output.read()
 
 
-def _aggregate_annual(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate semiannual DataFrame to annual by summing numeric columns grouped by year."""
-    if df is None or df.empty:
-        return df
-    if df.shape[0] == 0:
-        return df
-    # Try to extract year from first column (usually a period/date column)
-    # Group by year prefix if date-like, otherwise sum everything
-    cols = df.columns.tolist()
-    if not cols:
-        return df
-    first_col = cols[0]
-    # Check if it looks like a date string
-    sample = str(df[first_col].iloc[0]) if len(df) > 0 else ""
-    if "/" in sample or "-" in sample:
-        # Extract year prefix
-        df = df.copy()
-        df["_year"] = df[first_col].astype(str).str[:4]
-        numeric_cols = [c for c in cols if c != first_col]
-        agg_dict = {c: "sum" for c in numeric_cols}
-        result = df.groupby("_year", sort=True).agg(agg_dict).reset_index()
-        result.rename(columns={"_year": first_col}, inplace=True)
-        return result
-    # No date pattern — sum all numeric columns
-    return df
 
 
 def _write_sheet(writer, name: str, df: pd.DataFrame) -> None:

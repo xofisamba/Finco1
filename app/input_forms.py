@@ -99,7 +99,7 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
     capex_cols = st.columns(2)
     with capex_cols[0]:
         total_capex = st.number_input(
-            "Total CapEx (kEUR)", value=float(project_inputs.capex.total_capex_keur),
+            "Total CapEx (kEUR)", value=float(_get_total_capex_val(project_inputs.capex)),
             min_value=0.0, step=1000.0, key="solar_total_capex"
         )
     with capex_cols[1]:
@@ -123,7 +123,7 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
         )
     with fin_cols[2]:
         all_in_rate = st.number_input(
-            "All-in Rate (%)", value=float(project_inputs.financing.all_in_rate * 100),
+            "All-in Rate (%)", value=float(_all_in_rate_display(project_inputs.financing) * 100),
             min_value=0.0, max_value=20.0, step=0.1, key="solar_rate"
         )
     
@@ -137,29 +137,42 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
     modified = st.button("Apply Solar inputs and rerun", key="apply_solar")
     
     if modified:
+        # Solar overrides — use first-existing field semantics
+        solar_technical_overrides = {
+            'capacity_mw': capacity,
+        }
+        solar_technical_overrides.update(_build_single_field_update(
+            project_inputs.technical, ('availability', 'plant_availability', 'capex_availability'), availability / 100))
+        solar_technical_overrides.update(_build_single_field_update(
+            project_inputs.technical, ('p50_hours', 'operating_hours_p50', 'full_load_hours', 'equivalent_hours'), p50_h))
+        solar_technical_overrides.update(_build_single_field_update(
+            project_inputs.technical, ('degradation', 'pv_degradation', 'annual_degradation'), degradation / 100))
+
+        solar_capex_overrides = {}
+        solar_capex_overrides.update(_build_single_field_update(
+            project_inputs.capex, ('total_capex_keur', 'total_capex'), total_capex))
+        solar_capex_overrides.update(_build_single_field_update(
+            project_inputs.capex, ('sculpt_capex_keur',), sculpt_capex))
+
+        solar_fin_overrides = {
+            'target_dscr': target_dscr,
+            'senior_tenor_years': senior_tenor,
+        }
+        solar_fin_overrides.update(_all_in_rate_update(project_inputs.financing, all_in_rate / 100))
+
+        solar_tax_overrides = {}
+        solar_tax_overrides.update(_build_single_field_update(
+            project_inputs.tax, ('corporate_rate',), corp_tax / 100))
+
         overrides = {
-            'technical': {
-                'capacity_mw': capacity,
-                'availability': availability / 100,
-                'p50_hours': p50_h,
-                'degradation': degradation / 100,
-            },
+            'technical': solar_technical_overrides,
             'revenue': {
                 'ppa_base_tariff': tariff,
                 'ppa_term_years': ppa_term,
             },
-            'capex': {
-                'total_capex_keur': total_capex,
-                'sculpt_capex_keur': sculpt_capex,
-            },
-            'financing': {
-                'target_dscr': target_dscr,
-                'senior_tenor_years': senior_tenor,
-                'all_in_rate': all_in_rate / 100,
-            },
-            'tax': {
-                'corporate_rate': corp_tax / 100,
-            },
+            'capex': solar_capex_overrides,
+            'financing': solar_fin_overrides,
+            'tax': solar_tax_overrides,
         }
         return apply_project_overrides(project_inputs, overrides), True
     
@@ -207,7 +220,7 @@ def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
     capex_cols = st.columns(2)
     with capex_cols[0]:
         total_capex = st.number_input(
-            "Total CapEx (kEUR)", value=float(project_inputs.capex.total_capex_keur),
+            "Total CapEx (kEUR)", value=float(_get_total_capex_val(project_inputs.capex)),
             min_value=0.0, step=1000.0, key="wind_total_capex"
         )
     with capex_cols[1]:
@@ -230,7 +243,7 @@ def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
         )
     with fin_cols[2]:
         all_in_rate = st.number_input(
-            "All-in Rate (%)", value=float(project_inputs.financing.all_in_rate * 100),
+            "All-in Rate (%)", value=float(_all_in_rate_display(project_inputs.financing) * 100),
             min_value=0.0, max_value=20.0, step=0.1, key="wind_rate"
         )
     
@@ -243,33 +256,91 @@ def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
     modified = st.button("Apply Wind inputs and rerun", key="apply_wind")
     
     if modified:
+        # Wind overrides — use first-existing field semantics
+        wind_technical_overrides = {
+            'capacity_mw': capacity,
+        }
+        wind_technical_overrides.update(_build_single_field_update(
+            project_inputs.technical, ('availability', 'plant_availability', 'capex_availability'), availability / 100))
+        wind_technical_overrides.update(_build_single_field_update(
+            project_inputs.technical, ('p50_hours', 'operating_hours_p50', 'full_load_hours', 'equivalent_hours'), p50_h))
+        wind_technical_overrides.update(_build_single_field_update(
+            project_inputs.technical, ('degradation', 'pv_degradation', 'annual_degradation'), degradation / 100))
+
+        wind_capex_overrides = {}
+        wind_capex_overrides.update(_build_single_field_update(
+            project_inputs.capex, ('total_capex_keur', 'total_capex'), total_capex))
+        wind_capex_overrides.update(_build_single_field_update(
+            project_inputs.capex, ('sculpt_capex_keur',), sculpt_capex))
+
+        wind_fin_overrides = {
+            'target_dscr': target_dscr,
+            'senior_tenor_years': senior_tenor,
+        }
+        wind_fin_overrides.update(_all_in_rate_update(project_inputs.financing, all_in_rate / 100))
+
+        wind_tax_overrides = {}
+        wind_tax_overrides.update(_build_single_field_update(
+            project_inputs.tax, ('corporate_rate',), corp_tax / 100))
+
         overrides = {
-            'technical': {
-                'capacity_mw': capacity,
-                'availability': availability / 100,
-                'p50_hours': p50_h,
-                'degradation': degradation / 100,
-            },
+            'technical': wind_technical_overrides,
             'revenue': {
                 'ppa_base_tariff': tariff,
                 'ppa_term_years': ppa_term,
             },
-            'capex': {
-                'total_capex_keur': total_capex,
-                'sculpt_capex_keur': sculpt_capex,
-            },
-            'financing': {
-                'target_dscr': target_dscr,
-                'senior_tenor_years': senior_tenor,
-                'all_in_rate': all_in_rate / 100,
-            },
-            'tax': {
-                'corporate_rate': corp_tax / 100,
-            },
+            'capex': wind_capex_overrides,
+            'financing': wind_fin_overrides,
+            'tax': wind_tax_overrides,
         }
         return apply_project_overrides(project_inputs, overrides), True
     
     return project_inputs, False
+
+
+def _first_existing_field(obj, candidates: tuple[str, ...]) -> str | None:
+    """Return the first field name in candidates that exists on obj."""
+    for name in candidates:
+        if hasattr(obj, name):
+            return name
+    return None
+
+
+def _get_first_existing(obj, candidates: tuple[str, ...], default=None):
+    """Return the value of the first existing field, or default."""
+    for name in candidates:
+        if hasattr(obj, name):
+            val = getattr(obj, name)
+            if val is not None:
+                return val
+    return default
+
+
+def _build_single_field_update(obj, candidates: tuple[str, ...], value):
+    """Return {existing_field_name: value} for the first existing field. {} if none."""
+    field = _first_existing_field(obj, candidates)
+    if field is None:
+        return {}
+    return {field: value}
+
+
+def _all_in_rate_display(financing) -> float:
+    if hasattr(financing, "all_in_rate"):
+        return getattr(financing, "all_in_rate", 0.0) or 0.0
+    base = getattr(financing, "base_rate", 0.0) or 0.0
+    margin = getattr(financing, "margin_bps", 0) or 0
+    return base + margin / 10000.0
+
+
+def _all_in_rate_update(financing, user_value: float) -> dict:
+    if hasattr(financing, "all_in_rate"):
+        return {"all_in_rate": user_value}
+    if hasattr(financing, "base_rate") and hasattr(financing, "margin_bps"):
+        margin_bps = getattr(financing, "margin_bps", 0) or 0
+        return {"base_rate": max(0.0, user_value - margin_bps / 10000.0)}
+    if hasattr(financing, "base_rate"):
+        return {"base_rate": user_value}
+    return {}
 
 
 # Helpers for safe field access (mirror input_helpers.py)
@@ -293,3 +364,12 @@ def _get_degradation_val(technical):
         if val is not None:
             return val
     return 0.005
+
+
+def _get_total_capex_val(capex):
+    """Get total capex using fallback chain."""
+    for field in ('total_capex_keur', 'total_capex'):
+        val = getattr(capex, field, None)
+        if val is not None:
+            return val
+    return 0.0

@@ -112,3 +112,47 @@ def test_excel_export_handles_project_without_capex_items():
     data = build_excel_export(result=result.result, project_inputs=result.project_inputs)
     assert isinstance(data, bytes)
     assert len(data) > 0
+
+
+def test_excel_export_annual_view_has_year_columns():
+    """Annual view in Excel should have year-labeled columns (YYYY format)."""
+    import openpyxl, re
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        period_view="Annual",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    for sheet_name in ["Revenue", "Debt", "Tax_Depreciation", "Waterfall"]:
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        headers = [cell.value for cell in ws[1]]
+        # All column headers (after Line Item) should be 4-digit years
+        year_cols = [h for h in headers if h is not None and isinstance(h, str) and re.match(r"\d{4}", h)]
+        assert len(year_cols) > 0, f"Sheet {sheet_name} has no year columns in headers: {headers}"
+
+
+def test_excel_export_does_not_use_local_aggregate_annual():
+    """excel_export.py must not define its own _aggregate_annual function."""
+    import ast, inspect
+    from app import excel_export
+    src = inspect.getsource(excel_export)
+    assert "def _aggregate_annual" not in src, \
+        "_aggregate_annual should have been removed; use aggregate_period_table_annual from output_tables"
+
+
+def test_excel_export_annual_view_uses_output_table_helper():
+    """Annual view must use aggregate_period_table_annual from output_tables."""
+    import ast, inspect
+    from app import excel_export
+    src = inspect.getsource(excel_export)
+    tree = ast.parse(src)
+    # Find all Name nodes with id == 'aggregate_period_table_annual'
+    found = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == "aggregate_period_table_annual":
+            found = True
+            break
+    assert found, "aggregate_period_table_annual from output_tables not used in excel_export.py"
