@@ -69,6 +69,8 @@ def validate_project_inputs(inputs) -> tuple[ValidationIssue, ...]:
         issues.append(ValidationIssue("error", "senior_tenor_years", "Senior tenor cannot exceed horizon"))
     if capex.total_capex < 0:
         issues.append(ValidationIssue("error", "capex.total_capex", "CapEx cannot be negative"))
+    if capex.total_capex == 0:
+        issues.append(ValidationIssue("error", "capex.total_capex", "Total CapEx must be positive"))
 
     # COD before financial close
     if hasattr(info, 'cod_date') and hasattr(info, 'financial_close'):

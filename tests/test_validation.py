@@ -57,6 +57,16 @@ class TestValidateProjectInputs:
         issues = validate_project_inputs(proj)
         assert any(i.field == "capex.total_capex" and i.severity == "error" for i in issues)
 
+
+    def test_zero_capex_is_error(self):
+        """Zero CapEx must be flagged as error."""
+        proj = create_default_solar_project()
+        # Zero out total_capex directly
+        from dataclasses import replace
+        proj = replace(proj, capex=replace(proj.capex, idc_keur=-proj.capex.total_capex))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "capex.total_capex" and i.severity == "error" for i in issues)
+
     def test_zero_tenor_is_error(self):
         """Zero tenor must be flagged as error."""
         proj = create_default_solar_project()
