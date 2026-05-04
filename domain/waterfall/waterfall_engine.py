@@ -118,6 +118,10 @@ class WaterfallResult:
     equity_npv: float = 0
     # Sculpting
     sculpting_result: Optional[IterativeSculptResult] = None
+    # DSCR reconciliation
+    target_dscr: float = 0.0   # Target DSCR from financing inputs
+    actual_min_dscr: float = 0.0  # Actual minimum DSCR achieved
+    actual_avg_dscr: float = 0.0  # Actual average DSCR achieved
 
 
 def compute_ebitda_schedule(
@@ -928,6 +932,9 @@ def run_waterfall(
         avg_dscr=sculpt_result.avg_dscr,
         min_dscr=sculpt_result.min_dscr,
         max_dscr=max(sculpt_result.dscr_schedule) if sculpt_result.dscr_schedule else 0.0,
+        target_dscr=target_dscr,
+        actual_min_dscr=sculpt_result.min_dscr,
+        actual_avg_dscr=sculpt_result.avg_dscr,
         # WARN-2 fix: filter out inf values for min calculation
         min_llcr=min((wp.llcr for wp in waterfall_periods if 0 < wp.llcr < float('inf')), default=0.0),
         min_plcr=min((wp.plcr for wp in waterfall_periods if 0 < wp.plcr < float('inf')), default=0.0),

@@ -1,6 +1,16 @@
-"""Central input validation for generic project and portfolio inputs."""
+"""Central input validation for generic project and portfolio inputs.
+
+Scope:
+- Input-level validation (reject / warn on invalid schema values)
+- Model-output warnings (flag unrealistic results after computation)
+
+For DSCR reconciliation (target vs actual), see WaterfallResult fields:
+  target_dscr, actual_min_dscr, actual_avg_dscr
+"""
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
+
 
 @dataclass(frozen=True)
 class ValidationIssue:
@@ -8,7 +18,31 @@ class ValidationIssue:
     field: str
     message: str
 
+
+@dataclass(frozen=True)
+class ModelWarning:
+    """Post-run warning — flags unrealistic model outputs."""
+    code: str          # short machine-readable code, e.g. "W_DSCR_BELOW_TARGET"
+    severity: str     # "warning" | "error"
+    message: str       # human-readable explanation
+
+
+# Registry of known model-warning codes
+MODEL_WARNING_CODES = frozenset({
+    "W_DSCR_BELOW_TARGET",
+    "W_IRR_UNREALISTIC_HIGH",
+    "W_IRR_UNREALISTIC_LOW",
+    "W_ZERO_GENERATION",
+    "W_NEGATIVE_CAPEX",
+    "W_INVALID_TENOR",
+    "W_COD_BEFORE_FINANCIAL_CLOSE",
+    "W_NEGATIVE_TARIFF",
+    "W_NEGATIVE_PRODUCTION",
+})
+
+
 def validate_project_inputs(inputs) -> tuple[ValidationIssue, ...]:
+    """Validate project input schema values."""
     issues = []
     fin = inputs.financing
     tax = inputs.tax
@@ -16,7 +50,7 @@ def validate_project_inputs(inputs) -> tuple[ValidationIssue, ...]:
     info = inputs.info
     rev = inputs.revenue
 
-    # Errors
+    # ── Errors ────────────────────────────────────────────────────────────────
     if hasattr(inputs.technical, 'capacity_mw') and inputs.technical.capacity_mw <= 0:
         issues.append(ValidationIssue("error", "capacity_mw", "Capacity must be positive"))
     if info.horizon_years <= 0:
@@ -36,6 +70,29 @@ def validate_project_inputs(inputs) -> tuple[ValidationIssue, ...]:
     if capex.total_capex <= 0:
         issues.append(ValidationIssue("error", "capex.total_capex", "Total capex must be positive"))
 
+    # Negative CapEx
+    if capex.total_capex < 0:
+        issues.append(ValidationIssue("error", "capex.total_capex", "CapEx cannot be negative"))
+
+    # Invalid tenor (already checked > 0 above, keep for clarity)
+    if fin.senior_tenor_years <= 0:
+        issues.append(ValidationIssue("error", "senior_tenor_years", "Tenor must be positive"))
+
+    # COD before financial close
+    if hasattr(info, 'cod_date') and hasattr(info, 'financial_close'):
+        if info.cod_date is not None and info.financial_close is not None:
+            if info.cod_date < info.financial_close:
+                issues.append(ValidationIssue(
+                    "error", "cod_date",
+                    f"COD ({info.cod_date}) cannot be before financial close ({info.financial_close})"
+                ))
+
+    # Negative tariff
+    if rev.ppa_base_tariff < 0:
+        issues.append(ValidationIssue("error", "ppa_base_tariff", "Tariff cannot be negative"))
+    if hasattr(inputs.technical, 'capacity_mw') and inputs.technical.capacity_mw < 0:
+        issues.append(ValidationIssue("error", "capacity_mw", "Capacity cannot be negative"))
+
     # BESS validation
     if hasattr(inputs, 'bess') and inputs.bess is not None:
         bess = inputs.bess
@@ -45,7 +102,7 @@ def validate_project_inputs(inputs) -> tuple[ValidationIssue, ...]:
         if getattr(bess, 'cycles_per_year', 0) < 0:
             issues.append(ValidationIssue("error", "bess.cycles_per_year", "BESS cycles per year cannot be negative"))
 
-    # Warnings
+    # ── Warnings ─────────────────────────────────────────────────────────────
     if rev.ppa_term_years > info.horizon_years:
         issues.append(ValidationIssue("warning", "ppa_term_years", "PPA term exceeds horizon — may extend beyond project life"))
     if fin.gearing_ratio < 0 or fin.gearing_ratio > 1:
@@ -74,3 +131,112 @@ def validate_portfolio_inputs(inputs) -> tuple[ValidationIssue, ...]:
         issues.append(ValidationIssue("error", "shared_financing", "Portfolio requires shared_financing"))
 
     return tuple(issues)
+
+
+def warn_model_unrealistic(result, inputs=None) -> tuple[ModelWarning, ...]:
+    """Check waterfall result for unrealistic values and return warnings.
+
+    Args:
+        result: WaterfallResult
+        inputs: optional ProjectInputs for additional context
+
+    Returns:
+        tuple of ModelWarning (empty if all checks pass)
+    """
+    warnings = []
+
+    # DSCR below target
+    if result.target_dscr > 0 and result.actual_min_dscr < result.target_dscr:
+        warnings.append(ModelWarning(
+            code="W_DSCR_BELOW_TARGET",
+            severity="warning",
+            message=(
+                f"Actual min DSCR ({result.actual_min_dscr:.2f}x) is below target "
+                f"({result.target_dscr:.2f}x) — debt may be oversized or generation too low."
+            )
+        ))
+
+    # IRR unrealistic — high (>50%)
+    if result.project_irr > 0.50:
+        warnings.append(ModelWarning(
+            code="W_IRR_UNREALISTIC_HIGH",
+            severity="warning",
+            message=(
+                f"Project IRR ({result.project_irr*100:.1f}%) exceeds 50% — "
+                "verify inputs (tariff, capex, generation) are realistic."
+            )
+        ))
+
+    # IRR unrealistic — low / negative
+    if result.project_irr < 0.0:
+        warnings.append(ModelWarning(
+            code="W_IRR_UNREALISTIC_LOW",
+            severity="warning",
+            message=(
+                f"Project IRR ({result.project_irr*100:.1f}%) is negative — "
+                "check tariff, capex, and financing assumptions."
+            )
+        ))
+
+    # Zero or near-zero generation
+    total_gen = sum(p.generation_mwh for p in result.periods if p.is_operation)
+    if total_gen < 1.0:
+        warnings.append(ModelWarning(
+            code="W_ZERO_GENERATION",
+            severity="error",
+            message="Total generation is zero or near-zero — check technical parameters."
+        ))
+
+    # Negative CapEx
+    if inputs is not None and hasattr(inputs.capex, 'total_capex') and inputs.capex.total_capex < 0:
+        warnings.append(ModelWarning(
+            code="W_NEGATIVE_CAPEX",
+            severity="error",
+            message=f"CapEx is negative ({inputs.capex.total_capex:.0f} kEUR) — check capex inputs."
+        ))
+
+    # COD before financial close
+    if inputs is not None:
+        info = inputs.info
+        if (hasattr(info, 'cod_date') and info.cod_date is not None
+                and hasattr(info, 'financial_close') and info.financial_close is not None
+                and info.cod_date < info.financial_close):
+            warnings.append(ModelWarning(
+                code="W_COD_BEFORE_FINANCIAL_CLOSE",
+                severity="error",
+                message=(
+                    f"COD ({info.cod_date}) is before financial close "
+                    f"({info.financial_close}) — construction must complete before financial close."
+                )
+            ))
+
+    # Revenue zero/negative with positive generation
+    total_rev = result.total_revenue_keur
+    if total_rev <= 0 and total_gen > 0:
+        warnings.append(ModelWarning(
+            code="W_NEGATIVE_TARIFF",
+            severity="error",
+            message="Revenue is zero/negative with positive generation — check tariff input."
+        ))
+
+    return tuple(warnings)
+
+
+def dscr_reconciliation_fields(result) -> dict:
+    """Return DSCR reconciliation summary as a dict.
+
+    Use in Excel Notes or result reporting.
+    """
+    target = result.target_dscr
+    actual_min = result.actual_min_dscr
+    actual_avg = result.actual_avg_dscr
+    if target > 0:
+        status = "ok" if actual_min >= target else "below_target"
+    else:
+        status = "n/a"
+    return {
+        "target_dscr": target,
+        "actual_min_dscr": actual_min,
+        "actual_avg_dscr": actual_avg,
+        "status": status,
+    }
