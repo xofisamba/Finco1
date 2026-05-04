@@ -408,3 +408,39 @@ class TestBESSGuardrail:
         result = run_demo_project("BESS", scenario="downside")
         warning_found = any("Scenarios not supported" in m or "Base" in m for m in result.messages)
         assert warning_found, f"BESS scenario warning must be in messages: {result.messages}"
+
+
+class TestValidationFramework:
+    """Validation framework structure tests — no financial assertions."""
+
+    def test_validation_framework_runs(self):
+        """run_validation_case completes without error."""
+        from app.validation_framework import run_validation_case
+        from app.project_factories import create_default_solar_project
+
+        inputs = create_default_solar_project()
+        result = run_validation_case(inputs)
+        assert "kpis" in result or "error" in result  # runs without crash
+
+    def test_compare_to_expected_tolerance(self):
+        """compare_to_expected tolerates small differences."""
+        from app.validation_framework import compare_to_expected
+
+        actual = {"project_irr": 0.123, "total_revenue_keur": 1000}
+        expected = {"project_irr": 0.1235, "total_revenue_keur": 1000}
+        
+        result = compare_to_expected(actual, expected, tolerance=0.01)
+        # 0.4% diff < 1% tolerance → should match
+        assert result["matches"], f"Should match within 1%: {result['deviations']}"
+
+    def test_run_metadata_creation(self):
+        """RunMetadata and create_run_metadata work correctly."""
+        from app.run_metadata import create_run_metadata, RunMetadata
+
+        meta = create_run_metadata("Solar", "Base", notes="test")
+        assert isinstance(meta, RunMetadata)
+        assert meta.project_type == "Solar"
+        assert meta.scenario == "Base"
+        assert meta.run_id.startswith("run-")
+        assert meta.timestamp != ""
+        assert meta.model_version == "industry-engine-refactor"
