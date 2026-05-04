@@ -197,3 +197,95 @@ def test_excel_export_annual_view_uses_output_table_helper():
             found = True
             break
     assert found, "aggregate_period_table_annual from output_tables not used in excel_export.py"
+
+
+def test_excel_export_includes_scenario_summary():
+    """Notes sheet contains Scenario Deltas rows when scenario is Downside."""
+    import openpyxl
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        scenario="Downside",
+        integration_status="full",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["Notes"]
+    fields = [row[0] for row in ws.iter_rows(max_row=ws.max_row, values_only=True) if row[0]]
+    assert "Scenario Deltas" in fields
+    # Should contain at least P50, CapEx, Tariff delta rows
+    assert any("P50" in f or "CapEx" in f or "Tariff" in f for f in fields)
+
+
+def test_excel_notes_include_scenario_deltas():
+    """Downside scenario notes should include +/- change values."""
+    import openpyxl
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        scenario="Downside",
+        integration_status="full",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["Notes"]
+    values = [row[1] for row in ws.iter_rows(max_row=ws.max_row, values_only=True) if row[1]]
+    # Downside should show negative changes like "-10%"
+    changes = [v for v in values if "%" in str(v) and ("-" in str(v) or "+" in str(v))]
+    assert len(changes) > 0, f"Expected scenario change percentages in Notes, got: {values}"
+
+
+def test_excel_notes_include_bess_hybrid_partial_warning():
+    """Notes sheet should contain BESS/hybrid partial warning when status=partial."""
+    import openpyxl
+    result = run_demo_project("BESS")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="partial",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["Notes"]
+    fields = [row[0] for row in ws.iter_rows(max_row=ws.max_row, values_only=True) if row[0]]
+    bess_rows = [r for r in fields if "BESS" in str(r) or "hybrid" in str(r).lower()]
+    assert len(bess_rows) > 0, f"Expected BESS/hybrid warning in Notes, got fields: {fields}"
+
+
+def test_excel_notes_include_portfolio_experimental_warning():
+    """Notes sheet should contain Portfolio experimental warning when status=experimental."""
+    import openpyxl
+    result = run_demo_project("Portfolio")
+    data = build_excel_export(
+        portfolio_result=result.portfolio_result,
+        project_inputs=result.project_inputs,
+        integration_status="experimental",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["Notes"]
+    fields = [row[0] for row in ws.iter_rows(max_row=ws.max_row, values_only=True) if row[0]]
+    portfolio_rows = [r for r in fields if "Portfolio" in str(r) or "IRR" in str(r)]
+    assert len(portfolio_rows) > 0, f"Expected Portfolio/IRR warning in Notes, got fields: {fields}"
+
+
+def test_portfolio_sponsor_irr_placeholder_label():
+    """Portfolio IRR note in Dashboard or Notes should indicate placeholder status."""
+    import openpyxl
+    result = run_demo_project("Portfolio")
+    data = build_excel_export(
+        portfolio_result=result.portfolio_result,
+        project_inputs=result.project_inputs,
+        integration_status="experimental",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    # Check all sheets for experimental/placeholder note
+    all_values = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        # iter_rows with values_only=True returns tuples of cell values
+        all_values.extend([v for row in ws.iter_rows(values_only=True) for v in row if v])
+    # At minimum, the experimental status should be surfaced somewhere
+    assert any("experimental" in str(v).lower() or "placeholder" in str(v).lower()
+               for v in all_values), f"Portfolio IRR placeholder/experimental note not found in workbook values"

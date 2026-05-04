@@ -44,13 +44,15 @@ def test_wind_has_no_error_severity_issues():
 def test_downside_scenario_returns_inactive_notice():
     from app.ui_runner import run_demo_project
     result = run_demo_project("Solar", "Downside")
-    assert any("informational" in m.lower() or "not yet implemented" in m.lower() for m in result.messages)
+    # With scenario implemented, messages contain scenario delta summaries
+    assert any("Downside" in m and "P50" in m for m in result.messages)
 
 
 def test_upside_scenario_returns_inactive_notice():
     from app.ui_runner import run_demo_project
     result = run_demo_project("Solar", "Upside")
-    assert any("informational" in m.lower() or "not yet implemented" in m.lower() for m in result.messages)
+    # With scenario implemented, messages contain scenario delta summaries
+    assert any("Upside" in m and ("P50" in m or "CapEx" in m or "Tariff" in m) for m in result.messages)
 
 
 def test_ui_runner_reraises_when_env_flag_set():

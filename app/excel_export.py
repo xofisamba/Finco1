@@ -144,11 +144,30 @@ def _write_notes_sheet(writer, status, note, scenario, period_view) -> None:
         ("Period View", period_view),
         ("Note", note if note else "n/a"),
         ("Values-only Export", "No formulas used in this workbook."),
-        ("BESS/hybrid Status", "Partial integration — not bankable" if status == "partial" else "n/a"),
-        ("Portfolio Status", "Experimental — sponsor IRR is placeholder" if status == "experimental" else "n/a"),
     ]
+
+    # BESS/hybrid warning
+    if status == "partial":
+        rows.append(("BESS/hybrid Status", "Partial integration — revenue-only shown, waterfall in progress"))
+    # Portfolio warning
+    if status == "experimental":
+        rows.append(("Portfolio Status", "Experimental — sponsor IRR is placeholder"))
+
+    # Scenario deltas (only when scenario != Base)
     if scenario != "Base":
-        rows.append(("Scenario Note", "Scenario selector is informational only; not yet implemented."))
+        from app.scenarios import scenario_summary
+        deltas = scenario_summary(scenario)
+        rows.append(("Scenario Deltas", "—"))
+        for row in deltas:
+            rows.append((
+                f"  {row['assumption']}",
+                f"{row['change']} ({row['scenario']} vs base)",
+            ))
+            if row.get("note"):
+                rows.append(("  Note", row["note"]))
+    else:
+        rows.append(("Scenario Deltas", "Base case — no adjustments"))
+
     df = pd.DataFrame(rows[1:], columns=["Field", "Value"])
     df.to_excel(writer, sheet_name="Notes", index=False)
     ws = writer.sheets["Notes"]

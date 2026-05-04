@@ -133,6 +133,12 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
         elif project_type in FACTORY_MAP:
             factory = FACTORY_MAP[project_type]
             proj = project_inputs_override if project_inputs_override is not None else factory()
+
+            # Apply scenario if not Base
+            if scenario != "Base":
+                from app.scenarios import apply_scenario
+                proj = apply_scenario(proj, scenario)
+
             engine = _build_period_engine(proj)
             result.result = _run_waterfall(proj, engine)
             result.project_inputs = proj
@@ -144,10 +150,12 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
             messages.append(f"Unknown project type: {project_type}")
 
         if scenario != "Base":
-            messages.append(
-                "Scenario selector is informational only. "
-                "Downside/Upside scaling is not yet implemented."
-            )
+            from app.scenarios import scenario_summary
+            rows = scenario_summary(scenario)
+            for row in rows:
+                messages.append(
+                    f"Scenario: {scenario} — {row['assumption']} {row['change']}"
+                )
 
         # Validation for non-portfolio projects
         if project_type in FACTORY_MAP:
