@@ -14,7 +14,7 @@ Behavior:
 - portfolio_project_irr is experimental pooled unlevered CFADS IRR
 - portfolio_sponsor_irr is a placeholder (requires sponsor-level CF aggregation)
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from datetime import date
 
@@ -67,7 +67,8 @@ class PortfolioResult:
     portfolio_debt_service_schedule: tuple[float, ...]
     portfolio_project_irr: float = 0.0  # experimental pooled unlevered CFADS IRR
     portfolio_sponsor_irr: float = 0.0
-    # TODO: portfolio_sponsor_irr requires:
+
+    portfolio_cashflows: list[dict] = field(default_factory=list)  # audit table    # TODO: portfolio_sponsor_irr requires:
     # - Equity-level cash flows (after senior debt service)
     # - SHL (Subordinated_High_Yield) distribution logic
     # - Sponsor-specific TACC/CFADS aggregation
@@ -285,7 +286,7 @@ def build_portfolio_project_cashflows(portfolio_inputs, project_results):
                 for p in result.periods:
                     if p.is_operation:
                         cfads = p.ebitda_keur - p.tax_keur
-                        if cfads > 0:
+                        if cfads is not None:
                             cashflows[p.date] += cfads
     else:
         # Fallback: no portfolio_inputs — cannot align CapEx by financial_close date.
@@ -296,6 +297,66 @@ def build_portfolio_project_cashflows(portfolio_inputs, project_results):
     cf_list = [cashflows[d] for d in sorted_dates]
     date_list = sorted_dates
     return cf_list, date_list
+
+
+
+
+def build_portfolio_cashflow_table(
+    portfolio_inputs: Optional["PortfolioInputs"],
+    project_results: tuple[tuple[str, "WaterfallResult"], ...],
+) -> list[dict]:
+    """Build a date-level breakdown of portfolio cash flows for auditability.
+
+    Returns a list of dicts with keys:
+        date, total_cashflow, breakdown (dict of project_code -> contribution_keur)
+
+    Breakdown sums by date match total_cashflow exactly.
+
+    Args:
+        portfolio_inputs: PortfolioInputs (provides project list and CapEx dates)
+        project_results: tuple of (project_code, WaterfallResult)
+
+    Returns:
+        List of cashflow rows sorted by date
+    """
+    from collections import defaultdict
+    from datetime import date
+
+    if not project_results:
+        return []
+
+    cashflows = defaultdict(lambda: defaultdict(float))  # date → {project_code: amount}
+    capex_by_code = {}
+    fc_by_code = {}
+
+    if portfolio_inputs and portfolio_inputs.projects:
+        capex_by_code = {proj.info.code: proj.capex.total_capex for proj in portfolio_inputs.projects}
+        fc_by_code = {proj.info.code: proj.info.financial_close for proj in portfolio_inputs.projects}
+
+    # CapEx outflows on project financial_close dates
+    for code, capex in capex_by_code.items():
+        fc = fc_by_code.get(code)
+        if fc and capex > 0:
+            cashflows[fc][code] -= capex
+
+    # Operating CFADS on waterfall period dates
+    for code, result in project_results:
+        if result is None or not result.periods:
+            continue
+        for p in result.periods:
+            if p.is_operation:
+                cfads = p.ebitda_keur - p.tax_keur
+                if cfads is not None:
+                    cashflows[p.date][code] += cfads
+
+    # Build sorted table
+    rows = []
+    for d in sorted(cashflows.keys()):
+        breakdown = dict(cashflows[d])
+        total = sum(breakdown.values())
+        rows.append({"date": d, "total_cashflow": total, "breakdown": breakdown})
+
+    return rows
 
 
 

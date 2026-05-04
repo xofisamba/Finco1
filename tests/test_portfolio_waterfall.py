@@ -358,3 +358,323 @@ def test_portfolio_sponsor_irr_is_not_numeric_zero_in_table():
     val = df.iloc[sponsor_rows[0], 0]
     assert not (isinstance(val, (int, float)) and val == 0.0), \
         f"Sponsor IRR should not be numeric 0.0, got {val!r}"
+
+
+
+
+
+def test_portfolio_cashflows_include_negative_cfads():
+    """Negative CFADS periods must be included in portfolio IRR cash flows."""
+    from domain.portfolio.waterfall import build_portfolio_project_cashflows
+    from domain.portfolio.inputs import PortfolioInputs
+    from domain.waterfall.waterfall_engine import WaterfallResult
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+    from domain.waterfall.waterfall_engine import WaterfallPeriod
+    from domain.inputs import FinancingParams
+    from datetime import date
+
+    def _mp(period, date_, ebitda, tax):
+        return WaterfallPeriod(
+            period=period, date=date_, year_index=1, period_in_year=period,
+            is_operation=True, generation_mwh=0.0, revenue_keur=100.0,
+            opex_keur=0.0, ebitda_keur=ebitda, depreciation_keur=0.0,
+            interest_senior_keur=0.0, interest_shl_keur=0.0,
+            taxable_profit_keur=ebitda, tax_keur=tax,
+            cf_after_tax_keur=ebitda - tax,
+            senior_interest_keur=0.0, senior_principal_keur=0.0, senior_ds_keur=50.0,
+            shl_interest_keur=0.0, shl_principal_keur=0.0, shl_service_keur=0.0,
+            dsra_contribution_keur=0.0, dsra_balance_keur=0.0,
+            mra_contribution_keur=0.0, mra_balance_keur=0.0,
+            cf_after_reserves_keur=ebitda - tax, dscr=1.0, llcr=1.0, plcr=1.0,
+            lockup_active=False, distribution_keur=0.0, cash_sweep_keur=0.0,
+            cum_distribution_keur=0.0, cash_balance_keur=0.0,
+            shl_balance_keur=0.0, shl_pik_keur=0.0, senior_balance_keur=0.0,
+        )
+
+    solar = create_default_solar_project()
+    wind = create_default_wind_project()
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    pi = PortfolioInputs(projects=(solar, wind), portfolio_name="Test", shared_financing=shared)
+
+    # Solar: 20 periods of large CFADS (enough for computable IRR)
+    solar_periods = []
+    for i in range(20):
+        d = date(2031 + i // 2, 6 if i % 2 == 0 else 12, 30 if i % 2 == 0 else 31)
+        solar_periods.append(_mp(i + 1, d, 8000.0, 1200.0))  # cfads=6800
+    solar_wf = WaterfallResult(
+        periods=tuple(solar_periods), total_revenue_keur=100.0, total_opex_keur=0.0,
+        total_ebitda_keur=100.0, total_tax_keur=20.0, total_senior_ds_keur=50.0,
+        total_shl_service_keur=0.0, total_distribution_keur=0.0,
+        avg_dscr=1.0, min_dscr=1.0, max_dscr=1.0,
+        min_llcr=1.0, min_plcr=1.0, periods_in_lockup=0,
+        project_irr=0.0, equity_irr=0.0, sponsor_irr=0.0,
+        project_npv=0.0, equity_npv=0.0, sculpting_result=None,
+    )
+
+    # Wind: period 1 has NEGATIVE CFADS
+    wind_periods = []
+    for i in range(20):
+        d = date(2031 + i // 2, 6 if i % 2 == 0 else 12, 30 if i % 2 == 0 else 31)
+        if i == 0:
+            wind_periods.append(_mp(i + 1, d, 200.0, 500.0))  # cfads=-300
+        else:
+            wind_periods.append(_mp(i + 1, d, 8000.0, 1200.0))
+    wind_wf = WaterfallResult(
+        periods=tuple(wind_periods), total_revenue_keur=100.0, total_opex_keur=0.0,
+        total_ebitda_keur=100.0, total_tax_keur=20.0, total_senior_ds_keur=50.0,
+        total_shl_service_keur=0.0, total_distribution_keur=0.0,
+        avg_dscr=1.0, min_dscr=1.0, max_dscr=1.0,
+        min_llcr=1.0, min_plcr=1.0, periods_in_lockup=0,
+        project_irr=0.0, equity_irr=0.0, sponsor_irr=0.0,
+        project_npv=0.0, equity_npv=0.0, sculpting_result=None,
+    )
+
+    cf_list, date_list = build_portfolio_project_cashflows(
+        pi, (("SOLAR-001", solar_wf), ("WIND-001", wind_wf))
+    )
+
+    # June 2031: solar(+6800) + wind(-300) = 6500
+    idx = date_list.index(date(2031, 6, 30))
+    assert cf_list[idx] == 6500.0, f"June CF should be 6500, got {cf_list[idx]}"
+
+    # December 2031: both positive = 6800+6800=13600
+    idx2 = date_list.index(date(2031, 12, 31))
+    assert cf_list[idx2] == 13600.0, f"Dec CF should be 13600, got {cf_list[idx2]}"
+
+
+def test_portfolio_irr_decreases_with_negative_cfads():
+    """Negative CFADS must reduce portfolio IRR, not be silently dropped."""
+    from domain.portfolio.waterfall import build_portfolio_project_cashflows
+    from domain.portfolio.inputs import PortfolioInputs
+    from domain.returns.xirr import xirr
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+    from domain.waterfall.waterfall_engine import WaterfallPeriod, WaterfallResult
+    from domain.inputs import FinancingParams
+    from datetime import date
+
+    def _mp(period, date_, ebitda, tax):
+        return WaterfallPeriod(
+            period=period, date=date_, year_index=1, period_in_year=period,
+            is_operation=True, generation_mwh=0.0, revenue_keur=100.0,
+            opex_keur=0.0, ebitda_keur=ebitda, depreciation_keur=0.0,
+            interest_senior_keur=0.0, interest_shl_keur=0.0,
+            taxable_profit_keur=ebitda, tax_keur=tax,
+            cf_after_tax_keur=ebitda - tax,
+            senior_interest_keur=0.0, senior_principal_keur=0.0, senior_ds_keur=50.0,
+            shl_interest_keur=0.0, shl_principal_keur=0.0, shl_service_keur=0.0,
+            dsra_contribution_keur=0.0, dsra_balance_keur=0.0,
+            mra_contribution_keur=0.0, mra_balance_keur=0.0,
+            cf_after_reserves_keur=ebitda - tax, dscr=1.0, llcr=1.0, plcr=1.0,
+            lockup_active=False, distribution_keur=0.0, cash_sweep_keur=0.0,
+            cum_distribution_keur=0.0, cash_balance_keur=0.0,
+            shl_balance_keur=0.0, shl_pik_keur=0.0, senior_balance_keur=0.0,
+        )
+
+    solar = create_default_solar_project()
+    wind = create_default_wind_project()
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    pi = PortfolioInputs(projects=(solar, wind), portfolio_name="Test", shared_financing=shared)
+
+    # All-positive: 20 periods
+    pos_periods = []
+    for i in range(20):
+        d = date(2031 + i // 2, 6 if i % 2 == 0 else 12, 30 if i % 2 == 0 else 31)
+        pos_periods.append(_mp(i + 1, d, 8000.0, 1200.0))
+    wf_pos = WaterfallResult(
+        periods=tuple(pos_periods), total_revenue_keur=100.0, total_opex_keur=0.0,
+        total_ebitda_keur=100.0, total_tax_keur=20.0, total_senior_ds_keur=50.0,
+        total_shl_service_keur=0.0, total_distribution_keur=0.0,
+        avg_dscr=1.0, min_dscr=1.0, max_dscr=1.0,
+        min_llcr=1.0, min_plcr=1.0, periods_in_lockup=0,
+        project_irr=0.0, equity_irr=0.0, sponsor_irr=0.0,
+        project_npv=0.0, equity_npv=0.0, sculpting_result=None,
+    )
+
+    cf_pos, dt_pos = build_portfolio_project_cashflows(
+        pi, (("SOLAR-001", wf_pos), ("WIND-001", wf_pos))
+    )
+    irr_pos = xirr(cf_pos, dt_pos) or 0.0
+    assert irr_pos > 0.05, f"Baseline IRR should be positive and significant, got {irr_pos}"
+
+    # Add negative CFADS period to wind
+    neg_periods = list(pos_periods)
+    neg_periods[0] = _mp(1, date(2031, 6, 30), 200.0, 500.0)  # cfads=-300
+    wf_neg = WaterfallResult(
+        periods=tuple(neg_periods), total_revenue_keur=100.0, total_opex_keur=0.0,
+        total_ebitda_keur=100.0, total_tax_keur=20.0, total_senior_ds_keur=50.0,
+        total_shl_service_keur=0.0, total_distribution_keur=0.0,
+        avg_dscr=1.0, min_dscr=1.0, max_dscr=1.0,
+        min_llcr=1.0, min_plcr=1.0, periods_in_lockup=0,
+        project_irr=0.0, equity_irr=0.0, sponsor_irr=0.0,
+        project_npv=0.0, equity_npv=0.0, sculpting_result=None,
+    )
+    cf_neg, dt_neg = build_portfolio_project_cashflows(
+        pi, (("SOLAR-001", wf_pos), ("WIND-001", wf_neg))
+    )
+    irr_neg = xirr(cf_neg, dt_neg) or 0.0
+
+    assert irr_neg < irr_pos, (
+        f"IRR with negative CFADS ({irr_neg:.4f}) must be lower "
+        f"than positive-only ({irr_pos:.4f})"
+    )
+
+
+class TestBuildPortfolioCashflowTable:
+    """Tests for build_portfolio_cashflow_table output structure and invariants."""
+
+    def test_portfolio_cashflow_table_sums_match_total(self):
+        """Sum of breakdown per date must equal total_cashflow."""
+        from domain.portfolio.waterfall import build_portfolio_cashflow_table
+        from domain.portfolio.waterfall import aggregate_project_results
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+        from app.project_factories import create_default_solar_project, create_default_wind_project
+
+        solar = create_default_solar_project()
+        wind = create_default_wind_project()
+        shared = FinancingParams(
+            share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+            senior_tenor_years=10, target_dscr=1.3,
+        )
+        pi = PortfolioInputs(
+            projects=(solar, wind), portfolio_name="Test",
+            shared_financing=shared,
+        )
+        # Use real waterfall runs
+        from app.portfolio_runner import run_portfolio_from_inputs
+        result = run_portfolio_from_inputs(pi)
+        project_results = result.project_results
+
+        table = build_portfolio_cashflow_table(pi, project_results)
+        for row in table:
+            total = row["total_cashflow"]
+            breakdown_sum = sum(row["breakdown"].values())
+            assert abs(breakdown_sum - total) < 1.0, (
+                f"Date {row['date']}: breakdown sum {breakdown_sum} != total {total}"
+            )
+
+    def test_portfolio_cashflow_contains_each_project(self):
+        """Every project in portfolio_inputs must appear in at least one row's breakdown."""
+        from domain.portfolio.waterfall import build_portfolio_cashflow_table
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+        from app.project_factories import create_default_solar_project, create_default_wind_project
+
+        solar = create_default_solar_project()
+        wind = create_default_wind_project()
+        shared = FinancingParams(
+            share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+            senior_tenor_years=10, target_dscr=1.3,
+        )
+        pi = PortfolioInputs(
+            projects=(solar, wind), portfolio_name="Test",
+            shared_financing=shared,
+        )
+        from app.portfolio_runner import run_portfolio_from_inputs
+        result = run_portfolio_from_inputs(pi)
+
+        table = build_portfolio_cashflow_table(pi, result.project_results)
+        all_codes = set()
+        for row in table:
+            all_codes.update(row["breakdown"].keys())
+        for proj in pi.projects:
+            assert proj.info.code in all_codes, (
+                f"Project {proj.info.code} not found in cashflow table"
+            )
+
+    def test_portfolio_cashflow_dates_sorted(self):
+        """Dates in table must be in ascending order."""
+        from domain.portfolio.waterfall import build_portfolio_cashflow_table
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+        from app.project_factories import create_default_solar_project, create_default_wind_project
+
+        solar = create_default_solar_project()
+        wind = create_default_wind_project()
+        shared = FinancingParams(
+            share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+            senior_tenor_years=10, target_dscr=1.3,
+        )
+        pi = PortfolioInputs(
+            projects=(solar, wind), portfolio_name="Test",
+            shared_financing=shared,
+        )
+        from app.portfolio_runner import run_portfolio_from_inputs
+        result = run_portfolio_from_inputs(pi)
+
+        table = build_portfolio_cashflow_table(pi, result.project_results)
+        dates = [row["date"] for row in table]
+        assert dates == sorted(dates), "Dates must be sorted ascending"
+
+    def test_portfolio_cashflow_matches_irr_inputs(self):
+        """CFADS rows in build_portfolio_cashflow_table must match portfolio_cfads_schedule."""
+        from domain.portfolio.waterfall import (
+            build_portfolio_cashflow_table,
+            portfolio_cfads_schedule,
+            aggregate_project_results,
+        )
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+        from app.project_factories import create_default_solar_project, create_default_wind_project
+
+        solar = create_default_solar_project()
+        wind = create_default_wind_project()
+        shared = FinancingParams(
+            share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+            senior_tenor_years=10, target_dscr=1.3,
+        )
+        pi = PortfolioInputs(
+            projects=(solar, wind), portfolio_name="Test",
+            shared_financing=shared,
+        )
+        from app.portfolio_runner import run_portfolio_from_inputs
+        result = run_portfolio_from_inputs(pi)
+
+        pooled = aggregate_project_results(result.project_results)
+        cfads_schedule = portfolio_cfads_schedule(pooled)
+
+        table = build_portfolio_cashflow_table(pi, result.project_results)
+        # Each operating row total_cashflow (CFADS only, no capex rows) should match
+        # cfads_schedule entries that correspond to operation dates
+        op_rows = [r for r in table if any(k in r["breakdown"] for k in [s.info.code for s in pi.projects])]
+        # Compare totals excluding capex (capex rows have negative totals)
+        cfads_rows = [r for r in table if r["total_cashflow"] > 0]
+        # The table may have capex rows; filter to operation periods
+        # Use pooled period dates to identify CFADS-only rows
+        cfads_dates = [p["date"] for p in pooled]
+        cfads_from_table = [r["total_cashflow"] for r in table if r["date"] in cfads_dates]
+        # Each table CFADS should be in cfads_schedule (order may differ)
+        for v in cfads_from_table:
+            assert any(abs(v - c) < 1.0 for c in cfads_schedule), (
+                f"CFADS value {v} from table not in cfads_schedule {cfads_schedule}"
+            )
+
+    def test_portfolio_cashflow_structure_fields(self):
+        """Each row must have date, total_cashflow, and breakdown keys."""
+        from domain.portfolio.waterfall import build_portfolio_cashflow_table
+        from domain.portfolio.waterfall import aggregate_project_results
+        from domain.portfolio.inputs import PortfolioInputs
+        from domain.inputs import FinancingParams
+        from app.project_factories import create_default_solar_project, create_default_wind_project
+
+        solar = create_default_solar_project()
+        wind = create_default_wind_project()
+        shared = FinancingParams(
+            share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+            senior_tenor_years=10, target_dscr=1.3,
+        )
+        pi = PortfolioInputs(
+            projects=(solar, wind), portfolio_name="Test",
+            shared_financing=shared,
+        )
+        from app.portfolio_runner import run_portfolio_from_inputs
+        result = run_portfolio_from_inputs(pi)
+
+        table = build_portfolio_cashflow_table(pi, result.project_results)
+        for row in table:
+            assert "date" in row, "Row missing 'date' key"
+            assert "total_cashflow" in row, "Row missing 'total_cashflow' key"
+            assert "breakdown" in row, "Row missing 'breakdown' key"
+            assert isinstance(row["breakdown"], dict), "breakdown must be a dict"

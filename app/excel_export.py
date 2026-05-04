@@ -144,6 +144,7 @@ def _write_notes_sheet(writer, status, note, scenario, period_view) -> None:
         ("Period View", period_view),
         ("Note", note if note else "n/a"),
         ("Values-only Export", "No formulas used in this workbook."),
+        ("Economic LCOE", "Excludes debt service — see methodology document for details."),
     ]
 
     # BESS/hybrid warning
