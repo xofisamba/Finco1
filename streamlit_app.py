@@ -35,6 +35,10 @@ with st.sidebar:
     use_editable = st.checkbox("Use editable inputs", value=False, help="Override default Solar/Wind assumptions")
     st.session_state["use_editable_inputs"] = use_editable
     st.divider()
+    st.caption("Solar/Wind scenarios: Base · Downside · Upside")
+    st.caption("BESS/hybrid: shows Base case only")
+    st.caption("Portfolio: shows Base case only (scenario in progress)")
+    st.divider()
     run_button = st.button("🚀 Run Model", use_container_width=True)
 
 
