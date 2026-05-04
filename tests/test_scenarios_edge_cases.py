@@ -88,21 +88,42 @@ class TestScenarioEdgeCases:
 
 class TestCapExScalingEdgeCases:
     def test_scale_capex_zero_total(self):
-        """scale_capex_items must handle zero total without division errors."""
-        solar = create_default_solar_project()
-        capex = solar.capex
-        # Zero total capex: current_total <= 0 triggers early return
-        zero_capex = replace(capex,
-                             idc_keur=0.0,
-                             bank_fees_keur=0.0,
-                             other_financial_keur=0.0,
-                             vat_costs_keur=0.0,
-                             commitment_fees_keur=0.0,
-                             reserve_accounts_keur=0.0)
-        result = scale_capex_items(zero_capex, 0.0)
-        assert result is not None  # must not raise
+        """scale_capex_items returns unchanged when total_capex is truly zero.
 
-    def test_scale_capex_negative_rejected(self):
+        A true zero CapexStructure requires ALL contributing fields to be 0.0:
+        - each CapexItem.amount_keur = 0.0
+        - scalar fields: idc_keur, bank_fees_keur, other_financial_keur, vat_costs_keur
+        - (commitment_fees_keur and reserve_accounts_keur excluded from hard capex base)
+
+        scale_capex_items() returns capex unchanged when current_total <= 0.
+        """
+        from dataclasses import fields as dc_fields
+
+        capex = create_default_solar_project().capex
+
+        # Build a TRUE zero CapexStructure by nulling every numeric contributing field
+        new_field_values = {}
+        for f in dc_fields(capex):
+            val = getattr(capex, f.name)
+            if hasattr(val, 'amount_keur'):
+                # It's a CapexItem — zero its amount
+                new_field_values[f.name] = replace(val, amount_keur=0.0)
+            elif isinstance(val, (int, float)):
+                new_field_values[f.name] = 0.0
+            else:
+                new_field_values[f.name] = val
+
+        zero_capex = replace(capex, **new_field_values)
+
+        # Verify it's truly zero
+        assert zero_capex.total_capex == 0.0,             f"Expected total_capex=0, got {zero_capex.total_capex}"
+
+        # scale_capex_items should return unchanged (early return for total <= 0)
+        result = scale_capex_items(zero_capex, 50_000.0)
+        assert result is not None
+        assert result.total_capex == 0.0
+
+    def test_scale_capex_no_negative_items_when_scaling_down(self):
         """scale_capex_items must not produce negative amounts when scaling down."""
         solar = create_default_solar_project()
         capex = solar.capex
@@ -127,6 +148,13 @@ class TestCapExScalingEdgeCases:
 
 
 # ── Portfolio edge cases ──────────────────────────────────────────────────────
+    def test_apply_scenario_accepts_whitespace_in_name(self):
+        """apply_scenario and get_scenario_rules must normalize whitespace."""
+        solar = create_default_solar_project()
+        result = apply_scenario(solar, " Downside ")
+        assert result is not None
+        rules = get_scenario_rules("  Downside  ")
+        assert rules["p50_multiplier"] == 0.90
 
 class TestPortfolioEdgeCases:
     def test_portfolio_empty_projects_list(self):
@@ -278,15 +306,4 @@ class TestUIValidationEdgeCases:
         with pytest.raises(ValueError, match="non-negative"):
             scale_capex_items(capex, -100.0)
 
-
-    def test_apply_scenario_accepts_whitespace_in_name(self):
-        """apply_scenario and get_scenario_rules must normalize whitespace."""
-        from app.scenarios import apply_scenario, get_scenario_rules
-        from app.project_factories import create_default_solar_project
-        solar = create_default_solar_project()
-        # " Downside " with whitespace should work same as "downside"
-        result = apply_scenario(solar, " Downside ")
-        assert result is not None
-        rules = get_scenario_rules(" Downside ")
-        assert rules["p50_multiplier"] == 0.90
 
