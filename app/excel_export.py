@@ -86,6 +86,18 @@ def build_excel_export(
         # Validation sheet
         _write_validation_sheet(writer, validation_issues)
         
+        # DSCR Summary sheet
+        if result is not None and hasattr(result, "target_dscr"):
+            rows = [
+                ("Metric", "Value"),
+                ("Target DSCR", f"{result.target_dscr:.3f}"),
+                ("Actual Min DSCR", f"{result.actual_min_dscr:.3f}"),
+                ("Actual Avg DSCR", f"{result.actual_avg_dscr:.3f}"),
+                ("Deviation", f"{result.actual_min_dscr - result.target_dscr:+.3f}"),
+            ]
+            dscr_df = pd.DataFrame(rows[1:], columns=["Metric", "Value"])
+            _write_sheet(writer, "DSCR Summary", dscr_df)
+
         # Notes sheet
         _write_notes_sheet(writer, integration_status, integration_note, scenario, period_view)
     

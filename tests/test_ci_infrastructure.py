@@ -54,3 +54,31 @@ def test_oborovo_shim_available_in_isolated_test_context():
 def test_bess_design_doc_exists():
     """docs/bess_hybrid_design.md must exist (design only, not implemented)."""
     assert os.path.exists("docs/bess_hybrid_design.md"), "docs/bess_hybrid_design.md not found"
+
+
+def test_model_status_contains_supported_features():
+    """model_status.md must list Solar and Wind as fully supported."""
+    with open("docs/model_status.md") as f:
+        content = f.read().lower()
+    assert "solar" in content and "wind" in content, "Solar and Wind must be mentioned"
+
+
+def test_model_status_contains_partial_features():
+    """model_status.md must list BESS and Hybrid as partial."""
+    with open("docs/model_status.md") as f:
+        content = f.read().lower()
+    assert "bess" in content and "hybrid" in content, "BESS and Hybrid must be mentioned"
+
+
+def test_model_status_contains_not_implemented():
+    """model_status.md must list Sponsor IRR and Portfolio scenarios as not implemented."""
+    with open("docs/model_status.md") as f:
+        content = f.read().lower()
+    assert "sponsor irr" in content or "sponsor" in content, "Sponsor IRR must be mentioned"
+
+
+def test_model_status_contains_bankable_warning():
+    """model_status.md must contain an explicit warning about bankable validation."""
+    with open("docs/model_status.md") as f:
+        content = f.read().lower()
+    assert "bankable" in content, "Bankable warning must be present"

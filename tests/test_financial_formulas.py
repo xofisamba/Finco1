@@ -6,6 +6,7 @@ from app.project_factories import create_default_solar_project, create_default_w
 from app.ui_runner import run_demo_project
 from app.scenarios import apply_scenario
 from domain.analytics.scenarios import _compute_lcoe_from_waterfall
+from app.ui_runner import _run_waterfall, _build_period_engine
 
 
 class TestLCOEFormula:
@@ -64,13 +65,59 @@ class TestLCOEFormula:
 
     def test_lcoe_non_negative(self):
         """LCOE must always be non-negative."""
-        from app.ui_runner import _run_waterfall, _build_period_engine
-
         solar = create_default_solar_project()
         engine = _build_period_engine(solar)
         result = _run_waterfall(solar, engine)
         lcoe = _compute_lcoe_from_waterfall(result, solar)
         assert lcoe >= 0.0, f"LCOE must be non-negative, got {lcoe}"
+
+    def test_opex_increase_increases_lcoe(self):
+        """Higher OpEx must increase LCOE."""
+        solar_base = create_default_solar_project()
+        engine_base = _build_period_engine(solar_base)
+        base_result = _run_waterfall(solar_base, engine_base)
+        base_lcoe = _compute_lcoe_from_waterfall(base_result, solar_base)
+
+        # Triple OpEx via apply_scenario downside (opex_multiplier=1.10)
+        solar_hi = apply_scenario(solar_base, "downside")
+        engine_hi = _build_period_engine(solar_hi)
+        hi_result = _run_waterfall(solar_hi, engine_hi)
+        hi_lcoe = _compute_lcoe_from_waterfall(hi_result, solar_hi)
+
+        assert hi_lcoe > base_lcoe, \
+            f"LCOE with higher OpEx ({hi_lcoe:.2f}) must be > base LCOE ({base_lcoe:.2f})"
+
+    def test_capex_increase_increases_lcoe(self):
+        """Higher CapEx must increase LCOE."""
+        solar_base = create_default_solar_project()
+        engine_base = _build_period_engine(solar_base)
+        base_result = _run_waterfall(solar_base, engine_base)
+        base_lcoe = _compute_lcoe_from_waterfall(base_result, solar_base)
+
+        # Downside has capex_multiplier=1.05 (+5% CapEx)
+        solar_hi = apply_scenario(solar_base, "downside")
+        engine_hi = _build_period_engine(solar_hi)
+        hi_result = _run_waterfall(solar_hi, engine_hi)
+        hi_lcoe = _compute_lcoe_from_waterfall(hi_result, solar_hi)
+
+        assert hi_lcoe > base_lcoe, \
+            f"LCOE with higher CapEx ({hi_lcoe:.2f}) must be > base LCOE ({base_lcoe:.2f})"
+
+    def test_tariff_increase_decreases_lcoe(self):
+        """Higher PPA tariff must decrease LCOE (more revenue per MWh)."""
+        solar_base = apply_scenario(create_default_solar_project(), "downside")
+        engine_base = _build_period_engine(solar_base)
+        base_result = _run_waterfall(solar_base, engine_base)
+        base_lcoe = _compute_lcoe_from_waterfall(base_result, solar_base)
+
+        # Upside has tariff_multiplier=1.03 (+3% tariff) and capex_multiplier=0.97
+        solar_hi = apply_scenario(create_default_solar_project(), "upside")
+        engine_hi = _build_period_engine(solar_hi)
+        hi_result = _run_waterfall(solar_hi, engine_hi)
+        hi_lcoe = _compute_lcoe_from_waterfall(hi_result, solar_hi)
+
+        assert hi_lcoe < base_lcoe, \
+            f"LCOE with higher tariff ({hi_lcoe:.2f}) must be < base LCOE ({base_lcoe:.2f})"
 
 
 class TestScenarioDirection:

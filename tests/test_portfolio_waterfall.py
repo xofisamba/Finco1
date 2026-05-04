@@ -820,3 +820,82 @@ def test_portfolio_handles_staggered_operations():
             pass  # just verify no crash
 
     assert len(cf_list) >= 10, "Portfolio should have at least 10 cashflow entries"
+
+
+def test_portfolio_cf_export_exists():
+    """Portfolio CF sheet must exist when portfolio_result has cashflows."""
+    import openpyxl
+    from io import BytesIO
+    from app.excel_export import build_excel_export
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+    from domain.portfolio.inputs import PortfolioInputs
+    from domain.inputs import FinancingParams
+
+    solar = create_default_solar_project()
+    wind = create_default_wind_project()
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    pi = PortfolioInputs(projects=(solar, wind), portfolio_name="Test", shared_financing=shared)
+    result = run_portfolio_from_inputs(pi)
+
+    data = build_excel_export(portfolio_result=result,
+        project_inputs=None,
+        integration_status="experimental",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    assert "Portfolio CF" in wb.sheetnames, "Portfolio CF sheet must exist"
+
+
+def test_portfolio_cf_breakdown_sums_match_total():
+    """Each row's breakdown sum must equal total_cashflow."""
+    from domain.portfolio.waterfall import build_portfolio_cashflow_table
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+    from domain.portfolio.inputs import PortfolioInputs
+    from domain.waterfall.waterfall_engine import WaterfallResult, WaterfallPeriod
+    from domain.inputs import FinancingParams
+    from datetime import date
+
+    def _mp(period, date_, ebitda, tax):
+        return WaterfallPeriod(
+            period=period, date=date_, year_index=1, period_in_year=period,
+            is_operation=True, generation_mwh=0.0, revenue_keur=100.0,
+            opex_keur=0.0, ebitda_keur=ebitda, depreciation_keur=0.0,
+            interest_senior_keur=0.0, interest_shl_keur=0.0,
+            taxable_profit_keur=ebitda, tax_keur=tax,
+            cf_after_tax_keur=ebitda - tax,
+            senior_interest_keur=0.0, senior_principal_keur=0.0, senior_ds_keur=50.0,
+            shl_interest_keur=0.0, shl_principal_keur=0.0, shl_service_keur=0.0,
+            dsra_contribution_keur=0.0, dsra_balance_keur=0.0,
+            mra_contribution_keur=0.0, mra_balance_keur=0.0,
+            cf_after_reserves_keur=ebitda - tax, dscr=1.0, llcr=1.0, plcr=1.0,
+            lockup_active=False, distribution_keur=0.0, cash_sweep_keur=0.0,
+            cum_distribution_keur=0.0, cash_balance_keur=0.0,
+            shl_balance_keur=0.0, shl_pik_keur=0.0, senior_balance_keur=0.0,
+        )
+
+    solar = create_default_solar_project()
+    wind = create_default_wind_project()
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    pi = PortfolioInputs(projects=(solar, wind), portfolio_name="Test", shared_financing=shared)
+
+    periods = [_mp(i + 1, date(2031 + i // 2, 6 if i % 2 == 0 else 12, 30 if i % 2 == 0 else 31), 8000.0, 1200.0) for i in range(10)]
+    wf = WaterfallResult(
+        periods=tuple(periods), total_revenue_keur=100.0, total_opex_keur=0.0,
+        total_ebitda_keur=100.0, total_tax_keur=20.0, total_senior_ds_keur=50.0,
+        total_shl_service_keur=0.0, total_distribution_keur=0.0,
+        avg_dscr=1.0, min_dscr=1.0, max_dscr=1.0,
+        min_llcr=1.0, min_plcr=1.0, periods_in_lockup=0,
+        project_irr=0.0, equity_irr=0.0, sponsor_irr=0.0,
+        project_npv=0.0, equity_npv=0.0, sculpting_result=None,
+    )
+
+    table = build_portfolio_cashflow_table(pi, (("SOLAR-001", wf), ("WIND-001", wf)))
+    for row in table:
+        total = row["total_cashflow"]
+        breakdown_sum = sum(row["breakdown"].values())
+        assert abs(breakdown_sum - total) < 0.01, (
+            f"Breakdown sum {breakdown_sum} != total {total}"
+        )
