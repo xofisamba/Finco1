@@ -60,10 +60,37 @@ class TestValidateProjectInputs:
 
     def test_zero_capex_is_error(self):
         """Zero CapEx must be flagged as error."""
-        proj = create_default_solar_project()
-        # Zero total_capex: set idc_keur = -(sum of all positive item amounts)
+        from domain.inputs import CapexStructure, CapexItem
         from dataclasses import replace
-        proj = replace(proj, capex=replace(proj.capex, idc_keur=-proj.capex.total_capex))
+
+        # Build a true zero CapexStructure: all items have amount_keur=0
+        zero_item = CapexItem(name="Zero", amount_keur=0.0, y0_share=0.0, spending_profile=())
+        zero_capex = CapexStructure(
+            epc_contract=zero_item,
+            production_units=replace(zero_item, name="ZeroPU"),
+            epc_other=replace(zero_item, name="ZeroOther"),
+            grid_connection=replace(zero_item, name="ZeroGrid"),
+            ops_prep=replace(zero_item, name="ZeroOps"),
+            insurances=replace(zero_item, name="ZeroIns"),
+            lease_tax=replace(zero_item, name="ZeroLease"),
+            construction_mgmt_a=replace(zero_item, name="ZeroCMA"),
+            commissioning=replace(zero_item, name="ZeroComm"),
+            audit_legal=replace(zero_item, name="ZeroAudit"),
+            construction_mgmt_b=replace(zero_item, name="ZeroCMB"),
+            contingencies=replace(zero_item, name="ZeroCont"),
+            taxes=replace(zero_item, name="ZeroTax"),
+            project_acquisition=replace(zero_item, name="ZeroAcq"),
+            project_rights=replace(zero_item, name="ZeroRights"),
+            idc_keur=0.0,
+            commitment_fees_keur=0.0,
+            bank_fees_keur=0.0,
+            other_financial_keur=0.0,
+            vat_costs_keur=0.0,
+            reserve_accounts_keur=0.0,
+        )
+        proj = create_default_solar_project()
+        proj = replace(proj, capex=zero_capex)
+        assert proj.capex.total_capex == 0.0, "CapEx must be zero"
         issues = validate_project_inputs(proj)
         assert any(i.field == "capex.total_capex" and i.severity == "error" for i in issues)
 
