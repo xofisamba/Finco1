@@ -678,3 +678,25 @@ class TestBuildPortfolioCashflowTable:
             assert "total_cashflow" in row, "Row missing 'total_cashflow' key"
             assert "breakdown" in row, "Row missing 'breakdown' key"
             assert isinstance(row["breakdown"], dict), "breakdown must be a dict"
+
+
+def test_portfolio_result_contains_cashflow_audit_table():
+    """PortfolioResult.portfolio_cashflows must be populated by run_portfolio_waterfall."""
+    wf_a = _make_wf_result("A", ebitda=80.0, tax=10.0, rev=100.0)
+    wf_b = _make_wf_result("B", ebitda=120.0, tax=15.0, rev=150.0)
+    pi = _portfolio_inputs()
+
+    result = run_portfolio_waterfall(pi, (("A", wf_a), ("B", wf_b)))
+
+    assert result.portfolio_cashflows, "portfolio_cashflows must be non-empty"
+
+    for row in result.portfolio_cashflows:
+        assert "date" in row, "Row missing 'date'"
+        assert "total_cashflow" in row, "Row missing 'total_cashflow'"
+        assert "breakdown" in row, "Row missing 'breakdown'"
+        assert isinstance(row["breakdown"], dict), "breakdown must be a dict"
+
+        total_from_breakdown = sum(row["breakdown"].values())
+        assert abs(total_from_breakdown - row["total_cashflow"]) < 0.01, (
+            f"Breakdown sum {total_from_breakdown} != total_cashflow {row['total_cashflow']}"
+        )

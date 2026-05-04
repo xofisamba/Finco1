@@ -11,8 +11,8 @@ Behavior:
 - Otherwise sculpts portfolio debt from pooled CFADS using
   shared_financing.target_dscr via closed_form_sculpt
 - Does not yet implement cross-default enforcement
-- portfolio_project_irr is experimental pooled unlevered CFADS IRR
-- portfolio_sponsor_irr is a placeholder (requires sponsor-level CF aggregation)
+- portfolio_project_irr is experimental pooled CFADS IRR (date-aligned XIRR)
+- portfolio_sponsor_irr remains a placeholder (requires equity-level CF aggregation)
 """
 from dataclasses import dataclass, field
 from typing import Optional
@@ -68,7 +68,8 @@ class PortfolioResult:
     portfolio_project_irr: float = 0.0  # experimental pooled unlevered CFADS IRR
     portfolio_sponsor_irr: float = 0.0
 
-    portfolio_cashflows: list[dict] = field(default_factory=list)  # audit table    # TODO: portfolio_sponsor_irr requires:
+    portfolio_cashflows: list[dict] = field(default_factory=list)
+    # audit table — date-level breakdown of portfolio_project_irr cashflow inputs    # TODO: portfolio_sponsor_irr requires:
     # - Equity-level cash flows (after senior debt service)
     # - SHL (Subordinated_High_Yield) distribution logic
     # - Sponsor-specific TACC/CFADS aggregation
@@ -247,7 +248,8 @@ def run_portfolio_waterfall(
         portfolio_debt_service_schedule=tuple(ds_schedule),
         portfolio_project_irr=portfolio_project_irr,
         portfolio_sponsor_irr=0.0,
-        # TODO: portfolio_sponsor_irr requires equity-level cash flows (after senior debt service),
+        portfolio_cashflows=build_portfolio_cashflow_table(portfolio_inputs, project_results),
+        # portfolio_sponsor_irr requires equity-level cash flows (after senior debt service),
         # SHL distribution logic, and sponsor-specific TACC/CFADS aggregation.
         # Not implemented — remains 0.0 placeholder
     )
@@ -364,6 +366,8 @@ __all__ = [
     "PortfolioPeriod",
     "PortfolioResult",
     "aggregate_project_results",
+    "build_portfolio_cashflow_table",
+    "build_portfolio_project_cashflows",
     "portfolio_cfads_schedule",
     "run_portfolio_waterfall",
 ]
