@@ -86,6 +86,14 @@ class TestScenarioEdgeCases:
 
 # ── CapEx scaling edge cases ───────────────────────────────────────────────────
 
+    def test_apply_scenario_accepts_whitespace_in_name(self):
+        """apply_scenario and get_scenario_rules must normalize whitespace."""
+        solar = create_default_solar_project()
+        result = apply_scenario(solar, " Downside ")
+        assert result is not None
+        rules = get_scenario_rules("  Downside  ")
+        assert rules["p50_multiplier"] == 0.90
+
 class TestCapExScalingEdgeCases:
     def test_scale_capex_zero_total(self):
         """scale_capex_items returns unchanged when total_capex is truly zero.
@@ -147,14 +155,12 @@ class TestCapExScalingEdgeCases:
         assert result.total_capex > 0  # must be positive, not inf/nan
 
 
-# ── Portfolio edge cases ──────────────────────────────────────────────────────
-    def test_apply_scenario_accepts_whitespace_in_name(self):
-        """apply_scenario and get_scenario_rules must normalize whitespace."""
-        solar = create_default_solar_project()
-        result = apply_scenario(solar, " Downside ")
-        assert result is not None
-        rules = get_scenario_rules("  Downside  ")
-        assert rules["p50_multiplier"] == 0.90
+
+    def test_scale_capex_negative_target_rejected(self):
+        """scale_capex_items raises ValueError for negative target_total_capex."""
+        capex = create_default_solar_project().capex
+        with pytest.raises(ValueError, match="non-negative"):
+            scale_capex_items(capex, -100.0)
 
 class TestPortfolioEdgeCases:
     def test_portfolio_empty_projects_list(self):
@@ -298,12 +304,4 @@ class TestUIValidationEdgeCases:
         """Solar+BESS must be integration_status=partial."""
         result = run_demo_project("Solar+BESS")
         assert result.integration_status == "partial"
-    def test_scale_capex_negative_target_rejected(self):
-        """scale_capex_items must raise ValueError for negative target_total_capex."""
-        from app.capex_overrides import scale_capex_items
-        from app.project_factories import create_default_solar_project
-        capex = create_default_solar_project().capex
-        with pytest.raises(ValueError, match="non-negative"):
-            scale_capex_items(capex, -100.0)
-
 
