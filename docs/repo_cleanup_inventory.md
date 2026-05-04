@@ -6,6 +6,25 @@
 
 ---
 
+## Completed in this sprint (2026-05-04)
+
+### Moved to `docs/archive/`
+- `docs/FINCOGPT_EXCEL_PARITY_PLAN.md` → `docs/archive/`
+- `docs/FINCOGPT_CALIBRATION_STATUS.md` → `docs/archive/calibration/`
+- `docs/EXCEL_UX_AND_CALIBRATION_MAPPING.md` → `docs/archive/calibration/`
+- `SPRINT*.md`, `SPRINT_BACKLOG.md`, `SPRINT4_BACKLOG.md` → `docs/archive/legacy_prompts/`
+
+### Not deleted (still referenced by tests)
+- `tests/fixtures/current_outputs.json` — referenced by `tests/test_regression.py`
+- `tests/fixtures/oborovo_base.json` — referenced by `tests/test_inputs.py`
+- `tests/fixtures/oborovo_baseline.json` — referenced by `tests/test_regression.py`, `tests/test_oborovo_parity.py`
+- `tests/fixtures/oborovo_golden.json` — referenced by `tests/integration/test_fid_deck_excel.py`
+
+### Pre-existing test failure (not caused by this sprint's actions)
+- `tests/test_bess_hybrid_full_flow.py::test_sponsor_irr_not_computed` — `TypeError: FinancingParams.__init__() got an unexpected keyword argument 'total_debt_keur'` — existed before cleanup
+
+---
+
 ## Summary
 
 | Category | Count | Notes |

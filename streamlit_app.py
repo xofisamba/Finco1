@@ -23,22 +23,6 @@ for key in ["demo_result", "last_project_type", "last_scenario", "editable_input
     if key not in st.session_state:
         st.session_state[key] = None
 
-# Status banner (informational — shown before first run and updated after)
-status_map = {
-    "full": ("✅ Full integration", "standard solar/wind model"),
-    "partial": ("⚠️ Partial integration", "BESS/hybrid: revenue-only shown, waterfall in progress"),
-    "experimental": ("🔬 Experimental", "Portfolio IRR is placeholder; do not use for investment decisions"),
-}
-if project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
-    badge, detail = status_map["partial"]
-elif project_type == "Portfolio":
-    badge, detail = status_map["experimental"]
-else:
-    badge, detail = status_map["full"]
-st.caption(f"{badge} | integration_status: {badge.split()[0].lstrip('✅⚠️🔬').strip()}")
-if detail:
-    st.caption(f"_{detail}_")
-
 PROJECT_TYPES = ["Solar", "Wind", "BESS", "Solar+BESS", "Wind+BESS", "Portfolio"]
 SCENARIOS = ["Base", "Downside", "Upside"]
 
@@ -52,11 +36,61 @@ with st.sidebar:
     st.session_state["use_editable_inputs"] = use_editable
     st.divider()
     run_button = st.button("🚀 Run Model", use_container_width=True)
-    st.caption("Scenario selector is informational in this MVP.")
-    
+
+
+if run_button or st.session_state.demo_result is not None:
+    if run_button or st.session_state.last_project_type != project_type or st.session_state.get("last_scenario") != scenario:
+        with st.spinner("Running model..."):
+            override = st.session_state.get("editable_inputs") if st.session_state.get("use_editable_inputs") else None
+            st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override)
+            st.session_state.last_project_type = project_type
+            st.session_state["last_scenario"] = scenario
+
+    demo: DemoResult = st.session_state.demo_result
+
+    # Status banner
+    status_map = {
+        "full": ("✅ Full integration", "standard solar/wind model"),
+        "partial": ("⚠️ Partial integration", "BESS/hybrid: revenue-only shown, waterfall in progress"),
+        "experimental": ("🔬 Experimental", "Portfolio IRR is placeholder; do not use for investment decisions"),
+    }
+    if project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
+        badge, detail = status_map["partial"]
+    elif project_type == "Portfolio":
+        badge, detail = status_map["experimental"]
+    else:
+        badge, detail = status_map["full"]
+    st.caption(f"{badge} | integration_status: {badge.split()[0].lstrip('✅⚠️🔬').strip()}")
+    if detail:
+        st.caption(f"_{detail}_")
+
+    # Scenario summary table (shown after model run, for non-Base scenarios)
+    if scenario != "Base":
+        from app.scenarios import scenario_summary
+        rows = scenario_summary(scenario)
+        has_changes = any(r.get("change") != "0%" for r in rows)
+        st.subheader(f"📋 Scenario: {scenario}")
+        if has_changes:
+            import pandas as pd
+            df = pd.DataFrame(rows)
+            st.table(df)
+            if project_type in ("BESS", "Solar+BESS", "Wind+BESS", "Portfolio"):
+                st.info("⚠️ Scenario effects are partial for this project type — revenue model uses scenario, but other modules may not.")
+        else:
+            st.caption("No changes from Base case")
+        st.divider()
+
+    if demo.messages:
+        for msg in demo.messages:
+            st.warning(msg)
+
+    # Validation panel
+    with st.expander("🔍 Validation", expanded=False):
+        render_validation_panel(demo.validation_issues)
+
     # Excel export (only if results exist)
-    if st.session_state.demo_result and (st.session_state.demo_result.result or st.session_state.demo_result.portfolio_result):
-        demo_exp = st.session_state.demo_result
+    if demo.result or demo.portfolio_result:
+        demo_exp = demo
         from app.excel_export import build_excel_export
         excel_data = build_excel_export(
             result=demo_exp.result,
@@ -74,25 +108,6 @@ with st.sidebar:
             file_name=f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-
-
-if run_button or st.session_state.demo_result is not None:
-    if run_button or st.session_state.last_project_type != project_type or st.session_state.get("last_scenario") != scenario:
-        with st.spinner("Running model..."):
-            override = st.session_state.get("editable_inputs") if st.session_state.get("use_editable_inputs") else None
-            st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override)
-            st.session_state.last_project_type = project_type
-            st.session_state["last_scenario"] = scenario
-
-    demo: DemoResult = st.session_state.demo_result
-
-    if demo.messages:
-        for msg in demo.messages:
-            st.warning(msg)
-
-    # Validation panel
-    with st.expander("🔍 Validation", expanded=False):
-        render_validation_panel(demo.validation_issues)
 
     tabs = st.tabs([
         "📊 Dashboard",

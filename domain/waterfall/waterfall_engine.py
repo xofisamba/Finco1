@@ -270,8 +270,16 @@ def run_waterfall(
         financial_close: Financial close date
         gearing_ratio: Gearing ratio cap (CAPEX * gearing_ratio)
         fixed_debt_keur: If provided, overrides sculpted debt (for P90 sizing)
+
     Returns:
         WaterfallResult with all periods and metrics
+
+    .. TODO:: BESS revenue integration into waterfall
+        Required:
+        - BESS dispatch model (charge/discharge scheduling)
+        - BESS revenue line item in WaterfallPeriod
+        - Hybrid project revenue aggregation (solar + wind + BESS)
+        Currently: BESS status is "partial" — revenue shown but waterfall not fully instrumented
     """
     # Step 1: Iterative sculpting to find debt amount
     # Use provided rate_schedule if available, otherwise use flat rate

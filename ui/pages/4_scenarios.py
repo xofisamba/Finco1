@@ -1,11 +1,18 @@
 """Scenario Comparison Page — OpusCore v2 Phase 2.
 
+.. deprecated::
+    This page is part of the legacy multipage Streamlit app (Phase 2, 2024).
+    It is NOT part of the current FincoGPT runtime.
+    Current runtime uses app/ui/pages.py with st.navigation.
+    This file is kept for reference only.
+
 Streamlit multipage app (filename starting with digit for auto-discovery).
 Side-by-side comparison of two scenarios from the same project.
 
 Run as part of: streamlit run src/app.py
 Or standalone: streamlit run ui/pages/4_scenarios.py
 """
+
 import streamlit as st
 import pandas as pd
 import sys

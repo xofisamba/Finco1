@@ -247,3 +247,114 @@ def test_portfolio_irr_fields_are_documented_placeholders():
     """portfolio_sponsor_irr is a placeholder; portfolio_project_irr is now computed."""
     # portfolio_sponsor_irr remains the documented placeholder
     assert PortfolioResult.__dataclass_fields__["portfolio_sponsor_irr"].default == 0.0
+
+
+def test_portfolio_project_irr_changes_when_capex_changes():
+    """Scaling one project's CapEx must change portfolio_project_irr."""
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from app.capex_overrides import scale_capex_items
+    from dataclasses import replace
+    from domain.portfolio.inputs import PortfolioInputs
+    from domain.inputs import FinancingParams
+
+    solar = create_default_solar_project()
+    wind = create_default_wind_project()
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    portfolio_inputs = PortfolioInputs(projects=(solar, wind), portfolio_name="Test",
+                                        shared_financing=shared)
+
+    base_result = run_portfolio_from_inputs(portfolio_inputs)
+    base_irr = base_result.portfolio_project_irr
+    assert base_irr is not None and base_irr != 0.0, "Base portfolio IRR should be non-zero"
+
+    # Scale solar CapEx by +20%
+    scaled_solar = replace(solar, capex=scale_capex_items(
+        solar.capex, solar.capex.total_capex * 1.20
+    ))
+    scaled_portfolio_inputs = PortfolioInputs(
+        projects=(scaled_solar, wind),
+        portfolio_name="Test",
+        shared_financing=shared,
+    )
+    scaled_result = run_portfolio_from_inputs(scaled_portfolio_inputs)
+    scaled_irr = scaled_result.portfolio_project_irr
+
+    assert scaled_irr != base_irr, "Portfolio IRR should change when CapEx scales"
+    # More CapEx with same revenue → lower IRR
+    assert scaled_irr < base_irr, f"Scaled IRR ({scaled_irr:.4f}) should be lower than base ({base_irr:.4f})"
+
+
+def test_portfolio_project_irr_negative_t0():
+    """Portfolio xirr t0 (initial cashflow) must be negative (investment = outflow)."""
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from domain.portfolio.inputs import PortfolioInputs
+    from domain.inputs import FinancingParams
+
+    solar = create_default_solar_project()
+    wind = create_default_wind_project()
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    portfolio_inputs = PortfolioInputs(
+        projects=(solar, wind), portfolio_name="Test", shared_financing=shared
+    )
+    result = run_portfolio_from_inputs(portfolio_inputs)
+    assert result.portfolio_project_irr is not None
+
+    # t0 is defined as -sum of total_capex (negative outflow)
+    total_capex = solar.capex.total_capex + wind.capex.total_capex
+    assert total_capex > 0, "Total capex must be positive (investment)"
+    # The xirr is computed on [-total_capex, ...positive_cfads...] — t0 is negative
+    # We can verify the pooled_cfads_schedule is positive after t0
+    cfads = result.pooled_cfads_schedule
+    assert cfads[0] >= 0, "CFADS after t0 should be >= 0"
+
+
+def test_portfolio_project_irr_finite_for_positive_cashflows():
+    """portfolio_project_irr must be numeric and finite when CFADS are positive."""
+    from app.project_factories import create_default_solar_project, create_default_wind_project
+    from app.portfolio_runner import run_portfolio_from_inputs
+    from domain.portfolio.inputs import PortfolioInputs
+    from domain.inputs import FinancingParams
+
+    solar = create_default_solar_project()
+    wind = create_default_wind_project()
+    shared = FinancingParams(share_capital_keur=100.0, senior_debt_amount_keur=200.0,
+                             senior_tenor_years=10, target_dscr=1.3)
+    portfolio_inputs = PortfolioInputs(
+        projects=(solar, wind), portfolio_name="Test", shared_financing=shared
+    )
+    result = run_portfolio_from_inputs(portfolio_inputs)
+    irr = result.portfolio_project_irr
+
+    assert isinstance(irr, (int, float)), f"IRR should be numeric, got {type(irr)}"
+    assert not (irr != irr), "IRR must not be NaN"  # NaN check
+    assert -1 < irr < 10, f"IRR should be in reasonable range (-1 to 10), got {irr}"
+
+
+def test_portfolio_sponsor_irr_is_not_numeric_zero_in_table():
+    """build_portfolio_table should show sponsor IRR as 'n/a', not 0.0."""
+    from unittest.mock import MagicMock
+    from app.output_tables import build_portfolio_table
+
+    pr = MagicMock()
+    pr.total_revenue_keur = 100_000.0
+    pr.total_ebitda_keur = 70_000.0
+    pr.total_tax_keur = 10_000.0
+    pr.pooled_cfads_schedule = (50_000.0, 55_000.0, 60_000.0)
+    pr.total_senior_ds_keur = 30_000.0
+    pr.avg_dscr = 1.4
+    pr.min_dscr = 1.2
+    pr.portfolio_debt_keur = 200_000.0
+    pr.portfolio_project_irr = 0.0
+    pr.portfolio_sponsor_irr = 0.0  # placeholder
+
+    df = build_portfolio_table(pr)
+    # Find the sponsor IRR row
+    sponsor_rows = [i for i, label in enumerate(df.index) if "sponsor" in label.lower()]
+    assert sponsor_rows, "Should have a sponsor IRR row"
+    val = df.iloc[sponsor_rows[0], 0]
+    assert not (isinstance(val, (int, float)) and val == 0.0), \
+        f"Sponsor IRR should not be numeric 0.0, got {val!r}"

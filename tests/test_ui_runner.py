@@ -85,3 +85,13 @@ def test_ui_runner_reraises_when_env_flag_set():
         finally:
             if old_val is not None:
                 os.environ["FINCOGPT_RAISE_UI_ERRORS"] = old_val
+
+
+def test_ui_output_labels_bess_hybrid_partial():
+    """UI must label BESS/hybrid projects as partial, not full."""
+    from app.ui_runner import run_demo_project
+
+    for project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
+        result = run_demo_project(project_type)
+        assert result.integration_status == "partial", \
+            f"{project_type} should have integration_status=partial, got {result.integration_status}"

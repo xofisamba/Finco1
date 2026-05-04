@@ -66,7 +66,12 @@ class PortfolioResult:
     pooled_cfads_schedule: tuple[float, ...]
     portfolio_debt_service_schedule: tuple[float, ...]
     portfolio_project_irr: float = 0.0  # experimental pooled unlevered CFADS IRR
-    portfolio_sponsor_irr: float = 0.0  # placeholder — requires sponsor-level CF aggregation
+    portfolio_sponsor_irr: float = 0.0
+    # TODO: portfolio_sponsor_irr requires:
+    # - Equity-level cash flows (after senior debt service)
+    # - SHL (Subordinated_High_Yield) distribution logic
+    # - Sponsor-specific TACC/CFADS aggregation
+    # Not implemented — value remains 0.0 placeholder
 
 
 def aggregate_project_results(
@@ -245,7 +250,10 @@ def run_portfolio_waterfall(
         pooled_cfads_schedule=tuple(cfads_list),
         portfolio_debt_service_schedule=tuple(ds_schedule),
         portfolio_project_irr=portfolio_project_irr,
-        portfolio_sponsor_irr=0.0,  # placeholder — sponsor-level CF not aggregated
+        portfolio_sponsor_irr=0.0,
+        # TODO: portfolio_sponsor_irr requires equity-level cash flows (after senior debt service),
+        # SHL distribution logic, and sponsor-specific TACC/CFADS aggregation.
+        # Not implemented — remains 0.0 placeholder
     )
 
 

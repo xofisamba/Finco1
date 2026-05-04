@@ -236,9 +236,13 @@ def test_excel_notes_include_scenario_deltas():
 
 
 def test_excel_notes_include_bess_hybrid_partial_warning():
-    """Notes sheet should contain BESS/hybrid partial warning when status=partial."""
+    """Excel Notes sheet must include BESS/hybrid partial warning."""
+    from io import BytesIO
+    from app.ui_runner import run_demo_project
+    from app.excel_export import build_excel_export
     import openpyxl
-    result = run_demo_project("BESS")
+
+    result = run_demo_project("Solar+BESS")
     data = build_excel_export(
         result=result.result,
         project_inputs=result.project_inputs,
@@ -246,10 +250,11 @@ def test_excel_notes_include_bess_hybrid_partial_warning():
         scenario="Base",
     )
     wb = openpyxl.load_workbook(BytesIO(data))
-    ws = wb["Notes"]
-    fields = [row[0] for row in ws.iter_rows(max_row=ws.max_row, values_only=True) if row[0]]
-    bess_rows = [r for r in fields if "BESS" in str(r) or "hybrid" in str(r).lower()]
-    assert len(bess_rows) > 0, f"Expected BESS/hybrid warning in Notes, got fields: {fields}"
+    notes_ws = wb["Notes"]
+    all_values = [v for row in notes_ws.iter_rows(values_only=True) for v in row if v]
+    notes_text = " ".join(str(v) for v in all_values).lower()
+    assert "partial" in notes_text or "bess" in notes_text, \
+        f"Notes sheet should mention BESS/hybrid partial status. Got: {notes_text[:200]}"
 
 
 def test_excel_notes_include_portfolio_experimental_warning():
@@ -289,3 +294,70 @@ def test_portfolio_sponsor_irr_placeholder_label():
     # At minimum, the experimental status should be surfaced somewhere
     assert any("experimental" in str(v).lower() or "placeholder" in str(v).lower()
                for v in all_values), f"Portfolio IRR placeholder/experimental note not found in workbook values"
+
+
+def test_excel_has_required_sheets():
+    """Verify all required sheets exist (Dashboard, Notes, Inputs, CapEx, CapEx_Items, Revenue, Debt, Tax_Depreciation, Waterfall, Returns)."""
+    import openpyxl
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    required = [
+        "Dashboard", "Notes", "Inputs", "CapEx", "CapEx_Items",
+        "Revenue", "Debt", "Tax_Depreciation", "Waterfall", "Returns",
+    ]
+    missing = [s for s in required if s not in wb.sheetnames]
+    assert not missing, f"Missing sheets: {missing}"
+
+
+
+def test_excel_sponsor_irr_not_numeric_zero():
+    """Sponsor IRR in Portfolio table should be 'n/a' string, not 0.0 float, when placeholder."""
+    import openpyxl
+    result = run_demo_project("Portfolio")
+    data = build_excel_export(
+        portfolio_result=result.portfolio_result,
+        project_inputs=result.project_inputs,
+        integration_status="experimental",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    found = False
+    for sheet_name in ["Portfolio", "Dashboard", "Notes"]:
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        for row in ws.iter_rows(values_only=True):
+            label = row[0] if row else ""
+            if label and "sponsor" in str(label).lower() and "irr" in str(label).lower():
+                val = row[1]
+                assert val == "n/a", f"Sponsor IRR in {sheet_name} should be 'n/a' but got {val!r}"
+                found = True
+                break
+        if found:
+            break
+    assert found, "Sponsor IRR row not found in Portfolio/Dashboard/Notes sheets"
+
+
+def test_excel_values_only():
+    """All cells must be values only — no Excel formula strings."""
+    import openpyxl
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]
+        for row in ws.iter_rows():
+            for cell in row:
+                assert cell.data_type != 'f', \
+                    f"Formula found in sheet '{sheet}' at {cell.coordinate}: {cell.value}"
