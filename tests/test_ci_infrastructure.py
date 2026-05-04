@@ -49,3 +49,8 @@ def test_oborovo_shim_available_in_isolated_test_context():
     proj = create_default_oborovo()
     assert proj is not None
     assert proj.info.name
+
+
+def test_bess_design_doc_exists():
+    """docs/bess_hybrid_design.md must exist (design only, not implemented)."""
+    assert os.path.exists("docs/bess_hybrid_design.md"), "docs/bess_hybrid_design.md not found"
