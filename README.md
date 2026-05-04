@@ -106,8 +106,6 @@ Both are calibrated to produce:
 - **Project IRR**: 8–15%
 - **Min DSCR**: > 1.2x
 
----
-
 ## Limitations
 
 1. **Construction** — simplified schedule, not a full delay-risk model
@@ -116,3 +114,14 @@ Both are calibrated to produce:
 4. **Tax** — complex structures (ATAD+, hybrid instruments) require manual review
 5. **Portfolio** — experimental; sponsor IRR is a placeholder until aggregation is complete
 6. **BESS/hybrid** — revenue-only shown; full waterfall integration is in progress
+
+---
+
+## Documentation
+
+- [Demo Smoke Test Checklist](docs/demo_smoke_test_checklist.md) — pre-demo verification steps
+- [Release 1 Readiness](docs/release1_readiness.md) — what's in scope and what's not
+- [Demo Script](docs/demo_script.md) — investor walkthrough and talking points
+- [Phase 3 Roadmap](docs/phase3_roadmap.md) — what's next after Release 1
+- [Test Hygiene Report](docs/test_hygiene_report.md) — test quality audit
+- [Legacy Cleanup Inventory](docs/legacy_cleanup_inventory.md) — planned cleanup
