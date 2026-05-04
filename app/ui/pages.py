@@ -113,6 +113,7 @@ def render_dashboard(result, portfolio_result=None, is_portfolio=False, integrat
 
 def render_waterfall(result, period_view="Semiannual"):
     """Render the Waterfall tab."""
+    st.caption("ℹ️ CFADS = Cash Flow After Debt Service | DSRA = Debt Service Reserve Account | SHL = Subordinated Hybrid Loan")
     if result is None:
         st.info("No results yet.")
         return
@@ -173,11 +174,11 @@ def render_portfolio(portfolio_result):
     # Summary KPIs
     cols = st.columns(3)
     with cols[0]:
-        st.metric("Pooled Revenue", f"{portfolio_result.total_revenue_keur/1000:.0f}k" if portfolio_result.total_revenue_keur else "n/a")
+        st.metric("Pooled Revenue", _fmt_keur(portfolio_result.total_revenue_keur))
     with cols[1]:
-        st.metric("Pooled EBITDA", f"{portfolio_result.total_ebitda_keur/1000:.0f}k" if portfolio_result.total_ebitda_keur else "n/a")
+        st.metric("Pooled EBITDA", _fmt_keur(portfolio_result.total_ebitda_keur))
     with cols[2]:
-        st.metric("Avg DSCR", f"{portfolio_result.avg_dscr:.3f}" if portfolio_result.avg_dscr else "n/a")
+        st.metric("Avg DSCR", _fmt_dscr(portfolio_result.avg_dscr))
 
     # Sponsor IRR placeholder warning
     if portfolio_result.portfolio_sponsor_irr in (None, 0.0):
