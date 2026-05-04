@@ -1,8 +1,6 @@
 import streamlit as st
-import sys
-sys.path.insert(0, '/root/.openclaw/workspace/finco1_new')
 
-from app.project_factories import create_default_oborovo, create_default_tuho_wind1
+from app.project_factories import create_default_solar_project, create_default_wind_project
 from domain.period_engine import PeriodEngine
 from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 from app.cache import clear_all_caches
@@ -10,11 +8,8 @@ from app.cache import clear_all_caches
 st.set_page_config(page_title="Waterfall", layout="wide")
 st.title("Waterfall Results")
 
-project = st.selectbox("Project", ["Oborovo Solar PV", "TUHO Wind 1"])
-if project == "Oborovo Solar PV":
-    inputs = create_default_oborovo()
-else:
-    inputs = create_default_tuho_wind1()
+project = st.selectbox("Project", ["Solar", "Wind"])
+inputs = create_default_solar_project() if project == "Solar" else create_default_wind_project()
 
 engine = PeriodEngine(
     financial_close=inputs.info.financial_close,
@@ -25,7 +20,7 @@ engine = PeriodEngine(
 
 config = WaterfallRunConfig.from_inputs(inputs, engine)
 
-runner = WaterfallRunner(inputs, engine)
+runner = WaterfallRunner(inputs=inputs, engine=engine)
 
 if st.button("Run Waterfall", type="primary"):
     clear_all_caches()

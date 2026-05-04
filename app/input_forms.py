@@ -4,6 +4,8 @@ from dataclasses import replace, fields, is_dataclass
 from typing import Any
 import streamlit as st
 
+from app.capex_overrides import scale_capex_items
+
 
 def _safe_replace(obj, updates: dict[str, Any]) -> Any:
     """Replace only fields that exist on the dataclass. Ignore unknown fields."""
@@ -150,9 +152,13 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
 
         solar_capex_overrides = {}
         solar_capex_overrides.update(_build_single_field_update(
-            project_inputs.capex, ('total_capex_keur', 'total_capex'), total_capex))
-        solar_capex_overrides.update(_build_single_field_update(
             project_inputs.capex, ('sculpt_capex_keur',), sculpt_capex))
+        # Scale individual CapexItem amounts proportionally to match target total_capex.
+        # This actually changes model outputs (depreciation, debt sizing) unlike the
+        # read-only total_capex property which safe_replace silently ignores.
+        if target_total_capex > 0 and target_total_capex != project_inputs.capex.total_capex:
+            scaled_capex = scale_capex_items(project_inputs.capex, target_total_capex)
+            project_inputs = replace(project_inputs, capex=scaled_capex)
 
         solar_fin_overrides = {
             'target_dscr': target_dscr,
@@ -269,9 +275,11 @@ def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
 
         wind_capex_overrides = {}
         wind_capex_overrides.update(_build_single_field_update(
-            project_inputs.capex, ('total_capex_keur', 'total_capex'), total_capex))
-        wind_capex_overrides.update(_build_single_field_update(
             project_inputs.capex, ('sculpt_capex_keur',), sculpt_capex))
+        # Scale individual CapexItem amounts proportionally to match target total_capex.
+        if target_total_capex > 0 and target_total_capex != project_inputs.capex.total_capex:
+            scaled_capex = scale_capex_items(project_inputs.capex, target_total_capex)
+            project_inputs = replace(project_inputs, capex=scaled_capex)
 
         wind_fin_overrides = {
             'target_dscr': target_dscr,

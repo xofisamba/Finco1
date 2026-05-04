@@ -203,7 +203,18 @@ class WaterfallRunner:
         )
 
     def run_with_defaults(self) -> object:
-        """Run waterfall with default configuration."""
+        """DEPRECATED: Use WaterfallRunConfig.from_inputs() + run(config) instead.
+
+        This method uses hardcoded defaults rather than project-specific financing
+        assumptions. It exists only for backward compatibility with legacy calls.
+        """
+        import warnings
+        warnings.warn(
+            "WaterfallRunner.run_with_defaults() is deprecated. "
+            "Use WaterfallRunConfig.from_inputs(inputs, engine) + runner.run(config) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.run(WaterfallRunConfig())
 
     def invalidate_cache(self) -> None:

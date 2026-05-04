@@ -72,3 +72,25 @@ class TestFromInputsMapsFields:
         config = WaterfallRunConfig.from_inputs(wind, engine)
         assert config.tax_rate == wind.tax.corporate_rate
         assert config.shl_amount_keur == wind.financing.shl_amount_keur
+
+
+def test_run_with_defaults_emits_deprecation_warning():
+    """run_with_defaults() must emit a DeprecationWarning."""
+    import warnings
+    from app.waterfall_runner import WaterfallRunner
+    from app.project_factories import create_default_solar_project
+    from domain.period_engine import PeriodEngine
+
+    solar = create_default_solar_project()
+    engine = PeriodEngine(
+        solar.info.financial_close,
+        solar.info.construction_months,
+        solar.info.horizon_years,
+        solar.revenue.ppa_term_years,
+    )
+    runner = WaterfallRunner(inputs=solar, engine=engine)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        runner.run_with_defaults()
+    assert len(w) >= 1, "run_with_defaults must emit DeprecationWarning"
+    assert any(issubclass(x.category, DeprecationWarning) for x in w)
