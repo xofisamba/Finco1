@@ -426,3 +426,16 @@ def test_excel_values_only():
             for cell in row:
                 assert cell.data_type != 'f', \
                     f"Formula found in sheet '{sheet}' at {cell.coordinate}"
+
+def test_dashboard_dscr_uses_actual_period_dscr():
+    """Dashboard min_dscr/avg_dscr must match actual period DSCRs."""
+    from app.ui_runner import run_demo_project
+    from app.output_tables import build_dashboard_kpis
+    result = run_demo_project("Solar").result
+    kpis = build_dashboard_kpis(result)
+    assert kpis["min_dscr"] == result.actual_min_dscr, (
+        "min_dscr KPI must equal actual_min_dscr"
+    )
+    assert kpis["avg_dscr"] == result.actual_avg_dscr, (
+        "avg_dscr KPI must equal actual_avg_dscr"
+    )

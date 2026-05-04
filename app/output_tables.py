@@ -85,8 +85,9 @@ def build_dashboard_kpis(result) -> dict[str, float | str | None]:
         "project_irr": _safe_get_or_none(result, 'project_irr'),
         "equity_irr": _safe_get_or_none(result, 'equity_irr'),
         "sponsor_irr": _safe_get_or_none(result, 'sponsor_irr'),
-        "min_dscr": _safe_get_or_none(result, 'min_dscr'),
-        "avg_dscr": _safe_get_or_none(result, 'avg_dscr'),
+        # Dashboard DSCR KPIs use actual period-measured DSCRs so they match the Excel DSCR Summary.
+        "min_dscr": _safe_get_or_none(result, 'actual_min_dscr'),
+        "avg_dscr": _safe_get_or_none(result, 'actual_avg_dscr'),
         "total_senior_ds_keur": _safe_get_or_none(result, 'total_senior_ds_keur'),
         "total_distribution_keur": _safe_get_or_none(result, 'total_distribution_keur'),
     }
