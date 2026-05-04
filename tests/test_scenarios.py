@@ -151,3 +151,112 @@ class TestScenarioIntegration:
             f"Upside project_irr ({mod.result.project_irr:.4f}) must be > "
             f"base ({base.result.project_irr:.4f})"
         )
+
+
+class TestScenarioSummaryCompleteness:
+    """scenario_summary() must include every parameter that apply_scenario() actually changes."""
+
+    def test_scenario_summary_includes_opex_when_changed(self):
+        """Downside must show OpEx change in scenario_summary."""
+        from app.scenarios import apply_scenario, scenario_summary
+        from app.project_factories import create_default_solar_project
+
+        solar = create_default_solar_project()
+        apply_scenario(solar, "downside")
+        summary = scenario_summary("downside")
+        labels = [r["assumption"] for r in summary]
+        assert "OpEx" in labels, f"OpEx must appear in downside summary: {labels}"
+
+    def test_scenario_summary_includes_degradation_when_changed(self):
+        """Downside must show Degradation change in scenario_summary."""
+        from app.scenarios import apply_scenario, scenario_summary
+        from app.project_factories import create_default_solar_project
+
+        solar = create_default_solar_project()
+        apply_scenario(solar, "downside")
+        summary = scenario_summary("downside")
+        labels = [r["assumption"] for r in summary]
+        assert "Degradation" in labels, f"Degradation must appear in downside summary: {labels}"
+
+    def test_scenario_summary_matches_all_non_base_rules(self):
+        """Non-base scenario_summary must show all rules where multiplier != 1.0."""
+        from app.scenarios import scenario_summary, get_scenario_rules
+
+        for scenario in ("downside", "upside"):
+            rules = get_scenario_rules(scenario)
+            summary = scenario_summary(scenario)
+            labels = {r["assumption"] for r in summary}
+
+            # All non-1.0 rules must appear
+            for key, val in rules.items():
+                if val != 1.0:
+                    expected = {
+                        "p50_multiplier": "P50 Hours",
+                        "capex_multiplier": "Total CapEx",
+                        "opex_multiplier": "OpEx",
+                        "degradation_multiplier": "Degradation",
+                        "curtailment_multiplier": "Curtailment",
+                        "tariff_multiplier": "PPA Tariff",
+                    }.get(key)
+                    if expected:
+                        assert expected in labels, (
+                            f"{scenario}: {expected} (from {key}={val}) missing from summary {labels}"
+                        )
+
+
+class TestScenarioV2Parameters:
+    """Scenario v2 parameters must affect model results correctly."""
+
+    def test_downside_increases_opex(self):
+        """Downside scenario must increase solar OpEx."""
+        from app.project_factories import create_default_solar_project
+        from app.scenarios import apply_scenario
+        from app.ui_runner import run_demo_project
+
+        solar = create_default_solar_project()
+        downside_solar = apply_scenario(solar, "downside")
+        res = run_demo_project("Solar", project_inputs_override=downside_solar)
+        # downside opex multiplier = 1.10, so y1 total should be 10% higher
+        base_y1 = sum(i.y1_amount_keur for i in solar.opex)
+        down_y1 = sum(i.y1_amount_keur for i in downside_solar.opex)
+        assert down_y1 > base_y1, (
+            f"Downside opex y1 ({down_y1:.1f}) must be > base ({base_y1:.1f})"
+        )
+
+    def test_upside_decreases_opex(self):
+        """Upside scenario must decrease solar OpEx."""
+        from app.project_factories import create_default_solar_project
+        from app.scenarios import apply_scenario
+
+        solar = create_default_solar_project()
+        upside_solar = apply_scenario(solar, "upside")
+        base_y1 = sum(i.y1_amount_keur for i in solar.opex)
+        up_y1 = sum(i.y1_amount_keur for i in upside_solar.opex)
+        assert up_y1 < base_y1, (
+            f"Upside opex y1 ({up_y1:.1f}) must be < base ({base_y1:.1f})"
+        )
+
+    def test_solar_degradation_increases_in_downside(self):
+        """Solar pv_degradation must increase in Downside scenario."""
+        from app.project_factories import create_default_solar_project
+        from app.scenarios import apply_scenario
+
+        solar = create_default_solar_project()
+        assert solar.technical.pv_degradation > 0, "Solar must have pv_degradation"
+        downside = apply_scenario(solar, "downside")
+        assert downside.technical.pv_degradation > solar.technical.pv_degradation, (
+            f"Downside degradation ({downside.technical.pv_degradation}) must be > "
+            f"base ({solar.technical.pv_degradation})"
+        )
+
+    def test_wind_degradation_safely_noop(self):
+        """Wind degradation must not crash when wind has no/zero pv_degradation."""
+        from app.project_factories import create_default_wind_project
+        from app.scenarios import apply_scenario
+
+        wind = create_default_wind_project()
+        # Wind typically has pv_degradation=0 (solar only)
+        base_deg = wind.technical.pv_degradation
+        downside = apply_scenario(wind, "downside")
+        # Must not crash and degradation_mult=1.0 in all rules anyway
+        assert downside.technical.pv_degradation == base_deg

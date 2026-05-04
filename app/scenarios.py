@@ -142,6 +142,18 @@ def scenario_summary(scenario: str):
         rows.append({"assumption": "Total CapEx", "base": "—", "scenario": f"{capex_mult:.0%}",
                      "change": f"{'+' if capex_mult > 1 else ''}{(capex_mult - 1) * 100:.0f}%",
                      "note": "CapexItem line items scaled proportionally"})
+    if opex_mult != 1.0:
+        rows.append({"assumption": "OpEx", "base": "—", "scenario": f"{opex_mult:.0%}",
+                     "change": f"{'+' if opex_mult > 1 else ''}{(opex_mult - 1) * 100:.0f}%",
+                     "note": "y1 Opex items scaled proportionally"})
+    if degradation_mult != 1.0:
+        rows.append({"assumption": "Degradation", "base": "—", "scenario": f"{degradation_mult:.0%}",
+                     "change": f"{'+' if degradation_mult > 1 else ''}{(degradation_mult - 1) * 100:.0f}%",
+                     "note": "pv_degradation rate scaled"})
+    if curtailment_mult != 1.0:
+        rows.append({"assumption": "Curtailment", "base": "—", "scenario": f"{curtailment_mult:.0%}",
+                     "change": f"{'+' if curtailment_mult > 1 else ''}{(curtailment_mult - 1) * 100:.0f}%",
+                     "note": "operating hours reduced proportionally (reserved — no-op in current scenarios)"})
     if tariff_mult != 1.0:
         rows.append({"assumption": "PPA Tariff", "base": "—", "scenario": f"{tariff_mult:.0%}",
                      "change": f"{'+' if tariff_mult > 1 else ''}{(tariff_mult - 1) * 100:.0f}%",
