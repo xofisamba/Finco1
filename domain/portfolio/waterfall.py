@@ -219,20 +219,15 @@ def run_portfolio_waterfall(
     else:
         portfolio_debt = 0.0
 
-    # Compute portfolio_project_irr from unlevered CFADS
-    # t0 = -total_capex (at earliest financial_close), t>0 = pooled cfads
-    total_capex = sum(
-        proj.capex.total_capex for proj in portfolio_inputs.projects
-    ) if portfolio_inputs else 0.0
-    # t0 date = earliest construction start among portfolio projects
-    if portfolio_inputs and portfolio_inputs.projects:
-        t0_date = min(p.info.financial_close for p in portfolio_inputs.projects)
-    else:
-        t0_date = result_periods[0].date if result_periods else None
-    all_dates = [t0_date] + [p.date for p in result_periods] if t0_date else [p.date for p in result_periods]
-    cfads_for_xirr = [-total_capex] + cfads_list if cfads_list else []
+    # ── portfolio_project_irr: date-aligned XIRR ─────────────────────────────────
+    # Each project's CapEx outflow is placed on its own financial_close date.
+    # Each project's operating CFADS is placed on its waterfall period dates.
+    # Cash flows on the same date are aggregated before XIRR computation.
     try:
-        irr = xirr(cfads_for_xirr, all_dates)
+        irr_cf_list, irr_date_list = build_portfolio_project_cashflows(
+            portfolio_inputs, project_results
+        )
+        irr = xirr(irr_cf_list, irr_date_list)
         portfolio_project_irr = irr if irr is not None else 0.0
     except Exception:
         portfolio_project_irr = 0.0
@@ -255,6 +250,53 @@ def run_portfolio_waterfall(
         # SHL distribution logic, and sponsor-specific TACC/CFADS aggregation.
         # Not implemented — remains 0.0 placeholder
     )
+
+
+def build_portfolio_project_cashflows(portfolio_inputs, project_results):
+    """Build date-aligned cash-flow series for portfolio XIRR.
+
+    Each project's CapEx outflow is placed on its own financial_close date.
+    Each project's CFADS is placed on its waterfall period dates.
+    Cash flows on the same date are aggregated.
+
+    Args:
+        portfolio_inputs: PortfolioInputs (provides project list and financial_close dates)
+        project_results: tuple of (project_code, WaterfallResult)
+
+    Returns:
+        (cash_flows: list[float], dates: list[date]) for xirr()
+    """
+    from collections import defaultdict
+
+    cashflows = defaultdict(float)  # date → cumulative amount
+
+    if portfolio_inputs and portfolio_inputs.projects:
+        # Map project codes to their CapEx
+        capex_by_code = {proj.info.code: proj.capex.total_capex for proj in portfolio_inputs.projects}
+        fc_by_code = {proj.info.code: proj.info.financial_close for proj in portfolio_inputs.projects}
+
+        for code, result in project_results:
+            capex = capex_by_code.get(code, 0.0)
+            fc_date = fc_by_code.get(code)
+            if fc_date and capex > 0:
+                cashflows[fc_date] -= capex  # outflow on project's financial_close
+
+            if result and result.periods:
+                for p in result.periods:
+                    if p.is_operation:
+                        cfads = p.ebitda_keur - p.tax_keur
+                        if cfads > 0:
+                            cashflows[p.date] += cfads
+    else:
+        # Fallback: no portfolio_inputs — cannot align CapEx by financial_close date.
+        # Return empty series; portfolio_project_irr stays 0.0.
+        return [], []
+
+    sorted_dates = sorted(cashflows.keys())
+    cf_list = [cashflows[d] for d in sorted_dates]
+    date_list = sorted_dates
+    return cf_list, date_list
+
 
 
 __all__ = [
