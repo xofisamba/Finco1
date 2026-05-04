@@ -153,6 +153,8 @@ def _write_notes_sheet(writer, status, note, scenario, period_view) -> None:
     """Write a Notes sheet."""
     rows = [
         ("Field", "Value"),
+        ("Model Version", "industry-engine-refactor"),
+        ("Run Timestamp", pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")),
         ("Integration Status", status),
         ("Scenario", scenario),
         ("Period View", period_view),

@@ -361,3 +361,68 @@ def test_excel_values_only():
             for cell in row:
                 assert cell.data_type != 'f', \
                     f"Formula found in sheet '{sheet}' at {cell.coordinate}: {cell.value}"
+
+
+def test_excel_metadata_present():
+    """Notes sheet must contain model_version, run_timestamp, scenario."""
+    import openpyxl
+    from io import BytesIO
+    from app.excel_export import build_excel_export
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    notes = wb["Notes"]
+    fields = [row[0] for row in notes.iter_rows(values_only=True)]
+    assert "Model Version" in fields, "Notes must include Model Version"
+    assert "Run Timestamp" in fields, "Notes must include Run Timestamp"
+    assert "Scenario" in fields, "Notes must include Scenario"
+
+
+def test_excel_contains_required_ic_sheets():
+    """Excel must contain sheets required for IC pack."""
+    import openpyxl
+    from io import BytesIO
+    from app.excel_export import build_excel_export
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    required = ["Dashboard", "Notes", "Returns", "CapEx", "Revenue"]
+    missing = [s for s in required if s not in wb.sheetnames]
+    assert not missing, f"Missing IC-required sheets: {missing}"
+
+
+def test_excel_values_only():
+    """All cells must be values only — no Excel formula strings."""
+    import openpyxl
+    from io import BytesIO
+    from app.excel_export import build_excel_export
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]
+        for row in ws.iter_rows():
+            for cell in row:
+                assert cell.data_type != 'f', \
+                    f"Formula found in sheet '{sheet}' at {cell.coordinate}"
