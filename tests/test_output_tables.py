@@ -181,6 +181,28 @@ def test_portfolio_table_has_avg_and_min_dscr():
     assert "Min DSCR" in df.index
 
 
+def test_portfolio_table_sponsor_irr_is_not_numeric_zero():
+    """Portfolio table should not display numeric 0.0 as sponsor IRR placeholder."""
+    from unittest.mock import MagicMock
+    pr = MagicMock()
+    pr.total_revenue_keur = 100_000.0
+    pr.total_ebitda_keur = 70_000.0
+    pr.total_tax_keur = 10_000.0
+    pr.pooled_cfads_schedule = (50_000.0, 55_000.0, 60_000.0)
+    pr.total_senior_ds_keur = 30_000.0
+    pr.avg_dscr = 1.4
+    pr.min_dscr = 1.2
+    pr.portfolio_debt_keur = 200_000.0
+    pr.portfolio_project_irr = 0.0
+    pr.portfolio_sponsor_irr = 0.0  # placeholder
+    df = build_portfolio_table(pr)
+    sponsor_idx = df.index.get_loc("Sponsor IRR (placeholder)")
+    val = df.iloc[sponsor_idx, 0]
+    # Must not be numeric 0.0 — should be "n/a" or None/placeholder string
+    assert not (isinstance(val, (int, float)) and val == 0.0), \
+        f"Sponsor IRR should not be numeric 0.0, got {val!r}"
+
+
 def test_annual_aggregation_groups_date_columns_by_year():
     df = pd.DataFrame({
         "2025-06-30": [100, 50],

@@ -52,17 +52,17 @@ class TestScenarioSummary:
         """P50 and tariff decrease; capex increases in downside."""
         rows = scenario_summary("downside")
         found = {r["assumption"]: r["change"] for r in rows}
-        assert found["P50 Hours"].startswith("-"), f"P50 should decrease: {found["P50 Hours"]}"
-        assert found["PPA Tariff"].startswith("-"), f"Tariff should decrease: {found["PPA Tariff"]}"
-        assert found["Total CapEx"].startswith("+"), f"CapEx should increase: {found["Total CapEx"]}"
+        assert found["P50 Hours"].startswith("-"), f"P50 should decrease: {found['P50 Hours']}"
+        assert found["PPA Tariff"].startswith("-"), f"Tariff should decrease: {found['PPA Tariff']}"
+        assert found["Total CapEx"].startswith("+"), f"CapEx should increase: {found['Total CapEx']}"
 
     def test_upside_changes_are_positive(self):
         """P50 and tariff increase; capex decreases in upside."""
         rows = scenario_summary("upside")
         found = {r["assumption"]: r["change"] for r in rows}
-        assert found["P50 Hours"].startswith("+"), f"P50 should increase: {found["P50 Hours"]}"
-        assert found["PPA Tariff"].startswith("+"), f"Tariff should increase: {found["PPA Tariff"]}"
-        assert found["Total CapEx"].startswith("-"), f"CapEx should decrease: {found["Total CapEx"]}"
+        assert found["P50 Hours"].startswith("+"), f"P50 should increase: {found['P50 Hours']}"
+        assert found["PPA Tariff"].startswith("+"), f"Tariff should increase: {found['PPA Tariff']}"
+        assert found["Total CapEx"].startswith("-"), f"CapEx should decrease: {found['Total CapEx']}"
 
 
 class TestApplyScenario:

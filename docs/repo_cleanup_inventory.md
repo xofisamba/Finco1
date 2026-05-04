@@ -43,9 +43,7 @@
 | Path | Reason | Runtime refs | Test refs |
 |---|---|---|---|
 | `oborovo_comparison.xlsx` | Oborovo-specific Excel artifact | None | test fixture |
-| `docs/EXCEL_UX_AND_CALIBRATION_MAPPING.md` | Calibration design doc | None | None |
 | `docs/FINCOGPT_EXCEL_PARITY_PLAN.md` | Calibration plan | None | None |
-| `docs/FINCOGPT_CALIBRATION_STATUS.md` | Calibration status doc | None | None |
 | `tests/fixtures/excel_calibration_targets.json` | Calibration targets | None | None |
 | `tests/fixtures/excel_golden_oborovo.json` | Oborovo golden results | None | None |
 | `tests/fixtures/excel_golden_tuho.json` | TUHO golden results | None | None |

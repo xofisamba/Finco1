@@ -248,7 +248,7 @@ def build_portfolio_table(portfolio_result) -> pd.DataFrame:
     ]
     if portfolio_result.portfolio_project_irr not in (None, 0.0):
         values.append(_safe_get_or_none(portfolio_result, 'portfolio_project_irr'))
-    values.append(portfolio_sponsor if portfolio_sponsor is not None else 0.0)
+    values.append(portfolio_sponsor if portfolio_sponsor not in (None, 0.0) else "n/a")
 
     df = pd.DataFrame({"Value": values}, index=labels)
     df.index.name = "Metric"

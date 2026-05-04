@@ -11,7 +11,8 @@ Behavior:
 - Otherwise sculpts portfolio debt from pooled CFADS using
   shared_financing.target_dscr via closed_form_sculpt
 - Does not yet implement cross-default enforcement
-- portfolio_project_irr and portfolio_sponsor_irr are placeholders
+- portfolio_project_irr is experimental pooled unlevered CFADS IRR
+- portfolio_sponsor_irr is a placeholder (requires sponsor-level CF aggregation)
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -64,9 +65,8 @@ class PortfolioResult:
     portfolio_debt_keur: float
     pooled_cfads_schedule: tuple[float, ...]
     portfolio_debt_service_schedule: tuple[float, ...]
-    # IRR placeholders (require full cash-flow aggregation — not yet)
-    portfolio_project_irr: float = 0.0
-    portfolio_sponsor_irr: float = 0.0
+    portfolio_project_irr: float = 0.0  # experimental pooled unlevered CFADS IRR
+    portfolio_sponsor_irr: float = 0.0  # placeholder — requires sponsor-level CF aggregation
 
 
 def aggregate_project_results(
@@ -245,7 +245,7 @@ def run_portfolio_waterfall(
         pooled_cfads_schedule=tuple(cfads_list),
         portfolio_debt_service_schedule=tuple(ds_schedule),
         portfolio_project_irr=portfolio_project_irr,
-        portfolio_sponsor_irr=0.0,  # placeholder — requires reliable sponsor CF aggregation
+        portfolio_sponsor_irr=0.0,  # placeholder — sponsor-level CF not aggregated
     )
 
 

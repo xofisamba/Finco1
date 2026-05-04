@@ -1,8 +1,7 @@
 """Scenario engine — pure functions, no Streamlit imports."""
-from dataclasses import fields, is_dataclass, replace
+from dataclasses import is_dataclass, replace
 from app.capex_overrides import scale_capex_items
 
-# ── helpers ──────────────────────────────────────────────────────────────
 
 def _first_existing_field(obj, candidates):
     """Return first existing field name found on obj."""
@@ -11,20 +10,6 @@ def _first_existing_field(obj, candidates):
             return c
     return None
 
-def _replace_if_exists(obj, field_name, value):
-    """Replace field if it exists on the dataclass."""
-    if hasattr(obj, field_name):
-        return replace(obj, **{field_name: value})
-    return obj
-
-def _scale_if_exists(obj, field_name, multiplier):
-    """Scale a numeric field if it exists."""
-    if not hasattr(obj, field_name):
-        return obj
-    val = getattr(obj, field_name, 0)
-    if val is None:
-        return obj
-    return replace(obj, **{field_name: val * multiplier})
 
 # ── scenario rules ──────────────────────────────────────────────────────────
 
