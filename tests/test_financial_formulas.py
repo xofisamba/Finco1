@@ -169,8 +169,12 @@ class TestSculptingUsesCFADSProxy:
             f"should be ≤ base at 10% tax ({base.result.total_senior_ds_keur:.0f})"
         )
 
-    def test_sculpted_min_dscr_close_to_target(self):
-        """Min DSCR should be close to target_dscr (within 5%)."""
+    def test_sculpted_min_dscr_above_95pct_of_target(self):
+        """Min DSCR (post-lockup, non-inf) must be >= 95% of target_dscr.
+
+        Sculpting target is target_dscr. Post-lockup DSCR should not fall far below it.
+        Some gap is expected due to CFADS proxy approximation vs full iterative sizing.
+        """
         from app.project_factories import create_default_solar_project
         from app.ui_runner import run_demo_project
 
@@ -178,11 +182,17 @@ class TestSculptingUsesCFADSProxy:
         target = solar.financing.target_dscr
         result = run_demo_project("Solar")
         assert result.result is not None
-        # Allow first period / partial period distortion — check avg_dscr instead
-        # (actual min_dscr may be lower in lockup periods)
-        avg_dscr = result.result.avg_dscr
-        assert abs(avg_dscr - target) / target < 0.20, (
-            f"avg_dscr ({avg_dscr:.3f}) should be within 5% of target_dscr ({target})"
+
+        debt_periods = [
+            p for p in result.result.periods
+            if p.is_operation
+            and p.senior_ds_keur > 0
+            and p.dscr not in (None, float("inf"))
+        ]
+        assert debt_periods, "No debt-service periods found"
+        min_dscr = min(p.dscr for p in debt_periods)
+        assert min_dscr >= target * 0.95, (
+            f"min_dscr ({min_dscr:.3f}) should be >= 95% of target_dscr ({target})"
         )
 
     def test_higher_tax_reduces_sculpted_debt(self):

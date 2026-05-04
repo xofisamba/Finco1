@@ -31,3 +31,21 @@ def test_oborovo_cleanup_plan_doc_exists():
     """docs/oborovo_compat_cleanup_plan.md must exist."""
     assert os.path.exists("docs/oborovo_compat_cleanup_plan.md"), \
         "docs/oborovo_compat_cleanup_plan.md not found"
+
+
+def test_oborovo_shim_available_in_isolated_test_context():
+    """ProjectInputs.create_default_oborovo must be accessible after app.project_factories import."""
+    # This verifies the shim works even in an isolated context
+    import importlib
+    import sys
+
+    # Remove app.project_factories from cache to simulate isolated import
+    mods_to_remove = [k for k in sys.modules if k.startswith("app.project_factories") or k.startswith("domain.inputs")]
+    for m in mods_to_remove:
+        del sys.modules[m]
+
+    # Import fresh — shim should be installed
+    from app.project_factories import create_default_oborovo
+    proj = create_default_oborovo()
+    assert proj is not None
+    assert proj.info.name

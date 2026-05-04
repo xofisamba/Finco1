@@ -125,7 +125,7 @@ class TestApplyScenario:
 
 class TestScenarioIntegration:
     def test_downside_changes_solar_model_result(self):
-        """"Downside scenario reduces solar project IRR."""
+        """Downside scenario reduces solar project IRR."""
         base = run_demo_project("Solar")
         assert base.result is not None
         solar = create_default_solar_project()
@@ -139,7 +139,7 @@ class TestScenarioIntegration:
         )
 
     def test_upside_changes_wind_model_result(self):
-        """"Upside scenario increases wind project IRR."""
+        """Upside scenario increases wind project IRR."""
         base = run_demo_project("Wind")
         assert base.result is not None
         wind = create_default_wind_project()
