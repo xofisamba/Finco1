@@ -933,8 +933,8 @@ def run_waterfall(
         min_dscr=sculpt_result.min_dscr,
         max_dscr=max(sculpt_result.dscr_schedule) if sculpt_result.dscr_schedule else 0.0,
         target_dscr=target_dscr,
-        actual_min_dscr=sculpt_result.min_dscr,
-        actual_avg_dscr=sculpt_result.avg_dscr,
+        actual_min_dscr=min((d for d in all_dsrs if d != float('inf')), default=0.0),
+        actual_avg_dscr=(sum(d for d in all_dsrs if d != float('inf')) / sum(1 for d in all_dsrs if d != float('inf'))) if any(d != float('inf') for d in all_dsrs) else 0.0,
         # WARN-2 fix: filter out inf values for min calculation
         min_llcr=min((wp.llcr for wp in waterfall_periods if 0 < wp.llcr < float('inf')), default=0.0),
         min_plcr=min((wp.plcr for wp in waterfall_periods if 0 < wp.plcr < float('inf')), default=0.0),

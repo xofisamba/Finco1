@@ -53,6 +53,15 @@ Do NOT add hybrid scenario parameters.
 Stochastic scenarios, Monte Carlo simulation, P90 sizing — out of scope.
 Do NOT add probabilistic scenario types.
 
+## Implemented in Phase 2 ✓
+
+Scenario v2 is implemented and active:
+- `apply_scenario()` applies capex, opex, degradation, curtailment, tariff multipliers
+- BESS/hybrid guardrail: scenarios forced to Base with user warning
+- Portfolio guardrail: scenarios blocked with explicit message
+- Directional tests: IRR moves correctly per scenario parameter
+- Economic LCOE: tariff-independent (verified by test)
+
 ## Guardrail Statement
 
 > **Scenario v2 must NOT be implemented for Portfolio or BESS/hybrid without full model support.**

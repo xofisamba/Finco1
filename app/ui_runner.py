@@ -134,6 +134,14 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
             factory = FACTORY_MAP[project_type]
             proj = project_inputs_override if project_inputs_override is not None else factory()
 
+            # BESS scenario guardrail — partial model, block scenarios
+            BESS_TYPES = {"BESS", "Solar+BESS", "Wind+BESS"}
+            if scenario != "Base" and project_type in BESS_TYPES:
+                messages.append(
+                    f"⚠️ Scenarios not supported for {project_type} — showing Base case."
+                )
+                scenario = "Base"
+
             # Apply scenario if not Base
             if scenario != "Base":
                 from app.scenarios import apply_scenario
@@ -142,6 +150,12 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
             engine = _build_period_engine(proj)
             result.result = _run_waterfall(proj, engine)
             result.project_inputs = proj
+
+            # Surface model warnings to user
+            from domain.validation import warn_model_unrealistic
+            warnings = warn_model_unrealistic(result.result, proj)
+            for w in warnings:
+                messages.append(f"⚠️ {w.code}: {w.message}")
 
             cfg = PROJECT_CONFIGS[project_type]
             result.integration_status = cfg["status"]

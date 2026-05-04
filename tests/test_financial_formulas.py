@@ -282,3 +282,23 @@ class TestSculptingUsesCFADSProxy:
         assert res_hi.result.total_senior_ds_keur < res_lo.result.total_senior_ds_keur, (
             f"20% tax should give lower total_senior_ds_keur than 10% tax"
         )
+
+
+def test_waterfall_result_dscr_matches_periods():
+    """actual_min_dscr and actual_avg_dscr must match real period DSCR values."""
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    assert result.result is not None
+
+    op_dsrs = [p.dscr for p in result.result.periods if p.is_operation and p.dscr != float('inf')]
+    assert len(op_dsrs) > 0, "Must have at least one operation period with valid DSCR"
+
+    assert result.result.actual_min_dscr == min(op_dsrs), (
+        f"actual_min_dscr ({result.result.actual_min_dscr}) must equal "
+        f"min(period DSCRs) ({min(op_dsrs)})"
+    )
+    assert abs(result.result.actual_avg_dscr - (sum(op_dsrs) / len(op_dsrs))) < 1e-6, (
+        f"actual_avg_dscr ({result.result.actual_avg_dscr}) must equal "
+        f"avg(period DSCRs) ({sum(op_dsrs) / len(op_dsrs)})"
+    )

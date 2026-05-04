@@ -17,6 +17,7 @@ def build_excel_export(
     integration_note: str | None = None,
     scenario: str = "Base",
     period_view: str = "Semiannual",
+    warnings: list = None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -99,7 +100,8 @@ def build_excel_export(
             _write_sheet(writer, "DSCR Summary", dscr_df)
 
         # Notes sheet
-        _write_notes_sheet(writer, integration_status, integration_note, scenario, period_view)
+        _write_notes_sheet(writer, integration_status, integration_note, scenario, period_view,
+                            warnings=warnings if warnings else [])
     
     output.seek(0)
     return output.read()
@@ -161,7 +163,9 @@ def _write_validation_sheet(writer, validation_issues) -> None:
         cell.font = Font(bold=True)
 
 
-def _write_notes_sheet(writer, status, note, scenario, period_view) -> None:
+def _write_notes_sheet(writer, status, note, scenario, period_view, warnings=None) -> None:
+    if warnings is None:
+        warnings = []
     """Write a Notes sheet."""
     rows = [
         ("Field", "Value"),
@@ -178,6 +182,12 @@ def _write_notes_sheet(writer, status, note, scenario, period_view) -> None:
     # BESS/hybrid warning
     if status == "partial":
         rows.append(("BESS/hybrid Status", "Partial integration — revenue-only shown, waterfall in progress"))
+
+    # Model Warnings section
+    if warnings:
+        rows.append(("Model Warnings", "—"))
+        for w in warnings:
+            rows.append((w.get("code", "WARN"), w.get("message", str(w))))
     # Portfolio warning
     if status == "experimental":
         rows.append(("Portfolio Status", "Experimental — sponsor IRR is placeholder"))
