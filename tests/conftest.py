@@ -3,6 +3,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add domain to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -66,6 +68,12 @@ def _app_calibration_available() -> bool:
     except ImportError:
         return False
 
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _oborovo_compat_shim():
+    """Ensure Oborovo shim is installed before any test runs."""
+    import app.project_factories  # noqa: F401
 
 def pytest_ignore_collect(collection_path, config):
     """Skip optional legacy test modules when their runtime package is absent,

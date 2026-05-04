@@ -125,23 +125,29 @@ class TestApplyScenario:
 
 class TestScenarioIntegration:
     def test_downside_changes_solar_model_result(self):
-        """Downside scenario must change model result."""
+        """"Downside scenario reduces solar project IRR."""
         base = run_demo_project("Solar")
         assert base.result is not None
         solar = create_default_solar_project()
         downside_solar = apply_scenario(solar, "downside")
         mod = run_demo_project("Solar", project_inputs_override=downside_solar)
         assert mod.result is not None
-        # At least one metric should differ (tariff/generation down)
-        assert base.result.project_irr != mod.result.project_irr or                base.result.equity_irr != mod.result.equity_irr
+        # Generation and tariff are lower in Downside → IRR must be lower
+        assert mod.result.project_irr < base.result.project_irr, (
+            f"Downside project_irr ({mod.result.project_irr:.4f}) must be < "
+            f"base ({base.result.project_irr:.4f})"
+        )
 
     def test_upside_changes_wind_model_result(self):
-        """Upside scenario must change model result."""
+        """"Upside scenario increases wind project IRR."""
         base = run_demo_project("Wind")
         assert base.result is not None
         wind = create_default_wind_project()
         upside_wind = apply_scenario(wind, "upside")
         mod = run_demo_project("Wind", project_inputs_override=upside_wind)
         assert mod.result is not None
-        # At least one metric should differ (tariff/generation up)
-        assert base.result.project_irr != mod.result.project_irr or                base.result.equity_irr != mod.result.equity_irr
+        # Generation and tariff are higher in Upside → IRR must be higher
+        assert mod.result.project_irr > base.result.project_irr, (
+            f"Upside project_irr ({mod.result.project_irr:.4f}) must be > "
+            f"base ({base.result.project_irr:.4f})"
+        )

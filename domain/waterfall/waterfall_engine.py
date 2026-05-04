@@ -291,7 +291,12 @@ def run_waterfall(
             rate_schedule = list(rate_schedule) + [rate_schedule[-1]] * (tenor_periods - len(rate_schedule))
         elif len(rate_schedule) > tenor_periods:
             rate_schedule = rate_schedule[:tenor_periods]
-    cfads_for_sculpt = ebitda_schedule[:tenor_periods]
+    # Debt sculpting uses CFADS proxy (EBITDA minus estimated tax), not raw EBITDA,
+    # so target DSCR aligns with after-tax DSCR measurement: DSCR = (EBITDA - tax) / debt_service
+    cfads_for_sculpt = [
+        max(0.0, ebitda * (1.0 - tax_rate))
+        for ebitda in ebitda_schedule[:tenor_periods]
+    ]
 
     # Compute DSCR-constrained debt (no gearing cap) as base
     sculpt_result = closed_form_sculpt(

@@ -38,6 +38,7 @@
 4. **Economic LCOE only**: Does not include debt service, financing costs, or WACC.
 5. **No P90/probabilistic sizing**: Deterministic scenarios only.
 6. **No tax optimization features**: Thin cap, ATAD rules present but basic.
+7. **Debt sculpting uses CFADS proxy**: Sculpting base = EBITDA × (1 − tax_rate), not full iterative after-tax sizing. Full iterative tax/debt sculpting not yet implemented. Suitable for MVP screening; validate before bankable debt sizing.
 
 ## Explicit Warnings
 
