@@ -4,6 +4,7 @@ from utils.cache import (
     compute_waterfall_cached,
     invalidate_waterfall_cache,
     WaterfallCache,
+    deprecated,
 )
 from utils.logging_config import get_logger, log_exception
 

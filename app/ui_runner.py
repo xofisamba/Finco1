@@ -1,8 +1,43 @@
 """UI runner — creates and runs demo projects for the Streamlit shell."""
 from __future__ import annotations
-from typing import TypedDict
+import logging
+import os
 from dataclasses import dataclass, field
-import warnings
+from typing import TypedDict
+
+logger = logging.getLogger(__name__)
+
+PARTIAL_NOTE = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
+PORTFOLIO_NOTE = "Portfolio IRR and pooling are experimental."
+
+PROJECT_CONFIGS = {
+    "Solar": {
+        "factory": "create_default_solar_project",
+        "status": "full",
+        "note": None,
+    },
+    "Wind": {
+        "factory": "create_default_wind_project",
+        "status": "full",
+        "note": None,
+    },
+    "BESS": {
+        "factory": "create_default_bess_project",
+        "status": "partial",
+        "note": PARTIAL_NOTE,
+    },
+    "Solar+BESS": {
+        "factory": "create_default_solar_bess_project",
+        "status": "partial",
+        "note": PARTIAL_NOTE,
+    },
+    "Wind+BESS": {
+        "factory": "create_default_wind_bess_project",
+        "status": "partial",
+        "note": PARTIAL_NOTE,
+    },
+}
+
 
 @dataclass
 class DemoResult:
@@ -13,14 +48,26 @@ class DemoResult:
     project_type: str = ""
     is_portfolio: bool = False
     validation_issues: list = field(default_factory=list)
-    integration_status: str = "full"  # "full" | "partial" | "experimental"
+    integration_status: str = "full"
     integration_note: str | None = None
 
+
+def _build_period_engine(project_inputs):
+    from domain.period_engine import PeriodEngine
+    return PeriodEngine(
+        financial_close=project_inputs.info.financial_close,
+        construction_months=project_inputs.info.construction_months,
+        horizon_years=project_inputs.info.horizon_years,
+        ppa_years=project_inputs.revenue.ppa_term_years,
+    )
+
+
 def _run_waterfall(project_inputs, engine):
-    """Run waterfall via WaterfallRunner with default config."""
-    from app.waterfall_runner import WaterfallRunner
+    """Run waterfall using config derived from project inputs."""
+    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
     runner = WaterfallRunner(inputs=project_inputs, engine=engine)
-    return runner.run_with_defaults()
+    config = WaterfallRunConfig.from_inputs(project_inputs, engine)
+    return runner.run(config)
 
 
 def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_override=None) -> DemoResult:
@@ -35,15 +82,22 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
     from app.portfolio_runner import run_portfolio_from_inputs
     from domain.portfolio.inputs import PortfolioInputs
     from domain.inputs import FinancingParams
-    from domain.period_engine import PeriodEngine
+
+    FACTORY_MAP = {
+        "Solar": create_default_solar_project,
+        "Wind": create_default_wind_project,
+        "BESS": create_default_bess_project,
+        "Solar+BESS": create_default_solar_bess_project,
+        "Wind+BESS": create_default_wind_bess_project,
+    }
 
     result = DemoResult(project_type=project_type)
     messages = []
 
-    # NEW: validate overrides before running
+    # Validate overrides before running
     if project_inputs_override is not None:
         from domain.validation import validate_project_inputs
-        issues = validate_project_inputs(project_inputs_override)
+        issues = list(validate_project_inputs(project_inputs_override))
         error_issues = [i for i in issues if i.severity == "error"]
         if error_issues:
             return DemoResult(
@@ -55,70 +109,9 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
                 integration_note=None,
                 validation_issues=issues,
             )
-        # warnings only — continue to run
 
     try:
-        if project_type == "Solar":
-            proj = create_default_solar_project() if project_inputs_override is None else project_inputs_override
-            engine = PeriodEngine(
-                financial_close=proj.info.financial_close,
-                construction_months=proj.info.construction_months,
-                horizon_years=proj.info.horizon_years,
-                ppa_years=proj.revenue.ppa_term_years,
-            )
-            result.result = _run_waterfall(proj, engine)
-            result.project_inputs = proj
-            result.integration_status = "full"
-            result.integration_note = None
-        elif project_type == "Wind":
-            proj = create_default_wind_project() if project_inputs_override is None else project_inputs_override
-            engine = PeriodEngine(
-                financial_close=proj.info.financial_close,
-                construction_months=proj.info.construction_months,
-                horizon_years=proj.info.horizon_years,
-                ppa_years=proj.revenue.ppa_term_years,
-            )
-            result.result = _run_waterfall(proj, engine)
-            result.project_inputs = proj
-            result.integration_status = "full"
-            result.integration_note = None
-        elif project_type == "BESS":
-            proj = create_default_bess_project() if project_inputs_override is None else project_inputs_override
-            engine = PeriodEngine(
-                financial_close=proj.info.financial_close,
-                construction_months=proj.info.construction_months,
-                horizon_years=proj.info.horizon_years,
-                ppa_years=proj.revenue.ppa_term_years,
-            )
-            result.result = _run_waterfall(proj, engine)
-            result.project_inputs = proj
-            result.integration_status = "partial"
-            result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
-        elif project_type == "Solar+BESS":
-            proj = create_default_solar_bess_project() if project_inputs_override is None else project_inputs_override
-            engine = PeriodEngine(
-                financial_close=proj.info.financial_close,
-                construction_months=proj.info.construction_months,
-                horizon_years=proj.info.horizon_years,
-                ppa_years=proj.revenue.ppa_term_years,
-            )
-            result.result = _run_waterfall(proj, engine)
-            result.project_inputs = proj
-            result.integration_status = "partial"
-            result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
-        elif project_type == "Wind+BESS":
-            proj = create_default_wind_bess_project() if project_inputs_override is None else project_inputs_override
-            engine = PeriodEngine(
-                financial_close=proj.info.financial_close,
-                construction_months=proj.info.construction_months,
-                horizon_years=proj.info.horizon_years,
-                ppa_years=proj.revenue.ppa_term_years,
-            )
-            result.result = _run_waterfall(proj, engine)
-            result.project_inputs = proj
-            result.integration_status = "partial"
-            result.integration_note = "BESS/hybrid waterfall integration is in progress. Revenue-only shown."
-        elif project_type == "Portfolio":
+        if project_type == "Portfolio":
             proj_solar = create_default_solar_project()
             proj_wind = create_default_wind_project()
             shared = FinancingParams(
@@ -136,19 +129,28 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
             result.project_inputs = pf
             result.is_portfolio = True
             result.integration_status = "experimental"
-            result.integration_note = "Portfolio IRR and pooling are experimental."
+            result.integration_note = PORTFOLIO_NOTE
+        elif project_type in FACTORY_MAP:
+            factory = FACTORY_MAP[project_type]
+            proj = project_inputs_override if project_inputs_override is not None else factory()
+            engine = _build_period_engine(proj)
+            result.result = _run_waterfall(proj, engine)
+            result.project_inputs = proj
+
+            cfg = PROJECT_CONFIGS[project_type]
+            result.integration_status = cfg["status"]
+            result.integration_note = cfg["note"]
         else:
             messages.append(f"Unknown project type: {project_type}")
 
-        # Scenario informational notice
         if scenario != "Base":
             messages.append(
                 "Scenario selector is informational only. "
                 "Downside/Upside scaling is not yet implemented."
             )
 
-        # Validation
-        if project_type in ("Solar", "Wind", "BESS", "Solar+BESS", "Wind+BESS"):
+        # Validation for non-portfolio projects
+        if project_type in FACTORY_MAP:
             from domain.validation import validate_project_inputs
             validation_issues = list(validate_project_inputs(proj))
             result.validation_issues = validation_issues
@@ -158,7 +160,10 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
             result.validation_issues = validation_issues
 
     except Exception as e:
-        messages.append(f"Error running {project_type}: {str(e)}")
+        logger.exception("Error running %s", project_type)
+        if os.getenv("FINCOGPT_RAISE_UI_ERRORS") == "1":
+            raise
+        messages.append(f"Error running {project_type}: {type(e).__name__}: {e}")
 
     result.messages = messages
     return result

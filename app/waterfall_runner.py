@@ -69,6 +69,67 @@ class WaterfallRunConfig:
         """Generate cache key from config parameters."""
         return f"wf_{self.rate_per_period:.6f}_{self.tenor_periods}_{self.target_dscr:.3f}_{self.shl_amount_keur:.0f}"
 
+    @classmethod
+    def from_inputs(cls, inputs: "ProjectInputs", engine: "PeriodEngine") -> "WaterfallRunConfig":
+        """Build a config derived from project inputs and period engine.
+
+        Maps financing, tax, SHL, and equity params from ProjectInputs into
+        a WaterfallRunConfig so the UI need not hardcode defaults.
+        """
+        # Count operating periods
+        periods = list(engine.periods())
+        op_periods = [p for p in periods if p.is_operation]
+        tenor_periods = inputs.financing.senior_tenor_years * 2
+        if tenor_periods == 0:
+            tenor_periods = len(op_periods) if op_periods else len(periods)
+
+        # Determine all-in rate per period
+        fin = inputs.financing
+        if hasattr(fin, "all_in_rate") and fin.all_in_rate:
+            rate_per_period = fin.all_in_rate / 2
+        elif hasattr(fin, "base_rate") and hasattr(fin, "margin_bps"):
+            rate_per_period = (fin.base_rate + fin.margin_bps / 10000.0) / 2
+        else:
+            rate_per_period = cls.rate_per_period  # use default
+
+        # Map SHL repayment method — FinancingParams may use str or enum
+        shl_repayment = fin.shl_repayment_method
+        if isinstance(shl_repayment, str):
+            from domain.inputs import SHLRepaymentMethod
+            shl_repayment = SHLRepaymentMethod(shl_repayment)
+
+        # Map equity_irr_method — FinancingParams stores as str, config expects enum
+        from domain.inputs import EquityIRRMethod
+        eq_irr = fin.equity_irr_method
+        if isinstance(eq_irr, str):
+            eq_irr = EquityIRRMethod(eq_irr)
+
+        # Map debt_sizing_method — FinancingParams stores as str, config expects enum
+        from domain.inputs import DebtSizingMethod
+        ds_method = fin.debt_sizing_method
+        if isinstance(ds_method, str):
+            ds_method = DebtSizingMethod(ds_method)
+
+        return cls(
+            rate_per_period=rate_per_period,
+            tenor_periods=tenor_periods,
+            target_dscr=fin.target_dscr,
+            lockup_dscr=fin.lockup_dscr,
+            tax_rate=inputs.tax.corporate_rate,
+            dsra_months=fin.dsra_months,
+            shl_amount_keur=fin.shl_amount_keur,
+            shl_rate=fin.shl_rate,
+            shl_idc_keur=fin.shl_idc_keur,
+            shl_repayment_method=shl_repayment,
+            shl_tenor_years=fin.shl_tenor_years,
+            equity_irr_method=eq_irr,
+            share_capital_keur=fin.share_capital_keur,
+            sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
+            debt_sizing_method=ds_method,
+            fixed_debt_keur=fin.fixed_debt_keur,
+            dscr_schedule=fin.dscr_schedule,
+        )
+
 
 @dataclass
 class WaterfallRunner:

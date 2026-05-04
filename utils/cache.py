@@ -1,14 +1,87 @@
-"""Caching utilities for expensive computations.
-
-Provides @st.cache_data wrappers for waterfall and other expensive functions.
 """
-import streamlit as st
-from typing import Optional
+Deprecated compatibility shim. Use app.cache directly.
+
+This module re-exports from app.cache for backward compatibility with
+any code that imports from utils.cache. New code should import directly
+from app.cache.
+"""
+import warnings
+
+# Re-export all cached functions from canonical app.cache
+from app.cache import (
+    hash_inputs_for_cache,
+    hash_engine_for_cache,
+    cached_generation_schedule,
+    cached_revenue_schedule,
+    cached_opex_schedule_annual,
+    cached_model_state,
+    cached_run_waterfall_v3,
+    clear_all_caches,
+)
+
+__all__ = [
+    "hash_inputs_for_cache",
+    "hash_engine_for_cache",
+    "cached_generation_schedule",
+    "cached_revenue_schedule",
+    "cached_opex_schedule_annual",
+    "cached_model_state",
+    "cached_run_waterfall_v3",
+    "clear_all_caches",
+    "invalidate_waterfall_cache",
+    "get_waterfall_cache",
+    "compute_waterfall_cached",
+    "WaterfallCache",
+    "deprecated",
+]
 
 
-def deprecated(msg):
+def invalidate_waterfall_cache():
+    """Alias for clear_all_caches(). Deprecated; use app.cache.clear_all_caches()."""
+    warnings.warn(
+        "utils.cache.invalidate_waterfall_cache is deprecated; use app.cache.clear_all_caches",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return clear_all_caches()
+
+
+# Backward-compat shims for utils/__init__.py re-exports
+
+class WaterfallCache:
+    """Placeholder compatibility shim. In new code use app.cache directly."""
+
+    def __init__(self):
+        warnings.warn(
+            "utils.cache.WaterfallCache is deprecated and is a no-op placeholder",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    def get(self, inputs_key: str):
+        return None
+
+    def set(self, inputs_key: str, result: dict):
+        pass
+
+    def clear(self):
+        clear_all_caches()
+
+    def invalidate_if_changed(self, inputs_key: str) -> bool:
+        return False
+
+
+def get_waterfall_cache() -> WaterfallCache:
+    warnings.warn(
+        "utils.cache.get_waterfall_cache is deprecated; use app.cache.clear_all_caches directly",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return WaterfallCache()
+
+
+def deprecated(msg: str):
     """Decorator to mark functions as deprecated."""
-    import warnings
     def wrapper(func):
         def inner(*args, **kwargs):
             warnings.warn(f"{func.__name__} is deprecated. {msg}", DeprecationWarning, stacklevel=2)
@@ -18,368 +91,12 @@ def deprecated(msg):
     return wrapper
 
 
-# This module should only be imported in UI context (Streamlit)
-
-
-def get_waterfall_cache_key(
-    inputs_key: str,
-    ebitda_tuple: tuple,
-    revenue_tuple: tuple,
-    generation_tuple: tuple,
-    depreciation_tuple: tuple,
-    periods_count: int,
-    total_capex: float,
-    rate_per_period: float,
-    tenor_periods: int,
-    target_dscr: float,
-    lockup_dscr: float,
-    tax_rate: float,
-    dsra_months: int,
-    shl_amount: float,
-    shl_rate: float,
-    discount_rate_project: float,
-    discount_rate_equity: float,
-) -> str:
-    """Generate a cache key for waterfall computation.
-
-    Since we can't hash ProjectInputs directly in @st.cache_data,
-    we use a deterministic string key based on key inputs.
-    """
-    return (
-        f"{inputs_key}|"
-        f"{len(ebitda_tuple)}|"
-        f"{total_capex:.0f}|"
-        f"{rate_per_period:.6f}|"
-        f"{tenor_periods}|"
-        f"{target_dscr:.3f}|"
-        f"{lockup_dscr:.3f}|"
-        f"{tax_rate:.4f}|"
-        f"{dsra_months}|"
-        f"{shl_amount:.0f}|"
-        f"{shl_rate:.4f}|"
-        f"{discount_rate_project:.6f}|"
-        f"{discount_rate_equity:.6f}"
+def compute_waterfall_cached(*args, **kwargs):
+    warnings.warn(
+        "utils.cache.compute_waterfall_cached is deprecated; "
+        "use app.waterfall_core.run_waterfall_v3_core or app.cache.cached_run_waterfall_v3",
+        DeprecationWarning,
+        stacklevel=2,
     )
-
-
-def cache_waterfall_result(
-    inputs_key: str,
-    ebitda_tuple: tuple,
-    revenue_tuple: tuple,
-    generation_tuple: tuple,
-    depreciation_tuple: tuple,
-    periods_count: int,
-    total_capex: float,
-    rate_per_period: float,
-    tenor_periods: int,
-    target_dscr: float = 1.15,
-    lockup_dscr: float = 1.10,
-    tax_rate: float = 0.10,
-    dsra_months: int = 6,
-    shl_amount: float = 0.0,
-    shl_rate: float = 0.0,
-    discount_rate_project: float = 0.0641,
-    discount_rate_equity: float = 0.0965,
-):
-    """Cached waterfall computation.
-
-    This decorator caches the waterfall result based on deterministic inputs.
-    Cache is invalidated when inputs change (different inputs_key).
-
-    Note: periods are not included in cache key directly (they contain
-    non-hashable objects). Instead we pass periods_count and reconstruct
-    periods inside the cached function.
-    """
-    from domain.waterfall.waterfall_engine import run_waterfall
-
-    # Use session state to store last computed result
-    cache_key = f"waterfall_{inputs_key}"
-
-    # Check if we have a cached result in session state
-    if hasattr(st.session_state, 'waterfall_cache'):
-        cached = st.session_state.waterfall_cache
-        if cached and cached.get('key') == cache_key:
-            return cached.get('result')
-
-    # Compute waterfall
-    from domain.period_engine import PeriodEngine
-
-    # Reconstruct periods for waterfall (we need actual period objects)
-    # Since we can't pass them via cache, we use inputs_key to detect
-    # when to recompute. In practice, _update_inputs_and_engine() clears
-    # the cache whenever inputs change.
-
-    return None  # Will be handled by caller
-
-
-class WaterfallCache:
-    """Session-level waterfall cache."""
-
-    def __init__(self):
-        self._cache: Optional[dict] = None
-        self._last_inputs_key: Optional[str] = None
-
-    def get(self, inputs_key: str) -> Optional[dict]:
-        """Get cached result if inputs_key matches."""
-        if self._cache and self._last_inputs_key == inputs_key:
-            return self._cache
-        return None
-
-    def set(self, inputs_key: str, result: dict) -> None:
-        """Store result in cache."""
-        self._cache = result
-        self._last_inputs_key = inputs_key
-
-    def clear(self) -> None:
-        """Clear cache."""
-        self._cache = None
-        self._last_inputs_key = None
-
-    def invalidate_if_changed(self, inputs_key: str) -> bool:
-        """Invalidate if inputs changed. Returns True if invalidated."""
-        if self._last_inputs_key != inputs_key:
-            self.clear()
-            return True
-        return False
-
-
-# Global cache instance
-_waterfall_cache = WaterfallCache()
-
-
-def get_waterfall_cache() -> WaterfallCache:
-    """Get the global waterfall cache instance."""
-    return _waterfall_cache
-
-
-@deprecated("Use cached_run_waterfall_v3() instead. This function will be removed.")
-def compute_waterfall_cached(
-    inputs_key: str,
-    inputs,
-    engine,
-    target_dscr: float = 1.15,
-    lockup_dscr: float = 1.10,
-    tax_rate: float = 0.10,
-    dsra_months: int = 6,
-    shl_amount: float = 0.0,
-    shl_rate: float = 0.0,
-    discount_rate_project: float = 0.0641,
-    discount_rate_equity: float = 0.0965,
-):
-    """Deprecated. Delegates to cached_run_waterfall_v3()."""
     from app.waterfall_core import run_waterfall_v3_core
-    periods_list = list(engine.periods())
-    op_periods = [p for p in periods_list if p.is_operation]
-    return run_waterfall_v3_core(
-        inputs=inputs,
-        engine=engine,
-        rate_per_period=inputs.financing.all_in_rate / 2,
-        tenor_periods=len(op_periods),
-        target_dscr=target_dscr,
-        lockup_dscr=lockup_dscr,
-        tax_rate=tax_rate,
-        dsra_months=dsra_months,
-        shl_amount=shl_amount,
-        shl_rate=shl_rate,
-        shl_idc_keur=0.0,
-        shl_repayment_method="bullet",
-        equity_irr_method="equity_only",
-        share_capital_keur=inputs.financing.share_capital_keur,
-        sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
-        debt_sizing_method=inputs.financing.debt_sizing_method,
-    )
-
-def invalidate_waterfall_cache() -> None:
-    """Invalidate waterfall cache. Call when inputs change."""
-    get_waterfall_cache().clear()
-
-# =============================================================================
-# NEW: Domain layer cached functions (v3 refactoring)
-# These provide @st.cache_data wrappers for domain functions
-# =============================================================================
-
-from domain.period_engine import PeriodEngine, hash_engine_for_cache
-from domain.inputs import ProjectInputs, hash_inputs_for_cache
-
-
-@st.cache_data(show_spinner=False, hash_funcs={
-    ProjectInputs: hash_inputs_for_cache,
-    PeriodEngine: hash_engine_for_cache,
-})
-def cached_generation_schedule(
-    inputs: ProjectInputs,
-    engine: PeriodEngine,
-    yield_scenario: str = "P50",
-):
-    """Cached generation schedule.
-    
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-        yield_scenario: "P50" or "P90-10y"
-    
-    Returns:
-        Dict mapping period_index → generation_MWh
-    """
-    from domain.revenue.generation import full_generation_schedule
-    return full_generation_schedule(inputs, engine, yield_scenario)
-
-
-@st.cache_data(show_spinner=False, hash_funcs={
-    ProjectInputs: hash_inputs_for_cache,
-    PeriodEngine: hash_engine_for_cache,
-})
-def cached_revenue_schedule(
-    inputs: ProjectInputs,
-    engine: PeriodEngine,
-):
-    """Cached revenue schedule.
-    
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-    
-    Returns:
-        Dict mapping period_index → revenue_kEUR
-    """
-    from domain.revenue.generation import full_revenue_schedule
-    return full_revenue_schedule(inputs, engine)
-
-
-@st.cache_data(show_spinner=False, hash_funcs={
-    ProjectInputs: hash_inputs_for_cache,
-})
-def cached_opex_schedule_annual(
-    inputs: ProjectInputs,
-    horizon_years: int = 30,
-):
-    """Cached annual OPEX schedule.
-    
-    Args:
-        inputs: Project inputs
-        horizon_years: Number of years to project
-    
-    Returns:
-        Dict mapping year_index → OPEX in kEUR
-    """
-    from domain.opex.projections import opex_schedule_annual
-    return opex_schedule_annual(inputs, horizon_years)
-
-
-@st.cache_data(show_spinner=False, hash_funcs={
-    ProjectInputs: hash_inputs_for_cache,
-    PeriodEngine: hash_engine_for_cache,
-})
-def cached_model_state(
-    inputs: ProjectInputs,
-    engine: PeriodEngine,
-):
-    """Cached model state with all precomputed schedules.
-    
-    Args:
-        inputs: Project inputs
-        engine: Period engine
-    
-    Returns:
-        ModelState with all schedules
-    """
-    from domain.model_state import build_model_state
-    return build_model_state(inputs, engine)
-
-
-# =============================================================================
-# CACHED WATERFALL (v3 refactoring — moved from domain/waterfall/)
-# =============================================================================
-
-@st.cache_data(
-    show_spinner="⚙️ Računam waterfall...",
-    hash_funcs={
-        ProjectInputs: hash_inputs_for_cache,
-        PeriodEngine: hash_engine_for_cache,
-    }
-)
-def cached_run_waterfall_v3(
-    inputs: ProjectInputs,
-    engine: PeriodEngine,
-    rate_per_period: float,
-    tenor_periods: int,
-    target_dscr: float = 1.15,
-    lockup_dscr: float = 1.10,
-    tax_rate: float = 0.10,
-    dsra_months: int = 6,
-    shl_amount: float = 0.0,
-    shl_rate: float = 0.0,
-    shl_idc_keur: float = 0.0,  # SHL IDC — added to opening balance
-    shl_repayment_method: str = "bullet",  # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
-    shl_tenor_years: int = 0,  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
-    shl_wht_rate: float = 0.0,  # Withholding tax rate on SHL interest
-    discount_rate_project: float = 0.0641,
-    discount_rate_equity: float = 0.0965,
-    fixed_debt_keur: float | None = None,  # Override sculpted debt (for P90 sizing)
-    fixed_ds_keur: float | None = None,  # Fixed debt service per period (kEUR) — TUHO annuity
-    rate_schedule: list[float] | None = None,  # Per-period rate schedule (Euribor curve)
-    equity_irr_method: str = "equity_only",  # "equity_only" | "combined"
-    share_capital_keur: float = 0.0,  # Only used when equity_irr_method="combined"
-    sculpt_capex_keur: float = 0.0,  # CAPEX for equity base; used in "combined" method for equity_irr = sculpt_capex - debt
-    debt_sizing_method: str = "dscr_sculpt",  # "dscr_sculpt" | "gearing_cap" | "fixed"
-    dscr_schedule: list[float] | None = None,  # Per-period DSCR targets for dual-DSCR sculpting
-) -> "WaterfallResult":
-    """Cached waterfall computation with proper hash_funcs.
-
-    This is the v3 version — uses cached schedules from utils/cache.py
-    and proper hash_funcs for both ProjectInputs and PeriodEngine.
-
-    Args:
-        inputs: ProjectInputs instance
-        engine: PeriodEngine instance
-        rate_per_period: Interest rate per period (e.g., 0.0565/2 for semi-annual)
-        tenor_periods: Senior debt tenor in periods
-        target_dscr: Target DSCR for sculpting
-        lockup_dscr: Lockup DSCR threshold
-        tax_rate: Corporate tax rate
-        dsra_months: DSRA reserve months
-        shl_amount: Subordinated hybrid loan amount
-        shl_rate: SHL interest rate
-        discount_rate_project: Discount rate for project NPV
-        discount_rate_equity: Discount rate for equity NPV
-
-    Returns:
-        WaterfallResult with all computed periods and metrics
-    """
-    """Cached waterfall computation — delegates to app.waterfall_core.run_waterfall_v3_core.
-
-    This function previously built OPEX and depreciation schedules using stale flat
-    logic (annual / 2). It now delegates entirely to run_waterfall_v3_core(), which
-    uses opex_schedule_period() with day_fraction and asset-class depreciation.
-
-    All parameters are passed through unchanged. The @st.cache_data decorator and
-    hash_funcs remain intact.
-    """
-    from app.waterfall_core import run_waterfall_v3_core
-
-    return run_waterfall_v3_core(
-        inputs=inputs,
-        engine=engine,
-        rate_per_period=rate_per_period,
-        tenor_periods=tenor_periods,
-        target_dscr=target_dscr,
-        lockup_dscr=lockup_dscr,
-        tax_rate=tax_rate,
-        dsra_months=dsra_months,
-        shl_amount=shl_amount,
-        shl_rate=shl_rate,
-        shl_idc_keur=shl_idc_keur,
-        shl_repayment_method=shl_repayment_method,
-        shl_tenor_years=shl_tenor_years,
-        shl_wht_rate=shl_wht_rate,
-        discount_rate_project=discount_rate_project,
-        discount_rate_equity=discount_rate_equity,
-        fixed_debt_keur=fixed_debt_keur,
-        fixed_ds_keur=fixed_ds_keur,
-        rate_schedule=rate_schedule,
-        equity_irr_method=equity_irr_method,
-        share_capital_keur=share_capital_keur,
-        sculpt_capex_keur=sculpt_capex_keur,
-        debt_sizing_method=debt_sizing_method,
-        dscr_schedule=dscr_schedule,
-    )
+    return run_waterfall_v3_core(*args, **kwargs)
