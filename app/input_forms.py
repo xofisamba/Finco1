@@ -332,14 +332,23 @@ def _all_in_rate_display(financing) -> float:
     return base + margin / 10000.0
 
 
+def _dataclass_field_names(obj):
+    return {f.name for f in fields(obj)} if is_dataclass(obj) else set()
+
+
 def _all_in_rate_update(financing, user_value: float) -> dict:
-    if hasattr(financing, "all_in_rate"):
+    field_names = _dataclass_field_names(financing)
+
+    if "all_in_rate" in field_names:
         return {"all_in_rate": user_value}
-    if hasattr(financing, "base_rate") and hasattr(financing, "margin_bps"):
+
+    if "base_rate" in field_names and "margin_bps" in field_names:
         margin_bps = getattr(financing, "margin_bps", 0) or 0
         return {"base_rate": max(0.0, user_value - margin_bps / 10000.0)}
-    if hasattr(financing, "base_rate"):
+
+    if "base_rate" in field_names:
         return {"base_rate": user_value}
+
     return {}
 
 

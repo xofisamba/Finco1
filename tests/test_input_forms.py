@@ -8,6 +8,7 @@ from app.input_forms import (
     _all_in_rate_display,
     _all_in_rate_update,
     _get_total_capex_val,
+    _dataclass_field_names,
 )
 from app.project_factories import create_default_solar_project, create_default_wind_project
 
@@ -77,24 +78,50 @@ class TestAllInRateDisplay:
 
 
 class TestAllInRateUpdate:
-    def test_update_all_in_rate_when_present(self):
-        class Fin:
-            all_in_rate = 0.065
-        result = _all_in_rate_update(Fin(), 0.07)
-        assert result == {"all_in_rate": 0.07}
+    def test_all_in_rate_is_property_not_field(self):
+        """Verify all_in_rate is a @property on FinancingParams, not a dataclass field."""
+        from app.project_factories import create_default_solar_project
+        solar = create_default_solar_project()
+        fin = solar.financing
+        field_names = _dataclass_field_names(fin)
+        assert "all_in_rate" not in field_names, \
+            "all_in_rate should be a @property, not a dataclass field"
+        assert "base_rate" in field_names
+        assert "margin_bps" in field_names
+
+    def test_update_uses_base_rate_when_all_in_rate_is_property(self):
+        """When all_in_rate is a property, update base_rate (backed by margin)."""
+        from app.project_factories import create_default_solar_project
+        from dataclasses import replace
+        solar = create_default_solar_project()
+        # Verify all_in_rate is NOT a dataclass field
+        fin = solar.financing
+        assert "all_in_rate" not in _dataclass_field_names(fin)
+        # Apply update for 9% all-in rate (with 250bps margin → base_rate = 6.5%)
+        result = _all_in_rate_update(fin, 0.09)
+        assert "base_rate" in result
+        assert result["base_rate"] == 0.065  # 9% - 2.5% = 6.5%
+        # Verify it also changes the actual object
+        updated = replace(fin, **result)
+        assert updated.base_rate == 0.065
 
     def test_update_base_rate_when_margin_bps_present(self):
-        class Fin:
-            base_rate = 0.04
-            margin_bps = 250
-        result = _all_in_rate_update(Fin(), 0.065)
+        """With FinancingParams (real dataclass), base_rate + margin → new base_rate."""
+        from app.project_factories import create_default_solar_project
+        solar = create_default_solar_project()
+        fin = solar.financing
+        result = _all_in_rate_update(fin, 0.065)
         assert "base_rate" in result
-        assert result["base_rate"] == pytest.approx(0.065 - 0.025)
+        assert result["base_rate"] == pytest.approx(0.065 - (fin.margin_bps / 10000.0))
 
     def test_update_base_rate_when_only_base_rate(self):
+        """When margin_bps absent, directly update base_rate."""
+        from dataclasses import dataclass
+        @dataclass
         class Fin:
-            base_rate = 0.04
-        result = _all_in_rate_update(Fin(), 0.055)
+            base_rate: float
+        f = Fin(base_rate=0.04)
+        result = _all_in_rate_update(f, 0.055)
         assert result == {"base_rate": 0.055}
 
     def test_returns_empty_dict_when_nothing_supported(self):
@@ -105,6 +132,35 @@ class TestAllInRateUpdate:
 
 
 class TestTotalCapexFallback:
+
+    def _placeholder(self):
+        pass
+
+
+class TestAllInRateWaterfallConfig:
+    def test_all_in_rate_override_changes_waterfall_config_rate_per_period(self):
+        """Changing all-in rate via override must affect WaterfallRunConfig.rate_per_period."""
+        from app.project_factories import create_default_solar_project
+        from app.waterfall_runner import WaterfallRunConfig
+        from domain.period_engine import PeriodEngine
+        from app.input_forms import _all_in_rate_update, apply_project_overrides
+
+        solar = create_default_solar_project()
+        engine = PeriodEngine(
+            solar.info.financial_close,
+            solar.info.construction_months,
+            solar.info.horizon_years,
+            solar.revenue.ppa_term_years,
+        )
+        cfg1 = WaterfallRunConfig.from_inputs(solar, engine)
+        assert cfg1.rate_per_period == pytest.approx(0.0275)
+
+        # Override all-in rate to 6% (margin 250bps → base_rate = 3.75%)
+        override = _all_in_rate_update(solar.financing, 0.06)
+        solar2 = apply_project_overrides(solar, {"financing": override})
+        cfg2 = WaterfallRunConfig.from_inputs(solar2, engine)
+        assert cfg2.rate_per_period != cfg1.rate_per_period
+
     def test_total_capex_keur_takes_priority(self):
         class Capex:
             total_capex_keur = 50000.0
