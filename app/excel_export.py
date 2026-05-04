@@ -202,6 +202,7 @@ def _write_sheet(writer, name: str, df: pd.DataFrame,
 
 def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scenario) -> None:
     """Write a Dashboard sheet with KPI summary and integration info."""
+    from app.output_tables import build_dashboard_kpis
     rows = [
         ("Integration Status", status),
         ("Scenario", scenario),
