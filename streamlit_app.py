@@ -23,6 +23,22 @@ for key in ["demo_result", "last_project_type", "last_scenario", "editable_input
     if key not in st.session_state:
         st.session_state[key] = None
 
+# Status banner (informational — shown before first run and updated after)
+status_map = {
+    "full": ("✅ Full integration", "standard solar/wind model"),
+    "partial": ("⚠️ Partial integration", "BESS/hybrid: revenue-only shown, waterfall in progress"),
+    "experimental": ("🔬 Experimental", "Portfolio IRR is placeholder; do not use for investment decisions"),
+}
+if project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
+    badge, detail = status_map["partial"]
+elif project_type == "Portfolio":
+    badge, detail = status_map["experimental"]
+else:
+    badge, detail = status_map["full"]
+st.caption(f"{badge} | integration_status: {badge.split()[0].lstrip('✅⚠️🔬').strip()}")
+if detail:
+    st.caption(f"_{detail}_")
+
 PROJECT_TYPES = ["Solar", "Wind", "BESS", "Solar+BESS", "Wind+BESS", "Portfolio"]
 SCENARIOS = ["Base", "Downside", "Upside"]
 

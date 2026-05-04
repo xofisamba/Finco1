@@ -13,20 +13,64 @@ def test_build_excel_export_returns_bytes():
     assert len(data) > 0
 
 
-def test_excel_export_contains_required_sheets_for_solar():
+def test_excel_export_has_all_required_sheets():
+    """All required sheets must be present in the export for Solar project."""
+    import openpyxl
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        integration_note=None,
+        scenario="Base",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    sheet_names = wb.sheetnames
+    required = [
+        "Dashboard", "Inputs", "CapEx",
+        "Revenue", "Debt", "Tax_Depreciation",
+        "Waterfall", "Returns", "Validation", "Notes",
+    ]
+    missing = [s for s in required if s not in sheet_names]
+    assert not missing, f"Missing sheets: {missing}"
+
+
+def test_excel_export_no_formulas_in_cells():
+    """All cells must be values only — no Excel formulas."""
     import openpyxl
     result = run_demo_project("Solar")
     data = build_excel_export(result=result.result, project_inputs=result.project_inputs)
     wb = openpyxl.load_workbook(BytesIO(data))
-    sheet_names = wb.sheetnames
-    required = ["Dashboard", "Inputs", "CapEx", "Revenue", "Debt", "Tax_Depreciation", "Waterfall", "Returns"]
-    for s in required:
-        assert s in sheet_names, f"Missing sheet: {s}"
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]
+        for row in ws.iter_rows():
+            for cell in row:
+                assert cell.data_type != 'f', \
+                    f"Formula found in sheet '{sheet}' at {cell.coordinate}: {cell.value}"
+
+
+def test_excel_export_annual_columns_are_years():
+    """Annual-view sheets must have 4-digit year column headers (YYYY)."""
+    import openpyxl, re
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        period_view="Annual",
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    for sheet_name in ["Revenue", "Debt", "Tax_Depreciation", "Waterfall"]:
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        headers = [cell.value for cell in ws[1]]
+        year_cols = [h for h in headers if isinstance(h, str) and re.match(r"\d{4}", h)]
+        assert len(year_cols) > 0, \
+            f"Sheet '{sheet_name}' has no year columns: {headers[:8]}"
 
 
 def test_excel_export_contains_portfolio_sheet_when_portfolio_result_provided():
     import openpyxl
-    from app.ui_runner import run_demo_project
     result = run_demo_project("Portfolio")
     data = build_excel_export(portfolio_result=result.portfolio_result, project_inputs=result.project_inputs)
     wb = openpyxl.load_workbook(BytesIO(data))
@@ -54,7 +98,6 @@ def test_inputs_summary_uses_technical_capacity():
     from app.input_helpers import build_inputs_summary_table
     proj = create_default_solar_project()
     df = build_inputs_summary_table(proj)
-    # Capacity should appear in the summary
     assert "Capacity (MW)" in df["Field"].values
 
 
@@ -129,7 +172,6 @@ def test_excel_export_annual_view_has_year_columns():
             continue
         ws = wb[sheet_name]
         headers = [cell.value for cell in ws[1]]
-        # All column headers (after Line Item) should be 4-digit years
         year_cols = [h for h in headers if h is not None and isinstance(h, str) and re.match(r"\d{4}", h)]
         assert len(year_cols) > 0, f"Sheet {sheet_name} has no year columns in headers: {headers}"
 
@@ -149,7 +191,6 @@ def test_excel_export_annual_view_uses_output_table_helper():
     from app import excel_export
     src = inspect.getsource(excel_export)
     tree = ast.parse(src)
-    # Find all Name nodes with id == 'aggregate_period_table_annual'
     found = False
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id == "aggregate_period_table_annual":

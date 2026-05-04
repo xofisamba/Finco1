@@ -51,3 +51,35 @@ def test_upside_scenario_returns_inactive_notice():
     from app.ui_runner import run_demo_project
     result = run_demo_project("Solar", "Upside")
     assert any("informational" in m.lower() or "not yet implemented" in m.lower() for m in result.messages)
+
+
+def test_ui_runner_reraises_when_env_flag_set():
+    """FINCOGPT_RAISE_UI_ERRORS=1 must make exceptions propagate."""
+    from app.ui_runner import run_demo_project
+    import os, pytest
+    # Use a scenario that forces an error (Portfolio with shared FinancingParams
+    # that has no projects — we'll provide an override that triggers validation error)
+    # Actually just test with Solar which is always valid, and verify the flag works
+    # by patching _run_waterfall to raise.
+    import unittest.mock as mock
+    with mock.patch('app.ui_runner._run_waterfall', side_effect=RuntimeError("test error")):
+        old_val = os.environ.get("FINCOGPT_RAISE_UI_ERRORS")
+        try:
+            os.environ["FINCOGPT_RAISE_UI_ERRORS"] = "1"
+            with pytest.raises(RuntimeError, match="test error"):
+                run_demo_project("Solar")
+        finally:
+            if old_val is not None:
+                os.environ["FINCOGPT_RAISE_UI_ERRORS"] = old_val
+            else:
+                os.environ.pop("FINCOGPT_RAISE_UI_ERRORS", None)
+    # Without the flag, RuntimeError should be caught and returned as message
+    with mock.patch('app.ui_runner._run_waterfall', side_effect=RuntimeError("test error 2")):
+        old_val = os.environ.get("FINCOGPT_RAISE_UI_ERRORS")
+        try:
+            os.environ.pop("FINCOGPT_RAISE_UI_ERRORS", None)
+            result = run_demo_project("Solar")
+            assert "test error 2" in result.messages[0]
+        finally:
+            if old_val is not None:
+                os.environ["FINCOGPT_RAISE_UI_ERRORS"] = old_val
