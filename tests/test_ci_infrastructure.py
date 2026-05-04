@@ -82,3 +82,42 @@ def test_model_status_contains_bankable_warning():
     with open("docs/model_status.md") as f:
         content = f.read().lower()
     assert "bankable" in content, "Bankable warning must be present"
+
+
+def test_streamlit_app_wires_warnings_to_excel(monkeypatch):
+    """streamlit_app.py must call build_excel_export with warnings=model_warnings."""
+    with open("streamlit_app.py") as f:
+        src = f.read()
+    assert "warn_model_unrealistic" in src, "streamlit_app must call warn_model_unrealistic"
+    assert "warnings=model_warnings" in src, "build_excel_export must be called with warnings=model_warnings"
+
+
+def test_model_status_declares_scenario_v2_parameters():
+    """model_status.md must explicitly list Scenario v2 parameters."""
+    with open("docs/model_status.md") as f:
+        content = f.read()
+    lower = content.lower()
+    checks = {
+        "Scenario v2": "scenario v2" in lower,
+        "CapEx": "capex" in lower,
+        "OpEx": "opex" in lower,
+        "Degradation": "degradation" in lower,
+        "Curtailment": "curtailment" in lower,
+        "Tariff": "tariff" in lower,
+        "Portfolio scenarios not implemented": ("portfolio" in lower and ("not implemented" in lower or "experimental" in lower)),
+        "Sponsor IRR not implemented": ("sponsor irr" in lower and ("not implemented" in lower or "not supported" in lower or "placeholder" in lower)),
+        "BESS partial": "bess" in lower and "partial" in lower,
+    }
+    missing = [k for k, v in checks.items() if not v]
+    assert not missing, f"model_status.md missing: {missing}"
+
+def test_release1_readiness_doc_exists():
+    """release1_readiness.md must exist with required sections."""
+    import os
+    path = "docs/release1_readiness.md"
+    assert os.path.exists(path), f"{path} must exist"
+    with open(path) as f:
+        content = f.read()
+    required = ["Release 1", "Out of Scope", "Known Limitations", "Claude Re-check"]
+    missing = [s for s in required if s not in content]
+    assert not missing, f"release1_readiness.md missing sections: {missing}"

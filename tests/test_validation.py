@@ -340,31 +340,29 @@ class TestModelWarnings:
 class TestModelWarningsIntegration:
     """Model warnings must propagate to UI and Excel."""
 
-    def test_model_warnings_propagate_to_ui(self):
-        """Bad-DSCR result must trigger warning and surface in messages."""
-        from app.ui_runner import run_demo_project, DemoResult
-        from domain.validation import warn_model_unrealistic
-        from dataclasses import replace as _rep
+    def test_model_warnings_propagate_to_ui_via_run_demo_project(self, monkeypatch):
+        """run_demo_project() must append warn_model_unrealistic output to DemoResult.messages."""
+        from domain.validation import ModelWarning
+        import app.ui_runner as ui_runner
 
-        result = run_demo_project("Solar")
-        assert result.result is not None
+        def fake_warn(result, inputs=None):
+            return (ModelWarning(
+                code="W_TEST_UI_WARNING",
+                severity="warning",
+                message="Synthetic UI warning from monkeypatch",
+            ),)
 
-        # Force W_DSCR_BELOW_TARGET: set actual_min below target
-        bad_result = _rep(result.result, target_dscr=1.30, actual_min_dscr=1.10)
-        warnings = warn_model_unrealistic(bad_result, result.project_inputs)
-        warning_codes = [w.code for w in warnings]
-        assert "W_DSCR_BELOW_TARGET" in warning_codes
+        monkeypatch.setattr("domain.validation.warn_model_unrealistic", fake_warn)
 
-        # Wire warnings to messages (mirrors ui_runner.py logic)
-        messages = []
-        for w in warnings:
-            messages.append(f"⚠️ {w.code}: {w.message}")
+        result = ui_runner.run_demo_project("Solar")
 
-        assert len(messages) > 0
-        assert any("W_DSCR_BELOW_TARGET" in m for m in messages)
+        assert any("W_TEST_UI_WARNING" in m for m in result.messages), (
+            f"W_TEST_UI_WARNING must be in messages: {result.messages}"
+        )
+        assert any("Synthetic UI warning from monkeypatch" in m for m in result.messages)
 
-    def test_model_warnings_present_in_excel_notes(self):
-        """Synthetic warning must appear in Excel Notes sheet."""
+    def test_build_excel_export_writes_model_warnings_to_notes(self):
+        """[Unit] build_excel_export() must write warning dicts to Notes sheet."""
         from io import BytesIO
         from app.ui_runner import run_demo_project
         from app.excel_export import build_excel_export
