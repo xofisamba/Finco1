@@ -92,7 +92,7 @@ if run_button or st.session_state.demo_result is not None:
     with st.expander("🔍 Validation", expanded=False):
         render_validation_panel(demo.validation_issues)
 
-    # Excel export (only if results exist)
+    # Model Warnings section
     if demo.result or demo.portfolio_result:
         demo_exp = demo
         from app.excel_export import build_excel_export
@@ -102,6 +102,11 @@ if run_button or st.session_state.demo_result is not None:
             from domain.validation import warn_model_unrealistic
             for w in warn_model_unrealistic(demo_exp.result, demo_exp.project_inputs):
                 model_warnings.append({"code": w.code, "message": w.message})
+
+        if model_warnings:
+            with st.expander("⚠️ Model Warnings", expanded=False):
+                for w in model_warnings:
+                    st.warning(f"**{w['code']}**: {w['message']}")
 
         excel_data = build_excel_export(
             result=demo_exp.result,

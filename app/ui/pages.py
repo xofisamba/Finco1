@@ -21,6 +21,41 @@ def _fmt(val, kind=None):
     return format_metric_value(val, kind)
 
 
+def _fmt_irr(val):
+    """Format IRR as percentage: multiply by 100, show as '12.5%'."""
+    if val is None:
+        return "n/a"
+    try:
+        return f"{float(val) * 100:.2f}%"
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def _fmt_dscr(val):
+    """Format DSCR with 2 decimals, suffix 'x': '1.35x'."""
+    if val is None:
+        return "n/a"
+    try:
+        return f"{float(val):.2f}x"
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def _fmt_keur(val):
+    """Format kEUR values with thousands separator."""
+    if val is None:
+        return "n/a"
+    try:
+        v = float(val)
+        if abs(v) >= 1_000_000:
+            return f"{v / 1_000_000:.2f}M"
+        elif abs(v) >= 1_000:
+            return f"{v / 1_000:.1f}k"
+        return f"{v:.0f}"
+    except (TypeError, ValueError):
+        return str(val)
+
+
 def render_validation_panel(issues: list) -> None:
     """Show validation errors and warnings."""
     if not issues:
@@ -46,25 +81,25 @@ def render_dashboard(result, portfolio_result=None, is_portfolio=False, integrat
 
     if is_portfolio and portfolio_result is not None:
         kpis = {
-            "Total Revenue": _fmt(portfolio_result.total_revenue_keur, "currency"),
-            "EBITDA": _fmt(portfolio_result.total_ebitda_keur, "currency"),
-            "Min DSCR": _fmt(portfolio_result.min_dscr, "ratio"),
-            "Avg DSCR": _fmt(portfolio_result.avg_dscr, "ratio"),
-            "Portfolio Debt": _fmt(portfolio_result.portfolio_debt_keur, "currency"),
-            "Portfolio Project IRR": _fmt(portfolio_result.portfolio_project_irr, "percent") if portfolio_result.portfolio_project_irr not in (None, 0.0) else "n/a",
-            "Sponsor IRR": "⏳ Placeholder" if portfolio_result.portfolio_sponsor_irr in (None, 0.0) else _fmt(portfolio_result.portfolio_sponsor_irr, "percent"),
+            "Total Revenue": _fmt_keur(portfolio_result.total_revenue_keur),
+            "EBITDA": _fmt_keur(portfolio_result.total_ebitda_keur),
+            "Min DSCR": _fmt_dscr(portfolio_result.min_dscr),
+            "Avg DSCR": _fmt_dscr(portfolio_result.avg_dscr),
+            "Portfolio Debt": _fmt_keur(portfolio_result.portfolio_debt_keur),
+            "Portfolio Project IRR (%)": _fmt_irr(portfolio_result.portfolio_project_irr) if portfolio_result.portfolio_project_irr not in (None, 0.0) else "n/a",
+            "Sponsor IRR (%)": "⏳ Placeholder" if portfolio_result.portfolio_sponsor_irr in (None, 0.0) else _fmt_irr(portfolio_result.portfolio_sponsor_irr),
         }
     elif result is not None:
         kpis = {
-            "Total Revenue": _fmt(result.total_revenue_keur, "currency"),
-            "EBITDA": _fmt(result.total_ebitda_keur, "currency"),
-            "Project IRR": _fmt(result.project_irr, "percent"),
-            "Equity IRR": _fmt(result.equity_irr, "percent"),
-            "Sponsor IRR": _fmt(result.sponsor_irr, "percent"),
-            "Min DSCR": _fmt(result.min_dscr, "ratio"),
-            "Avg DSCR": _fmt(result.avg_dscr, "ratio"),
-            "Senior Debt Service": _fmt(result.total_senior_ds_keur, "currency"),
-            "Distributions": _fmt(result.total_distribution_keur, "currency"),
+            "Total Revenue": _fmt_keur(result.total_revenue_keur),
+            "EBITDA": _fmt_keur(result.total_ebitda_keur),
+            "Project IRR (%)": _fmt_irr(result.project_irr),
+            "Equity IRR (%)": _fmt_irr(result.equity_irr),
+            "Sponsor IRR (%)": _fmt_irr(result.sponsor_irr),
+            "Min DSCR": _fmt_dscr(result.min_dscr),
+            "Avg DSCR": _fmt_dscr(result.avg_dscr),
+            "Senior Debt Service": _fmt_keur(result.total_senior_ds_keur),
+            "Distributions": _fmt_keur(result.total_distribution_keur),
         }
     else:
         st.info("No results yet. Run a project first.")
