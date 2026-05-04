@@ -20,11 +20,6 @@
 - `tests/fixtures/oborovo_baseline.json` — referenced by `tests/test_regression.py`, `tests/test_oborovo_parity.py`
 - `tests/fixtures/oborovo_golden.json` — referenced by `tests/integration/test_fid_deck_excel.py`
 
-### Pre-existing test failure (not caused by this sprint's actions)
-- `tests/test_bess_hybrid_full_flow.py::test_sponsor_irr_not_computed` — `TypeError: FinancingParams.__init__() got an unexpected keyword argument 'total_debt_keur'` — existed before cleanup
-
----
-
 ## Summary
 
 | Category | Count | Notes |
@@ -32,8 +27,21 @@
 | KEEP_CURRENT | 4 | Active architecture/manifest docs |
 | MOVE_TO_DOCS | 4 | Misplaced docs from repo root |
 | ARCHIVE_LEGACY | 8 | Calibration/Oborovo-specific artifacts |
+| MOVED | 5 | Archived to `docs/archive/` this sprint |
 | DELETE_CANDIDATE | 4 | Generated/stale outputs in repo root |
-| NEEDS_REVIEW | 3 | Referenced by tests or unclear purpose |
+| NEEDS_REVIEW | 2 | Referenced by tests or unclear purpose |
+
+---
+
+## MOVED (archived this sprint)
+
+| Original path | New path | Reason |
+|---|---|---|
+| `docs/FINCOGPT_EXCEL_PARITY_PLAN.md` | `docs/archive/` | Legacy calibration plan |
+| `docs/FINCOGPT_CALIBRATION_STATUS.md` | `docs/archive/calibration/` | Calibration status |
+| `docs/EXCEL_UX_AND_CALIBRATION_MAPPING.md` | `docs/archive/calibration/` | Design mapping |
+| `SPRINT*.md`, `SPRINT_BACKLOG.md`, `SPRINT4_BACKLOG.md` | `docs/archive/legacy_prompts/` | Historical sprint reports |
+| `ui/pages/4_scenarios.py` | `docs/archive/legacy_ui/4_scenarios.py.txt` | Legacy UI page, replaced by waterfall UI |
 
 ---
 

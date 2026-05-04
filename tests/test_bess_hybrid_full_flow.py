@@ -77,7 +77,7 @@ def test_full_waterfall_includes_bess_revenue_or_status_partial():
     assert result.integration_status == "partial", f"BESS integration_status should be partial, got {result.integration_status}"
 
 
-def test_no_double_counting_hybrid_revenue_if_breakdown_available():
+def test_hybrid_status_remains_partial_until_revenue_breakdown_proven():
     """If BESS revenue breakdown exists, ensure no double counting with main revenue."""
     from app.ui_runner import run_demo_project
     result = run_demo_project("Solar+BESS")
@@ -127,3 +127,42 @@ def test_sponsor_irr_not_computed():
     result = run_portfolio_from_inputs(inputs)
     assert result.portfolio_sponsor_irr == 0.0, \
         "Sponsor IRR should remain placeholder (0.0)"
+
+def test_bess_hybrid_cannot_be_full_without_waterfall_revenue_fields():
+    """BESS/hybrid must not be 'full' integration without waterfall revenue field proof.
+
+    Logic: If integration_status == "full", result.periods must expose
+    a BESS/hybrid-specific revenue field with a nonzero value.
+    Otherwise integration_status must be "partial".
+    This prevents accidental upgrade to "full" without proof.
+    """
+    from app.ui_runner import run_demo_project
+
+    def _has_bess_revenue(waterfall_result) -> bool:
+        """Check if waterfall periods expose BESS/hybrid revenue fields."""
+        if waterfall_result is None:
+            return False
+        # Look for bess_revenue_keur or similar on first operation period
+        for p in waterfall_result.periods:
+            if not p.is_operation:
+                continue
+            # Check for bess/hybrid-specific field with nonzero value
+            for attr in ("bess_revenue_keur", "bess_arbitrage_keur",
+                         "hybrid_revenue_keur", "storage_revenue_keur"):
+                if hasattr(p, attr) and getattr(p, attr, 0) != 0:
+                    return True
+            break
+        return False
+
+    for pt in ("BESS", "Solar+BESS", "Wind+BESS"):
+        result = run_demo_project(pt)
+        if result.integration_status == "full":
+            # Must have proof of BESS revenue in waterfall
+            has_revenue = _has_bess_revenue(result.result)
+            assert has_revenue, (
+                f"{pt} cannot be 'full' without BESS/hybrid revenue field proof. "
+                f"integration_status={result.integration_status} but no revenue field found."
+            )
+        else:
+            assert result.integration_status == "partial", \
+                f"{pt} must be 'partial' integration"

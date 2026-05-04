@@ -35,7 +35,7 @@ class TestScenarioEdgeCases:
         """Unknown scenario must raise ValueError."""
         solar = create_default_solar_project()
         with pytest.raises(ValueError, match="Unknown scenario"):
-            apply_scenario(solar, "extreme_downside")
+            apply_scenario(solar, "  extreme_downside  ")
 
     def test_apply_scenario_does_not_mutate_original(self):
         """Original project inputs must not be mutated."""
@@ -70,7 +70,7 @@ class TestScenarioEdgeCases:
     def test_unknown_scenario_case_insensitive_raises(self):
         """Unknown scenario (even with weird case) must raise."""
         solar = create_default_solar_project()
-        for bad in ("DOWNSIDE ", "  upside", "DOWNSiDE!"):
+        for bad in ("DOWNSIDEEE", "  extreme", "downsidex"):
             with pytest.raises(ValueError, match="Unknown scenario"):
                 apply_scenario(solar, bad)
 
@@ -270,3 +270,23 @@ class TestUIValidationEdgeCases:
         """Solar+BESS must be integration_status=partial."""
         result = run_demo_project("Solar+BESS")
         assert result.integration_status == "partial"
+    def test_scale_capex_negative_target_rejected(self):
+        """scale_capex_items must raise ValueError for negative target_total_capex."""
+        from app.capex_overrides import scale_capex_items
+        from app.project_factories import create_default_solar_project
+        capex = create_default_solar_project().capex
+        with pytest.raises(ValueError, match="non-negative"):
+            scale_capex_items(capex, -100.0)
+
+
+    def test_apply_scenario_accepts_whitespace_in_name(self):
+        """apply_scenario and get_scenario_rules must normalize whitespace."""
+        from app.scenarios import apply_scenario, get_scenario_rules
+        from app.project_factories import create_default_solar_project
+        solar = create_default_solar_project()
+        # " Downside " with whitespace should work same as "downside"
+        result = apply_scenario(solar, " Downside ")
+        assert result is not None
+        rules = get_scenario_rules(" Downside ")
+        assert rules["p50_multiplier"] == 0.90
+

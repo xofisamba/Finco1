@@ -14,12 +14,6 @@ UI_PAGES = [
     "ui/pages/2_Waterfall.py",
 ]
 
-# Legacy UI pages — still part of the repo but not migrated yet;
-# excluded from runtime guard but covered by LEGACY_UI_FILES tests
-LEGACY_UI_FILES = [
-    "ui/pages/4_scenarios.py",
-]
-
 RUNTIME_FILES = [
     "streamlit_app.py",
     "app/cache.py",
@@ -130,10 +124,28 @@ def test_active_ui_pages_use_app_cache_not_utils_cache():
             pytest.fail(f"{page} imports utils.cache; use app.cache instead")
 
 
+def test_active_ui_pages_do_not_use_legacy_integrations():
+    """Active UI pages must not contain imports/uses of legacy integration modules."""
+    FORBIDDEN_PATTERNS = [
+        "sys.path.insert",
+        "utils.cache",
+        "src.app_builder",
+        "persistence.database",
+        "persistence.repository",
+    ]
+    for page in UI_PAGES:
+        filepath = REPO_ROOT / page
+        src = filepath.read_text()
+        for pattern in FORBIDDEN_PATTERNS:
+            assert pattern not in src, f"{page} must not contain {pattern!r}"
+
+
 def test_legacy_ui_files_are_classified():
-    """LEGACY_UI_FILES must exist and be explicitly marked legacy."""
-    for page in LEGACY_UI_FILES:
-        assert (REPO_ROOT / page).exists(), f"{page} listed as legacy but does not exist"
+    """Archived legacy UI files must not be present in ui/pages/."""
+    legacy_names = ["4_scenarios.py"]
+    for name in legacy_names:
+        path = REPO_ROOT / "ui" / "pages" / name
+        assert not path.exists(), f"{name} must not exist in ui/pages/ (should be archived)"
 
 
 def test_no_create_default_oborovo_runtime_references():

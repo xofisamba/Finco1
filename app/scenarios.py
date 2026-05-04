@@ -36,14 +36,14 @@ TARIFF_FIELDS = ("ppa_base_tariff", "merchant_price", "merchant_price_eur_mwh", 
 
 def get_scenario_rules(scenario: str):
     """Return explicit rule dict for a scenario."""
-    key = scenario.lower()
+    key = scenario.strip().lower()
     if key not in SCENARIO_RULES:
         raise ValueError(f"Unknown scenario {scenario!r}. Valid: Base, Downside, Upside")
     return SCENARIO_RULES[key]
 
 def apply_scenario(project_inputs, scenario: str):
     """Apply scenario to project inputs. Returns NEW ProjectInputs, original unchanged."""
-    scenario = scenario.lower()
+    scenario = scenario.strip().lower()
     if scenario not in SCENARIO_RULES:
         raise ValueError(f"Unknown scenario {scenario!r}. Valid: Base, Downside, Upside")
 

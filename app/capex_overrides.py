@@ -21,6 +21,8 @@ def scale_capex_items(capex: CapexStructure, target_total_capex: float) -> Capex
     Otherwise it will be approximate — the docstring claims "approximately equal"
     rather than exact equality.
     """
+    if target_total_capex < 0:
+        raise ValueError(f"target_total_capex must be non-negative, got {target_total_capex}")
     current_total = capex.total_capex
     if current_total <= 0:
         return capex
