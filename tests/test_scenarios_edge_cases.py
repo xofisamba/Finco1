@@ -83,9 +83,6 @@ class TestScenarioEdgeCases:
         with pytest.raises(ValueError, match="Unknown scenario"):
             get_scenario_rules("foobar")
 
-
-# ── CapEx scaling edge cases ───────────────────────────────────────────────────
-
     def test_apply_scenario_accepts_whitespace_in_name(self):
         """apply_scenario and get_scenario_rules must normalize whitespace."""
         solar = create_default_solar_project()
@@ -93,6 +90,9 @@ class TestScenarioEdgeCases:
         assert result is not None
         rules = get_scenario_rules("  Downside  ")
         assert rules["p50_multiplier"] == 0.90
+
+
+# ── CapEx scaling edge cases ───────────────────────────────────────────────────
 
 class TestCapExScalingEdgeCases:
     def test_scale_capex_zero_total(self):
@@ -105,8 +105,6 @@ class TestCapExScalingEdgeCases:
 
         scale_capex_items() returns capex unchanged when current_total <= 0.
         """
-        from dataclasses import fields as dc_fields
-
         capex = create_default_solar_project().capex
 
         # Build a TRUE zero CapexStructure by nulling every numeric contributing field
@@ -124,7 +122,8 @@ class TestCapExScalingEdgeCases:
         zero_capex = replace(capex, **new_field_values)
 
         # Verify it's truly zero
-        assert zero_capex.total_capex == 0.0,             f"Expected total_capex=0, got {zero_capex.total_capex}"
+        assert zero_capex.total_capex == 0.0, \
+            f"Expected total_capex=0, got {zero_capex.total_capex}"
 
         # scale_capex_items should return unchanged (early return for total <= 0)
         result = scale_capex_items(zero_capex, 50_000.0)
@@ -154,13 +153,14 @@ class TestCapExScalingEdgeCases:
         result = scale_capex_items(solar.capex, solar.capex.total_capex * 1000)
         assert result.total_capex > 0  # must be positive, not inf/nan
 
-
-
     def test_scale_capex_negative_target_rejected(self):
         """scale_capex_items raises ValueError for negative target_total_capex."""
         capex = create_default_solar_project().capex
         with pytest.raises(ValueError, match="non-negative"):
             scale_capex_items(capex, -100.0)
+
+
+# ── Portfolio edge cases ──────────────────────────────────────────────────────
 
 class TestPortfolioEdgeCases:
     def test_portfolio_empty_projects_list(self):
@@ -183,8 +183,6 @@ class TestPortfolioEdgeCases:
         """PortfolioInputs with duplicate project codes must raise."""
         solar = create_default_solar_project()
         wind = create_default_wind_project()
-        # solar and wind may have same code — check what they actually are
-        solar2 = replace(solar, info=replace(solar.info, code="SOLAR-001"))
         shared = FinancingParams(
             share_capital_keur=100.0,
             senior_debt_amount_keur=200.0,
@@ -273,7 +271,6 @@ class TestUIValidationEdgeCases:
 
     def test_ui_runner_scenario_parameter_rejects_bad_scenario(self):
         """UI runner must propagate scenario ValueError from apply_scenario."""
-        solar = create_default_solar_project()
         result = run_demo_project("Solar", scenario="bad_scenario")
         # Should come back with error message in messages
         error_msgs = [m for m in result.messages if "Unknown scenario" in m or "bad_scenario" in m]
@@ -304,4 +301,3 @@ class TestUIValidationEdgeCases:
         """Solar+BESS must be integration_status=partial."""
         result = run_demo_project("Solar+BESS")
         assert result.integration_status == "partial"
-
