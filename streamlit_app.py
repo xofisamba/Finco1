@@ -96,6 +96,13 @@ if run_button or st.session_state.demo_result is not None:
     if demo.result or demo.portfolio_result:
         demo_exp = demo
         from app.excel_export import build_excel_export
+        # Build model warnings for Excel export
+        model_warnings = []
+        if demo_exp.result is not None:
+            from domain.validation import warn_model_unrealistic
+            for w in warn_model_unrealistic(demo_exp.result, demo_exp.project_inputs):
+                model_warnings.append({"code": w.code, "message": w.message})
+
         excel_data = build_excel_export(
             result=demo_exp.result,
             portfolio_result=demo_exp.portfolio_result,
@@ -105,6 +112,7 @@ if run_button or st.session_state.demo_result is not None:
             integration_note=demo_exp.integration_note,
             scenario=scenario,
             period_view=period_view,
+            warnings=model_warnings,
         )
         st.download_button(
             "📊 Download Excel Export",

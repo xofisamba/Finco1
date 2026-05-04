@@ -8,7 +8,7 @@
 |---|---|---|
 | Solar PV | ✅ Full | CapEx, OpEx, Revenue, Tax, DSCR, IRR |
 | Wind | ✅ Full | CapEx, OpEx, Revenue, Tax, DSCR, IRR |
-| Scenario v1 (Base/Downside/Upside) | ✅ Full | Solar/Wind only |
+| Scenario v2 (Base/Downside/Upside) | ✅ Full | Solar/Wind only | CapEx, OpEx, Degradation, Curtailment, Tariff multipliers |
 | Portfolio (project IRR) | ⚠️ Experimental | Pooled CFADS, date-aligned XIRR |
 | Excel export | ✅ Full | Values-only, with Notes sheet |
 
