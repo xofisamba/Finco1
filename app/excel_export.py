@@ -4,7 +4,23 @@ import pandas as pd
 from io import BytesIO
 
 import openpyxl
-from openpyxl.styles import Font
+from openpyxl.styles import Font, numbers
+from openpyxl.utils import get_column_letter
+
+
+# KPI label mapping: raw key → clean display label
+_DASHBOARD_LABELS = {
+    "total_revenue_keur": "Total Revenue (kEUR)",
+    "total_ebitda_keur": "EBITDA (kEUR)",
+    "total_tax_keur": "Total Tax (kEUR)",
+    "project_irr": "Project IRR (%)",
+    "equity_irr": "Equity IRR (%)",
+    "sponsor_irr": "Sponsor IRR (%)",
+    "min_dscr": "Min DSCR",
+    "avg_dscr": "Avg DSCR",
+    "total_senior_ds_keur": "Senior Debt Service (kEUR)",
+    "total_distribution_keur": "Distributions (kEUR)",
+}
 
 
 def build_excel_export(
@@ -38,56 +54,15 @@ def build_excel_export(
     output = BytesIO()
     
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        # Dashboard
+        # ── Dashboard (always first) ─────────────────────────────────────
         _write_dashboard_sheet(writer, result, portfolio_result, integration_status, integration_note, scenario)
-        
-        # Inputs
-        _write_sheet(writer, "Inputs", build_inputs_summary_table(project_inputs))
-        
-        # CapEx
-        _write_sheet(writer, "CapEx", build_capex_summary_table(project_inputs))
-        _write_sheet(writer, "CapEx_Items", build_capex_items_table(project_inputs))
-        
-        if result is not None:
-            # Apply annual aggregation if needed
-            if period_view == "Annual":
-                rev_df = aggregate_period_table_annual(build_revenue_table(result))
-                debt_df = aggregate_period_table_annual(build_debt_table(result))
-                tax_df = aggregate_period_table_annual(build_tax_depreciation_table(result))
-                wf_df = aggregate_period_table_annual(build_waterfall_table(result))
-            else:
-                rev_df = build_revenue_table(result)
-                debt_df = build_debt_table(result)
-                tax_df = build_tax_depreciation_table(result)
-                wf_df = build_waterfall_table(result)
-            
-            _write_sheet(writer, "Revenue", rev_df)
-            _write_sheet(writer, "Debt", debt_df)
-            _write_sheet(writer, "Tax_Depreciation", tax_df)
-            _write_sheet(writer, "Waterfall", wf_df)
-            _write_sheet(writer, "Returns", build_returns_table(result))
-        
-        if portfolio_result is not None:
-            _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result))
 
-            # Portfolio CF sheet — audit table of cashflow breakdown per date
-            if portfolio_result.portfolio_cashflows:
-                rows = []
-                for row in portfolio_result.portfolio_cashflows:
-                    date = row.get("date", "")
-                    total = row.get("total_cashflow", 0.0)
-                    breakdown = row.get("breakdown", {})
-                    row_dict = {"Date": str(date), "Total CF (keur)": round(total, 2)}
-                    for proj, contrib in breakdown.items():
-                        row_dict[f"  {proj}"] = round(contrib, 2)
-                    rows.append(row_dict)
-                cf_df = pd.DataFrame(rows)
-                _write_sheet(writer, "Portfolio CF", cf_df)
-        
-        # Validation sheet
-        _write_validation_sheet(writer, validation_issues)
-        
-        # DSCR Summary sheet
+        # ── Returns ───────────────────────────────────────────────────────
+        if result is not None:
+            _write_sheet(writer, "Returns", build_returns_table(result),
+                         number_format={"IRR": "0.0%", "DSCR": "0.00x", "kEUR": "#,##0"})
+
+        # ── DSCR Summary ────────────────────────────────────────────────────
         if result is not None and hasattr(result, "target_dscr"):
             rows = [
                 ("Metric", "Value"),
@@ -99,9 +74,68 @@ def build_excel_export(
             dscr_df = pd.DataFrame(rows[1:], columns=["Metric", "Value"])
             _write_sheet(writer, "DSCR Summary", dscr_df)
 
-        # Notes sheet
+        # ── Waterfall ─────────────────────────────────────────────────────
+        if result is not None:
+            wf_df = build_waterfall_table(result)
+            if period_view == "Annual":
+                wf_df = aggregate_period_table_annual(wf_df)
+            _write_sheet(writer, "Waterfall", wf_df,
+                         number_format={"kEUR": "#,##0", "DSCR": "0.00x"})
+
+        # ── Revenue ────────────────────────────────────────────────────────
+        if result is not None:
+            rev_df = build_revenue_table(result)
+            if period_view == "Annual":
+                rev_df = aggregate_period_table_annual(rev_df)
+            _write_sheet(writer, "Revenue", rev_df, number_format={"kEUR": "#,##0", "MWh": "#,##0"})
+
+        # ── Debt ──────────────────────────────────────────────────────────
+        if result is not None:
+            debt_df = build_debt_table(result)
+            if period_view == "Annual":
+                debt_df = aggregate_period_table_annual(debt_df)
+            _write_sheet(writer, "Debt", debt_df,
+                         number_format={"kEUR": "#,##0", "DSCR": "0.00x", "LLCR": "0.00x", "PLCR": "0.00x"})
+
+        # ── Tax & Depreciation ─────────────────────────────────────────────
+        if result is not None:
+            tax_df = build_tax_depreciation_table(result)
+            if period_view == "Annual":
+                tax_df = aggregate_period_table_annual(tax_df)
+            _write_sheet(writer, "Tax_Depreciation", tax_df, number_format={"kEUR": "#,##0"})
+
+        # ── Notes ──────────────────────────────────────────────────────────
         _write_notes_sheet(writer, integration_status, integration_note, scenario, period_view,
-                            warnings=warnings if warnings else [])
+                           warnings=warnings if warnings else [])
+
+        # ── Inputs ────────────────────────────────────────────────────────
+        _write_sheet(writer, "Inputs", build_inputs_summary_table(project_inputs))
+
+        # ── CapEx ──────────────────────────────────────────────────────────
+        _write_sheet(writer, "CapEx", build_capex_summary_table(project_inputs),
+                     number_format={"kEUR": "#,##0"})
+        _write_sheet(writer, "CapEx_Items", build_capex_items_table(project_inputs),
+                     number_format={"Amount": "#,##0"})
+
+        # ── Portfolio ──────────────────────────────────────────────────────
+        if portfolio_result is not None:
+            _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result),
+                         number_format={"kEUR": "#,##0", "IRR": "0.0%", "DSCR": "0.00x"})
+            if portfolio_result.portfolio_cashflows:
+                rows = []
+                for row in portfolio_result.portfolio_cashflows:
+                    date = row.get("date", "")
+                    total = row.get("total_cashflow", 0.0)
+                    breakdown = row.get("breakdown", {})
+                    row_dict = {"Date": str(date), "Total CF (keur)": round(total, 2)}
+                    for proj, contrib in breakdown.items():
+                        row_dict[f"  {proj}"] = round(contrib, 2)
+                    rows.append(row_dict)
+                cf_df = pd.DataFrame(rows)
+                _write_sheet(writer, "Portfolio CF", cf_df, number_format={"kEUR": "#,##0"})
+
+        # ── Validation ────────────────────────────────────────────────────
+        _write_validation_sheet(writer, validation_issues)
     
     output.seek(0)
     return output.read()
@@ -109,24 +143,65 @@ def build_excel_export(
 
 
 
-def _write_sheet(writer, name: str, df: pd.DataFrame) -> None:
-    """Write a DataFrame to a sheet with basic formatting."""
+def _write_sheet(writer, name: str, df: pd.DataFrame,
+                 number_format: dict | None = None) -> None:
+    """Write a DataFrame to a sheet with bold headers, frozen row, auto-width, and number formats."""
     if df is None or df.empty:
         df = pd.DataFrame({"Note": ["No data available"]})
     df.to_excel(writer, sheet_name=name[:31], index=True)
     ws = writer.sheets[name[:31]]
+
     # Bold header row
     for cell in ws[1]:
         cell.font = Font(bold=True)
-    # Freeze panes
+
+    # Freeze top row
     ws.freeze_panes = "A2"
-    # Ensure sheet is visible (required by openpyxl)
+
+    # Ensure sheet is visible
     ws.sheet_state = "visible"
+
+    # Auto column width based on content
+    for col_idx, col in enumerate(df.columns, start=1):
+        col_letter = get_column_letter(col_idx)
+        max_len = len(str(col))  # header length
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                if cell.value is not None:
+                    max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = min(max_len + 3, 40)
+
+    # Apply number formats based on row labels
+    if number_format:
+        irr_patterns = ("irr", "project irr", "equity irr", "sponsor irr")
+        dscr_patterns = ("dscr", "min dscr", "avg dscr", "llcr", "plcr")
+        keur_patterns = ("keur", "revenue", "ebitda", "debt", "tax", "distribution", "capex")
+        mwh_patterns = ("mwh", "generation", "capacity")
+
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
+            row_label_cell = ws.cell(row=row_idx, column=1)
+            if row_label_cell.value:
+                label_lower = str(row_label_cell.value).lower()
+                for col_idx_c, cell in enumerate(row, start=1):
+                    if cell.value is None:
+                        continue
+                    col_letter = get_column_letter(col_idx_c)
+                    # IRR format
+                    if any(p in label_lower for p in irr_patterns) and "format" not in label_lower:
+                        cell.number_format = "0.0%"
+                    # DSCR / LLCR / PLCR format
+                    elif any(p in label_lower for p in dscr_patterns):
+                        cell.number_format = "0.00x"
+                    # kEUR format
+                    elif any(p in label_lower for p in keur_patterns):
+                        cell.number_format = "#,##0"
+                    # MWh format
+                    elif any(p in label_lower for p in mwh_patterns):
+                        cell.number_format = "#,##0"
 
 
 def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scenario) -> None:
     """Write a Dashboard sheet with KPI summary and integration info."""
-    from app.output_tables import build_dashboard_kpis
     rows = [
         ("Integration Status", status),
         ("Scenario", scenario),
@@ -137,17 +212,50 @@ def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scena
         kpis = build_dashboard_kpis(result)
         for k, v in kpis.items():
             if v is not None and v != "n/a":
-                rows.append((k, v))
+                label = _DASHBOARD_LABELS.get(k, k)
+                # Format IRR values as decimals → Excel will show as %
+                if "irr" in k.lower():
+                    try:
+                        rows.append((label, float(v) / 100))  # Store as decimal for 0.0% format
+                    except (TypeError, ValueError):
+                        rows.append((label, v))
+                else:
+                    rows.append((label, v))
     if portfolio_result is not None:
-        rows.append(("Pooled Revenue", portfolio_result.total_revenue_keur))
-        rows.append(("Pooled EBITDA", portfolio_result.total_ebitda_keur))
+        rows.append(("Pooled Revenue (kEUR)", portfolio_result.total_revenue_keur))
+        rows.append(("Pooled EBITDA (kEUR)", portfolio_result.total_ebitda_keur))
         rows.append(("Portfolio DSCR (Avg)", portfolio_result.avg_dscr))
         rows.append(("Portfolio DSCR (Min)", portfolio_result.min_dscr))
+
     df = pd.DataFrame(rows, columns=["Metric", "Value"])
     df.to_excel(writer, sheet_name="Dashboard", index=False)
     ws = writer.sheets["Dashboard"]
     for cell in ws[1]:
         cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
+
+    # Apply number formats to Dashboard sheet
+    irr_cols = []
+    dscr_cols = []
+    keur_cols = []
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
+        label_cell = ws.cell(row=row_idx, column=1)
+        if label_cell.value:
+            label_lower = str(label_cell.value).lower()
+            if "irr" in label_lower:
+                irr_cols.append(row_idx)
+            elif "dscr" in label_lower:
+                dscr_cols.append(row_idx)
+            elif "keur" in label_lower or "revenue" in label_lower or "ebitda" in label_lower:
+                keur_cols.append(row_idx)
+
+    for row_idx in irr_cols:
+        ws.cell(row=row_idx, column=2).number_format = "0.0%"
+    for row_idx in dscr_cols:
+        ws.cell(row=row_idx, column=2).number_format = "0.00x"
+    for row_idx in keur_cols:
+        ws.cell(row=row_idx, column=2).number_format = "#,##0"
 
 
 def _write_validation_sheet(writer, validation_issues) -> None:
@@ -161,6 +269,8 @@ def _write_validation_sheet(writer, validation_issues) -> None:
     ws = writer.sheets["Validation"]
     for cell in ws[1]:
         cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
 
 
 def _write_notes_sheet(writer, status, note, scenario, period_view, warnings=None) -> None:
@@ -188,14 +298,14 @@ def _write_notes_sheet(writer, status, note, scenario, period_view, warnings=Non
         rows.append(("Model Warnings", "—"))
         for w in warnings:
             rows.append((w.get("code", "WARN"), w.get("message", str(w))))
+
     # Portfolio warning
     if status == "experimental":
         rows.append(("Portfolio Status", "Experimental — sponsor IRR is placeholder"))
 
-    # Scenario deltas (only when scenario != Base, and NOT for portfolio)
+    # Scenario deltas
     if scenario != "Base":
         if status == "experimental":
-            # Portfolio + non-Base: scenario NOT applied, show warning
             rows.append(("Scenario", f"{scenario} — NOT APPLIED"))
             rows.append(("Scenario Deltas", "Base case shown — Portfolio does not support scenarios"))
         else:
@@ -217,3 +327,5 @@ def _write_notes_sheet(writer, status, note, scenario, period_view, warnings=Non
     ws = writer.sheets["Notes"]
     for cell in ws[1]:
         cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
