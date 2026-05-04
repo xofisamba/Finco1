@@ -104,29 +104,44 @@ class TestLCOEFormula:
             f"LCOE with higher CapEx ({hi_lcoe:.2f}) must be > base LCOE ({base_lcoe:.2f})"
 
     def test_tariff_increase_does_not_change_economic_lcoe(self):
-        """Economic LCOE excludes revenue/tariff — tariff change must not affect LCOE.
+        """Economic LCOE = (CapEx+OpEx)/Gen — tariff/revenue excluded. Change tariff, LCOE unchanged."""
+        from dataclasses import replace as _rep
 
-        Economic LCOE = (CapEx + OpEx) / Total Generation. Revenue/tariff is not in it.
-        This test uses two scenarios that differ ONLY in tariff (and other params),
-        but confirms that tariff is not a driver of economic LCOE.
-        """
-        solar_base = create_default_solar_project()
-        engine_base = _build_period_engine(solar_base)
-        base_result = _run_waterfall(solar_base, engine_base)
-        base_lcoe = _compute_lcoe_from_waterfall(base_result, solar_base)
+        base = create_default_solar_project()
+        engine_base = _build_period_engine(base)
+        base_result = _run_waterfall(base, engine_base)
+        base_lcoe = _compute_lcoe_from_waterfall(base_result, base)
 
-        # Upside has capex_mult=0.97, tariff_mult=1.03 — but economic LCOE should
-        # only differ due to CapEx change (not tariff). With only tariff change,
-        # economic LCOE would be unchanged.
-        solar_hi = apply_scenario(create_default_solar_project(), "upside")
-        engine_hi = _build_period_engine(solar_hi)
-        hi_result = _run_waterfall(solar_hi, engine_hi)
-        hi_lcoe = _compute_lcoe_from_waterfall(hi_result, solar_hi)
+        # Only change tariff (+20%); all other inputs identical
+        tariff_only = _rep(base, revenue=_rep(base.revenue,
+                            ppa_base_tariff=base.revenue.ppa_base_tariff * 1.20))
+        engine_hi = _build_period_engine(tariff_only)
+        hi_result = _run_waterfall(tariff_only, engine_hi)
+        hi_lcoe = _compute_lcoe_from_waterfall(hi_result, tariff_only)
 
-        # Economic LCOE changes only when CapEx or OpEx changes, not tariff.
-        # The upside scenario also changes CapEx (0.97), so LCOE may differ.
-        # But if we isolate tariff: tariff alone has NO effect on economic LCOE.
-        # This is a documentation test — economic LCOE formula is tariff-independent.
+        # Economic LCOE: abs difference must be negligible
+        assert abs(hi_lcoe - base_lcoe) < 1e-6, (
+            f"Economic LCOE must not change when tariff changes: "
+            f"base={base_lcoe:.4f}, tariff+20%={hi_lcoe:.4f}"
+        )
+
+    def test_tariff_increase_increases_project_irr(self):
+        """Higher tariff increases project IRR (more revenue per MWh)."""
+        from dataclasses import replace as _rep
+
+        base = create_default_solar_project()
+        engine_base = _build_period_engine(base)
+        base_result = _run_waterfall(base, engine_base)
+
+        tariff_only = _rep(base, revenue=_rep(base.revenue,
+                            ppa_base_tariff=base.revenue.ppa_base_tariff * 1.20))
+        engine_hi = _build_period_engine(tariff_only)
+        hi_result = _run_waterfall(tariff_only, engine_hi)
+
+        assert hi_result.project_irr > base_result.project_irr, (
+            f"Project IRR must increase with higher tariff: "
+            f"base={base_result.project_irr:.4f}, tariff+20%={hi_result.project_irr:.4f}"
+        )
 
 
 class TestScenarioDirection:
