@@ -68,8 +68,8 @@ class OpexLineItem:
     annual_values_keur: tuple[float, ...] = field(default_factory=lambda: ())
     """Explicit per-year values for MANUAL_SCHEDULE or MIXED mode. Index = year_index (0-based)."""
 
-    manual_overrides_keur: tuple[float, ...] = field(default_factory=lambda: ())
-    """Manual overrides for specific years. Index = year_index (0-based). Overrides inflated value."""
+    manual_overrides_keur: tuple["float | None", ...] = field(default_factory=lambda: ())
+    """Manual overrides for specific years. Index = year_index (0-based). None means no override for that year; a float value overrides the inflated value."""
 
     is_hardcoded: bool = False
     """True if this line was manually entered and should be visually flagged as hardcoded."""
@@ -102,6 +102,7 @@ class OpexLineItem:
 class OpexScheduleEntry:
     """A single year's computed OPEX value for one line item."""
     line_item_name: str
+    category: str               # Copied directly from OpexLineItem.category
     year_index: int          # 0-based year index (year 1 = index 0)
     value_keur: float
     source: OpexSource
@@ -130,9 +131,9 @@ class OpexSchedule:
         return [e for e in self.entries if e.year_index == year_index]
 
     def items_by_category(self, category: str, year_index: int) -> list[OpexScheduleEntry]:
-        """Get entries for a given category and year."""
+        """Get entries for a given category and year. Uses entry.category field."""
         return [e for e in self.entries
-                if e.year_index == year_index and category in e.line_item_name]
+                if e.year_index == year_index and e.category == category]
 
     def total_for_year(self, year_index: int) -> float:
         """Get total OPEX for a given year (0-based index)."""
@@ -141,11 +142,10 @@ class OpexSchedule:
         return 0.0
 
     def summary_by_category(self, year_index: int) -> dict[str, float]:
-        """Get total OPEX per category for a given year."""
+        """Get total OPEX per category for a given year. Groups by entry.category."""
         result: dict[str, float] = {}
         for entry in self.items_for_year(year_index):
-            cat = _category_for_entry(entry.line_item_name)
-            result[cat] = result.get(cat, 0.0) + entry.value_keur
+            result[entry.category] = result.get(entry.category, 0.0) + entry.value_keur
         return result
 
 
@@ -259,6 +259,7 @@ def generate_opex_schedule(
 
             entries.append(OpexScheduleEntry(
                 line_item_name=item.name,
+                category=item.category,  # Stored directly from line item
                 year_index=year_idx,
                 value_keur=value_keur,
                 source=source,
@@ -283,17 +284,21 @@ def generate_opex_schedule(
 def build_opex_line_items_from_defaults(
     technology: str = "solar",
 ) -> tuple[OpexLineItem, ...]:
-    """Build a default set of line items from existing OpexParams defaults.
+    """Build a default set of line items as a starting point for OPEX modeling.
 
-    This provides backward compatibility: the existing OpexParams-based
-    total is reproduced as line items so the new engine can be used
-    without changing the existing model's behavior.
+    .. note:: These are **starter defaults**, not an exact reproduction of the
+       legacy ``OpexParams`` totals. The legacy ``OpexParams.annual_opex_keur()``
+       includes capacity-weighted variable O&M and insurance that depend on
+       generation and CAPEX assumptions. The line-item defaults here represent
+       a simplified but transparent flat-cost starting point for user editing.
+       Total Y1 sums will differ from ``OpexParams`` defaults until the user
+       calibrates individual line items.
 
     Args:
         technology: "solar" or "wind"
 
     Returns:
-        Tuple of OpexLineItem objects representing the legacy defaults.
+        Tuple of OpexLineItem objects representing starter defaults.
     """
     if technology == "solar":
         return (

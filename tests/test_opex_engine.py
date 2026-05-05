@@ -253,16 +253,19 @@ class TestScheduleHelpers:
         assert len(year1_entries) == 1
         assert year1_entries[0].year_index == 1
 
-    def test_summary_by_category(self):
+    def test_summary_by_category_uses_entry_category_field(self):
+        """summary_by_category groups by entry.category, not by parsing line_item_name."""
+        # Custom name that does NOT contain any known category keyword
         item1 = OpexLineItem(
-            name="B.01 Technical",
+            name="PremiumSupport Package",
             category="operations",
             base_year_amount_keur=100.0,
             inflation_rate=0.0,
             calculation_mode=CalculationMode.INFLATED_FROM_BASE,
         )
+        # Another custom name, different category
         item2 = OpexLineItem(
-            name="Insurance",
+            name="AssetProtection Plan",
             category="insurance",
             base_year_amount_keur=50.0,
             inflation_rate=0.0,
@@ -270,5 +273,93 @@ class TestScheduleHelpers:
         )
         schedule = generate_opex_schedule((item1, item2), horizon_years=2)
         summary = schedule.summary_by_category(year_index=0)
+        # Groups by category field even though names don't contain "Insurance" or "operations"
         assert summary["operations"] == pytest.approx(100.0)
         assert summary["insurance"] == pytest.approx(50.0)
+
+    def test_items_by_category_uses_entry_category_field(self):
+        """items_by_category filters by entry.category, not by substring match."""
+        item1 = OpexLineItem(
+            name="Management Fee",
+            category="operations",
+            base_year_amount_keur=200.0,
+            inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+        )
+        item2 = OpexLineItem(
+            name="Asset Coverage",
+            category="insurance",
+            base_year_amount_keur=75.0,
+            inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+        )
+        schedule = generate_opex_schedule((item1, item2), horizon_years=3)
+
+        ops_entries = schedule.items_by_category("operations", year_index=0)
+        assert len(ops_entries) == 1
+        assert ops_entries[0].line_item_name == "Management Fee"
+        assert ops_entries[0].category == "operations"
+
+        ins_entries = schedule.items_by_category("insurance", year_index=0)
+        assert len(ins_entries) == 1
+        assert ins_entries[0].line_item_name == "Asset Coverage"
+        assert ins_entries[0].category == "insurance"
+
+    def test_manual_overrides_none_means_no_override(self):
+        """None in manual_overrides_keur means no override; a float means override."""
+        item = OpexLineItem(
+            name="Test Mixed",
+            category="test",
+            base_year_amount_keur=100.0,
+            inflation_rate=0.0,
+            calculation_mode=CalculationMode.MIXED,
+            manual_overrides_keur=(50.0, None, 200.0),  # Y0=50 (override), Y1=None (base), Y2=200 (override)
+        )
+        schedule = generate_opex_schedule((item,), horizon_years=3)
+
+        year0_entries = [e for e in schedule.entries if e.year_index == 0]
+        year1_entries = [e for e in schedule.entries if e.year_index == 1]
+        year2_entries = [e for e in schedule.entries if e.year_index == 2]
+
+        # Year 0: override to 50
+        assert year0_entries[0].is_override is True
+        assert year0_entries[0].value_keur == 50.0
+        # Year 1: None → use base (100)
+        assert year1_entries[0].is_override is False
+        assert year1_entries[0].value_keur == 100.0
+        # Year 2: override to 200
+        assert year2_entries[0].is_override is True
+        assert year2_entries[0].value_keur == 200.0
+
+        # Only Y0 and Y2 are flagged as overrides (Y1 is not)
+        assert schedule.has_manual_overrides is True
+
+    def test_manual_overrides_all_none_no_override_flags(self):
+        """All-None manual_overrides_keur means no overrides at all."""
+        item = OpexLineItem(
+            name="Test Mixed None",
+            category="test",
+            base_year_amount_keur=100.0,
+            inflation_rate=0.0,
+            calculation_mode=CalculationMode.MIXED,
+            manual_overrides_keur=(None, None, None),  # All None = no overrides
+        )
+        schedule = generate_opex_schedule((item,), horizon_years=3)
+        # All entries use base value, no override flags
+        for entry in schedule.entries:
+            assert entry.is_override is False
+        assert schedule.has_manual_overrides is False
+
+    def test_schedule_entry_has_category_field(self):
+        """OpexScheduleEntry.category is copied from OpexLineItem.category."""
+        item = OpexLineItem(
+            name="Some Custom Name",
+            category="environmental_social",
+            base_year_amount_keur=42.0,
+            inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+        )
+        schedule = generate_opex_schedule((item,), horizon_years=1)
+        entry = schedule.entries[0]
+        assert entry.category == "environmental_social"
+        assert entry.line_item_name == "Some Custom Name"
