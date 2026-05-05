@@ -297,7 +297,7 @@ def _write_opex_detail_sheet(writer, schedule) -> None:
             "Value (kEUR)": round(entry.value_keur, 2),
             "Source": entry.source.value,
             "Is Override": entry.is_override,
-            "Is Hardcoded": entry.source.value == "hardcoded" or getattr(entry, "is_hardcoded", False),
+            "Is Hardcoded": entry.is_hardcoded,
             "Override Note": entry.override_note,
         })
 

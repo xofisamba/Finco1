@@ -723,3 +723,37 @@ def test_excel_opex_detail_values_are_values_only():
         val = row[3]  # Value (kEUR) column
         assert isinstance(val, (int, float)), f"Expected numeric Value, got {type(val).__name__}: {val!r}"
         assert val > 0, f"Expected positive value, got {val}"
+
+
+def test_excel_opex_detail_hardcoded_flag_from_is_hardcoded_field():
+    """OPEX Detail Is Hardcoded=True when OpexLineItem.is_hardcoded=True (even with FORMULA source)."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    # source=FORMULA but is_hardcoded=True — was incorrectly False before fix
+    items = (
+        OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+            is_hardcoded=True,
+        ),
+    )
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=items,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["OPEX Detail"]
+
+    # Find the row(s) for Insurance — Is Hardcoded must be True
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] == "Insurance":
+            assert row[6] is True, f"Is Hardcoded should be True for is_hardcoded=True item, got {row[6]}"

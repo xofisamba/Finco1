@@ -106,6 +106,7 @@ class OpexScheduleEntry:
     value_keur: float
     source: OpexSource
     is_override: bool        # True if this specific year's value was manually overridden
+    is_hardcoded: bool       # Copied from OpexLineItem.is_hardcoded
     override_note: str = ""
     inflation_factor: float = 1.0  # Cumulative inflation factor applied
 
@@ -232,6 +233,7 @@ def generate_opex_schedule(
                 value_keur=value_keur,
                 source=source,
                 is_override=is_override,
+                is_hardcoded=item.is_hardcoded,  # Carried from line item
                 override_note=note,
                 inflation_factor=inflation_factor,
             ))
