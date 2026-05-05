@@ -262,7 +262,9 @@ The Advanced OPEX editor is a first-class **💸 OPEX tab** (position 4 in tab b
 - Editing a Y cell → that year becomes manual override (stored in `manual_overrides_keur[y_idx]`)
 - Total OPEX row shown **below** matrix as read-only dataframe (not in data_editor)
 - `num_rows="fixed"` keeps row count stable
-- Stale-state warning shown after edits: `⚠️ OPEX inputs changed — click Run Model to update Dashboard, Debt, DSCR and Returns.`
+- **Override preview heatmap** below data_editor: amber rows = rows with manual overrides
+- Compact integer display (Y columns: no decimal places)
+- Stale-state warning after edits: `⚠️ OPEX inputs changed — click Run Model...`
 
 ### OPEX Tab (Advanced OPEX)
 
