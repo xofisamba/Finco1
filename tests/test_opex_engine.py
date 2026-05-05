@@ -363,3 +363,46 @@ class TestScheduleHelpers:
         entry = schedule.entries[0]
         assert entry.category == "environmental_social"
         assert entry.line_item_name == "Some Custom Name"
+
+
+class TestHasManualOverrides:
+    """OpexLineItem.has_manual_overrides() — must return True only when at least one override is not None."""
+
+    def test_empty_tuple_is_false(self):
+        item = OpexLineItem(
+            name="Test",
+            category="test",
+            base_year_amount_keur=100.0,
+            manual_overrides_keur=(),
+        )
+        assert item.has_manual_overrides() is False
+
+    def test_all_none_is_false(self):
+        item = OpexLineItem(
+            name="Test",
+            category="test",
+            base_year_amount_keur=100.0,
+            manual_overrides_keur=(None, None),
+        )
+        assert item.has_manual_overrides() is False
+
+    def test_one_non_none_is_true(self):
+        item = OpexLineItem(
+            name="Test",
+            category="test",
+            base_year_amount_keur=100.0,
+            manual_overrides_keur=(None, 100.0),
+        )
+        assert item.has_manual_overrides() is True
+
+    def test_is_formula_driven_true_when_all_overrides_none(self):
+        """is_formula_driven must stay True when source=FORMULA and all overrides are None."""
+        item = OpexLineItem(
+            name="Test",
+            category="test",
+            base_year_amount_keur=100.0,
+            source=OpexSource.FORMULA,
+            manual_overrides_keur=(None, None, None),
+        )
+        assert item.has_manual_overrides() is False
+        assert item.is_formula_driven() is True

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class CalculationMode(str, Enum):
@@ -68,7 +67,7 @@ class OpexLineItem:
     annual_values_keur: tuple[float, ...] = field(default_factory=lambda: ())
     """Explicit per-year values for MANUAL_SCHEDULE or MIXED mode. Index = year_index (0-based)."""
 
-    manual_overrides_keur: tuple["float | None", ...] = field(default_factory=lambda: ())
+    manual_overrides_keur: tuple[float | None, ...] = field(default_factory=lambda: ())
     """Manual overrides for specific years. Index = year_index (0-based). None means no override for that year; a float value overrides the inflated value."""
 
     is_hardcoded: bool = False
@@ -90,8 +89,8 @@ class OpexLineItem:
                 )
 
     def has_manual_overrides(self) -> bool:
-        """Return True if any year has a manual override."""
-        return bool(self.manual_overrides_keur)
+        """Return True if any year has a non-None manual override."""
+        return any(v is not None for v in self.manual_overrides_keur)
 
     def is_formula_driven(self) -> bool:
         """Return True if this line is purely formula-driven (no manual/hardcoded)."""
@@ -152,37 +151,6 @@ class OpexSchedule:
 # =============================================================================
 # SCHEDULE GENERATION
 # =============================================================================
-
-def _category_for_entry(name: str) -> str:
-    """Derive category from line item name using known prefixes.
-
-    Categories mirror the TUHO/Oborovo Excel structure:
-      B.01 → operations
-      B.02 → infrastructure
-      B.04 → clean_material
-      B.08 → power_expenses
-      B.12 → environmental_social
-      Other → derived from name
-    """
-    prefix_map = {
-        "B.01": "operations",
-        "B.02": "infrastructure",
-        "B.04": "clean_material",
-        "B.08": "power_expenses",
-        "B.12": "environmental_social",
-        "Insurance": "insurance",
-        "Land Lease": "land",
-        "Technical Management": "operations",
-        "Infrastructure Maintenance": "infrastructure",
-        "Clean Material": "clean_material",
-        "Power Expenses": "power_expenses",
-        "Environmental": "environmental_social",
-    }
-    for prefix, cat in prefix_map.items():
-        if name.startswith(prefix):
-            return cat
-    return "other"
-
 
 def generate_opex_schedule(
     line_items: tuple[OpexLineItem, ...],
