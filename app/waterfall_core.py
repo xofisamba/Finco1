@@ -37,7 +37,8 @@ def run_waterfall_v3_core(
     sculpt_capex_keur: float = 0.0,
     debt_sizing_method: str = "dscr_sculpt",
     dscr_schedule: list[float] | None = None,
-):
+    advanced_opex_line_items: tuple | None = None,
+) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
     FincoGPT calibration note:
@@ -48,6 +49,11 @@ def run_waterfall_v3_core(
       operating period. That creates a principal/interest timing mismatch.
     - The headless calibration core therefore passes operation-only periods and
       operation-only schedules into the waterfall engine.
+
+    advanced_opex_line_items: if provided (non-empty tuple), the advanced
+      OpexLineItem engine is used to generate the OPEX schedule instead of
+      the legacy OpexItem/OpexParams path. This enables granular per-line-item
+      OPEX modeling with manual/hardcoded override support.
     """
     from domain.waterfall.waterfall_engine import run_waterfall
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
@@ -58,10 +64,22 @@ def run_waterfall_v3_core(
     periods_list = [p for p in all_periods if p.is_operation]
     revenue_dict = full_revenue_schedule(inputs, engine)
     generation_dict = full_generation_schedule(inputs, engine)
-    opex_period = opex_schedule_period(inputs, engine)
+
+    # OPEX: use advanced line-item engine if provided, otherwise fall back to legacy path
+    if advanced_opex_line_items:
+        from app.opex_engine import apply_opex_line_items_to_project
+        horizon_years = inputs.info.horizon_years
+        annual_opex = apply_opex_line_items_to_project(advanced_opex_line_items, horizon_years)
+        # Convert annual → per-period using period day fraction
+        opex_period: dict[int, float] = {}
+        for p in periods_list:
+            annual_val = annual_opex[p.year_index] if p.year_index < len(annual_opex) else 0.0
+            opex_period[p.index] = annual_val * p.day_fraction
+    else:
+        opex_period = opex_schedule_period(inputs, engine)
 
     horizon_years = inputs.info.horizon_years
-    
+
     # Build proper depreciation schedule from asset-class CapexItems
     capex_items = inputs.capex.capex_items()
     dep_schedule_annual = build_depreciation_schedule(

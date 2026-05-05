@@ -65,6 +65,9 @@ class WaterfallRunConfig:
     # Per-period DSCR targets (dual-DSCR sculpting)
     dscr_schedule: Optional[list[float]] = None
 
+    # Advanced OPEX line items (None = use legacy OpexItem path)
+    advanced_opex_line_items: Optional[tuple] = None
+
     def cache_key(self) -> str:
         """Generate cache key from config parameters."""
         return f"wf_{self.rate_per_period:.6f}_{self.tenor_periods}_{self.target_dscr:.3f}_{self.shl_amount_keur:.0f}"
@@ -200,6 +203,7 @@ class WaterfallRunner:
             sculpt_capex_keur=sculpt_capex,
             debt_sizing_method=config.debt_sizing_method.value,
             dscr_schedule=config.dscr_schedule,
+            advanced_opex_line_items=config.advanced_opex_line_items,
         )
 
     def run_with_defaults(self) -> object:

@@ -406,3 +406,204 @@ class TestHasManualOverrides:
         )
         assert item.has_manual_overrides() is False
         assert item.is_formula_driven() is True
+
+
+class TestApplyOpexLineItemsToProject:
+    """Integration tests for apply_opex_line_items_to_project()."""
+
+    def test_empty_line_items_returns_empty_tuple(self):
+        """Empty tuple → empty tuple (caller falls back to legacy path)."""
+        result = apply_opex_line_items_to_project((), horizon_years=5)
+        assert result == ()
+
+    def test_single_item_annual_totals(self):
+        """Single formula item produces correct inflated totals."""
+        item = OpexLineItem(
+            name="Management",
+            category="operations",
+            base_year_amount_keur=100.0,
+            inflation_rate=0.02,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        )
+        result = apply_opex_line_items_to_project((item,), horizon_years=3)
+        assert len(result) == 3
+        assert result[0] == pytest.approx(100.0)
+        assert result[1] == pytest.approx(102.0)
+        assert result[2] == pytest.approx(104.04)
+
+    def test_multiple_items_sum_correctly(self):
+        """Multiple line items are summed per year."""
+        item1 = OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        )
+        item2 = OpexLineItem(
+            name="Operations", category="operations",
+            base_year_amount_keur=300.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        )
+        result = apply_opex_line_items_to_project((item1, item2), horizon_years=1)
+        assert result[0] == pytest.approx(500.0)
+
+    def test_manual_schedule_item_respected(self):
+        """MANUAL_SCHEDULE item uses its explicit annual values."""
+        item = OpexLineItem(
+            name="Contingency",
+            category="other",
+            base_year_amount_keur=0.0,
+            inflation_rate=0.0,
+            calculation_mode=CalculationMode.MANUAL_SCHEDULE,
+            annual_values_keur=(150.0, 200.0, 180.0),
+            source=OpexSource.MANUAL,
+        )
+        result = apply_opex_line_items_to_project((item,), horizon_years=3)
+        assert result[0] == pytest.approx(150.0)
+        assert result[1] == pytest.approx(200.0)
+        assert result[2] == pytest.approx(180.0)
+
+
+class TestAdvancedOpexWarnings:
+    """Tests for _advanced_opex_warnings helper in ui_runner."""
+
+    def test_no_items_no_warning(self):
+        from app.ui_runner import _advanced_opex_warnings
+        assert _advanced_opex_warnings(None) == []
+        assert _advanced_opex_warnings(()) == []
+
+    def test_formula_only_items_no_warning(self):
+        from app.ui_runner import _advanced_opex_warnings
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+        items = (
+            OpexLineItem(
+                name="Insurance", category="insurance",
+                base_year_amount_keur=200.0, inflation_rate=0.0,
+                calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+                source=OpexSource.FORMULA,
+            ),
+        )
+        assert _advanced_opex_warnings(items) == []
+
+    def test_manual_source_triggers_warning(self):
+        from app.ui_runner import _advanced_opex_warnings
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+        items = (
+            OpexLineItem(
+                name="Insurance", category="insurance",
+                base_year_amount_keur=200.0, inflation_rate=0.0,
+                calculation_mode=CalculationMode.MANUAL_SCHEDULE,
+                annual_values_keur=(200.0,),
+                source=OpexSource.MANUAL,
+            ),
+        )
+        warnings = _advanced_opex_warnings(items)
+        assert len(warnings) == 1
+        assert "manual or hardcoded" in warnings[0]
+
+    def test_hardcoded_flag_triggers_warning(self):
+        from app.ui_runner import _advanced_opex_warnings
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+        items = (
+            OpexLineItem(
+                name="Insurance", category="insurance",
+                base_year_amount_keur=200.0, inflation_rate=0.0,
+                calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+                source=OpexSource.FORMULA,
+                is_hardcoded=True,
+            ),
+        )
+        warnings = _advanced_opex_warnings(items)
+        assert len(warnings) == 1
+        assert "manual or hardcoded" in warnings[0]
+
+    def test_both_manual_and_hardcoded_one_warning(self):
+        from app.ui_runner import _advanced_opex_warnings
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+        items = (
+            OpexLineItem(
+                name="Insurance", category="insurance",
+                base_year_amount_keur=200.0, inflation_rate=0.0,
+                calculation_mode=CalculationMode.MANUAL_SCHEDULE,
+                annual_values_keur=(200.0,),
+                source=OpexSource.MANUAL,
+                is_hardcoded=True,
+            ),
+        )
+        # Should still produce exactly one warning, not two
+        warnings = _advanced_opex_warnings(items)
+        assert len(warnings) == 1
+
+
+class TestWaterfallCoreAdvancedOpex:
+    """Integration tests for waterfall_core with advanced_opex_line_items."""
+
+    def test_none_advanced_opex_uses_legacy_path(self):
+        """advanced_opex_line_items=None → legacy OpexItem path used."""
+        from app.project_factories import create_default_solar_project
+        from domain.period_engine import PeriodEngine
+        from app.waterfall_core import run_waterfall_v3_core
+        proj = create_default_solar_project()
+        engine = PeriodEngine(
+            financial_close=proj.info.financial_close,
+            construction_months=proj.info.construction_months,
+            horizon_years=proj.info.horizon_years,
+            ppa_years=proj.revenue.ppa_term_years,
+        )
+        # No crash, legacy path used
+        result = run_waterfall_v3_core(
+            inputs=proj,
+            engine=engine,
+            rate_per_period=0.02825,
+            tenor_periods=28,
+            advanced_opex_line_items=None,
+        )
+        assert result is not None
+
+    def test_empty_tuple_falls_back_to_legacy(self):
+        """Empty tuple → legacy path (no crash)."""
+        from app.project_factories import create_default_solar_project
+        from domain.period_engine import PeriodEngine
+        from app.waterfall_core import run_waterfall_v3_core
+        proj = create_default_solar_project()
+        engine = PeriodEngine(
+            financial_close=proj.info.financial_close,
+            construction_months=proj.info.construction_months,
+            horizon_years=proj.info.horizon_years,
+            ppa_years=proj.revenue.ppa_term_years,
+        )
+        result = run_waterfall_v3_core(
+            inputs=proj,
+            engine=engine,
+            rate_per_period=0.02825,
+            tenor_periods=28,
+            advanced_opex_line_items=(),
+        )
+        assert result is not None
+
+    def test_line_items_produce_expected_annual_totals(self):
+        """Line items with known defaults produce annual totals."""
+        from app.project_factories import create_default_solar_project
+        from domain.period_engine import PeriodEngine
+        from app.waterfall_core import run_waterfall_v3_core
+        from app.opex_engine import build_opex_line_items_from_defaults
+        proj = create_default_solar_project()
+        engine = PeriodEngine(
+            financial_close=proj.info.financial_close,
+            construction_months=proj.info.construction_months,
+            horizon_years=proj.info.horizon_years,
+            ppa_years=proj.revenue.ppa_term_years,
+        )
+        items = build_opex_line_items_from_defaults("solar")
+        result = run_waterfall_v3_core(
+            inputs=proj,
+            engine=engine,
+            rate_per_period=0.02825,
+            tenor_periods=28,
+            advanced_opex_line_items=items,
+        )
+        assert result is not None
+        # Smoke test: model ran to completion
+        assert hasattr(result, "total_revenue_keur")

@@ -62,15 +62,37 @@ def _build_period_engine(project_inputs):
     )
 
 
-def _run_waterfall(project_inputs, engine):
+def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None):
     """Run waterfall using config derived from project inputs."""
     from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
     runner = WaterfallRunner(inputs=project_inputs, engine=engine)
     config = WaterfallRunConfig.from_inputs(project_inputs, engine)
+    # Pass advanced OPEX line items through the config if provided
+    if advanced_opex_line_items is not None:
+        from dataclasses import replace
+        config = replace(config, advanced_opex_line_items=advanced_opex_line_items)
     return runner.run(config)
 
 
-def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_override=None) -> DemoResult:
+def _advanced_opex_warnings(line_items) -> list[str]:
+    """Return warning messages if any line items have manual/hardcoded values."""
+    if not line_items:
+        return []
+    warnings = []
+    has_manual = any(
+        item.source.value == "manual" for item in line_items
+    )
+    has_hardcoded = any(item.is_hardcoded for item in line_items)
+    if has_manual or has_hardcoded:
+        warnings.append(
+            "Advanced OPEX contains manual or hardcoded values. Review override notes."
+        )
+    return warnings
+
+
+def run_demo_project(project_type: str, scenario: str = "Base",
+                   project_inputs_override=None,
+                   advanced_opex_line_items=None) -> DemoResult:
     """Create and run a demo project, returning results for UI display."""
     from app.project_factories import (
         create_default_solar_project,
@@ -148,7 +170,7 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
                 proj = apply_scenario(proj, scenario)
 
             engine = _build_period_engine(proj)
-            result.result = _run_waterfall(proj, engine)
+            result.result = _run_waterfall(proj, engine, advanced_opex_line_items)
             result.project_inputs = proj
 
             # Surface model warnings to user
@@ -156,6 +178,10 @@ def run_demo_project(project_type: str, scenario: str = "Base", project_inputs_o
             warnings = warn_model_unrealistic(result.result, proj)
             for w in warnings:
                 messages.append(f"⚠️ {w.code}: {w.message}")
+
+            # Surface advanced OPEX manual/hardcoded warnings
+            for w in _advanced_opex_warnings(advanced_opex_line_items):
+                messages.append(w)
 
             cfg = PROJECT_CONFIGS[project_type]
             result.integration_status = cfg["status"]

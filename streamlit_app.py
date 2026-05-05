@@ -35,6 +35,59 @@ with st.sidebar:
     use_editable = st.checkbox("Use editable inputs", value=False, help="Override default Solar/Wind assumptions")
     st.session_state["use_editable_inputs"] = use_editable
     st.divider()
+
+    # Advanced OPEX section — Solar/Wind only, collapsed by default
+    if project_type in ("Solar", "Wind"):
+        with st.expander("Advanced OPEX line items", expanded=False):
+            from app.opex_engine import build_opex_line_items_from_defaults, OpexLineItem, OpexSource
+            st.caption("⚙️ Experimental — simple OPEX remains default")
+            use_advanced = st.checkbox(
+                "Use Advanced OPEX (line items)",
+                value=False,
+                help="Replace simple OPEX with granular line-item engine. Solar/Wind only.",
+                key="use_advanced_opex",
+            )
+            if use_advanced:
+                # Initialise or refresh line items in session state
+                if "advanced_opex_line_items" not in st.session_state or st.session_state["advanced_opex_line_items"] is None:
+                    st.session_state["advanced_opex_line_items"] = build_opex_line_items_from_defaults(project_type.lower())
+                items = st.session_state["advanced_opex_line_items"]
+                # Inline editor
+                edited_items = []
+                for idx, item in enumerate(items):
+                    cols = st.columns([3, 2, 1.5, 1.2, 1.2, 1.5])
+                    new_name = cols[0].text_input("Name", value=item.name, key=f"opex_name_{idx}")
+                    new_category = cols[1].text_input("Category", value=item.category, key=f"opex_cat_{idx}")
+                    new_base = cols[2].number_input("Base (kEUR)", value=item.base_year_amount_keur, key=f"opex_base_{idx}", format="%.1f")
+                    new_infl = cols[3].number_input("Infl %", value=item.inflation_rate * 100, key=f"opex_infl_{idx}", format="%.2f") / 100
+                    new_source = cols[4].selectbox("Source", options=["formula", "manual", "hardcoded"],
+                                                   index={"formula": 0, "manual": 1, "hardcoded": 2}[item.source.value],
+                                                   key=f"opex_src_{idx}")
+                    new_hardcoded = cols[5].checkbox("Hardcoded", value=item.is_hardcoded, key=f"opex_hc_{idx}")
+                    new_note = st.text_input("Override note", value=item.override_note, key=f"opex_note_{idx}")
+                    updated = OpexLineItem(
+                        name=new_name, category=new_category,
+                        base_year_amount_keur=new_base, inflation_rate=new_infl,
+                        calculation_mode=item.calculation_mode,
+                        annual_values_keur=item.annual_values_keur,
+                        manual_overrides_keur=item.manual_overrides_keur,
+                        is_hardcoded=new_hardcoded,
+                        override_note=new_note,
+                        source=OpexSource(new_source),
+                    )
+                    edited_items.append(updated)
+                    with st.expander(f"ℹ️ {item.name}", expanded=False):
+                        st.caption(f"Category: {item.category} | Source: {item.source.value} | Hardcoded: {item.is_hardcoded}")
+                st.session_state["advanced_opex_line_items"] = tuple(edited_items)
+                st.caption(f"{len(edited_items)} line items configured.")
+            else:
+                # Clear advanced OPEX so legacy path is used
+                st.session_state["advanced_opex_line_items"] = None
+                st.caption("Using simple OPEX (default).")
+    else:
+        # Non-Solar/Wind: ensure advanced OPEX is cleared
+        st.session_state["advanced_opex_line_items"] = None
+
     st.info("📋 Scenarios apply to Solar/Wind only — BESS & Portfolio show Base case")
     st.divider()
     run_button = st.button("🚀 Run Model", use_container_width=True)
@@ -44,7 +97,8 @@ if run_button or st.session_state.demo_result is not None:
     if run_button or st.session_state.last_project_type != project_type or st.session_state.get("last_scenario") != scenario:
         with st.spinner("Running model..."):
             override = st.session_state.get("editable_inputs") if st.session_state.get("use_editable_inputs") else None
-            st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override)
+            advanced_opex = st.session_state.get("advanced_opex_line_items") if project_type in ("Solar", "Wind") else None
+            st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override, advanced_opex_line_items=advanced_opex)
             st.session_state.last_project_type = project_type
             st.session_state["last_scenario"] = scenario
 
