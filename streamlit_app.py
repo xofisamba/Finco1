@@ -43,20 +43,24 @@ with st.sidebar:
 
 
 if run_button or st.session_state.demo_result is not None:
-    # Invalidate if project type, scenario, or advanced OPEX state changed
-    adv_sig = st.session_state.get("last_advanced_opex_signature") if project_type in ("Solar", "Wind") else None
+    # Early OPEX mode from session state — defined before invalidation logic
+    op_mode = st.session_state.get("_opex_mode", "Simple")
+    # Stable OPEX state signature: mode + (advanced sig only if Advanced and Solar/Wind)
+    adv_sig = (st.session_state.get("last_advanced_opex_signature")
+               if op_mode == "Advanced" and project_type in ("Solar", "Wind") else None)
+    op_sig = (op_mode, adv_sig)
     needs_rerun = (
         run_button
         or st.session_state.last_project_type != project_type
         or st.session_state.get("last_scenario") != scenario
-        or st.session_state.get("_opex_mode") != "Advanced"
-        or (project_type in ("Solar", "Wind") and st.session_state.get("_last_adv_sig") != adv_sig)
+        or st.session_state.get("_last_opex_sig") != op_sig
     )
     if needs_rerun:
-        st.session_state["_last_adv_sig"] = adv_sig
+        st.session_state["_last_opex_sig"] = op_sig
         with st.spinner("Running model..."):
             override = st.session_state.get("editable_inputs") if st.session_state.get("use_editable_inputs") else None
-            advanced_opex = st.session_state.get("advanced_opex_line_items") if project_type in ("Solar", "Wind") else None
+            advanced_opex = (st.session_state.get("advanced_opex_line_items")
+                             if op_mode == "Advanced" and project_type in ("Solar", "Wind") else None)
             st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override, advanced_opex_line_items=advanced_opex)
             st.session_state.last_project_type = project_type
             st.session_state["last_scenario"] = scenario
@@ -132,7 +136,10 @@ if run_button or st.session_state.demo_result is not None:
             scenario=scenario,
             period_view=period_view,
             warnings=model_warnings,
-            advanced_opex_line_items=st.session_state.get("advanced_opex_line_items") if project_type in ("Solar", "Wind") else None,
+            advanced_opex_line_items=(
+                st.session_state.get("advanced_opex_line_items")
+                if project_type in ("Solar", "Wind") and op_mode == "Advanced" else None
+            ),
         )
         st.download_button(
             "📊 Download Excel Export",
@@ -189,10 +196,13 @@ if run_button or st.session_state.demo_result is not None:
                 help="Simple = legacy OpexItem path. Advanced = granular line-item engine.",
                 key="_opex_mode_radio",
             )
-            if op_mode == "Advanced" and project_type in ("Solar", "Wind"):
+            if op_mode == "Advanced":
                 st.session_state["_opex_mode"] = "Advanced"
+                # Invalidate demo_result so next run picks up the mode change
+                st.session_state["demo_result"] = None
             else:
                 st.session_state["_opex_mode"] = "Simple"
+                st.session_state["advanced_opex_line_items"] = None
         else:
             st.info("Advanced OPEX is available for Solar/Wind only. Using simple OPEX.")
             op_mode = "Simple"
@@ -295,15 +305,15 @@ if run_button or st.session_state.demo_result is not None:
 
     with tabs[4]:
         render_revenue(demo.result, period_view)
-    with tabs[4]:
-        render_debt(demo.result, period_view)
     with tabs[5]:
-        render_tax_depreciation(demo.result, period_view)
+        render_debt(demo.result, period_view)
     with tabs[6]:
-        render_waterfall(demo.result, period_view)
+        render_tax_depreciation(demo.result, period_view)
     with tabs[7]:
-        render_returns(demo.result)
+        render_waterfall(demo.result, period_view)
     with tabs[8]:
+        render_returns(demo.result)
+    with tabs[9]:
         render_portfolio(demo.portfolio_result)
 
 else:
