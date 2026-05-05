@@ -197,6 +197,7 @@ if run_button or st.session_state.demo_result is not None:
             scenario=scenario,
             period_view=period_view,
             warnings=model_warnings,
+            advanced_opex_line_items=st.session_state.get("advanced_opex_line_items") if project_type in ("Solar", "Wind") else None,
         )
         st.download_button(
             "📊 Download Excel Export",

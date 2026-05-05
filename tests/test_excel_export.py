@@ -482,3 +482,244 @@ def test_excel_export_uses_run_metadata_when_provided():
     assert notes["Run Timestamp"] == "2026-01-15T10:00:00+00:00", f"Expected timestamp, got {notes['Run Timestamp']!r}"
     assert notes["Scenario"] == "Upside", f"Expected 'Upside', got {notes['Scenario']!r}"
     assert notes["Project Type"] == "Solar", f"Expected 'Solar', got {notes['Project Type']!r}"
+
+
+def test_excel_notes_advanced_opex_warning_when_manual_item():
+    """Notes sheet contains Advanced OPEX warning when a MANUAL item is present."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    # Pass a MANUAL source item
+    items = (
+        OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.MANUAL_SCHEDULE,
+            annual_values_keur=(200.0, 210.0),
+            source=OpexSource.MANUAL,
+        ),
+    )
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=items,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    notes_ws = wb["Notes"]
+    notes = {row[0]: row[1] for row in notes_ws.iter_rows(min_row=2, values_only=True) if row[0]}
+    assert "Advanced OPEX" in notes, f"Expected 'Advanced OPEX' in Notes, got: {notes}"
+    assert "Manual" in notes["Advanced OPEX"] or "hardcoded" in notes["Advanced OPEX"].lower()
+
+
+def test_excel_notes_no_advanced_opex_warning_when_all_formula():
+    """Notes sheet does NOT contain Advanced OPEX warning when all items are FORMULA-driven."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    items = (
+        OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+            is_hardcoded=False,
+        ),
+    )
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=items,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    notes_ws = wb["Notes"]
+    notes = {row[0]: row[1] for row in notes_ws.iter_rows(min_row=2, values_only=True) if row[0]}
+    assert "Advanced OPEX" not in notes, f"Expected no Advanced OPEX warning for formula items, got: {notes}"
+
+
+def test_excel_notes_advanced_opex_warning_when_hardcoded():
+    """Notes sheet contains Advanced OPEX warning when is_hardcoded=True."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    items = (
+        OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+            is_hardcoded=True,
+        ),
+    )
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=items,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    notes_ws = wb["Notes"]
+    notes = {row[0]: row[1] for row in notes_ws.iter_rows(min_row=2, values_only=True) if row[0]}
+    assert "Advanced OPEX" in notes
+
+
+def test_excel_opex_detail_sheet_exists_when_advanced_opex_enabled():
+    """OPEX Detail sheet is created when advanced_opex_line_items is provided and non-empty."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    items = (
+        OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        ),
+        OpexLineItem(
+            name="Operations", category="operations",
+            base_year_amount_keur=100.0, inflation_rate=0.02,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        ),
+    )
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=items,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    assert "OPEX Detail" in wb.sheetnames, f"Expected 'OPEX Detail' sheet, got: {wb.sheetnames}"
+
+
+def test_excel_opex_detail_sheet_absent_when_no_advanced_opex():
+    """OPEX Detail sheet is NOT created when advanced_opex_line_items is None."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=None,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    assert "OPEX Detail" not in wb.sheetnames, f"OPEX Detail should not exist without advanced OPEX"
+
+
+def test_excel_opex_detail_sheet_absent_when_empty_tuple():
+    """OPEX Detail sheet is NOT created when advanced_opex_line_items is empty tuple."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=(),
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    assert "OPEX Detail" not in wb.sheetnames, f"OPEX Detail should not exist with empty tuple"
+
+
+def test_excel_opex_detail_columns_and_row_count():
+    """OPEX Detail sheet has correct columns and row count = items * horizon_years."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    horizon = result.project_inputs.info.horizon_years  # 25
+    items = (
+        OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        ),
+        OpexLineItem(
+            name="Operations", category="operations",
+            base_year_amount_keur=100.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        ),
+    )
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=items,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["OPEX Detail"]
+
+    # Collect headers
+    headers = [cell.value for cell in ws[1]]
+    expected = ["Line Item Name", "Category", "Year", "Value (kEUR)", "Source", "Is Override", "Is Hardcoded", "Override Note"]
+    assert headers == expected, f"Expected {expected}, got {headers}"
+
+    # Row count (excluding header)
+    data_rows = ws.max_row - 1  # subtract header
+    assert data_rows == len(items) * horizon, f"Expected {len(items) * horizon} rows, got {data_rows}"
+
+    # Verify Year column is 1-based
+    years = [row[2] for row in ws.iter_rows(min_row=2, values_only=True)]
+    assert years[0] == 1 and years[-1] == horizon
+
+
+def test_excel_opex_detail_values_are_values_only():
+    """OPEX Detail sheet contains concrete numbers, not formula strings."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+    items = (
+        OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        ),
+    )
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        advanced_opex_line_items=items,
+    )
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["OPEX Detail"]
+
+    # All data rows should have numeric Value (kEUR) — not strings
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        val = row[3]  # Value (kEUR) column
+        assert isinstance(val, (int, float)), f"Expected numeric Value, got {type(val).__name__}: {val!r}"
+        assert val > 0, f"Expected positive value, got {val}"

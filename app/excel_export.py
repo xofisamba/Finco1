@@ -36,6 +36,7 @@ def build_excel_export(
     period_view: str = "Semiannual",
     warnings: list = None,
     run_metadata=None,
+    advanced_opex_line_items: tuple = None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -120,7 +121,8 @@ def build_excel_export(
                 git_sha = "n/a"
             ts = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")
         _write_notes_sheet(writer, integration_status, integration_note, scenario, project_type, period_view,
-                          warnings=warnings if warnings else [], git_sha=git_sha, timestamp=ts)
+                          warnings=warnings if warnings else [], git_sha=git_sha, timestamp=ts,
+                          advanced_opex_line_items=advanced_opex_line_items)
 
         # ── Inputs ────────────────────────────────────────────────────────
         _write_sheet(writer, "Inputs", build_inputs_summary_table(project_inputs))
@@ -130,6 +132,13 @@ def build_excel_export(
                      number_format={"kEUR": "#,##0"})
         _write_sheet(writer, "CapEx_Items", build_capex_items_table(project_inputs),
                      number_format={"Amount": "#,##0"})
+
+        # ── OPEX Detail (Advanced OPEX only) ───────────────────────────────
+        if advanced_opex_line_items:
+            from app.opex_engine import generate_opex_schedule
+            horizon = getattr(getattr(project_inputs, "info", None), "horizon_years", 25) if project_inputs else 25
+            schedule = generate_opex_schedule(advanced_opex_line_items, horizon)
+            _write_opex_detail_sheet(writer, schedule)
 
         # ── Portfolio ──────────────────────────────────────────────────────
         if portfolio_result is not None:
@@ -273,6 +282,38 @@ def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scena
         ws.cell(row=row_idx, column=2).number_format = "#,##0"
 
 
+def _write_opex_detail_sheet(writer, schedule) -> None:
+    """Write OPEX Detail sheet from an OpexSchedule.
+
+    Columns: Line Item Name | Category | Year | Value (kEUR) | Source | Is Override | Is Hardcoded | Override Note
+    One row per line item per year.
+    """
+    rows = []
+    for entry in schedule.entries:
+        rows.append({
+            "Line Item Name": entry.line_item_name,
+            "Category": entry.category,
+            "Year": entry.year_index + 1,  # 1-based for readability
+            "Value (kEUR)": round(entry.value_keur, 2),
+            "Source": entry.source.value,
+            "Is Override": entry.is_override,
+            "Is Hardcoded": entry.source.value == "hardcoded" or getattr(entry, "is_hardcoded", False),
+            "Override Note": entry.override_note,
+        })
+
+    if not rows:
+        df = pd.DataFrame({"Note": ["No OPEX data available"]})
+    else:
+        df = pd.DataFrame(rows)
+
+    df.to_excel(writer, sheet_name="OPEX Detail", index=False)
+    ws = writer.sheets["OPEX Detail"]
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
+
+
 def _write_validation_sheet(writer, validation_issues) -> None:
     """Write a Validation sheet."""
     if validation_issues is None:
@@ -288,7 +329,7 @@ def _write_validation_sheet(writer, validation_issues) -> None:
     ws.sheet_state = "visible"
 
 
-def _write_notes_sheet(writer, status, note, scenario, project_type, period_view, warnings=None, git_sha=None, timestamp=None) -> None:
+def _write_notes_sheet(writer, status, note, scenario, project_type, period_view, warnings=None, git_sha=None, timestamp=None, advanced_opex_line_items=None) -> None:
     if warnings is None:
         warnings = []
     """Write a Notes sheet."""
@@ -319,6 +360,18 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
         rows.append(("Model Warnings", "—"))
         for w in warnings:
             rows.append((w.get("code", "WARN"), w.get("message", str(w))))
+
+    # Advanced OPEX manual/hardcoded warning
+    if advanced_opex_line_items:
+        from app.opex_engine import OpexSource
+        has_manual = any(item.source == OpexSource.MANUAL for item in advanced_opex_line_items)
+        has_hardcoded = any(item.is_hardcoded for item in advanced_opex_line_items)
+        has_overrides = any(item.has_manual_overrides() for item in advanced_opex_line_items)
+        if has_manual or has_hardcoded or has_overrides:
+            rows.append((
+                "Advanced OPEX",
+                "Manual or hardcoded values present — review override notes",
+            ))
 
     # Portfolio warning
     if status == "experimental":
