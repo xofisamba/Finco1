@@ -107,12 +107,18 @@ def build_excel_export(
             _write_sheet(writer, "Tax_Depreciation", tax_df, number_format={"kEUR": "#,##0"})
 
         # ── Notes ──────────────────────────────────────────────────────────
-        import subprocess
-        try:
-            git_sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
-        except Exception:
-            git_sha = "n/a"
-        ts = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")
+        if run_metadata is not None:
+            git_sha = run_metadata.git_sha
+            ts = run_metadata.timestamp
+            scenario = run_metadata.scenario
+            project_type = run_metadata.project_type
+        else:
+            import subprocess
+            try:
+                git_sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+            except Exception:
+                git_sha = "n/a"
+            ts = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")
         _write_notes_sheet(writer, integration_status, integration_note, scenario, project_type, period_view,
                           warnings=warnings if warnings else [], git_sha=git_sha, timestamp=ts)
 

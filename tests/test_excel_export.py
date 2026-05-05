@@ -439,3 +439,46 @@ def test_dashboard_dscr_uses_actual_period_dscr():
     assert kpis["avg_dscr"] == result.actual_avg_dscr, (
         "avg_dscr KPI must equal actual_avg_dscr"
     )
+
+
+def test_excel_export_uses_run_metadata_when_provided():
+    """When run_metadata is provided, Notes sheet uses its git_sha, timestamp, scenario, project_type."""
+    from io import BytesIO
+    import openpyxl
+    from app.excel_export import build_excel_export
+    from app.run_metadata import RunMetadata
+    from app.ui_runner import run_demo_project
+
+    result = run_demo_project("Solar")
+
+    meta = RunMetadata(
+        run_id="test-run-001",
+        timestamp="2026-01-15T10:00:00+00:00",
+        model_version="industry-engine-refactor",
+        git_sha="abc1234",
+        scenario="Upside",
+        project_type="Solar",
+        notes="test note",
+        warnings=[],
+    )
+
+    data = build_excel_export(
+        result=result.result,
+        project_inputs=result.project_inputs,
+        integration_status="full",
+        run_metadata=meta,
+    )
+
+    wb = openpyxl.load_workbook(BytesIO(data))
+    ws = wb["Notes"]
+
+    # Build dict of Field → Value from Notes sheet
+    notes = {}
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0]:
+            notes[row[0]] = row[1]
+
+    assert notes["Git SHA"] == "abc1234", f"Expected 'abc1234', got {notes['Git SHA']!r}"
+    assert notes["Run Timestamp"] == "2026-01-15T10:00:00+00:00", f"Expected timestamp, got {notes['Run Timestamp']!r}"
+    assert notes["Scenario"] == "Upside", f"Expected 'Upside', got {notes['Scenario']!r}"
+    assert notes["Project Type"] == "Solar", f"Expected 'Solar', got {notes['Project Type']!r}"
