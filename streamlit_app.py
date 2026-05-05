@@ -1,5 +1,6 @@
 """FincoGPT — Streamlit UI entrypoint."""
 from __future__ import annotations
+import pandas as pd
 import streamlit as st
 from app.ui_runner import run_demo_project, DemoResult
 from app.ui.pages import (
