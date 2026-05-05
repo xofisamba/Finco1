@@ -245,15 +245,24 @@ The simple OPEX path (legacy `OpexItem` / `OpexParams`) remains the default. It 
 | BESS | — | Not yet implemented — simple OPEX only |
 | Portfolio | — | Not yet implemented — simple OPEX only |
 
-### UI Behavior
+### OPEX Tab (Advanced OPEX)
 
-- Collapsed "Advanced OPEX line items" expander in sidebar — Solar/Wind only
-- Toggle: "Use Advanced OPEX (line items)" — unchecked by default
-- When enabled:
-  - Line items loaded from `build_opex_line_items_from_defaults(technology)`
-  - Inline editor: name, category, base, inflation, source, is_hardcoded, override_note
-  - Add/delete not yet implemented (safe scope deferred)
-- Simple OPEX path unchanged by default
+The Advanced OPEX editor is a first-class **💸 OPEX tab** (position 4 in tab bar).
+
+**Tab order:** Dashboard | Inputs | CapEx | **OPEX** | Revenue | Debt | Tax | Waterfall | Returns | Portfolio
+
+**Editable project assumptions:** Moved from sidebar to Inputs tab as "Edit project assumptions" checkbox.
+
+**OPEX Mode selector:** Simple | Advanced (radio, horizontal), default=Simple, Solar/Wind only.
+
+**Advanced mode matrix:**
+- `st.data_editor` with columns: `Line Item` (locked) | `Budget (kEUR)` | `Inflation (%)` | `Y1`...`Yn`
+- WHT column removed (not yet applied to data model)
+- Editing Budget or Inflation → updates formula base; override detection uses **new (edited) base**
+- Editing a Y cell → that year becomes manual override (stored in `manual_overrides_keur[y_idx]`)
+- Total OPEX row shown **below** matrix as read-only dataframe (not in data_editor)
+- `num_rows="fixed"` keeps row count stable
+- Stale-state warning shown after edits: `⚠️ OPEX inputs changed — click Run Model to update Dashboard, Debt, DSCR and Returns.`
 
 ### OPEX Tab (Advanced OPEX)
 
@@ -323,8 +332,9 @@ Advanced OPEX is integrated into the Excel export:
 
 ### Next Steps
 
-1. Add add/delete line item functionality to the UI
-2. CAPEX line-item model (mirrors OPEX structure after OPEX stabilises)
-3. Support BESS/Hybrid advanced OPEX
-4. Per-year override editor in UI (manual_overrides_keur editing)
+1. Add/delete line item buttons in OPEX matrix
+2. Per-year override editor (cell-level highlight)
+3. Group structure for OPEX items (Technical Management, Infrastructure Maintenance, etc.)
+4. CAPEX line-item model (mirrors OPEX structure)
+5. Support BESS/Hybrid advanced OPEX
 
