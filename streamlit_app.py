@@ -33,7 +33,11 @@ with st.sidebar:
     scenario = st.selectbox("Scenario", SCENARIOS)
     period_view = st.selectbox("Period View", ["Semiannual", "Annual"])
     st.divider()
-    use_editable = st.checkbox("Use editable inputs", value=False, help="Override default Solar/Wind assumptions")
+    use_editable = st.checkbox(
+        "Use editable project assumptions",
+        value=False,
+        help="Edit core project assumptions in the Inputs tab. OPEX assumptions are managed separately in the OPEX tab.",
+    )
     st.session_state["use_editable_inputs"] = use_editable
     st.divider()
 
@@ -228,79 +232,115 @@ if run_button or st.session_state.demo_result is not None:
 
             items = st.session_state.get("advanced_opex_line_items", ())
 
-            # Warnings
-            from app.opex_engine import OpexSource as OpexSourceCls
-            has_manual = any(i.source == OpexSourceCls.MANUAL for i in items)
-            has_hardcoded = any(i.is_hardcoded for i in items)
-            has_overrides = any(i.has_manual_overrides() for i in items)
-            if has_manual or has_hardcoded or has_overrides:
-                st.warning("Advanced OPEX contains manual or hardcoded values. Review override notes.")
+            # Stale-state warning: show when OPEX was edited but model not rerun yet
+            if st.session_state.get("demo_result") is None and items:
+                st.warning("⚠️ OPEX inputs changed — click Run Model to update Dashboard, Debt, DSCR and Returns.")
 
-            st.markdown("**Line Items**")
             horizon = getattr(getattr(demo.project_inputs, "info", None), "horizon_years", 25) if demo.project_inputs else 25
 
-            edited_items = []
-            for idx, item in enumerate(items):
-                cols = st.columns([3, 2, 1.5, 1.2, 1.2, 1.5])
-                new_name = cols[0].text_input("Name", value=item.name, key=f"opex_name_{idx}", label_visibility="collapsed")
-                new_category = cols[1].text_input("Category", value=item.category, key=f"opex_cat_{idx}", label_visibility="collapsed")
-                new_base = cols[2].number_input("Base (kEUR)", value=item.base_year_amount_keur, key=f"opex_base_{idx}", format="%.1f", label_visibility="collapsed")
-                new_infl = cols[3].number_input("Infl %", value=item.inflation_rate * 100, key=f"opex_infl_{idx}", format="%.2f", label_visibility="collapsed") / 100
-                src_index = {"formula": 0, "manual": 1, "hardcoded": 2}.get(item.source.value, 0)
-                new_source = cols[4].selectbox("Source", options=["formula", "manual", "hardcoded"], index=src_index, key=f"opex_src_{idx}", label_visibility="collapsed")
-                new_hardcoded = cols[5].checkbox("HC", value=item.is_hardcoded, key=f"opex_hc_{idx}")
-                new_note = st.text_input("Override note", value=item.override_note, key=f"opex_note_{idx}", label_visibility="collapsed")
-                updated = OpexLineItem(
-                    name=new_name, category=new_category,
-                    base_year_amount_keur=new_base, inflation_rate=new_infl,
-                    calculation_mode=item.calculation_mode,
-                    annual_values_keur=item.annual_values_keur,
-                    manual_overrides_keur=item.manual_overrides_keur,
-                    is_hardcoded=new_hardcoded,
-                    override_note=new_note,
-                    source=OpexSource(new_source),
-                )
-                edited_items.append(updated)
-                with st.expander(f"ℹ️ {item.name} — {item.category} | {item.source.value} | HC: {item.is_hardcoded}", expanded=False):
-                    st.caption(f"Base: {item.base_year_amount_keur:.1f} kEUR | Inflation: {item.inflation_rate*100:.1f}% | Source: {item.source.value} | Hardcoded: {item.is_hardcoded} | Note: {item.override_note or '—'}")
+            # Build dataframe for data_editor: Line Item | Budget | Inflation (%) | WHT (%) | Y1 ... Yn
+            col_names = ["Line Item", "Budget", "Inflation (%)", "WHT (%)"] + [f"Y{y}" for y in range(1, horizon + 1)]
+            matrix_data = []
+            original_items = list(items)
 
-            st.session_state["advanced_opex_line_items"] = tuple(edited_items)
+            for item in items:
+                # Compute inflated values for Y columns (what the formula-driven value would be)
+                infl_vals = []
+                for y_idx in range(horizon):
+                    infl_vals.append(item.base_year_amount_keur * ((1 + item.inflation_rate) ** y_idx))
+                # Overlay manual overrides where they exist
+                override_vals = list(item.manual_overrides_keur) if item.manual_overrides_keur else []
+                row = [
+                    item.name,
+                    item.base_year_amount_keur,
+                    item.inflation_rate * 100,
+                    0.0,  # WHT % — present but not yet wired to data model
+                ]
+                for y_idx in range(horizon):
+                    if y_idx < len(override_vals) and override_vals[y_idx] is not None:
+                        row.append(override_vals[y_idx])
+                    else:
+                        row.append(infl_vals[y_idx])
+                matrix_data.append(row)
+
+            # Add Total OPEX summary row (read-only, computed from schedule)
+            schedule = generate_opex_schedule(items, horizon)
+            total_row = ["Total OPEX"] + [0.0, 0.0, 0.0] + list(schedule.total_by_year)
+            matrix_data.append(total_row)
+
+            matrix_df = pd.DataFrame(matrix_data, columns=col_names)
+
+            # Column config for data_editor
+            col_config = {
+                "Line Item": st.column_config.TextColumn("Line Item", disabled=True),
+                "Budget": st.column_config.NumberColumn("Budget (kEUR)", min_value=0.0, format="%.1f"),
+                "Inflation (%)": st.column_config.NumberColumn("Inflation (%)", min_value=0.0, max_value=100.0, format="%.2f"),
+                "WHT (%)": st.column_config.NumberColumn("WHT (%)", min_value=0.0, max_value=100.0, format="%.1f"),
+            }
+            for y in range(1, horizon + 1):
+                col_config[f"Y{y}"] = st.column_config.NumberColumn(f"Y{y}", min_value=0.0, format="%.1f")
+
+            edited_df = st.data_editor(
+                matrix_df,
+                column_config=col_config,
+                hide_index=True,
+                use_container_width=True,
+                num_rows="fixed",
+                key="_opex_matrix_editor",
+            )
+
+            # Diff detection: compare edited rows (skip last row = Total OPEX) against originals
+            edited_rows = edited_df.iloc[:-1]  # exclude Total OPEX row
+            new_items_list = []
+
+            for row_idx, (_, row) in enumerate(edited_rows.iterrows()):
+                orig = original_items[row_idx]
+                new_name = row["Line Item"]
+                new_base = row["Budget"]
+                new_infl = row["Inflation (%)"] / 100.0
+                new_wht_pct = row["WHT (%)"] / 100.0  # stored but not yet applied to data model
+
+                # Detect Y column changes → manual overrides
+                # A cell is treated as an override if it differs from the re-computed inflated value
+                new_overrides = []
+                for y_idx in range(horizon):
+                    col_label = f"Y{y_idx + 1}"
+                    edited_val = row[col_label]
+                    infl_val = orig.base_year_amount_keur * ((1 + new_infl) ** y_idx)
+                    if abs(edited_val - infl_val) > 0.01:
+                        new_overrides.append(edited_val)
+                    else:
+                        new_overrides.append(None)
+                new_overrides_tuple = tuple(new_overrides)
+
+                new_item = OpexLineItem(
+                    name=new_name,
+                    category=orig.category,
+                    base_year_amount_keur=new_base,
+                    inflation_rate=new_infl,
+                    calculation_mode=orig.calculation_mode,
+                    annual_values_keur=orig.annual_values_keur,
+                    manual_overrides_keur=new_overrides_tuple,
+                    is_hardcoded=orig.is_hardcoded,
+                    override_note=orig.override_note,
+                    source=orig.source,
+                )
+                new_items_list.append(new_item)
+
+            new_items = tuple(new_items_list)
+            st.session_state["advanced_opex_line_items"] = new_items
 
             # Signature update + invalidation
             new_sig = str(tuple(sorted((
-                (i.name, i.category, i.base_year_amount_keur, i.inflation_rate, i.source.value, i.is_hardcoded, i.override_note, i.manual_overrides_keur, i.calculation_mode.value)
-            ) for i in edited_items)))
+                (i.name, i.category, i.base_year_amount_keur, i.inflation_rate,
+                 i.source.value, i.is_hardcoded, i.override_note, i.manual_overrides_keur,
+                 i.calculation_mode.value)
+            ) for i in new_items)))
             if st.session_state.get("last_advanced_opex_signature") != new_sig:
                 st.session_state["last_advanced_opex_signature"] = new_sig
                 st.session_state["demo_result"] = None
 
-            st.caption(f"{len(edited_items)} line items | Mode: {op_mode}")
-
-            # Schedule preview — Excel-style matrix
-            schedule = generate_opex_schedule(st.session_state["advanced_opex_line_items"], horizon)
-            st.markdown("**Schedule Preview (kEUR)**")
-            preview_cols = ["Line Item"] + [f"Y{y+1}" for y in range(horizon)]
-            rows_data = []
-            for entry in schedule.entries:
-                rows_data.append(entry)
-
-            # Build matrix: rows = unique line items, cols = years
-            item_names = list(dict.fromkeys(e.line_item_name for e in schedule.entries))
-            matrix_rows = []
-            for name in item_names:
-                year_vals = [0.0] * horizon
-                for e in schedule.entries:
-                    if e.line_item_name == name:
-                        year_vals[e.year_index] = e.value_keur
-                matrix_rows.append([name] + [f"{v:.0f}" if v > 0 else "—" for v in year_vals])
-
-            # Total row
-            total_by_year = list(schedule.total_by_year)
-            total_row = ["**Total OPEX**"] + [f"{v:.0f}" if v > 0 else "—" for v in total_by_year]
-            matrix_rows.append(total_row)
-
-            preview_df = pd.DataFrame(matrix_rows, columns=preview_cols)
-            st.dataframe(preview_df, hide_index=True, use_container_width=True)
+            st.caption(f"{len(new_items)} line items | Mode: {op_mode}")
         else:
             # Simple OPEX: show a simple informational message
             if demo.project_inputs and hasattr(demo.project_inputs, "opex"):
