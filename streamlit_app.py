@@ -270,14 +270,14 @@ if run_button or st.session_state.demo_result is not None:
 
             matrix_df = pd.DataFrame(matrix_data, columns=col_names)
 
-            # Column config — Line Item locked, Budget+Inflation editable, Y cols editable
+            # Column config — Line Item locked, Budget+Inflation editable, Y cols compact integer
             col_config = {
                 "Line Item": st.column_config.TextColumn("Line Item", disabled=True),
                 "Budget": st.column_config.NumberColumn("Budget (kEUR)", min_value=0.0, format="%.1f"),
                 "Inflation (%)": st.column_config.NumberColumn("Inflation (%)", min_value=0.0, max_value=100.0, format="%.2f"),
             }
             for y in range(1, horizon + 1):
-                col_config[f"Y{y}"] = st.column_config.NumberColumn(f"Y{y}", min_value=0.0, format="%.1f")
+                col_config[f"Y{y}"] = st.column_config.NumberColumn(f"Y{y}", min_value=0.0, format="%.0f")
 
             edited_df = st.data_editor(
                 matrix_df,
@@ -287,6 +287,57 @@ if run_button or st.session_state.demo_result is not None:
                 num_rows="fixed",
                 key="_opex_matrix_editor",
             )
+
+            # --- Shadow styled preview (highlight override cells in amber) ---
+            # Build a display dataframe with amber bg for override cells
+            # Only computed for display; does not affect data_editor values
+            def _override_mask(row_items, row_overrides):
+                """Return dict {col: True} for cells that are manual overrides."""
+                mask = {}
+                for y_idx in range(horizon):
+                    if y_idx < len(row_overrides) and row_overrides[y_idx] is not None:
+                        mask[f"Y{y_idx+1}"] = True
+                return mask
+
+            def _format_val(v):
+                return "" if v == 0 else str(int(v)) if v == int(v) else f"{v:.1f}"
+
+            display_cols = ["Line Item"] + [f"Y{y}" for y in range(1, horizon + 1)]
+            preview_rows = []
+            for item_idx, item in enumerate(items):
+                row_vals = [_format_val(v) for v in edited_df.iloc[item_idx, 3:3+horizon].tolist()]
+                row_overrides = []
+                for y_idx in range(horizon):
+                    col_label = f"Y{y_idx+1}"
+                    edited_val = edited_df.iloc[item_idx][col_label]
+                    infl_val = item.base_year_amount_keur * ((1 + item.inflation_rate) ** y_idx)
+                    row_overrides.append(edited_val if abs(edited_val - infl_val) > 0.01 else None)
+                preview_rows.append((item.name, row_vals, row_overrides))
+
+            # Build display dataframe with formatted strings for preview
+            preview_data = [[name] + vals for name, vals, _ in preview_rows]
+            preview_df = pd.DataFrame(preview_data, columns=display_cols)
+
+            def _highlight_overrides(row, overrides_per_row, horizon):
+                """Return CSS style string for amber background if any Y cell is override."""
+                item_idx = list(preview_df.index).index(row.name) if row.name in preview_df.index else 0
+                _, _, overrides = preview_rows[item_idx]
+                for y_idx in range(horizon):
+                    if y_idx < len(overrides) and overrides[y_idx] is not None:
+                        return ["background-color: #fff3cd"] * (horizon + 1)
+                return [""] * (horizon + 1)
+
+            styled = preview_df.style.apply(
+                lambda row: _highlight_overrides(row, None, horizon),
+                axis=1
+            )
+            styled = styled.set_table_styles([
+                {"selector": "td", "props": [("font-size", "13px"), ("text-align", "right")]},
+                {"selector": "th", "props": [("font-size", "13px"), ("text-align", "right")]},
+            ])
+
+            st.markdown("**Override preview** *(amber = manual override)*")
+            st.dataframe(styled, hide_index=True, use_container_width=True)
 
             # Diff detection: compare edited rows against originals
             new_items_list = []
@@ -339,10 +390,11 @@ if run_button or st.session_state.demo_result is not None:
 
             st.caption(f"{len(new_items)} line items | Mode: {op_mode}")
 
-            # Total OPEX row — shown separately below the matrix, read-only
+            # Total OPEX row — shown separately below the matrix, read-only, compact integer display
             schedule = generate_opex_schedule(new_items, horizon)
             total_col_names = ["Line Item"] + [f"Y{y}" for y in range(1, horizon + 1)]
-            total_data = [["Total OPEX"] + [f"{v:.0f}" if v > 0 else "—" for v in schedule.total_by_year]]
+            total_vals = [f"{int(v)}" if v > 0 else "—" for v in schedule.total_by_year]
+            total_data = [["Total OPEX"] + total_vals]
             total_df = pd.DataFrame(total_data, columns=total_col_names)
             st.dataframe(total_df, hide_index=True, use_container_width=True)
         else:
