@@ -48,9 +48,14 @@ with st.sidebar:
                 key="use_advanced_opex",
             )
             if use_advanced:
-                # Initialise or refresh line items in session state
-                if "advanced_opex_line_items" not in st.session_state or st.session_state["advanced_opex_line_items"] is None:
+                # Track which project type initialised the line items; reset if type changes
+                last_pt = st.session_state.get("_advanced_opex_project_type")
+                if last_pt != project_type:
                     st.session_state["advanced_opex_line_items"] = build_opex_line_items_from_defaults(project_type.lower())
+                    st.session_state["_advanced_opex_project_type"] = project_type
+                elif "advanced_opex_line_items" not in st.session_state or st.session_state["advanced_opex_line_items"] is None:
+                    st.session_state["advanced_opex_line_items"] = build_opex_line_items_from_defaults(project_type.lower())
+                    st.session_state["_advanced_opex_project_type"] = project_type
                 items = st.session_state["advanced_opex_line_items"]
                 # Inline editor
                 edited_items = []
@@ -121,11 +126,12 @@ if run_button or st.session_state.demo_result is not None:
         st.caption(f"_{detail}_")
 
     # Scenario summary table (shown after model run, for non-Base scenarios)
-    # Portfolio scenarios are not implemented — show a warning instead of the table
-    if scenario != "Base":
-        if project_type == "Portfolio":
-            st.warning("⚠️ Portfolio scenarios not implemented — Base case results shown.")
-        else:
+    # Scenario guardrail for partial/experimental project types
+    NON_SCENARIO_TYPES = {"BESS", "Solar+BESS", "Wind+BESS", "Portfolio"}
+    if scenario != "Base" and project_type in NON_SCENARIO_TYPES:
+        st.warning(f"⚠️ Scenario '{scenario}' is not supported for {project_type}. Base case results shown.")
+    else:
+        if scenario != "Base":
             from app.scenarios import scenario_summary
             rows = scenario_summary(scenario)
             has_changes = any(r.get("change") != "0%" for r in rows)
@@ -134,8 +140,6 @@ if run_button or st.session_state.demo_result is not None:
                 import pandas as pd
                 df = pd.DataFrame(rows)
                 st.table(df)
-                if project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
-                    st.info("⚠️ Scenario effects are partial for this project type — revenue model uses scenario, but other modules may not.")
             else:
                 st.caption("No changes from Base case")
             st.divider()

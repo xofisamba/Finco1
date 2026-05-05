@@ -75,19 +75,22 @@ def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None):
 
 
 def _advanced_opex_warnings(line_items) -> list[str]:
-    """Return warning messages if any line items have manual/hardcoded values."""
+    """Return warning messages if any line items have manual/hardcoded values.
+
+    Triggers on any of:
+    - item.source == OpexSource.MANUAL
+    - item.is_hardcoded is True
+    - item.has_manual_overrides() is True
+    """
+    from app.opex_engine import OpexSource
     if not line_items:
         return []
-    warnings = []
-    has_manual = any(
-        item.source.value == "manual" for item in line_items
-    )
+    has_manual = any(item.source == OpexSource.MANUAL for item in line_items)
     has_hardcoded = any(item.is_hardcoded for item in line_items)
-    if has_manual or has_hardcoded:
-        warnings.append(
-            "Advanced OPEX contains manual or hardcoded values. Review override notes."
-        )
-    return warnings
+    has_overrides = any(item.has_manual_overrides() for item in line_items)
+    if has_manual or has_hardcoded or has_overrides:
+        return ["Advanced OPEX contains manual or hardcoded values. Review override notes."]
+    return []
 
 
 def run_demo_project(project_type: str, scenario: str = "Base",

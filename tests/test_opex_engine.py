@@ -475,6 +475,7 @@ class TestAdvancedOpexWarnings:
         assert _advanced_opex_warnings(()) == []
 
     def test_formula_only_items_no_warning(self):
+        """FORMULA source, no hardcoded, no overrides → no warning."""
         from app.ui_runner import _advanced_opex_warnings
         from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
         items = (
@@ -520,6 +521,7 @@ class TestAdvancedOpexWarnings:
         assert "manual or hardcoded" in warnings[0]
 
     def test_both_manual_and_hardcoded_one_warning(self):
+        """Manual + hardcoded → exactly one warning, not two."""
         from app.ui_runner import _advanced_opex_warnings
         from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
         items = (
@@ -535,6 +537,114 @@ class TestAdvancedOpexWarnings:
         # Should still produce exactly one warning, not two
         warnings = _advanced_opex_warnings(items)
         assert len(warnings) == 1
+
+    def test_manual_overrides_triggers_warning(self):
+        """has_manual_overrides() == True → warning even when source=FORMULA."""
+        from app.ui_runner import _advanced_opex_warnings
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+        items = (
+            OpexLineItem(
+                name="Insurance", category="insurance",
+                base_year_amount_keur=200.0, inflation_rate=0.0,
+                calculation_mode=CalculationMode.MIXED,
+                source=OpexSource.FORMULA,
+                manual_overrides_keur=(None, 250.0, None),  # Y1 override
+            ),
+        )
+        warnings = _advanced_opex_warnings(items)
+        assert len(warnings) == 1
+        assert "manual or hardcoded" in warnings[0]
+
+
+class TestScenarioGuardrailUI:
+    """Tests for scenario guardrail messages in ui_runner."""
+
+    def test_bess_downside_returns_base_warning(self):
+        """BESS + non-Base scenario → Base warning, no scenario summary."""
+        from app.ui_runner import run_demo_project
+        result = run_demo_project("BESS", "Downside")
+        # Must contain Base warning (message mentions both scenario and Base case)
+        assert any(
+            ("Downside" in m and "Base case" in m) or ("not supported" in m and "BESS" in m)
+            for m in result.messages
+        ), f"Expected Base warning in messages, got: {result.messages}"
+
+    def test_solar_bess_upside_returns_base_warning(self):
+        """Solar+BESS + non-Base scenario → Base warning."""
+        from app.ui_runner import run_demo_project
+        result = run_demo_project("Solar+BESS", "Upside")
+        assert any(
+            ("Upside" in m and "Base case" in m) or ("not supported" in m and "Solar+BESS" in m)
+            for m in result.messages
+        ), f"Expected Base warning in messages, got: {result.messages}"
+
+    def test_wind_bess_downside_returns_base_warning(self):
+        """Wind+BESS + non-Base scenario → Base warning."""
+        from app.ui_runner import run_demo_project
+        result = run_demo_project("Wind+BESS", "Downside")
+        assert any(
+            ("Downside" in m and "Base case" in m) or ("not supported" in m and "Wind+BESS" in m)
+            for m in result.messages
+        ), f"Expected Base warning in messages, got: {result.messages}"
+
+    def test_portfolio_downside_returns_base_warning(self):
+        """Portfolio + non-Base scenario → Base warning, no scenario summary."""
+        from app.ui_runner import run_demo_project
+        result = run_demo_project("Portfolio", "Downside")
+        assert any(
+            "Base case" in m or "not supported" in m
+            for m in result.messages
+        ), f"Expected Base warning in messages, got: {result.messages}"
+        assert not any(
+            "Scenario: Downside" in m for m in result.messages
+        ), f"Should not show scenario summary for Portfolio, got: {result.messages}"
+
+    def test_solar_downside_scenario_summary_not_base_warning(self):
+        """Solar + non-Base → scenario applied normally, no Base case warning."""
+        from app.ui_runner import run_demo_project
+        result = run_demo_project("Solar", "Downside")
+        # Solar/Wind DO support scenarios — should NOT get a Base-case override warning
+        assert not any(
+            "Base case" in m and "Downside" in m and "not supported" in m
+            for m in result.messages
+        ), f"Solar should support scenarios, got: {result.messages}"
+
+    def test_wind_upside_scenario_summary_not_base_warning(self):
+        """Wind + non-Base → scenario applied normally."""
+        from app.ui_runner import run_demo_project
+        result = run_demo_project("Wind", "Upside")
+        assert not any(
+            "Base case" in m and "Upside" in m and "not supported" in m
+            for m in result.messages
+        ), f"Wind should support scenarios, got: {result.messages}"
+
+
+class TestAdvancedOpexProjectTypeReset:
+    """Tests for advanced OPEX project-type reset on technology change."""
+
+    def test_solar_and_wind_defaults_are_different(self):
+        """Solar and Wind must produce different line-item tuples."""
+        from app.opex_engine import build_opex_line_items_from_defaults
+        solar_items = build_opex_line_items_from_defaults("solar")
+        wind_items = build_opex_line_items_from_defaults("wind")
+        solar_names = {i.name for i in solar_items}
+        wind_names = {i.name for i in wind_items}
+        assert solar_names != wind_names, (
+            f"Solar and Wind defaults must differ. "
+            f"Solar: {solar_names}, Wind: {wind_names}"
+        )
+
+    def test_solar_line_items_have_expected_count(self):
+        """Solar defaults must have 7 line items (B.01–B.12 + insurance + land)."""
+        from app.opex_engine import build_opex_line_items_from_defaults
+        items = build_opex_line_items_from_defaults("solar")
+        assert len(items) == 7, f"Expected 7 solar items, got {len(items)}: {[i.name for i in items]}"
+
+    def test_wind_line_items_have_expected_count(self):
+        """Wind defaults must have 6 line items (B.01–B.12 + insurance + land)."""
+        from app.opex_engine import build_opex_line_items_from_defaults
+        items = build_opex_line_items_from_defaults("wind")
+        assert len(items) == 6, f"Expected 6 wind items, got {len(items)}: {[i.name for i in items]}"
 
 
 class TestWaterfallCoreAdvancedOpex:
