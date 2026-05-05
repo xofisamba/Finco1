@@ -170,7 +170,6 @@ if run_button or st.session_state.demo_result is not None:
     with tabs[1]:
         # Editable project assumptions toggle moved into Inputs tab
         if project_type in ("Solar", "Wind"):
-            use_ed, _ = st.session.get("use_editable_inputs", False), None
             use_ed = st.checkbox(
                 "Edit project assumptions",
                 value=False,
