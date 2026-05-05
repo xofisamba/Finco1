@@ -84,10 +84,20 @@ with st.sidebar:
                     with st.expander(f"ℹ️ {item.name}", expanded=False):
                         st.caption(f"Category: {item.category} | Source: {item.source.value} | Hardcoded: {item.is_hardcoded}")
                 st.session_state["advanced_opex_line_items"] = tuple(edited_items)
+                # Invalidate prior results if line items changed
+                new_sig = str(tuple(sorted((i.name, i.category, i.base_year_amount_keur, i.inflation_rate, i.source.value, i.is_hardcoded) for i in edited_items)))
+                if st.session_state.get("last_advanced_opex_signature") != new_sig:
+                    st.session_state["last_advanced_opex_signature"] = new_sig
+                    st.session_state["demo_result"] = None
                 st.caption(f"{len(edited_items)} line items configured.")
             else:
                 # Clear advanced OPEX so legacy path is used
+                prev = st.session_state.get("advanced_opex_line_items")
                 st.session_state["advanced_opex_line_items"] = None
+                st.session_state["last_advanced_opex_signature"] = None
+                # If there was a prior result with advanced OPEX, invalidate
+                if prev is not None:
+                    st.session_state["demo_result"] = None
                 st.caption("Using simple OPEX (default).")
     else:
         # Non-Solar/Wind: ensure advanced OPEX is cleared
@@ -99,7 +109,16 @@ with st.sidebar:
 
 
 if run_button or st.session_state.demo_result is not None:
-    if run_button or st.session_state.last_project_type != project_type or st.session_state.get("last_scenario") != scenario:
+    # Invalidate if project type, scenario, or advanced OPEX state changed
+    adv_sig = st.session_state.get("last_advanced_opex_signature") if project_type in ("Solar", "Wind") else None
+    needs_rerun = (
+        run_button
+        or st.session_state.last_project_type != project_type
+        or st.session_state.get("last_scenario") != scenario
+        or (project_type in ("Solar", "Wind") and st.session_state.get("_last_adv_sig") != adv_sig)
+    )
+    if needs_rerun:
+        st.session_state["_last_adv_sig"] = adv_sig
         with st.spinner("Running model..."):
             override = st.session_state.get("editable_inputs") if st.session_state.get("use_editable_inputs") else None
             advanced_opex = st.session_state.get("advanced_opex_line_items") if project_type in ("Solar", "Wind") else None

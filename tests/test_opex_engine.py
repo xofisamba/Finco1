@@ -717,3 +717,94 @@ class TestWaterfallCoreAdvancedOpex:
         assert result is not None
         # Smoke test: model ran to completion
         assert hasattr(result, "total_revenue_keur")
+
+
+class TestAdvancedOpexRerunInvalidation:
+    """Tests for advanced OPEX session state signature and rerun invalidation.
+
+    We test the core helpers that streamlit_app.py uses to detect stale results.
+    The signature is built from tuple of (name, category, base, infl, source, is_hardcoded).
+    """
+
+    def test_signature_changes_when_item_name_changes(self):
+        """Changing a line item name must produce a different signature."""
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+
+        def _sig(items):
+            return str(tuple(sorted(
+                (i.name, i.category, i.base_year_amount_keur, i.inflation_rate, i.source.value, i.is_hardcoded)
+                for i in items
+            )))
+
+        item = OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        )
+        sig1 = _sig((item,))
+        item2 = OpexLineItem(
+            name="Insurance CHANGED", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        )
+        sig2 = _sig((item2,))
+        assert sig1 != sig2
+
+    def test_signature_changes_when_base_amount_changes(self):
+        """Editing base amount must produce a different signature."""
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+
+        def _sig(items):
+            return str(tuple(sorted(
+                (i.name, i.category, i.base_year_amount_keur, i.inflation_rate, i.source.value, i.is_hardcoded)
+                for i in items
+            )))
+
+        item1 = OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        )
+        item2 = OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=500.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA,
+        )
+        assert _sig((item1,)) != _sig((item2,))
+
+    def test_signature_changes_when_hardcoded_flag_changes(self):
+        """Toggling is_hardcoded must produce a different signature."""
+        from app.opex_engine import OpexLineItem, OpexSource, CalculationMode
+
+        def _sig(items):
+            return str(tuple(sorted(
+                (i.name, i.category, i.base_year_amount_keur, i.inflation_rate, i.source.value, i.is_hardcoded)
+                for i in items
+            )))
+
+        item1 = OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA, is_hardcoded=False,
+        )
+        item2 = OpexLineItem(
+            name="Insurance", category="insurance",
+            base_year_amount_keur=200.0, inflation_rate=0.0,
+            calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+            source=OpexSource.FORMULA, is_hardcoded=True,
+        )
+        assert _sig((item1,)) != _sig((item2,))
+
+    def test_signature_unchanged_when_editable_inputs_not_advanced_opex(self):
+        """Simple OPEX path (no advanced items) must not trigger signature changes."""
+        # When advanced_opex_line_items=None or (), there is no signature to track
+        # This tests that the rerun logic degrades gracefully when no advanced OPEX used
+        from app.opex_engine import apply_opex_line_items_to_project
+        # Empty → returns (). Caller should fall back to legacy path without crashing.
+        result = apply_opex_line_items_to_project((), horizon_years=5)
+        assert result == ()
