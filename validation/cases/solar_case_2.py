@@ -3,6 +3,7 @@ from app.project_factories import create_default_solar_project
 from dataclasses import replace
 
 description = "Solar PV with 10% tariff upside"
+project_type = "Solar"
 
 inputs = create_default_solar_project()
 inputs = replace(inputs, revenue=replace(inputs.revenue, 

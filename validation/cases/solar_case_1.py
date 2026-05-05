@@ -2,6 +2,7 @@
 from app.project_factories import create_default_solar_project
 
 description = "Standard utility-scale solar PV, 50MW, base assumptions"
+project_type = "Solar"
 
 inputs = create_default_solar_project()
 

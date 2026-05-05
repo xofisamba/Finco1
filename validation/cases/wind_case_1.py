@@ -2,6 +2,7 @@
 from app.project_factories import create_default_wind_project
 
 description = "Standard onshore wind, 72MW, base assumptions"
+project_type = "Wind"
 
 inputs = create_default_wind_project()
 

@@ -199,13 +199,29 @@ def build_returns_table(result) -> pd.DataFrame:
     if result is None:
         return pd.DataFrame(columns=["Value"])
 
+    project_irr = _safe_get_or_none(result, 'project_irr')
+    equity_irr = _safe_get_or_none(result, 'equity_irr')
+    sponsor_irr = _safe_get_or_none(result, 'sponsor_irr')
+    project_npv = _safe_get_or_none(result, 'project_npv')
+    equity_npv = _safe_get_or_none(result, 'equity_npv')
+
+    def _fmt_irr_pct(val):
+        if val is None or val == 0.0:
+            return "n/a"
+        return f"{val * 100:.2f}%"
+
+    def _fmt_npv(val):
+        if val is None:
+            return "n/a"
+        return f"{val:,.0f} kEUR"
+
     labels = ["Project IRR", "Equity IRR", "Sponsor IRR", "Project NPV", "Equity NPV"]
     values = [
-        _safe_get_or_none(result, 'project_irr'),
-        _safe_get_or_none(result, 'equity_irr'),
-        _safe_get_or_none(result, 'sponsor_irr'),
-        _safe_get_or_none(result, 'project_npv'),
-        _safe_get_or_none(result, 'equity_npv'),
+        _fmt_irr_pct(project_irr),
+        _fmt_irr_pct(equity_irr),
+        _fmt_irr_pct(sponsor_irr),
+        _fmt_npv(project_npv),
+        _fmt_npv(equity_npv),
     ]
 
     df = pd.DataFrame({"Value": values}, index=labels)

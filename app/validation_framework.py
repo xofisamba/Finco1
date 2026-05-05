@@ -2,20 +2,20 @@
 
 from typing import Any
 
-def run_validation_case(inputs, expected_outputs=None):
-    """Run a project and return structured KPI/watertall/DSCR summary.
+def run_validation_case(inputs, expected_outputs=None, project_type: str = "Solar"):
+    """Run a project and return structured KPI/waterfall/DSCR summary.
     
     Args:
         inputs: ProjectInputs (from project factories)
         expected_outputs: optional dict of expected KPIs for comparison
+        project_type: "Solar" or "Wind"
         
     Returns:
         dict with keys: kpis, waterfall_summary, dscr_summary
     """
-    from app.project_factories import create_default_solar_project
     from app.ui_runner import run_demo_project
     
-    result = run_demo_project("Solar", project_inputs_override=inputs)
+    result = run_demo_project(project_type, project_inputs_override=inputs)
     if result.result is None:
         return {"error": "Model run failed"}
     
@@ -80,7 +80,7 @@ def compare_to_expected(actual: dict, expected: dict, tolerance: float = 0.01):
         if pct_diff > tolerance:
             deviations.append(f"{key}: diff {pct_diff:.2%} (actual={actual_val}, expected={expected_val})")
     
-    matches = len([d for d in deviations if "missing" not in d and "None" not in d and "expected 0" not in d]) == 0
+    matches = len(deviations) == 0
     return {"matches": matches, "deviations": deviations, "pct_differences": pct_differences}
 
 

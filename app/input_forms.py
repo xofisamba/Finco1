@@ -75,7 +75,7 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
     with tech_cols[1]:
         p50_h = st.number_input(
             "P50 Hours", value=float(_get_p50_val(project_inputs.technical)),
-            min_value=500, max_value=3500, step=50, key="solar_p50"
+            min_value=500.0, max_value=3500.0, step=50.0, key="solar_p50"
         )
         degradation = st.number_input(
             "Degradation (%/yr)", value=float(_get_degradation_val(project_inputs.technical) * 100),
@@ -203,7 +203,7 @@ def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
     with tech_cols[1]:
         p50_h = st.number_input(
             "P50 Hours", value=float(_get_p50_val(project_inputs.technical)),
-            min_value=1500, max_value=4500, step=50, key="wind_p50"
+            min_value=1500.0, max_value=4500.0, step=50.0, key="wind_p50"
         )
         degradation = st.number_input(
             "Degradation (%/yr)", value=float(_get_degradation_val(project_inputs.technical) * 100),

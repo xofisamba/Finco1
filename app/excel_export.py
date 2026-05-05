@@ -32,8 +32,10 @@ def build_excel_export(
     integration_status: str = "full",
     integration_note: str | None = None,
     scenario: str = "Base",
+    project_type: str = "Solar",
     period_view: str = "Semiannual",
     warnings: list = None,
+    run_metadata=None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -105,8 +107,14 @@ def build_excel_export(
             _write_sheet(writer, "Tax_Depreciation", tax_df, number_format={"kEUR": "#,##0"})
 
         # ── Notes ──────────────────────────────────────────────────────────
-        _write_notes_sheet(writer, integration_status, integration_note, scenario, period_view,
-                           warnings=warnings if warnings else [])
+        import subprocess
+        try:
+            git_sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+        except Exception:
+            git_sha = "n/a"
+        ts = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")
+        _write_notes_sheet(writer, integration_status, integration_note, scenario, project_type, period_view,
+                          warnings=warnings if warnings else [], git_sha=git_sha, timestamp=ts)
 
         # ── Inputs ────────────────────────────────────────────────────────
         _write_sheet(writer, "Inputs", build_inputs_summary_table(project_inputs))
@@ -274,16 +282,22 @@ def _write_validation_sheet(writer, validation_issues) -> None:
     ws.sheet_state = "visible"
 
 
-def _write_notes_sheet(writer, status, note, scenario, period_view, warnings=None) -> None:
+def _write_notes_sheet(writer, status, note, scenario, project_type, period_view, warnings=None, git_sha=None, timestamp=None) -> None:
     if warnings is None:
         warnings = []
     """Write a Notes sheet."""
+    if timestamp is None:
+        timestamp = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")
+    if git_sha is None:
+        git_sha = "n/a"
     rows = [
         ("Field", "Value"),
         ("Model Version", "industry-engine-refactor"),
-        ("Run Timestamp", pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")),
+        ("Git SHA", git_sha),
+        ("Run Timestamp", timestamp),
         ("Integration Status", status),
         ("Scenario", scenario),
+        ("Project Type", project_type),
         ("Period View", period_view),
         ("Note", note if note else "n/a"),
         ("Values-only Export", "No formulas used in this workbook."),

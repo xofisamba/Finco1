@@ -102,6 +102,34 @@ def test_returns_table_includes_all_irr_fields():
         assert label in df.index, f"{label} should be in returns table"
 
 
+def test_returns_table_formats_irr_as_percent():
+    """IRR values must be formatted as percentage strings (or 'n/a' for zero/None)."""
+    result = _run_solar_waterfall()
+    df = build_returns_table(result)
+
+    # Helper: check IRR is properly formatted (non-zero → percentage string, zero/None → 'n/a')
+    def check_irr(label):
+        val = df.loc[label, "Value"]
+        assert isinstance(val, str), f"{label} should be string, got {type(val).__name__}: {val!r}"
+        if val == "n/a":
+            return  # zero/None correctly shows n/a
+        assert "%" in val, f"{label} should contain '%' or be 'n/a', got: {val!r}"
+        num_str = val.rstrip("%")
+        pct = float(num_str)
+        assert 0 < pct < 100, f"{label} percentage should be 0-100, got: {pct}"
+
+    for label in ["Project IRR", "Equity IRR", "Sponsor IRR"]:
+        check_irr(label)
+
+    # NPV rows should be formatted as "1,234 kEUR" style strings (not raw decimals)
+    for label in ["Project NPV", "Equity NPV"]:
+        val = df.loc[label, "Value"]
+        assert isinstance(val, str), f"{label} should be string, got {type(val).__name__}: {val!r}"
+        assert "kEUR" in val, f"{label} should contain 'kEUR', got: {val!r}"
+        # Should have thousands separator or leading minus
+        assert "," in val or val.startswith("-"), f"{label} should have thousands separator: {val!r}"
+
+
 def test_dashboard_kpis_contains_all_required_keys():
     result = _run_solar_waterfall()
     kpis = build_dashboard_kpis(result)
