@@ -191,12 +191,15 @@ if run_button or st.session_state.demo_result is not None:
         if project_type in ("Solar", "Wind"):
             op_mode = st.radio(
                 "OPEX Mode",
-                options=["Simple", "Advanced (line items)"],
+                options=["Simple", "Advanced"],
                 index=0 if prev_op_mode != "Advanced" else 1,
                 horizontal=True,
                 help="Simple = legacy OpexItem path. Advanced = granular line-item engine.",
                 key="_opex_mode_radio",
             )
+            op_mode_display = "line items" if op_mode == "Advanced" else ""
+            if op_mode_display:
+                st.caption(f"Mode: Advanced (line items)")
         else:
             op_mode = "Simple"
 
