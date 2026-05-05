@@ -49,7 +49,7 @@ if run_button or st.session_state.demo_result is not None:
         run_button
         or st.session_state.last_project_type != project_type
         or st.session_state.get("last_scenario") != scenario
-        or st.session_state.get("_opex_mode") != op_mode
+        or st.session_state.get("_opex_mode") != "Advanced"
         or (project_type in ("Solar", "Wind") and st.session_state.get("_last_adv_sig") != adv_sig)
     )
     if needs_rerun:
