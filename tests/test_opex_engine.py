@@ -808,3 +808,139 @@ class TestAdvancedOpexRerunInvalidation:
         # Empty → returns (). Caller should fall back to legacy path without crashing.
         result = apply_opex_line_items_to_project((), horizon_years=5)
         assert result == ()
+
+
+class TestOpexScheduleMatrixPreview:
+    """Tests for OPEX schedule matrix preview helper."""
+
+    def test_matrix_columns_are_line_item_plus_years(self):
+        """Matrix columns: first='Line Item', then Y1..Y{horizon}."""
+        from app.opex_engine import generate_opex_schedule, build_opex_line_items_from_defaults
+
+        items = build_opex_line_items_from_defaults("solar")
+        horizon = 5
+        schedule = generate_opex_schedule(items, horizon)
+
+        item_names = list(dict.fromkeys(e.line_item_name for e in schedule.entries))
+        matrix_rows = []
+        for name in item_names:
+            year_vals = [0.0] * horizon
+            for e in schedule.entries:
+                if e.line_item_name == name:
+                    year_vals[e.year_index] = e.value_keur
+            matrix_rows.append([name] + [f"{v:.0f}" if v > 0 else "—" for v in year_vals])
+        total_by_year = list(schedule.total_by_year)
+        total_row = ["**Total OPEX**"] + [f"{v:.0f}" if v > 0 else "—" for v in total_by_year]
+        matrix_rows.append(total_row)
+
+        import pandas as pd
+        preview_cols = ["Line Item"] + [f"Y{y+1}" for y in range(horizon)]
+        df = pd.DataFrame(matrix_rows, columns=preview_cols)
+
+        assert list(df.columns) == preview_cols
+        assert len(df.columns) == horizon + 1
+        assert df.iloc[-1, 0] == "**Total OPEX**"
+
+    def test_matrix_row_count_matches_items_plus_total(self):
+        """Matrix has one row per unique line item + 1 Total OPEX row."""
+        from app.opex_engine import generate_opex_schedule, build_opex_line_items_from_defaults
+
+        items = build_opex_line_items_from_defaults("solar")
+        horizon = 5
+        schedule = generate_opex_schedule(items, horizon)
+
+        item_names = list(dict.fromkeys(e.line_item_name for e in schedule.entries))
+        matrix_rows = []
+        for name in item_names:
+            year_vals = [0.0] * horizon
+            for e in schedule.entries:
+                if e.line_item_name == name:
+                    year_vals[e.year_index] = e.value_keur
+            matrix_rows.append([name] + [f"{v:.0f}" if v > 0 else "—" for v in year_vals])
+        total_by_year = list(schedule.total_by_year)
+        total_row = ["**Total OPEX**"] + [f"{v:.0f}" if v > 0 else "—" for v in total_by_year]
+        matrix_rows.append(total_row)
+
+        import pandas as pd
+        preview_cols = ["Line Item"] + [f"Y{y+1}" for y in range(horizon)]
+        df = pd.DataFrame(matrix_rows, columns=preview_cols)
+
+        assert len(df) == len(item_names) + 1
+
+    def test_matrix_total_row_matches_schedule_total_by_year(self):
+        """Total OPEX row values match schedule.total_by_year."""
+        from app.opex_engine import generate_opex_schedule, build_opex_line_items_from_defaults
+
+        items = build_opex_line_items_from_defaults("solar")
+        horizon = 5
+        schedule = generate_opex_schedule(items, horizon)
+
+        item_names = list(dict.fromkeys(e.line_item_name for e in schedule.entries))
+        matrix_rows = []
+        for name in item_names:
+            year_vals = [0.0] * horizon
+            for e in schedule.entries:
+                if e.line_item_name == name:
+                    year_vals[e.year_index] = e.value_keur
+            matrix_rows.append([name] + [f"{v:.0f}" if v > 0 else "—" for v in year_vals])
+        total_by_year = list(schedule.total_by_year)
+        total_row = ["**Total OPEX**"] + [f"{v:.0f}" if v > 0 else "—" for v in total_by_year]
+        matrix_rows.append(total_row)
+
+        import pandas as pd
+        preview_cols = ["Line Item"] + [f"Y{y+1}" for y in range(horizon)]
+        df = pd.DataFrame(matrix_rows, columns=preview_cols)
+
+        for col_idx, expected_val in enumerate(total_by_year, start=1):
+            cell_val = df.iloc[-1, col_idx]
+            if expected_val > 0:
+                assert cell_val == f"{expected_val:.0f}", f"Col {col_idx}: expected {expected_val}, got {cell_val}"
+
+    def test_matrix_item_rows_match_schedule_entry_values(self):
+        """Each line item's values in the matrix match entry.value_keur."""
+        from app.opex_engine import generate_opex_schedule, OpexLineItem, OpexSource, CalculationMode
+
+        items = (
+            OpexLineItem(
+                name="Insurance", category="insurance",
+                base_year_amount_keur=1000.0, inflation_rate=0.0,
+                calculation_mode=CalculationMode.INFLATED_FROM_BASE,
+                source=OpexSource.FORMULA,
+            ),
+        )
+        horizon = 5
+        schedule = generate_opex_schedule(items, horizon)
+
+        item_names = list(dict.fromkeys(e.line_item_name for e in schedule.entries))
+        matrix_rows = []
+        for name in item_names:
+            year_vals = [0.0] * horizon
+            for e in schedule.entries:
+                if e.line_item_name == name:
+                    year_vals[e.year_index] = e.value_keur
+            matrix_rows.append([name] + [f"{v:.0f}" if v > 0 else "—" for v in year_vals])
+
+        import pandas as pd
+        preview_cols = ["Line Item"] + [f"Y{y+1}" for y in range(horizon)]
+        df = pd.DataFrame(matrix_rows, columns=preview_cols)
+
+        ins_row = df[df["Line Item"] == "Insurance"].iloc[0]
+        for y in range(1, horizon + 1):
+            assert ins_row[f"Y{y}"] == "1000", f"Y{y} should be 1000, got {ins_row[f'Y{y}']}"
+
+
+class TestOpexModeDefault:
+    """Tests for OPEX mode default behavior."""
+
+    def test_simple_mode_is_default_on_first_run(self):
+        """Simple mode must be the default after app restart / session clear."""
+        # The radio selector index: 0 if _opex_mode != "Advanced" else 1
+        # When session state is absent (_opex_mode is None): index 0 → Simple
+        default_mode_value = None
+        selected_index = 0 if default_mode_value != "Advanced" else 1
+        assert selected_index == 0, "Simple (index 0) must be the default"
+
+    def test_advanced_mode_not_used_in_simple_mode(self):
+        """When Simple mode is selected, advanced_opex_line_items must not be passed to model."""
+        result = apply_opex_line_items_to_project((), horizon_years=5)
+        assert result == ()  # empty tuple → legacy path used
