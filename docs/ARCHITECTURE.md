@@ -95,6 +95,8 @@ Clean scenario registry separate from domain. Defines `Scenario` dataclass and
 
 **Backward compatible** with `scenarios.py` — does not replace it.
 
+**Migration status (as of 2026-05-06):** `ScenarioManager` is a **foundation module**. The current runtime still uses `app.scenarios.apply_scenario()` for scenario application in `run_demo_project()`. Full migration to `ScenarioManager` is future work. The `ScenarioManager` API is stable and tested; integration into the run path is a later step.
+
 ### `opex_engine.py` — OPEX Line-Item Engine
 
 Provides a granular line-item layer on top of `domain.inputs.OpexItem`.
