@@ -189,7 +189,13 @@ if run_button or st.session_state.demo_result is not None:
                 st.info("Editable assumptions are available for Solar/Wind in this MVP.")
             render_inputs(inputs_to_show)
     with tabs[2]:
-        render_capex(inputs_to_show)
+        # Use matrix editor for Solar/Wind, existing read-only for others
+        if project_type in ("Solar", "Wind") and demo.project_inputs:
+            horizon = getattr(getattr(demo.project_inputs, "info", None), "horizon_years", 28)
+            from app.ui.pages import render_capex_matrix
+            render_capex_matrix(project_type, scale_mw=getattr(getattr(demo.project_inputs, "info", None), "capacity_mw", 50.0), tenor_periods=horizon)
+        else:
+            render_capex(inputs_to_show)
     with tabs[3]:
         # OPEX tab — simple vs advanced mode selector + line-item editor + schedule preview
         from app.opex_engine import build_opex_line_items_from_defaults, OpexLineItem, OpexSource, generate_opex_schedule

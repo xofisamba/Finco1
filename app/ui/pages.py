@@ -229,3 +229,106 @@ def render_capex(project_inputs):
     if items_df.shape[0] > 0:
         with st.expander("CapEx Items"):
             st.dataframe(items_df, hide_index=True, use_container_width=True)
+
+
+def render_capex_matrix(
+    project_type: str = "Solar",
+    scale_mw: float = 50.0,
+    tenor_periods: int = 28,
+):
+    """Render CAPEX matrix editor with editable items.
+
+    Returns the current tuple of CapexLineItem from session state.
+    """
+    from app.capex_engine import build_capex_line_items_from_defaults, generate_capex_schedule
+
+    st.markdown("**CAPEX Items**")
+
+    # Initialise from defaults on first use
+    if "capex_line_items" not in st.session_state:
+        st.session_state["capex_line_items"] = build_capex_line_items_from_defaults(
+            project_type.lower(), scale_mw=scale_mw,
+        )
+
+    items = st.session_state.get("capex_line_items", ())
+    schedule = generate_capex_schedule(items, tenor_periods)
+
+    # Build display dataframe
+    horizon = tenor_periods
+    col_names = ["Code", "Name", "Group", "Amount (kEUR)", "Timing"] + [f"P{y+1}" for y in range(horizon)]
+    matrix_data = []
+    for item in items:
+        row = [
+            item.code,
+            item.name,
+            item.group,
+            item.amount_keur,
+            item.timing_profile.value,
+        ]
+        # Fill in period draws
+        period_draws = {e.period_index: e.draw_keur for e in schedule.entries if e.capex_code == item.code}
+        for p in range(horizon):
+            row.append(period_draws.get(p, 0.0))
+        matrix_data.append(row)
+
+    matrix_df = pd.DataFrame(matrix_data, columns=col_names)
+
+    # Column config
+    col_config = {
+        "Code": st.column_config.TextColumn("Code", disabled=True),
+        "Name": st.column_config.TextColumn("Name", disabled=True),
+        "Group": st.column_config.TextColumn("Group", disabled=True),
+        "Amount (kEUR)": st.column_config.NumberColumn("Amount (kEUR)", min_value=0.0, format="%.0f"),
+        "Timing": st.column_config.TextColumn("Timing", disabled=True),
+    }
+    for p in range(horizon):
+        col_config[f"P{p+1}"] = st.column_config.NumberColumn(f"P{p+1}", min_value=0.0, format="%.0f")
+
+    edited_df = st.data_editor(
+        matrix_df,
+        column_config=col_config,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+        key="_capex_matrix_editor",
+    )
+
+    # Update session state from edits (only Amount column triggers rebuild)
+    new_items = []
+    for row_idx, (_, row) in enumerate(edited_df.iterrows()):
+        orig = items[row_idx]
+        new_amount = row["Amount (kEUR)"]
+        if new_amount != orig.amount_keur:
+            # Amount changed — rebuild item with new amount, same profile
+            from app.capex_engine import TimingProfile
+            new_item = CapexLineItem(
+                code=orig.code,
+                name=orig.name,
+                group=orig.group,
+                subgroup=orig.subgroup,
+                description=orig.description,
+                amount_keur=new_amount,
+                asset_class=orig.asset_class,
+                timing_profile=orig.timing_profile,
+                timing_fractions=orig.timing_fractions,
+                is_manual=orig.is_manual,
+                notes=orig.notes,
+            )
+            new_items.append(new_item)
+        else:
+            new_items.append(orig)
+
+    st.session_state["capex_line_items"] = tuple(new_items)
+
+    # Total CAPEX row (read-only)
+    schedule = generate_capex_schedule(st.session_state["capex_line_items"], tenor_periods)
+    total_col_names = ["Code", "Name", "Group", "Amount (kEUR)", "Timing"] + [f"P{y+1}" for y in range(horizon)]
+    total_vals = [f"{int(v)}" if v > 0 else "—" for v in schedule.total_by_period]
+    total_data = [["Total CAPEX", "", "", str(int(sum(i.amount_keur for i in items))), ""] + total_vals]
+    total_df = pd.DataFrame(total_data, columns=total_col_names)
+    st.dataframe(total_df, hide_index=True, use_container_width=True)
+
+    if schedule.has_manual_items:
+        st.caption("⚠️ Some items are manually entered. Review before running.")
+
+    return st.session_state.get("capex_line_items", ())
