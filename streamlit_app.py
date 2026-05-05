@@ -33,17 +33,13 @@ with st.sidebar:
     scenario = st.selectbox("Scenario", SCENARIOS)
     period_view = st.selectbox("Period View", ["Semiannual", "Annual"])
     st.divider()
-    use_editable = st.checkbox(
-        "Use editable project assumptions",
-        value=False,
-        help="Edit core project assumptions in the Inputs tab. OPEX assumptions are managed separately in the OPEX tab.",
-    )
-    st.session_state["use_editable_inputs"] = use_editable
-    st.divider()
 
     st.info("📋 Scenarios apply to Solar/Wind only — BESS & Portfolio show Base case")
     st.divider()
     run_button = st.button("🚀 Run Model", use_container_width=True)
+
+    # Store current op_mode for use in run-condition block
+    _curr_op_mode = st.session_state.get("_opex_mode", "Simple")
 
 
 if run_button or st.session_state.demo_result is not None:
@@ -172,16 +168,26 @@ if run_button or st.session_state.demo_result is not None:
         render_dashboard(demo.result, demo.portfolio_result, demo.is_portfolio,
                          demo.integration_status, demo.integration_note)
     with tabs[1]:
+        # Editable project assumptions toggle moved into Inputs tab
+        if project_type in ("Solar", "Wind"):
+            use_ed, _ = st.session.get("use_editable_inputs", False), None
+            use_ed = st.checkbox(
+                "Edit project assumptions",
+                value=False,
+                help="Edit core Solar/Wind assumptions. OPEX assumptions are managed separately in the OPEX tab.",
+                key="_inputs_edit_toggle",
+            )
+            st.session_state["use_editable_inputs"] = use_ed
         if use_ed and project_type in ("Solar", "Wind"):
             from app.input_forms import render_project_input_form
             edited_inputs, was_modified = render_project_input_form(inputs_to_show, project_type)
             if was_modified:
                 st.session_state["editable_inputs"] = edited_inputs
-                st.session_state["demo_result"] = None  # clear result to force rerun
+                st.session_state["demo_result"] = None
                 st.rerun()
         else:
             if project_type not in ("Solar", "Wind") and use_ed:
-                st.info("Editable inputs are available for Solar/Wind in this MVP.")
+                st.info("Editable assumptions are available for Solar/Wind in this MVP.")
             render_inputs(inputs_to_show)
     with tabs[2]:
         render_capex(inputs_to_show)
@@ -238,13 +244,14 @@ if run_button or st.session_state.demo_result is not None:
 
             horizon = getattr(getattr(demo.project_inputs, "info", None), "horizon_years", 25) if demo.project_inputs else 25
 
-            # Build dataframe for data_editor: Line Item | Budget | Inflation (%) | WHT (%) | Y1 ... Yn
-            col_names = ["Line Item", "Budget", "Inflation (%)", "WHT (%)"] + [f"Y{y}" for y in range(1, horizon + 1)]
+            # Build dataframe for data_editor: Line Item | Budget | Inflation (%) | Y1 ... Yn
+            # (WHT removed — not yet applied to data model)
+            col_names = ["Line Item", "Budget", "Inflation (%)"] + [f"Y{y}" for y in range(1, horizon + 1)]
             matrix_data = []
             original_items = list(items)
 
             for item in items:
-                # Compute inflated values for Y columns (what the formula-driven value would be)
+                # Compute inflated values for Y columns (formula-driven values)
                 infl_vals = []
                 for y_idx in range(horizon):
                     infl_vals.append(item.base_year_amount_keur * ((1 + item.inflation_rate) ** y_idx))
@@ -254,7 +261,6 @@ if run_button or st.session_state.demo_result is not None:
                     item.name,
                     item.base_year_amount_keur,
                     item.inflation_rate * 100,
-                    0.0,  # WHT % — present but not yet wired to data model
                 ]
                 for y_idx in range(horizon):
                     if y_idx < len(override_vals) and override_vals[y_idx] is not None:
@@ -263,19 +269,13 @@ if run_button or st.session_state.demo_result is not None:
                         row.append(infl_vals[y_idx])
                 matrix_data.append(row)
 
-            # Add Total OPEX summary row (read-only, computed from schedule)
-            schedule = generate_opex_schedule(items, horizon)
-            total_row = ["Total OPEX"] + [0.0, 0.0, 0.0] + list(schedule.total_by_year)
-            matrix_data.append(total_row)
-
             matrix_df = pd.DataFrame(matrix_data, columns=col_names)
 
-            # Column config for data_editor
+            # Column config — Line Item locked, Budget+Inflation editable, Y cols editable
             col_config = {
                 "Line Item": st.column_config.TextColumn("Line Item", disabled=True),
                 "Budget": st.column_config.NumberColumn("Budget (kEUR)", min_value=0.0, format="%.1f"),
                 "Inflation (%)": st.column_config.NumberColumn("Inflation (%)", min_value=0.0, max_value=100.0, format="%.2f"),
-                "WHT (%)": st.column_config.NumberColumn("WHT (%)", min_value=0.0, max_value=100.0, format="%.1f"),
             }
             for y in range(1, horizon + 1):
                 col_config[f"Y{y}"] = st.column_config.NumberColumn(f"Y{y}", min_value=0.0, format="%.1f")
@@ -289,24 +289,22 @@ if run_button or st.session_state.demo_result is not None:
                 key="_opex_matrix_editor",
             )
 
-            # Diff detection: compare edited rows (skip last row = Total OPEX) against originals
-            edited_rows = edited_df.iloc[:-1]  # exclude Total OPEX row
+            # Diff detection: compare edited rows against originals
             new_items_list = []
 
-            for row_idx, (_, row) in enumerate(edited_rows.iterrows()):
+            for row_idx, (_, row) in enumerate(edited_df.iterrows()):
                 orig = original_items[row_idx]
                 new_name = row["Line Item"]
                 new_base = row["Budget"]
                 new_infl = row["Inflation (%)"] / 100.0
-                new_wht_pct = row["WHT (%)"] / 100.0  # stored but not yet applied to data model
 
                 # Detect Y column changes → manual overrides
-                # A cell is treated as an override if it differs from the re-computed inflated value
+                # Compare against NEW base/inflation (not original) so Budget edits don't become overrides
                 new_overrides = []
                 for y_idx in range(horizon):
                     col_label = f"Y{y_idx + 1}"
                     edited_val = row[col_label]
-                    infl_val = orig.base_year_amount_keur * ((1 + new_infl) ** y_idx)
+                    infl_val = new_base * ((1 + new_infl) ** y_idx)
                     if abs(edited_val - infl_val) > 0.01:
                         new_overrides.append(edited_val)
                     else:
@@ -341,6 +339,13 @@ if run_button or st.session_state.demo_result is not None:
                 st.session_state["demo_result"] = None
 
             st.caption(f"{len(new_items)} line items | Mode: {op_mode}")
+
+            # Total OPEX row — shown separately below the matrix, read-only
+            schedule = generate_opex_schedule(new_items, horizon)
+            total_col_names = ["Line Item"] + [f"Y{y}" for y in range(1, horizon + 1)]
+            total_data = [["Total OPEX"] + [f"{v:.0f}" if v > 0 else "—" for v in schedule.total_by_year]]
+            total_df = pd.DataFrame(total_data, columns=total_col_names)
+            st.dataframe(total_df, hide_index=True, use_container_width=True)
         else:
             # Simple OPEX: show a simple informational message
             if demo.project_inputs and hasattr(demo.project_inputs, "opex"):
