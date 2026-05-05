@@ -186,27 +186,32 @@ if run_button or st.session_state.demo_result is not None:
         from app.opex_engine import build_opex_line_items_from_defaults, OpexLineItem, OpexSource, generate_opex_schedule
 
         st.subheader("💸 OPEX")
-        # Mode selector
+        # Mode selector — detect actual changes to trigger rerun before run block runs
+        prev_op_mode = st.session_state.get("_opex_mode", "Simple")
         if project_type in ("Solar", "Wind"):
             op_mode = st.radio(
                 "OPEX Mode",
                 options=["Simple", "Advanced (line items)"],
-                index=0 if st.session_state.get("_opex_mode") != "Advanced" else 1,
+                index=0 if prev_op_mode != "Advanced" else 1,
                 horizontal=True,
                 help="Simple = legacy OpexItem path. Advanced = granular line-item engine.",
                 key="_opex_mode_radio",
             )
-            if op_mode == "Advanced":
-                st.session_state["_opex_mode"] = "Advanced"
-                # Invalidate demo_result so next run picks up the mode change
-                st.session_state["demo_result"] = None
-            else:
-                st.session_state["_opex_mode"] = "Simple"
-                st.session_state["advanced_opex_line_items"] = None
         else:
-            st.info("Advanced OPEX is available for Solar/Wind only. Using simple OPEX.")
             op_mode = "Simple"
-            st.session_state["_opex_mode"] = "Simple"
+
+        # Only invalidate on actual mode change — not on every render
+        if op_mode != prev_op_mode:
+            st.session_state["_opex_mode"] = op_mode
+            st.session_state["demo_result"] = None  # force rerun before run block
+            if op_mode == "Simple":
+                st.session_state["advanced_opex_line_items"] = None
+            # For Advanced, keep items — they will be (re)initialised on next render
+            st.rerun()
+
+        # Non-Solar/Wind always use Simple
+        if project_type not in ("Solar", "Wind"):
+            st.info("Advanced OPEX is available for Solar/Wind only. Using simple OPEX.")
 
         if op_mode == "Advanced" and project_type in ("Solar", "Wind"):
             # Initialise or refresh line items
