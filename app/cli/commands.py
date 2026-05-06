@@ -23,8 +23,7 @@ SUPPORTED_PERIOD_VIEWS = {"Semiannual", "Annual"}
 @click.option('--period-view', default='Semiannual', type=str, help='Semiannual or Annual')
 @click.option('--output', default=None, type=str, help='Output Excel file path')
 @click.option('--json', 'json_output', default=None, type=str, help='Output JSON file path')
-@click.pass_context
-def run(ctx, project, scenario, period_view, output, json_output):
+def run(project, scenario, period_view, output, json_output):
     """Run a project model and optionally export results."""
     # Validate
     if project not in SUPPORTED_PROJECTS:
@@ -65,7 +64,8 @@ def run(ctx, project, scenario, period_view, output, json_output):
                 period_view=period_view,
                 advanced_opex_line_items=None,
                 advanced_capex_line_items=None,
-                warnings=demo.validation_issues,
+                warnings=[{"code": "INFO", "message": msg} for msg in demo.messages] if getattr(demo, 'messages', None) else None,
+                validation_issues=getattr(demo, 'validation_issues', None),
                 project_inputs=project_inputs,
                 integration_status=getattr(demo, 'integration_status', 'full'),
                 integration_note=getattr(demo, 'integration_note', None),
