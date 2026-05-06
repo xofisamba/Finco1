@@ -95,8 +95,9 @@ if run_button or st.session_state.demo_result is not None:
         st.warning(f"⚠️ Scenario '{scenario}' is not supported for {project_type}. Base case results shown.")
     else:
         if scenario != "Base":
-            from app.scenarios import scenario_summary
-            rows = scenario_summary(scenario)
+            from app.scenario_manager import ScenarioManager
+            sm = ScenarioManager(project_type)
+            rows = sm.scenario_summary(scenario)
             has_changes = any(r.get("change") != "0%" for r in rows)
             st.subheader(f"📋 Scenario: {scenario}")
             if has_changes:

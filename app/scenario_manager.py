@@ -175,6 +175,58 @@ class ScenarioManager:
         """Return sorted list of scenario names."""
         return sorted(self._scenarios.keys(), key=lambda n: (0 if self._scenarios[n].is_base else 1, n))
 
+    def scenario_summary(self, scenario_name: str) -> list[dict]:
+        """Return scenario delta rows for a scenario, using ScenarioManager multipliers.
+
+        Returns
+        -------
+        list[dict]
+            Each dict has keys: assumption, base, scenario, change, note
+        """
+        try:
+            scenario_obj = self.get_scenario(scenario_name)
+        except KeyError:
+            return []
+        rows = []
+        rev_mult = scenario_obj.revenue_multiplier
+        opex_mult = scenario_obj.opex_multiplier
+        capex_mult = scenario_obj.capex_multiplier
+        hours = scenario_obj.annual_generation_hours
+
+        if rev_mult != 1.0:
+            rows.append({
+                "assumption": "PPA Tariff",
+                "base": "—",
+                "scenario": f"{rev_mult:.0%}",
+                "change": f"{'+' if rev_mult > 1 else ''}{(rev_mult - 1) * 100:.0f}%",
+                "note": "applied to first available tariff field",
+            })
+        if hours is not None:
+            rows.append({
+                "assumption": "P50 Hours",
+                "base": "—",
+                "scenario": f"{hours:.0f}h",
+                "change": f"{hours:+.0f}h vs base",
+                "note": "annual generation hours override",
+            })
+        if capex_mult != 1.0:
+            rows.append({
+                "assumption": "Total CapEx",
+                "base": "—",
+                "scenario": f"{capex_mult:.0%}",
+                "change": f"{'+' if capex_mult > 1 else ''}{(capex_mult - 1) * 100:.0f}%",
+                "note": "CapexItem line items scaled proportionally",
+            })
+        if opex_mult != 1.0:
+            rows.append({
+                "assumption": "OpEx",
+                "base": "—",
+                "scenario": f"{opex_mult:.0%}",
+                "change": f"{'+' if opex_mult > 1 else ''}{(opex_mult - 1) * 100:.0f}%",
+                "note": "y1 Opex items scaled proportionally",
+            })
+        return rows
+
     # ── Override application ────────────────────────────────────────────────────
 
     TARIFF_FIELDS = ("ppa_base_tariff", "merchant_price", "merchant_price_eur_mwh",

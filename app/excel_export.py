@@ -375,14 +375,13 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
                 "Manual or hardcoded values present — review override notes",
             ))
 
-    # Advanced CAPEX warning (is_manual items present)
+    # Advanced CAPEX warning
     if advanced_capex_line_items:
         has_manual = any(getattr(item, "is_manual", False) for item in advanced_capex_line_items)
-        if has_manual:
-            rows.append((
-                "Advanced CAPEX",
-                "Manual values present — total from CapexLineItem matrix",
-            ))
+        rows.append((
+            "Advanced CAPEX",
+            "Advanced CAPEX matrix active" + (" — manual values present" if has_manual else ""),
+        ))
 
     # Portfolio warning
     if status == "experimental":
@@ -394,8 +393,9 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
             rows.append(("Scenario", f"{scenario} — NOT APPLIED"))
             rows.append(("Scenario Deltas", "Base case shown — Portfolio does not support scenarios"))
         else:
-            from app.scenarios import scenario_summary
-            deltas = scenario_summary(scenario)
+            from app.scenario_manager import ScenarioManager
+            sm = ScenarioManager(project_type)
+            deltas = sm.scenario_summary(scenario)
             rows.append(("Scenario Deltas", "—"))
             for row in deltas:
                 rows.append((

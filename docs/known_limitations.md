@@ -66,6 +66,7 @@ Features that are structurally present but not validated for production use.
 - The **💰 CapEx tab** shows an editable CAPEX matrix with `CapexLineItem` objects.
 - The matrix uses `generate_capex_schedule()` to compute per-period draws.
 - `capex_line_items` from UI → `run_demo_project()` → `waterfall_core` → total CAPEX override applied.
+- **⚠️ Depreciation integration is future work:** Advanced CAPEX currently overrides `total_capex` in the waterfall (affecting IRR/debt sizing), but the **depreciation schedule** still uses legacy `CapexItem` asset-class breakdown from the factory. Full per-asset-class depreciation from CapexLineItems is not yet implemented.
 - **⚠️ Note:** Default CapexLineItem totals (84,850 kEUR for 50MW Solar) differ from factory defaults (30,700 kEUR) — this is intentional as the line-item engine models a more granular cost build-up. Users see the higher total when Advanced CAPEX is active.
 - See `docs/ARCHITECTURE.md` §CAPEX status for full details.
 
