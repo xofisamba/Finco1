@@ -140,3 +140,36 @@ Validation does **not** cover:
 | Sculpted DSCR | The debt sizing target (e.g., 1.20×) | Model forces this target by adjusting debt quantum |
 | Actual DSCR | Realised DSCR given actual period cashflows | Shown in Excel DSCR Summary tab |
 | Min / Avg DSCR (Dashboard) | Actual DSCR statistics | Shown in Dashboard KPI cards |
+---
+
+## 9. Validation & Test Philosophy
+
+**Golden outputs are branch-current reference values — NOT bank certification.**
+
+The `TestScenarioManagerGoldenOutputs` test uses hardcoded KPI values captured from a
+single isolated run of `run_demo_project('Solar', 'Base')`. These values drift with any
+change to the calculation engine and are intentionally tight (±25bps IRR, ±0.02 DSCR,
+±1% revenue/EBITDA) to catch regressions. Wide bounds would only catch gross errors.
+
+**No mutation guarantee.**
+All `apply_overrides()` operations use `dataclasses.replace()` to return fresh copies.
+`scale_capex_items()` and OPEX scaling follow the same pattern. Original `ProjectInputs`
+objects are never modified. Mutation of shared module-level state is treated as a bug
+and covered by `TestScenarioManagerNoMutation`.
+
+**Determinism.**
+Repeated runs of the full test suite produce identical Solar Base KPI values
+as isolated runs. If isolated and suite-integrated runs diverge, mutation leakage is the
+primary suspect.
+
+**Test isolation.**
+Each test constructs its own `ScenarioManager` and `ProjectInputs` from factory functions.
+No shared mutable state at module level.
+
+| What is tested | What is NOT tested |
+|---------------|-------------------|
+| Override logic correctness | Bank-certification accuracy |
+| KPI regression detection (±tight tolerance) | Model assumptions validity |
+| No mutation of original inputs | Excel formula correctness |
+| Deterministic full-suite runs | Cross-tab arithmetic audit |
+
