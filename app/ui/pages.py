@@ -96,8 +96,9 @@ def render_dashboard(result, portfolio_result=None, is_portfolio=False, integrat
             "Project IRR (%)": _fmt_irr(result.project_irr),
             "Equity IRR (%)": _fmt_irr(result.equity_irr),
             "Sponsor IRR (%)": _fmt_irr(result.sponsor_irr),
-            "Min DSCR": _fmt_dscr(result.min_dscr),
-            "Avg DSCR": _fmt_dscr(result.avg_dscr),
+            # Use actual_min_dscr / actual_avg_dscr so Dashboard matches Excel DSCR Summary.
+            "Min DSCR": _fmt_dscr(result.actual_min_dscr),
+            "Avg DSCR": _fmt_dscr(result.actual_avg_dscr),
             "Senior Debt Service": _fmt_keur(result.total_senior_ds_keur),
             "Distributions": _fmt_keur(result.total_distribution_keur),
         }

@@ -37,6 +37,7 @@ def build_excel_export(
     warnings: list = None,
     run_metadata=None,
     advanced_opex_line_items: tuple = None,
+    advanced_capex_line_items: tuple = None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -122,7 +123,8 @@ def build_excel_export(
             ts = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M UTC")
         _write_notes_sheet(writer, integration_status, integration_note, scenario, project_type, period_view,
                           warnings=warnings if warnings else [], git_sha=git_sha, timestamp=ts,
-                          advanced_opex_line_items=advanced_opex_line_items)
+                          advanced_opex_line_items=advanced_opex_line_items,
+                          advanced_capex_line_items=advanced_capex_line_items)
 
         # ── Inputs ────────────────────────────────────────────────────────
         _write_sheet(writer, "Inputs", build_inputs_summary_table(project_inputs))
@@ -329,7 +331,7 @@ def _write_validation_sheet(writer, validation_issues) -> None:
     ws.sheet_state = "visible"
 
 
-def _write_notes_sheet(writer, status, note, scenario, project_type, period_view, warnings=None, git_sha=None, timestamp=None, advanced_opex_line_items=None) -> None:
+def _write_notes_sheet(writer, status, note, scenario, project_type, period_view, warnings=None, git_sha=None, timestamp=None, advanced_opex_line_items=None, advanced_capex_line_items=None) -> None:
     if warnings is None:
         warnings = []
     """Write a Notes sheet."""
@@ -371,6 +373,15 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
             rows.append((
                 "Advanced OPEX",
                 "Manual or hardcoded values present — review override notes",
+            ))
+
+    # Advanced CAPEX warning (is_manual items present)
+    if advanced_capex_line_items:
+        has_manual = any(getattr(item, "is_manual", False) for item in advanced_capex_line_items)
+        if has_manual:
+            rows.append((
+                "Advanced CAPEX",
+                "Manual values present — total from CapexLineItem matrix",
             ))
 
     # Portfolio warning

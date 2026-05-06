@@ -243,8 +243,10 @@ Builds a ZIP archive containing formatted Excel output matching the domain model
 4. **FX conversion**: not implemented; all amounts assumed in single currency.
 5. **Debt sculpting override** (via `Scenario.debt_sculpting_override`) is wired in
    `ScenarioManager` but not yet connected to the scenario selector UI.
-6. **`scenario_manager.apply_overrides()`** is not yet wired into `run_demo_project()` —
-   the legacy `app/scenarios.apply_scenario()` is still in use. Migration is pending.
+6. **`scenario_manager.apply_overrides()`** is wired into `run_demo_project()` —
+   `ScenarioManager` is the active runtime scenario engine for Solar/Wind (2026-05-06).
+   Legacy `app/scenarios.apply_scenario()` is preserved for backward compatibility.
+   Multiplier reconciliation complete: both engines use same values.
 7. **OPEX matrix** amber-highlight override preview uses a shadow DataFrame;
    the styling function may have edge cases with row index alignment.
 
@@ -257,7 +259,8 @@ See `docs/phase3_roadmap.md` for the full RC2 → RC3 roadmap. Key items:
 - [x] OPEX line-item engine (`app/opex_engine.py`) — done RC1
 - [x] CAPEX line-item engine (`app/capex_engine.py`) — done RC1
 - [x] Scenario architecture foundation (`app/scenario_manager.py`) — done post-RC1
-- [ ] Scenario manager wired into `run_demo_project()` — pending
-- [ ] Advanced OPEX → `run_demo_project()` bridge — pending
+- [x] Scenario manager wired into `run_demo_project()` — done 2026-05-06
+- [x] Advanced OPEX → `run_demo_project()` bridge — done RC1
+- [x] Advanced CAPEX → `run_demo_project()` bridge — done 2026-05-06
 - [ ] BESS full waterfall integration — in progress
 - [ ] Sponsor IRR — not started

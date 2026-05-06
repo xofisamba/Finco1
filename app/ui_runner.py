@@ -62,15 +62,20 @@ def _build_period_engine(project_inputs):
     )
 
 
-def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None):
+def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanced_capex_line_items=None):
     """Run waterfall using config derived from project inputs."""
     from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
     runner = WaterfallRunner(inputs=project_inputs, engine=engine)
     config = WaterfallRunConfig.from_inputs(project_inputs, engine)
-    # Pass advanced OPEX line items through the config if provided
+    # Pass advanced OPEX and CAPEX line items through the config if provided
+    from dataclasses import replace
+    updates = {}
     if advanced_opex_line_items is not None:
-        from dataclasses import replace
-        config = replace(config, advanced_opex_line_items=advanced_opex_line_items)
+        updates["advanced_opex_line_items"] = advanced_opex_line_items
+    if advanced_capex_line_items is not None:
+        updates["advanced_capex_line_items"] = advanced_capex_line_items
+    if updates:
+        config = replace(config, **updates)
     return runner.run(config)
 
 
@@ -95,7 +100,8 @@ def _advanced_opex_warnings(line_items) -> list[str]:
 
 def run_demo_project(project_type: str, scenario: str = "Base",
                    project_inputs_override=None,
-                   advanced_opex_line_items=None) -> DemoResult:
+                   advanced_opex_line_items=None,
+                   advanced_capex_line_items=None) -> DemoResult:
     """Create and run a demo project, returning results for UI display."""
     from app.project_factories import (
         create_default_solar_project,
@@ -169,11 +175,12 @@ def run_demo_project(project_type: str, scenario: str = "Base",
 
             # Apply scenario if not Base
             if scenario != "Base":
-                from app.scenarios import apply_scenario
-                proj = apply_scenario(proj, scenario)
+                from app.scenario_manager import ScenarioManager
+                mgr = ScenarioManager(project_type.lower())
+                proj = mgr.apply_overrides(proj, scenario)
 
             engine = _build_period_engine(proj)
-            result.result = _run_waterfall(proj, engine, advanced_opex_line_items)
+            result.result = _run_waterfall(proj, engine, advanced_opex_line_items, advanced_capex_line_items)
             result.project_inputs = proj
 
             # Surface model warnings to user

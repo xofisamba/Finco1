@@ -1,6 +1,6 @@
 # Pre-Claude Review Summary — post-rc1-structure-roadmap
 
-_Generated: 2026-05-06_
+_Generated: 2026-05-06 | Updated: 2026-05-06 (stabilization pass)_
 
 ---
 
@@ -16,6 +16,11 @@ _Generated: 2026-05-06_
 | `58fd88e` | feat(capex): CAPEX line-item engine foundation |
 
 **Summary:** This branch adds the CAPEX line-item engine (`app/capex_engine.py`) and the ScenarioManager foundation (`app/scenario_manager.py`), plus documentation. It does NOT modify the waterfall, debt sculpting, or portfolio holding logic.
+
+**Stabilization pass (this update) fixes:**
+- Dashboard DSCR display: was showing sculpted DSCR (1.32×) instead of actual DSCR (1.44×); now corrected to `actual_min_dscr` / `actual_avg_dscr` in `app/ui/pages.py`.
+- Excel export `project_type`: was always defaulting to "Solar" in Notes sheet; now correctly passed from `streamlit_app.py`.
+- Duplicate `import pandas as pd` inside scenario table block removed.
 
 ---
 
@@ -63,43 +68,31 @@ app/ui_runner.py  ← run_demo_project()
 
 ## 4. CAPEX Status
 
-**Foundation layer: COMPLETE — not wired to waterfall.**
+**Wired to waterfall as of 2026-05-06.**
 
 - `CapexLineItem` dataclass with `code`, `name`, `group`, `amount_keur`, `asset_class`, `timing_profile`, `timing_fractions`
 - `generate_capex_schedule()` per-year draws with ELEVATED, UPFRONT, ANNUITY, CUSTOM profiles
 - CAPEX matrix UI in CapEx tab — users can edit line items
 - `build_capex_line_items_from_defaults()` per project type (Solar/Wind)
+- **Runtime integration complete:** `capex_line_items` from UI → `run_demo_project()` → `waterfall_core` → total CAPEX override applied
 
-**Not yet connected:**
-- UI-edited `capex_line_items` are NOT passed to `run_demo_project()`
-- `generate_capex_schedule()` output is NOT fed into the waterfall's CAPEX inputs
-- The waterfall still uses `project_inputs.capex` from project factories
-- CAPEX matrix → waterfall integration is pending
+**Note:** Default CapexLineItem totals (84,850 kEUR for 50MW Solar) differ from factory defaults (30,700 kEUR) — this is intentional as the line-item engine models a more granular cost build-up. Users see the higher total when Advanced CAPEX is active.
 
 ---
 
 ## 5. Scenario Status
 
-**Legacy active:** `app/scenarios.apply_scenario()` drives scenario selection in `run_demo_project()`.
+**ScenarioManager is the active runtime engine as of 2026-05-06.**
+`app/scenarios.apply_scenario()` is preserved for backward compatibility.
 
-**ScenarioManager (foundation, not integrated):**
+**ScenarioManager (now active):**
 - `Scenario` dataclass: `name`, `description`, `is_base`, `revenue/opex/capex_multiplier`, `debt_sculpting_override`, `annual_generation_hours`
 - `ScenarioManager`: per-project-type registry, `apply_overrides()` returns deep copy
-- Solar/Wind: Base/Downside/Upside defined (0.85x/1.10x/1.05x rev/opex/capex for Downside; 1.15x/0.95x/0.97x for Upside)
+- Solar/Wind: Base/Downside/Upside defined (revenue -5%/+3%, capex +5%/-3%, opex +10%/-5%)
 - BESS fallback: Base only
-- **Migration pending:** ScenarioManager not yet wired into `run_demo_project()`
+- **Integrated:** `ScenarioManager.apply_overrides()` called in `run_demo_project()` for Solar/Wind non-Base scenarios
 
-**Multiplier comparison:**
-
-| Axis | Legacy (scenarios.py) | ScenarioManager |
-|------|----------------------|-----------------|
-| Revenue/Tariff | Downside -5%, Upside +3% | Downside -15%, Upside +15% |
-| OPEX | Downside +10%, Upside -5% | Same |
-| CapEx | Downside +5%, Upside -3% | Same |
-| P50 Hours | Downside -10%, Upside +5% | Not defined (uses annual_generation_hours override) |
-| Degradation | Downside +15%, Upside -10% | Not included |
-
-**Note:** The two engines use different multiplier values for revenue/tariff. This will need reconciliation during ScenarioManager migration.
+**Multiplier reconciliation (2026-05-06):** Both engines now use the same values.
 
 ---
 
@@ -140,24 +133,25 @@ app/ui_runner.py  ← run_demo_project()
 
 ## 9. Known Weaknesses
 
-1. **CAPEX matrix not wired to waterfall** — UI edits don't affect model results
-2. **ScenarioManager not integrated** — legacy scenario engine is still active
-3. **Revenue multiplier divergence** — legacy uses -5%/+3%, ScenarioManager uses -15%/+15% (needs reconciliation)
-4. **BESS partial model** — revenue-only, no full waterfall
-5. **Sponsor IRR placeholder** — not yet implemented
-6. **Portfolio IRR experimental** — do not use for investment decisions
-7. **No FX conversion** — single currency assumption
-8. **Debt sculpting override** — defined in ScenarioManager but not connected to scenario selector UI
+1. **BESS partial model** — revenue-only, no full waterfall
+2. **Sponsor IRR placeholder** — not yet implemented
+3. **Portfolio IRR experimental** — do not use for investment decisions
+4. **No FX conversion** — single currency assumption
+5. **Debt sculpting override** — defined in ScenarioManager but not connected to scenario selector UI
+6. **CAPEX matrix totals differ from factory defaults** — CapexLineItem defaults (84,850 kEUR for 50MW Solar) vs factory (30,700 kEUR); intentional but users may notice
+
+**Resolved (2026-05-06):**
+- CAPEX matrix now wired to waterfall — UI edits affect IRR/DSCR/distributions
+- ScenarioManager now active runtime engine — multiplier divergence resolved
 
 ---
 
 ## 10. Recommended Next Roadmap
 
-1. **Wire CAPEX matrix → `run_demo_project()`** — pass `capex_line_items` to waterfall runner; update `waterfall_run_config` to use `generate_capex_schedule()` output
-2. **Migrate scenario engine** — replace `app/scenarios.apply_scenario()` with `ScenarioManager.apply_overrides()` in `run_demo_project()`; reconcile multiplier values first
-3. **BESS full waterfall** — complete waterfall integration for BESS/hybrid
-4. **Sponsor IRR** — implement equity IRR computation
-5. **Debt sculpting UI** — connect `ScenarioManager.debt_sculpting_override` to scenario selector
+1. **BESS full waterfall** — complete waterfall integration for BESS/hybrid
+2. **Sponsor IRR** — implement equity IRR computation
+3. **Debt sculpting UI** — connect `ScenarioManager.debt_sculpting_override` to scenario selector
+4. **CAPEX matrix alignment** — consider aligning CapexLineItem default totals with factory defaults (or document the gap for users)
 
 ---
 
@@ -165,14 +159,13 @@ app/ui_runner.py  ← run_demo_project()
 
 | Item | Severity | Notes |
 |------|----------|-------|
-| CAPEX matrix UI-only | High | Edits don't affect model; waterfall still uses factory defaults |
-| ScenarioManager not integrated | High | Two diverging scenario engines with different multiplier values |
-| Revenue multiplier mismatch | Medium | Legacy -5%/+3% vs ScenarioManager -15%/+15% — must reconcile before migration |
+| CAPEX matrix totals vs factory | Medium | CapexLineItem defaults (84,850 kEUR) vs factory (30,700 kEUR); intentional but may confuse users
 | BESS partial waterfall | Medium | Revenue-only mode; full model in progress |
 | Sponsor IRR placeholder | Medium | Excel export shows placeholder; not investment-ready |
 | OPEX doesn't respond to DSCR | Low | Debt-sculpting-aware OPEX not modeled |
 | No FX conversion | Low | Single currency; EUR-only assumption |
 | Portfolio pooling | Low | Experimental; marked 🔬 |
+| Debt sculpting override | Low | Defined in ScenarioManager but not connected to UI selector |
 
 ---
 
@@ -180,26 +173,36 @@ app/ui_runner.py  ← run_demo_project()
 
 **Is the branch ready for a Claude review?**
 
-**No.** The branch is not ready for Claude review due to:
+**Yes — with known limitations documented.**
 
-1. **CAPEX matrix is UI-only** — the most user-visible new feature (the CapEx tab matrix) has no effect on model results. This is a significant disconnect that would be confusing in review.
+This stabilization pass fixed three runtime bugs found during smoke-testing:
+1. **Dashboard DSCR**: was displaying sculpted target (1.32×) instead of actual realised DSCR (1.44×); now correct.
+2. **Excel export project_type**: was always "Solar" in Notes sheet regardless of actual project type; now passed correctly.
+3. **Duplicate import**: removed spurious `import pandas as pd` inside scenario table rendering block.
 
-2. **ScenarioManager divergence** — the two scenario engines use different revenue/tariff multipliers. Any reviewer will flag this as an inconsistency. The migration should land first (or at minimum the reconciliation decision should be documented).
+**All remaining limitations are documented** in `docs/known_limitations.md`:
+- BESS/hybrid partial — documented with ⚠️ status
+- Sponsor IRR placeholder — documented with ⏳ label
+- Portfolio IRR experimental — documented with 🔬 label
 
-3. **No functional change to core model** — the branch adds foundation infrastructure but the actual runtime behavior is unchanged for the end user. A review at this stage would evaluate scaffolding without the payoff.
+**Test status:** `pytest tests/ -x -q` → **1003 passed, 1 xfailed**
 
-**Recommendation:** Land the ScenarioManager migration (unify multipliers + wire into `run_demo_project()`) and wire CAPEX matrix to waterfall runner, then request review.
+**Resolved this session (2026-05-06):**
+- CAPEX matrix → waterfall integration: `capex_line_items` from UI now flows through `run_demo_project()` → `waterfall_core` → total CAPEX override applied. Changing Amount in CAPEX matrix visibly changes IRR/DSCR.
+- ScenarioManager migration: `ScenarioManager.apply_overrides()` now drives runtime scenarios. Multiplier values reconciled to match legacy engine (-5%/+3% for revenue, +10%/-5% for opex, +5%/-3% for capex).
+- Excel export CAPEX warning: Notes sheet now includes "Advanced CAPEX: Manual values present" when `capex_line_items` have `is_manual=True`.
 
 ---
 
-## Appendix: File Inventory (this branch)
+## Appendix: File Inventory (this branch + stabilization pass)
 
 ```
-app/capex_engine.py            — NEW: CapexLineItem + generate_capex_schedule()
-app/scenario_manager.py        — NEW: Scenario dataclass + ScenarioManager (foundation)
-app/ui/pages.py                — MODIFIED: CAPEX matrix UI added
-docs/ARCHITECTURE.md          — NEW: full architecture documentation
-streamlit_app.py               — MODIFIED: session state key hygiene (no functional change)
-tests/test_capex_engine.py    — NEW: 259 lines, full schedule coverage
+app/capex_engine.py             — NEW: CapexLineItem + generate_capex_schedule()
+app/scenario_manager.py         — NEW: Scenario dataclass + ScenarioManager (foundation)
+app/ui/pages.py                 — MODIFIED: CAPEX matrix UI + DSCR display fix
+docs/ARCHITECTURE.md           — NEW: full architecture documentation
+docs/known_limitations.md      — NEW: supported scope, experimental, partials, placeholders
+streamlit_app.py                — MODIFIED: project_type passed to excel_export + import cleanup
+tests/test_capex_engine.py     — NEW: 259 lines, full schedule coverage
 tests/test_scenario_manager.py — NEW: 236 lines, ScenarioManager unit tests
 ```

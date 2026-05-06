@@ -48,7 +48,10 @@ if run_button or st.session_state.demo_result is not None:
     # Stable OPEX state signature: mode + (advanced sig only if Advanced and Solar/Wind)
     adv_sig = (st.session_state.get("last_advanced_opex_signature")
                if op_mode == "Advanced" and project_type in ("Solar", "Wind") else None)
-    op_sig = (op_mode, adv_sig)
+    # Stable CAPEX signature: total capex from line items (when available)
+    capex_items = st.session_state.get("capex_line_items", ())
+    capex_total = sum(i.amount_keur for i in capex_items) if capex_items else None
+    op_sig = (op_mode, adv_sig, capex_total)
     needs_rerun = (
         run_button
         or st.session_state.last_project_type != project_type
@@ -61,7 +64,9 @@ if run_button or st.session_state.demo_result is not None:
             override = st.session_state.get("editable_inputs") if st.session_state.get("use_editable_inputs") else None
             advanced_opex = (st.session_state.get("advanced_opex_line_items")
                              if op_mode == "Advanced" and project_type in ("Solar", "Wind") else None)
-            st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override, advanced_opex_line_items=advanced_opex)
+            advanced_capex = (st.session_state.get("capex_line_items")
+                              if project_type in ("Solar", "Wind") else None)
+            st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override, advanced_opex_line_items=advanced_opex, advanced_capex_line_items=advanced_capex)
             st.session_state.last_project_type = project_type
             st.session_state["last_scenario"] = scenario
 
@@ -95,7 +100,6 @@ if run_button or st.session_state.demo_result is not None:
             has_changes = any(r.get("change") != "0%" for r in rows)
             st.subheader(f"📋 Scenario: {scenario}")
             if has_changes:
-                import pandas as pd
                 df = pd.DataFrame(rows)
                 st.table(df)
             else:
@@ -134,11 +138,16 @@ if run_button or st.session_state.demo_result is not None:
             integration_status=demo_exp.integration_status,
             integration_note=demo_exp.integration_note,
             scenario=scenario,
+            project_type=project_type,
             period_view=period_view,
             warnings=model_warnings,
             advanced_opex_line_items=(
                 st.session_state.get("advanced_opex_line_items")
                 if project_type in ("Solar", "Wind") and op_mode == "Advanced" else None
+            ),
+            advanced_capex_line_items=(
+                st.session_state.get("capex_line_items")
+                if project_type in ("Solar", "Wind") else None
             ),
         )
         st.download_button(

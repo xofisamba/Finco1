@@ -38,6 +38,7 @@ def run_waterfall_v3_core(
     debt_sizing_method: str = "dscr_sculpt",
     dscr_schedule: list[float] | None = None,
     advanced_opex_line_items: tuple | None = None,
+    advanced_capex_line_items: tuple | None = None,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -78,6 +79,17 @@ def run_waterfall_v3_core(
     else:
         opex_period = opex_schedule_period(inputs, engine)
 
+    # CAPEX: use advanced CapexLineItems if provided, otherwise fall back to legacy path
+    # Computes total_capex_override from the sum of CapexLineItem amounts.
+    # This is passed to run_waterfall() to override inputs.capex.total_capex.
+    total_capex_override: float | None = None
+    if advanced_capex_line_items:
+        from app.capex_engine import generate_capex_schedule
+        capex_sched = generate_capex_schedule(advanced_capex_line_items, tenor_periods)
+        total_capex_override = sum(capex_sched.total_by_period)
+    else:
+        total_capex_override = None
+
     horizon_years = inputs.info.horizon_years
 
     # Build proper depreciation schedule from asset-class CapexItems
@@ -108,6 +120,12 @@ def run_waterfall_v3_core(
         depreciation_schedule.append(dep)
         opex_schedule.append(opex)
 
+    # Resolve total_capex — use advanced CAPEX if provided, else fall back to inputs
+    total_capex_for_waterfall = (
+        total_capex_override if total_capex_override is not None
+        else inputs.capex.total_capex
+    )
+
     return run_waterfall(
         ebitda_schedule=ebitda_schedule,
         revenue_schedule=revenue_schedule,
@@ -115,7 +133,7 @@ def run_waterfall_v3_core(
         depreciation_schedule=depreciation_schedule,
         opex_schedule=opex_schedule,
         periods=periods_list,
-        total_capex=inputs.capex.total_capex,
+        total_capex=total_capex_for_waterfall,
         rate_per_period=rate_per_period,
         tenor_periods=tenor_periods,
         target_dscr=target_dscr,
