@@ -65,8 +65,7 @@ class TestDepreciationWiring:
         demo_adv = run_demo_project("Solar", "Base", advanced_capex_line_items=items)
 
         demo_leg = run_demo_project("Solar", "Base")
-        # Equity IRR should differ due to different depreciation timing
-        irr_diff = abs(demo_adv.result.equity_irr - demo_leg.result.equity_irr)
-        # At minimum, should have some difference (though it could be small)
-        assert irr_diff >= 0, "IRR diff should be non-negative"
+        # Verify equity IRR is computed in both paths (non-brittle check)
+        assert demo_adv.result.equity_irr is not None, "Advanced path equity IRR should be computed"
+        assert demo_leg.result.equity_irr is not None, "Legacy path equity IRR should be computed"
         print(f"Equity IRR: legacy={demo_leg.result.equity_irr:.4f}, advanced={demo_adv.result.equity_irr:.4f} ✓")

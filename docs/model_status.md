@@ -59,11 +59,10 @@ Three interfaces (Streamlit, CLI, FastAPI) over shared `run_demo_project()` core
 - **No authentication / multi-tenancy** — single-tenant only
 - **No persistence** — no saved projects, no database
 - **Debt sculpting uses CFADS proxy** — EBITDA × (1 − tax_rate), not full iterative after-tax sizing
-- **CAPEX depreciation uses legacy path** — per-asset-class from `CapexItem` objects; not yet wired to `CapexLineItem` matrix
-- **Inverter depreciation** — simplified as 25y linear (same as generation equipment)
-- **Contingency depreciation** — 5y linear (conservative; actual contract-driven)
-- **No mid-year convention** — all depreciation starts at period 0
-- **No separate tax vs financial depreciation** — single straight-line schedule for both
+- **CAPEX depreciation**: when `advanced_capex_line_items` are provided, FincoGPT uses `app.depreciation_engine` to generate per-asset-class depreciation schedules. Legacy `CapexItem`-based depreciation remains the fallback when no advanced CAPEX line items are provided.
+- **Asset class → depreciation life**: GENERATION = 25y, GRID = 20y, DEVELOPMENT = 5y, EPC = 25y, CONTINGENCY = 5y, LAND = non-depreciable, OTHER = 10y. Inverters are grouped under GENERATION (25y linear).
+- **No separate tax vs financial depreciation** — single straight-line schedule used for both
+- **No explicit mid-year convention** beyond period `day_fraction` split
 
 ### Validation
 - Pydantic handles **structural validation only**
@@ -88,11 +87,11 @@ These items must be addressed before any paid B2B pilot:
 1. Authentication / multi-tenancy
 2. Persistence / saved projects
 3. Full BESS waterfall integration
-4. Per-asset-class CAPEX depreciation
-5. Independent financial model audit
+4. Independent financial model audit
+5. Per-asset-class CAPEX depreciation (depreciation integration review in progress)
 
 ## Next Major Roadmap Items
-1. CAPEX depreciation integration — wire CapexLineItem → DepreciationSchedule → waterfall tax
+1. External technical review of CAPEX depreciation integration (in progress)
 2. HTMX frontend — thin web client replacing Streamlit
 3. Scenario comparison / batch runner — multi-scenario Excel export
 4. Persistence — saved projects, user accounts
