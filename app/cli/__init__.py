@@ -1,0 +1,1 @@
+"""FincoGPT CLI — power-user command-line interface."""
