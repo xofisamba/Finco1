@@ -156,10 +156,30 @@ curl -X POST http://localhost:8000/api/v1/run \
 ## 7. Next Roadmap
 
 ### Phase: Custom Input Schema
-- [ ] Define `ProjectInputsSchema` Pydantic model for API request validation
-- [ ] Add CLI `--input` flag accepting a YAML/JSON project inputs file
-- [ ] Wire custom inputs through `run_demo_project()` / `run_project()`
+- [x] Define `ProjectInputsSchema` Pydantic model for API request validation
+- [x] Add CLI `--input` flag accepting a JSON project inputs file
+- [x] Wire custom inputs through `run_demo_project()` / `run_project()`
 - [ ] Deprecate hardcoded factory project types in favor of custom input flow
+
+### v1.2-custom-input-foundation (merged)
+
+**Merged:** `feature/custom-input-schema` → `main` (fast-forward, 2026-05-06)
+
+**Features:**
+- `ProjectInputsSchema` (Pydantic DTO) — minimal input validation for Solar/Wind
+- API POST `/run` accepts optional `inputs` dict
+- API POST `/validate` endpoint
+- CLI `--input JSON` flag
+- `examples/custom_solar.json`, `examples/custom_wind.json`
+
+**Known limitations:**
+- YAML input not yet supported
+- `project_name` not propagated to project info
+- CAPEX depreciation gap remains (see `docs/capex_depreciation_phase_plan.md`)
+- BESS/Portfolio custom inputs not supported via API
+- CAPEX total must exceed ~10,000 kEUR (fixed other capex)
+
+**Status:** frozen for short stabilization
 
 ### Phase: HTMX Frontend (post-custom-inputs)
 - [ ] Replace Streamlit with lightweight HTMX + server-side rendering
@@ -172,6 +192,12 @@ curl -X POST http://localhost:8000/api/v1/run \
 - Holding company layer
 - Multi-currency / FX conversion
 - Debt-sculpting-aware OPEX
+
+---
+
+## Freeze Status
+**main:** short stabilization freeze (bugfix/docs/smoke-test fixes only)
+**forbidden:** CAPEX depreciation, HTMX, BESS, Portfolio, Sponsor IRR, FX
 
 ---
 
@@ -203,9 +229,10 @@ git push origin --delete feature/api-wrapper
 
 | File | Change |
 |------|--------|
-| `docs/api_contract.md` | Added `integration_note: null` to example response; confirmed `messages` is `list[str]` |
-| `docs/known_limitations.md` | Already current — no changes needed |
-| `docs/main_post_merge_status.md` | **This file** — created at merge |
-| `docs/ARCHITECTURE.md` | Already present from post-rc1 branch |
-| `docs/cli_usage.md` | Already present from feature/cli-runner |
+| `docs/api_contract.md` | Added `inputs` dict, `/validate` endpoint, project_type mismatch guard |
+| `docs/cli_usage.md` | Added `--input FILE` flag, custom input examples |
+| `docs/known_limitations.md` | Added YAML/JSON note, project_name propagation gap |
+| `docs/main_post_merge_status.md` | Added v1.2 section + Freeze Status |
+| `docs/release_checkpoint.md` | v1.2 checkpoint |
+| `docs/capex_depreciation_phase_plan.md` | New — CAPEX depreciation design & phase plan |
 

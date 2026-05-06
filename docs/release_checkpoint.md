@@ -39,3 +39,41 @@ Next phase: **Custom Input Schema**
 - Phase out hardcoded demo-only flow
 
 Recommended checkpoint name: **post-rc1-platform-merge**
+
+---
+
+# Release Checkpoint: v1.2-custom-input-foundation
+
+## Purpose
+Checkpoint marking successful merge of `feature/custom-input-schema` into `main`.
+Enables custom project inputs via API `POST /run` (optional `inputs` dict) and CLI `--input JSON`.
+
+## Merged Branch
+`feature/custom-input-schema` → `main` (fast-forward, 2026-05-06)
+
+## New Capabilities
+- `ProjectInputsSchema` (Pydantic DTO) — minimal input validation for Solar/Wind
+- API `POST /run` accepts optional `inputs` dict with project_type mismatch guard
+- API `POST /validate` endpoint for input-only validation
+- CLI `--input FILE.json` flag for custom inputs
+- `examples/custom_solar.json`, `examples/custom_wind.json` as reference inputs
+
+## Test Status
+- Full suite: **1099 passed, 1 xfailed**
+- API smoke: old Solar Base, custom JSON, mismatch detection — all OK
+- CLI smoke: old Solar Base, custom JSON → JSON, custom JSON → XLSX — all OK
+- Financial smoke: tariff change correctly propagates to revenue — OK
+
+## Known Limitations (frozen scope)
+- YAML input not yet supported
+- `project_name` not propagated to project info in outputs
+- CAPEX depreciation gap (CapexLineItem → total CAPEX correct; per-asset-class depreciation still uses legacy path)
+- BESS/Portfolio custom inputs not supported via API
+- CAPEX total must exceed ~10,000 kEUR (fixed other capex)
+
+## Freeze Status
+**main:** short stabilization freeze — bugfix/docs/smoke-test fixes only
+**Forbidden:** CAPEX depreciation, HTMX, BESS full cost, Portfolio validation, Sponsor IRR, FX
+
+## Recommended Checkpoint Name
+**v1.2-custom-input-foundation**

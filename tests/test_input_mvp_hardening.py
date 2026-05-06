@@ -6,10 +6,8 @@ from app.input_adapter import build_projectinputs
 
 
 class TestProjectTypeMismatch:
-    def test_adapter_raises_on_wrong_project_type(self):
-        """Adapter build should raise if schema project_type mismatches declared type."""
-        # The adapter takes schema and ignores project_type in creation
-        # We test at the API/CLI layer — here just test adapter accepts Solar schema
+    def test_adapter_accepts_valid_solar_schema(self):
+        """Adapter correctly builds a valid Solar schema."""
         schema = ProjectInputsSchema(project_type="Solar", scenario="Base")
         proj = build_projectinputs(schema)
         assert proj is not None
