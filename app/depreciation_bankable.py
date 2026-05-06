@@ -16,6 +16,7 @@ Architecture:
 from __future__ import annotations
 
 import logging
+import warnings
 import math
 from dataclasses import dataclass, field
 from enum import Enum
@@ -263,6 +264,8 @@ def map_capex_line_item_to_basis(item, profile: DepreciationProfile) -> Deprecia
     # Determine bankable asset class
     if _is_land(name, code):
         ac = BankableAssetClass.LAND
+    elif _is_inverter(name, code):
+        ac = BankableAssetClass.INVERTERS
     elif orig_class is not None:
         # Map legacy AssetClass to bankable
         orig_str = orig_class.name.upper()  # e.g. "GENERATION" from AssetClass.GENERATION
@@ -282,9 +285,9 @@ def map_capex_line_item_to_basis(item, profile: DepreciationProfile) -> Deprecia
                 "item=%s code=%s", orig_class, name, code)
     else:
         ac = BankableAssetClass.OTHER
-        logger.warning(
-            "DepreciationMappingWarning: unknown asset class for %s (%s), using OTHER",
-            name, code)
+        warnings.warn(
+            DepreciationMappingWarning(
+                f"unknown asset class for {name!r} ({code!r}), using OTHER"))
 
     is_depreciable = (ac != BankableAssetClass.LAND and
                       ac != BankableAssetClass.OTHER and
