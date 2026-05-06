@@ -1,6 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from app.api.schemas import RunRequest, RunResponse, KPIs
 from app.api.project_runner import run_project
+from app.input_schema import ProjectInputsSchema, ValidateRequest, ValidateResponse
+from app.input_adapter import build_projectinputs
+from pydantic import ValidationError
 
 router = APIRouter()
 
@@ -35,7 +38,23 @@ async def post_run(request: RunRequest):
         raise HTTPException(status_code=501, detail="Portfolio not yet supported via API")
 
     try:
-        result = run_project(request.project_type, request.scenario, request.period_view)
+        project_inputs_override = None
+        if request.inputs is not None:
+            schema = ProjectInputsSchema(**request.inputs)
+            project_inputs_override = build_projectinputs(schema)
+
+        result = run_project(request.project_type, request.scenario,
+                             request.period_view,
+                             project_inputs_override=project_inputs_override)
         return result
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/validate", response_model=ValidateResponse)
+async def post_validate(request: ValidateRequest):
+    """Validate custom project inputs without running the model."""
+    # Pydantic validation already ran on parse; we just return success
+    return ValidateResponse(valid=True, errors=[])

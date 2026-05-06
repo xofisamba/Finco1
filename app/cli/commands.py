@@ -1,9 +1,13 @@
 """CLI commands."""
-import click
-from app.ui_runner import run_demo_project
-from app.excel_export import build_excel_export
 import json
 import sys
+
+import click
+
+from app.ui_runner import run_demo_project
+from app.excel_export import build_excel_export
+from app.input_schema import ProjectInputsSchema
+from app.input_adapter import build_projectinputs
 
 
 @click.group()
@@ -18,14 +22,20 @@ SUPPORTED_PERIOD_VIEWS = {"Semiannual", "Annual"}
 
 
 @cli.command()
-@click.option('--project', required=True, type=str, help='Solar or Wind')
-@click.option('--scenario', required=True, type=str, help='Base, Downside, or Upside')
-@click.option('--period-view', default='Semiannual', type=str, help='Semiannual or Annual')
-@click.option('--output', default=None, type=str, help='Output Excel file path')
-@click.option('--json', 'json_output', default=None, type=str, help='Output JSON file path')
-def run(project, scenario, period_view, output, json_output):
+@click.option('--project', 'project', required=True, type=str,
+              help='Solar or Wind')
+@click.option('--scenario', required=True, type=str,
+              help='Base, Downside, or Upside')
+@click.option('--period-view', default='Semiannual', type=str,
+              help='Semiannual or Annual')
+@click.option('--input', 'input_file', type=click.Path(exists=True),
+              help='Custom project JSON file (optional)')
+@click.option('--output', default=None, type=str,
+              help='Output Excel file path')
+@click.option('--json', 'json_output', default=None, type=str,
+              help='Output JSON file path')
+def run(project, scenario, period_view, input_file, output, json_output):
     """Run a project model and optionally export results."""
-    # Validate
     if project not in SUPPORTED_PROJECTS:
         click.echo(f'Error: --project must be one of {SUPPORTED_PROJECTS}', err=True)
         sys.exit(1)
@@ -36,12 +46,26 @@ def run(project, scenario, period_view, output, json_output):
         click.echo(f'Error: --period-view must be one of {SUPPORTED_PERIOD_VIEWS}', err=True)
         sys.exit(1)
 
+    # Build custom project inputs if JSON file provided
+    project_inputs_override = None
+    if input_file:
+        try:
+            with open(input_file) as f:
+                data = json.load(f)
+            schema = ProjectInputsSchema(**data)
+            project_inputs_override = build_projectinputs(schema)
+            click.echo(f'Loaded custom inputs from {input_file}')
+        except Exception as e:
+            click.echo(f'Error parsing {input_file}: {e}', err=True)
+            sys.exit(1)
+
     click.echo(f'Running {project} {scenario} ({period_view})...')
 
     try:
-        demo = run_demo_project(project, scenario)
+        demo = run_demo_project(project, scenario,
+                                project_inputs_override=project_inputs_override)
         result = demo.result
-        project_inputs = getattr(demo, 'project_inputs', None)
+        proj_inputs = getattr(demo, 'project_inputs', None)
 
         if json_output:
             kpis = {
@@ -64,9 +88,10 @@ def run(project, scenario, period_view, output, json_output):
                 period_view=period_view,
                 advanced_opex_line_items=None,
                 advanced_capex_line_items=None,
-                warnings=[{"code": "INFO", "message": msg} for msg in demo.messages] if getattr(demo, 'messages', None) else None,
+                warnings=[{"code": "INFO", "message": msg} for msg in demo.messages]
+                if getattr(demo, 'messages', None) else None,
                 validation_issues=getattr(demo, 'validation_issues', None),
-                project_inputs=project_inputs,
+                project_inputs=proj_inputs,
                 integration_status=getattr(demo, 'integration_status', 'full'),
                 integration_note=getattr(demo, 'integration_note', None),
             )

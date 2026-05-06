@@ -1,0 +1,24 @@
+{
+  "project_type": "Solar",
+  "project_name": "Custom Solar 50MW",
+  "capacity_mw": 50,
+  "scenario": "Base",
+  "revenue": {
+    "tariff_eur_mwh": 75.0,
+    "p50_hours": 1350,
+    "degradation_pct": 0.4
+  },
+  "capex": {
+    "total_capex_keur": 42000
+  },
+  "opex": {
+    "opex_y1_keur": 1200,
+    "inflation_pct": 2.5
+  },
+  "debt": {
+    "gearing_pct": 65,
+    "interest_rate_pct": 5.0,
+    "tenor_years": 14,
+    "target_dscr": 1.30
+  }
+}

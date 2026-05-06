@@ -1,0 +1,24 @@
+{
+  "project_type": "Wind",
+  "project_name": "Custom Wind 40MW",
+  "capacity_mw": 40,
+  "scenario": "Base",
+  "revenue": {
+    "tariff_eur_mwh": 65.0,
+    "p50_hours": 2600,
+    "degradation_pct": 0.3
+  },
+  "capex": {
+    "total_capex_keur": 48000
+  },
+  "opex": {
+    "opex_y1_keur": 950,
+    "inflation_pct": 2.0
+  },
+  "debt": {
+    "gearing_pct": 70,
+    "interest_rate_pct": 5.5,
+    "tenor_years": 15,
+    "target_dscr": 1.25
+  }
+}

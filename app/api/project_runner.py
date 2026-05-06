@@ -13,8 +13,10 @@ def _sanitize_df(df):
     return df.astype(object).replace({float('inf'): None, float('-inf'): None, float('nan'): None})
 
 
-def run_project(project_type: str, scenario: str, period_view: str = "Semiannual"):
-    demo = run_demo_project(project_type, scenario)
+def run_project(project_type: str, scenario: str, period_view: str = "Semiannual",
+               project_inputs_override=None):
+    demo = run_demo_project(project_type, scenario,
+                            project_inputs_override=project_inputs_override)
     result = demo.result
 
     # Build tables
