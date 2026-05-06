@@ -7,11 +7,15 @@ This makes testing easier and keeps UI layer thin.
 FincoGPT update: WaterfallRunner now calls the uncached calculation core.
 Streamlit caching remains in app/cache.py only.
 """
+from __future__ import annotations
 from dataclasses import dataclass, replace
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from app.waterfall_core import run_waterfall_v3_core
 from domain.inputs import EquityIRRMethod, DebtSizingMethod, SHLRepaymentMethod
+
+if TYPE_CHECKING:
+    from app.depreciation_engine import DepreciationSchedule
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,11 @@ class WaterfallRunConfig:
 
     # Advanced CAPEX line items — total computed from CapexLineItems tuple
     advanced_capex_line_items: Optional[tuple] = None
+
+    # Advanced CAPEX depreciation schedule — from app.depreciation_engine
+    # When provided, uses per-asset-class depreciable lives instead of legacy
+    # CapexItem path. Must be a DepreciationSchedule object.
+    advanced_capex_depreciation_schedule: "DepreciationSchedule | None" = None
 
     def cache_key(self) -> str:
         """Generate cache key from config parameters."""
@@ -208,6 +217,7 @@ class WaterfallRunner:
             dscr_schedule=config.dscr_schedule,
             advanced_opex_line_items=config.advanced_opex_line_items,
             advanced_capex_line_items=config.advanced_capex_line_items,
+            advanced_capex_depreciation_schedule=config.advanced_capex_depreciation_schedule,
         )
 
     def run_with_defaults(self) -> object:

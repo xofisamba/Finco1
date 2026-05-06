@@ -39,6 +39,7 @@ def run_waterfall_v3_core(
     dscr_schedule: list[float] | None = None,
     advanced_opex_line_items: tuple | None = None,
     advanced_capex_line_items: tuple | None = None,
+    advanced_capex_depreciation_schedule: "DepreciationSchedule | None" = None,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -55,6 +56,12 @@ def run_waterfall_v3_core(
       OpexLineItem engine is used to generate the OPEX schedule instead of
       the legacy OpexItem/OpexParams path. This enables granular per-line-item
       OPEX modeling with manual/hardcoded override support.
+
+    advanced_capex_depreciation_schedule: if provided (from
+      app.depreciation_engine.generate_schedule()), the new asset-class
+      depreciation schedule is used for the tax-shield calculation instead of
+      the legacy CapexItem-based schedule. This enables per-asset-class
+      depreciable lives (solar modules 25 yr, inverters 10 yr, etc.).
     """
     from domain.waterfall.waterfall_engine import run_waterfall
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
@@ -92,13 +99,22 @@ def run_waterfall_v3_core(
 
     horizon_years = inputs.info.horizon_years
 
-    # Build proper depreciation schedule from asset-class CapexItems
-    capex_items = inputs.capex.capex_items()
-    dep_schedule_annual = build_depreciation_schedule(
-        capex_items=capex_items,
-        horizon_years=horizon_years,
-        senior_tenor_years=inputs.financing.senior_tenor_years,
-    )
+    # Depreciation schedule: use advanced CapexLineItem schedule if provided,
+    # otherwise fall back to legacy CapexItem path for backward compatibility.
+    if advanced_capex_depreciation_schedule is not None:
+        # Map DepreciationSchedule (0-based year index) → {year_index: annual_dep}
+        dep_schedule_annual = {
+            y + 1: advanced_capex_depreciation_schedule.total_by_period[y]
+            for y in range(len(advanced_capex_depreciation_schedule.total_by_period))
+        }
+    else:
+        # Legacy path: derive from CapexItem asset classes
+        capex_items = inputs.capex.capex_items()
+        dep_schedule_annual = build_depreciation_schedule(
+            capex_items=capex_items,
+            horizon_years=horizon_years,
+            senior_tenor_years=inputs.financing.senior_tenor_years,
+        )
 
     ebitda_schedule: list[float] = []
     revenue_schedule: list[float] = []

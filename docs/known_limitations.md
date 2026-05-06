@@ -61,12 +61,12 @@ Features that are structurally present but not validated for production use.
 - `scenario_summary()` drives UI scenario table, Excel export delta table, and UI runner display — all three now use the same source.
 - **⚠️ CAPEX depreciation uses legacy path:** per-asset-class depreciation from factory `CapexItem` objects, not from `CapexLineItem` breakdown. See CAPEX Matrix section above.
 
-### CAPEX Matrix — Now Wired to Waterfall (2026-05-06)
+### CAPEX Matrix — Integrated (2026-05-06)
 
 - The **💰 CapEx tab** shows an editable CAPEX matrix with `CapexLineItem` objects.
 - The matrix uses `generate_capex_schedule()` to compute per-period draws.
 - `capex_line_items` from UI → `run_demo_project()` → `waterfall_core` → total CAPEX override applied.
-- **⚠️ Depreciation integration is future work:** Advanced CAPEX currently overrides `total_capex` in the waterfall (affecting IRR/debt sizing), but the **depreciation schedule** still uses legacy `CapexItem` asset-class breakdown from the factory. Full per-asset-class depreciation from CapexLineItems is not yet implemented.
+- **Depreciation integration complete:** `app/depreciation_engine.generate_schedule()` provides per-asset-class straight-line depreciation from CapexLineItems. `advanced_capex_depreciation_schedule` parameter threads the schedule through `run_waterfall_v3_core()` and `WaterfallRunConfig`. When provided, it replaces the legacy CapexItem-based depreciation for the tax-shield calculation.
 - **⚠️ Note:** Default CapexLineItem totals (84,850 kEUR for 50MW Solar) differ from factory defaults (30,700 kEUR) — this is intentional as the line-item engine models a more granular cost build-up. Users see the higher total when Advanced CAPEX is active.
 - See `docs/ARCHITECTURE.md` §CAPEX status for full details.
 
@@ -132,9 +132,9 @@ Validation does **not** cover:
 ### Custom Input Schema MVP
 - Custom inputs via JSON supported in API and CLI
 - YAML input not yet supported
-- CAPEX depreciation gap: CapexLineItem matrix doesn't feed per-asset-class depreciation
-- `project_name` in JSON is parsed but not propagated to project info
+- `project_name` field in JSON is parsed but not propagated to `ProjectInfo.name` (frozen dataclass limitation)
 - `total_capex_keur` must be greater than fixed other capex items (~10,000 kEUR for Solar)
+- CAPEX depreciation: `app/depreciation_engine.generate_schedule()` provides per-asset-class straight-line depreciation from CapexLineItems; integrated via `advanced_capex_depreciation_schedule` parameter in `run_waterfall_v3_core()` and `WaterfallRunConfig`. Legacy CapexItem path remains the default for backward compatibility.
 
 ---
 
