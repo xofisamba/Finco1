@@ -136,6 +136,11 @@ Validation does **not** cover:
 - `total_capex_keur` must be greater than fixed other capex items (~10,000 kEUR for Solar)
 - CAPEX depreciation: `app/depreciation_engine.generate_schedule()` provides per-asset-class straight-line depreciation from CapexLineItems; integrated via `advanced_capex_depreciation_schedule` parameter in `run_waterfall_v3_core()` and `WaterfallRunConfig`. Legacy CapexItem path remains the default for backward compatibility.
 
+### /validate endpoint (API)
+- Performs structural (Pydantic) + business-rule validation
+- NO waterfall execution — validation only, no financial feasibility guarantee
+- Warnings for suspicious but allowed values (e.g., very high gearing >85%, low tariff <10 EUR/MWh)
+
 ---
 
 ## 8. How to Interpret the Numbers

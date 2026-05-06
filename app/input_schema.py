@@ -85,3 +85,4 @@ class ValidateResponse(BaseModel):
     """API response body for /validate endpoint."""
     valid: bool
     errors: list[str]
+    warnings: list[str] = []

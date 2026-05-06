@@ -1,75 +1,98 @@
-# Model Status & Limitations
+# Model Status
 
-> ⚠️ **This model is not a bankable investment model without further validation.**
+## Current Version
+FincoGPT — v1.2-custom-input-foundation
+
+## Architecture
+Three interfaces (Streamlit, CLI, FastAPI) over shared `run_demo_project()` core.
+
+---
 
 ## Supported Features
 
-| Feature | Status | Notes |
-|---|---|---|
-| Solar PV | ✅ Full | CapEx, OpEx, Revenue, Tax, DSCR, IRR |
-| Wind | ✅ Full | CapEx, OpEx, Revenue, Tax, DSCR, IRR |
-| Scenario v2 (Base/Downside/Upside) | ✅ Full | Solar/Wind only | CapEx, OpEx, Degradation, Curtailment, Tariff multipliers |
-| Portfolio (project IRR) | ⚠️ Experimental | Pooled CFADS, date-aligned XIRR |
-| Excel export | ✅ Full | Values-only, with Notes sheet |
+### Project Types
+- **Solar** — fully validated
+- **Wind** — fully validated
+
+### Interfaces
+- Streamlit UI
+- CLI (`fincogpt run ...`)
+- FastAPI (`POST /api/v1/run`)
+
+### Financial Model
+- Revenue, OPEX, CAPEX, Tax, DSCR, IRR — full waterfall for Solar/Wind
+- Scenario v2 (Base/Downside/Upside) — Solar and Wind only
+  - Revenue: tariff multipliers (×0.95 / ×1.03)
+  - CAPEX: +5% / −3%
+  - OPEX: +10% / −5%
+  - P50 hours (curtailment proxy): ×0.90 / ×1.05
+  - Degradation: ×1.15 / ×0.90 (scenario multiplier on base degradation)
+- Excel export (values-only)
+
+---
 
 ## Partial Features
 
 | Feature | Status | Notes |
 |---|---|---|
-| BESS | ⚠️ Partial | Revenue-only shown, no dispatch optimization, no waterfall integration |
-| Hybrid (Solar+BESS, Wind+BESS) | ⚠️ Partial | Revenue stack not integrated in waterfall |
+| BESS | Revenue-only | No dispatch optimization, no waterfall integration |
+| Hybrid (Solar+BESS, Wind+BESS) | Revenue stack only | No joint CapEx/opex waterfall |
+| Portfolio | Experimental | Pooled CFADS IRR; sponsor IRR placeholder (0.0) |
+
+---
 
 ## Not Implemented
 
-| Feature | Status |
-|---|---|
-| Sponsor IRR | ❌ Placeholder (0.0) — requires equity-level CF aggregation |
-| Portfolio scenarios | ❌ Portfolio uses Base case only; non-Base scenarios are blocked with warning |
-| Financed LCOE | ❌ Only Economic LCOE implemented (excludes debt service) |
-| Monte Carlo / probabilistic | ❌ Not in scope |
-| Tax optimization | ❌ Standard corporate tax only |
-| Cross-default enforcement | ❌ Not implemented |
+- Sponsor IRR — placeholder 0.0; requires equity-level CF aggregation
+- Portfolio scenarios — uses Base case only; non-Base scenarios blocked with warning
+- Financed LCOE — only Economic LCOE (excludes debt service)
+- Monte Carlo / probabilistic sizing
+- Tax optimization — standard corporate tax only
+- Degradation — not modeled beyond scenario v2 multipliers (no asset-life degradation curves)
+- Curtailment — simplified via P50 hours scaling; no explicit curtailment curve
+
+---
 
 ## Known Limitations
 
-1. **Portfolio IRR is experimental**: Uses CFADS proxy (not true equity cash flows), date-aligned CapEx on project financial_close dates.
-2. **BESS revenue is partial**: No dispatch optimization, no state-of-charge modeling, no integrated waterfall.
-3. **Hybrid results are incomplete**: No joint CapEx/opex waterfall for hybrid projects.
-4. **Economic LCOE only**: Does not include debt service, financing costs, or WACC.
-5. **No P90/probabilistic sizing**: Deterministic scenarios only.
-6. **No tax optimization features**: Thin cap, ATAD rules present but basic.
-7. **Debt sculpting uses CFADS proxy**: Sculpting base = EBITDA × (1 − tax_rate), not full iterative after-tax sizing. Full iterative tax/debt sculpting not yet implemented. Suitable for MVP screening; validate before bankable debt sizing.
-
-## Explicit Warnings
-
-> **Portfolio IRR = experimental pooled unlevered CFADS IRR, NOT sponsor/equity IRR.**
-> **Sponsor IRR = 0.0 placeholder — do not use for investment decisions.**
-> **BESS/hybrid results are partial — revenue-only, no full waterfall integration.**
-> **This model is not a bankable investment model without further validation.**
-
-## Last Updated
-
-2026-05-04 — Sprint 22 (industry-engine-refactor)
-### Portfolio IRR Methodology
-
-**Portfolio IRR = experimental pooled CFADS IRR**
-
-The portfolio project IRR is computed as follows:
-1. Each project's CapEx is placed on its own `financial_close` date
-2. Each project's operating CFADS (EBITDA − tax) are placed on waterfall period dates
-3. All cash flows are aggregated by date across all projects
-4. XIRR is computed on the sorted (date, amount) series
-
-**Caveats:**
-- This uses CFADS as proxy for true levered equity cash flow
-- Tax is deducted at the project level; no portfolio-level tax optimization
-- SHL (Subordinated High Yield) distribution logic is not yet implemented
-- Sponsor IRR is a placeholder (0.0) — do not use for investment decisions
-- Portfolio does NOT support scenarios — always shows Base case
-
-## Depreciation Engine Simplifications
-- **Inverter**: treated as GENERATION (25y linear) — not separately modeled as 10y
-- **Contingency**: treated as 5y linear — simplified from actual contract terms
+### Financial Model
+- **No authentication / multi-tenancy** — single-tenant only
+- **No persistence** — no saved projects, no database
+- **Debt sculpting uses CFADS proxy** — EBITDA × (1 − tax_rate), not full iterative after-tax sizing
+- **CAPEX depreciation uses legacy path** — per-asset-class from `CapexItem` objects; not yet wired to `CapexLineItem` matrix
+- **Inverter depreciation** — simplified as 25y linear (same as generation equipment)
+- **Contingency depreciation** — 5y linear (conservative; actual contract-driven)
 - **No mid-year convention** — all depreciation starts at period 0
-- **No separate tax vs financial depreciation** — single straight-line schedule used for both
-- **No inflation adjustment** to depreciation basis
+- **No separate tax vs financial depreciation** — single straight-line schedule for both
+
+### Validation
+- Pydantic handles **structural validation only**
+- Business-rule validation via `/validate` endpoint — NO waterfall execution
+- `/validate` does **NOT** guarantee financially feasible project
+- Cross-tab arithmetic consistency not enforced
+- Debt schedule mathematical correctness not independently verified
+
+### Export
+- Values only — no Excel formulas
+- No named ranges, no macros
+- No workbook import (anti-pattern)
+
+---
+
+> ⚠️ **WARNING: This model is not a bankable investment model without further validation.**
+> ⚠️ **Portfolio IRR = experimental pooled unlevered CFADS IRR, NOT sponsor/equity IRR.**
+> ⚠️ **BESS/hybrid results are partial — revenue-only, no full waterfall integration.**
+
+## B2B Pilot Readiness
+These items must be addressed before any paid B2B pilot:
+1. Authentication / multi-tenancy
+2. Persistence / saved projects
+3. Full BESS waterfall integration
+4. Per-asset-class CAPEX depreciation
+5. Independent financial model audit
+
+## Next Major Roadmap Items
+1. CAPEX depreciation integration — wire CapexLineItem → DepreciationSchedule → waterfall tax
+2. HTMX frontend — thin web client replacing Streamlit
+3. Scenario comparison / batch runner — multi-scenario Excel export
+4. Persistence — saved projects, user accounts
