@@ -66,3 +66,10 @@ The portfolio project IRR is computed as follows:
 - SHL (Subordinated High Yield) distribution logic is not yet implemented
 - Sponsor IRR is a placeholder (0.0) — do not use for investment decisions
 - Portfolio does NOT support scenarios — always shows Base case
+
+## Depreciation Engine Simplifications
+- **Inverter**: treated as GENERATION (25y linear) — not separately modeled as 10y
+- **Contingency**: treated as 5y linear — simplified from actual contract terms
+- **No mid-year convention** — all depreciation starts at period 0
+- **No separate tax vs financial depreciation** — single straight-line schedule used for both
+- **No inflation adjustment** to depreciation basis
