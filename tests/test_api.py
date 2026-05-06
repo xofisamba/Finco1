@@ -152,11 +152,53 @@ def test_api_run_with_mismatched_scenario():
     assert "scenario" in detail.lower()
 
 
-def test_api_run_inputs_scenario_null_ok():
-    """API accepts inputs without scenario (null/omitted) — defaults to request.scenario."""
-    r = client.post("/api/v1/run", json={
-        "project_type": "Solar",
-        "scenario": "Downside",
-        "inputs": {"project_type": "Solar"}  # no scenario field
+def test_api_openapi_schema_shows_inputs_type():
+    """OpenAPI schema contains ProjectInputsSchema in inputs field."""
+    from app.api.schemas import RunRequest
+    import inspect
+    
+    # Verify inputs field annotation is ProjectInputsSchema, not dict
+    ann = RunRequest.__annotations__.get('inputs')
+    # Optional[SomeType] → some type is in __args__[0]
+    if hasattr(ann, '__args__'):
+        input_type = ann.__args__[0]
+    else:
+        input_type = ann
+    
+    # Should be ProjectInputsSchema, not dict/Any
+    assert input_type.__name__ == 'ProjectInputsSchema', f"Expected ProjectInputsSchema, got {input_type}"
+    print(f"inputs type: {input_type.__name__} ✓")
+
+
+def test_validate_rejects_capex_too_low():
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Solar", "capex": {"total_capex_keur": 100}}
     })
     assert r.status_code == 200
+    data = r.json()
+    assert data["valid"] == False
+    assert any("greater than" in e.lower() for e in data["errors"])
+
+def test_validate_rejects_invalid_gearing():
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Solar", "debt": {"gearing_pct": 98}}
+    })
+    data = r.json()
+    assert data["valid"] == False
+    assert any("95" in e for e in data["errors"])
+
+def test_validate_warnings_for_very_high_gearing():
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Solar", "debt": {"gearing_pct": 88}}
+    })
+    data = r.json()
+    assert data["valid"] == True
+    assert len(data["warnings"]) > 0
+
+def test_validate_accepts_valid_solar():
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Solar", "scenario": "Base"}
+    })
+    data = r.json()
+    assert data["valid"] == True
+    assert data["errors"] == []

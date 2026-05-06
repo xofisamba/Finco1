@@ -1,12 +1,14 @@
 from pydantic import BaseModel
 from typing import Optional
 
+from app.input_schema import ProjectInputsSchema
+
 
 class RunRequest(BaseModel):
     project_type: str
     scenario: str
     period_view: str = "Semiannual"
-    inputs: Optional[dict] = None  #: Custom project inputs (optional, replaces factory defaults)
+    inputs: Optional[ProjectInputsSchema] = None  #: Custom project inputs (optional, replaces factory defaults)
 
 
 class KPIs(BaseModel):
