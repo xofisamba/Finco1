@@ -178,6 +178,14 @@ def run_demo_project(project_type: str, scenario: str = "Base",
                 from app.scenario_manager import ScenarioManager
                 mgr = ScenarioManager(project_type.lower())
                 proj = mgr.apply_overrides(proj, scenario)
+                # Scale advanced OPEX line items by scenario opex_multiplier
+                if advanced_opex_line_items:
+                    from dataclasses import replace as dc_replace
+                    opex_mult = mgr.get_scenario(scenario).opex_multiplier
+                    if opex_mult != 1.0:
+                        def _scale_item(item):
+                            return dc_replace(item, base_year_amount_keur=item.base_year_amount_keur * opex_mult)
+                        advanced_opex_line_items = tuple(_scale_item(i) for i in advanced_opex_line_items)
 
             engine = _build_period_engine(proj)
             result.result = _run_waterfall(proj, engine, advanced_opex_line_items, advanced_capex_line_items)
@@ -207,8 +215,9 @@ def run_demo_project(project_type: str, scenario: str = "Base",
                     f"Results shown are Base case. Portfolio scenarios not yet implemented."
                 )
             else:
-                from app.scenarios import scenario_summary
-                rows = scenario_summary(scenario)
+                from app.scenario_manager import ScenarioManager
+                sm = ScenarioManager(project_type)
+                rows = sm.scenario_summary(scenario)
                 for row in rows:
                     messages.append(
                         f"Scenario: {scenario} — {row['assumption']} {row['change']}"

@@ -48,8 +48,10 @@ class Scenario:
     description: str
     is_base: bool = False
     revenue_multiplier: float = 1.0
+    p50_multiplier: float = 1.0
     opex_multiplier: float = 1.0
     capex_multiplier: float = 1.0
+    degradation_multiplier: float = 1.0
     debt_sculpting_override: Optional[float] = None
     annual_generation_hours: Optional[float] = None
 
@@ -63,6 +65,7 @@ _SOLAR_SCENARIOS: dict[str, Scenario] = {
         description="Reference case with base tariff and base operating assumptions.",
         is_base=True,
         revenue_multiplier=1.0,
+        p50_multiplier=1.0,
         opex_multiplier=1.0,
         capex_multiplier=1.0,
     ),
@@ -70,15 +73,19 @@ _SOLAR_SCENARIOS: dict[str, Scenario] = {
         name="Downside",
         description="Downside: revenue -5% (tariff), P50 hours -10%, capex +5%, opex +10%, degradation +15%.",
         revenue_multiplier=0.95,
+        p50_multiplier=0.90,
         opex_multiplier=1.10,
         capex_multiplier=1.05,
+        degradation_multiplier=1.15,
     ),
     "Upside": Scenario(
         name="Upside",
         description="Upside: revenue +3% (tariff), P50 hours +5%, capex -3%, opex -5%, degradation -10%.",
         revenue_multiplier=1.03,
+        p50_multiplier=1.05,
         opex_multiplier=0.95,
         capex_multiplier=0.97,
+        degradation_multiplier=0.90,
     ),
 }
 
@@ -89,6 +96,7 @@ _WIND_SCENARIOS: dict[str, Scenario] = {
         description="Reference case with base tariff and base operating assumptions.",
         is_base=True,
         revenue_multiplier=1.0,
+        p50_multiplier=1.0,
         opex_multiplier=1.0,
         capex_multiplier=1.0,
     ),
@@ -96,15 +104,19 @@ _WIND_SCENARIOS: dict[str, Scenario] = {
         name="Downside",
         description="Downside: revenue -5% (tariff), P50 hours -10%, capex +5%, opex +10%, degradation +15%.",
         revenue_multiplier=0.95,
+        p50_multiplier=0.90,
         opex_multiplier=1.10,
         capex_multiplier=1.05,
+        degradation_multiplier=1.15,
     ),
     "Upside": Scenario(
         name="Upside",
         description="Upside: revenue +3% (tariff), P50 hours +5%, capex -3%, opex -5%, degradation -10%.",
         revenue_multiplier=1.03,
+        p50_multiplier=1.05,
         opex_multiplier=0.95,
         capex_multiplier=0.97,
+        degradation_multiplier=0.90,
     ),
 }
 
@@ -189,6 +201,7 @@ class ScenarioManager:
             return []
         rows = []
         rev_mult = scenario_obj.revenue_multiplier
+        p50_mult = scenario_obj.p50_multiplier
         opex_mult = scenario_obj.opex_multiplier
         capex_mult = scenario_obj.capex_multiplier
         hours = scenario_obj.annual_generation_hours
@@ -200,6 +213,14 @@ class ScenarioManager:
                 "scenario": f"{rev_mult:.0%}",
                 "change": f"{'+' if rev_mult > 1 else ''}{(rev_mult - 1) * 100:.0f}%",
                 "note": "applied to first available tariff field",
+            })
+        if p50_mult != 1.0:
+            rows.append({
+                "assumption": "P50 Hours",
+                "base": "—",
+                "scenario": f"{p50_mult:.0%}",
+                "change": f"{'+' if p50_mult > 1 else ''}{(p50_mult - 1) * 100:.0f}%",
+                "note": "operating hours scaled proportionally",
             })
         if hours is not None:
             rows.append({
@@ -224,6 +245,15 @@ class ScenarioManager:
                 "scenario": f"{opex_mult:.0%}",
                 "change": f"{'+' if opex_mult > 1 else ''}{(opex_mult - 1) * 100:.0f}%",
                 "note": "y1 Opex items scaled proportionally",
+            })
+        deg_mult = scenario_obj.degradation_multiplier
+        if deg_mult != 1.0:
+            rows.append({
+                "assumption": "Degradation",
+                "base": "—",
+                "scenario": f"{deg_mult:.0%}",
+                "change": f"{'+' if deg_mult > 1 else ''}{(deg_mult - 1) * 100:.0f}%",
+                "note": "pv_degradation rate scaled",
             })
         return rows
 
@@ -263,8 +293,10 @@ class ScenarioManager:
 
         # Fast path: base scenario — return copy with no changes
         if scenario.is_base and scenario.revenue_multiplier == 1.0 \
+                and scenario.p50_multiplier == 1.0 \
                 and scenario.opex_multiplier == 1.0 \
-                and scenario.capex_multiplier == 1.0:
+                and scenario.capex_multiplier == 1.0 \
+                and scenario.degradation_multiplier == 1.0:
             return replace(project_inputs)
 
         tech = project_inputs.technical
@@ -296,6 +328,17 @@ class ScenarioManager:
             hours_field = self._first_field(tech, self.HOURS_FIELDS)
             if hours_field:
                 tech = replace(tech, **{hours_field: scenario.annual_generation_hours})
+
+        # P50 hours multiplier — scale operating hours by multiplier
+        if scenario.p50_multiplier != 1.0:
+            hours_field = self._first_field(tech, self.HOURS_FIELDS)
+            if hours_field:
+                current_val = getattr(tech, hours_field)
+                tech = replace(tech, **{hours_field: current_val * scenario.p50_multiplier})
+
+        # Degradation multiplier — scale pv_degradation on the technical block
+        if scenario.degradation_multiplier != 1.0 and hasattr(tech, 'pv_degradation'):
+            tech = replace(tech, pv_degradation=tech.pv_degradation * scenario.degradation_multiplier)
 
         # Debt sculpting override (DSCR target)
         if scenario.debt_sculpting_override is not None and hasattr(financing, "target_dscr"):
