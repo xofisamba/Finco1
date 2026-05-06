@@ -1,11 +1,6 @@
 """CLI commands."""
 import click
 from app.ui_runner import run_demo_project
-from app.capex_engine import build_capex_line_items_from_defaults, generate_capex_schedule
-from app.output_tables import (
-    build_waterfall_table, build_revenue_table, build_debt_table,
-    build_returns_table, aggregate_period_table_annual,
-)
 from app.excel_export import build_excel_export
 import json
 import sys
@@ -28,7 +23,8 @@ SUPPORTED_PERIOD_VIEWS = {"Semiannual", "Annual"}
 @click.option('--period-view', default='Semiannual', type=str, help='Semiannual or Annual')
 @click.option('--output', default=None, type=str, help='Output Excel file path')
 @click.option('--json', 'json_output', default=None, type=str, help='Output JSON file path')
-def run(project, scenario, period_view, output, json_output):
+@click.pass_context
+def run(ctx, project, scenario, period_view, output, json_output):
     """Run a project model and optionally export results."""
     # Validate
     if project not in SUPPORTED_PROJECTS:
@@ -46,6 +42,7 @@ def run(project, scenario, period_view, output, json_output):
     try:
         demo = run_demo_project(project, scenario)
         result = demo.result
+        project_inputs = getattr(demo, 'project_inputs', None)
 
         if json_output:
             kpis = {
@@ -68,7 +65,10 @@ def run(project, scenario, period_view, output, json_output):
                 period_view=period_view,
                 advanced_opex_line_items=None,
                 advanced_capex_line_items=None,
-                warnings=demo.messages,
+                warnings=demo.validation_issues,
+                project_inputs=project_inputs,
+                integration_status=getattr(demo, 'integration_status', 'full'),
+                integration_note=getattr(demo, 'integration_note', None),
             )
             with open(output, 'wb') as f:
                 f.write(excel_bytes)

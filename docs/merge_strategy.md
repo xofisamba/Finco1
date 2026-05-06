@@ -36,7 +36,7 @@ _Generated: 2026-05-06_
 - Ties into `app.ui_runner.run_demo_project()`.
 
 ### `feature/cli-runner`
-- Click-based CLI (`cli/`) with `run`, `validate`, `export` commands.
+- Click-based CLI (`cli/`) with `run` command — same execution path as `run_demo_project()`.
 - Same execution path as `run_demo_project()`.
 - **Note:** This branch exists but `cli` module is not present on `post-rc1-structure-roadmap` — tests fail because they import `cli`.
 
