@@ -73,6 +73,11 @@ def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanc
     if advanced_opex_line_items is not None:
         updates["advanced_opex_line_items"] = advanced_opex_line_items
     if advanced_capex_line_items is not None:
+        from app.depreciation_engine import generate_schedule
+        # Generate depreciation schedule from CapexLineItems using project horizon
+        horizon_years = project_inputs.info.horizon_years
+        depr_schedule = generate_schedule(list(advanced_capex_line_items), total_periods=horizon_years)
+        updates["advanced_capex_depreciation_schedule"] = depr_schedule
         updates["advanced_capex_line_items"] = advanced_capex_line_items
     if updates:
         config = replace(config, **updates)
