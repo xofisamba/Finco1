@@ -240,14 +240,21 @@ def render_capex_matrix(
 
     Returns the current tuple of CapexLineItem from session state.
     """
-    from app.capex_engine import build_capex_line_items_from_defaults, generate_capex_schedule
+    from app.capex_engine import build_capex_line_items_from_defaults, generate_capex_schedule, CapexLineItem
 
     st.markdown("**CAPEX Items**")
 
-    # Initialise from defaults on first use
-    if "capex_line_items" not in st.session_state:
+    # Initialise from defaults on first use, or if project_type changed
+    current_project_type = project_type.lower()
+    if "_capex_project_type" not in st.session_state:
+        st.session_state["_capex_project_type"] = current_project_type
         st.session_state["capex_line_items"] = build_capex_line_items_from_defaults(
-            project_type.lower(), scale_mw=scale_mw,
+            current_project_type, scale_mw=scale_mw,
+        )
+    elif st.session_state["_capex_project_type"] != current_project_type:
+        st.session_state["_capex_project_type"] = current_project_type
+        st.session_state["capex_line_items"] = build_capex_line_items_from_defaults(
+            current_project_type, scale_mw=scale_mw,
         )
 
     items = st.session_state.get("capex_line_items", ())
@@ -282,7 +289,7 @@ def render_capex_matrix(
         "Timing": st.column_config.TextColumn("Timing", disabled=True),
     }
     for p in range(horizon):
-        col_config[f"P{p+1}"] = st.column_config.NumberColumn(f"P{p+1}", min_value=0.0, format="%.0f")
+        col_config[f"P{p+1}"] = st.column_config.NumberColumn(f"P{p+1}", min_value=0.0, format="%.0f", disabled=True)
 
     edited_df = st.data_editor(
         matrix_df,
@@ -324,7 +331,7 @@ def render_capex_matrix(
     schedule = generate_capex_schedule(st.session_state["capex_line_items"], tenor_periods)
     total_col_names = ["Code", "Name", "Group", "Amount (kEUR)", "Timing"] + [f"P{y+1}" for y in range(horizon)]
     total_vals = [f"{int(v)}" if v > 0 else "—" for v in schedule.total_by_period]
-    total_data = [["Total CAPEX", "", "", str(int(sum(i.amount_keur for i in items))), ""] + total_vals]
+    total_data = [["Total CAPEX", "", "", str(int(sum(i.amount_keur for i in new_items))), ""] + total_vals]
     total_df = pd.DataFrame(total_data, columns=total_col_names)
     st.dataframe(total_df, hide_index=True, use_container_width=True)
 
