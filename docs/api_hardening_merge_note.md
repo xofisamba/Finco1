@@ -33,7 +33,7 @@
 - `/validate` is structural + business-rule only — does not guarantee financial feasibility
 
 ## Why Safe to Merge
-- All 23 API tests pass
+- All 27 API + directionality tests pass
 - Full suite: 1107+ tests pass
 - No waterfall logic changed
 - No depreciation/runtime changes
