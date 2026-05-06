@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}FincoGPT — Project Calculator{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2>Project Financial Model</h2>
+    
+    <form hx-post="/validate" hx-target="#result" hx-swap="innerHTML">
+        <div class="form-grid">
+            <div class="field">
+                <label>Project Type</label>
+                <select name="project_type" required>
+                    <option value="Solar">Solar</option>
+                    <option value="Wind">Wind</option>
+                </select>
+            </div>
+            
+            <div class="field">
+                <label>Scenario</label>
+                <select name="scenario" required>
+                    <option value="Base">Base</option>
+                    <option value="Downside">Downside</option>
+                    <option value="Upside">Upside</option>
+                </select>
+            </div>
+            
+            <div class="field">
+                <label>Capacity (MW)</label>
+                <input type="number" step="0.1" name="capacity_mw">
+            </div>
+            
+            <div class="field">
+                <label>Tariff (EUR/MWh)</label>
+                <input type="number" step="1" name="tariff_eur_mwh">
+            </div>
+            
+            <div class="field">
+                <label>P50 Hours</label>
+                <input type="number" step="1" name="p50_hours">
+            </div>
+            
+            <div class="field">
+                <label>Degradation %</label>
+                <input type="number" step="0.1" name="degradation_pct" value="0.5">
+            </div>
+            
+            <div class="field">
+                <label>Total CAPEX (kEUR)</label>
+                <input type="number" step="100" name="total_capex_keur">
+            </div>
+            
+            <div class="field">
+                <label>Y1 OPEX (kEUR)</label>
+                <input type="number" step="10" name="opex_y1_keur">
+            </div>
+            
+            <div class="field">
+                <label>Gearing %</label>
+                <input type="number" step="1" name="gearing_pct" value="75">
+            </div>
+        </div>
+        
+        <button type="submit">Calculate KPIs</button>
+    </form>
+    
+    <div id="result">
+        <p class="placeholder">Results will appear here...</p>
+    </div>
+</div>
+{% endblock %}
