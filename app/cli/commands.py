@@ -53,6 +53,25 @@ def run(project, scenario, period_view, input_file, output, json_output):
             with open(input_file) as f:
                 data = json.load(f)
             schema = ProjectInputsSchema(**data)
+
+            # Enforce project_type consistency
+            if project is not None and schema.project_type != project:
+                click.echo(
+                    f"ERROR: --project '{project}' does not match "
+                    f"inputs project_type '{schema.project_type}'",
+                    err=True
+                )
+                sys.exit(1)
+
+            # Enforce scenario consistency — --scenario is the source of truth
+            if scenario is not None and schema.scenario is not None and schema.scenario != scenario:
+                click.echo(
+                    f"ERROR: --scenario '{scenario}' does not match "
+                    f"inputs scenario '{schema.scenario}'",
+                    err=True
+                )
+                sys.exit(1)
+
             project_inputs_override = build_projectinputs(schema)
             click.echo(f'Loaded custom inputs from {input_file}')
         except Exception as e:

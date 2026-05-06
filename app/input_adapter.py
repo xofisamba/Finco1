@@ -134,9 +134,14 @@ def build_projectinputs(schema: ProjectInputsSchema) -> "ProjectInputs":
             and getattr(proj.capex, f.name).amount_keur > 0
         )
         epc_target = target - other_keur
-        if epc_target > 0:
-            new_epc = dc_replace(proj.capex.epc_contract, amount_keur=epc_target)
-            proj = dc_replace(proj, capex=dc_replace(proj.capex, epc_contract=new_epc))
+        if epc_target <= 0:
+            raise ValueError(
+                f"total_capex_keur ({target}) must be greater than "
+                f"other capex items ({other_keur} keur). "
+                f"Cannot allocate to epc_contract. Increase total_capex_keur."
+            )
+        new_epc = dc_replace(proj.capex.epc_contract, amount_keur=epc_target)
+        proj = dc_replace(proj, capex=dc_replace(proj.capex, epc_contract=new_epc))
 
     # ── OPEX ──────────────────────────────────────────────────────────────────
     if schema.opex is not None:

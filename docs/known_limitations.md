@@ -129,6 +129,15 @@ Validation does **not** cover:
 
 ---
 
+### Custom Input Schema MVP
+- Custom inputs via JSON supported in API and CLI
+- YAML input not yet supported
+- CAPEX depreciation gap: CapexLineItem matrix doesn't feed per-asset-class depreciation
+- `project_name` in JSON is parsed but not propagated to project info
+- `total_capex_keur` must be greater than fixed other capex items (~10,000 kEUR for Solar)
+
+---
+
 ## 8. How to Interpret the Numbers
 
 | Metric | What It Means | Caveat |

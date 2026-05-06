@@ -95,9 +95,23 @@ curl -X POST http://localhost:8000/api/v1/run \
 {
   "project_type": "Solar",   # required; one of project-types list
   "scenario": "Base",         # required; one of scenarios list
-  "period_view": "Semiannual" # optional; "Semiannual" (default) or "Annual"
+  "period_view": "Semiannual", # optional; "Semiannual" (default) or "Annual"
+  "inputs": {                 # optional; custom project JSON
+    "project_type": "Solar", # must match outer project_type
+    "scenario": "Base",       # must match outer scenario
+    "capacity_mw": 75,
+    "revenue": {"tariff_eur_mwh": 72},
+    "capex": {"total_capex_keur": 45000}
+  }
 }
 ```
+
+**`inputs` field rules:**
+- `project_type` / `scenario` in `inputs` JSON must match the outer request fields
+- Mismatch returns `400` with descriptive message
+- `scenario` is optional in `inputs` (defaults to `Base` if omitted)
+- `total_capex_keur` must be greater than the fixed other capex items (~10,000 kEUR for Solar)
+  - Too-low values return `400` error: `"total_capex_keur (X) must be greater than other capex items (Y keur)"`
 
 **Example response (Solar Base):**
 ```json
@@ -144,6 +158,8 @@ curl -X POST http://localhost:8000/api/v1/run \
 | Status | Condition | Example detail |
 |---|---|---|
 | `400` | Unsupported `project_type`, `scenario`, or `period_view` | `"Unsupported project_type: Foo"` |
+| `400` | `inputs.project_type` / `inputs.scenario` mismatch | `"inputs.project_type 'Wind' does not match request.project_type 'Solar'"` |
+| `400` | `total_capex_keur` too low (≤ other capex items) | `"total_capex_keur (100) must be greater than other capex items (10000 keur)"` |
 | `501` | BESS, Solar+BESS, Wind+BESS, or Portfolio (not yet supported) | `"BESS not yet supported via API"` |
 | `500` | Internal error (model computation failed) | `"..."` |
 
@@ -158,7 +174,7 @@ curl -X POST http://localhost:8000/api/v1/run \
 | Rate limiting | None — abuse possible |
 | Persistence | None — each request is stateless |
 | Excel export | Not available via API |
-| Custom project inputs | Not supported — only preset demo projects |
+| Custom project inputs | Supported via JSON body (`inputs` field); YAML planned |
 
 ---
 

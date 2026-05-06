@@ -45,3 +45,50 @@ def test_cli_excel_output():
         assert result.exit_code == 0
         import os
         assert os.path.exists('out.xlsx')
+
+
+
+def test_cli_input_mismatched_project_type(tmp_path):
+    """CLI exits with error when --input project_type != --project."""
+    import json
+    data = {"project_type": "Wind", "scenario": "Base"}
+    f = tmp_path / "wind.json"
+    f.write_text(json.dumps(data))
+
+
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        'run', '--project', 'Solar', '--scenario', 'Base', '--input', str(f)
+    ])
+    assert result.exit_code != 0
+    assert 'mismatch' in result.output.lower() or 'Wind' in result.output
+
+
+
+def test_cli_input_mismatched_scenario(tmp_path):
+    """CLI exits with error when --input scenario != --scenario."""
+    import json
+    data = {"project_type": "Solar", "scenario": "Upside"}
+    f = tmp_path / "solar.json"
+    f.write_text(json.dumps(data))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        'run', '--project', 'Solar', '--scenario', 'Base', '--input', str(f)
+    ])
+    assert result.exit_code != 0
+    assert 'mismatch' in result.output.lower() or 'Upside' in result.output
+
+
+def test_cli_input_matching_ok(tmp_path):
+    """CLI accepts input file when project_type and scenario match."""
+    import json
+    data = {"project_type": "Solar", "scenario": "Base", "capacity_mw": 50}
+    f = tmp_path / "solar.json"
+    f.write_text(json.dumps(data))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, [
+        'run', '--project', 'Solar', '--scenario', 'Base', '--input', str(f)
+    ])
+    assert result.exit_code == 0

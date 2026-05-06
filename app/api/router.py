@@ -37,6 +37,27 @@ async def post_run(request: RunRequest):
     if request.project_type == "Portfolio":
         raise HTTPException(status_code=501, detail="Portfolio not yet supported via API")
 
+    # ── Enforce project_type / scenario consistency before entering try block ──
+    # (so HTTPException is not swallowed by the generic Exception catcher)
+    if request.inputs is not None:
+        inputs_dict = request.inputs  # dict from Pydantic
+        if inputs_dict.get('project_type') is not None and inputs_dict['project_type'] != request.project_type:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"inputs.project_type '{inputs_dict['project_type']}' "
+                    f"does not match request.project_type '{request.project_type}'"
+                ),
+            )
+        if inputs_dict.get('scenario') is not None and inputs_dict['scenario'] != request.scenario:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"inputs.scenario '{inputs_dict['scenario']}' "
+                    f"does not match request.scenario '{request.scenario}'"
+                ),
+            )
+
     try:
         project_inputs_override = None
         if request.inputs is not None:

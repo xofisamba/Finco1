@@ -126,3 +126,37 @@ def test_api_integration_status_not_hardcoded():
     assert "integration_status" in data
     assert isinstance(data["integration_status"], str)
     assert data["integration_status"] in ("full", "partial", "experimental")
+
+
+def test_api_run_with_mismatched_project_type():
+    """API returns 400 when inputs.project_type differs from request.project_type."""
+    r = client.post("/api/v1/run", json={
+        "project_type": "Solar",
+        "scenario": "Base",
+        "inputs": {"project_type": "Wind"}
+    })
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert "mismatch" in detail.lower() or "Wind" in detail
+
+
+def test_api_run_with_mismatched_scenario():
+    """API returns 400 when inputs.scenario differs from request.scenario."""
+    r = client.post("/api/v1/run", json={
+        "project_type": "Solar",
+        "scenario": "Base",
+        "inputs": {"scenario": "Upside"}
+    })
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert "scenario" in detail.lower()
+
+
+def test_api_run_inputs_scenario_null_ok():
+    """API accepts inputs without scenario (null/omitted) — defaults to request.scenario."""
+    r = client.post("/api/v1/run", json={
+        "project_type": "Solar",
+        "scenario": "Downside",
+        "inputs": {"project_type": "Solar"}  # no scenario field
+    })
+    assert r.status_code == 200
