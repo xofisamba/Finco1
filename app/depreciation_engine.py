@@ -140,11 +140,8 @@ def generate_schedule(
             accumulated = accumulated_by_class[asset_class]
             remaining = remaining_by_class[asset_class]
 
-            # Cap the final depreciable year if remaining would go negative
-            if period == life - 1:
-                annual = min(annual, remaining)
-            elif period >= life:
-                annual = 0.0
+            if period >= life:
+                continue
 
             accumulated_by_class[asset_class] += annual
             remaining_by_class[asset_class] -= annual
