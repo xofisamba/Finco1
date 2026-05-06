@@ -1,4 +1,5 @@
-"""Scenario engine — pure functions, no Streamlit imports."""
+"""Scenario engine — pure functions, no Streamlit imports.
+# DEPRECATED: Use app.scenario_manager instead. Retained for backward compatibility only."""
 from dataclasses import is_dataclass, replace
 from app.capex_overrides import scale_capex_items
 

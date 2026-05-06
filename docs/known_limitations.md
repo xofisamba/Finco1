@@ -52,14 +52,14 @@ Features that are structurally present but not validated for production use.
 - Full BESS cost structure and hybrid optimisation are **not yet implemented**.
 - Scenario selector is blocked for BESS types (always shows Base case).
 
-### ScenarioManager (Foundation — Not Integrated)
+### ScenarioManager — Now Integrated (2026-05-06)
 
 - `app/scenario_manager.py` provides `Scenario` dataclass and `ScenarioManager` class.
-- **This is a foundation module. It is not yet wired into `run_demo_project()`.**
-- The active scenario engine is `app/scenarios.apply_scenario()` (legacy).
-- The two engines use **different revenue/tariff multipliers** (legacy: −5%/+3%; ScenarioManager: −15%/+15%).
-- Migration plan: wire `ScenarioManager.apply_overrides()` into `run_demo_project()`, then remove legacy engine.
-- See `docs/ARCHITECTURE.md` §ScenarioManager for full details.
+- **Active runtime engine** — wired into `run_demo_project()` for all Solar/Wind scenarios.
+- Uses identical multiplier values as legacy engine (revenue −5%/+3%, capex +5%/−3%, opex +10%/−5%, p50 0.90/1.05, degradation 1.15/0.90).
+- `app/scenarios.apply_scenario()` is deprecated — retained for backward compatibility only (marked with deprecation comment in file).
+- `scenario_summary()` drives UI scenario table, Excel export delta table, and UI runner display — all three now use the same source.
+- **⚠️ CAPEX depreciation uses legacy path:** per-asset-class depreciation from factory `CapexItem` objects, not from `CapexLineItem` breakdown. See CAPEX Matrix section above.
 
 ### CAPEX Matrix — Now Wired to Waterfall (2026-05-06)
 

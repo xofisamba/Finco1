@@ -32,7 +32,7 @@ streamlit_app.py (UI)
         ▼
 app/ui_runner.py  ← run_demo_project()
         │
-        ├── app/scenarios.apply_scenario()  ← LEGACY ACTIVE SCENARIO ENGINE
+        ├── app/scenario_manager.ScenarioManager  ← ACTIVE SCENARIO ENGINE
         │
         ├── domain/period_engine.py
         │
@@ -41,11 +41,11 @@ app/ui_runner.py  ← run_demo_project()
         └── app.waterfall_runner.run()
 ```
 
-**Active scenario engine:** `app/scenarios.apply_scenario()` — legacy path with Base/Downside/Upside multipliers (P50, CapEx, OpEx, Degradation, Tariff).
+**Active scenario engine:** `app/scenario_manager.ScenarioManager` — wired into `run_demo_project()` for Solar/Wind scenarios (Base/Downside/Upside).
 
-**Foundation layer (inactive):** `app/scenario_manager.ScenarioManager` — clean scenario registry and override application. Not yet wired into `run_demo_project()`. This is the planned migration target.
+**Legacy engine (deprecated):** `app/scenarios.apply_scenario()` — retained for backward compatibility only. All runtime scenario logic now flows through `ScenarioManager.apply_overrides()`.
 
-**CAPEX status:** `app/capex_engine.py` provides `CapexLineItem` and `generate_capex_schedule()`. The CapEx matrix UI is wired in the CapEx tab (`app/ui/pages.py`). However, `capex_line_items` from the UI is **not yet passed to `run_demo_project()`** — the runtime still uses `project_inputs.capex` from the project factory defaults. CAPEX matrix edits are a UI-only feature at this stage.
+**CAPEX status:** `app/capex_engine.py` provides `CapexLineItem` and `generate_capex_schedule()`. The CapEx matrix UI is wired in the CapEx tab (`app/ui/pages.py`). `capex_line_items` from the UI → `run_demo_project()` → `waterfall_core` → total CAPEX override applied. **Depreciation uses legacy path:** per-asset-class depreciation schedule from factory `CapexItem` objects, not yet from `CapexLineItem` breakdown.
 
 ---
 
@@ -82,17 +82,18 @@ app/ui_runner.py  ← run_demo_project()
 
 ## 5. Scenario Status
 
-**ScenarioManager is the active runtime engine as of 2026-05-06.**
-`app/scenarios.apply_scenario()` is preserved for backward compatibility.
+**ScenarioManager is the active runtime engine — fully integrated.**
+`app/scenarios.apply_scenario()` is deprecated and retained for backward compatibility only (marked with deprecation comment in file).
 
-**ScenarioManager (now active):**
-- `Scenario` dataclass: `name`, `description`, `is_base`, `revenue/opex/capex_multiplier`, `debt_sculpting_override`, `annual_generation_hours`
+**ScenarioManager (active):**
+- `Scenario` dataclass: `name`, `description`, `is_base`, `revenue/opex/capex_multiplier`, `p50_multiplier`, `degradation_multiplier`, `debt_sculpting_override`, `annual_generation_hours`
 - `ScenarioManager`: per-project-type registry, `apply_overrides()` returns deep copy
-- Solar/Wind: Base/Downside/Upside defined (revenue -5%/+3%, capex +5%/-3%, opex +10%/-5%)
+- Solar/Wind: Base/Downside/Upside defined (revenue -5%/+3%, capex +5%/-3%, opex +10%/-5%, p50 0.90/1.05, degradation 1.15/0.90)
 - BESS fallback: Base only
-- **Integrated:** `ScenarioManager.apply_overrides()` called in `run_demo_project()` for Solar/Wind non-Base scenarios
+- **Integrated:** `ScenarioManager.apply_overrides()` called in `run_demo_project()` for all Solar/Wind scenarios
+- `scenario_summary()` used by UI (streamlit_app.py), Excel export (app/excel_export.py), and UI runner (app/ui_runner.py)
 
-**Multiplier reconciliation (2026-05-06):** Both engines now use the same values.
+**Multiplier reconciliation (2026-05-06):** Both engines (legacy + ScenarioManager) now use identical multiplier values.
 
 ---
 

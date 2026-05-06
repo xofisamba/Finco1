@@ -310,23 +310,186 @@ class TestScenarioP50Multiplier:
         assert p50_row["change"] == "-10%"
 
 
+class TestScenarioDisplayMatchesCalculation:
+    """Regression test: scenario_summary reports the same axes that apply_overrides actually applies.
+
+    Ensures the ScenarioManager summary shown in UI/export matches the multipliers
+    that were actually applied to the project, so users see truthful scenario deltas.
+    """
+
+    def test_solar_downside_summary_matches_applied_overrides(self):
+        """Solar Downside: summary must show PPA Tariff -5%, P50 Hours -10%, CapEx +5%, OpEx +10%, Degradation +15%."""
+        from app.scenario_manager import ScenarioManager
+        from app.project_factories import create_default_solar_project
+
+        mgr = ScenarioManager("solar")
+        solar = create_default_solar_project()
+        result = mgr.apply_overrides(solar, "Downside")
+        rows = mgr.scenario_summary("Downside")
+
+        # Build a dict of assumption -> change string
+        summary = {r["assumption"]: r["change"] for r in rows}
+
+        # Verify each axis is present and correct
+        assert "PPA Tariff" in summary, f"PPA Tariff missing from summary: {summary}"
+        assert summary["PPA Tariff"] == "-5%", f"PPA Tariff should be -5%, got {summary['PPA Tariff']}"
+        assert "P50 Hours" in summary, f"P50 Hours missing from summary: {summary}"
+        assert summary["P50 Hours"] == "-10%", f"P50 Hours should be -10%, got {summary['P50 Hours']}"
+        assert "Total CapEx" in summary, f"Total CapEx missing from summary: {summary}"
+        assert summary["Total CapEx"] == "+5%", f"Total CapEx should be +5%, got {summary['Total CapEx']}"
+        assert "OpEx" in summary, f"OpEx missing from summary: {summary}"
+        assert summary["OpEx"] == "+10%", f"OpEx should be +10%, got {summary['OpEx']}"
+        assert "Degradation" in summary, f"Degradation missing from summary: {summary}"
+        assert summary["Degradation"] == "+15%", f"Degradation should be +15%, got {summary['Degradation']}"
+
+        # Verify actual applied multipliers match summary
+        base = create_default_solar_project()
+        assert result.revenue.ppa_base_tariff / base.revenue.ppa_base_tariff == pytest.approx(0.95)
+        assert result.technical.operating_hours_p50 / base.technical.operating_hours_p50 == pytest.approx(0.90)
+        assert result.capex.total_capex / base.capex.total_capex == pytest.approx(1.05)
+        base_opex_y1 = sum(i.y1_amount_keur for i in base.opex)
+        down_opex_y1 = sum(i.y1_amount_keur for i in result.opex)
+        assert down_opex_y1 / base_opex_y1 == pytest.approx(1.10)
+        assert result.technical.pv_degradation / base.technical.pv_degradation == pytest.approx(1.15)
+
+    def test_solar_upside_summary_matches_applied_overrides(self):
+        """Solar Upside: summary must show PPA Tariff +3%, P50 Hours +5%, CapEx -3%, OpEx -5%, Degradation -10%."""
+        from app.scenario_manager import ScenarioManager
+        from app.project_factories import create_default_solar_project
+
+        mgr = ScenarioManager("solar")
+        solar = create_default_solar_project()
+        result = mgr.apply_overrides(solar, "Upside")
+        rows = mgr.scenario_summary("Upside")
+        summary = {r["assumption"]: r["change"] for r in rows}
+
+        assert summary.get("PPA Tariff") == "+3%"
+        assert summary.get("P50 Hours") == "+5%"
+        assert summary.get("Total CapEx") == "-3%"
+        assert summary.get("OpEx") == "-5%"
+        assert summary.get("Degradation") == "-10%"
+
+        base = create_default_solar_project()
+        assert result.revenue.ppa_base_tariff / base.revenue.ppa_base_tariff == pytest.approx(1.03)
+        assert result.technical.operating_hours_p50 / base.technical.operating_hours_p50 == pytest.approx(1.05)
+        assert result.capex.total_capex / base.capex.total_capex == pytest.approx(0.97)
+        base_opex_y1 = sum(i.y1_amount_keur for i in base.opex)
+        up_opex_y1 = sum(i.y1_amount_keur for i in result.opex)
+        assert up_opex_y1 / base_opex_y1 == pytest.approx(0.95)
+        assert result.technical.pv_degradation / base.technical.pv_degradation == pytest.approx(0.90)
+
+    def test_wind_downside_summary_matches_applied_overrides(self):
+        """Wind Downside: summary must show PPA Tariff -5%, P50 Hours -10%, CapEx +5%, OpEx +10%."""
+        from app.scenario_manager import ScenarioManager
+        from app.project_factories import create_default_wind_project
+
+        mgr = ScenarioManager("wind")
+        wind = create_default_wind_project()
+        result = mgr.apply_overrides(wind, "Downside")
+        rows = mgr.scenario_summary("Downside")
+        summary = {r["assumption"]: r["change"] for r in rows}
+
+        assert summary.get("PPA Tariff") == "-5%"
+        assert summary.get("P50 Hours") == "-10%"
+        assert summary.get("Total CapEx") == "+5%"
+        assert summary.get("OpEx") == "+10%"
+
+    def test_wind_upside_summary_matches_applied_overrides(self):
+        """Wind Upside: summary must show PPA Tariff +3%, P50 Hours +5%, CapEx -3%, OpEx -5%."""
+        from app.scenario_manager import ScenarioManager
+        from app.project_factories import create_default_wind_project
+
+        mgr = ScenarioManager("wind")
+        wind = create_default_wind_project()
+        result = mgr.apply_overrides(wind, "Upside")
+        rows = mgr.scenario_summary("Upside")
+        summary = {r["assumption"]: r["change"] for r in rows}
+
+        assert summary.get("PPA Tariff") == "+3%"
+        assert summary.get("P50 Hours") == "+5%"
+        assert summary.get("Total CapEx") == "-3%"
+        assert summary.get("OpEx") == "-5%"
+
+
+class TestAdvancedOpexScenarioInteraction:
+    """Regression test: Advanced OPEX line items + scenario scaling interact correctly.
+
+    When advanced_opex_line_items are provided, scenario overrides must still apply
+    to revenue/capex/p50/degradation, and the resulting KPI directionality must be
+    consistent with the scenario intent (Downside = lower IRR, lower DSCR).
+    """
+
+    def test_solar_downside_lower_irr_than_base_with_advanced_opex(self):
+        """Solar Downside with advanced OPEX: IRR must be lower than Base."""
+        from app.ui_runner import run_demo_project
+        from app.opex_engine import build_opex_line_items_from_defaults
+
+        opex_items = build_opex_line_items_from_defaults("solar")
+        r_base = run_demo_project("Solar", "Base", advanced_opex_line_items=opex_items).result
+        r_down = run_demo_project("Solar", "Downside", advanced_opex_line_items=opex_items).result
+
+        assert r_down.project_irr < r_base.project_irr, (
+            f"Downside IRR ({r_down.project_irr:.4f}) should be < Base IRR ({r_base.project_irr:.4f})"
+        )
+
+    def test_scenario_summary_shows_opex_plus_10pct_for_downside(self):
+        """Solar Downside scenario_summary must show OpEx +10% even with advanced OPEX items."""
+        from app.scenario_manager import ScenarioManager
+
+        mgr = ScenarioManager("solar")
+        rows = mgr.scenario_summary("Downside")
+        opex_rows = [r for r in rows if r["assumption"] == "OpEx"]
+        assert len(opex_rows) == 1, f"Expected exactly one OpEx row, got {len(opex_rows)}: {opex_rows}"
+        assert "+10%" in opex_rows[0]["change"], f"OpEx change should be +10%, got {opex_rows[0]['change']}"
+
+    def test_solar_downside_opex_actually_increases_with_scenario_override(self):
+        """Downside apply_overrides must increase OPEX Y1 by 10% even when advanced items are provided.
+
+        Note: DSCR directionality with advanced OPEX is complex — higher OPEX reduces CFADS,
+        but lower revenue in Downside also reduces debt sizing (lower debt service), so actual
+        DSCR may go up or down depending on which effect dominates. The IRR direction is
+        unambiguous (Downside < Base), but DSCR direction depends on the OPEX quantum.
+        """
+        from app.scenario_manager import ScenarioManager
+        from app.project_factories import create_default_solar_project
+
+        mgr = ScenarioManager("solar")
+        solar = create_default_solar_project()
+        result = mgr.apply_overrides(solar, "Downside")
+
+        base_y1 = sum(i.y1_amount_keur for i in solar.opex)
+        down_y1 = sum(i.y1_amount_keur for i in result.opex)
+        assert down_y1 > base_y1, (
+            f"Downside OPEX Y1 ({down_y1}) should be > Base OPEX Y1 ({base_y1}). "
+            f"The apply_overrides multiplier (+10%) must actually increase OPEX."
+        )
+        assert abs(down_y1 / base_y1 - 1.10) < 0.001, (
+            f"Downside OPEX Y1 multiplier should be 1.10x, got {down_y1/base_y1:.4f}"
+        )
+
+
 class TestScenarioManagerGoldenOutputs:
     """Golden-output validation for Solar Base scenario via ScenarioManager flow.
 
-    NOTE: These are loose sanity bounds, not tight calibration targets.
-    Test pollution from other modules mutating shared default-project objects
-    means tight tolerances cause spurious failures in the full suite.
+    # Branch-current golden values — NOT bank certification. For internal validation only.
+
+    NOTE: These are wide sanity bounds. Test pollution from other modules mutating
+    shared default-project objects can shift KPI by ~50bps in the full suite.
     Run this test in isolation for precise KPI validation.
+    Captured values (2026-05-06 post-rc1-structure-roadmap HEAD):
+      project_irr=0.104029, equity_irr=0.135783, actual_min_dscr=1.4421,
+      actual_avg_dscr=1.6502, total_senior_ds=34175keur,
+      total_revenue=119532keur, total_distribution=43705keur, total_ebitda=107361keur
     """
 
     def test_solar_base_golden_outputs(self):
         from app.ui_runner import run_demo_project
         r = run_demo_project("Solar", "Base").result
-        # Loose sanity bounds — catches gross regressions (e.g., IRR doubling, DSCR going negative)
-        assert 0.08 < r.project_irr < 0.13          # sanity: 8-13% range
-        assert 0.10 < r.equity_irr < 0.18          # sanity: 10-18% range
-        assert 1.1 < r.actual_min_dscr < 1.7        # sanity: 1.1-1.7x range
-        assert 1.3 < r.actual_avg_dscr < 1.9        # sanity: 1.3-1.9x range
+        # Wide sanity bounds (catches gross regressions; tolerant of test-pollution drift)
+        assert 0.08 < r.project_irr < 0.13
+        assert 0.10 < r.equity_irr < 0.18
+        assert 1.1 < r.actual_min_dscr < 1.7
+        assert 1.3 < r.actual_avg_dscr < 1.9
         assert 25000 < r.total_senior_ds_keur < 45000
         assert 90000 < r.total_revenue_keur < 140000
         assert 30000 < r.total_distribution_keur < 60000
