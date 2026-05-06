@@ -1,9 +1,11 @@
 """CLI commands."""
 import json
 import sys
+from pathlib import Path
 
 import click
 
+from app.api.project_runner import run_project
 from app.ui_runner import run_demo_project
 from app.excel_export import build_excel_export
 from app.input_schema import ProjectInputsSchema
@@ -123,6 +125,91 @@ def run(project, scenario, period_view, input_file, output, json_output):
     except Exception as e:
         click.echo(f'Error: {e}', err=True)
         sys.exit(1)
+
+
+@cli.command(name='batch')
+@click.option('--input', 'input_path', required=True, type=click.Path(exists=True),
+              help='JSON batch input file')
+@click.option('--output', 'output_path', default=None, type=str,
+              help='JSON output file (optional)')
+@click.option('--fail-fast', is_flag=True,
+              help='Stop on first error')
+def batch(input_path, output_path, fail_fast):
+    """Run a batch of project configurations from a JSON file."""
+    with open(input_path) as f:
+        projects = json.load(f)
+
+
+    if not isinstance(projects, list):
+        click.echo('Error: batch JSON must be a list of project objects', err=True)
+        sys.exit(1)
+
+    results = []
+    for i, proj_def in enumerate(projects):
+        pt = proj_def.get('project_type')
+        sc = proj_def.get('scenario', 'Base')
+        pv = proj_def.get('period_view', 'Semiannual')
+        inputs_dict = proj_def.get('inputs')
+
+        if pt not in SUPPORTED_PROJECTS:
+            msg = f'Row {i}: unsupported project_type "{pt}"'
+            if fail_fast:
+                raise ValueError(msg)
+            results.append({'index': i, 'status': 'failed', 'project_type': pt, 'scenario': sc, 'error': msg})
+            continue
+
+        try:
+            project_inputs_override = None
+            if inputs_dict:
+                schema = ProjectInputsSchema(**inputs_dict)
+                if schema.project_type and schema.project_type != pt:
+                    raise ValueError(f"inputs project_type '{schema.project_type}' != '{pt}'")
+                project_inputs_override = build_projectinputs(schema)
+
+            result = run_project(pt, sc, period_view=pv,
+                                 project_inputs_override=project_inputs_override)
+            kpis = result.get('kpis', {})
+            results.append({
+                'index': i,
+                'status': 'success',
+                'project_type': pt,
+                'scenario': sc,
+                'period_view': pv,
+                'project_irr': kpis.get('project_irr'),
+                'equity_irr': kpis.get('equity_irr'),
+                'min_dscr': kpis.get('min_dscr'),
+                'avg_dscr': kpis.get('avg_dscr'),
+                'total_revenue_keur': kpis.get('total_revenue_keur'),
+            })
+        except Exception as e:
+            if fail_fast:
+                raise
+            results.append({
+                'index': i,
+                'status': 'failed',
+                'project_type': pt,
+                'scenario': sc,
+                'error': str(e),
+            })
+
+
+    for r in results:
+        status = r['status']
+        pt = r.get('project_type', '?')
+        sc = r.get('scenario', '?')
+        if status == 'success':
+            irr = f"{r.get('project_irr', 0)*100:.2f}%" if r.get('project_irr') is not None else 'N/A'
+            click.echo(f"  [{r['index']}] {pt}/{sc} → IRR={irr} OK")
+        else:
+            click.echo(f"  [{r['index']}] {pt}/{sc} → FAILED: {r.get('error')}", err=True)
+
+    successes = sum(1 for r in results if r['status'] == 'success')
+    click.echo(f'Batch complete: {successes}/{len(results)} succeeded')
+
+    if output_path:
+        with open(output_path, 'w') as f:
+            json.dump(results, f, indent=2, default=str)
+        click.echo(f'Written to {output_path}')
 
 
 if __name__ == '__main__':
