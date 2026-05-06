@@ -1,0 +1,414 @@
+"""Bankable depreciation framework — tax/book separation, granular asset classes.
+
+Architecture:
+  CapexLineItem (app.capex_engine)
+      ↓
+  map_capex_line_item_to_depreciation_basis(item, profile)
+      ↓
+  generate_tax_and_book_schedule(basis_items, profile, total_periods)
+      ↓
+  TaxDepreciationSchedule + BookDepreciationSchedule
+      ↓
+  WaterfallRunConfig(tax_depreciation_schedule=..., book_depreciation_schedule=...)
+      ↓
+  waterfall_core → tax_shield from TAX schedule only
+"""
+from __future__ import annotations
+
+import logging
+import math
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+class BankableAssetClass(str, Enum):
+    """Granular asset classes for bankable depreciation."""
+    SOLAR_MODULES = "solar_modules"
+    INVERTERS = "inverters"
+    MOUNTING_STRUCTURES = "mounting_structures"
+    GRID_CONNECTION = "grid_connection"
+    TRANSFORMER = "transformer"
+    CIVIL_WORKS = "civil_works"
+    DEVELOPMENT_SOFT = "development_soft"
+    LAND = "land"
+    CONTINGENCY = "contingency"
+    OTHER = "other"
+
+
+class DepreciationConvention(str, Enum):
+    FULL_YEAR = "full_year"
+    HALF_YEAR = "half_year"
+    DAY_FRACTION = "day_fraction"  # pro-rata using period day_fraction
+    COD_MONTH = "cod_month"
+
+
+class DepreciationMethod(str, Enum):
+    STRAIGHT_LINE = "straight_line"
+    DECLINING_BALANCE = "declining_balance"
+    NON_DEPRECIABLE = "non_depreciable"
+
+
+# ---- Jurisdiction profiles ----
+
+@dataclass
+class AssetDepreciationRule:
+    """Depreciation rule for one asset class in a given profile."""
+    asset_class: BankableAssetClass
+    tax_life_years: int
+    book_life_years: int
+    tax_method: DepreciationMethod = DepreciationMethod.STRAIGHT_LINE
+    book_method: DepreciationMethod = DepreciationMethod.STRAIGHT_LINE
+    tax_convention: DepreciationConvention = DepreciationConvention.DAY_FRACTION
+    book_convention: DepreciationConvention = DepreciationConvention.DAY_FRACTION
+
+
+@dataclass
+class DepreciationProfile:
+    """A jurisdiction-specific depreciation profile."""
+    country: str
+    regime: str  # e.g. "CIT", "IBL"
+    asset_rules: dict[BankableAssetClass, AssetDepreciationRule]
+    contingency_treatment: str = "proportional"  # "proportional" or "non_depreciable"
+    source: str = ""
+    notes: str = ""
+
+    def rule_for(self, asset_class: BankableAssetClass) -> Optional[AssetDepreciationRule]:
+        return self.asset_rules.get(asset_class)
+
+    def tax_life(self, asset_class: BankableAssetClass) -> int:
+        rule = self.rule_for(asset_class)
+        return rule.tax_life_years if rule else 10
+
+    def book_life(self, asset_class: BankableAssetClass) -> int:
+        rule = self.rule_for(asset_class)
+        return rule.book_life_years if rule else 10
+
+
+@dataclass
+class DepreciationBasisItem:
+    """A single line item in the depreciation basis."""
+    name: str
+    code: str
+    asset_class: BankableAssetClass
+    amount_keur: float
+    is_depreciable: bool = True
+
+
+@dataclass
+class TaxDepreciationEntry:
+    """Tax depreciation for one period."""
+    period: int
+    asset_class: BankableAssetClass
+    basis_amount_keur: float
+    depreciation_keur: float
+    accumulated_keur: float
+    remaining_basis_keur: float
+
+
+@dataclass
+class BookDepreciationEntry:
+    """Book depreciation for one period."""
+    period: int
+    asset_class: BankableAssetClass
+    basis_amount_keur: float
+    depreciation_keur: float
+    accumulated_keur: float
+    remaining_basis_keur: float
+
+
+@dataclass
+class TaxDepreciationSchedule:
+    """Tax depreciation schedule — feeds waterfall tax shield."""
+    entries: list[TaxDepreciationEntry]  # flat list of all entries across all periods
+    total_periods: int
+    profile_name: str
+
+    def total_by_period(self, period: int) -> float:
+        return sum(e.depreciation_keur for e in self.entries if e.period == period)
+
+    def total_by_asset_class(self, asset_class: BankableAssetClass) -> list[float]:
+        result = [0.0] * self.total_periods
+        for e in self.entries:
+            if e.asset_class == asset_class:
+                result[e.period] = e.depreciation_keur
+        return result
+
+
+@dataclass
+class BookDepreciationSchedule:
+    """Book depreciation schedule — for reporting, NOT waterfall."""
+    entries: list[BookDepreciationEntry]
+    total_periods: int
+    profile_name: str
+
+    def total_by_period(self, period: int) -> float:
+        return sum(e.depreciation_keur for e in self.entries if e.period == period)
+
+
+class DepreciationMappingWarning(UserWarning):
+    """Raised when an asset class cannot be mapped."""
+    pass
+
+
+# ---- Default profiles ----
+
+def _solar_profile() -> DepreciationProfile:
+    rules = {
+        BankableAssetClass.SOLAR_MODULES: AssetDepreciationRule(
+            BankableAssetClass.SOLAR_MODULES, tax_life_years=20, book_life_years=25),
+        BankableAssetClass.INVERTERS: AssetDepreciationRule(
+            BankableAssetClass.INVERTERS, tax_life_years=10, book_life_years=10),
+        BankableAssetClass.MOUNTING_STRUCTURES: AssetDepreciationRule(
+            BankableAssetClass.MOUNTING_STRUCTURES, tax_life_years=20, book_life_years=25),
+        BankableAssetClass.GRID_CONNECTION: AssetDepreciationRule(
+            BankableAssetClass.GRID_CONNECTION, tax_life_years=20, book_life_years=20),
+        BankableAssetClass.TRANSFORMER: AssetDepreciationRule(
+            BankableAssetClass.TRANSFORMER, tax_life_years=20, book_life_years=20),
+        BankableAssetClass.CIVIL_WORKS: AssetDepreciationRule(
+            BankableAssetClass.CIVIL_WORKS, tax_life_years=20, book_life_years=25),
+        BankableAssetClass.DEVELOPMENT_SOFT: AssetDepreciationRule(
+            BankableAssetClass.DEVELOPMENT_SOFT, tax_life_years=5, book_life_years=5),
+        BankableAssetClass.LAND: AssetDepreciationRule(
+            BankableAssetClass.LAND, tax_life_years=0, book_life_years=0,
+            tax_method=DepreciationMethod.NON_DEPRECIABLE,
+            book_method=DepreciationMethod.NON_DEPRECIABLE),
+        BankableAssetClass.CONTINGENCY: AssetDepreciationRule(
+            BankableAssetClass.CONTINGENCY, tax_life_years=5, book_life_years=5),
+        BankableAssetClass.OTHER: AssetDepreciationRule(
+            BankableAssetClass.OTHER, tax_life_years=10, book_life_years=10),
+    }
+    return DepreciationProfile(
+        country="Croatia", regime="IBL",
+        asset_rules=rules, contingency_treatment="proportional",
+        source="Croatian IB Law / Tax Authority",
+        notes="Default solar profile for Croatian IB regime")
+
+
+def _wind_profile() -> DepreciationProfile:
+    rules = {
+        BankableAssetClass.SOLAR_MODULES: AssetDepreciationRule(
+            BankableAssetClass.SOLAR_MODULES, tax_life_years=20, book_life_years=25),
+        BankableAssetClass.INVERTERS: AssetDepreciationRule(
+            BankableAssetClass.INVERTERS, tax_life_years=10, book_life_years=10),
+        BankableAssetClass.MOUNTING_STRUCTURES: AssetDepreciationRule(
+            BankableAssetClass.MOUNTING_STRUCTURES, tax_life_years=20, book_life_years=25),
+        BankableAssetClass.GRID_CONNECTION: AssetDepreciationRule(
+            BankableAssetClass.GRID_CONNECTION, tax_life_years=20, book_life_years=20),
+        BankableAssetClass.TRANSFORMER: AssetDepreciationRule(
+            BankableAssetClass.TRANSFORMER, tax_life_years=20, book_life_years=20),
+        BankableAssetClass.CIVIL_WORKS: AssetDepreciationRule(
+            BankableAssetClass.CIVIL_WORKS, tax_life_years=20, book_life_years=25),
+        BankableAssetClass.DEVELOPMENT_SOFT: AssetDepreciationRule(
+            BankableAssetClass.DEVELOPMENT_SOFT, tax_life_years=5, book_life_years=5),
+        BankableAssetClass.LAND: AssetDepreciationRule(
+            BankableAssetClass.LAND, tax_life_years=0, book_life_years=0,
+            tax_method=DepreciationMethod.NON_DEPRECIABLE,
+            book_method=DepreciationMethod.NON_DEPRECIABLE),
+        BankableAssetClass.CONTINGENCY: AssetDepreciationRule(
+            BankableAssetClass.CONTINGENCY, tax_life_years=5, book_life_years=5),
+        BankableAssetClass.OTHER: AssetDepreciationRule(
+            BankableAssetClass.OTHER, tax_life_years=10, book_life_years=10),
+    }
+    return DepreciationProfile(
+        country="Croatia", regime="IBL",
+        asset_rules=rules, contingency_treatment="proportional",
+        source="Croatian IB Law / Tax Authority",
+        notes="Default wind profile for Croatian IB regime")
+
+
+PROFILES = {
+    "solar_croatia_ibl": _solar_profile,
+    "wind_croatia_ibl": _wind_profile,
+}
+
+
+def get_profile(name: str) -> DepreciationProfile:
+    """Get a named profile, or return solar default."""
+    if name in PROFILES:
+        return PROFILES[name]()
+    logger.warning("Unknown depreciation profile %r, using solar default", name)
+    return _solar_profile()
+
+
+# ---- Asset class mapping ----
+
+def _is_inverter(item_name: str, item_code: str) -> bool:
+    name_lower = item_name.lower()
+    code_lower = item_code.lower()
+    inverter_keywords = ["inverter", "dc/ac", "power electronics", "pv inverter",
+                         "string inverter", "central inverter", "optimizer"]
+    return any(kw in name_lower or kw in code_lower for kw in inverter_keywords)
+
+
+def _is_land(item_name: str, item_code: str) -> bool:
+    name_lower = item_name.lower()
+    code_lower = item_code.lower()
+    return "land" in name_lower or "zemlji" in name_lower or "zemlja" in name_lower
+
+
+def map_capex_line_item_to_basis(item, profile: DepreciationProfile) -> DepreciationBasisItem:
+    """Map a CapexLineItem to a DepreciationBasisItem with granular asset class.
+
+    This function inspects item.asset_class, item.code, and item.name to determine
+    the bankable asset class.
+    """
+    name = getattr(item, 'name', '') or ''
+    code = getattr(item, 'code', '') or ''
+    amount = getattr(item, 'amount_keur', 0.0) or 0.0
+    orig_class = getattr(item, 'asset_class', None)
+
+    # Determine bankable asset class
+    if _is_land(name, code):
+        ac = BankableAssetClass.LAND
+    elif orig_class is not None:
+        # Map legacy AssetClass to bankable
+        orig_str = orig_class.name.upper()  # e.g. "GENERATION" from AssetClass.GENERATION
+        mapping = {
+            "GENERATION": BankableAssetClass.SOLAR_MODULES,
+            "GRID": BankableAssetClass.GRID_CONNECTION,
+            "DEVELOPMENT": BankableAssetClass.DEVELOPMENT_SOFT,
+            "EPC": BankableAssetClass.CIVIL_WORKS,
+            "CONTINGENCY": BankableAssetClass.CONTINGENCY,
+            "LAND": BankableAssetClass.LAND,
+            "OTHER": BankableAssetClass.OTHER,
+        }
+        ac = mapping.get(orig_str, BankableAssetClass.OTHER)
+        if ac == BankableAssetClass.OTHER and orig_str != "OTHER":
+            logger.warning(
+                "DepreciationMappingWarning: asset_class %r not in mapping, treating as OTHER. "
+                "item=%s code=%s", orig_class, name, code)
+    else:
+        ac = BankableAssetClass.OTHER
+        logger.warning(
+            "DepreciationMappingWarning: unknown asset class for %s (%s), using OTHER",
+            name, code)
+
+    is_depreciable = (ac != BankableAssetClass.LAND and
+                      ac != BankableAssetClass.OTHER and
+                      not (profile.rule_for(ac) and
+                           profile.rule_for(ac).tax_method == DepreciationMethod.NON_DEPRECIABLE))
+
+    return DepreciationBasisItem(
+        name=name, code=code, asset_class=ac,
+        amount_keur=amount, is_depreciable=is_depreciable)
+
+
+def _generate_asset_schedule(
+    asset_class: BankableAssetClass,
+    amount_keur: float,
+    rule: AssetDepreciationRule,
+    profile: DepreciationProfile,
+    total_periods: int,
+    day_fractions: list[float],
+    tax_entries: list[TaxDepreciationEntry],
+    book_entries: list[BookDepreciationEntry],
+    source: str = "direct"
+) -> None:
+    """Generate tax and book entries for one asset class."""
+    if amount_keur <= 0 or rule.tax_life_years <= 0:
+        return
+
+    # Tax schedule
+    tax_remaining = amount_keur
+    for p in range(total_periods):
+        df = day_fractions[p] if p < len(day_fractions) else 1.0
+        depr = (amount_keur / max(1, rule.tax_life_years)) * df if p < rule.tax_life_years else 0.0
+        depr = min(depr, tax_remaining)
+        tax_remaining -= depr
+        tax_entries.append(TaxDepreciationEntry(
+            period=p, asset_class=asset_class,
+            basis_amount_keur=amount_keur,
+            depreciation_keur=round(depr, 4),
+            accumulated_keur=round(amount_keur - tax_remaining, 4),
+            remaining_basis_keur=round(max(0, tax_remaining), 4)
+        ))
+
+    # Book schedule
+    book_remaining = amount_keur
+    for p in range(total_periods):
+        df = day_fractions[p] if p < len(day_fractions) else 1.0
+        depr = (amount_keur / max(1, rule.book_life_years)) * df if p < rule.book_life_years else 0.0
+        depr = min(depr, book_remaining)
+        book_remaining -= depr
+        book_entries.append(BookDepreciationEntry(
+            period=p, asset_class=asset_class,
+            basis_amount_keur=amount_keur,
+            depreciation_keur=round(depr, 4),
+            accumulated_keur=round(amount_keur - book_remaining, 4),
+            remaining_basis_keur=round(max(0, book_remaining), 4)
+        ))
+
+
+def generate_tax_and_book_schedule(
+    basis_items: list[DepreciationBasisItem],
+    profile: DepreciationProfile,
+    total_periods: int,
+    day_fractions: Optional[list[float]] = None,
+) -> tuple[TaxDepreciationSchedule, BookDepreciationSchedule]:
+    """Generate tax and book depreciation schedules from basis items.
+
+    Args:
+        basis_items: list of DepreciationBasisItem from map_capex_line_item_to_basis()
+        profile: DepreciationProfile for tax and book lives/methods
+        total_periods: number of annual periods
+        day_fractions: optional per-period day fractions (0..1) for DAY_FRACTION convention
+
+    Returns:
+        (TaxDepreciationSchedule, BookDepreciationSchedule)
+    """
+    if day_fractions is None:
+        day_fractions = [1.0] * total_periods
+
+    tax_entries: list[TaxDepreciationEntry] = []
+    book_entries: list[BookDepreciationEntry] = []
+
+    # Handle contingency proportional allocation
+    contingency_items = [b for b in basis_items if b.asset_class == BankableAssetClass.CONTINGENCY]
+    depreciable_items = [b for b in basis_items
+                         if b.is_depreciable and b.asset_class != BankableAssetClass.CONTINGENCY]
+    total_depr_basis = sum(b.amount_keur for b in depreciable_items)
+
+    for item in basis_items:
+        if item.asset_class == BankableAssetClass.CONTINGENCY:
+            # Allocate proportionally to depreciable asset classes
+            if total_depr_basis > 0 and item.amount_keur > 0:
+                for di in depreciable_items:
+                    alloc_pct = di.amount_keur / total_depr_basis
+                    alloc_amount = item.amount_keur * alloc_pct
+                    rule = profile.rule_for(di.asset_class)
+                    if not rule or rule.tax_method == DepreciationMethod.NON_DEPRECIABLE:
+                        continue
+                    _generate_asset_schedule(
+                        di.asset_class, alloc_amount, rule, profile,
+                        total_periods, day_fractions, tax_entries, book_entries, "contingency"
+                    )
+            continue
+
+        if not item.is_depreciable:
+            continue
+
+        rule = profile.rule_for(item.asset_class)
+        if not rule:
+            logger.warning("No depreciation rule for %s, treating as OTHER 10y",
+                          item.asset_class.value)
+            rule = AssetDepreciationRule(item.asset_class, 10, 10)
+
+        if rule.tax_method == DepreciationMethod.NON_DEPRECIABLE:
+            continue
+
+        _generate_asset_schedule(
+            item.asset_class, item.amount_keur, rule, profile,
+            total_periods, day_fractions, tax_entries, book_entries, "direct"
+        )
+
+    tax_sched = TaxDepreciationSchedule(
+        entries=tax_entries, total_periods=total_periods,
+        profile_name=f"{profile.country}_{profile.regime}")
+    book_sched = BookDepreciationSchedule(
+        entries=book_entries, total_periods=total_periods,
+        profile_name=f"{profile.country}_{profile.regime}")
+
+    return tax_sched, book_sched
