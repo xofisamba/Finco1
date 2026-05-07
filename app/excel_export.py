@@ -163,7 +163,9 @@ def build_excel_export(
         _write_validation_sheet(writer, validation_issues)
 
         # ── Depreciation Assumptions (Bankable Framework) ─────────────────
-        _write_depreciation_assumptions_sheet(writer, "solar_croatia_ibl")
+        # Select profile based on project_type: Solar → solar_croatia_ibl, Wind → wind_croatia_ibl
+        depr_profile = f"{project_type.lower()}_croatia_ibl" if project_type.lower() in ("solar", "wind") else "solar_croatia_ibl"
+        _write_depreciation_assumptions_sheet(writer, depr_profile)
 
         # ── Tax Depreciation Disclosure ───────────────────────────────────
         _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items)

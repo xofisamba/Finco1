@@ -148,6 +148,17 @@ class BookDepreciationSchedule:
     def total_by_period(self, period: int) -> float:
         return sum(e.depreciation_keur for e in self.entries if e.period == period)
 
+    def total_by_asset_class(self, asset_class: BankableAssetClass) -> list[float]:
+        """Return list of book depreciation per period for given asset class.
+        
+        Zero-filled where no entries exist for that asset class in a given period.
+        """
+        result = [0.0] * self.total_periods
+        for e in self.entries:
+            if e.asset_class == asset_class:
+                result[e.period] = e.depreciation_keur
+        return result
+
 
 class DepreciationMappingWarning(UserWarning):
     """Raised when an asset class cannot be mapped."""

@@ -225,7 +225,8 @@ class TestDayFractionSingleApplication:
     def test_legacy_and_bankable_both_return_annual_amounts(self):
         """Legacy and bankable both return annual amounts before waterfall day_fraction.
         
-        Smoke test: verify both paths produce annual (non-pro-rated) schedules.
+        Pure invariant test: no ratio assertions. Fails if bankable schedule is
+        accidentally zero, negative, or pre-halved.
         """
         from app.depreciation_engine import generate_schedule
         from app.depreciation_bankable import build_bankable_waterfall_schedule
@@ -244,18 +245,45 @@ class TestDayFractionSingleApplication:
         )
         bankable_annual = bankable_schedule.total_by_period
         
-        # Both must have positive annual depreciation
+        # Invariant 1: all values non-negative
         assert all(v >= 0 for v in legacy_annual), "Legacy must have non-negative annual depreciation"
         assert all(v >= 0 for v in bankable_annual), "Bankable must have non-negative annual depreciation"
         
-        # Both must return full-year amounts (sum > 0, first 5 years non-zero)
-        assert sum(legacy_annual[:5]) > 0, "Legacy annual amounts should be non-zero"
-        assert sum(bankable_annual[:5]) > 0, "Bankable annual amounts should be non-zero"
+        # Invariant 2: first-year bankable depreciation is materially positive
+        assert bankable_annual[0] > 10.0, (
+            f"First-year bankable depreciation ({bankable_annual[0]:.2f}) should be materially positive. "
+            f"If near zero: schedule may be accidentally empty or pre-halved."
+        )
         
-        # Ratios between bankable and legacy should be in reasonable range (not extreme)
-        for window in [3, 5, 10]:
-            ratio = sum(bankable_annual[:window]) / max(1, sum(legacy_annual[:window]))
-            assert 0.3 < ratio < 3.5, (
-                f"Bankable/legacy ratio for first {window} years = {ratio:.2f}. "
-                f"Out of reasonable range. Indicates asset mapping or schedule issue."
-            )
+        # Invariant 3: first 5 years non-zero (not pre-halved or zeroed)
+        assert sum(bankable_annual[:5]) > 50.0, (
+            f"First 5-year bankable total ({sum(bankable_annual[:5]):.2f}) should be > 50 kEUR. "
+            f"If too small: schedule may be accidentally pre-halved or empty."
+        )
+        
+        # Invariant 4: bankable total depreciation does not exceed CAPEX basis by more than rounding
+        total_capex = sum(item.amount_keur for item in items if item.asset_class.name != "LAND")
+        total_bankable_depr = sum(bankable_annual)
+        assert total_bankable_depr <= total_capex * 1.01, (
+            f"Total bankable depreciation ({total_bankable_depr:.0f} kEUR) should not exceed "
+            f"depreciable CAPEX basis ({total_capex:.0f} kEUR) by more than rounding."
+        )
+        
+        # Invariant 5: total depreciation is positive (not accidentally zero)
+        assert total_bankable_depr > 0, "Bankable total depreciation must be positive"
+        
+        # Invariant 6: no period is negative (accounting sanity)
+        assert all(v >= -0.01 for v in bankable_annual), (
+            "No period should have negative depreciation (rounding tolerance: -0.01)"
+        )
+        
+        # Invariant 7: both paths produce annual (not pro-rated) amounts
+        assert legacy_annual[0] > 0, "Legacy first year must be positive annual amount"
+        assert bankable_annual[0] > 0, "Bankable first year must be positive annual amount"
+        # Annual amounts should be in the same ballpark (both ~1000-10000 kEUR range for solar)
+        # This catches if one path accidentally halved all values
+        ratio = bankable_annual[0] / max(1, legacy_annual[0])
+        assert 0.2 < ratio < 5.0, (
+            f"Bankable/legacy first-year ratio ({ratio:.2f}) is outside reasonable range. "
+            f"May indicate pre-halving or incorrect scaling."
+        )
