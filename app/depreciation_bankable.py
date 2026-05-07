@@ -417,6 +417,7 @@ def build_bankable_waterfall_schedule(
     profile_name: str = "solar_croatia_ibl",
     total_periods: int = 20,
     convention: DepreciationConvention = DepreciationConvention.FULL_YEAR,
+    day_fractions: Optional[list[float]] = None,
 ) -> dict:
     """One-step bridge: CapexLineItems → waterfall-compatible depreciation dict.
 
@@ -439,12 +440,13 @@ def build_bankable_waterfall_schedule(
     """
     profile = get_profile(profile_name)
     basis_items = [map_capex_line_item_to_basis(item, profile) for item in capex_line_items]
-    # CRITICAL: Use FULL_YEAR convention so generate_tax_and_book_schedule() returns
-    # ANNUAL depreciation amounts. Day fraction is applied ONCE in waterfall_core.
-    # Do NOT rely on implicit defaults — be explicit.
+    # convention parameter is passed through to generate_tax_and_book_schedule.
+    # For runtime: use FULL_YEAR (day_fraction applied in waterfall_core).
+    # For testing: can pass DAY_FRACTION with explicit day_fractions.
     tax_sched, book_sched = generate_tax_and_book_schedule(
         basis_items, profile, total_periods=total_periods,
-        convention=DepreciationConvention.FULL_YEAR,
+        convention=convention,
+        day_fractions=day_fractions,
     )
     return WaterfallDepreciationSchedule(to_waterfall_depreciation_schedule(tax_sched))
 
