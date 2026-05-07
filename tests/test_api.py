@@ -202,3 +202,47 @@ def test_validate_accepts_valid_solar():
     data = r.json()
     assert data["valid"] == True
     assert data["errors"] == []
+
+
+def test_validate_solar_too_low_capex():
+    """Solar capex below Solar-specific threshold (~10 000 kEUR) raises error."""
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Solar", "capex": {"total_capex_keur": 5_000}}
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["valid"] == False
+    assert any("Solar" in e and "10" in e for e in data["errors"])
+
+
+def test_validate_wind_too_low_capex():
+    """Wind capex below Wind-specific threshold (~15 000 kEUR) raises error."""
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Wind", "capex": {"total_capex_keur": 8_000}}
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["valid"] == False
+    assert any("Wind" in e and "15" in e for e in data["errors"])
+
+
+def test_validate_solar_valid():
+    """Solar capex well above threshold passes validation."""
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Solar", "capex": {"total_capex_keur": 30_000}}
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["valid"] == True
+    assert data["errors"] == []
+
+
+def test_validate_wind_valid():
+    """Wind capex well above threshold passes validation."""
+    r = client.post("/api/v1/validate", json={
+        "inputs": {"project_type": "Wind", "capex": {"total_capex_keur": 50_000}}
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["valid"] == True
+    assert data["errors"] == []
