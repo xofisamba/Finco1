@@ -19,6 +19,7 @@ from app.depreciation_bankable import (
     get_profile,
     map_capex_line_item_to_basis,
     generate_tax_and_book_schedule,
+    to_waterfall_depreciation_schedule,
 )
 from app.capex_engine import build_capex_line_items_from_defaults
 
@@ -266,8 +267,8 @@ class TestUnknownAssetClass:
         profile = get_profile("solar_croatia_ibl")
         basis = map_capex_line_item_to_basis(MockItem(), profile)
         assert basis.asset_class == BankableAssetClass.OTHER
-        # Verify it is NOT depreciable (OTHER class)
-        assert not basis.is_depreciable
+        # Verify it IS depreciable (OTHER uses explicit 10y fallback per policy)
+        assert basis.is_depreciable, "OTHER is depreciable with 10y explicit fallback"
 
 
 class TestConventionSupport:
@@ -349,3 +350,168 @@ class TestLegacyFallback:
             assert hasattr(item, 'asset_class')
             assert hasattr(item, 'amount_keur')
             assert item.amount_keur > 0
+
+
+class TestOtherAndUnknownPolicy:
+    """OTHER is depreciable; unknown mappings emit warnings."""
+
+    def test_other_is_depreciable_10y(self):
+        """OTHER asset class is depreciable using 10y fallback."""
+        profile = get_profile("solar_croatia_ibl")
+        items = [
+            DepreciationBasisItem(
+                name="Some Widget", code="UNK",
+                asset_class=BankableAssetClass.OTHER,
+                amount_keur=10000.0, is_depreciable=True),
+        ]
+        tax_sched, book_sched = generate_tax_and_book_schedule(
+            items, profile, total_periods=15)
+        periods_active = [e.period for e in tax_sched.entries if e.depreciation_keur > 0]
+        assert len(periods_active) == 10, f"OTHER should use 10y, got {len(periods_active)}"
+
+    def test_missing_asset_class_emits_warning(self):
+        """Missing asset_class emits DepreciationMappingWarning."""
+        class MockItem:
+            name = "Widget"; code = "WGT"; asset_class = None; amount_keur = 100.0
+        profile = get_profile("solar_croatia_ibl")
+        with pytest.warns(DepreciationMappingWarning):
+            result = map_capex_line_item_to_basis(MockItem(), profile)
+        assert result.asset_class == BankableAssetClass.OTHER
+
+    def test_unsupported_asset_class_emits_warning(self):
+        """Unsupported asset_class (not in mapping) emits DepreciationMappingWarning."""
+        class MockItem:
+            name = "Mystery"; code = "???"; asset_class = "UNSUPPORTED_ENUM"; amount_keur = 100.0
+        profile = get_profile("solar_croatia_ibl")
+        with pytest.warns(DepreciationMappingWarning):
+            result = map_capex_line_item_to_basis(MockItem(), profile)
+        assert result.asset_class == BankableAssetClass.OTHER
+
+    def test_land_remains_non_depreciable(self):
+        """LAND never depreciates regardless of amount."""
+        profile = get_profile("solar_croatia_ibl")
+        items = [
+            DepreciationBasisItem(
+                name="Land", code="LAND",
+                asset_class=BankableAssetClass.LAND,
+                amount_keur=10000.0, is_depreciable=True),
+        ]
+        tax_sched, _ = generate_tax_and_book_schedule(items, profile, total_periods=25)
+        total = sum(e.depreciation_keur for e in tax_sched.entries)
+        assert total == 0.0, f"LAND should not depreciate, got {total}"
+
+
+class TestConventionMethodGuards:
+    """Unsupported conventions/methods raise NotImplementedError."""
+
+    def test_half_year_convention_raises(self):
+        """HALF_YEAR convention raises NotImplementedError."""
+        from app.depreciation_bankable import DepreciationProfile, AssetDepreciationRule, DepreciationConvention
+        bad_profile = DepreciationProfile(
+            country="Test", regime="Test",
+            asset_rules={
+                BankableAssetClass.SOLAR_MODULES: AssetDepreciationRule(
+                    BankableAssetClass.SOLAR_MODULES,
+                    tax_life_years=20, book_life_years=25,
+                    tax_convention=DepreciationConvention.HALF_YEAR),
+            })
+        items = [DepreciationBasisItem(
+            name="Mod", code="M",
+            asset_class=BankableAssetClass.SOLAR_MODULES,
+            amount_keur=10000.0, is_depreciable=True)]
+        with pytest.raises(NotImplementedError) as exc_info:
+            generate_tax_and_book_schedule(items, bad_profile, total_periods=20)
+        assert "HALF_YEAR" in str(exc_info.value) or "not implemented" in str(exc_info.value)
+
+    def test_declining_balance_raises(self):
+        """DECLINING_BALANCE method raises NotImplementedError."""
+        from app.depreciation_bankable import DepreciationProfile, AssetDepreciationRule, DepreciationMethod
+        bad_profile = DepreciationProfile(
+            country="Test", regime="Test",
+            asset_rules={
+                BankableAssetClass.SOLAR_MODULES: AssetDepreciationRule(
+                    BankableAssetClass.SOLAR_MODULES,
+                    tax_life_years=20, book_life_years=25,
+                    tax_method=DepreciationMethod.DECLINING_BALANCE),
+            })
+        items = [DepreciationBasisItem(
+            name="Mod", code="M",
+            asset_class=BankableAssetClass.SOLAR_MODULES,
+            amount_keur=10000.0, is_depreciable=True)]
+        with pytest.raises(NotImplementedError) as exc_info:
+            generate_tax_and_book_schedule(items, bad_profile, total_periods=20)
+        assert "not implemented" in str(exc_info.value)
+
+
+class TestIntegrationBridge:
+    """Bridge from bankable engine to waterfall."""
+
+    def test_to_waterfall_depreciation_schedule(self):
+        """to_waterfall_depreciation_schedule produces waterfall-compatible dict."""
+        profile = get_profile("solar_croatia_ibl")
+        items = [
+            DepreciationBasisItem(
+                name="Mod", code="MOD",
+                asset_class=BankableAssetClass.SOLAR_MODULES,
+                amount_keur=50000.0, is_depreciable=True),
+        ]
+        tax_sched, book_sched = generate_tax_and_book_schedule(
+            items, profile, total_periods=20)
+        from app.depreciation_bankable import to_waterfall_depreciation_schedule
+        wf = to_waterfall_depreciation_schedule(tax_sched)
+        assert "total_by_period" in wf
+        assert len(wf["total_by_period"]) == 20
+        assert "by_asset_class" in wf
+        assert "profile_name" in wf
+        assert "total_periods" in wf
+        assert wf["total_periods"] == 20
+        assert isinstance(wf["total_by_period"], list)
+        assert all(isinstance(v, float) for v in wf["total_by_period"])
+
+    def test_book_not_in_waterfall(self):
+        """Book depreciation schedule is NOT in waterfall output."""
+        profile = get_profile("solar_croatia_ibl")
+        items = [
+            DepreciationBasisItem(
+                name="Mod", code="MOD",
+                asset_class=BankableAssetClass.SOLAR_MODULES,
+                amount_keur=50000.0, is_depreciable=True),
+        ]
+        tax_sched, book_sched = generate_tax_and_book_schedule(
+            items, profile, total_periods=20)
+        from app.depreciation_bankable import to_waterfall_depreciation_schedule
+        wf = to_waterfall_depreciation_schedule(tax_sched)
+        assert "book" not in wf
+        assert "book_depreciation" not in wf
+
+
+class TestContingencyExcludesLand:
+    """Contingency allocation excludes non-depreciable LAND."""
+
+    def test_contingency_excludes_land_from_allocation(self):
+        """LAND is excluded from contingency proportional allocation."""
+        profile = get_profile("solar_croatia_ibl")
+        items = [
+            DepreciationBasisItem(
+                name="Modules", code="MOD",
+                asset_class=BankableAssetClass.SOLAR_MODULES,
+                amount_keur=50000.0, is_depreciable=True),
+            DepreciationBasisItem(
+                name="Land", code="LAND",
+                asset_class=BankableAssetClass.LAND,
+                amount_keur=5000.0, is_depreciable=True),
+            DepreciationBasisItem(
+                name="Contingency", code="CONT",
+                asset_class=BankableAssetClass.CONTINGENCY,
+                amount_keur=5000.0, is_depreciable=True),
+        ]
+        tax_sched, _ = generate_tax_and_book_schedule(items, profile, total_periods=20)
+        total_depr = sum(e.depreciation_keur for e in tax_sched.entries
+                         if e.asset_class == BankableAssetClass.SOLAR_MODULES)
+        # Contingency allocated proportionally to modules only (land excluded from allocation)
+        # modules=50000, contingency=5000 -> contingency portion = 5000*(50000/55000) = 50000/11 ≈ 4545.45
+        # modules: 50000/20=2500/yr; allocated contingency: (50000/11)/20 = 2500/11 ≈ 227.27/yr
+        # total year-1 = 2727.27, summed over 20y = 54545.45 (rounding losses ~454.55)
+        assert abs(total_depr - 54545.4545) < 0.02, (
+            f"Expected ~54545.45 (modules + proportional contingency, rounding), got {total_depr}"
+        )

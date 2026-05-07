@@ -268,7 +268,7 @@ def map_capex_line_item_to_basis(item, profile: DepreciationProfile) -> Deprecia
         ac = BankableAssetClass.INVERTERS
     elif orig_class is not None:
         # Map legacy AssetClass to bankable
-        orig_str = orig_class.name.upper()  # e.g. "GENERATION" from AssetClass.GENERATION
+        orig_str = orig_class.name.upper() if hasattr(orig_class, 'name') else str(orig_class).upper()
         mapping = {
             "GENERATION": BankableAssetClass.SOLAR_MODULES,
             "GRID": BankableAssetClass.GRID_CONNECTION,
@@ -280,19 +280,24 @@ def map_capex_line_item_to_basis(item, profile: DepreciationProfile) -> Deprecia
         }
         ac = mapping.get(orig_str, BankableAssetClass.OTHER)
         if ac == BankableAssetClass.OTHER and orig_str != "OTHER":
-            logger.warning(
-                "DepreciationMappingWarning: asset_class %r not in mapping, treating as OTHER. "
-                "item=%s code=%s", orig_class, name, code)
+            warnings.warn(
+                DepreciationMappingWarning(
+                    f"asset_class {orig_class!r} not in mapping, treating as OTHER. "
+                    f"item={name!r} code={code!r}"))
     else:
         ac = BankableAssetClass.OTHER
         warnings.warn(
             DepreciationMappingWarning(
                 f"unknown asset class for {name!r} ({code!r}), using OTHER"))
 
-    is_depreciable = (ac != BankableAssetClass.LAND and
-                      ac != BankableAssetClass.OTHER and
-                      not (profile.rule_for(ac) and
-                           profile.rule_for(ac).tax_method == DepreciationMethod.NON_DEPRECIABLE))
+    # OTHER is depreciable using explicit 10y fallback
+    # LAND is non-depreciable
+    # CONTINGENCY is handled via explicit proportional allocation
+    is_depreciable = (
+        ac not in (BankableAssetClass.LAND,) and
+        not (profile.rule_for(ac) and
+             profile.rule_for(ac).tax_method == DepreciationMethod.NON_DEPRECIABLE)
+    )
 
     return DepreciationBasisItem(
         name=name, code=code, asset_class=ac,
@@ -314,6 +319,20 @@ def _generate_asset_schedule(
     if amount_keur <= 0 or rule.tax_life_years <= 0:
         return
 
+    # Validate convention/method before generation
+    if rule.tax_convention not in (DepreciationConvention.DAY_FRACTION, DepreciationConvention.FULL_YEAR):
+        raise NotImplementedError(
+            f"tax_convention {rule.tax_convention.value!r} not implemented. "
+            f"Supported: day_fraction, full_year. "
+            f"HALF_YEAR, COD_MONTH are future extensions."
+        )
+    if rule.tax_method not in (DepreciationMethod.STRAIGHT_LINE, DepreciationMethod.NON_DEPRECIABLE):
+        raise NotImplementedError(
+            f"tax_method {rule.tax_method.value!r} not implemented. "
+            f"Supported: straight_line, non_depreciable. "
+            f"declining_balance is a future extension."
+        )
+
     # Tax schedule
     tax_remaining = amount_keur
     for p in range(total_periods):
@@ -328,6 +347,19 @@ def _generate_asset_schedule(
             accumulated_keur=round(amount_keur - tax_remaining, 4),
             remaining_basis_keur=round(max(0, tax_remaining), 4)
         ))
+
+    # Validate book convention/method
+    if rule.book_convention not in (DepreciationConvention.DAY_FRACTION, DepreciationConvention.FULL_YEAR):
+        raise NotImplementedError(
+            f"book_convention {rule.book_convention.value!r} not implemented. "
+            f"Supported: day_fraction, full_year. "
+            f"HALF_YEAR, COD_MONTH are future extensions."
+        )
+    if rule.book_method not in (DepreciationMethod.STRAIGHT_LINE, DepreciationMethod.NON_DEPRECIABLE):
+        raise NotImplementedError(
+            f"book_method {rule.book_method.value!r} not implemented. "
+            f"Supported: straight_line, non_depreciable."
+        )
 
     # Book schedule
     book_remaining = amount_keur
@@ -344,6 +376,68 @@ def _generate_asset_schedule(
             remaining_basis_keur=round(max(0, book_remaining), 4)
         ))
 
+
+
+def to_waterfall_depreciation_schedule(tax_schedule: TaxDepreciationSchedule) -> dict:
+    """Convert TaxDepreciationSchedule to waterfall-compatible dict format.
+
+    Returns a dict with:
+      - total_by_period: list of floats (annual tax depreciation per period)
+      - profile_name: str
+      - total_periods: int
+
+    This is the bridge between depreciation_bankable and the existing
+    WaterfallRunConfig(advanced_capex_depreciation_schedule=...) integration.
+
+    BookDepreciationSchedule is NOT included — it is for reporting only.
+
+    Usage:
+        from app.depreciation_bankable import (
+            generate_tax_and_book_schedule, get_profile, to_waterfall_depreciation_schedule
+        )
+        tax_sched, book_sched = generate_tax_and_book_schedule(basis_items, profile, 20)
+        waterfall_depr = to_waterfall_depreciation_schedule(tax_sched)
+        # waterfall_depr["total_by_period"] can be used in WaterfallRunConfig
+    """
+    total_by_period = [tax_schedule.total_by_period(p) for p in range(tax_schedule.total_periods)]
+    return {
+        "total_by_period": total_by_period,
+        "profile_name": tax_schedule.profile_name,
+        "total_periods": tax_schedule.total_periods,
+        # Include per-asset-class breakdown for Excel export
+        "by_asset_class": {
+            ac.value: tax_schedule.total_by_asset_class(ac)
+            for ac in set(e.asset_class for e in tax_schedule.entries)
+        }
+    }
+
+
+def build_bankable_waterfall_schedule(
+    capex_line_items,
+    profile_name: str = "solar_croatia_ibl",
+    total_periods: int = 20,
+) -> dict:
+    """One-step bridge: CapexLineItems → waterfall-compatible depreciation dict.
+
+    Args:
+        capex_line_items: list of CapexLineItem from app.capex_engine
+        profile_name: name of DepreciationProfile to use
+        total_periods: number of annual periods
+
+    Returns:
+        dict for WaterfallRunConfig(advanced_capex_depreciation_schedule=...)
+        Contains: total_by_period, by_asset_class, profile_name, total_periods
+
+    Note:
+        Book depreciation is generated but NOT passed to waterfall — it is
+        stored in the result for Excel export reporting only.
+    """
+    profile = get_profile(profile_name)
+    basis_items = [map_capex_line_item_to_basis(item, profile) for item in capex_line_items]
+    tax_sched, book_sched = generate_tax_and_book_schedule(
+        basis_items, profile, total_periods=total_periods
+    )
+    return to_waterfall_depreciation_schedule(tax_sched)
 
 def generate_tax_and_book_schedule(
     basis_items: list[DepreciationBasisItem],
