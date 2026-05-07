@@ -416,6 +416,7 @@ def build_bankable_waterfall_schedule(
     capex_line_items,
     profile_name: str = "solar_croatia_ibl",
     total_periods: int = 20,
+    convention: DepreciationConvention = DepreciationConvention.FULL_YEAR,
 ) -> dict:
     """One-step bridge: CapexLineItems → waterfall-compatible depreciation dict.
 
@@ -423,6 +424,10 @@ def build_bankable_waterfall_schedule(
         capex_line_items: list of CapexLineItem from app.capex_engine
         profile_name: name of DepreciationProfile to use
         total_periods: number of annual periods
+        convention: DepreciationConvention — MUST be FULL_YEAR for runtime bridge.
+            FULL_YEAR ensures generate_tax_and_book_schedule() returns ANNUAL amounts
+            (not day-fraction-pro-rated). waterfall_core then applies day_fraction
+            exactly once as the single authoritative application point.
 
     Returns:
         dict for WaterfallRunConfig(advanced_capex_depreciation_schedule=...)
@@ -434,8 +439,12 @@ def build_bankable_waterfall_schedule(
     """
     profile = get_profile(profile_name)
     basis_items = [map_capex_line_item_to_basis(item, profile) for item in capex_line_items]
+    # CRITICAL: Use FULL_YEAR convention so generate_tax_and_book_schedule() returns
+    # ANNUAL depreciation amounts. Day fraction is applied ONCE in waterfall_core.
+    # Do NOT rely on implicit defaults — be explicit.
     tax_sched, book_sched = generate_tax_and_book_schedule(
-        basis_items, profile, total_periods=total_periods
+        basis_items, profile, total_periods=total_periods,
+        convention=DepreciationConvention.FULL_YEAR,
     )
     return WaterfallDepreciationSchedule(to_waterfall_depreciation_schedule(tax_sched))
 
@@ -443,6 +452,7 @@ def generate_tax_and_book_schedule(
     basis_items: list[DepreciationBasisItem],
     profile: DepreciationProfile,
     total_periods: int,
+    convention: DepreciationConvention = DepreciationConvention.DAY_FRACTION,
     day_fractions: Optional[list[float]] = None,
 ) -> tuple[TaxDepreciationSchedule, BookDepreciationSchedule]:
     """Generate tax and book depreciation schedules from basis items.
@@ -457,6 +467,13 @@ def generate_tax_and_book_schedule(
         (TaxDepreciationSchedule, BookDepreciationSchedule)
     """
     if day_fractions is None:
+        day_fractions = [1.0] * total_periods
+
+    # When FULL_YEAR convention is requested, set day_fractions to all-1.0
+    # to produce annual (non-pro-rated) depreciation amounts.
+    # This ensures generate_tax_and_book_schedule() returns ANNUAL amounts,
+    # and waterfall_core applies day_fraction exactly once.
+    if convention == DepreciationConvention.FULL_YEAR:
         day_fractions = [1.0] * total_periods
 
     tax_entries: list[TaxDepreciationEntry] = []

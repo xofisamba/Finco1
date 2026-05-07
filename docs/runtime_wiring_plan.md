@@ -89,3 +89,43 @@ def test_annual_totals_conserved():
 - `test_legacy_path_unchanged_without_advanced_capex`
 - `test_advanced_capex_changes_taxable_income`
 - `test_depreciation_schedule_affects_equity_irr`
+
+---
+
+## Implemented Runtime Decision (2026-05-07)
+
+**Status:** Implemented and tested.
+
+### Final Implemented Flow
+
+```
+advanced_capex_line_items
+  → ui_runner.py: build_bankable_waterfall_schedule(convention=FULL_YEAR)
+  → generate_tax_and_book_schedule(..., convention=FULL_YEAR)
+    → day_fractions forced to [1.0]*total_periods → returns ANNUAL amounts
+  → WaterfallDepreciationSchedule(total_by_period=[annual amounts])
+  → WaterfallRunConfig(advanced_capex_depreciation_schedule=...)
+  → waterfall_core line 131: dep = annual_dep * p.day_fraction (applied ONCE)
+```
+
+### Single Authoritative Application Point
+
+**`waterfall_core` is the ONLY place where day_fraction is applied.**
+
+`build_bankable_waterfall_schedule` explicitly forces `FULL_YEAR` convention:
+- `generate_tax_and_book_schedule()` receives `convention=DepreciationConvention.FULL_YEAR`
+- Internal logic sets `day_fractions = [1.0] * total_periods` 
+- Depreciation entries are full-year amounts (not pro-rated)
+- `waterfall_core` applies `dep * p.day_fraction` exactly once
+
+### Double Application Risk: MITIGATED ✅
+
+Risk was: `generate_tax_and_book_schedule()` might use `DAY_FRACTION` internally (pro-rating), and then `waterfall_core` would apply day_fraction again.
+
+Mitigation: `build_bankable_waterfall_schedule` explicitly passes `convention=DepreciationConvention.FULL_YEAR`, which overrides any internal pro-rating. This is explicit in source code, audited by `test_full_year_convention_used_in_runtime_bridge`.
+
+### Backward Compatibility
+
+- Legacy path (no `advanced_capex_line_items`): unchanged
+- `CapexItem` path: unchanged  
+- Only `advanced_capex_line_items` path uses new bankable engine
