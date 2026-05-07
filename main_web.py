@@ -23,6 +23,11 @@ from app.auth import (
     decode_session_token,
     make_session_cookie,
     clear_session_cookie,
+    generate_csrf_token,
+    validate_csrf_token,
+    _check_rate_limit,
+    _record_failed_login,
+    _clear_failed_logins,
     COOKIE_NAME,
 )
 
@@ -195,6 +200,14 @@ def _format_kpis(kpis: dict) -> list[dict]:
 
 # ── Auth Routes ─────────────────────────────────────────────────────────────
 
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP from request, checking X-Forwarded-For first."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @app.get("/login")
 async def login_get(request: Request):
     """Login page."""
@@ -202,17 +215,51 @@ async def login_get(request: Request):
     if user:
         return RedirectResponse(url="/", status_code=302)
 
+    csrf_token = generate_csrf_token()
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={},
+        context={"csrf_token": csrf_token},
     )
 
 
 @app.post("/login")
-async def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Process login. Set session cookie on success."""
+async def login_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    csrf_token: str = Form(...),
+):
+    """Process login. Set session cookie on success. Validates CSRF + rate limit."""
+    ip = _get_client_ip(request)
+
+    # Rate limit check
+    allowed, seconds_left = _check_rate_limit(ip)
+    if not allowed:
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "error": f"Too many failed attempts. Try again in {seconds_left}s.",
+                "csrf_token": generate_csrf_token(),
+            },
+            status_code=429,
+        )
+
+    # CSRF validation
+    if not validate_csrf_token(csrf_token):
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "error": "Invalid or expired form. Please try again.",
+                "csrf_token": generate_csrf_token(),
+            },
+            status_code=403,
+        )
+
     if verify_login(username, password):
+        _clear_failed_logins(ip)
         token = create_session_token()
         cookie = make_session_cookie(token)
         response = RedirectResponse(url="/", status_code=302)
@@ -220,10 +267,14 @@ async def login_post(request: Request, username: str = Form(...), password: str 
         return response
 
     # Failed login
+    _record_failed_login(ip)
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={"error": "Invalid username or password."},
+        context={
+            "error": "Invalid username or password.",
+            "csrf_token": generate_csrf_token(),
+        },
         status_code=401,
     )
 
