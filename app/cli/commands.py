@@ -1,6 +1,7 @@
 """CLI commands."""
 import json
 import sys
+from pathlib import Path
 
 import click
 
@@ -46,7 +47,6 @@ def run(project, scenario, period_view, input_file, output, json_output):
         click.echo(f'Error: --period-view must be one of {SUPPORTED_PERIOD_VIEWS}', err=True)
         sys.exit(1)
 
-    # Build custom project inputs if JSON file provided
     project_inputs_override = None
     if input_file:
         try:
@@ -54,7 +54,6 @@ def run(project, scenario, period_view, input_file, output, json_output):
                 data = json.load(f)
             schema = ProjectInputsSchema(**data)
 
-            # Enforce project_type consistency
             if project is not None and schema.project_type != project:
                 click.echo(
                     f"ERROR: --project '{project}' does not match "
@@ -63,7 +62,6 @@ def run(project, scenario, period_view, input_file, output, json_output):
                 )
                 sys.exit(1)
 
-            # Enforce scenario consistency — --scenario is the source of truth
             if scenario is not None and schema.scenario is not None and schema.scenario != scenario:
                 click.echo(
                     f"ERROR: --scenario '{scenario}' does not match "
@@ -122,6 +120,100 @@ def run(project, scenario, period_view, input_file, output, json_output):
 
     except Exception as e:
         click.echo(f'Error: {e}', err=True)
+        sys.exit(1)
+
+
+@cli.command(name='batch')
+@click.option('--input', 'input_path', required=True, type=click.Path(exists=True),
+              help='JSON batch input file')
+@click.option('--output', 'output_path', default=None, type=str,
+              help='JSON output file (optional)')
+@click.option('--fail-fast', is_flag=True,
+              help='Stop on first error')
+def batch(input_path, output_path, fail_fast):
+    """Run a batch of project configurations from a JSON file."""
+    with open(input_path) as f:
+        projects = json.load(f)
+
+    if not isinstance(projects, list):
+        click.echo('Error: batch JSON must be a list of project objects', err=True)
+        sys.exit(1)
+
+    results = []
+    for i, proj_def in enumerate(projects):
+        pt = proj_def.get('project_type')
+        sc = proj_def.get('scenario', 'Base')
+        pv = proj_def.get('period_view', 'Semiannual')
+        inputs_dict = proj_def.get('inputs')
+
+        if pt not in SUPPORTED_PROJECTS:
+            msg = f'Row {i}: unsupported project_type "{pt}"'
+            if fail_fast:
+                raise ValueError(msg)
+            results.append({'index': i, 'status': 'failed', 'project_type': pt, 'scenario': sc, 'error': msg})
+            continue
+
+        try:
+            project_inputs_override = None
+            if inputs_dict:
+                schema = ProjectInputsSchema(**inputs_dict)
+                if schema.project_type and schema.project_type != pt:
+                    raise ValueError(f"inputs project_type '{schema.project_type}' != '{pt}'")
+                project_inputs_override = build_projectinputs(schema)
+
+            # Use same run_demo_project approach as CLI `run` command
+            demo = run_demo_project(pt, sc, project_inputs_override=project_inputs_override)
+            result = demo.result
+            kpis = {
+                'project_irr': result.project_irr,
+                'equity_irr': result.equity_irr,
+                'actual_min_dscr': result.actual_min_dscr,
+                'actual_avg_dscr': result.actual_avg_dscr,
+                'total_revenue_keur': result.total_revenue_keur,
+            }
+            results.append({
+                'index': i,
+                'status': 'success',
+                'project_type': pt,
+                'scenario': sc,
+                'period_view': pv,
+                'project_irr': kpis['project_irr'],
+                'equity_irr': kpis['equity_irr'],
+                'min_dscr': kpis['actual_min_dscr'],
+                'avg_dscr': kpis['actual_avg_dscr'],
+                'total_revenue_keur': kpis['total_revenue_keur'],
+            })
+        except Exception as e:
+            if fail_fast:
+                raise
+            results.append({
+                'index': i,
+                'status': 'failed',
+                'project_type': pt,
+                'scenario': sc,
+                'error': str(e),
+            })
+
+    for r in results:
+        status = r['status']
+        pt = r.get('project_type', '?')
+        sc = r.get('scenario', '?')
+        if status == 'success':
+            irr = f"{r.get('project_irr', 0)*100:.2f}%" if r.get('project_irr') is not None else 'N/A'
+            click.echo(f"  [{r['index']}] {pt}/{sc} → IRR={irr} OK")
+        else:
+            click.echo(f"  [{r['index']}] {pt}/{sc} → FAILED: {r.get('error', 'unknown')}")
+
+    if output_path:
+        with open(output_path, 'w') as f:
+            json.dump(results, f, indent=2)
+
+    total = len(results)
+    succeeded = sum(1 for r in results if r['status'] == 'success')
+    failed = total - succeeded
+    click.echo(f"\nBatch complete: {succeeded}/{total} succeeded")
+    if failed > 0:
+        click.echo(f"  {failed} failed (use --fail-fast to stop on first error)")
         sys.exit(1)
 
 
