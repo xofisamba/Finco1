@@ -49,9 +49,12 @@ app.finco.one
 ### 1. Install dependencies
 
 ```bash
-apt update && apt install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
-pip install fastapi uvicorn jinja2
+apt update && apt install -y python3-pip python3-venv nginx certbot python3-certbot-nginx apache2-utils
+pip install fastapi uvicorn jinja2 gunicorn
 ```
+
+**Note:** `gunicorn` with `uvicorn.workers.UvicornWorker` is used for production (not plain uvicorn).
+Single `uvicorn` CLI is fine for local development only.
 
 ### 2. Upload project
 
@@ -73,16 +76,41 @@ After=network.target
 User=www-data
 Group=www-data
 WorkingDirectory=/opt/finco1
+# gunicorn with uvicorn worker — required for FastAPI async
 ExecStart=/opt/finco1/.venv/bin/gunicorn \
     --workers 2 \
+    --threads 4 \
     --bind 127.0.0.1:8000 \
     --timeout 120 \
+    --keep-alive 65 \
+    --log-level info \
+    --access-logfile /var/log/finco-web/access.log \
+    --error-logfile /var/log/finco-web/error.log \
+    -k uvicorn.workers.UvicornWorker \
     main_web:app
 Restart=always
 RestartSec=5
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
+```
+
+**Production launch command (gunicorn):**
+```bash
+gunicorn \
+    --workers 2 \
+    --threads 4 \
+    --bind 0.0.0.0:8000 \
+    --timeout 120 \
+    --keep-alive 65 \
+    -k uvicorn.workers.UvicornWorker \
+    main_web:app
+```
+
+For local development:
+```bash
+uvicorn main_web:app --host 0.0.0.0 --port 8765 --reload
 ```
 
 ```bash
@@ -134,17 +162,84 @@ certbot --nginx -d app.finco.one
 
 ---
 
+## Access Protection (Required Before Public Exposure)
+
+**IMPORTANT:** These measures are REQUIRED before exposing `app.finco.one` publicly.
+They are NOT a substitute for real auth — they are interim protection only.
+
+### Option A: Nginx Basic Auth
+
+Install `apache2-utils` (provides `htpasswd`):
+
+```bash
+# Create password file
+htpasswd -c /etc/nginx/.htpasswd admin
+# (enter strong password when prompted)
+
+# Verify file created
+cat /etc/nginx/.htpasswd
+```
+
+Add to Nginx config (`/etc/nginx/sites-available/finco-web`) inside the `server` block:
+
+```nginx
+# Inside server { } block, before location /
+auth_basic "FincoGPT Internal — Authorized Only";
+auth_basic_user_file /etc/nginx/.htpasswd;
+```
+
+Test and reload:
+```bash
+nginx -t && systemctl reload nginx
+```
+
+After this, users must enter `admin` + password to access the site.
+
+---
+
+### Option B: IP Whitelist
+
+Restrict access to specific IP addresses only:
+
+```nginx
+# Inside server { } block
+location / {
+    # Allow your IP (replace with your actual IP)
+    allow 93.184.216.34;
+    # Allow your office/static IP
+    allow 185.220.101.0/24;
+    # Deny everyone else
+    deny all;
+    
+    proxy_pass http://127.0.0.1:8000;
+    # ... rest of proxy settings
+}
+```
+
+Find your IP:
+```bash
+curl -s https://api.ipify.org
+```
+
+---
+
+### Combining Both (Recommended for Transit)
+
+For the transition period, use BOTH:
+1. IP whitelist for your known IPs
+2. Basic auth as additional layer
+
+---
+
 ## Current Limitations
 
 | Limitation | Severity | Notes |
 |------------|----------|-------|
-| No auth | 🔴 Critical | Anyone with URL can access and run model |
+| No auth | 🔴 Critical | Basic Auth is interim only — real auth required before B2B |
 | No persistence | 🟡 Medium | Excel generated on-demand, no server-side storage |
 | No multi-user isolation | 🔴 Critical | All users share same session state |
 | No audit log | 🟡 Medium | No record of who ran what scenario |
 | No rate limiting | 🟡 Medium | DoS risk in public exposure |
-
-**These limitations must be resolved before any public or B2B deployment.**
 
 ---
 
