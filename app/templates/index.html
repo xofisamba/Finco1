@@ -160,29 +160,26 @@
       </div>
     </div>
 
-    <!-- Caveats banner (collapsible) -->
-    <div class="caveats-banner" id="caveats-banner">
-      <div class="caveats-banner-inner">
-        <div class="caveats-banner-summary" onclick="document.getElementById('caveats-body').classList.toggle('caveats-collapsed'); this.querySelector('.caveats-toggle').textContent = document.getElementById('caveats-body').classList.contains('caveats-collapsed') ? '▶ Show caveats' : '▼ Hide caveats'">
-          <div class="caveats-icon">⚠️</div>
-          <div class="caveats-summary-text">
-            <span class="caveats-summary-label">Screening-grade model — for advisory use only. Validate with project-specific data.</span>
-            <button type="button" class="caveats-toggle" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:var(--warning);margin-left:0.4rem;text-decoration:underline;">▼ Hide caveats</button>
-          </div>
+    <!-- Caveats banner (collapsible via semantic HTML) -->
+    <details class="caveats-banner" id="caveats-banner" open>
+      <summary class="caveats-banner-summary">
+        <div class="caveats-icon">⚠️</div>
+        <div class="caveats-summary-text">
+          <span class="caveats-summary-label">Screening-grade model — for advisory use only. Validate with project-specific data.</span>
         </div>
-        <div class="caveats-body" id="caveats-body">
-          <ul class="caveats-list">
-            {% for c in caveats %}
-            <li>{{ c }}</li>
-            {% endfor %}
-          </ul>
-          <div class="caveats-detail-note">
-            <strong>TUHO CO2 caveat:</strong> 611 kEUR Y1 CO2 revenue missing — model understates revenue for TUHO wind assets.<br>
-            <strong>Oborovo OpEx caveat:</strong> 660 kEUR Y1 OpEx duplication — model overstates OpEx for Oborovo solar.
-          </div>
+      </summary>
+      <div class="caveats-body">
+        <ul class="caveats-list">
+          {% for c in caveats %}
+          <li>{{ c }}</li>
+          {% endfor %}
+        </ul>
+        <div class="caveats-detail-note">
+          <strong>TUHO CO2 caveat:</strong> 611 kEUR Y1 CO2 revenue missing — model understates revenue for TUHO wind assets.<br>
+          <strong>Oborovo OpEx caveat:</strong> 660 kEUR Y1 OpEx duplication — model overstates OpEx for Oborovo solar.
         </div>
       </div>
-    </div>
+    </details>
 
     <!-- KPI Results -->
     <div id="results-area">
