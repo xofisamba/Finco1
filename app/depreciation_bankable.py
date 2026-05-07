@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 class BankableAssetClass(str, Enum):
     """Granular asset classes for bankable depreciation."""
     SOLAR_MODULES = "solar_modules"
+    WIND_TURBINES = "wind_turbines"
     INVERTERS = "inverters"
     MOUNTING_STRUCTURES = "mounting_structures"
     GRID_CONNECTION = "grid_connection"
@@ -201,8 +202,9 @@ def _solar_profile() -> DepreciationProfile:
 
 def _wind_profile() -> DepreciationProfile:
     rules = {
-        BankableAssetClass.SOLAR_MODULES: AssetDepreciationRule(
-            BankableAssetClass.SOLAR_MODULES, tax_life_years=20, book_life_years=25),
+        # Wind turbines: separate asset class (20y tax / 25y book)
+        BankableAssetClass.WIND_TURBINES: AssetDepreciationRule(
+            BankableAssetClass.WIND_TURBINES, tax_life_years=20, book_life_years=25),
         BankableAssetClass.INVERTERS: AssetDepreciationRule(
             BankableAssetClass.INVERTERS, tax_life_years=10, book_life_years=10),
         BankableAssetClass.MOUNTING_STRUCTURES: AssetDepreciationRule(
@@ -261,7 +263,7 @@ def _is_land(item_name: str, item_code: str) -> bool:
     return "land" in name_lower or "zemlji" in name_lower or "zemlja" in name_lower
 
 
-def map_capex_line_item_to_basis(item, profile: DepreciationProfile) -> DepreciationBasisItem:
+def map_capex_line_item_to_basis(item, profile: DepreciationProfile, project_type: str = "Solar") -> DepreciationBasisItem:
     """Map a CapexLineItem to a DepreciationBasisItem with granular asset class.
 
     This function inspects item.asset_class, item.code, and item.name to determine
@@ -280,8 +282,10 @@ def map_capex_line_item_to_basis(item, profile: DepreciationProfile) -> Deprecia
     elif orig_class is not None:
         # Map legacy AssetClass to bankable
         orig_str = orig_class.name.upper() if hasattr(orig_class, 'name') else str(orig_class).upper()
+        # GENERATION maps to SOLAR_MODULES for Solar, WIND_TURBINES for Wind
+        gen_class = BankableAssetClass.WIND_TURBINES if project_type.lower() == "wind" else BankableAssetClass.SOLAR_MODULES
         mapping = {
-            "GENERATION": BankableAssetClass.SOLAR_MODULES,
+            "GENERATION": gen_class,
             "GRID": BankableAssetClass.GRID_CONNECTION,
             "DEVELOPMENT": BankableAssetClass.DEVELOPMENT_SOFT,
             "EPC": BankableAssetClass.CIVIL_WORKS,
@@ -429,6 +433,7 @@ def build_bankable_waterfall_schedule(
     total_periods: int = 20,
     convention: DepreciationConvention = DepreciationConvention.FULL_YEAR,
     day_fractions: Optional[list[float]] = None,
+    project_type: str = "Solar",
 ) -> dict:
     """One-step bridge: CapexLineItems → waterfall-compatible depreciation dict.
 
@@ -440,6 +445,8 @@ def build_bankable_waterfall_schedule(
             FULL_YEAR ensures generate_tax_and_book_schedule() returns ANNUAL amounts
             (not day-fraction-pro-rated). waterfall_core then applies day_fraction
             exactly once as the single authoritative application point.
+        project_type: "Solar" or "Wind" — used to map GENERATION CapexLineItem
+            to WIND_TURBINES or SOLAR_MODULES respectively.
 
     Returns:
         dict for WaterfallRunConfig(advanced_capex_depreciation_schedule=...)
@@ -450,7 +457,7 @@ def build_bankable_waterfall_schedule(
         stored in the result for Excel export reporting only.
     """
     profile = get_profile(profile_name)
-    basis_items = [map_capex_line_item_to_basis(item, profile) for item in capex_line_items]
+    basis_items = [map_capex_line_item_to_basis(item, profile, project_type) for item in capex_line_items]
     # convention parameter is passed through to generate_tax_and_book_schedule.
     # For runtime: use FULL_YEAR (day_fraction applied in waterfall_core).
     # For testing: can pass DAY_FRACTION with explicit day_fractions.
