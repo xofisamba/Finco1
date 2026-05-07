@@ -1,0 +1,53 @@
+<div class="section">
+  <div class="section-title">🔄 Scenario Comparison — {{ project_type }}</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>KPI</th>
+        {% for sc in scenarios %}
+        <th>{{ sc }}</th>
+        {% endfor %}
+        <th>Δ Base→Downside</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set metrics = ['project_irr', 'equity_irr', 'min_dscr', 'avg_dscr', 'total_revenue_keur', 'total_ebitda_keur'] %}
+      {% set display_names = {'project_irr': 'Project IRR', 'equity_irr': 'Equity IRR', 'min_dscr': 'Min DSCR', 'avg_dscr': 'Avg DSCR', 'total_revenue_keur': 'Revenue (kEUR)', 'total_ebitda_keur': 'EBITDA (kEUR)'} %}
+
+      {% for key in metrics %}
+      <tr>
+        <td><strong>{{ display_names[key] }}</strong></td>
+        {% for sc in scenarios %}
+        <td>
+          {% if results[sc].error %}
+            <span style="color:var(--danger);">Error: {{ results[sc].error }}</span>
+          {% else %}
+            {% set val = results[sc][key] %}
+            {% if val is none %}—{% elif key in ('project_irr', 'equity_irr') %}{{ "%.2f"|format(val * 100) }}%{% elif key in ('min_dscr', 'avg_dscr') %}{{ "%.3f"|format(val) }}x{% else %}{{ "{:,}".format(val|int) }}{% endif %}
+          {% endif %}
+        </td>
+        {% endfor %}
+        <td>
+          {% if not results['Downside'].error and not results['Base'].error %}
+            {% set base_val = results['Base'][key] %}
+            {% set down_val = results['Downside'][key] %}
+            {% if base_val is not none and down_val is not none %}
+              {% if key in ('project_irr', 'equity_irr') %}
+                {% set delta = (down_val - base_val) * 100 %}
+                <span style="color:var(--danger);">{{ "%+.2f"|format(delta) }}pp</span>
+              {% elif key in ('min_dscr', 'avg_dscr') %}
+                {% set delta = down_val - base_val %}
+                <span style="color:var(--danger);">{{ "%+.3f"|format(delta) }}x</span>
+              {% else %}
+                {% set delta = down_val - base_val %}
+                <span style="color:var(--danger);">{{ "{:+,.0f}".format(delta|int) }}</span>
+              {% endif %}
+            {% else %}—{% endif %}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

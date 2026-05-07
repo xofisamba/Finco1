@@ -1,0 +1,1 @@
+"""app.web — HTMX internal demo package."""

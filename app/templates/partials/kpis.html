@@ -1,0 +1,28 @@
+<div class="section">
+  <div class="section-title">📈 KPI Results — {{ run_data.project_type }} / {{ run_data.scenario }}</div>
+
+  {% if integration_status != 'full' %}
+  <div class="alert alert-warning">
+    ⚠️ Integration status: {{ integration_status }}{% if integration_note %}: {{ integration_note }}{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="kpi-grid">
+    {% for kpi in kpis %}
+    <div class="kpi-card">
+      <div class="kpi-label">{{ kpi.label }}</div>
+      <div class="kpi-value {% if kpi.key == 'project_irr' or kpi.key == 'equity_irr' %}{% if kpi.value != '—' and (kpi.value|replace('%','')|float > 0.10) %}positive{% elif kpi.value != '—' and (kpi.value|replace('%','')|float < 0.05) %}warning{% endif %}{% endif %}">
+        {{ kpi.value }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if messages %}
+  <div style="margin-top:1rem;">
+    {% for msg in messages %}
+    <div class="alert alert-info">{{ msg }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
