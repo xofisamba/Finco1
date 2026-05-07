@@ -1,0 +1,34 @@
+{% if error %}
+<div class="error-box">
+    <strong>Error:</strong> {{ error }}
+</div>
+{% elif kpis %}
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Project IRR</div>
+        <div class="kpi-value">{{ "%.2f"|format(kpis.project_irr * 100) }}%</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Equity IRR</div>
+        <div class="kpi-value">{{ "%.2f"|format(kpis.equity_irr * 100) }}%</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Avg DSCR</div>
+        <div class="kpi-value">{{ "%.3f"|format(kpis.avg_dscr) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Min DSCR</div>
+        <div class="kpi-value">{{ "%.3f"|format(kpis.min_dscr) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Total Revenue</div>
+        <div class="kpi-value">{{ "%.0f"|format(kpis.total_revenue_keur) }} kEUR</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Total EBITDA</div>
+        <div class="kpi-value">{{ "%.0f"|format(kpis.total_ebitda_keur) }} kEUR</div>
+    </div>
+</div>
+{% else %}
+<div class="placeholder">Results will appear here...</div>
+{% endif %}
