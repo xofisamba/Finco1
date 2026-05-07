@@ -57,14 +57,14 @@ def get_connection():
     """Return a new SQLite connection to finco_runs.db.
     
     Connection-per-operation: each call creates a fresh connection.
-    WAL mode and schema init are applied on every new connection.
+    WAL mode + busy_timeout and schema init applied on every new connection.
     """
     import sqlite3
-    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
-    # Schema init: idempotent, safe to call on every new connection
     _init_schema(conn)
     return conn
 

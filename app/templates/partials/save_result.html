@@ -2,12 +2,13 @@
   {% if success %}
   <div class="save-result-icon">✅</div>
   <div class="save-result-body">
-    <div class="save-result-title">Run saved successfully</div>
+    <div class="save-result-title">Run saved from current form state</div>
     <div class="save-result-meta">
       <span class="save-badge">{{ project_type }}</span>
       <span class="save-scenario">{{ scenario }}</span>
       &mdash; {{ created_at[:16] }}
     </div>
+    <div class="save-result-note">Model re-run using current form inputs before saving.</div>
     <div class="save-result-id">ID: {{ run_id }}</div>
   </div>
   {% else %}
@@ -76,6 +77,13 @@
   font-size: 0.7rem;
   color: var(--muted);
   font-family: monospace;
+  margin-top: 0.2rem;
+}
+
+.save-result-note {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
   margin-top: 0.2rem;
 }
 
