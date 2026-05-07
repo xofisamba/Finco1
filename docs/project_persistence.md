@@ -161,3 +161,92 @@ hx-get="/run/{run_id}" hx-target="#results-area"
 | `TestPersistenceRoutes` | auth redirects, save/list/load routes, 404 for missing run |
 
 Run: `python3 -m pytest tests/test_project_persistence.py -q`
+
+---
+
+## Backup & Restore
+
+### SQLite DB Files
+
+| File | Purpose | Backup needed? |
+|---|---|---|
+| `app/data/finco_runs.db` | Main DB — run records | ✅ Yes |
+| `app/data/finco_runs.db-wal` | WAL journal (write-ahead log) | ✅ Include in backup |
+| `app/data/finco_runs.db-shm` | Shared memory (WAL index) | Include in backup |
+
+> ⚠️ **Warning:** The database contains user project data — form inputs and KPI outputs.
+> Back it up daily before the B2B pilot goes live.
+
+### Backup Commands (on VPS)
+
+```bash
+# Create a timestamped backup
+cp /opt/finco1/app/data/finco_runs.db /opt/finco1/backups/finco_runs_$(date +%Y%m%d).db
+
+# Backup with WAL included (hot backup)
+cp /opt/finco1/app/data/finco_runs.db /opt/finco1/backups/
+cp /opt/finco1/app/data/finco_runs.db-wal /opt/finco1/backups/ 2>/dev/null || true
+
+# Or use sqlite3 .recover for corruption recovery
+sqlite3 /opt/finco1/app/data/finco_runs.db ".recover" | gzip > /opt/finco1/backups/finco_runs_recover.sql
+```
+
+### Restore Commands
+
+```bash
+# Restore from backup
+cp /opt/finco1/backups/finco_runs_20260507.db /opt/finco1/app/data/finco_runs.db
+
+# WAL restore (if using WAL mode)
+cp /opt/finco1/backups/finco_runs_20260507.db-wal /opt/finco1/app/data/finco_runs.db-wal 2>/dev/null || true
+
+# After restore, clear WAL to ensure clean state
+sqlite3 /opt/finco1/app/data/finco_runs.db "PRAGMA wal_checkpoint(TRUNCATE);"
+```
+
+### Backup Schedule (B2B Pilot)
+
+- **Daily** automated backup via cron
+- **Before** any app update/restart
+- **Retention:** 30 days minimum, 90 days recommended for pilot data
+
+---
+
+## History Strategy — Append-Only MVP
+
+**Current behavior: OPTION A — append-only, no delete UI.**
+
+- `DELETE FROM runs` / `delete_run()` function exists at repository level
+- **No delete button** exposed in the UI (no `/runs/{id}/delete` route)
+- **No delete intent** — intentional MVP simplification for B2B pilot
+- Future: add delete UI + confirmation when multi-user auth is fully implemented
+
+This keeps the MVP simple: users can save and reload runs, and that's enough for a pilot.
+
+---
+
+## Future Roadmap (No Implementation)
+
+These are documented only — not implemented in this branch:
+
+- **Export saved run** from history panel → generate Excel from stored KPIs
+- **Multi-user auth** with per-user credentials (beyond admin single-user)
+- **Run deletion** via UI
+- **PostgreSQL migration** when scale requires it (swap `app/persistence/db.py` only)
+
+---
+
+## Cookie & Session Configuration
+
+| Env variable | Default | Description |
+|---|---|---|
+| `FINCO_SESSION_HOURS` | `24` | Session TTL in hours |
+| `FINCO_COOKIE_SECURE` | `true` | Send cookie only over HTTPS |
+| `FINCO_COOKIE_SAMESITE` | `lax` | CSRF protection level |
+
+**Cookie flags (all set in `make_session_cookie`):**
+- `httponly=True` — JavaScript cannot read the session cookie
+- `secure=True` — (default) only sent over HTTPS; set `FINCO_COOKIE_SECURE=false` for local HTTP dev
+- `samesite=lax` — CSRF protection; browser only sends cookie on same-site requests
+
+**Session expiry:** 24 hours (`FINCO_SESSION_HOURS=24`). After expiry, user is redirected to `/login`. No refresh tokens in MVP.

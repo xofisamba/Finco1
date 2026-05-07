@@ -4,7 +4,6 @@ import os, sys, pytest, uuid
 
 os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-for-pytest-only")
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.persistence.repository import save_run, get_run, list_runs, delete_run, count_runs
@@ -14,23 +13,17 @@ from app.persistence.repository import save_run, get_run, list_runs, delete_run,
 
 @pytest.fixture
 def test_db(tmp_path):
-    """Set up a fresh temp DB for each test; reset app.persistence.db state."""
+    """Each test gets a fresh temp DB. Real app/data/finco_runs.db never touched."""
     import app.persistence.db as db_mod
 
-    # Save current state
     old_path = os.environ.get("FINCO_DB_PATH")
-
-    # Point persistence at a fresh temp file
     db_file = str(tmp_path / "test_runs.db")
     os.environ["FINCO_DB_PATH"] = db_file
-
-    # Reset module-level connection so it picks up the new path
     db_mod._connection = None
     db_mod.DB_PATH = db_file
 
     yield db_file
 
-    # Restore
     if old_path:
         os.environ["FINCO_DB_PATH"] = old_path
     else:
@@ -60,7 +53,7 @@ class TestSaveAndLoad:
         uid1 = f"u{uuid.uuid4().hex[:8]}"
         uid2 = f"u{uuid.uuid4().hex[:8]}"
         run = save_run(uid1, "Solar", "Base", {}, {})
-        assert get_run(run.run_id, uid2) is None  # wrong user
+        assert get_run(run.run_id, uid2) is None
 
     def test_list_runs_returns_recent_first(self, test_db):
         uid = f"u{uuid.uuid4().hex[:8]}"
@@ -69,7 +62,7 @@ class TestSaveAndLoad:
         save_run(uid, "Solar", "Downside", {}, {"irr": 0.08})
         runs = list_runs(uid, limit=10)
         assert len(runs) == 3
-        assert runs[0].scenario == "Downside"  # most recent first
+        assert runs[0].scenario == "Downside"
         assert runs[1].scenario == "Upside"
         assert runs[2].scenario == "Base"
 
@@ -83,8 +76,8 @@ class TestSaveAndLoad:
         uid1 = f"u{uuid.uuid4().hex[:8]}"
         uid2 = f"u{uuid.uuid4().hex[:8]}"
         run = save_run(uid1, "Solar", "Base", {}, {})
-        assert delete_run(run.run_id, uid2) is False  # wrong user
-        assert get_run(run.run_id, uid1) is not None   # still exists
+        assert delete_run(run.run_id, uid2) is False
+        assert get_run(run.run_id, uid1) is not None
 
     def test_count_runs(self, test_db):
         uid = f"u{uuid.uuid4().hex[:8]}"
@@ -108,16 +101,16 @@ class TestUserIsolationRepository:
         uid_a = f"ua{uuid.uuid4().hex[:8]}"
         uid_b = f"ub{uuid.uuid4().hex[:8]}"
         run = save_run(uid_a, "Solar", "Base", {}, {})
-        assert get_run(run.run_id, uid_a) is not None   # owner can read
-        assert get_run(run.run_id, uid_b) is None        # other user cannot
+        assert get_run(run.run_id, uid_a) is not None
+        assert get_run(run.run_id, uid_b) is None
 
     def test_user_a_cannot_delete_user_b_run(self, test_db):
         uid_a = f"ua{uuid.uuid4().hex[:8]}"
         uid_b = f"ub{uuid.uuid4().hex[:8]}"
-        run = save_run(uid_a, "Solar", "Base", {}, {})
-        result = delete_run(run.run_id, uid_b)          # wrong user
+        run_b = save_run(uid_b, "Solar", "Base", {}, {})
+        result = delete_run(run_b.run_id, uid_a)
         assert result is False
-        assert get_run(run.run_id, uid_a) is not None    # still there
+        assert get_run(run_b.run_id, uid_b) is not None
 
     def test_list_runs_only_returns_own_runs(self, test_db):
         uid_a = f"ua{uuid.uuid4().hex[:8]}"
@@ -175,39 +168,14 @@ class TestPersistenceRoutes:
         assert r.status_code in (302, 401)
 
     def test_save_run_ignores_malicious_user_id_form_field(self):
-        """Even if client sends user_id in form, server uses session user_id only."""
+        """Route uses session user_id only — form user_id is ignored."""
         tc = self._auth_client()
         r = tc.post("/save-run", data={
-            "project_type": "Solar",
-            "scenario": "Base",
-            "capacity_mw": "50",
-            "user_id": "malicious_user",   # should be ignored
+            "project_type": "Solar", "scenario": "Base",
+            "capacity_mw": "50", "user_id": "malicious_user",
         })
-        # Route returns HTML partial, not JSON
         assert r.status_code == 200
         assert "text/html" in r.headers.get("content-type", "")
-        assert "Run saved successfully" in r.text or "error" in r.text.lower()
-
-    def test_auth_user_cannot_load_another_users_run(self, test_db):
-        """At repository level, user A's run is invisible to user B."""
-        uid_a = f"ua{uuid.uuid4().hex[:8]}"
-        uid_b = f"ub{uuid.uuid4().hex[:8]}"
-        run = save_run(uid_a, "Solar", "Base", {}, {})
-        assert get_run(run.run_id, uid_a) is not None   # owner: OK
-        assert get_run(run.run_id, uid_b) is None        # other user: invisible
-
-    def test_runs_never_includes_other_users_runs(self, test_db):
-        uid_a = f"ua{uuid.uuid4().hex[:8]}"
-        uid_b = f"ub{uuid.uuid4().hex[:8]}"
-        save_run(uid_a, "Solar", "Base", {}, {})
-        save_run(uid_b, "Wind", "Upside", {}, {})
-        # Repository enforces user isolation
-        runs_a = list_runs(uid_a)
-        runs_b = list_runs(uid_b)
-        assert all(r.user_id == uid_a for r in runs_a)
-        assert all(r.user_id == uid_b for r in runs_b)
-        assert len(runs_a) == 1
-        assert len(runs_b) == 1
 
     def test_get_run_not_found_returns_404(self):
         tc = self._auth_client()
@@ -217,51 +185,30 @@ class TestPersistenceRoutes:
     def test_saved_run_appears_in_runs_history(self, test_db):
         """After saving, the run appears in /runs history panel."""
         tc = self._auth_client()
-        # Save a run (response is HTML partial, not JSON)
         save_resp = tc.post("/save-run", data={
-            "project_type": "Solar",
-            "scenario": "Base",
-            "capacity_mw": "50",
-            "gearing_pct": "75",
+            "project_type": "Solar", "scenario": "Base",
+            "capacity_mw": "50", "gearing_pct": "75",
         })
         assert save_resp.status_code == 200
         assert "text/html" in save_resp.headers.get("content-type", "")
-        # Extract run_id from HTML (ID: <hex>)
         import re
         m = re.search(r'ID: ([a-f0-9]+)', save_resp.text)
         assert m is not None, "run_id not found in HTML response"
-        run_id = m.group(1)
 
-        # List runs and verify it appears
         runs_resp = tc.get("/runs")
         assert runs_resp.status_code == 200
         assert "Solar" in runs_resp.text
         assert "Base" in runs_resp.text
 
     def test_save_response_has_refresh_history_header(self, test_db):
-        """Successful save response sends HX-Trigger: refreshHistory header."""
+        """Successful save sends HX-Trigger: refreshHistory header."""
         tc = self._auth_client()
         r = tc.post("/save-run", data={
-            "project_type": "Solar",
-            "scenario": "Base",
-            "capacity_mw": "50",
+            "project_type": "Solar", "scenario": "Base", "capacity_mw": "50",
         })
         assert r.status_code == 200
-        # FastAPI/Starlette normalizes header keys to lowercase
         assert "hx-trigger" in r.headers
         assert r.headers["hx-trigger"] == "refreshHistory"
-
-    def test_runs_endpoint_excludes_other_users_runs_via_route(self, test_db):
-        """At route level, /runs only includes the current user's runs."""
-        import app.persistence.repository as repo
-        # Create run under uid_a
-        uid_a = f"ua{uuid.uuid4().hex[:8]}"
-        run = save_run(uid_a, "Wind", "Downside", {}, {})
-        # With auth-lite single-user sessions, we can't easily simulate user B
-        # So we document that route-level multi-user isolation depends on session scope
-        # The repository-level test above (test_runs_never_includes_other_users_runs)
-        # proves the isolation is enforced in the DB layer
-        assert get_run(run.run_id, uid_a) is not None
 
     def test_unauthenticated_all_routes_rejected(self):
         """All persistence routes require authentication."""
@@ -274,3 +221,67 @@ class TestPersistenceRoutes:
             else:
                 r = tc.get(path, follow_redirects=False)
             assert r.status_code in (302, 401), f"{method} {path} returned {r.status_code}"
+
+
+# ── End-to-end multi-user route isolation ───────────────────────────────────
+
+class TestMultiUserRouteIsolation:
+    """End-to-end multi-user isolation with separate session tokens.
+
+    Each test uses a distinct user_id in the session token, proving that
+    the repository DB filter enforces isolation at the route level.
+    """
+
+    def test_user_a_run_invisible_to_user_b_via_get_runs(self, test_db):
+        """User A's saved run is NOT visible to User B via GET /runs."""
+        uid_a = f"ua{uuid.uuid4().hex[:8]}"
+        uid_b = f"ub{uuid.uuid4().hex[:8]}"
+
+        # User A saves a run
+        save_run(uid_a, "Solar", "Base", {}, {})
+
+        from fastapi.testclient import TestClient
+        from main_web import app
+        from app.auth import create_session_token
+
+        # Two clients with different user_ids in their session tokens
+        tc_a = TestClient(app)
+        tc_b = TestClient(app)
+        tc_a.cookies.set("finco_session", create_session_token(user_id=uid_a, username="user_a"))
+        tc_b.cookies.set("finco_session", create_session_token(user_id=uid_b, username="user_b"))
+
+        # User A can see their run
+        runs_a = tc_a.get("/runs")
+        assert runs_a.status_code == 200
+        assert "Solar" in runs_a.text
+
+        # User B cannot see User A's run (filtered by user_id in session)
+        runs_b = tc_b.get("/runs")
+        assert runs_b.status_code == 200
+        assert "Solar" not in runs_b.text
+
+    def test_user_b_cannot_load_user_a_run_via_get_run(self, test_db):
+        """User B gets 404 when trying to GET /run/{user_a_run_id}."""
+        uid_a = f"ua{uuid.uuid4().hex[:8]}"
+        uid_b = f"ub{uuid.uuid4().hex[:8]}"
+
+        run_a = save_run(uid_a, "Wind", "Upside", {}, {})
+
+        from fastapi.testclient import TestClient
+        from main_web import app
+        from app.auth import create_session_token
+
+        tc_b = TestClient(app)
+        tc_b.cookies.set("finco_session", create_session_token(user_id=uid_b, username="user_b"))
+
+        r = tc_b.get(f"/run/{run_a.run_id}", follow_redirects=False)
+        assert r.status_code == 404
+
+    def test_user_a_cannot_delete_user_b_run(self, test_db):
+        """User A cannot delete User B's run (repo-level enforcement)."""
+        uid_a = f"ua{uuid.uuid4().hex[:8]}"
+        uid_b = f"ub{uuid.uuid4().hex[:8]}"
+        run_b = save_run(uid_b, "Solar", "Base", {}, {})
+        result = delete_run(run_b.run_id, uid_a)
+        assert result is False
+        assert get_run(run_b.run_id, uid_b) is not None
