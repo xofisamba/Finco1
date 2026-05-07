@@ -5,7 +5,7 @@ Tests fail if KPIs drift beyond tolerance.
 
 ## Tolerances
 - IRR: ±50 bps (0.50%)
-- DSCR: ±0.15 (covers streamlit cache variance in full suite runs)
+- DSCR: ±0.15 (defensive policy tolerance — covers deliberate future model improvements, not runtime nondeterminism)
 - Revenue/EBITDA totals: ±5%
 - Senior debt: ±5%
 - Distributions: ±10%

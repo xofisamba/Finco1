@@ -31,7 +31,9 @@ class TestIndex:
 
     def test_index_has_htmx_script(self, client):
         r = client.get("/")
-        assert "htmx.org" in r.text
+        # htmx is now vendored locally under /static/vendor/htmx.min.js
+        # verify the local vendor path is referenced and htmx is loaded
+        assert "/static/vendor/htmx.min.js" in r.text, "htmx should be vendored locally at /static/vendor/htmx.min.js"
 
     def test_index_has_fincogpt_title(self, client):
         r = client.get("/")

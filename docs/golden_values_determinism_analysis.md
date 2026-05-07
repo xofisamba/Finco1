@@ -20,7 +20,7 @@ Financial model uses standard IEEE 754 floating point. No non-deterministic aggr
 ### Execution Is Fully Deterministic
 
 The model produces identical results on every run. There is no execution drift from:
-- Streamlit cache collisions (golden tests run through the API layer, not through Streamlit UI)
+- DSCR tolerance is a defensive policy tolerance to avoid brittle regression tests while known calibration gaps remain (golden tests run through the API layer, not through Streamlit UI)
 - Parallel test execution
 - Hash collisions
 - Any other runtime nondeterminism
@@ -50,7 +50,7 @@ It is NOT caused by runtime nondeterminism.
 ### What the Tolerance IS NOT
 
 The ±0.15 tolerance does NOT compensate for:
-- Streamlit cache collisions (no such collisions in golden tests — they run via API layer)
+- DSCR tolerance is a defensive policy tolerance, not runtime nondeterminism (golden tests run via API layer, not through Streamlit UI)
 - Non-deterministic execution (none exists in this codebase)
 - TUHO missing CO2 revenue (611 kEUR Y1 — model bug, not random drift)
 - Oborovo OpEx duplication (~660 kEUR Y1 — model bug, not random drift)
