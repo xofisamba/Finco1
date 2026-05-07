@@ -121,6 +121,19 @@
   font-weight: 500;
 }
 
+.logout-btn {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.logout-btn:hover { color: var(--danger); border-color: var(--danger); }
+
 /* ── App Layout ──────────────────────────────────────────────────────────── */
 .app-layout {
   display: flex;

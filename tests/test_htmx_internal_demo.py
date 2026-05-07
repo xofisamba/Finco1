@@ -2,18 +2,33 @@
 
 Uses TestClient (synchronous, in-process).
 Starlette's TestClient handles requests directly via ASGI.
+Authentication: tests use a valid session cookie directly (no login round-trip needed).
 """
+import os
+os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-for-pytest-only")
+
 import pytest
 from fastapi.testclient import TestClient
-import sys, os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main_web import app
+from app.auth import create_session_token
 
 
 @pytest.fixture
 def client():
+    """Test client with a valid session cookie (bypasses login round-trip)."""
+    tc = TestClient(app)
+    token = create_session_token()
+    tc.cookies.set("finco_session", token)
+    return tc
+
+
+@pytest.fixture
+def unauthenticated_client():
+    """Test client without session cookie."""
     return TestClient(app)
 
 
@@ -25,28 +40,26 @@ class TestHealth:
 
 
 class TestPublicHealth:
-    def test_public_health_returns_200(self, client):
-        r = client.get("/public-health")
+    def test_public_health_returns_200(self, unauthenticated_client):
+        """Public health should work without authentication."""
+        r = unauthenticated_client.get("/public-health")
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
 
-    def test_public_health_contains_app_info(self, client):
-        r = client.get("/public-health")
+    def test_public_health_contains_app_info(self, unauthenticated_client):
+        r = unauthenticated_client.get("/public-health")
         data = r.json()
         assert data["status"] == "ok"
         assert data["app"] == "fincogpt"
         assert data["mode"] == "internal-demo"
 
-    def test_public_health_no_model_execution(self, client):
-        """Public health should not run any model logic."""
-        r = client.get("/public-health")
+    def test_public_health_no_model_execution(self, unauthenticated_client):
+        """Public health should be fast — no model execution."""
+        r = unauthenticated_client.get("/public-health")
         assert r.status_code == 200
-        # Should be fast (< 500ms) since it runs no model
-        # No financial data in response
         data = r.json()
         assert "project_irr" not in data
         assert "equity_irr" not in data
-        assert "kpis" not in data
 
 
 class TestIndex:

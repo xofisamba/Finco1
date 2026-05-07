@@ -1,7 +1,7 @@
 """HTMX internal demo web interface for Finco1 model."""
 import os
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
@@ -15,6 +15,16 @@ from app.capex_engine import build_capex_line_items_from_defaults
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
 from app.input_adapter import build_projectinputs
+
+# Import auth
+from app.auth import (
+    verify_login,
+    create_session_token,
+    decode_session_token,
+    make_session_cookie,
+    clear_session_cookie,
+    COOKIE_NAME,
+)
 
 # ── FastAPI app ────────────────────────────────────────────────────────────
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -47,6 +57,24 @@ KPI_LABELS = {
 
 SCENARIOS = ["Base", "Downside", "Upside"]
 PROJECT_TYPES = ["Solar", "Wind"]
+
+# ── Auth dependency ─────────────────────────────────────────────────────────
+
+def get_current_user(request: Request):
+    """Extract session from cookie. Returns None if not authenticated."""
+    cookies = request.cookies
+    token = cookies.get(COOKIE_NAME)
+    if not token:
+        return None
+    return decode_session_token(token)
+
+def require_auth(request: Request):
+    """Require auth — returns user or raises redirect to /login."""
+    user = get_current_user(request)
+    if not user:
+        # Return redirect URL for caller to use (avoiding async issues)
+        raise HTTPException(status_code=302)
+    return user
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -84,7 +112,6 @@ def _build_schema_from_form(
             raise ValueError(f"{val} must be non-negative")
         return i
 
-    # Build nested objects only for provided values
     revenue = None
     if tariff_eur_mwh or p50_hours:
         revenue = RevenueInput(
@@ -163,11 +190,80 @@ def _format_kpis(kpis: dict) -> list[dict]:
     return rows
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
+# ── Auth Routes ─────────────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/login")
+async def login_get(request: Request):
+    """Login page."""
+    user = get_current_user(request)
+    if user:
+        return RedirectResponse(url="/", status_code=302)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={},
+    )
+
+
+@app.post("/login")
+async def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    """Process login. Set session cookie on success."""
+    if verify_login(username, password):
+        token = create_session_token()
+        cookie = make_session_cookie(token)
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(**cookie)
+        return response
+
+    # Failed login
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"error": "Invalid username or password."},
+        status_code=401,
+    )
+
+
+@app.post("/logout")
+async def logout():
+    """Clear session cookie and redirect to login."""
+    response = RedirectResponse(url="/login", status_code=302)
+    cookie = clear_session_cookie()
+    response.set_cookie(**cookie)
+    return response
+
+
+# ── Public Routes ───────────────────────────────────────────────────────────
+
+@app.get("/public-health")
+async def public_health():
+    """Public health check — no auth required."""
+    return {
+        "status": "ok",
+        "app": "fincogpt",
+        "mode": "internal-demo",
+    }
+
+
+@app.get("/health")
+async def health(request: Request):
+    """Private health check — requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"status": "unauthenticated", "detail": "Login required"}, status_code=401)
+    return JSONResponse({"status": "ok"})
+
+
+# ── Protected Routes ────────────────────────────────────────────────────────
+
+@app.get("/")
 async def index(request: Request):
-    """Main input form."""
+    """Main input form. Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -178,35 +274,39 @@ async def index(request: Request):
             "form_data": {},
             "validation_errors": [],
             "success_message": None,
+            "user": user,
         },
     )
 
 
 @app.post("/validate")
-async def validate(
-    request: Request,
-    project_type: str = Form(...),
-    scenario: str = Form(...),
-    capacity_mw: Optional[str] = Form(""),
-    tariff_eur_mwh: Optional[str] = Form(""),
-    p50_hours: Optional[str] = Form(""),
-    total_capex_keur: Optional[str] = Form(""),
-    opex_y1_keur: Optional[str] = Form(""),
-    gearing_pct: Optional[str] = Form(""),
-    target_dscr: Optional[str] = Form(""),
-    interest_rate_pct: Optional[str] = Form(""),
-    tenor_years: Optional[str] = Form(""),
-):
-    """Validate form inputs. Return validation.html partial."""
+async def validate(request: Request):
+    """Validate form inputs. Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    # Parse form data
+    form = await request.form()
+    project_type = form.get("project_type", "")
+    scenario = form.get("scenario", "")
+    capacity_mw = form.get("capacity_mw", "")
+    tariff_eur_mwh = form.get("tariff_eur_mwh", "")
+    p50_hours = form.get("p50_hours", "")
+    total_capex_keur = form.get("total_capex_keur", "")
+    opex_y1_keur = form.get("opex_y1_keur", "")
+    gearing_pct = form.get("gearing_pct", "")
+    target_dscr = form.get("target_dscr", "")
+    interest_rate_pct = form.get("interest_rate_pct", "")
+    tenor_years = form.get("tenor_years", "")
+
     errors = []
 
-    # Basic required validation
     if project_type not in PROJECT_TYPES:
         errors.append(f"project_type must be one of {PROJECT_TYPES}")
     if scenario not in SCENARIOS:
         errors.append(f"scenario must be one of {SCENARIOS}")
 
-    # Numeric field validation with friendly messages
     numeric_checks = [
         ("capacity_mw", capacity_mw, 2000.0),
         ("tariff_eur_mwh", tariff_eur_mwh, 1000.0),
@@ -223,7 +323,6 @@ async def validate(
         if err:
             errors.append(err)
 
-    # Build schema to trigger schema-level validation
     if not errors:
         try:
             schema = _build_schema_from_form(
@@ -247,21 +346,25 @@ async def validate(
 
 
 @app.post("/run")
-async def run(
-    request: Request,
-    project_type: str = Form(...),
-    scenario: str = Form(...),
-    capacity_mw: Optional[str] = Form(""),
-    tariff_eur_mwh: Optional[str] = Form(""),
-    p50_hours: Optional[str] = Form(""),
-    total_capex_keur: Optional[str] = Form(""),
-    opex_y1_keur: Optional[str] = Form(""),
-    gearing_pct: Optional[str] = Form(""),
-    target_dscr: Optional[str] = Form(""),
-    interest_rate_pct: Optional[str] = Form(""),
-    tenor_years: Optional[str] = Form(""),
-):
-    """Run model with custom inputs and return kpis.html partial."""
+async def run(request: Request):
+    """Run model with custom inputs. Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    project_type = form.get("project_type", "")
+    scenario = form.get("scenario", "")
+    capacity_mw = form.get("capacity_mw", "")
+    tariff_eur_mwh = form.get("tariff_eur_mwh", "")
+    p50_hours = form.get("p50_hours", "")
+    total_capex_keur = form.get("total_capex_keur", "")
+    opex_y1_keur = form.get("opex_y1_keur", "")
+    gearing_pct = form.get("gearing_pct", "")
+    target_dscr = form.get("target_dscr", "")
+    interest_rate_pct = form.get("interest_rate_pct", "")
+    tenor_years = form.get("tenor_years", "")
+
     errors = []
     if not _validate_form(project_type, scenario, errors):
         return templates.TemplateResponse(
@@ -314,20 +417,24 @@ async def run(
 
 
 @app.post("/compare")
-async def compare(
-    request: Request,
-    project_type: str = Form(...),
-    capacity_mw: Optional[str] = Form(""),
-    tariff_eur_mwh: Optional[str] = Form(""),
-    p50_hours: Optional[str] = Form(""),
-    total_capex_keur: Optional[str] = Form(""),
-    opex_y1_keur: Optional[str] = Form(""),
-    gearing_pct: Optional[str] = Form(""),
-    target_dscr: Optional[str] = Form(""),
-    interest_rate_pct: Optional[str] = Form(""),
-    tenor_years: Optional[str] = Form(""),
-):
-    """Run Base/Downside/Upside using SAME custom override baseline. Return comparison.html."""
+async def compare(request: Request):
+    """Run Base/Downside/Upside comparison. Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    project_type = form.get("project_type", "")
+    capacity_mw = form.get("capacity_mw", "")
+    tariff_eur_mwh = form.get("tariff_eur_mwh", "")
+    p50_hours = form.get("p50_hours", "")
+    total_capex_keur = form.get("total_capex_keur", "")
+    opex_y1_keur = form.get("opex_y1_keur", "")
+    gearing_pct = form.get("gearing_pct", "")
+    target_dscr = form.get("target_dscr", "")
+    interest_rate_pct = form.get("interest_rate_pct", "")
+    tenor_years = form.get("tenor_years", "")
+
     errors = []
     if project_type not in PROJECT_TYPES:
         errors.append(f"project_type must be one of {PROJECT_TYPES}")
@@ -337,17 +444,15 @@ async def compare(
             context={"errors": errors},
         )
 
-    # Build override — fail fast on invalid inputs (no silent fallback)
     try:
         schema = _build_schema_from_form(
-            project_type, "Base",  # scenario for schema doesn't affect overrides
+            project_type, "Base",
             capacity_mw, tariff_eur_mwh, p50_hours,
             total_capex_keur, opex_y1_keur,
             gearing_pct, target_dscr, interest_rate_pct, tenor_years,
         )
         override = build_projectinputs(schema)
     except (ValueError, Exception) as e:
-        # Invalid custom inputs — return errors, not silent fallback to defaults
         return templates.TemplateResponse(
             request=request,
             name="partials/errors.html",
@@ -381,22 +486,25 @@ async def compare(
 
 
 @app.post("/download")
-async def download_post(
-    request: Request,
-    project_type: str = Form(...),
-    scenario: str = Form(...),
-    capacity_mw: Optional[str] = Form(""),
-    tariff_eur_mwh: Optional[str] = Form(""),
-    p50_hours: Optional[str] = Form(""),
-    total_capex_keur: Optional[str] = Form(""),
-    opex_y1_keur: Optional[str] = Form(""),
-    gearing_pct: Optional[str] = Form(""),
-    target_dscr: Optional[str] = Form(""),
-    interest_rate_pct: Optional[str] = Form(""),
-    tenor_years: Optional[str] = Form(""),
-):
-    """Generate Excel export with current form values applied."""
-    # Build schema — fail fast on invalid inputs (no silent fallback)
+async def download_post(request: Request):
+    """Generate Excel export with current form values. Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    project_type = form.get("project_type", "")
+    scenario = form.get("scenario", "")
+    capacity_mw = form.get("capacity_mw", "")
+    tariff_eur_mwh = form.get("tariff_eur_mwh", "")
+    p50_hours = form.get("p50_hours", "")
+    total_capex_keur = form.get("total_capex_keur", "")
+    opex_y1_keur = form.get("opex_y1_keur", "")
+    gearing_pct = form.get("gearing_pct", "")
+    target_dscr = form.get("target_dscr", "")
+    interest_rate_pct = form.get("interest_rate_pct", "")
+    tenor_years = form.get("tenor_years", "")
+
     try:
         schema = _build_schema_from_form(
             project_type, scenario,
@@ -431,8 +539,12 @@ async def download_post(
 
 
 @app.get("/download")
-async def download_get(project_type: str = "Solar", scenario: str = "Base"):
-    """Generate Excel export (GET — uses factory defaults)."""
+async def download_get(request: Request, project_type: str = "Solar", scenario: str = "Base"):
+    """Generate Excel export (GET — uses factory defaults). Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
     try:
         demo = run_demo_project(project_type, scenario)
         excel_bytes = build_excel_export(
@@ -450,26 +562,6 @@ async def download_get(project_type: str = "Solar", scenario: str = "Base"):
             content=f"<html><body><h2>Excel generation failed</h2><p>{str(e)}</p><a href='/'>Back</a></body></html>",
             status_code=500,
         )
-
-
-@app.get("/health")
-async def health():
-    """Simple health check (behind Basic Auth)."""
-    return {"status": "ok"}
-
-
-@app.get("/public-health")
-async def public_health():
-    """Public health check — no auth required, no model execution.
-    
-    Safe to expose publicly. Proves domain/SSL/nginx/app stack is up.
-    Does NOT prove model routes (/run, /compare, /download) are functional.
-    """
-    return {
-        "status": "ok",
-        "app": "fincogpt",
-        "mode": "internal-demo",
-    }
 
 
 if __name__ == "__main__":
