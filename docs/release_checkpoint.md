@@ -1,36 +1,66 @@
-# Release Checkpoints
+# Release Checkpoint
 
-## v1.2.1-api-hardening (2026-05-07)
-
-### What Changed
-- `RunRequest.inputs` typed as `Optional[ProjectInputsSchema]` — full nested schema visible in Swagger
-- `/validate` endpoint performs real business-rule validation (no waterfall execution)
-- `ValidateResponse` includes `warnings` field alongside `errors`
-- Business rules: CAPEX floor, gearing max/min, DSCR floor, interest rate bounds, tariff/degradation sanity
-- `scenario` field simplified: plain `str = "Base"` (no `__setattr__` hack, no `model_validator`)
-
-### OpenAPI Improvements
-- Nested `revenue`, `capex`, `opex`, `debt` objects visible in Swagger
-- Field descriptions shown in Swagger UI
-
-### Tests
-- 1107 passed, 1 xfailed
-- New: `tests/test_custom_input_directionality.py` (4 directionality tests)
-- API tests: `tests/test_api.py` (23 tests)
-
-### Files Changed
-- `app/api/router.py` — `/validate` business validation
-- `app/api/schemas.py` — `RunRequest.inputs: Optional[ProjectInputsSchema]`
-- `app/input_schema.py` — `scenario` simplified, `warnings` added to `ValidateResponse`
-- `tests/test_api.py`, `tests/test_custom_input_directionality.py`
-- `docs/known_limitations.md`, `docs/model_status.md`
-
-### Backward Compatibility
-✅ All existing API requests unchanged — old callers work without modification
+## v1.4-bankable-runtime-active
+**Date:** 2026-05-07
+**Branch:** `main` (HEAD: `1cab0fe`)
 
 ---
 
-## v1.2-custom-input-schema (2026-05-05)
-- JSON custom input via `POST /run { inputs: {...} }`
-- `POST /validate` structural validation
-- CLI: `python -m app.cli.main run --project Solar --scenario Base --input custom_solar.json`
+### What Is Active
+
+| Component | Status |
+|-----------|--------|
+| Bankable depreciation framework | ✅ Runtime-active |
+| `depreciation_bankable.py` | ✅ Present and wired |
+| `generate_tax_and_book_schedule()` | ✅ Tax/book schedules |
+| `build_bankable_waterfall_schedule()` | ✅ Runtime bridge |
+| `FULL_YEAR` convention | ✅ Explicitly forced in runtime |
+| Day fraction application | ✅ Single point in `waterfall_core` |
+| Legacy fallback | ✅ Preserved (no `advanced_capex_line_items`) |
+
+---
+
+### Runtime Flow
+
+```
+advanced_capex_line_items
+  → ui_runner.py: build_bankable_waterfall_schedule(FULL_YEAR)
+  → generate_tax_and_book_schedule(FULL_YEAR) → [1.0]*20 day fractions
+  → returns ANNUAL depreciation amounts
+  → WaterfallDepreciationSchedule(total_by_period=[annual])
+  → WaterfallRunConfig
+  → waterfall_core: dep = annual_dep * p.day_fraction (ONCE)
+```
+
+---
+
+### Known Limitations
+
+- ❌ No Excel tax/book depreciation sheets yet
+- ❌ No external tax advisor sign-off
+- ❌ No mid-year/COD-month convention
+- ❌ No audited jurisdiction source tables
+- ❌ HTMX prototype not production-ready
+- ❌ TUHO CO2 revenue missing (611 kEUR Y1)
+- ❌ Oborovo OpEx duplication (660 kEUR Y1)
+- ❌ Streamlit cache collision risk (DSCR ±0.15 tolerance)
+
+---
+
+### Test Status
+
+| Suite | Result |
+|-------|--------|
+| `test_depreciation_wiring.py` | 9 passed ✅ |
+| `test_bankable_depreciation.py` | 26 passed ✅ |
+| `test_golden_values.py` | 36 passed ✅ |
+| Full suite | 1203 passed, 1 xfailed ✅ |
+
+---
+
+### Next Sprint Goals
+
+1. Excel tax/book depreciation disclosure sheets
+2. TUHO CO2 revenue fix
+3. Oborovo OpEx duplication fix
+4. HTMX production preparation
