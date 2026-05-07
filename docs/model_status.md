@@ -60,7 +60,7 @@ Three interfaces (Streamlit, CLI, FastAPI) over shared `run_demo_project()` core
 - **No persistence** — no saved projects, no database
 - **Debt sculpting uses CFADS proxy** — EBITDA × (1 − tax_rate), not full iterative after-tax sizing
 - **CAPEX depreciation**: when `advanced_capex_line_items` are provided, FincoGPT uses `app.depreciation_engine` to generate per-asset-class depreciation schedules. Legacy `CapexItem`-based depreciation remains the fallback when no advanced CAPEX line items are provided.
-- **Asset class → depreciation life**: GENERATION = 25y, GRID = 20y, DEVELOPMENT = 5y, EPC = 25y, CONTINGENCY = 5y, LAND = non-depreciable, OTHER = 10y. Inverters are grouped under GENERATION (25y linear).
+- **Asset class → depreciation life**: GENERATION = 25y, GRID = 20y, DEVELOPMENT = 5y, EPC = 25y, CONTINGENCY = 5y, LAND = non-depreciable, OTHER = 10y. **Current runtime:** Inverters are grouped under GENERATION at 25y. **Bankable framework** (not yet active): inverter keyword detection maps to 10y tax life under `DepreciationProfile.solar_croatia_ibl`.
 - **No separate tax vs financial depreciation** — single straight-line schedule used for both
 - **No explicit mid-year convention** beyond period `day_fraction` split
 
