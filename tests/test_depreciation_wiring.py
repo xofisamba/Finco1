@@ -50,15 +50,34 @@ class TestDepreciationWiring:
         # Should be identical to legacy path above
         print(f"Legacy path works: IRR={demo.result.project_irr:.4f} ✓")
 
-    def test_advanced_capex_changes_taxable_income(self):
-        """Advanced path should affect taxable income through depreciation."""
+    def test_advanced_capex_changes_taxable_income_vs_legacy(self):
+        """Advanced bankable depreciation path produces meaningfully different taxable income than legacy.
+        
+        Invariants:
+        - Both paths produce non-zero taxable income
+        - Advanced path taxable income differs from legacy (depreciation actually changes the calculation)
+        - The difference is not trivially zero
+        """
         items = build_capex_line_items_from_defaults("solar")
         demo_adv = run_demo_project("Solar", "Base", advanced_capex_line_items=items)
+        demo_leg = run_demo_project("Solar", "Base")
 
         # Sum taxable income across all periods
         adv_taxable = sum(p.taxable_profit_keur for p in demo_adv.result.periods)
-        assert adv_taxable != 0, "Taxable income should be non-zero"
-        print(f"Advanced taxable income: {adv_taxable:.0f} kEUR ✓")
+        leg_taxable = sum(p.taxable_profit_keur for p in demo_leg.result.periods)
+        
+        # Both non-zero
+        assert adv_taxable != 0, "Advanced taxable income must be non-zero"
+        assert leg_taxable != 0, "Legacy taxable income must be non-zero"
+        
+        # Advanced path should differ from legacy due to different depreciation treatment
+        # The difference should be meaningful (not just rounding)
+        diff = abs(adv_taxable - leg_taxable)
+        assert diff > 100.0, (
+            f"Advanced ({adv_taxable:.0f}) and legacy ({leg_taxable:.0f}) taxable income "
+            f"differ by only {diff:.0f} kEUR. Bankable depreciation should materially change taxable income."
+        )
+        print(f"Taxable income: legacy={leg_taxable:.0f}, advanced={adv_taxable:.0f}, diff={diff:.0f} kEUR ✓")
 
     def test_depreciation_schedule_affects_equity_irr(self):
         """Different depreciation timing should affect equity IRR."""

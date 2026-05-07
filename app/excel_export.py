@@ -168,10 +168,10 @@ def build_excel_export(
         _write_depreciation_assumptions_sheet(writer, depr_profile)
 
         # ── Tax Depreciation Disclosure ───────────────────────────────────
-        _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items)
+        _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type)
 
         # ── Book Depreciation Disclosure ──────────────────────────────────
-        _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items)
+        _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type)
     
     output.seek(0)
     return output.read()
@@ -588,8 +588,12 @@ def _write_book_depreciation_sheet(writer, tax_schedule, book_schedule) -> None:
     ws.freeze_panes = "B2"
 
 
-def _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items) -> None:
-    """Write Tax Depreciation sheet using project inputs."""
+def _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type: str = "Solar") -> None:
+    """Write Tax Depreciation sheet using project inputs.
+    
+    Args:
+        project_type: explicitly passed (Solar or Wind) — NOT derived from project_inputs.info
+    """
     from app.depreciation_bankable import (
         generate_tax_and_book_schedule, 
         map_capex_line_item_to_basis,
@@ -606,12 +610,12 @@ def _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_c
         return
     
     horizon = getattr(project_inputs.info, "horizon_years", 25) if project_inputs else 25
-    project_type = getattr(project_inputs.info, "project_type", "Solar") if project_inputs else "Solar"
+    # project_type is passed explicitly — do NOT derive from project_inputs.info
     profile_name = f"{project_type.lower()}_croatia_ibl"
     
     if advanced_capex_line_items:
         profile = get_profile(profile_name)
-        basis_items = [map_capex_line_item_to_basis(item, profile) for item in advanced_capex_line_items]
+        basis_items = [map_capex_line_item_to_basis(item, profile, project_type) for item in advanced_capex_line_items]
         tax_sched, book_sched = generate_tax_and_book_schedule(
             basis_items, profile, total_periods=horizon,
             convention=DepreciationConvention.FULL_YEAR,
@@ -625,8 +629,12 @@ def _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_c
         _write_sheet(writer, "Tax Depreciation", df)
 
 
-def _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items) -> None:
-    """Write Book Depreciation sheet using project inputs."""
+def _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type: str = "Solar") -> None:
+    """Write Book Depreciation sheet using project inputs.
+    
+    Args:
+        project_type: explicitly passed (Solar or Wind) — NOT derived from project_inputs.info
+    """
     from app.depreciation_bankable import (
         generate_tax_and_book_schedule, 
         map_capex_line_item_to_basis,
@@ -644,12 +652,12 @@ def _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_
         return
     
     horizon = getattr(project_inputs.info, "horizon_years", 25) if project_inputs else 25
-    project_type = getattr(project_inputs.info, "project_type", "Solar") if project_inputs else "Solar"
+    # project_type is passed explicitly — do NOT derive from project_inputs.info
     profile_name = f"{project_type.lower()}_croatia_ibl"
     
     if advanced_capex_line_items:
         profile = get_profile(profile_name)
-        basis_items = [map_capex_line_item_to_basis(item, profile) for item in advanced_capex_line_items]
+        basis_items = [map_capex_line_item_to_basis(item, profile, project_type) for item in advanced_capex_line_items]
         tax_sched, book_sched = generate_tax_and_book_schedule(
             basis_items, profile, total_periods=horizon,
             convention=DepreciationConvention.FULL_YEAR,

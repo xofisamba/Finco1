@@ -79,7 +79,8 @@ def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanc
         depr_schedule = build_bankable_waterfall_schedule(
             list(advanced_capex_line_items),
             profile_name=f"{project_type.lower()}_croatia_ibl",
-            total_periods=horizon_years
+            total_periods=horizon_years,
+            project_type=project_type,
         )
         updates["advanced_capex_depreciation_schedule"] = depr_schedule
         updates["advanced_capex_line_items"] = advanced_capex_line_items
