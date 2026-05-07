@@ -1,5 +1,9 @@
 #!/bin/bash
-# FincoGPT Smoke Test
+# smoke_test.sh — FincoGPT deployment smoke test
+#
+# Tests the critical paths of the deployed FincoGPT app.
+# Checks /public-health JSON, / redirect, and /health auth behavior.
+#
 # Usage: ./smoke_test.sh [base_url]
 # Default base_url: http://127.0.0.1:8000
 
@@ -15,53 +19,63 @@ echo "=== FincoGPT Smoke Test ==="
 echo "Base URL: $BASE_URL"
 echo ""
 
-# 1. /public-health
+# ── 1. /public-health (no auth, returns JSON) ─────────────────────────────
 echo "--- /public-health ---"
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/public-health")
-if [[ "$RESPONSE" == "200" ]]; then
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/public-health")
+if [[ "$HTTP_CODE" != "200" ]]; then
+    fail "/public-health returned $HTTP_CODE (expected 200)"
+else
     BODY=$(curl -s "${BASE_URL}/public-health")
-    if [[ "$BODY" == *"OK"* ]]; then
-        pass "/public-health returns 200 + OK"
+    if echo "$BODY" | grep -q '"status":"ok"'; then
+        pass "/public-health → 200 with {\"status\":\"ok\"}"
     else
-        fail "/public-health body missing OK: $BODY"
+        fail "/public-health body missing '\"status\":\"ok\"': $BODY"
+    fi
+fi
+echo ""
+
+# ── 2. GET / (unauthenticated root → redirect to /login) ───────────────────
+echo "--- / (root, unauthenticated) ---"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/")
+if [[ "$HTTP_CODE" == "302" ]]; then
+    LOCATION=$(curl -s -I "${BASE_URL}/" | grep -i "^Location:" | tr -d '\r' || true)
+    if echo "$LOCATION" | grep -qi "login"; then
+        pass "/ → 302 redirect to /login"
+    else
+        fail "/redirect location missing 'login': $LOCATION"
     fi
 else
-    fail "/public-health returned $RESPONSE (expected 200)"
+    fail "/ returned $HTTP_CODE (expected 302)"
 fi
 echo ""
 
-# 2. /health
-echo "--- /health ---"
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/health")
-if [[ "$RESPONSE" == "302" ]]; then
-    pass "/health redirects (auth-protected, expected 302)"
-else
-    fail "/health returned $RESPONSE (expected 302 for auth redirect)"
-fi
-echo ""
-
-# 3. / (root → redirect to /login)
-echo "--- / (root redirect) ---"
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/")
-if [[ "$RESPONSE" == "302" ]]; then
-    LOCATION=$(curl -s -I "${BASE_URL}/" | grep -i "^Location:" | tr -d '\r')
-    if [[ "$LOCATION" == *"login"* ]]; then
-        pass "/ redirects to /login (302)"
+# ── 3. GET /health (unauthenticated → 302 redirect to /login) ─────────────
+echo "--- /health (unauthenticated) ---"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/health")
+if [[ "$HTTP_CODE" == "302" ]]; then
+    LOCATION=$(curl -s -I "${BASE_URL}/health" | grep -i "^Location:" | tr -d '\r' || true)
+    if echo "$LOCATION" | grep -qi "login"; then
+        pass "/health → 302 redirect to /login"
     else
-        fail "/redirect location: $LOCATION (expected /login)"
+        fail "/health redirect location missing 'login': $LOCATION"
     fi
 else
-    fail "/ returned $RESPONSE (expected 302)"
+    fail "/health returned $HTTP_CODE (expected 302)"
 fi
 echo ""
 
-# 4. HTTPS redirect check (if testing external domain)
-echo "--- HTTP→HTTPS redirect ---"
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: localhost" "http://localhost:8080/")
-if [[ "$RESPONSE" == "301" ]]; then
-    pass "HTTP→HTTPS redirect (301) works"
+# ── 4. GET /login (public page, no redirect) ───────────────────────────────
+echo "--- /login ---"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/login")
+if [[ "$HTTP_CODE" == "200" ]]; then
+    BODY=$(curl -s "${BASE_URL}/login")
+    if echo "$BODY" | grep -qi "sign in\|login\|password"; then
+        pass "/login → 200 with login page content"
+    else
+        fail "/login 200 but body doesn't look like login page"
+    fi
 else
-    echo "  (SKIP: nginx not configured on :8080)"
+    fail "/login returned $HTTP_CODE (expected 200)"
 fi
 echo ""
 

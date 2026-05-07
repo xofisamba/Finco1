@@ -1,114 +1,118 @@
 #!/usr/bin/env bash
-# restore.sh — FincoGPT PostgreSQL database restore
+# restore.sh — FincoGPT SQLite database restore
 #
 # Usage:
 #   ./restore.sh <backup_path>
 #
 # Example:
-#   ./restore.sh /opt/finco1/backups/finco1_backup_20260508_120000.sql
+#   ./restore.sh /opt/finco1/backups/finco_runs_20260508_120000.db.xz
 #
 # What it does:
-#   1. Validates the backup file exists
+#   1. Validates the backup file exists and is readable
 #   2. Stops the finco-web systemd service
-#   3. Drops and recreates the target database
-#   4. Restores from the backup file
-#   5. Restarts the finco-web service
+#   3. Backs up the current (potentially corrupted) DB
+#   4. Decompresses and restores the backup to FINCO_DB_PATH
+#   5. Fixes ownership/permissions
+#   6. Restarts finco-web
+#   7. Runs healthcheck
 #
-# Requirements: psql on PATH, finco-web service must be managed by systemd,
-#              DATABASE_URL env var set (or .env at /opt/finco1/.env)
+# Requirements: finco-web service managed by systemd, xz for decompression
 
 set -euo pipefail
 
-# ── Config ──────────────────────────────────────────────────────────────────
 SERVICE_NAME="finco-web"
-ENV_FILE="/opt/finco1/.env"
+BACKUP_FILE="$1"
 
-# Load DATABASE_URL from /opt/finco1/.env if present
+# Load FINCO_DB_PATH from .env
+ENV_FILE="/opt/finco1/.env"
 if [[ -f "$ENV_FILE" ]]; then
     export $(grep -v '^#' "$ENV_FILE" | xargs)
 fi
 
-# ── Validate input ───────────────────────────────────────────────────────────
-BACKUP_PATH="${1:-}"
-if [[ -z "$BACKUP_PATH" ]]; then
-    echo "ERROR: Usage: $0 <backup_path>" >&2
-    echo "Example: $0 /opt/finco1/backups/finco1_backup_20260508_120000.sql" >&2
+DB_PATH="${FINCO_DB_PATH:-/opt/finco1/app/data/finco_runs.db}"
+BACKUP_DIR="${BACKUP_DIR:-/opt/finco1/backups}"
+
+# ── Pre-flight ────────────────────────────────────────────────────────────────
+if [[ -z "$BACKUP_FILE" ]]; then
+    echo "Usage: $0 <backup_path>" >&2
+    echo "Example: $0 /opt/finco1/backups/finco_runs_20260508_120000.db.xz" >&2
     exit 1
 fi
 
-if [[ ! -f "$BACKUP_PATH" ]]; then
-    echo "ERROR: Backup file not found: $BACKUP_PATH" >&2
+if [[ ! -f "$BACKUP_FILE" ]]; then
+    echo "ERROR: Backup file not found: $BACKUP_FILE" >&2
     exit 1
 fi
 
-# Determine DB connection string
-DB_URL="${DATABASE_URL:-}"
-if [[ -z "$DB_URL" ]]; then
-    echo "ERROR: DATABASE_URL is not set. Aborting restore." >&2
+# Detect format
+if [[ "$BACKUP_FILE" == *.xz ]]; then
+    DECOMPRESS="xz -d -k"
+    RESTORED="${BACKUP_FILE%.xz}"
+elif [[ "$BACKUP_FILE" == *.gz ]]; then
+    DECOMPRESS="gunzip -k"
+    RESTORED="${BACKUP_FILE%.gz}"
+elif [[ "$BACKUP_FILE" == *.db ]]; then
+    DECOMPRESS="cp"
+    RESTORED="$BACKUP_FILE"
+else
+    echo "ERROR: Unknown file format. Expected .xz, .gz, or .db" >&2
     exit 1
 fi
-
-HOST=$(echo "$DB_URL" | sed -n 's|.*@\([^:]*\):\([0-9]*\)/.*|\1|p')
-PORT=$(echo "$DB_URL" | sed -n 's|.*@\([^:]*\):\([0-9]*\)/.*|\2|p')
-USER=$(echo "$DB_URL" | sed -n 's|postgres://\([^:]*\):.*|\1|p')
-DBNAME=$(echo "$DB_URL" | sed -n 's|.*:\/[^\/]*/\(.*\)|\1|p' | sed 's/?.*//')
-
-PGHOST="${HOST:-localhost}"
-PGPORT="${PORT:-5432}"
-PGUSER="${USER:-postgres}"
-PGDATABASE="${DBNAME:-finco1}"
-
-echo "=== FincoGPT Restore ==="
-echo "Backup file: $BACKUP_PATH"
-echo "Target DB: $PGHOST:$PGPORT/$PGDATABASE as $PGUSER"
-echo ""
-
-# ── Confirmation prompt ──────────────────────────────────────────────────────
-echo "WARNING: This will DROP the current database and replace it with the backup."
-echo "Press Ctrl+C to abort, or Enter to continue..."
-read -r REPLY
 
 # ── Stop service ─────────────────────────────────────────────────────────────
-echo ""
-echo "Stopping service: $SERVICE_NAME..."
-systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-echo "Service stopped."
+echo "Stopping $SERVICE_NAME..."
+systemctl stop "$SERVICE_NAME" || {
+    echo "WARNING: Could not stop $SERVICE_NAME via systemctl. Trying pkill..." >&2
+    pkill -f "gunicorn.*main_web" || true
+    sleep 2
+}
 
-# ── Restore ──────────────────────────────────────────────────────────────────
-echo ""
-echo "Restoring database..."
-
-# Check if plain SQL or custom format
-if [[ "$BACKUP_PATH" == *.dump ]]; then
-    # Custom format pg_restore
-    pg_restore \
-        --host="$PGHOST" \
-        --port="$PGPORT" \
-        --username="$PGUSER" \
-        --dbname="$PGDATABASE" \
-        --clean \
-        --if-exists \
-        --single-transaction \
-        --verbose \
-        "$BACKUP_PATH"
-else
-    # Plain SQL restore
-    psql \
-        --host="$PGHOST" \
-        --port="$PGPORT" \
-        --username="$PGUSER" \
-        --dbname="$PGDATABASE" \
-        --set=ON_ERROR_STOP=on \
-        --file="$BACKUP_PATH"
+# ── Backup current DB before overwrite ───────────────────────────────────────
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+CORRUPT_BACKUP="${DB_PATH}.corrupt_${TIMESTAMP}"
+if [[ -f "$DB_PATH" ]]; then
+    echo "Backing up current DB to $CORRUPT_BACKUP..."
+    cp "$DB_PATH" "$CORRUPT_BACKUP"
+    # Also backup WAL if exists
+    [[ -f "${DB_PATH}-wal" ]] && cp "${DB_PATH}-wal" "${DB_PATH}-wal.corrupt_${TIMESTAMP}" || true
 fi
 
-echo ""
-echo "=== Restore complete ==="
+# ── Restore ─────────────────────────────────────────────────────────────────
+RESTORED_PATH="/tmp/finco_runs_restored_$$.db"
+echo "Decompressing to $RESTORED_PATH..."
+$DECOMPRESS "$BACKUP_FILE" -c > "$RESTORED_PATH"
+
+echo "Restoring to $DB_PATH..."
+cp "$RESTORED_PATH" "$DB_PATH"
+rm -f "$RESTORED_PATH"
+
+# ── Fix permissions ───────────────────────────────────────────────────────────
+chown root:root "$DB_PATH"
+chmod 600 "$DB_PATH"
+
+# WAL permissions
+[[ -f "${DB_PATH}-wal" ]] && chown root:root "${DB_PATH}-wal" && chmod 600 "${DB_PATH}-wal" || true
 
 # ── Restart service ──────────────────────────────────────────────────────────
+echo "Restarting $SERVICE_NAME..."
+systemctl start "$SERVICE_NAME" || {
+    echo "WARNING: systemctl start failed, trying manual restart..." >&2
+    cd /opt/finco1
+    /opt/finco1/.venv/bin/gunicorn main_web:app --workers 2 --bind 127.0.0.1:8000 &
+    sleep 3
+}
+
+# ── Healthcheck ───────────────────────────────────────────────────────────────
 echo ""
-echo "Restarting service: $SERVICE_NAME..."
-systemctl start "$SERVICE_NAME"
-echo "Service started."
-echo ""
-echo "Done. Database restored from: $BACKUP_PATH"
+echo "Running healthcheck..."
+sleep 2
+if curl -sf http://127.0.0.1:8000/public-health > /dev/null; then
+    echo "✓ Healthcheck passed — service is up"
+    echo ""
+    echo "Restore complete: $BACKUP_FILE → $DB_PATH"
+    exit 0
+else
+    echo "✗ Healthcheck failed — review service logs:" >&2
+    echo "  journalctl -u $SERVICE_NAME -n 20" >&2
+    exit 1
+fi
