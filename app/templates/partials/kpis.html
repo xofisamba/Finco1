@@ -1,5 +1,5 @@
-<div class="section">
-  <div class="section-title">📈 KPI Results — {{ run_data.project_type }} / {{ run_data.scenario }}</div>
+<div class="card">
+  <div class="card-title">📈 KPI Results — {{ run_data.project_type }} / {{ run_data.scenario }}</div>
 
   {% if integration_status != 'full' %}
   <div class="alert alert-warning">
@@ -11,7 +11,15 @@
     {% for kpi in kpis %}
     <div class="kpi-card">
       <div class="kpi-label">{{ kpi.label }}</div>
-      <div class="kpi-value {% if kpi.key == 'project_irr' or kpi.key == 'equity_irr' %}{% if kpi.value != '—' and (kpi.value|replace('%','')|float > 0.10) %}positive{% elif kpi.value != '—' and (kpi.value|replace('%','')|float < 0.05) %}warning{% endif %}{% endif %}">
+      <div class="kpi-value
+        {%- if kpi.key in ('project_irr', 'equity_irr') -%}
+          {%- if kpi.value != '—' -%}
+            {%- set v = kpi.value|replace('%','')|float -%}
+            {%- if v > 0.10 -%} positive
+            {%- elif v < 0.05 -%} warning
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}">
         {{ kpi.value }}
       </div>
     </div>

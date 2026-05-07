@@ -1,14 +1,13 @@
-<div style="margin-top:0.75rem;">
-  {% if valid %}
-  <div class="alert alert-info">
-    ✅ Validation passed — project_type=<strong>{{ form_data.project_type }}</strong>, scenario=<strong>{{ form_data.scenario }}</strong>
-  </div>
-  {% else %}
-  <div class="alert alert-error">
-    <strong>Validation errors:</strong>
-    <ul style="margin:0.5rem 0 0 1.25rem;">
-      {% for e in errors %}<li>{{ e }}</li>{% endfor %}
-    </ul>
-  </div>
-  {% endif %}
+{% if not valid %}
+<div class="alert alert-error" style="margin-bottom:1rem;">
+  <strong>Validation failed</strong> — please fix the following:
 </div>
+{% endif %}
+{% for err in errors %}
+<div class="alert alert-error">{{ err }}</div>
+{% endfor %}
+{% if valid %}
+<div class="alert alert-info" style="margin-bottom:1rem;">
+  ✓ All inputs look good — click <strong>Run Model</strong> when ready
+</div>
+{% endif %}
