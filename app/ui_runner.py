@@ -62,7 +62,7 @@ def _build_period_engine(project_inputs):
     )
 
 
-def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanced_capex_line_items=None):
+def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanced_capex_line_items=None, project_type="solar"):
     """Run waterfall using config derived from project inputs."""
     from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
     runner = WaterfallRunner(inputs=project_inputs, engine=engine)
@@ -73,10 +73,14 @@ def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanc
     if advanced_opex_line_items is not None:
         updates["advanced_opex_line_items"] = advanced_opex_line_items
     if advanced_capex_line_items is not None:
-        from app.depreciation_engine import generate_schedule
-        # Generate depreciation schedule from CapexLineItems using project horizon
+        from app.depreciation_bankable import build_bankable_waterfall_schedule
+        # Generate bankable depreciation schedule from CapexLineItems
         horizon_years = project_inputs.info.horizon_years
-        depr_schedule = generate_schedule(list(advanced_capex_line_items), total_periods=horizon_years)
+        depr_schedule = build_bankable_waterfall_schedule(
+            list(advanced_capex_line_items),
+            profile_name=f"{project_type.lower()}_croatia_ibl",
+            total_periods=horizon_years
+        )
         updates["advanced_capex_depreciation_schedule"] = depr_schedule
         updates["advanced_capex_line_items"] = advanced_capex_line_items
     if updates:
@@ -193,7 +197,7 @@ def run_demo_project(project_type: str, scenario: str = "Base",
                         advanced_opex_line_items = tuple(_scale_item(i) for i in advanced_opex_line_items)
 
             engine = _build_period_engine(proj)
-            result.result = _run_waterfall(proj, engine, advanced_opex_line_items, advanced_capex_line_items)
+            result.result = _run_waterfall(proj, engine, advanced_opex_line_items, advanced_capex_line_items, project_type)
             result.project_inputs = proj
 
             # Surface model warnings to user

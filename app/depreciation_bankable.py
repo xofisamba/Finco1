@@ -437,7 +437,7 @@ def build_bankable_waterfall_schedule(
     tax_sched, book_sched = generate_tax_and_book_schedule(
         basis_items, profile, total_periods=total_periods
     )
-    return to_waterfall_depreciation_schedule(tax_sched)
+    return WaterfallDepreciationSchedule(to_waterfall_depreciation_schedule(tax_sched))
 
 def generate_tax_and_book_schedule(
     basis_items: list[DepreciationBasisItem],
@@ -509,3 +509,29 @@ def generate_tax_and_book_schedule(
         profile_name=f"{profile.country}_{profile.regime}")
 
     return tax_sched, book_sched
+
+class WaterfallDepreciationSchedule:
+    """Bridge wrapper: dict from to_waterfall_depreciation_schedule() → waterfall-compatible object.
+    
+    waterfall_core accesses schedule.total_by_period as a list.
+    to_waterfall_depreciation_schedule() returns a plain dict.
+    This wrapper provides the attribute access waterfall_core expects.
+    """
+    def __init__(self, data: dict):
+        self._data = data
+    
+    @property
+    def total_by_period(self) -> list[float]:
+        return self._data["total_by_period"]
+    
+    @property
+    def profile_name(self) -> str:
+        return self._data.get("profile_name", "unknown")
+    
+    @property
+    def total_periods(self) -> int:
+        return self._data.get("total_periods", len(self._data["total_by_period"]))
+    
+    @property
+    def by_asset_class(self) -> dict:
+        return self._data.get("by_asset_class", {})
