@@ -161,6 +161,15 @@ def build_excel_export(
 
         # ── Validation ────────────────────────────────────────────────────
         _write_validation_sheet(writer, validation_issues)
+
+        # ── Depreciation Assumptions (Bankable Framework) ─────────────────
+        _write_depreciation_assumptions_sheet(writer, "solar_croatia_ibl")
+
+        # ── Tax Depreciation Disclosure ───────────────────────────────────
+        _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items)
+
+        # ── Book Depreciation Disclosure ──────────────────────────────────
+        _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items)
     
     output.seek(0)
     return output.read()
@@ -351,6 +360,13 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
         ("Note", note if note else "n/a"),
         ("Values-only Export", "No formulas used in this workbook."),
         ("Economic LCOE", "Excludes debt service — see methodology document for details."),
+        ("", ""),
+        ("Depreciation Disclosure", "—"),
+        ("  Tax/Book Schedules", "Model outputs, not audited accounts"),
+        ("  Jurisdiction Profile", "Requires tax advisor confirmation"),
+        ("  COD-Month Convention", "Not yet supported"),
+        ("  Declining Balance", "Not yet supported"),
+        ("  Day Fraction", "Applied in waterfall (period view), not in annual disclosure table"),
     ]
 
     # BESS/hybrid warning
@@ -414,3 +430,231 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
         cell.font = Font(bold=True)
     ws.freeze_panes = "A2"
     ws.sheet_state = "visible"
+
+
+def _write_depreciation_assumptions_sheet(writer, profile_name: str) -> None:
+    """Write 'Depreciation Assumptions' sheet — shows profile rules for all asset classes."""
+    from app.depreciation_bankable import get_profile, DepreciationMethod
+    
+    profile = get_profile(profile_name)
+    
+    rows = [
+        ("Asset Class", "Tax Life (y)", "Book Life (y)", 
+         "Tax Method", "Book Method", "Tax Convention", "Book Convention", "Notes"),
+    ]
+    
+    notes_map = {
+        "land": "Non-depreciable — land is not a depreciable asset",
+        "contingency": "Allocated proportionally to depreciable asset classes",
+        "inverters": "Separate 10y tax life vs 25y for modules",
+    }
+    
+    for ac, rule in profile.asset_rules.items():
+        note = notes_map.get(ac.value.lower(), "")
+        method_display = rule.tax_method.value.replace("_", " ").title()
+        book_method_display = rule.book_method.value.replace("_", " ").title()
+        conv_display = rule.tax_convention.value.replace("_", " ").title()
+        book_conv_display = rule.book_convention.value.replace("_", " ").title()
+        
+        rows.append((
+            ac.value.replace("_", " ").title(),
+            str(rule.tax_life_years) if rule.tax_life_years > 0 else "N/A",
+            str(rule.book_life_years) if rule.book_life_years > 0 else "N/A",
+            method_display,
+            book_method_display,
+            conv_display,
+            book_conv_display,
+            note,
+        ))
+    
+    df = pd.DataFrame(rows[1:], columns=rows[0])
+    _write_sheet(writer, "Depreciation Assumptions", df)
+    ws = writer.sheets["Depreciation Assumptions"]
+    ws.freeze_panes = "A2"
+
+
+def _get_annual_totals(schedule):
+    """Get full list of annual depreciation totals by period.
+    
+    Handles both TaxDepreciationSchedule (method) and WaterfallDepreciationSchedule (property).
+    """
+    if hasattr(schedule, "total_by_period") and callable(schedule.total_by_period):
+        # TaxDepreciationSchedule: method taking period argument
+        return [schedule.total_by_period(y) for y in range(schedule.total_periods)]
+    else:
+        # WaterfallDepreciationSchedule or dict: property/list
+        return list(schedule.total_by_period)
+
+def _write_tax_depreciation_sheet(writer, schedule) -> None:
+    """Write 'Tax Depreciation' sheet — annual tax depreciation by asset class."""
+    if not hasattr(schedule, "total_by_period"):
+        return
+    
+    from app.depreciation_bankable import BankableAssetClass
+    all_asset_classes = list(BankableAssetClass)
+    
+    sort_order = {
+        "solar_modules": 0, "inverters": 1, "mounting_structures": 2,
+        "grid_connection": 3, "transformer": 4, "civil_works": 5,
+        "development_soft": 6, "contingency": 7, "land": 8, "other": 9,
+    }
+    
+    asset_classes = []
+    for ac in all_asset_classes:
+        vals = schedule.total_by_asset_class(ac)
+        if any(v > 0.01 for v in vals):
+            asset_classes.append(ac)
+    
+    asset_classes.sort(key=lambda ac: sort_order.get(ac.value, 10))
+    
+    years = list(range(schedule.total_periods))
+    col_labels = ["Asset Class"] + [f"Y{y+1}" for y in years]
+    
+    rows = [col_labels]
+    for ac in asset_classes:
+        vals = schedule.total_by_asset_class(ac)
+        rows.append([ac.value.replace("_", " ").title()] + [f"{v:,.1f}" if v >= 0.01 else "—" for v in vals])
+    
+    annual_totals = _get_annual_totals(schedule)
+    total_row = ["Total"] + [f"{v:,.1f}" if v >= 0.01 else "—" for v in annual_totals]
+    rows.append(total_row)
+    
+    df = pd.DataFrame(rows[1:], columns=rows[0])
+    _write_sheet(writer, "Tax Depreciation", df, number_format={"kEUR": "#,##0"})
+    ws = writer.sheets["Tax Depreciation"]
+    ws.freeze_panes = "B2"
+
+
+def _get_book_annual_totals(book_schedule, total_periods):
+    """Get annual totals from book_schedule handling method vs property."""
+    if book_schedule is None:
+        return [0] * total_periods
+    elif hasattr(book_schedule, "total_by_period") and callable(book_schedule.total_by_period):
+        return [book_schedule.total_by_period(y) for y in range(total_periods)]
+    elif hasattr(book_schedule, "total_by_period"):
+        return list(book_schedule.total_by_period)
+    else:
+        return [0] * total_periods
+
+def _write_book_depreciation_sheet(writer, tax_schedule, book_schedule) -> None:
+    """Write 'Book Depreciation' sheet — annual book depreciation by asset class."""
+    if not hasattr(tax_schedule, "total_by_period"):
+        return
+    
+    from app.depreciation_bankable import BankableAssetClass
+    
+    sort_order = {
+        "solar_modules": 0, "inverters": 1, "mounting_structures": 2,
+        "grid_connection": 3, "transformer": 4, "civil_works": 5,
+        "development_soft": 6, "contingency": 7, "land": 8, "other": 9,
+    }
+    
+    all_asset_classes = list(BankableAssetClass)
+    asset_classes = []
+    for ac in all_asset_classes:
+        if book_schedule is None:
+            vals = [0] * tax_schedule.total_periods
+        elif hasattr(book_schedule, "total_by_asset_class"):
+            vals = book_schedule.total_by_asset_class(ac)
+        else:
+            vals = [0] * tax_schedule.total_periods
+        if any(v > 0.01 for v in vals):
+            asset_classes.append(ac)
+    
+    asset_classes.sort(key=lambda ac: sort_order.get(ac.value, 10))
+    
+    years = list(range(tax_schedule.total_periods))
+    col_labels = ["Asset Class"] + [f"Y{y+1}" for y in years]
+    
+    rows = [col_labels]
+    for ac in asset_classes:
+        if book_schedule is None:
+            vals = [0] * tax_schedule.total_periods
+        elif hasattr(book_schedule, "total_by_asset_class"):
+            vals = book_schedule.total_by_asset_class(ac)
+        else:
+            vals = [0] * tax_schedule.total_periods
+        rows.append([ac.value.replace("_", " ").title()] + [f"{v:,.1f}" if v >= 0.01 else "—" for v in vals])
+    
+    book_totals = _get_book_annual_totals(book_schedule, tax_schedule.total_periods)
+    total_row = ["Total"] + [f"{v:,.1f}" if v >= 0.01 else "—" for v in book_totals]
+    rows.append(total_row)
+    
+    df = pd.DataFrame(rows[1:], columns=rows[0])
+    _write_sheet(writer, "Book Depreciation", df, number_format={"kEUR": "#,##0"})
+    ws = writer.sheets["Book Depreciation"]
+    ws.freeze_panes = "B2"
+
+
+def _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items) -> None:
+    """Write Tax Depreciation sheet using project inputs."""
+    from app.depreciation_bankable import (
+        generate_tax_and_book_schedule, 
+        map_capex_line_item_to_basis,
+        get_profile,
+        DepreciationConvention,
+    )
+    from domain.inputs import ProjectInputs
+    
+    if project_inputs is None:
+        return
+    
+    # Skip portfolio inputs (no single project info)
+    if not isinstance(project_inputs, ProjectInputs):
+        return
+    
+    horizon = getattr(project_inputs.info, "horizon_years", 25) if project_inputs else 25
+    project_type = getattr(project_inputs.info, "project_type", "Solar") if project_inputs else "Solar"
+    profile_name = f"{project_type.lower()}_croatia_ibl"
+    
+    if advanced_capex_line_items:
+        profile = get_profile(profile_name)
+        basis_items = [map_capex_line_item_to_basis(item, profile) for item in advanced_capex_line_items]
+        tax_sched, book_sched = generate_tax_and_book_schedule(
+            basis_items, profile, total_periods=horizon,
+            convention=DepreciationConvention.FULL_YEAR,
+        )
+        _write_tax_depreciation_sheet(writer, tax_sched)
+    else:
+        # No advanced CAPEX — write empty sheet with note
+        rows = [("Note", "Advanced CAPEX not provided. No depreciation schedule available."), 
+                ("Detail", "Use Advanced CAPEX matrix to enable bankable depreciation disclosure.")]
+        df = pd.DataFrame(rows[1:], columns=rows[0])
+        _write_sheet(writer, "Tax Depreciation", df)
+
+
+def _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items) -> None:
+    """Write Book Depreciation sheet using project inputs."""
+    from app.depreciation_bankable import (
+        generate_tax_and_book_schedule, 
+        map_capex_line_item_to_basis,
+        get_profile,
+        DepreciationConvention,
+    )
+    
+    from domain.inputs import ProjectInputs
+    
+    if project_inputs is None:
+        return
+    
+    # Skip portfolio inputs (no single project info)
+    if not isinstance(project_inputs, ProjectInputs):
+        return
+    
+    horizon = getattr(project_inputs.info, "horizon_years", 25) if project_inputs else 25
+    project_type = getattr(project_inputs.info, "project_type", "Solar") if project_inputs else "Solar"
+    profile_name = f"{project_type.lower()}_croatia_ibl"
+    
+    if advanced_capex_line_items:
+        profile = get_profile(profile_name)
+        basis_items = [map_capex_line_item_to_basis(item, profile) for item in advanced_capex_line_items]
+        tax_sched, book_sched = generate_tax_and_book_schedule(
+            basis_items, profile, total_periods=horizon,
+            convention=DepreciationConvention.FULL_YEAR,
+        )
+        _write_book_depreciation_sheet(writer, tax_sched, book_sched)
+    else:
+        rows = [("Note", "Advanced CAPEX not provided. No book depreciation schedule available."),
+                ("Detail", "Book depreciation is separate from tax depreciation for reporting purposes.")]
+        df = pd.DataFrame(rows[1:], columns=rows[0])
+        _write_sheet(writer, "Book Depreciation", df)
