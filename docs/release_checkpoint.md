@@ -88,3 +88,55 @@
 ### Previous Checkpoints
 
 - [v1.4-bankable-runtime-active](./release_checkpoint_v1.4.md)
+---
+
+## v1.5.0-htmx-internal-demo
+**Date:** 2026-05-07
+**Branch:** `main` (HEAD: `c38ac83`)
+**Merge:** `feature/htmx-internal-demo` → main
+
+### What's New
+
+| Component | Status |
+|-----------|--------|
+| HTMX internal demo (`main_web.py`) | ✅ FastAPI + Jinja2 + HTMX |
+| Custom inputs wired | ✅ `ProjectInputsSchema` → `build_projectinputs()` |
+| Excel download | ✅ POST /download with form state |
+| Compare scenarios | ✅ Base/Downside/Upside comparison |
+| No silent fallback | ✅ Fail-fast on invalid inputs |
+| Regression tests | ✅ 34 tests (test_htmx_internal_demo.py) |
+| Depreciation disclosure sheets | ✅ In Excel export |
+| Streamlit fallback preserved | ✅ Available on ports 8501-8503 |
+
+### HTMX Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Main input form |
+| POST | `/validate` | Form validation (partial) |
+| POST | `/run` | Run model → KPI partial |
+| POST | `/compare` | Compare Base/Downside/Upside |
+| GET/POST | `/download` | Excel export (xlsx) |
+| GET | `/health` | `{"status": "ok"}` |
+
+### Deployment
+
+- **Contabo private deployment**: `docs/contabo_private_deployment.md`
+- **Internal demo only**: `python main_web.py` → http://localhost:8765
+- **No auth / no persistence**: not for public access
+
+### Known Limitations
+
+| Item | Notes |
+|------|-------|
+| No auth | Single admin deploy only |
+| No persistence | Excel on-demand, no server state |
+| TUHO CO2 missing | 611 kEUR Y1 not in model |
+| Oborovo OpEx duplication | +660 kEUR Y1 too high |
+
+---
+
+### Previous Checkpoints
+
+- [v1.4.1-advisory-ready-screening](./release_checkpoint.md#v141-advisory-ready-screening)
+
