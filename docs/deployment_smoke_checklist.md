@@ -8,6 +8,23 @@
 
 ## Pre-Flight
 
+### Quick external smoke (no auth required)
+
+```bash
+# Public health check — proves domain/SSL/nginx/app stack is up
+# Does NOT prove model routes are functional
+curl -s https://app.finco.one/public-health
+# Expected: {"status":"ok","app":"fincogpt","mode":"internal-demo"}
+
+# Authenticated internal health (requires Basic Auth)
+curl -s -u admin:YOUR_PASSWORD https://app.finco.one/health
+# Expected: {"status":"ok"}
+```
+
+---
+
+### Service checks
+
 ```bash
 # Check service is running
 systemctl status finco-web

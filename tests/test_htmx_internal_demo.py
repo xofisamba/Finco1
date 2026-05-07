@@ -24,6 +24,31 @@ class TestHealth:
         assert r.json()["status"] == "ok"
 
 
+class TestPublicHealth:
+    def test_public_health_returns_200(self, client):
+        r = client.get("/public-health")
+        assert r.status_code == 200
+        assert r.json()["status"] == "ok"
+
+    def test_public_health_contains_app_info(self, client):
+        r = client.get("/public-health")
+        data = r.json()
+        assert data["status"] == "ok"
+        assert data["app"] == "fincogpt"
+        assert data["mode"] == "internal-demo"
+
+    def test_public_health_no_model_execution(self, client):
+        """Public health should not run any model logic."""
+        r = client.get("/public-health")
+        assert r.status_code == 200
+        # Should be fast (< 500ms) since it runs no model
+        # No financial data in response
+        data = r.json()
+        assert "project_irr" not in data
+        assert "equity_irr" not in data
+        assert "kpis" not in data
+
+
 class TestIndex:
     def test_get_index_returns_200(self, client):
         r = client.get("/")
