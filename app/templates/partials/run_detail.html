@@ -1,0 +1,166 @@
+<div class="run-detail-card">
+  <div class="run-detail-header">
+    <div class="run-detail-title">📋 Run Detail — <span class="run-detail-id">{{ run_id }}</span></div>
+    <div class="run-detail-meta">
+      <span class="run-type-badge">{{ project_type }}</span>
+      <span class="run-scenario-badge scenario-{{ scenario|lower }}">{{ scenario }}</span>
+      <span class="run-detail-time">🕐 {{ created_at }}</span>
+    </div>
+  </div>
+
+  <div class="run-detail-section">
+    <div class="run-detail-section-label">Model Inputs</div>
+    <div class="run-detail-inputs-grid">
+      {% if inputs.capacity_mw %}<div class="run-detail-input-item"><span class="run-detail-input-label">Capacity</span><span class="run-detail-input-val">{{ inputs.capacity_mw }} MW</span></div>{% endif %}
+      {% if inputs.tariff_eur_mwh %}<div class="run-detail-input-item"><span class="run-detail-input-label">Tariff</span><span class="run-detail-input-val">{{ inputs.tariff_eur_mwh }} EUR/MWh</span></div>{% endif %}
+      {% if inputs.p50_hours %}<div class="run-detail-input-item"><span class="run-detail-input-label">P50 Hours</span><span class="run-detail-input-val">{{ inputs.p50_hours }}</span></div>{% endif %}
+      {% if inputs.total_capex_keur %}<div class="run-detail-input-item"><span class="run-detail-input-label">CAPEX</span><span class="run-detail-input-val">{{ inputs.total_capex_keur }} kEUR</span></div>{% endif %}
+      {% if inputs.opex_y1_keur %}<div class="run-detail-input-item"><span class="run-detail-input-label">OPEX Y1</span><span class="run-detail-input-val">{{ inputs.opex_y1_keur }} kEUR</span></div>{% endif %}
+      {% if inputs.gearing_pct %}<div class="run-detail-input-item"><span class="run-detail-input-label">Gearing</span><span class="run-detail-input-val">{{ inputs.gearing_pct }}%</span></div>{% endif %}
+      {% if inputs.target_dscr %}<div class="run-detail-input-item"><span class="run-detail-input-label">Target DSCR</span><span class="run-detail-input-val">{{ inputs.target_dscr }}x</span></div>{% endif %}
+      {% if inputs.interest_rate_pct %}<div class="run-detail-input-item"><span class="run-detail-input-label">Interest Rate</span><span class="run-detail-input-val">{{ inputs.interest_rate_pct }}%</span></div>{% endif %}
+      {% if inputs.tenor_years %}<div class="run-detail-input-item"><span class="run-detail-input-label">Tenor</span><span class="run-detail-input-val">{{ inputs.tenor_years }} yrs</span></div>{% endif %}
+    </div>
+  </div>
+
+  <div class="run-detail-section">
+    <div class="run-detail-section-label">KPIs</div>
+    <div class="kpi-grid">
+      {% for kpi in kpis %}
+      <div class="kpi-card">
+        <div class="kpi-label">{{ kpi.label }}</div>
+        <div class="kpi-value">{{ kpi.value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="run-detail-actions">
+    <form method="POST" action="/run/{{ run_id }}/export" style="display:inline;">
+      <button type="submit" class="btn btn-secondary">
+        📥 Export to Excel
+      </button>
+    </form>
+    <button type="button" class="btn btn-outline" onclick="history.back()">
+      ← Back
+    </button>
+  </div>
+</div>
+
+<style>
+.run-detail-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.run-detail-header {
+  padding: 1.1rem 1.25rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.run-detail-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.run-detail-id {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.run-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.run-type-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: var(--primary);
+  color: white;
+  text-transform: uppercase;
+}
+
+.run-scenario-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  color: white;
+}
+
+.run-scenario-badge.scenario-base  { background: var(--primary); }
+.run-scenario-badge.scenario-downside { background: var(--danger); }
+.run-scenario-badge.scenario-upside  { background: var(--accent); }
+
+.run-detail-time {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.run-detail-section {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.run-detail-section:last-of-type { border-bottom: none; }
+
+.run-detail-section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.run-detail-inputs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.6rem;
+}
+
+.run-detail-input-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.run-detail-input-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.run-detail-input-val {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-detail-actions {
+  padding: 1rem 1.25rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
+</style>

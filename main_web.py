@@ -6,11 +6,21 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 
+# ── Logging setup ─────────────────────────────────────────────────────────────
+from app.logging_config import setup_logging, get_logger, get_metrics
+
+setup_logging()
+logger = get_logger("fincogpt")
+
 # Import existing model logic (no changes to these)
 from app.api.project_runner import run_project
 from app.excel_export import build_excel_export
 from app.ui_runner import run_demo_project
 from app.capex_engine import build_capex_line_items_from_defaults
+
+# ── Middleware ──────────────────────────────────────────────────────────────────
+from app.middleware.request_logging import RequestLoggingMiddleware
+from app.middleware.exception_handler import ExceptionHandlerMiddleware
 
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
@@ -31,6 +41,12 @@ from app.persistence.repository import save_run, get_run, list_runs, delete_run,
 
 # ── FastAPI app ────────────────────────────────────────────────────────────
 app = FastAPI(title="FincoGPT Internal Demo")
+
+# Register middleware (order matters — exception handler should be outermost)
+app.add_middleware(ExceptionHandlerMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+
+logger.info("FincoGPT application started")
 
 # ── Template setup ──────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -258,6 +274,49 @@ async def health(request: Request):
     return JSONResponse({"status": "ok"})
 
 
+# ── Observability ──────────────────────────────────────────────────────────
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Public /metrics endpoint — no auth required.
+
+    Returns plain-text metrics suitable for scraping by Prometheus / Uptime Kuma.
+    Lines: key value
+    """
+    m = get_metrics()
+
+    # Fetch DB size from environment if DATABASE_URL is set
+    db_size_kb = 0
+    import os, re
+    db_url = os.environ.get("DATABASE_URL", "")
+    if db_url:
+        try:
+            import psycopg2
+            from urllib.parse import urlparse
+            parsed = urlparse(db_url)
+            conn = psycopg2.connect(
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 5432,
+                user=parsed.username or "postgres",
+                password=parsed.password or "",
+                dbname=parsed.path.lstrip("/") or "finco1",
+            )
+            cur = conn.cursor()
+            cur.execute("SELECT pg_database_size(current_database()) / 1024")
+            db_size_kb = cur.fetchone()[0] or 0
+            conn.close()
+        except Exception:
+            pass  # DB size is optional; don't fail the endpoint
+
+    lines = [
+        f"uptime_seconds {m['uptime_seconds']}",
+        f"total_requests {m['total_requests']}",
+        f"total_errors {m['total_errors']}",
+        f"db_size_kb {db_size_kb}",
+    ]
+    return Response(content="\n".join(lines) + "\n", media_type="text/plain")
+
+
 # ── Protected Routes ────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -414,7 +473,7 @@ async def run(request: Request):
     except Exception as e:
         return templates.TemplateResponse(
             request=request,
-            name="partials/errors.html",
+            name="partials/error_banner.html",
             context={"errors": [f"Model error: {str(e)}"]},
         )
 
@@ -710,6 +769,95 @@ async def get_run_endpoint(request: Request, run_id: str):
             "integration_status": "full",
         },
     )
+
+
+
+@app.get("/run/{run_id}/detail")
+async def get_run_detail(request: Request, run_id: str):
+    """Full detail page for a saved run: timestamp, project_type, scenario, inputs, KPIs."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    record = get_run(run_id, user.user_id)
+    if record is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/error_banner.html",
+            context={"errors": [f"Run '{run_id}' not found or access denied."]},
+        )
+
+    kpis = _format_kpis(record.kpis)
+    created_at_str = record.created_at.strftime("%Y-%m-%d %H:%M UTC") if hasattr(record.created_at, 'strftime') else str(record.created_at)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/run_detail.html",
+        context={
+            "run_id": run_id,
+            "project_type": record.project_type,
+            "scenario": record.scenario,
+            "created_at": created_at_str,
+            "inputs": record.inputs,
+            "kpis": kpis,
+            "run_data": {
+                "project_type": record.project_type,
+                "scenario": record.scenario,
+                "capacity_mw": record.inputs.get("capacity_mw", ""),
+                "tariff_eur_mwh": record.inputs.get("tariff_eur_mwh", ""),
+                "total_capex_keur": record.inputs.get("total_capex_keur", ""),
+                "gearing_pct": record.inputs.get("gearing_pct", ""),
+            },
+        },
+    )
+
+
+@app.post("/run/{run_id}/export")
+async def export_run(request: Request, run_id: str):
+    """Reconstruct project_inputs from stored JSON, re-run model, return xlsx download."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    record = get_run(run_id, user.user_id)
+    if record is None:
+        return HTMLResponse(
+            content=f"<html><body><h2>Export failed</h2><p>Run '{run_id}' not found or access denied.</p><a href='/'>Back</a></body></html>",
+            status_code=404,
+        )
+
+    try:
+        schema = _build_schema_from_form(
+            record.project_type,
+            record.scenario,
+            record.inputs.get("capacity_mw"),
+            record.inputs.get("tariff_eur_mwh"),
+            record.inputs.get("p50_hours"),
+            record.inputs.get("total_capex_keur"),
+            record.inputs.get("opex_y1_keur"),
+            record.inputs.get("gearing_pct"),
+            record.inputs.get("target_dscr"),
+            record.inputs.get("interest_rate_pct"),
+            record.inputs.get("tenor_years"),
+        )
+        override = build_projectinputs(schema)
+        demo = run_demo_project(record.project_type, record.scenario, project_inputs_override=override)
+        excel_bytes = build_excel_export(
+            result=demo.result,
+            project_inputs=demo.project_inputs,
+        )
+        filename = f"fincogpt_{record.project_type.lower()}_{record.scenario.lower()}_{run_id}.xlsx"
+        return StreamingResponse(
+            iter([excel_bytes]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        return HTMLResponse(
+            content=f"<html><body><h2>Excel export failed</h2><p>Model error: {str(e)}</p><a href='/'>Back</a></body></html>",
+            status_code=500,
+        )
+
 
 
 if __name__ == "__main__":
