@@ -20,14 +20,17 @@ def _validate_business_rules(schema: ProjectInputsSchema) -> tuple[list[str], li
     errors: list[str] = []
     warnings: list[str] = []
 
-    # CAPEX validation
+    # CAPEX validation — threshold depends on project type
     if schema.capex is not None and schema.capex.total_capex_keur is not None:
-        # For Solar, fixed other CAPEX is ~10,000 kEUR
-        other_keur = 10_000  # Approximate, can be refined per project_type
+        # Typical fixed "other" CAPEX (non-EPC, non-production-units) per MW
+        if schema.project_type == "Wind":
+            other_keur = 15_000
+        else:  # Solar and all others
+            other_keur = 10_000
         if schema.capex.total_capex_keur <= other_keur:
             errors.append(
                 f"total_capex_keur ({schema.capex.total_capex_keur}) must be greater than "
-                f"fixed other CAPEX (~{other_keur} kEUR)"
+                f"fixed other CAPEX (~{other_keur} kEUR) for {schema.project_type} projects"
             )
 
     # Debt validation
