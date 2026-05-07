@@ -252,6 +252,13 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 
+    # Public health endpoint — no auth required (before location /)
+    location = /public-health {
+        auth_basic off;
+        proxy_pass http://127.0.0.1:8000/public-health;
+        access_log off;
+    }
+
     # Basic Auth — ENABLED by default (interim protection)
     auth_basic "FincoGPT Internal — Authorized Only";
     auth_basic_user_file /etc/nginx/.htpasswd;

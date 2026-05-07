@@ -454,8 +454,22 @@ async def download_get(project_type: str = "Solar", scenario: str = "Base"):
 
 @app.get("/health")
 async def health():
-    """Simple health check."""
+    """Simple health check (behind Basic Auth)."""
     return {"status": "ok"}
+
+
+@app.get("/public-health")
+async def public_health():
+    """Public health check — no auth required, no model execution.
+    
+    Safe to expose publicly. Proves domain/SSL/nginx/app stack is up.
+    Does NOT prove model routes (/run, /compare, /download) are functional.
+    """
+    return {
+        "status": "ok",
+        "app": "fincogpt",
+        "mode": "internal-demo",
+    }
 
 
 if __name__ == "__main__":
