@@ -35,7 +35,7 @@ python main_web.py
 
 - ❌ Auth/persistence — none (single admin deploy)
 - ❌ Public access — internal only
-- ❌ Custom inputs actually applied — form fields exist but model uses factory defaults
+- ✅ Custom inputs wired — ProjectInputsSchema + build_projectinputs() (blank fields → factory defaults)
 - ❌ Save/load scenarios — no server-side state
 - ❌ Multi-user sessions
 - ❌ Real-time collaboration

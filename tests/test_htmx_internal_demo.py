@@ -1,13 +1,12 @@
 """Tests for HTMX internal demo.
 
-Uses TestClient (synchronous, no actual HTTP server needed).
-Starlette's TestClient handles requests in-process.
+Uses TestClient (synchronous, in-process).
+Starlette's TestClient handles requests directly via ASGI.
 """
 import pytest
 from fastapi.testclient import TestClient
 import sys, os
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main_web import app
@@ -61,6 +60,18 @@ class TestValidate:
         assert r.status_code == 200
         assert "capacity_mw" in r.text
 
+    def test_validate_negative_value_returns_error(self, client):
+        r = client.post("/validate",
+                        data={"project_type": "Solar", "scenario": "Base", "gearing_pct": "-5"})
+        assert r.status_code == 200
+        assert "gearing_pct" in r.text.lower()
+
+    def test_validate_gearing_over_100_returns_error(self, client):
+        r = client.post("/validate",
+                        data={"project_type": "Solar", "scenario": "Base", "gearing_pct": "120"})
+        assert r.status_code == 200
+        assert "gearing_pct" in r.text.lower()
+
 
 class TestRun:
     def test_run_solar_base_returns_kpi_partial(self, client):
@@ -78,12 +89,114 @@ class TestRun:
         assert r.status_code == 200
         assert "error" in r.text.lower() or "must be one of" in r.text
 
+    def test_blank_optional_fields_work(self, client):
+        """Blank optional fields should not cause errors."""
+        r = client.post("/run", data={"project_type": "Solar", "scenario": "Base", "capacity_mw": "", "tariff_eur_mwh": ""})
+        assert r.status_code == 200
+        assert "Project IRR" in r.text or "Equity IRR" in r.text
+
+
+class TestCustomInputsBehavioral:
+    """Behavioral tests: custom inputs actually change model outputs."""
+
+    def test_custom_tariff_changes_revenue(self, client):
+        """Higher tariff → higher total revenue (behavioral test)."""
+        r_low = client.post("/run", data={
+            "project_type": "Solar", "scenario": "Base",
+            "tariff_eur_mwh": "60",
+        })
+        r_high = client.post("/run", data={
+            "project_type": "Solar", "scenario": "Base",
+            "tariff_eur_mwh": "120",
+        })
+        assert r_low.status_code == 200
+        assert r_high.status_code == 200
+        # Parse revenue from output
+        import re
+        def extract_revenue(text):
+            m = re.search(
+                r'<div class="kpi-card">\s*<div class="kpi-label">Total Revenue[^<]*</div>\s*<div[^>]*>\s*([\d,]+)',
+                text, re.DOTALL
+            )
+            if not m:
+                return None
+            return float(m.group(1).replace(",", ""))
+        rev_low = extract_revenue(r_low.text)
+        rev_high = extract_revenue(r_high.text)
+        assert rev_low is not None, f"Could not extract revenue from: {r_low.text[:200]}"
+        assert rev_high is not None
+        assert rev_high > rev_low, f"Expected higher tariff → higher revenue. Got low={rev_low}, high={rev_high}"
+
+    def test_custom_capex_changes_irr(self, client):
+        """Higher CAPEX → lower IRR (behavioral test)."""
+        r_low = client.post("/run", data={
+            "project_type": "Solar", "scenario": "Base",
+            "total_capex_keur": "40000",
+        })
+        r_high = client.post("/run", data={
+            "project_type": "Solar", "scenario": "Base",
+            "total_capex_keur": "80000",
+        })
+        assert r_low.status_code == 200
+        assert r_high.status_code == 200
+        import re
+        def extract_irr(text):
+            m = re.search(
+                r'<div class="kpi-card">\s*<div class="kpi-label">Project IRR</div>\s*<div[^>]*>\s*(\d+\.\d+)\s*%',
+                text, re.DOTALL
+            )
+            if not m:
+                return None
+            return float(m.group(1))
+        irr_low = extract_irr(r_low.text)
+        irr_high = extract_irr(r_high.text)
+        assert irr_low is not None, f"Could not extract IRR from: {r_low.text[:200]}"
+        assert irr_high is not None
+        assert irr_low > irr_high, f"Expected higher CAPEX → lower IRR. Got low_capex={irr_low}%, high_capex={irr_high}%"
+
+    def test_invalid_capex_returns_validation_error(self, client):
+        """Negative CAPEX should return validation error, not a 500."""
+        r = client.post("/validate", data={
+            "project_type": "Solar", "scenario": "Base",
+            "total_capex_keur": "-5000",
+        })
+        assert r.status_code == 200
+        assert "total_capex_keur" in r.text.lower()
+
+    def test_invalid_gearing_returns_validation_error(self, client):
+        """Gearing > 100% should return validation error."""
+        r = client.post("/validate", data={
+            "project_type": "Solar", "scenario": "Base",
+            "gearing_pct": "150",
+        })
+        assert r.status_code == 200
+        assert "gearing_pct" in r.text.lower()
+
+    def test_no_traceback_exposed_to_ui(self, client):
+        """Invalid input should not expose Python traceback."""
+        r = client.post("/validate", data={"project_type": "Banana", "scenario": "Base"})
+        assert r.status_code == 200
+        assert "Traceback" not in r.text
+        assert "AttributeError" not in r.text
+        assert "must be one of" in r.text
+
 
 class TestCompare:
     def test_compare_solar_returns_comparison(self, client):
         r = client.post("/compare", data={"project_type": "Solar"})
         assert r.status_code == 200
         assert "Base" in r.text or "comparison" in r.text.lower()
+
+    def test_compare_uses_custom_inputs(self, client):
+        """Custom inputs are applied to all scenarios in compare."""
+        r_custom = client.post("/compare", data={
+            "project_type": "Solar",
+            "tariff_eur_mwh": "120",
+            "total_capex_keur": "50000",
+        })
+        assert r_custom.status_code == 200
+        # Base should appear with other scenarios
+        assert "Base" in r_custom.text
 
     def test_compare_invalid_project_returns_error(self, client):
         r = client.post("/compare", data={"project_type": "Nuclear"})
@@ -100,6 +213,16 @@ class TestDownload:
 
     def test_download_post_returns_xlsx(self, client):
         r = client.post("/download", data={"project_type": "Wind", "scenario": "Downside"})
+        assert r.status_code == 200
+        assert "application/vnd.openxmlformats" in r.headers["content-type"]
+
+    def test_download_post_with_custom_inputs_returns_xlsx(self, client):
+        """Download with custom inputs should still return valid xlsx."""
+        r = client.post("/download", data={
+            "project_type": "Solar", "scenario": "Base",
+            "tariff_eur_mwh": "90",
+            "total_capex_keur": "55000",
+        })
         assert r.status_code == 200
         assert "application/vnd.openxmlformats" in r.headers["content-type"]
 

@@ -98,12 +98,12 @@
   </div>
 
   <div style="margin-top: 0.75rem;">
-    <a href="/download?project_type={{ form_data.get('project_type', 'Solar') if form_data.get('project_type') else 'Solar' }}&scenario={{ form_data.get('scenario', 'Base') if form_data.get('scenario') else 'Base' }}"
-       style="display:inline-block;width:100%;text-align:center;"
-       class="btn btn-secondary">
+    <button type="button" class="btn btn-secondary" style="width:100%"
+            onclick="this.insertAdjacentHTML('beforebegin', '<form hx-post=\"/download\" hx-target=\"#download-frame\" hx-swap=\"innerHTML\" style=\"display:none\" id=\"download-form\">' + document.getElementById('main-form').innerHTML + '</form>'); document.getElementById('download-form').submit(); this.disabled=true;">
       Download Excel
-    </a>
+    </button>
   </div>
+  <iframe id="download-frame" style="display:none;"></iframe>
 
   <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
     <div id="validation-result">
