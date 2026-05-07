@@ -243,6 +243,56 @@ For the transition period, use BOTH:
 
 ---
 
+## Auth-lite (v1.6+)
+
+Session-based auth with bcrypt + signed cookies:
+
+```bash
+# .env file
+export FINCO_SECRET_KEY=<strong-random-key>
+export FINCO_ADMIN_USER=admin
+export FINCO_ADMIN_PASSWORD=<password>
+export FINCO_SESSION_HOURS=24          # session TTL
+export FINCO_COOKIE_SECURE=true       # true for HTTPS
+export FINCO_COOKIE_SAMESITE=lax
+export FINCO_DB_PATH=/opt/finco1/app/data/finco_runs.db
+```
+
+Cookie flags: `httponly=True`, `secure=COOKIE_SECURE`, `samesite=lax`, `max_age=86400`.
+
+Auth routes: `/` (redirect to /login), `/run`, `/compare`, `/download`, `/validate`, `/save-run`, `/runs`, `/run/{id}`.
+Public routes: `/public-health`, `/login`, `/logout`.
+
+**Persistence:** SQLite at `FINCO_DB_PATH` — backup daily before B2B pilot. Run:
+```bash
+cp /opt/finco1/app/data/finco_runs.db /opt/finco1/backups/finco_runs_$(date +%Y%m%d).db
+```
+
+---
+
+## Post-Merge Deployment (v1.6+)
+
+After merging `feature/project-persistence` to main:
+
+```bash
+cd /opt/finco1
+git pull origin main
+systemctl restart finco-web
+systemctl status finco-web
+```
+
+Required env variables in `/opt/finco1/.env`:
+
+| Variable | Recommended | Notes |
+|---|---|---|
+| `FINCO_SECRET_KEY` | Strong random string | **Required** — change from dev default |
+| `FINCO_ADMIN_PASSWORD` | Strong password | Login credential |
+| `FINCO_SESSION_HOURS` | `24` | Session TTL |
+| `FINCO_COOKIE_SECURE` | `true` | HTTPS only |
+| `FINCO_DB_PATH` | `/opt/finco1/app/data/finco_runs.db` | SQLite DB location |
+
+---
+
 ## Recommended Next Phase (Phase 5)
 
 Before making `app.finco.one` public:

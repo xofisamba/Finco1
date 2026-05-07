@@ -1,6 +1,127 @@
 # Release Checkpoint
 
-## v1.4.1-advisory-ready-screening
+## v1.6-project-persistence-mvp
+**Date:** 2026-05-07
+**Branch:** `main` (HEAD: `2e41c54`)
+**Merge:** `feature/project-persistence` → main (fast-forward merge)
+
+### What's New
+
+| Component | Status |
+|-----------|--------|
+| SQLite persistence | ✅ `app/persistence/` — connection-per-op, WAL, no global shared state |
+| Save Run | ✅ `POST /save-run` — re-runs model, stores inputs + KPIs |
+| Run History | ✅ `GET /runs` — HTMX panel auto-refreshes after save |
+| Reload Run | ✅ `GET /run/{id}` — restores KPIs from DB |
+| User isolation | ✅ All queries filtered by `user_id` from session |
+| Route-level multi-user tests | ✅ 3 end-to-end tests proving isolation |
+| Auth required for app routes | ✅ Session cookie, 24h TTL, httponly, samesite=lax |
+| History panel | ✅ `#history-area` listens for `refreshHistory from:body` |
+| Save UX feedback | ✅ HTML partial with success/error, "re-run model" note |
+
+### Persistence Routes
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/save-run` | ✅ | Save current form state → DB |
+| `GET` | `/runs` | ✅ | List recent runs (≤20), HTMX partial |
+| `GET` | `/run/{id}` | ✅ | Reload KPIs from saved run |
+
+### Database
+
+- **Path:** `app/data/finco_runs.db` (env: `FINCO_DB_PATH`)
+- **Strategy:** Connection-per-operation, WAL mode, `busy_timeout=30000`
+- **Schema:** `runs(run_id, user_id, project_type, scenario, created_at, inputs_json, kpis_json, excel_path, notes)`
+- **Index:** `idx_runs_user ON runs(user_id, created_at DESC)`
+- **Backup:** see `docs/project_persistence.md` — daily recommended
+
+### Security
+
+| Feature | Value |
+|---|---|
+| Session expiry | 24h (`FINCO_SESSION_HOURS=24`) |
+| Cookie flags | `httponly=True`, `secure=COOKIE_SECURE`, `samesite=lax` |
+| User isolation | Repository-level filter by `user_id` — no cross-user leakage |
+| Delete UI | **Not exposed** — `delete_run()` exists at repo level only (MVP) |
+
+### Configuration (env vars)
+
+```bash
+FINCO_SECRET_KEY=<strong-random-key>    # required in production
+FINCO_ADMIN_USER=admin
+FINCO_ADMIN_PASSWORD=<password>
+FINCO_SESSION_HOURS=24
+FINCO_COOKIE_SECURE=true                # true for HTTPS, false for localhost HTTP dev
+FINCO_DB_PATH=/opt/finco1/app/data/finco_runs.db
+```
+
+### Files Added
+
+```
+app/persistence/__init__.py
+app/persistence/db.py          # SQLite connection-per-op
+app/persistence/repository.py  # save_run, get_run, list_runs, delete_run
+app/templates/partials/run_history.html   # HTMX history panel
+app/templates/partials/save_result.html    # save feedback partial
+app/data/.gitkeep
+docs/project_persistence.md     # full architecture + backup docs
+tests/test_project_persistence.py  # 23 tests
+```
+
+### What Was NOT Changed
+
+- `rc1/` — untouched
+- `app/waterfall_core.py`, `app/waterfall_runner.py` — untouched
+- `app/scenarios.py`, `app/scenario_manager.py` — untouched
+- `domain/` — untouched
+- Financial formulas — untouched
+- Waterfall logic — untouched
+- Depreciation runtime — untouched
+
+### Test Status
+
+| Suite | Result |
+|-------|--------|
+| `tests/test_project_persistence.py` | 23 passed ✅ |
+| `tests/test_htmx_internal_demo.py` | 37 passed ✅ |
+| Full suite | **1298 passed, 1 xfailed** ✅ |
+
+### GO/NO-GO
+
+| Target | Status |
+|---|---|
+| Internal deployment | ✅ GO |
+| Controlled B2B pilot | ✅ GO (with caveats) |
+| Public production | ⬜ Not yet — needs multi-user auth before public exposure |
+
+### Security Limitations (B2B Pilot)
+
+- Single admin credential only — no per-user accounts yet
+- No RBAC — all authenticated users share admin credentials
+- Route-level isolation enforced by `user_id` in session; a compromised admin cookie exposes all runs
+- Future: per-user auth + RBAC before multi-tenant or public pilot
+
+### Smoke Test Results (all passed)
+
+```
+GET / unauthenticated → 302 redirect to /login  ✅
+/public-health (no auth) → 200 ok              ✅
+POST /login → 302 + session cookie            ✅
+POST /run (auth) → 200 KPI results             ✅
+POST /save-run → 200 saved, run_id returned    ✅
+GET /runs → 200, saved run appears            ✅
+GET /run/{A_run_id} as User B → 404           ✅
+POST /logout → 302                             ✅
+```
+
+### Previous Checkpoints
+
+- [v1.5.0-htmx-internal-demo](#v150-htmx-internal-demo)
+- [v1.4.1-advisory-ready-screening](./release_checkpoint.md#v141-advisory-ready-screening)
+
+---
+
+
 **Date:** 2026-05-07
 **Branch:** `main` (HEAD: `e079c21` → now updated)
 **Hotfix branch:** `hotfix/v1_4_1_advisory_ready` → merged to main
