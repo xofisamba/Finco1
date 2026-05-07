@@ -104,3 +104,39 @@ Memory footprint: ~100MB vs Streamlit ~500MB+
 - `docs/htmx_foundation_scope.md` — production HTMX scope definition
 - `docs/release_checkpoint.md` — v1.4.1 advisory-ready status
 - `docs/main_post_merge_status.md` — model status overview
+---
+
+## Validation Behavior
+
+- ✅ **Fail-fast on invalid inputs** — no silent fallback to factory defaults
+- ✅ Invalid project_type/scenario → friendly error message (no traceback)
+- ✅ Negative values, gearing >100%, invalid numbers → friendly error
+- ✅ POST /compare with invalid inputs → errors.html (not comparison with defaults)
+- ✅ POST /download with invalid inputs → 400 error HTML (not silent xlsx)
+- Blank optional fields → factory defaults preserved
+
+**No silent fallback to defaults when custom inputs fail validation.**
+
+---
+
+## POST /download Behavior
+
+- Submits current form state via `formaction` + `formmethod="POST"` on Download button
+- All current sidebar field values are included in the POST
+- Invalid inputs return HTTP 400 with friendly error HTML
+- Valid inputs return xlsx with custom values applied
+- GET /download still works with factory defaults (backward compatible)
+
+---
+
+## Download Button — Implementation
+
+Uses HTML5 `form` attribute to submit current form to POST /download:
+
+```html
+<button type="submit" form="main-form" formaction="/download" formmethod="POST" class="btn btn-secondary">
+  Download Excel
+</button>
+```
+
+No JS, no innerHTML cloning, no hidden iframe — simple, deterministic.

@@ -337,18 +337,22 @@ async def compare(
             context={"errors": errors},
         )
 
-    # Build override once — applies to all three scenarios
-    override = None
+    # Build override — fail fast on invalid inputs (no silent fallback)
     try:
         schema = _build_schema_from_form(
-            project_type, "Base",  # scenario for schema doesn't matter for overrides
+            project_type, "Base",  # scenario for schema doesn't affect overrides
             capacity_mw, tariff_eur_mwh, p50_hours,
             total_capex_keur, opex_y1_keur,
             gearing_pct, target_dscr, interest_rate_pct, tenor_years,
         )
         override = build_projectinputs(schema)
-    except ValueError:
-        override = None  # use factory defaults if form invalid
+    except (ValueError, Exception) as e:
+        # Invalid custom inputs — return errors, not silent fallback to defaults
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/errors.html",
+            context={"errors": [f"Invalid input: {str(e)}"]},
+        )
 
     results = {}
     for sc in SCENARIOS:
@@ -392,6 +396,7 @@ async def download_post(
     tenor_years: Optional[str] = Form(""),
 ):
     """Generate Excel export with current form values applied."""
+    # Build schema — fail fast on invalid inputs (no silent fallback)
     try:
         schema = _build_schema_from_form(
             project_type, scenario,
@@ -400,8 +405,11 @@ async def download_post(
             gearing_pct, target_dscr, interest_rate_pct, tenor_years,
         )
         override = build_projectinputs(schema)
-    except Exception:
-        override = None
+    except (ValueError, Exception) as e:
+        return HTMLResponse(
+            content=f"<html><body><h2>Excel generation failed</h2><p>Invalid input: {str(e)}</p><a href='/'>Back</a></body></html>",
+            status_code=400,
+        )
 
     try:
         demo = run_demo_project(project_type, scenario, project_inputs_override=override)

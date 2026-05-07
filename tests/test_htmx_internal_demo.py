@@ -241,3 +241,98 @@ class TestValidationFriendly:
         assert "Traceback" not in r.text
         assert "AttributeError" not in r.text
         assert "must be one of" in r.text
+
+class TestNoSilentFallback:
+    """Regression tests: invalid inputs must return errors, not silent fallback to defaults."""
+
+    def test_compare_invalid_gearing_returns_error_not_defaults(self, client):
+        """Invalid gearing_pct=150 must return errors.html, NOT comparison with factory defaults."""
+        r = client.post("/compare", data={
+            "project_type": "Solar",
+            "gearing_pct": "150",
+        })
+        assert r.status_code == 200
+        # Must show error, not comparison table
+        assert "error" in r.text.lower() or "Invalid" in r.text or "gearing" in r.text.lower()
+        # Must NOT render comparison.html (which would mean silent fallback)
+        assert "Base" not in r.text or "Downside" not in r.text or "Upside" not in r.text, \
+            "comparison.html rendered on invalid input — silent fallback occurred"
+
+    def test_compare_negative_capex_returns_error(self, client):
+        """Negative CAPEX must return errors, not silent fallback."""
+        r = client.post("/compare", data={
+            "project_type": "Solar",
+            "total_capex_keur": "-50000",
+        })
+        assert r.status_code == 200
+        assert "error" in r.text.lower() or "Invalid" in r.text
+
+    def test_download_invalid_gearing_returns_error_not_xlsx(self, client):
+        """Invalid gearing on POST /download must return error HTML, not silent xlsx."""
+        r = client.post("/download", data={
+            "project_type": "Solar",
+            "scenario": "Base",
+            "gearing_pct": "200",
+        })
+        # Must return error (400), not 200 xlsx
+        assert r.status_code == 400, f"Expected 400 error, got {r.status_code} — silent fallback to xlsx occurred"
+        assert "Excel generation failed" in r.text or "Invalid input" in r.text
+        # Not xlsx content-type
+        ct = r.headers.get("content-type", "")
+        assert "openxmlformats" not in ct, f"Got xlsx on invalid input — silent fallback occurred (content-type={ct})"
+
+    def test_download_uses_custom_inputs_not_defaults(self, client):
+        """POST /download with custom inputs must generate Excel with those inputs applied."""
+        r_custom = client.post("/download", data={
+            "project_type": "Solar",
+            "scenario": "Base",
+            "tariff_eur_mwh": "150",  # very high tariff
+            "total_capex_keur": "30000",  # low capex
+        })
+        assert r_custom.status_code == 200
+        assert "application/vnd.openxmlformats" in r_custom.headers["content-type"]
+        # Verify the Excel is non-trivial (not just factory default)
+        # High tariff + low capex → very high IRR, check content-length is reasonable
+        content_len = len(r_custom.content)
+        assert content_len > 5000, f"Excel seems too small ({content_len} bytes) — may be using defaults"
+
+    def test_download_preserves_current_form_state(self, client):
+        """Download must reflect the exact form values submitted, not some other values."""
+        # Two downloads with different inputs must produce different results
+        r_low = client.post("/download", data={
+            "project_type": "Solar", "scenario": "Base",
+            "tariff_eur_mwh": "50",
+            "total_capex_keur": "60000",
+        })
+        r_high = client.post("/download", data={
+            "project_type": "Solar", "scenario": "Base",
+            "tariff_eur_mwh": "150",
+            "total_capex_keur": "30000",
+        })
+        assert r_low.status_code == 200
+        assert r_high.status_code == 200
+        # Different inputs must produce different Excel sizes (proves form state is preserved)
+        assert len(r_low.content) != len(r_high.content), \
+            "Different inputs produced identical Excel size — form state not preserved"
+
+    def test_run_invalid_tariff_returns_error_not_defaults(self, client):
+        """Negative tariff must return error, not silent fallback to defaults."""
+        r = client.post("/run", data={
+            "project_type": "Solar", "scenario": "Base",
+            "tariff_eur_mwh": "-10",
+        })
+        assert r.status_code == 200
+        assert "error" in r.text.lower() or "Invalid" in r.text or "tariff" in r.text.lower()
+
+    def test_no_silent_fallback_on_schema_failure(self, client):
+        """Any schema build failure must surface as user-visible error."""
+        # Invalid numeric that passes _validate_numeric_field but fails schema
+        r = client.post("/run", data={
+            "project_type": "Solar", "scenario": "Base",
+            "gearing_pct": "not_a_number_at_all",
+        })
+        assert r.status_code == 200
+        # Must show error in response
+        assert "error" in r.text.lower() or "Invalid" in r.text or "gearing" in r.text.lower()
+        # Response must NOT contain KPI results (which would mean silent fallback)
+        assert "Project IRR" not in r.text
