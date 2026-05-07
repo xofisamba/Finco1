@@ -6,6 +6,28 @@ Lightweight persistence layer for saving/loading project model runs. Enables aut
 
 **Constraint:** Uses raw `sqlite3` (Python stdlib) — SQLAlchemy is NOT available on the production VPS.
 
+### Save Run Semantics
+
+**Important:** `POST /save-run` does NOT snapshot the already-rendered KPI HTML card.
+Instead, it **re-runs the model** with the current form field values to get fresh KPIs,
+then stores those along with the form inputs. This means:
+
+- The saved run reflects the current form state (inputs as submitted)
+- KPIs are computed fresh, not extracted from HTML
+- Results should match what you'd get from clicking "Run Model" with the same inputs
+- Future improvement: expose a `run_id` from `/run` and store that directly to avoid re-computation
+
+### SQLite Connection Strategy
+
+Connection-per-operation: each `get_connection()` call opens a fresh SQLite connection,
+applies WAL mode + foreign keys, runs schema init (idempotent via `CREATE TABLE IF NOT EXISTS`),
+and returns it. `get_cursor()` context manager auto-closes the connection after use.
+
+This is safe under gunicorn threaded workers because:
+- SQLite's file-level locking serialises writes
+- WAL allows concurrent reads across connections
+- No global shared mutable connection object
+
 ---
 
 ## Database Architecture
@@ -113,6 +135,10 @@ hx-get="/run/{run_id}" hx-target="#results-area"
 | Env variable | Default | Description |
 |---|---|---|
 | `FINCO_DB_PATH` | `app/data/finco_runs.db` | Path to SQLite DB |
+
+> **Important:** `storage/exports/` and `app/data/` are gitignored — DB and exports are never committed.
+
+---
 | `FINCO_SECRET_KEY` | `changeme` | Session signing key |
 | `FINCO_ADMIN_PASSWORD` | `fincoGPT2026!` | Login password |
 

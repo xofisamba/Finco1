@@ -9,6 +9,20 @@ build/
 venv/
 .env
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Storage exports (generated Excel files)
+storage/exports/
+!storage/exports/.gitkeep
+
+# App data (SQLite DB, WAL, exports)
+app/data/*.db
+app/data/*.db-wal
+app/data/*.db-shm
+app/data/*.db-journal
+app/data/.gitkeep
 .DS_Store
 *.log
 streamlit*.log

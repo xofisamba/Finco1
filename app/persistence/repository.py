@@ -74,7 +74,10 @@ def save_run(
     excel_path: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> RunRecord:
-    """Save a new project run. Returns RunRecord."""
+    """Save a new project run. Returns RunRecord.
+
+    user_id comes from the authenticated session — never from client input.
+    """
     run_id = uuid.uuid4().hex[:16]
     created_at = datetime.now(timezone.utc)
 

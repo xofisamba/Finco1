@@ -592,9 +592,9 @@ async def list_runs_endpoint(request: Request):
 @app.post("/save-run")
 async def save_run_endpoint(request: Request):
     """Save current model run to persistence.
-    
-    Accepts: project_type, scenario + form fields from main form.
-    Returns: JSON with run_id on success.
+
+    Saves current form state by re-running the model (not a snapshot of the HTML card).
+    Returns HTML partial for HTMX consumption.
     """
     user = get_current_user(request)
     if not user:
@@ -603,6 +603,9 @@ async def save_run_endpoint(request: Request):
     form = await request.form()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
+
+    # Never trust user_id from client; always derive from session.
+    user_id = user.user_id
 
     # Build inputs dict from form
     inputs = {
@@ -617,12 +620,17 @@ async def save_run_endpoint(request: Request):
         "tenor_years": form.get("tenor_years", ""),
     }
 
-    # Run model to get KPIs
+    # Validate form
     errors = []
     if not _validate_form(project_type, scenario, errors):
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": errors[0] if errors else "Invalid form"}, status_code=400)
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/save_result.html",
+            context={"success": False, "error": errors[0] if errors else "Invalid form"},
+            headers={"HX-Trigger": "refreshHistory"},
+        )
 
+    # Re-run model to get fresh KPIs (matches current form state)
     try:
         schema = _build_schema_from_form(
             project_type, scenario,
@@ -636,29 +644,41 @@ async def save_run_endpoint(request: Request):
         result = run_project(project_type, scenario, project_inputs_override=override)
         kpis = result["kpis"]
     except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": f"Model error: {str(e)}"}, status_code=500)
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/save_result.html",
+            context={"success": False, "error": f"Model error: {str(e)}"},
+            headers={"HX-Trigger": "refreshHistory"},
+        )
 
-    # Save to DB
+    # Persist to DB
     try:
         run_record = save_run(
-            user_id=user.user_id,
+            user_id=user_id,
             project_type=project_type,
             scenario=scenario,
             inputs=inputs,
             kpis=kpis,
         )
-        from fastapi.responses import JSONResponse
-        return JSONResponse({
-            "status": "saved",
-            "run_id": run_record.run_id,
-            "project_type": project_type,
-            "scenario": scenario,
-            "created_at": run_record.created_at.isoformat(),
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/save_result.html",
+            context={
+                "success": True,
+                "run_id": run_record.run_id,
+                "project_type": project_type,
+                "scenario": scenario,
+                "created_at": run_record.created_at.isoformat(),
+            },
+            headers={"HX-Trigger": "refreshHistory"},
+        )
     except Exception as e:
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"error": f"Save failed: {str(e)}"}, status_code=500)
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/save_result.html",
+            context={"success": False, "error": f"Save failed: {str(e)}"},
+            headers={"HX-Trigger": "refreshHistory"},
+        )
 
 
 @app.get("/run/{run_id}")
