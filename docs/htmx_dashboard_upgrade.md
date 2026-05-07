@@ -187,11 +187,11 @@ curl https://app.finco.one/public-health
 # → {"status":"ok","app":"fincogpt","mode":"internal-demo"}
 
 # With auth
-curl -u admin:fincoGPT2026! https://app.finco.one/health
+curl -u admin:YOUR_PASSWORD https://app.finco.one/health
 # → {"status":"ok"}
 
 # Run model
-curl -X POST -u admin:fincoGPT2026! \
+curl -X POST -u admin:YOUR_PASSWORD \
   -d "project_type=Solar&scenario=Base" \
   https://app.finco.one/run | head -c 200
 ```
