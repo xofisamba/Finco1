@@ -125,6 +125,11 @@
         <button type="submit" form="main-form" formaction="/download" formmethod="POST" class="btn btn-secondary">
           Download Excel
         </button>
+
+        <button type="button" class="btn btn-outline" hx-post="/save-run" hx-form="#main-form" hx-indicator="#save-indicator">
+          Save Run
+        </button>
+        <span id="save-indicator" class="htmx-indicator">Saving...</span>
       </div>
 
       <!-- Validation feedback -->
@@ -173,6 +178,9 @@
 
     <!-- Scenario Comparison -->
     <div id="comparison-area"></div>
+
+    <!-- Saved Runs History (loads on page load) -->
+    <div id="history-area" hx-get="/runs" hx-trigger="load" hx-swap="innerHTML"></div>
 
     <!-- Footer -->
     <footer class="content-footer">

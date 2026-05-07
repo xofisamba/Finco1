@@ -26,6 +26,9 @@ from app.auth import (
     COOKIE_NAME,
 )
 
+# Import persistence
+from app.persistence.repository import save_run, get_run, list_runs, delete_run, count_runs
+
 # ── FastAPI app ────────────────────────────────────────────────────────────
 app = FastAPI(title="FincoGPT Internal Demo")
 
@@ -562,6 +565,131 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             content=f"<html><body><h2>Excel generation failed</h2><p>{str(e)}</p><a href='/'>Back</a></body></html>",
             status_code=500,
         )
+
+
+@app.get("/runs")
+async def list_runs_endpoint(request: Request):
+    """List recent runs for the authenticated user."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    runs = list_runs(user.user_id, limit=20)
+    data = [{
+        "run_id": r.run_id,
+        "project_type": r.project_type,
+        "scenario": r.scenario,
+        "created_at": r.created_at.isoformat() if hasattr(r.created_at, 'isoformat') else r.created_at,
+        "inputs": r.inputs,
+        "kpis": r.kpis,
+    } for r in runs]
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/run_history.html",
+        context={"runs": data, "user": user},
+    )
+
+
+@app.post("/save-run")
+async def save_run_endpoint(request: Request):
+    """Save current model run to persistence.
+    
+    Accepts: project_type, scenario + form fields from main form.
+    Returns: JSON with run_id on success.
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    project_type = form.get("project_type", "")
+    scenario = form.get("scenario", "")
+
+    # Build inputs dict from form
+    inputs = {
+        "capacity_mw": form.get("capacity_mw", ""),
+        "tariff_eur_mwh": form.get("tariff_eur_mwh", ""),
+        "p50_hours": form.get("p50_hours", ""),
+        "total_capex_keur": form.get("total_capex_keur", ""),
+        "opex_y1_keur": form.get("opex_y1_keur", ""),
+        "gearing_pct": form.get("gearing_pct", ""),
+        "target_dscr": form.get("target_dscr", ""),
+        "interest_rate_pct": form.get("interest_rate_pct", ""),
+        "tenor_years": form.get("tenor_years", ""),
+    }
+
+    # Run model to get KPIs
+    errors = []
+    if not _validate_form(project_type, scenario, errors):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": errors[0] if errors else "Invalid form"}, status_code=400)
+
+    try:
+        schema = _build_schema_from_form(
+            project_type, scenario,
+            inputs.get("capacity_mw"), inputs.get("tariff_eur_mwh"),
+            inputs.get("p50_hours"), inputs.get("total_capex_keur"),
+            inputs.get("opex_y1_keur"), inputs.get("gearing_pct"),
+            inputs.get("target_dscr"), inputs.get("interest_rate_pct"),
+            inputs.get("tenor_years"),
+        )
+        override = build_projectinputs(schema)
+        result = run_project(project_type, scenario, project_inputs_override=override)
+        kpis = result["kpis"]
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": f"Model error: {str(e)}"}, status_code=500)
+
+    # Save to DB
+    try:
+        run_record = save_run(
+            user_id=user.user_id,
+            project_type=project_type,
+            scenario=scenario,
+            inputs=inputs,
+            kpis=kpis,
+        )
+        from fastapi.responses import JSONResponse
+        return JSONResponse({
+            "status": "saved",
+            "run_id": run_record.run_id,
+            "project_type": project_type,
+            "scenario": scenario,
+            "created_at": run_record.created_at.isoformat(),
+        })
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": f"Save failed: {str(e)}"}, status_code=500)
+
+
+@app.get("/run/{run_id}")
+async def get_run_endpoint(request: Request, run_id: str):
+    """Load a saved run by ID."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    record = get_run(run_id, user.user_id)
+    if record is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Run not found"}, status_code=404)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/kpis.html",
+        context={
+            "kpis": _format_kpis(record.kpis),
+            "run_data": {
+                "project_type": record.project_type,
+                "scenario": record.scenario,
+                "capacity_mw": record.inputs.get("capacity_mw", ""),
+                "tariff_eur_mwh": record.inputs.get("tariff_eur_mwh", ""),
+                "total_capex_keur": record.inputs.get("total_capex_keur", ""),
+                "gearing_pct": record.inputs.get("gearing_pct", ""),
+            },
+            "messages": [f"Loaded run {run_id} from {record.created_at.strftime('%Y-%m-%d %H:%M')}"],
+            "integration_status": "full",
+        },
+    )
 
 
 if __name__ == "__main__":
