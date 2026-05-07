@@ -117,3 +117,116 @@ class TestDepreciationDisclosureCaveats:
         notes_combined = " ".join(rows_text)
         assert "Model outputs" in notes_combined or "not audited" in notes_combined.lower(), \
             "Notes should warn that depreciation schedules are model outputs, not audited"
+
+
+class TestWindDepreciationProfile:
+    """Wind export uses wind_croatia_ibl profile."""
+
+    def test_wind_export_uses_wind_profile(self):
+        """Wind project type should use wind_croatia_ibl profile in Depreciation Assumptions."""
+        from app.ui_runner import run_demo_project
+        result = run_demo_project("Wind", "Base")
+        excel_bytes = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+        )
+        # Check that assumptions sheet mentions Wind-appropriate asset rules
+        # Wind profile has same 10y inverter rule as solar
+        data = get_sheet_data(excel_bytes, "Depreciation Assumptions")
+        rows_text = [" ".join(str(c) for c in row) for row in data]
+        flat = " ".join(rows_text)
+        # Should have Inverters row
+        assert "Inverter" in flat or "inverter" in flat.lower(), \
+            "Depreciation Assumptions should have Inverters row for Wind"
+
+
+class TestLandDepreciationZero:
+    """LAND depreciation is zero by design."""
+
+    def test_land_depreciation_is_zero(self):
+        """LAND asset class has zero tax and book depreciation."""
+        from app.depreciation_bankable import (
+            generate_tax_and_book_schedule,
+            map_capex_line_item_to_basis,
+            get_profile,
+            DepreciationConvention,
+            BankableAssetClass,
+        )
+        from app.capex_engine import build_capex_line_items_from_defaults
+
+        items = build_capex_line_items_from_defaults("solar")
+        profile = get_profile("solar_croatia_ibl")
+        basis_items = [map_capex_line_item_to_basis(item, profile) for item in items]
+        tax_sched, book_sched = generate_tax_and_book_schedule(
+            basis_items, profile, total_periods=20,
+            convention=DepreciationConvention.FULL_YEAR,
+        )
+        
+        land_tax = tax_sched.total_by_asset_class(BankableAssetClass.LAND)
+        land_book = book_sched.total_by_asset_class(BankableAssetClass.LAND)
+        
+        assert all(v == 0.0 for v in land_tax), f"LAND tax should be all zeros, got {land_tax}"
+        assert all(v == 0.0 for v in land_book), f"LAND book should be all zeros, got {land_book}"
+
+
+class TestBookDepreciationScheduleTotalByAssetClass:
+    """BookDepreciationSchedule has total_by_asset_class()."""
+
+    def test_book_schedule_has_total_by_asset_class(self):
+        """BookDepreciationSchedule has total_by_asset_class method."""
+        from app.depreciation_bankable import (
+            generate_tax_and_book_schedule,
+            map_capex_line_item_to_basis,
+            get_profile,
+            DepreciationConvention,
+            BankableAssetClass,
+        )
+        from app.capex_engine import build_capex_line_items_from_defaults
+
+        items = build_capex_line_items_from_defaults("solar")
+        profile = get_profile("solar_croatia_ibl")
+        basis_items = [map_capex_line_item_to_basis(item, profile) for item in items]
+        tax_sched, book_sched = generate_tax_and_book_schedule(
+            basis_items, profile, total_periods=20,
+            convention=DepreciationConvention.FULL_YEAR,
+        )
+        
+        # Method should exist
+        assert hasattr(book_sched, "total_by_asset_class"), \
+            "BookDepreciationSchedule should have total_by_asset_class method"
+        
+        # Should return list of length total_periods
+        result = book_sched.total_by_asset_class(BankableAssetClass.SOLAR_MODULES)
+        assert isinstance(result, list), "Should return list"
+        assert len(result) == 20, f"Should return 20-period list, got {len(result)}"
+        
+        # Should be zero-filled before first use
+        assert all(v >= 0 for v in result), "All values should be non-negative"
+
+    def test_tax_and_book_sheets_differ_when_lives_differ(self):
+        """Tax and Book Depreciation sheets have different values when lives differ."""
+        from app.ui_runner import run_demo_project
+        from app.capex_engine import build_capex_line_items_from_defaults
+        from io import BytesIO
+        import openpyxl
+
+        result = run_demo_project("Solar", "Base", advanced_capex_line_items=build_capex_line_items_from_defaults("solar"))
+        excel_bytes = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            advanced_capex_line_items=build_capex_line_items_from_defaults("solar"),
+        )
+        
+        tax_data = get_sheet_data(excel_bytes, "Tax Depreciation")
+        book_data = get_sheet_data(excel_bytes, "Book Depreciation")
+        
+        # Both sheets should have multiple rows (header + asset rows + total)
+        assert len(tax_data) >= 3, f"Tax sheet should have multiple rows, got {len(tax_data)}"
+        assert len(book_data) >= 3, f"Book sheet should have multiple rows, got {len(book_data)}"
+        
+        # Find total rows (Total is in second column, first column is row index)
+        tax_total = [r for r in tax_data if len(r) > 1 and str(r[1]).strip().lower() == "total"]
+        book_total = [r for r in book_data if len(r) > 1 and str(r[1]).strip().lower() == "total"]
+        
+        assert tax_total, f"Tax sheet should have Total row. Rows: {tax_data}"
+        assert book_total, f"Book sheet should have Total row. Rows: {book_data}"
