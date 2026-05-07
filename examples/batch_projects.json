@@ -1,0 +1,29 @@
+[
+  {
+    "project_type": "Solar",
+    "scenario": "Base"
+  },
+  {
+    "project_type": "Solar",
+    "scenario": "Downside"
+  },
+  {
+    "project_type": "Wind",
+    "scenario": "Base"
+  },
+  {
+    "project_type": "Wind",
+    "scenario": "Upside"
+  },
+  {
+    "project_type": "Solar",
+    "scenario": "Base",
+    "period_view": "Annual",
+    "inputs": {
+      "project_type": "Solar",
+      "revenue": {
+        "tariff_eur_mwh": 85
+      }
+    }
+  }
+]
