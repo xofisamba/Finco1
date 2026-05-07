@@ -3,11 +3,243 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}FincoGPT Internal Demo{% endblock %}</title>
+  <title>{% block title %}FincoGPT — Internal Advisory Platform{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/vendor/htmx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  {% block body %}{% endblock %}
+
+<!-- Fixed top header -->
+<header class="top-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <span class="brand-logo">F</span>
+      <div class="brand-text">
+        <span class="brand-name">FincoGPT</span>
+        <span class="brand-sub">Internal Advisory Platform</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="env-badge">INTERNAL DEMO</span>
+      <span class="version-badge">v1.5.0</span>
+    </div>
+  </div>
+</header>
+
+<!-- Main layout: sidebar + content -->
+<div class="app-layout">
+
+  <!-- Sidebar: Input Form -->
+  <aside class="sidebar">
+    <form id="main-form"
+          hx-post="/validate"
+          hx-target="#validation-result"
+          hx-swap="innerHTML"
+          hx-disabled-elt="button[type=submit],button[name=run],button[name=compare]">
+
+      <!-- PROJECT section -->
+      <div class="form-section">
+        <div class="form-section-label">Project</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="project_type">Type</label>
+            <select name="project_type" id="project_type" required>
+              {% for pt in project_types %}
+              <option value="{{ pt }}" {% if form_data.get('project_type') == pt %}selected{% endif %}>{{ pt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="scenario">Scenario</label>
+            <select name="scenario" id="scenario" required>
+              {% for sc in scenarios %}
+              <option value="{{ sc }}" {% if form_data.get('scenario') == sc %}selected{% endif %}>{{ sc }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="capacity_mw">Capacity (MW)</label>
+          <input type="number" name="capacity_mw" id="capacity_mw" placeholder="e.g. 50" step="any" min="0" />
+        </div>
+      </div>
+
+      <!-- REVENUE section -->
+      <div class="form-section">
+        <div class="form-section-label">Revenue</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="tariff_eur_mwh">Tariff (EUR/MWh)</label>
+            <input type="number" name="tariff_eur_mwh" id="tariff_eur_mwh" placeholder="e.g. 85" step="any" min="0" />
+          </div>
+          <div class="field">
+            <label for="p50_hours">P50 Hours</label>
+            <input type="number" name="p50_hours" id="p50_hours" placeholder="e.g. 1600" step="any" min="0" />
+          </div>
+        </div>
+      </div>
+
+      <!-- CAPEX section -->
+      <div class="form-section">
+        <div class="form-section-label">CAPEX</div>
+
+        <div class="field">
+          <label for="total_capex_keur">Total CAPEX (kEUR)</label>
+          <input type="number" name="total_capex_keur" id="total_capex_keur" placeholder="factory default" step="any" min="0" />
+          <span class="field-hint">Leave blank for factory default</span>
+        </div>
+      </div>
+
+      <!-- OPEX section -->
+      <div class="form-section">
+        <div class="form-section-label">OPEX</div>
+
+        <div class="field">
+          <label for="opex_y1_keur">OPEX Y1 (kEUR)</label>
+          <input type="number" name="opex_y1_keur" id="opex_y1_keur" placeholder="factory default" step="any" min="0" />
+        </div>
+      </div>
+
+      <!-- DEBT section -->
+      <div class="form-section">
+        <div class="form-section-label">Debt</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="gearing_pct">Gearing (%)</label>
+            <input type="number" name="gearing_pct" id="gearing_pct" placeholder="e.g. 75" step="any" min="0" max="100" />
+          </div>
+          <div class="field">
+            <label for="target_dscr">Target DSCR</label>
+            <input type="number" name="target_dscr" id="target_dscr" placeholder="e.g. 1.30" step="any" min="0" />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="interest_rate_pct">Interest Rate (%)</label>
+            <input type="number" name="interest_rate_pct" id="interest_rate_pct" placeholder="e.g. 6.5" step="any" min="0" />
+          </div>
+          <div class="field">
+            <label for="tenor_years">Tenor (Years)</label>
+            <input type="number" name="tenor_years" id="tenor_years" placeholder="e.g. 20" step="any" min="0" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="form-actions">
+        <button type="submit" class="btn btn-outline" hx-indicator="#validate-indicator">
+          Validate
+        </button>
+        <span id="validate-indicator" class="htmx-indicator">Validating...</span>
+
+        <button type="button" name="run" class="btn btn-primary" hx-post="/run" hx-form="#main-form" hx-target="#results-area" hx-swap="innerHTML" hx-indicator="#run-indicator">
+          Run Model
+        </button>
+        <span id="run-indicator" class="htmx-indicator">Running model...</span>
+
+        <button type="button" name="compare" class="btn btn-accent" hx-post="/compare" hx-form="#main-form" hx-target="#comparison-area" hx-swap="innerHTML" hx-indicator="#compare-indicator">
+          Compare Scenarios
+        </button>
+        <span id="compare-indicator" class="htmx-indicator">Comparing...</span>
+
+        <button type="submit" form="main-form" formaction="/download" formmethod="POST" class="btn btn-secondary">
+          Download Excel
+        </button>
+      </div>
+
+      <!-- Validation feedback -->
+      <div id="validation-result"></div>
+    </form>
+  </aside>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- Status banner -->
+    <div class="status-banner">
+      <div class="status-item">
+        <span class="status-dot status-dot--green"></span>
+        <span>Model Active</span>
+      </div>
+      <div class="status-sep">·</div>
+      <div class="status-item">
+        <span>Screening-grade — not audited financial advice</span>
+      </div>
+    </div>
+
+    <!-- Caveats -->
+    {% if caveats %}
+    <div class="caveats-banner">
+      <div class="caveats-icon">⚠️</div>
+      <div class="caveats-content">
+        <div class="caveats-title">Known Model Caveats</div>
+        <ul class="caveats-list">
+          {% for c in caveats %}
+          <li>{{ c }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- KPI Results -->
+    <div id="results-area">
+      <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <div class="empty-title">No results yet</div>
+        <div class="empty-desc">Configure your project in the sidebar and click <strong>Run Model</strong> to see KPIs</div>
+      </div>
+    </div>
+
+    <!-- Scenario Comparison -->
+    <div id="comparison-area"></div>
+
+    <!-- Charts -->
+    <div id="charts-area"></div>
+
+    <!-- Footer -->
+    <footer class="content-footer">
+      <div class="footer-inner">
+        <span>FincoGPT Internal Advisory Platform — Not audited — Internal use only</span>
+        <span class="footer-sep">·</span>
+        <span>v1.5.0 · HTMX Internal Demo</span>
+      </div>
+    </footer>
+  </main>
+
+</div><!-- .app-layout -->
+
+<script>
+  // Global HTMX loading indicator
+  document.body.addEventListener('htmx:beforeRequest', function(e) {
+    if (e.detail.target) {
+      e.detail.target.classList.add('htmx-loading');
+    }
+  });
+  document.body.addEventListener('htmx:afterRequest', function(e) {
+    if (e.detail.target) {
+      e.detail.target.classList.remove('htmx-loading');
+    }
+  });
+
+  // Re-init Chart.js after HTMX swap if chart canvases are present
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target && e.detail.target.querySelector) {
+      const charts = e.detail.target.querySelectorAll('canvas[data-chart]');
+      charts.forEach(function(canvas) {
+        const chartData = JSON.parse(canvas.dataset.chart);
+        new Chart(canvas, chartData);
+      });
+    }
+  });
+</script>
+
 </body>
 </html>

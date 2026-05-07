@@ -69,7 +69,8 @@ class TestValidate:
     def test_validate_valid_solar_returns_200(self, client):
         r = client.post("/validate", data={"project_type": "Solar", "scenario": "Base"})
         assert r.status_code == 200
-        assert "passed" in r.text.lower() or "validation" in r.text.lower()
+        t = r.text.lower()
+        assert "all inputs look good" in t or "ready" in t or "passed" in t
 
     def test_validate_invalid_project_type_returns_error(self, client):
         r = client.post("/validate", data={"project_type": "Nuclear", "scenario": "Base"})
