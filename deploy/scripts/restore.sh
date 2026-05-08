@@ -87,13 +87,21 @@ cp "$RESTORED_PATH" "$DB_PATH"
 rm -f "$RESTORED_PATH"
 
 # ── Fix permissions ───────────────────────────────────────────────────────────
-chown finco:finco "$DB_PATH"
+APP_USER="${FINCO_APP_USER:-finco}"
+APP_GROUP="${FINCO_APP_GROUP:-finco}"
+DB_DIR="$(dirname "$DB_PATH")"
+
+chown "$APP_USER:$APP_GROUP" "$DB_PATH"
 chmod 660 "$DB_PATH"
 
+# Ensure parent directory is accessible by the app user
+chown "$APP_USER:$APP_GROUP" "$DB_DIR"
+chmod 750 "$DB_DIR"
+
 # WAL permissions
-[[ -f "${DB_PATH}-wal" ]] && chown finco:finco "${DB_PATH}-wal" && chmod 660 "${DB_PATH}-wal" || true
+[[ -f "${DB_PATH}-wal" ]] && chown "$APP_USER:$APP_GROUP" "${DB_PATH}-wal" && chmod 660 "${DB_PATH}-wal" || true
 # SHM permissions
-[[ -f "${DB_PATH}-shm" ]] && chown finco:finco "${DB_PATH}-shm" && chmod 660 "${DB_PATH}-shm" || true
+[[ -f "${DB_PATH}-shm" ]] && chown "$APP_USER:$APP_GROUP" "${DB_PATH}-shm" && chmod 660 "${DB_PATH}-shm" || true
 
 # ── Restart service ──────────────────────────────────────────────────────────
 echo "Restarting $SERVICE_NAME..."

@@ -91,6 +91,8 @@ Required variables in `.env`:
 | `FINCO_SESSION_HOURS` | Session lifetime in hours (default: 8) |
 | `FINCO_COOKIE_SECURE` | Set `true` in production (requires HTTPS) |
 | `FINCO_DB_PATH` | Path to SQLite DB (default: `/opt/finco1/storage/finco.db`) |
+| `FINCO_APP_USER` | Linux user that owns the DB (default: `finco`). Used by `restore.sh` to set ownership after restore. |
+| `FINCO_APP_GROUP` | Linux group for DB ownership (default: `finco`) |
 
 **Never commit `.env` to version control.**
 
@@ -237,6 +239,31 @@ sudo -u finco /opt/finco1/deploy/scripts/backup.sh
 - Check `/static/` is mounted in `main_web.py`
 - Verify `static/` directory exists at `/opt/finco1/static/`
 - Nginx alias should be: `alias /opt/finco1/static/;` (note trailing slash)
+
+---
+
+## Restore from Backup
+
+If you need to restore from a backup (e.g., after a DB corruption incident):
+
+```bash
+sudo /opt/finco1/deploy/scripts/restore.sh /opt/finco1/backups/<backup_file>
+```
+
+What `restore.sh` does:
+1. Stops the `finco-web` systemd service
+2. Backs up the current (potentially corrupted) DB to `*.corrupt_<timestamp>`
+3. Decompresses and restores the backup to `FINCO_DB_PATH`
+4. **Sets DB ownership to `finco:finco`** (configurable via `FINCO_APP_USER` / `FINCO_APP_GROUP`)
+5. Sets parent directory permissions to `750` (owner-only access)
+6. Restarts the service
+7. Runs a healthcheck (`/public-health`)
+
+Ownership override (in `.env`):
+```
+FINCO_APP_USER=myuser
+FINCO_APP_GROUP=mygroup
+```
 
 ---
 
