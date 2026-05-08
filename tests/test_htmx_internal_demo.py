@@ -267,6 +267,41 @@ class TestDownload:
         assert r.status_code == 200
         assert "application/vnd.openxmlformats" in r.headers["content-type"]
 
+    def test_download_response_has_attachment_disposition(self, client):
+        """Content-Disposition must be 'attachment', not 'inline'."""
+        r = client.get("/download?project_type=Solar&scenario=Base")
+        cd = r.headers.get("content-disposition", "")
+        assert "attachment" in cd.lower(), f"Expected 'attachment' in Content-Disposition, got: {cd}"
+
+    def test_download_response_starts_with_zip_magic(self, client):
+        """Response body must start with ZIP magic bytes 'PK'."""
+        r = client.get("/download?project_type=Solar&scenario=Base")
+        assert r.content[:2] == b"PK", f"Expected ZIP magic bytes, got: {r.content[:4]}"
+
+    def test_download_response_is_not_html(self, client):
+        """Binary download must NOT contain HTML (no HTML rendered in browser)."""
+        r = client.get("/download?project_type=Solar&scenario=Base")
+        # Must not contain HTML doctype or tags
+        assert b"<!DOCTYPE" not in r.content
+        assert b"<html" not in r.content
+        assert b"<body" not in r.content
+        assert b"<head>" not in r.content
+
+    def test_download_response_has_content_length(self, client):
+        """Response must include Content-Length header for mobile browser support."""
+        r = client.get("/download?project_type=Solar&scenario=Base")
+        assert "content-length" in r.headers
+        length = int(r.headers["content-length"])
+        assert length > 1000, f"Expected large Excel file (>1KB), got {length} bytes"
+
+    def test_download_mobile_safe_no_html_interpretation(self, client):
+        """Mobile browsers must not interpret binary as HTML."""
+        r = client.post("/download", data={"project_type": "Solar", "scenario": "Base"})
+        # Should be treated as downloadable file, not rendered
+        ct = r.headers.get("content-type", "")
+        assert "html" not in ct.lower()
+        assert r.content[:1] != ord(b"<"), "Binary content starts with '<' — would render as HTML"
+
 
 class TestNoStreamlit:
     def test_no_streamlit_import_in_router(self):

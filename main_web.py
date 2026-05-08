@@ -603,7 +603,10 @@ async def download_post(request: Request):
         return StreamingResponse(
             iter([excel_bytes]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(excel_bytes)),
+            },
         )
     except Exception as e:
         return HTMLResponse(
@@ -629,7 +632,10 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         return StreamingResponse(
             iter([excel_bytes]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(excel_bytes)),
+            },
         )
     except Exception as e:
         return HTMLResponse(
