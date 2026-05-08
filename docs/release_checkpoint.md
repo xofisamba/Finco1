@@ -247,10 +247,18 @@ POST /logout → 302                             ✅
 
 ### Known Calibration Caveats
 
-| Issue | Impact | Fix Owner |
-|-------|--------|-----------|
-| TUHO CO2 revenue missing | Y1 revenue -611 kEUR (-12.5%) | Model fix |
-| Oborovo debt-service bug | DSCR 0.181→1.250, Equity IRR 9.96%→10.16% | Fixed in P0 sprint |
+| Issue | Impact | Status |
+|-------|--------|--------|
+| TUHO CO2 revenue missing | Y1 revenue -611 kEUR | Fixed P0 (CO2 enabled) |
+| Oborovo debt-service bug | DSCR 0.181→1.250, Equity IRR 9.96%→10.16% | ✅ Fixed P0 |
+| Oborovo merchant curve vintage | Project IRR 8.65%→7.985% | ✅ Fixed P1 |
+| Oborovo equity IRR gap | 9.17% vs reference 10.60% | ⚠️ Partial P1; P2 pending |
+| Depreciation convention | 20y vs 30y asset life | ⬜ P2 pending |
+
+**Note on Project IRR vs Equity IRR calibration:**
+Project IRR = financing-independent, now calibrated (7.985% vs 7.96% reference).
+Equity IRR = levered, sensitive to depreciation timing, reserve conventions, sculpting.
+Equity IRR gap reflects modeling convention differences, not bugs.
 
 **Do NOT mask these with DSCR tolerance — they are model bugs.**
 

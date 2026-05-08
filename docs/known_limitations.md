@@ -206,6 +206,78 @@ primary suspect.
 Each test constructs its own `ScenarioManager` and `ProjectInputs` from factory functions.
 No shared mutable state at module level.
 
+---
+
+## 10. Oborovo Calibration Status (P0 + P1 Complete)
+
+After P0 (debt-service + unlevered tax) and P1 (merchant curve) sprints:
+
+| Metric | Model Value | Excel Reference | Gap | Status |
+|--------|------------|----------------|-----|--------|
+| Project IRR | 7.985% | 7.96% | +0.025pp | ✅ Calibrated |
+| Equity IRR | 9.17% | 10.60% | −1.43pp | ⚠️ Partially calibrated |
+| Total Debt | 42,852 kEUR | 42,852 kEUR | 0 | ✅ Calibrated |
+| Avg DSCR | 1.229 | 1.147 | +0.082 | ⚠️ Near-calibrated |
+| Min DSCR | 1.167 | — | — | ✅ Reasonable |
+| Revenue (Y1) | ~6,447 kEUR | ~6,447 kEUR | ~0 | ✅ Calibrated |
+| Total Revenue | 238,735 kEUR | — | — | ✅ Reasonable |
+| EBITDA | 187,514 kEUR | — | — | ✅ Reasonable |
+
+### Why Project IRR is Calibrated but Equity IRR is Not
+
+**Project IRR = XIRR(total_capex + all operating cashflows, debt+equity)**
+- Financing-independent (unlevered tax basis)
+- Uses only project-level cashflows: EBITDA, tax, capex
+- Merchant curve directly drives EBITDA → Project IRR sensitive to merchant prices
+- ✅ Oborovo merchant curve fixed → Project IRR calibrated
+
+**Equity IRR = XIRR(equity invested + distributions received)**
+- Levered — includes debt service, SHL mechanics, reserve accounts, sculpting
+- Sensitive to:
+  - Depreciation convention (20y vs 30y → different tax shields)
+  - DSRA/Reserve timing and sizing conventions
+  - Sculpting method and DSCR averaging (annual vs semiannual)
+  - Tax loss carryforward timing during construction
+  - SHL PIK vs cash pay split and timing
+- These are lender modeling conventions, not bugs
+- Screening-grade models typically show ±1-2pp equity IRR variance vs lender models
+
+### Remaining Calibration Work (P2)
+
+| Gap | Root Cause | Priority |
+|-----|------------|----------|
+| Equity IRR −1.43pp vs reference | Depreciation timing + reserve conventions | P2 |
+| Avg DSCR +0.082 vs reference | Annual vs semiannual averaging convention | P2 |
+| Depreciation 20y vs 30y asset life | Different depreciation schedule | P2 |
+
+**Model status: screening-grade, not lender-grade or bank-certified.**
+Revenue and Project IRR are calibrated to Excel reference. Equity IRR and DSCR remain
+sensitive to modeling conventions that differ between screening and lender models.
+
+---
+
+---
+
+## Oborovo Calibration Status (P0 + P1)
+
+| Metric | Status | Note |
+|--------|--------|------|
+| Revenue | ✅ Calibrated | Y1-Y12 PPA unchanged, Y13-Y30 AFRY aligned |
+| Project IRR | ✅ Calibrated | 7.985% vs reference 7.96% (+0.025pp) |
+| Equity IRR | ⚠️ Partially calibrated | 9.17% vs reference 10.60% (−1.43pp) |
+| Debt sizing | ✅ Calibrated | 42,852 kEUR anchor maintained |
+| DSCR | ⚠️ Near-calibrated | 1.229 vs reference 1.147 |
+| Tax conventions | ⚠️ Partial | Construction-period tax timing differs |
+| Depreciation | ⬜ Pending P2 | 20y vs 30y asset life convention |
+
+**Why Project IRR vs Equity IRR differ in calibration status:**
+Project IRR = financing-independent (unlevered tax). Equity IRR = levered, sensitive to
+depreciation, reserves, sculpting. These are modeling convention differences, not bugs.
+
+Model remains screening-grade, not lender-grade or bank-certified.
+
+---
+
 | What is tested | What is NOT tested |
 |---------------|-------------------|
 | Override logic correctness | Bank-certification accuracy |

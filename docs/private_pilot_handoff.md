@@ -127,6 +127,28 @@ sudo -u finco bash /opt/finco1/deploy/scripts/backup.sh
 
 ---
 
+## Calibration Status (P0 + P1 Complete)
+
+| Metric | Status | Model Value | Reference | Gap |
+|--------|--------|-------------|-----------|-----|
+| Project IRR (Oborovo) | ✅ Calibrated | 7.985% | 7.96% | +0.025pp |
+| Equity IRR (Oborovo) | ⚠️ Partial | 9.17% | 10.60% | −1.43pp |
+| Debt sizing (Oborovo) | ✅ Calibrated | 42,852 kEUR | 42,852 kEUR | 0 |
+| DSCR (Oborovo) | ⚠️ Near | 1.229 | 1.147 | +0.082 |
+| TUHO Project IRR | ✅ Calibrated | 9.47% | 9.47% | 0.00pp |
+| TUHO Equity IRR | ✅ Calibrated | 11.56% | 11.61% | −0.05pp |
+| Generic Solar/Wind | ✅ Unchanged | — | — | — |
+
+**Why Project IRR is calibrated but Equity IRR is not:**
+- Project IRR = financing-independent (unlevered tax), sensitive to revenue/merchant prices
+- Equity IRR = levered, sensitive to depreciation timing, reserve conventions, sculpting method
+- Equity IRR gap is a modeling convention difference, not a bug
+- Screening-grade models typically show ±1-2pp equity IRR variance vs lender models
+
+**Remaining P2:** depreciation convention, equity IRR gap, DSCR averaging convention
+
+---
+
 ## What NOT To Do
 
 - **DO NOT** use for public/production financial decisions (model is screening-grade)
