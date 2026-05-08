@@ -11,12 +11,17 @@ def build_debt_schedule_rows(result: Any) -> list[dict]:
 
     Handles DemoResult (result.waterfall_result IS the WaterfallResult) and raw WaterfallResult.
     Supports both IterativeSculptResult (field: payments) and ClosedFormSculptResult (field: payment_schedule).
+
+    Sculpt schedule semantics:
+    - balance_sched[0] = initial debt (opening balance before first operation period)
+    - balance_sched[1..n] = closing balance AFTER operation periods 1..n
+    - balance_sched has n_op_periods + 1 entries (initial + n closing balances)
+    - balance_sched[n] = 0 when loan is fully repaid
     
-    Opening balance: balance_sched[op_idx] = opening balance for operation period op_idx
-    Closing balance: opening - principal (computed from sculpt schedule for consistency)
-    
-    balance_sched[t] is the opening balance at the start of operation period t (0-indexed).
-    This means balance_sched[0] = initial debt (period 0/construction doesn't count).
+    Mapping:
+    - opening[op_idx] = balance_sched[op_idx] (initial debt for op_idx=0)
+    - closing[op_idx] = balance_sched[op_idx + 1] (shifted by 1)
+    - This means opening[op_idx] = closing[op_idx - 1] for op_idx > 0
     """
     # Unwrap DemoResult → WaterfallResult
     wf = None
@@ -58,7 +63,24 @@ def build_debt_schedule_rows(result: Any) -> list[dict]:
         if not p.is_operation:
             continue
 
-        # Determine values from sculpt schedule (aligned to operation index)
+        # Opening balance: balance_sched[op_idx]
+        # For op_idx=0: initial debt (debt_keur = balance_sched[0])
+        # For op_idx>0: closing of previous period = balance_sched[op_idx]
+        if sculpt and op_idx < len(balance_sched):
+            opening = balance_sched[op_idx]
+        elif op_idx == 0:
+            opening = debt_keur
+        else:
+            opening = 0.0
+
+        # Closing balance: balance_sched[op_idx + 1]
+        # (balance_sched is shifted by 1 relative to closing balances)
+        if sculpt and op_idx + 1 < len(balance_sched):
+            closing = balance_sched[op_idx + 1]
+        else:
+            closing = 0.0
+
+        # Determine interest/principal from sculpt schedule
         if sculpt and op_idx < len(interest_sched):
             si = interest_sched[op_idx]
             sp = principal_sched[op_idx]
@@ -69,25 +91,14 @@ def build_debt_schedule_rows(result: Any) -> list[dict]:
             sp = p.senior_principal_keur
             total_ds = p.senior_ds_keur
             dscr_val = p.dscr
-
-        # Opening balance from sculpt schedule
-        # balance_sched[op_idx] = opening balance for operation period op_idx
-        if sculpt and op_idx < len(balance_sched):
-            opening = balance_sched[op_idx]
-        elif op_idx == 0:
-            opening = debt_keur
-        else:
-            opening = p.senior_balance_keur + sp  # fallback
-
-        # Closing balance = opening - principal (from sculpt for consistency)
-        closing = opening - sp
+            closing = p.senior_balance_keur
 
         # Use waterfall CFADS
         cfads = p.ebitda_keur
 
-        # Guard against inf/nan DSCR (zero payment / zero CFADS → loan repaid)
-        if dscr_val == float('inf') or (isinstance(dscr_val, float) and dscr_val != dscr_val):  # NaN check
-            dscr_val = 0.0  # Repaid period — no active debt service
+        # Guard against inf/nan DSCR
+        if dscr_val == float('inf') or (isinstance(dscr_val, float) and dscr_val != dscr_val):
+            dscr_val = 0.0
         elif dscr_val <= 0:
             dscr_val = 0.0
 
