@@ -150,6 +150,11 @@ if run_button or st.session_state.demo_result is not None:
                 st.session_state.get("capex_line_items")
                 if project_type in ("Solar", "Wind") else None
             ),
+            include_reconciliation_sheets=st.checkbox(
+                "📋 Include Reconciliation Sheets (Debt Schedule, CF Bridges, Calibration Notes)",
+                value=False,
+                help="Adds audit-ready disclosure sheets: Debt Schedule, Project CF Bridge, Equity CF Bridge, and Calibration Notes.",
+            ),
         )
         st.download_button(
             "📊 Download Excel Export",

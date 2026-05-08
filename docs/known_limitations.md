@@ -95,25 +95,33 @@ Features that are structurally present but not validated for production use.
 
 ---
 
-## 6. Calibration Status (2026-05-08 P0 Sprint)
+## 6. Calibration Status (P0 + P1 Complete)
 
-### Fixed Bugs
+**This section is historical. For current status see §10.**
+
+### Fixed in P0 (2026-05-06)
 
 | Issue | Impact | Status |
 |-------|--------|--------|
 | Oborovo debt-service fixed_debt_keur payment bug | DSCR 0.181→1.250, Equity IRR 9.96%→10.16% | ✅ Fixed |
 | TUHO Project IRR levered tax basis | Project IRR 10.46%→9.47% (matches reference 9.47%) | ✅ Fixed |
+| TUHO CO2 revenue missing | Y1 revenue -611 kEUR | ✅ Fixed |
 
-### Remaining Calibration Gaps (P1)
+### Fixed in P1 (2026-05-08)
+
+| Issue | Impact | Status |
+|-------|--------|--------|
+| Oborovo merchant price curve vintage mismatch | Project IRR 8.65%→7.985% (ref: 7.96%) | ✅ Fixed |
+
+### Remaining (P2)
 
 | Issue | Impact | Path |
 |-------|--------|------|
-| Oborovo merchant price curve vintage mismatch | Project IRR +0.69pp → +0.025pp after AFRY fix | ✅ Fixed in P1 |
-| Oborovo depreciation convention (20y vs 30y asset life) | Deferred tax timing difference | Depreciation P1 |
+| Oborovo equity IRR gap (9.17% vs 10.60%) | Depreciation timing + reserve conventions | P2 |
+| Oborovo depreciation convention (20y vs 30y) | Deferred tax timing | P2 |
+| DSCR averaging convention | Annual vs semiannual | P2 |
 
-### TUHO CO2 Revenue
-- CO2 revenue calibrated: equity IRR 11.81% vs reference 11.61% (+0.20pp within ±1.0pp)
-- TUHO project IRR now correctly calibrated after unlevered tax fix
+**Current detailed status: §10 Oborovo Calibration Status.**
 
 ---
 
@@ -257,24 +265,6 @@ sensitive to modeling conventions that differ between screening and lender model
 ---
 
 ---
-
-## Oborovo Calibration Status (P0 + P1)
-
-| Metric | Status | Note |
-|--------|--------|------|
-| Revenue | ✅ Calibrated | Y1-Y12 PPA unchanged, Y13-Y30 AFRY aligned |
-| Project IRR | ✅ Calibrated | 7.985% vs reference 7.96% (+0.025pp) |
-| Equity IRR | ⚠️ Partially calibrated | 9.17% vs reference 10.60% (−1.43pp) |
-| Debt sizing | ✅ Calibrated | 42,852 kEUR anchor maintained |
-| DSCR | ⚠️ Near-calibrated | 1.229 vs reference 1.147 |
-| Tax conventions | ⚠️ Partial | Construction-period tax timing differs |
-| Depreciation | ⬜ Pending P2 | 20y vs 30y asset life convention |
-
-**Why Project IRR vs Equity IRR differ in calibration status:**
-Project IRR = financing-independent (unlevered tax). Equity IRR = levered, sensitive to
-depreciation, reserves, sculpting. These are modeling convention differences, not bugs.
-
-Model remains screening-grade, not lender-grade or bank-certified.
 
 ---
 
