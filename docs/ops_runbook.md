@@ -67,20 +67,48 @@ curl -fsS https://app.finco.one/public-health
 
 ## Backup & Restore
 
-```bash
-# Manual backup
-sudo -u finco /opt/finco1/deploy/scripts/backup.sh
+### Backup (daily, automatic)
+- **Schedule:** 02:15 server time via `/etc/cron.d/finco-backup`
+- **Location:** `/opt/finco1/backups/`
+- **Format:** `finco_runs_YYYYMMDD_HHMMSS.db.xz` (XZ-compressed SQLite)
+- **Retention:** 30 days (older purged automatically)
+- **Log:** `/var/log/finco-backup.log`
 
-# Backup path
+### Manual backup
+```bash
+sudo -u finco bash /opt/finco1/deploy/scripts/backup.sh
+```
+
+### Validate backup
+```bash
+# Check backup file size (non-zero)
 ls -la /opt/finco1/backups/
 
-# Restore from backup
-sudo /opt/finco1/deploy/scripts/restore.sh /opt/finco1/backups/<backup_file>
+# Verify SQLite integrity
+xz -d < /opt/finco1/backups/finco_runs_YYYYMMDD_HHMMSS.db.xz -c | sqlite3 /dev/null && echo "Valid SQLite"
 
-# Cron schedule (daily at 02:15 server time)
-/etc/cron.d/finco-backup:
-15 2 * * * finco /opt/finco1/deploy/scripts/backup.sh >> /var/log/finco-backup.log 2>&1
+# List tables
+xz -d < /opt/finco1/backups/finco_runs_YYYYMMDD_HHMMSS.db.xz -c | sqlite3 .tables
 ```
+
+### Restore from backup
+```bash
+# 1. Stop service
+sudo systemctl stop finco-web
+
+# 2. Backup current DB
+cp /opt/finco1/app/data/finco_runs.db /opt/finco1/backups/pre-restore-$(date +%Y%m%d).db
+
+# 3. Restore from backup
+xz -d < /opt/finco1/backups/finco_runs_YYYYMMDD_HHMMSS.db.xz -c > /opt/finco1/app/data/finco_runs.db
+chown www-data:www-data /opt/finco1/app/data/finco_runs.db
+chmod 664 /opt/finco1/app/data/finco_runs.db
+
+# 4. Restart service
+sudo systemctl start finco-web
+```
+
+**WARNING:** Restore only from a verified backup. Never restore over a live production DB without stopping the service first.
 
 ---
 
