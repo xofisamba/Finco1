@@ -258,13 +258,7 @@ def _write_calibration_notes_sheet(
         is_oborovo = "oborovo" in name_lower or code.startswith("OBR")
         is_tuho = "tuho" in name_lower or "wind" in name_lower and "obr" not in code.lower()
 
-    # Detect from result attributes if project_inputs not available
-    if not is_oborovo and not is_tuho:
-        # Try to infer from result debt amount
-        if hasattr(result, "sculpting_result") and result.sculpting_result:
-            debt = result.sculpting_result.debt_keur
-            if 40_000 < debt < 50_000:
-                is_oborovo = True  # Approximate match for Oborovo
+    # No debt-range heuristic — use only explicit metadata
 
     # Base rows (all projects)
     rows = [
