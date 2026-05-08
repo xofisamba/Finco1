@@ -12,11 +12,11 @@ def build_debt_schedule_rows(result: Any) -> list[dict]:
     Handles DemoResult (result.waterfall_result IS the WaterfallResult) and raw WaterfallResult.
     Supports both IterativeSculptResult (field: payments) and ClosedFormSculptResult (field: payment_schedule).
     
-    Reconciliation logic:
-    - Use sculpt schedule for operation-period debt service (aligned by operation index)
-    - Fall back to waterfall period fields when sculpt schedule doesn't cover a period
-    - Closing balance: use waterfall period field (authoritative)
-    - DSCR: use sculpt schedule for covered periods; waterfall dscr for uncovered
+    Opening balance: balance_sched[op_idx] = opening balance for operation period op_idx
+    Closing balance: opening - principal (computed from sculpt schedule for consistency)
+    
+    balance_sched[t] is the opening balance at the start of operation period t (0-indexed).
+    This means balance_sched[0] = initial debt (period 0/construction doesn't count).
     """
     # Unwrap DemoResult → WaterfallResult
     wf = None
@@ -70,25 +70,26 @@ def build_debt_schedule_rows(result: Any) -> list[dict]:
             total_ds = p.senior_ds_keur
             dscr_val = p.dscr
 
-        # Use waterfall period closing balance (authoritative for actual balance)
-        closing = p.senior_balance_keur
-        
+        # Opening balance from sculpt schedule
+        # balance_sched[op_idx] = opening balance for operation period op_idx
+        if sculpt and op_idx < len(balance_sched):
+            opening = balance_sched[op_idx]
+        elif op_idx == 0:
+            opening = debt_keur
+        else:
+            opening = p.senior_balance_keur + sp  # fallback
+
+        # Closing balance = opening - principal (from sculpt for consistency)
+        closing = opening - sp
+
         # Use waterfall CFADS
         cfads = p.ebitda_keur
-
-        # Opening balance
-        if op_idx == 0:
-            opening = debt_keur
-        elif op_idx - 1 < len(balance_sched):
-            opening = balance_sched[op_idx - 1]
-        else:
-            opening = p.senior_balance_keur + sp  # approximate from closing + principal
 
         # Guard against inf/nan DSCR (zero payment / zero CFADS → loan repaid)
         if dscr_val == float('inf') or (isinstance(dscr_val, float) and dscr_val != dscr_val):  # NaN check
             dscr_val = 0.0  # Repaid period — no active debt service
         elif dscr_val <= 0:
-            dscr_val = 0.0  # Guard against negative/zero DSCR
+            dscr_val = 0.0
 
         rows.append({
             "period": p.period,
