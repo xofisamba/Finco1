@@ -208,11 +208,20 @@ class TestRevenueParams:
         assert abs(inputs.revenue.tariff_at_year(12) - expected_y12) < 0.1
 
     def test_market_price_curve(self):
-        """Market price curve should have 30 values."""
+        """Market price curve should have 30+ values.
+        
+        Oborovo uses AFRY Central profile for Y13-Y30 (merchant period).
+        Y1-Y12 (PPA period) is all zeros since PPA tariff is used instead.
+        Total length is 30+ to cover full merchant horizon.
+        """
         inputs = ProjectInputs.create_default_oborovo()
 
-        assert len(inputs.revenue.market_prices_curve) == 30
-        assert inputs.revenue.market_prices_curve[0] == 65.0
+        curve = inputs.revenue.market_prices_curve
+        assert len(curve) >= 30, f"market_prices_curve should have 30+ values, got {len(curve)}"
+        # Y1-Y12 (PPA period): merchant prices are unused (tariff used instead)
+        assert all(v == 0 for v in curve[:12]), "Y1-Y12 should be zeros (PPA period)"
+        # Y13-Y30 (merchant): should be AFRY prices (non-zero)
+        assert all(v > 0 for v in curve[12:]), "Y13-Y30 should be non-zero (merchant period)"
 
 
 class TestFinancingParams:
