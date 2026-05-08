@@ -1,7 +1,7 @@
 # v1.7 — Private Pilot Ready
 
 **Date:** 2026-05-08
-**Main HEAD:** `03ffab0` (Merge: feature/pilot-readiness → main)
+**Main HEAD:** `20f3ac6` (Merge: feature/pilot-readiness → main)
 **Status:** ✅ Private deployment ready
 
 ---
@@ -12,7 +12,7 @@
 |--------|--------|-----|
 | `feature/deployment-hardening` | Fast-forward | `ce19dcb` |
 | `feature/auth-hardening` | Ort merge | `355f558` |
-| `feature/pilot-readiness` | Ort merge | `03ffab0` |
+| `feature/pilot-readiness` | Ort merge | `20f3ac6` |
 
 ---
 

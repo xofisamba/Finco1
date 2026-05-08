@@ -2,11 +2,11 @@
 
 ## v1.7-private-pilot-ready
 **Date:** 2026-05-08
-**Branch:** `main` (HEAD: `03ffab0`)
+**Branch:** `main` (HEAD: `20f3ac6`)
 **Merges:**
 - `feature/deployment-hardening` → main (fast-forward, SHA: `ce19dcb`)
-- `feature/auth-hardening` → main (ort merge, SHA: `6e7a3b4`)
-- `feature/pilot-readiness` → main (ort merge, SHA: `03ffab0`)
+- `feature/auth-hardening` → main (ort merge, SHA: `355f558`)
+- `feature/pilot-readiness` → main (ort merge, SHA: `03ffab0` (merge commit, parent of 20f3ac6))
 
 ### What's New
 
@@ -50,10 +50,10 @@ Rate limiting: **in-memory, per-IP, per-process** — not shared across gunicorn
 ```
 feature/deployment-hardening → main: ce19dcb (fast-forward merge from 381a2f5)
 feature/auth-hardening       → main: 355f558 (ort merge: ce19dcb ← a411c71)
-feature/pilot-readiness      → main: 03ffab0 (ort merge: 355f558 ← 4630c4a)
+feature/pilot-readiness      → main: 20f3ac6 (docs commit, merge parent: 03ffab0)
 ```
 
-**Final main HEAD:** `03ffab0`
+**Final main HEAD:** `20f3ac6`
 
 ### Test Status
 
