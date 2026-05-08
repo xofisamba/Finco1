@@ -21,7 +21,7 @@
 set -euo pipefail
 
 SERVICE_NAME="finco-web"
-BACKUP_FILE="$1"
+BACKUP_FILE="${1:-}"
 
 # Load FINCO_DB_PATH from .env
 ENV_FILE="/opt/finco1/.env"
@@ -87,11 +87,13 @@ cp "$RESTORED_PATH" "$DB_PATH"
 rm -f "$RESTORED_PATH"
 
 # ── Fix permissions ───────────────────────────────────────────────────────────
-chown root:root "$DB_PATH"
-chmod 600 "$DB_PATH"
+chown finco:finco "$DB_PATH"
+chmod 660 "$DB_PATH"
 
 # WAL permissions
-[[ -f "${DB_PATH}-wal" ]] && chown root:root "${DB_PATH}-wal" && chmod 600 "${DB_PATH}-wal" || true
+[[ -f "${DB_PATH}-wal" ]] && chown finco:finco "${DB_PATH}-wal" && chmod 660 "${DB_PATH}-wal" || true
+# SHM permissions
+[[ -f "${DB_PATH}-shm" ]] && chown finco:finco "${DB_PATH}-shm" && chmod 660 "${DB_PATH}-shm" || true
 
 # ── Restart service ──────────────────────────────────────────────────────────
 echo "Restarting $SERVICE_NAME..."

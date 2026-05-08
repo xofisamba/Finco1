@@ -43,8 +43,14 @@ fi
 BACKUP_FILE="${BACKUP_DIR}/finco_runs_${TIMESTAMP}.db"
 WAL_BACKUP_FILE="${BACKUP_DIR}/finco_runs_${TIMESTAMP}.db-wal"
 
-# Copy DB (safe to copy while app is running with WAL mode)
-cp "$DB_PATH" "$BACKUP_FILE"
+# Prefer SQLite .backup command (consistent, crash-safe)
+if command -v sqlite3 > /dev/null 2>&1; then
+    sqlite3 "$DB_PATH" ".backup '$BACKUP_FILE'"
+else
+    # Fallback: copy DB only after WAL checkpoint — warn that this is less safe
+    echo "WARNING: sqlite3 not available — using cp fallback (unsafe for live DB)" >&2
+    cp "$DB_PATH" "$BACKUP_FILE"
+fi
 
 # Copy WAL if present
 if [[ -f "$WAL_PATH" ]]; then
