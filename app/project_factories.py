@@ -141,13 +141,17 @@ def create_default_oborovo() -> ProjectInputs:
         bess_enabled=False,
     )
 
-    # Market price curve (Central scenario, from Excel Inputs row 107)
-    # Values in €/MWh for years 1-30
-    market_prices = (
-        65.0, 66.3, 67.6, 69.0, 70.4, 71.8, 73.2, 74.7, 76.2, 77.7,
-        79.3, 80.9, 82.5, 84.2, 85.9, 87.6, 89.4, 91.2, 93.0, 94.9,
-        96.8, 98.7, 100.7, 102.7, 104.8, 106.9, 109.0, 111.2, 113.4, 115.7,
+    # Market price curve — POST-PPA MERCHANT PERIOD ONLY (Y13-Y30)
+    # PPA years (Y1-Y12) use ppa_base_tariff indexed 2% and ignore this curve
+    # AFRY Central Q1 2026 — 4h Degraded scenario, nominal EUR/MWh
+    # Source: Oborovo Excel Inputs row 100 (Market price - AFRY Central curve)
+    # Years 1-12 = 0 (unused during PPA), Years 13-30 = AFRY values
+    _afry_central_y13_y30 = (
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # Y1-Y12 = PPA (unused)
+        73.50, 75.12, 75.83, 76.04, 74.11, 75.79, 77.48, 79.16, 80.86,  # Y13-Y21
+        82.57, 84.78, 86.51, 88.22, 90.47, 92.20, 93.63, 95.01, 95.89, 97.22,  # Y22-Y30
     )
+    market_prices = _afry_central_y13_y30
 
     revenue = RevenueParams(
         ppa_base_tariff=57.0,

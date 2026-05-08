@@ -108,7 +108,7 @@ Features that are structurally present but not validated for production use.
 
 | Issue | Impact | Path |
 |-------|--------|------|
-| Oborovo merchant price curve vintage mismatch | Project IRR +0.69pp vs Excel (8.65% vs 7.96%) | Merchant curve framework P1 |
+| Oborovo merchant price curve vintage mismatch | Project IRR +0.69pp → +0.025pp after AFRY fix | ✅ Fixed in P1 |
 | Oborovo depreciation convention (20y vs 30y asset life) | Deferred tax timing difference | Depreciation P1 |
 
 ### TUHO CO2 Revenue

@@ -239,8 +239,8 @@ POST /logout → 302                             ✅
 | Use Case | Status | Notes |
 |----------|--------|-------|
 | Internal advisory | ✅ GO | With known caveats |
-| Controlled B2B pilot | ✅ GO | TUHO CO2 + Oborovo debt-service bug fixed in P0 |
-| Investor-grade review | ⬜ Not yet | TUHO CO2 calibrated; Oborovo remaining gap: merchant curve vintage + depreciation |
+| Controlled B2B pilot | ✅ GO | TUHO CO2 + Oborovo debt-service bug fixed in P0; merchant curve calibrated in P1 |
+| Investor-grade review | ⬜ Not yet | TUHO CO2 + Oborovo merchant curve calibrated (P0+P1); equity IRR gap + depreciation remain |
 | HTMX production | ⬜ Not yet | Auth + persistence required first |
 
 ---
