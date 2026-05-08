@@ -7,9 +7,6 @@
   <!-- Sidebar: Input Form -->
   <aside class="sidebar">
     <form id="main-form"
-          hx-post="/validate"
-          hx-target="#validation-result"
-          hx-swap="innerHTML"
           hx-disabled-elt="button[type=submit],button[name=run],button[name=compare]">
 
       <!-- PROJECT section -->
@@ -107,7 +104,12 @@
 
       <!-- Actions -->
       <div class="form-actions">
-        <button type="submit" class="btn btn-outline" hx-indicator="#validate-indicator">
+        <button type="button" name="validate" class="btn btn-outline"
+                hx-post="/validate"
+                hx-form="#main-form"
+                hx-target="#validation-result"
+                hx-swap="innerHTML"
+                hx-indicator="#validate-indicator">
           Validate
         </button>
         <span id="validate-indicator" class="htmx-indicator">Validating...</span>
