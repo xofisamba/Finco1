@@ -123,7 +123,7 @@ sudo -u finco bash /opt/finco1/deploy/scripts/backup.sh
 |----------|-------|
 | `FINCO_DB_PATH` | `/opt/finco1/app/data/finco_runs.db` |
 | `FINCO_SECRET_KEY` | *(set in /opt/finco1/.env)* |
-| `FINCO_ADMIN_PASSWORD` | `fincoGPT2026!` (default) |
+| `FINCO_ADMIN_PASSWORD` | `[set on server]` |
 
 ---
 

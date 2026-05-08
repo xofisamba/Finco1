@@ -16,7 +16,7 @@
 
 ```
 User → GET / → no cookie → Redirect to /login
-User → POST /login (admin/fincoGPT2026!) → bcrypt verify → create session token
+User → POST /login (admin/[SET_ON_SERVER]) → bcrypt verify → create session token
   → set secure httponly samesite=lax cookie (finco_session)
   → Redirect to /
 User → subsequent requests → cookie sent automatically
@@ -51,7 +51,7 @@ Signed with `FINCO_SECRET_KEY` using itsdangerous `URLSafeTimedSerializer`.
 |----------|---------|---------|
 | `FINCO_SECRET_KEY` | `dev-secret-please-change...` | Signing key for session cookies |
 | `FINCO_ADMIN_USER` | `admin` | Login username |
-| `FINCO_ADMIN_PASSWORD` | `fincoGPT2026!` | Login password (plain) |
+| `FINCO_ADMIN_PASSWORD` | `[SET_ON_SERVER]` | Login password (plain) |
 | `FINCO_ADMIN_PASSWORD_HASH` | (none) | bcrypt hash (overrides plain password) |
 | `FINCO_SESSION_HOURS` | `24` | Session TTL |
 | `FINCO_COOKIE_SECURE` | `true` | Cookie security (HTTPS only) |
@@ -148,7 +148,7 @@ But for internal use, app-level auth alone is sufficient.
 | Setting | Value |
 |---------|-------|
 | Username | `admin` |
-| Password | `fincoGPT2026!` |
+| Password | `[SET_ON_SERVER]` |
 | Session TTL | 24 hours |
 
 **Change password** via env var: `FINCO_ADMIN_PASSWORD=your_strong_password`

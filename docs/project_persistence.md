@@ -140,7 +140,7 @@ hx-get="/run/{run_id}" hx-target="#results-area"
 
 ---
 | `FINCO_SECRET_KEY` | `changeme` | Session signing key |
-| `FINCO_ADMIN_PASSWORD` | `fincoGPT2026!` | Login password |
+| `FINCO_ADMIN_PASSWORD` | `[SET_ON_SERVER]` | Login password |
 
 ---
 

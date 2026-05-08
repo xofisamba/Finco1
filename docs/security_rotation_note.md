@@ -7,7 +7,7 @@
 
 ## Password Rotation Required
 
-The default login password (`fincoGPT2026!`) was documented in early deployment docs and chat screenshots.
+The default login password (`[SET_ON_SERVER]`) was documented in early deployment docs and chat screenshots.
 
 **You must rotate this password before production use.**
 
