@@ -5,6 +5,8 @@ Architecture:
 - Server-side session data (no DB, no Redis)
 - bcrypt password hashing
 - Session expiry enforced server-side
+- Rate limiting on login (in-memory, per-IP)
+- CSRF protection on login form via signed token
 
 Env vars:
 - FINCO_SECRET_KEY: signing key (required in production)
@@ -13,11 +15,15 @@ Env vars:
 - FINCO_ADMIN_PASSWORD_HASH: bcrypt hash (overrides FINCO_ADMIN_PASSWORD)
 - FINCO_SESSION_HOURS: session TTL in hours (default: 24)
 - FINCO_COOKIE_SECURE: cookie security (default: true)
+- FINCO_CSRF_SECRET: CSRF signing key (default: same as FINCO_SECRET_KEY)
 """
 
 import os
+import re
 import secrets
+import time as time_module
 from datetime import datetime, timezone, timedelta
+from threading import Lock
 from typing import Optional
 
 import bcrypt
@@ -39,25 +45,105 @@ COOKIE_NAME = "finco_session"
 COOKIE_SECURE = os.getenv("FINCO_COOKIE_SECURE", "true").lower() in ("true", "1", "yes")
 COOKIE_SAMESITE = os.getenv("FINCO_COOKIE_SAMESITE", "lax")
 
+# ── CSRF configuration ─────────────────────────────────────────────────────────
+
+CSRF_SECRET = os.getenv("FINCO_CSRF_SECRET") or SECRET_KEY
+_csrf_serializer: Optional[URLSafeTimedSerializer] = None
+
+
+def _get_csrf_serializer() -> URLSafeTimedSerializer:
+    global _csrf_serializer
+    if _csrf_serializer is None:
+        _csrf_serializer = URLSafeTimedSerializer(CSRF_SECRET)
+    return _csrf_serializer
+
+
+# ── CSRF token helpers ────────────────────────────────────────────────────────
+
+def generate_csrf_token() -> str:
+    """Generate a new CSRF token (signed, single-use per form render)."""
+    raw = secrets.token_hex(24)
+    serializer = _get_csrf_serializer()
+    return serializer.dumps(raw)
+
+
+def validate_csrf_token(token: str) -> bool:
+    """Validate a CSRF token. Returns True if valid and not tampered."""
+    if not token:
+        return False
+    serializer = _get_csrf_serializer()
+    try:
+        # Tokens valid for 24 hours (same-day is plenty for a login form)
+        raw = serializer.loads(token, max_age=86400)
+        return isinstance(raw, str) and len(raw) == 48
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        return False
+
+
+# ── Rate limiting (login) ─────────────────────────────────────────────────────
+
+MAX_LOGIN_FAILURES = 5
+LOCKOUT_SECONDS = 300  # 5 minutes
+
+_rate_limit_lock = Lock()
+_rate_limit_store: dict[str, dict] = {}  # IP -> {"failures": int, "locked_until": float | None}
+
+
+def _record_failed_login(ip: str) -> None:
+    """Record a failed login attempt for an IP."""
+    with _rate_limit_lock:
+        entry = _rate_limit_store.get(ip, {"failures": 0, "locked_until": None})
+        entry["failures"] += 1
+        _rate_limit_store[ip] = entry
+
+
+def _check_rate_limit(ip: str) -> tuple[bool, int]:
+    """
+    Check if IP is rate-limited.
+    Returns (allowed, seconds_remaining).
+    """
+    with _rate_limit_lock:
+        entry = _rate_limit_store.get(ip, {"failures": 0, "locked_until": None})
+        now = time_module.time()
+        locked_until = entry.get("locked_until")
+        if locked_until is not None and now < locked_until:
+            return False, int(locked_until - now)
+        if entry["failures"] >= MAX_LOGIN_FAILURES:
+            entry["locked_until"] = now + LOCKOUT_SECONDS
+            _rate_limit_store[ip] = entry
+            return False, LOCKOUT_SECONDS
+        return True, 0
+
+
+def _clear_failed_logins(ip: str) -> None:
+    """Clear failure record on successful login."""
+    with _rate_limit_lock:
+        _rate_limit_store.pop(ip, None)
+
+
 # ── Password hashing ──────────────────────────────────────────────────────────
 
 def _hash_password(password: str) -> bytes:
     """Hash a password with bcrypt, rounds=12."""
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
 
+
 def _verify_password(password: str, hashed: bytes) -> bool:
     """Verify a password against a bcrypt hash."""
     return bcrypt.checkpw(password.encode(), hashed)
 
+
 # ── Session serializer ────────────────────────────────────────────────────────
 
 _serializer: Optional[URLSafeTimedSerializer] = None
+
 
 def _get_serializer() -> URLSafeTimedSerializer:
     global _serializer
     if _serializer is None:
         _serializer = URLSafeTimedSerializer(SECRET_KEY)
     return _serializer
+
 
 # ── Session data ──────────────────────────────────────────────────────────────
 
@@ -91,7 +177,8 @@ class SessionData:
         except (KeyError, ValueError, TypeError):
             return None
 
-# ── Core auth functions ───────────────────────────────────────────────────────
+
+# ── Core auth functions ──────────────────────────────────────────────────────
 
 def verify_login(username: str, password: str) -> bool:
     """Verify username + password. Returns True if valid."""
@@ -103,12 +190,14 @@ def verify_login(username: str, password: str) -> bool:
         stored_hash = _hash_password(ADMIN_PASSWORD_PLAIN)
     return _verify_password(password, stored_hash)
 
+
 def create_session_token(user_id: str = "1", username: str = ADMIN_USERNAME) -> str:
     """Create a signed session token."""
     login_at = datetime.now(timezone.utc)
     session = SessionData(user_id=user_id, username=username, login_at=login_at)
     serializer = _get_serializer()
     return serializer.dumps(session.to_dict())
+
 
 def decode_session_token(token: str) -> Optional[SessionData]:
     """Decode + validate session token. Returns SessionData or None."""
@@ -123,6 +212,7 @@ def decode_session_token(token: str) -> Optional[SessionData]:
     except (BadSignature, SignatureExpired, TypeError, ValueError):
         return None
 
+
 def make_session_cookie(token: str) -> dict:
     """Build a session cookie dict for FastAPI responses."""
     return {
@@ -134,6 +224,7 @@ def make_session_cookie(token: str) -> dict:
         "max_age": SESSION_MAX_AGE_HOURS * 3600,
         "path": "/",
     }
+
 
 def clear_session_cookie() -> dict:
     """Build a clearing cookie (logout)."""
