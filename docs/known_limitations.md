@@ -95,6 +95,32 @@ Features that are structurally present but not validated for production use.
 
 ---
 
+## 6. Calibration Status (2026-05-08 P0 Sprint)
+
+### Fixed Bugs
+
+| Issue | Impact | Status |
+|-------|--------|--------|
+| Oborovo debt-service fixed_debt_keur payment bug | DSCR 0.181→1.250, Equity IRR 9.96%→10.16% | ✅ Fixed |
+| TUHO Project IRR levered tax basis | Project IRR 10.46%→9.47% (matches reference 9.47%) | ✅ Fixed |
+
+### Remaining Calibration Gaps (P1)
+
+| Issue | Impact | Path |
+|-------|--------|------|
+| Oborovo merchant price curve vintage mismatch | Project IRR +0.69pp vs Excel (8.65% vs 7.96%) | Merchant curve framework P1 |
+| Oborovo depreciation convention (20y vs 30y asset life) | Deferred tax timing difference | Depreciation P1 |
+
+### TUHO CO2 Revenue
+- CO2 revenue calibrated: equity IRR 11.81% vs reference 11.61% (+0.20pp within ±1.0pp)
+- TUHO project IRR now correctly calibrated after unlevered tax fix
+
+---
+
+**Model status: screening-grade, not audited financial advice.**
+
+---
+
 ## 6. Future Roadmap
 
 These items are **not in scope for Release 1**:

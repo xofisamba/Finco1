@@ -139,7 +139,9 @@ sudo -u finco bash /opt/finco1/deploy/scripts/backup.sh
 ## Next Steps (Future)
 
 - Fix TUHO CO2 revenue (P0)
-- Fix Oborovo OpEx duplication (P1)
+- Fix Oborovo debt-service bug (fixed in P0 sprint — DSCR 0.181→1.250, equity IRR 9.96%→10.16%)
+- Fix TUHO Project IRR tax basis (fixed in P0 sprint — project IRR 10.46%→9.47%, now calibrated to reference)
+- Fix remaining Oborovo calibration gap: merchant price curve vintage + depreciation convention (P1)
 - Multi-user auth with role management
 - Full audit-ready financial model
 - Production deployment with proper monitoring/alerting

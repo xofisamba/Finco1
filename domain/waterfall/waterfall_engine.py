@@ -382,27 +382,21 @@ def run_waterfall(
         # Rescale from dscr_debt to fixed_debt
         scale = fixed_debt_keur / dscr_debt if dscr_debt > 0 else 1.0
         balance_schedule = [b * scale for b in sculpt_result.balance_schedule]
-        # Recompute payments based on scaled balances: allowable_ds = fixed_debt / dscr_target
-        if dscr_schedule is not None:
-            allowable_ds_scaled = [fixed_debt_keur / dscr_schedule[t] for t in range(tenor_periods)]
-        else:
-            allowable_ds_scaled = [fixed_debt_keur / target_dscr] * tenor_periods
-        interest_schedule = [balance_schedule[t] * rate_schedule[t] for t in range(tenor_periods)]
-        principal_schedule = [allowable_ds_scaled[t] - interest_schedule[t] for t in range(tenor_periods)]
-        principal_schedule = [max(0.0, min(p, balance_schedule[t])) for t, p in enumerate(principal_schedule)]
-        payments = [interest_schedule[t] + principal_schedule[t] for t in range(tenor_periods)]
+        payments = [p * scale for p in sculpt_result.payment_schedule]
+        # Interest and principal must also be scaled to match scaled balance schedule
+        interest_schedule = [b * rate_schedule[t] for t, b in enumerate(balance_schedule)]
+        principal_schedule = [payments[t] - interest_schedule[t] for t in range(tenor_periods)]
         debt = fixed_debt_keur
         # Recompute DSCR schedule
         dscr_sched_scaled = []
         for t in range(tenor_periods):
             dscr = cfads_for_sculpt[t] / payments[t] if payments[t] > 0 else float('inf')
             dscr_sched_scaled.append(dscr)
+        # DSCR recomputed from scaled payments (interest/principal not needed in replace)
         sculpt_result = replace(
             sculpt_result,
             debt_keur=fixed_debt_keur,
             balance_schedule=balance_schedule,
-            interest_schedule=interest_schedule,
-            principal_schedule=principal_schedule,
             payment_schedule=payments,
             dscr_schedule=dscr_sched_scaled,
         )
@@ -844,8 +838,12 @@ def run_waterfall(
         waterfall_periods.append(wp)
 
         # Track CFs for returns
-        # Project IRR = unlevered (EBITDA - Tax), equity IRR = levered (distributions)
-        project_cfs.append(ebitda - tax_this_period if ebitda else 0)
+        # Project IRR = unlevered (EBITDA - unlevered tax)
+        # Unlevered tax = tax_rate * max(0, EBITDA - dep) — financing-independent
+        # Equity IRR = levered (distributions after debt service)
+        dep = depreciation_schedule[i] if i < len(depreciation_schedule) else 0
+        unlev_tax = tax_rate * max(0.0, ebitda - dep)
+        project_cfs.append(ebitda - unlev_tax if ebitda else 0)
     # Equity CF: Row 28 "Total" = SHL interest + SHL principal + dividends
         # When SHL is outstanding: equity receives SHL cash flows (interest + principal)
         # When SHL is repaid (shl_balance <= 0): equity receives distributions (dividends)

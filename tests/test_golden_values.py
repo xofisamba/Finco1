@@ -5,32 +5,32 @@ from app.api.project_runner import run_project
 
 GOLDEN = {
     ("Solar", "Base"): dict(
-        project_irr=0.1040, equity_irr=0.1358,
+        project_irr=0.0896, equity_irr=0.1358,
         min_dscr=1.4421, avg_dscr=1.6502,
         total_revenue_keur=119531.69, total_ebitda_keur=107361.21,
     ),
     ("Solar", "Downside"): dict(
-        project_irr=0.0812, equity_irr=0.0897,
+        project_irr=0.0694, equity_irr=0.0897,
         min_dscr=1.3302, avg_dscr=1.5182,
         total_revenue_keur=104754.20, total_ebitda_keur=91366.68,
     ),
     ("Solar", "Upside"): dict(
-        project_irr=0.1169, equity_irr=0.1440,
+        project_irr=0.1012, equity_irr=0.1440,
         min_dscr=1.6083, avg_dscr=1.8400,
         total_revenue_keur=127561.16, total_ebitda_keur=115999.21,
     ),
     ("Wind", "Base"): dict(
-        project_irr=0.1602, equity_irr=0.1574,
+        project_irr=0.1412, equity_irr=0.1574,
         min_dscr=2.3553, avg_dscr=2.7237,
         total_revenue_keur=265485.88, total_ebitda_keur=247869.62,
     ),
     ("Wind", "Downside"): dict(
-        project_irr=0.1334, equity_irr=0.1445,
+        project_irr=0.1172, equity_irr=0.1445,
         min_dscr=1.9061, avg_dscr=2.2064,
         total_revenue_keur=233500.25, total_ebitda_keur=214122.36,
     ),
     ("Wind", "Upside"): dict(
-        project_irr=0.1758, equity_irr=0.1654,
+        project_irr=0.1551, equity_irr=0.1654,
         min_dscr=2.6304, avg_dscr=3.0407,
         total_revenue_keur=282566.11, total_ebitda_keur=265830.66,
     ),

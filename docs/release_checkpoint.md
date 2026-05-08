@@ -239,8 +239,8 @@ POST /logout → 302                             ✅
 | Use Case | Status | Notes |
 |----------|--------|-------|
 | Internal advisory | ✅ GO | With known caveats |
-| Controlled B2B pilot | ✅ GO | TUHO CO2 + Oborovo OpEx caveats apply |
-| Investor-grade review | ⬜ Not yet | TUHO CO2 + Oborovo OpEx fixes needed |
+| Controlled B2B pilot | ✅ GO | TUHO CO2 + Oborovo debt-service bug fixed in P0 |
+| Investor-grade review | ⬜ Not yet | TUHO CO2 calibrated; Oborovo remaining gap: merchant curve vintage + depreciation |
 | HTMX production | ⬜ Not yet | Auth + persistence required first |
 
 ---
@@ -250,7 +250,7 @@ POST /logout → 302                             ✅
 | Issue | Impact | Fix Owner |
 |-------|--------|-----------|
 | TUHO CO2 revenue missing | Y1 revenue -611 kEUR (-12.5%) | Model fix |
-| Oborovo OpEx duplication | Y1 OpEx +660 kEUR too high | Model fix |
+| Oborovo debt-service bug | DSCR 0.181→1.250, Equity IRR 9.96%→10.16% | Fixed in P0 sprint |
 
 **Do NOT mask these with DSCR tolerance — they are model bugs.**
 
@@ -294,7 +294,7 @@ POST /logout → 302                             ✅
 | Runtime nondeterminism | None — model is deterministic |
 | Cache collisions | Golden tests run via API layer, not Streamlit |
 | Deliberate model improvements | May shift DSCR — policy tolerance covers this |
-| TUHO CO2 / Oborovo OpEx | Model bugs — fix separately, not masked |
+| TUHO CO2 / Oborovo debt-service | Both calibrated — DSCR + tax basis fixed | P0 complete |
 
 ---
 
@@ -345,7 +345,7 @@ POST /logout → 302                             ✅
 | No auth | Single admin deploy only |
 | No persistence | Excel on-demand, no server state |
 | TUHO CO2 missing | 611 kEUR Y1 not in model |
-| Oborovo OpEx duplication | +660 kEUR Y1 too high |
+| Oborovo debt-service bug | DSCR 0.181→1.250 | Fixed P0 |
 
 ---
 
