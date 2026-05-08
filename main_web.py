@@ -46,6 +46,26 @@ templates.env.globals["htmx"] = True
 if os.path.exists(os.path.join(BASE_DIR, "static")):
     app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
+# ── Observability middleware ─────────────────────────────────────────────────
+# Import only if middleware files exist (graceful degradation)
+try:
+    from app.logging_config import configure_logging
+    configure_logging()
+except Exception:
+    pass
+
+try:
+    from app.middleware.security_headers import SecurityHeadersMiddleware
+    from app.middleware.request_logging import RequestLoggingMiddleware
+    from app.middleware.exception_handler import ExceptionHandlerMiddleware
+
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RequestLoggingMiddleware)
+    # ExceptionHandlerMiddleware must be last (catches all remaining errors)
+    app.add_middleware(ExceptionHandlerMiddleware)
+except Exception:
+    pass  # middleware registration failure should not break the app
+
 # ── Shared caveats (visible in UI) ─────────────────────────────────────────
 CAVEATS = [
     "TUHO CO2 revenue missing (611 kEUR Y1) — model understates revenue",
