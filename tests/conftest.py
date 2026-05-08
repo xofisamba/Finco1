@@ -75,6 +75,15 @@ def _oborovo_compat_shim():
     """Ensure Oborovo shim is installed before any test runs."""
     import app.project_factories  # noqa: F401
 
+
+@pytest.fixture(autouse=True)
+def reset_auth_rate_limit():
+    """Clear in-memory rate limiting store between tests to prevent cross-test pollution."""
+    import app.auth
+    app.auth._rate_limit_store.clear()
+    yield
+    app.auth._rate_limit_store.clear()
+
 def pytest_ignore_collect(collection_path, config):
     """Skip optional legacy test modules when their runtime package is absent,
     or when app.calibration is disabled in industry-engine-refactor."""
