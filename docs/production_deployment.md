@@ -278,3 +278,39 @@ FINCO_APP_GROUP=mygroup
 - [ ] Service runs as non-root user (`finco`)
 - [ ] `NoNewPrivileges=true` in systemd service
 - [ ] Regular backups scheduled
+
+---
+
+## Deployment Sequence (app.finco.one)
+
+After pulling latest main to Contabo:
+
+```bash
+cd /opt/finco1
+git pull origin main
+
+# Run tests (optional but recommended)
+python -m pytest tests/test_auth_lite.py tests/test_project_persistence.py tests/test_htmx_internal_demo.py -q
+
+# Restart service
+sudo systemctl restart finco-web
+sudo systemctl status finco-web
+
+# Verify
+curl -fsS https://app.finco.one/public-health
+```
+
+### Required Environment Variables (must be set before restart)
+
+```bash
+FINCO_SECRET_KEY=<strong-random-key>       # session signing key
+FINCO_ADMIN_USER=admin
+FINCO_ADMIN_PASSWORD=<password>
+FINCO_SESSION_HOURS=24
+FINCO_COOKIE_SECURE=true                  # true in production (HTTPS required)
+FINCO_DB_PATH=/opt/finco1/app/data/finco_runs.db
+# FINCO_APP_USER=finco                    # optional, default: finco
+# FINCO_APP_GROUP=finco                   # optional, default: finco
+```
+
+**Never put real secrets in the repo.**

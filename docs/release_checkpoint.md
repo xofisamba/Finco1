@@ -1,5 +1,97 @@
 # Release Checkpoint
 
+## v1.7-private-pilot-ready
+**Date:** 2026-05-08
+**Branch:** `main` (HEAD: `03ffab0`)
+**Merges:**
+- `feature/deployment-hardening` → main (fast-forward, SHA: `ce19dcb`)
+- `feature/auth-hardening` → main (ort merge, SHA: `6e7a3b4`)
+- `feature/pilot-readiness` → main (ort merge, SHA: `03ffab0`)
+
+### What's New
+
+| Component | Status |
+|-----------|--------|
+| Deployment hardening | ✅ SQLite backup/restore, systemd service, nginx config |
+| Auth hardening (CSRF + rate-limit) | ✅ CSRF token on login, 5-failure lockout, per-IP in-memory |
+| Pilot UX | ✅ details/summary replaces onclick, error banner, mobile CSS |
+| Saved run export | ✅ /download Excel from stored inputs |
+| Session cookie hardening | ✅ httponly, samesite=lax, secure flag configurable |
+| SQLite backup scripts | ✅ backup.sh (sqlite3 .backup), restore.sh (ownership fix) |
+| Production deployment docs | ✅ docs/production_deployment.md |
+| Auth security docs | ✅ docs/auth_security.md |
+
+### CSRF / Rate-Limit Behavior
+
+| Action | Result |
+|--------|--------|
+| GET /login | HTML page with `name="csrf_token"` hidden field ✅ |
+| POST /login without csrf_token | 422 Unprocessable Entity (FastAPI Form validation) |
+| POST /login with invalid csrf_token | 403 Forbidden |
+| POST /login with valid csrf_token + correct password | 302 redirect to / |
+| 5 failed logins from same IP | 429 Too Many Requests, 5-min lockout |
+| Successful login | Clears IP failed-attempt counter |
+| Logout | Clears session cookie, redirects to /login |
+
+Rate limiting: **in-memory, per-IP, per-process** — not shared across gunicorn workers.
+
+### Deployment Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `deploy/scripts/backup.sh` | SQLite `.backup` (crash-safe), WAL checkpoint, xz compression |
+| `deploy/scripts/restore.sh` | Stop service → restore → fix ownership/perms → restart → healthcheck |
+| `deploy/scripts/smoke_test.sh` | /public-health, / redirect, /health redirect, /login page |
+| `deploy/scripts/healthcheck.sh` | curl /public-health + service status |
+| `deploy/scripts/start_prod.sh` | gunicorn startup wrapper |
+
+### Merge SHAs
+
+```
+feature/deployment-hardening → main: ce19dcb (fast-forward merge from 381a2f5)
+feature/auth-hardening       → main: 355f558 (ort merge: ce19dcb ← a411c71)
+feature/pilot-readiness      → main: 03ffab0 (ort merge: 355f558 ← 4630c4a)
+```
+
+**Final main HEAD:** `03ffab0`
+
+### Test Status
+
+| Suite | Result |
+|-------|--------|
+| `tests/test_auth_lite.py` | 32 passed ✅ |
+| `tests/test_project_persistence.py` | 23 passed ✅ |
+| `tests/test_htmx_internal_demo.py` | 37 passed ✅ |
+| Core suites (auth + persistence + htmx) | **92 passed** ✅ |
+| Full suite | **Blocked** — `scipy` not installed in prod env, `test_s1_capex_schedule.py` collection fails |
+
+### Smoke Test Results (all passed)
+
+```
+GET / unauthenticated → 302 redirect to /login    ✅
+GET /login → 200, "Sign in" in page              ✅
+GET /public-health → 200, {"status":"ok"}       ✅
+GET /health unauthenticated → 401 (no redirect) ✅
+POST /login with valid csrf + password → 200/302 ✅
+GET / (auth) → 200, FincoGPT in text            ✅
+GET /health (auth) → 200                         ✅
+```
+
+### Frozen Files (NOT modified)
+
+- `rc1/**` — untouched ✅
+- `domain/**` — untouched ✅
+- `app/waterfall_core.py` — untouched ✅
+- `app/waterfall_runner.py` — untouched ✅
+- `app/scenarios.py` — untouched ✅
+- `app/scenario_manager.py` — untouched ✅
+
+### ops-observability Status
+
+**NOT merged** — holds PostgreSQL/psycopg2 contamination. Will rebuild later.
+
+---
+
 ## v1.6-project-persistence-mvp
 **Date:** 2026-05-07
 **Branch:** `main` (HEAD: `2e41c54`)
