@@ -205,10 +205,11 @@ def test_dsrf_disabled_none_vs_config_none():
 # 4. enabled=True accepted — schedule attached only, no financial change yet
 # =============================================================================
 
-def test_dsrf_enabled_true_does_not_raise():
-    """DSRFConfig(enabled=True) with real project must not raise; schedule is attached.
+def test_dsrf_enabled_true_does_not_raise_and_adjusts_distribution():
+    """DSRFConfig(enabled=True) with real project must not raise; schedule attached and distribution adjusted.
 
-    Note: Distribution/IRR financial impact is deferred to the next step.
+    Phase 2 Step 3: Distributions are reduced by DSRF cash costs (commitment fee + interest + repayment).
+    Draw itself is NOT revenue and does NOT increase distributions.
     """
     from app.project_factories import create_default_solar_project
 
@@ -239,13 +240,35 @@ def test_dsrf_enabled_true_does_not_raise():
     assert spv.waterfall_result is not None
     assert spv.dsrf_facility_limit_keur >= 0
     assert isinstance(spv.dsrf_periods, tuple)
-    # If waterfall has op periods, DSRF periods should be non-empty
     if spv.waterfall_result and spv.waterfall_result.periods:
         op_periods = [p for p in spv.waterfall_result.periods if getattr(p, "is_operation", False)]
         if op_periods:
             assert len(spv.dsrf_periods) > 0
-    # Financial totals unchanged (deferred impact)
-    assert result.total_distribution_keur >= 0
+
+    # Verify distribution reduction is computed
+    assert spv.dsrf_distribution_reduction_keur >= 0.0
+
+    # Verify adjusted distribution <= original (DSRF costs cannot increase distributions)
+    original_dist = spv.waterfall_result.total_distribution_keur
+    adjusted_dist = spv.total_distribution_keur
+    assert adjusted_dist <= original_dist + 1e-6, (
+        f"DSRF-adjusted dist ({adjusted_dist}) should not exceed original ({original_dist})"
+    )
+
+    # Verify dsrf_distribution_reduction_keur == commit + interest + repayment
+    expected_reduction = (
+        spv.dsrf_commitment_fee_keur
+        + spv.dsrf_drawn_interest_keur
+        + spv.dsrf_total_repayment_keur
+    )
+    assert abs(spv.dsrf_distribution_reduction_keur - expected_reduction) < 1e-6
+
+    # Portfolio-level dsrf_distribution_reduction_keur should be >= SPV reduction
+    assert result.dsrf_distribution_reduction_keur >= spv.dsrf_distribution_reduction_keur - 1e-6
+
+    # Verify warning summary works (no DSRF warnings if schedule extracted)
+    if spv.dsrf_periods:
+        assert not any("DSRF" in w for w in result.warnings) or result.warnings == ()
 
 
 # =============================================================================

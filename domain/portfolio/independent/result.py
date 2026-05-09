@@ -2,9 +2,10 @@
 
 No pooled debt sculpting. No shared financing.
 
-DSRF (Phase 2): Optional revolving debt service reserve facility, default disabled.
+DSRF (Phase 2):
 - enabled=False: zero impact on distributions, IRR, DSCR
-- enabled=True: DSRF facility schedule attached; distribution impact deferred
+- enabled=True: DSRF cash costs (commitment fee, interest, repayment) reduce
+  distributable cash; IRR recalculation deferred.
 """
 from __future__ import annotations
 
@@ -26,13 +27,16 @@ class SPVOutput:
     """Single SPV output — preserved from independent run."""
     project_code: str
     project_name: str
-    # Per-SPV KPIs
-    project_irr: float          # unlevered project IRR (%)
-    equity_irr: float           # levered equity IRR (%)
+    # Per-SPV KPIs (IRR from waterfall; not recalculated in Phase 2 Step 3)
+    project_irr: float          # unlevered project IRR (%) — from waterfall
+    equity_irr: float           # levered equity IRR (%) — from waterfall
     total_revenue_keur: float
     total_ebitda_keur: float
     total_tax_keur: float
     total_senior_ds_keur: float
+    # Distribution: original waterfall value OR adjusted (after DSRF cash costs)
+    # When DSRF enabled: adjusted = max(0, waterfall_dist - DSRF_costs)
+    # When DSRF disabled: same as waterfall distribution
     total_distribution_keur: float
     avg_dscr: float
     min_dscr: float
@@ -51,24 +55,33 @@ class SPVOutput:
     dsrf_drawn_end_keur: float = 0.0
     dsrf_periods: tuple[Any, ...] = ()   # tuple[DSRFPeriod, ...] at runtime
 
+    # DSRF cash impact on distributions
+    # Reduction = commitment_fee + drawn_interest + repayment
+    # When enabled=False: 0 (zero impact)
+    dsrf_distribution_reduction_keur: float = 0.0
+
 
 @dataclass(frozen=True)
 class IndependentPortfolioResult:
-    """Result of independent SPV portfolio aggregation. Phase 1 MVP.
+    """Result of independent SPV portfolio aggregation. Phase 1 MVP + Phase 2 DSRF.
 
     Each SPV runs independently. Results are summed/min'd for portfolio KPIs.
     No portfolio-level debt sculpting. No shared financing.
+
+    DSRF Phase 2 Step 3: When enabled=True, total_distribution_keur reflects
+    adjusted distributions (waterfall_dist - DSRF_costs). IRR values are
+    from the original waterfall and are NOT recalculated in this step.
     """
     portfolio_name: str
     # Per-SPV outputs (preserved)
     spv_outputs: tuple[SPVOutput, ...]
 
-    # Sums across SPVs
+    # Sums across SPVs (adjusted distributions when DSRF enabled)
     total_revenue_keur: float
     total_ebitda_keur: float
     total_tax_keur: float
     total_senior_ds_keur: float
-    total_distribution_keur: float
+    total_distribution_keur: float  # sum of adjusted distributions
 
     # DSCR: min = conservative (lenders), avg = unweighted average
     min_dscr: float
@@ -88,8 +101,7 @@ class IndependentPortfolioResult:
     # Portfolio-level warnings (deduplicated)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
-    # DSRF portfolio-level aggregates (Phase 2: set when dsrf_enabled=True)
-    # Currently: schedule-attached only, distribution/IRR impact deferred to next step
+    # DSRF portfolio-level aggregates
     dsrf_facility_limit_keur: float = 0.0
     dsrf_total_draw_keur: float = 0.0
     dsrf_total_repayment_keur: float = 0.0
@@ -97,7 +109,11 @@ class IndependentPortfolioResult:
     dsrf_drawn_interest_keur: float = 0.0
     dsrf_debt_service_support_keur: float = 0.0
     dsrf_drawn_end_keur: float = 0.0
-    dsrf_periods: tuple[Any, ...] = ()   # tuple[DSRFPeriod, ...] at runtime
+    dsrf_periods: tuple[Any, ...] = ()
+
+    # Total DSRF cash cost applied to distributions (sum across SPVs)
+    # = commitment_fee + drawn_interest + repayment
+    dsrf_distribution_reduction_keur: float = 0.0
 
     @property
     def num_spvs(self) -> int:
@@ -120,19 +136,22 @@ def aggregate_independent_results(
     dsrf_result: Optional[Any] = None,
 ) -> IndependentPortfolioResult:
     """Aggregate per-SPV outputs into portfolio summary.
-    Sums: revenue, EBITDA, tax, senior debt service, distributions.
+
+    Sums: revenue, EBITDA, tax, senior debt service, adjusted distributions.
     Min DSCR = conservative min across SPVs.
     Avg DSCR = unweighted average of per-SPV avg DSCRs.
     Unweighted averages — NOT true portfolio IRR.
 
-    Args:
-        dsrf_result: DSRFResult from run_dsrf_facility_schedule() for the portfolio
-                    (aggregate of all SPV DSRF results). None when dsrf_enabled=False.
+    DSRF Phase 2 Step 3: When enabled=True, each SPVOutput.total_distribution_keur
+    already contains the DSRF-adjusted distribution (original - DSRF_costs).
+    Portfolio total_distribution_keur is the sum of those adjusted values.
+    IRR values are from the original waterfall and are NOT recalculated.
     """
     total_rev = sum(s.total_revenue_keur for s in spv_outputs)
     total_ebitda = sum(s.total_ebitda_keur for s in spv_outputs)
     total_tax = sum(s.total_tax_keur for s in spv_outputs)
     total_senior_ds = sum(s.total_senior_ds_keur for s in spv_outputs)
+    # total_distribution_keur: sum of adjusted (DSRF-enabled) or original (DSRF-disabled) SPV dists
     total_dist = sum(s.total_distribution_keur for s in spv_outputs)
 
     min_dscr = min((s.min_dscr for s in spv_outputs if s.min_dscr > 0), default=0.0)
@@ -161,7 +180,7 @@ def aggregate_independent_results(
             if w not in all_warnings:
                 all_warnings.append(w)
 
-    # Extract DSRF aggregates from dsrf_result if available
+    # DSRF aggregates from dsrf_result (from _aggregate_dsrf_results)
     if dsrf_result is not None:
         dsrf_facility = getattr(dsrf_result, "facility_limit_keur", 0.0)
         dsrf_draw = getattr(dsrf_result, "total_draw_keur", 0.0)
@@ -171,6 +190,7 @@ def aggregate_independent_results(
         dsrf_support = getattr(dsrf_result, "total_debt_service_support_keur", 0.0)
         dsrf_drawn_end = getattr(dsrf_result, "drawn_end_keur", 0.0)
         dsrf_periods_out = getattr(dsrf_result, "periods", ())
+        dsrf_reduction = dsrf_commit + dsrf_interest + dsrf_repay
     else:
         dsrf_facility = 0.0
         dsrf_draw = 0.0
@@ -180,6 +200,7 @@ def aggregate_independent_results(
         dsrf_support = 0.0
         dsrf_drawn_end = 0.0
         dsrf_periods_out = ()
+        dsrf_reduction = 0.0
 
     return IndependentPortfolioResult(
         portfolio_name=portfolio_name,
@@ -205,6 +226,7 @@ def aggregate_independent_results(
         dsrf_debt_service_support_keur=dsrf_support,
         dsrf_drawn_end_keur=dsrf_drawn_end,
         dsrf_periods=tuple(dsrf_periods_out),
+        dsrf_distribution_reduction_keur=dsrf_reduction,
     )
 
 
