@@ -5,11 +5,16 @@ No pooled debt sculpting. No shared financing.
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING, Any
 
 from dataclasses import dataclass, field
 from typing import Optional
 
 from domain.waterfall.waterfall_engine import WaterfallResult
+
+
+if TYPE_CHECKING:
+    from domain.portfolio.independent.dsrf import DSRFPeriod, DSRFResult
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,16 @@ class SPVOutput:
     waterfall_result: Optional[WaterfallResult]
     # Validation warnings from this SPV (if any)
     warnings: tuple[str, ...] = ()
+
+    # DSRF facility fields (optional, default 0 / empty)
+    dsrf_facility_limit_keur: float = 0.0
+    dsrf_total_draw_keur: float = 0.0
+    dsrf_total_repayment_keur: float = 0.0
+    dsrf_commitment_fee_keur: float = 0.0
+    dsrf_drawn_interest_keur: float = 0.0
+    dsrf_debt_service_support_keur: float = 0.0
+    dsrf_drawn_end_keur: float = 0.0
+    dsrf_periods: tuple[Any, ...] = ()   # tuple[DSRFPeriod, ...] at runtime
 
 
 @dataclass(frozen=True)
@@ -69,6 +84,16 @@ class IndependentPortfolioResult:
     # Portfolio-level warnings (deduplicated)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
+    # DSRF portfolio-level aggregates
+    dsrf_facility_limit_keur: float = 0.0
+    dsrf_total_draw_keur: float = 0.0
+    dsrf_total_repayment_keur: float = 0.0
+    dsrf_commitment_fee_keur: float = 0.0
+    dsrf_drawn_interest_keur: float = 0.0
+    dsrf_debt_service_support_keur: float = 0.0
+    dsrf_drawn_end_keur: float = 0.0
+    dsrf_periods: tuple[Any, ...] = ()   # tuple[DSRFPeriod, ...] at runtime
+
     @property
     def num_spvs(self) -> int:
         return len(self.spv_outputs)
@@ -87,12 +112,17 @@ def aggregate_independent_results(
     portfolio_name: str,
     spv_outputs: tuple[SPVOutput, ...],
     dsrf_enabled: bool = False,
+    dsrf_result: Optional[Any] = None,
 ) -> IndependentPortfolioResult:
     """Aggregate per-SPV outputs into portfolio summary.
     Sums: revenue, EBITDA, tax, senior debt service, distributions.
     Min DSCR = conservative min across SPVs.
     Avg DSCR = unweighted average of per-SPV avg DSCRs.
     Unweighted averages — NOT true portfolio IRR.
+
+    Args:
+        dsrf_result: DSRFResult from run_dsrf_facility_schedule() for the portfolio
+                    (aggregate of all SPV DSRF results). None when dsrf_enabled=False.
     """
     total_rev = sum(s.total_revenue_keur for s in spv_outputs)
     total_ebitda = sum(s.total_ebitda_keur for s in spv_outputs)
@@ -126,6 +156,26 @@ def aggregate_independent_results(
             if w not in all_warnings:
                 all_warnings.append(w)
 
+    # Extract DSRF aggregates from dsrf_result if available
+    if dsrf_result is not None:
+        dsrf_facility = getattr(dsrf_result, "facility_limit_keur", 0.0)
+        dsrf_draw = getattr(dsrf_result, "total_draw_keur", 0.0)
+        dsrf_repay = getattr(dsrf_result, "total_repayment_keur", 0.0)
+        dsrf_commit = getattr(dsrf_result, "total_commitment_fee_keur", 0.0)
+        dsrf_interest = getattr(dsrf_result, "total_drawn_interest_keur", 0.0)
+        dsrf_support = getattr(dsrf_result, "total_debt_service_support_keur", 0.0)
+        dsrf_drawn_end = getattr(dsrf_result, "drawn_end_keur", 0.0)
+        dsrf_periods_out = getattr(dsrf_result, "periods", ())
+    else:
+        dsrf_facility = 0.0
+        dsrf_draw = 0.0
+        dsrf_repay = 0.0
+        dsrf_commit = 0.0
+        dsrf_interest = 0.0
+        dsrf_support = 0.0
+        dsrf_drawn_end = 0.0
+        dsrf_periods_out = ()
+
     return IndependentPortfolioResult(
         portfolio_name=portfolio_name,
         spv_outputs=spv_outputs,
@@ -142,6 +192,14 @@ def aggregate_independent_results(
         simple_avg_equity_irr=avg_eq_irr,
         dsrf_enabled=dsrf_enabled,
         warnings=tuple(all_warnings),
+        dsrf_facility_limit_keur=dsrf_facility,
+        dsrf_total_draw_keur=dsrf_draw,
+        dsrf_total_repayment_keur=dsrf_repay,
+        dsrf_commitment_fee_keur=dsrf_commit,
+        dsrf_drawn_interest_keur=dsrf_interest,
+        dsrf_debt_service_support_keur=dsrf_support,
+        dsrf_drawn_end_keur=dsrf_drawn_end,
+        dsrf_periods=tuple(dsrf_periods_out),
     )
 
 

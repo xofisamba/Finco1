@@ -82,15 +82,34 @@ class TestDSRFConfig:
         cfg = DSRFConfig()
         assert cfg.enabled is False
 
-    def test_enabled_raises(self):
-        with pytest.raises(ValueError, match="DSRF is not yet implemented"):
-            DSRFConfig(enabled=True)
+    def test_enabled_with_valid_params_no_raise(self):
+        # New DSRFConfig raises only for invalid params, not just because enabled=True
+        cfg = DSRFConfig(
+            enabled=True,
+            sizing_months=6,
+            sizing_basis="average_debt_service",
+            commitment_fee_rate_pa=0.005,
+            margin_rate_pa=0.02,
+            euribor_rate_pa=0.03,
+            period_year_fraction=0.5,
+            repayment_priority="before_distributions",
+        )
+        assert cfg.enabled is True
+        assert cfg.sizing_months == 6
+
+    def test_enabled_invalid_sizing_months_raises(self):
+        with pytest.raises(ValueError, match="sizing_months"):
+            DSRFConfig(enabled=True, sizing_months=7)
 
     def test_disabled_params_unchanged(self):
         cfg = DSRFConfig()
-        assert cfg.months_reserve == 6
-        assert cfg.funding_threshold_dscr == 1.25
-        assert cfg.release_threshold_dscr == 1.35
+        assert cfg.sizing_months == 6
+        assert cfg.sizing_basis == "average_debt_service"
+        assert cfg.commitment_fee_rate_pa == 0.0
+        assert cfg.margin_rate_pa == 0.0
+        assert cfg.euribor_rate_pa == 0.0
+        assert cfg.period_year_fraction == 0.5
+        assert cfg.repayment_priority == "before_distributions"
 
 
 # ── IndependentPortfolioInputs ────────────────────────────────────────────────
@@ -338,9 +357,17 @@ class TestNoPooledDebtSculpting:
         assert "run_portfolio_waterfall" not in src
         assert "build_portfolio_debt_service_schedule" not in src
 
-    def test_dsrf_enabled_blocks(self):
-        with pytest.raises(ValueError):
-            DSRFConfig(enabled=True)
+    def test_dsrf_enabled_with_valid_config_no_raise(self):
+        # DSRFConfig(enabled=True) is allowed with valid parameters
+        cfg = DSRFConfig(
+            enabled=True,
+            sizing_months=6,
+            sizing_basis="average_debt_service",
+            commitment_fee_rate_pa=0.005,
+            margin_rate_pa=0.02,
+            euribor_rate_pa=0.03,
+        )
+        assert cfg.enabled is True
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────

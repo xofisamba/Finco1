@@ -22,28 +22,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+# Re-export the canonical DSRFConfig from the pure engine module.
+# inputs.py holds the portfolio-level schema; dsrf.py holds the engine.
+from domain.portfolio.independent.dsrf import (
+    DSRFConfig as _CanonicalDSRFConfig,
+)
 
-@dataclass(frozen=True)
-class DSRFConfig:
-    """Debt Service Reserve Fund (DSRF) configuration.
 
-    DSRF is an optional reserve fund that can be funded from available cash
-    after senior debt service. Currently a schema placeholder — default disabled.
-
-    Phase 1: DSRF is NOT integrated into any calculation.
-    Phase 2: DSRF funding/release triggers may be added.
-    """
-    enabled: bool = False          # Phase 1: always False
-    months_reserve: int = 6        # Number of months of senior debt service to reserve
-    funding_threshold_dscr: float = 1.25  # DSCR above which DSRF is funded
-    release_threshold_dscr: float = 1.35   # DSCR above which DSRF is released
-
-    def __post_init__(self):
-        if self.enabled:
-            raise ValueError(
-                "DSRF is not yet implemented in Phase 1. "
-                "Set enabled=False (default) to proceed."
-            )
+# Re-export for backward-compatible import from this module
+DSRFConfig = _CanonicalDSRFConfig
 
 
 @dataclass(frozen=True)
@@ -69,7 +56,7 @@ class IndependentPortfolioInputs:
     projects: tuple["ProjectInputs", ...]  # forward reference, resolved at runtime
     portfolio_name: str = "Portfolio"
 
-    # DSRF: optional, default disabled
+    # DSRF: optional, default None (disabled)
     dsrf: Optional[DSRFConfig] = None
 
     def __post_init__(self):

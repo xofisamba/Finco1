@@ -6,7 +6,7 @@ Each SPV runs its own waterfall independently; results are aggregated.
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
+from typing import Optional, Any
 
 from domain.portfolio.independent.inputs import (
     IndependentPortfolioInputs,
@@ -17,6 +17,7 @@ from domain.portfolio.independent.result import (
     IndependentPortfolioResult,
     aggregate_independent_results,
 )
+from domain.portfolio.independent.dsrf import run_dsrf_facility_schedule
 
 
 class SPVWaterfallError(Exception):
@@ -39,7 +40,7 @@ def run_independent_portfolio(
     Each SPV runs independently through the single-asset engine.
     Results are aggregated into portfolio KPIs.
 
-    NO pooled debt sculpting. NO shared financing. NO DSRF integration.
+    NO pooled debt sculpting. NO shared financing.
 
     Args:
         portfolio_inputs: IndependentPortfolioInputs with N projects
@@ -53,15 +54,19 @@ def run_independent_portfolio(
     Raises:
         SPVWaterfallError: when strict=True and any SPV waterfall fails.
     """
+    # Resolve DSRF config
+    dsrf_config = portfolio_inputs.dsrf
+    dsrf_enabled = dsrf_config is not None and dsrf_config.enabled
+
     spv_outputs: list[SPVOutput] = []
+    dsrf_results: list[Any] = []  # one DSRFResult per SPV
 
     for proj in portfolio_inputs.projects:
-        wf_result, spv_warnings = _run_single_spv(
-            proj, rate_per_period, strict=strict
+        wf_result, spv_warnings, dsrf_result = _run_single_spv(
+            proj, rate_per_period, dsrf_config, strict=strict
         )
 
         if wf_result is None:
-            # Failed SPV — already logged in spv_warnings
             if strict:
                 code = proj.info.code
                 msg = (spv_warnings[0] if spv_warnings
@@ -70,31 +75,36 @@ def run_independent_portfolio(
                     project_code=code,
                     cause=Exception(msg),
                 )
-            # Non-strict: include zero-output placeholder
-            spv_outputs.append(_build_spv_output(proj, None, spv_warnings))
+            spv_outputs.append(_build_spv_output(proj, None, spv_warnings, None))
+            dsrf_results.append(None)
         else:
-            spv_outputs.append(_build_spv_output(proj, wf_result, spv_warnings))
+            spv_out = _build_spv_output(proj, wf_result, spv_warnings, dsrf_result)
+            spv_outputs.append(spv_out)
+            dsrf_results.append(dsrf_result)
+
+    # Aggregate DSRF results across SPVs
+    dsrf_aggregate = _aggregate_dsrf_results(dsrf_results) if dsrf_enabled else None
 
     return aggregate_independent_results(
         portfolio_name=portfolio_inputs.portfolio_name,
         spv_outputs=tuple(spv_outputs),
-        dsrf_enabled=(
-            portfolio_inputs.dsrf is not None
-            and portfolio_inputs.dsrf.enabled
-        ),
+        dsrf_enabled=dsrf_enabled,
+        dsrf_result=dsrf_aggregate,
     )
 
 
 def _run_single_spv(
     project_inputs,
     rate_per_period: float,
+    dsrf_config: Optional[DSRFConfig],
     strict: bool,
-) -> tuple[Optional[WaterfallResult], list[str]]:
-    """Run one SPV through the waterfall engine.
+) -> tuple[Optional[Any], list[str], Optional[Any]]:
+    """Run one SPV through the waterfall engine and optionally the DSRF facility.
 
-    Returns (result, warnings):
+    Returns (result, warnings, dsrf_result):
     - result: WaterfallResult on success, None on failure
     - warnings: list of warning strings (empty on success)
+    - dsrf_result: DSRFResult if DSRF enabled and waterfall succeeded, else None
     """
     from domain.period_engine import PeriodEngine
     from app.waterfall_core import run_waterfall_v3_core
@@ -152,7 +162,6 @@ def _run_single_spv(
     fin = getattr(project_inputs, "financing", None)
     target_dscr = getattr(fin, "target_dscr", 1.15) if fin else 1.15
 
-
     try:
         result = run_waterfall_v3_core(
             inputs=project_inputs,
@@ -173,7 +182,13 @@ def _run_single_spv(
             sculpt_capex_keur=sculpt_capex_keur,
             debt_sizing_method=debt_sizing_method,
         )
-        return result, []
+
+        # Run DSRF facility schedule if enabled
+        dsrf_result: Optional[Any] = None
+        if dsrf_config is not None and dsrf_config.enabled:
+            dsrf_result = _run_spv_dsrf(project_inputs, result, dsrf_config)
+
+        return result, [], dsrf_result
 
     except Exception as e:
         code = project_inputs.info.code
@@ -182,13 +197,104 @@ def _run_single_spv(
                 project_code=code,
                 cause=e,
             ) from e
-        return None, [f"SPV '{code}' waterfall run failed: {e}"]
+        return None, [f"SPV '{code}' waterfall run failed: {e}"], None
+
+
+def _run_spv_dsrf(
+    project_inputs,
+    wf_result: Any,
+    dsrf_config: DSRFConfig,
+) -> Any:
+    """Extract semiannual schedules from waterfall result and run DSRF facility.
+
+    Returns DSRFResult (or None on any extraction error).
+    """
+    from domain.portfolio.independent.dsrf import run_dsrf_facility_schedule
+
+    code = project_inputs.info.code
+
+    try:
+        # Extract operation periods (semiannual periods)
+        op_periods = [p for p in wf_result.periods if getattr(p, "is_operation", False)]
+        if not op_periods:
+            return None
+
+        semiannual_ds_schedule = tuple(
+            max(0.0, getattr(p, "senior_ds_keur", 0.0))
+            for p in op_periods
+        )
+        # CFADS = EBITDA + tax (approximately; using cf_after_tax_keur as proxy for
+        # cash available before senior debt service, which is revenue - opex - taxes paid)
+        cfads_schedule = tuple(
+            max(0.0, getattr(p, "cf_after_tax_keur", 0.0))
+            for p in op_periods
+        )
+
+        if not semiannual_ds_schedule or not cfads_schedule:
+            return None
+
+        dsrf_result = run_dsrf_facility_schedule(
+            spv_code=code,
+            semiannual_debt_service_schedule=semiannual_ds_schedule,
+            cfads_schedule=cfads_schedule,
+            config=dsrf_config,
+        )
+        return dsrf_result
+
+    except Exception:
+        # Do not let DSRF failures crash the portfolio run
+        return None
+
+
+def _aggregate_dsrf_results(dsrf_results: list[Any]) -> Any:
+    """Aggregate multiple per-SPV DSRF results into a portfolio-level DSRFResult.
+
+    Sums: draw, repayment, commitment_fee, drawn_interest, debt_service_support.
+    Keeps facility_limit from the first SPV (assumes same sizing for portfolio).
+    """
+    # Import here to avoid circular / early binding issues
+    from domain.portfolio.independent.dsrf import DSRFResult
+
+    valid = [r for r in dsrf_results if r is not None]
+    if not valid:
+        return None
+
+    # Use the config from the first result
+    config = valid[0].config
+
+    total_draw = sum(getattr(r, "total_draw_keur", 0.0) for r in valid)
+    total_repay = sum(getattr(r, "total_repayment_keur", 0.0) for r in valid)
+    total_commit = sum(getattr(r, "total_commitment_fee_keur", 0.0) for r in valid)
+    total_interest = sum(getattr(r, "total_drawn_interest_keur", 0.0) for r in valid)
+    total_support = sum(getattr(r, "total_debt_service_support_keur", 0.0) for r in valid)
+    facility = getattr(valid[0], "facility_limit_keur", 0.0)
+    drawn_end = sum(getattr(r, "drawn_end_keur", 0.0) for r in valid)
+
+    # Collect all periods
+    all_periods: list[Any] = []
+    for r in valid:
+        periods = getattr(r, "periods", [])
+        if periods:
+            all_periods.extend(periods)
+
+    return DSRFResult(
+        config=config,
+        periods=tuple(all_periods),
+        total_draw_keur=total_draw,
+        total_repayment_keur=total_repay,
+        total_commitment_fee_keur=total_commit,
+        total_drawn_interest_keur=total_interest,
+        total_debt_service_support_keur=total_support,
+        facility_limit_keur=facility,
+        drawn_end_keur=drawn_end,
+    )
 
 
 def _build_spv_output(
     project_inputs,
-    wf_result: Optional[WaterfallResult],
+    wf_result: Optional[Any],
     warnings: list[str],
+    dsrf_result: Optional[Any],
 ) -> SPVOutput:
     """Build SPVOutput from a waterfall result (or zero output on failure)."""
     code = project_inputs.info.code
@@ -211,6 +317,26 @@ def _build_spv_output(
             warnings=tuple(warnings),
         )
 
+    # Extract DSRF fields if available
+    if dsrf_result is not None:
+        dsrf_limit = getattr(dsrf_result, "facility_limit_keur", 0.0)
+        dsrf_draw = getattr(dsrf_result, "total_draw_keur", 0.0)
+        dsrf_repay = getattr(dsrf_result, "total_repayment_keur", 0.0)
+        dsrf_commit = getattr(dsrf_result, "total_commitment_fee_keur", 0.0)
+        dsrf_interest = getattr(dsrf_result, "total_drawn_interest_keur", 0.0)
+        dsrf_support = getattr(dsrf_result, "total_debt_service_support_keur", 0.0)
+        dsrf_drawn_end = getattr(dsrf_result, "drawn_end_keur", 0.0)
+        dsrf_periods = getattr(dsrf_result, "periods", ())
+    else:
+        dsrf_limit = 0.0
+        dsrf_draw = 0.0
+        dsrf_repay = 0.0
+        dsrf_commit = 0.0
+        dsrf_interest = 0.0
+        dsrf_support = 0.0
+        dsrf_drawn_end = 0.0
+        dsrf_periods = ()
+
     return SPVOutput(
         project_code=code,
         project_name=name,
@@ -225,6 +351,14 @@ def _build_spv_output(
         min_dscr=getattr(wf_result, "min_dscr", 0.0),
         waterfall_result=wf_result,
         warnings=tuple(warnings),
+        dsrf_facility_limit_keur=dsrf_limit,
+        dsrf_total_draw_keur=dsrf_draw,
+        dsrf_total_repayment_keur=dsrf_repay,
+        dsrf_commitment_fee_keur=dsrf_commit,
+        dsrf_drawn_interest_keur=dsrf_interest,
+        dsrf_debt_service_support_keur=dsrf_support,
+        dsrf_drawn_end_keur=dsrf_drawn_end,
+        dsrf_periods=tuple(dsrf_periods),
     )
 
 
