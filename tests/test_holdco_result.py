@@ -95,16 +95,36 @@ class TestHoldCoPeriodResult:
             contributions=[
                 HoldCoSPVContribution(
                     period=3, spv_code="A", ownership_pct=1.0,
-                    spv_distribution_keur=300.0, holdco_share_keur=300.0
+                    spv_distribution_keur=300.0, holdco_share_keur=300.0,
                 ),
                 HoldCoSPVContribution(
                     period=3, spv_code="B", ownership_pct=0.8,
-                    spv_distribution_keur=200.0, holdco_share_keur=160.0
+                    spv_distribution_keur=200.0, holdco_share_keur=160.0,
                 ),
             ],
             gross_income_keur=460.0,
         )
         assert len(p.contributions) == 2
+
+    def test_shl_fields_default_zero(self):
+        """HoldCoPeriodResult SHL-ready fields default to 0.0."""
+        p = HoldCoPeriodResult(period=0, gross_income_keur=1000.0)
+        assert p.dividend_keur == 0.0
+        assert p.shl_interest_keur == 0.0
+        assert p.shl_principal_keur == 0.0
+
+    def test_shl_fields_explicit(self):
+        """HoldCoPeriodResult accepts explicit SHL field values."""
+        p = HoldCoPeriodResult(
+            period=1,
+            gross_income_keur=800.0,
+            dividend_keur=800.0,
+            shl_interest_keur=50.0,
+            shl_principal_keur=200.0,
+        )
+        assert p.dividend_keur == 800.0
+        assert p.shl_interest_keur == 50.0
+        assert p.shl_principal_keur == 200.0
 
 
 class TestHoldCoResult:
@@ -181,3 +201,22 @@ class TestHoldCoResult:
         assert len(r.periods) == 5
         assert r.periods[0].period == 0
         assert r.periods[4].distribution_to_sponsor_keur == 400.0
+
+    def test_shl_totals_default_zero(self):
+        """HoldCoResult SHL-ready totals default to 0.0."""
+        r = HoldCoResult(name="HC")
+        assert r.total_dividend_keur == 0.0
+        assert r.total_shl_interest_keur == 0.0
+        assert r.total_shl_principal_keur == 0.0
+
+    def test_shl_totals_explicit(self):
+        """HoldCoResult accepts explicit SHL totals."""
+        r = HoldCoResult(
+            name="HC",
+            total_dividend_keur=10000.0,
+            total_shl_interest_keur=500.0,
+            total_shl_principal_keur=2000.0,
+        )
+        assert r.total_dividend_keur == 10000.0
+        assert r.total_shl_interest_keur == 500.0
+        assert r.total_shl_principal_keur == 2000.0

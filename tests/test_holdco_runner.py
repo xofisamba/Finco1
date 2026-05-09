@@ -17,6 +17,7 @@ from domain.portfolio.holdco import (
     SPVOwnership,
     HoldCoResult,
     HoldCoPeriodResult,
+    HoldCoSPVContribution,
 )
 from domain.portfolio.holdco.runner import (
     build_holdco_result,
@@ -263,7 +264,7 @@ class TestPeriodMismatchWarning:
     """Period mismatch handled safely."""
 
     def test_period_mismatch_warning(self):
-        """Warning emitted when SPVs have different period counts."""
+        """Warning emitted when SPVs have different period counts (max-period alignment)."""
         spv1 = _make_mock_spv("SHORT-SP", "Short SPV", [100.0])        # 1 period
         spv2 = _make_mock_spv("LONG-SP", "Long SPV", [200.0, 300.0])  # 2 periods
         portfolio = _make_portfolio_result([spv1, spv2])
@@ -280,35 +281,147 @@ class TestPeriodMismatchWarning:
 
         result = build_holdco_result(inputs, portfolio)
 
-        # Should use shortest (1 period) with warning
-        assert len(result.periods) == 1
+        # P1.2: Should use max (2 periods) — longer SPV not truncated
+        assert len(result.periods) == 2
         warnings = list(result.warnings)
         assert any("Period count mismatch" in w for w in warnings)
+        assert any("max-period" in w for w in warnings)
+        # SHORT-SP contributes 0.0 in period 1 (zero-padding)
+        assert result.periods[0].gross_income_keur == 300.0  # 100 + 200
+        assert result.periods[1].gross_income_keur == 300.0  # 0 + 300 (SHORT-SP ended)
 
-
-class TestNoSHLBehavior:
-    """No intercompany debt fields appear in HoldCo result."""
-
-    def test_no_shl_fields_in_result(self):
-        """HoldCo result should not contain SHL-related fields."""
-        spv = _make_mock_spv("SOLAR-1", "Solar One", [1000.0])
-        portfolio = _make_portfolio_result([spv])
+    def test_max_period_longer_spv_not_truncated(self):
+        """Longer SPV contributions are preserved when periods differ."""
+        spv1 = _make_mock_spv("A", "A", [100.0, 200.0])  # 2 periods
+        spv2 = _make_mock_spv("B", "B", [50.0])           # 1 period
+        portfolio = _make_portfolio_result([spv1, spv2])
 
         entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
         inputs = HoldCoInputs(
             name="HC",
-            ownerships=[SPVOwnership(spv_code="SOLAR-1", ownership_pct=1.0)],
+            ownerships=[
+                SPVOwnership(spv_code="A", ownership_pct=1.0),
+                SPVOwnership(spv_code="B", ownership_pct=1.0),
+            ],
             entity=entity,
         )
 
         result = build_holdco_result(inputs, portfolio)
 
-        # No SHL fields in HoldCoResult
-        for period in result.periods:
-            # Check that HoldCoPeriodResult doesn't have shl-related fields
-            assert not hasattr(period, 'shl_interest_keur')
-            assert not hasattr(period, 'shl_principal_keur')
-            assert not hasattr(period, 'shl_balance_keur')
+        assert len(result.periods) == 2
+        # Period 0: A=100 + B=50 = 150
+        assert result.periods[0].gross_income_keur == 150.0
+        # Period 1: A=200 + B=0 (zero-padding) = 200
+        assert result.periods[1].gross_income_keur == 200.0
+
+    def test_zero_padding_for_shorter_spv(self):
+        """Shorter SPV contributes 0.0 after its final period."""
+        spv = _make_mock_spv("SHORT", "Short", [1000.0])  # 1 period
+        portfolio = _make_portfolio_result([spv])
+
+        entity = HoldCoEntity(name="HC")
+        # Add a second SPV to force max-period > 1
+        spv2 = _make_mock_spv("LONG", "Long", [500.0, 600.0])
+        portfolio2 = _make_portfolio_result([spv, spv2])
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[
+                SPVOwnership(spv_code="SHORT", ownership_pct=1.0),
+                SPVOwnership(spv_code="LONG", ownership_pct=1.0),
+            ],
+            entity=entity,
+        )
+
+        result = build_holdco_result(inputs, portfolio2)
+
+        assert len(result.periods) == 2
+        # SHORT contributes 0 in period 1 (after its last period)
+        assert result.periods[1].gross_income_keur == 600.0  # only LONG
+        # Verify SHORT SPV contribution in period 1 is 0.0
+        short_contrib = next(c for c in result.periods[1].contributions if c.spv_code == "SHORT")
+        assert short_contrib.spv_distribution_keur == 0.0
+
+
+class TestSHLReadyFields:
+    """P1.1: SHL-ready contribution fields with zero defaults."""
+
+    def test_contribution_shl_fields_default_zero(self):
+        """HoldCoSPVContribution SHL fields default to 0.0."""
+        c = HoldCoSPVContribution(
+            period=0, spv_code="X", ownership_pct=1.0,
+            spv_distribution_keur=1000.0, holdco_share_keur=1000.0,
+        )
+        assert c.dividend_keur == 0.0
+        assert c.shl_interest_keur == 0.0
+        assert c.shl_principal_keur == 0.0
+
+    def test_contribution_dividend_populated_from_distribution(self):
+        """Current distributions populate dividend_keur (SHL = 0.0)."""
+        c = HoldCoSPVContribution(
+            period=0, spv_code="SOLAR", ownership_pct=1.0,
+            spv_distribution_keur=1000.0, holdco_share_keur=1000.0,
+            dividend_keur=1000.0, shl_interest_keur=0.0, shl_principal_keur=0.0,
+        )
+        assert c.dividend_keur == 1000.0
+        assert c.shl_interest_keur == 0.0
+        assert c.shl_principal_keur == 0.0
+
+    def test_holdco_result_shl_totals_default_zero(self):
+        """HoldCoResult SHL totals default to 0.0 (no SHL implemented)."""
+        r = HoldCoResult(name="HC")
+        assert r.total_dividend_keur == 0.0
+        assert r.total_shl_interest_keur == 0.0
+        assert r.total_shl_principal_keur == 0.0
+
+    def test_holdco_result_shl_totals_populated(self):
+        """HoldCoResult SHL totals are set after aggregation."""
+        spv = _make_mock_spv("SOLAR-1", "Solar", [1000.0])
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC")
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR-1", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+        # dividend = 1000.0 (the distribution), SHL = 0.0
+        assert result.total_dividend_keur == 1000.0
+        assert result.total_shl_interest_keur == 0.0
+        assert result.total_shl_principal_keur == 0.0
+
+    def test_period_shl_fields_populated(self):
+        """HoldCoPeriodResult SHL fields populated from contributions."""
+        spv = _make_mock_spv("SOLAR-1", "Solar", [500.0, 600.0])
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC")
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR-1", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+        # Period 0: dividend=500, SHL interest=0, SHL principal=0
+        assert result.periods[0].dividend_keur == 500.0
+        assert result.periods[0].shl_interest_keur == 0.0
+        assert result.periods[0].shl_principal_keur == 0.0
+        # Period 1: dividend=600, SHL = 0
+        assert result.periods[1].dividend_keur == 600.0
+        assert result.periods[1].shl_interest_keur == 0.0
+        assert result.periods[1].shl_principal_keur == 0.0
+
+    def test_contribution_shl_fields_explicit(self):
+        """HoldCoSPVContribution accepts explicit SHL field values."""
+        c = HoldCoSPVContribution(
+            period=1, spv_code="X", ownership_pct=0.8,
+            spv_distribution_keur=1000.0, holdco_share_keur=800.0,
+            dividend_keur=800.0, shl_interest_keur=50.0, shl_principal_keur=200.0,
+        )
+        assert c.dividend_keur == 800.0
+        assert c.shl_interest_keur == 50.0
+        assert c.shl_principal_keur == 200.0
 
 
 class TestNoHoldCoIRR:

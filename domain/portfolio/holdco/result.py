@@ -14,7 +14,8 @@ class HoldCoSPVContribution:
     """Per-period contribution from a single SPV to HoldCo.
 
     Phase 3A/3B: holdco_share_keur computed by Phase 3B aggregation runner.
-    not in this dataclass.
+    dividend_keur, shl_interest_keur, shl_principal_keur are SHL-ready fields
+    (all 0.0 until SHL is implemented).
     """
     period: int
     spv_code: str
@@ -22,6 +23,10 @@ class HoldCoSPVContribution:
     spv_distribution_keur: float = 0.0  # raw SPV distribution from waterfall
     holdco_share_keur: float = 0.0  # ownership_pct * spv_distribution_keur
     currency: str = "EUR"
+    # SHL-ready fields (schema prep only — no SHL logic implemented)
+    dividend_keur: float = 0.0      # dividend component of distribution
+    shl_interest_keur: float = 0.0  # SHL interest income (0.0 until SHL)
+    shl_principal_keur: float = 0.0  # SHL principal repayment (0.0 until SHL)
 
     def __post_init__(self):
         if self.period < 0:
@@ -58,6 +63,10 @@ class HoldCoPeriodResult:
     distribution_to_sponsor_keur: float = 0.0
     holdco_irr: Optional[float] = None  # HoldCo IRR deferred beyond Phase 3B
     currency: str = "EUR"
+    # SHL-ready fields (schema prep only — no SHL logic implemented)
+    dividend_keur: float = 0.0        # sum of dividend components this period
+    shl_interest_keur: float = 0.0   # sum of SHL interest this period
+    shl_principal_keur: float = 0.0   # sum of SHL principal this period
 
     def __post_init__(self):
         if self.period < 0:
@@ -102,6 +111,10 @@ class HoldCoResult:
     spv_codes: list[str] = field(default_factory=list)
     currency: str = "EUR"
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    # SHL-ready totals (schema prep only — no SHL logic implemented)
+    total_dividend_keur: float = 0.0
+    total_shl_interest_keur: float = 0.0
+    total_shl_principal_keur: float = 0.0
 
     def __post_init__(self):
         if not self.name or not self.name.strip():
