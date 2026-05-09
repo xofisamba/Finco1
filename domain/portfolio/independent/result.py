@@ -1,9 +1,10 @@
 """Phase 1 MVP: Independent SPV portfolio result.
 
-Preserves per-SPV outputs and provides aggregate summary.
-No pooled debt sculpting, no shared financing.
+No pooled debt sculpting. No shared financing.
 """
 from __future__ import annotations
+
+import math
 
 from dataclasses import dataclass, field
 from typing import Optional
@@ -18,7 +19,7 @@ class SPVOutput:
     project_name: str
     # Per-SPV KPIs
     project_irr: float          # unlevered project IRR (%)
-    equity_irr: float            # levered equity IRR (%)
+    equity_irr: float           # levered equity IRR (%)
     total_revenue_keur: float
     total_ebitda_keur: float
     total_tax_keur: float
@@ -26,59 +27,46 @@ class SPVOutput:
     total_distribution_keur: float
     avg_dscr: float
     min_dscr: float
-    # Full period result for audit
-    waterfall_result: WaterfallResult
-    # Validation warnings (if any assumptions incomplete)
+    # Full period result for audit (None when SPV failed in non-strict mode)
+    waterfall_result: Optional[WaterfallResult]
+    # Validation warnings from this SPV (if any)
     warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class IndependentPortfolioResult:
-    """Result of independent SPV portfolio aggregation (Phase 1 MVP).
+    """Result of independent SPV portfolio aggregation. Phase 1 MVP.
 
-    Each SPV runs independently. Results are summed/min'd for portfolio-level KPIs.
-
+    Each SPV runs independently. Results are summed/min'd for portfolio KPIs.
     No portfolio-level debt sculpting. No shared financing.
-    Per-SPV waterfall results are preserved for audit.
-
-    IRR semantics:
-    - simple_avg_project_irr and simple_avg_equity_irr are UNWEIGHTED
-      averages of per-SPV IRRs. They are NOT true portfolio XIRR values.
-    - True portfolio IRR requires date-aligned cash flow aggregation and
-      is deferred to a later phase.
     """
     portfolio_name: str
-
     # Per-SPV outputs (preserved)
     spv_outputs: tuple[SPVOutput, ...]
 
-    # Aggregate summary (sum across SPVs where applicable)
+    # Sums across SPVs
     total_revenue_keur: float
     total_ebitda_keur: float
     total_tax_keur: float
     total_senior_ds_keur: float
     total_distribution_keur: float
 
-    # DSCR aggregation
-    min_dscr: float              # minimum across all SPVs (conservative)
-    avg_dscr: float             # unweighted average of per-SPV avg DSCRs
+    # DSCR: min = conservative (lenders), avg = unweighted average
+    min_dscr: float
+    avg_dscr: float
 
-    # Per-SPV IRRs (available from waterfall result)
-    spv_project_irrs: tuple[float, ...]   # per-SPV project IRR
-    spv_equity_irrs: tuple[float, ...]    # per-SPV equity IRR
+    spv_project_irrs: tuple[float, ...]
+    spv_equity_irrs: tuple[float, ...]
 
-    # Simple averages of per-SPV IRRs — NOT true portfolio IRR values.
-    # These are computed as unweighted averages of individual SPV IRRs
-    # for convenience only. True portfolio IRR requires XIRR over the
-    # full portfolio cash flow timeline and is NOT implemented in Phase 1.
+    # Unweighted averages — NOT true portfolio XIRR.
+    # True portfolio IRR requires all cash-flows aligned and XIRR computed — deferred.
     simple_avg_project_irr: float = 0.0
     simple_avg_equity_irr: float = 0.0
 
-    # DSRF status (Phase 1: always disabled)
+    # Phase 1: always False
     dsrf_enabled: bool = False
 
-    # Portfolio-level validation warnings accumulated from all SPV runs.
-    # These are deduplicated across SPVs.
+    # Portfolio-level warnings (deduplicated)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -86,7 +74,7 @@ class IndependentPortfolioResult:
         return len(self.spv_outputs)
 
     def warning_summary(self) -> str:
-        """Human-readable warning summary."""
+        """Human-readable portfolio-level warning summary."""
         if not self.warnings:
             return "No warnings."
         lines = [f"Warnings ({len(self.warnings)}):"]
@@ -101,11 +89,10 @@ def aggregate_independent_results(
     dsrf_enabled: bool = False,
 ) -> IndependentPortfolioResult:
     """Aggregate per-SPV outputs into portfolio summary.
-
-    Sums revenue, EBITDA, tax, debt service, distributions.
-    Min DSCR = minimum across SPVs (conservative for lenders).
-    Avg DSCR = unweighted average of per-SPV average DSCRs.
-    Simple-average IRRs: unweighted average of per-SPV IRRs (NOT true portfolio IRR).
+    Sums: revenue, EBITDA, tax, senior debt service, distributions.
+    Min DSCR = conservative min across SPVs.
+    Avg DSCR = unweighted average of per-SPV avg DSCRs.
+    Unweighted averages — NOT true portfolio IRR.
     """
     total_rev = sum(s.total_revenue_keur for s in spv_outputs)
     total_ebitda = sum(s.total_ebitda_keur for s in spv_outputs)
@@ -113,17 +100,26 @@ def aggregate_independent_results(
     total_senior_ds = sum(s.total_senior_ds_keur for s in spv_outputs)
     total_dist = sum(s.total_distribution_keur for s in spv_outputs)
 
-    dscrs = [s.avg_dscr for s in spv_outputs if s.avg_dscr > 0]
     min_dscr = min((s.min_dscr for s in spv_outputs if s.min_dscr > 0), default=0.0)
-    avg_dscr = sum(dscrs) / len(dscrs) if dscrs else 0.0
+    avg_dscr_vals = [s.avg_dscr for s in spv_outputs if s.avg_dscr > 0]
+    avg_dscr = sum(avg_dscr_vals) / len(avg_dscr_vals) if avg_dscr_vals else 0.0
 
-    project_irrs = [s.project_irr for s in spv_outputs if s.project_irr > 0]
-    equity_irrs = [s.equity_irr for s in spv_outputs if s.equity_irr > 0]
+    # All finite IRRs included — 0, positive, and negative — no silent filtering
+    project_irrs = [
+        s.project_irr
+        for s in spv_outputs
+        if math.isfinite(s.project_irr)
+    ]
+    equity_irrs = [
+        s.equity_irr
+        for s in spv_outputs
+        if math.isfinite(s.equity_irr)
+    ]
 
     avg_proj_irr = sum(project_irrs) / len(project_irrs) if project_irrs else 0.0
     avg_eq_irr = sum(equity_irrs) / len(equity_irrs) if equity_irrs else 0.0
 
-    # Collect portfolio-level warnings from all SPVs (deduplicated)
+    # Deduplicate portfolio-level warnings
     all_warnings: list[str] = []
     for s in spv_outputs:
         for w in s.warnings:
