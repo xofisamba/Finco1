@@ -14,8 +14,6 @@ Architecture:
 """
 from __future__ import annotations
 
-from dataclasses import replace
-
 from domain.portfolio.shl.inputs import SHLFacility, SHLPortfolioInputs
 from domain.portfolio.shl.result import (
     SHLPeriodResult,
@@ -32,6 +30,7 @@ def run_shl_facility(facility: SHLFacility) -> SHLFacilityResult:
     - Interest = opening_balance * rate / frequency
     - Final period closing balance = 0
     - No negative balances at any point
+    - period_index starts at facility.start_period_index
 
     Parameters
     ----------
@@ -82,8 +81,10 @@ def run_shl_facility(facility: SHLFacility) -> SHLFacilityResult:
         total_principal += principal
         balance = closing
 
+        # period_index is offset by start_period_index
+        actual_index = facility.start_period_index + idx
         periods.append(SHLPeriodResult(
-            period_index=idx,
+            period_index=actual_index,
             opening_balance_keur=opening,
             interest_accrued_keur=interest,
             interest_paid_keur=interest,

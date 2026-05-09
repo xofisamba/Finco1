@@ -1,7 +1,9 @@
 """Phase 3B HoldCo aggregation runner.
 
-Linear passthrough aggregation only.
-No SHL. No tax template engine. No HoldCo IRR. No monthly model.
+No active SHL calculation in HoldCo runner. SHL passthrough fields are prepared;
+SHL interest/principal remain zero until SHL integration phase.
+
+No tax template engine. No HoldCo IRR. No monthly model.
 No pooled financing. No retained earnings. No cash sweep.
 
 Inputs:

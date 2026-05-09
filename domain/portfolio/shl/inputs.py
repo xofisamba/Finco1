@@ -42,6 +42,8 @@ class SHLFacility:
                 f"payment_frequency_per_year must be in {{1, 2, 4, 12}}, "
                 f"got {self.payment_frequency_per_year}"
             )
+        if self.start_period_index < 0:
+            raise ValueError(f"start_period_index must be >= 0, got {self.start_period_index}")
 
 
 @dataclass(frozen=True)

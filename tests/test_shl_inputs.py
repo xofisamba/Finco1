@@ -158,3 +158,42 @@ class TestSHLPortfolioInputs:
 
 # Import needed for test_negative_opening_balance_raises / test_negative_closing_balance_raises
 from domain.portfolio.shl.result import SHLPeriodResult
+
+class TestSHLFacilityStartPeriodIndex:
+    """SHLFacility.start_period_index validation."""
+
+    def test_start_period_index_negative_raises(self):
+        """start_period_index < 0 raises ValueError."""
+        with pytest.raises(ValueError, match="start_period_index must be >= 0"):
+            SHLFacility(
+                lender_entity_code="HC",
+                borrower_entity_code="SPV",
+                principal_keur=1000.0,
+                interest_rate_pa=0.08,
+                tenor_years=5,
+                start_period_index=-1,
+            )
+
+    def test_start_period_index_zero_allowed(self):
+        """start_period_index=0 is the default and valid."""
+        f = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SPV",
+            principal_keur=1000.0,
+            interest_rate_pa=0.08,
+            tenor_years=5,
+            start_period_index=0,
+        )
+        assert f.start_period_index == 0
+
+    def test_start_period_index_positive_allowed(self):
+        """Positive start_period_index is valid."""
+        f = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SPV",
+            principal_keur=1000.0,
+            interest_rate_pa=0.08,
+            tenor_years=5,
+            start_period_index=10,
+        )
+        assert f.start_period_index == 10

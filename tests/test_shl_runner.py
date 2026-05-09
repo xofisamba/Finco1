@@ -314,3 +314,89 @@ class TestRunSHLPortfolio:
         assert fr.total_principal_paid_keur == pytest.approx(3000.0, rel=1e-4)
         # Last period closing = 0
         assert fr.periods[-1].closing_balance_keur == pytest.approx(0.0, abs=1e-6)
+
+class TestSHLStartPeriodIndex:
+    """run_shl_facility honors facility.start_period_index."""
+
+    def test_start_period_index_offsets_period_indexes(self):
+        """period_index values start at start_period_index."""
+        f = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SPV",
+            principal_keur=1000.0,
+            interest_rate_pa=0.0,  # zero rate for clarity
+            tenor_years=2,
+            payment_frequency_per_year=2,
+            start_period_index=4,
+        )
+        result = run_shl_facility(f)
+
+        assert len(result.periods) == 4
+        # Period indexes should be 4, 5, 6, 7
+        for i, p in enumerate(result.periods):
+            assert p.period_index == 4 + i, f"Expected {4+i}, got {p.period_index}"
+
+    def test_start_period_index_does_not_change_total_interest(self):
+        """start_period_index does not affect interest/principal totals."""
+        f_offset = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SPV",
+            principal_keur=1000.0,
+            interest_rate_pa=0.08,
+            tenor_years=2,
+            payment_frequency_per_year=2,
+            start_period_index=10,
+        )
+        f_zero = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SPV",
+            principal_keur=1000.0,
+            interest_rate_pa=0.08,
+            tenor_years=2,
+            payment_frequency_per_year=2,
+            start_period_index=0,
+        )
+        r_offset = run_shl_facility(f_offset)
+        r_zero = run_shl_facility(f_zero)
+
+        # Totals must be identical regardless of start index
+        assert r_offset.total_interest_paid_keur == r_zero.total_interest_paid_keur
+        assert r_offset.total_principal_paid_keur == r_zero.total_principal_paid_keur
+
+    def test_start_period_index_zero_keeps_existing_behavior(self):
+        """start_period_index=0 produces period_index starting at 0."""
+        f = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SPV",
+            principal_keur=1000.0,
+            interest_rate_pa=0.08,
+            tenor_years=3,
+            payment_frequency_per_year=2,
+            start_period_index=0,
+        )
+        result = run_shl_facility(f)
+
+        assert len(result.periods) == 6
+        for i, p in enumerate(result.periods):
+            assert p.period_index == i
+
+    def test_start_period_index_late_start(self):
+        """start_period_index can be large (e.g., SPV construction delay)."""
+        f = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SPV",
+            principal_keur=2000.0,
+            interest_rate_pa=0.08,
+            tenor_years=1,
+            payment_frequency_per_year=2,
+            start_period_index=36,  # 18 months of construction
+        )
+        result = run_shl_facility(f)
+
+        assert len(result.periods) == 2
+        assert result.periods[0].period_index == 36
+        assert result.periods[1].period_index == 37
+        # Opening balance in first SHL period still equals principal
+        assert result.periods[0].opening_balance_keur == pytest.approx(2000.0, rel=1e-6)
+        # Final balance = 0
+        assert result.periods[-1].closing_balance_keur == pytest.approx(0.0, abs=1e-6)
