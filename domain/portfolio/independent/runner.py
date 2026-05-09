@@ -359,9 +359,18 @@ def _build_spv_output(
                 getattr(p, "distribution_keur", 0.0) for p in wf_periods
             ]
             for dsrf_period, op_idx in zip(dsrf_periods_list, op_indexes):
-                adjusted[op_idx] = max(
-                    0.0, getattr(dsrf_period, "cash_available_for_distribution_keur", 0.0)
+                # P0.1 fix: adjusted = wf_dist - DSRF costs per operation period.
+                # wf_dist is the waterfall distribution AFTER waterfall deductions (senior debt,
+                # SHL, DSRA). DSRF costs (commitment fee, drawn interest, repayment) are
+                # additional facility costs that further reduce what flows to HoldCo.
+                # Using wf_dist - costs ensures HoldCo upstream ≤ raw wf distribution total.
+                wf_dist = getattr(wf_periods[op_idx], "distribution_keur", 0.0)
+                dsrf_cost = (
+                    getattr(dsrf_period, "commitment_fee_keur", 0.0)
+                    + getattr(dsrf_period, "drawn_interest_keur", 0.0)
+                    + getattr(dsrf_period, "repayment_keur", 0.0)
                 )
+                adjusted[op_idx] = max(0.0, wf_dist - dsrf_cost)
             adjusted_period_distributions = tuple(adjusted)
         else:
             # Mismatch — fall back to waterfall per-period distributions (full length)
@@ -382,7 +391,6 @@ def _build_spv_output(
         drawn_interest = getattr(dsrf_result, "total_drawn_interest_keur", 0.0)
         repayment = getattr(dsrf_result, "total_repayment_keur", 0.0)
         reduction = commit_fee + drawn_interest + repayment
-        adjusted_dist = max(0.0, original_dist - reduction)
 
         dsrf_limit = getattr(dsrf_result, "facility_limit_keur", 0.0)
         dsrf_draw = getattr(dsrf_result, "total_draw_keur", 0.0)
@@ -392,7 +400,18 @@ def _build_spv_output(
         dsrf_support = getattr(dsrf_result, "total_debt_service_support_keur", 0.0)
         dsrf_drawn_end = getattr(dsrf_result, "drawn_end_keur", 0.0)
         dsrf_periods_out = getattr(dsrf_result, "periods", ())
-        dsrf_reduction = reduction
+
+        # P0.1 fix: total_distribution_keur equals sum(adjusted_period_distributions)
+        # when DSRF per-period data is available. This makes the total consistent
+        # with the per-period HoldCo feed.
+        if adjusted_period_distributions:
+            adjusted_dist = sum(adjusted_period_distributions)
+            # Period-consistent audit trail: reduction = raw_wf_sum - sum(adjusted)
+            raw_wf_sum = sum(getattr(p, "distribution_keur", 0.0) for p in wf_periods)
+            dsrf_reduction = raw_wf_sum - adjusted_dist
+        else:
+            adjusted_dist = max(0.0, original_dist - reduction)
+            dsrf_reduction = reduction
     else:
         adjusted_dist = original_dist
         dsrf_limit = 0.0

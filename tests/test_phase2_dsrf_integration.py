@@ -241,13 +241,14 @@ def test_dsrf_enabled_true_does_not_raise_and_adjusts_distribution():
         f"DSRF-adjusted dist ({adjusted_dist}) should not exceed original ({original_dist})"
     )
 
-    # Verify dsrf_distribution_reduction_keur == commit + interest + repayment
-    expected_reduction = (
-        spv.dsrf_commitment_fee_keur
-        + spv.dsrf_drawn_interest_keur
-        + spv.dsrf_total_repayment_keur
+    wf_periods = spv.waterfall_result.periods
+    raw_wf_sum = sum(p.distribution_keur for p in wf_periods)
+    adjusted_sum = sum(spv.adjusted_period_distributions_keur)
+    expected_reduction = raw_wf_sum - adjusted_sum
+    assert abs(spv.dsrf_distribution_reduction_keur - expected_reduction) < 1e-6, (
+        f"dsrf_distribution_reduction_keur={spv.dsrf_distribution_reduction_keur} "
+        f"!= raw_wf_sum - adjusted_sum = {expected_reduction}"
     )
-    assert abs(spv.dsrf_distribution_reduction_keur - expected_reduction) < 1e-6
 
     # Portfolio-level dsrf_distribution_reduction_keur should be >= SPV reduction
     assert result.dsrf_distribution_reduction_keur >= spv.dsrf_distribution_reduction_keur - 1e-6
@@ -420,6 +421,23 @@ def test_dsrf_adjusted_period_distributions_real_project():
         f"len(wf_periods)={len(wf_periods)}"
     )
 
+    # ── P0.1 final: verify SPVOutput distribution totals are consistent ────
+    raw_waterfall_sum = sum(p.distribution_keur for p in wf_periods)
+    adjusted_sum = sum(spv.adjusted_period_distributions_keur)
+
+    # SPV total_distribution_keur equals sum(adjusted_period_distributions) when DSRF aligned
+    assert spv.total_distribution_keur == pytest.approx(adjusted_sum, rel=1e-2), (
+        f"total_distribution_keur={spv.total_distribution_keur} != "
+        f"sum(adjusted)={adjusted_sum}"
+    )
+
+    # dsrf_distribution_reduction_keur audit trail: wf_sum - adjusted_sum
+    expected_reduction = raw_waterfall_sum - adjusted_sum
+    assert spv.dsrf_distribution_reduction_keur == pytest.approx(expected_reduction, rel=1e-2), (
+        f"dsrf_distribution_reduction={spv.dsrf_distribution_reduction_keur} != "
+        f"wf_sum-adj_sum={expected_reduction}"
+    )
+
     # Build HoldCo and verify it uses DSRF-adjusted values
     entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
     entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
@@ -431,19 +449,24 @@ def test_dsrf_adjusted_period_distributions_real_project():
 
     holdco_result = build_holdco_result(holdco_inputs, result)
 
-    # HoldCo uses DSRF-adjusted cash available (not waterfall raw distributions)
-    # Note: cash_available may differ from waterfall distribution_keur because
-    # DSRF uses CFADS as the base and then applies facility costs per period.
-    assert holdco_result.total_gross_income_keur > 0, "HoldCo gross income must be positive"
+    # HoldCo gross income equals SPV adjusted sum (100% ownership, zero opex/tax)
+    assert holdco_result.total_gross_income_keur == pytest.approx(adjusted_sum, rel=1e-2), (
+        f"HoldCo gross={holdco_result.total_gross_income_keur} != "
+        f"adjusted_sum={adjusted_sum}"
+    )
 
-    # Verify HoldCo's per-period distributions match adjusted_period_distributions_keur
+    # HoldCo gross income <= waterfall total (DSRF can only reduce, not increase)
+    assert holdco_result.total_gross_income_keur <= raw_waterfall_sum + 1.0, (
+        f"HoldCo gross ({holdco_result.total_gross_income_keur}) > wf total ({raw_waterfall_sum})"
+    )
+
+    # Verify HoldCo per-period gross income matches adjusted_period_distributions
     for i in range(len(holdco_result.periods)):
         assert holdco_result.periods[i].gross_income_keur == pytest.approx(
             spv.adjusted_period_distributions_keur[i], rel=1e-2
         ), f"Period {i}: HoldCo gross != adjusted period distribution"
 
-    # Verify SPV total_distribution_keur reflects DSRF reduction ( wf_dist - reduction )
-    # not the sum of cash_available
-    assert spv.total_distribution_keur < sum(p.distribution_keur for p in wf_periods), (
+    # SPV total_distribution_keur < wf sum (DSRF reduces)
+    assert spv.total_distribution_keur < raw_waterfall_sum, (
         "DSRF should reduce total distribution vs raw waterfall"
     )
