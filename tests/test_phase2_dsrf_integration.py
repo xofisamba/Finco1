@@ -449,22 +449,27 @@ def test_dsrf_adjusted_period_distributions_real_project():
 
     holdco_result = build_holdco_result(holdco_inputs, result)
 
-    # HoldCo gross income equals SPV adjusted sum (100% ownership, zero opex/tax)
-    assert holdco_result.total_gross_income_keur == pytest.approx(adjusted_sum, rel=1e-2), (
+    # HoldCo gross income equals SPV adjusted sum + SHL interest (P4B: SHL interest now included)
+    holdco_gross_with_shl = adjusted_sum + sum(p.shl_interest_keur for p in wf_periods)
+    assert holdco_result.total_gross_income_keur == pytest.approx(holdco_gross_with_shl, rel=1e-2), (
         f"HoldCo gross={holdco_result.total_gross_income_keur} != "
-        f"adjusted_sum={adjusted_sum}"
+        f"adjusted_sum + shl_interest = {holdco_gross_with_shl}"
     )
 
-    # HoldCo gross income <= waterfall total (DSRF can only reduce, not increase)
-    assert holdco_result.total_gross_income_keur <= raw_waterfall_sum + 1.0, (
-        f"HoldCo gross ({holdco_result.total_gross_income_keur}) > wf total ({raw_waterfall_sum})"
-    )
+    # HoldCo gross income includes SHL interest (P4B: SHL interest is now included)
+    # HoldCo gross = dividend (adjusted) + SHL interest. wf_total = raw wf distributions only.
+    # We relax this assertion since SHL interest can exceed raw wf distributions.
+    # The important invariant is: HoldCo gross = adjusted_sum + shl_interest_sum (tested above)
+    assert holdco_result.total_gross_income_keur >= holdco_gross_with_shl - 1.0
 
-    # Verify HoldCo per-period gross income matches adjusted_period_distributions
+    # P4B: HoldCo per-period gross = adjusted (dividend) + SHL interest per period
+    # (spv.adjusted_period_distributions_keur is the dividend portion; SHL interest adds on top)
     for i in range(len(holdco_result.periods)):
-        assert holdco_result.periods[i].gross_income_keur == pytest.approx(
-            spv.adjusted_period_distributions_keur[i], rel=1e-2
-        ), f"Period {i}: HoldCo gross != adjusted period distribution"
+        expected = spv.adjusted_period_distributions_keur[i] + getattr(wf_periods[i], 'shl_interest_keur', 0.0)
+        assert holdco_result.periods[i].gross_income_keur == pytest.approx(expected, rel=1e-2), (
+            f"Period {i}: HoldCo gross={holdco_result.periods[i].gross_income_keur} != "
+            f"adjusted + shl_int = {expected}"
+        )
 
     # SPV total_distribution_keur < wf sum (DSRF reduces)
     assert spv.total_distribution_keur < raw_waterfall_sum, (

@@ -794,3 +794,242 @@ class TestSHLIncomeComponentBreakdown:
         assert result.total_gross_income_keur == 3000.0
         assert result.total_shl_interest_keur == 0.0
         assert result.total_shl_principal_keur == 0.0
+
+
+class TestSHLMixedCashflow:
+    """P4B: SHL upstream integration — mixed cash flow scenarios."""
+
+    def _make_spv_with_shl(self, code, dist, shl_interest=0.0, shl_principal=0.0):
+        """Create mock SPV with SHL fields in waterfall periods."""
+        periods = []
+        for i, d in enumerate(dist):
+            wp = MagicMock()
+            wp.distribution_keur = d
+            wp.period_in_year = 1 if i % 2 == 0 else 2
+            wp.shl_interest_keur = shl_interest[i] if isinstance(shl_interest, list) else shl_interest
+            wp.shl_principal_keur = shl_principal[i] if isinstance(shl_principal, list) else shl_principal
+            periods.append(wp)
+        wf = MagicMock()
+        wf.periods = periods
+        spv = MagicMock(spec=SPVOutput)
+        spv.project_code = code
+        spv.waterfall_result = wf
+        spv.adjusted_period_distributions_keur = ()
+        return spv
+
+    def test_dividend_only_income(self):
+        """Scenario 1: Dividend only — gross_income = dividend."""
+        spv = self._make_spv_with_shl("SOLAR", [1000.0], shl_interest=0.0, shl_principal=0.0)
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        c = result.periods[0].contributions[0]
+        assert c.dividend_keur == 1000.0
+        assert c.shl_interest_keur == 0.0
+        assert c.shl_principal_keur == 0.0
+        assert c.holdco_share_keur == 1000.0  # dividend only
+        assert result.periods[0].gross_income_keur == 1000.0
+        assert result.periods[0].dividend_keur == 1000.0
+        assert result.periods[0].shl_interest_keur == 0.0
+        assert result.periods[0].shl_principal_keur == 0.0
+
+    def test_shl_interest_only(self):
+        """Scenario 2: SHL interest only — gross_income = interest, dividend=0."""
+        spv = self._make_spv_with_shl("SOLAR", [0.0], shl_interest=[80.0], shl_principal=0.0)
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        c = result.periods[0].contributions[0]
+        assert c.dividend_keur == 0.0
+        assert c.shl_interest_keur == 80.0
+        assert c.shl_principal_keur == 0.0
+        assert c.holdco_share_keur == 80.0  # interest only
+        assert result.periods[0].gross_income_keur == 80.0
+        assert result.periods[0].dividend_keur == 0.0
+        assert result.periods[0].shl_interest_keur == 80.0
+        assert result.periods[0].shl_principal_keur == 0.0
+
+    def test_shl_principal_only_no_gross_income(self):
+        """Scenario 3: SHL principal only — gross_income = 0, principal tracked."""
+        spv = self._make_spv_with_shl("SOLAR", [0.0], shl_interest=0.0, shl_principal=[500.0])
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        c = result.periods[0].contributions[0]
+        assert c.dividend_keur == 0.0
+        assert c.shl_interest_keur == 0.0
+        assert c.shl_principal_keur == 500.0
+        assert c.holdco_share_keur == 0.0  # principal NOT in income
+        assert result.periods[0].gross_income_keur == 0.0
+        assert result.periods[0].shl_principal_keur == 500.0  # tracked separately
+
+    def test_mixed_dividend_shl_interest_shl_principal(self):
+        """Scenario 4: Mixed flow — gross_income excludes principal, totals reconcile."""
+        spv = self._make_spv_with_shl(
+            "SOLAR",
+            [1000.0],  # dividend
+            shl_interest=[80.0],  # SHL interest
+            shl_principal=[500.0]  # SHL principal (not in income)
+        )
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        c = result.periods[0].contributions[0]
+        assert c.dividend_keur == 1000.0
+        assert c.shl_interest_keur == 80.0
+        assert c.shl_principal_keur == 500.0
+        assert c.holdco_share_keur == 1080.0  # dividend + interest, NO principal
+        # gross_income = dividend + SHL interest (principal excluded)
+        assert result.periods[0].gross_income_keur == 1080.0
+        # Principal tracked but does not affect taxable income
+        assert result.periods[0].dividend_keur == 1000.0
+        assert result.periods[0].shl_interest_keur == 80.0
+        assert result.periods[0].shl_principal_keur == 500.0
+
+    def test_ownership_scaling_shl(self):
+        """Scenario 5: 50% ownership scales all components correctly."""
+        spv = self._make_spv_with_shl(
+            "SOLAR",
+            [1000.0],
+            shl_interest=[80.0],
+            shl_principal=[500.0]
+        )
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=0.5)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        c = result.periods[0].contributions[0]
+        assert c.dividend_keur == 500.0      # 1000 * 0.5
+        assert c.shl_interest_keur == 40.0   # 80 * 0.5
+        assert c.shl_principal_keur == 250.0  # 500 * 0.5
+        assert c.holdco_share_keur == 540.0   # (1000+80) * 0.5
+        assert result.periods[0].gross_income_keur == 540.0
+
+    def test_multi_period_reconciliation(self):
+        """Scenario 6: Period-level totals reconcile with aggregate totals."""
+        spv = self._make_spv_with_shl(
+            "SOLAR",
+            [1000.0, 2000.0],
+            shl_interest=[50.0, 100.0],
+            shl_principal=[200.0, 400.0]
+        )
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        assert len(result.periods) == 2
+        # Period 0: dividend=1000, interest=50, principal=200
+        assert result.periods[0].dividend_keur == 1000.0
+        assert result.periods[0].shl_interest_keur == 50.0
+        assert result.periods[0].shl_principal_keur == 200.0
+        assert result.periods[0].gross_income_keur == 1050.0  # dividend + interest
+
+        # Period 1: dividend=2000, interest=100, principal=400
+        assert result.periods[1].dividend_keur == 2000.0
+        assert result.periods[1].shl_interest_keur == 100.0
+        assert result.periods[1].shl_principal_keur == 400.0
+        assert result.periods[1].gross_income_keur == 2100.0
+
+        # Aggregate totals
+        assert result.total_dividend_keur == 3000.0
+        assert result.total_shl_interest_keur == 150.0
+        assert result.total_shl_principal_keur == 600.0
+        assert result.total_gross_income_keur == 3150.0  # dividend + interest total
+
+    def test_shl_principal_excluded_from_gross_income(self):
+        """SHL principal must never appear in gross_income_keur."""
+        spv = self._make_spv_with_shl(
+            "SOLAR",
+            [0.0],
+            shl_interest=[0.0],
+            shl_principal=[1000.0]  # large principal
+        )
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        # Principal is tracked but gross income is 0
+        assert result.periods[0].shl_principal_keur == 1000.0
+        assert result.periods[0].gross_income_keur == 0.0
+        assert result.periods[0].shl_interest_keur == 0.0
+        # Total principal tracked
+        assert result.total_shl_principal_keur == 1000.0
+
+    def test_no_shl_fields_defaults_zero(self):
+        """When waterfall periods have no SHL fields, all defaults to 0."""
+        # Create SPV without shl_interest_keur/shl_principal_keur attributes
+        wp = MagicMock()
+        wp.distribution_keur = 1000.0
+        wp.period_in_year = 1
+        # No shl_interest_keur or shl_principal_keur attributes
+        del wp.shl_interest_keur
+        del wp.shl_principal_keur
+        wf = MagicMock()
+        wf.periods = [wp]
+        spv = MagicMock(spec=SPVOutput)
+        spv.project_code = "SOLAR"
+        spv.waterfall_result = wf
+        spv.adjusted_period_distributions_keur = ()
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC", tax_rate_pa=0.0)
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        # Should fall back to 0 via getattr(..., 0.0)
+        c = result.periods[0].contributions[0]
+        assert c.shl_interest_keur == 0.0
+        assert c.shl_principal_keur == 0.0
+        assert c.holdco_share_keur == 1000.0  # dividend only
+        assert result.total_shl_interest_keur == 0.0
+        assert result.total_shl_principal_keur == 0.0
