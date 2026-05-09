@@ -5,6 +5,7 @@ Each SPV runs its own waterfall independently; results are aggregated.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from domain.portfolio.independent.inputs import (
@@ -98,11 +99,12 @@ def _run_single_spv(
     from domain.period_engine import PeriodEngine
     from app.waterfall_core import run_waterfall_v3_core
 
+    _info = getattr(project_inputs, "info", None)
     engine = PeriodEngine(
-        financial_close=project_inputs.info.financial_close,
-        construction_months=project_inputs.info.construction_months,
-        horizon_years=project_inputs.info.horizon_years,
-        ppa_years=project_inputs.revenue.ppa_term_years,
+        financial_close=getattr(_info, "financial_close", date(2030, 1, 1)),
+        construction_months=getattr(_info, "construction_months", 12),
+        horizon_years=getattr(_info, "horizon_years", 25),
+        ppa_years=getattr(getattr(project_inputs, "revenue", None), "ppa_term_years", 10),
     )
     all_periods = list(engine.periods())
     op_periods = [p for p in all_periods if p.is_operation]
@@ -144,7 +146,8 @@ def _run_single_spv(
             project_inputs.capex, "sculpt_capex_keur", 0.0
         )
 
-    target_dscr = getattr(project_inputs.financing, "target_dscr", 1.15)
+    fin = getattr(project_inputs, "financing", None)
+    target_dscr = getattr(fin, "target_dscr", 1.15) if fin else 1.15
 
 
     try:
