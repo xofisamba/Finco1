@@ -345,27 +345,36 @@ def _build_spv_output(
     wf_periods = getattr(wf_result, "periods", [])
     dsrf_periods_list: list[Any] = getattr(dsrf_result, "periods", []) if dsrf_result else []
 
-    # Check period alignment: number of DSRF periods must match number of wf periods
-    # (same period_in_year pattern: semiannual model has 2 per year)
+    # Build full-length adjusted array: start with all waterfall distributions,
+    # then replace operation-period slots with DSRF cash_available values.
+    # DSRF periods correspond only to operation periods (construction periods are skipped).
     if dsrf_result is not None and dsrf_periods_list and wf_periods:
-        if len(dsrf_periods_list) == len(wf_periods):
-            # Aligned — use DSRF cash_available_for_distribution per period
-            adjusted_period_distributions = tuple(
-                max(0.0, getattr(p, "cash_available_for_distribution_keur", 0.0))
-                for p in dsrf_periods_list
-            )
+        op_indexes = [
+            idx for idx, p in enumerate(wf_periods)
+            if getattr(p, "is_operation", False)
+        ]
+        if len(dsrf_periods_list) == len(op_indexes):
+            # Aligned — map DSRF periods onto operation-period indexes in wf_periods
+            adjusted = [
+                getattr(p, "distribution_keur", 0.0) for p in wf_periods
+            ]
+            for dsrf_period, op_idx in zip(dsrf_periods_list, op_indexes):
+                adjusted[op_idx] = max(
+                    0.0, getattr(dsrf_period, "cash_available_for_distribution_keur", 0.0)
+                )
+            adjusted_period_distributions = tuple(adjusted)
         else:
-            # Mismatch — fall back to waterfall per-period distributions
+            # Mismatch — fall back to waterfall per-period distributions (full length)
             adjusted_period_distributions = tuple(
                 getattr(p, "distribution_keur", 0.0) for p in wf_periods
             )
             warnings.append(
-                f"DSRF period count ({len(dsrf_periods_list)}) != waterfall period count "
-                f"({len(wf_periods)}) for SPV '{code}'. Falling back to waterfall "
-                f"distributions for HoldCo."
+                f"DSRF operation period count ({len(dsrf_periods_list)}) != "
+                f"wf operation period count ({len(op_indexes)}) for SPV '{code}'. "
+                f"Falling back to waterfall distributions for HoldCo."
             )
     else:
-        # No DSRF or no DSRF periods — empty tuple (HoldCo uses waterfall)
+        # No DSRF or no periods — empty tuple signals no adjustment to HoldCo
         adjusted_period_distributions = ()
 
     if dsrf_result is not None:

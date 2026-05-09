@@ -5,7 +5,7 @@ from typing import Optional, Any
 from enum import Enum
 
 
-class PortfolioMode(str):
+class PortfolioMode(str, Enum):
     POOLED = "pooled"
     INDEPENDENT = "independent"
 
