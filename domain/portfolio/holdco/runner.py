@@ -61,18 +61,19 @@ def build_holdco_result(
     # ── Step 1: validate alignment ────────────────────────────────────────
     align_warnings = _validate_holdco_alignment(holdco_inputs, portfolio_result)
 
-    # Build lookup: spv_code → SPVOutput
+    # ── Step 2: collect per-period data from each SPV ─────────────────────
+    # P1.2: Use max-period alignment — determine period count as the maximum
+    # across all SPVs that have waterfall_result.periods. Shorter SPVs
+    # contribute 0.0 after their last period (zero-padding).
     spv_map: dict[str, SPVOutput] = {spv.project_code: spv for spv in portfolio_result.spv_outputs}
 
-    # ── Step 2: collect per-period data from each SPV ─────────────────────
-    # Determine period range based on first SPV that has waterfall_result
-    first_valid_spv = None
+    # Collect period counts from SPVs that have waterfall data
+    period_counts_by_spv: dict[str, int] = {}
     for spv in portfolio_result.spv_outputs:
         if spv.waterfall_result is not None and spv.waterfall_result.periods:
-            first_valid_spv = spv
-            break
+            period_counts_by_spv[spv.project_code] = len(spv.waterfall_result.periods)
 
-    if first_valid_spv is None or first_valid_spv.waterfall_result is None:
+    if not period_counts_by_spv:
         # No waterfall data — return empty result with alignment warnings
         return HoldCoResult(
             name=holdco_inputs.name,
@@ -81,7 +82,7 @@ def build_holdco_result(
             spv_codes=holdco_inputs.spv_codes,
         )
 
-    num_periods = len(first_valid_spv.waterfall_result.periods)
+    num_periods = max(period_counts_by_spv.values())  # P1.2: max, not min
 
     # ── Step 3: build ownership lookup ─────────────────────────────────────
     ownership_map: dict[str, float] = {
@@ -92,13 +93,16 @@ def build_holdco_result(
     tax_rate = entity.tax_rate_pa
     opex_keur = entity.opex.annual_opex_keur
 
-    # Determine number of periods per year from the waterfall structure.
-    # If the first SPV has semiannual periods (2 per year), we split opex accordingly.
-    # Annual opex is deducted evenly across all periods in a year.
-    if first_valid_spv is not None and first_valid_spv.waterfall_result is not None:
+    # P1.2: Use max-period alignment. Reference any SPV with waterfall data
+    # to determine semiannual vs annual (we use the first SPV for this).
+    first_valid_spv = next(
+        (spv for spv in portfolio_result.spv_outputs
+         if spv.waterfall_result is not None and spv.waterfall_result.periods),
+        None
+    )
+    if first_valid_spv is not None:
         first_periods = first_valid_spv.waterfall_result.periods
         # Semiannual model: period_in_year is 1 (H1) or 2 (H2)
-        # If any period has period_in_year=2, model is semiannual
         periods_in_year = 2 if any(
             p.period_in_year == 2 for p in first_periods if hasattr(p, 'period_in_year')
         ) else 1
@@ -135,7 +139,7 @@ def build_holdco_result(
                 ))
                 continue
 
-            # Get per-period distribution from waterfall
+            # Get per-period distribution from waterfall (with zero-padding for short SPVs)
             if spv.waterfall_result is not None and spv.waterfall_result.periods:
                 periods_data = spv.waterfall_result.periods
                 if period_idx < len(periods_data):
@@ -146,10 +150,12 @@ def build_holdco_result(
                     else:
                         spv_dist = periods_data[period_idx].distribution_keur
                 else:
+                    # P1.2: SPV has fewer periods than max — zero-padding
                     spv_dist = 0.0
             else:
                 spv_dist = 0.0
 
+            # P1.1: All current distributions go to dividend_keur (SHL fields stay 0.0)
             holdco_share = spv_dist * ownership_pct
             period_gross += holdco_share
             period_spv_dist += spv_dist
@@ -160,12 +166,20 @@ def build_holdco_result(
                 ownership_pct=ownership_pct,
                 spv_distribution_keur=spv_dist,
                 holdco_share_keur=holdco_share,
+                dividend_keur=holdco_share,  # P1.1: HoldCo-level dividend = ownership-adjusted inflow
+                shl_interest_keur=0.0,
+                shl_principal_keur=0.0,
             ))
 
         # Apply OpEx (per-period), tax, compute sponsor distribution
         taxable = max(0.0, period_gross - opex_per_period)
         tax = taxable * tax_rate
         sponsor_dist = max(0.0, taxable - tax)
+
+        # P1.1: period-level SHL-ready fields — dividends only (SHL = 0.0 for now)
+        period_dividend = sum(c.dividend_keur for c in contributions)
+        period_shl_interest = sum(c.shl_interest_keur for c in contributions)
+        period_shl_principal = sum(c.shl_principal_keur for c in contributions)
 
         periods.append(HoldCoPeriodResult(
             period=period_idx,
@@ -176,6 +190,9 @@ def build_holdco_result(
             tax_keur=tax,
             distribution_to_sponsor_keur=sponsor_dist,
             holdco_irr=None,
+            dividend_keur=period_dividend,       # P1.1: sum of dividend components
+            shl_interest_keur=period_shl_interest,  # P1.1: 0.0 until SHL
+            shl_principal_keur=period_shl_principal,  # P1.1: 0.0 until SHL
         ))
 
         total_spv_distributions += period_spv_dist
@@ -183,6 +200,11 @@ def build_holdco_result(
         total_opex += opex_per_period
         total_tax += tax
         total_sponsor_dist += sponsor_dist
+
+    # P1.1: Compute SHL-ready totals (dividend = sum of all distributions, SHL = 0.0)
+    total_dividend = sum(p.dividend_keur for p in periods)
+    total_shl_interest = sum(p.shl_interest_keur for p in periods)
+    total_shl_principal = sum(p.shl_principal_keur for p in periods)
 
     result = HoldCoResult(
         name=holdco_inputs.name,
@@ -195,6 +217,10 @@ def build_holdco_result(
         holdco_irr=None,
         spv_codes=holdco_inputs.spv_codes,
         warnings=tuple(align_warnings),
+        # P1.1: SHL-ready totals
+        total_dividend_keur=total_dividend,
+        total_shl_interest_keur=total_shl_interest,
+        total_shl_principal_keur=total_shl_principal,
     )
 
     # is_placeholder = False since aggregation actually ran
@@ -222,7 +248,7 @@ def _validate_holdco_alignment(
                 f"which is not in portfolio_result"
             )
 
-    # Check period alignment — warn if SPVs have different period counts
+    # Check period alignment — P1.2: warn about mismatch but use max-period alignment
     period_counts: dict[str, int] = {}
     for spv in portfolio_result.spv_outputs:
         if spv.waterfall_result is not None and spv.waterfall_result.periods:
@@ -236,7 +262,7 @@ def _validate_holdco_alignment(
             warnings_list.append(
                 f"Period count mismatch across SPVs: "
                 f"min={min_count}, max={max_count}. "
-                f"Using shortest ({min_count} periods)."
+                f"Using max-period ({max_count} periods) with zero-padding for shorter SPVs."
             )
 
     return warnings_list
