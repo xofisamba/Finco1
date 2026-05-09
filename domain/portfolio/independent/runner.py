@@ -14,10 +14,25 @@ from domain.portfolio.independent.result import (
 )
 
 
+class SPVWaterfallError(Exception):
+    """Raised when an SPV waterfall run fails in strict mode.
+
+    Attributes:
+        project_code: identifier of the SPV that failed
+        cause: the original exception
+    """
+    def __init__(self, project_code: str, cause: Exception):
+        self.project_code = project_code
+        self.cause = cause
+        super().__init__(f"SPV '{project_code}' waterfall run failed: {cause}")
+
+
 def run_independent_portfolio(
     portfolio_inputs: IndependentPortfolioInputs,
     *,
     rate_per_period: float = 0.02825,
+    strict: bool = True,
+    allow_partial: bool = False,
 ) -> IndependentPortfolioResult:
     """Run independent SPV portfolio aggregation (Phase 1 MVP).
 
@@ -29,19 +44,48 @@ def run_independent_portfolio(
     Args:
         portfolio_inputs: IndependentPortfolioInputs with N projects
         rate_per_period: Semi-annual interest rate (default 0.02825)
+        strict: If True (default), any SPV waterfall failure raises SPVWaterfallError.
+                If False, failed SPVs are included with zero outputs and warnings.
+        allow_partial: If False (default), all SPVs must succeed or the run fails in strict mode.
+                       Irrelevant when strict=False.
 
     Returns:
         IndependentPortfolioResult with per-SPV outputs and aggregate summary
+
+    Raises:
+        SPVWaterfallError: when strict=True and any SPV waterfall fails
     """
     spv_outputs: list[SPVOutput] = []
-    warnings: list[str] = []
+    portfolio_warnings: list[str] = []
+    failed_spvs: list[tuple[str, str]] = []  # (code, error_message)
 
     for proj in portfolio_inputs.projects:
-        # Run each SPV independently through the existing engine
-        wf_result, spv_warnings = _run_single_spv(proj, rate_per_period)
-        spv_output = _build_spv_output(proj, wf_result, spv_warnings)
-        spv_outputs.append(spv_output)
-        warnings.extend(spv_warnings)
+        wf_result, spv_warnings = _run_single_spv(
+            proj, rate_per_period, strict=strict
+        )
+
+        if wf_result is None:
+            # SPV failed
+            code = proj.info.code
+            error_msg = f"SPV '{code}': waterfall run failed"
+            if spv_warnings:
+                error_msg = spv_warnings[0]
+            failed_spvs.append((code, error_msg))
+            portfolio_warnings.extend(spv_warnings)
+
+            if strict:
+                # Fail fast with the first failure
+                cause_msg = error_msg
+                raise SPVWaterfallError(
+                    project_code=code,
+                    cause=Exception(cause_msg),
+                )
+            # Non-strict: include zero-output placeholder
+            spv_output = _build_spv_output(proj, None, spv_warnings)
+            spv_outputs.append(spv_output)
+        else:
+            spv_output = _build_spv_output(proj, wf_result, spv_warnings)
+            spv_outputs.append(spv_output)
 
     # Aggregate
     result = aggregate_independent_results(
@@ -49,16 +93,16 @@ def run_independent_portfolio(
         spv_outputs=tuple(spv_outputs),
         dsrf_enabled=(portfolio_inputs.dsrf is not None and portfolio_inputs.dsrf.enabled),
     )
-
-    # Add portfolio-level warnings (deduplicated)
-    all_warnings = tuple(sorted(set(warnings)))
-    return result  # warnings stored per-SPV in spv_outputs
+    return result
 
 
-def _run_single_spv(project_inputs, rate_per_period: float):
+def _run_single_spv(project_inputs, rate_per_period: float, strict: bool):
     """Run a single SPV through the existing waterfall engine.
 
     Returns (WaterfallResult, list[str]) — result and any warnings.
+
+    In strict mode, exceptions are re-raised with SPV code context.
+    In non-strict mode, exceptions are caught and returned as warnings.
     """
     from domain.period_engine import PeriodEngine
     from app.waterfall_core import run_waterfall_v3_core
@@ -98,7 +142,8 @@ def _run_single_spv(project_inputs, rate_per_period: float):
         shl_tenor = getattr(fin, 'shl_tenor_years', 0)
         equity_irr_method = getattr(fin, 'equity_irr_method', 'xirr')
         share_capital = getattr(fin, 'share_capital_keur', 0.0)
-        sculpt_capex = getattr(project_inputs.capex, 'sculpt_capex_keur', 0.0) if hasattr(project_inputs, 'capex') else 0.0
+        sculpt_capex = getattr(project_inputs.capex, 'sculpt_capex_keur', 0.0) \
+            if hasattr(project_inputs, 'capex') else 0.0
         debt_sizing_method = getattr(fin, 'debt_sizing_method', 'dscr_sculpt')
 
     if hasattr(project_inputs, 'tax'):
@@ -128,13 +173,16 @@ def _run_single_spv(project_inputs, rate_per_period: float):
             sculpt_capex_keur=sculpt_capex,
             debt_sizing_method=debt_sizing_method,
         )
-        warnings = []
+        return result, []
     except Exception as e:
-        # Fallback: return empty result with warning
-        result = None
-        warnings = [f"SPV {project_inputs.info.code}: waterfall run failed: {e}"]
-
-    return result, warnings
+        code = project_inputs.info.code
+        if strict:
+            raise SPVWaterfallError(
+                project_code=code,
+                cause=e,
+            ) from e
+        # Non-strict: return empty result with warning
+        return None, [f"SPV '{code}' waterfall run failed: {e}"]
 
 
 def _build_spv_output(project_inputs, wf_result, warnings: list[str]) -> SPVOutput:
@@ -190,6 +238,7 @@ def _build_spv_output(project_inputs, wf_result, warnings: list[str]) -> SPVOutp
 
 __all__ = [
     "run_independent_portfolio",
+    "SPVWaterfallError",
     "IndependentPortfolioInputs",
     "IndependentPortfolioResult",
     "SPVOutput",

@@ -40,6 +40,12 @@ class IndependentPortfolioResult:
 
     No portfolio-level debt sculpting. No shared financing.
     Per-SPV waterfall results are preserved for audit.
+
+    IRR semantics:
+    - simple_avg_project_irr and simple_avg_equity_irr are UNWEIGHTED
+      averages of per-SPV IRRs. They are NOT true portfolio XIRR values.
+    - True portfolio IRR requires date-aligned cash flow aggregation and
+      is deferred to a later phase.
     """
     portfolio_name: str
 
@@ -59,17 +65,20 @@ class IndependentPortfolioResult:
 
     # Per-SPV IRRs (available from waterfall result)
     spv_project_irrs: tuple[float, ...]   # per-SPV project IRR
-    spv_equity_irrs: tuple[float, ...]     # per-SPV equity IRR
+    spv_equity_irrs: tuple[float, ...]    # per-SPV equity IRR
 
-    # Portfolio-level aggregate IRR (simple average, not XIRR)
-    # Not a true portfolio IRR — placeholder for Phase 1
-    portfolio_avg_project_irr: float = 0.0
-    portfolio_avg_equity_irr: float = 0.0
+    # Simple averages of per-SPV IRRs — NOT true portfolio IRR values.
+    # These are computed as unweighted averages of individual SPV IRRs
+    # for convenience only. True portfolio IRR requires XIRR over the
+    # full portfolio cash flow timeline and is NOT implemented in Phase 1.
+    simple_avg_project_irr: float = 0.0
+    simple_avg_equity_irr: float = 0.0
 
     # DSRF status (Phase 1: always disabled)
     dsrf_enabled: bool = False
 
-    # Portfolio-level validation warnings
+    # Portfolio-level validation warnings accumulated from all SPV runs.
+    # These are deduplicated across SPVs.
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -96,6 +105,7 @@ def aggregate_independent_results(
     Sums revenue, EBITDA, tax, debt service, distributions.
     Min DSCR = minimum across SPVs (conservative for lenders).
     Avg DSCR = unweighted average of per-SPV average DSCRs.
+    Simple-average IRRs: unweighted average of per-SPV IRRs (NOT true portfolio IRR).
     """
     total_rev = sum(s.total_revenue_keur for s in spv_outputs)
     total_ebitda = sum(s.total_ebitda_keur for s in spv_outputs)
@@ -113,6 +123,13 @@ def aggregate_independent_results(
     avg_proj_irr = sum(project_irrs) / len(project_irrs) if project_irrs else 0.0
     avg_eq_irr = sum(equity_irrs) / len(equity_irrs) if equity_irrs else 0.0
 
+    # Collect portfolio-level warnings from all SPVs (deduplicated)
+    all_warnings: list[str] = []
+    for s in spv_outputs:
+        for w in s.warnings:
+            if w not in all_warnings:
+                all_warnings.append(w)
+
     return IndependentPortfolioResult(
         portfolio_name=portfolio_name,
         spv_outputs=spv_outputs,
@@ -125,9 +142,10 @@ def aggregate_independent_results(
         avg_dscr=avg_dscr,
         spv_project_irrs=tuple(project_irrs),
         spv_equity_irrs=tuple(equity_irrs),
-        portfolio_avg_project_irr=avg_proj_irr,
-        portfolio_avg_equity_irr=avg_eq_irr,
+        simple_avg_project_irr=avg_proj_irr,
+        simple_avg_equity_irr=avg_eq_irr,
         dsrf_enabled=dsrf_enabled,
+        warnings=tuple(all_warnings),
     )
 
 

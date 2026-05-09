@@ -18,7 +18,10 @@ from domain.portfolio.independent.result import (
     IndependentPortfolioResult,
     aggregate_independent_results,
 )
-from domain.portfolio.independent.runner import run_independent_portfolio
+from domain.portfolio.independent.runner import (
+    run_independent_portfolio,
+    SPVWaterfallError,
+)
 
 __all__ = [
     # Inputs
@@ -31,4 +34,5 @@ __all__ = [
     "aggregate_independent_results",
     # Runner
     "run_independent_portfolio",
+    "SPVWaterfallError",
 ]

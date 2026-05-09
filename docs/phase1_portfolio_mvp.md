@@ -14,31 +14,7 @@ Phase 1 does **NOT** implement pooled financing, shared debt sculpting, or HoldC
 
 ---
 
-## Architecture
-
-```
-IndependentPortfolioInputs
-    └── run_independent_portfolio()
-            └── For each SPV:
-                    run_waterfall_v3_core()  [existing single-asset engine]
-            └── SPVOutput (per-SPV preserved)
-            └── IndependentPortfolioResult (aggregated)
-```
-
-**Key modules:**
-- `domain/portfolio/independent/inputs.py` — IndependentPortfolioInputs, DSRFConfig
-- `domain/portfolio/independent/result.py` — SPVOutput, IndependentPortfolioResult
-- `domain/portfolio/independent/runner.py` — run_independent_portfolio()
-- `domain/portfolio/independent/__init__.py` — public API
-
-**Existing modules (NOT expanded in Phase 1):**
-- `domain/portfolio/inputs.py` — PooledPortfolioInputs (pooled financing, experimental)
-- `domain/portfolio/waterfall.py` — Pooled financing waterfall (experimental / Phase 2+)
-- `domain/portfolio/aggregation.py` — Weighted KPI aggregation (legacy)
-
----
-
-## What Phase 1 Does
+## What Is Implemented
 
 ### Per-SPV Run
 - Each SPV runs independently through the existing calibrated `run_waterfall_v3_core()` engine
@@ -49,6 +25,12 @@ IndependentPortfolioInputs
 - **Total metrics:** revenue, EBITDA, tax, senior debt service, distributions (summed)
 - **DSCR:** min across SPVs (conservative for lenders), avg across SPVs (unweighted)
 - **Per-SPV IRRs:** project IRR and equity IRR per SPV preserved in result
+- **Simple-average IRRs:** unweighted average of per-SPV IRRs — NOT true portfolio XIRR
+
+### Error Handling
+- `strict=True` (default): SPV waterfall failure raises `SPVWaterfallError` with SPV code context
+- `strict=False`: failed SPV included with zero outputs and explicit warnings
+- Portfolio-level warnings are deduplicated and attached to `IndependentPortfolioResult.warnings`
 
 ### Feature Flags
 - `IndependentPortfolioInputs` is opt-in — not enabled by default
@@ -66,9 +48,19 @@ IndependentPortfolioInputs
 | Monthly model frequency | ❌ Not implemented | Single-asset is semiannual |
 | Cross-SP cash pooling | ❌ Not implemented | Phase 2+ |
 | Retained earnings constraint | ❌ Not implemented | Phase 2+ |
-| Portfolio-level debt sculpting | ❌ Not in default path | Per-SPV debt only |
+| Portfolio-level debt sculpting | ❌ Not in default path | Per-SP debt only |
+| True portfolio IRR (XIRR) | ❌ Not implemented | Deferred — simple averages only |
 | Pooled financing waterfall | ⚠️ Experimental | `domain/portfolio/waterfall.py`, not default |
 | DSRF integration | ❌ Placeholder only | Schema defined, not integrated into calculations |
+| Excel export integration | ❌ Not implemented | Domain-level only unless wired separately |
+
+---
+
+## Excel Export
+
+**Excel export integration is NOT implemented in Phase 1.**
+
+Phase 1 provides domain-level aggregation (`IndependentPortfolioResult`). If Excel export integration is needed, it requires a separate implementation that wires `IndependentPortfolioResult` into `app/excel_export.py` or equivalent. This is deferred.
 
 ---
 
@@ -91,6 +83,19 @@ If `enabled=True` is passed, a `ValueError` is raised immediately — ensuring D
 
 ---
 
+## IRR Semantics
+
+**`simple_avg_project_irr` and `simple_avg_equity_irr` are NOT true portfolio IRR values.**
+
+These are computed as unweighted averages of individual SPV IRRs for convenience only:
+- They do NOT account for different SPV sizes, timing, or capital amounts
+- They do NOT use date-aligned cash flow aggregation (XIRR)
+- True portfolio IRR requires aggregating all SPV cash flows across a common timeline
+
+True portfolio IRR is deferred to a later phase.
+
+---
+
 ## Pooled Financing vs. Independent Aggregation
 
 | Path | Module | Status |
@@ -99,26 +104,17 @@ If `enabled=True` is passed, a `ValueError` is raised immediately — ensuring D
 | Pooled Financing Waterfall | `domain/portfolio/waterfall.py` | ⚠️ Experimental / Phase 2+ |
 | Weighted KPI Aggregation | `domain/portfolio/aggregation.py` | Legacy (not used for Phase 1) |
 
-**Distinction:** The independent path treats each SPV as a standalone project with its own debt. The pooled path treats all SPVs as a single financed pool with shared debt sculpted from combined CFADS. Phase 1 uses the independent path only.
-
----
-
-## Excel Export (Phase 1)
-
-Existing `excel_export.py` already supports `portfolio_result` via `build_portfolio_table()` and `Portfolio CF` sheet.
-
-Phase 1 adds per-SPV breakdown sheets when portfolio result is provided — without refactoring the whole export engine.
-
 ---
 
 ## Tests
 
 Phase 1 tests verify:
-1. 2–3 SPVs run independently through waterfall engine
+1. 2–3 SPVs run independently through waterfall engine (real engine integration)
 2. Aggregation equals sum/min of child outputs
 3. Feature flag / default behavior does not change single-asset mode
 4. DSRF disabled has zero effect
-5. Independent path does NOT use pooled debt sculpting
+5. Strict mode raises on failure; non-strict mode returns zero output with warning
+6. Phase 1 does NOT use pooled debt sculpting
 
 All existing single-asset tests remain unchanged.
 
@@ -135,7 +131,9 @@ Phase 1 MVP Limitations:
 - No cross-SP cash pooling
 - No retained earnings constraint
 - No portfolio-level debt sculpting (per-SP debt only)
+- No true portfolio IRR (simple averages only)
 - DSRF: optional placeholder only, not integrated into calculations
+- Excel export integration: not implemented
 
 Pooled Financing (domain/portfolio/waterfall.py) is experimental / Phase 2+:
 - Shared financing with cross-default enforcement
