@@ -45,6 +45,12 @@ class SPVOutput:
     # Validation warnings from this SPV (if any)
     warnings: tuple[str, ...] = ()
 
+    # Per-period distributions used by HoldCo to avoid double-counting DSRF costs.
+    # When DSRF is enabled and aligned: holds DSRF-adjusted distributions per period.
+    # When DSRF is disabled or unaligned: empty tuple (HoldCo falls back to
+    # waterfall_result.periods[i].distribution_keur per period).
+    adjusted_period_distributions_keur: tuple[float, ...] = field(default_factory=tuple)
+
     # DSRF facility fields (optional, default 0 / empty)
     dsrf_facility_limit_keur: float = 0.0
     dsrf_total_draw_keur: float = 0.0

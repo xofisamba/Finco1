@@ -312,6 +312,11 @@ def _build_spv_output(
     Phase 2 Step 3: When dsrf_result is present, adjust total_distribution_keur:
       adjusted = max(0, original_dist - commitment_fee - drawn_interest - repayment)
     DSRF draw is NOT revenue — it cannot increase distributions.
+
+    P0.1: Also compute per-period adjusted_period_distributions_keur.
+    When dsrf_result periods align with wf_result periods, use
+    DSRF-adjusted cash_available_for_distribution per period.
+    Otherwise fall back to waterfall distribution per period and emit warning.
     """
     code = project_inputs.info.code
     name = getattr(project_inputs.info, "name", code)
@@ -336,12 +341,56 @@ def _build_spv_output(
     # Extract DSRF fields and compute adjusted distribution
     original_dist = getattr(wf_result, "total_distribution_keur", 0.0)
 
+    # ── P0.1: per-period adjusted distributions ─────────────────────────
+    wf_periods = getattr(wf_result, "periods", [])
+    dsrf_periods_list: list[Any] = getattr(dsrf_result, "periods", []) if dsrf_result else []
+
+    # Build full-length adjusted array: start with all waterfall distributions,
+    # then replace operation-period slots with DSRF cash_available values.
+    # DSRF periods correspond only to operation periods (construction periods are skipped).
+    if dsrf_result is not None and dsrf_periods_list and wf_periods:
+        op_indexes = [
+            idx for idx, p in enumerate(wf_periods)
+            if getattr(p, "is_operation", False)
+        ]
+        if len(dsrf_periods_list) == len(op_indexes):
+            # Aligned — map DSRF periods onto operation-period indexes in wf_periods
+            adjusted = [
+                getattr(p, "distribution_keur", 0.0) for p in wf_periods
+            ]
+            for dsrf_period, op_idx in zip(dsrf_periods_list, op_indexes):
+                # P0.1 fix: adjusted = wf_dist - DSRF costs per operation period.
+                # wf_dist is the waterfall distribution AFTER waterfall deductions (senior debt,
+                # SHL, DSRA). DSRF costs (commitment fee, drawn interest, repayment) are
+                # additional facility costs that further reduce what flows to HoldCo.
+                # Using wf_dist - costs ensures HoldCo upstream ≤ raw wf distribution total.
+                wf_dist = getattr(wf_periods[op_idx], "distribution_keur", 0.0)
+                dsrf_cost = (
+                    getattr(dsrf_period, "commitment_fee_keur", 0.0)
+                    + getattr(dsrf_period, "drawn_interest_keur", 0.0)
+                    + getattr(dsrf_period, "repayment_keur", 0.0)
+                )
+                adjusted[op_idx] = max(0.0, wf_dist - dsrf_cost)
+            adjusted_period_distributions = tuple(adjusted)
+        else:
+            # Mismatch — fall back to waterfall per-period distributions (full length)
+            adjusted_period_distributions = tuple(
+                getattr(p, "distribution_keur", 0.0) for p in wf_periods
+            )
+            warnings.append(
+                f"DSRF operation period count ({len(dsrf_periods_list)}) != "
+                f"wf operation period count ({len(op_indexes)}) for SPV '{code}'. "
+                f"Falling back to waterfall distributions for HoldCo."
+            )
+    else:
+        # No DSRF or no periods — empty tuple signals no adjustment to HoldCo
+        adjusted_period_distributions = ()
+
     if dsrf_result is not None:
         commit_fee = getattr(dsrf_result, "total_commitment_fee_keur", 0.0)
         drawn_interest = getattr(dsrf_result, "total_drawn_interest_keur", 0.0)
         repayment = getattr(dsrf_result, "total_repayment_keur", 0.0)
         reduction = commit_fee + drawn_interest + repayment
-        adjusted_dist = max(0.0, original_dist - reduction)
 
         dsrf_limit = getattr(dsrf_result, "facility_limit_keur", 0.0)
         dsrf_draw = getattr(dsrf_result, "total_draw_keur", 0.0)
@@ -350,8 +399,19 @@ def _build_spv_output(
         dsrf_interest = drawn_interest
         dsrf_support = getattr(dsrf_result, "total_debt_service_support_keur", 0.0)
         dsrf_drawn_end = getattr(dsrf_result, "drawn_end_keur", 0.0)
-        dsrf_periods = getattr(dsrf_result, "periods", ())
-        dsrf_reduction = reduction
+        dsrf_periods_out = getattr(dsrf_result, "periods", ())
+
+        # P0.1 fix: total_distribution_keur equals sum(adjusted_period_distributions)
+        # when DSRF per-period data is available. This makes the total consistent
+        # with the per-period HoldCo feed.
+        if adjusted_period_distributions:
+            adjusted_dist = sum(adjusted_period_distributions)
+            # Period-consistent audit trail: reduction = raw_wf_sum - sum(adjusted)
+            raw_wf_sum = sum(getattr(p, "distribution_keur", 0.0) for p in wf_periods)
+            dsrf_reduction = raw_wf_sum - adjusted_dist
+        else:
+            adjusted_dist = max(0.0, original_dist - reduction)
+            dsrf_reduction = reduction
     else:
         adjusted_dist = original_dist
         dsrf_limit = 0.0
@@ -361,7 +421,7 @@ def _build_spv_output(
         dsrf_interest = 0.0
         dsrf_support = 0.0
         dsrf_drawn_end = 0.0
-        dsrf_periods = ()
+        dsrf_periods_out = ()
         dsrf_reduction = 0.0
 
     return SPVOutput(
@@ -378,6 +438,7 @@ def _build_spv_output(
         min_dscr=getattr(wf_result, "min_dscr", 0.0),
         waterfall_result=wf_result,
         warnings=tuple(warnings),
+        adjusted_period_distributions_keur=adjusted_period_distributions,
         dsrf_facility_limit_keur=dsrf_limit,
         dsrf_total_draw_keur=dsrf_draw,
         dsrf_total_repayment_keur=dsrf_repay,
@@ -385,7 +446,7 @@ def _build_spv_output(
         dsrf_drawn_interest_keur=dsrf_interest,
         dsrf_debt_service_support_keur=dsrf_support,
         dsrf_drawn_end_keur=dsrf_drawn_end,
-        dsrf_periods=tuple(dsrf_periods),
+        dsrf_periods=tuple(dsrf_periods_out),
         dsrf_distribution_reduction_keur=dsrf_reduction,
     )
 
