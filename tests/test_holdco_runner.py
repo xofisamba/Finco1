@@ -374,8 +374,32 @@ class TestSHLReadyFields:
         assert r.total_shl_interest_keur == 0.0
         assert r.total_shl_principal_keur == 0.0
 
-    def test_holdco_result_shl_totals_populated(self):
-        """HoldCoResult SHL totals are set after aggregation."""
+    def test_dividend_keur_is_ownership_adjusted(self):
+        """dividend_keur = holdco_share (ownership-adjusted), not raw spv_dist."""
+        spv = _make_mock_spv("SOLAR-1", "Solar", [1000.0])
+        portfolio = _make_portfolio_result([spv])
+        entity = HoldCoEntity(name="HC")
+        entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
+        inputs = HoldCoInputs(
+            name="HC",
+            ownerships=[SPVOwnership(spv_code="SOLAR-1", ownership_pct=0.5)],
+            entity=entity,
+        )
+        result = build_holdco_result(inputs, portfolio)
+
+        contrib = result.periods[0].contributions[0]
+        assert contrib.spv_distribution_keur == 1000.0   # raw SPV output
+        assert contrib.holdco_share_keur == 500.0        # ownership * spv_dist
+        assert contrib.dividend_keur == 500.0           # dividend = holdco_share (ownership-adjusted)
+        assert contrib.shl_interest_keur == 0.0
+        assert contrib.shl_principal_keur == 0.0
+        # total_dividend is sum of contribution dividends
+        assert result.total_dividend_keur == 500.0
+        assert result.total_shl_interest_keur == 0.0
+        assert result.total_shl_principal_keur == 0.0
+
+    def test_dividend_with_100_percent_ownership(self):
+        """100% ownership: dividend == spv_dist == holdco_share."""
         spv = _make_mock_spv("SOLAR-1", "Solar", [1000.0])
         portfolio = _make_portfolio_result([spv])
         entity = HoldCoEntity(name="HC")
@@ -386,31 +410,33 @@ class TestSHLReadyFields:
             entity=entity,
         )
         result = build_holdco_result(inputs, portfolio)
-        # dividend = 1000.0 (the distribution), SHL = 0.0
-        assert result.total_dividend_keur == 1000.0
-        assert result.total_shl_interest_keur == 0.0
-        assert result.total_shl_principal_keur == 0.0
 
-    def test_period_shl_fields_populated(self):
-        """HoldCoPeriodResult SHL fields populated from contributions."""
-        spv = _make_mock_spv("SOLAR-1", "Solar", [500.0, 600.0])
-        portfolio = _make_portfolio_result([spv])
+        contrib = result.periods[0].contributions[0]
+        assert contrib.spv_distribution_keur == 1000.0
+        assert contrib.holdco_share_keur == 1000.0
+        assert contrib.dividend_keur == 1000.0
+        assert result.total_dividend_keur == 1000.0
+
+    def test_period_dividend_summed_from_contributions(self):
+        """HoldCoPeriodResult.dividend_keur is sum of contribution dividends."""
+        spv1 = _make_mock_spv("SOLAR-A", "Solar A", [800.0])
+        spv2 = _make_mock_spv("WIND-B", "Wind B", [600.0])
+        portfolio = _make_portfolio_result([spv1, spv2])
         entity = HoldCoEntity(name="HC")
         entity.opex = HoldCoOpexInputs(annual_opex_keur=0.0)
         inputs = HoldCoInputs(
             name="HC",
-            ownerships=[SPVOwnership(spv_code="SOLAR-1", ownership_pct=1.0)],
+            ownerships=[
+                SPVOwnership(spv_code="SOLAR-A", ownership_pct=0.5),  # 50% → dividend=400
+                SPVOwnership(spv_code="WIND-B", ownership_pct=1.0),   # 100% → dividend=600
+            ],
             entity=entity,
         )
         result = build_holdco_result(inputs, portfolio)
-        # Period 0: dividend=500, SHL interest=0, SHL principal=0
-        assert result.periods[0].dividend_keur == 500.0
+        # Period dividend = 400 + 600 = 1000
+        assert result.periods[0].dividend_keur == 1000.0
         assert result.periods[0].shl_interest_keur == 0.0
         assert result.periods[0].shl_principal_keur == 0.0
-        # Period 1: dividend=600, SHL = 0
-        assert result.periods[1].dividend_keur == 600.0
-        assert result.periods[1].shl_interest_keur == 0.0
-        assert result.periods[1].shl_principal_keur == 0.0
 
     def test_contribution_shl_fields_explicit(self):
         """HoldCoSPVContribution accepts explicit SHL field values."""

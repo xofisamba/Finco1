@@ -166,7 +166,7 @@ def build_holdco_result(
                 ownership_pct=ownership_pct,
                 spv_distribution_keur=spv_dist,
                 holdco_share_keur=holdco_share,
-                dividend_keur=spv_dist,  # P1.1: all goes to dividend until SHL implemented
+                dividend_keur=holdco_share,  # P1.1: HoldCo-level dividend = ownership-adjusted inflow
                 shl_interest_keur=0.0,
                 shl_principal_keur=0.0,
             ))

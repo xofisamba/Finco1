@@ -1,14 +1,18 @@
 # P1 Pre-SHL Stabilization Plan
 
 ## Status
-Planning only — no implementation.
+
+**Implemented:** P1.1 (SHL-ready fields), P1.2 (max-period alignment)
+**Planned:** P1.3–P1.6 (see sections below)
 
 ## Context
 Phase 3A/3B HoldCo skeleton is complete and merged to `main` via PR #4. P0 stabilization is done. Before starting the SHL (Subordinated HoldCo Loan) phase, several cleanup and improvement tasks are needed to ensure the codebase is solid.
 
 ---
 
-## 1. SHL-Ready HoldCo Contribution Fields
+## 1. SHL-Ready HoldCo Contribution Fields ✅ IMPLEMENTED
+
+**Implemented in commits `91bdeb3` and `b7c5a82` (portfolio-stabilization-p1).**
 
 When SHL is implemented, HoldCo will receive three types of cash flows from SPVs:
 - **Dividends** — profit distribution after debt service
@@ -50,32 +54,26 @@ class HoldCoPeriodResult:
     shl_principal_keur: float = 0.0     # sum of SHL principal
 ```
 
-**Note:** These fields are added as `=0.0` defaults — no SHL logic is implemented yet. Adding the fields now avoids future schema churn when SHL is introduced.
+**Implementation detail:** `dividend_keur = holdco_share` (ownership-adjusted HoldCo-level dividend inflow). SHL interest/principal remain 0.0 until SHL is implemented.
 
 ---
 
-## 2. HoldCo Period Alignment Improvements
+## 2. HoldCo Period Alignment Improvements ✅ IMPLEMENTED
 
-Current approach uses `min(len(holdco_periods), len(spv_periods))` truncation. This is safe but loses data when periods differ.
+**Implemented in commit `91bdeb3` (portfolio-stabilization-p1).**
 
-**Target approach:** `max(len(holdco_periods), len(spv_periods))` with zero-padding for the shorter side.
+Previous approach used `min()` truncation based on first SPV. Now uses `max()` with zero-padding:
 
-Benefits:
-- No data loss when SPV has more periods than HoldCo expects
-- Explicit zero-padding makes missing periods visible
-- Consistent with how DSRF periods are mapped to wf_periods (already uses `max`-style alignment)
+- `num_periods = max(period_counts.values())` across all SPVs with waterfall data
+- Shorter SPVs contribute `0.0` after their final period
+- Warning says "max-period" instead of "shortest truncation"
+- Longer SPVs are never truncated
 
-Implementation hint:
 ```python
-# Current (truncation):
-num = min(len(holdco_periods), len(spv_periods))
-
-# Target (zero-padding):
-num = max(len(holdco_periods), len(spv_periods))
-# Then use .get() with default 0.0 for out-of-range access
+# P1.2: max-period alignment
+num_periods = max(period_counts_by_spv.values())
+# Zero-padding: period_idx >= len(spv_periods_data) → spv_dist = 0.0
 ```
-
-**Scope:** Only affects `domain/portfolio/holdco/runner.py` aggregate function.
 
 ---
 
