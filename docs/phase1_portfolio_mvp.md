@@ -144,3 +144,21 @@ Pooled Financing (domain/portfolio/waterfall.py) is experimental / Phase 2+:
 ---
 
 *Document created for Phase 1 MVP implementation. Updates to follow as features are added.*
+
+## Defensive Fallback Note
+
+Some Phase 1 portfolio runner code uses fallback defaults (e.g., date(2030, 1, 1),
+construction_months=12, horizon_years=25, ppa_years=10).
+
+These fallbacks exist **only** for:
+- Defensive API robustness
+- Non-strict failure handling (strict=False mode)
+- Malformed test mocks
+
+They are **NOT** intended as:
+- Production-grade input validation
+- Silent substitution for valid project inputs
+- Replacement for proper input schema enforcement
+
+Future phases should move validation into dedicated schema/domain validation layers.
+

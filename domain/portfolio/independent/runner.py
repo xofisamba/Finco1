@@ -99,6 +99,9 @@ def _run_single_spv(
     from domain.period_engine import PeriodEngine
     from app.waterfall_core import run_waterfall_v3_core
 
+    # Defensive defaults only — not production input validation.
+    # Valid project inputs are expected to provide real values.
+    # Proper validation belongs in input schema/validation layers.
     _info = getattr(project_inputs, "info", None)
     engine = PeriodEngine(
         financial_close=getattr(_info, "financial_close", date(2030, 1, 1)),
