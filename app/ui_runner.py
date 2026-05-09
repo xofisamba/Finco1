@@ -251,3 +251,21 @@ def run_demo_project(project_type: str, scenario: str = "Base",
 
     result.messages = messages
     return result
+
+def run_independent_portfolio_ui(
+    portfolio_inputs,
+    holdco_inputs=None,
+    strict: bool = False,
+):
+    """Run independent portfolio via the orchestrator (Phase 1+ path).
+
+    This is the thin UI wrapper around run_portfolio_orchestrated(mode="independent").
+    """
+    from app.portfolio_orchestrator import run_portfolio_orchestrated, PortfolioMode
+
+    return run_portfolio_orchestrated(
+        portfolio_inputs=portfolio_inputs,
+        mode=PortfolioMode.INDEPENDENT,
+        holdco_inputs=holdco_inputs,
+        strict=strict,
+    )

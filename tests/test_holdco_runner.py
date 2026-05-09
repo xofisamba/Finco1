@@ -44,6 +44,7 @@ def _make_mock_spv(code, name, distributions_per_period, tax_rate_pa=0.0):
     spv.project_name = name
     spv.total_distribution_keur = sum(distributions_per_period)
     spv.waterfall_result = waterfall_result
+    spv.adjusted_period_distributions_keur = ()  # empty = HoldCo uses waterfall distributions
     return spv
 
 
@@ -455,3 +456,44 @@ class TestEmptyPortfolioResult:
         # Note: no "missing SPV" warning because SPV IS in portfolio (just no waterfall)
         assert len(result.periods) == 0
         assert result.holdco_irr is None
+
+class TestDSRFAdjustedDistributions:
+    def test_holdco_uses_adjusted_period_distributions(self):
+        """When SPV has adjusted_period_distributions_keur, HoldCo uses those."""
+        # Create mock SPV with both waterfall and DSRF-adjusted data
+        wp1 = MagicMock(); wp1.distribution_keur = 1000.0
+        wp2 = MagicMock(); wp2.distribution_keur = 1200.0
+        wf = MagicMock(); wf.periods = [wp1, wp2]
+        spv = MagicMock(spec=SPVOutput)
+        spv.project_code = "SOLAR"
+        spv.waterfall_result = wf
+        spv.total_distribution_keur = 2200.0
+        spv.adjusted_period_distributions_keur = (800.0, 900.0)  # DSRF reduced these
+        portfolio = _make_portfolio_result([spv])
+
+        entity = HoldCoEntity(name="HC")
+        inputs = HoldCoInputs(name="HC", ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)], entity=entity)
+
+        result = build_holdco_result(inputs, portfolio)
+
+        # gross = 800 + 900 = 1700 (DSRF-adjusted), NOT 1000 + 1200 = 2200
+        assert result.periods[0].gross_income_keur == 800.0
+        assert result.periods[1].gross_income_keur == 900.0
+
+    def test_holdco_falls_back_to_waterfall_when_no_adjusted(self):
+        """Without adjusted_period_distributions_keur, HoldCo uses waterfall distributions."""
+        wp1 = MagicMock(); wp1.distribution_keur = 1000.0
+        wf = MagicMock(); wf.periods = [wp1]
+        spv = MagicMock(spec=SPVOutput)
+        spv.project_code = "SOLAR"
+        spv.waterfall_result = wf
+        spv.total_distribution_keur = 1000.0
+        spv.adjusted_period_distributions_keur = ()  # empty — no DSRF adjustment
+        portfolio = _make_portfolio_result([spv])
+
+        entity = HoldCoEntity(name="HC")
+        inputs = HoldCoInputs(name="HC", ownerships=[SPVOwnership(spv_code="SOLAR", ownership_pct=1.0)], entity=entity)
+
+        result = build_holdco_result(inputs, portfolio)
+
+        assert result.periods[0].gross_income_keur == 1000.0  # falls back to waterfall

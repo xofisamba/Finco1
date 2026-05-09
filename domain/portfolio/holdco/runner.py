@@ -139,7 +139,12 @@ def build_holdco_result(
             if spv.waterfall_result is not None and spv.waterfall_result.periods:
                 periods_data = spv.waterfall_result.periods
                 if period_idx < len(periods_data):
-                    spv_dist = periods_data[period_idx].distribution_keur
+                    # P0.1: HoldCo must consume DSRF-adjusted period distributions
+                    # to avoid overstating upstream cash.
+                    if spv.adjusted_period_distributions_keur:
+                        spv_dist = spv.adjusted_period_distributions_keur[period_idx]
+                    else:
+                        spv_dist = periods_data[period_idx].distribution_keur
                 else:
                     spv_dist = 0.0
             else:
