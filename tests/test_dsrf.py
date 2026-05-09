@@ -145,8 +145,13 @@ def test_facility_limit_sizing_months_12():
 # Commitment fee on undrawn amount only
 # =============================================================================
 
-def test_commitment_fee_on_undrawn_only():
-    """Commitment fee is calculated on undrawn amount, not drawn amount."""
+def test_commitment_fee_on_undrawn_after_draw_only():
+    """Commitment fee is calculated on undrawn amount AFTER draw (semiannual convention).
+
+    Per period: draw happens before senior DS → commitment fee charged on
+    undrawn_after_draw (= facility_limit - drawn_after_draw).
+    This is a simplified semiannual convention, not daily accrual.
+    """
     config = DSRFConfig(
         enabled=True,
         sizing_months=6,
@@ -700,6 +705,7 @@ def test_debt_service_support_capped_by_undrawn():
         cfads_schedule=cfads_schedule,
         config=config,
     )
+    # avg_DS=1000, sizing_months=6 → facility=1000, shortfall=800, draw=800
     assert result.periods[0].draw_keur == 800.0
     assert result.total_debt_service_support_keur == 800.0
     assert result.total_debt_service_support_keur == result.total_draw_keur
@@ -786,3 +792,79 @@ def test_negative_senior_debt_service_raises():
             cfads_schedule=(800.0, 800.0),
             config=config,
         )
+
+# =============================================================================
+# Direct input validation in calculate_period_dsrf()
+# =============================================================================
+
+def test_calculate_period_dsrf_rejects_negative_senior_ds():
+    config = DSRFConfig(enabled=True, sizing_months=6)
+    with pytest.raises(ValueError, match="scheduled_senior_ds_keur must be >= 0"):
+        calculate_period_dsrf(
+            period=0, spv_code="TEST",
+            cfads_available_keur=1000.0,
+            scheduled_senior_ds_keur=-1.0,
+            drawn_start_keur=0.0,
+            facility_limit_keur=1000.0,
+            config=config,
+        )
+
+
+def test_calculate_period_dsrf_rejects_negative_drawn_start():
+    config = DSRFConfig(enabled=True, sizing_months=6)
+    with pytest.raises(ValueError, match="drawn_start_keur must be >= 0"):
+        calculate_period_dsrf(
+            period=0, spv_code="TEST",
+            cfads_available_keur=1000.0,
+            scheduled_senior_ds_keur=1000.0,
+            drawn_start_keur=-1.0,
+            facility_limit_keur=1000.0,
+            config=config,
+        )
+
+
+def test_calculate_period_dsrf_rejects_negative_facility_limit():
+    config = DSRFConfig(enabled=True, sizing_months=6)
+    with pytest.raises(ValueError, match="facility_limit_keur must be >= 0"):
+        calculate_period_dsrf(
+            period=0, spv_code="TEST",
+            cfads_available_keur=1000.0,
+            scheduled_senior_ds_keur=1000.0,
+            drawn_start_keur=0.0,
+            facility_limit_keur=-1.0,
+            config=config,
+        )
+
+
+# =============================================================================
+# Improved support-vs-shortfall test (facility smaller than shortfall)
+# =============================================================================
+
+def test_debt_service_support_capped_by_facility_limit():
+    """Support (500) < shortfall (1000) when facility is smaller than shortfall.
+
+    At the calculate_period_dsrf level we can test this directly with facility_limit_keur=500
+    without needing schedule-level derivation.
+    """
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        commitment_fee_rate_pa=0.0,
+        margin_rate_pa=0.0,
+        euribor_rate_pa=0.0,
+        period_year_fraction=0.5,
+        allow_draw_for_debt_service_shortfall=True,
+    )
+    # Use schedule where avg_DS produces facility=1000, but set cfads=0 so shortfall=1000
+    # Then use calculate_period_dsrf directly with facility_limit_keur=500
+    period = calculate_period_dsrf(
+        period=0, spv_code="TEST",
+        cfads_available_keur=0.0,
+        scheduled_senior_ds_keur=1000.0,
+        drawn_start_keur=0.0,
+        facility_limit_keur=500.0,  # smaller than shortfall of 1000
+        config=config,
+    )
+    assert period.debt_service_shortfall_keur == 1000.0
+    assert period.draw_keur == 500.0  # capped by facility
+    assert period.drawn_after_draw_keur == 500.0

@@ -14,7 +14,7 @@ Do NOT use: top-up, release, balance, funded (those are DSRA concepts).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -164,9 +164,29 @@ def calculate_period_dsrf(
     Draw happens BEFORE senior debt service is paid (to cover the shortfall).
     Fees and repayment consume cash after senior debt service is paid.
 
+    This is a simplified semiannual convention, not daily accrual:
+    - Commitment fee is charged on undrawn facility AFTER any period draw
+    - Drawn interest is charged on drawn_after_draw
+    - All rates are expressed as annual percentages; period charge = rate × period_year_fraction
+
     Returns:
         DSRFPeriod with all calculated values.
     """
+    # Validate direct inputs (schedule-level function validates schedule length;
+    # this guards against invalid direct calls)
+    if scheduled_senior_ds_keur < 0:
+        raise ValueError(
+            f"scheduled_senior_ds_keur must be >= 0, got {scheduled_senior_ds_keur}"
+        )
+    if drawn_start_keur < 0:
+        raise ValueError(
+            f"drawn_start_keur must be >= 0, got {drawn_start_keur}"
+        )
+    if facility_limit_keur < 0:
+        raise ValueError(
+            f"facility_limit_keur must be >= 0, got {facility_limit_keur}"
+        )
+
     if not config.enabled or facility_limit_keur <= 0:
         # No-op: return zero-activity period
         return DSRFPeriod(
