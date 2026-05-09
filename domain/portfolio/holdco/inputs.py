@@ -46,7 +46,10 @@ class HoldCoEntity:
     """HoldCo entity metadata. Represents the intermediate holding company."""
     name: str
     currency: str = "EUR"
-    tax_rate_pa: float = 0.0  # flat corporate tax rate (Phase 3A only; tax template deferred)
+    tax_rate_pa: float = 0.0
+    # PLACEHOLDER: flat HoldCo tax rate only.
+    # Future tax template engine will replace this.
+    # Do not add ATAD or detailed tax logic here.
     opex: HoldCoOpexInputs = field(default_factory=HoldCoOpexInputs)
 
     def __post_init__(self):
