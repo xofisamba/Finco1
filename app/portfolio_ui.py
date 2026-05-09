@@ -6,7 +6,6 @@ Minimal additive layer on top of existing domain/portfolio/independent/ results.
 from __future__ import annotations
 
 import pandas as pd
-from typing import Optional
 
 from domain.portfolio.independent import IndependentPortfolioResult
 
@@ -41,8 +40,8 @@ def build_portfolio_summary_table(result: IndependentPortfolioResult) -> pd.Data
         ("Avg DSCR (unweighted)", f"{result.avg_dscr:.3f}x"),
         ("", ""),
         ("--- IRR (Simple Average) ---", ""),
-        ("Simple Avg Project IRR", _irr_pct(result.simple_avg_project_irr)),
-        ("Simple Avg Equity IRR", _irr_pct(result.simple_avg_equity_irr)),
+        ("Simple Avg Project IRR (NOT Portfolio XIRR)", _irr_pct(result.simple_avg_project_irr)),
+        ("Simple Avg Equity IRR (NOT Portfolio XIRR)", _irr_pct(result.simple_avg_equity_irr)),
         ("", ""),
         ("--- DSRF ---", ""),
         ("DSRF Enabled", result.dsrf_enabled),
@@ -110,9 +109,7 @@ def render_portfolio_summary(result: IndependentPortfolioResult) -> str:
 
 
 def _irr_pct(value: float) -> str:
-    """Format IRR as percentage string, handling 0 and special values."""
-    if value <= 0:
-        return f"{value * 100:.2f}%"
+    """Format IRR as percentage string."""
     return f"{value * 100:.2f}%"
 
 

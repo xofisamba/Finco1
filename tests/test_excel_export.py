@@ -797,7 +797,7 @@ class TestPortfolioUITables:
         assert "Number of SPVs" in fields
         assert "Total Revenue (kEUR)" in fields
         assert "Min DSCR (conservative)" in fields
-        assert "Simple Avg Project IRR" in fields
+        assert "Simple Avg Project IRR (NOT Portfolio XIRR)" in fields
 
     def test_portfolio_spv_table_columns(self):
         """Portfolio SPV table has expected columns."""
@@ -866,3 +866,141 @@ class TestPortfolioUITables:
         assert len(dsrf_row) == 1
         assert dsrf_row["Value"].values[0] == False
 
+# ── Real Excel export tests for IndependentPortfolioResult (Phase 1.5) ─────
+
+class TestIndependentPortfolioExcelExport:
+    """Test that build_excel_export produces correct sheets for IndependentPortfolioResult.
+
+    Uses real run_independent_portfolio() output (not mocks) so we verify
+    the actual workbook structure end-to-end.
+    """
+
+    @pytest.fixture
+    def _oborovo_shim(self):
+        """Ensure project_factories is imported (registers the replace shim)."""
+        import app.project_factories  # noqa: F401
+
+    def _make_independent_portfolio_result(self):
+        """Create a real IndependentPortfolioResult from two default solar SPVs."""
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        from domain.portfolio.independent import (
+            run_independent_portfolio,
+            IndependentPortfolioInputs,
+        )
+        s1 = replace(create_default_solar_project(), info=replace(
+            create_default_solar_project().info, code="SOLAR-T1", name="Solar T1"))
+        s2 = replace(create_default_solar_project(), info=replace(
+            create_default_solar_project().info, code="SOLAR-T2", name="Solar T2"))
+        return run_independent_portfolio(
+            IndependentPortfolioInputs(projects=(s1, s2)), strict=True)
+
+    def test_portfolio_summary_sheet_exists(self, _oborovo_shim):
+        """Portfolio_Summary sheet is created for IndependentPortfolioResult."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Portfolio_Summary" in wb.sheetnames
+
+    def test_portfolio_spvs_sheet_exists(self, _oborovo_shim):
+        """Portfolio_SPVs sheet is created for IndependentPortfolioResult."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Portfolio_SPVs" in wb.sheetnames
+
+    def test_portfolio_notes_sheet_exists(self, _oborovo_shim):
+        """Portfolio_Notes sheet is created for IndependentPortfolioResult."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Portfolio_Notes" in wb.sheetnames
+
+    def test_portfolio_summary_irr_label_not_portfolio_xirr(self, _oborovo_shim):
+        """Portfolio_Summary IRR rows explicitly say NOT Portfolio XIRR."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Portfolio_Summary"]
+        irr_fields = [str(row[1]) for row in ws.iter_rows(values_only=True) if row[1] and "IRR" in str(row[1])]
+        assert any("NOT Portfolio XIRR" in f for f in irr_fields), f"No IRR label found with disclaimer: {irr_fields}"
+
+    def test_portfolio_notes_contains_no_holdco(self, _oborovo_shim):
+        """Portfolio_Notes explicitly says No HoldCo."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Portfolio_Notes"]
+        all_text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
+        assert "No HoldCo" in all_text
+
+    def test_portfolio_notes_contains_no_shl(self, _oborovo_shim):
+        """Portfolio_Notes explicitly says No SHL."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Portfolio_Notes"]
+        all_text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
+        assert "No SHL" in all_text
+
+    def test_portfolio_notes_contains_no_sponsor_irr(self, _oborovo_shim):
+        """Portfolio_Notes explicitly says No Sponsor IRR."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Portfolio_Notes"]
+        all_text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
+        assert "No Sponsor IRR" in all_text
+
+    def test_portfolio_notes_contains_dsrf_placeholder(self, _oborovo_shim):
+        """Portfolio_Notes states DSRF is a placeholder only."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Portfolio_Notes"]
+        all_text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
+        assert "DSRF" in all_text and "placeholder" in all_text.lower()
+
+    def test_no_holdco_sheet_not_created(self, _oborovo_shim):
+        """No separate HoldCo sheet is created (not in scope)."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "HoldCo" not in wb.sheetnames
+        assert "Holdco" not in wb.sheetnames

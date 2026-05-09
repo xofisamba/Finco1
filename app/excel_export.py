@@ -155,24 +155,22 @@ def build_excel_export(
 
         # ── Portfolio ──────────────────────────────────────────────────────
         if portfolio_result is not None:
-            _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result),
-                         number_format={"kEUR": "#,##0", "IRR": "0.0%", "DSCR": "0.00x"})
+            from domain.portfolio.independent import IndependentPortfolioResult
 
-            # Phase 1.5: Independent SPV portfolio export (appends to existing Portfolio sheet)
-            # Uses IndependentPortfolioResult when available (not PooledPortfolioResult)
-            try:
-                from domain.portfolio.independent import IndependentPortfolioResult
-                if isinstance(portfolio_result, IndependentPortfolioResult):
-                    _write_sheet(writer, "Portfolio_Summary",
-                                 build_portfolio_summary_table(portfolio_result))
-                    _write_sheet(writer, "Portfolio_SPVs",
-                                 build_portfolio_spv_table(portfolio_result))
-                    _write_portfolio_notes_sheet(writer, portfolio_result)
-            except ImportError:
-                pass  # domain/portfolio/independent not available
-
-            if portfolio_result.portfolio_cashflows:
-                rows = []
+            # IndependentPortfolioResult (Phase 1.5): write per-SPV sheets instead of pooled Portfolio sheet
+            # PooledPortfolioResult (legacy): use existing build_portfolio_table
+            if isinstance(portfolio_result, IndependentPortfolioResult):
+                _write_sheet(writer, "Portfolio_Summary",
+                             build_portfolio_summary_table(portfolio_result))
+                _write_sheet(writer, "Portfolio_SPVs",
+                             build_portfolio_spv_table(portfolio_result))
+                _write_portfolio_notes_sheet(writer, portfolio_result)
+            else:
+                # Pooled/legacy portfolio — use existing aggregated table
+                _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result),
+                             number_format={"kEUR": "#,##0", "IRR": "0.0%", "DSCR": "0.00x"})
+                if portfolio_result.portfolio_cashflows:
+                    rows = []
                 for row in portfolio_result.portfolio_cashflows:
                     date = row.get("date", "")
                     total = row.get("total_cashflow", 0.0)
