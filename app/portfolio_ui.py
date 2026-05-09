@@ -47,6 +47,19 @@ def build_portfolio_summary_table(result: IndependentPortfolioResult) -> pd.Data
         ("DSRF Enabled", result.dsrf_enabled),
         ("Warnings Count", len(result.warnings)),
     ]
+
+    if result.dsrf_enabled:
+        rows.extend([
+            ("", ""),
+            ("--- DSRF Facility ---", ""),
+            ("DSRF Facility Limit (kEUR)", f"{result.dsrf_facility_limit_keur:,.0f}"),
+            ("DSRF Total Draw (kEUR)", f"{result.dsrf_total_draw_keur:,.0f}"),
+            ("DSRF Total Repayment (kEUR)", f"{result.dsrf_total_repayment_keur:,.0f}"),
+            ("DSRF Commitment Fee (kEUR)", f"{result.dsrf_commitment_fee_keur:,.0f}"),
+            ("DSRF Drawn Interest (kEUR)", f"{result.dsrf_drawn_interest_keur:,.0f}"),
+            ("DSRF Distribution Reduction (kEUR)", f"{result.dsrf_distribution_reduction_keur:,.0f}"),
+        ])
+
     return pd.DataFrame(rows, columns=["Field", "Value"])
 
 
