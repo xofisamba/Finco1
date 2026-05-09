@@ -2,6 +2,11 @@
 
 No pooled financing. No shared debt sculpting. No HoldCo. No SHL.
 Each SPV runs its own waterfall independently; results are aggregated.
+
+DSRF (Phase 2): Optional revolving debt service reserve facility.
+- enabled=False: zero impact, identical to dsrf=None.
+- enabled=True: attaches DSRF facility schedule per SPV, aggregates across portfolio.
+  Distribution/IRR financial impact is deferred to the next step.
 """
 from __future__ import annotations
 
@@ -35,12 +40,14 @@ def run_independent_portfolio(
     rate_per_period: float = 0.02825,
     strict: bool = True,
 ) -> IndependentPortfolioResult:
-    """Run independent SPV portfolio aggregation (Phase 1 MVP).
+    """Run independent SPV portfolio aggregation.
 
     Each SPV runs independently through the single-asset engine.
     Results are aggregated into portfolio KPIs.
 
-    NO pooled debt sculpting. NO shared financing.
+    DSRF (Phase 2): When enabled=True, the DSRF facility schedule is computed
+    per SPV and attached to the result. Distribution/IRR financial impact is
+    deferred to the next implementation step.
 
     Args:
         portfolio_inputs: IndependentPortfolioInputs with N projects
@@ -186,9 +193,14 @@ def _run_single_spv(
         # Run DSRF facility schedule if enabled
         dsrf_result: Optional[Any] = None
         if dsrf_config is not None and dsrf_config.enabled:
-            dsrf_result = _run_spv_dsrf(project_inputs, result, dsrf_config)
+            dsrf_result, dsrf_warnings = _run_spv_dsrf(project_inputs, result, dsrf_config)
+            # Propagate DSRF extraction warnings to SPV warnings (not waterfall failures)
+            all_warnings: list[str] = []
+            if dsrf_warnings:
+                all_warnings.extend(dsrf_warnings)
+            return result, all_warnings, dsrf_result
 
-        return result, [], dsrf_result
+        return result, [], None
 
     except Exception as e:
         code = project_inputs.info.code
@@ -204,34 +216,45 @@ def _run_spv_dsrf(
     project_inputs,
     wf_result: Any,
     dsrf_config: DSRFConfig,
-) -> Any:
+) -> tuple[Optional[Any], list[str]]:
     """Extract semiannual schedules from waterfall result and run DSRF facility.
 
-    Returns DSRFResult (or None on any extraction error).
+    Returns (dsrf_result, warnings):
+    - dsrf_result: DSRFResult on success, None on failure
+    - warnings: list of warning strings if extraction/calculation failed
     """
     from domain.portfolio.independent.dsrf import run_dsrf_facility_schedule
 
     code = project_inputs.info.code
+    warnings: list[str] = []
 
     try:
         # Extract operation periods (semiannual periods)
         op_periods = [p for p in wf_result.periods if getattr(p, "is_operation", False)]
         if not op_periods:
-            return None
+            warnings.append(f"DSRF: no operation periods found for SPV '{code}'")
+            return None, warnings
 
         semiannual_ds_schedule = tuple(
             max(0.0, getattr(p, "senior_ds_keur", 0.0))
             for p in op_periods
         )
-        # CFADS = EBITDA + tax (approximately; using cf_after_tax_keur as proxy for
-        # cash available before senior debt service, which is revenue - opex - taxes paid)
+        # CFADS: cash available before senior debt service (after tax)
+        # Using cf_after_tax_keur as proxy
         cfads_schedule = tuple(
             max(0.0, getattr(p, "cf_after_tax_keur", 0.0))
             for p in op_periods
         )
 
-        if not semiannual_ds_schedule or not cfads_schedule:
-            return None
+        if not semiannual_ds_schedule:
+            warnings.append(
+                f"DSRF: no senior debt service schedule for SPV '{code}'"
+            )
+            return None, warnings
+
+        if not cfads_schedule:
+            warnings.append(f"DSRF: no CFADS schedule for SPV '{code}'")
+            return None, warnings
 
         dsrf_result = run_dsrf_facility_schedule(
             spv_code=code,
@@ -239,18 +262,20 @@ def _run_spv_dsrf(
             cfads_schedule=cfads_schedule,
             config=dsrf_config,
         )
-        return dsrf_result
+        return dsrf_result, warnings
 
-    except Exception:
-        # Do not let DSRF failures crash the portfolio run
-        return None
+    except Exception as exc:
+        warnings.append(
+            f"DSRF: failed to compute facility for SPV '{code}': {exc}"
+        )
+        return None, warnings
 
 
 def _aggregate_dsrf_results(dsrf_results: list[Any]) -> Any:
     """Aggregate multiple per-SPV DSRF results into a portfolio-level DSRFResult.
 
-    Sums: draw, repayment, commitment_fee, drawn_interest, debt_service_support.
-    Keeps facility_limit from the first SPV (assumes same sizing for portfolio).
+    Sums: draw, repayment, commitment_fee, drawn_interest, debt_service_support,
+    facility_limit, drawn_end across all SPVs.
     """
     # Import here to avoid circular / early binding issues
     from domain.portfolio.independent.dsrf import DSRFResult
@@ -267,7 +292,7 @@ def _aggregate_dsrf_results(dsrf_results: list[Any]) -> Any:
     total_commit = sum(getattr(r, "total_commitment_fee_keur", 0.0) for r in valid)
     total_interest = sum(getattr(r, "total_drawn_interest_keur", 0.0) for r in valid)
     total_support = sum(getattr(r, "total_debt_service_support_keur", 0.0) for r in valid)
-    facility = getattr(valid[0], "facility_limit_keur", 0.0)
+    facility = sum(getattr(r, "facility_limit_keur", 0.0) for r in valid)  # sum across SPVs
     drawn_end = sum(getattr(r, "drawn_end_keur", 0.0) for r in valid)
 
     # Collect all periods

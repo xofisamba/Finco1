@@ -1,33 +1,27 @@
-"""Phase 1 MVP: Independent SPV portfolio aggregation.
+"""Phase 1 MVP + Phase 2 DSRF: Independent SPV portfolio aggregation.
 
 Architecture:
 - Each SPV runs through the existing single-asset engine independently
 - Results are preserved per-SPV and aggregated into summary metrics
 - NO shared financing, NO pooled debt sculpting, NO cross-default enforcement
 
-This module is NOT the pooled-financing portfolio path (see domain/portfolio/waterfall.py).
-Phase 1 is opt-in via IndependentPortfolioInputs feature flag.
+DSRF (Phase 2):
+- Optional revolving debt service reserve facility, default disabled
+- enabled=False has zero impact on distributions, IRR, or DSCR
+- enabled=True attaches DSRF facility schedule per SPV and aggregates
+  portfolio totals; distribution/IRR financial impact is deferred to next step
 
-Strategic constraints (Phase 1):
-- No HoldCo entity
-- No SHL / intercompany flows
-- No Sponsor IRR
-- No monthly model frequency
-- No cross-SPV cash pooling
-- No retained earnings constraint
-- DSRF: optional placeholder only, default disabled
+This module is NOT the pooled-financing portfolio path (see domain/portfolio/waterfall.py).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 # Re-export the canonical DSRFConfig from the pure engine module.
-# inputs.py holds the portfolio-level schema; dsrf.py holds the engine.
 from domain.portfolio.independent.dsrf import (
     DSRFConfig as _CanonicalDSRFConfig,
 )
-
 
 # Re-export for backward-compatible import from this module
 DSRFConfig = _CanonicalDSRFConfig
@@ -35,28 +29,22 @@ DSRFConfig = _CanonicalDSRFConfig
 
 @dataclass(frozen=True)
 class IndependentPortfolioInputs:
-    """Independent SPV portfolio — Phase 1 MVP.
+    """Independent SPV portfolio — Phase 1 MVP + Phase 2 DSRF.
 
     Each SPV runs independently through the existing calibrated single-asset engine.
     Results are aggregated into summary metrics.
 
     NO shared financing. NO pooled debt sculpting. NO cross-default.
 
-    Usage:
-        from domain.portfolio.independent import IndependentPortfolioInputs
-
-        portfolio = IndependentPortfolioInputs(
-            projects=(project1, project2, project3),
-            portfolio_name="My Portfolio",
-            dsrf=DSRFConfig(),  # optional, default disabled
-        )
-        result = run_independent_portfolio(portfolio)
+    DSRF (Phase 2): dsrf parameter accepts DSRFConfig(enabled=True) to compute
+    the revolving facility schedule; distribution impact is deferred.
     """
     # All projects must have unique codes (enforced at ProjectInputs level)
     projects: tuple["ProjectInputs", ...]  # forward reference, resolved at runtime
     portfolio_name: str = "Portfolio"
 
     # DSRF: optional, default None (disabled)
+    # Pass DSRFConfig(enabled=True, sizing_months=6, ...) to activate
     dsrf: Optional[DSRFConfig] = None
 
     def __post_init__(self):
@@ -67,27 +55,14 @@ class IndependentPortfolioInputs:
             raise ValueError(f"Project codes must be unique, got: {codes}")
 
 
-# Phase 1 limitations — exported for documentation
-PHASE1_LIMITATIONS = """
-Phase 1 MVP Limitations:
-- No HoldCo entity
-- No SHL / intercompany flows
-- No Sponsor IRR (placeholder only, not computed)
-- No monthly model frequency
-- No cross-SPV cash pooling
-- No retained earnings constraint
-- No portfolio-level debt sculpting (per-SPV debt only)
-- DSRF: optional placeholder only, not integrated into calculations
-
-Pooled Financing (domain/portfolio/waterfall.py) is experimental / Phase 2+:
-- Shared financing with cross-default enforcement
-- Portfolio-level debt sculpting from pooled CFADS
-- Not enabled by default in Phase 1
-""".strip()
-
-
 __all__ = [
     "DSRFConfig",
     "IndependentPortfolioInputs",
-    "PHASE1_LIMITATIONS",
 ]
+
+
+# Kept for backward compatibility with any code that imports PHASE1_LIMITATIONS
+PHASE1_LIMITATIONS: str = (
+    "Phase 1 MVP: Independent SPV portfolio, no pooled debt sculpting. "
+    "DSRF (Phase 2) is optional, default disabled."
+)

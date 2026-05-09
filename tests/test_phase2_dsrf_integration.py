@@ -133,14 +133,31 @@ def _make_mock_project(code: str):
     return p
 
 
+def _make_mock_project(code: str):
+    """Minimal mock project for testing."""
+    from unittest.mock import MagicMock
+    from datetime import date
+    p = MagicMock()
+    p.info.code = code
+    p.info.name = f"Project {code}"
+    p.info.financial_close = date(2030, 1, 1)
+    p.info.construction_months = 12
+    p.info.horizon_years = 25
+    p.revenue.ppa_term_years = 10
+    return p
+
+
 def test_dsrf_disabled_none_vs_config_none():
     """dsrf=None and dsrf=DSRFConfig(enabled=False) must produce identical outputs."""
-    projects = tuple(_make_mock_project(code) for code in ("A", "B", "C"))
+    # Use real project factory for a more rigorous test
+    from app.project_factories import create_default_solar_project
+
+    project = create_default_solar_project()
 
     # dsrf=None
     result_none = run_independent_portfolio(
         IndependentPortfolioInputs(
-            projects=projects,
+            projects=(project,),
             portfolio_name="Test",
             dsrf=None,
         ),
@@ -150,12 +167,24 @@ def test_dsrf_disabled_none_vs_config_none():
     # dsrf=DSRFConfig(enabled=False)
     result_disabled = run_independent_portfolio(
         IndependentPortfolioInputs(
-            projects=projects,
+            projects=(project,),
             portfolio_name="Test",
             dsrf=DSRFConfig(enabled=False),
         ),
         strict=False,
     )
+
+    # Compare all key financial KPIs
+    assert result_none.total_revenue_keur == result_disabled.total_revenue_keur
+    assert result_none.total_ebitda_keur == result_disabled.total_ebitda_keur
+    assert result_none.total_senior_ds_keur == result_disabled.total_senior_ds_keur
+    assert result_none.total_distribution_keur == result_disabled.total_distribution_keur
+    assert result_none.min_dscr == result_disabled.min_dscr
+    assert result_none.avg_dscr == result_disabled.avg_dscr
+    assert result_none.simple_avg_project_irr == result_disabled.simple_avg_project_irr
+    assert result_none.simple_avg_equity_irr == result_disabled.simple_avg_equity_irr
+    assert result_none.warnings == result_disabled.warnings
+    assert result_disabled.dsrf_enabled is False
 
     # Compare key totals
     assert result_none.total_revenue_keur == result_disabled.total_revenue_keur
@@ -177,9 +206,13 @@ def test_dsrf_disabled_none_vs_config_none():
 # =============================================================================
 
 def test_dsrf_enabled_true_does_not_raise():
-    """DSRFConfig(enabled=True) must not raise when run through portfolio."""
-    projects = tuple(_make_mock_project(code) for code in ("A", "B"))
+    """DSRFConfig(enabled=True) with real project must not raise; schedule is attached.
 
+    Note: Distribution/IRR financial impact is deferred to the next step.
+    """
+    from app.project_factories import create_default_solar_project
+
+    project = create_default_solar_project()
     config = DSRFConfig(
         enabled=True,
         sizing_months=6,
@@ -193,21 +226,96 @@ def test_dsrf_enabled_true_does_not_raise():
 
     result = run_independent_portfolio(
         IndependentPortfolioInputs(
-            projects=projects,
+            projects=(project,),
             portfolio_name="Test",
             dsrf=config,
         ),
         strict=False,
     )
 
-    # DSRF fields exist and are populated
     assert result.dsrf_enabled is True
-    # Financial totals should still be present (no distribution change yet)
+    assert len(result.spv_outputs) >= 1
+    spv = result.spv_outputs[0]
+    assert spv.waterfall_result is not None
+    assert spv.dsrf_facility_limit_keur >= 0
+    assert isinstance(spv.dsrf_periods, tuple)
+    # If waterfall has op periods, DSRF periods should be non-empty
+    if spv.waterfall_result and spv.waterfall_result.periods:
+        op_periods = [p for p in spv.waterfall_result.periods if getattr(p, "is_operation", False)]
+        if op_periods:
+            assert len(spv.dsrf_periods) > 0
+    # Financial totals unchanged (deferred impact)
     assert result.total_distribution_keur >= 0
 
 
 # =============================================================================
-# 5. Terminology: no prohibited terms in DSRF result field names
+# 5. DSRF aggregate facility_limit sums across SPVs (not only first)
+# =============================================================================
+
+def test_dsrf_aggregate_facility_limit_sums_across_spvs():
+    """Portfolio DSRF facility_limit is sum of all SPV limits, not only first."""
+    from domain.portfolio.independent.dsrf import DSRFResult, DSRFConfig
+
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        sizing_basis="average_debt_service",
+        period_year_fraction=0.5,
+    )
+
+    # Build two mock DSRF results with facility limits 1000 and 1500
+    from domain.portfolio.independent.dsrf import DSRFPeriod
+
+    p1 = DSRFPeriod(
+        period=0, spv_code="A",
+        facility_limit_keur=1000.0,
+        drawn_start_keur=0.0, undrawn_start_keur=1000.0,
+        scheduled_senior_ds_keur=500.0, cfads_available_keur=400.0,
+        debt_service_shortfall_keur=100.0, draw_keur=100.0,
+        drawn_after_draw_keur=100.0,
+        commitment_fee_keur=2.5, drawn_interest_keur=2.5,
+        repayment_keur=0.0, drawn_end_keur=100.0, undrawn_end_keur=900.0,
+        senior_ds_paid_keur=500.0,
+        cash_available_for_distribution_keur=0.0,
+    )
+    r1 = DSRFResult(
+        config=config, periods=(p1,),
+        total_draw_keur=100.0, total_repayment_keur=0.0,
+        total_commitment_fee_keur=2.5, total_drawn_interest_keur=2.5,
+        total_debt_service_support_keur=100.0,
+        facility_limit_keur=1000.0, drawn_end_keur=100.0,
+    )
+
+    p2 = DSRFPeriod(
+        period=0, spv_code="B",
+        facility_limit_keur=1500.0,
+        drawn_start_keur=0.0, undrawn_start_keur=1500.0,
+        scheduled_senior_ds_keur=600.0, cfads_available_keur=500.0,
+        debt_service_shortfall_keur=100.0, draw_keur=100.0,
+        drawn_after_draw_keur=100.0,
+        commitment_fee_keur=3.75, drawn_interest_keur=2.5,
+        repayment_keur=0.0, drawn_end_keur=100.0, undrawn_end_keur=1400.0,
+        senior_ds_paid_keur=600.0,
+        cash_available_for_distribution_keur=0.0,
+    )
+    r2 = DSRFResult(
+        config=config, periods=(p2,),
+        total_draw_keur=100.0, total_repayment_keur=0.0,
+        total_commitment_fee_keur=3.75, total_drawn_interest_keur=2.5,
+        total_debt_service_support_keur=100.0,
+        facility_limit_keur=1500.0, drawn_end_keur=100.0,
+    )
+
+    from domain.portfolio.independent.runner import _aggregate_dsrf_results
+    agg = _aggregate_dsrf_results([r1, r2])
+
+    assert agg is not None
+    assert agg.facility_limit_keur == 2500.0  # 1000 + 1500 (sum, not only first)
+    assert agg.drawn_end_keur == 200.0  # 100 + 100 (already summed)
+
+
+# =============================================================================
+# 6. Terminology: no prohibited terms in DSRF result field names
 # =============================================================================
 
 def test_dsrf_result_fields_no_prohibited_terms():

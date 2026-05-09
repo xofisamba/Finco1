@@ -1,6 +1,10 @@
-"""Phase 1 MVP: Independent SPV portfolio result.
+"""Phase 1 MVP + Phase 2 DSRF: Independent SPV portfolio result.
 
 No pooled debt sculpting. No shared financing.
+
+DSRF (Phase 2): Optional revolving debt service reserve facility, default disabled.
+- enabled=False: zero impact on distributions, IRR, DSCR
+- enabled=True: DSRF facility schedule attached; distribution impact deferred
 """
 from __future__ import annotations
 
@@ -78,13 +82,14 @@ class IndependentPortfolioResult:
     simple_avg_project_irr: float = 0.0
     simple_avg_equity_irr: float = 0.0
 
-    # Phase 1: always False
+    # DSRF enabled flag (Phase 2)
     dsrf_enabled: bool = False
 
     # Portfolio-level warnings (deduplicated)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
-    # DSRF portfolio-level aggregates
+    # DSRF portfolio-level aggregates (Phase 2: set when dsrf_enabled=True)
+    # Currently: schedule-attached only, distribution/IRR impact deferred to next step
     dsrf_facility_limit_keur: float = 0.0
     dsrf_total_draw_keur: float = 0.0
     dsrf_total_repayment_keur: float = 0.0
