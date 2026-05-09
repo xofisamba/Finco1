@@ -1004,3 +1004,29 @@ class TestIndependentPortfolioExcelExport:
         wb = openpyxl.load_workbook(BytesIO(data))
         assert "HoldCo" not in wb.sheetnames
         assert "Holdco" not in wb.sheetnames
+
+    def test_independent_portfolio_dashboard_no_pooled_revenue_label(self, _oborovo_shim):
+        """Independent portfolio Dashboard should not contain 'Pooled Revenue'."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Dashboard"]
+        all_labels = [str(row[0]) for row in ws.iter_rows(values_only=True) if row[0]]
+        assert "Pooled Revenue" not in all_labels, f"Found 'Pooled Revenue' in Dashboard: {all_labels}"
+
+    def test_independent_portfolio_dashboard_has_portfolio_revenue_label(self, _oborovo_shim):
+        """Independent portfolio Dashboard should contain 'Portfolio Revenue'."""
+        from io import BytesIO
+        import openpyxl
+
+        result = self._make_independent_portfolio_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Dashboard"]
+        all_labels = [str(row[0]) for row in ws.iter_rows(values_only=True) if row[0]]
+        assert "Portfolio Revenue (kEUR)" in all_labels, f"Missing 'Portfolio Revenue' in Dashboard: {all_labels}"

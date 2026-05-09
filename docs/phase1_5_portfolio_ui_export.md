@@ -58,10 +58,10 @@ DSRF is a **placeholder only** in Phase 1.5:
 | Command | Result |
 |---------|--------|
 | `pytest tests/test_portfolio_ui.py -q` | 16 passed |
-| `pytest tests/test_excel_export.py -q` | 40 passed (4 new portfolio workbook tests) |
+| `pytest tests/test_excel_export.py -q` | 51 passed (11 new workbook tests) |
 | `pytest tests/test_phase1_portfolio.py -q` | 28 passed |
 | `pytest tests/test_portfolio_inputs.py tests/test_portfolio_runner.py tests/test_portfolio_waterfall.py -q` | 50 passed |
-| `pytest tests/ -q` (full suite) | 1,434 passed, 1 xfailed, 0 regressions |
+| `pytest tests/ -q` (full suite) | 1,445 passed, 1 xfailed, 0 regressions |
 
 ---
 

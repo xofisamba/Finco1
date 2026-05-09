@@ -6,7 +6,6 @@ from io import BytesIO
 from app.portfolio_ui import (
     build_portfolio_summary_table,
     build_portfolio_spv_table,
-    _IRR_LABEL as _PORTFOLIO_IRR_LABEL,
 )
 
 import openpyxl
@@ -171,16 +170,16 @@ def build_excel_export(
                              number_format={"kEUR": "#,##0", "IRR": "0.0%", "DSCR": "0.00x"})
                 if portfolio_result.portfolio_cashflows:
                     rows = []
-                for row in portfolio_result.portfolio_cashflows:
-                    date = row.get("date", "")
-                    total = row.get("total_cashflow", 0.0)
-                    breakdown = row.get("breakdown", {})
-                    row_dict = {"Date": str(date), "Total CF (keur)": round(total, 2)}
-                    for proj, contrib in breakdown.items():
-                        row_dict[f"  {proj}"] = round(contrib, 2)
-                    rows.append(row_dict)
-                cf_df = pd.DataFrame(rows)
-                _write_sheet(writer, "Portfolio CF", cf_df, number_format={"kEUR": "#,##0"})
+                    for row in portfolio_result.portfolio_cashflows:
+                        date = row.get("date", "")
+                        total = row.get("total_cashflow", 0.0)
+                        breakdown = row.get("breakdown", {})
+                        row_dict = {"Date": str(date), "Total CF (keur)": round(total, 2)}
+                        for proj, contrib in breakdown.items():
+                            row_dict[f"  {proj}"] = round(contrib, 2)
+                        rows.append(row_dict)
+                    cf_df = pd.DataFrame(rows)
+                    _write_sheet(writer, "Portfolio CF", cf_df, number_format={"kEUR": "#,##0"})
 
         # ── Reconciliation / Audit Sheets (optional) ─────────────────────
         if include_reconciliation_sheets and result is not None:
@@ -447,10 +446,20 @@ def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scena
                 else:
                     rows.append((label, v))
     if portfolio_result is not None:
-        rows.append(("Pooled Revenue (kEUR)", portfolio_result.total_revenue_keur))
-        rows.append(("Pooled EBITDA (kEUR)", portfolio_result.total_ebitda_keur))
-        rows.append(("Portfolio DSCR (Avg)", portfolio_result.avg_dscr))
-        rows.append(("Portfolio DSCR (Min)", portfolio_result.min_dscr))
+        from domain.portfolio.independent import IndependentPortfolioResult
+
+        if isinstance(portfolio_result, IndependentPortfolioResult):
+            # Independent SPV portfolio — use "Portfolio" labels (not "Pooled")
+            rows.append(("Portfolio Revenue (kEUR)", portfolio_result.total_revenue_keur))
+            rows.append(("Portfolio EBITDA (kEUR)", portfolio_result.total_ebitda_keur))
+            rows.append(("Portfolio DSCR (Avg)", portfolio_result.avg_dscr))
+            rows.append(("Portfolio DSCR (Min)", portfolio_result.min_dscr))
+        else:
+            # Pooled/legacy portfolio — use "Pooled" labels
+            rows.append(("Pooled Revenue (kEUR)", portfolio_result.total_revenue_keur))
+            rows.append(("Pooled EBITDA (kEUR)", portfolio_result.total_ebitda_keur))
+            rows.append(("Portfolio DSCR (Avg)", portfolio_result.avg_dscr))
+            rows.append(("Portfolio DSCR (Min)", portfolio_result.min_dscr))
 
     df = pd.DataFrame(rows, columns=["Metric", "Value"])
     df.to_excel(writer, sheet_name="Dashboard", index=False)
