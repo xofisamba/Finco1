@@ -132,13 +132,21 @@ def calculate_facility_limit(
 ) -> float:
     """Calculate DSRF facility limit.
 
+
     Formula: facility_limit = average_period_DS × (sizing_months / 6)
 
     Examples:
         sizing_months=6  → 1.0 × average semiannual DS
         sizing_months=9  → 1.5 × average semiannual DS
         sizing_months=12 → 2.0 × average semiannual DS
+
+    Raises:
+        ValueError: if sizing_months is not 6, 9, or 12
     """
+    if sizing_months not in (6, 9, 12):
+        raise ValueError(
+            f"sizing_months must be one of 6, 9, 12; got {sizing_months}"
+        )
     return average_period_debt_service_keur * (sizing_months / 6.0)
 
 
@@ -210,10 +218,12 @@ def calculate_period_dsrf(
         * config.period_year_fraction
     )
 
-    # Interest on drawn portion (EURIBOR + margin)
+    # Interest on drawn portion (EURIBOR + margin, floored at 0)
+    # Negative EURIBOR is allowed but drawn interest cannot go negative
+    effective_rate = max(0.0, config.margin_rate_pa + config.euribor_rate_pa)
     drawn_interest = (
         drawn_after_draw
-        * (config.margin_rate_pa + config.euribor_rate_pa)
+        * effective_rate
         * config.period_year_fraction
     )
 
@@ -295,6 +305,19 @@ def run_dsrf_facility_schedule(
             drawn_end_keur=0.0,
         )
 
+    if len(semiannual_debt_service_schedule) != len(cfads_schedule):
+        raise ValueError(
+            f"schedule length mismatch: "
+            f"debt_service_schedule has {len(semiannual_debt_service_schedule)} periods, "
+            f"cfads_schedule has {len(cfads_schedule)} periods"
+        )
+
+    for i, ds in enumerate(semiannual_debt_service_schedule):
+        if ds < 0:
+            raise ValueError(
+                f"scheduled senior debt service at period {i} is negative: {ds} kEUR"
+            )
+
     avg_ds = calculate_average_debt_service(semiannual_debt_service_schedule)
     facility_limit = calculate_facility_limit(avg_ds, config.sizing_months)
 
@@ -322,7 +345,7 @@ def run_dsrf_facility_schedule(
         total_repayment += p.repayment_keur
         total_commitment += p.commitment_fee_keur
         total_interest += p.drawn_interest_keur
-        total_support += p.debt_service_shortfall_keur
+        total_support += p.draw_keur  # actual draw, not shortfall (shortfall may exceed undrawn)
 
     return DSRFResult(
         config=config,

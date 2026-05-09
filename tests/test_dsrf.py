@@ -644,3 +644,145 @@ def test_no_draw_when_allow_draw_false():
     )
     assert period.draw_keur == 0.0
     assert period.senior_ds_paid_keur == 100.0  # partial payment only
+
+
+# =============================================================================
+# Hardening tests
+# =============================================================================
+
+def test_debt_service_support_uses_draw_not_shortfall():
+    """total_debt_service_support_keur sums actual draws, not shortfalls.
+
+    If shortfall=800 but undrawn=300, support=300, not 800.
+    """
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        commitment_fee_rate_pa=0.0,
+        margin_rate_pa=0.0,
+        euribor_rate_pa=0.0,
+        period_year_fraction=0.5,
+        allow_draw_for_debt_service_shortfall=True,
+    )
+    # avg DS = 1000, facility_limit = 1000 (sizing_months=6)
+    ds_schedule = (1000.0, 1000.0)
+    cfads_schedule = (200.0, 2000.0)  # shortfall=800 in p0, but facility undrawn=1000
+    result = run_dsrf_facility_schedule(
+        spv_code="TEST",
+        semiannual_debt_service_schedule=ds_schedule,
+        cfads_schedule=cfads_schedule,
+        config=config,
+    )
+    # shortfall in period 0 = 800, draw = min(800, 1000) = 800
+    assert result.periods[0].draw_keur == 800.0
+    assert result.total_draw_keur == 800.0
+    assert result.total_debt_service_support_keur == 800.0
+    # shortfall in period 1 = 0, repayment from excess cash = 800
+    assert result.periods[1].repayment_keur == 800.0
+
+
+def test_debt_service_support_capped_by_undrawn():
+    """Support totals reflect actual draws even when shortfall exceeds facility."""
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        commitment_fee_rate_pa=0.0,
+        margin_rate_pa=0.0,
+        euribor_rate_pa=0.0,
+        period_year_fraction=0.5,
+        allow_draw_for_debt_service_shortfall=True,
+    )
+    ds_schedule = (1000.0,)
+    cfads_schedule = (200.0,)
+    result = run_dsrf_facility_schedule(
+        spv_code="TEST",
+        semiannual_debt_service_schedule=ds_schedule,
+        cfads_schedule=cfads_schedule,
+        config=config,
+    )
+    assert result.periods[0].draw_keur == 800.0
+    assert result.total_debt_service_support_keur == 800.0
+    assert result.total_debt_service_support_keur == result.total_draw_keur
+
+
+def test_negative_euribor_net_positive_rate():
+    """EURIBOR=-0.01, margin=0.03 → net positive 2% → interest calculated."""
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        commitment_fee_rate_pa=0.0,
+        margin_rate_pa=0.03,
+        euribor_rate_pa=-0.01,
+        period_year_fraction=0.5,
+    )
+    period = calculate_period_dsrf(
+        period=0, spv_code="TEST",
+        cfads_available_keur=1000.0,
+        scheduled_senior_ds_keur=1000.0,
+        drawn_start_keur=500.0,
+        facility_limit_keur=1000.0,
+        config=config,
+    )
+    assert period.drawn_interest_keur == pytest.approx(5.0)
+
+
+def test_negative_euribor_net_negative_rate():
+    """EURIBOR=-0.04, margin=0.02 → net negative → drawn_interest=0."""
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        commitment_fee_rate_pa=0.0,
+        margin_rate_pa=0.02,
+        euribor_rate_pa=-0.04,
+        period_year_fraction=0.5,
+    )
+    period = calculate_period_dsrf(
+        period=0, spv_code="TEST",
+        cfads_available_keur=1000.0,
+        scheduled_senior_ds_keur=1000.0,
+        drawn_start_keur=500.0,
+        facility_limit_keur=1000.0,
+        config=config,
+    )
+    assert period.drawn_interest_keur == 0.0
+
+
+def test_mismatched_schedule_lengths_raises():
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        commitment_fee_rate_pa=0.0,
+        margin_rate_pa=0.0,
+        euribor_rate_pa=0.0,
+        period_year_fraction=0.5,
+    )
+    with pytest.raises(ValueError, match="schedule length mismatch"):
+        run_dsrf_facility_schedule(
+            spv_code="TEST",
+            semiannual_debt_service_schedule=(1000.0, 1000.0, 1000.0),
+            cfads_schedule=(800.0, 800.0),
+            config=config,
+        )
+
+
+def test_facility_limit_invalid_sizing_months_raises():
+    with pytest.raises(ValueError, match="sizing_months must be one of 6, 9, 12"):
+        calculate_facility_limit(average_period_debt_service_keur=1000.0, sizing_months=7)
+
+
+def test_negative_senior_debt_service_raises():
+    config = DSRFConfig(
+        enabled=True,
+        sizing_months=6,
+        commitment_fee_rate_pa=0.0,
+        margin_rate_pa=0.0,
+        euribor_rate_pa=0.0,
+        period_year_fraction=0.5,
+    )
+    with pytest.raises(ValueError, match="negative"):
+        run_dsrf_facility_schedule(
+            spv_code="TEST",
+            semiannual_debt_service_schedule=(1000.0, -500.0),
+            cfads_schedule=(800.0, 800.0),
+            config=config,
+        )
