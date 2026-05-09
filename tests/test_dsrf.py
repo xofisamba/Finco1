@@ -868,3 +868,41 @@ def test_debt_service_support_capped_by_facility_limit():
     assert period.debt_service_shortfall_keur == 1000.0
     assert period.draw_keur == 500.0  # capped by facility
     assert period.drawn_after_draw_keur == 500.0
+
+
+# =============================================================================
+# Config validation: sizing_basis and repayment_priority
+# =============================================================================
+
+def test_dsrf_config_invalid_sizing_basis_raises():
+    with pytest.raises(ValueError, match="sizing_basis must be 'average_debt_service'"):
+        DSRFConfig(enabled=True, sizing_months=6, sizing_basis="invalid")
+
+
+def test_dsrf_config_invalid_repayment_priority_raises():
+    with pytest.raises(ValueError, match="repayment_priority must be 'before_distributions'"):
+        DSRFConfig(enabled=True, sizing_months=6, repayment_priority="after_distributions")
+
+
+def test_dsrf_config_valid_sizing_basis_average_debt_service():
+    config = DSRFConfig(enabled=True, sizing_months=6, sizing_basis="average_debt_service")
+    assert config.sizing_basis == "average_debt_service"
+
+
+def test_dsrf_config_valid_repayment_priority_before_distributions():
+    config = DSRFConfig(enabled=True, sizing_months=6, repayment_priority="before_distributions")
+    assert config.repayment_priority == "before_distributions"
+
+
+# =============================================================================
+# calculate_facility_limit negative input
+# =============================================================================
+
+def test_calculate_facility_limit_rejects_negative_average_ds():
+    with pytest.raises(ValueError, match="average_period_debt_service_keur must be >= 0"):
+        calculate_facility_limit(average_period_debt_service_keur=-1000.0, sizing_months=6)
+
+
+def test_calculate_facility_limit_zero_average_ds_returns_zero():
+    result = calculate_facility_limit(average_period_debt_service_keur=0.0, sizing_months=6)
+    assert result == 0.0

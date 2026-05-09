@@ -15,7 +15,6 @@ Do NOT use: top-up, release, balance, funded (those are DSRA concepts).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -56,6 +55,16 @@ class DSRFConfig:
             if self.period_year_fraction <= 0:
                 raise ValueError(
                     f"period_year_fraction must be > 0, got {self.period_year_fraction}"
+                )
+            if self.sizing_basis != "average_debt_service":
+                raise ValueError(
+                    f"sizing_basis must be 'average_debt_service' for enabled DSRF; "
+                    f"got {self.sizing_basis!r}"
+                )
+            if self.repayment_priority != "before_distributions":
+                raise ValueError(
+                    f"repayment_priority must be 'before_distributions' for enabled DSRF; "
+                    f"got {self.repayment_priority!r}"
                 )
 
 
@@ -146,6 +155,10 @@ def calculate_facility_limit(
     if sizing_months not in (6, 9, 12):
         raise ValueError(
             f"sizing_months must be one of 6, 9, 12; got {sizing_months}"
+        )
+    if average_period_debt_service_keur < 0:
+        raise ValueError(
+            f"average_period_debt_service_keur must be >= 0, got {average_period_debt_service_keur}"
         )
     return average_period_debt_service_keur * (sizing_months / 6.0)
 
