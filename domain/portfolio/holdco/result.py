@@ -1,4 +1,4 @@
-"""Phase 3A HoldCo domain skeleton — result structures only.
+"""Phase 3A/3B HoldCo domain skeleton — result structures and aggregation runner.
 
 No cash flow calculations. No SHL. No tax template.
 Pure dataclass layer representing HoldCo-level output.
@@ -13,15 +13,14 @@ from typing import Optional
 class HoldCoSPVContribution:
     """Per-period contribution from a single SPV to HoldCo.
 
-    Phase 3A: these values are placeholders — actual computation
-    (ownership * SPV distribution) happens in Phase 3A aggregation runner,
+    Phase 3A/3B: holdco_share_keur computed by Phase 3B aggregation runner.
     not in this dataclass.
     """
     period: int
     spv_code: str
     ownership_pct: float  # 0.0–1.0
-    spv_distribution_keur: float = 0.0  # raw SPV distribution (placeholder)
-    holdco_share_keur: float = 0.0  # ownership_pct * spv_distribution_keur (placeholder)
+    spv_distribution_keur: float = 0.0  # raw SPV distribution from waterfall
+    holdco_share_keur: float = 0.0  # ownership_pct * spv_distribution_keur
     currency: str = "EUR"
 
     def __post_init__(self):
@@ -37,27 +36,27 @@ class HoldCoSPVContribution:
 class HoldCoPeriodResult:
     """Per-period HoldCo aggregation result.
 
-    Phase 3A: values are placeholders.
-    Actual computation (opex, tax, net to sponsor) deferred to aggregation runner.
+    Phase 3A/3B: populated by Phase 3B aggregation runner.
+    opex, tax, and net-to-sponsor values are computed per period.
 
     Fields:
     - period: period index
     - contributions: list of SPV contributions this period
-    - gross_income_keur: sum of holdco_share_keur across all SPVs (placeholder)
-    - holdco_opex_keur: annual OpEx deducted (placeholder)
-    - taxable_income_keur: gross - opex if positive else 0 (placeholder)
-    - tax_keur: taxable_income * tax_rate_pa (placeholder)
-    - distribution_to_sponsor_keur: net after opex and tax (placeholder)
-    - holdco_irr: placeholder (Phase 3 does not compute IRR)
+    - gross_income_keur: sum of holdco_share_keur across all SPVs
+    - holdco_opex_keur: annual OpEx deducted (per period, split from annual)
+    - taxable_income_keur: gross - opex if positive else 0
+    - tax_keur: taxable_income * tax_rate_pa
+    - distribution_to_sponsor_keur: net after opex and tax
+    - holdco_irr: always None (HoldCo IRR deferred beyond Phase 3B)
     """
     period: int
     contributions: list[HoldCoSPVContribution] = field(default_factory=list)
-    gross_income_keur: float = 0.0  # placeholder
-    holdco_opex_keur: float = 0.0  # placeholder
-    taxable_income_keur: float = 0.0  # placeholder
-    tax_keur: float = 0.0  # placeholder
-    distribution_to_sponsor_keur: float = 0.0  # placeholder
-    holdco_irr: Optional[float] = None  # deferred
+    gross_income_keur: float = 0.0
+    holdco_opex_keur: float = 0.0
+    taxable_income_keur: float = 0.0
+    tax_keur: float = 0.0
+    distribution_to_sponsor_keur: float = 0.0
+    holdco_irr: Optional[float] = None  # HoldCo IRR deferred beyond Phase 3B
     currency: str = "EUR"
 
     def __post_init__(self):
@@ -77,29 +76,29 @@ class HoldCoPeriodResult:
 class HoldCoResult:
     """Top-level HoldCo computation result.
 
-    Phase 3A: holds placeholder values.
+    Phase 3A/3B: populated by Phase 3B aggregation runner.
     Actual aggregation (SPV distribution → HoldCo share → sponsor net)
-    is computed by the aggregation runner (Phase 3A aggregation module).
+    is computed by the Phase 3B aggregation runner (domain/portfolio/holdco/runner.py).
 
     Fields:
     - name: HoldCo entity name
     - periods: per-period breakdown
-    - total_spv_distributions_keur: sum across all SPVs and periods (placeholder)
-    - total_gross_income_keur: sum of gross income (placeholder)
-    - total_opex_keur: sum of HoldCo OpEx (placeholder)
-    - total_tax_keur: sum of HoldCo tax (placeholder)
-    - total_distribution_to_sponsor_keur: sum to sponsor (placeholder)
-    - holdco_irr: always None (deferred beyond Phase 3)
+    - total_spv_distributions_keur: sum across all SPVs and periods
+    - total_gross_income_keur: sum of gross income
+    - total_opex_keur: sum of HoldCo OpEx (all periods)
+    - total_tax_keur: sum of HoldCo tax
+    - total_distribution_to_sponsor_keur: sum to sponsor
+    - holdco_irr: always None (HoldCo IRR deferred beyond Phase 3B)
     - spv_codes: list of SPV codes included
     """
     name: str
     periods: list[HoldCoPeriodResult] = field(default_factory=list)
-    total_spv_distributions_keur: float = 0.0  # placeholder
-    total_gross_income_keur: float = 0.0  # placeholder
-    total_opex_keur: float = 0.0  # placeholder
-    total_tax_keur: float = 0.0  # placeholder
-    total_distribution_to_sponsor_keur: float = 0.0  # placeholder
-    holdco_irr: Optional[float] = None  # deferred — Phase 3 does NOT compute IRR
+    total_spv_distributions_keur: float = 0.0
+    total_gross_income_keur: float = 0.0
+    total_opex_keur: float = 0.0
+    total_tax_keur: float = 0.0
+    total_distribution_to_sponsor_keur: float = 0.0
+    holdco_irr: Optional[float] = None  # HoldCo IRR deferred beyond Phase 3B
     spv_codes: list[str] = field(default_factory=list)
     currency: str = "EUR"
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -120,8 +119,11 @@ class HoldCoResult:
 
     @property
     def is_placeholder(self) -> bool:
-        """True — Phase 3A HoldCoResult is always a placeholder; no real calculations."""
-        return True
+        """True when no aggregation was performed (empty result).
+        
+        False when produced by build_holdco_result with at least one period.
+        """
+        return not self.periods
 
     @property
     def spv_count(self) -> int:

@@ -153,6 +153,13 @@ class TestHoldCoResult:
         r = HoldCoResult(name="HC")
         assert r.is_placeholder is True
 
+    def test_is_placeholder_false_with_periods(self):
+        r = HoldCoResult(
+            name="HC",
+            periods=[HoldCoPeriodResult(period=0, contributions=[])],
+        )
+        assert r.is_placeholder is False
+
     def test_spv_count(self):
         r = HoldCoResult(name="HC", spv_codes=["A", "B", "C"])
         assert r.spv_count == 3
