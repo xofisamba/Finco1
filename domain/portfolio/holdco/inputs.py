@@ -111,3 +111,11 @@ class HoldCoInputs:
     def is_100_percent(self) -> bool:
         """True if all SPVs are owned at 100%."""
         return all(o.ownership_pct == 1.0 for o in self.ownerships)
+
+    def total_ownership_pct(self) -> float:
+        """Sum of ownership percentages across all SPVs. Does NOT require sum = 1.0.
+
+        Used for informational purposes only. Partial ownership fractions
+        accumulate when HoldCo owns less than 100% of multiple SPVs.
+        """
+        return sum(o.ownership_pct for o in self.ownerships)

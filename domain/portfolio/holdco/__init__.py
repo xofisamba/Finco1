@@ -16,6 +16,11 @@ from domain.portfolio.holdco.result import (
     HoldCoPeriodResult,
     HoldCoSPVContribution,
 )
+from domain.portfolio.holdco.runner import (
+    build_holdco_result,
+    aggregate_holdco_periods,
+    validate_holdco_alignment,
+)
 
 __all__ = [
     "HoldCoInputs",
@@ -25,4 +30,7 @@ __all__ = [
     "HoldCoResult",
     "HoldCoPeriodResult",
     "HoldCoSPVContribution",
+    "build_holdco_result",
+    "aggregate_holdco_periods",
+    "validate_holdco_alignment",
 ]

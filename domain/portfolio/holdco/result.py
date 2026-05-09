@@ -102,6 +102,7 @@ class HoldCoResult:
     holdco_irr: Optional[float] = None  # deferred — Phase 3 does NOT compute IRR
     spv_codes: list[str] = field(default_factory=list)
     currency: str = "EUR"
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self):
         if not self.name or not self.name.strip():
