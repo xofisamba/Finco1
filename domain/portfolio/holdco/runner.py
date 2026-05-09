@@ -155,20 +155,26 @@ def build_holdco_result(
             else:
                 spv_dist = 0.0
 
-            # P1.1: All current distributions go to dividend_keur (SHL fields stay 0.0)
-            holdco_share = spv_dist * ownership_pct
-            period_gross += holdco_share
+            # P1.1 / final-fix: explicit income component breakdown for SHL prep
+            # SHL principal is balance-sheet only and must NOT flow through period_gross.
+            # SHL interest (when implemented) IS income. For now both are 0.0.
+            dividend_share = spv_dist * ownership_pct
+            shl_interest_share = 0.0
+            shl_principal_share = 0.0
+            # holdco_share = dividend + SHL interest (SHL principal excluded from income)
+            holdco_income_share = dividend_share + shl_interest_share
+            period_gross += holdco_income_share
             period_spv_dist += spv_dist
 
             contributions.append(HoldCoSPVContribution(
                 period=period_idx,
                 spv_code=spv_code,
                 ownership_pct=ownership_pct,
-                spv_distribution_keur=spv_dist,
-                holdco_share_keur=holdco_share,
-                dividend_keur=holdco_share,  # P1.1: HoldCo-level dividend = ownership-adjusted inflow
-                shl_interest_keur=0.0,
-                shl_principal_keur=0.0,
+                spv_distribution_keur=spv_dist,  # raw SPV distribution
+                dividend_keur=dividend_share,     # HoldCo dividend portion
+                shl_interest_keur=shl_interest_share,  # 0.0 until SHL
+                shl_principal_keur=shl_principal_share,  # balance-sheet only, NOT in period_gross
+                holdco_share_keur=holdco_income_share,  # dividend + SHL interest
             ))
 
         # Apply OpEx (per-period), tax, compute sponsor distribution
