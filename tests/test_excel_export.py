@@ -1030,3 +1030,181 @@ class TestIndependentPortfolioExcelExport:
         ws = wb["Dashboard"]
         all_labels = [str(row[0]) for row in ws.iter_rows(values_only=True) if row[0]]
         assert "Portfolio Revenue (kEUR)" in all_labels, f"Missing 'Portfolio Revenue' in Dashboard: {all_labels}"
+
+
+class TestDSRFExcelExport:
+    """DSRF Excel export tests for Phase 2."""
+
+    def _ensure_factory(self):
+        """Ensure project_factories is imported (registers the replace shim)."""
+        import app.project_factories  # noqa: F401
+
+    def _make_dsrf_enabled_result(self):
+        """Create IndependentPortfolioResult with DSRF enabled and populated periods."""
+        self._ensure_factory()
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        from domain.portfolio.independent import (
+            run_independent_portfolio,
+            IndependentPortfolioInputs,
+            DSRFConfig,
+        )
+
+        s1 = replace(create_default_solar_project(), info=replace(
+            create_default_solar_project().info, code="SOLAR-D1", name="Solar D1"))
+
+        config = DSRFConfig(
+            enabled=True,
+            sizing_months=6,
+            sizing_basis="average_debt_service",
+            commitment_fee_rate_pa=0.005,
+            margin_rate_pa=0.02,
+            euribor_rate_pa=0.03,
+            period_year_fraction=0.5,
+            repayment_priority="before_distributions",
+        )
+
+        return run_independent_portfolio(
+            IndependentPortfolioInputs(projects=(s1,), portfolio_name="DSRF-Test", dsrf=config),
+            strict=True,
+        )
+
+    def _make_dsrf_disabled_result(self):
+        """Create IndependentPortfolioResult with DSRF disabled (no DSRF sheet)."""
+        self._ensure_factory()
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        from domain.portfolio.independent import (
+            run_independent_portfolio,
+            IndependentPortfolioInputs,
+        )
+        s1 = replace(create_default_solar_project(), info=replace(
+            create_default_solar_project().info, code="SOLAR-X1", name="Solar X1"))
+
+        return run_independent_portfolio(
+            IndependentPortfolioInputs(projects=(s1,), portfolio_name="DSRF-Disabled", dsrf=None),
+            strict=True,
+        )
+
+    def test_dsrf_sheet_absent_when_disabled(self):
+        """DSRF sheet is NOT created when dsrf=None or enabled=False."""
+        result = self._make_dsrf_disabled_result()
+        assert result.dsrf_enabled is False
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        from io import BytesIO
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "DSRF" not in wb.sheetnames
+
+    def test_dsrf_sheet_absent_when_enabled_but_no_periods(self):
+        """DSRF sheet is NOT created when enabled=True but dsrf_periods is empty."""
+        self._ensure_factory()
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        from domain.portfolio.independent import (
+            run_independent_portfolio,
+            IndependentPortfolioInputs,
+            DSRFConfig,
+        )
+
+        s1 = replace(create_default_solar_project(), info=replace(
+            create_default_solar_project().info, code="SOLAR-E1", name="Solar E1"))
+        config = DSRFConfig(enabled=True, sizing_months=6, sizing_basis="average_debt_service",
+                            period_year_fraction=0.5)
+        result = run_independent_portfolio(
+            IndependentPortfolioInputs(projects=(s1,), portfolio_name="Test", dsrf=config),
+            strict=True,
+        )
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        from io import BytesIO
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(data))
+        if "DSRF" in wb.sheetnames:
+            ws = wb["DSRF"]
+            row_count = sum(1 for _ in ws.iter_rows())
+            assert row_count > 1, "DSRF sheet should have data rows when dsrf_periods is populated"
+
+    def test_dsrf_sheet_exists_when_enabled_with_periods(self):
+        """DSRF sheet IS created when dsrf_enabled=True AND dsrf_periods is non-empty."""
+        result = self._make_dsrf_enabled_result()
+        assert result.dsrf_enabled is True
+        assert len(result.dsrf_periods) > 0, "DSRF periods should be populated for this test"
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        from io import BytesIO
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "DSRF" in wb.sheetnames
+
+    def test_dsrf_sheet_headers_exact(self):
+        """DSRF sheet has exactly the specified 15 column headers in order."""
+        result = self._make_dsrf_enabled_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        from io import BytesIO
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["DSRF"]
+        # Use iter_rows() to get Cell objects with .value attribute
+        first_row = next(ws.iter_rows())
+        # Filter out None cells (empty leading columns)
+        headers = [str(cell.value) for cell in first_row if cell.value is not None]
+        expected = [
+            "Period", "SPV Code", "Facility Limit (kEUR)", "Drawn Start (kEUR)",
+            "Undrawn Start (kEUR)", "Scheduled Senior DS (kEUR)", "CFADS Available (kEUR)",
+            "Debt Service Shortfall (kEUR)", "Draw (kEUR)", "Drawn Interest (kEUR)",
+            "Commitment Fee (kEUR)", "Repayment (kEUR)", "Drawn End (kEUR)",
+            "Undrawn End (kEUR)", "Cash Available for Distribution (kEUR)",
+        ]
+        assert headers == expected, f"DSRF headers mismatch.\nGot: {headers}\nExpected: {expected}"
+
+    def test_dsrf_sheet_has_data_rows(self):
+        """DSRF sheet has at least one data row when dsrf_periods exist."""
+        result = self._make_dsrf_enabled_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        from io import BytesIO
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["DSRF"]
+        row_count = sum(1 for _ in ws.iter_rows())
+        assert row_count >= 2, f"DSRF sheet should have header + data rows, got {row_count}"
+
+    def test_portfolio_summary_contains_dsrf_rows(self):
+        """Portfolio_Summary contains DSRF rows when enabled."""
+        result = self._make_dsrf_enabled_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        from io import BytesIO
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Portfolio_Summary"]
+        all_text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
+        assert "DSRF Facility Limit" in all_text, "DSRF Facility Limit row missing"
+        assert "DSRF Total Draw" in all_text, "DSRF Total Draw row missing"
+        assert "DSRF Distribution Reduction" in all_text, "DSRF Distribution Reduction row missing"
+
+    def test_dsrf_export_no_prohibited_terminology(self):
+        """Exported DSRF labels must not contain: top-up, release, funded, balance."""
+        result = self._make_dsrf_enabled_result()
+        data = build_excel_export(result=None, portfolio_result=result,
+                                  project_inputs=None, validation_issues=None)
+        from io import BytesIO
+        import openpyxl
+        wb = openpyxl.load_workbook(BytesIO(data))
+
+        # Check DSRF sheet headers
+        if "DSRF" in wb.sheetnames:
+            ws = wb["DSRF"]
+            dsrf_text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
+            for term in ("top-up", "topup", "release", "funded", "balance"):
+                assert term not in dsrf_text.lower(), f"Prohibited term '{term}' found in DSRF sheet"
+
+        # Check Portfolio_Summary labels
+        ws_sum = wb["Portfolio_Summary"]
+        sum_text = " ".join(str(c.value) for row in ws_sum.iter_rows() for c in row if c.value)
+        for term in ("top-up", "topup", "release", "funded", "balance"):
+            dsrf_label_text = " ".join(l for l in sum_text.split() if "dsrf" in l.lower() or "DSRF" in l)
+            assert term not in dsrf_label_text.lower(), f"Prohibited term '{term}' in DSRF Portfolio_Summary labels"
