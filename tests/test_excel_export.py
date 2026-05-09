@@ -991,7 +991,7 @@ class TestIndependentPortfolioExcelExport:
         wb = openpyxl.load_workbook(BytesIO(data))
         ws = wb["Portfolio_Notes"]
         all_text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value)
-        assert "DSRF" in all_text and "placeholder" in all_text.lower()
+        assert "DSRF" in all_text and ("revolving" in all_text.lower() or "facility" in all_text.lower())
 
     def test_no_holdco_sheet_not_created(self, _oborovo_shim):
         """No separate HoldCo sheet is created (not in scope)."""

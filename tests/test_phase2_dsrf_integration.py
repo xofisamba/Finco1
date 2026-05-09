@@ -133,23 +133,9 @@ def _make_mock_project(code: str):
     return p
 
 
-def _make_mock_project(code: str):
-    """Minimal mock project for testing."""
-    from unittest.mock import MagicMock
-    from datetime import date
-    p = MagicMock()
-    p.info.code = code
-    p.info.name = f"Project {code}"
-    p.info.financial_close = date(2030, 1, 1)
-    p.info.construction_months = 12
-    p.info.horizon_years = 25
-    p.revenue.ppa_term_years = 10
-    return p
-
-
 def test_dsrf_disabled_none_vs_config_none():
     """dsrf=None and dsrf=DSRFConfig(enabled=False) must produce identical outputs."""
-    # Use real project factory for a more rigorous test
+    # Use real project factory for a rigorous test with strict=True
     from app.project_factories import create_default_solar_project
 
     project = create_default_solar_project()
@@ -161,7 +147,7 @@ def test_dsrf_disabled_none_vs_config_none():
             portfolio_name="Test",
             dsrf=None,
         ),
-        strict=False,
+        strict=True,
     )
 
     # dsrf=DSRFConfig(enabled=False)
@@ -171,7 +157,7 @@ def test_dsrf_disabled_none_vs_config_none():
             portfolio_name="Test",
             dsrf=DSRFConfig(enabled=False),
         ),
-        strict=False,
+        strict=True,
     )
 
     # Compare all key financial KPIs

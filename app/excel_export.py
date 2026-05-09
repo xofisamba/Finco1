@@ -164,6 +164,9 @@ def build_excel_export(
                 _write_sheet(writer, "Portfolio_SPVs",
                              build_portfolio_spv_table(portfolio_result))
                 _write_portfolio_notes_sheet(writer, portfolio_result)
+                # ── DSRF sheet (Phase 2, optional) ─────────────────────────────
+                if portfolio_result.dsrf_enabled and portfolio_result.dsrf_periods:
+                    _write_dsrf_sheet(writer, portfolio_result)
             else:
                 # Pooled/legacy portfolio — use existing aggregated table
                 _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result),
@@ -866,11 +869,73 @@ def _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_
         df = pd.DataFrame(rows[1:], columns=rows[0])
         _write_sheet(writer, "Book Depreciation", df)
 
-def _write_portfolio_notes_sheet(writer, portfolio_result) -> None:
-    """Write 'Portfolio_Notes' sheet — limitations and IRR disclaimer for Phase 1.5.
+def _write_dsrf_sheet(writer, portfolio_result) -> None:
+    """Write 'DSRF' sheet — Phase 2 revolving facility schedule.
 
-    Appends to existing Notes sheet behavior.
+    Only created when portfolio_result.dsrf_enabled is True and dsrf_periods is non-empty.
+    Uses facility terminology only (draw, repayment, drawn, undrawn, facility limit).
     """
+    from domain.portfolio.independent.result import IndependentPortfolioResult
+    import pandas as pd
+
+    if not isinstance(portfolio_result, IndependentPortfolioResult):
+        return
+
+    periods = portfolio_result.dsrf_periods
+    if not periods:
+        return
+
+    # Build column order matching spec exactly
+    rows = [(
+        "Period",
+        "SPV Code",
+        "Facility Limit (kEUR)",
+        "Drawn Start (kEUR)",
+        "Undrawn Start (kEUR)",
+        "Scheduled Senior DS (kEUR)",
+        "CFADS Available (kEUR)",
+        "Debt Service Shortfall (kEUR)",
+        "Draw (kEUR)",
+        "Drawn Interest (kEUR)",
+        "Commitment Fee (kEUR)",
+        "Repayment (kEUR)",
+        "Drawn End (kEUR)",
+        "Undrawn End (kEUR)",
+        "Cash Available for Distribution (kEUR)",
+    )]
+
+    for p in periods:
+        rows.append((
+            getattr(p, "period", ""),
+            getattr(p, "spv_code", ""),
+            _round(getattr(p, "facility_limit_keur", 0.0)),
+            _round(getattr(p, "drawn_start_keur", 0.0)),
+            _round(getattr(p, "undrawn_start_keur", 0.0)),
+            _round(getattr(p, "scheduled_senior_ds_keur", 0.0)),
+            _round(getattr(p, "cfads_available_keur", 0.0)),
+            _round(getattr(p, "debt_service_shortfall_keur", 0.0)),
+            _round(getattr(p, "draw_keur", 0.0)),
+            _round(getattr(p, "drawn_interest_keur", 0.0)),
+            _round(getattr(p, "commitment_fee_keur", 0.0)),
+            _round(getattr(p, "repayment_keur", 0.0)),
+            _round(getattr(p, "drawn_end_keur", 0.0)),
+            _round(getattr(p, "undrawn_end_keur", 0.0)),
+            _round(getattr(p, "cash_available_for_distribution_keur", 0.0)),
+        ))
+
+    df = pd.DataFrame(rows[1:], columns=rows[0])
+    _write_sheet(writer, "DSRF", df, number_format={"kEUR": "#,##0"})
+    ws = writer.sheets["DSRF"]
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
+
+
+def _round(v: float, ndigits: int = 1) -> float:
+    """Round kEUR values consistently."""
+    return round(v, ndigits) if isinstance(v, float) else v
+
+
+def _write_portfolio_notes_sheet(writer, portfolio_result) -> None:
     from openpyxl.styles import Font
 
     lines = [
@@ -893,8 +958,12 @@ def _write_portfolio_notes_sheet(writer, portfolio_result) -> None:
         "True portfolio IRR requires date-aligned XIRR over all SPV cash flows",
         "and is NOT implemented in Phase 1 or Phase 1.5.",
         "",
-        "--- DSRF ---",
-        "DSRF is a placeholder only. enabled=True raises ValueError.",
+        "--- DSRF (Phase 2) ---",
+        "DSRF is a revolving debt service reserve facility (liquidity facility).",
+        "It is NOT a cash reserve account (unlike DSRA).",
+        "DSRF reduces distributions via: commitment fee + drawn interest + repayment.",
+        "IRR recalculation is deferred to future step.",
+        "Semiannual model only. No HoldCo. No SHL. No pooled financing.",
         "",
         "--- Warnings ---",
     ]
