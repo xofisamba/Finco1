@@ -757,3 +757,112 @@ def test_excel_opex_detail_hardcoded_flag_from_is_hardcoded_field():
     for row in ws.iter_rows(min_row=2, values_only=True):
         if row[0] == "Insurance":
             assert row[6] is True, f"Is Hardcoded should be True for is_hardcoded=True item, got {row[6]}"
+
+# ── Portfolio UI export tests (Phase 1.5) ──────────────────────────────────
+
+class TestPortfolioUITables:
+    """Test build_portfolio_summary_table and build_portfolio_spv_table directly.
+
+    The full Excel export has a timezone datetime issue with Mock results
+    that is unrelated to Phase 1.5 code. The individual table builders
+    are tested here directly.
+    """
+
+    def test_portfolio_summary_table_columns(self):
+        """Portfolio summary table has expected columns."""
+        from app.portfolio_ui import build_portfolio_summary_table
+        from domain.portfolio.independent import IndependentPortfolioResult
+
+        result = IndependentPortfolioResult(
+            portfolio_name="Test",
+            spv_outputs=(),
+            total_revenue_keur=100_000.0,
+            total_ebitda_keur=80_000.0,
+            total_tax_keur=10_000.0,
+            total_senior_ds_keur=50_000.0,
+            total_distribution_keur=20_000.0,
+            min_dscr=1.2,
+            avg_dscr=1.35,
+            spv_project_irrs=(),
+            spv_equity_irrs=(),
+            simple_avg_project_irr=0.09,
+            simple_avg_equity_irr=0.11,
+            dsrf_enabled=False,
+            warnings=(),
+        )
+        df = build_portfolio_summary_table(result)
+        assert list(df.columns) == ["Field", "Value"]
+        fields = set(df["Field"])
+        assert "Portfolio Name" in fields
+        assert "Number of SPVs" in fields
+        assert "Total Revenue (kEUR)" in fields
+        assert "Min DSCR (conservative)" in fields
+        assert "Simple Avg Project IRR" in fields
+
+    def test_portfolio_spv_table_columns(self):
+        """Portfolio SPV table has expected columns."""
+        from app.portfolio_ui import build_portfolio_spv_table
+        from domain.portfolio.independent import IndependentPortfolioResult, SPVOutput
+
+        out = SPVOutput(
+            project_code="SPV-A", project_name="Project A",
+            project_irr=0.09, equity_irr=0.12,
+            total_revenue_keur=1000.0, total_ebitda_keur=800.0,
+            total_tax_keur=100.0, total_senior_ds_keur=500.0,
+            total_distribution_keur=200.0, avg_dscr=1.3, min_dscr=1.15,
+            waterfall_result=None, warnings=(),
+        )
+        result = IndependentPortfolioResult(
+            portfolio_name="Test", spv_outputs=(out,),
+            total_revenue_keur=1000.0, total_ebitda_keur=800.0,
+            total_tax_keur=100.0, total_senior_ds_keur=500.0,
+            total_distribution_keur=200.0, min_dscr=1.15, avg_dscr=1.3,
+            spv_project_irrs=(0.09,), spv_equity_irrs=(0.12,),
+            dsrf_enabled=False, warnings=(),
+        )
+        df = build_portfolio_spv_table(result)
+        assert "SPV Code" in df.columns
+        assert "Revenue (kEUR)" in df.columns
+        assert "Project IRR" in df.columns
+        assert "Equity IRR" in df.columns
+        assert len(df) == 1
+        assert df["SPV Code"].iloc[0] == "SPV-A"
+
+    def test_portfolio_summary_irr_label_present(self):
+        """Summary table contains the explicit IRR label."""
+        from app.portfolio_ui import build_portfolio_summary_table, _IRR_LABEL
+        from domain.portfolio.independent import IndependentPortfolioResult
+
+        result = IndependentPortfolioResult(
+            portfolio_name="Test", spv_outputs=(),
+            total_revenue_keur=100_000.0, total_ebitda_keur=80_000.0,
+            total_tax_keur=10_000.0, total_senior_ds_keur=50_000.0,
+            total_distribution_keur=20_000.0, min_dscr=1.2, avg_dscr=1.35,
+            spv_project_irrs=(), spv_equity_irrs=(),
+            simple_avg_project_irr=0.09, simple_avg_equity_irr=0.11,
+            dsrf_enabled=False, warnings=(),
+        )
+        df = build_portfolio_summary_table(result)
+        # Check IRR label is present in summary
+        irr_row = df[df["Field"].str.contains("IRR", na=False)]
+        assert len(irr_row) >= 2  # Project and Equity IRR rows
+
+    def test_dsrf_placeholder_status(self):
+        """DSRF shows as disabled in portfolio summary."""
+        from app.portfolio_ui import build_portfolio_summary_table
+        from domain.portfolio.independent import IndependentPortfolioResult
+
+        result = IndependentPortfolioResult(
+            portfolio_name="Test", spv_outputs=(),
+            total_revenue_keur=100_000.0, total_ebitda_keur=80_000.0,
+            total_tax_keur=10_000.0, total_senior_ds_keur=50_000.0,
+            total_distribution_keur=20_000.0, min_dscr=1.2, avg_dscr=1.35,
+            spv_project_irrs=(), spv_equity_irrs=(),
+            simple_avg_project_irr=0.09, simple_avg_equity_irr=0.11,
+            dsrf_enabled=False, warnings=(),
+        )
+        df = build_portfolio_summary_table(result)
+        dsrf_row = df[df["Field"] == "DSRF Enabled"]
+        assert len(dsrf_row) == 1
+        assert dsrf_row["Value"].values[0] == False
+

@@ -3,6 +3,12 @@ from __future__ import annotations
 import pandas as pd
 from io import BytesIO
 
+from app.portfolio_ui import (
+    build_portfolio_summary_table,
+    build_portfolio_spv_table,
+    _IRR_LABEL as _PORTFOLIO_IRR_LABEL,
+)
+
 import openpyxl
 from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
@@ -151,6 +157,20 @@ def build_excel_export(
         if portfolio_result is not None:
             _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result),
                          number_format={"kEUR": "#,##0", "IRR": "0.0%", "DSCR": "0.00x"})
+
+            # Phase 1.5: Independent SPV portfolio export (appends to existing Portfolio sheet)
+            # Uses IndependentPortfolioResult when available (not PooledPortfolioResult)
+            try:
+                from domain.portfolio.independent import IndependentPortfolioResult
+                if isinstance(portfolio_result, IndependentPortfolioResult):
+                    _write_sheet(writer, "Portfolio_Summary",
+                                 build_portfolio_summary_table(portfolio_result))
+                    _write_sheet(writer, "Portfolio_SPVs",
+                                 build_portfolio_spv_table(portfolio_result))
+                    _write_portfolio_notes_sheet(writer, portfolio_result)
+            except ImportError:
+                pass  # domain/portfolio/independent not available
+
             if portfolio_result.portfolio_cashflows:
                 rows = []
                 for row in portfolio_result.portfolio_cashflows:
@@ -838,3 +858,49 @@ def _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_
                 ("Detail", "Book depreciation is separate from tax depreciation for reporting purposes.")]
         df = pd.DataFrame(rows[1:], columns=rows[0])
         _write_sheet(writer, "Book Depreciation", df)
+
+def _write_portfolio_notes_sheet(writer, portfolio_result) -> None:
+    """Write 'Portfolio_Notes' sheet — limitations and IRR disclaimer for Phase 1.5.
+
+    Appends to existing Notes sheet behavior.
+    """
+    from openpyxl.styles import Font
+
+    lines = [
+        "Phase 1.5 Portfolio — Independent SPV Aggregation",
+        "",
+        "This export uses domain/portfolio/independent/ IndependentPortfolioResult.",
+        "It is NOT a pooled financing portfolio (see domain/portfolio/waterfall.py).",
+        "",
+        "--- Limitations ---",
+        "No HoldCo entity.",
+        "No SHL / intercompany flows.",
+        "No Sponsor IRR.",
+        "No monthly model frequency.",
+        "No cross-SP cash pooling.",
+        "No retained earnings constraint.",
+        "",
+        "--- IRR Disclaimer ---",
+        "Simple Average Project IRR and Simple Average Equity IRR are UNWEIGHTED",
+        "averages of per-SP IRRs. They are NOT true portfolio XIRR values.",
+        "True portfolio IRR requires date-aligned XIRR over all SPV cash flows",
+        "and is NOT implemented in Phase 1 or Phase 1.5.",
+        "",
+        "--- DSRF ---",
+        "DSRF is a placeholder only. enabled=True raises ValueError.",
+        "",
+        "--- Warnings ---",
+    ]
+    if portfolio_result.warnings:
+        for w in portfolio_result.warnings:
+            lines.append(f"  ⚠ {w}")
+    else:
+        lines.append("  (none)")
+
+    df = pd.DataFrame([(l,) for l in lines], columns=["Note"])
+    df.to_excel(writer, sheet_name="Portfolio_Notes", index=False)
+    ws = writer.sheets["Portfolio_Notes"]
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
