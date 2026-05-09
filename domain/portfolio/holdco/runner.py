@@ -1,7 +1,9 @@
 """Phase 3B HoldCo aggregation runner.
 
-Linear passthrough aggregation only.
-No SHL. No tax template engine. No HoldCo IRR. No monthly model.
+No active SHL calculation in HoldCo runner. SHL passthrough fields are prepared;
+SHL interest/principal remain zero until SHL integration phase.
+
+No tax template engine. No HoldCo IRR. No monthly model.
 No pooled financing. No retained earnings. No cash sweep.
 
 Inputs:
@@ -158,9 +160,15 @@ def build_holdco_result(
             # P1.1 / final-fix: explicit income component breakdown for SHL prep
             # SHL principal is balance-sheet only and must NOT flow through period_gross.
             # SHL interest (when implemented) IS income. For now both are 0.0.
+            #
+            # Future SHL phase: replace shl_interest_share/shl_principal_share placeholders
+            # with actual upstreamed values from waterfall period's shl_interest_keur/
+            # shl_principal_keur fields. The only change needed will be to read those
+            # fields and populate the share variables — the rest of the income
+            # accumulator logic stays the same.
             dividend_share = spv_dist * ownership_pct
-            shl_interest_share = 0.0
-            shl_principal_share = 0.0
+            shl_interest_share = 0.0  # TODO(SHL): read from waterfall period shl_interest_keur
+            shl_principal_share = 0.0  # TODO(SHL): read from waterfall period shl_principal_keur
             # holdco_share = dividend + SHL interest (SHL principal excluded from income)
             holdco_income_share = dividend_share + shl_interest_share
             period_gross += holdco_income_share
