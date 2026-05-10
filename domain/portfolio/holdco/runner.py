@@ -33,15 +33,17 @@ from domain.portfolio.independent import IndependentPortfolioResult
 from domain.portfolio.independent.result import SPVOutput
 
 
-def _safe_get_float(obj, attr, default):
+def _safe_get_float(obj, attr, default=0.0):
     """Get a float attribute from an object, returning default if absent or not a real float.
 
     MagicMock (from tests) returns a Mock object for any attribute even if not set.
     Using isinstance(x, float) to distinguish real floats from Mock objects.
     """
     val = getattr(obj, attr, default)
-    if isinstance(val, float):
-        return val
+    if isinstance(val, bool):
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
     return default
 
 
