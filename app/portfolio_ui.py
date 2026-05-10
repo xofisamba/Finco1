@@ -9,6 +9,16 @@ import pandas as pd
 
 from domain.portfolio.independent import IndependentPortfolioResult
 
+from app.portfolio_ui_overlay import (
+    build_spv_constraints_table,
+    build_holdco_constraints_table,
+    build_dist_constraints_table,
+    aggregate_spv_warnings,
+    aggregate_holdco_warnings,
+    summarize_block_reasons,
+    has_overlay_warnings,
+)
+
 
 # ── Column / label constants ────────────────────────────────────────────────
 
@@ -132,4 +142,12 @@ __all__ = [
     "build_portfolio_warnings_table",
     "render_portfolio_summary",
     "_IRR_LABEL",
+    # Phase 5F — overlay UI helpers
+    "build_spv_constraints_table",
+    "build_holdco_constraints_table",
+    "build_dist_constraints_table",
+    "aggregate_spv_warnings",
+    "aggregate_holdco_warnings",
+    "summarize_block_reasons",
+    "has_overlay_warnings",
 ]
