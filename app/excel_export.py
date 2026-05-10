@@ -3,6 +3,23 @@ from __future__ import annotations
 import pandas as pd
 from io import BytesIO
 
+from app.portfolio_ui import (
+    build_portfolio_summary_table,
+    build_portfolio_spv_table,
+)
+
+from domain.portfolio.distribution_constraints import (
+    DistributionConstraintConfig,
+    DistributionConstraintResult,
+)
+from domain.portfolio.distribution_constraints.overlay import (
+    SPVRetainedCashOverlay,
+)
+from domain.portfolio.distribution_constraints.holdco_overlay import (
+    HoldCoRetainedCashOverlay,
+)
+from domain.portfolio.cash_ledger import PortfolioCashLedger
+
 import openpyxl
 from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
@@ -39,6 +56,11 @@ def build_excel_export(
     advanced_opex_line_items: tuple = None,
     advanced_capex_line_items: tuple = None,
     include_reconciliation_sheets: bool = False,
+    # ── Phase 5D overlay sheets (optional) ──────────────────────────
+    cash_ledger=None,
+    spv_overlays=None,
+    holdco_overlay=None,
+    constraint_results=None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -149,20 +171,35 @@ def build_excel_export(
 
         # ── Portfolio ──────────────────────────────────────────────────────
         if portfolio_result is not None:
-            _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result),
-                         number_format={"kEUR": "#,##0", "IRR": "0.0%", "DSCR": "0.00x"})
-            if portfolio_result.portfolio_cashflows:
-                rows = []
-                for row in portfolio_result.portfolio_cashflows:
-                    date = row.get("date", "")
-                    total = row.get("total_cashflow", 0.0)
-                    breakdown = row.get("breakdown", {})
-                    row_dict = {"Date": str(date), "Total CF (keur)": round(total, 2)}
-                    for proj, contrib in breakdown.items():
-                        row_dict[f"  {proj}"] = round(contrib, 2)
-                    rows.append(row_dict)
-                cf_df = pd.DataFrame(rows)
-                _write_sheet(writer, "Portfolio CF", cf_df, number_format={"kEUR": "#,##0"})
+            from domain.portfolio.independent import IndependentPortfolioResult
+
+            # IndependentPortfolioResult (Phase 1.5): write per-SPV sheets instead of pooled Portfolio sheet
+            # PooledPortfolioResult (legacy): use existing build_portfolio_table
+            if isinstance(portfolio_result, IndependentPortfolioResult):
+                _write_sheet(writer, "Portfolio_Summary",
+                             build_portfolio_summary_table(portfolio_result))
+                _write_sheet(writer, "Portfolio_SPVs",
+                             build_portfolio_spv_table(portfolio_result))
+                _write_portfolio_notes_sheet(writer, portfolio_result)
+                # ── DSRF sheet (Phase 2, optional) ─────────────────────────────
+                if portfolio_result.dsrf_enabled and portfolio_result.dsrf_periods:
+                    _write_dsrf_sheet(writer, portfolio_result)
+            else:
+                # Pooled/legacy portfolio — use existing aggregated table
+                _write_sheet(writer, "Portfolio", build_portfolio_table(portfolio_result),
+                             number_format={"kEUR": "#,##0", "IRR": "0.0%", "DSCR": "0.00x"})
+                if portfolio_result.portfolio_cashflows:
+                    rows = []
+                    for row in portfolio_result.portfolio_cashflows:
+                        date = row.get("date", "")
+                        total = row.get("total_cashflow", 0.0)
+                        breakdown = row.get("breakdown", {})
+                        row_dict = {"Date": str(date), "Total CF (keur)": round(total, 2)}
+                        for proj, contrib in breakdown.items():
+                            row_dict[f"  {proj}"] = round(contrib, 2)
+                        rows.append(row_dict)
+                    cf_df = pd.DataFrame(rows)
+                    _write_sheet(writer, "Portfolio CF", cf_df, number_format={"kEUR": "#,##0"})
 
         # ── Reconciliation / Audit Sheets (optional) ─────────────────────
         if include_reconciliation_sheets and result is not None:
@@ -181,7 +218,16 @@ def build_excel_export(
 
         # ── Book Depreciation Disclosure ──────────────────────────────────
         _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type)
-    
+
+        # ── Phase 5D: Overlay Sheets (optional) ─────────────────────────
+        _write_overlay_sheets(
+            writer,
+            cash_ledger=cash_ledger,
+            spv_overlays=spv_overlays,
+            holdco_overlay=holdco_overlay,
+            constraint_results=constraint_results,
+        )
+
     output.seek(0)
     return output.read()
 
@@ -429,10 +475,20 @@ def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scena
                 else:
                     rows.append((label, v))
     if portfolio_result is not None:
-        rows.append(("Pooled Revenue (kEUR)", portfolio_result.total_revenue_keur))
-        rows.append(("Pooled EBITDA (kEUR)", portfolio_result.total_ebitda_keur))
-        rows.append(("Portfolio DSCR (Avg)", portfolio_result.avg_dscr))
-        rows.append(("Portfolio DSCR (Min)", portfolio_result.min_dscr))
+        from domain.portfolio.independent import IndependentPortfolioResult
+
+        if isinstance(portfolio_result, IndependentPortfolioResult):
+            # Independent SPV portfolio — use "Portfolio" labels (not "Pooled")
+            rows.append(("Portfolio Revenue (kEUR)", portfolio_result.total_revenue_keur))
+            rows.append(("Portfolio EBITDA (kEUR)", portfolio_result.total_ebitda_keur))
+            rows.append(("Portfolio DSCR (Avg)", portfolio_result.avg_dscr))
+            rows.append(("Portfolio DSCR (Min)", portfolio_result.min_dscr))
+        else:
+            # Pooled/legacy portfolio — use "Pooled" labels
+            rows.append(("Pooled Revenue (kEUR)", portfolio_result.total_revenue_keur))
+            rows.append(("Pooled EBITDA (kEUR)", portfolio_result.total_ebitda_keur))
+            rows.append(("Portfolio DSCR (Avg)", portfolio_result.avg_dscr))
+            rows.append(("Portfolio DSCR (Min)", portfolio_result.min_dscr))
 
     df = pd.DataFrame(rows, columns=["Metric", "Value"])
     df.to_excel(writer, sheet_name="Dashboard", index=False)
@@ -838,3 +894,272 @@ def _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_
                 ("Detail", "Book depreciation is separate from tax depreciation for reporting purposes.")]
         df = pd.DataFrame(rows[1:], columns=rows[0])
         _write_sheet(writer, "Book Depreciation", df)
+
+def _write_dsrf_sheet(writer, portfolio_result) -> None:
+    """Write 'DSRF' sheet — Phase 2 revolving facility schedule.
+
+    Only created when portfolio_result.dsrf_enabled is True and dsrf_periods is non-empty.
+    Uses facility terminology only (draw, repayment, drawn, undrawn, facility limit).
+    """
+    from domain.portfolio.independent.result import IndependentPortfolioResult
+    import pandas as pd
+
+    if not isinstance(portfolio_result, IndependentPortfolioResult):
+        return
+
+    periods = portfolio_result.dsrf_periods
+    if not periods:
+        return
+
+    # Build column order matching spec exactly
+    rows = [(
+        "Period",
+        "SPV Code",
+        "Facility Limit (kEUR)",
+        "Drawn Start (kEUR)",
+        "Undrawn Start (kEUR)",
+        "Scheduled Senior DS (kEUR)",
+        "CFADS Available (kEUR)",
+        "Debt Service Shortfall (kEUR)",
+        "Draw (kEUR)",
+        "Drawn Interest (kEUR)",
+        "Commitment Fee (kEUR)",
+        "Repayment (kEUR)",
+        "Drawn End (kEUR)",
+        "Undrawn End (kEUR)",
+        "Cash Available for Distribution (kEUR)",
+    )]
+
+    for p in periods:
+        rows.append((
+            getattr(p, "period", ""),
+            getattr(p, "spv_code", ""),
+            _round(getattr(p, "facility_limit_keur", 0.0)),
+            _round(getattr(p, "drawn_start_keur", 0.0)),
+            _round(getattr(p, "undrawn_start_keur", 0.0)),
+            _round(getattr(p, "scheduled_senior_ds_keur", 0.0)),
+            _round(getattr(p, "cfads_available_keur", 0.0)),
+            _round(getattr(p, "debt_service_shortfall_keur", 0.0)),
+            _round(getattr(p, "draw_keur", 0.0)),
+            _round(getattr(p, "drawn_interest_keur", 0.0)),
+            _round(getattr(p, "commitment_fee_keur", 0.0)),
+            _round(getattr(p, "repayment_keur", 0.0)),
+            _round(getattr(p, "drawn_end_keur", 0.0)),
+            _round(getattr(p, "undrawn_end_keur", 0.0)),
+            _round(getattr(p, "cash_available_for_distribution_keur", 0.0)),
+        ))
+
+    df = pd.DataFrame(rows[1:], columns=rows[0])
+    _write_sheet(writer, "DSRF", df, number_format={"kEUR": "#,##0"})
+    ws = writer.sheets["DSRF"]
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
+
+
+def _round(v: float, ndigits: int = 1) -> float:
+    """Round kEUR values consistently."""
+    return round(v, ndigits) if isinstance(v, float) else v
+
+
+def _write_portfolio_notes_sheet(writer, portfolio_result) -> None:
+    from openpyxl.styles import Font
+
+    lines = [
+        "Phase 1.5 Portfolio — Independent SPV Aggregation",
+        "",
+        "This export uses domain/portfolio/independent/ IndependentPortfolioResult.",
+        "It is NOT a pooled financing portfolio (see domain/portfolio/waterfall.py).",
+        "",
+        "--- Limitations ---",
+        "No HoldCo entity.",
+        "No SHL / intercompany flows.",
+        "No Sponsor IRR.",
+        "No monthly model frequency.",
+        "No cross-SP cash pooling.",
+        "No retained earnings constraint.",
+        "",
+        "--- IRR Disclaimer ---",
+        "Simple Average Project IRR and Simple Average Equity IRR are UNWEIGHTED",
+        "averages of per-SP IRRs. They are NOT true portfolio XIRR values.",
+        "True portfolio IRR requires date-aligned XIRR over all SPV cash flows",
+        "and is NOT implemented in Phase 1 or Phase 1.5.",
+        "",
+        "--- DSRF (Phase 2) ---",
+        "DSRF is a revolving debt service reserve facility (liquidity facility).",
+        "It is NOT a cash reserve account (unlike DSRA).",
+        "DSRF reduces distributions via: commitment fee + drawn interest + repayment.",
+        "IRR recalculation is deferred to future step.",
+        "Semiannual model only. No HoldCo. No SHL. No pooled financing.",
+        "",
+        "--- Warnings ---",
+    ]
+    if portfolio_result.warnings:
+        for w in portfolio_result.warnings:
+            lines.append(f"  ⚠ {w}")
+    else:
+        lines.append("  (none)")
+
+    df = pd.DataFrame([(l,) for l in lines], columns=["Note"])
+    df.to_excel(writer, sheet_name="Portfolio_Notes", index=False)
+    ws = writer.sheets["Portfolio_Notes"]
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    ws.sheet_state = "visible"
+
+
+# ── Phase 5D: Overlay Sheets ────────────────────────────────────────────────────
+
+
+def _write_overlay_sheets(
+    writer,
+    cash_ledger=None,
+    spv_overlays=None,
+    holdco_overlay=None,
+    constraint_results=None,
+) -> None:
+    """Write optional overlay sheets for Phase 5D distribution constraint visibility.
+
+    All parameters optional — if None the sheet is skipped silently.
+
+    Sheet names are <= 31 chars and follow openpyxl sheet name limits.
+    """
+    if cash_ledger is not None:
+        _write_cash_ledger_sheet(writer, cash_ledger)
+
+    if constraint_results is not None:
+        _write_dist_constraints_sheet(writer, constraint_results)
+
+    if spv_overlays is not None:
+        for ov in spv_overlays:
+            if isinstance(ov, SPVRetainedCashOverlay):
+                _write_spv_retained_cash_sheet(writer, ov)
+
+    if holdco_overlay is not None:
+        _write_holdco_retained_cash_sheet(writer, holdco_overlay)
+
+
+def _write_cash_ledger_sheet(writer, ledger: PortfolioCashLedger) -> None:
+    """Write Cash Ledger sheet — one row per movement, with entity and period context."""
+    rows = []
+    for entity_ledger in (ledger.entities or ()):
+        for period in (entity_ledger.periods or ()):
+            for mov in (period.movements or ()):
+                rows.append({
+                    "Entity Code": entity_ledger.entity_code,
+                    "Period": period.period,
+                    "Opening Cash": round(period.opening_cash_keur, 2),
+                    "Movement Type": mov.movement_type.name if hasattr(mov.movement_type, 'name') else str(mov.movement_type),
+                    "Movement Amount": round(mov.amount_keur, 2),
+                    "Closing Cash": round(period.closing_cash_keur, 2),
+                    "Warnings": "; ".join(period.warnings) if period.warnings else "",
+                })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "Entity Code", "Period", "Opening Cash", "Movement Type",
+        "Movement Amount", "Closing Cash", "Warnings"
+    ])
+    _write_sheet(writer, "Cash Ledger", df, number_format={"Opening Cash": "#,##0", "Movement Amount": "#,##0", "Closing Cash": "#,##0"})
+    _check_sheet_name_length("Cash Ledger")
+
+
+def _write_dist_constraints_sheet(writer, constraint_results) -> None:
+    """Write Distribution Constraints sheet from constraint result objects."""
+    rows = []
+    for cr in (constraint_results or ()):
+        if not isinstance(cr, DistributionConstraintResult):
+            continue
+        for cp in (cr.periods or ()):
+            rows.append({
+                "Entity Code": cr.entity_code,
+                "Period": cp.period,
+                "Cash Before Distribution": round(cp.cash_before_distribution_keur, 2),
+                "Requested Distribution": round(cp.requested_distribution_keur, 2),
+                "Allowed Distribution": round(cp.allowed_distribution_keur, 2),
+                "Retained Cash": round(cp.retained_cash_keur, 2),
+                "Block Reasons": "; ".join(r.name if hasattr(r, 'name') else str(r) for r in (cp.block_reasons or ())),
+                "Warnings": "; ".join(cp.warnings) if cp.warnings else "",
+            })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "Entity Code", "Period", "Cash Before Distribution", "Requested Distribution",
+        "Allowed Distribution", "Retained Cash", "Block Reasons", "Warnings"
+    ])
+    _write_sheet(writer, "Dist Constraints", df, number_format={
+        "Cash Before Distribution": "#,##0", "Requested Distribution": "#,##0",
+        "Allowed Distribution": "#,##0", "Retained Cash": "#,##0"
+    })
+    _check_sheet_name_length("Dist Constraints")
+
+
+def _write_spv_retained_cash_sheet(writer, overlay: SPVRetainedCashOverlay) -> None:
+    """Write SPV Retained Cash sheet for one SPV overlay.
+
+    Sheet name includes entity code truncated to openpyxl limit (28 chars + "SPV_").
+    """
+    safe_name = _safe_sheet_name(overlay.entity_code or "SPV")
+    sheet_name = f"SPV_{safe_name}"[:31]
+    _check_sheet_name_length(sheet_name)
+
+    rows = []
+    for p in (overlay.periods or ()):
+        rows.append({
+            "SPV Code": overlay.entity_code,
+            "Period": p.period,
+            "Requested Distribution": round(p.requested_distribution_keur, 2),
+            "Allowed Distribution": round(p.allowed_distribution_keur, 2),
+            "Retained Cash": round(p.retained_cash_keur, 2),
+            "Available Distribution": round(p.cash_before_distribution_keur - p.retained_cash_keur, 2),
+            "Warnings": "; ".join(p.warnings) if p.warnings else "",
+        })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "SPV Code", "Period", "Requested Distribution", "Allowed Distribution",
+        "Retained Cash", "Available Distribution", "Warnings"
+    ])
+    _write_sheet(writer, sheet_name, df, number_format={
+        "Requested Distribution": "#,##0", "Allowed Distribution": "#,##0",
+        "Retained Cash": "#,##0", "Available Distribution": "#,##0"
+    })
+
+
+def _write_holdco_retained_cash_sheet(writer, overlay: HoldCoRetainedCashOverlay) -> None:
+    """Write HoldCo Retained Cash sheet."""
+    rows = []
+    max_len = max(
+        len(overlay.retained_cash_by_period),
+        len(overlay.requested_distribution_by_period),
+        len(overlay.available_distribution_by_period),
+    )
+    for i in range(max_len):
+        rows.append({
+            "HoldCo Code": overlay.entity_code,
+            "Period": i,
+            "Requested Distribution": round(
+                overlay.requested_distribution_by_period[i]
+                if i < len(overlay.requested_distribution_by_period) else 0.0, 2),
+            "Retained Cash": round(
+                overlay.retained_cash_by_period[i]
+                if i < len(overlay.retained_cash_by_period) else 0.0, 2),
+            "Available Distribution": round(
+                overlay.available_distribution_by_period[i]
+                if i < len(overlay.available_distribution_by_period) else 0.0, 2),
+            "Warnings": "",
+        })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "HoldCo Code", "Period", "Requested Distribution", "Retained Cash", "Available Distribution", "Warnings"
+    ])
+    _write_sheet(writer, "HoldCo Ret Cash", df, number_format={
+        "Requested Distribution": "#,##0", "Retained Cash": "#,##0", "Available Distribution": "#,##0"
+    })
+    _check_sheet_name_length("HoldCo Ret Cash")
+
+
+def _safe_sheet_name(name: str) -> str:
+    """Sanitize a sheet name for openpyxl compatibility."""
+    # openpyxl disallows \ / * ? [ ] : in sheet names
+    import re
+    clean = re.sub(r'[\/\\*?[\]:]', '_', str(name))
+    return clean[:28]  # leave room for prefix
+
+
+def _check_sheet_name_length(name: str) -> None:
+    """Assertion that sheet name is <= 31 chars (openpyxl limit)."""
+    assert len(name) <= 31, f"Sheet name '{name}' exceeds 31-char limit ({len(name)})"
