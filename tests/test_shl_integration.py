@@ -426,3 +426,97 @@ class TestStartPeriodIndex:
         # Period 5+: no SHL (facility ended after 2 periods)
         assert wf[5].shl_interest_keur == 0.0
         assert wf[6].shl_interest_keur == 0.0
+
+
+class TestShlInjectionCollisionGuard:
+    """Tests for SHL injection collision policy (Issue A from Phase 5D readiness review)."""
+
+    def test_inject_over_zero_existing_is_noop(self):
+        """Injection into period with existing 0.0 is always allowed."""
+        p = _WFPeriodStub(0, 100.0)
+        # Pre-existing 0.0 (unset via getattr returns 0.0 since class has default)
+        inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+        assert p.shl_interest_keur == 50.0
+        assert p.shl_principal_keur == 200.0
+
+    def test_inject_interest_collision_raises(self):
+        """Non-zero existing shl_interest_keur + non-zero injection raises ValueError."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0   # SPV-internal SHL already set
+        p.shl_principal_keur = 0.0
+
+        with pytest.raises(ValueError, match="SHL collision.*shl_interest_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+
+    def test_inject_principal_collision_raises(self):
+        """Non-zero existing shl_principal_keur + non-zero injection raises ValueError."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 0.0
+        p.shl_principal_keur = 150.0  # SPV-internal SHL already set
+
+        with pytest.raises(ValueError, match="SHL collision.*shl_principal_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+
+    def test_both_collision_raises_on_interest_first(self):
+        """Collision on both fields raises on interest (first check) then propagates."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0
+        p.shl_principal_keur = 150.0
+
+        with pytest.raises(ValueError, match="SHL collision.*shl_interest_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+
+    def test_zero_injection_overwrites_nonzero_existing(self):
+        """Injection of 0.0 replaces existing non-zero (portfolio lookup has explicit 0)."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0
+        p.shl_principal_keur = 150.0
+        # Explicit 0 from portfolio lookup → overwrites existing
+        inject_shl_into_waterfall_periods([p], {0: (0.0, 0.0)})
+        assert p.shl_interest_keur == 0.0
+        assert p.shl_principal_keur == 0.0
+
+    def test_empty_lookup_zeros_all_periods(self):
+        """Empty lookup sets shl_interest_keur and shl_principal_keur to 0.0 for all periods."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0
+        p.shl_principal_keur = 150.0
+        inject_shl_into_waterfall_periods([p], {})  # empty lookup
+        # Empty lookup = no SHL → set to 0.0 (not preserved)
+        assert p.shl_interest_keur == 0.0
+        assert p.shl_principal_keur == 0.0
+
+    def test_aditive_injection_not_supported(self):
+        """Portfolio SHL does NOT add to SPV-internal SHL — it raises (explicit policy)."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0
+        p.shl_principal_keur = 150.0
+
+        with pytest.raises(ValueError, match="SHL collision"):
+            inject_shl_into_waterfall_periods([p], {0: (10.0, 50.0)})
+
+    def test_enrich_portfolio_with_collision_raises_integration(self):
+        """Full enrich_portfolio_result_with_shl propagates collision from inject call."""
+        from domain.portfolio.shl import SHLPortfolioInputs
+
+        wf_periods_data = [(i, 1000.0) for i in range(3)]
+        spv = _make_spv_with_periods("SOLAR-1", wf_periods_data)
+        # Pre-existing SHL at SPV level (simulates pik_then_sweep SHL)
+        spv.waterfall_result.periods[0].shl_interest_keur = 20.0
+        spv.waterfall_result.periods[0].shl_principal_keur = 100.0
+        portfolio = _make_portfolio_result([spv])
+
+        f = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SOLAR-1",
+            principal_keur=1000.0,
+            interest_rate_pa=0.08,
+            tenor_years=1,
+            payment_frequency_per_year=2,
+            start_period_index=0,   # collides with existing
+        )
+        shl_result = run_shl_facility(f)
+        shl_by_borrower = {"SOLAR-1": (shl_result,)}
+
+        with pytest.raises(ValueError, match="SHL collision"):
+            enrich_portfolio_result_with_shl(portfolio, shl_by_borrower)
