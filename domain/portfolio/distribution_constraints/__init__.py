@@ -15,6 +15,7 @@ from __future__ import annotations
 from domain.portfolio.distribution_constraints.inputs import (
     DistributionBlockReason,
     DistributionConstraintConfig,
+    DistributionEnforcementMode,
 )
 from domain.portfolio.distribution_constraints.result import (
     DistributionConstraintPeriod,
