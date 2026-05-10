@@ -186,6 +186,48 @@ This integration is the foundation for Phase 5D.3 (SPV retained cash overlay) an
 ---
 
 
+
+
+## Phase 5D.3 — SPV Retained Cash Overlay
+
+**Status:** Implemented
+
+`SPVRetainedCashOverlay` and `SPVRetainedCashPeriod` are audit-only result objects that show what distributions WOULD be constrained to, and what cash WOULD be retained, without changing any SPVOutput or waterfall field.
+
+### What this phase adds
+
+```python
+from domain.portfolio.distribution_constraints import (
+    SPVRetainedCashPeriod,
+    SPVRetainedCashOverlay,
+    build_spv_retained_cash_overlay,
+    build_spv_retained_cash_overlays_from_portfolio_ledger,
+)
+```
+
+Three key functions:
+- `build_spv_retained_cash_overlay(constraint_result)` — maps DistributionConstraintResult → SPVRetainedCashOverlay
+- `build_spv_retained_cash_overlays_from_portfolio_ledger(portfolio_ledger, config_by_entity, default_config)` — evaluates and maps all entities
+- `evaluate_constraints_from_portfolio_ledger()` (from D.2) — computes constraint results from cash ledger
+
+### Overlay properties
+
+| Property | Value |
+|---|---|
+| No SPVOutput mutation | ✅ |
+| No distribution_keur change | ✅ |
+| No enforcement | ✅ — audit-only |
+| Uses cash ledger (D.2) | ✅ |
+| Uses constraint evaluator (D.1) | ✅ |
+| No filtering by entity type | All entities included |
+
+### Future enforcement path
+
+When Phase 5D.5 implements `enforcement_mode=True`, the `SPVRetainedCashOverlay.allowed_distribution_keur` will be wired into the HoldCo runner as a read (over `adjusted_period_distributions_keur`). The overlay is the "audit trail" that shows what the enforcement WOULD produce.
+
+---
+
+
 ## Non-Scope
 
 Explicitly out of scope for Phase 5D.1 and all near-term follow-ups:
