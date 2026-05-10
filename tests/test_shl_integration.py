@@ -426,3 +426,157 @@ class TestStartPeriodIndex:
         # Period 5+: no SHL (facility ended after 2 periods)
         assert wf[5].shl_interest_keur == 0.0
         assert wf[6].shl_interest_keur == 0.0
+
+
+class TestShlInjectionCollisionGuard:
+    """Tests for SHL injection collision policy (Issue A from Phase 5D readiness review)."""
+
+    def test_inject_over_zero_existing_is_noop(self):
+        """Injection into period with existing 0.0 is always allowed."""
+        p = _WFPeriodStub(0, 100.0)
+        # Pre-existing 0.0 (unset via getattr returns 0.0 since class has default)
+        inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+        assert p.shl_interest_keur == 50.0
+        assert p.shl_principal_keur == 200.0
+
+    def test_inject_interest_collision_raises(self):
+        """Non-zero existing shl_interest_keur + non-zero injection raises ValueError."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0   # SPV-internal SHL already set
+        p.shl_principal_keur = 0.0
+
+        with pytest.raises(ValueError, match="SHL collision.*shl_interest_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+
+    def test_inject_principal_collision_raises(self):
+        """Non-zero existing shl_principal_keur + non-zero injection raises ValueError."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 0.0
+        p.shl_principal_keur = 150.0  # SPV-internal SHL already set
+
+        with pytest.raises(ValueError, match="SHL collision.*shl_principal_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+
+    def test_both_collision_raises_on_interest_first(self):
+        """Collision on both fields raises on interest (first check) then propagates."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0
+        p.shl_principal_keur = 150.0
+
+        with pytest.raises(ValueError, match="SHL collision.*shl_interest_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+
+
+
+    def test_aditive_injection_not_supported(self):
+        """Portfolio SHL does NOT add to SPV-internal SHL — it raises (explicit policy)."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0
+        p.shl_principal_keur = 150.0
+
+        with pytest.raises(ValueError, match="SHL collision"):
+            inject_shl_into_waterfall_periods([p], {0: (10.0, 50.0)})
+
+    def test_enrich_portfolio_with_collision_raises_integration(self):
+        """Full enrich_portfolio_result_with_shl propagates collision from inject call."""
+        from domain.portfolio.shl import SHLPortfolioInputs
+
+        wf_periods_data = [(i, 1000.0) for i in range(3)]
+        spv = _make_spv_with_periods("SOLAR-1", wf_periods_data)
+        # Pre-existing SHL at SPV level (simulates pik_then_sweep SHL)
+        spv.waterfall_result.periods[0].shl_interest_keur = 20.0
+        spv.waterfall_result.periods[0].shl_principal_keur = 100.0
+        portfolio = _make_portfolio_result([spv])
+
+        f = SHLFacility(
+            lender_entity_code="HC",
+            borrower_entity_code="SOLAR-1",
+            principal_keur=1000.0,
+            interest_rate_pa=0.08,
+            tenor_years=1,
+            payment_frequency_per_year=2,
+            start_period_index=0,   # collides with existing
+        )
+        shl_result = run_shl_facility(f)
+        shl_by_borrower = {"SOLAR-1": (shl_result,)}
+
+        with pytest.raises(ValueError, match="SHL collision"):
+            enrich_portfolio_result_with_shl(portfolio, shl_by_borrower)
+
+    # ── preserve existing SHL (the actual fix) ──────────────────────────────
+
+    def test_existing_interest_preserved_when_no_matching_period_in_lookup(self):
+        """Period with existing SHL interest but not in lookup → existing preserved."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0   # existing SPV-level SHL
+        p.shl_principal_keur = 0.0
+        inject_shl_into_waterfall_periods([p], {})  # empty lookup
+        assert p.shl_interest_keur == 30.0  # preserved
+
+    def test_existing_principal_preserved_when_no_matching_period_in_lookup(self):
+        """Period with existing SHL principal but not in lookup → existing preserved."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 0.0
+        p.shl_principal_keur = 150.0  # existing SPV-level SHL
+        inject_shl_into_waterfall_periods([p], {})  # empty lookup
+        assert p.shl_principal_keur == 150.0  # preserved
+
+    def test_existing_interest_preserved_when_injection_value_is_zero(self):
+        """Period with existing SHL interest, injection value 0.0 → preserved."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30.0
+        p.shl_principal_keur = 0.0
+        inject_shl_into_waterfall_periods([p], {0: (0.0, 0.0)})  # explicit zero
+        assert p.shl_interest_keur == 30.0  # preserved, not overwritten
+
+    def test_existing_principal_preserved_when_injection_value_is_zero(self):
+        """Period with existing SHL principal, injection value 0.0 → preserved."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 0.0
+        p.shl_principal_keur = 150.0
+        inject_shl_into_waterfall_periods([p], {0: (0.0, 0.0)})  # explicit zero
+        assert p.shl_principal_keur == 150.0  # preserved, not overwritten
+
+    def test_collision_still_raises_when_both_existing_and_injected_interest_positive(self):
+        """Non-zero existing + non-zero injection on interest → raises."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 20.0
+        p.shl_principal_keur = 0.0
+        with pytest.raises(ValueError, match="SHL collision.*shl_interest_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (50.0, 0.0)})
+
+    def test_collision_still_raises_when_both_existing_and_injected_principal_positive(self):
+        """Non-zero existing + non-zero injection on principal → raises."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 0.0
+        p.shl_principal_keur = 100.0
+        with pytest.raises(ValueError, match="SHL collision.*shl_principal_keur"):
+            inject_shl_into_waterfall_periods([p], {0: (0.0, 200.0)})
+
+    def test_missing_shl_attrs_default_to_zero(self):
+        """Period without shl_interest_keur/shl_principal_keur attrs → treated as 0.0."""
+        p = _WFPeriodStub(0, 100.0)
+        # p has no shl_interest_keur or shl_principal_keur set
+        inject_shl_into_waterfall_periods([p], {0: (10.0, 50.0)})
+        assert p.shl_interest_keur == 10.0
+        assert p.shl_principal_keur == 50.0
+
+    def test_int_existing_values_handled_safely(self):
+        """int existing SHL value is handled safely via _safe_float comparison."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = 30     # int, not float
+        p.shl_principal_keur = 150
+        # No collision: injection is 0, existing is int 30 (preserved)
+        inject_shl_into_waterfall_periods([p], {0: (0.0, 0.0)})
+        assert p.shl_interest_keur == 30
+        assert p.shl_principal_keur == 150
+
+    def test_bool_or_mock_attrs_treated_as_zero_not_real_shl(self):
+        """MagicMock / bool values for existing SHL are treated as 0.0, not collision."""
+        p = _WFPeriodStub(0, 100.0)
+        p.shl_interest_keur = True   # bool should be treated as 0.0
+        p.shl_principal_keur = False
+        # True/False treated as 0.0 → injection 50.0/200.0 should succeed
+        inject_shl_into_waterfall_periods([p], {0: (50.0, 200.0)})
+        assert p.shl_interest_keur == 50.0
+        assert p.shl_principal_keur == 200.0
