@@ -12,10 +12,14 @@ from domain.tax.engine import (
 )
 from domain.tax.reintegration import fiscal_reintegration
 
-# Phase 6A — Tax Template Architecture
+# Phase 6B.1 — Tax Template Architecture
 from domain.tax.templates import (
     get_builtin_tax_templates,
     resolve_tax_template,
+    calculate_progressive_cit,
+    get_tax_depreciation_rate,
+    calculate_tax_depreciation_keur,
+    calculate_taxable_income_keur,
 )
 from domain.tax.templates.inputs import (
     CITTier,
