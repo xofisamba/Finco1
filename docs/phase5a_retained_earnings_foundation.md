@@ -178,6 +178,51 @@ enum CashMovementType:
 5. **Future tax engine dependency** — eventual SHL interest deductibility requires cash-flow attribution to entity.
 6. **DSRF cash flows are separate from waterfall** — DSRF costs are tracked in `adjusted_period_distributions_keur` but not written back to waterfall period objects in a ledger-consistent way.
 
+
+
+## Phase 5B — Optional Cash Ledger Integration
+
+**Status:** ✅ Implemented
+
+`build_cash_ledger_from_results()` wires the Phase 5A ledger foundation to
+existing `IndependentPortfolioResult` and `HoldCoResult` objects as an **optional
+audit output**. No financial outputs change.
+
+### Implemented
+| Component | Status |
+|-----------|--------|
+| `build_cash_ledger_from_results()` | ✅ Implemented |
+| Exports via `domain.portfolio.cash_ledger` | ✅ Exported |
+| `movements_from_spv_output()` integration | ✅ Integrated |
+| `movements_from_holdco_result()` integration | ✅ Integrated |
+| Opening cash per entity support | ✅ Supported |
+| No mutation of source results | ✅ Guaranteed |
+
+### Constraints (Phase 5B)
+- **Audit layer only** — does not modify waterfall economics
+- **No distribution blocking** — retained earnings constraints not yet implemented
+- **No HoldCo IRR / Sponsor IRR**
+- **No tax engine**
+- **No sponsor waterfall**
+- **No monthly model**
+
+### API
+```python
+from domain.portfolio.cash_ledger import build_cash_ledger_from_results
+
+ledger = build_cash_ledger_from_results(
+    portfolio_result=portfolio_result,   # IndependentPortfolioResult | None
+    holdco_result=holdco_result,         # HoldCoResult | None
+    opening_cash_by_entity={"SOLAR-1": 100.0},  # optional
+)
+# ledger is a PortfolioCashLedger
+```
+
+### Future Use
+- Excel export: ledger data alongside waterfall KPIs
+- UI dashboard: cash position by entity and period
+- Distribution audit trail: trace SPV distributions → HoldCo → sponsor
+
 ## Phase Sequencing (Tentative)
 
 | Phase | Focus |
@@ -186,7 +231,7 @@ enum CashMovementType:
 | Phase 4B | HoldCo SHL-ready fields |
 | Phase 4C | SHL end-to-end integration (enrichment layer) |
 | **Phase 5A** | **Planning + data model for retained earnings** |
-| Phase 5B | SPVCashAccount implementation |
+| **Phase 5B** | **Optional cash ledger integration (orchestrator)** |
 | Phase 5C | Retained earnings policy engine |
 | Phase 5D | HoldCoCashAccount implementation |
 | Phase 5E | Sponsor waterfall |

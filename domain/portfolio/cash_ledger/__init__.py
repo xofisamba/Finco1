@@ -19,6 +19,9 @@ from domain.portfolio.cash_ledger.runner import (
     build_portfolio_cash_ledger,
     reconcile_cash_ledger,
 )
+from domain.portfolio.cash_ledger.orchestrator import (
+    build_cash_ledger_from_results,
+)
 
 __all__ = [
     "CashMovementType",
@@ -29,4 +32,5 @@ __all__ = [
     "build_entity_cash_ledger",
     "build_portfolio_cash_ledger",
     "reconcile_cash_ledger",
+    "build_cash_ledger_from_results",
 ]
