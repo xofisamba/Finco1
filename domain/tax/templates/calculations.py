@@ -30,36 +30,36 @@ def calculate_progressive_cit(
     taxable_profit_keur : float
         Taxable profit in thousands of EUR. Can be negative or zero.
     cit_tiers : tuple[CITTier, ...]
-        CIT brackets, must be pre-validated (contiguous, no gaps,
-        first starts at 0, at most one unbounded at the end).
+        CIT brackets. Tiers are sorted internally by min_profit_keur.
+        Contiguity and boundedness are assumed (validated at TaxTemplate
+        construction time via TaxTemplate.__post_init__).
 
     Returns
     -------
     float
-        Total CIT liability in kEUR. Returns 0.0 when taxable_profit <= 0.
+        Total CIT liability in kEUR. Returns 0.0 when taxable_profit <= 0
+        or when tiers is empty.
 
-    Rules
-    -----
-    - taxable_profit <= 0 → tax = 0
-    - Each tier is applied to the slice of profit within its bracket range.
-    - Tiers must be contiguous and sorted; no gaps assumed.
+    Algorithm
+    ---------
+    For each tier (sorted by min_profit_keur):
+        lower = tier.min_profit_keur
+        upper = tier.max_profit_keur or taxable_profit_keur  (unbounded → cap at profit)
+        taxable_in_tier = max(0, min(profit, upper) - lower)
+        tax += taxable_in_tier * tier.tax_rate
+        stop when lower >= taxable_profit_keur
+
+    No rounding is applied — raw floating-point arithmetic only.
 
     Examples
     --------
     Flat 10%: single tier (0, None, 0.10)
+      calculate_progressive_cit(1000, tiers) → 100.0
 
     Progressive 9%/15%:
-      tiers = (
-          CITTier(0.0, 100_000.0, 0.09),   # 0-100k → 9%
-          CITTier(100_000.0, None, 0.15),  # 100k+ → 15%
-      )
-      calculate_progressive_cit(150_000, tiers)  # → 9_000 + 7_500 = 16_500
-
-    Note
-    ----
-    This function does NOT validate cit_tiers contiguity —
-    assume callers pass pre-validated tiers (TaxTemplate.__post_init__
-    enforces contiguity for templates loaded via get_builtin_tax_templates).
+      tiers = (CITTier(0, 100_000, 0.09), CITTier(100_000, None, 0.15))
+      calculate_progressive_cit(150_000, tiers) → 16_500.0
+      # 100,000 × 9% = 9,000; 50,000 × 15% = 7,500 → total = 16,500
     """
     if taxable_profit_keur <= 0.0:
         return 0.0
@@ -67,36 +67,26 @@ def calculate_progressive_cit(
     if not cit_tiers:
         return 0.0
 
-    total_tax = 0.0
-    remaining_profit = taxable_profit_keur
+    # Sort tiers by min_profit_keur — does not mutate original tuple
+    sorted_tiers = sorted(cit_tiers, key=lambda t: t.min_profit_keur)
 
-    # Tiers must be sorted by min_profit_keur (TaxTemplate enforces this)
-    for tier in cit_tiers:
-        if remaining_profit <= 0.0:
+    total_tax = 0.0
+
+    for tier in sorted_tiers:
+        lower = tier.min_profit_keur
+
+        # Stop if this tier starts at or above the total profit
+        if lower >= taxable_profit_keur:
             break
 
-        tier_min = tier.min_profit_keur
-        tier_max = tier.max_profit_keur  # None = unbounded
+        # Upper bound: bounded tier → use max_profit_keur; unbounded → cap at profit
+        upper = tier.max_profit_keur
+        if upper is None:
+            upper = taxable_profit_keur
 
-        if tier_max is None:
-            # Unbounded top tier — applies to all remaining profit
-            taxable_in_tier = remaining_profit
-        else:
-            # Bounded tier — profit in this bracket
-            tier_width = tier_max - tier_min
-            # Profit already above min of this tier = remaining_profit adjusted by prior tiers
-            # Since tiers are contiguous and sorted:
-            # remaining_profit = taxable_profit_keur - sum of all prior tier widths consumed
-            # = taxable_profit_keur - tier_min (since all prior tiers consumed up to tier_min)
-            # Actually, since we process in order and break when remaining <= 0:
-            # the profit in this tier = min(remaining_profit, tier_width)
-            taxable_in_tier = min(remaining_profit, tier_max - tier_min)
-
+        # Profit slice within this tier, clamped to [0, profit]
+        taxable_in_tier = max(0.0, min(taxable_profit_keur, upper) - lower)
         total_tax += taxable_in_tier * tier.tax_rate
-
-        # Reduce remaining for next tier
-        if tier_max is not None:
-            remaining_profit -= (tier_max - tier_min)
 
     return total_tax
 
@@ -120,12 +110,18 @@ def get_tax_depreciation_rate(rule: TaxDepreciationRule) -> float:
         (e.g., 0.05 = 5% per year). Returns 0.0 when
         rule.deductible is False or no rate can be derived.
 
+    Validation (raises ValueError for invalid inputs)
+    ------------------------------------------------
+    - annual_rate < 0
+    - useful_life_years <= 0 (when annual_rate is None)
+    - max_deductible_rate < 0
+
     Rules (applied in order)
     ------------------------
     1. deductible=False → return 0.0 immediately
-    2. max_deductible_rate is set → cap applies
-    3. annual_rate is set → use it directly
-    4. useful_life_years is set and > 0 → rate = 1 / useful_life_years
+    2. annual_rate is set → validate non-negative, use directly
+    3. useful_life_years is set and > 0 → rate = 1 / useful_life_years
+    4. max_deductible_rate is set → cap applies to base rate above
     5. Otherwise → return 0.0
 
     Effective rate = min(base_rate, max_deductible_rate) when cap exists.
@@ -140,17 +136,32 @@ def get_tax_depreciation_rate(rule: TaxDepreciationRule) -> float:
     if rule.deductible is False:
         return 0.0
 
-    # Determine base rate
+    # Validate annual_rate
     if rule.annual_rate is not None:
+        if rule.annual_rate < 0.0:
+            raise ValueError(
+                f"TaxDepreciationRule annual_rate must be >= 0, "
+                f"got {rule.annual_rate}"
+            )
         base_rate = rule.annual_rate
-    elif rule.useful_life_years is not None and rule.useful_life_years > 0:
+    elif rule.useful_life_years is not None:
+        if rule.useful_life_years <= 0.0:
+            raise ValueError(
+                f"TaxDepreciationRule useful_life_years must be > 0 "
+                f"(when annual_rate is not set), got {rule.useful_life_years}"
+            )
         base_rate = 1.0 / rule.useful_life_years
     else:
         # Cannot derive a rate — e.g. deductible but no rate info
         return 0.0
 
-    # Apply cap if set
+    # Validate max_deductible_rate
     if rule.max_deductible_rate is not None:
+        if rule.max_deductible_rate < 0.0:
+            raise ValueError(
+                f"TaxDepreciationRule max_deductible_rate must be >= 0, "
+                f"got {rule.max_deductible_rate}"
+            )
         return min(base_rate, rule.max_deductible_rate)
 
     return base_rate
