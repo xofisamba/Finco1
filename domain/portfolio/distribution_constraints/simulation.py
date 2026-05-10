@@ -7,7 +7,7 @@ No enforcement is applied; this is reporting/signal only.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from domain.portfolio.distribution_constraints.result import (
@@ -29,7 +29,7 @@ class DistributionConstraintSimulationPeriod:
     cash_before_distribution_keur: float
     requested_distribution_keur: float
     allowed_distribution_keur: float
-    would_restrict_keur: float  # requested - allowed; 0 if allowed == requested
+    would_restrict_keur: float  # requested - effective_allowed; 0 if allowed >= requested
     retained_cash_keur: float
     block_reasons: tuple[str, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -77,12 +77,21 @@ class DistributionConstraintSimulationResult:
             computed_would_restrict = sum(p.would_restrict_keur for p in self.periods)
             computed_retained = sum(p.retained_cash_keur for p in self.periods)
 
-            if self.total_requested_distribution_keur == 0.0:
+            all_totals_zero = (
+                self.total_requested_distribution_keur == 0.0
+                and self.total_allowed_distribution_keur == 0.0
+                and self.total_would_restrict_keur == 0.0
+                and self.total_retained_cash_keur == 0.0
+            )
+
+            if all_totals_zero:
+                # Auto-fill all when everything is default-initialized
                 object.__setattr__(self, 'total_requested_distribution_keur', computed_requested)
                 object.__setattr__(self, 'total_allowed_distribution_keur', computed_allowed)
                 object.__setattr__(self, 'total_would_restrict_keur', computed_would_restrict)
                 object.__setattr__(self, 'total_retained_cash_keur', computed_retained)
             else:
+                # Validate each provided total against computed
                 for got, expected, name in [
                     (self.total_requested_distribution_keur, computed_requested, "total_requested"),
                     (self.total_allowed_distribution_keur, computed_allowed, "total_allowed"),
@@ -95,8 +104,20 @@ class DistributionConstraintSimulationResult:
                         )
 
 
+def _safe_block_reason(reason: object) -> str:
+    """Convert a block reason to string safely.
+
+    - If reason has .value (enum-like), use reason.value
+    - Otherwise use str(reason)
+    """
+    if hasattr(reason, 'value'):
+        return str(reason.value)
+    return str(reason)
+
+
 def simulate_distribution_enforcement(
     constraint_results: tuple["DistributionConstraintResult", ...],
+    effective_allowed_by_entity_period: Optional[dict[tuple[str, int], float]] = None,
 ) -> tuple[DistributionConstraintSimulationResult, ...]:
     """Simulate enforcement against one or more constraint results.
 
@@ -109,6 +130,13 @@ def simulate_distribution_enforcement(
     constraint_results : tuple[DistributionConstraintResult, ...]
         One or more entity constraint results from
         ``evaluate_distribution_constraints()``.
+    effective_allowed_by_entity_period : dict[tuple[str, int], float] | None
+        Optional override for effective allowed amount per (entity_code, period).
+        If a key (entity_code, period) exists, its value is used as the
+        effective allowed amount for simulation. Otherwise,
+        ``period.allowed_distribution_keur`` is used.
+        This allows "what-if" simulation for future enforcement modes
+        without modifying constraint result semantics.
 
     Returns
     -------
@@ -119,25 +147,31 @@ def simulate_distribution_enforcement(
     if not constraint_results:
         return ()
 
+    effective_map = effective_allowed_by_entity_period or {}
     simulations: list[DistributionConstraintSimulationResult] = []
 
     for result in constraint_results:
         sim_periods: list[DistributionConstraintSimulationPeriod] = []
 
         for period in result.periods:
-            would_restrict = period.requested_distribution_keur - period.allowed_distribution_keur
+            # Use effective override if provided, otherwise use period's allowed
+            effective_allowed = effective_map.get(
+                (period.entity_code, period.period),
+                period.allowed_distribution_keur,
+            )
+            would_restrict = period.requested_distribution_keur - effective_allowed
 
-            # Convert block_reasons to strings for the simulation period
-            block_reason_strs = tuple(r.value for r in period.block_reasons)
+            # Convert block_reasons to strings safely
+            block_reason_strs = tuple(_safe_block_reason(r) for r in period.block_reasons)
 
             sim_periods.append(DistributionConstraintSimulationPeriod(
                 period=period.period,
                 entity_code=period.entity_code,
                 cash_before_distribution_keur=period.cash_before_distribution_keur,
                 requested_distribution_keur=period.requested_distribution_keur,
-                allowed_distribution_keur=period.allowed_distribution_keur,
-                would_restrict_keur=max(0.0, would_restrict),  # safety clamp
-                retained_cash_keur=period.retained_cash_keur,
+                allowed_distribution_keur=effective_allowed,  # represents effective used
+                would_restrict_keur=max(0.0, would_restrict),
+                retained_cash_keur=period.cash_before_distribution_keur - effective_allowed,
                 block_reasons=block_reason_strs,
                 warnings=period.warnings,
             ))
