@@ -29,6 +29,25 @@ class DistributionBlockReason(str, Enum):
     OTHER = "OTHER"
 
 
+class DistributionEnforcementMode(str, Enum):
+    """Distribution enforcement mode — controls how constraints are applied.
+
+    Phase 5G is schema-only. No mode is actively enforced.
+    OFF and config.enabled=False both pass through with no reasons required.
+    WARNING_ONLY/SOFT_CAP/HARD_BLOCK compute reasons/warnings but do not
+    reduce allowed_distribution_keur.
+
+    OFF:         audit-only, all distributions pass through unchanged (no reasons).
+    WARNING_ONLY: compute reasons/warnings but allowed = requested (no cash impact).
+    SOFT_CAP:    future — allowed = requested, warning added.
+    HARD_BLOCK:  future — allowed = requested, warning added.
+    """
+    OFF = "OFF"
+    WARNING_ONLY = "WARNING_ONLY"
+    SOFT_CAP = "SOFT_CAP"
+    HARD_BLOCK = "HARD_BLOCK"
+
+
 @dataclass(frozen=True)
 class DistributionConstraintConfig:
     """Configuration for distribution constraint evaluation.
@@ -57,6 +76,7 @@ class DistributionConstraintConfig:
     minimum_cash_reserve_keur: float = 0.0
     allow_negative_cash: bool = False
     manual_lockup_periods: tuple[int, ...] = ()
+    enforcement_mode: DistributionEnforcementMode = DistributionEnforcementMode.OFF
 
     def __post_init__(self):
         if self.minimum_cash_reserve_keur < 0:
@@ -93,3 +113,10 @@ class DistributionConstraintConfig:
         # Normalize to tuple using object.__setattr__ (frozen dataclass)
         if normalized != self.manual_lockup_periods:
             object.__setattr__(self, 'manual_lockup_periods', normalized)
+
+        # enforcement_mode must be DistributionEnforcementMode, not None/string/bool
+        if not isinstance(self.enforcement_mode, DistributionEnforcementMode):
+            raise ValueError(
+                f"enforcement_mode must be a DistributionEnforcementMode, "
+                f"got {type(self.enforcement_mode).__name__}"
+            )

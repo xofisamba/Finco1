@@ -1,8 +1,4 @@
-"""Phase 5D.1 distribution constraint evaluation runner.
-
-Pure helper functions. No mutation of source objects.
-Not wired into waterfall — this phase is data-model only.
-"""
+"""Phase 5D.1 distribution constraint evaluation runner."""
 from __future__ import annotations
 
 from typing import Optional
@@ -10,6 +6,7 @@ from typing import Optional
 from domain.portfolio.distribution_constraints.inputs import (
     DistributionBlockReason,
     DistributionConstraintConfig,
+    DistributionEnforcementMode,
 )
 from domain.portfolio.distribution_constraints.result import (
     DistributionConstraintPeriod,
@@ -28,39 +25,36 @@ def evaluate_distribution_constraints(
     This is a **pure helper**: it returns a new result object and does not
     mutate any input. It is not wired into the waterfall engine.
 
-    Constraint application order per period:
-      1. If config is None or config.enabled is False → pass through unchanged
-      2. Apply manual lockup → allowed = 0, reason = MANUAL_LOCKUP
-      3. Apply minimum cash reserve → allowed <= cash - minimum_reserve
-      4. Check negative cash → add NEGATIVE_CASH reason if cash < 0
+    Phase 5G — schema only, no active enforcement:
+      - config is None or enabled=False → pass through unchanged
+      - enforcement_mode=OFF → pass through unchanged (no reasons required)
+      - WARNING_ONLY → compute reasons/warnings, allowed=requested
+      - SOFT_CAP/HARD_BLOCK → same + "not active" warning
 
     Parameters
     ----------
     entity_code : str
-        SPV or HoldCo entity code
+        SPV or HoldCo entity code.
     cash_available_by_period : tuple[float, ...]
-        Cash available for distribution per period (kEUR).
-        Typically: opening_cash + CFADS - senior_debt - DSRF - tax - SHL - ...
+        Cash available per period (kEUR).
     requested_distributions_by_period : tuple[float, ...]
-        Requested distribution per period from waterfall (kEUR).
-        This is the distribution_keur or adjusted_period_distributions_keur.
+        Requested distribution per period (kEUR).
     config : DistributionConstraintConfig | None
-        Constraint configuration. If None or enabled=False, all
-        distributions pass through unchanged.
+        Constraint configuration. None or enabled=False → pass through.
 
     Returns
     -------
     DistributionConstraintResult
         Per-period constraint evaluation results with allowed amounts,
         retained cash, and block reasons.
-
-    Notes
-    -----
-    - allowed_distribution <= requested_distribution always holds
-    - retained_cash_keur = cash_before - allowed_distribution
-    - When config.enabled=False (default): this function is a pass-through
     """
+    # Pass through: None config, disabled, or OFF enforcement mode
     if config is None or not config.enabled:
+        return _pass_through(
+            entity_code, cash_available_by_period, requested_distributions_by_period
+        )
+
+    if config.enforcement_mode == DistributionEnforcementMode.OFF:
         return _pass_through(
             entity_code, cash_available_by_period, requested_distributions_by_period
         )
@@ -68,9 +62,17 @@ def evaluate_distribution_constraints(
     lockup_set = set(config.manual_lockup_periods)
     min_reserve = config.minimum_cash_reserve_keur
     allow_neg = config.allow_negative_cash
+    enforce_mode = config.enforcement_mode
 
     periods: list[DistributionConstraintPeriod] = []
     all_warnings: list[str] = []
+
+    # SOFT_CAP and HARD_BLOCK are not active yet — emit warning
+    if enforce_mode in (DistributionEnforcementMode.SOFT_CAP,
+                         DistributionEnforcementMode.HARD_BLOCK):
+        all_warnings.append(
+            f"Enforcement mode {enforce_mode.value} not active in Phase 5G"
+        )
 
     n = max(len(cash_available_by_period), len(requested_distributions_by_period))
 
@@ -84,22 +86,27 @@ def evaluate_distribution_constraints(
 
         reasons: list[DistributionBlockReason] = []
         warnings: list[str] = []
-        allowed = requested
+        allowed = requested  # Phase 5G: always pass through; compute reasons only
 
-        # 1. Manual lockup
+        # Compute potential constraint reasons for visibility
+        # These are always computed so WARNING_ONLY/SOFT_CAP/HARD_BLOCK
+        # show block reasons even though allowed is not reduced.
+        potential_allowed = requested
+
+        # 1. Manual lockup — compute reason
         if i in lockup_set:
-            allowed = 0.0
+            potential_allowed = 0.0
             reasons.append(DistributionBlockReason.MANUAL_LOCKUP)
 
-        # 2. Minimum cash reserve
-        if allowed > 0:
-            max_allowed_after_reserve = max(0.0, cash - min_reserve)
-            if max_allowed_after_reserve < allowed:
-                allowed = max_allowed_after_reserve
+        # 2. Minimum cash reserve — compute reason
+        if potential_allowed > 0:
+            max_after_reserve = max(0.0, cash - min_reserve)
+            if max_after_reserve < potential_allowed:
+                potential_allowed = max_after_reserve
                 if DistributionBlockReason.MANUAL_LOCKUP not in reasons:
                     reasons.append(DistributionBlockReason.MINIMUM_CASH_RESERVE)
 
-        # 3. Negative cash
+        # 3. Negative cash — record reason/warning
         if cash < 0 and not allow_neg:
             reasons.append(DistributionBlockReason.NEGATIVE_CASH)
             warnings.append(
@@ -107,6 +114,9 @@ def evaluate_distribution_constraints(
                 f"distribution allowed but cash is negative"
             )
 
+        # Phase 5G: allowed always equals requested (no reduction)
+        # Reasons/warnings are still visible for audit purposes.
+        allowed = requested
         retained = cash - allowed
 
         periods.append(DistributionConstraintPeriod(
