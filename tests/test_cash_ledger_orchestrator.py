@@ -167,6 +167,22 @@ class TestBuildCashLedgerFromResults:
         move_types = {m.movement_type for m in ledger.entities[0].periods[0].movements}
         assert CashMovementType.OPERATING_CASHFLOW in move_types
 
+    def test_portfolio_result_without_spv_outputs_attribute_returns_empty(self):
+        """portfolio_result without spv_outputs attribute does not crash."""
+        pr = MagicMock(spec=["name"])  # no spv_outputs at all
+        del pr.spv_outputs
+        ledger = build_cash_ledger_from_results(portfolio_result=pr)
+        assert ledger.entities == ()
+        assert ledger.total_ending_cash_keur == 0.0
+
+    def test_portfolio_result_with_spv_outputs_none_returns_empty(self):
+        """portfolio_result with spv_outputs=None does not crash."""
+        pr = MagicMock()
+        pr.spv_outputs = None
+        ledger = build_cash_ledger_from_results(portfolio_result=pr)
+        assert ledger.entities == ()
+        assert ledger.total_ending_cash_keur == 0.0
+
     def test_holdco_opex_and_tax_negative(self):
         hc = _make_holdco_result("HOLDCO", [
             {"dividend_keur": 500.0, "shl_interest_keur": 0.0, "shl_principal_keur": 0.0,

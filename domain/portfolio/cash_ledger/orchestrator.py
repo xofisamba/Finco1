@@ -51,9 +51,10 @@ def build_cash_ledger_from_results(
     """
     all_movements: list[Any] = []
 
-    # Map SPV outputs → cash movements
+    # Map SPV outputs → cash movements (defensive: handle missing/None spv_outputs)
     if portfolio_result is not None:
-        for spv in portfolio_result.spv_outputs:
+        spv_outputs = getattr(portfolio_result, "spv_outputs", ()) or ()
+        for spv in spv_outputs:
             movements = movements_from_spv_output(spv)
             all_movements.extend(movements)
 
