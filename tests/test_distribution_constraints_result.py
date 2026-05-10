@@ -11,6 +11,51 @@ from domain.portfolio.distribution_constraints.result import (
 
 
 class TestDistributionConstraintPeriod:
+    def test_empty_entity_code_raises(self):
+        with pytest.raises(ValueError, match="entity_code must be non-empty"):
+            DistributionConstraintPeriod(
+                period=0,
+                entity_code="",
+                cash_before_distribution_keur=1000.0,
+                requested_distribution_keur=500.0,
+                allowed_distribution_keur=500.0,
+                retained_cash_keur=500.0,
+            )
+
+    def test_whitespace_entity_code_raises(self):
+        with pytest.raises(ValueError, match="entity_code must be non-empty"):
+            DistributionConstraintPeriod(
+                period=0,
+                entity_code="   ",
+                cash_before_distribution_keur=1000.0,
+                requested_distribution_keur=500.0,
+                allowed_distribution_keur=500.0,
+                retained_cash_keur=500.0,
+            )
+
+    def test_retained_cash_mismatch_raises(self):
+        with pytest.raises(ValueError, match="retained_cash_keur .+ must equal"):
+            DistributionConstraintPeriod(
+                period=0,
+                entity_code="SOLAR-1",
+                cash_before_distribution_keur=1000.0,
+                requested_distribution_keur=500.0,
+                allowed_distribution_keur=500.0,
+                retained_cash_keur=999.0,  # wrong: should be 500.0
+            )
+
+    def test_retained_cash_tiny_float_tolerance_passes(self):
+        p = DistributionConstraintPeriod(
+            period=0,
+            entity_code="SOLAR-1",
+            cash_before_distribution_keur=1000.0,
+            requested_distribution_keur=500.0,
+            allowed_distribution_keur=500.0,
+            retained_cash_keur=500.0 + 1e-9,  # within 1e-6 tolerance
+        )
+        assert abs(p.retained_cash_keur - 500.0) <= 1e-6
+
+
     def test_valid_construction(self):
         p = DistributionConstraintPeriod(
             period=0,
@@ -76,6 +121,95 @@ class TestDistributionConstraintPeriod:
 
 
 class TestDistributionConstraintResult:
+    def test_default_zero_totals_auto_filled(self):
+        p1 = DistributionConstraintPeriod(
+            period=0, entity_code="SOLAR-1",
+            cash_before_distribution_keur=1000.0,
+            requested_distribution_keur=500.0,
+            allowed_distribution_keur=400.0,
+            retained_cash_keur=600.0,
+        )
+        p2 = DistributionConstraintPeriod(
+            period=1, entity_code="SOLAR-1",
+            cash_before_distribution_keur=800.0,
+            requested_distribution_keur=300.0,
+            allowed_distribution_keur=300.0,
+            retained_cash_keur=500.0,
+        )
+        r = DistributionConstraintResult(entity_code="SOLAR-1", periods=(p1, p2))
+        assert r.total_requested_distribution_keur == 800.0
+        assert r.total_allowed_distribution_keur == 700.0
+        assert r.total_retained_cash_keur == 1100.0
+
+    def test_correct_explicit_totals_pass(self):
+        p1 = DistributionConstraintPeriod(
+            period=0, entity_code="SOLAR-1",
+            cash_before_distribution_keur=1000.0,
+            requested_distribution_keur=500.0,
+            allowed_distribution_keur=500.0,
+            retained_cash_keur=500.0,
+        )
+        r = DistributionConstraintResult(
+            entity_code="SOLAR-1",
+            periods=(p1,),
+            total_requested_distribution_keur=500.0,
+            total_allowed_distribution_keur=500.0,
+            total_retained_cash_keur=500.0,
+        )
+        assert r.total_requested_distribution_keur == 500.0
+
+    def test_wrong_requested_total_raises(self):
+        p1 = DistributionConstraintPeriod(
+            period=0, entity_code="SOLAR-1",
+            cash_before_distribution_keur=1000.0,
+            requested_distribution_keur=500.0,
+            allowed_distribution_keur=500.0,
+            retained_cash_keur=500.0,
+        )
+        with pytest.raises(ValueError, match="total_requested_distribution_keur"):
+            DistributionConstraintResult(
+                entity_code="SOLAR-1",
+                periods=(p1,),
+                total_requested_distribution_keur=999.0,  # wrong
+                total_allowed_distribution_keur=500.0,
+                total_retained_cash_keur=500.0,
+            )
+
+    def test_wrong_allowed_total_raises(self):
+        p1 = DistributionConstraintPeriod(
+            period=0, entity_code="SOLAR-1",
+            cash_before_distribution_keur=1000.0,
+            requested_distribution_keur=500.0,
+            allowed_distribution_keur=500.0,
+            retained_cash_keur=500.0,
+        )
+        with pytest.raises(ValueError, match="total_allowed_distribution_keur"):
+            DistributionConstraintResult(
+                entity_code="SOLAR-1",
+                periods=(p1,),
+                total_requested_distribution_keur=500.0,
+                total_allowed_distribution_keur=999.0,  # wrong
+                total_retained_cash_keur=500.0,
+            )
+
+    def test_wrong_retained_total_raises(self):
+        p1 = DistributionConstraintPeriod(
+            period=0, entity_code="SOLAR-1",
+            cash_before_distribution_keur=1000.0,
+            requested_distribution_keur=500.0,
+            allowed_distribution_keur=500.0,
+            retained_cash_keur=500.0,
+        )
+        with pytest.raises(ValueError, match="total_retained_cash_keur"):
+            DistributionConstraintResult(
+                entity_code="SOLAR-1",
+                periods=(p1,),
+                total_requested_distribution_keur=500.0,
+                total_allowed_distribution_keur=500.0,
+                total_retained_cash_keur=999.0,  # wrong
+            )
+
+
     def test_empty_result(self):
         r = DistributionConstraintResult(entity_code="SOLAR-1")
         assert r.entity_code == "SOLAR-1"

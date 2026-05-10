@@ -51,7 +51,7 @@ class DistributionConstraintConfig:
         will treat this as a hard block.
     manual_lockup_periods : tuple[int, ...]
         Period indices where distribution is manually locked at 0.
-        Default empty tuple.
+        Default empty tuple. Accepts list[int] which is normalized to tuple.
     """
     enabled: bool = False
     minimum_cash_reserve_keur: float = 0.0
@@ -64,8 +64,32 @@ class DistributionConstraintConfig:
                 f"minimum_cash_reserve_keur must be >= 0, "
                 f"got {self.minimum_cash_reserve_keur}"
             )
-        if any(p < 0 for p in self.manual_lockup_periods):
-            raise ValueError(
-                f"manual_lockup_periods must all be >= 0, "
-                f"got {self.manual_lockup_periods}"
-            )
+
+        raw = self.manual_lockup_periods
+
+        # Normalize list to tuple
+        if isinstance(raw, list):
+            normalized = tuple(raw)
+        else:
+            normalized = raw
+
+        # Reject any bool values (bool is subclass of int in Python)
+        for p in normalized:
+            if isinstance(p, bool):
+                raise ValueError(
+                    f"manual_lockup_periods must contain only integers >= 0, "
+                    f"got bool {p}"
+                )
+            if not isinstance(p, int):
+                raise ValueError(
+                    f"manual_lockup_periods must contain only integers >= 0, "
+                    f"got {type(p).__name__}"
+                )
+            if p < 0:
+                raise ValueError(
+                    f"manual_lockup_periods must all be >= 0, got {p}"
+                )
+
+        # Normalize to tuple using object.__setattr__ (frozen dataclass)
+        if normalized != self.manual_lockup_periods:
+            object.__setattr__(self, 'manual_lockup_periods', normalized)

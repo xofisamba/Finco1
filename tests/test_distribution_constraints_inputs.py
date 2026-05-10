@@ -59,6 +59,27 @@ class TestDistributionConstraintConfig:
         cfg = DistributionConstraintConfig(manual_lockup_periods=())
         assert cfg.manual_lockup_periods == ()
 
+    def test_list_lockup_normalizes_to_tuple(self):
+        cfg = DistributionConstraintConfig(manual_lockup_periods=[1, 2, 3])
+        assert cfg.manual_lockup_periods == (1, 2, 3)
+        assert isinstance(cfg.manual_lockup_periods, tuple)
+
+    def test_bool_lockup_period_rejected(self):
+        with pytest.raises(ValueError, match="must contain only integers"):
+            DistributionConstraintConfig(manual_lockup_periods=[True, False])  # type: ignore
+
+    def test_float_lockup_period_rejected(self):
+        with pytest.raises(ValueError, match="must contain only integers"):
+            DistributionConstraintConfig(manual_lockup_periods=[1.5])  # type: ignore
+
+    def test_string_lockup_period_rejected(self):
+        with pytest.raises(ValueError, match="must contain only integers"):
+            DistributionConstraintConfig(manual_lockup_periods=["0"])  # type: ignore
+
+    def test_negative_lockup_still_rejected(self):
+        with pytest.raises(ValueError, match="manual_lockup_periods must all be >= 0"):
+            DistributionConstraintConfig(manual_lockup_periods=[-1])
+
     def test_single_lockup_period_allowed(self):
         cfg = DistributionConstraintConfig(manual_lockup_periods=(0,))
         assert cfg.manual_lockup_periods == (0,)
