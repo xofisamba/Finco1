@@ -140,6 +140,52 @@ The data model supports this without change:
 
 ---
 
+
+
+## Phase 5D.2 — Cash Ledger Integration
+
+**Status:** Implemented
+
+`evaluate_constraints_from_portfolio_ledger()` bridges the Phase 5A/5B cash ledger with the Phase 5D.1 constraint evaluator as an optional audit-only step.
+
+### What is wired together
+
+```
+cash ledger (EntityCashLedger)
+  → cash_available_by_period_from_entity_ledger()
+     = opening_cash + all movements EXCEPT EQUITY_DISTRIBUTION + SPONSOR_DISTRIBUTION
+  → evaluate_distribution_constraints(cash_available, requested_distribution)
+
+cash ledger movements
+  → requested_distributions_from_entity_ledger()
+     = sum of |EQUITY_DISTRIBUTION| + |SPONSOR_DISTRIBUTION| per period
+  → evaluate_distribution_constraints(requested=...)
+```
+
+### Four integration helpers
+
+| Function | Purpose |
+|---|---|
+| `cash_available_by_period_from_entity_ledger()` | Derives cash before distributions from ledger |
+| `requested_distributions_from_entity_ledger()` | Extracts distribution amounts from ledger |
+| `evaluate_constraints_from_entity_ledger()` | Single-entity constraint evaluation |
+| `evaluate_constraints_from_portfolio_ledger()` | Multi-entity evaluation with per-entity config |
+
+### Key properties
+
+- **No mutation** — all functions are pure reads from the cash ledger
+- **No waterfall changes** — constraint evaluation is a separate result object
+- **No distribution blocking** — result is informational; enforcement requires Phase 5D.5 opt-in
+- **Config per entity** — `config_by_entity` dict maps entity codes to individual configs
+- **Default config fallback** — unconfigured entities use `default_config` (or pass-through)
+
+### Future use
+
+This integration is the foundation for Phase 5D.3 (SPV retained cash overlay) and Phase 5D.4 (HoldCo retained cash overlay). When those phases are implemented, they will populate `DistributionConstraintConfig` with the entity's specific policy and call these same functions.
+
+---
+
+
 ## Non-Scope
 
 Explicitly out of scope for Phase 5D.1 and all near-term follow-ups:
