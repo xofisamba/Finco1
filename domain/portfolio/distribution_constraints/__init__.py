@@ -42,6 +42,11 @@ from domain.portfolio.distribution_constraints.holdco_overlay import (
     holdco_requested_distribution_by_period,
     holdco_available_distribution_by_period,
 )
+from domain.portfolio.distribution_constraints.simulation import (
+    DistributionConstraintSimulationPeriod,
+    DistributionConstraintSimulationResult,
+    simulate_distribution_enforcement,
+)
 
 __all__ = [
     "DistributionBlockReason",
@@ -61,4 +66,8 @@ __all__ = [
     "build_holdco_retained_cash_overlay",
     "holdco_requested_distribution_by_period",
     "holdco_available_distribution_by_period",
+    # Phase 5H — simulation
+    "DistributionConstraintSimulationPeriod",
+    "DistributionConstraintSimulationResult",
+    "simulate_distribution_enforcement",
 ]
