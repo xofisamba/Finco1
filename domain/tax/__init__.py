@@ -1,4 +1,9 @@
-"""Tax module - corporate tax, ATAD, loss carryforward, fiscal reintegration."""
+"""Tax module — corporate tax, ATAD, loss carryforward, fiscal reintegration.
+
+Phase 6A adds:
+- CITTier, TaxDepreciationRule, TaxTemplate, TaxTemplateOverride, ResolvedTaxConfig
+- get_builtin_tax_templates(), resolve_tax_template()
+"""
 from domain.tax.engine import (
     taxable_profit,
     tax_liability,
@@ -7,10 +12,39 @@ from domain.tax.engine import (
 )
 from domain.tax.reintegration import fiscal_reintegration
 
+# Phase 6A — Tax Template Architecture
+from domain.tax.templates import (
+    get_builtin_tax_templates,
+    resolve_tax_template,
+)
+from domain.tax.templates.inputs import (
+    CITTier,
+    TaxDepreciationRule,
+    TaxTemplate,
+    TaxTemplateOverride,
+    ResolvedTaxConfig,
+)
+from domain.tax.templates.result import (
+    CITTier,
+    TaxDepreciationRule,
+    TaxTemplate,
+    TaxTemplateOverride,
+    ResolvedTaxConfig,
+)
+
 __all__ = [
+    # Phase 1-4 existing
     "taxable_profit",
     "tax_liability",
     "apply_loss_carryforward",
     "atad_limit",
     "fiscal_reintegration",
+    # Phase 6A — tax template architecture
+    "get_builtin_tax_templates",
+    "resolve_tax_template",
+    "CITTier",
+    "TaxDepreciationRule",
+    "TaxTemplate",
+    "TaxTemplateOverride",
+    "ResolvedTaxConfig",
 ]
