@@ -8,6 +8,18 @@ from app.portfolio_ui import (
     build_portfolio_spv_table,
 )
 
+from domain.portfolio.distribution_constraints import (
+    DistributionConstraintConfig,
+    DistributionConstraintResult,
+)
+from domain.portfolio.distribution_constraints.overlay import (
+    SPVRetainedCashOverlay,
+)
+from domain.portfolio.distribution_constraints.holdco_overlay import (
+    HoldCoRetainedCashOverlay,
+)
+from domain.portfolio.cash_ledger import PortfolioCashLedger
+
 import openpyxl
 from openpyxl.styles import Font, numbers
 from openpyxl.utils import get_column_letter
@@ -44,6 +56,11 @@ def build_excel_export(
     advanced_opex_line_items: tuple = None,
     advanced_capex_line_items: tuple = None,
     include_reconciliation_sheets: bool = False,
+    # ── Phase 5D overlay sheets (optional) ──────────────────────────
+    cash_ledger=None,
+    spv_overlays=None,
+    holdco_overlay=None,
+    constraint_results=None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -201,7 +218,16 @@ def build_excel_export(
 
         # ── Book Depreciation Disclosure ──────────────────────────────────
         _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type)
-    
+
+        # ── Phase 5D: Overlay Sheets (optional) ─────────────────────────
+        _write_overlay_sheets(
+            writer,
+            cash_ledger=cash_ledger,
+            spv_overlays=spv_overlays,
+            holdco_overlay=holdco_overlay,
+            constraint_results=constraint_results,
+        )
+
     output.seek(0)
     return output.read()
 
@@ -980,3 +1006,160 @@ def _write_portfolio_notes_sheet(writer, portfolio_result) -> None:
         cell.font = Font(bold=True)
     ws.freeze_panes = "A2"
     ws.sheet_state = "visible"
+
+
+# ── Phase 5D: Overlay Sheets ────────────────────────────────────────────────────
+
+
+def _write_overlay_sheets(
+    writer,
+    cash_ledger=None,
+    spv_overlays=None,
+    holdco_overlay=None,
+    constraint_results=None,
+) -> None:
+    """Write optional overlay sheets for Phase 5D distribution constraint visibility.
+
+    All parameters optional — if None the sheet is skipped silently.
+
+    Sheet names are <= 31 chars and follow openpyxl sheet name limits.
+    """
+    if cash_ledger is not None:
+        _write_cash_ledger_sheet(writer, cash_ledger)
+
+    if constraint_results is not None:
+        _write_dist_constraints_sheet(writer, constraint_results)
+
+    if spv_overlays is not None:
+        for ov in spv_overlays:
+            if isinstance(ov, SPVRetainedCashOverlay):
+                _write_spv_retained_cash_sheet(writer, ov)
+
+    if holdco_overlay is not None:
+        _write_holdco_retained_cash_sheet(writer, holdco_overlay)
+
+
+def _write_cash_ledger_sheet(writer, ledger: PortfolioCashLedger) -> None:
+    """Write Cash Ledger sheet — one row per movement, with entity and period context."""
+    rows = []
+    for entity_ledger in (ledger.entities or ()):
+        for period in (entity_ledger.periods or ()):
+            for mov in (period.movements or ()):
+                rows.append({
+                    "Entity Code": entity_ledger.entity_code,
+                    "Period": period.period,
+                    "Opening Cash": round(period.opening_cash_keur, 2),
+                    "Movement Type": mov.movement_type.name if hasattr(mov.movement_type, 'name') else str(mov.movement_type),
+                    "Movement Amount": round(mov.amount_keur, 2),
+                    "Closing Cash": round(period.closing_cash_keur, 2),
+                    "Warnings": "; ".join(period.warnings) if period.warnings else "",
+                })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "Entity Code", "Period", "Opening Cash", "Movement Type",
+        "Movement Amount", "Closing Cash", "Warnings"
+    ])
+    _write_sheet(writer, "Cash Ledger", df, number_format={"Opening Cash": "#,##0", "Movement Amount": "#,##0", "Closing Cash": "#,##0"})
+    _check_sheet_name_length("Cash Ledger")
+
+
+def _write_dist_constraints_sheet(writer, constraint_results) -> None:
+    """Write Distribution Constraints sheet from constraint result objects."""
+    rows = []
+    for cr in (constraint_results or ()):
+        if not isinstance(cr, DistributionConstraintResult):
+            continue
+        for cp in (cr.periods or ()):
+            rows.append({
+                "Entity Code": cr.entity_code,
+                "Period": cp.period,
+                "Cash Before Distribution": round(cp.cash_before_distribution_keur, 2),
+                "Requested Distribution": round(cp.requested_distribution_keur, 2),
+                "Allowed Distribution": round(cp.allowed_distribution_keur, 2),
+                "Retained Cash": round(cp.retained_cash_keur, 2),
+                "Block Reasons": "; ".join(r.name if hasattr(r, 'name') else str(r) for r in (cp.block_reasons or ())),
+                "Warnings": "; ".join(cp.warnings) if cp.warnings else "",
+            })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "Entity Code", "Period", "Cash Before Distribution", "Requested Distribution",
+        "Allowed Distribution", "Retained Cash", "Block Reasons", "Warnings"
+    ])
+    _write_sheet(writer, "Dist Constraints", df, number_format={
+        "Cash Before Distribution": "#,##0", "Requested Distribution": "#,##0",
+        "Allowed Distribution": "#,##0", "Retained Cash": "#,##0"
+    })
+    _check_sheet_name_length("Dist Constraints")
+
+
+def _write_spv_retained_cash_sheet(writer, overlay: SPVRetainedCashOverlay) -> None:
+    """Write SPV Retained Cash sheet for one SPV overlay.
+
+    Sheet name includes entity code truncated to openpyxl limit (28 chars + "SPV_").
+    """
+    safe_name = _safe_sheet_name(overlay.entity_code or "SPV")
+    sheet_name = f"SPV_{safe_name}"[:31]
+    _check_sheet_name_length(sheet_name)
+
+    rows = []
+    for p in (overlay.periods or ()):
+        rows.append({
+            "SPV Code": overlay.entity_code,
+            "Period": p.period,
+            "Requested Distribution": round(p.requested_distribution_keur, 2),
+            "Allowed Distribution": round(p.allowed_distribution_keur, 2),
+            "Retained Cash": round(p.retained_cash_keur, 2),
+            "Available Distribution": round(p.cash_before_distribution_keur - p.retained_cash_keur, 2),
+            "Warnings": "; ".join(p.warnings) if p.warnings else "",
+        })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "SPV Code", "Period", "Requested Distribution", "Allowed Distribution",
+        "Retained Cash", "Available Distribution", "Warnings"
+    ])
+    _write_sheet(writer, sheet_name, df, number_format={
+        "Requested Distribution": "#,##0", "Allowed Distribution": "#,##0",
+        "Retained Cash": "#,##0", "Available Distribution": "#,##0"
+    })
+
+
+def _write_holdco_retained_cash_sheet(writer, overlay: HoldCoRetainedCashOverlay) -> None:
+    """Write HoldCo Retained Cash sheet."""
+    rows = []
+    max_len = max(
+        len(overlay.retained_cash_by_period),
+        len(overlay.requested_distribution_by_period),
+        len(overlay.available_distribution_by_period),
+    )
+    for i in range(max_len):
+        rows.append({
+            "HoldCo Code": overlay.entity_code,
+            "Period": i,
+            "Requested Distribution": round(
+                overlay.requested_distribution_by_period[i]
+                if i < len(overlay.requested_distribution_by_period) else 0.0, 2),
+            "Retained Cash": round(
+                overlay.retained_cash_by_period[i]
+                if i < len(overlay.retained_cash_by_period) else 0.0, 2),
+            "Available Distribution": round(
+                overlay.available_distribution_by_period[i]
+                if i < len(overlay.available_distribution_by_period) else 0.0, 2),
+            "Warnings": "",
+        })
+    df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        "HoldCo Code", "Period", "Requested Distribution", "Retained Cash", "Available Distribution", "Warnings"
+    ])
+    _write_sheet(writer, "HoldCo Ret Cash", df, number_format={
+        "Requested Distribution": "#,##0", "Retained Cash": "#,##0", "Available Distribution": "#,##0"
+    })
+    _check_sheet_name_length("HoldCo Ret Cash")
+
+
+def _safe_sheet_name(name: str) -> str:
+    """Sanitize a sheet name for openpyxl compatibility."""
+    # openpyxl disallows \ / * ? [ ] : in sheet names
+    import re
+    clean = re.sub(r'[\/\\*?[\]:]', '_', str(name))
+    return clean[:28]  # leave room for prefix
+
+
+def _check_sheet_name_length(name: str) -> None:
+    """Assertion that sheet name is <= 31 chars (openpyxl limit)."""
+    assert len(name) <= 31, f"Sheet name '{name}' exceeds 31-char limit ({len(name)})"
