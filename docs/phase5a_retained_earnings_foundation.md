@@ -232,10 +232,20 @@ ledger = build_cash_ledger_from_results(
 | Phase 4C | SHL end-to-end integration (enrichment layer) |
 | **Phase 5A** | **Planning + data model for retained earnings** |
 | **Phase 5B** | **Optional cash ledger integration (orchestrator)** |
-| Phase 5C | Retained earnings policy engine |
+| **Phase 5C** | **Retained cash/distribution constraint architecture** |
 | Phase 5D | HoldCoCashAccount implementation |
 | Phase 5E | Sponsor waterfall |
 | Phase 5F | Tax engine foundation |
+
+
+
+## Phase Status
+
+| Phase | Status |
+|-------|--------|
+| Phase 5A | ✅ Merged — cash ledger foundation |
+| Phase 5B | ✅ Merged — optional cash ledger integration |
+| Phase 5C | 📐 Current — retained cash/distribution constraint architecture (design only) |
 
 ## Open Questions
 
