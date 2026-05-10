@@ -23,6 +23,21 @@ from domain.portfolio.distribution_constraints.holdco_overlay import HoldCoRetai
 from domain.portfolio.distribution_constraints import DistributionConstraintResult
 
 
+AUDIT_ONLY_NOTE = (
+    "AUDIT-ONLY: these constraints are NOT applied to model outputs. "
+    "Waterfall distributions and IRR metrics remain unconstrained."
+)
+
+
+def build_overlay_audit_note() -> str:
+    """Return the audit-only notice for overlay/constraint table display.
+
+    Use this as a caption, sidebar note, or column annotation when
+    rendering SPV or HoldCo overlay tables in the UI.
+    """
+    return AUDIT_ONLY_NOTE
+
+
 # ── SPV Constraints Table ─────────────────────────────────────────────────────
 
 def build_spv_constraints_table(

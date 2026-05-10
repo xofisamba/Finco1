@@ -363,12 +363,12 @@ class TestHoldCoRetainedCashSheet:
         header = rows[0]
         req_col = header.index("Requested Distribution")
         ret_col = header.index("Retained Cash")
-        # Period 0
-        assert rows[1][req_col] == 500.0, f"period 0 requested={rows[1][req_col]}"
-        assert rows[1][ret_col] == 100.0, f"period 0 retained={rows[1][ret_col]}"
+        # Period 0 (after audit note row at index 1)
+        assert rows[2][req_col] == 500.0, f"period 0 requested={rows[2][req_col]}"
+        assert rows[2][ret_col] == 100.0, f"period 0 retained={rows[2][ret_col]}"
         # Period 1
-        assert rows[2][req_col] == 600.0, f"period 1 requested={rows[2][req_col]}"
-        assert rows[2][ret_col] == 200.0, f"period 1 retained={rows[2][ret_col]}"
+        assert rows[3][req_col] == 600.0, f"period 1 requested={rows[3][req_col]}"
+        assert rows[3][ret_col] == 200.0, f"period 1 retained={rows[3][ret_col]}"
 
 
 # ── G. Safe sheet name ────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ from domain.portfolio.distribution_constraints import (
     DistributionBlockReason,
     DistributionConstraintResult,
 )
+from app.portfolio_ui_overlay import build_overlay_audit_note
 from domain.portfolio.distribution_constraints.result import (
     DistributionConstraintPeriod,
 )

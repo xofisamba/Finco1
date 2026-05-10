@@ -200,3 +200,25 @@ layer; no mutation, no enforcement, no waterfall changes.
 - No `distribution_keur` semantics changes
 - No model output changes
 - Bridge to future SOFT_CAP/HARD_BLOCK activation
+
+---
+
+### enabled vs enforcement_mode
+
+Two separate controls that compose additively:
+
+**`enabled`** — gate at the call site. Controls whether the evaluator is invoked at all.
+
+- `enabled=False` (default): full pass-through, no evaluation, no reasons, no warnings.
+- `enabled=True`: evaluator runs and applies `enforcement_mode`.
+
+**`enforcement_mode`** — behavior once enabled. Only matters when `enabled=True`.
+
+| enforcement_mode | When enabled=True | When enabled=False |
+|---|---|---|
+| `OFF` (default) | Pass-through; no reasons, no warnings | Pass-through |
+| `WARNING_ONLY` | Reasons/warnings computed; `allowed=requested` | — (disabled) |
+| `SOFT_CAP` | Same as WARNING_ONLY + "not active" warning | — (disabled) |
+| `HARD_BLOCK` | Same as WARNING_ONLY + "not active" warning | — (disabled) |
+
+**Design intent:** Keep `enabled=False` as the safe default. Use `enabled=True` + `enforcement_mode=OFF` when constraints are configured but not yet enforced. This makes the distinction explicit and avoids ambiguity about whether evaluation is active.
