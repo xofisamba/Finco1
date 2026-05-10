@@ -19,6 +19,13 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
     return default
 
 
+def _safe_entity_code(value: Any, default: str = "HOLDCO") -> str:
+    """Extract non-empty string entity code, rejecting bool/int/float/Mock."""
+    if isinstance(value, str) and value.strip():
+        return value
+    return default
+
+
 def holdco_requested_distribution_by_period(
     holdco_result: Any,
 ) -> tuple[float, ...]:
@@ -168,9 +175,7 @@ def build_holdco_retained_cash_overlay(
 
     No mutation of holdco_result.
     """
-    entity_code = _safe_float(getattr(holdco_result, "name", None)) or "HOLDCO"
-    if isinstance(entity_code, float):
-        entity_code = "HOLDCO"
+    entity_code = _safe_entity_code(getattr(holdco_result, "name", None))
 
     requested = holdco_requested_distribution_by_period(holdco_result)
     available = holdco_available_distribution_by_period(holdco_result, retained_cash_by_period)

@@ -6,6 +6,7 @@ import pytest
 
 from domain.portfolio.distribution_constraints.holdco_overlay import (
     _safe_float,
+    _safe_entity_code,
     HoldCoRetainedCashOverlay,
     holdco_requested_distribution_by_period,
     holdco_available_distribution_by_period,
@@ -52,6 +53,33 @@ class TestSafeFloat:
 
     def test_string_rejected(self):
         assert _safe_float("80") == 0.0
+
+
+# ── A2. _safe_entity_code helper ──────────────────────────────────────────────
+
+class TestSafeEntityCode:
+    def test_non_empty_string_preserved(self):
+        assert _safe_entity_code("HoldCo Croatia") == "HoldCo Croatia"
+
+    def test_empty_string_falls_back(self):
+        assert _safe_entity_code("") == "HOLDCO"
+
+    def test_whitespace_string_falls_back(self):
+        assert _safe_entity_code("   ") == "HOLDCO"
+
+    def test_none_falls_back(self):
+        assert _safe_entity_code(None) == "HOLDCO"
+
+    def test_int_falls_back(self):
+        assert _safe_entity_code(123) == "HOLDCO"
+
+    def test_bool_falls_back(self):
+        assert _safe_entity_code(True) == "HOLDCO"
+        assert _safe_entity_code(False) == "HOLDCO"
+
+    def test_magic_mock_falls_back(self):
+        m = MagicMock()
+        assert _safe_entity_code(m) == "HOLDCO"
 
 
 # ── B. holdco_requested_distribution_by_period ─────────────────────────────────
