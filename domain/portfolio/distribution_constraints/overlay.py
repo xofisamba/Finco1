@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from domain.portfolio.distribution_constraints.inputs import DistributionBlockReason
+from domain.portfolio.distribution_constraints.inputs import (
+    DistributionBlockReason,
+    DistributionConstraintConfig,
+)
 from domain.portfolio.distribution_constraints.result import DistributionConstraintResult
 from domain.portfolio.distribution_constraints.integration import (
     evaluate_constraints_from_portfolio_ledger,
@@ -149,8 +152,8 @@ def build_spv_retained_cash_overlay(
 
 def build_spv_retained_cash_overlays_from_portfolio_ledger(
     portfolio_ledger: PortfolioCashLedger,
-    config_by_entity: dict | None = None,
-    default_config=None,
+    config_by_entity: dict[str, DistributionConstraintConfig] | None = None,
+    default_config: DistributionConstraintConfig | None = None,
 ) -> tuple[SPVRetainedCashOverlay, ...]:
     """Build SPV retained cash overlays for all entities in a portfolio ledger.
 
