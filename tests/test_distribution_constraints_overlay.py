@@ -306,8 +306,9 @@ class TestBuildSPVRetainedCashOverlaysFromPortfolioLedger:
         overlays = build_spv_retained_cash_overlays_from_portfolio_ledger(
             port, config_by_entity={"SOLAR-1": cfg},
         )
-        assert overlays[0].periods[0].allowed_distribution_keur == 0.0
-        assert DistributionBlockReason.MANUAL_LOCKUP in overlays[0].periods[0].block_reasons
+        # Phase 5G: OFF passes through → allowed = requested = 500, no block reasons
+        assert overlays[0].periods[0].allowed_distribution_keur == 500.0
+        assert overlays[0].periods[0].block_reasons == ()
 
     def test_multiple_entities_produce_multiple_overlays(self):
         l1 = make_entity_ledger("SOLAR-1", [

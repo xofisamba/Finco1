@@ -167,3 +167,36 @@ This document does **NOT** implement:
 - ❌ Any regression-breaking change to model outputs
 
 Enforcement is planned but not activated. All existing model outputs remain unchanged until a future phase explicitly opts in.
+---
+
+## Phase 5H — Enforcement Simulation Report
+
+Added: `simulation.py` + `test_distribution_constraints_simulation.py`
+
+### Purpose
+Simulation shows what distributions WOULD be restricted under future
+SOFT_CAP/HARD_BLOCK modes, without applying any restrictions. Pure reporting
+layer; no mutation, no enforcement, no waterfall changes.
+
+### What's added
+- `simulation.py`:
+  - `DistributionConstraintSimulationPeriod` — period-level simulation row
+  - `DistributionConstraintSimulationResult` — per-entity aggregation
+  - `simulate_distribution_enforcement(constraint_results)` — pure reporter
+
+- Exports added to `__init__.py`
+
+### Behavior
+- Input: `tuple[DistributionConstraintResult, ...]` (from `evaluate_distribution_constraints`)
+- Output: `tuple[DistributionConstraintSimulationResult, ...]`
+- `would_restrict_keur = requested - allowed` (0 if allowed == requested)
+- Block reasons preserved as strings
+- Warnings preserved
+- Totals auto-computed from periods
+
+### Key constraints (Phase 5H)
+- No distribution blocking — simulation only
+- No waterfall changes
+- No `distribution_keur` semantics changes
+- No model output changes
+- Bridge to future SOFT_CAP/HARD_BLOCK activation

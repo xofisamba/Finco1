@@ -214,7 +214,8 @@ class TestEvaluateConstraintsFromEntityLedger:
         # reserve = 200, requested = 500, allowed = min(500, max(0, 1500-200)) = 500
         assert result.periods[0].allowed_distribution_keur == 500.0
 
-    def test_minimum_cash_reserve_blocks_excess(self):
+    def test_minimum_cash_reserve_with_off_mode_passes_through(self):
+        """Phase 5G: enabled=True + OFF default → no reduction."""
         cfg = DistributionConstraintConfig(enabled=True, minimum_cash_reserve_keur=800.0)
         ledger = make_entity_ledger("SOLAR-1", [
             (0, 1000.0,
@@ -223,13 +224,12 @@ class TestEvaluateConstraintsFromEntityLedger:
              700.0, 700.0),
         ])
         result = evaluate_constraints_from_entity_ledger(ledger, config=cfg)
-        # cash_available = opening + non-dist = 1000 + 500 = 1500
-        # max_allowed = max(0, 1500 - 800) = 700
-        # requested = 800, allowed = min(800, 700) = 700
-        assert result.periods[0].allowed_distribution_keur == 700.0
-        assert DistributionBlockReason.MINIMUM_CASH_RESERVE in result.periods[0].block_reasons
+        # Phase 5G: OFF passes through → allowed = requested = 800, no block reasons
+        assert result.periods[0].allowed_distribution_keur == 800.0
+        assert result.periods[0].block_reasons == ()
 
-    def test_manual_lockup_blocks_distribution(self):
+    def test_manual_lockup_with_off_mode_passes_through(self):
+        """Phase 5G: enabled=True + OFF default → no lockup applied."""
         cfg = DistributionConstraintConfig(enabled=True, manual_lockup_periods=(0,))
         ledger = make_entity_ledger("SOLAR-1", [
             (0, 1000.0,
@@ -238,8 +238,9 @@ class TestEvaluateConstraintsFromEntityLedger:
              1000.0, 1000.0),
         ])
         result = evaluate_constraints_from_entity_ledger(ledger, config=cfg)
-        assert result.periods[0].allowed_distribution_keur == 0.0
-        assert DistributionBlockReason.MANUAL_LOCKUP in result.periods[0].block_reasons
+        # Phase 5G: OFF passes through → allowed = requested = 500, no block reasons
+        assert result.periods[0].allowed_distribution_keur == 500.0
+        assert result.periods[0].block_reasons == ()
 
     def test_no_mutation_of_ledger(self):
         ledger = make_entity_ledger("SOLAR-1", [
@@ -290,7 +291,8 @@ class TestEvaluateConstraintsFromPortfolioLedger:
         results = evaluate_constraints_from_portfolio_ledger(port, config_by_entity=cfg_by_entity)
         solar_result = next(r for r in results if r.entity_code == "SOLAR-1")
         wind_result = next(r for r in results if r.entity_code == "WIND-1")
-        assert solar_result.periods[0].allowed_distribution_keur == 0.0
+        # Phase 5G: OFF passes through → allowed = requested
+        assert solar_result.periods[0].allowed_distribution_keur == 500.0
         assert wind_result.periods[0].allowed_distribution_keur == 500.0  # pass-through
 
     def test_default_config_applies_to_unconfigured_entity(self):
