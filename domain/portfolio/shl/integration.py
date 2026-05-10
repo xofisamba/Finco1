@@ -94,6 +94,19 @@ def group_shl_facilities_by_borrower(
     return {k: tuple(v) for k, v in by_borrower.items()}
 
 
+def _safe_float(value, default=0.0):
+    """Cast value to float, rejecting bool and non-numeric types.
+
+    MagicMock returns a Mock object for any attribute. Using isinstance
+    guards to ensure we only treat real numbers as SHL values.
+    """
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    return default
+
+
 def inject_shl_into_waterfall_periods(
     wf_periods: list,
     shl_lookup: dict[int, tuple[float, float]],
@@ -106,10 +119,11 @@ def inject_shl_into_waterfall_periods(
     SHL principal is NOT deducted from distribution_keur in this phase
     (deferred to future retained-earnings / cash-account phase).
 
-    Collision policy: if a waterfall period already has non-zero shl_interest_keur
-    or shl_principal_keur (from SPV-level SHL config), this function raises
-    ValueError rather than silently overwriting. The caller must resolve the
-    collision (use either SPV-internal or portfolio-level SHL, not both).
+    Collision policy for each period:
+      - existing > 0 and injected > 0  → raise ValueError (use one path only)
+      - injected > 0 and existing == 0 → set injected value
+      - injected == 0 and existing > 0 → preserve existing value (no overwrite)
+      - both zero / missing            → set to 0.0
 
     Parameters
     ----------
@@ -134,8 +148,8 @@ def inject_shl_into_waterfall_periods(
             interest, principal = 0.0, 0.0
 
         # Guard against collision: SPV-internal SHL already set non-zero value
-        existing_interest = getattr(p, "shl_interest_keur", 0.0)
-        existing_principal = getattr(p, "shl_principal_keur", 0.0)
+        existing_interest = _safe_float(getattr(p, "shl_interest_keur", None))
+        existing_principal = _safe_float(getattr(p, "shl_principal_keur", None))
         if interest > 0 and existing_interest > 0:
             raise ValueError(
                 f"SHL collision on period {idx}: "
@@ -151,9 +165,18 @@ def inject_shl_into_waterfall_periods(
                 f"Use either SPV-internal SHL or portfolio-level SHL, not both."
             )
 
-        # Set attributes directly on the period object
-        p.shl_interest_keur = float(interest)
-        p.shl_principal_keur = float(principal)
+        # Set only when injecting non-zero; preserve existing non-zero values
+        if interest > 0:
+            p.shl_interest_keur = float(interest)
+        elif interest == 0 and existing_interest == 0:
+            p.shl_interest_keur = 0.0
+        # else: existing > 0, injected == 0 → preserve existing (do nothing)
+
+        if principal > 0:
+            p.shl_principal_keur = float(principal)
+        elif principal == 0 and existing_principal == 0:
+            p.shl_principal_keur = 0.0
+        # else: existing > 0, injected == 0 → preserve existing (do nothing)
 
 
 def enrich_portfolio_result_with_shl(
