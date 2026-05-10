@@ -89,3 +89,53 @@ __all__ = [
     "build_shl_period_lookup",
     "inject_shl_into_waterfall_periods",
 ]
+
+
+def enrich_portfolio_result_with_shl(
+    portfolio_result,
+    shl_by_entity_code: dict[str, "SHLPortfolioResult"],
+) -> None:
+    """Enrich SPV waterfall periods in an IndependentPortfolioResult with SHL flows.
+
+    This is the end-to-end integration hook. It mutates the waterfall period objects
+    stored inside each SPVOutput.waterfall_result in-place so that HoldCo
+    (via _safe_get_float) can read shl_interest_keur and shl_principal_keur.
+
+    Sequencing:
+      1. Run portfolio: result = run_independent_portfolio(inputs)
+      2. Build SHL facilities: shl_result = run_shl_portfolio(shl_inputs)
+      3. Map by entity code: shl_by_entity_code = {facility.borrower_entity_code: fac_result}
+      4. Enrich: enrich_portfolio_result_with_shl(result, shl_by_entity_code)
+      5. Aggregate HoldCo: holdco_result = build_holdco_result(...)
+
+    Parameters
+    ----------
+    portfolio_result : IndependentPortfolioResult
+        Result from run_independent_portfolio(). Mutated in-place.
+    shl_by_entity_code : dict[str, SHLPortfolioResult]
+        Mapping from borrower_entity_code → SHLPortfolioResult.
+        The portfolio result for each entity is used to look up SHL periods.
+    """
+    for spv in portfolio_result.spv_outputs:
+        wf = spv.waterfall_result
+        if wf is None or not hasattr(wf, "periods") or not wf.periods:
+            continue
+
+        entity_code = spv.project_code  # SPV project code = borrower entity code
+        shl_portfolio = shl_by_entity_code.get(entity_code)
+        if shl_portfolio is None or not shl_portfolio.facilities:
+            continue
+
+        # Build per-period lookup from each facility, keyed by period_index
+        shl_lookup: dict[int, tuple[float, float]] = {}
+        for fac_result in shl_portfolio.facilities:
+            fac_lookup = build_shl_period_lookup(fac_result)
+            for pidx, (interest, principal) in fac_lookup.items():
+                if pidx in shl_lookup:
+                    # Sum if multiple facilities target the same period
+                    existing = shl_lookup[pidx]
+                    shl_lookup[pidx] = (existing[0] + interest, existing[1] + principal)
+                else:
+                    shl_lookup[pidx] = (interest, principal)
+
+        inject_shl_into_waterfall_periods(list(wf.periods), shl_lookup)
