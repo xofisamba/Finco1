@@ -218,15 +218,15 @@ def build_excel_export(
 
         # ── Book Depreciation Disclosure ──────────────────────────────────
         _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type)
-    
-    # ── Phase 5D: Overlay Sheets (optional) ─────────────────────────
-    _write_overlay_sheets(
-        writer,
-        cash_ledger=cash_ledger,
-        spv_overlays=spv_overlays,
-        holdco_overlay=holdco_overlay,
-        constraint_results=constraint_results,
-    )
+
+        # ── Phase 5D: Overlay Sheets (optional) ─────────────────────────
+        _write_overlay_sheets(
+            writer,
+            cash_ledger=cash_ledger,
+            spv_overlays=spv_overlays,
+            holdco_overlay=holdco_overlay,
+            constraint_results=constraint_results,
+        )
 
     output.seek(0)
     return output.read()

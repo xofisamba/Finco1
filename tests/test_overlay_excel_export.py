@@ -403,6 +403,113 @@ class TestNoRegression:
         assert "constraint_results" in params
 
 
+# ── G. build_excel_export integration tests ─────────────────────────────────────
+
+from app.excel_export import build_excel_export
+from domain.portfolio.distribution_constraints.overlay import (
+    SPVRetainedCashPeriod,
+    SPVRetainedCashOverlay,
+)
+
+
+class TestBuildExcelExportWithOverlays:
+    def test_overlay_sheets_present_when_provided(self):
+        """build_excel_export() bytes contain expected overlay sheets."""
+        # Build minimal SPV overlay
+        p = SPVRetainedCashPeriod(
+            period=0, entity_code="SOLAR-1",
+            requested_distribution_keur=500.0, allowed_distribution_keur=400.0,
+            retained_cash_keur=600.0, cash_before_distribution_keur=1000.0,
+        )
+        spv_ov = SPVRetainedCashOverlay(entity_code="SOLAR-1", periods=(p,))
+
+        # Build minimal HoldCo overlay
+        hc_ov = HoldCoRetainedCashOverlay(
+            entity_code="HOLDCO",
+            retained_cash_by_period=(100.0,),
+            requested_distribution_by_period=(500.0,),
+            available_distribution_by_period=(400.0,),
+        )
+
+        # Build constraint result
+        cp = DistributionConstraintPeriod(
+            period=0, entity_code="SOLAR-1",
+            cash_before_distribution_keur=1000.0, requested_distribution_keur=500.0,
+            allowed_distribution_keur=400.0, retained_cash_keur=600.0,
+        )
+        cr = DistributionConstraintResult(
+            entity_code="SOLAR-1", periods=(cp,),
+            total_requested_distribution_keur=500.0,
+            total_allowed_distribution_keur=400.0,
+            total_retained_cash_keur=600.0,
+        )
+
+        # Build cash ledger
+        entity_period = CashLedgerPeriod(
+            period=0, entity_code="SOLAR-1",
+            opening_cash_keur=1000.0,
+            movements=(CashMovement(period=0, entity_code="SOLAR-1",
+                                    movement_type=CashMovementType.OPERATING_CASHFLOW,
+                                    amount_keur=500.0, description=""),),
+            closing_cash_keur=1500.0, retained_cash_keur=1500.0, warnings=(),
+        )
+        entity_ledger = EntityCashLedger(
+            entity_code="SOLAR-1", periods=(entity_period,),
+            total_movements_keur=500.0, ending_cash_keur=1500.0, warnings=(),
+        )
+        cash_ledger = PortfolioCashLedger(entities=(entity_ledger,), total_ending_cash_keur=1500.0)
+
+        bytes_out = build_excel_export(
+            result=None,
+            portfolio_result=None,
+            cash_ledger=cash_ledger,
+            spv_overlays=[spv_ov],
+            holdco_overlay=hc_ov,
+            constraint_results=[cr],
+        )
+
+        wb = load_workbook(BytesIO(bytes_out))
+        sheet_names = wb.sheetnames
+        assert "Cash Ledger" in sheet_names, f"Cash Ledger missing from {sheet_names}"
+        assert "Dist Constraints" in sheet_names, f"Dist Constraints missing from {sheet_names}"
+        assert any("SOLAR-1" in n for n in sheet_names), f"SPV sheet missing from {sheet_names}"
+        assert "HoldCo Ret Cash" in sheet_names, f"HoldCo Ret Cash missing from {sheet_names}"
+
+    def test_overlays_omitted_no_overlay_sheets(self):
+        """When overlay params are None, no overlay sheets are created."""
+        bytes_out = build_excel_export(result=None, portfolio_result=None)
+
+        wb = load_workbook(BytesIO(bytes_out))
+        overlay_sheets = [n for n in wb.sheetnames
+                         if n in ("Cash Ledger", "Dist Constraints", "HoldCo Ret Cash")
+                         or n.startswith("SPV_")]
+        assert overlay_sheets == [], f"Unexpected overlay sheets: {overlay_sheets}"
+
+    def test_sheet_names_le_31_chars(self):
+        """All overlay sheet names respect openpyxl 31-char limit."""
+        p = SPVRetainedCashPeriod(
+            period=0, entity_code="X" * 50,
+            requested_distribution_keur=500.0, allowed_distribution_keur=500.0,
+            retained_cash_keur=500.0, cash_before_distribution_keur=1000.0,
+        )
+        ov = SPVRetainedCashOverlay(entity_code="X" * 50, periods=(p,))
+        hc_ov = HoldCoRetainedCashOverlay(
+            entity_code="HOLDCO",
+            retained_cash_by_period=(100.0,),
+            requested_distribution_by_period=(500.0,),
+            available_distribution_by_period=(400.0,),
+        )
+
+        bytes_out = build_excel_export(
+            spv_overlays=[ov], holdco_overlay=hc_ov,
+            constraint_results=[],
+            cash_ledger=None,
+        )
+        wb = load_workbook(BytesIO(bytes_out))
+        for name in wb.sheetnames:
+            assert len(name) <= 31, f"Sheet name '{name}' exceeds 31 chars"
+
+
 # ── test helpers ──────────────────────────────────────────────────────────────
 
 def make_entity_ledger(entity_code, periods_data):
