@@ -1,10 +1,13 @@
-"""Phase 3B HoldCo aggregation runner.
+"""Phase 3B HoldCo aggregation runner with Phase 4B SHL upstream integration.
 
-No active SHL calculation in HoldCo runner. SHL passthrough fields are prepared;
-SHL interest/principal remain zero until SHL integration phase.
+P4B: SHL interest and principal are read from waterfall periods and upstreamed
+to HoldCo. SHL principal is tracked separately and excluded from taxable income.
+SHL interest contributes to HoldCo gross income (taxable). Dividend is also
+taxable income.
 
 No tax template engine. No HoldCo IRR. No monthly model.
 No pooled financing. No retained earnings. No cash sweep.
+No SHL sculpting. No SHL capitalization.
 
 Inputs:
   - HoldCoInputs (SPV codes, ownership %, HoldCo entity config)
@@ -28,6 +31,20 @@ from domain.portfolio.holdco import (
 )
 from domain.portfolio.independent import IndependentPortfolioResult
 from domain.portfolio.independent.result import SPVOutput
+
+
+def _safe_get_float(obj, attr, default=0.0):
+    """Get a float attribute from an object, returning default if absent or not a real float.
+
+    MagicMock (from tests) returns a Mock object for any attribute even if not set.
+    Using isinstance(x, float) to distinguish real floats from Mock objects.
+    """
+    val = getattr(obj, attr, default)
+    if isinstance(val, bool):
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    return default
 
 
 def build_holdco_result(
@@ -151,25 +168,28 @@ def build_holdco_result(
                         spv_dist = spv.adjusted_period_distributions_keur[period_idx]
                     else:
                         spv_dist = periods_data[period_idx].distribution_keur
+                    # P4B: Read SHL interest/principal from waterfall period
+                    wf_period = periods_data[period_idx]
+                    shl_interest_raw = _safe_get_float(wf_period, 'shl_interest_keur', 0.0)
+                    shl_principal_raw = _safe_get_float(wf_period, 'shl_principal_keur', 0.0)
                 else:
                     # P1.2: SPV has fewer periods than max — zero-padding
                     spv_dist = 0.0
+                    shl_interest_raw = 0.0
+                    shl_principal_raw = 0.0
             else:
                 spv_dist = 0.0
+                shl_interest_raw = 0.0
+                shl_principal_raw = 0.0
 
-            # P1.1 / final-fix: explicit income component breakdown for SHL prep
-            # SHL principal is balance-sheet only and must NOT flow through period_gross.
-            # SHL interest (when implemented) IS income. For now both are 0.0.
-            #
-            # Future SHL phase: replace shl_interest_share/shl_principal_share placeholders
-            # with actual upstreamed values from waterfall period's shl_interest_keur/
-            # shl_principal_keur fields. The only change needed will be to read those
-            # fields and populate the share variables — the rest of the income
-            # accumulator logic stays the same.
+            # P4B: SHL upstreaming — three cash flow components
+            # 1. dividend: equity distribution from waterfall
+            # 2. SHL interest: taxable HoldCo income
+            # 3. SHL principal: cash movement only (NOT taxable income)
             dividend_share = spv_dist * ownership_pct
-            shl_interest_share = 0.0  # TODO(SHL): read from waterfall period shl_interest_keur
-            shl_principal_share = 0.0  # TODO(SHL): read from waterfall period shl_principal_keur
-            # holdco_share = dividend + SHL interest (SHL principal excluded from income)
+            shl_interest_share = shl_interest_raw * ownership_pct
+            shl_principal_share = shl_principal_raw * ownership_pct
+            # holdco_income = dividend + SHL interest (principal excluded from taxable income)
             holdco_income_share = dividend_share + shl_interest_share
             period_gross += holdco_income_share
             period_spv_dist += spv_dist

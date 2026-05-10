@@ -144,3 +144,80 @@ The following are **NOT implemented** in this phase:
 ```
 
 All existing portfolio, DSRF, and HoldCo tests continue to pass.
+
+---
+
+## P4B: SHL Upstream Integration
+
+**Implemented in commit `portfolio-shl-phase2` (PR to main).**
+
+### Changes to HoldCo Runner
+
+The HoldCo aggregation runner now reads SHL interest and principal directly from `WaterfallPeriod`:
+
+```python
+# P4B: SHL upstreaming — three cash flow components
+wf_period = periods_data[period_idx]
+shl_interest_raw = _safe_get_float(wf_period, 'shl_interest_keur', 0.0)
+shl_principal_raw = _safe_get_float(wf_period, 'shl_principal_keur', 0.0)
+
+dividend_share = spv_dist * ownership_pct
+shl_interest_share = shl_interest_raw * ownership_pct
+shl_principal_share = shl_principal_raw * ownership_pct
+
+# holdco_income = dividend + SHL interest (principal excluded from taxable income)
+holdco_income_share = dividend_share + shl_interest_share
+period_gross += holdco_income_share
+```
+
+### Income vs Balance-Sheet Treatment
+
+| Component | HoldCo gross income | HoldCo tax base | Notes |
+|-----------|---------------------|-----------------|-------|
+| `dividend_keur` | ✅ Yes | ✅ Yes | Equity distribution |
+| `shl_interest_keur` | ✅ Yes | ✅ Yes | Taxable income |
+| `shl_principal_keur` | ❌ No | ❌ No | Cash movement only |
+
+### SHL Interest + Dividend Inclusion
+
+`total_gross_income_keur = total_dividend_keur + total_shl_interest_keur`
+
+`total_shl_principal_keur` is tracked separately but **never** flows through `gross_income_keur`.
+
+### Why Principal is Excluded
+
+SHL principal repayment is a return of capital, not income. Including it in `gross_income` would overstate HoldCo's taxable earnings. The principal is still tracked in:
+- `HoldCoPeriodResult.shl_principal_keur`
+- `HoldCoSPVContribution.shl_principal_keur`
+- `HoldCoResult.total_shl_principal_keur`
+
+---
+
+## Explicit Non-Scope (P4B Extension)
+
+The current phase does **NOT** calculate:
+
+- **Withholding tax** — applicable to cross-border dividend/interest payments
+- **Transfer pricing** — arm's length pricing for intercompany transactions
+- **SHL capitalization** — accrued interest added to principal (future phase)
+- **SHL sculpting** — cash flow matching (future phase)
+- **Tax deductibility limits** — thin capitalization, earnings stripping rules
+- **ATAD** — Anti-Tax Avoidance Directive compliance
+- **Circular structures** — recursive intercompany flows
+- **HoldCo IRR** — deferred beyond P4B
+- **Sponsor IRR** — deferred beyond P4B
+
+These will be addressed in future phases with the tax template engine.
+
+---
+
+## Future Tax Engine Dependency
+
+HoldCo's current `tax_rate_pa` is a flat placeholder. Future tax template engine will:
+
+1. Apply different rates to dividend vs SHL interest vs SHL principal
+2. Handle withholding tax on cross-border flows
+3. Apply participation exemption rules
+4. Implement ATAD anti-avoidance rules
+
+The P4B architecture (separate dividend/interest/principal fields) enables this future transition without schema changes.
