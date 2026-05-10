@@ -247,6 +247,18 @@ ledger = build_cash_ledger_from_results(
 | Phase 5B | ✅ Merged — optional cash ledger integration |
 | Phase 5C | 📐 Current — retained cash/distribution constraint architecture (design only) |
 
+### Cash Ledger and WaterfallPeriod Mutability
+
+The Phase 5A/5B cash ledger is **fully additive and audit-only**:
+- It reads from existing `IndependentPortfolioResult` and `HoldCoResult` objects
+- It does **not** mutate `WaterfallPeriod` or any waterfall result
+- The `movements_from_spv_output()` and `movements_from_holdco_result()` adapters are pure read functions
+- `build_cash_ledger_from_results()` combines movements without side effects
+
+The only mutation of `WaterfallPeriod` in the codebase is the Phase 4C SHL enrichment bridge (`inject_shl_into_waterfall_periods()`), which is isolated to that one function with full collision guards.
+
+See [docs/waterfall_period_mutability_policy.md](waterfall_period_mutability_policy.md) for the full policy.
+
 ## Open Questions
 
 1. Should retained earnings be per-SPV or portfolio-level?

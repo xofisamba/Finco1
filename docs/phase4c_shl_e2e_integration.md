@@ -133,6 +133,17 @@ The following are explicitly **not implemented** in Phase 4C:
 - **HoldCo IRR** — future phase
 - **Sponsor IRR** — future phase
 
+## WaterfallPeriod Mutability Policy
+
+`WaterfallPeriod` is mutable by design as an integration bridge for SHL enrichment.
+See [docs/waterfall_period_mutability_policy.md](waterfall_period_mutability_policy.md) for the full policy, collision rules, and future direction.
+
+Key points:
+- Phase 4C SHL enrichment writes `shl_interest_keur` and `shl_principal_keur` to waterfall period objects **in-place**
+- DSRF-adjusted distributions do **not** mutate `distribution_keur` — they use a separate field
+- Collision guard (PR #13): portfolio-level SHL injection raises `ValueError` if a period already has non-zero SHL values
+- Immutable refactor (`@dataclass(frozen=True)`) is deferred — isolated scope, fully tested
+
 ## Files Changed (Phase 4C)
 
 | File | Change |
