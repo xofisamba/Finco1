@@ -1146,7 +1146,15 @@ def _write_holdco_retained_cash_sheet(writer, overlay: HoldCoRetainedCashOverlay
     df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
         "HoldCo Code", "Period", "Requested Distribution", "Retained Cash", "Available Distribution", "Warnings"
     ])
-    _write_sheet(writer, "HoldCo Ret Cash", df, number_format={
+    # Prepend audit-only note row
+    note_row = {col: "" for col in df.columns}
+    note_row["HoldCo Code"] = "AUDIT-ONLY NOTE"
+    note_row["Requested Distribution"] = 0.0
+    note_row["Retained Cash"] = 0.0
+    note_row["Available Distribution"] = 0.0
+    note_df = pd.concat([pd.DataFrame([note_row]), df], ignore_index=True)
+
+    _write_sheet(writer, "HoldCo Ret Cash", note_df, number_format={
         "Requested Distribution": "#,##0", "Retained Cash": "#,##0", "Available Distribution": "#,##0"
     })
     _check_sheet_name_length("HoldCo Ret Cash")
