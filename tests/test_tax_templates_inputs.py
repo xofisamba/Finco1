@@ -191,10 +191,81 @@ class TestTaxTemplateValidation:
         assert t.metadata_dict == {"note": "test"}
 
 
+# ── CIT Tier Continuity / Unbounded Validation ───────────────────────────────
+
+class TestCITTierContinuityValidation:
+    def test_valid_flat_tier(self):
+        t = TaxTemplate(
+            country_code="HR", template_name="Test", tax_year=2026,
+            cit_tiers=(CITTier(min_profit_keur=0.0, max_profit_keur=None, tax_rate=0.10),),
+        )
+        assert len(t.cit_tiers) == 1
+
+    def test_valid_progressive_contiguous(self):
+        t = TaxTemplate(
+            country_code="HR", template_name="Test", tax_year=2026,
+            cit_tiers=(
+                CITTier(min_profit_keur=0.0, max_profit_keur=500.0, tax_rate=0.10),
+                CITTier(min_profit_keur=500.0, max_profit_keur=None, tax_rate=0.15),
+            ),
+        )
+        assert len(t.cit_tiers) == 2
+
+    def test_gap_between_tiers_raises(self):
+        with pytest.raises(ValueError, match="gap"):
+            TaxTemplate(
+                country_code="HR", template_name="Test", tax_year=2026,
+                cit_tiers=(
+                    CITTier(min_profit_keur=0.0, max_profit_keur=400.0, tax_rate=0.10),
+                    CITTier(min_profit_keur=500.0, max_profit_keur=None, tax_rate=0.15),
+                ),
+            )
+
+    def test_first_tier_not_starting_at_0_raises(self):
+        with pytest.raises(ValueError, match="start at 0.0"):
+            TaxTemplate(
+                country_code="HR", template_name="Test", tax_year=2026,
+                cit_tiers=(
+                    CITTier(min_profit_keur=100.0, max_profit_keur=None, tax_rate=0.10),
+                ),
+            )
+
+    def test_multiple_unbounded_tiers_raises(self):
+        with pytest.raises(ValueError, match="unbounded"):
+            TaxTemplate(
+                country_code="HR", template_name="Test", tax_year=2026,
+                cit_tiers=(
+                    CITTier(min_profit_keur=0.0, max_profit_keur=None, tax_rate=0.10),
+                    CITTier(min_profit_keur=100.0, max_profit_keur=None, tax_rate=0.15),
+                ),
+            )
+
+    def test_unbounded_tier_not_last_raises(self):
+        with pytest.raises(ValueError, match="must be last"):
+            TaxTemplate(
+                country_code="HR", template_name="Test", tax_year=2026,
+                cit_tiers=(
+                    CITTier(min_profit_keur=0.0, max_profit_keur=None, tax_rate=0.10),
+                    CITTier(min_profit_keur=500.0, max_profit_keur=1000.0, tax_rate=0.15),
+                ),
+            )
+
+    def test_three_contiguous_tiers_valid(self):
+        t = TaxTemplate(
+            country_code="HR", template_name="Test", tax_year=2026,
+            cit_tiers=(
+                CITTier(min_profit_keur=0.0, max_profit_keur=200.0, tax_rate=0.10),
+                CITTier(min_profit_keur=200.0, max_profit_keur=500.0, tax_rate=0.12),
+                CITTier(min_profit_keur=500.0, max_profit_keur=None, tax_rate=0.20),
+            ),
+        )
+        assert len(t.cit_tiers) == 3
+
+
 # ── TaxTemplateOverride validation ──────────────────────────────────────────
 
 class TestTaxTemplateOverrideValidation:
-    def test_valid_override(self):
+    def test_valid_top_level_override(self):
         o = TaxTemplateOverride(
             override_name="custom_wht",
             field_path="withholding_tax_dividends",
@@ -202,6 +273,16 @@ class TestTaxTemplateOverrideValidation:
             reason="Treaty rate",
         )
         assert o.override_name == "custom_wht"
+
+    def test_valid_metadata_key_override(self):
+        o = TaxTemplateOverride(
+            override_name="custom_note",
+            field_path="metadata.note",
+            override_value="custom note text",
+            reason="User override",
+        )
+        assert o.field_path == "metadata.note"
+        assert o.override_value == "custom note text"
 
     def test_empty_field_path_rejected(self):
         with pytest.raises(ValueError, match="field_path must be non-empty"):
@@ -212,12 +293,21 @@ class TestTaxTemplateOverrideValidation:
                 reason="",
             )
 
-    def test_nested_field_path_rejected(self):
-        with pytest.raises(ValueError, match="nested field_path.*not yet supported"):
+    def test_nested_non_metadata_field_path_rejected(self):
+        with pytest.raises(ValueError, match="not supported"):
             TaxTemplateOverride(
                 override_name="x",
                 field_path="cit_tiers.0.tax_rate",
                 override_value=0.08,
+                reason="",
+            )
+
+    def test_bare_metadata_dot_raises(self):
+        with pytest.raises(ValueError, match="non-empty key"):
+            TaxTemplateOverride(
+                override_name="x",
+                field_path="metadata.",
+                override_value="value",
                 reason="",
             )
 
@@ -229,6 +319,7 @@ class TestResolvedTaxConfig:
         t = TaxTemplate(country_code="HR", template_name="T", tax_year=2026)
         r = ResolvedTaxConfig(
             base_template=t,
+            resolved_template=t,
             overrides=(),
             resolved_metadata=(("note", "test"),),
         )
@@ -239,7 +330,19 @@ class TestResolvedTaxConfig:
         o = TaxTemplateOverride("a", "withholding_tax_dividends", 0.05, "r")
         r = ResolvedTaxConfig(
             base_template=t,
+            resolved_template=t,
             overrides=[o],  # list input
             resolved_metadata=(),
         )
         assert isinstance(r.overrides, tuple)
+
+    def test_resolved_template_field_exists(self):
+        t = TaxTemplate(country_code="HR", template_name="T", tax_year=2026)
+        r = ResolvedTaxConfig(
+            base_template=t,
+            resolved_template=t,
+            overrides=(),
+            resolved_metadata=(),
+        )
+        assert hasattr(r, "resolved_template")
+        assert r.resolved_template is t

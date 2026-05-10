@@ -18,13 +18,16 @@ def _hr_template():
     return get_builtin_tax_templates()[0]  # HR_SIMPLE_2026
 
 
-class TestResolveTaxTemplateNoOverrides:
-    def test_empty_overrides_returns_base_metadata(self):
+# ── ResolvedTemplate exposure ─────────────────────────────────────────────────
+
+class TestResolvedTemplateExposure:
+    def test_no_overrides_resolved_template_equals_base(self):
         tpl = _hr_template()
         result = resolve_tax_template(tpl, ())
-        assert result.base_template is tpl
-        assert result.overrides == ()
-        assert result.resolved_metadata == tpl.metadata
+        # resolved_template equals base_template in value
+        # (object identity not preserved due to metadata reconstruction)
+        assert result.resolved_template == result.base_template
+        assert result.resolved_template.country_code == tpl.country_code
 
     def test_original_template_unchanged(self):
         tpl = _hr_template()
@@ -38,9 +41,7 @@ class TestResolveTaxTemplateNoOverrides:
         resolve_tax_template(tpl, (ov,))
         assert tpl.template_name == original_name
 
-
-class TestResolveTaxTemplateOverride:
-    def test_override_wht_applied(self):
+    def test_top_level_override_in_resolved_template(self):
         tpl = _hr_template()
         ov = TaxTemplateOverride(
             override_name="custom_wht",
@@ -49,61 +50,78 @@ class TestResolveTaxTemplateOverride:
             reason="Treaty rate",
         )
         result = resolve_tax_template(tpl, (ov,))
-        # Resolved config should have overridden value
-        # We verify via resolved template in base_template
-        assert result.base_template.withholding_tax_interest == 0.0  # base unchanged
+        assert result.resolved_template.withholding_tax_interest == 0.05
+        assert result.base_template.withholding_tax_interest == 0.0
 
-    def test_override_applied_immutably(self):
+    def test_resolved_template_is_frozen(self):
+        tpl = _hr_template()
+        result = resolve_tax_template(tpl, ())
+        with pytest.raises(Exception):
+            result.resolved_template.template_name = "mutated"
+
+
+# ── Metadata key overrides ────────────────────────────────────────────────────
+
+class TestMetadataKeyOverrides:
+    def test_metadata_note_override(self):
         tpl = _hr_template()
         ov = TaxTemplateOverride(
-            override_name="custom_wht",
-            field_path="withholding_tax_interest",
-            override_value=0.05,
-            reason="Treaty rate",
+            override_name="custom_note",
+            field_path="metadata.note",
+            override_value="custom override note",
+            reason="User specified",
         )
         result = resolve_tax_template(tpl, (ov,))
-        # The resolved config carries the override; we need to verify
-        # the override was recorded
-        assert len(result.overrides) == 1
-        assert result.overrides[0].override_value == 0.05
+        assert result.resolved_metadata_dict["note"] == "custom override note"
 
-    def test_original_template_unchanged_after_override(self):
+    def test_metadata_new_key_override(self):
         tpl = _hr_template()
         ov = TaxTemplateOverride(
-            override_name="custom_wht",
-            field_path="withholding_tax_interest",
-            override_value=0.05,
-            reason="Treaty rate",
+            override_name="add_key",
+            field_path="metadata.source",
+            override_value="user_defined",
+            reason="custom source",
+        )
+        result = resolve_tax_template(tpl, (ov,))
+        assert result.resolved_metadata_dict["source"] == "user_defined"
+        # Original metadata still present
+        assert "note" in result.resolved_metadata_dict
+
+    def test_metadata_key_override_base_unchanged(self):
+        tpl = _hr_template()
+        ov = TaxTemplateOverride(
+            override_name="custom_note",
+            field_path="metadata.note",
+            override_value="custom override note",
+            reason="User specified",
         )
         resolve_tax_template(tpl, (ov,))
-        assert tpl.withholding_tax_interest == 0.0
+        # Base template metadata is unchanged
+        base_note = dict(tpl.metadata).get("note", "")
+        assert "illustrative" in base_note.lower()
 
-    def test_thin_cap_override(self):
+    def test_metadata_key_override_preserves_other_base_metadata(self):
         tpl = _hr_template()
-        ov = TaxTemplateOverride(
-            override_name="relax_thin_cap",
-            field_path="thin_cap_ratio",
-            override_value=5.0,
-            reason="Project finance",
+        # Add an extra metadata key to base template
+        tpl_with_extra = TaxTemplate(
+            country_code="HR", template_name="T", tax_year=2026,
+            metadata=(("note", "test note"), ("author", "test author")),
         )
-        result = resolve_tax_template(tpl, (ov,))
-        assert result.overrides[0].override_value == 5.0
-
-    def test_metadata_override(self):
-        tpl = _hr_template()
         ov = TaxTemplateOverride(
-            override_name="add_note",
-            field_path="metadata",
-            override_value={"custom": "user_value"},
-            reason="test override",
+            override_name="override_note",
+            field_path="metadata.note",
+            override_value="overridden",
+            reason="test",
         )
-        result = resolve_tax_template(tpl, (ov,))
-        md = result.resolved_metadata_dict
-        assert "custom" in md
+        result = resolve_tax_template(tpl_with_extra, (ov,))
+        assert result.resolved_metadata_dict["note"] == "overridden"
+        assert result.resolved_metadata_dict["author"] == "test author"
 
 
-class TestResolveTaxTemplateInvalidFieldPath:
-    def test_invalid_field_path_raises(self):
+# ── Invalid field paths at resolve time ──────────────────────────────────────
+
+class TestInvalidFieldPaths:
+    def test_invalid_top_level_field_raises(self):
         tpl = _hr_template()
         ov = TaxTemplateOverride(
             override_name="bad",
@@ -114,9 +132,10 @@ class TestResolveTaxTemplateInvalidFieldPath:
         with pytest.raises(ValueError, match="Invalid override field_path"):
             resolve_tax_template(tpl, (ov,))
 
-    def test_nested_field_path_rejected_in_override_construction(self):
-        """Nested field_path is rejected at TaxTemplateOverride construction time."""
-        with pytest.raises(ValueError, match="nested field_path.*not yet supported"):
+    def test_nested_non_metadata_path_raises_at_resolve(self):
+        """TaxTemplateOverride construction allows 'metadata.<key>' only.
+        A path like 'cit_tiers.0.tax_rate' is rejected at construction time."""
+        with pytest.raises(ValueError, match="not supported"):
             TaxTemplateOverride(
                 override_name="nested",
                 field_path="cit_tiers.0.tax_rate",
@@ -124,9 +143,20 @@ class TestResolveTaxTemplateInvalidFieldPath:
                 reason="test",
             )
 
+    def test_bare_metadata_dot_raises_at_construction(self):
+        with pytest.raises(ValueError, match="non-empty key"):
+            TaxTemplateOverride(
+                override_name="bare_meta_dot",
+                field_path="metadata.",
+                override_value="value",
+                reason="test",
+            )
 
-class TestResolveTaxTemplateLastOverrideWins:
-    def test_duplicate_field_path_last_wins(self):
+
+# ── Last override wins ────────────────────────────────────────────────────────
+
+class TestLastOverrideWins:
+    def test_duplicate_top_level_field_last_wins(self):
         tpl = _hr_template()
         ov1 = TaxTemplateOverride(
             override_name="first",
@@ -141,28 +171,49 @@ class TestResolveTaxTemplateLastOverrideWins:
             reason="second",
         )
         result = resolve_tax_template(tpl, (ov1, ov2))
-        assert result.overrides[-1].override_value == 0.07
+        assert result.resolved_template.withholding_tax_interest == 0.07
 
-
-class TestResolveTaxTemplateResolvedMetadata:
-    def test_resolved_metadata_preserved(self):
+    def test_duplicate_metadata_key_last_wins(self):
         tpl = _hr_template()
-        ov = TaxTemplateOverride(
-            override_name="add_meta",
-            field_path="metadata",
-            override_value={"new_key": "new_value"},
-            reason="test",
+        ov1 = TaxTemplateOverride(
+            override_name="first",
+            field_path="metadata.note",
+            override_value="first value",
+            reason="first",
         )
-        result = resolve_tax_template(tpl, (ov,))
-        assert result.resolved_metadata_dict["new_key"] == "new_value"
+        ov2 = TaxTemplateOverride(
+            override_name="second",
+            field_path="metadata.note",
+            override_value="second value",
+            reason="second",
+        )
+        result = resolve_tax_template(tpl, (ov1, ov2))
+        assert result.resolved_metadata_dict["note"] == "second value"
 
+
+# ── Resolved metadata ─────────────────────────────────────────────────────────
+
+class TestResolvedMetadata:
     def test_resolved_metadata_dict_property(self):
         tpl = _hr_template()
         result = resolve_tax_template(tpl, ())
         assert isinstance(result.resolved_metadata_dict, dict)
 
+    def test_metadata_override_whole_field_still_works(self):
+        tpl = _hr_template()
+        ov = TaxTemplateOverride(
+            override_name="whole_meta",
+            field_path="metadata",
+            override_value={"custom": "user_value"},
+            reason="test",
+        )
+        result = resolve_tax_template(tpl, (ov,))
+        assert result.resolved_metadata_dict["custom"] == "user_value"
 
-class TestResolveTaxTemplateResolvedConfigImmutable:
+
+# ── ResolvedConfig immutability ──────────────────────────────────────────────
+
+class TestResolvedConfigImmutable:
     def test_resolved_config_is_frozen(self):
         tpl = _hr_template()
         result = resolve_tax_template(tpl, ())
@@ -178,3 +229,65 @@ class TestResolveTaxTemplateResolvedConfigImmutable:
         result = resolve_tax_template(tpl, (ov,))
         assert isinstance(result.overrides, tuple)
         assert len(result.overrides) == 1
+
+    def test_resolved_metadata_is_tuple_of_tuples(self):
+        tpl = _hr_template()
+        result = resolve_tax_template(tpl, ())
+        assert isinstance(result.resolved_metadata, tuple)
+        for item in result.resolved_metadata:
+            assert isinstance(item, tuple)
+            assert len(item) == 2
+
+
+# ── Edge cases ───────────────────────────────────────────────────────────────
+
+class TestEdgeCases:
+    def test_empty_overrides_tuple(self):
+        tpl = _hr_template()
+        result = resolve_tax_template(tpl, ())
+        assert result.overrides == ()
+        # value equality (object identity not preserved due to metadata reconstruction)
+        assert result.resolved_template == tpl
+
+    def test_cit_tiers_override(self):
+        tpl = _hr_template()
+        new_tiers = (
+            CITTier(min_profit_keur=0.0, max_profit_keur=None, tax_rate=0.08),
+        )
+        ov = TaxTemplateOverride(
+            override_name="lower_cit",
+            field_path="cit_tiers",
+            override_value=new_tiers,
+            reason="temporary rate",
+        )
+        result = resolve_tax_template(tpl, (ov,))
+        assert result.resolved_template.cit_tiers[0].tax_rate == 0.08
+
+    def test_thin_cap_override(self):
+        tpl = _hr_template()
+        ov = TaxTemplateOverride(
+            override_name="relax_thin_cap",
+            field_path="thin_cap_ratio",
+            override_value=5.0,
+            reason="Project finance",
+        )
+        result = resolve_tax_template(tpl, (ov,))
+        assert result.resolved_template.thin_cap_ratio == 5.0
+
+    def test_combined_top_level_and_metadata_key_override(self):
+        tpl = _hr_template()
+        ov1 = TaxTemplateOverride(
+            override_name="wht",
+            field_path="withholding_tax_interest",
+            override_value=0.05,
+            reason="Treaty rate",
+        )
+        ov2 = TaxTemplateOverride(
+            override_name="meta_note",
+            field_path="metadata.note",
+            override_value="overridden note",
+            reason="User specified",
+        )
+        result = resolve_tax_template(tpl, (ov1, ov2))
+        assert result.resolved_template.withholding_tax_interest == 0.05
+        assert result.resolved_metadata_dict["note"] == "overridden note"

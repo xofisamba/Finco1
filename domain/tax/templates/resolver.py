@@ -3,8 +3,9 @@
 Applies TaxTemplateOverride objects to a base TaxTemplate immutably,
 producing a ResolvedTaxConfig. No mutation of the base template.
 
-Phase 6A supports simple top-level field overrides only.
-Nested field-path replacement (with '.') is not implemented yet.
+Phase 6A supports:
+- Simple top-level field overrides (e.g., "withholding_tax_interest")
+- Metadata key overrides (e.g., "metadata.note", "metadata.source")
 """
 from __future__ import annotations
 
@@ -17,8 +18,8 @@ from domain.tax.templates.inputs import (
 )
 
 
-# Valid override targets (simple top-level fields on TaxTemplate)
-_VALID_OVERRIDE_FIELDS = frozenset({
+# Valid top-level override targets (TaxTemplate direct fields)
+_VALID_TOP_LEVEL_FIELDS = frozenset({
     "country_code",
     "template_name",
     "tax_year",
@@ -32,6 +33,9 @@ _VALID_OVERRIDE_FIELDS = frozenset({
     "metadata",
 })
 
+# Metadata key override prefix
+_METADATA_PREFIX = "metadata."
+
 
 def resolve_tax_template(
     base_template: TaxTemplate,
@@ -43,6 +47,10 @@ def resolve_tax_template(
     Override application is order-preserving; on duplicate field_path,
     the last override wins.
 
+    Supports two override patterns:
+    - Top-level field: field_path like "withholding_tax_interest"
+    - Metadata key: field_path like "metadata.note"
+
     Parameters
     ----------
     base_template : TaxTemplate
@@ -53,47 +61,36 @@ def resolve_tax_template(
     Returns
     -------
     ResolvedTaxConfig
-        Contains the resolved template (with overrides applied),
+        Contains base_template, resolved_template (with overrides applied),
         the override list, and merged metadata.
 
     Raises
     ------
     ValueError
-        If an override targets an invalid or unsupported field_path,
-        or if override values fail TaxTemplate validation.
+        If an override targets an invalid field_path, or if override values
+        fail TaxTemplate validation.
 
-    Examples
-    --------
-    >>> hr_tpl = get_builtin_tax_templates()[0]  # HR_SIMPLE_2026
-    >>> override = TaxTemplateOverride(
-    ...     override_name="relax_wht",
-    ...     field_path="withholding_tax_interest",
-    ...     override_value=0.05,
-    ...     reason="Treaty rate HR-ME"
-    ... )
-    >>> result = resolve_tax_template(hr_tpl, (override,))
-    >>> result.resolved_metadata_dict
-    {'note': 'illustrative only', ...}
+    >>> result.resolved_template.withholding_tax_interest
+    0.05
     """
-    # Build override map (last wins for duplicates)
-    override_map: dict[str, TaxTemplateOverride] = {}
+    # Separate top-level overrides from metadata key overrides
+    top_level_overrides: dict[str, TaxTemplateOverride] = {}
+    metadata_key_overrides: dict[str, TaxTemplateOverride] = {}
+
     for ov in overrides:
-        if ov.field_path not in _VALID_OVERRIDE_FIELDS:
+        if ov.field_path.startswith(_METADATA_PREFIX):
+            key = ov.field_path[len(_METADATA_PREFIX):]
+            metadata_key_overrides[key] = ov
+        elif ov.field_path in _VALID_TOP_LEVEL_FIELDS:
+            top_level_overrides[ov.field_path] = ov
+        else:
             raise ValueError(
                 f"Invalid override field_path {ov.field_path!r}. "
-                f"Valid fields: {sorted(_VALID_OVERRIDE_FIELDS)}"
+                f"Valid fields: {sorted(_VALID_TOP_LEVEL_FIELDS)} "
+                f"or 'metadata.<key>' patterns."
             )
-        override_map[ov.field_path] = ov
 
-    if not override_map:
-        # No overrides: resolved metadata = base template metadata
-        return ResolvedTaxConfig(
-            base_template=base_template,
-            overrides=(),
-            resolved_metadata=base_template.metadata,
-        )
-
-    # Start from base template field values
+    # Build resolved fields from base template
     fields = {
         "country_code": base_template.country_code,
         "template_name": base_template.template_name,
@@ -108,9 +105,13 @@ def resolve_tax_template(
         "metadata": dict(base_template.metadata),
     }
 
-    # Apply each override
-    for field_path, ov in override_map.items():
+    # Apply top-level overrides
+    for field_path, ov in top_level_overrides.items():
         fields[field_path] = ov.override_value
+
+    # Apply metadata key overrides
+    for meta_key, ov in metadata_key_overrides.items():
+        fields["metadata"][meta_key] = ov.override_value
 
     # Coerce list→tuple for cit_tiers and depreciation_rules if overridden
     for list_field in ("cit_tiers", "depreciation_rules"):
@@ -122,9 +123,9 @@ def resolve_tax_template(
                 f"{list_field} override must be list or tuple, got {type(val).__name__}"
             )
 
-    # Merge metadata (base + override if metadata field was overridden)
-    if "metadata" in override_map:
-        override_md = override_map["metadata"].override_value
+    # Whole-field metadata override (top-level, not metadata.<key>)
+    if "metadata" in top_level_overrides:
+        override_md = top_level_overrides["metadata"].override_value
         if isinstance(override_md, dict):
             fields["metadata"] = dict(override_md)
         elif isinstance(override_md, tuple):
@@ -159,6 +160,7 @@ def resolve_tax_template(
 
     return ResolvedTaxConfig(
         base_template=base_template,
+        resolved_template=resolved_template,
         overrides=tuple(overrides),
         resolved_metadata=resolved_metadata_tuples,
     )

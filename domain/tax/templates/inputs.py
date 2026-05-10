@@ -202,14 +202,47 @@ class TaxTemplate:
                 )
             seen_categories.add(rule.asset_category)
 
-        # No overlapping CIT tiers
-        sorted_tiers = sorted(self.cit_tiers, key=lambda t: t.min_profit_keur)
-        for i in range(len(sorted_tiers) - 1):
-            lower = sorted_tiers[i]
-            upper = sorted_tiers[i + 1]
-            if lower.max_profit_keur is not None and lower.max_profit_keur > upper.min_profit_keur:
+        # No overlapping CIT tiers + continuity / unbounded validation
+        if self.cit_tiers:
+            sorted_tiers = sorted(self.cit_tiers, key=lambda t: t.min_profit_keur)
+
+            # First tier must start at 0.0
+            if sorted_tiers[0].min_profit_keur != 0.0:
                 raise ValueError(
-                    f"CIT tiers overlap: {lower} and {upper}"
+                    f"CIT tiers must start at 0.0; first tier has "
+                    f"min_profit_keur={sorted_tiers[0].min_profit_keur}"
+                )
+
+            unbounded_count = 0
+            for i, tier in enumerate(sorted_tiers):
+                # No overlapping ranges
+                if i < len(sorted_tiers) - 1:
+                    next_tier = sorted_tiers[i + 1]
+                    if tier.max_profit_keur is not None and tier.max_profit_keur > next_tier.min_profit_keur:
+                        raise ValueError(
+                            f"CIT tiers overlap: {tier} and {next_tier}"
+                        )
+                    # Contiguous: next.min == current.max (exact match)
+                    if tier.max_profit_keur is not None and tier.max_profit_keur != next_tier.min_profit_keur:
+                        raise ValueError(
+                            f"CIT tiers have gap: {tier} (max={tier.max_profit_keur}) "
+                            f"vs next tier min={next_tier.min_profit_keur}"
+                        )
+                # Count unbounded tiers
+                if tier.max_profit_keur is None:
+                    unbounded_count += 1
+                    # Unbounded tier must be last
+                    if i != len(sorted_tiers) - 1:
+                        raise ValueError(
+                            f"CIT tier with unbounded max_profit_keur must be last; "
+                            f"found at index {i} but {len(sorted_tiers)-1} tiers exist"
+                        )
+
+            # Only one unbounded tier allowed
+            if unbounded_count > 1:
+                raise ValueError(
+                    f"Only one CIT tier may have unbounded max_profit_keur; "
+                    f"found {unbounded_count} unbounded tiers"
                 )
 
         # metadata as tuple of tuples (immutable)
@@ -240,14 +273,18 @@ class TaxTemplateOverride:
     override_name : str
         Short identifier (e.g., "custom_wht_2027", "relax_thin_cap").
     field_path : str
-        Dot-notation path to the field to override (e.g., "withholding_tax_dividends",
-        "cit_tiers", "metadata.note"). Must refer to a valid field on TaxTemplate.
-        Invalid paths raise ValueError during resolution.
+        Override target. Supports:
+        - Top-level TaxTemplate fields (e.g., "withholding_tax_interest")
+        - Metadata keys (e.g., "metadata.note")
+
+        Phase 6A does NOT support arbitrary nested paths like "cit_tiers.0.tax_rate".
+        Only "metadata.<key>" is accepted as a special metadata key override.
+
     override_value : object
         New value for the field. Type must match the field type or be
         coercible by the resolver.
     reason : str
-        Human-readable justification (e.g., " Treaty rate between HR and ME",
+        Human-readable justification (e.g., "Treaty rate between HR and ME",
         "User-specified override for special purpose vehicle").
     """
     override_name: str
@@ -258,11 +295,23 @@ class TaxTemplateOverride:
     def __post_init__(self):
         if not self.field_path:
             raise ValueError("TaxTemplateOverride field_path must be non-empty")
+        # Allow simple top-level fields OR metadata.<key> patterns
         if "." in self.field_path:
-            raise ValueError(
-                f"TaxTemplateOverride nested field_path (with '.') not yet supported "
-                f"in Phase 6A; use simple top-level field names. Got: {self.field_path!r}"
-            )
+            if self.field_path.startswith("metadata."):
+                key = self.field_path[len("metadata."):]
+                if not key:
+                    raise ValueError(
+                        f"TaxTemplateOverride field_path 'metadata.' "
+                        f"requires a non-empty key after the dot. "
+                        f"Got: {self.field_path!r}"
+                    )
+            else:
+                raise ValueError(
+                    f"TaxTemplateOverride nested field_path '{self.field_path}' "
+                    f"is not supported in Phase 6A. "
+                    f"Only simple top-level fields and 'metadata.<key>' are allowed. "
+                    f"Got: {self.field_path!r}"
+                )
 
 
 # ── Resolved Config ───────────────────────────────────────────────────────────
@@ -272,21 +321,26 @@ class ResolvedTaxConfig:
     """Immutable resolved tax configuration.
 
     Produced by ``resolve_tax_template()`` — applies overrides to a base
-    TaxTemplate without mutating the original. Contains the effective
-    template plus metadata about how it was resolved.
+    TaxTemplate without mutating the original. Contains both the base
+    template and the effective resolved template, plus metadata about
+    how it was resolved.
 
     Attributes
     ----------
     base_template : TaxTemplate
         The original TaxTemplate (never mutated).
+    resolved_template : TaxTemplate
+        The effective TaxTemplate after applying all overrides.
+        When no overrides are present, this equals base_template.
     overrides : tuple[TaxTemplateOverride, ...]
         All overrides applied, in order. Duplicate field paths resolve to
         the last override's value.
-    resolved_metadata : dict[str, str]
+    resolved_metadata : tuple[tuple[str, str], ...]
         Combined metadata from base_template.metadata plus any override
         metadata changes. Override metadata takes priority on key conflict.
     """
     base_template: TaxTemplate
+    resolved_template: TaxTemplate
     overrides: tuple[TaxTemplateOverride, ...] = ()
     resolved_metadata: tuple[tuple[str, str], ...] = ()
 
@@ -302,5 +356,5 @@ class ResolvedTaxConfig:
             object.__setattr__(
                 self, 'resolved_metadata',
                 tuple((str(k), str(v)) for k, v in
-                      (dict(self.resolved_metadata) if isinstance(self.resolved_metadata, dict) else self.resolved_metadata))
+                      (dict(self.resolved_metadata).items() if isinstance(self.resolved_metadata, dict) else self.resolved_metadata))
             )
