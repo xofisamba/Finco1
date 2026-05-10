@@ -5,7 +5,33 @@
 Phase 5A establishes the **planning and data-model foundation** for explicit
 retained earnings and cash retention, before sponsor waterfall and advanced tax.
 
-**This phase is documentation and planning only. No implementation.**
+**Implementation status:** Phase 5A **partially implemented** — cash ledger
+domain package (`domain/portfolio/cash_ledger/`) is live. No financial outputs
+changed. Retained earnings blocking is **not yet implemented**.
+
+### Implemented (Phase 5A)
+| Component | Status |
+|-----------|--------|
+| `CashMovementType` enum | ✅ Implemented |
+| `CashMovement` dataclass | ✅ Implemented |
+| `CashLedgerPeriod` | ✅ Implemented |
+| `EntityCashLedger` | ✅ Implemented |
+| `PortfolioCashLedger` | ✅ Implemented |
+| `build_entity_cash_ledger` | ✅ Implemented |
+| `build_portfolio_cash_ledger` | ✅ Implemented |
+| `reconcile_cash_ledger` | ✅ Implemented |
+| `movements_from_holdco_result` adapter | ✅ Implemented |
+| `movements_from_spv_output` adapter | ✅ Implemented |
+| Retained earnings blocking | ❌ Not implemented |
+| SPVCashAccount / HoldCoCashAccount | ❌ Not implemented |
+
+### Clear constraints (Phase 5A — audit layer only)
+- This is audit/accounting layer only — **no waterfall economics changed**
+- **No distribution constraints implemented**
+- SHL principal is mapped as cash movement only, **not yet used to constrain distributions**
+- **No Sponsor IRR implemented**
+- **No HoldCo IRR implemented**
+- **No tax engine implemented**
 
 ## Current State (as of Phase 4C)
 
