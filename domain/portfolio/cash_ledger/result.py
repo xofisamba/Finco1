@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from domain.portfolio.cash_ledger.inputs import CashMovement
 
@@ -23,7 +22,7 @@ class CashLedgerPeriod:
             raise ValueError(f"period must be >= 0, got {self.period}")
         # closing_cash = opening + sum(movements)
         movement_sum = sum(m.amount_keur for m in self.movements)
-        if self.closing_cash_keur != self.opening_cash_keur + movement_sum:
+        if abs(self.closing_cash_keur - (self.opening_cash_keur + movement_sum)) > 1e-6:
             raise ValueError(
                 f"closing_cash_keur ({self.closing_cash_keur}) must equal "
                 f"opening_cash_keur ({self.opening_cash_keur}) + movement_sum ({movement_sum})"

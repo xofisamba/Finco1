@@ -87,6 +87,43 @@ class TestBuildEntityCashLedger:
         ledger = build_entity_cash_ledger("SOLAR-1", movements)
         assert reconcile_cash_ledger(ledger) == ()
 
+    def test_cash_ledger_period_float_tolerance_pass(self):
+        """Tiny floating-point rounding difference within 1e-6 tolerance passes."""
+        movements = (
+            cm(0, "SOLAR-1", CashMovementType.OTHER, 0.1),
+            cm(0, "SOLAR-1", CashMovementType.OTHER, 0.2),
+            # sum = 0.30000000000000004 due to float precision
+        )
+        # closing intentionally set to 0.30000000000000004 (within tolerance of 0.3)
+        from domain.portfolio.cash_ledger.result import CashLedgerPeriod
+        period = CashLedgerPeriod(
+            period=0,
+            entity_code="SOLAR-1",
+            opening_cash_keur=0.0,
+            movements=movements,
+            closing_cash_keur=0.30000000000000004,
+            retained_cash_keur=0.30000000000000004,
+            warnings=(),
+        )
+        assert period.closing_cash_keur == pytest.approx(0.3, abs=1e-6)
+
+    def test_cash_ledger_period_float_tolerance_fail(self):
+        """Material floating-point difference > 1e-6 raises ValueError."""
+        movements = (
+            cm(0, "SOLAR-1", CashMovementType.OTHER, 100.0),
+        )
+        from domain.portfolio.cash_ledger.result import CashLedgerPeriod
+        with pytest.raises(ValueError, match="closing_cash_keur"):
+            CashLedgerPeriod(
+                period=0,
+                entity_code="SOLAR-1",
+                opening_cash_keur=0.0,
+                movements=movements,
+                closing_cash_keur=999.0,  # wrong, 100.0 expected
+                retained_cash_keur=999.0,
+                warnings=(),
+            )
+
     def test_reconcile_empty_ledger(self):
         from domain.portfolio.cash_ledger.runner import build_entity_cash_ledger
         ledger = build_entity_cash_ledger("SOLAR-1", ())

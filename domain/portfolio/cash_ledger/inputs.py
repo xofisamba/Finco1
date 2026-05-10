@@ -39,3 +39,7 @@ class CashMovement:
             raise ValueError(f"period must be >= 0, got {self.period}")
         if not self.entity_code or not self.entity_code.strip():
             raise ValueError("entity_code is required")
+        if not isinstance(self.movement_type, CashMovementType):
+            raise ValueError(
+                f"movement_type must be a CashMovementType, got {type(self.movement_type).__name__}"
+            )

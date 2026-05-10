@@ -123,6 +123,35 @@ class TestMovementsFromHoldCoResult:
         assert sponsor[0].amount_keur == -800.0  # negative
 
 
+class TestSafeFloat:
+    """Tests for _safe_float helper used in adapters."""
+
+    def test_int_accepted_and_cast_to_float(self):
+        from domain.portfolio.cash_ledger.adapters import _safe_float
+        assert _safe_float(80) == 80.0
+        assert _safe_float(0) == 0.0
+        assert _safe_float(-500) == -500.0
+
+    def test_float_passed_through(self):
+        from domain.portfolio.cash_ledger.adapters import _safe_float
+        assert _safe_float(80.0) == 80.0
+        assert _safe_float(0.0) == 0.0
+
+    def test_bool_rejected_to_default(self):
+        from domain.portfolio.cash_ledger.adapters import _safe_float
+        assert _safe_float(True) == 0.0
+        assert _safe_float(False) == 0.0
+
+    def test_none_returns_default(self):
+        from domain.portfolio.cash_ledger.adapters import _safe_float
+        assert _safe_float(None) == 0.0
+        assert _safe_float(None, default=99.0) == 99.0
+
+    def test_string_returns_default(self):
+        from domain.portfolio.cash_ledger.adapters import _safe_float
+        assert _safe_float("100") == 0.0
+
+
 class TestMovementsFromSPVOutput:
     def test_equity_distribution_from_adjusted_when_waterfall_missing(self):
         """When waterfall_result is None but adjusted_period_distributions_keur is set,

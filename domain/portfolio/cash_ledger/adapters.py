@@ -10,6 +10,19 @@ from typing import Any
 from domain.portfolio.cash_ledger.inputs import CashMovement, CashMovementType
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely cast a value to float, rejecting bool and non-numeric types.
+
+    MagicMock returns a Mock for any attribute, which is truthy and comparable
+    to numbers but is not a real float. This helper guards against that.
+    """
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    return default
+
+
 def movements_from_holdco_result(
     holdco_result: Any,
 ) -> tuple[CashMovement, ...]:
@@ -31,57 +44,63 @@ def movements_from_holdco_result(
         entity = holdco_result.name or "HOLDCO"
         desc = f"HoldCo period {period_idx}"
 
-        if period.dividend_keur > 0:
+        dividend = _safe_float(getattr(period, "dividend_keur", None))
+        if dividend > 0:
             movements.append(CashMovement(
                 period=period_idx,
                 entity_code=entity,
                 movement_type=CashMovementType.OPERATING_CASHFLOW,
-                amount_keur=period.dividend_keur,
+                amount_keur=dividend,
                 description=f"{desc} — dividend income from SPVs",
             ))
 
-        if period.shl_interest_keur > 0:
+        shl_int = _safe_float(getattr(period, "shl_interest_keur", None))
+        if shl_int > 0:
             movements.append(CashMovement(
                 period=period_idx,
                 entity_code=entity,
                 movement_type=CashMovementType.SHL_INTEREST,
-                amount_keur=period.shl_interest_keur,
+                amount_keur=shl_int,
                 description=f"{desc} — SHL interest receipt",
             ))
 
-        if period.shl_principal_keur > 0:
+        shl_principal = _safe_float(getattr(period, "shl_principal_keur", None))
+        if shl_principal > 0:
             movements.append(CashMovement(
                 period=period_idx,
                 entity_code=entity,
                 movement_type=CashMovementType.SHL_PRINCIPAL,
-                amount_keur=period.shl_principal_keur,
+                amount_keur=shl_principal,
                 description=f"{desc} — SHL principal receipt",
             ))
 
-        if period.holdco_opex_keur > 0:
+        opex = _safe_float(getattr(period, "holdco_opex_keur", None))
+        if opex > 0:
             movements.append(CashMovement(
                 period=period_idx,
                 entity_code=entity,
                 movement_type=CashMovementType.HOLDCO_OPEX,
-                amount_keur=-period.holdco_opex_keur,
+                amount_keur=-opex,
                 description=f"{desc} — HoldCo operating expense",
             ))
 
-        if period.tax_keur > 0:
+        tax = _safe_float(getattr(period, "tax_keur", None))
+        if tax > 0:
             movements.append(CashMovement(
                 period=period_idx,
                 entity_code=entity,
                 movement_type=CashMovementType.HOLDCO_TAX,
-                amount_keur=-period.tax_keur,
+                amount_keur=-tax,
                 description=f"{desc} — HoldCo tax",
             ))
 
-        if period.distribution_to_sponsor_keur > 0:
+        sponsor_dist = _safe_float(getattr(period, "distribution_to_sponsor_keur", None))
+        if sponsor_dist > 0:
             movements.append(CashMovement(
                 period=period_idx,
                 entity_code=entity,
                 movement_type=CashMovementType.SPONSOR_DISTRIBUTION,
-                amount_keur=-period.distribution_to_sponsor_keur,
+                amount_keur=-sponsor_dist,
                 description=f"{desc} — distribution to sponsor",
             ))
 
@@ -104,7 +123,7 @@ def movements_from_spv_output(
     movements: list[CashMovement] = []
     entity = spv_output.project_code or "SPV"
 
-    # Determine per-period distributions
+    # Use safe float for all numeric reads
     adj_dists = spv_output.adjusted_period_distributions_keur
     wf = spv_output.waterfall_result
 
@@ -114,7 +133,7 @@ def movements_from_spv_output(
 
             # Equity distribution: prefer adjusted (DSRF) over raw waterfall
             if adj_dists and period_idx < len(adj_dists):
-                dist = adj_dists[period_idx]
+                dist = _safe_float(adj_dists[period_idx])
                 if dist > 0:
                     movements.append(CashMovement(
                         period=period_idx,
@@ -124,7 +143,7 @@ def movements_from_spv_output(
                         description=f"{desc} — DSRF-adjusted equity distribution",
                     ))
             else:
-                raw_dist = getattr(wf_period, "distribution_keur", 0.0)
+                raw_dist = _safe_float(getattr(wf_period, "distribution_keur", None))
                 if raw_dist > 0:
                     movements.append(CashMovement(
                         period=period_idx,
@@ -135,7 +154,7 @@ def movements_from_spv_output(
                     ))
 
             # SHL interest from waterfall period
-            shl_int = getattr(wf_period, "shl_interest_keur", 0.0)
+            shl_int = _safe_float(getattr(wf_period, "shl_interest_keur", None))
             if shl_int > 0:
                 movements.append(CashMovement(
                     period=period_idx,
@@ -146,7 +165,7 @@ def movements_from_spv_output(
                 ))
 
             # SHL principal from waterfall period
-            shl_principal = getattr(wf_period, "shl_principal_keur", 0.0)
+            shl_principal = _safe_float(getattr(wf_period, "shl_principal_keur", None))
             if shl_principal > 0:
                 movements.append(CashMovement(
                     period=period_idx,
@@ -159,7 +178,8 @@ def movements_from_spv_output(
         # waterfall_result is None: emit equity distributions from adjusted_period_distributions_keur
         # if available (best-effort audit — e.g., SPV failed or non-strict mode)
         if adj_dists:
-            for period_idx, dist in enumerate(adj_dists):
+            for period_idx, raw_dist in enumerate(adj_dists):
+                dist = _safe_float(raw_dist)
                 if dist > 0:
                     movements.append(CashMovement(
                         period=period_idx,

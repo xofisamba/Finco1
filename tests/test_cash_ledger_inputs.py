@@ -93,7 +93,6 @@ class TestCashMovement:
             )
 
     def test_movement_type_is_required(self):
-        # CashMovementType enum is required field
         m = CashMovement(
             period=0,
             entity_code="SOLAR-1",
@@ -101,3 +100,30 @@ class TestCashMovement:
             amount_keur=100.0,
         )
         assert isinstance(m.movement_type, CashMovementType)
+
+    def test_movement_type_none_rejected(self):
+        with pytest.raises(ValueError, match="movement_type must be a CashMovementType"):
+            CashMovement(
+                period=0,
+                entity_code="SOLAR-1",
+                movement_type=None,  # type: ignore
+                amount_keur=100.0,
+            )
+
+    def test_movement_type_string_rejected(self):
+        with pytest.raises(ValueError, match="movement_type must be a CashMovementType"):
+            CashMovement(
+                period=0,
+                entity_code="SOLAR-1",
+                movement_type="OPERATING_CASHFLOW",  # type: ignore
+                amount_keur=100.0,
+            )
+
+    def test_movement_type_bool_rejected(self):
+        with pytest.raises(ValueError, match="movement_type must be a CashMovementType"):
+            CashMovement(
+                period=0,
+                entity_code="SOLAR-1",
+                movement_type=True,  # type: ignore
+                amount_keur=100.0,
+            )
