@@ -4,15 +4,20 @@ Bridges the SHL engine output to the portfolio/waterfall flow without
 direct coupling between SHL engine internals and waterfall engine internals.
 
 No sculpting. No capitalization. No tax logic.
+
+Sequencing (Phase 4C):
+  1. run_independent_portfolio(inputs) → IndependentPortfolioResult
+  2. run_shl_portfolio(shl_inputs)     → SHLPortfolioResult
+  3. group_shl_facilities_by_borrower(shl_portfolio_result)
+                                        → dict[borrower_code, tuple[SHLFacilityResult, ...]]
+  4. enrich_portfolio_result_with_shl(portfolio_result, shl_by_borrower)
+  5. build_holdco_result(holdco_inputs, portfolio_result)
 """
 from __future__ import annotations
-
-from typing import Optional
 
 from domain.portfolio.shl.result import (
     SHLFacilityResult,
     SHLPortfolioResult,
-    SHLPeriodResult,
 )
 
 
@@ -53,6 +58,42 @@ def build_shl_period_lookup(
     }
 
 
+def group_shl_facilities_by_borrower(
+    shl_portfolio_result: SHLPortfolioResult,
+) -> dict[str, tuple[SHLFacilityResult, ...]]:
+    """Group SHL facility results by borrower_entity_code.
+
+    Parameters
+    ----------
+    shl_portfolio_result : SHLPortfolioResult
+        Result from run_shl_portfolio()
+
+    Returns
+    -------
+    dict[str, tuple[SHLFacilityResult, ...]]
+        Mapping from borrower_entity_code → tuple of SHLFacilityResult.
+        Empty dict if shl_portfolio_result has no facilities.
+
+    Example
+    -------
+    >>> grouped = group_shl_facilities_by_borrower(shl_portfolio)
+    >>> solar_facilities = grouped["SOLAR-1"]
+    >>> len(solar_facilities)
+    2
+    """
+    if not shl_portfolio_result or not shl_portfolio_result.facilities:
+        return {}
+
+    by_borrower: dict[str, list[SHLFacilityResult]] = {}
+    for fac_result in shl_portfolio_result.facilities:
+        borrower = fac_result.facility.borrower_entity_code
+        if borrower not in by_borrower:
+            by_borrower[borrower] = []
+        by_borrower[borrower].append(fac_result)
+
+    return {k: tuple(v) for k, v in by_borrower.items()}
+
+
 def inject_shl_into_waterfall_periods(
     wf_periods: list,
     shl_lookup: dict[int, tuple[float, float]],
@@ -85,57 +126,67 @@ def inject_shl_into_waterfall_periods(
         p.shl_principal_keur = float(principal)
 
 
-__all__ = [
-    "build_shl_period_lookup",
-    "inject_shl_into_waterfall_periods",
-]
-
-
 def enrich_portfolio_result_with_shl(
     portfolio_result,
-    shl_by_entity_code: dict[str, "SHLPortfolioResult"],
+    shl_by_borrower_code: dict[str, tuple[SHLFacilityResult, ...]],
 ) -> None:
     """Enrich SPV waterfall periods in an IndependentPortfolioResult with SHL flows.
 
-    This is the end-to-end integration hook. It mutates the waterfall period objects
-    stored inside each SPVOutput.waterfall_result in-place so that HoldCo
-    (via _safe_get_float) can read shl_interest_keur and shl_principal_keur.
+    This is a Phase 4C in-place enrichment hook. Future immutable refactor
+    may replace this.
 
     Sequencing:
       1. Run portfolio: result = run_independent_portfolio(inputs)
-      2. Build SHL facilities: shl_result = run_shl_portfolio(shl_inputs)
-      3. Map by entity code: shl_by_entity_code = {facility.borrower_entity_code: fac_result}
-      4. Enrich: enrich_portfolio_result_with_shl(result, shl_by_entity_code)
+      2. Run SHL portfolio: shl_portfolio = run_shl_portfolio(shl_inputs)
+      3. Group: shl_by_borrower = group_shl_facilities_by_borrower(shl_portfolio)
+      4. Enrich: enrich_portfolio_result_with_shl(result, shl_by_borrower)
       5. Aggregate HoldCo: holdco_result = build_holdco_result(...)
+
+    Behaviour:
+      - Finds SPV by spv.project_code (== borrower_entity_code)
+      - Gets tuple of SHLFacilityResult for that SPV
+      - Builds combined period lookup (summing overlapping periods)
+      - Injects shl_interest_keur and shl_principal_keur into waterfall periods
+      - Periods without SHL receive 0.0
+      - distribution_keur is UNCHANGED
+      - adjusted_period_distributions_keur is UNCHANGED
+      - function mutates waterfall periods in-place and returns None
 
     Parameters
     ----------
     portfolio_result : IndependentPortfolioResult
         Result from run_independent_portfolio(). Mutated in-place.
-    shl_by_entity_code : dict[str, SHLPortfolioResult]
-        Mapping from borrower_entity_code → SHLPortfolioResult.
-        The portfolio result for each entity is used to look up SHL periods.
+    shl_by_borrower_code : dict[str, tuple[SHLFacilityResult, ...]]
+        Mapping from borrower_entity_code → tuple of SHLFacilityResult.
+        Multiple facilities per borrower are summed per period.
     """
     for spv in portfolio_result.spv_outputs:
         wf = spv.waterfall_result
         if wf is None or not hasattr(wf, "periods") or not wf.periods:
             continue
 
-        entity_code = spv.project_code  # SPV project code = borrower entity code
-        shl_portfolio = shl_by_entity_code.get(entity_code)
-        if shl_portfolio is None or not shl_portfolio.facilities:
+        entity_code = spv.project_code
+        facilities = shl_by_borrower_code.get(entity_code)
+        if not facilities:
             continue
 
-        # Build per-period lookup from each facility, keyed by period_index
+        # Build combined per-period lookup from all facilities for this borrower
         shl_lookup: dict[int, tuple[float, float]] = {}
-        for fac_result in shl_portfolio.facilities:
+        for fac_result in facilities:
             fac_lookup = build_shl_period_lookup(fac_result)
             for pidx, (interest, principal) in fac_lookup.items():
                 if pidx in shl_lookup:
-                    # Sum if multiple facilities target the same period
                     existing = shl_lookup[pidx]
                     shl_lookup[pidx] = (existing[0] + interest, existing[1] + principal)
                 else:
                     shl_lookup[pidx] = (interest, principal)
 
         inject_shl_into_waterfall_periods(list(wf.periods), shl_lookup)
+
+
+__all__ = [
+    "build_shl_period_lookup",
+    "group_shl_facilities_by_borrower",
+    "inject_shl_into_waterfall_periods",
+    "enrich_portfolio_result_with_shl",
+]
