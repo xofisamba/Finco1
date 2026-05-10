@@ -228,6 +228,48 @@ When Phase 5D.5 implements `enforcement_mode=True`, the `SPVRetainedCashOverlay.
 ---
 
 
+
+
+## Phase 5D.4 — HoldCo Retained Cash Overlay
+
+**Status:** Implemented
+
+`HoldCoRetainedCashOverlay` is an audit-only HoldCo-level retained cash result that shows what sponsor distributions WOULD be available after retained cash deduction, without changing any HoldCo result field.
+
+### What this phase adds
+
+```python
+from domain.portfolio.distribution_constraints import (
+    HoldCoRetainedCashOverlay,
+    build_holdco_retained_cash_overlay,
+    holdco_requested_distribution_by_period,
+    holdco_available_distribution_by_period,
+)
+```
+
+Three functions:
+- `holdco_requested_distribution_by_period(holdco_result)` — reads `distribution_to_sponsor_keur` per period, falls back to 0.0
+- `holdco_available_distribution_by_period(holdco_result, retained_cash_by_period)` — computes `max(0, requested - retained)` with zero-padding
+- `build_holdco_retained_cash_overlay(holdco_result, retained_cash_by_period)` — returns full `HoldCoRetainedCashOverlay`
+
+### Key properties
+
+| Property | Value |
+|---|---|
+| No HoldCo result mutation | ✅ |
+| No waterfall changes | ✅ |
+| No actual distribution blocking | ✅ |
+| Uses `_safe_float` for all numeric reads | ✅ |
+| Length mismatch emits warning | ✅ |
+| available_distribution >= 0 always | ✅ |
+
+### Future path
+
+This overlay is the foundation for Phase 5D.5 optional enforcement mode, where `available_distribution_by_period` would be compared against actual sponsor distribution to detect or enforce constraints.
+
+---
+
+
 ## Non-Scope
 
 Explicitly out of scope for Phase 5D.1 and all near-term follow-ups:
