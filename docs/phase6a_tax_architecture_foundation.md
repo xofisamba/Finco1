@@ -253,3 +253,149 @@ domain/tax/
 ---
 
 *Phase 6A establishes the foundation for future tax engine integration. No active calculations are performed.*
+
+---
+
+## Phase 6B.1 — Tax Calculation Primitives
+
+**Status:** Pure functions using TaxTemplate schema. **No waterfall wiring. No model output changes.**
+**Added:** `domain/tax/templates/calculations.py`
+
+### Overview
+
+Phase 6B.1 adds four pure calculation primitives built on the Phase 6A TaxTemplate schema.
+These functions accept TaxTemplate types (CITTier, TaxDepreciationRule) and return plain floats.
+No mutation, no side effects, no waterfall integration.
+
+### Functions
+
+#### `calculate_progressive_cit(taxable_profit_keur, cit_tiers) → float`
+
+Applies progressive CIT brackets to a taxable profit.
+
+```python
+from domain.tax.templates import calculate_progressive_cit, CITTier
+
+# Flat 10%
+tiers = (CITTier(0.0, None, 0.10),)
+calculate_progressive_cit(1000.0, tiers)  # → 100.0
+
+# Progressive (ME-style: 9% ≤ 100k, 15% > 100k)
+tiers = (
+    CITTier(0.0, 100_000.0, 0.09),
+    CITTier(100_000.0, None, 0.15),
+)
+calculate_progressive_cit(150_000.0, tiers)  # → 16,500.0
+# 100,000 × 9% = 9,000; 50,000 × 15% = 7,500 → total = 16,500
+```
+
+Rules:
+- `taxable_profit ≤ 0` → returns `0.0`
+- Each tier applies to its slice of profit
+- Tiers must be contiguous (enforced by TaxTemplate validation)
+
+#### `get_tax_depreciation_rate(rule: TaxDepreciationRule) → float`
+
+Returns the effective annual tax depreciation rate for an asset category.
+
+```python
+from domain.tax.templates import get_tax_depreciation_rate, ME_INFRA_2026
+
+infra = next(r for r in ME_INFRA_2026.depreciation_rules if r.asset_category == "infrastructure")
+rate = get_tax_depreciation_rate(infra)  # → 0.025 (2.5% cap is binding)
+```
+
+Rules (applied in order):
+1. `deductible=False` → `0.0`
+2. `max_deductible_rate` set → `min(base_rate, cap)`
+3. `annual_rate` set → use directly
+4. `useful_life_years > 0` → `1 / useful_life_years`
+5. Otherwise → `0.0`
+
+#### `calculate_tax_depreciation_keur(asset_cost_keur, rule) → float`
+
+Annual tax depreciation deduction for an asset.
+
+```python
+from domain.tax.templates import calculate_tax_depreciation_keur, ME_INFRA_2026
+
+infra = next(r for r in ME_INFRA_2026.depreciation_rules if r.asset_category == "infrastructure")
+# 10M EUR wind turbine (10,000 kEUR cost, ME 2.5% cap)
+calculate_tax_depreciation_keur(10_000.0, infra)  # → 250.0 kEUR
+```
+
+Rules:
+- `asset_cost < 0` → raises `ValueError`
+- `deductible=False` → `0.0`
+- `amount = asset_cost × effective_rate`
+
+Note: `bonus_depreciation_pct` not applied in this primitive (future extension point).
+
+#### `calculate_taxable_income_keur(ebitda, deductible_interest, tax_depreciation, non_deductible_addbacks=0.0) → float`
+
+Computes taxable income from EBITDA.
+
+```
+taxable_income = ebitda − deductible_interest − tax_depreciation + non_deductible_addbacks
+```
+
+```python
+from domain.tax.templates import calculate_taxable_income_keur
+
+taxable = calculate_taxable_income_keur(
+    ebitda_keur=3_000.0,         # 3M EUR EBITDA
+    deductible_interest_keur=500.0,
+    tax_depreciation_keur=250.0,  # ME 2.5% cap on 10M asset
+)
+# → 2,250.0 kEUR
+```
+
+### Explicit Non-Scope (Phase 6B.1)
+
+| Item | Status |
+|---|---|
+| ATAD EBITDA interest limitation | ❌ Not applied — apply separately in tax engine |
+| Thin-cap adjustment | ❌ Not applied |
+| Loss carryforward | ❌ Not applied |
+| Withholding tax engine | ❌ Not applied |
+| Deferred tax accounting | ❌ Not applied |
+| Tax cashflow injection into waterfall | ❌ Not wired |
+| HoldCo / SHL tax treatment | ❌ Not implemented |
+
+### ME Infrastructure 2.5% Cap — Full Example
+
+Demonstrates how the primitives work together for a Montenegro wind project:
+
+```python
+from domain.tax.templates import (
+    calculate_taxable_income_keur,
+    calculate_progressive_cit,
+    calculate_tax_depreciation_keur,
+    get_tax_depreciation_rate,
+    ME_INFRA_2026,
+)
+
+# Asset: 10M EUR wind turbine
+cost_kEUR = 10_000.0  # 10M EUR = 10,000 kEUR
+
+# Tax depreciation (ME 2.5% annual cap)
+infra_rule = next(r for r in ME_INFRA_2026.depreciation_rules
+                  if r.asset_category == "infrastructure")
+tax_dep = calculate_tax_depreciation_keur(cost_kEUR, infra_rule)
+# → 250.0 kEUR/year (2.5% × 10,000)
+
+# Taxable income
+taxable = calculate_taxable_income_keur(
+    ebitda_keur=3_000.0,
+    deductible_interest_keur=500.0,
+    tax_depreciation_keur=tax_dep,
+)
+# → 2,250.0 kEUR
+
+# CIT (ME progressive: 9% ≤ 100M, 15% > 100M)
+cit = calculate_progressive_cit(taxable, ME_INFRA_2026.cit_tiers)
+# → 202.5 kEUR (2,250 × 9%)
+```
+
+Accounting depreciation (20-year straight-line) = 500 kEUR/year, but ME tax law caps deductible at 250 kEUR/year.
+This 250 kEUR/year timing difference is a deferred tax item — not handled in this phase.
