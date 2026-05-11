@@ -8,6 +8,7 @@ from app.portfolio_ui import (
     build_portfolio_spv_table,
 )
 from app.tax_excel_export import write_spv_tax_audit_sheets
+from app.holdco_tax_excel_export import write_holdco_tax_audit_sheets
 
 from domain.portfolio.distribution_constraints import (
     DistributionConstraintConfig,
@@ -64,6 +65,8 @@ def build_excel_export(
     constraint_results=None,
     # ── Phase 6B: Tax audit sheets (optional) ───────────────────────
     tax_results=None,
+    # ── Phase 6C.5: HoldCo tax audit sheets (optional) ─────────────────
+    holdco_tax_results: tuple = None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -234,6 +237,10 @@ def build_excel_export(
         # ── Phase 6B: Optional tax audit sheets ─────────────────────────
         if tax_results:
             write_spv_tax_audit_sheets(writer, tax_results)
+
+        # ── Phase 6C.5: Optional HoldCo tax audit sheets ────────────────
+        if holdco_tax_results:
+            write_holdco_tax_audit_sheets(writer, holdco_tax_results)
 
     output.seek(0)
     return output.read()

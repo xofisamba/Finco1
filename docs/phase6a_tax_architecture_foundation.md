@@ -676,3 +676,58 @@ interest_limited_keur = 0 (no enforcement in 6C.3)
 | Thin-cap / EBITDA limitation enforcement | ❌ Stored in config, not applied |
 | Waterfall integration | ❌ Not wired |
 | Model output changes | ❌ None |
+
+---
+
+## Phase 6C.4 — HoldCo Tax Audit / Export Visibility
+
+**Purpose:** UI table helpers and Excel export for HoldCo tax results.
+**Status:** Audit-only helpers. **No waterfall wiring. No model output changes.**
+
+### What's built
+
+| Component | File | Description |
+|---|---|---|
+| UI helpers | `app/holdco_tax_ui.py` | `build_holdco_tax_summary_table()`, `build_holdco_tax_period_table()`, `build_holdco_tax_audit_note()` |
+| Excel export | `app/holdco_tax_excel_export.py` | `write_holdco_tax_audit_sheets()` |
+| Tests | `tests/test_holdco_tax_ui.py` | 15 tests |
+| Tests | `tests/test_holdco_tax_excel_export.py` | 12 tests |
+
+### SHL principal semantics clarified
+
+`split_shl_receipt_tax_components()` returns `(taxable_interest, non_taxable_principal_amount)`.
+Principal amount is preserved (not forced to 0) for audit tracking — but has zero taxable income impact.
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| CIT payable calculation | ❌ Not implemented |
+| WHT remittance / payment timing | ❌ Not implemented |
+| Waterfall integration | ❌ Not wired |
+| Model output changes | ❌ None |
+
+---
+
+## Phase 6C.5 — Optional HoldCo Tax Export Integration
+
+**Purpose:** Integrate HoldCo tax audit sheets into existing `build_excel_export()` as an optional parameter.
+**Status:** `holdco_tax_results` parameter added to `build_excel_export()`. Default `None` preserves existing behavior. **No waterfall wiring. No model output changes.**
+
+### What's built
+
+| Component | File | Description |
+|---|---|---|
+| Parameter | `app/excel_export.py` | `holdco_tax_results: tuple = None` in `build_excel_export()` |
+| Integration | `app/excel_export.py` | Calls `write_holdco_tax_audit_sheets()` when provided |
+| Tests | `tests/test_excel_export.py` | 7 new tests in `TestHoldCoTaxAuditSheetsIntegration` |
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| Default behavior change | ❌ None — existing export unchanged |
+| CIT payable calculation | ❌ Not implemented |
+| WHT remittance / payment timing | ❌ Not implemented |
+| Waterfall integration | ❌ Not wired |
+| Model output changes | ❌ None |

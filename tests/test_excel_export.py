@@ -1346,3 +1346,133 @@ class TestTaxAuditSheetsIntegration:
         first_cell = ws.cell(row=1, column=1).value
         assert "AUDIT-ONLY" in str(first_cell), f"Expected AUDIT-ONLY in row 1, got: {first_cell}"
         wb.close()
+
+
+class TestHoldCoTaxAuditSheetsIntegration:
+    """Phase 6C.5: Optional HoldCo tax audit sheets in Excel export."""
+
+    def _make_holdco_tax_result(self, entity_code="HR-HoldCo-001", n_periods=3):
+        from domain.tax.holdco_inputs import (
+            HoldCoTaxInputs,
+            WithholdingTaxConfig,
+            InterestDeductibilityConfig,
+        )
+        from domain.tax.holdco_runner import run_holdco_tax_engine
+        inputs = HoldCoTaxInputs(
+            entity_code=entity_code,
+            country_code="HR",
+            tax_year=2026,
+            dividend_income_by_period_keur=tuple(1000.0 for _ in range(n_periods)),
+            shl_interest_income_by_period_keur=tuple(200.0 for _ in range(n_periods)),
+            shl_principal_received_by_period_keur=tuple(500.0 for _ in range(n_periods)),
+            holdco_opex_by_period_keur=tuple(50.0 for _ in range(n_periods)),
+            withholding_tax_config=WithholdingTaxConfig(rate_dividends=0.12, rate_interest=0.0),
+            interest_deductibility=InterestDeductibilityConfig(thin_cap_ratio=4.0, interest_limitation_pct_ebitda=0.30),
+            metadata=(("source", "test"),),
+        )
+        return run_holdco_tax_engine(inputs)
+
+    def test_default_export_unchanged_without_holdco_tax_results(self):
+        """Default export (no holdco_tax_results) creates no HoldCo tax sheets."""
+        import openpyxl
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        holdco_sheets = [s for s in wb.sheetnames if "HoldCo" in s]
+        assert len(holdco_sheets) == 0, f"Unexpected HoldCo sheets without param: {holdco_sheets}"
+        wb.close()
+
+    def test_holdco_tax_results_none_creates_no_sheets(self):
+        """holdco_tax_results=None creates no HoldCo tax sheets."""
+        import openpyxl
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            holdco_tax_results=None,
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        holdco_sheets = [s for s in wb.sheetnames if "HoldCo" in s]
+        assert len(holdco_sheets) == 0, f"Unexpected HoldCo sheets with None: {holdco_sheets}"
+        wb.close()
+
+    def test_holdco_tax_results_empty_tuple_creates_no_sheets(self):
+        """holdco_tax_results=() creates no HoldCo tax sheets."""
+        import openpyxl
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            holdco_tax_results=(),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        holdco_sheets = [s for s in wb.sheetnames if "HoldCo" in s]
+        assert len(holdco_sheets) == 0, f"Unexpected HoldCo sheets with empty tuple: {holdco_sheets}"
+        wb.close()
+
+    def test_holdco_tax_results_creates_holdco_tax_summary(self):
+        """Provided holdco_tax_results creates 'HoldCo Tax Summary' sheet."""
+        import openpyxl
+        hc_result = self._make_holdco_tax_result()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            holdco_tax_results=(hc_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "HoldCo Tax Summary" in wb.sheetnames, f"HoldCo Tax Summary not found. Sheets: {wb.sheetnames}"
+        wb.close()
+
+    def test_holdco_tax_results_creates_per_entity_sheet(self):
+        """Provided holdco_tax_results creates per-entity 'HoldCoTax_{entity_code}' sheet."""
+        import openpyxl
+        hc_result = self._make_holdco_tax_result(entity_code="HR-HoldCo-001")
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            holdco_tax_results=(hc_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "HoldCoTax_HR-HoldCo-001" in wb.sheetnames, f"HoldCoTax_HR-HoldCo-001 not found. Sheets: {wb.sheetnames}"
+        wb.close()
+
+    def test_existing_core_sheets_still_exist_with_holdco_tax_results(self):
+        """Existing core sheets are unchanged when holdco_tax_results is passed."""
+        import openpyxl
+        hc_result = self._make_holdco_tax_result()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            holdco_tax_results=(hc_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        required = [
+            "Dashboard", "Inputs", "CapEx",
+            "Revenue", "Debt", "Tax_Depreciation",
+            "Waterfall", "Returns", "Validation", "Notes",
+        ]
+        missing = [s for s in required if s not in wb.sheetnames]
+        assert not missing, f"Missing core sheets: {missing}"
+        wb.close()
+
+    def test_holdco_tax_summary_sheet_audit_note_row_1(self):
+        """HoldCo Tax Summary sheet row 1 contains audit-only note."""
+        import openpyxl
+        hc_result = self._make_holdco_tax_result()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            holdco_tax_results=(hc_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["HoldCo Tax Summary"]
+        first_cell = ws.cell(row=1, column=1).value
+        assert "AUDIT-ONLY" in str(first_cell), f"Expected AUDIT-ONLY in row 1, got: {first_cell}"
+        wb.close()
