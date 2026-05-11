@@ -31,11 +31,11 @@ This document records the architectural decision for that question.
 
 Phase 6C provides:
 
-- `HoldCoTaxEngineInputs` schema — defines the inputs the HoldCo engine will accept
-- `HoldCoTaxEngineOutputs` schema — defines what the engine will produce
+- `HoldCoTaxInputs` schema — defines the inputs the HoldCo engine will accept
+- result schema — defines what the engine will produce
 - `HoldCoTaxResult` dataclass — result container (schema in place; active CIT calculation not yet connected)
 - `calculate_withholding_tax_keur()` — WHT amounts per entity per period (implemented)
-- `calculate_holdco_taxable_income()` — tax base computation (schema defined; active computation deferred)
+- `calculate_holdco_taxable_income_before_limitations()` — tax base computation (schema defined; active computation deferred)
 - Audit export sheets for HoldCo tax results (schema-driven, not yet active)
 
 The schema anticipates per-period accrual values. The distinction between accrual and cash timing
