@@ -565,3 +565,53 @@ tests/test_tax_excel_export.py:           12 passed ✅
 tests/test_tax_ui.py:                    10 passed ✅
 tests/test_tax_engine_runner.py:         23 passed, 1 skipped ✅
 ```
+
+---
+
+## Phase 6C.1 — HoldCo / Intercompany Tax Schema Foundation
+
+**Purpose:** Add schema foundation for future HoldCo and intercompany tax handling.
+**Status:** Schema only. **No active CIT calculation. No WHT engine. No waterfall wiring.**
+
+### What's built
+
+| Component | File | Description |
+|---|---|---|
+| HoldCo inputs | `domain/tax/holdco_inputs.py` | `HoldCoTaxInputs`, `IntercompanyTaxFlow`, `WithholdingTaxConfig`, `InterestDeductibilityConfig` |
+| HoldCo results | `domain/tax/holdco_result.py` | `HoldCoTaxPeriodResult`, `HoldCoTaxResult` |
+| Tests | `tests/test_holdco_tax_schema.py` | 31 tests |
+| Exports | `domain/tax/__init__.py` | New schema classes exported |
+
+### Schema fields
+
+**HoldCoTaxInputs:**
+- `entity_code`, `country_code`, `tax_year`
+- `dividend_income_by_period_keur` — taxable
+- `shl_interest_income_by_period_keur` — taxable
+- `shl_principal_received_by_period_keur` — **non-taxable** (tracked separately)
+- `holdco_opex_by_period_keur` — deductible
+- `withholding_tax_config` — WHT rates stored, not applied
+- `interest_deductibility` — thin-cap / EBITDA limits stored, not applied
+
+**HoldCoTaxPeriodResult audit fields:**
+- `taxable_dividend_income_keur`, `taxable_interest_income_keur`
+- `non_taxable_principal_keur` — principal excluded from taxable income
+- `withholding_tax_dividends_keur`, `withholding_tax_interest_keur` — stored, not paid
+- `interest_limited_keur` — excess over ATAD limit, stored not applied
+
+### Validation rules
+
+- WHT rates between 0 and 1
+- SHL principal **rejected if negative** (non-taxable recovery, not income)
+- All income tuples must have matching lengths
+- `entity_code` and `country_code` non-empty
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| Active HoldCo CIT calculation | ❌ Not implemented |
+| WHT engine / payment | ❌ Not implemented |
+| Thin-cap / EBITDA limitation enforcement | ❌ Not implemented |
+| Waterfall integration | ❌ Not wired |
+| Model output changes | ❌ None |
