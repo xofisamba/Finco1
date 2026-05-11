@@ -114,32 +114,31 @@ def write_tax_assumptions_audit_sheets(
 
     # ── Tax Templates sheet ──────────────────────────────────────────
     if templates:
-        summary_rows = build_tax_template_summary_table(templates)
-        if summary_rows:
-            df = pd.DataFrame(summary_rows)
-            _write_sheet("Tax Templates", df)
+        summary_df = build_tax_template_summary_table(templates)
+        if not summary_df.empty:
+            _write_sheet("Tax Templates", summary_df)
 
         # ── Tax Tiers sheet ─────────────────────────────────────────
-        tiers_rows = []
-        for tmpl in templates:
-            for row in build_tax_template_tiers_table(tmpl):
-                row["Template"] = tmpl.template_name
-                tiers_rows.append(row)
-        if tiers_rows:
-            df = pd.DataFrame(tiers_rows)
+        tiers_df = pd.concat(
+            [build_tax_template_tiers_table(tmpl).assign(Template=tmpl.template_name)
+             for tmpl in templates],
+            ignore_index=True
+        )
+        if not tiers_df.empty:
+            df = tiers_df
             # reorder so Template is first
             cols = ["Template"] + [c for c in df.columns if c != "Template"]
             df = df[cols]
             _write_sheet("Tax Tiers", df)
 
         # ── Tax Dep Rules sheet ────────────────────────────────────
-        dep_rows = []
-        for tmpl in templates:
-            for row in build_tax_depreciation_rules_table(tmpl):
-                row["Template"] = tmpl.template_name
-                dep_rows.append(row)
-        if dep_rows:
-            df = pd.DataFrame(dep_rows)
+        dep_df = pd.concat(
+            [build_tax_depreciation_rules_table(tmpl).assign(Template=tmpl.template_name)
+             for tmpl in templates],
+            ignore_index=True
+        )
+        if not dep_df.empty:
+            df = dep_df
             cols = ["Template"] + [c for c in df.columns if c != "Template"]
             df = df[cols]
             _write_sheet("Tax Dep Rules", df)
@@ -147,15 +146,17 @@ def write_tax_assumptions_audit_sheets(
     # ── Tax Overrides sheet (optional) ───────────────────────────────
     if overrides:
         override_rows = build_tax_override_table(overrides)
-        if override_rows:
-            df = pd.DataFrame(override_rows)
+        if not override_rows.empty:
+            df = override_rows
             _write_sheet("Tax Overrides", df)
 
     # ── Resolved Tax Config sheet (optional) ────────────────────────
     if resolved_configs:
-        resolved_rows = []
-        for cfg in resolved_configs:
-            resolved_rows.extend(build_resolved_tax_config_summary(cfg))
-        if resolved_rows:
-            df = pd.DataFrame(resolved_rows)
+        resolved_df = pd.concat(
+            [build_resolved_tax_config_summary(cfg)
+             for cfg in resolved_configs],
+            ignore_index=True
+        )
+        if not resolved_df.empty:
+            df = resolved_df
             _write_sheet("Resolved Tax Config", df)

@@ -6,6 +6,8 @@ CAVEAT: Values-only. No persistence. No active model wiring.
 """
 from __future__ import annotations
 
+from __future__ import annotations
+import pandas as pd
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -37,7 +39,7 @@ def build_tax_assumptions_audit_note() -> str:
 
 def build_tax_template_summary_table(
     templates: tuple[TaxTemplate, ...],
-) -> list[dict]:
+) -> pd.DataFrame:
     """Build a summary table for one or more TaxTemplate objects.
 
     Pure function — no mutation, no side effects.
@@ -81,12 +83,12 @@ def build_tax_template_summary_table(
             "Has WHT Interest": tmpl.withholding_tax_interest > 0.0,
             "Notes": tmpl.metadata_dict.get("notes", ""),
         })
-    return rows
+    return pd.DataFrame(rows)
 
 
 def build_tax_template_tiers_table(
     template: TaxTemplate,
-) -> list[dict]:
+) -> pd.DataFrame:
     """Build a per-tier breakdown table for one TaxTemplate.
 
     Pure function — no mutation, no side effects.
@@ -112,12 +114,12 @@ def build_tax_template_tiers_table(
             "Max Profit (kEUR)": max_display,
             "Tax Rate": tier.tax_rate,
         })
-    return rows
+    return pd.DataFrame(rows)
 
 
 def build_tax_depreciation_rules_table(
     template: TaxTemplate,
-) -> list[dict]:
+) -> pd.DataFrame:
     """Build a depreciation rules table for one TaxTemplate.
 
     Pure function — no mutation, no side effects.
@@ -144,12 +146,12 @@ def build_tax_depreciation_rules_table(
             "Deductible": rule.deductible,
             "Notes": rule.notes,
         })
-    return rows
+    return pd.DataFrame(rows)
 
 
 def build_tax_override_table(
     overrides: tuple[TaxTemplateOverride, ...],
-) -> list[dict]:
+) -> pd.DataFrame:
     """Build an override summary table.
 
     Pure function — no mutation, no side effects.
@@ -173,12 +175,12 @@ def build_tax_override_table(
             "Source": ovr.override_name,
             "Notes": ovr.reason,
         })
-    return rows
+    return pd.DataFrame(rows)
 
 
 def build_resolved_tax_config_summary(
     resolved: ResolvedTaxConfig,
-) -> list[dict]:
+) -> pd.DataFrame:
     """Build a summary row for a ResolvedTaxConfig.
 
     Pure function — no mutation, no side effects.
@@ -211,4 +213,4 @@ def build_resolved_tax_config_summary(
         "Effective CIT Structure": cit_structure,
         "Metadata": dict(resolved.resolved_metadata),
     }]
-    return rows
+    return pd.DataFrame(rows)

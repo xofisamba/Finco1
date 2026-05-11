@@ -130,7 +130,7 @@ class TestBuildTaxTemplateSummaryTable:
     def test_flat_template_summary(self, flat_template):
         rows = build_tax_template_summary_table((flat_template,))
         assert len(rows) == 1
-        row = rows[0]
+        row = rows.iloc[0]
         assert row["Template Code"] == "HR Flat 18%"
         assert row["Country Code"] == "HR"
         assert row["Tax Year"] == 2026
@@ -138,14 +138,14 @@ class TestBuildTaxTemplateSummaryTable:
         assert row["Base CIT Rate"] == 0.18
         assert row["Progressive Tiers Count"] == 1
         assert row["Loss Carryforward Years"] == 5
-        assert row["Has Interest Limitation"] is True
-        assert row["Has WHT Dividend"] is True
-        assert row["Has WHT Interest"] is False
+        assert row["Has Interest Limitation"] == True
+        assert row["Has WHT Dividend"] == True
+        assert row["Has WHT Interest"] == False
 
     def test_progressive_template_summary(self, progressive_template):
         rows = build_tax_template_summary_table((progressive_template,))
         assert len(rows) == 1
-        row = rows[0]
+        row = rows.iloc[0]
         assert row["CIT Structure"] == "Progressive"
         assert row["Progressive Tiers Count"] == 2
 
@@ -156,7 +156,7 @@ class TestBuildTaxTemplateSummaryTable:
     def test_no_cit_shows_none(self, template_with_dep_rules):
         # template_with_dep_rules has one tier at 10%, so it's "Flat"
         rows = build_tax_template_summary_table((template_with_dep_rules,))
-        assert rows[0]["CIT Structure"] == "Flat"
+        assert rows.iloc[0]["CIT Structure"] == "Flat"
 
     def test_no_mutation(self, flat_template):
         original_name = flat_template.template_name
@@ -168,26 +168,26 @@ class TestBuildTaxTemplateTiersTable:
     def test_flat_single_tier(self, flat_template):
         rows = build_tax_template_tiers_table(flat_template)
         assert len(rows) == 1
-        assert rows[0]["Tier #"] == 1
-        assert rows[0]["Min Profit (kEUR)"] == 0.0
-        assert rows[0]["Max Profit (kEUR)"] == "Unlimited"
-        assert rows[0]["Tax Rate"] == 0.18
+        assert rows.iloc[0]["Tier #"] == 1
+        assert rows.iloc[0]["Min Profit (kEUR)"] == 0.0
+        assert rows.iloc[0]["Max Profit (kEUR)"] == "Unlimited"
+        assert rows.iloc[0]["Tax Rate"] == 0.18
 
     def test_progressive_two_tiers(self, progressive_template):
         rows = build_tax_template_tiers_table(progressive_template)
         assert len(rows) == 2
-        assert rows[0]["Tier #"] == 1
-        assert rows[0]["Min Profit (kEUR)"] == 0.0
-        assert rows[0]["Max Profit (kEUR)"] == 500.0
-        assert rows[0]["Tax Rate"] == 0.10
-        assert rows[1]["Tier #"] == 2
-        assert rows[1]["Min Profit (kEUR)"] == 500.0
-        assert rows[1]["Max Profit (kEUR)"] == "Unlimited"
-        assert rows[1]["Tax Rate"] == 0.15
+        assert rows.iloc[0]["Tier #"] == 1
+        assert rows.iloc[0]["Min Profit (kEUR)"] == 0.0
+        assert rows.iloc[0]["Max Profit (kEUR)"] == 500.0
+        assert rows.iloc[0]["Tax Rate"] == 0.10
+        assert rows.iloc[1]["Tier #"] == 2
+        assert rows.iloc[1]["Min Profit (kEUR)"] == 500.0
+        assert rows.iloc[1]["Max Profit (kEUR)"] == "Unlimited"
+        assert rows.iloc[1]["Tax Rate"] == 0.15
 
     def test_unbounded_final_tier_display(self, flat_template):
         rows = build_tax_template_tiers_table(flat_template)
-        assert rows[0]["Max Profit (kEUR)"] == "Unlimited"
+        assert rows.iloc[0]["Max Profit (kEUR)"] == "Unlimited"
 
 
 class TestBuildTaxDepreciationRulesTable:
@@ -196,20 +196,20 @@ class TestBuildTaxDepreciationRulesTable:
         expected_cols = ["Asset Category", "Method", "Useful Life",
                          "Annual Rate", "Max Deductible Rate", "Deductible", "Notes"]
         for col in expected_cols:
-            assert col in rows[0], f"Missing column: {col}"
+            assert col in rows.columns, f"Missing column: {col}"
 
     def test_dep_rules_all_rows(self, template_with_dep_rules):
         rows = build_tax_depreciation_rules_table(template_with_dep_rules)
         assert len(rows) == 3
-        categories = {r["Asset Category"] for r in rows}
+        categories = set(rows["Asset Category"])
         assert categories == {"buildings", "equipment", "solar_panels"}
 
     def test_dep_rules_values(self, template_with_dep_rules):
         rows = build_tax_depreciation_rules_table(template_with_dep_rules)
-        buildings = next(r for r in rows if r["Asset Category"] == "buildings")
+        buildings = rows[rows["Asset Category"] == "buildings"].iloc[0]
         assert buildings["Method"] == "straight_line"
         assert buildings["Annual Rate"] == 0.05
-        assert buildings["Deductible"] is True
+        assert buildings["Deductible"] == True
 
     def test_no_mutation(self, template_with_dep_rules):
         original = template_with_dep_rules.depreciation_rules[0].asset_category
@@ -227,10 +227,10 @@ class TestBuildTaxOverrideTable:
         )
         rows = build_tax_override_table((override,))
         assert len(rows) == 1
-        assert rows[0]["Override Path"] == "withholding_tax_dividends"
-        assert rows[0]["Override Value"] == 0.10
-        assert rows[0]["Source"] == "custom_wht"
-        assert rows[0]["Notes"] == "Treaty rate"
+        assert rows.iloc[0]["Override Path"] == "withholding_tax_dividends"
+        assert rows.iloc[0]["Override Value"] == 0.10
+        assert rows.iloc[0]["Source"] == "custom_wht"
+        assert rows.iloc[0]["Notes"] == "Treaty rate"
 
     def test_metadata_override(self, flat_template):
         override = TaxTemplateOverride(
@@ -240,14 +240,14 @@ class TestBuildTaxOverrideTable:
             reason="User override",
         )
         rows = build_tax_override_table((override,))
-        assert rows[0]["Override Path"] == "metadata.note"
+        assert rows.iloc[0]["Override Path"] == "metadata.note"
 
 
 class TestBuildResolvedTaxConfigSummary:
     def test_resolved_config_summary(self, resolved_config):
         rows = build_resolved_tax_config_summary(resolved_config)
         assert len(rows) == 1
-        row = rows[0]
+        row = rows.iloc[0]
         assert row["Template Code"] == "HR Flat 18%"
         assert row["Country Code"] == "HR"
         assert row["Tax Year"] == 2026
@@ -258,4 +258,4 @@ class TestBuildResolvedTaxConfigSummary:
     def test_no_overrides(self, flat_template):
         resolved = resolve_tax_template(flat_template, ())
         rows = build_resolved_tax_config_summary(resolved)
-        assert rows[0]["Override Count"] == 0
+        assert rows.iloc[0]["Override Count"] == 0
