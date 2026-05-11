@@ -235,6 +235,87 @@ class TestSnapshotContext:
         json.dumps(d)
 
 
+    def test_capture_scalar_then_validate_uses_embedded_tolerance(self):
+        """capture_scalar stores dict; validate_scalar extracts value+tolerance from it."""
+        ctx = SnapshotContext(fixture_name="oborovo", model_version="test@test", raise_on_failures=False)
+        ctx.capture_scalar(
+            "equity_irr_30y",
+            value=0.11615,  # actual
+            tol_spec={"type": "bps", "value": 10},  # embedded tolerance: ±10bps = ±0.001
+        )
+        # golden is 0.1161, delta = 0.00005 < 0.001 → PASS
+        result = ctx.validate_scalar("equity_irr_30y", golden_value=0.1161)
+        assert result["status"] == "PASS"
+        assert len(ctx.failures) == 0
+
+    def test_capture_scalar_with_failing_tolerance(self):
+        """Embedded tolerance correctly triggers failure."""
+        ctx = SnapshotContext(fixture_name="oborovo", model_version="test@test", raise_on_failures=False)
+        ctx.capture_scalar(
+            "equity_irr_30y",
+            value=0.1173,  # +120bps — exceeds ±10bps tolerance of ±0.001
+            tol_spec={"type": "bps", "value": 10},
+        )
+        result = ctx.validate_scalar("equity_irr_30y", golden_value=0.1161)
+        assert result["status"] == "FAIL"
+        assert len(ctx.failures) == 1
+
+    def test_capture_series_then_validate_uses_embedded_tolerance(self):
+        """capture_series stores dict; validate_series extracts values+tolerance from it."""
+        ctx = SnapshotContext(fixture_name="oborovo", model_version="test@test", raise_on_failures=False)
+        ctx.capture_series(
+            "debt_schedule",
+            values=[-2239.0, -2202.0, -2240.0],  # actual within ±0.5% of golden
+            tol_spec={"type": "pct", "value": 0.005},
+        )
+        golden = (-2239.133, -2202.626, -2240.525)
+        result = ctx.validate_series("debt_schedule", golden_values=golden)
+        assert result["status"] == "PASS"
+        assert len(ctx.failures) == 0
+
+    def test_capture_scalar_validate_with_explicit_override(self):
+        """Explicit golden/tol arguments override embedded values."""
+        ctx = SnapshotContext(fixture_name="oborovo", model_version="test@test", raise_on_failures=False)
+        ctx.capture_scalar(
+            "equity_irr_30y",
+            value=0.1173,  # actual — +120bps
+            tol_spec={"type": "bps", "value": 5},  # embedded: ±5bps only
+        )
+        # But we pass explicit golden 0.1161 and tol ±10bps — delta 0.0012 > 0.001 → FAIL
+        result = ctx.validate_scalar("equity_irr_30y", golden_value=0.1161, tol_type="bps", tol_value=10)
+        assert result["status"] == "FAIL"
+
+    def test_raw_capture_validate_still_works(self):
+        """Raw capture (plain float) + validate_scalar still works with explicit golden."""
+        ctx = SnapshotContext(fixture_name="oborovo", model_version="test@test", raise_on_failures=False)
+        ctx.capture("equity_irr_30y", 0.11615)  # raw float
+        result = ctx.validate_scalar("equity_irr_30y", golden_value=0.1161, tol_type="bps", tol_value=10)
+        assert result["status"] == "PASS"
+
+    def test_validate_series_without_golden_still_fails(self):
+        """validate_series without golden_values raises MISSING."""
+        ctx = SnapshotContext(fixture_name="oborovo", model_version="test@test", raise_on_failures=False)
+        ctx.capture("debt_schedule", (1.0, 2.0))  # raw tuple — no embedded golden_values
+        result = ctx.validate_series("debt_schedule")  # no golden_values → MISSING
+        assert result["status"] == "MISSING"
+
+    def test_capture_series_failure_deterministic(self):
+        """Series failures are deterministic across multiple calls."""
+        ctx = SnapshotContext(fixture_name="oborovo", model_version="test@test", raise_on_failures=False)
+        ctx.capture_series(
+            "debt_schedule",
+            values=[-2239.0, -2202.0, -5000.0],  # period 2 way off
+            tol_spec={"type": "pct", "value": 0.005},
+        )
+        golden = (-2239.133, -2202.626, -2240.525)
+        result1 = ctx.validate_series("debt_schedule", golden_values=golden)
+        result2 = ctx.validate_series("debt_schedule", golden_values=golden)
+        assert result1["status"] == "FAIL"
+        assert result2["status"] == "FAIL"
+        assert result1["failure_count"] == result2["failure_count"]
+
+
+
 class TestDiffFormatter:
     """Unit tests for diff formatter."""
 

@@ -98,11 +98,15 @@ class SnapshotContext:
     def validate_scalar(
         self,
         name: str,
-        golden_value: float,
-        tol_type: str = "pct",
-        tol_value: float = 0.005,
+        golden_value: float | None = None,
+        tol_type: str | None = None,
+        tol_value: float | None = None,
     ) -> dict[str, Any]:
         """Validate a captured scalar against a golden value.
+
+        If the captured value is a dict with 'value' and 'tolerance' keys
+        (as stored by capture_scalar), those are used unless explicitly
+        overridden by golden_value / tol_type / tol_value arguments.
 
         Returns comparison result dict. Stores failures in self.failures.
         """
@@ -116,8 +120,36 @@ class SnapshotContext:
             self.failures.append(result)
             return result
 
+        # Resolve value and tolerance from capture or arguments
+        resolved_value = golden_value
+        resolved_tol_type = tol_type
+        resolved_tol_value = tol_value
+
+        if isinstance(actual, dict) and "value" in actual:
+            if resolved_value is None:
+                resolved_value = actual["value"]
+            if resolved_tol_type is None and "tolerance" in actual:
+                resolved_tol_type = actual["tolerance"].get("type", "pct")
+            if resolved_tol_value is None and "tolerance" in actual:
+                resolved_tol_value = actual["tolerance"].get("value", 0.005)
+            actual = actual["value"]
+
+        if resolved_value is None:
+            result = {
+                "metric": name,
+                "status": "MISSING",
+                "message": f"golden_value required for {name!r}",
+            }
+            self.failures.append(result)
+            return result
+
+        if resolved_tol_type is None:
+            resolved_tol_type = "pct"
+        if resolved_tol_value is None:
+            resolved_tol_value = 0.005
+
         from tests.golden.utils.comparison import compare_values
-        cmp = compare_values(actual, golden_value, **{tol_type + "_tol": tol_value})
+        cmp = compare_values(actual, resolved_value, **{resolved_tol_type + "_tol": resolved_tol_value})
 
         result = {
             "metric": name,
@@ -136,11 +168,15 @@ class SnapshotContext:
     def validate_series(
         self,
         name: str,
-        golden_values: tuple[float, ...],
-        tol_type: str = "pct",
-        tol_value: float = 0.005,
+        golden_values: tuple[float, ...] | None = None,
+        tol_type: str | None = None,
+        tol_value: float | None = None,
     ) -> dict[str, Any]:
         """Validate a captured series against golden values.
+
+        If the captured value is a dict with 'values' and 'tolerance' keys
+        (as stored by capture_series), those are used unless explicitly
+        overridden by golden_values / tol_type / tol_value arguments.
 
         Returns comparison result dict. Stores failures in self.failures.
         """
@@ -154,11 +190,38 @@ class SnapshotContext:
             self.failures.append(result)
             return result
 
-        if isinstance(actual, list):
+        # Resolve values and tolerance from capture or arguments
+        resolved_values = golden_values
+        resolved_tol_type = tol_type
+        resolved_tol_value = tol_value
+
+        if isinstance(actual, dict) and "values" in actual:
+            if resolved_values is None:
+                resolved_values = tuple(actual["values"])
+            if resolved_tol_type is None and "tolerance" in actual:
+                resolved_tol_type = actual["tolerance"].get("type", "pct")
+            if resolved_tol_value is None and "tolerance" in actual:
+                resolved_tol_value = actual["tolerance"].get("value", 0.005)
+            actual = tuple(actual["values"])
+        elif isinstance(actual, list):
             actual = tuple(actual)
 
+        if resolved_values is None:
+            result = {
+                "metric": name,
+                "status": "MISSING",
+                "message": f"golden_values required for {name!r}",
+            }
+            self.failures.append(result)
+            return result
+
+        if resolved_tol_type is None:
+            resolved_tol_type = "pct"
+        if resolved_tol_value is None:
+            resolved_tol_value = 0.005
+
         from tests.golden.utils.comparison import compare_series
-        cmp = compare_series(actual, golden_values, **{tol_type + "_tol": tol_value})
+        cmp = compare_series(actual, resolved_values, **{resolved_tol_type + "_tol": resolved_tol_value})
 
         result = {
             "metric": name,
