@@ -31,22 +31,18 @@ class TaxDepreciationPeriod:
     This is NOT the accumulated pool — it is the period delta only.
     The accumulated pool ( ``accumulated_non_deductible_depreciation_keur`` )
     tracks how much timing difference remains to be recovered in future periods.
-    ``total_non_deductible_depreciation_keur`` at the last period equals the
-    **ending accumulated** (the remaining unrecovered timing difference),
-    which also equals the peak accumulated value reached during the schedule.
 
     For non-deductible assets (rule.deductible=False), tax depreciation is
     always 0 and all book depreciation is permanently non-deductible —
     no timing difference reversal occurs.
 
-    Example — ME infrastructure (2.5% tax cap, 5% accounting):
-    - Year 1: book dep = 500 kEUR, tax cap = 250 kEUR → tax dep = 250 kEUR
-      period non-ded = 250 (timing diff), accumulated = 250 kEUR
-    - Year 2 (book dep still 500): tax dep = min(250, remaining_basis)
-      + can use accumulated timing diff of 250 from prior year
-    - Period non-ded in year 2 = max(0, 500 - 500) = 0 kEUR (pool drawn down)
-    - ... after year 20 book dep = 0 but accumulated timing diff still exists
-      and continues to be claimed as tax depreciation until basis = 0
+    Example — ME infrastructure (2.5% tax cap, 5% accounting, 20-year life):
+    - Years 1–20 (book dep = 500 kEUR/yr, tax cap = 250 kEUR/yr):
+      Each year creates a 250 kEUR current-period timing difference.
+      accumulated grows to 5,000 kEUR by end of year 20.
+    - Years 21+ (book dep = 0): tax dep continues to claim from the accumulated
+      pool until tax basis reaches zero. accumulated declines as differences
+      are recovered; ending accumulated = 0 only when fully recovered.
     """
     period: int
     asset_category: str
@@ -64,11 +60,11 @@ class TaxDepreciationSchedule:
 
     Produced by ``build_tax_depreciation_schedule()``.
     ``total_non_deductible_depreciation_keur`` at the last period equals the
-    **ending accumulated** — the remaining unrecovered timing difference.
-    It does NOT equal the sum of period ``non_deductible_depreciation_keur``
-    values (which would double-count the accumulated pool).
-    When the tax basis reaches zero, all timing differences have been
-    recovered and ending accumulated = 0.
+    **ending accumulated** — the remaining unrecovered timing difference
+    at the end of the schedule horizon. It does NOT equal the sum of period
+    ``non_deductible_depreciation_keur`` values (which would double-count the
+    accumulated pool). Ending accumulated may be zero (fully recovered) or
+    positive (some timing differences remain to be recovered in future years).
     """
     asset_category: str
     periods: tuple[TaxDepreciationPeriod, ...]
