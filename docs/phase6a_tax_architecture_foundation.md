@@ -476,3 +476,37 @@ from domain.tax import (
 - Template / config no-mutation verification
 - Totals reconciliation
 - Invalid inputs (unknown category, mismatched lengths, empty entity, negative asset cost, NaN, inf)
+
+---
+
+## Phase 6B.5 — Tax Audit / Export Visibility
+
+**Purpose:** UI and Excel export helpers for SPV tax engine results.
+**Status:** Audit-only. **Not wired into waterfall outputs or IRR metrics.**
+
+### What is built
+
+| Component | File | Description |
+|---|---|---|
+| Tax UI helpers | `app/tax_ui.py` | Summary/period DataFrames, audit note |
+| Excel export helper | `app/tax_excel_export.py` | Writes Tax Summary + per-SPV sheets |
+| Tests | `tests/test_tax_ui.py` | 10 tests |
+| Tests | `tests/test_tax_excel_export.py` | 8 tests |
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| Waterfall integration | ❌ Not wired — audit/export only |
+| Model output changes | ❌ None |
+| Tax payable into IRR | ❌ Not wired |
+| Existing `excel_export.py` | ❌ Not modified |
+| HoldCo / SHL / WHT tax | ❌ Not implemented |
+| Deferred tax accounting | ❌ Not implemented |
+
+### Audit note
+
+Every exported sheet starts with:
+> "AUDIT-ONLY: SPV tax engine results are not yet wired into waterfall outputs or IRR metrics."
+
+Future Phase 6B.6 may wire tax result into optional reconciliation export.
