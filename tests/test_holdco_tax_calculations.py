@@ -242,6 +242,56 @@ class TestDeductibleInterestAfterLimitation:
         assert result == 300.0
         assert interest == 400.0  # unchanged
 
+# ── Tests: split_shl_receipt_tax_components ───────────────────────────────────
+
+class TestSplitShlReceiptTaxComponents:
+    def test_interest_and_principal_preserved(self):
+        from domain.tax.holdco_calculations import split_shl_receipt_tax_components
+        taxable_int, non_taxable_principal = split_shl_receipt_tax_components(200.0, 500.0)
+        assert taxable_int == 200.0
+        assert non_taxable_principal == 500.0
+
+    def test_zero_principal(self):
+        from domain.tax.holdco_calculations import split_shl_receipt_tax_components
+        taxable_int, non_taxable_principal = split_shl_receipt_tax_components(200.0, 0.0)
+        assert taxable_int == 200.0
+        assert non_taxable_principal == 0.0
+
+    def test_principal_amount_for_audit(self):
+        """Principal amount is returned for audit tracking, not 0."""
+        from domain.tax.holdco_calculations import split_shl_receipt_tax_components
+        _, non_taxable_principal = split_shl_receipt_tax_components(100.0, 1_000_000.0)
+        assert non_taxable_principal == 1_000_000.0
+
+    def test_negative_principal_rejected(self):
+        from domain.tax.holdco_calculations import split_shl_receipt_tax_components
+        with pytest.raises(ValueError, match="shl_principal_received_keur.*must be non-negative"):
+            split_shl_receipt_tax_components(200.0, -50.0)
+
+    def test_negative_interest_rejected(self):
+        from domain.tax.holdco_calculations import split_shl_receipt_tax_components
+        with pytest.raises(ValueError, match="shl_interest_income_keur.*must be non-negative"):
+            split_shl_receipt_tax_components(-50.0, 100.0)
+
+    def test_nan_principal_rejected(self):
+        from domain.tax.holdco_calculations import split_shl_receipt_tax_components
+        with pytest.raises(ValueError, match="shl_principal_received_keur.*NaN"):
+            split_shl_receipt_tax_components(200.0, float("nan"))
+
+    def test_nan_interest_rejected(self):
+        from domain.tax.holdco_calculations import split_shl_receipt_tax_components
+        with pytest.raises(ValueError, match="shl_interest_income_keur.*NaN"):
+            split_shl_receipt_tax_components(float("nan"), 100.0)
+
+    def test_backward_alias_still_works(self):
+        """split_shl_tax_treatment is a backward-compatible alias."""
+        from domain.tax.holdco_calculations import split_shl_tax_treatment
+        taxable_int, non_taxable_principal = split_shl_tax_treatment(200.0, 500.0)
+        assert taxable_int == 200.0
+        assert non_taxable_principal == 500.0
+
+
+
 # ── Tests: alias functions ────────────────────────────────────────────────────
 
 class TestAliasFunctions:
@@ -249,7 +299,7 @@ class TestAliasFunctions:
         from domain.tax.holdco_calculations import split_shl_tax_treatment
         taxable_int, non_taxable_principal = split_shl_tax_treatment(200.0, 500.0)
         assert taxable_int == 200.0
-        assert non_taxable_principal == 0.0  # principal always excluded
+        assert non_taxable_principal == 500.0  # principal amount preserved (not 0)
 
     def test_split_shl_tax_treatment_zero_principal(self):
         from domain.tax.holdco_calculations import split_shl_tax_treatment
