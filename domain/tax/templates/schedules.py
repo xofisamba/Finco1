@@ -24,12 +24,16 @@ class TaxDepreciationPeriod:
     Tracks the difference between book depreciation (for financial statements)
     and tax depreciation (for tax return) for one asset category.
 
-    The ``non_deductible_depreciation_keur`` field captures the portion of
-    book depreciation that exceeds the tax deductible amount in the current
-    period. This is a **timing difference**, not a permanent disallowance —
-    the excess (accumulated in ``accumulated_non_deductible_depreciation_keur``)
-    represents future deductible amounts that will be claimed in later periods
-    when the annual tax cap allows.
+    The ``non_deductible_depreciation_keur`` field captures the **current period's**
+    timing difference between book and tax depreciation:
+    ``max(0, book_dep - min(book_dep, tax_dep_claimed))``.
+
+    This is NOT the accumulated pool — it is the period delta only.
+    The accumulated pool ( ``accumulated_non_deductible_depreciation_keur`` )
+    tracks how much timing difference remains to be recovered in future periods.
+    ``total_non_deductible_depreciation_keur`` at the last period equals the
+    **ending accumulated** (the remaining unrecovered timing difference),
+    which also equals the peak accumulated value reached during the schedule.
 
     For non-deductible assets (rule.deductible=False), tax depreciation is
     always 0 and all book depreciation is permanently non-deductible —
@@ -37,9 +41,10 @@ class TaxDepreciationPeriod:
 
     Example — ME infrastructure (2.5% tax cap, 5% accounting):
     - Year 1: book dep = 500 kEUR, tax cap = 250 kEUR → tax dep = 250 kEUR
-      non-ded = 250 kEUR (timing diff), accumulated = 250 kEUR
+      period non-ded = 250 (timing diff), accumulated = 250 kEUR
     - Year 2 (book dep still 500): tax dep = min(250, remaining_basis)
       + can use accumulated timing diff of 250 from prior year
+    - Period non-ded in year 2 = max(0, 500 - 500) = 0 kEUR (pool drawn down)
     - ... after year 20 book dep = 0 but accumulated timing diff still exists
       and continues to be claimed as tax depreciation until basis = 0
     """
@@ -59,8 +64,11 @@ class TaxDepreciationSchedule:
 
     Produced by ``build_tax_depreciation_schedule()``.
     ``total_non_deductible_depreciation_keur`` at the last period equals the
-    accumulated timing difference for this asset. When the tax basis reaches
-    zero, all timing differences have been recovered as tax deductions.
+    **ending accumulated** — the remaining unrecovered timing difference.
+    It does NOT equal the sum of period ``non_deductible_depreciation_keur``
+    values (which would double-count the accumulated pool).
+    When the tax basis reaches zero, all timing differences have been
+    recovered and ending accumulated = 0.
     """
     asset_category: str
     periods: tuple[TaxDepreciationPeriod, ...]
@@ -97,13 +105,19 @@ def build_tax_depreciation_schedule(
     Algorithm (for deductible assets)
     ----------------------------------
     For each period:
-        available_for_tax_dep = book_dep + accumulated_non_deductible
+        available_pool = book_dep + accumulated_non_deductible
             (pool of current book dep + prior timing differences available for deduction)
         annual_cap = tax_rate × asset_cost_keur
-        tax_dep = min(annual_cap, opening_tax_basis, available_for_tax_dep)
-        non_ded = max(0, book_dep + accumulated_non_deductible - tax_dep)
+        tax_dep = min(annual_cap, opening_tax_basis, available_pool)
+
+        # Period timing difference (delta only, NOT accumulated pool):
+        non_ded = max(0, book_dep - min(book_dep, tax_dep))
+
+        # Accumulated pool: prior accumulated + book_dep - tax_dep
+        # (can decrease when tax_dep > book_dep, reaches 0 when fully recovered)
+        accumulated = max(0, prior_accumulated + book_dep - tax_dep)
+
         closing_basis = max(0, opening_basis - tax_dep)
-        accumulated = non_ded  (replaces prior accumulated — not additive)
 
     The "accumulated_non_deductible" is NOT a running sum — it represents the
     *current* excess of book depreciation over tax deductible depreciation
@@ -164,16 +178,15 @@ def build_tax_depreciation_schedule(
             # Cap at remaining opening basis (cannot reduce basis below zero)
             tax_dep = max(0.0, min(raw_tax_dep, opening_basis))
 
-            # Non-deductible this period = book dep + prior accumulated - tax dep claimed
-            # (if tax dep < available_pool, the difference is consumed from accumulated)
-            opening_accumulated_snapshot = accumulated_non_ded
-            consumed_from_accumulated = max(0.0, opening_accumulated_snapshot + book_dep - tax_dep)
-            non_ded = max(0.0, book_dep + opening_accumulated_snapshot - tax_dep)
+            # Period timing difference: only the current period's excess book dep
+            # over what was covered by current period tax depreciation.
+            # Does NOT include prior accumulated pool (that lives in accumulated field).
+            non_ded = max(0.0, book_dep - min(book_dep, tax_dep))
 
-            # Update accumulated: it gets reduced by what was consumed as tax dep
-            # accumulated_non_ded_new = accumulated_non_ded + book_dep - tax_dep
-            # (which is the same as: accumulated_non_ded - consumed_from_accumulated + (book_dep - consumed))
-            # Simplify: accumulated_non_ded = max(0, accumulated + book_dep - tax_dep)
+            # Update accumulated: prior_accumulated + book_dep - tax_dep
+            # Can decrease when tax_dep > book_dep (recovering prior timing diffs)
+            # Can increase when book_dep > tax_dep (creating new timing diffs)
+            # Reaches 0 when all timing differences are fully recovered
             accumulated_non_ded = max(0.0, accumulated_non_ded + book_dep - tax_dep)
 
             # Closing tax basis
@@ -196,7 +209,9 @@ def build_tax_depreciation_schedule(
 
     total_book = sum(p.book_depreciation_keur for p in periods)
     total_tax = sum(p.tax_depreciation_keur for p in periods)
-    total_non_ded = sum(p.non_deductible_depreciation_keur for p in periods)
+    # total_non_ded = ending accumulated (not sum of period non_ded, which would double-count)
+    ending_accumulated = periods[-1].accumulated_non_deductible_depreciation_keur if periods else 0.0
+    total_non_ded = ending_accumulated
 
     return TaxDepreciationSchedule(
         asset_category=rule.asset_category,
