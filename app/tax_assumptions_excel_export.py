@@ -151,11 +151,12 @@ def write_tax_assumptions_audit_sheets(
 
     # ── Resolved Tax Config sheet (optional) ────────────────────────
     if resolved_configs:
-        resolved_df = pd.concat(
-            [build_resolved_tax_config_summary(cfg)
-             for cfg in resolved_configs],
-            ignore_index=True
-        )
-        if not resolved_df.empty:
-            df = resolved_df
-            _write_sheet("Resolved Tax Config", df)
+        resolved_frames = []
+        for cfg in resolved_configs:
+            frame = build_resolved_tax_config_summary(cfg)
+            if not frame.empty:
+                resolved_frames.append(frame)
+
+        if resolved_frames:
+            resolved_df = pd.concat(resolved_frames, ignore_index=True)
+            _write_sheet("Resolved Tax Config", resolved_df)
