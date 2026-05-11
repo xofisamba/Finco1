@@ -1,6 +1,7 @@
 """Tests for Phase 6F-B EquityInjection schema."""
 from __future__ import annotations
 
+import math
 import pytest
 
 from domain.sponsor.equity_injection import EquityInjection
@@ -24,6 +25,26 @@ class TestEquityInjectionValidation:
             EquityInjection(
                 period_index=0,
                 amount_keur=-500.0,
+                investor_id="SPONSOR-1",
+                target_entity="SPV-1",
+                purpose="equityContribution",
+            )
+
+    def test_amount_keur_rejects_nan(self):
+        with pytest.raises(ValueError, match="amount_keur must be finite"):
+            EquityInjection(
+                period_index=0,
+                amount_keur=float('nan'),
+                investor_id="SPONSOR-1",
+                target_entity="SPV-1",
+                purpose="equityContribution",
+            )
+
+    def test_amount_keur_rejects_inf(self):
+        with pytest.raises(ValueError, match="amount_keur must be finite"):
+            EquityInjection(
+                period_index=0,
+                amount_keur=float('inf'),
                 investor_id="SPONSOR-1",
                 target_entity="SPV-1",
                 purpose="equityContribution",
@@ -152,7 +173,7 @@ class TestEquityInjectionValidation:
         assert inj.purpose == purpose
 
     @pytest.mark.parametrize("period_index,amount_keur", [
-        (0, 0.0),      # zero amount allowed (equity injection of 0)
+        (0, 0.0),      # zero amount allowed
         (0, 1_000.0),  # normal
         (10, 50_000.0), # large amount, later period
         (0, 0.01),     # very small amount
@@ -180,8 +201,37 @@ class TestEquityInjectionImmutability:
             target_entity="SPV-1",
             purpose="equityContribution",
         )
-        with pytest.raises(Exception):  # frozen instance — any assign fails
+        with pytest.raises(Exception):
             inj.amount_keur = 2000.0
+
+    def test_metadata_internal_tuple_cannot_be_mutated(self):
+        inj = EquityInjection(
+            period_index=0,
+            amount_keur=1000.0,
+            investor_id="SPONSOR-1",
+            target_entity="SPV-1",
+            purpose="equityContribution",
+            metadata={"key": "value"},
+        )
+        # Internal tuple is immutable
+        with pytest.raises(Exception):
+            inj._metadata_tuple[0] = ("new", "value")
+
+    def test_metadata_property_returns_fresh_dict_each_call(self):
+        inj = EquityInjection(
+            period_index=0,
+            amount_keur=1000.0,
+            investor_id="SPONSOR-1",
+            target_entity="SPV-1",
+            purpose="equityContribution",
+            metadata={"key": "value"},
+        )
+        m1 = inj.metadata
+        m2 = inj.metadata
+        assert m1 is not m2           # different dict instances
+        assert m1 == m2 == {"key": "value"}
+        m1["new_key"] = "mutation"    # mutate m1
+        assert inj.metadata == {"key": "value"}  # internal state unchanged
 
     def test_with_metadata_returns_new_instance(self):
         inj = EquityInjection(
@@ -262,7 +312,7 @@ class TestEquityInjectionMetadataNormalization:
             purpose="equityContribution",
             metadata={"key": "value"},
         )
-        with pytest.raises(Exception):  # tuple is immutable
+        with pytest.raises(Exception):
             inj.frozen_metadata[0] = ("new", "value")
 
 
@@ -353,3 +403,16 @@ class TestEquityInjectionRoundtrip:
             metadata={"key": metadata_value},
         )
         assert inj.metadata["key"] == metadata_value
+
+    def test_metadata_key_order_deterministic_after_normalization(self):
+        inj = EquityInjection(
+            period_index=0,
+            amount_keur=1000.0,
+            investor_id="SPONSOR-1",
+            target_entity="SPV-1",
+            purpose="equityContribution",
+            metadata={"z": 1, "a": 2, "m": 3, "b": 4},
+        )
+        # frozen_metadata is sorted — deterministic regardless of input order
+        keys = [k for k, _ in inj.frozen_metadata]
+        assert keys == ["a", "b", "m", "z"]
