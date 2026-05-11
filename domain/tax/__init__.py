@@ -16,6 +16,10 @@ Phase 6B.3 adds:
 
 Phase 6B.4 adds:
 - SPVTaxEngineInputs, SPVTaxPeriodResult, SPVTaxResult, run_spv_tax_engine
+
+Phase 6C.1 adds (schema only — no active calculation):
+- HoldCoTaxInputs, WithholdingTaxConfig, InterestDeductibilityConfig, IntercompanyTaxFlow
+- HoldCoTaxPeriodResult, HoldCoTaxResult
 """
 from domain.tax.engine import (
     taxable_profit,
@@ -34,11 +38,11 @@ from domain.tax.templates.inputs import (
     ResolvedTaxConfig,
 )
 from domain.tax.templates.result import (
-    CITTier,
-    TaxDepreciationRule,
-    TaxTemplate,
-    TaxTemplateOverride,
-    ResolvedTaxConfig,
+    CITTier as _CITTierResult,
+    TaxDepreciationRule as _TaxDepreciationRuleResult,
+    TaxTemplate as _TaxTemplateResult,
+    TaxTemplateOverride as _TaxTemplateOverrideResult,
+    ResolvedTaxConfig as _ResolvedTaxConfigResult,
 )
 from domain.tax.templates import (
     get_builtin_tax_templates,
@@ -71,6 +75,18 @@ from domain.tax.templates.schedules import (
 from domain.tax.engine_inputs import SPVTaxEngineInputs
 from domain.tax.engine_result import SPVTaxPeriodResult, SPVTaxResult
 from domain.tax.engine_runner import run_spv_tax_engine
+
+# Phase 6C.1 — HoldCo / intercompany tax schema (no active calculation)
+from domain.tax.holdco_inputs import (
+    HoldCoTaxInputs,
+    WithholdingTaxConfig,
+    InterestDeductibilityConfig,
+    IntercompanyTaxFlow,
+)
+from domain.tax.holdco_result import (
+    HoldCoTaxPeriodResult,
+    HoldCoTaxResult,
+)
 
 __all__ = [
     # Phase 1-4 existing
@@ -105,4 +121,11 @@ __all__ = [
     "SPVTaxPeriodResult",
     "SPVTaxResult",
     "run_spv_tax_engine",
+    # Phase 6C.1 — HoldCo schema (no active calculation)
+    "HoldCoTaxInputs",
+    "WithholdingTaxConfig",
+    "InterestDeductibilityConfig",
+    "IntercompanyTaxFlow",
+    "HoldCoTaxPeriodResult",
+    "HoldCoTaxResult",
 ]
