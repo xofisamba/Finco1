@@ -76,6 +76,15 @@ from domain.tax.engine_inputs import SPVTaxEngineInputs
 from domain.tax.engine_result import SPVTaxPeriodResult, SPVTaxResult
 from domain.tax.engine_runner import run_spv_tax_engine
 
+# Phase 6C.2 — HoldCo tax calculation primitives
+from domain.tax.holdco_calculations import (
+    calculate_withholding_tax_keur,
+    calculate_holdco_taxable_income_before_limitations,
+    exclude_shl_principal_from_taxable_income,
+    calculate_interest_limitation_keur,
+    calculate_deductible_interest_after_limitation_keur,
+)
+
 # Phase 6C.1 — HoldCo / intercompany tax schema (no active calculation)
 from domain.tax.holdco_inputs import (
     HoldCoTaxInputs,
@@ -128,4 +137,10 @@ __all__ = [
     "IntercompanyTaxFlow",
     "HoldCoTaxPeriodResult",
     "HoldCoTaxResult",
+    # Phase 6C.2 — HoldCo tax calculation primitives
+    "calculate_withholding_tax_keur",
+    "calculate_holdco_taxable_income_before_limitations",
+    "exclude_shl_principal_from_taxable_income",
+    "calculate_interest_limitation_keur",
+    "calculate_deductible_interest_after_limitation_keur",
 ]
