@@ -51,7 +51,7 @@ def build_tax_template_summary_table(
 
     Returns
     -------
-    list[dict]
+    pd.DataFrame
         One row per template. Columns: Template Code, Country Code, Tax Year,
         CIT Structure, Base CIT Rate, Progressive Tiers Count, Loss Carryforward
         Years, Has Interest Limitation, Has WHT Dividend, Has WHT Interest, Notes
@@ -100,7 +100,7 @@ def build_tax_template_tiers_table(
 
     Returns
     -------
-    list[dict]
+    pd.DataFrame
         One row per CIT tier. Columns: Tier #, Min Profit (kEUR),
         Max Profit (kEUR), Tax Rate.
         Unbounded final tier shows "Unlimited" in Max Profit (kEUR).
@@ -131,7 +131,7 @@ def build_tax_depreciation_rules_table(
 
     Returns
     -------
-    list[dict]
+    pd.DataFrame
         One row per depreciation rule. Columns: Asset Category, Method,
         Useful Life, Annual Rate, Max Deductible Rate, Deductible, Notes.
     """
@@ -163,7 +163,7 @@ def build_tax_override_table(
 
     Returns
     -------
-    list[dict]
+    pd.DataFrame
         One row per override. Columns: Override Path, Override Value,
         Source (override_name), Notes (reason).
     """
@@ -192,8 +192,8 @@ def build_resolved_tax_config_summary(
 
     Returns
     -------
-    list[dict]
-        Single-row list with effective configuration summary.
+    pd.DataFrame
+        Single-row DataFrame with effective configuration summary.
         Columns: Template Code, Country Code, Tax Year, Override Count,
         Effective CIT Structure, Metadata.
     """
