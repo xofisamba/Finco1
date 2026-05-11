@@ -119,36 +119,35 @@ def write_tax_assumptions_audit_sheets(
             _write_sheet("Tax Templates", summary_df)
 
         # ── Tax Tiers sheet ─────────────────────────────────────────
-        tiers_df = pd.concat(
-            [build_tax_template_tiers_table(tmpl).assign(Template=tmpl.template_name)
-             for tmpl in templates],
-            ignore_index=True
-        )
-        if not tiers_df.empty:
-            df = tiers_df
-            # reorder so Template is first
-            cols = ["Template"] + [c for c in df.columns if c != "Template"]
-            df = df[cols]
-            _write_sheet("Tax Tiers", df)
+        tier_frames = []
+        for tmpl in templates:
+            frame = build_tax_template_tiers_table(tmpl)
+            if not frame.empty:
+                tier_frames.append(frame.assign(Template=tmpl.template_name))
+
+        if tier_frames:
+            tiers_df = pd.concat(tier_frames, ignore_index=True)
+            cols = ["Template"] + [c for c in tiers_df.columns if c != "Template"]
+            _write_sheet("Tax Tiers", tiers_df[cols])
 
         # ── Tax Dep Rules sheet ────────────────────────────────────
-        dep_df = pd.concat(
-            [build_tax_depreciation_rules_table(tmpl).assign(Template=tmpl.template_name)
-             for tmpl in templates],
-            ignore_index=True
-        )
-        if not dep_df.empty:
-            df = dep_df
-            cols = ["Template"] + [c for c in df.columns if c != "Template"]
-            df = df[cols]
-            _write_sheet("Tax Dep Rules", df)
+        dep_frames = []
+        for tmpl in templates:
+            frame = build_tax_depreciation_rules_table(tmpl)
+            if not frame.empty:
+                dep_frames.append(frame.assign(Template=tmpl.template_name))
+
+        if dep_frames:
+            dep_df = pd.concat(dep_frames, ignore_index=True)
+            dep_df = dep_df.dropna(axis=1, how="all")
+            cols = ["Template"] + [c for c in dep_df.columns if c != "Template"]
+            _write_sheet("Tax Dep Rules", dep_df[cols])
 
     # ── Tax Overrides sheet (optional) ───────────────────────────────
     if overrides:
-        override_rows = build_tax_override_table(overrides)
-        if not override_rows.empty:
-            df = override_rows
-            _write_sheet("Tax Overrides", df)
+        override_df = build_tax_override_table(overrides)
+        if not override_df.empty:
+            _write_sheet("Tax Overrides", override_df)
 
     # ── Resolved Tax Config sheet (optional) ────────────────────────
     if resolved_configs:
