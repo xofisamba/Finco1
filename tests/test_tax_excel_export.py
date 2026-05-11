@@ -191,7 +191,7 @@ class TestPerSpvTaxSheets:
             os.unlink(tmp_path)
 
     def test_audit_note_in_first_row_of_per_spv_sheet(self):
-        """Per-SPV sheet first row contains the audit-only notice."""
+        """Per-SPV sheet row 1 contains the audit-only notice."""
         result = make_result(entity_code="HR-SPV-001")
 
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
@@ -205,11 +205,11 @@ class TestPerSpvTaxSheets:
             from openpyxl import load_workbook
             wb = load_workbook(tmp_path)
             ws = wb["Tax_HR-SPV-001"]
-            # Row 1 = DataFrame headers, Row 2 = audit note, Row 3+ = data
-            header_cell = ws.cell(row=1, column=1).value
-            assert header_cell == "Period", f"Expected 'Period' header in row 1, got: {header_cell}"
-            second_cell = ws.cell(row=2, column=1).value
-            assert "AUDIT-ONLY" in str(second_cell), f"Expected AUDIT-ONLY in row 2, got: {second_cell}"
+            # Row 1 = audit note, Row 2 = column headers, Row 3+ = data
+            first_cell = ws.cell(row=1, column=1).value
+            assert "AUDIT-ONLY" in str(first_cell), f"Expected AUDIT-ONLY in row 1, got: {first_cell}"
+            header_cell = ws.cell(row=2, column=1).value
+            assert header_cell == "Period", f"Expected 'Period' header in row 2, got: {header_cell}"
             wb.close()
         finally:
             os.unlink(tmp_path)
@@ -257,3 +257,112 @@ class TestNoMutation:
             os.unlink(tmp_path)
 
         assert result.total_cit_payable_keur == original_cit
+
+# ── Test: sanitization and uniqueness ────────────────────────────────────────
+
+class TestSheetNameSanitization:
+    def test_entity_code_with_colon_exports_successfully(self):
+        """entity_code containing ':' exports without error."""
+        result = make_result(entity_code="SPV:001:ENTITY")
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            tmp_path = f.name
+
+        try:
+            import pandas as pd
+            with pd.ExcelWriter(tmp_path, engine="openpyxl") as writer:
+                write_spv_tax_audit_sheets(writer, (result,))
+
+            from openpyxl import load_workbook
+            wb = load_workbook(tmp_path)
+            # Sheet name should have ':' replaced with '_'
+            assert "Tax_SPV_001_ENTITY" in wb.sheetnames
+            # More importantly: no crash happened
+            wb.close()
+        finally:
+            os.unlink(tmp_path)
+
+    def test_tax_summary_first_row_contains_audit_note(self):
+        """Tax Summary sheet row 1 contains the audit-only notice."""
+        result = make_result(entity_code="HR-SPV-001")
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            tmp_path = f.name
+
+        try:
+            import pandas as pd
+            with pd.ExcelWriter(tmp_path, engine="openpyxl") as writer:
+                write_spv_tax_audit_sheets(writer, (result,))
+
+            from openpyxl import load_workbook
+            wb = load_workbook(tmp_path)
+            ws = wb["Tax Summary"]
+            first_cell = ws.cell(row=1, column=1).value
+            assert "AUDIT-ONLY" in str(first_cell), f"Expected AUDIT-ONLY in row 1 of Tax Summary, got: {first_cell}"
+            # Row 2 should be column headers
+            header_cell = ws.cell(row=2, column=1).value
+            assert header_cell == "Entity Code", f"Expected 'Entity Code' header in row 2, got: {header_cell}"
+            wb.close()
+        finally:
+            os.unlink(tmp_path)
+
+    def test_two_long_entity_codes_create_unique_sheets(self):
+        """Two entity codes that truncate to same base name get unique sheet names."""
+        # Two 50-char codes that differ only in last char — both truncate to "Tax_" + 27 = 31 chars
+        # Both would be "Tax_AAAA...A" (31 chars) — must get _2 disambiguation
+        code1 = "A" * 30  # "Tax_" + 30 = 34 → truncated to 31
+        code2 = "A" * 29 + "B"  # differs only in last char
+
+        result1 = make_result(entity_code=code1)
+        result2 = make_result(entity_code=code2)
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            tmp_path = f.name
+
+        try:
+            import pandas as pd
+            with pd.ExcelWriter(tmp_path, engine="openpyxl") as writer:
+                write_spv_tax_audit_sheets(writer, (result1, result2))
+
+            from openpyxl import load_workbook
+            wb = load_workbook(tmp_path)
+            tax_sheets = [s for s in wb.sheetnames if s.startswith("Tax_")]
+
+            # Should have exactly 2 per-SPV sheets (and Tax Summary)
+            spv_sheets = [s for s in tax_sheets if s != "Tax Summary"]
+            assert len(spv_sheets) == 2, f"Expected 2 per-SPV sheets, got: {spv_sheets}"
+
+            # Names must be unique
+            assert spv_sheets[0] != spv_sheets[1]
+
+            # Both must be <= 31 chars
+            for s in spv_sheets:
+                assert len(s) <= 31, f"Sheet name '{s}' exceeds 31 chars"
+
+            # One should end with _2 (disambiguation)
+            suffixes = [s for s in spv_sheets if s.endswith("_2")]
+            assert len(suffixes) == 1, f"Expected exactly one sheet with _2 suffix, got: {spv_sheets}"
+            wb.close()
+        finally:
+            os.unlink(tmp_path)
+
+    def test_per_spv_sheet_audit_note_still_correct(self):
+        """Per-SPV sheet row 1 still contains audit note (regression check)."""
+        result = make_result(entity_code="HR-SPV-001")
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+            tmp_path = f.name
+
+        try:
+            import pandas as pd
+            with pd.ExcelWriter(tmp_path, engine="openpyxl") as writer:
+                write_spv_tax_audit_sheets(writer, (result,))
+
+            from openpyxl import load_workbook
+            wb = load_workbook(tmp_path)
+            ws = wb["Tax_HR-SPV-001"]
+            first_cell = ws.cell(row=1, column=1).value
+            assert "AUDIT-ONLY" in str(first_cell), f"Expected AUDIT-ONLY in row 1, got: {first_cell}"
+            wb.close()
+        finally:
+            os.unlink(tmp_path)
