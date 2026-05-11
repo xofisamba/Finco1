@@ -104,7 +104,7 @@ construction.
 ### Components
 
 - `EquityInjection` — sponsor equity injection events
-- `ProjectInputs` — project financial inputs (CAPEX, OPEX, debt structure, etc.)
+- `ProjectInputs` (model input schemas) — project financial inputs (CAPEX, OPEX, debt structure, etc.)
 - `HoldCoTaxInputs` — HoldCo tax configuration inputs
 - `TaxTemplate` — tax template definitions (user-provided or system-loaded)
 - `TaxTemplateOverride` — user overrides to tax templates
@@ -231,7 +231,7 @@ there are no mutation paths.
 | `HoldCoTaxResult` after construction | Derived, reproducible output |
 | `SponsorCashflowResult` (Phase 7A) | Derived output; sponsor covenant evidence |
 | Any future `SponsorCapitalAccount` snapshot | Immutable capital account history |
-| `ProjectInputs` after construction | Immutable model input |
+| `ProjectInputs` (model input schemas) after construction | Immutable model input |
 | `TaxTemplate` after construction | Immutable configuration |
 | `TaxTemplateOverride` after construction | Immutable override record |
 
