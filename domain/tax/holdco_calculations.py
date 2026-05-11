@@ -18,6 +18,7 @@ __all__ = [
     "calculate_interest_limitation_keur",
     "calculate_deductible_interest_after_limitation_keur",
     # Aliases
+    "split_shl_receipt_tax_components",
     "split_shl_tax_treatment",
     "calculate_interest_deductibility_limit_keur",
     "calculate_holdco_taxable_income_before_cit_keur",
@@ -294,16 +295,17 @@ def calculate_deductible_interest_after_limitation_keur(
 
 # ── Aliases ──────────────────────────────────────────────────────────────────
 
-def split_shl_tax_treatment(
+def split_shl_receipt_tax_components(
     shl_interest_income_keur: float,
     shl_principal_received_keur: float,
 ) -> tuple[float, float]:
-    """Split SHL receipts into taxable interest and non-taxable principal.
-
-    Alias for: separate treatment of SHL interest (taxable) and SHL principal
-    (non-taxable recovery of investment).
+    """Split SHL receipts into taxable interest and non-taxable principal amount.
 
     Pure function — no mutation, no side effects.
+
+    SHL interest income is taxable. SHL principal repayments are recovery of
+    investment — they have zero taxable income impact (not taxable, not deductible)
+    but the amount must be tracked for audit purposes.
 
     Parameters
     ----------
@@ -316,16 +318,42 @@ def split_shl_tax_treatment(
     -------
     tuple[float, float]
         (taxable_interest_income_keur, non_taxable_principal_keur)
-        Principal is always returned as 0.0 (excluded from taxable income).
+        The principal amount is returned for audit tracking — it does NOT
+        enter the taxable income calculation.
+
+    Examples
+    --------
+    >>> split_shl_receipt_tax_components(200.0, 500.0)
+    (200.0, 500.0)
+    """
+    _non_negative(shl_interest_income_keur, "shl_interest_income_keur")
+    _non_negative(shl_principal_received_keur, "shl_principal_received_keur")
+    _no_nan_inf(shl_interest_income_keur, "shl_interest_income_keur")
+    _no_nan_inf(shl_principal_received_keur, "shl_principal_received_keur")
+    return (shl_interest_income_keur, shl_principal_received_keur)
+
+
+def split_shl_tax_treatment(
+    shl_interest_income_keur: float,
+    shl_principal_received_keur: float,
+) -> tuple[float, float]:
+    """Alias for split_shl_receipt_tax_components.
+
+    .. deprecated::
+        Use :func:`split_shl_receipt_tax_components` instead.
+        This alias is kept for backward compatibility.
+
+    The second return value is the non-taxable principal **amount** (not
+    taxable income impact). It must NOT be used as a taxable income modifier.
 
     Examples
     --------
     >>> split_shl_tax_treatment(200.0, 500.0)
-    (200.0, 0.0)
+    (200.0, 500.0)
     """
-    _non_negative(shl_interest_income_keur, "shl_interest_income_keur")
-    _non_negative(shl_principal_received_keur, "shl_principal_received_keur")
-    return (shl_interest_income_keur, 0.0)
+    return split_shl_receipt_tax_components(
+        shl_interest_income_keur, shl_principal_received_keur
+    )
 
 
 def calculate_interest_deductibility_limit_keur(
