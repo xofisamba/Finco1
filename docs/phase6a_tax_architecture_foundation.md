@@ -510,3 +510,58 @@ Every exported sheet starts with:
 > "AUDIT-ONLY: SPV tax engine results are not yet wired into waterfall outputs or IRR metrics."
 
 Future Phase 6B.6 may wire tax result into optional reconciliation export.
+
+---
+
+## Phase 6B.6 — Optional Tax Audit Sheet Integration
+
+**Purpose:** Integrate SPV tax audit sheets into the existing `build_excel_export()` as an optional, opt-in feature.
+
+**Status:** Audit-only. **No waterfall impact. No model output changes. No cashflow wiring.**
+
+### What's built
+
+| Component | File | Description |
+|---|---|---|
+| Excel export hook | `app/excel_export.py` | `tax_results=None` parameter in `build_excel_export()` |
+| Tests | `tests/test_excel_export.py` | 6 new integration tests |
+
+### Behavior
+
+```python
+# Default: unchanged — no tax sheets
+data = build_excel_export(result=result, project_inputs=inputs)
+
+# Optional: add SPV tax audit sheets
+data = build_excel_export(
+    result=result,
+    project_inputs=inputs,
+    tax_results=(spv_tax_result1, spv_tax_result2, ...),
+)
+```
+
+- `tax_results=None` → default behavior exactly as before
+- `tax_results=()` → no-op (no tax sheets written)
+- `tax_results=(result, ...)` → writes `Tax Summary` + `Tax_{entity_code}` sheets
+- No changes to existing sheets, values, or layout
+- Tax sheets are **audit-only** — not wired into waterfall economics
+
+### Explicit non-scope (unchanged from 6B.5)
+
+| Item | Status |
+|---|---|
+| Waterfall integration / model output changes | ❌ Not wired |
+| Tax payable → IRR / cashflows | ❌ Not wired |
+| HoldCo tax / SHL tax / WHT | ❌ Not implemented |
+| Deferred tax | ❌ Not implemented |
+| Sponsor IRR / sponsor waterfall | ❌ Not implemented |
+| Existing `excel_export.py` layout | ❌ Unchanged (except optional hook) |
+
+### Tests
+
+```
+tests/test_excel_export.py:               64 passed ✅
+tests/test_tax_excel_export.py:           12 passed ✅
+tests/test_tax_ui.py:                    10 passed ✅
+tests/test_tax_engine_runner.py:         23 passed, 1 skipped ✅
+```
