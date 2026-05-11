@@ -11,11 +11,16 @@ import math
 
 
 __all__ = [
+    # Primary functions
     "calculate_withholding_tax_keur",
     "calculate_holdco_taxable_income_before_limitations",
     "exclude_shl_principal_from_taxable_income",
     "calculate_interest_limitation_keur",
     "calculate_deductible_interest_after_limitation_keur",
+    # Aliases
+    "split_shl_tax_treatment",
+    "calculate_interest_deductibility_limit_keur",
+    "calculate_holdco_taxable_income_before_cit_keur",
 ]
 
 
@@ -96,11 +101,11 @@ def calculate_holdco_taxable_income_before_limitations(
     Parameters
     ----------
     dividend_income_keur : float
-        Taxable dividend income in kEUR.
+        Taxable dividend income in kEUR. Must be >= 0.
     shl_interest_income_keur : float
-        Taxable SHL interest income in kEUR.
+        Taxable SHL interest income in kEUR. Must be >= 0.
     holdco_opex_keur : float
-        Deductible HoldCo operating expenses in kEUR.
+        Deductible HoldCo operating expenses in kEUR. Must be >= 0.
 
     Returns
     -------
@@ -111,13 +116,19 @@ def calculate_holdco_taxable_income_before_limitations(
     Raises
     ------
     ValueError
-        If any input is NaN or Inf.
+        If any input is NaN or Inf, or if any input is negative.
+
+    Examples
+    --------
+    >>> calculate_holdco_taxable_income_before_limitations(1000.0, 200.0, 50.0)
+    1150.0
     """
     for name, val in [
         ("dividend_income_keur", dividend_income_keur),
         ("shl_interest_income_keur", shl_interest_income_keur),
         ("holdco_opex_keur", holdco_opex_keur),
     ]:
+        _non_negative(val, name)
         _no_nan_inf(val, name)
     return dividend_income_keur + shl_interest_income_keur - holdco_opex_keur
 
@@ -156,7 +167,6 @@ def exclude_shl_principal_from_taxable_income(
     """
     _non_negative(shl_principal_keur, "shl_principal_keur")
     _no_nan_inf(shl_principal_keur, "shl_principal_keur")
-    # Principal is excluded — taxable income impact is exactly zero
     return 0.0
 
 
@@ -174,13 +184,16 @@ def calculate_interest_limitation_keur(
     ATAD rule (EU Anti-Tax Avoidance Directive):
     Net interest expense is limited to interest_limitation_pct_ebitda
     of EBITDA. Any excess is non-deductible but carried forward.
+    If EBITDA <= 0, the limit is 0 — all interest is non-deductible.
 
     Parameters
     ----------
     interest_amount_keur : float
         Total interest expense in kEUR. Must be >= 0.
     ebitda_keur : float
-        EBITDA in kEUR. Used as the limitation base. Must be >= 0.
+        EBITDA in kEUR. Used as the limitation base.
+        May be negative (ATAD allows full non-deductibility when EBITDA <= 0).
+        Must not be NaN or Inf.
     interest_limitation_pct_ebitda : float | None
         Fraction of EBITDA to which interest is limited (e.g., 0.30 for 30%).
         None = no EBITDA limitation applies (unlimited deductibility).
@@ -191,24 +204,29 @@ def calculate_interest_limitation_keur(
     float
         Non-deductible / limited interest in kEUR.
         If interest_limitation_pct_ebitda is None → returns 0 (no limit).
+        If ebitda_keur <= 0 → returns interest_amount_keur (all non-deductible).
         Otherwise: max(0, interest_amount - ebitda * interest_limitation_pct_ebitda).
 
     Raises
     ------
     ValueError
-        If interest_amount_keur < 0 or ebitda_keur < 0.
+        If interest_amount_keur < 0.
+        If ebitda_keur is NaN or Inf.
         If interest_limitation_pct_ebitda is not None and outside [0, 1].
 
     Examples
     --------
     >>> calculate_interest_limitation_keur(200.0, 1000.0, 0.30)
-    100.0  # 200 - 300 = 100 excess
-    >>> calculate_interest_llimitation_keur(200.0, 1000.0, None)
+    0.0  # 200 < 300 limit
+    >>> calculate_interest_limitation_keur(400.0, 1000.0, 0.30)
+    100.0  # 400 - 300 = 100 excess
+    >>> calculate_interest_limitation_keur(200.0, 1000.0, None)
     0.0  # no limit
+    >>> calculate_interest_limitation_keur(200.0, -100.0, 0.30)
+    200.0  # EBITDA <= 0, all interest is limited
     """
     _non_negative(interest_amount_keur, "interest_amount_keur")
     _no_nan_inf(interest_amount_keur, "interest_amount_keur")
-    _non_negative(ebitda_keur, "ebitda_keur")
     _no_nan_inf(ebitda_keur, "ebitda_keur")
 
     if interest_limitation_pct_ebitda is None:
@@ -220,7 +238,10 @@ def calculate_interest_limitation_keur(
             f"got {interest_limitation_pct_ebitda}"
         )
 
-    limit = ebitda_keur * interest_limitation_pct_ebitda
+    if ebitda_keur <= 0:
+        return interest_amount_keur
+
+    limit = max(0.0, ebitda_keur * interest_limitation_pct_ebitda)
     excess = interest_amount_keur - limit
     return max(0.0, excess)
 
@@ -239,7 +260,7 @@ def calculate_deductible_interest_after_limitation_keur(
     interest_amount_keur : float
         Total interest expense in kEUR.
     ebitda_keur : float
-        EBITDA in kEUR.
+        EBITDA in kEUR. May be negative.
     interest_limitation_pct_ebitda : float | None
         ATAD EBITDA limitation fraction. None = no limit.
 
@@ -252,13 +273,14 @@ def calculate_deductible_interest_after_limitation_keur(
     Examples
     --------
     >>> calculate_deductible_interest_after_limitation_keur(200.0, 1000.0, 0.30)
-    200.0  # limit is 300, all 200 is deductible
+    200.0  # all within 300 limit
     >>> calculate_deductible_interest_after_limitation_keur(400.0, 1000.0, 0.30)
-    300.0  # limit is 300, excess 100 is non-deductible
+    300.0  # 300 deductible, 100 excess
+    >>> calculate_deductible_interest_after_limitation_keur(200.0, -100.0, 0.30)
+    0.0  # EBITDA <= 0, all interest is limited
     """
     _non_negative(interest_amount_keur, "interest_amount_keur")
     _no_nan_inf(interest_amount_keur, "interest_amount_keur")
-    _non_negative(ebitda_keur, "ebitda_keur")
     _no_nan_inf(ebitda_keur, "ebitda_keur")
 
     if interest_limitation_pct_ebitda is None:
@@ -268,3 +290,101 @@ def calculate_deductible_interest_after_limitation_keur(
         interest_amount_keur, ebitda_keur, interest_limitation_pct_ebitda
     )
     return max(0.0, interest_amount_keur - excess)
+
+
+# ── Aliases ──────────────────────────────────────────────────────────────────
+
+def split_shl_tax_treatment(
+    shl_interest_income_keur: float,
+    shl_principal_received_keur: float,
+) -> tuple[float, float]:
+    """Split SHL receipts into taxable interest and non-taxable principal.
+
+    Alias for: separate treatment of SHL interest (taxable) and SHL principal
+    (non-taxable recovery of investment).
+
+    Pure function — no mutation, no side effects.
+
+    Parameters
+    ----------
+    shl_interest_income_keur : float
+        Taxable SHL interest income in kEUR. Must be >= 0.
+    shl_principal_received_keur : float
+        SHL principal repayment received in kEUR. Must be >= 0.
+
+    Returns
+    -------
+    tuple[float, float]
+        (taxable_interest_income_keur, non_taxable_principal_keur)
+        Principal is always returned as 0.0 (excluded from taxable income).
+
+    Examples
+    --------
+    >>> split_shl_tax_treatment(200.0, 500.0)
+    (200.0, 0.0)
+    """
+    _non_negative(shl_interest_income_keur, "shl_interest_income_keur")
+    _non_negative(shl_principal_received_keur, "shl_principal_received_keur")
+    return (shl_interest_income_keur, 0.0)
+
+
+def calculate_interest_deductibility_limit_keur(
+    interest_expense_keur: float,
+    ebitda_keur: float,
+    config,  # InterestDeductibilityConfig
+) -> tuple[float, float]:
+    """Calculate deductible and non-deductible interest using a config object.
+
+    Pure function — no mutation, no side effects.
+
+    Parameters
+    ----------
+    interest_expense_keur : float
+        Total interest expense in kEUR.
+    ebitda_keur : float
+        EBITDA in kEUR. May be negative.
+    config
+        InterestDeductibilityConfig with thin_cap_ratio and
+        interest_limitation_pct_ebitda fields.
+
+    Returns
+    -------
+    tuple[float, float]
+        (deductible_interest_keur, limited_interest_keur)
+
+    Examples
+    --------
+    >>> from domain.tax.holdco_inputs import InterestDeductibilityConfig
+    >>> cfg = InterestDeductibilityConfig(interest_limitation_pct_ebitda=0.30)
+    >>> calculate_interest_deductibility_limit_keur(400.0, 1000.0, cfg)
+    (300.0, 100.0)
+    """
+    pct = getattr(config, "interest_limitation_pct_ebitda", None)
+    deductible = calculate_deductible_interest_after_limitation_keur(
+        interest_expense_keur, ebitda_keur, pct
+    )
+    limited = max(0.0, interest_expense_keur - deductible)
+    return (deductible, limited)
+
+
+def calculate_holdco_taxable_income_before_cit_keur(
+    dividend_income_keur: float,
+    shl_interest_income_keur: float,
+    holdco_opex_keur: float,
+) -> float:
+    """Alias for calculate_holdco_taxable_income_before_limitations.
+
+    Calculates HoldCo taxable income before CIT and interest limitations.
+
+    Pure function — no mutation, no side effects.
+
+    Examples
+    --------
+    >>> calculate_holdco_taxable_income_before_cit_keur(1000.0, 200.0, 50.0)
+    1150.0
+    """
+    return calculate_holdco_taxable_income_before_limitations(
+        dividend_income_keur,
+        shl_interest_income_keur,
+        holdco_opex_keur,
+    )

@@ -99,6 +99,18 @@ class TestHoldcoTaxableIncomeBeforeLimitations:
                 1000.0, float("inf"), 50.0
             )
 
+    def test_negative_dividend_rejected(self):
+        with pytest.raises(ValueError, match="dividend_income_keur.*must be non-negative"):
+            calculate_holdco_taxable_income_before_limitations(-100.0, 200.0, 50.0)
+
+    def test_negative_shl_interest_rejected(self):
+        with pytest.raises(ValueError, match="shl_interest_income_keur.*must be non-negative"):
+            calculate_holdco_taxable_income_before_limitations(1000.0, -50.0, 50.0)
+
+    def test_negative_opex_rejected(self):
+        with pytest.raises(ValueError, match="holdco_opex_keur.*must be non-negative"):
+            calculate_holdco_taxable_income_before_limitations(1000.0, 200.0, -10.0)
+
     def test_pure_behavior_no_mutation(self):
         div, int_, opex = 1000.0, 200.0, 50.0
         result = calculate_holdco_taxable_income_before_limitations(div, int_, opex)
@@ -153,8 +165,17 @@ class TestCalculateInterestLimitationKeur:
         assert calculate_interest_limitation_keur(0.0, 1000.0, 0.30) == 0.0
 
     def test_zero_ebitda(self):
-        # limit = 0, interest = 100, excess = 100 (all non-deductible)
+        # ebitda_keur = 0 <= 0, limit = 0, all interest is limited
         assert calculate_interest_limitation_keur(100.0, 0.0, 0.30) == 100.0
+
+    def test_negative_ebitda_accepted_all_limited(self):
+        # EBITDA <= 0 → all interest is non-deductible
+        assert calculate_interest_limitation_keur(200.0, -100.0, 0.30) == 200.0
+        assert calculate_interest_limitation_keur(200.0, -1000.0, 0.30) == 200.0
+
+    def test_negative_ebitda_no_limit_pct(self):
+        # no limitation pct → returns 0
+        assert calculate_interest_limitation_keur(200.0, -100.0, None) == 0.0
 
     def test_zero_limit_percent(self):
         # limit = 1000 * 0 = 0, all interest non-deductible
@@ -171,10 +192,6 @@ class TestCalculateInterestLimitationKeur:
     def test_negative_interest_rejected(self):
         with pytest.raises(ValueError, match="interest_amount_keur.*must be non-negative"):
             calculate_interest_limitation_keur(-100.0, 1000.0, 0.30)
-
-    def test_negative_ebitda_rejected(self):
-        with pytest.raises(ValueError, match="ebitda_keur.*must be non-negative"):
-            calculate_interest_limitation_keur(200.0, -100.0, 0.30)
 
     def test_pure_behavior_no_mutation(self):
         interest, ebitda, limit = 200.0, 1000.0, 0.30
@@ -202,8 +219,14 @@ class TestDeductibleInterestAfterLimitation:
         assert calculate_deductible_interest_after_limitation_keur(0.0, 1000.0, 0.30) == 0.0
 
     def test_zero_ebitda(self):
+        # ebitda_keur = 0, limit = 0, all is limited → 0 deductible
         result = calculate_deductible_interest_after_limitation_keur(100.0, 0.0, 0.30)
-        assert result == 0.0  # all non-deductible
+        assert result == 0.0
+
+    def test_negative_ebitda_with_limit_returns_zero(self):
+        # EBITDA <= 0 → all limited → deductible = 0
+        result = calculate_deductible_interest_after_limitation_keur(200.0, -100.0, 0.30)
+        assert result == 0.0
 
     def test_result_never_negative(self):
         result = calculate_deductible_interest_after_limitation_keur(500.0, 100.0, 0.30)
@@ -218,3 +241,66 @@ class TestDeductibleInterestAfterLimitation:
         result = calculate_deductible_interest_after_limitation_keur(interest, ebitda, limit)
         assert result == 300.0
         assert interest == 400.0  # unchanged
+
+# ── Tests: alias functions ────────────────────────────────────────────────────
+
+class TestAliasFunctions:
+    def test_split_shl_tax_treatment(self):
+        from domain.tax.holdco_calculations import split_shl_tax_treatment
+        taxable_int, non_taxable_principal = split_shl_tax_treatment(200.0, 500.0)
+        assert taxable_int == 200.0
+        assert non_taxable_principal == 0.0  # principal always excluded
+
+    def test_split_shl_tax_treatment_zero_principal(self):
+        from domain.tax.holdco_calculations import split_shl_tax_treatment
+        taxable_int, non_taxable_principal = split_shl_tax_treatment(100.0, 0.0)
+        assert taxable_int == 100.0
+        assert non_taxable_principal == 0.0
+
+    def test_split_shl_tax_treatment_negative_principal_rejected(self):
+        from domain.tax.holdco_calculations import split_shl_tax_treatment
+        with pytest.raises(ValueError, match="shl_principal_received_keur.*must be non-negative"):
+            split_shl_tax_treatment(100.0, -50.0)
+
+    def test_split_shl_tax_treatment_negative_interest_rejected(self):
+        from domain.tax.holdco_calculations import split_shl_tax_treatment
+        with pytest.raises(ValueError, match="shl_interest_income_keur.*must be non-negative"):
+            split_shl_tax_treatment(-50.0, 100.0)
+
+    def test_calculate_interest_deductibility_limit_with_config(self):
+        from domain.tax.holdco_calculations import calculate_interest_deductibility_limit_keur
+        from domain.tax.holdco_inputs import InterestDeductibilityConfig
+        cfg = InterestDeductibilityConfig(interest_limitation_pct_ebitda=0.30)
+        deductible, limited = calculate_interest_deductibility_limit_keur(400.0, 1000.0, cfg)
+        assert deductible == 300.0
+        assert limited == 100.0
+
+    def test_calculate_interest_deductibility_limit_negative_ebitda(self):
+        from domain.tax.holdco_calculations import calculate_interest_deductibility_limit_keur
+        from domain.tax.holdco_inputs import InterestDeductibilityConfig
+        cfg = InterestDeductibilityConfig(interest_limitation_pct_ebitda=0.30)
+        deductible, limited = calculate_interest_deductibility_limit_keur(200.0, -100.0, cfg)
+        assert deductible == 0.0
+        assert limited == 200.0
+
+    def test_calculate_interest_deductibility_limit_no_limit(self):
+        from domain.tax.holdco_calculations import calculate_interest_deductibility_limit_keur
+        from domain.tax.holdco_inputs import InterestDeductibilityConfig
+        cfg = InterestDeductibilityConfig(interest_limitation_pct_ebitda=None)
+        deductible, limited = calculate_interest_deductibility_limit_keur(200.0, 1000.0, cfg)
+        assert deductible == 200.0
+        assert limited == 0.0
+
+    def test_calculate_holdco_taxable_income_before_cit_alias(self):
+        from domain.tax.holdco_calculations import (
+            calculate_holdco_taxable_income_before_cit_keur,
+            calculate_holdco_taxable_income_before_limitations,
+        )
+        result = calculate_holdco_taxable_income_before_cit_keur(1000.0, 200.0, 50.0)
+        expected = calculate_holdco_taxable_income_before_limitations(1000.0, 200.0, 50.0)
+        assert result == expected == 1150.0
+
+    def test_calculate_holdco_taxable_income_before_cit_rejects_negative(self):
+        from domain.tax.holdco_calculations import calculate_holdco_taxable_income_before_cit_keur
+        with pytest.raises(ValueError, match="dividend_income_keur.*must be non-negative"):
+            calculate_holdco_taxable_income_before_cit_keur(-100.0, 200.0, 50.0)

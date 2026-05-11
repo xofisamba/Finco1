@@ -143,4 +143,8 @@ __all__ = [
     "exclude_shl_principal_from_taxable_income",
     "calculate_interest_limitation_keur",
     "calculate_deductible_interest_after_limitation_keur",
+    # Phase 6C.2 — Aliases
+    "split_shl_tax_treatment",
+    "calculate_interest_deductibility_limit_keur",
+    "calculate_holdco_taxable_income_before_cit_keur",
 ]
