@@ -155,10 +155,10 @@ class SnapshotContext:
             "metric": name,
             "status": "PASS" if cmp["pass"] else "FAIL",
             "actual": actual,
-            "golden": golden_value,
+            "golden": resolved_value,
             "delta": cmp["delta"],
-            "tolerance_type": tol_type,
-            "tolerance_value": tol_value,
+            "tolerance_type": resolved_tol_type,
+            "tolerance_value": resolved_tol_value,
         }
         if not cmp["pass"]:
             self.failures.append(result)
