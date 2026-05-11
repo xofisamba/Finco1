@@ -13,6 +13,9 @@ Phase 6B.2 adds:
 
 Phase 6B.3 adds:
 - TaxLossPeriod, TaxLossCarryforwardSchedule, build_tax_loss_carryforward_schedule
+
+Phase 6B.4 adds:
+- SPVTaxEngineInputs, SPVTaxPeriodResult, SPVTaxResult, run_spv_tax_engine
 """
 from domain.tax.engine import (
     taxable_profit,
@@ -64,6 +67,11 @@ from domain.tax.templates.schedules import (
     build_tax_loss_carryforward_schedule,
 )
 
+# Phase 6B.4 — SPV tax engine
+from domain.tax.engine_inputs import SPVTaxEngineInputs
+from domain.tax.engine_result import SPVTaxPeriodResult, SPVTaxResult
+from domain.tax.engine_runner import run_spv_tax_engine
+
 __all__ = [
     # Phase 1-4 existing
     "taxable_profit",
@@ -92,4 +100,9 @@ __all__ = [
     "TaxLossPeriod",
     "TaxLossCarryforwardSchedule",
     "build_tax_loss_carryforward_schedule",
+    # Phase 6B.4
+    "SPVTaxEngineInputs",
+    "SPVTaxPeriodResult",
+    "SPVTaxResult",
+    "run_spv_tax_engine",
 ]
