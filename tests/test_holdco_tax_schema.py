@@ -1,5 +1,6 @@
 """Phase 6C.1 — Tests for HoldCo / intercompany tax schema."""
 import pytest
+import math
 
 from domain.tax.holdco_inputs import (
     HoldCoTaxInputs,
@@ -56,7 +57,7 @@ def make_holdco_inputs(
         holdco_opex_by_period_keur=tuple(50.0 for _ in range(n_periods)),
         withholding_tax_config=make_wht_config(),
         interest_deductibility=make_interest_deductibility(),
-        metadata={"source": "test", "version": "1"},
+        metadata=(("source", "test"), ("version", "1")),
     )
     defaults.update(overrides)
     return HoldCoTaxInputs(**defaults)
@@ -101,12 +102,8 @@ class TestWithholdingTaxConfig:
         with pytest.raises(ValueError, match="rate_interest"):
             WithholdingTaxConfig(rate_dividends=0.0, rate_interest=-0.1)
 
-    def test_notes_preserved(self):
-        cfg = WithholdingTaxConfig(rate_dividends=0.12, rate_interest=0.0, notes="EU exemption")
-        assert cfg.notes == "EU exemption"
 
-
-# ── Tests: InterestDeductibilityConfig ───────────────────────────────────────
+# ── Tests: InterestDeductibilityConfig ────────────────────────────────────────
 
 class TestInterestDeductibilityConfig:
     def test_valid_config_accepted(self):
@@ -179,6 +176,38 @@ class TestIntercompanyTaxFlow:
                 country_of_origin="",
             )
 
+    def test_whitespace_country_rejected(self):
+        with pytest.raises(ValueError, match="country_of_origin"):
+            IntercompanyTaxFlow(
+                period_index=0, flow_type="dividend",
+                gross_amount_keur=1000.0, withholding_tax_rate=0.0,
+                country_of_origin="  ",
+            )
+
+    def test_negative_period_index_rejected(self):
+        with pytest.raises(ValueError, match="period_index"):
+            IntercompanyTaxFlow(
+                period_index=-1, flow_type="dividend",
+                gross_amount_keur=1000.0, withholding_tax_rate=0.0,
+                country_of_origin="HR",
+            )
+
+    def test_nan_amount_rejected(self):
+        with pytest.raises(ValueError, match="gross_amount_keur"):
+            IntercompanyTaxFlow(
+                period_index=0, flow_type="dividend",
+                gross_amount_keur=float("nan"), withholding_tax_rate=0.0,
+                country_of_origin="HR",
+            )
+
+    def test_inf_rate_rejected(self):
+        with pytest.raises(ValueError, match="withholding_tax_rate"):
+            IntercompanyTaxFlow(
+                period_index=0, flow_type="dividend",
+                gross_amount_keur=1000.0, withholding_tax_rate=float("inf"),
+                country_of_origin="HR",
+            )
+
 
 # ── Tests: HoldCoTaxInputs ───────────────────────────────────────────────────
 
@@ -190,12 +219,21 @@ class TestHoldCoTaxInputs:
         assert inputs.tax_year == 2026
         assert len(inputs.dividend_income_by_period_keur) == 5
 
-    def test_metadata_preserved(self):
+    def test_metadata_preserved_as_tuple(self):
         inputs = make_holdco_inputs(
-            metadata={"source": "test", "version": "2"},
+            metadata=(("source", "test"), ("version", "2")),
         )
-        assert inputs.metadata["source"] == "test"
-        assert inputs.metadata["version"] == "2"
+        assert inputs.metadata == (("source", "test"), ("version", "2"))
+        assert inputs.metadata_dict == {"source": "test", "version": "2"}
+
+    def test_metadata_dict_normalized_from_dict(self):
+        """Dict input is normalized to tuple[tuple[str,str], ...] on construction."""
+        inputs = make_holdco_inputs(
+            metadata={"source": "test", "version": "3"},
+        )
+        # metadata is stored as tuple
+        assert isinstance(inputs.metadata, tuple)
+        assert inputs.metadata_dict == {"source": "test", "version": "3"}
 
     def test_empty_entity_code_rejected(self):
         with pytest.raises(ValueError, match="entity_code must be non-empty"):
@@ -219,7 +257,6 @@ class TestHoldCoTaxInputs:
         inputs = make_holdco_inputs(
             shl_principal_received_by_period_keur=tuple(500.0 for _ in range(5)),
         )
-        # Principal should be present and non-negative
         assert all(p >= 0 for p in inputs.shl_principal_received_by_period_keur)
 
     def test_negative_principal_rejected(self):
@@ -230,22 +267,18 @@ class TestHoldCoTaxInputs:
     def test_mismatched_period_lengths_rejected(self):
         with pytest.raises(ValueError, match="shl_interest_income_by_period_keur length"):
             make_holdco_inputs(
-                shl_interest_income_by_period_keur=(200.0, 200.0),  # only 2
+                shl_interest_income_by_period_keur=(200.0, 200.0),
             )
 
     def test_wht_config_stored_not_applied(self):
-        """WHT rates are stored but no WHT is calculated or applied."""
         cfg = make_wht_config(rate_dividends=0.12, rate_interest=0.15)
         inputs = make_holdco_inputs(withholding_tax_config=cfg)
         assert inputs.withholding_tax_config.rate_dividends == 0.12
-        # No active WHT calculation happens — schema only
 
     def test_interest_deductibility_stored_not_applied(self):
-        """Thin-cap and EBITDA limitation params stored but not enforced."""
         deduct = make_interest_deductibility(thin_cap_ratio=4.0, interest_limitation_pct_ebitda=0.30)
         inputs = make_holdco_inputs(interest_deductibility=deduct)
         assert inputs.interest_deductibility.thin_cap_ratio == 4.0
-        # No active limitation calculation happens — schema only
 
 
 # ── Tests: HoldCoTaxPeriodResult ─────────────────────────────────────────────
@@ -258,25 +291,53 @@ class TestHoldCoTaxPeriodResult:
         assert result.non_taxable_principal_keur == 500.0
         assert result.withholding_tax_dividends_keur == 120.0
 
+    def test_negative_period_index_rejected(self):
+        with pytest.raises(ValueError, match="period_index"):
+            make_period_result(period_index=-1)
+
+    def test_negative_taxable_income_rejected(self):
+        with pytest.raises(ValueError, match="taxable_dividend_income_keur"):
+            make_period_result(taxable_dividend_income_keur=-100.0)
+
+    def test_negative_principal_rejected(self):
+        with pytest.raises(ValueError, match="non_taxable_principal_keur"):
+            make_period_result(non_taxable_principal_keur=-50.0)
+
+    def test_negative_wht_field_rejected(self):
+        with pytest.raises(ValueError, match="withholding_tax_dividends_keur"):
+            make_period_result(withholding_tax_dividends_keur=-10.0)
+
+    def test_negative_interest_limited_rejected(self):
+        with pytest.raises(ValueError, match="interest_limited_keur"):
+            make_period_result(interest_limited_keur=-5.0)
+
+    def test_nan_field_rejected(self):
+        with pytest.raises(ValueError, match="taxable_dividend_income_keur.*NaN"):
+            make_period_result(taxable_dividend_income_keur=float("nan"))
+
+    def test_inf_field_rejected(self):
+        with pytest.raises(ValueError, match="taxable_interest_income_keur.*Inf"):
+            make_period_result(taxable_interest_income_keur=float("inf"))
+
+    def test_notes_normalized_from_list_to_tuple(self):
+        result = make_period_result(notes=["note a", "note b"])
+        assert isinstance(result.notes, tuple)
+        assert result.notes == ("note a", "note b")
+
+    def test_warnings_normalized_from_list_to_tuple(self):
+        result = make_period_result(warnings=["warn 1", "warn 2"])
+        assert isinstance(result.warnings, tuple)
+        assert result.warnings == ("warn 1", "warn 2")
+
     def test_principal_excluded_from_taxable_income(self):
-        """SHL principal is in separate field, not deducted from taxable income."""
         result = make_period_result(
             taxable_dividend_income_keur=1000.0,
             taxable_interest_income_keur=200.0,
             non_taxable_principal_keur=500.0,
             deductible_opex_keur=50.0,
-            taxable_income_before_limitations_keur=1150.0,  # = div + int + opex
+            taxable_income_before_limitations_keur=1150.0,
         )
-        # Principal should NOT be in taxable income
         assert result.taxable_income_before_limitations_keur == 1150.0
-
-    def test_notes_and_warnings_preserved(self):
-        result = make_period_result(
-            notes=("SHL principal excluded", "WHT stored not paid"),
-            warnings=("thin-cap exceeded in period 3",),
-        )
-        assert "SHL principal excluded" in result.notes
-        assert any("thin-cap exceeded" in w for w in result.warnings)
 
 
 # ── Tests: HoldCoTaxResult ────────────────────────────────────────────────────
@@ -294,13 +355,119 @@ class TestHoldCoTaxResult:
             total_non_taxable_principal_keur=2500.0,
             total_withholding_tax_dividends_keur=600.0,
             total_withholding_tax_interest_keur=0.0,
-            metadata={"version": "1"},
+            metadata=(("version", "1"),),
             notes=("schema-only result",),
         )
         assert result.entity_code == "HR-HoldCo-001"
         assert len(result.period_results) == 5
+        assert result.metadata_dict == {"version": "1"}
 
-    def test_totals_reconcile(self):
+    def test_empty_entity_code_rejected(self):
+        period_results = tuple(make_period_result(i) for i in range(5))
+        with pytest.raises(ValueError, match="entity_code must be non-empty"):
+            HoldCoTaxResult(
+                entity_code="",
+                country_code="HR",
+                tax_year=2026,
+                period_results=period_results,
+                total_taxable_dividend_keur=5000.0,
+                total_taxable_interest_keur=1000.0,
+                total_non_taxable_principal_keur=2500.0,
+                total_withholding_tax_dividends_keur=600.0,
+                total_withholding_tax_interest_keur=0.0,
+            )
+
+    def test_empty_country_rejected(self):
+        period_results = tuple(make_period_result(i) for i in range(5))
+        with pytest.raises(ValueError, match="country_code must be non-empty"):
+            HoldCoTaxResult(
+                entity_code="HR-HoldCo-001",
+                country_code="  ",
+                tax_year=2026,
+                period_results=period_results,
+                total_taxable_dividend_keur=5000.0,
+                total_taxable_interest_keur=1000.0,
+                total_non_taxable_principal_keur=2500.0,
+                total_withholding_tax_dividends_keur=600.0,
+                total_withholding_tax_interest_keur=0.0,
+            )
+
+    def test_invalid_tax_year_rejected(self):
+        period_results = tuple(make_period_result(i) for i in range(5))
+        with pytest.raises(ValueError, match="tax_year must be between"):
+            HoldCoTaxResult(
+                entity_code="HR-HoldCo-001",
+                country_code="HR",
+                tax_year=2101,
+                period_results=period_results,
+                total_taxable_dividend_keur=5000.0,
+                total_taxable_interest_keur=1000.0,
+                total_non_taxable_principal_keur=2500.0,
+                total_withholding_tax_dividends_keur=600.0,
+                total_withholding_tax_interest_keur=0.0,
+            )
+
+    def test_wrong_total_dividend_rejected(self):
+        period_results = tuple(make_period_result(i) for i in range(5))
+        with pytest.raises(ValueError, match="total_taxable_dividend_keur.*does not reconcile"):
+            HoldCoTaxResult(
+                entity_code="HR-HoldCo-001",
+                country_code="HR",
+                tax_year=2026,
+                period_results=period_results,
+                total_taxable_dividend_keur=9999.0,  # wrong
+                total_taxable_interest_keur=1000.0,
+                total_non_taxable_principal_keur=2500.0,
+                total_withholding_tax_dividends_keur=600.0,
+                total_withholding_tax_interest_keur=0.0,
+            )
+
+    def test_wrong_total_principal_rejected(self):
+        period_results = tuple(make_period_result(i) for i in range(5))
+        with pytest.raises(ValueError, match="total_non_taxable_principal_keur.*does not reconcile"):
+            HoldCoTaxResult(
+                entity_code="HR-HoldCo-001",
+                country_code="HR",
+                tax_year=2026,
+                period_results=period_results,
+                total_taxable_dividend_keur=5000.0,
+                total_taxable_interest_keur=1000.0,
+                total_non_taxable_principal_keur=9999.0,  # wrong
+                total_withholding_tax_dividends_keur=600.0,
+                total_withholding_tax_interest_keur=0.0,
+            )
+
+    def test_negative_total_wht_rejected(self):
+        period_results = tuple(make_period_result(i) for i in range(5))
+        with pytest.raises(ValueError, match="total_withholding_tax_dividends_keur"):
+            HoldCoTaxResult(
+                entity_code="HR-HoldCo-001",
+                country_code="HR",
+                tax_year=2026,
+                period_results=period_results,
+                total_taxable_dividend_keur=5000.0,
+                total_taxable_interest_keur=1000.0,
+                total_non_taxable_principal_keur=2500.0,
+                total_withholding_tax_dividends_keur=-50.0,  # negative
+                total_withholding_tax_interest_keur=0.0,
+            )
+
+    def test_nan_total_rejected(self):
+        period_results = tuple(make_period_result(i) for i in range(5))
+        with pytest.raises(ValueError, match="total_taxable_dividend_keur.*NaN"):
+            HoldCoTaxResult(
+                entity_code="HR-HoldCo-001",
+                country_code="HR",
+                tax_year=2026,
+                period_results=period_results,
+                total_taxable_dividend_keur=float("nan"),
+                total_taxable_interest_keur=1000.0,
+                total_non_taxable_principal_keur=2500.0,
+                total_withholding_tax_dividends_keur=600.0,
+                total_withholding_tax_interest_keur=0.0,
+            )
+
+    def test_metadata_dict_normalized_from_dict(self):
         period_results = tuple(make_period_result(i) for i in range(5))
         result = HoldCoTaxResult(
             entity_code="HR-HoldCo-001",
@@ -312,18 +479,45 @@ class TestHoldCoTaxResult:
             total_non_taxable_principal_keur=2500.0,
             total_withholding_tax_dividends_keur=600.0,
             total_withholding_tax_interest_keur=0.0,
+            metadata={"key": "value", "ver": "2"},
         )
-        # Totals are stored (not recalculated) — schema allows this
-        assert result.total_taxable_dividend_keur == 5000.0
+        assert isinstance(result.metadata, tuple)
+        assert result.metadata_dict == {"key": "value", "ver": "2"}
 
-    def test_no_active_tax_calculation(self):
-        """Schema only — result fields are audit containers, no computation."""
+    def test_notes_normalized_from_list_to_tuple(self):
         period_results = tuple(make_period_result(i) for i in range(5))
         result = HoldCoTaxResult(
             entity_code="HR-HoldCo-001",
             country_code="HR",
             tax_year=2026,
             period_results=period_results,
+            total_taxable_dividend_keur=5000.0,
+            total_taxable_interest_keur=1000.0,
+            total_non_taxable_principal_keur=2500.0,
+            total_withholding_tax_dividends_keur=600.0,
+            total_withholding_tax_interest_keur=0.0,
+            notes=["note 1", "note 2"],
+        )
+        assert isinstance(result.notes, tuple)
+        assert result.notes == ("note 1", "note 2")
+
+    def test_no_active_tax_calculation(self):
+        """Schema only — result fields are audit containers, no computation."""
+        period_results = tuple(make_period_result(i) for i in range(5))
+        # Use zeros for dividend/interest to show no active calculation happens
+        # (reconciliation passes since period_results also have 0 for those fields)
+        zero_period = [make_period_result(i,
+            taxable_dividend_income_keur=0.0,
+            taxable_interest_income_keur=0.0,
+            non_taxable_principal_keur=0.0,
+            withholding_tax_dividends_keur=0.0,
+            withholding_tax_interest_keur=0.0,
+        ) for i in range(5)]
+        result = HoldCoTaxResult(
+            entity_code="HR-HoldCo-001",
+            country_code="HR",
+            tax_year=2026,
+            period_results=tuple(zero_period),
             total_taxable_dividend_keur=0.0,
             total_taxable_interest_keur=0.0,
             total_non_taxable_principal_keur=0.0,

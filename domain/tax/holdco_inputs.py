@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional
+import math
 
 
 __all__ = [
@@ -34,6 +35,11 @@ def _rate_in_0_1(value: float, name: str) -> None:
 def _non_negative(value: float, name: str) -> None:
     if value < 0.0:
         raise ValueError(f"{name} must be non-negative, got {value}")
+
+
+def _no_nan_inf(value: float, name: str) -> None:
+    if math.isnan(value) or math.isinf(value):
+        raise ValueError(f"{name} must not be NaN or Inf, got {value}")
 
 
 # ── WithholdingTaxConfig ───────────────────────────────────────────────────────
@@ -73,7 +79,7 @@ class InterestDeductibilityConfig:
 
     Attributes
     ----------
-    thin_cap_ratio : float
+    thin_cap_ratio : float | None
         Debt-to-equity ratio above which interest is non-deductible (e.g., 4.0).
         None = no thin-cap rule applies.
     interest_limitation_pct_ebitda : float | None
@@ -109,15 +115,18 @@ class IntercompanyTaxFlow:
     Attributes
     ----------
     period_index : int
-        Period index (0-based).
+        Period index (0-based). Must be >= 0.
     flow_type : str
         "dividend" or "interest".
     gross_amount_keur : float
-        Gross amount before WHT.
+        Gross amount before WHT. Must be >= 0, no NaN/inf.
     withholding_tax_rate : float
-        Applicable WHT rate (0 = no WHT). Stored only — not yet applied.
+        Applicable WHT rate (0 = no WHT). Must be in [0, 1], no NaN/inf.
     country_of_origin : str
         ISO country code of the paying entity (for WHT treaty lookup).
+        Must be non-empty (whitespace stripped).
+    notes : str | None
+        Optional note.
     """
     period_index: int
     flow_type: str  # "dividend" | "interest"
@@ -127,12 +136,17 @@ class IntercompanyTaxFlow:
     notes: Optional[str] = None
 
     def __post_init__(self):
+        if self.period_index < 0:
+            raise ValueError(
+                f"period_index must be >= 0, got {self.period_index}"
+            )
         if self.flow_type not in ("dividend", "interest"):
             raise ValueError(f"flow_type must be 'dividend' or 'interest', got {self.flow_type!r}")
         _non_negative(self.gross_amount_keur, "gross_amount_keur")
+        _no_nan_inf(self.gross_amount_keur, "gross_amount_keur")
         _rate_in_0_1(self.withholding_tax_rate, "withholding_tax_rate")
-        if not self.country_of_origin:
-            raise ValueError("country_of_origin must be non-empty")
+        _no_nan_inf(self.withholding_tax_rate, "withholding_tax_rate")
+        _non_empty(self.country_of_origin, "country_of_origin")
 
 
 # ── HoldCoTaxInputs ───────────────────────────────────────────────────────────
@@ -167,15 +181,10 @@ class HoldCoTaxInputs:
         WHT rates on dividends and interest receipts.
     interest_deductibility : InterestDeductibilityConfig
         Thin-cap and EBITDA limitation parameters.
-    metadata : dict
-        Arbitrary metadata dict (e.g., {"source": "model", "version": "1"}).
-
-    Notes
-    -----
-    - SHL principal is tracked as non-taxable recovery of investment
-    - WHT config is stored but WHT is NOT calculated here
-    - Thin-cap / EBITDA limitations stored but NOT applied here
-    - No active CIT calculation yet
+    metadata : tuple[tuple[str, str], ...]
+        Key-value metadata pairs as tuple of 2-tuples (immutable).
+        Accepts dict on input — normalized to tuple in __post_init__.
+        Use metadata_dict property for dict-style access.
     """
     entity_code: str
     country_code: str
@@ -186,12 +195,17 @@ class HoldCoTaxInputs:
     holdco_opex_by_period_keur: tuple[float, ...]
     withholding_tax_config: WithholdingTaxConfig
     interest_deductibility: InterestDeductibilityConfig
-    metadata: dict = field(default_factory=dict)
+    metadata: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+
+    @property
+    def metadata_dict(self) -> dict[str, str]:
+        """Metadata as a dict for convenience."""
+        return dict(self.metadata)
 
     def __post_init__(self):
         _non_empty(self.entity_code, "entity_code")
         _non_empty(self.country_code, "country_code")
-        if self.tax_year < 2000 or self.tax_year > 2100:
+        if not (2000 <= self.tax_year <= 2100):
             raise ValueError(f"tax_year must be between 2000 and 2100, got {self.tax_year}")
 
         for name, values in [
@@ -223,3 +237,13 @@ class HoldCoTaxInputs:
                     f"shl_principal_received_by_period_keur[{i}] must be non-negative "
                     f"(principal repayment received), got {v}"
                 )
+
+        # Normalize metadata: dict -> tuple[tuple[str, str], ...]
+        if isinstance(self.metadata, dict):
+            object.__setattr__(
+                self,
+                "metadata",
+                tuple((str(k), str(v)) for k, v in self.metadata.items()),
+            )
+        elif not isinstance(self.metadata, tuple):
+            object.__setattr__(self, "metadata", tuple(self.metadata))
