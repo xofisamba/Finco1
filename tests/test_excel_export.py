@@ -1595,8 +1595,8 @@ class TestTaxAssumptionSnapshotIntegration:
         assert "Tax Overrides" in wb.sheetnames
         wb.close()
 
-    def test_snapshot_creates_resolved_tax_config_sheet(self):
-        """Passing snapshot creates Resolved Tax Config sheet."""
+    def test_snapshot_resolved_config_not_exported(self):
+        """Snapshot-only export does not create Resolved Tax Config sheet (no original ResolvedTaxConfig stored)."""
         import openpyxl
         snapshot = self._make_snapshot()
         result = run_demo_project("Solar")
@@ -1606,7 +1606,9 @@ class TestTaxAssumptionSnapshotIntegration:
             tax_assumption_snapshot=snapshot,
         )
         wb = openpyxl.load_workbook(BytesIO(data))
-        assert "Resolved Tax Config" in wb.sheetnames
+        # Resolved Tax Config sheet NOT created since snapshot is self-contained
+        # and does not store original ResolvedTaxConfig objects
+        assert "Resolved Tax Config" not in wb.sheetnames
         wb.close()
 
     def test_existing_core_sheets_unchanged_with_snapshot(self):

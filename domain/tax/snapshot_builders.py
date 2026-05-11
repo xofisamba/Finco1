@@ -49,6 +49,7 @@ def build_tax_template_snapshot(
     -------
     TaxTemplateSnapshot
         Immutable snapshot capturing template configuration.
+        No references to the original TaxTemplate object.
     """
     n_tiers = len(template.cit_tiers)
     if n_tiers == 0:
@@ -141,6 +142,7 @@ def build_resolved_tax_config_snapshot(
     -------
     ResolvedTaxConfigSnapshot
         Immutable snapshot capturing resolved configuration.
+        No references to the original ResolvedTaxConfig object.
     """
     n_tiers = len(resolved.resolved_template.cit_tiers)
     if n_tiers == 0:
@@ -190,19 +192,19 @@ def build_tax_assumption_snapshot(
     Parameters
     ----------
     templates : tuple[TaxTemplate, ...]
-        One or more tax templates to snapshot.
+        Source tax templates (not mutated; used only to build snapshots).
     resolved_configs : tuple[ResolvedTaxConfig, ...], optional
-        Resolved configurations to snapshot.
+        Source resolved configs (not mutated; used only to build snapshots).
     overrides : tuple[TaxTemplateOverride, ...], optional
-        Overrides to snapshot.
+        Source overrides (not mutated; used only to build snapshots).
     snapshot_label : str | None, optional
         Optional human-readable label for this snapshot.
 
     Returns
     -------
     TaxAssumptionSnapshot
-        Top-level immutable snapshot grouping all artifacts.
-        Stores original objects for downstream use (e.g., Excel export).
+        Top-level immutable snapshot storing only snapshot dataclasses.
+        Original objects are not stored — only derived immutable representations.
     """
     template_snapshots = tuple(
         build_tax_template_snapshot(tmpl, snapshot_label=snapshot_label)
@@ -218,9 +220,6 @@ def build_tax_assumption_snapshot(
     )
 
     return TaxAssumptionSnapshot(
-        templates=templates,
-        resolved_configs=resolved_configs,
-        overrides=overrides,
         template_snapshots=template_snapshots,
         override_snapshots=override_snapshots,
         resolved_config_snapshots=resolved_config_snapshots,

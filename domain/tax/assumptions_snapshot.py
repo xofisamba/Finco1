@@ -8,16 +8,11 @@ CAVEAT: Values-only. No editable persistence. No workflow.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from domain.tax.templates.inputs import (
-        TaxTemplate,
-        TaxTemplateOverride,
-        ResolvedTaxConfig,
-    )
+    pass
 
 
 _AUDIT_NOTE = (
@@ -50,7 +45,6 @@ class TaxTemplateSnapshot:
     audit_note: str = field(default=_AUDIT_NOTE)
 
     def __post_init__(self):
-        # Normalize metadata to tuple of tuples
         if not isinstance(self.metadata, tuple):
             object.__setattr__(self, 'metadata', tuple(self.metadata))
         if not isinstance(self.cit_tiers_summary, tuple):
@@ -104,30 +98,18 @@ class TaxAssumptionSnapshot:
     Root artifact for Phase 6D.2 audit export. Encapsulates one or more
     template snapshots, override snapshots, and resolved config snapshots.
 
-    Stores original TaxTemplate objects for downstream use (e.g., Excel export).
+    Self-contained: only stores immutable snapshot dataclasses and tuples.
+    No references to mutable or mutable-derived original objects.
     """
 
-    # Original immutable objects (stored for export use)
-    templates: tuple[TaxTemplate, ...]
-    resolved_configs: tuple[ResolvedTaxConfig, ...]
-    overrides: tuple[TaxTemplateOverride, ...]
-
-    # Computed snapshots (derived from above, read-only audit artifacts)
     template_snapshots: tuple[TaxTemplateSnapshot, ...]
     override_snapshots: tuple[TaxOverrideSnapshot, ...]
     resolved_config_snapshots: tuple[ResolvedTaxConfigSnapshot, ...]
-
     snapshot_label: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     audit_note: str = field(default=_AUDIT_NOTE)
 
     def __post_init__(self):
-        if not isinstance(self.templates, tuple):
-            object.__setattr__(self, 'templates', tuple(self.templates))
-        if not isinstance(self.resolved_configs, tuple):
-            object.__setattr__(self, 'resolved_configs', tuple(self.resolved_configs))
-        if not isinstance(self.overrides, tuple):
-            object.__setattr__(self, 'overrides', tuple(self.overrides))
         if not isinstance(self.template_snapshots, tuple):
             object.__setattr__(self, 'template_snapshots', tuple(self.template_snapshots))
         if not isinstance(self.override_snapshots, tuple):

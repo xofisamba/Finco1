@@ -183,21 +183,28 @@ class TestBuildTaxAssumptionSnapshot:
         assert len(snap.override_snapshots) == 1
         assert len(snap.resolved_config_snapshots) == 1
 
-    def test_snapshot_stores_original_objects(self, flat_template, resolved_config, override):
+    def test_snapshot_is_self_contained_no_original_objects(self, flat_template, override, resolved_config):
+        """Snapshot stores only snapshot dataclasses — no original TaxTemplate/ResolvedTaxConfig/TaxTemplateOverride."""
         snap = build_tax_assumption_snapshot(
             templates=(flat_template,),
             resolved_configs=(resolved_config,),
             overrides=(override,),
         )
-        # Original TaxTemplate objects preserved
-        assert snap.templates == (flat_template,)
-        assert snap.resolved_configs == (resolved_config,)
-        assert snap.overrides == (override,)
+        # TaxAssumptionSnapshot must NOT have these attributes
+        assert not hasattr(snap, 'templates') or snap.templates is None or snap.templates == ()
+        assert not hasattr(snap, 'resolved_configs') or snap.resolved_configs is None or snap.resolved_configs == ()
+        assert not hasattr(snap, 'overrides') or snap.overrides is None or snap.overrides == ()
+        # All fields must be immutable tuples or primitives
+        assert isinstance(snap.template_snapshots, tuple)
+        assert isinstance(snap.override_snapshots, tuple)
+        assert isinstance(snap.resolved_config_snapshots, tuple)
+        assert isinstance(snap.created_at, datetime)
+        assert isinstance(snap.audit_note, str)
 
     def test_snapshot_frozen(self, flat_template):
         snap = build_tax_assumption_snapshot(templates=(flat_template,))
         with pytest.raises(AttributeError):
-            snap.snapshot_label = "Hacked"
+            snap.template_snapshots = ()  # frozen dataclass
 
     def test_snapshot_has_properties(self, flat_template, override):
         snap = build_tax_assumption_snapshot(

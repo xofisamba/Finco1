@@ -10,6 +10,7 @@ from app.portfolio_ui import (
 from app.tax_excel_export import write_spv_tax_audit_sheets
 from app.holdco_tax_excel_export import write_holdco_tax_audit_sheets
 from app.tax_assumptions_excel_export import write_tax_assumptions_audit_sheets
+from app.tax_assumptions_snapshot_excel_export import write_tax_assumption_snapshot_sheets
 
 from domain.portfolio.distribution_constraints import (
     DistributionConstraintConfig,
@@ -247,12 +248,7 @@ def build_excel_export(
 
         # ── Phase 6D.2: Optional tax assumptions snapshot sheets ────────
         if tax_assumption_snapshot is not None:
-            write_tax_assumptions_audit_sheets(
-                writer,
-                templates=tax_assumption_snapshot.templates,
-                resolved_configs=tax_assumption_snapshot.resolved_configs,
-                overrides=tax_assumption_snapshot.overrides,
-            )
+            write_tax_assumption_snapshot_sheets(writer, tax_assumption_snapshot)
 
     output.seek(0)
     return output.read()
