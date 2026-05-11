@@ -6,7 +6,6 @@ CAVEAT: Values-only. No persistence. No active model wiring.
 """
 from __future__ import annotations
 
-from __future__ import annotations
 import pandas as pd
 from typing import TYPE_CHECKING
 
@@ -58,7 +57,6 @@ def build_tax_template_summary_table(
     """
     rows = []
     for tmpl in templates:
-        # Determine CIT structure label
         n_tiers = len(tmpl.cit_tiers)
         if n_tiers == 0:
             cit_structure = "None"
@@ -67,7 +65,6 @@ def build_tax_template_summary_table(
         else:
             cit_structure = "Progressive"
 
-        # Base rate (for flat or first tier)
         base_rate = tmpl.cit_tiers[0].tax_rate if n_tiers > 0 else None
 
         rows.append({
