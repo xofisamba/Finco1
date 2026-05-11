@@ -1208,3 +1208,141 @@ class TestDSRFExcelExport:
         for term in ("top-up", "topup", "release", "funded", "balance"):
             dsrf_label_text = " ".join(l for l in sum_text.split() if "dsrf" in l.lower() or "DSRF" in l)
             assert term not in dsrf_label_text.lower(), f"Prohibited term '{term}' in DSRF Portfolio_Summary labels"
+
+# ── Phase 6B: Tax audit sheets integration ────────────────────────────────────
+
+class TestTaxAuditSheetsIntegration:
+    """Tests for optional tax_results parameter in build_excel_export."""
+
+    def _make_tax_result(self, entity_code="HR-SPV-001"):
+        from domain.tax.templates.inputs import TaxTemplate, TaxDepreciationRule, CITTier
+        from domain.tax.templates.resolver import resolve_tax_template
+        from domain.tax.engine_inputs import SPVTaxEngineInputs
+        from domain.tax.engine_runner import run_spv_tax_engine
+
+        template = TaxTemplate(
+            country_code="HR",
+            template_name="HR Flat 10%",
+            tax_year=2026,
+            cit_tiers=(CITTier(0.0, None, 0.10),),
+            depreciation_rules=(
+                TaxDepreciationRule(
+                    asset_category="infra",
+                    method="straight_line",
+                    annual_rate=None,
+                    useful_life_years=20.0,
+                    max_deductible_rate=None,
+                    bonus_depreciation_pct=0.0,
+                    deductible=True,
+                    notes="HR straight-line",
+                ),
+            ),
+            withholding_tax_dividends=0.0,
+            withholding_tax_interest=0.0,
+        )
+        config = resolve_tax_template(template, ())
+        inputs = SPVTaxEngineInputs(
+            entity_code=entity_code,
+            resolved_tax_config=config,
+            ebitda_by_period_keur=tuple(1000.0 for _ in range(5)),
+            deductible_interest_by_period_keur=tuple(0.0 for _ in range(5)),
+            book_depreciation_by_period_keur=tuple(500.0 for _ in range(5)),
+            asset_cost_keur=10_000.0,
+            depreciation_rule_asset_category="infra",
+            non_deductible_addbacks_by_period_keur=(0.0,) * 5,
+        )
+        return run_spv_tax_engine(inputs)
+
+    def test_existing_export_works_without_tax_results(self):
+        """Default export (no tax_results) is unchanged."""
+        import openpyxl
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+        )
+        assert isinstance(data, bytes)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        # No SPV tax audit sheets when tax_results not provided
+        tax_sheets = [s for s in wb.sheetnames if s in ("Tax Summary",) or s.startswith("Tax_") and not s.startswith("Tax_D")]
+        # (Tax_Depreciation is a pre-existing disclosure sheet, not SPV audit)
+        assert len(tax_sheets) == 0, f"Unexpected Tax sheets: {tax_sheets}"
+        wb.close()
+
+    def test_tax_results_creates_tax_summary_sheet(self):
+        """Passing tax_results creates Tax Summary sheet."""
+        import openpyxl
+        tax_result = self._make_tax_result()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_results=(tax_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Tax Summary" in wb.sheetnames, f"Tax Summary not found. Sheets: {wb.sheetnames}"
+        wb.close()
+
+    def test_tax_results_creates_per_spv_tax_sheet(self):
+        """Passing tax_results creates per-SPV Tax_{entity_code} sheet."""
+        import openpyxl
+        tax_result = self._make_tax_result(entity_code="HR-SPV-001")
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_results=(tax_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Tax_HR-SPV-001" in wb.sheetnames, f"Tax_HR-SPV-001 not found. Sheets: {wb.sheetnames}"
+        wb.close()
+
+    def test_existing_core_sheets_still_exist_with_tax_results(self):
+        """Existing core sheets are unchanged when tax_results is passed."""
+        import openpyxl
+        tax_result = self._make_tax_result()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_results=(tax_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        required = [
+            "Dashboard", "Inputs", "CapEx",
+            "Revenue", "Debt", "Tax_Depreciation",
+            "Waterfall", "Returns", "Validation", "Notes",
+        ]
+        missing = [s for s in required if s not in wb.sheetnames]
+        assert not missing, f"Missing core sheets: {missing}"
+        wb.close()
+
+    def test_no_tax_sheets_when_tax_results_is_empty_tuple(self):
+        """tax_results=() creates no Tax sheets."""
+        import openpyxl
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_results=(),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        tax_sheets = [s for s in wb.sheetnames if s in ("Tax Summary",) or s.startswith("Tax_") and not s.startswith("Tax_D")]
+        assert len(tax_sheets) == 0, f"Unexpected SPV audit sheets with empty tuple: {tax_sheets}"
+        wb.close()
+
+    def test_tax_summary_sheet_audit_note_row_1(self):
+        """Tax Summary sheet row 1 contains audit-only note."""
+        import openpyxl
+        tax_result = self._make_tax_result()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_results=(tax_result,),
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        ws = wb["Tax Summary"]
+        first_cell = ws.cell(row=1, column=1).value
+        assert "AUDIT-ONLY" in str(first_cell), f"Expected AUDIT-ONLY in row 1, got: {first_cell}"
+        wb.close()

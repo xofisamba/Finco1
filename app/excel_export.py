@@ -7,6 +7,7 @@ from app.portfolio_ui import (
     build_portfolio_summary_table,
     build_portfolio_spv_table,
 )
+from app.tax_excel_export import write_spv_tax_audit_sheets
 
 from domain.portfolio.distribution_constraints import (
     DistributionConstraintConfig,
@@ -61,6 +62,8 @@ def build_excel_export(
     spv_overlays=None,
     holdco_overlay=None,
     constraint_results=None,
+    # ── Phase 6B: Tax audit sheets (optional) ───────────────────────
+    tax_results=None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -227,6 +230,10 @@ def build_excel_export(
             holdco_overlay=holdco_overlay,
             constraint_results=constraint_results,
         )
+
+        # ── Phase 6B: Optional tax audit sheets ─────────────────────────
+        if tax_results:
+            write_spv_tax_audit_sheets(writer, tax_results)
 
     output.seek(0)
     return output.read()
