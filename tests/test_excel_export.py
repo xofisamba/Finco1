@@ -1550,7 +1550,7 @@ class TestTaxAssumptionSnapshotIntegration:
         )
         assert isinstance(data, bytes)
         wb = openpyxl.load_workbook(BytesIO(data))
-        assert "Tax Templates" in wb.sheetnames
+        assert "Tax Snapshot Templates" in wb.sheetnames
         wb.close()
 
     def test_snapshot_creates_tax_tiers_sheet(self):
@@ -1564,7 +1564,7 @@ class TestTaxAssumptionSnapshotIntegration:
             tax_assumption_snapshot=snapshot,
         )
         wb = openpyxl.load_workbook(BytesIO(data))
-        assert "Tax Tiers" in wb.sheetnames
+        assert "Tax Snapshot Templates" in wb.sheetnames  # Tiers included in snapshot
         wb.close()
 
     def test_snapshot_creates_tax_dep_rules_sheet(self):
@@ -1578,7 +1578,7 @@ class TestTaxAssumptionSnapshotIntegration:
             tax_assumption_snapshot=snapshot,
         )
         wb = openpyxl.load_workbook(BytesIO(data))
-        assert "Tax Dep Rules" in wb.sheetnames
+        assert "Tax Snapshot Templates" in wb.sheetnames  # Dep rules included in snapshot
         wb.close()
 
     def test_snapshot_creates_tax_overrides_sheet(self):
@@ -1592,11 +1592,11 @@ class TestTaxAssumptionSnapshotIntegration:
             tax_assumption_snapshot=snapshot,
         )
         wb = openpyxl.load_workbook(BytesIO(data))
-        assert "Tax Overrides" in wb.sheetnames
+        assert "Tax Snapshot Overrides" in wb.sheetnames
         wb.close()
 
-    def test_snapshot_resolved_config_not_exported(self):
-        """Snapshot-only export does not create Resolved Tax Config sheet (no original ResolvedTaxConfig stored)."""
+    def test_snapshot_resolved_exports_when_present(self):
+        """Snapshot with resolved_config_snapshots creates Tax Snapshot Resolved sheet."""
         import openpyxl
         snapshot = self._make_snapshot()
         result = run_demo_project("Solar")
@@ -1606,9 +1606,8 @@ class TestTaxAssumptionSnapshotIntegration:
             tax_assumption_snapshot=snapshot,
         )
         wb = openpyxl.load_workbook(BytesIO(data))
-        # Resolved Tax Config sheet NOT created since snapshot is self-contained
-        # and does not store original ResolvedTaxConfig objects
-        assert "Resolved Tax Config" not in wb.sheetnames
+        # Resolved config snapshot creates Tax Snapshot Resolved sheet
+        assert "Tax Snapshot Resolved" in wb.sheetnames
         wb.close()
 
     def test_existing_core_sheets_unchanged_with_snapshot(self):

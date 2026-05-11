@@ -1,12 +1,13 @@
-"""Phase 6D.2 — Excel export from TaxAssumptionSnapshot.
+"""Phase 6D.2 — Excel export from TaxAssumptionSnapshot dataclasses.
 
-Reconstructs exportable objects from snapshot dataclasses and delegates
-to write_tax_assumptions_audit_sheets().
+Direct export — no reconstruction of TaxTemplate / ResolvedTaxConfig / TaxTemplateOverride.
+All data comes from immutable snapshot dataclasses.
 
 Pure function — no mutation, no active model wiring.
 """
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,12 +15,69 @@ if TYPE_CHECKING:
 
 __all__ = ["write_tax_assumption_snapshot_sheets"]
 
+AUDIT_NOTE = (
+    "AUDIT-ONLY: This snapshot is a read-only governance artifact. "
+    "It does not modify active model outputs or trigger any workflow."
+)
+
+_EXCEL_INVALID_CHARS = frozenset('/\\*?[]:')
+
+
+def _sanitize_sheet_name(name: str, max_len: int = 31) -> str:
+    safe = "".join("_" if c in _EXCEL_INVALID_CHARS else c for c in name)
+    if len(safe) > max_len:
+        safe = safe[:max_len]
+    return safe
+
+
+def _unique_sheet_name(base: str, used: set[str]) -> str:
+    if base not in used:
+        return base
+    suffix = 2
+    while True:
+        candidate = f"{base[:31 - len(str(suffix))]}_{suffix}"
+        if candidate not in used:
+            return candidate
+        suffix += 1
+
+
+def _serialize(val):
+    """Serialize non-primitive values to JSON strings for Excel compatibility."""
+    if val is None:
+        return None
+    if isinstance(val, (str, int, float, bool)):
+        return val
+    if isinstance(val, tuple):
+        return json.dumps(val)
+    if isinstance(val, dict):
+        return json.dumps(val)
+    return str(val)
+
+
+def _write_snapshot_sheet(writer, sheet_name: str, rows, columns):
+    """Write a snapshot sheet: row 1=audit note, row 2=headers, row 3+=data."""
+    wb = writer.book
+    safe_name = _sanitize_sheet_name(sheet_name)
+    if safe_name in wb.sheetnames:
+        ws = wb[safe_name]
+    else:
+        ws = wb.create_sheet(safe_name)
+
+    ws.cell(row=1, column=1, value=AUDIT_NOTE)
+    for col_idx, col_name in enumerate(columns, start=1):
+        ws.cell(row=2, column=col_idx, value=col_name)
+
+    for row_idx, row_data in enumerate(rows, start=3):
+        for col_idx, val in enumerate(row_data, start=1):
+            serialized = _serialize(val)
+            ws.cell(row=row_idx, column=col_idx, value=serialized)
+
 
 def write_tax_assumption_snapshot_sheets(writer, snapshot: "TaxAssumptionSnapshot") -> None:
-    """Write all tax assumption audit sheets from a TaxAssumptionSnapshot.
+    """Write all tax assumption snapshot sheets into an open Excel workbook.
 
-    Reconstructs TaxTemplate and override objects from snapshot dataclasses,
-    then delegates to write_tax_assumptions_audit_sheets().
+    Direct export from TaxAssumptionSnapshot dataclasses — no TaxTemplate
+    reconstruction. Values only. No formulas.
 
     Parameters
     ----------
@@ -28,96 +86,93 @@ def write_tax_assumption_snapshot_sheets(writer, snapshot: "TaxAssumptionSnapsho
     snapshot : TaxAssumptionSnapshot
         Immutable snapshot artifact. Not mutated.
 
+    Behavior
+    --------
+    - No-op if all three collections are empty.
+    - Row 1 = audit note
+    - Row 2 = headers
+    - Row 3+ = data
+    - Tuple values serialized to JSON strings for Excel compatibility
+    - Sheet names sanitized and deduplicated (31-char limit)
+
     Notes
     -----
-    - Does NOT modify existing sheets.
-    - Snapshot is a read-only audit artifact.
+    - Does NOT call write_tax_assumptions_audit_sheets().
+    - Does NOT reconstruct TaxTemplate / ResolvedTaxConfig / TaxTemplateOverride objects.
     """
-    from app.tax_assumptions_excel_export import write_tax_assumptions_audit_sheets
-    from domain.tax.templates.inputs import (
-        CITTier,
-        TaxDepreciationRule,
-        TaxTemplate,
-        TaxTemplateOverride,
-    )
+    if (not snapshot.has_templates
+            and not snapshot.has_overrides
+            and not snapshot.has_resolved_configs):
+        return
 
-    # Reconstruct TaxTemplate objects from TaxTemplateSnapshot dataclasses
-    templates = []
-    for ts in snapshot.template_snapshots:
-        # Parse cit_tiers_summary back to CITTier objects
-        # cit_tiers_summary is tuple of "18%", "10%", etc.
-        cit_tiers = []
-        if ts.cit_structure == "None":
-            pass  # empty tuple
-        elif ts.cit_structure == "Flat":
-            rate_str = ts.cit_tiers_summary[0].replace("%", "")
-            rate = float(rate_str) / 100.0
-            cit_tiers.append(CITTier(min_profit_keur=0.0, max_profit_keur=None, tax_rate=rate))
-        else:  # Progressive
-            for i, rate_str in enumerate(ts.cit_tiers_summary):
-                rate = float(rate_str.replace("%", "")) / 100.0
-                if i == 0:
-                    cit_tiers.append(CITTier(min_profit_keur=0.0, max_profit_keur=500.0, tax_rate=rate))
-                else:
-                    cit_tiers.append(CITTier(min_profit_keur=500.0, max_profit_keur=None, tax_rate=rate))
+    # ── Tax Snapshot Templates ────────────────────────────────────────
+    if snapshot.has_templates:
+        template_columns = [
+            "Template Code", "Country Code", "Tax Year",
+            "CIT Structure", "CIT Tiers Summary",
+            "Loss Carryforward Years",
+            "Has Interest Limitation", "Has WHT Dividend", "Has WHT Interest",
+            "Depreciation Rules Summary",
+            "Metadata", "Snapshot Label", "Created At", "Audit Note",
+        ]
+        template_rows = []
+        for ts in snapshot.template_snapshots:
+            template_rows.append((
+                ts.template_name,
+                ts.country_code,
+                ts.tax_year,
+                ts.cit_structure,
+                ", ".join(ts.cit_tiers_summary),
+                ts.loss_carryforward_years,
+                ts.has_interest_limitation,
+                ts.has_wht_dividend,
+                ts.has_wht_interest,
+                "; ".join(ts.depreciation_rules_summary),
+                ts.metadata,
+                ts.snapshot_label,
+                ts.created_at.isoformat() if ts.created_at else "",
+                ts.audit_note,
+            ))
+        _write_snapshot_sheet(writer, "Tax Snapshot Templates", template_rows, template_columns)
 
-        # Parse depreciation_rules_summary back to TaxDepreciationRule objects
-        # Format: "buildings: straight_line: 20yr"
-        dep_rules = []
-        for rule_str in ts.depreciation_rules_summary:
-            parts = rule_str.split(": ")
-            if len(parts) == 3:
-                asset_category = parts[0]
-                method = parts[1]
-                life_str = parts[2].replace("yr", "").replace("N/A", "0")
-                try:
-                    useful_life_years = float(life_str)
-                except ValueError:
-                    useful_life_years = None
+    # ── Tax Snapshot Overrides ─────────────────────────────────────────
+    if snapshot.has_overrides:
+        override_columns = [
+            "Override Name", "Field Path", "Override Value",
+            "Reason", "Created At", "Audit Note",
+        ]
+        override_rows = []
+        for os_ in snapshot.override_snapshots:
+            override_rows.append((
+                os_.override_name,
+                os_.field_path,
+                os_.override_value,
+                os_.reason,
+                os_.created_at.isoformat() if os_.created_at else "",
+                os_.audit_note,
+            ))
+        _write_snapshot_sheet(writer, "Tax Snapshot Overrides", override_rows, override_columns)
 
-                dep_rules.append(TaxDepreciationRule(
-                    asset_category=asset_category,
-                    method=method,
-                    annual_rate=None,
-                    useful_life_years=useful_life_years,
-                    max_deductible_rate=None,
-                    bonus_depreciation_pct=0.0,
-                    deductible=True,
-                    notes="",
-                ))
-
-        template = TaxTemplate(
-            country_code=ts.country_code,
-            template_name=ts.template_name,
-            tax_year=ts.tax_year,
-            cit_tiers=tuple(cit_tiers),
-            depreciation_rules=tuple(dep_rules),
-            withholding_tax_dividends=0.12 if ts.has_wht_dividend else 0.0,
-            withholding_tax_interest=0.0,
-            loss_carryforward_years=ts.loss_carryforward_years,
-            thin_cap_ratio=4.0 if ts.has_interest_limitation else None,
-            interest_limitation_pct_ebitda=0.30 if ts.has_interest_limitation else None,
-            metadata=ts.metadata,
-        )
-        templates.append(template)
-
-    # Reconstruct override objects from override snapshots
-    overrides = []
-    for os_ in snapshot.override_snapshots:
-        override = TaxTemplateOverride(
-            override_name=os_.override_name,
-            field_path=os_.field_path,
-            override_value=os_.override_value,
-            reason=os_.reason or "",
-        )
-        overrides.append(override)
-
-    # Resolved configs: not stored in snapshot, not exported for now
-    resolved_configs = []
-
-    write_tax_assumptions_audit_sheets(
-        writer,
-        templates=tuple(templates),
-        resolved_configs=tuple(resolved_configs),
-        overrides=tuple(overrides),
-    )
+    # ── Tax Snapshot Resolved ─────────────────────────────────────────
+    if snapshot.has_resolved_configs:
+        resolved_columns = [
+            "Template Code", "Country Code", "Tax Year",
+            "Effective CIT Structure", "Override Count",
+            "Overrides Summary", "Resolved Metadata",
+            "Snapshot Label", "Created At", "Audit Note",
+        ]
+        resolved_rows = []
+        for rs in snapshot.resolved_config_snapshots:
+            resolved_rows.append((
+                rs.template_name,
+                rs.country_code,
+                rs.tax_year,
+                rs.effective_cit_structure,
+                rs.override_count,
+                "; ".join(rs.overrides_summary),
+                rs.resolved_metadata,
+                rs.snapshot_label,
+                rs.created_at.isoformat() if rs.created_at else "",
+                rs.audit_note,
+            ))
+        _write_snapshot_sheet(writer, "Tax Snapshot Resolved", resolved_rows, resolved_columns)
