@@ -399,3 +399,80 @@ cit = calculate_progressive_cit(taxable, ME_INFRA_2026.cit_tiers)
 
 Accounting depreciation (20-year straight-line) = 500 kEUR/year, but ME tax law caps deductible at 250 kEUR/year.
 This 250 kEUR/year timing difference is a deferred tax item — not handled in this phase.
+
+---
+
+## Phase 6B.4 — SPV Tax Engine Foundation
+
+**Purpose:** Pure SPV-level tax engine that computes CIT per period using TaxTemplate primitives, depreciation schedules, and loss carryforward schedules.
+**Status:** Pure engine only. **No waterfall integration. No tax cashflow wiring. No deferred tax accounting.**
+
+### What is built
+
+| Component | File | Description |
+|---|---|---|
+| Engine inputs | `domain/tax/engine_inputs.py` | `SPVTaxEngineInputs` — validated per-entity inputs |
+| Engine results | `domain/tax/engine_result.py` | `SPVTaxPeriodResult`, `SPVTaxResult` — per-period and aggregate output |
+| Engine runner | `domain/tax/engine_runner.py` | `run_spv_tax_engine()` — pure function, no side effects |
+| Tests | `tests/test_tax_engine_runner.py` | 20 test cases covering templates, timing diffs, loss carryforward, validation |
+
+### Engine flow
+
+```
+SPVTaxEngineInputs
+  → resolve depreciation rule from ResolvedTaxConfig
+  → build_tax_depreciation_schedule()  (book vs tax dep, timing diffs, accumulated pool)
+  → compute taxable_income_before_losses per period
+       EBITDA
+     - deductible_interest
+     - tax_depreciation
+     + non_deductible_addbacks
+  → build_tax_loss_carryforward_schedule()
+  → calculate_progressive_cit() per period using resolved CIT tiers
+  → compute effective_tax_rate = cit / taxable_income_after_losses (0 if ≤ 0)
+  → SPVTaxResult (per-period + aggregates)
+```
+
+### Explicit Non-Scope (Phase 6B.4)
+
+| Item | Status |
+|---|---|
+| Waterfall integration | ❌ Not wired — Phase 6B.5+ |
+| Tax cashflow injection into model | ❌ Not implemented |
+| Deferred tax accounting (DTA/DTL) | ❌ Not implemented |
+| HoldCo / intercompany tax logic | ❌ Not implemented |
+| SHL tax treatment | ❌ Not implemented |
+| Withholding tax engine | ❌ Not implemented |
+| ATAD EBITDA interest limitation | ❌ Not applied — apply in future ATAD engine |
+| Thin-cap adjustment | ❌ Not applied |
+| Tax loss vintage tracking | ❌ Single pool only — future vintage tracking |
+| Sponsor waterfall | ❌ Not implemented |
+
+### Exports
+
+```python
+from domain.tax import (
+    SPVTaxEngineInputs,
+    SPVTaxPeriodResult,
+    SPVTaxResult,
+    run_spv_tax_engine,
+)
+```
+
+### Validation rules
+
+- `SPVTaxEngineInputs`: all tuples same length, entity_code non-empty, asset_cost ≥ 0, rule exists in resolved config
+- `SPVTaxPeriodResult`: no NaN/inf, effective_tax_rate ∈ [0,1] when taxable income > 0
+- `SPVTaxResult`: totals reconcile (sum of periods = aggregates), ending loss pool = last period closing
+
+### Test coverage
+
+- Flat HR template (10% flat CIT)
+- Progressive ME template (9%/15% brackets, 2.5% dep cap)
+- Depreciation timing difference accumulation and recovery
+- Loss carryforward usage and pool floor at zero
+- Zero / negative taxable income → no CIT
+- Effective tax rate computation and bounds
+- Template / config no-mutation verification
+- Totals reconciliation
+- Invalid inputs (unknown category, mismatched lengths, empty entity, negative asset cost, NaN, inf)
