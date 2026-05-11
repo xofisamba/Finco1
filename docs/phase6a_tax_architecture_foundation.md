@@ -731,3 +731,31 @@ Principal amount is preserved (not forced to 0) for audit tracking — but has z
 | WHT remittance / payment timing | ❌ Not implemented |
 | Waterfall integration | ❌ Not wired |
 | Model output changes | ❌ None |
+
+---
+
+## Phase 6D.1 — Tax Assumptions UI / Governance Foundation
+
+**Purpose:** Visibility/governance helpers for viewing tax templates, overrides, and resolved configurations.
+**Status:** Audit-only helpers. **No waterfall wiring. No model output changes. No persistence. No workflow.**
+
+### What's built
+
+| Component | File | Description |
+|---|---|---|
+| UI helpers | `app/tax_assumptions_ui.py` | 6 pure functions for template/tier/dep/override/config tables |
+| Excel export | `app/tax_assumptions_excel_export.py` | `write_tax_assumptions_audit_sheets()` |
+| Tests | `tests/test_tax_assumptions_ui.py` | 20 tests |
+| Tests | `tests/test_tax_assumptions_excel_export.py` | 13 tests |
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| Streamlit rendering | ❌ Not implemented |
+| Editable persistence | ❌ Not implemented |
+| Role system | ❌ Not implemented |
+| Approval workflow | ❌ Not implemented |
+| Active model integration | ❌ None — visibility only |
+| Waterfall integration | ❌ Not wired |
+| Model output changes | ❌ None |
