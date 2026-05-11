@@ -144,7 +144,7 @@ class TestEquityInjectionValidation:
             )
 
     def test_metadata_values_must_be_json_serializable(self):
-        with pytest.raises(TypeError, match="metadata values must be JSON-serializable"):
+        with pytest.raises(TypeError, match="metadata values must be immutable JSON scalars"):
             EquityInjection(
                 period_index=0,
                 amount_keur=1000.0,
@@ -152,6 +152,28 @@ class TestEquityInjectionValidation:
                 target_entity="SPV-1",
                 purpose="equityContribution",
                 metadata={"key": object()},
+            )
+
+    def test_metadata_rejects_list_values(self):
+        with pytest.raises(TypeError, match="immutable JSON scalars"):
+            EquityInjection(
+                period_index=0,
+                amount_keur=1000.0,
+                investor_id="SPONSOR-1",
+                target_entity="SPV-1",
+                purpose="equityContribution",
+                metadata={"key": [1, 2, 3]},
+            )
+
+    def test_metadata_rejects_dict_values(self):
+        with pytest.raises(TypeError, match="immutable JSON scalars"):
+            EquityInjection(
+                period_index=0,
+                amount_keur=1000.0,
+                investor_id="SPONSOR-1",
+                target_entity="SPV-1",
+                purpose="equityContribution",
+                metadata={"key": {"nested": "dict"}},
             )
 
     @pytest.mark.parametrize("purpose", [
@@ -390,10 +412,9 @@ class TestEquityInjectionRoundtrip:
         3.14,
         True,
         "string",
-        [1, 2, 3],
-        {"nested": "dict"},
+        None,
     ])
-    def test_metadata_values_various_serializable_types(self, metadata_value):
+    def test_metadata_values_immutable_json_scalars_only(self, metadata_value):
         inj = EquityInjection(
             period_index=0,
             amount_keur=1000.0,

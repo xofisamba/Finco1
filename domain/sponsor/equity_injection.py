@@ -110,15 +110,16 @@ class EquityInjection:
         else:
             if not isinstance(metadata, dict):
                 raise TypeError(f"metadata must be dict or None, got {type(metadata).__name__}")
+            _IMMUTABLE_JSON_SCALARS = (str, int, float, bool, type(None))
+
             for k, v in metadata.items():
                 if not isinstance(k, str):
                     raise TypeError(f"metadata keys must be str, got {type(k).__name__}")
-                try:
-                    _json.dumps(v)
-                except TypeError:
+                if not isinstance(v, _IMMUTABLE_JSON_SCALARS):
                     raise TypeError(
-                        f"metadata values must be JSON-serializable, "
-                        f"key {k!r} value type {type(v).__name__} is not"
+                        f"metadata values must be immutable JSON scalars "
+                        f"(str, int, float, bool, None); "
+                        f"key {k!r} has value of type {type(v).__name__}"
                     )
             object.__setattr__(self, '_metadata_tuple', tuple(sorted(metadata.items())))
 
