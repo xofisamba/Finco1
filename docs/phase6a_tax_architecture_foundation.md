@@ -641,3 +641,38 @@ tests/test_tax_engine_runner.py:         23 passed, 1 skipped ✅
 | WHT payment / remittance | ❌ Not implemented |
 | Waterfall integration | ❌ Not wired |
 | Model output changes | ❌ None |
+
+---
+
+## Phase 6C.3 — HoldCo Tax Engine Foundation
+
+**Purpose:** Pure HoldCo tax engine runner using Phase 6C.1 schema and Phase 6C.2 primitives.
+**Status:** Audit-only. **No CIT payable. No WHT remittance. No waterfall wiring.**
+
+### What's built
+
+| Component | File | Description |
+|---|---|---|
+| HoldCo runner | `domain/tax/holdco_runner.py` | `run_holdco_tax_engine()` |
+| Tests | `tests/test_holdco_tax_runner.py` | 17 tests |
+
+### Per-period flow
+
+```
+dividend income → taxable (WHT applicable)
+SHL interest income → taxable (WHT applicable)
+SHL principal → non-taxable (excluded, tracked)
+holdco_opex → deductible (reduces taxable income)
+WHT calculated and stored (not remitted)
+interest_limited_keur = 0 (no enforcement in 6C.3)
+```
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| CIT payable calculation | ❌ Not implemented |
+| WHT remittance / payment timing | ❌ Not implemented |
+| Thin-cap / EBITDA limitation enforcement | ❌ Stored in config, not applied |
+| Waterfall integration | ❌ Not wired |
+| Model output changes | ❌ None |

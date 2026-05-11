@@ -147,4 +147,6 @@ __all__ = [
     "split_shl_tax_treatment",
     "calculate_interest_deductibility_limit_keur",
     "calculate_holdco_taxable_income_before_cit_keur",
+    # Phase 6C.3 — HoldCo tax engine runner
+    "run_holdco_tax_engine",
 ]
