@@ -72,10 +72,10 @@ class TestRunHoldcoTaxEngine:
         result = run_holdco_tax_engine(inputs)
 
         for pr in result.period_results:
-            assert pr.non_taxable_principal_keur == 0.0  # excluded via function
+            assert pr.non_taxable_principal_keur == 500.0  # amount tracked
             assert pr.taxable_interest_income_keur == 200.0  # interest only
 
-        assert result.total_non_taxable_principal_keur == 0.0
+        assert result.total_non_taxable_principal_keur == 2500.0  # 500 * 5 periods
 
     def test_wht_dividends_calculated(self):
         """WHT on dividends is calculated using the applicable rate."""
@@ -231,6 +231,21 @@ class TestRunHoldcoTaxEngine:
         assert pr.taxable_interest_income_keur == 100.0
         assert pr.deductible_opex_keur == 30.0
         assert pr.taxable_income_before_limitations_keur == 570.0  # 500+100-30
+
+    def test_taxable_income_unchanged_when_principal_changes(self):
+        """SHL principal does not affect taxable income calculation."""
+        inputs_no_principal = make_inputs(shl_principal=0.0, dividend=1000.0, shl_interest=200.0, opex=50.0)
+        inputs_with_principal = make_inputs(shl_principal=500.0, dividend=1000.0, shl_interest=200.0, opex=50.0)
+
+        result_no = run_holdco_tax_engine(inputs_no_principal)
+        result_with = run_holdco_tax_engine(inputs_with_principal)
+
+        # Taxable income is same regardless of principal
+        for pr_no, pr_with in zip(result_no.period_results, result_with.period_results):
+            assert pr_no.taxable_income_before_limitations_keur == pr_with.taxable_income_before_limitations_keur
+            # But principal is tracked differently
+            assert pr_no.non_taxable_principal_keur == 0.0
+            assert pr_with.non_taxable_principal_keur == 500.0
 
     def test_deductible_opex_tracked(self):
         """HoldCo opex is tracked as deductible_opex_keur per period."""

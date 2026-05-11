@@ -64,8 +64,9 @@ def run_holdco_tax_engine(
         shl_principal = inputs.shl_principal_received_by_period_keur[p]
         opex = inputs.holdco_opex_by_period_keur[p]
 
-        # SHL principal → non-taxable (zero taxable income impact)
-        non_taxable_principal = exclude_shl_principal_from_taxable_income(shl_principal)
+        # SHL principal → validate (rejects negative), then track as non-taxable
+        exclude_shl_principal_from_taxable_income(shl_principal)  # raises if negative
+        non_taxable_principal_keur = shl_principal  # track the amount, not 0
 
         # WHT on dividends and interest (stored, not remitted)
         wht_div = calculate_withholding_tax_keur(
@@ -94,7 +95,7 @@ def run_holdco_tax_engine(
                 period_index=p,
                 taxable_dividend_income_keur=dividend,
                 taxable_interest_income_keur=shl_interest,
-                non_taxable_principal_keur=non_taxable_principal,
+                non_taxable_principal_keur=non_taxable_principal_keur,
                 deductible_opex_keur=opex,
                 taxable_income_before_limitations_keur=taxable_income,
                 withholding_tax_dividends_keur=wht_div,
