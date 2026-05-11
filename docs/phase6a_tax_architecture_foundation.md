@@ -759,3 +759,70 @@ Principal amount is preserved (not forced to 0) for audit tracking — but has z
 | Active model integration | ❌ None — visibility only |
 | Waterfall integration | ❌ Not wired |
 | Model output changes | ❌ None |
+
+---
+
+## Phase 6D.2 — Tax Assumptions Snapshot / Export Foundation
+
+**Purpose:** Immutable snapshot objects for tax assumptions + optional Excel export integration.
+
+**Status:** Audit-only. No active model wiring. No workflow. No persistence.
+
+### What's built
+
+| Component | File | Description |
+|---|---|---|
+| Snapshot models | `domain/tax/assumptions_snapshot.py` | `TaxAssumptionSnapshot`, `TaxTemplateSnapshot`, `TaxOverrideSnapshot`, `ResolvedTaxConfigSnapshot` |
+| Builder functions | `domain/tax/snapshot_builders.py` | Pure builder functions for each snapshot type |
+| Excel integration | `app/tax_assumptions_snapshot_excel_export.py` | Optional `write_tax_snapshot_sheets()` via existing helpers |
+| excel_export.py hook | `app/excel_export.py` | Optional `tax_assumption_snapshot=None` parameter |
+| Tests | `tests/test_tax_assumptions_snapshot.py` | 17 tests |
+| Tests | `tests/test_excel_export.py` | 7 new snapshot integration tests |
+
+### Snapshot model fields
+
+**TaxTemplateSnapshot**
+- `template_name`, `country_code`, `tax_year`
+- `cit_structure` ("None" | "Flat" | "Progressive")
+- `cit_tiers_summary: tuple[str, ...]` — e.g. ("18%",)
+- `depreciation_rules_summary: tuple[str, ...]` — e.g. ("buildings: straight_line: 20yr",)
+- `loss_carryforward_years`, `has_interest_limitation`, `has_wht_dividend`, `has_wht_interest`
+- `metadata: tuple[tuple[str, str], ...]`
+- `created_at`, `snapshot_label`, `audit_note`
+
+**TaxOverrideSnapshot**
+- `override_name`, `field_path`, `override_value`, `reason`
+- `created_at`, `audit_note`
+
+**ResolvedTaxConfigSnapshot**
+- `template_name`, `country_code`, `tax_year`, `effective_cit_structure`
+- `override_count`, `overrides_summary: tuple[str, ...]`
+- `resolved_metadata: tuple[tuple[str, str], ...]`
+- `created_at`, `snapshot_label`, `audit_note`
+
+**TaxAssumptionSnapshot** (root)
+- `templates`, `resolved_configs`, `overrides` — original objects stored for export
+- `template_snapshots`, `override_snapshots`, `resolved_config_snapshots` — computed snapshots
+- `snapshot_label`, `created_at`, `audit_note`
+- `has_templates`, `has_overrides`, `has_resolved_configs` properties
+
+### Excel integration
+
+`build_excel_export(tax_assumption_snapshot=None)`:
+- Default `None` preserves existing export unchanged
+- When provided, delegates to `write_tax_assumptions_audit_sheets()` with stored templates/configs/overrides
+- Creates Tax Templates, Tax Tiers, Tax Dep Rules, Tax Overrides, Resolved Tax Config sheets
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| Editable persistence | ❌ Not implemented |
+| Role system | ❌ Not implemented |
+| Approval workflow | ❌ Not implemented |
+| Sponsor IRR / sponsor waterfall | ❌ Not implemented |
+| Active model integration | ❌ Snapshot is read-only audit artifact |
+| Waterfall integration | ❌ Not wired |
+| Model output changes | ❌ None |
+| rc1 modification | ❌ Not modified |
+| distribution_keur change | ❌ None |

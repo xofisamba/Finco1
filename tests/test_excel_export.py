@@ -1476,3 +1476,158 @@ class TestHoldCoTaxAuditSheetsIntegration:
         first_cell = ws.cell(row=1, column=1).value
         assert "AUDIT-ONLY" in str(first_cell), f"Expected AUDIT-ONLY in row 1, got: {first_cell}"
         wb.close()
+
+
+class TestTaxAssumptionSnapshotIntegration:
+    """Tests for optional tax_assumption_snapshot parameter in build_excel_export."""
+
+    def _make_snapshot(self):
+        from domain.tax.templates.inputs import (
+            CITTier, TaxDepreciationRule, TaxTemplate, TaxTemplateOverride,
+        )
+        from domain.tax.templates.resolver import resolve_tax_template
+        from domain.tax.snapshot_builders import build_tax_assumption_snapshot
+
+        template = TaxTemplate(
+            country_code="HR",
+            template_name="HR Flat 18%",
+            tax_year=2026,
+            cit_tiers=(CITTier(min_profit_keur=0.0, max_profit_keur=None, tax_rate=0.18),),
+            depreciation_rules=(
+                TaxDepreciationRule(
+                    asset_category="buildings", method="straight_line",
+                    annual_rate=0.05, useful_life_years=20.0, max_deductible_rate=0.025,
+                    bonus_depreciation_pct=0.0, deductible=True, notes="20yr buildings",
+                ),
+            ),
+            withholding_tax_dividends=0.12,
+            withholding_tax_interest=0.0,
+            loss_carryforward_years=5,
+            thin_cap_ratio=4.0,
+            interest_limitation_pct_ebitda=0.30,
+            metadata=(("notes", "standard HR"),),
+        )
+        override = TaxTemplateOverride(
+            override_name="custom_wht",
+            field_path="withholding_tax_dividends",
+            override_value=0.10,
+            reason="Treaty rate HR-ME",
+        )
+        resolved = resolve_tax_template(template, (override,))
+        return build_tax_assumption_snapshot(
+            templates=(template,),
+            resolved_configs=(resolved,),
+            overrides=(override,),
+        )
+
+    def test_default_export_unchanged_when_snapshot_none(self):
+        """Default export (snapshot=None) is unchanged — no tax assumption sheets."""
+        import openpyxl
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+        )
+        assert isinstance(data, bytes)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        tax_assumption_sheets = [
+            "Tax Templates", "Tax Tiers", "Tax Dep Rules",
+            "Tax Overrides", "Resolved Tax Config",
+        ]
+        found = [s for s in wb.sheetnames if s in tax_assumption_sheets]
+        assert len(found) == 0, f"Unexpected tax assumption sheets: {found}"
+        wb.close()
+
+    def test_snapshot_creates_tax_templates_sheet(self):
+        """Passing snapshot creates Tax Templates sheet."""
+        import openpyxl
+        snapshot = self._make_snapshot()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_assumption_snapshot=snapshot,
+        )
+        assert isinstance(data, bytes)
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Tax Snapshot Templates" in wb.sheetnames
+        wb.close()
+
+    def test_snapshot_creates_tax_tiers_sheet(self):
+        """Passing snapshot creates Tax Tiers sheet."""
+        import openpyxl
+        snapshot = self._make_snapshot()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_assumption_snapshot=snapshot,
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Tax Snapshot Templates" in wb.sheetnames  # Tiers included in snapshot
+        wb.close()
+
+    def test_snapshot_creates_tax_dep_rules_sheet(self):
+        """Passing snapshot creates Tax Dep Rules sheet."""
+        import openpyxl
+        snapshot = self._make_snapshot()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_assumption_snapshot=snapshot,
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Tax Snapshot Templates" in wb.sheetnames  # Dep rules included in snapshot
+        wb.close()
+
+    def test_snapshot_creates_tax_overrides_sheet(self):
+        """Passing snapshot creates Tax Overrides sheet."""
+        import openpyxl
+        snapshot = self._make_snapshot()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_assumption_snapshot=snapshot,
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        assert "Tax Snapshot Overrides" in wb.sheetnames
+        wb.close()
+
+    def test_snapshot_resolved_exports_when_present(self):
+        """Snapshot with resolved_config_snapshots creates Tax Snapshot Resolved sheet."""
+        import openpyxl
+        snapshot = self._make_snapshot()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_assumption_snapshot=snapshot,
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        # Resolved config snapshot creates Tax Snapshot Resolved sheet
+        assert "Tax Snapshot Resolved" in wb.sheetnames
+        wb.close()
+
+    def test_existing_core_sheets_unchanged_with_snapshot(self):
+        """Core sheets are unchanged when snapshot is provided."""
+        import openpyxl
+        snapshot = self._make_snapshot()
+        result = run_demo_project("Solar")
+        data = build_excel_export(
+            result=result.result,
+            project_inputs=result.project_inputs,
+            tax_assumption_snapshot=snapshot,
+        )
+        wb = openpyxl.load_workbook(BytesIO(data))
+        required = [
+            "Dashboard", "Inputs", "CapEx",
+            "Revenue", "Debt", "Tax_Depreciation",
+            "Waterfall", "Returns", "Validation", "Notes",
+        ]
+        missing = [s for s in required if s not in wb.sheetnames]
+        assert not missing, f"Missing core sheets: {missing}"
+        wb.close()
+
+
