@@ -10,51 +10,43 @@
 
 ## Status
 
-**ACCEPTED** — Decision recorded. Implementation deferred to Phase 7.
+**ACCEPTED** — Decision recorded. Implementation deferred to Phase 7A.
 
 ---
 
 ## Context
 
-Phase 6C built a complete HoldCo tax engine (`run_holdco_tax_engine()`) that computes accrual CIT
-payable per period. The engine correctly captures the tax base (dividend income + SHL interest
-income − HoldCo OpEx) and calculates the CIT liability.
+Phase 6C established the HoldCo tax schema (`run_holdco_tax_engine()`) and the WHT calculation
+framework. The schema is in place; the CIT calculation logic is defined but not yet wired to
+active computation in the current `main` branch.
 
-However, the current implementation is **accrual-only**. CIT is computed as owed for each period,
-but the model does not address **when the cash is actually paid** — which is a critical input for
-Sponsor IRR and for the HoldCo-level cash flow waterfall.
+Regardless of where the engine is in its implementation, a cash timing question must be answered
+before Phase 7 sponsor economics integration: **when is HoldCo CIT actually paid in cash?**
 
-This document records the architectural decision for how HoldCo cash tax timing should be
-handled when Phase 7 begins sponsor economics integration.
+This document records the architectural decision for that question.
 
 ---
 
-## 1. Current Accrual-Only State
+## 1. Current State
 
-The HoldCo tax engine today produces per-period accrual CIT:
+Phase 6C provides:
 
-```
-Period 1: taxable_income = 1,000 kEUR  →  accrual CIT = 180 kEUR
-Period 2: taxable_income = 1,200 kEUR  →  accrual CIT = 216 kEUR
-...
-```
+- `HoldCoTaxEngineInputs` schema — defines the inputs the HoldCo engine will accept
+- `HoldCoTaxEngineOutputs` schema — defines what the engine will produce
+- `HoldCoTaxResult` dataclass — result container (schema in place; active CIT calculation not yet connected)
+- `calculate_withholding_tax_keur()` — WHT amounts per entity per period (implemented)
+- `calculate_holdco_taxable_income()` — tax base computation (schema defined; active computation deferred)
+- Audit export sheets for HoldCo tax results (schema-driven, not yet active)
 
-**What exists:**
-- `run_holdco_tax_engine()` — computes accrual CIT per period
-- `calculate_holdco_taxable_income()` — computes per-period tax base
-- `calculate_withholding_tax_keur()` — WHT amounts per entity per period
-- `HoldCoTaxResult` dataclass — contains per-period accrual CIT values
-- Audit export sheets — show accrual amounts per entity
+The schema anticipates per-period accrual values. The distinction between accrual and cash timing
+is a **schema design question** that must be resolved now, so that Phase 7A implementation of the
+actual computation follows a consistent contract.
 
 **What is missing:**
+- No active CIT calculation wired to the engine
 - No cash payment timing model
-- No deferred tax balance tracking
+- No distinction between accrual CIT and cash CIT in the result schema
 - No cash flow integration with HoldCo cash waterfall
-- No distinction between accrual CIT and cash CIT for Sponsor IRR
-
-The `HoldCoTaxResult` holds `cit_by_period_keur` (accrual) but does not track when those amounts
-are actually paid. This is acceptable for audit visibility but is insufficient for accurate
-Sponsor IRR calculation.
 
 ---
 
@@ -144,7 +136,7 @@ Accrual CIT (period 2) = 216 kEUR  →  Cash CIT paid (period 2) = 216 kEUR
 **Pros:**
 - Simplest model: no timing distinction
 - Accurate for jurisdictions with monthly CIT instalments
-- No additional fields required in HoldCoTaxResult
+- No additional fields required in result schema
 
 **Cons:**
 - Inaccurate for most jurisdictions with quarterly or annual CIT
@@ -184,23 +176,21 @@ BA CIT (monthly): monthly instalments  →  all model periods
 1. **Determinism** — Model A is purely period-index based. It does not depend on calendar dates,
    business days, or external lookups. Same inputs → same outputs → reproducible.
 
-2. **Simplicity** — No new schema fields required in Phase 7 beyond a per-country `cit_payment_lag`
-   integer field in `HoldCoTaxConfig`. The lag is applied in the cash timing transform layer.
+2. **Simplicity** — No mandatory schema changes required beyond a per-country `cit_payment_lag`
+   configuration field. The lag is applied in the cash timing transform layer.
 
-3. **Preserves accrual/cash distinction** — Accrual CIT continues to be reported separately from
-   Cash CIT in audit sheets. The `HoldCoTaxResult` can be extended with `cit_cash_by_period_keur`
-   alongside the existing `cit_accrual_by_period_keur`.
+3. **Preserves accrual/cash distinction** — Accrual CIT is reported separately from
+   Cash CIT in audit sheets. Both are tracked independently.
 
-4. **Jurisdiction override capability** — Model A naturally supports per-country lag overrides
-   in `HoldCoTaxConfig`. Model B (zero lag) and Model C (legal calendar) are both implementable
-   as jurisdiction-specific lag values.
+4. **Jurisdiction override capability** — Model A naturally supports per-country lag overrides.
+   Model B (zero lag) and Model C (legal calendar) are both implementable as
+   jurisdiction-specific lag values in Phase 7A.
 
-5. **Sponsor IRR materiality** — The one-period lag is a bounded, small shift. Phase 7 sponsor
+5. **Sponsor IRR materiality** — The one-period lag is a bounded, small shift. Phase 7A sponsor
    waterfall integration can correct for it explicitly.
 
-6. **No waterfall changes required** — The HoldCo cash waterfall receives `cit_cash_by_period_keur`
-   as an input in Phase 7. The tax engine itself is not modified. The accrual engine output
-   (`cit_by_period_keur`) remains unchanged.
+6. **No waterfall changes required now** — The HoldCo cash waterfall will receive cash CIT
+   as an input in Phase 7A. The tax engine itself is not modified.
 
 ### Default Value
 
@@ -219,16 +209,24 @@ A lag of `1` with semiannual model periods means CIT is paid approximately 6 mon
 | ME | `2` | Two semiannual periods (~12 months) for jurisdictions with annual CIT |
 | BA | `1` | Default — one period lag |
 
+### Implementation Caveat
+
+**Implementation details (schema field names, transform function signatures, result schema
+extensions) are subject to Phase 7A design.** This ADR records the **architectural decision**
+— the chosen model and its rationale — not the approved implementation. Phase 7A will
+determine the exact schema contract based on the active HoldCo engine implementation at
+that time.
+
 ---
 
 ## 5. Architectural Constraints
 
-The following constraints must be respected in any Phase 7 implementation:
+The following constraints must be respected in any Phase 7A implementation:
 
 ### 5.1 No Tax Engine Modification
 
-The HoldCo tax engine (`run_holdco_tax_engine()`) computes **accrual** CIT. Cash timing is
-a **transform layer** applied downstream, not a change to the engine itself.
+The HoldCo tax engine computes **accrual** CIT. Cash timing is a **transform layer** applied
+downstream, not a change to the engine itself.
 
 ```
 HoldCo Tax Engine (accrual)  →  Cash Timing Transform (lag applied)  →  Cash Flow Input
@@ -236,9 +234,8 @@ HoldCo Tax Engine (accrual)  →  Cash Timing Transform (lag applied)  →  Cash
 
 ### 5.2 No Waterfall Modifications in Phase 6F
 
-Phase 6F is documentation-only. No waterfall code is modified. Phase 7 integration will
-add `cit_cash_by_period_keur` as a new input parameter to the HoldCo cash waterfall,
-not as a modification of existing waterfall logic.
+Phase 6F is documentation-only. No waterfall code is modified. Phase 7A integration will
+introduce cash CIT as a new input to the HoldCo cash waterfall.
 
 ### 5.3 No Sponsor IRR Implementation in Phase 6F
 
@@ -247,14 +244,13 @@ timing question but does not implement the integration.
 
 ### 5.4 Accrual and Cash Remain Separate
 
-Both `cit_accrual_by_period_keur` and `cit_cash_by_period_keur` must be tracked separately
-in audit sheets. They are not merged into a single figure.
+Both accrual CIT and cash CIT must be tracked separately in result schema and audit sheets.
+They are not merged into a single figure.
 
 ### 5.5 Jurisdiction Override Capability Preserved
 
-Any cash timing implementation must support per-country lag configuration via
-`HoldCoTaxConfig.cit_payment_lag` or equivalent. Hardcoding a single lag for all
-jurisdictions is not acceptable.
+Any cash timing implementation must support per-country lag configuration. Hardcoding a
+single lag for all jurisdictions is not acceptable.
 
 ### 5.6 Determinism Preserved
 
@@ -263,83 +259,51 @@ outputs on every run. Lag is expressed in **model periods**, not calendar days.
 
 ---
 
-## 6. Future Integration Flow
+## 6. Future Integration Notes
 
-The following describes the intended Phase 7 integration path for HoldCo CIT cash timing:
+*This section describes the integration concept. Exact schema, field names, and function
+signatures are subject to Phase 7A design.*
 
-### 6.1 Schema Extension
+### 6.1 Config Extension Concept
 
-```python
-@dataclass(frozen=True)
-class HoldCoTaxConfig:
-    cit_payment_lag: int = 1  # model periods between accrual and cash payment
-    # ... existing fields unchanged ...
-```
+A per-country `cit_payment_lag` configuration field would allow each jurisdiction template
+to specify its own lag, with a default of `1` semiannual period.
 
-### 6.2 HoldCoTaxResult Extension
+### 6.2 Result Schema Concept
 
-```python
-@dataclass(frozen=True)
-class HoldCoTaxResult:
-    cit_accrual_by_period_keur: tuple[float, ...]   # existing: per-period accrual CIT
-    cit_cash_by_period_keur: tuple[float, ...        # NEW: per-period cash CIT (after lag)
-    wht_by_period_keur: tuple[float, ...             # existing
-    taxable_income_by_period_keur: tuple[float, ...  # existing
-    # ...
-```
+The result schema would carry both accrual and cash CIT values:
 
-### 6.3 Cash Timing Transform
+- **Accrual CIT** — the tax liability computed for each period (used for audit reporting)
+- **Cash CIT** — the accrual CIT shifted by the configured lag (used for cash flow integration)
 
-```python
-def apply_cit_cash_timing(
-    accrual_by_period: tuple[float, ...],
-    lag: int,
-) -> tuple[float, ...]:
-    """Apply deterministic lag to accrual CIT to produce cash CIT."""
-    if lag == 0:
-        return accrual_by_period
-    # Shift by lag: period[t] cash = period[t-lag] accrual
-    # First `lag` periods: cash = 0 (no prior accrual to draw from)
-    cash = tuple(0.0 for _ in range(lag)) + accrual_by_period[:-lag]
-    return cash
-```
+Both are maintained independently in the result schema.
 
-### 6.4 HoldCo Cash Waterfall Integration
+### 6.3 Cash Timing Transform Concept
 
-In Phase 7, the HoldCo cash waterfall receives both accrual and cash CIT:
+A deterministic transform applies the configured lag to accrual CIT to produce cash CIT.
+For `lag=0`, accrual equals cash. For `lag=1`, cash in period *t* equals accrual from
+period *t−1*. The first *lag* periods have zero cash CIT (no prior accrual to draw from).
 
-```python
-# In HoldCo cash waterfall (Phase 7):
-available_cash = (
-    dividend_income
-    + shl_interest_income
-    - holdco_opex
-    - cit_cash_by_period_keur[period]   # cash outflow from HoldCo CIT payment
-    - wht_by_period_keur[period]         # WHT remittance
-)
-```
+### 6.4 HoldCo Cash Waterfall Concept
 
-The accrual figure (`cit_accrual_by_period_keur`) continues to be used for audit reporting only.
+In Phase 7A, the HoldCo cash waterfall receives cash CIT (not accrual CIT) as a cash outflow.
+The accrual figure continues to be available for audit reporting.
 
-### 6.5 Audit Sheet Updates (Phase 7)
+### 6.5 Audit Sheet Concept
 
-Two new columns added to HoldCo Tax Summary audit sheet:
-- `Accrual CIT (kEUR)` — existing, from `cit_accrual_by_period_keur`
-- `Cash CIT (kEUR)` — new, from `cit_cash_by_period_keur`
-
-The cash column reflects the actual cash outflow used in the waterfall. Both are shown
-together so reviewers can see the timing difference.
+Audit sheets would show both accrual and cash CIT figures per entity per period, so reviewers
+can see the timing difference. Both are preserved for governance traceability.
 
 ---
 
 ## 7. Explicit Non-Scope
 
-The following are explicitly out of scope for this decision and Phase 7 integration:
+The following are explicitly out of scope for this decision and Phase 7A integration:
 
 | Item | Reason |
 |------|--------|
 | Tax engine modifications | Accrual engine unchanged; cash timing is a transform |
-| Deferred tax asset/liability tracking | Requires monthly model; not in Phase 7 scope |
+| Deferred tax asset/liability tracking | Requires monthly model; not in Phase 7A scope |
 | Monthly model | Semiannual periods only; cash timing in model periods not calendar months |
 | Sponsor waterfall | Phase 7 sponsor economics topic |
 | Sponsor IRR / MOIC | Phase 7 sponsor economics topic |
@@ -348,7 +312,7 @@ The following are explicitly out of scope for this decision and Phase 7 integrat
 | Treaty WHT engine | Cross-border treaty not modeled |
 | Actual jurisdiction payment calendars | Requires legal/tax counsel; not available in model inputs |
 | WHT remittance timing | WHT is audit-visible only; no cash flow integration in Phase 6 or 7 |
-| HoldCo runner behavior changes | `run_holdco_tax_engine()` unchanged; output extended |
+| HoldCo runner behavior changes | Engine schema unchanged; output extended in Phase 7A |
 
 ---
 
@@ -359,8 +323,8 @@ The following are explicitly out of scope for this decision and Phase 7 integrat
 **Risk:** Phase 7 begins sponsor waterfall integration without cash timing, using accrual CIT
 in the waterfall. Sponsor IRR is understated (CIT appears to be paid before it actually is).
 
-**Mitigation:** Phase 7 must include `cit_cash_by_period_keur` as a first-class input to the
-HoldCo cash waterfall. Accrual CIT must not be used as a cash flow input.
+**Mitigation:** Phase 7A must introduce cash CIT as a first-class input to the HoldCo cash
+waterfall. Accrual CIT must not be used as a cash flow input.
 
 **Blocker for Phase 7:** Yes — sponsor economics cannot begin without cash timing resolution.
 
@@ -386,10 +350,10 @@ and bounded.
 via SHL interest or distribution timing), a circular reference could form.
 
 **Mitigation:** HoldCo CIT is deducted from **post-tax cash** in the waterfall, not from taxable
-income. Taxable income computation uses `dividend_income + shl_interest_income - holdco_opex`,
-which does not include CIT. No circular reference is possible.
+income. Taxable income computation uses dividend income + SHL interest income − HoldCo OpEx,
+which does not include CIT. No circular reference is possible given the current schema design.
 
-**Blocker:** No — structurally impossible given current architecture.
+**Blocker:** No — structurally not possible in current architecture.
 
 ---
 
@@ -412,19 +376,18 @@ is still an approximation given semiannual model periods. The limitation is acce
 one-period lag, the DSCR test in period 1 may show artificially high available cash.
 
 **Mitigation:** Sponsor waterfall Phase 7 design should explicitly account for CIT cash timing
-when computing DSCR. The audit trail (`cit_accrual` vs `cit_cash`) is available to reviewers.
+when computing DSCR. The audit trail (accrual vs cash figures) is available to reviewers.
 
 **Blocker:** No — sponsor waterfall design is Phase 7.
 
 ---
 
-## 9. Recommendation for Phase 7
+## 9. Recommendation for Phase 7A
 
-### Phase 7 HoldCo Tax Cash Timing Implementation Recommendation
+### Phase 7A HoldCo Tax Cash Timing
 
-**Recommended approach:** Implement as described in this ADR — extend `HoldCoTaxConfig` with
-`cit_payment_lag` (default `1`), compute `cit_cash_by_period_keur` via the cash timing transform
-in Phase 7's HoldCo cash waterfall, and add two new columns to the HoldCo Tax Summary audit sheet.
+**Architectural direction:** Implement the deterministic one-period lag as described in this ADR.
+Schema extensions, exact field names, and function signatures to be determined in Phase 7A design.
 
 ### Decision Record Summary
 
@@ -432,35 +395,27 @@ in Phase 7's HoldCo cash waterfall, and add two new columns to the HoldCo Tax Su
 |----------|--------|
 | Cash timing model | Model A — Deterministic One-Period Lag (default) |
 | Default lag | `1` semiannual model period |
-| Override mechanism | Per-country `cit_payment_lag` in `HoldCoTaxConfig` |
+| Override mechanism | Per-country lag configuration in HoldCo tax config |
 | Tax engine changes | None — transform applied downstream |
-| Accrual/cash distinction | Both tracked separately in `HoldCoTaxResult` |
+| Accrual/cash distinction | Both tracked separately in result schema |
 | Sponsor IRR integration | Phase 7 sponsor waterfall topic; cash timing is prerequisite |
-| Implementation phase | Phase 7 (this decision is documentation-only) |
+| Implementation phase | Phase 7A (this decision is architecture-only; implementation details subject to Phase 7A design) |
 
-### Pre-Phase-7 Prerequisites
+### Pre-Phase-7A Checklist
 
-Before Phase 7 begins, the following should be confirmed:
+Before Phase 7A begins, the following should be confirmed by the Phase 7A design:
 
-1. **HoldCo cash waterfall contract** — Does the waterfall accept `cit_cash_by_period_keur` as
-   an input? Is the accrual figure (`cit_accrual_by_period_keur`) still available for audit?
-2. **HoldCoTaxConfig schema** — Is `cit_payment_lag` field accepted in the existing config schema?
-3. **DSCR test interaction** — Does the HoldCo DSCR test need to account for CIT cash timing?
-4. **Sponsor due diligence** — Are sponsor covenant reports expected to show both accrual and
-   cash CIT figures?
-
-### Audit Trail Requirements
-
-Phase 7 implementation must preserve the complete audit trail:
-
-- [ ] `cit_accrual_by_period_keur` — per-period accrual CIT (from `run_holdco_tax_engine()`)
-- [ ] `cit_cash_by_period_keur` — per-period cash CIT (after lag transform)
-- [ ] `cit_payment_lag` — the lag applied (per country)
-- [ ] Audit sheet update — both accrual and cash columns shown together
-- [ ] No modification of existing `HoldCoTaxResult` fields (backward compatibility)
+1. **Result schema contract** — Does the active `HoldCoTaxResult` schema carry per-period accrual
+   values? What field name is used? Can a cash CIT field be added without breaking existing consumers?
+2. **Config schema** — Is there a place for a per-country `cit_payment_lag` field in the
+   HoldCo tax configuration schema?
+3. **HoldCo cash waterfall contract** — Does the waterfall accept per-period cash CIT as an input?
+   Is accrual CIT still available for audit?
+4. **DSCR test interaction** — Does the HoldCo DSCR test need to account for CIT cash timing?
+5. **Audit sheet format** — Are both accrual and cash CIT figures expected in the audit sheets?
 
 ---
 
 *End of ADR — Phase 6F HoldCo Tax Cash Timing Decision*
 *Branch: phase6f-holdco-tax-cash-timing-decision*
-*Implementation: Deferred to Phase 7*
+*Implementation: Deferred to Phase 7A (architecture decision only; implementation details TBD)*
