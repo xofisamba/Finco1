@@ -615,3 +615,29 @@ tests/test_tax_engine_runner.py:         23 passed, 1 skipped ✅
 | Thin-cap / EBITDA limitation enforcement | ❌ Not implemented |
 | Waterfall integration | ❌ Not wired |
 | Model output changes | ❌ None |
+
+---
+
+## Phase 6C.2 — HoldCo Tax Calculation Primitives
+
+**Purpose:** Pure calculation primitives for HoldCo / intercompany tax.
+**Status:** Building blocks only. No active CIT engine, no WHT engine, no waterfall wiring.
+
+### Functions
+
+| Function | Description |
+|---|---|
+| `calculate_withholding_tax_keur(gross, rate)` | WHT amount = gross × rate |
+| `calculate_holdco_taxable_income_before_limitations(div, int, opex)` | div + int - opex |
+| `exclude_shl_principal_from_taxable_income(principal)` | Always returns 0.0; principal excluded |
+| `calculate_interest_limitation_keur(interest, ebitda, pct)` | ATAD excess non-deductible |
+| `calculate_deductible_interest_after_limitation_keur(...)` | deductible after ATAD limit |
+
+### Explicit non-scope
+
+| Item | Status |
+|---|---|
+| Full HoldCo tax engine | ❌ Not implemented |
+| WHT payment / remittance | ❌ Not implemented |
+| Waterfall integration | ❌ Not wired |
+| Model output changes | ❌ None |
