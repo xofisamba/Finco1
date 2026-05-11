@@ -76,17 +76,28 @@ class SPVTaxEngineInputs:
                 f"asset_cost_keur must be >= 0, got {self.asset_cost_keur}"
             )
 
-        # All tuples same length
-        tuples = (
+        # Validate required tuples have same length
+        required_tuples = (
             ("ebitda_by_period_keur", self.ebitda_by_period_keur),
             ("deductible_interest_by_period_keur", self.deductible_interest_by_period_keur),
             ("book_depreciation_by_period_keur", self.book_depreciation_by_period_keur),
-            ("non_deductible_addbacks_by_period_keur", self.non_deductible_addbacks_by_period_keur),
         )
-        lengths = {name: len(t) for name, t in tuples}
-        if len(set(lengths.values())) > 1:
+        required_lengths = {name: len(t) for name, t in required_tuples}
+        if len(set(required_lengths.values())) > 1:
             raise ValueError(
-                f"all input tuples must have same length, got {lengths}"
+                f"ebitda, deductible_interest, and book_depreciation tuples "
+                f"must have same length, got {required_lengths}"
+            )
+
+        # non_deductible_addbacks_by_period_keur is optional:
+        # - empty tuple means all-zero addbacks (default)
+        # - otherwise must match required tuple length
+        n = len(self.ebitda_by_period_keur)  # reference length from required tuples
+        addbacks_len = len(self.non_deductible_addbacks_by_period_keur)
+        if addbacks_len != 0 and addbacks_len != n:
+            raise ValueError(
+                f"non_deductible_addbacks_by_period_keur must be empty (default "
+                f"all-zero) or same length as other tuples ({n}), got {addbacks_len}"
             )
 
         # depreciation_rule_asset_category exists in resolved_tax_config

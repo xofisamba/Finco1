@@ -40,8 +40,10 @@ class SPVTaxPeriodResult:
     non_deductible_depreciation_keur : float
         Current-period timing difference (book dep - tax dep claimed).
         This is a **delta only** — not the accumulated pool.
-        See ``accumulated_non_deductible_depreciation_keur`` in the
-        depreciation schedule for the running pool.
+        Note: accumulated depreciation timing difference is tracked in
+        ``TaxDepreciationSchedule.accumulated_non_deductible_depreciation_keur``
+        and is not currently carried in ``SPVTaxPeriodResult``. Future
+        reporting extensions may expose it.
     taxable_income_before_losses_keur : float
         Taxable income after EBITDA, interest, tax depreciation,
         and non-deductible addbacks — but before loss carryforward usage.
@@ -122,7 +124,11 @@ class SPVTaxResult:
         Sum of all period ``loss_used_keur``.
     total_taxable_income_after_losses_keur : float
         Sum of all period ``taxable_income_after_losses_keur``.
-        Must equal total_taxable_income_before_losses - total_loss_used.
+        Does NOT equal total_taxable_income_before_losses - total_loss_used
+        because periods with negative taxable income generate losses (taxable_after
+        is floored at 0). For example, if period 1 has taxable_before = -200,
+        loss_used in that period = 0 and taxable_after = 0 (no positive income
+        to offset).
     total_cit_payable_keur : float
         Sum of all period ``cit_payable_keur``.
     ending_loss_carryforward_keur : float

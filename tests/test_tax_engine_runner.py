@@ -489,12 +489,12 @@ class TestInvalidInputs:
                 non_deductible_addbacks_by_period_keur=(0.0,),
             )
 
-    def test_mismatched_tuple_lengths_raises(self):
+    def test_mismatched_required_tuples_raises(self):
         """EBITDA, interest, book_dep tuples of different lengths raises."""
         template = make_flat_hr_template()
         config = resolved_config(template)
 
-        with pytest.raises(ValueError, match="same length"):
+        with pytest.raises(ValueError, match="must have same length"):
             SPVTaxEngineInputs(
                 entity_code="HR-SPV-001",
                 resolved_tax_config=config,
@@ -539,6 +539,62 @@ class TestInvalidInputs:
                 depreciation_rule_asset_category="infrastructure",
                 non_deductible_addbacks_by_period_keur=(0.0,),
             )
+
+    def test_empty_addbacks_accepted_for_non_empty_periods(self):
+        """Empty non_deductible_addbacks_by_period_keur (default) is valid."""
+        template = make_flat_hr_template()
+        config = resolved_config(template)
+
+        # Default addbacks = empty tuple → all-zero addbacks
+        # Should be accepted even when there are many periods
+        inputs = SPVTaxEngineInputs(
+            entity_code="HR-SPV-001",
+            resolved_tax_config=config,
+            ebitda_by_period_keur=(1000.0, 1000.0, 1000.0),
+            deductible_interest_by_period_keur=(0.0, 0.0, 0.0),
+            book_depreciation_by_period_keur=(500.0, 500.0, 500.0),
+            asset_cost_keur=10_000.0,
+            depreciation_rule_asset_category="infrastructure",
+            # non_deductible_addbacks_by_period_keur = () by default
+        )
+        result = run_spv_tax_engine(inputs)
+        assert len(result.periods) == 3
+
+    def test_explicit_addbacks_same_length_accepted(self):
+        """Explicit non_deductible_addbacks_by_period_keur of same length is valid."""
+        template = make_flat_hr_template()
+        config = resolved_config(template)
+
+        inputs = SPVTaxEngineInputs(
+            entity_code="HR-SPV-001",
+            resolved_tax_config=config,
+            ebitda_by_period_keur=(1000.0, 1000.0),
+            deductible_interest_by_period_keur=(0.0, 0.0),
+            book_depreciation_by_period_keur=(500.0, 500.0),
+            asset_cost_keur=10_000.0,
+            depreciation_rule_asset_category="infrastructure",
+            non_deductible_addbacks_by_period_keur=(10.0, 20.0),  # explicit, same length
+        )
+        result = run_spv_tax_engine(inputs)
+        assert len(result.periods) == 2
+
+    def test_wrong_addbacks_length_rejected(self):
+        """non_deductible_addbacks_by_period_keur wrong length (not empty, not same) raises."""
+        template = make_flat_hr_template()
+        config = resolved_config(template)
+
+        with pytest.raises(ValueError, match="non_deductible_addbacks_by_period_keur must be empty"):
+            SPVTaxEngineInputs(
+                entity_code="HR-SPV-001",
+                resolved_tax_config=config,
+                ebitda_by_period_keur=(1000.0, 1000.0),
+                deductible_interest_by_period_keur=(0.0, 0.0),
+                book_depreciation_by_period_keur=(500.0, 500.0),
+                asset_cost_keur=10_000.0,
+                depreciation_rule_asset_category="infrastructure",
+                non_deductible_addbacks_by_period_keur=(10.0,),  # 1 element but 2 periods → invalid
+            )
+
 
 
 # ── Test: SPVTaxResult validation ─────────────────────────────────────────────
