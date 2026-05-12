@@ -60,46 +60,73 @@ def calc(
 # ── Annual compounding ────────────────────────────────────────────────────────
 
 class TestAnnualCompoundingAccrual:
-    def test_single_period_invest_10k_hurdle_8pct(self):
-        """Period 0: invest 10,000. Accrue 10,000 * 0.08 = 800."""
+    def test_even_period_zero_accrual(self):
+        """Period 0 (even): no accrual — first half of year, waiting for annual boundary."""
         tier = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
         result = calc(tier, [10000.0], [0.0])
         entry = result.entries[0]
-        assert entry.accrued_pref_keur == pytest.approx(800.0)
-        assert entry.cumulative_accrued_pref_keur == pytest.approx(800.0)
-        assert entry.unpaid_pref_balance_keur == pytest.approx(800.0)
-        # Hurdle IS satisfied when accrued == threshold (800 >= 800)
-        assert entry.hurdle_satisfied is True
+        assert entry.accrued_pref_keur == 0.0
+        assert entry.cumulative_accrued_pref_keur == 0.0
+        assert entry.hurdle_satisfied is False  # threshold=800, accrued=0
 
-    def test_two_periods_invest_all_at_period_0(self):
-        """10k at p=0, zero at p=1. Two half-year periods, annual compounding.
+    def test_odd_period_annual_accrual(self):
+        """Period 1 (odd): full annual accrual on opening invested at year boundary.
 
-        Period 0: opening=10,000, accrue=10,000*0.08=800 (year 1 accrues in first half)
-        Period 1: opening=10,000, accrue=10,000*0.08=800
-        Total accrued after 2 periods = 1,600."""
+        p=0: opening=10k, even → 0 accrual (first half of year 1)
+        p=1: opening=10k, odd → annual boundary → accrue 10k*0.08=800 (year 1 complete)
+        """
         tier = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
         result = calc(tier, [10000.0, 10000.0], [0.0, 0.0])
-        assert len(result.entries) == 2
-        assert result.entries[0].accrued_pref_keur == pytest.approx(800.0)
+        assert result.entries[0].accrued_pref_keur == 0.0        # even → 0
+        assert result.entries[1].accrued_pref_keur == pytest.approx(800.0)  # odd → annual
+        assert result.total_accrued_pref_keur == pytest.approx(800.0)
+
+    def test_two_annual_periods_correct_total(self):
+        """4 periods = 2 annual cycles. 10k at p=0:
+        p=0: 0, p=1: 800 (year 1), p=2: 0, p=3: 800 (year 2) → total=1600"""
+        tier = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
+        result = calc(tier, [10000.0]*4, [0.0]*4)
+        assert result.entries[0].accrued_pref_keur == 0.0
         assert result.entries[1].accrued_pref_keur == pytest.approx(800.0)
+        assert result.entries[2].accrued_pref_keur == 0.0
+        assert result.entries[3].accrued_pref_keur == pytest.approx(800.0)
         assert result.total_accrued_pref_keur == pytest.approx(1600.0)
 
-    def test_invest_at_period_1_earns_from_period_2(self):
-        """10k injected at end of p=1; earns pref from p=2 onward."""
-        tier = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
-        result = calc(tier, [0.0, 10000.0, 10000.0], [0.0, 0.0, 0.0])
-        assert result.entries[0].accrued_pref_keur == 0.0
-        assert result.entries[1].accrued_pref_keur == 0.0  # capital not yet earning at p=1
-        assert result.entries[2].accrued_pref_keur == pytest.approx(800.0)  # earns from p=2
+    def test_invest_at_period_1_earns_annual_at_period_3(self):
+        """10k injected at end of p=1 (cumulative=10k from p=1 onward).
 
-    def test_hurdle_satisfied_exactly(self):
-        """cumulative_accrued_pref = cumulative_invested * hurdle → hurdle satisfied."""
+        p=0: opening=0, even → 0
+        p=1: opening=0 (invested at end of p=1, not yet earning), odd → annual boundary on 0 = 0
+        p=2: opening=10k (from p=1 end), even → 0 (first half of year 2)
+        p=3: opening=10k, odd → annual boundary → 800
+        """
         tier = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
-        # 10k invested at p=0, hurdle threshold = 800
-        # After p=0: accrued = 800, threshold = 800 → hurdle_satisfied should be True
-        result = calc(tier, [10000.0], [0.0])
-        assert result.entries[0].hurdle_satisfied is True
+        result = calc(tier, [0.0, 10000.0, 10000.0, 10000.0], [0.0]*4)
+        assert result.entries[0].accrued_pref_keur == 0.0
+        assert result.entries[1].accrued_pref_keur == 0.0   # odd boundary but opening=0
+        assert result.entries[2].accrued_pref_keur == 0.0    # even: first half of year 2
+        assert result.entries[3].accrued_pref_keur == pytest.approx(800.0)
+
+    def test_hurdle_satisfied_at_annual_boundary(self):
+        """Hurdle satisfied when cumulative_accrued >= cumulative_invested * hurdle.
+
+        10k invested at p=0: threshold=800. p=1 accrues 800 → hurdle satisfied."""
+        tier = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
+        result = calc(tier, [10000.0, 10000.0], [0.0, 0.0])
+        assert result.entries[0].hurdle_satisfied is False   # accrued=0, threshold=800
+        assert result.entries[1].hurdle_satisfied is True    # accrued=800, threshold=800
         assert result.all_periods_hurdle_satisfied is True
+
+    def test_annual_vs_semiannual_10k_four_periods(self):
+        """10k invested at p=0, 4 periods (2 years):
+        ANNUAL: 0 + 800 + 0 + 800 = 1,600
+        SEMIANNUAL: ~392 + ~392 + ~392 + ~392 = ~1,568"""
+        tier_annual = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
+        tier_semi = make_pref_tier(0.08, CompoundingConvention.SEMIANNUAL)
+        r_annual = calc(tier_annual, [10000.0]*4, [0.0]*4)
+        r_semi = calc(tier_semi, [10000.0]*4, [0.0]*4)
+        assert r_annual.total_accrued_pref_keur == pytest.approx(1600.0)
+        assert r_semi.total_accrued_pref_keur == pytest.approx(1568.0, rel=1e-3)
 
 
 # ── Simple accrual ────────────────────────────────────────────────────────────
@@ -114,16 +141,18 @@ class TestSimpleAccrual:
         assert result.entries[0].accrued_pref_keur == pytest.approx(400.0)
 
     def test_simple_vs_annual_first_period(self):
-        """SIMPLE accrues hurdle * 0.5 per half-year; ANNUAL accrues full hurdle.
+        """SIMPLE accrues hurdle * 0.5 per half-year; ANNUAL accrues full hurdle once per year.
 
-        SIMPLE: 10k * 0.08 * 0.5 = 400
-        ANNUAL: 10k * 0.08 = 800"""
+        SIMPLE: 10k * 0.08 * 0.5 = 400 per period (even p=0 accrues since it's half-year)
+        ANNUAL: 10k at p=0, p=0=even → 0 (first half of year), p=1=odd → 800 (annual boundary)"""
         tier_simple = make_pref_tier(0.08, CompoundingConvention.SIMPLE)
         tier_annual = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
         r_simple = calc(tier_simple, [10000.0], [0.0])
-        r_annual = calc(tier_annual, [10000.0], [0.0])
+        r_annual = calc(tier_annual, [10000.0, 10000.0], [0.0, 0.0])
         assert r_simple.entries[0].accrued_pref_keur == pytest.approx(400.0)
-        assert r_annual.entries[0].accrued_pref_keur == pytest.approx(800.0)
+        # ANNUAL: even period 0 → no accrual; odd period 1 → 800 annual accrual
+        assert r_annual.entries[0].accrued_pref_keur == 0.0
+        assert r_annual.entries[1].accrued_pref_keur == pytest.approx(800.0)
 
     def test_simple_over_10_periods(self):
         """10 periods × 400 = 4,000 total = 10k * 0.08 * 5 years."""
@@ -198,14 +227,14 @@ class TestHurdleSatisfiedTransition:
         assert result.entries[1].hurdle_satisfied is True
         assert result.entries[2].hurdle_satisfied is True
 
-    def test_hurdle_satisfied_with_distrubtion_exceeding_accrual(self):
-        """Hurdle can still be satisfied even if distributions are large."""
+    def test_hurdle_satisfied_after_annual_boundary(self):
+        """Hurdle satisfied after first annual accrual at p=1.
+
+        10k invested at p=0: threshold=800. p=1 annual accrual=800 → hurdle satisfied."""
         tier = make_pref_tier(0.08, CompoundingConvention.ANNUAL)
-        # p=0: 10k invested, accrue 800, distribute 500 → unpaid = 300
-        # threshold = 800, hurdle satisfied
-        result = calc(tier, [10000.0], [500.0])
-        assert result.entries[0].hurdle_satisfied is True
-        assert result.entries[0].unpaid_pref_balance_keur == pytest.approx(300.0)
+        result = calc(tier, [10000.0, 10000.0], [0.0, 0.0])
+        assert result.entries[0].hurdle_satisfied is False   # accrued=0, threshold=800
+        assert result.entries[1].hurdle_satisfied is True    # accrued=800, threshold=800
 
 
 # ── Unpaid pref carry-forward ─────────────────────────────────────────────────
@@ -255,13 +284,13 @@ class TestZeroDistributionPeriods:
         assert result.entries[-1].unpaid_pref_balance_keur == pytest.approx(2000.0)
 
     def test_intermittent_distributions(self):
-        """Distributions only in some periods."""
+        """Distributions only in some periods.
+
+        p=0: 10k invested, SIMPLE half-year accrual → 400 accrued, 0 distributed → unpaid=400
+        p=1: no new investment, 400 accrued, 0 distributed → unpaid=800
+        p=2: 10k more invested (cumulative 20k), 400 accrued, 400 distributed → unpaid=800
+        """
         tier = make_pref_tier(0.08, CompoundingConvention.SIMPLE)
-        # distributions_by_period is CUMULATIVE — value at index p = total dist through p
-        # Capital invested at p=1 does NOT earn pref until p=2
-        # p=0: 10000 invested, 400 accrued, 0 distributed → unpaid=400
-        # p=1: 10000 invested, 400 more accrued (total 800), 0 distributed → unpaid=800
-        # p=2: 10000 more invested, 400 accrued (total 1200), 400 distributed → unpaid=800
         result = calc(tier, [10000.0, 10000.0, 20000.0], [0.0, 0.0, 400.0])
         assert result.entries[0].unpaid_pref_balance_keur == pytest.approx(400.0)
         assert result.entries[1].unpaid_pref_balance_keur == pytest.approx(800.0)
@@ -338,18 +367,23 @@ class TestNaNInfRejection:
 
     def test_rejects_negative_invested(self):
         tier = make_pref_tier()
-        # -100.0 is negative, but inputs validation checks for NaN/Inf not sign
-        # This test documents the current behavior: negative invested is NOT
-        # currently rejected by the calculator (max(0, -100) = 0 is finite)
-        inputs = PreferredReturnCalculatorInputs(
-            tier=tier,
-            cumulative_invested_by_period=(-100.0,),
-            distributions_by_period=(0.0,),
-            num_periods=1,
-        )
-        # It does NOT raise — negative capital resolves to 0 via max()
-        result = calculate_preferred_return(inputs)
-        assert result.entries[0].opening_invested_capital_keur == 0.0
+        with pytest.raises(ValueError, match="cumulative_invested_by_period.*must be >= 0"):
+            PreferredReturnCalculatorInputs(
+                tier=tier,
+                cumulative_invested_by_period=(-100.0,),
+                distributions_by_period=(0.0,),
+                num_periods=1,
+            )
+
+    def test_rejects_negative_distributions(self):
+        tier = make_pref_tier()
+        with pytest.raises(ValueError, match="distributions_by_period.*must be >= 0"):
+            PreferredReturnCalculatorInputs(
+                tier=tier,
+                cumulative_invested_by_period=(10000.0,),
+                distributions_by_period=(-50.0,),
+                num_periods=1,
+            )
 
 
 # ── Input validation ─────────────────────────────────────────────────────────
