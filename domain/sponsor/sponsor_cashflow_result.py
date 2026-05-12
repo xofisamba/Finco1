@@ -71,7 +71,8 @@ class SponsorCashflowPeriodResult:
         Can be negative (net investment phase) or positive (net return phase).
     capital_account_balance_keur : float
         Cumulative capital account balance after this period's injection
-        and distribution. Must be >= 0 (account never goes negative by construction).
+        and distribution. May be negative when cumulative distributions exceed
+        cumulative equity injected (return phase). Must be finite.
     audit_note : str
         Fixed string confirming this is an audit-only artifact.
     notes : tuple[str, ...]
@@ -93,9 +94,9 @@ class SponsorCashflowPeriodResult:
             ("equity_injected_keur", self.equity_injected_keur),
             ("distribution_received_keur", self.distribution_received_keur),
             ("wht_on_distribution_keur", self.wht_on_distribution_keur),
-            ("capital_account_balance_keur", self.capital_account_balance_keur),
         ]:
             _finite_non_negative(val, name)
+        _finite(self.capital_account_balance_keur, "capital_account_balance_keur")  # may be negative in return phase
         _finite(self.net_cashflow_keur, "net_cashflow_keur")
         if not isinstance(self.notes, tuple):
             object.__setattr__(self, "notes", _to_tuple_str(self.notes))
