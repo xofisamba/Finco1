@@ -57,7 +57,8 @@ class CapitalAccountEntry:
         Amount in kEUR. Must be >= 0 and finite.
     running_balance_keur : float
         Capital account balance after this entry is applied.
-        Must be >= 0 by construction.
+        May be negative when cumulative distributions exceed
+        cumulative equity injected (return phase). Must be finite.
     investor_id : str
         Sponsor/investor identifier.
     source : str
@@ -110,7 +111,7 @@ class CapitalAccountEntry:
                 f"source must be one of {self._VALID_SOURCES}, got {self.source!r}"
             )
         _finite_non_negative(self.amount_keur, "amount_keur")
-        _finite_non_negative(self.running_balance_keur, "running_balance_keur")
+        _finite(self.running_balance_keur, "running_balance_keur")  # may be negative in return phase
         if not isinstance(self.notes, tuple):
             object.__setattr__(self, "notes", _to_tuple_str(self.notes))
 
@@ -137,8 +138,10 @@ class SponsorCapitalAccount:
         Sum of all distribution entries. Must be >= 0.
     net_contributed_keur : float
         total_contributed - total_distributions (can be negative if distributions > contributions).
-    final_balance_keur : float
-        Final capital account balance (must be >= 0 or None if not yet finalised).
+    final_balance_keur : float | None
+        Final capital account balance. May be negative when cumulative
+        distributions exceed cumulative equity injected (return phase).
+        None if not yet finalised.
     metadata : tuple[tuple[str, Any], ...]
         Key-value metadata as frozen sorted tuple.
     notes : tuple[str, ...]
@@ -191,7 +194,7 @@ class SponsorCapitalAccount:
             _finite_non_negative(val, name)
         _finite(self.net_contributed_keur, "net_contributed_keur")
         if self.final_balance_keur is not None:
-            _finite_non_negative(self.final_balance_keur, "final_balance_keur")
+            _finite(self.final_balance_keur, "final_balance_keur")  # may be negative in return phase
 
         # Reconcile totals with entries
         eps = 1e-6

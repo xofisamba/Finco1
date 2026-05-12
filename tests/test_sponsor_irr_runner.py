@@ -16,6 +16,10 @@ from domain.sponsor.sponsor_cashflow_result import (
     SponsorCashflowPeriodResult,
     SponsorCashflowResult,
 )
+from domain.sponsor.sponsor_capital_account import (
+    CapitalAccountEntry,
+    SponsorCapitalAccount,
+)
 from domain.sponsor.sponsor_irr_result import (
     SponsorIrrResult,
     SponsorMoicResult,
@@ -58,7 +62,7 @@ def simple_10period_result():
                 distribution_received_keur=dist,
                 wht_on_distribution_keur=0.0,
                 net_cashflow_keur=net,
-                capital_account_balance_keur=abs(cap),
+                capital_account_balance_keur=cap,  # may be negative in return phase
                 notes=(f"period {i}",),
             )
         )
@@ -557,3 +561,182 @@ class TestImmutability:
         # Input should be unchanged
         assert simple_10period_result.total_equity_injected_keur == original_total
         assert simple_10period_result.investor_id == "SPONSOR-1"
+
+# ── Negative capital account balance tests ────────────────────────────────────
+
+class TestNegativeCapitalAccountBalances:
+    """Tests that distributions can exceed equity injected without raising."""
+
+    def test_period_result_accepts_negative_balance(self):
+        """SponsorCashflowPeriodResult accepts negative capital_account_balance."""
+        p = SponsorCashflowPeriodResult(
+            period_index=5,
+            equity_injected_keur=0.0,
+            distribution_received_keur=5000.0,
+            wht_on_distribution_keur=0.0,
+            net_cashflow_keur=5000.0,
+            capital_account_balance_keur=-2000.0,  # distributions exceed injections
+        )
+        assert p.capital_account_balance_keur == -2000.0
+
+    def test_period_result_accepts_large_negative_balance(self):
+        """Large negative balance (return phase) is accepted."""
+        p = SponsorCashflowPeriodResult(
+            period_index=20,
+            equity_injected_keur=0.0,
+            distribution_received_keur=10000.0,
+            wht_on_distribution_keur=0.0,
+            net_cashflow_keur=10000.0,
+            capital_account_balance_keur=-50000.0,
+        )
+        assert p.capital_account_balance_keur == -50000.0
+
+    def test_capital_account_entry_accepts_negative_running_balance(self):
+        """CapitalAccountEntry accepts negative running_balance_keur."""
+        e = CapitalAccountEntry(
+            entry_type="distribution",
+            period_index=10,
+            amount_keur=8000.0,
+            running_balance_keur=-3000.0,
+            investor_id="SPONSOR-1",
+            source="distribution_from_holdco",
+        )
+        assert e.running_balance_keur == -3000.0
+
+    def test_sponsor_capital_account_accepts_negative_final_balance(self):
+        """SponsorCapitalAccount accepts negative final_balance_keur."""
+        entries = [
+            CapitalAccountEntry(
+                entry_type="contribution",
+                period_index=0,
+                amount_keur=10000.0,
+                running_balance_keur=10000.0,
+                investor_id="SPONSOR-1",
+                source="equity_injection",
+            ),
+            CapitalAccountEntry(
+                entry_type="distribution",
+                period_index=5,
+                amount_keur=13000.0,
+                running_balance_keur=-3000.0,
+                investor_id="SPONSOR-1",
+                source="distribution_from_holdco",
+            ),
+        ]
+        ca = SponsorCapitalAccount(
+            investor_id="SPONSOR-1",
+            entity_code="HOLDCO",
+            entries=tuple(entries),
+            total_contributed_keur=10000.0,
+            total_distributions_keur=13000.0,
+            net_contributed_keur=-3000.0,
+            final_balance_keur=-3000.0,
+        )
+        assert ca.final_balance_keur == -3000.0
+
+    def test_distributions_exceed_injections_end_to_end(self):
+        """Full runner: distributions > injections → negative balance, no crash."""
+        # Periods 0-2: injections 10k each. Periods 3-9: distributions 5k each.
+        # Cumulative at period 9: 30k injected, 35k distributed → net -5k
+        # capital_account_balance goes negative in return phase.
+        period_results = []
+        cap = 0.0
+        for i in range(10):
+            inj = 10000.0 if i < 3 else 0.0
+            dist = 5000.0 if i >= 3 else 0.0
+            net = dist - inj
+            cap = cap + inj - dist
+            period_results.append(
+                SponsorCashflowPeriodResult(
+                    period_index=i,
+                    equity_injected_keur=inj,
+                    distribution_received_keur=dist,
+                    wht_on_distribution_keur=0.0,
+                    net_cashflow_keur=net,
+                    capital_account_balance_keur=cap,  # cap is negative for i >= 7
+                )
+            )
+        result = SponsorCashflowResult(
+            investor_id="SPONSOR-1",
+            entity_code="HOLDCO",
+            period_results=tuple(period_results),
+            total_equity_injected_keur=30000.0,
+            total_distributions_received_keur=35000.0,
+            total_wht_keur=0.0,
+            total_net_cashflow_keur=5000.0,
+            gross_sponsor_return_multiple=35000.0 / 30000.0,
+        )
+        # Verify negative balance occurs (period 7: 30k - 20k = 10k... actually let's check)
+        # cap goes negative at period 9: 30k injected, 35k distributed → -5k
+        assert result.period_results[9].capital_account_balance_keur == -5000.0
+        # Run should complete without exception
+        inputs = SponsorIrrRunnerInputs(sponsor_result=result, fc_date=date(2020, 1, 1))
+        irr = run_sponsor_irr(inputs)
+        assert irr.investor_id == "SPONSOR-1"
+
+
+class TestBalanceNaNInfStillRejected:
+    """NaN/Inf balances still fail for all capital account types."""
+
+    def test_period_result_rejects_nan_balance(self):
+        import math
+        with pytest.raises(ValueError, match="must be finite"):
+            SponsorCashflowPeriodResult(
+                period_index=0,
+                equity_injected_keur=0.0,
+                distribution_received_keur=0.0,
+                wht_on_distribution_keur=0.0,
+                net_cashflow_keur=0.0,
+                capital_account_balance_keur=float("nan"),
+            )
+
+    def test_period_result_rejects_inf_balance(self):
+        with pytest.raises(ValueError, match="must be finite"):
+            SponsorCashflowPeriodResult(
+                period_index=0,
+                equity_injected_keur=0.0,
+                distribution_received_keur=0.0,
+                wht_on_distribution_keur=0.0,
+                net_cashflow_keur=0.0,
+                capital_account_balance_keur=float("inf"),
+            )
+
+    def test_capital_account_entry_rejects_nan_running_balance(self):
+        with pytest.raises(ValueError, match="must be finite"):
+            CapitalAccountEntry(
+                entry_type="contribution",
+                period_index=0,
+                amount_keur=1000.0,
+                running_balance_keur=float("nan"),
+                investor_id="S1",
+                source="equity_injection",
+            )
+
+    def test_capital_account_entry_rejects_inf_running_balance(self):
+        with pytest.raises(ValueError, match="must be finite"):
+            CapitalAccountEntry(
+                entry_type="contribution",
+                period_index=0,
+                amount_keur=1000.0,
+                running_balance_keur=float("inf"),
+                investor_id="S1",
+                source="equity_injection",
+            )
+
+    def test_sponsor_capital_account_rejects_nan_final_balance(self):
+        entries = (
+            CapitalAccountEntry(
+                entry_type="contribution", period_index=0,
+                amount_keur=1000.0, running_balance_keur=1000.0,
+                investor_id="S1", source="equity_injection",
+            ),
+        )
+        with pytest.raises(ValueError, match="must be finite"):
+            SponsorCapitalAccount(
+                investor_id="S1", entity_code="HOLDCO",
+                entries=entries,
+                total_contributed_keur=1000.0,
+                total_distributions_keur=0.0,
+                net_contributed_keur=1000.0,
+                final_balance_keur=float("nan"),
+            )
