@@ -971,3 +971,208 @@ class TestDeterministicOrdering:
                 )
                 for i in range(ra.period_count):
                     assert ra.period_results[i].equity_injected_keur == rb.period_results[i].equity_injected_keur
+
+# ── Metadata immutability tests ───────────────────────────────────────────────
+
+class TestMetadataImmutabilityRejection:
+    """Test that dict/list metadata values are rejected."""
+
+    def test_runner_inputs_rejects_dict_metadata_value(self):
+        """Dict metadata values are rejected matching EquityInjection policy."""
+        with pytest.raises(TypeError, match="Metadata dict values not allowed"):
+            SponsorCashflowRunnerInputs(
+                investor_id="SPONSOR-1",
+                entity_code="HOLDCO",
+                equity_injections=(),
+                holdco_distribution_by_period=(0.0,) * 3,
+                holdco_dividend_by_period=(0.0,) * 3,
+                wht_rate=0.0,
+                holdco_opex_by_period=(0.0,) * 3,
+                period_count=3,
+                metadata=(("key", {"nested": "dict"}),),
+            )
+
+    def test_runner_inputs_rejects_list_metadata_value(self):
+        """List metadata values are rejected matching EquityInjection policy."""
+        with pytest.raises(TypeError, match="Metadata list values not allowed"):
+            SponsorCashflowRunnerInputs(
+                investor_id="SPONSOR-1",
+                entity_code="HOLDCO",
+                equity_injections=(),
+                holdco_distribution_by_period=(0.0,) * 3,
+                holdco_dividend_by_period=(0.0,) * 3,
+                wht_rate=0.0,
+                holdco_opex_by_period=(0.0,) * 3,
+                period_count=3,
+                metadata=(("key", ["list", "values"]),),
+            )
+
+    def test_runner_inputs_rejects_nested_list_in_metadata(self):
+        """Nested list inside metadata tuple is rejected."""
+        with pytest.raises(TypeError, match="Metadata list values not allowed"):
+            SponsorCashflowRunnerInputs(
+                investor_id="SPONSOR-1",
+                entity_code="HOLDCO",
+                equity_injections=(),
+                holdco_distribution_by_period=(0.0,) * 3,
+                holdco_dividend_by_period=(0.0,) * 3,
+                wht_rate=0.0,
+                holdco_opex_by_period=(0.0,) * 3,
+                period_count=3,
+                metadata=(("key", [1, 2, [3]]),),  # list value (contains nested list)
+            )
+
+    def test_runner_inputs_valid_scalar_metadata(self):
+        """Valid JSON scalar metadata passes."""
+        inputs = SponsorCashflowRunnerInputs(
+            investor_id="SPONSOR-1",
+            entity_code="HOLDCO",
+            equity_injections=(),
+            holdco_distribution_by_period=(0.0,) * 3,
+            holdco_dividend_by_period=(0.0,) * 3,
+            wht_rate=0.0,
+            holdco_opex_by_period=(0.0,) * 3,
+            period_count=3,
+            metadata=(
+                ("str_val", "hello"),
+                ("int_val", 42),
+                ("float_val", 3.14),
+                ("bool_val", True),
+                ("none_val", None),
+            ),
+        )
+        assert isinstance(inputs.metadata, tuple)
+        meta_dict = dict(inputs.metadata)
+        assert meta_dict["str_val"] == "hello"
+        assert meta_dict["int_val"] == 42
+
+    def test_runner_inputs_frozen_immutable(self):
+        """SponsorCashflowRunnerInputs is frozen — fields cannot be mutated."""
+        inputs = SponsorCashflowRunnerInputs(
+            investor_id="SPONSOR-1",
+            entity_code="HOLDCO",
+            equity_injections=(),
+            holdco_distribution_by_period=(0.0,) * 3,
+            holdco_dividend_by_period=(0.0,) * 3,
+            wht_rate=0.0,
+            holdco_opex_by_period=(0.0,) * 3,
+            period_count=3,
+        )
+        with pytest.raises(Exception):  # dataclassesFrozenError
+            inputs.investor_id = "OTHER"
+
+    def test_runner_inputs_normalizes_lists_to_tuples(self):
+        """List inputs are normalized to tuples on construction."""
+        inputs = SponsorCashflowRunnerInputs(
+            investor_id="SPONSOR-1",
+            entity_code="HOLDCO",
+            equity_injections=[],  # list, not tuple
+            holdco_distribution_by_period=[0.0, 0.0, 0.0],  # list
+            holdco_dividend_by_period=[0.0, 0.0, 0.0],
+            wht_rate=0.0,
+            holdco_opex_by_period=[0.0, 0.0, 0.0],
+            period_count=3,
+        )
+        assert isinstance(inputs.equity_injections, tuple)
+        assert isinstance(inputs.holdco_distribution_by_period, tuple)
+        assert isinstance(inputs.holdco_dividend_by_period, tuple)
+        assert isinstance(inputs.holdco_opex_by_period, tuple)
+
+    def test_result_rejects_dict_metadata_value(self):
+        """SponsorCashflowResult rejects dict metadata values."""
+        period_results = tuple(
+            SponsorCashflowPeriodResult(
+                period_index=i,
+                equity_injected_keur=0.0,
+                distribution_received_keur=0.0,
+                wht_on_distribution_keur=0.0,
+                net_cashflow_keur=0.0,
+                capital_account_balance_keur=0.0,
+            )
+            for i in range(3)
+        )
+        with pytest.raises(TypeError, match="Metadata dict values not allowed"):
+            SponsorCashflowResult(
+                investor_id="SPONSOR-1",
+                entity_code="HOLDCO",
+                period_results=period_results,
+                total_equity_injected_keur=0.0,
+                total_distributions_received_keur=0.0,
+                total_wht_keur=0.0,
+                total_net_cashflow_keur=0.0,
+                metadata=(("key", {"nested": "dict"}),),
+            )
+
+    def test_result_rejects_list_metadata_value(self):
+        """SponsorCashflowResult rejects list metadata values."""
+        period_results = tuple(
+            SponsorCashflowPeriodResult(
+                period_index=i,
+                equity_injected_keur=0.0,
+                distribution_received_keur=0.0,
+                wht_on_distribution_keur=0.0,
+                net_cashflow_keur=0.0,
+                capital_account_balance_keur=0.0,
+            )
+            for i in range(3)
+        )
+        with pytest.raises(TypeError, match="Metadata list values not allowed"):
+            SponsorCashflowResult(
+                investor_id="SPONSOR-1",
+                entity_code="HOLDCO",
+                period_results=period_results,
+                total_equity_injected_keur=0.0,
+                total_distributions_received_keur=0.0,
+                total_wht_keur=0.0,
+                total_net_cashflow_keur=0.0,
+                metadata=(("key", [1, 2, 3]),),
+            )
+
+    def test_capital_account_rejects_dict_metadata_value(self):
+        """SponsorCapitalAccount rejects dict metadata values."""
+        entries = (
+            CapitalAccountEntry(
+                entry_type="contribution",
+                period_index=0,
+                amount_keur=1000.0,
+                running_balance_keur=1000.0,
+                investor_id="SPONSOR-1",
+                source="equity_injection",
+            ),
+        )
+        with pytest.raises(TypeError, match="Metadata dict values not allowed"):
+            SponsorCapitalAccount(
+                investor_id="SPONSOR-1",
+                entity_code="HOLDCO",
+                entries=entries,
+                total_contributed_keur=1000.0,
+                total_distributions_keur=0.0,
+                net_contributed_keur=1000.0,
+                final_balance_keur=1000.0,
+                metadata=(("key", {"nested": "dict"}),),
+            )
+
+    def test_capital_account_rejects_list_metadata_value(self):
+        """SponsorCapitalAccount rejects list metadata values."""
+        entries = (
+            CapitalAccountEntry(
+                entry_type="contribution",
+                period_index=0,
+                amount_keur=1000.0,
+                running_balance_keur=1000.0,
+                investor_id="SPONSOR-1",
+                source="equity_injection",
+            ),
+        )
+        with pytest.raises(TypeError, match="Metadata list values not allowed"):
+            SponsorCapitalAccount(
+                investor_id="SPONSOR-1",
+                entity_code="HOLDCO",
+                entries=entries,
+                total_contributed_keur=1000.0,
+                total_distributions_keur=0.0,
+                net_contributed_keur=1000.0,
+                final_balance_keur=1000.0,
+                metadata=(("key", [1, 2, 3]),),
+            )
+

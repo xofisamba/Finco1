@@ -208,24 +208,53 @@ class SponsorCashflowResult:
                     f"period_results sum ({expected:.6f}); diff={abs(expected - total_val):.2e}"
                 )
 
-        # Normalize metadata: dict -> sorted frozen tuple of (key, value)
+        # Normalize metadata: validate and normalize all (key, value) pairs
         if isinstance(self.metadata, dict):
             items = tuple(sorted((str(k), _normalize_metadata_val(v)) for k, v in self.metadata.items()))
             object.__setattr__(self, "metadata", items)
         elif not isinstance(self.metadata, tuple):
             object.__setattr__(self, "metadata", tuple(self.metadata))
+        else:
+            # Validate every value in existing tuple pairs
+            items = tuple(sorted((str(k), _normalize_metadata_val(v)) for k, v in self.metadata))
+            object.__setattr__(self, "metadata", items)
 
         # Normalize notes to tuple
         if not isinstance(self.notes, tuple):
             object.__setattr__(self, "notes", _to_tuple_str(self.notes))
 
 
+_IMMUTABLE_JSON_SCALARS = (str, int, float, bool, type(None))
+
+
 def _normalize_metadata_val(v: Any) -> Any:
-    """Normalize metadata value to a JSON-serializable immutable type."""
-    if isinstance(v, (str, int, float, bool, type(None))):
+    """Normalize a metadata value to an immutable JSON scalar.
+
+    Rejects dict/list. Values must be one of: str, int, float, bool, None.
+    Raises TypeError for list/dict/nested containers.
+    """
+    if isinstance(v, _IMMUTABLE_JSON_SCALARS):
         return v
-    if isinstance(v, (list, tuple)):
-        return tuple(_normalize_metadata_val(x) for x in v)
     if isinstance(v, dict):
-        return {str(k): _normalize_metadata_val(val) for k, val in v.items()}
-    return str(v)
+        raise TypeError(
+            f"Metadata dict values not allowed; use flat tuple of (key, value) pairs. "
+            f"Got dict with keys: {list(v.keys())}"
+        )
+    if isinstance(v, list):
+        raise TypeError(
+            f"Metadata list values not allowed; use tuple of (key, value) pairs. "
+            f"Got list: {v!r}"
+        )
+    if isinstance(v, tuple):
+        normalized = tuple(_normalize_metadata_val(x) for x in v)
+        for x in normalized:
+            if isinstance(x, (list, dict)):
+                raise TypeError(
+                    f"Metadata tuple must contain only JSON scalars, "
+                    f"got nested container {type(x).__name__}"
+                )
+        return normalized
+    raise TypeError(
+        f"Metadata value must be a JSON scalar (str, int, float, bool, None), "
+        f"got {type(v).__name__}: {v!r}"
+    )

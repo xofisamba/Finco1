@@ -28,9 +28,11 @@ __all__ = [
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(frozen=True)
 class SponsorCashflowRunnerInputs:
     """Inputs for the sponsor cashflow runner.
+
+    Immutable. All mutable collections normalized to tuples on construction.
 
     Attributes
     ----------
@@ -42,7 +44,7 @@ class SponsorCashflowRunnerInputs:
         Immutable tuple of equity injection events.
     holdco_distribution_by_period : tuple[float, ...]
         Distribution from HoldCo to sponsor per period (kEUR).
-        Length must equal holdco_period_count.
+        Length must equal period_count.
     holdco_dividend_by_period : tuple[float, ...]
         Dividend component of distribution per period (kEUR).
         Used for WHT calculation basis. Length must match
@@ -56,7 +58,8 @@ class SponsorCashflowRunnerInputs:
     period_count : int
         Number of semiannual periods to model.
     metadata : tuple[tuple[str, Any], ...], optional
-        Key-value metadata.
+        Key-value metadata as frozen tuple of (key, value) 2-tuples.
+        Values must be JSON-serializable immutables: str, int, float, bool, None.
     notes : tuple[str, ...], optional
         Top-level audit notes.
     """
@@ -70,6 +73,78 @@ class SponsorCashflowRunnerInputs:
     period_count: int
     metadata: tuple[tuple[str, Any], ...] = ()
     notes: tuple[str, ...] = ()
+
+    _IMMUTABLE_JSON_SCALARS = (str, int, float, bool, type(None))
+
+    def __post_init__(self):
+        # Normalize equity_injections to tuple
+        if not isinstance(self.equity_injections, tuple):
+            object.__setattr__(self, "equity_injections", tuple(self.equity_injections))
+        # Normalize holdco_distribution_by_period to tuple
+        if not isinstance(self.holdco_distribution_by_period, tuple):
+            object.__setattr__(self, "holdco_distribution_by_period", tuple(self.holdco_distribution_by_period))
+        # Normalize holdco_dividend_by_period to tuple
+        if not isinstance(self.holdco_dividend_by_period, tuple):
+            object.__setattr__(self, "holdco_dividend_by_period", tuple(self.holdco_dividend_by_period))
+        # Normalize holdco_opex_by_period to tuple
+        if not isinstance(self.holdco_opex_by_period, tuple):
+            object.__setattr__(self, "holdco_opex_by_period", tuple(self.holdco_opex_by_period))
+        # Normalize metadata to sorted frozen tuple
+        if isinstance(self.metadata, dict):
+            items = tuple(sorted((str(k), _normalize_metadata_val(v)) for k, v in self.metadata.items()))
+            object.__setattr__(self, "metadata", items)
+        elif not isinstance(self.metadata, tuple):
+            object.__setattr__(self, "metadata", tuple(self.metadata))
+        else:
+            # Validate and re-freeze
+            normalized = tuple(sorted((str(k), _normalize_metadata_val(v)) for k, v in self.metadata))
+            object.__setattr__(self, "metadata", normalized)
+        # Normalize notes to tuple
+        if not isinstance(self.notes, tuple):
+            object.__setattr__(self, "notes", tuple(str(n) for n in (
+                self.notes if isinstance(self.notes, (list, tuple)) else [self.notes]
+            )))
+
+
+# ── Metadata normalization ────────────────────────────────────────────────────
+
+_IMMUTABLE_JSON_SCALARS = (str, int, float, bool, type(None))
+
+
+def _normalize_metadata_val(v: Any) -> Any:
+    """Normalize a metadata value to an immutable JSON scalar.
+
+    Rejects dict/list/nested mutable structures. Values must be one of:
+    str, int, float, bool, None (or collections of these).
+
+    Raises TypeError if a mutable container is encountered.
+    """
+    if isinstance(v, _IMMUTABLE_JSON_SCALARS):
+        return v
+    if isinstance(v, dict):
+        raise TypeError(
+            f"Metadata dict values not allowed; use flat tuple of (key, value) pairs. "
+            f"Got dict with keys: {list(v.keys())}"
+        )
+    if isinstance(v, list):
+        raise TypeError(
+            f"Metadata list values not allowed; use tuple of (key, value) pairs. "
+            f"Got list: {v!r}"
+        )
+    if isinstance(v, tuple):
+        normalized = tuple(_normalize_metadata_val(x) for x in v)
+        # Check that no mutable was returned (would mean nested list/dict)
+        for x in normalized:
+            if isinstance(x, (list, dict)):
+                raise TypeError(
+                    f"Metadata tuple must contain only JSON scalars, "
+                    f"got nested container {type(x).__name__}"
+                )
+        return normalized
+    raise TypeError(
+        f"Metadata value must be a JSON scalar (str, int, float, bool, None), "
+        f"got {type(v).__name__}: {v!r}"
+    )
 
 
 # ── Validation helpers ────────────────────────────────────────────────────────
