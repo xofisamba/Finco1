@@ -107,60 +107,29 @@ def run_sponsor_irr(inputs: SponsorIrrRunnerInputs) -> SponsorIrrResult:
     """
     result = inputs.sponsor_result
 
-    # Build cashflows and dates from period results
+    # ── Build cashflows and dates (single-path) ─────────────────────────────
     cash_flows: list[float] = []
     dates: list[date] = []
 
     if inputs.fc_date is not None:
         base_date = inputs.fc_date
-        for period in result.period_results:
-            cf = period.net_cashflow_keur
-            # Derive date: fc_date + period_index * 6 months
-            period_date = _add_months(base_date, period.period_index * 6)
-            cash_flows.append(cf)
-            dates.append(period_date)
     else:
-        # No fc_date: use period index as year fraction (period 0 = year 0)
-        for period in result.period_results:
-            cash_flows.append(period.net_cashflow_keur)
-            # Dates derived from period index: period_index * 0.5 years
-            # We pass dummy dates and use period index for year fraction
-            dates.append(date(2000, 1, 1))  # dummy; overridden below
+        base_date = date(2000, 1, 1)  # dummy base when fc_date not supplied
 
-        # Re-build dates using period index as year fraction directly
-        # Since we don't have a real fc_date, we use period_index * 0.5 years
-        # But xirr_with_convergence needs dates not year fractions...
-        # Solution: use dummy dates and compute year fractions from period index
-        pass
+    for period in result.period_results:
+        cash_flows.append(period.net_cashflow_keur)
+        # Semiannual period_index → 183 days (≈ 6 months)
+        period_date = base_date + timedelta(days=period.period_index * 183)
+        dates.append(period_date)
 
     # ── Compute XIRR ─────────────────────────────────────────────────────────
-    xirr_result: SponsorXirrResult
-
-    if inputs.fc_date is not None:
-        # Real dates available
-        xirr_result = xirr_with_convergence(
-            cash_flows=cash_flows,
-            dates=dates,
-            guess=0.10,
-            tolerance=1e-7,
-            max_iterations=200,
-        )
-    else:
-        # No fc_date: build year-fraction dates (period * 0.5 years from dummy base)
-        # xirr_with_convergence uses (d - d0).days / 365 internally
-        # We use date(2000, 1, 1) + period_index * 183 days (approx 6 months)
-        dummy_base = date(2000, 1, 1)
-        dates_from_period = [
-            dummy_base + timedelta(days=period.period_index * 183)
-            for period in result.period_results
-        ]
-        xirr_result = xirr_with_convergence(
-            cash_flows=cash_flows,
-            dates=dates_from_period,
-            guess=0.10,
-            tolerance=1e-7,
-            max_iterations=200,
-        )
+    xirr_result = xirr_with_convergence(
+        cash_flows=cash_flows,
+        dates=dates,
+        guess=0.10,
+        tolerance=1e-7,
+        max_iterations=200,
+    )
 
     # ── Build IRR result ──────────────────────────────────────────────────────
     notes_parts: list[str] = []
