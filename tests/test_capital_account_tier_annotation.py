@@ -392,3 +392,71 @@ class TestFromWaterfallAllocationResult:
         original_str = str(result)
         from_waterfall_allocation_result(result, "SPONSOR-1")
         assert str(result) == original_str
+
+
+class TestAllTierTypes:
+    """Verify from_waterfall_allocation_result works for all tier types."""
+
+    def _make_result_for_tier(self, tier_type: TierType, sponsor_codes=("SPONSOR-1",)) -> WaterfallAllocationResult:
+        per_sp = 1000.0 / len(sponsor_codes)
+        tier_entries = [
+            TierAllocationEntry(
+                tier_index=0,
+                tier_type=tier_type,
+                available_cash_before_tier_keur=1000.0,
+                allocated_amount_keur=1000.0,
+                allocated_per_sponsor_keur=tuple((s, per_sp) for s in sponsor_codes),
+                remaining_cash_after_tier_keur=0.0,
+            ),
+        ]
+        period_result = PeriodWaterfallResult(
+            period_index=0,
+            available_cash_keur=1000.0,
+            tier_entries=tuple(tier_entries),
+            total_allocated_keur=1000.0,
+            total_remaining_cash_keur=0.0,
+            cumulative_distributions_by_sponsor_keur=tuple((s, per_sp) for s in sponsor_codes),
+        )
+        return WaterfallAllocationResult(
+            investor_id="WATERFALL",
+            period_results=(period_result,),
+            total_allocated_keur=1000.0,
+            total_distributions_by_sponsor_keur=tuple((s, per_sp) for s in sponsor_codes),
+        )
+
+    def test_preferred_return_tier_conversion(self):
+        result = self._make_result_for_tier(TierType.PREFERRED_RETURN)
+        cap = from_waterfall_allocation_result(result, "SPONSOR-1")
+        assert cap.entry_count == 1
+        entry = cap.entries[0]
+        assert entry.annotation.tier_type == TierType.PREFERRED_RETURN
+        assert entry.annotation.source_note == "preferred_return_allocation"
+        assert entry.entry.source == "distribution_from_holdco"
+        assert entry.entry.amount_keur == pytest.approx(1000.0)
+
+    def test_gp_catch_up_tier_conversion(self):
+        result = self._make_result_for_tier(TierType.GP_CATCH_UP)
+        cap = from_waterfall_allocation_result(result, "SPONSOR-1")
+        assert cap.entry_count == 1
+        entry = cap.entries[0]
+        assert entry.annotation.tier_type == TierType.GP_CATCH_UP
+        assert entry.annotation.source_note == "gp_catch_up_allocation"
+        assert entry.entry.source == "distribution_from_holdco"
+
+    def test_promote_tier_conversion(self):
+        result = self._make_result_for_tier(TierType.PROMOTE)
+        cap = from_waterfall_allocation_result(result, "SPONSOR-1")
+        assert cap.entry_count == 1
+        entry = cap.entries[0]
+        assert entry.annotation.tier_type == TierType.PROMOTE
+        assert entry.annotation.source_note == "promote_split"
+        assert entry.entry.source == "distribution_from_holdco"
+
+    def test_residual_tier_conversion(self):
+        result = self._make_result_for_tier(TierType.RESIDUAL)
+        cap = from_waterfall_allocation_result(result, "SPONSOR-1")
+        assert cap.entry_count == 1
+        entry = cap.entries[0]
+        assert entry.annotation.tier_type == TierType.RESIDUAL
+        assert entry.annotation.source_note == "residual_split"
+        assert entry.entry.source == "distribution_from_holdco"

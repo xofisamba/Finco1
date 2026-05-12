@@ -307,7 +307,7 @@ def from_waterfall_allocation_result(
                 amount_keur=alloc,
                 running_balance_keur=0.0,  # caller computes running balance
                 investor_id=sponsor_code,
-                source=source_note,
+                source="distribution_from_holdco",  # valid CA source; detailed tier type in TierAnnotation.source_note
             )
 
             annotated_entries.append(
