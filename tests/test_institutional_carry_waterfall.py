@@ -1,13 +1,17 @@
 """Golden test: institutional 8-and-20 carry waterfall.
 
-Tests the complete 5-tier waterfall cascade with real numbers:
-  Tier 0: RETURN_OF_CAPITAL  — proportional
-  Tier 1: PREFERRED_RETURN   — proportional of accrued preferred
-  Tier 2: GP_CATCH_UP        — 100% to GP until threshold met
-  Tier 3: PROMOTE            — LP×80%, GP×20%
-  Tier 4: RESIDUAL           — LP×80%, GP×20%
+Tests the complete 4-tier aggregate waterfall cascade with real numbers:
+  Tier 0: RETURN_OF_CAPITAL  — proportional (ownership shares)
+  Tier 1: GP_CATCH_UP        — 100% to GP until threshold met
+  Tier 2: PROMOTE            — LP×(1-gp_promote_share), GP×gp_promote_share (carry split)
+  Tier 3: RESIDUAL           — same as PROMOTE (final residue split)
 
-8-and-20 means: LP owns 80%, GP owns 20% of distributions after preferred.
+PREFERRED_RETURN is computed per-investor in Step 1 and included in per-investor
+results — it is NOT in the aggregate cascade. The aggregate handles [ROC, GP_CATCH_UP,
+PROMOTE, RESIDUAL].
+
+8-and-20 means: LP owns 80%, GP owns 20% of equity. GP carry = 20%.
+
 GP catch-up formula:
   gp_catch_up_target = (promote_rate / (1-promote_rate)) × max(0, lp_cum_pref - lp_invested)
 For promote_rate=0.20: gp_catch_up_target = 0.25 × max(0, lp_cum_pref - lp_invested)
@@ -378,3 +382,176 @@ class TestSingleInvestorMode:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+# ── Test: GP_CATCH_UP allocations ──────────────────────────────────────────────
+
+class TestGpCatchUpAllocations:
+    """GP_CATCH_UP tier allocations via run_waterfall: LP gets 0, GP gets full catch-up."""
+
+    def test_gp_catch_up_allocation_zero_to_lp(self):
+        """LP receives exactly 0 in GP_CATCH_UP tier — catch-up is GP-only."""
+        tiers = (
+            SponsorWaterfallTier(
+                tier_index=0, tier_type=TierType.RETURN_OF_CAPITAL,
+                sponsor_shares=(SponsorShare(sponsor_code="LP", allocation_percentage=1.0),),
+                description="roc",
+            ),
+            SponsorWaterfallTier(
+                tier_index=1, tier_type=TierType.GP_CATCH_UP,
+                sponsor_shares=(SponsorShare(sponsor_code="GP", allocation_percentage=1.0),),
+                description="gp_catch_up",
+            ),
+        )
+        # 1000 available, ROC not triggered (invested=0), catch-up gets all 1000
+        inputs = WaterfallRunnerInputs(
+            tiers=tiers,
+            available_cash_by_period=(1000.0,),
+            pref_result=None,
+            cumulative_invested_by_period=(0.0,),
+            num_periods=1,
+            lp_cumulative_pref_by_period=(1000.0,),  # trigger = max(0, 1000 - 0) = 250
+            lp_invested_capital_keur=0.0,
+        )
+        result = run_waterfall(inputs)
+        period0 = result.period_results[0]
+        catch_up = next((t for t in period0.tier_entries if t.tier_type == TierType.GP_CATCH_UP), None)
+        assert catch_up is not None
+        lp_alloc = next((amt for code, amt in catch_up.allocated_per_sponsor_keur if code == "LP"), 0.0)
+        gp_alloc = next((amt for code, amt in catch_up.allocated_per_sponsor_keur if code == "GP"), 0.0)
+        assert lp_alloc == 0.0, f"LP must receive 0 in GP_CATCH_UP, got {lp_alloc}"
+        assert gp_alloc == 250.0, f"GP must receive 250 (min(1000, 250 trigger)), got {gp_alloc}"
+
+    def test_gp_catch_up_allocation_full_to_gp(self):
+        """GP receives 100% of GP_CATCH_UP tier allocation."""
+        tiers = (
+            SponsorWaterfallTier(
+                tier_index=0, tier_type=TierType.RETURN_OF_CAPITAL,
+                sponsor_shares=(SponsorShare(sponsor_code="LP", allocation_percentage=1.0),),
+                description="roc",
+            ),
+            SponsorWaterfallTier(
+                tier_index=1, tier_type=TierType.GP_CATCH_UP,
+                sponsor_shares=(SponsorShare(sponsor_code="GP", allocation_percentage=1.0),),
+                description="gp_catch_up",
+            ),
+        )
+        inputs = WaterfallRunnerInputs(
+            tiers=tiers,
+            available_cash_by_period=(800.0,),
+            pref_result=None,
+            cumulative_invested_by_period=(0.0,),
+            num_periods=1,
+            lp_cumulative_pref_by_period=(1000.0,),  # trigger = max(0, 1000-0) = 250
+            lp_invested_capital_keur=0.0,
+        )
+        result = run_waterfall(inputs)
+        period0 = result.period_results[0]
+        catch_up = next((t for t in period0.tier_entries if t.tier_type == TierType.GP_CATCH_UP), None)
+        assert catch_up is not None
+        gp_alloc = next((amt for code, amt in catch_up.allocated_per_sponsor_keur if code == "GP"), 0.0)
+        assert gp_alloc == 250.0, f"GP must receive 250 (min(800, 250 trigger)), got {gp_alloc}"
+
+
+# ── Test: PROMOTE distinct from ROC ───────────────────────────────────────────
+
+class TestPromoteTierUsesExplicitCarryShares:
+    """PROMOTE tier uses explicit carry split shares — distinct from ownership shares.
+
+    When gp_promote_share differs from GP's ownership percentage, PROMOTE must use
+    the explicit promote share, NOT proportional ownership shares.
+    """
+
+    def test_promote_tier_gp_gets_promote_share_not_ownership_share(self):
+        """GP gets gp_promote_share in PROMOTE even if ownership < promote share.
+
+        Scenario: LP owns 90%, GP owns 10% of equity.
+        But gp_promote_share=0.20 (carry split = 80/20).
+        PROMOTE tier must give GP 20%, not 10%.
+        """
+        tiers = (
+            SponsorWaterfallTier(
+                tier_index=0, tier_type=TierType.RETURN_OF_CAPITAL,
+                sponsor_shares=(
+                    SponsorShare(sponsor_code="LP", allocation_percentage=0.90),
+                    SponsorShare(sponsor_code="GP", allocation_percentage=0.10),
+                ),
+                description="roc",
+            ),
+            SponsorWaterfallTier(
+                tier_index=1, tier_type=TierType.PROMOTE,
+                sponsor_shares=(
+                    SponsorShare(sponsor_code="LP", allocation_percentage=0.80),
+                    SponsorShare(sponsor_code="GP", allocation_percentage=0.20),
+                ),
+                description="promote",
+            ),
+        )
+        # Available=1000, ROC satisfied by GP's 10% share first (100)
+        # Remainder to PROMOTE
+        inputs = WaterfallRunnerInputs(
+            tiers=tiers,
+            available_cash_by_period=(1000.0,),
+            pref_result=None,
+            cumulative_invested_by_period=(0.0,),
+            num_periods=1,
+            lp_cumulative_pref_by_period=(0.0,),
+        )
+        result = run_waterfall(inputs)
+        period0 = result.period_results[0]
+        promote = next((t for t in period0.tier_entries if t.tier_type == TierType.PROMOTE), None)
+        assert promote is not None
+        gp_alloc = next((amt for code, amt in promote.allocated_per_sponsor_keur if code == "GP"), 0.0)
+        lp_alloc = next((amt for code, amt in promote.allocated_per_sponsor_keur if code == "LP"), 0.0)
+        assert gp_alloc == pytest.approx(200.0), f"GP must get ~180 (20% of remainder after ROC), got {gp_alloc}"
+        assert lp_alloc == pytest.approx(800.0), f"LP must get ~720 (80% of remainder), got {lp_alloc}"
+
+    def test_promote_coinvestor_gets_proportional_non_gp_share(self):
+        """CO_INVESTOR in 3-investor scenario gets proportional non-GP share.
+
+        Scenario: LP=60%, GP=20%, CO=20%, gp_promote_share=0.20.
+        PROMOTE shares should be:
+          GP:  20% (explicit promote share)
+          LP:  (0.60/0.80) × 80% = 60%  ✓
+          CO:  (0.20/0.80) × 80% = 20%  ✓
+        Sum: 20% + 60% + 20% = 100%
+        """
+        tiers = (
+            SponsorWaterfallTier(
+                tier_index=0, tier_type=TierType.RETURN_OF_CAPITAL,
+                sponsor_shares=(
+                    SponsorShare(sponsor_code="LP", allocation_percentage=0.60),
+                    SponsorShare(sponsor_code="GP", allocation_percentage=0.20),
+                    SponsorShare(sponsor_code="CO", allocation_percentage=0.20),
+                ),
+                description="roc",
+            ),
+            SponsorWaterfallTier(
+                tier_index=1, tier_type=TierType.PROMOTE,
+                sponsor_shares=(
+                    SponsorShare(sponsor_code="LP", allocation_percentage=0.60),
+                    SponsorShare(sponsor_code="GP", allocation_percentage=0.20),
+                    SponsorShare(sponsor_code="CO", allocation_percentage=0.20),
+                ),
+                description="promote",
+            ),
+        )
+        inputs = WaterfallRunnerInputs(
+            tiers=tiers,
+            available_cash_by_period=(1000.0,),
+            pref_result=None,
+            cumulative_invested_by_period=(0.0,),
+            num_periods=1,
+            lp_cumulative_pref_by_period=(0.0,),
+        )
+        result = run_waterfall(inputs)
+        period0 = result.period_results[0]
+        promote = next((t for t in period0.tier_entries if t.tier_type == TierType.PROMOTE), None)
+        assert promote is not None
+        gp_alloc = next((amt for code, amt in promote.allocated_per_sponsor_keur if code == "GP"), 0.0)
+        lp_alloc = next((amt for code, amt in promote.allocated_per_sponsor_keur if code == "LP"), 0.0)
+        co_alloc = next((amt for code, amt in promote.allocated_per_sponsor_keur if code == "CO"), 0.0)
+        total = gp_alloc + lp_alloc + co_alloc
+        assert gp_alloc == pytest.approx(200.0), f"GP must get ~200 (20%), got {gp_alloc}"
+        assert lp_alloc == pytest.approx(600.0), f"LP must get ~600 (60%), got {lp_alloc}"
+        assert co_alloc == pytest.approx(200.0), f"CO must get ~200 (20%), got {co_alloc}"
+        assert abs(total - 1000.0) < 0.01, f"Allocations must sum to 1000, got {total}"

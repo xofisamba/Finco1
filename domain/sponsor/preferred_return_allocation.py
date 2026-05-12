@@ -116,39 +116,18 @@ class PreferredReturnAllocation:
         return tuple(max(0.0, c - self.lp_invested_capital_keur) for c in cumulative)
 
     def entry_for(self, period_index: int) -> Optional[PreferredReturnAccrualEntry]:
-        """Return aggregate unpaid preferred balance for the given period.
+        """Return the LP's preferred return entry for the given period.
 
-        Sums all investors' unpaid_pref_balance_keur for this period.
-        Returns None if no result exists for the period.
+        Used for the GP catch-up threshold computation.
         """
         if not self.per_investor_results:
             return None
-        entries_by_period: dict[int, float] = {}
-        lp_cumulative = 0.0
         for inv_id, result in self.per_investor_results:
-            entry = result.entry_for(period_index)
-            if entry is not None:
-                entries_by_period[period_index] = (
-                    entries_by_period.get(period_index, 0.0) + entry.unpaid_pref_balance_keur
-                )
-                if inv_id == self.lp_investor_id:
-                    lp_cumulative = entry.cumulative_distributions_keur
-        if period_index not in entries_by_period:
-            return None
-        return PreferredReturnAccrualEntry(
-            period_index=period_index,
-            opening_invested_capital_keur=0.0,
-            invested_capital_delta_keur=0.0,
-            hurdle_rate_pa=0.0,
-            compounding_convention="SIMPLE",
-            accrual_periods=0.0,
-            accrued_pref_keur=0.0,
-            cumulative_accrued_pref_keur=0.0,
-            cumulative_distributions_keur=lp_cumulative,
-            unpaid_pref_balance_keur=entries_by_period[period_index],
-            hurdle_satisfied=True,
-            audit_note="Aggregate preferred return allocation entry — multi-investor adapter",
-        )
+            if inv_id == self.lp_investor_id:
+                entry = result.entry_for(period_index)
+                if entry is not None:
+                    return entry
+        return None
 
     def lp_catch_up_trigger_at_period(self, period_index: int) -> float:
         """Return LP catch-up trigger for a specific period."""
