@@ -280,11 +280,9 @@ def _build_contributions(
                 result[inv_id] = default_timeline(inv_id)
             else:
                 cap = config.committed_capital_keur.get(inv_id, 0.0)
-                # Fractions are cumulative: convert per-period delta to cumulative
-                cumulative = [fracs[0]]
-                for i in range(1, len(fracs)):
-                    cumulative.append(cumulative[-1] + fracs[i])
-                result[inv_id] = tuple(cap * c for c in cumulative)
+                # Fractions are already cumulative draw fractions.
+                # (0.50, 1.00, 1.00) means 50% drawn by period 0, 100% by period 1.
+                result[inv_id] = tuple(cap * frac for frac in fracs)
         return result
     else:
         return {inv_id: default_timeline(inv_id) for inv_id in config.ownership_percentages}
