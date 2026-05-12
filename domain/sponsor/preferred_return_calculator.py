@@ -169,9 +169,9 @@ def _accrue_pref(
     if convention == CompoundingConvention.SIMPLE:
         return _accrue_pref_simple(opening_invested, hurdle_rate, accrual_periods)
     elif convention == CompoundingConvention.ANNUAL:
-        # Defensive fallback: should not be reached; ANNUAL is handled inline.
-        # Accrue at annual boundary (odd period index) for 1 full year.
-        return opening_invested * hurdle_rate
+        # ANNUAL convention is handled inline in calculate_preferred_return().
+        # This dispatch exists for SIMPLE and SEMIANNUAL only.
+        raise ValueError("ANNUAL convention is handled inline in calculate_preferred_return()")
     elif convention == CompoundingConvention.SEMIANNUAL:
         return _accrue_pref_semiannual(opening_invested, hurdle_rate, accrual_periods)
     else:
