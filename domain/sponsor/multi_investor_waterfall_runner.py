@@ -9,18 +9,19 @@ Architecture (Institutional 8-and-20 Cascade)
 The waterfall uses the institutional 8-and-20 carry cascade:
 
   Tier 0: RETURN_OF_CAPITAL — proportional (LP×80%, GP×20%)
-  Tier 1: PREFERRED_RETURN — proportional of accrued preferred (LP×80%, GP×20%)
-  Tier 2: GP_CATCH_UP — 100% to GP until GP has (promote_rate/(1-promote_rate))×LP_accumulated
-  Tier 3: PROMOTE — LP×80%, GP×20% of remainder
-  Tier 4: RESIDUAL — LP×80%, GP×20% of any remaining cash
+  Tier 1: GP_CATCH_UP — 100% to GP until threshold = (promote_rate/(1-promote_rate))×LP_accrued_pref
+  Tier 2: PROMOTE — LP×80%, GP×20% of remainder
+  Tier 3: RESIDUAL — LP×80%, GP×20% of any remaining
+
+PREFERRED_RETURN is computed per-investor (Step 1) and included in per-investor
+results — it is NOT in the aggregate cascade. The aggregate handles [ROC, GP_CATCH_UP,
+PROMOTE, RESIDUAL].
 
 GP catch-up formula:
   gp_catch_up_target = (promote_rate / (1-promote_rate)) × max(0, lp_cumulative_pref - lp_invested)
 
-PreferredReturnAllocation adapter:
-  Wraps per-investor PreferredReturnResult objects into a single aggregate
-  adapter compatible with the Phase 7C _allocate_preferred_return() function.
-  Also provides lp_cumulative_pref_by_period for GP catch-up threshold.
+PreferredReturnAllocation provides lp_cumulative_pref_by_period for the GP catch-up
+threshold computation.
 
 Immutable. Deterministic. Pure function. No mutation of Phase 7C results.
 """
@@ -310,10 +311,40 @@ def run_multi_investor_waterfall(
         pref_results_by_investor[inv.investor_id] = calculate_preferred_return(pref_inputs)
 
     # ── Step 2: Build and run aggregate waterfall ─────────────────────────
-    # Aggregate waterfall tiers (institutional 8-and-20 cascade):
-    #   [RETURN_OF_CAPITAL, PREFERRED_RETURN, GP_CATCH_UP, PROMOTE, RESIDUAL]
+    # Institutional 8-and-20 cascade (4 tiers, no PREF in aggregate):
+    #   [RETURN_OF_CAPITAL, GP_CATCH_UP, PROMOTE, RESIDUAL]
+    #
+    # ROC:  proportional shares (ownership-based, e.g. LP=80%, GP=20%)
+    # Catch-up:  100% to GP until GP has (promote_rate/(1-promote_rate)) × max(0, LP_cum_pref − LP_invested)
+    # PROMOTE:  LP×(1−gp_promote_share), GP×gp_promote_share (carry split, e.g. 80/20)
+    # RESIDUAL: same as PROMOTE (final residue split)
     proportional_shares = tuple(
         SponsorShare(sponsor_code=e.investor_id, allocation_percentage=e.ownership_percentage)
+        for e in sorted(registry.entries, key=lambda x: x.investor_id)
+    )
+
+    # GP investor ID — the catch-up tier is 100% to GP (not proportional)
+    gp_investor_ids = [e.investor_id for e in registry.entries if e.investor_id != "LP-1"]
+    gp_investor_id = gp_investor_ids[0] if gp_investor_ids else "GP-1"
+
+    # Promote shares: explicit carry split vs ownership split.
+    # GP gets gp_promote_share; remaining (1 − gp_promote_share) is split among all
+    # non-GP investors proportional to their ownership.
+    non_gp_total_ownership = sum(
+        e.ownership_percentage
+        for e in sorted(registry.entries, key=lambda x: x.investor_id)
+        if e.investor_id != gp_investor_id
+    )
+    non_gp_residual = 1.0 - inputs.gp_promote_share
+    promote_shares = tuple(
+        SponsorShare(
+            sponsor_code=e.investor_id,
+            allocation_percentage=(
+                inputs.gp_promote_share
+                if e.investor_id == gp_investor_id
+                else e.ownership_percentage / non_gp_total_ownership * non_gp_residual
+            ),
+        )
         for e in sorted(registry.entries, key=lambda x: x.investor_id)
     )
 
@@ -326,33 +357,25 @@ def run_multi_investor_waterfall(
         ),
         SponsorWaterfallTier(
             tier_index=1,
-            tier_type=TierType.PREFERRED_RETURN,
-            sponsor_shares=proportional_shares,
-            description="preferred_return",
-            hurdle_rate_pa=inputs.hurdle_rate_pa,
-            compounding_convention=inputs.compounding_convention,
-        ),
-        SponsorWaterfallTier(
-            tier_index=2,
             tier_type=TierType.GP_CATCH_UP,
-            sponsor_shares=proportional_shares,
+            sponsor_shares=(SponsorShare(sponsor_code=gp_investor_id, allocation_percentage=1.0),),
             description="gp_catch_up",
         ),
         SponsorWaterfallTier(
-            tier_index=3,
+            tier_index=2,
             tier_type=TierType.PROMOTE,
-            sponsor_shares=proportional_shares,
+            sponsor_shares=promote_shares,
             description="promote",
         ),
         SponsorWaterfallTier(
-            tier_index=4,
+            tier_index=3,
             tier_type=TierType.RESIDUAL,
-            sponsor_shares=proportional_shares,
+            sponsor_shares=promote_shares,
             description="residual",
         ),
     )
 
-    # Build PreferredReturnAllocation from per-investor results (for PREF tier)
+    # Build PreferredReturnAllocation from per-investor results (for GP catch-up threshold only)
     from domain.sponsor.preferred_return_allocation import PreferredReturnAllocation
     per_investor_pref_results = tuple(
         (inv_id, pref_results_by_investor[inv_id])
@@ -372,7 +395,7 @@ def run_multi_investor_waterfall(
     aggregate_inputs = WaterfallRunnerInputs(
         tiers=aggregate_tiers,
         available_cash_by_period=inputs.available_cash_by_period,
-        pref_result=pref_allocation,  # PREFERRED_RETURN tier uses this
+        pref_result=None,  # PREF not in aggregate cascade; per-investor results in Step 1
         cumulative_invested_by_period=capital_stack.total_contributed_by_period_keur,
         num_periods=num_periods,
         lp_cumulative_pref_by_period=lp_cumulative_pref_by_period,

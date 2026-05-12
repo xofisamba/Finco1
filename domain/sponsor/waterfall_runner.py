@@ -76,6 +76,9 @@ class WaterfallRunnerInputs:
     # Used for GP catch-up threshold: gp_target = promote_rate/(1-promote_rate) × max(0, lp_cum_pref - lp_invested)
     # Optional — required when a GP_CATCH_UP tier is present in multi-investor mode.
     lp_cumulative_pref_by_period: tuple[float, ...] = field(default_factory=tuple)
+    # LP's invested capital (committed, kEUR). Used for catch-up threshold in multi-investor mode.
+    # Optional — single-investor code falls back to cumulative_invested_by_period[-1].
+    lp_invested_capital_keur: float = 0.0
 
     def __post_init__(self):
         if not isinstance(self.tiers, (list, tuple)):
@@ -303,7 +306,7 @@ def run_waterfall(inputs: WaterfallRunnerInputs) -> WaterfallAllocationResult:
                 lp_cum_pref_by_period = inputs.lp_cumulative_pref_by_period
                 if lp_cum_pref_by_period and p < len(lp_cum_pref_by_period):
                     lp_cum_pref = lp_cum_pref_by_period[p]
-                    lp_invested = inputs.cumulative_invested_by_period[0] if inputs.cumulative_invested_by_period else 0.0
+                    lp_invested = inputs.lp_invested_capital_keur if inputs.lp_invested_capital_keur else (inputs.cumulative_invested_by_period[-1] if inputs.cumulative_invested_by_period else 0.0)
                     lp_catch_up_trigger = max(0.0, lp_cum_pref - lp_invested)
                     # Extract promote_rate from tier sponsor_shares (GP's allocation % in the CATCH_UP tier)
                     promote_rate = 0.20  # default for 8-and-20
