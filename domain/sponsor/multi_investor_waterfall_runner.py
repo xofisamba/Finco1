@@ -372,32 +372,24 @@ def run_multi_investor_waterfall(
         inv = registry.investor_for(inv_id)
         pref_result = pref_results_by_investor[inv_id]
 
-        # Build per-investor waterfall entries:
-        # Each aggregate tier entry is filtered to show only this investor's allocation.
-        # allocated_amount_keur = only this investor's share (not the full tier total).
-        # allocated_per_sponsor_keur = ((inv_id, amount),) — only this investor.
-        # remaining_cash_after_tier_keur = available after this investor's tier share.
+        # Build per-investor waterfall entries (Option A — all investor-level fields):
+        # inv_available_before = ownership_pct × agg_available_before
+        # inv_allocated = entry.allocation_for(inv_id)
+        # inv_remaining = ownership_pct × agg_remaining_after
+        # All three are investor-level, preserving cash conservation per investor.
         inv_period_results: list[PeriodWaterfallResult] = []
         running_cumulative = 0.0
         for p_result in agg_result.period_results:
             inv_tier_entries: list[TierAllocationEntry] = []
             for entry in p_result.tier_entries:
                 inv_amt = entry.allocation_for(inv_id)
-                # Per-investor remaining = aggregate remaining + (aggregate allocation - investor allocation)
-                # = aggregate remaining + other investors' allocations from this tier
-                if entry.remaining_cash_after_tier_keur >= 0:
-                    inv_remaining = (
-                        entry.remaining_cash_after_tier_keur
-                        + entry.allocated_amount_keur
-                        - inv_amt
-                    )
-                else:
-                    inv_remaining = 0.0
+                inv_available = inv.ownership_percentage * entry.available_cash_before_tier_keur
+                inv_remaining = inv.ownership_percentage * entry.remaining_cash_after_tier_keur
                 inv_tier_entries.append(
                     TierAllocationEntry(
                         tier_index=entry.tier_index,
                         tier_type=entry.tier_type,
-                        available_cash_before_tier_keur=entry.available_cash_before_tier_keur,
+                        available_cash_before_tier_keur=inv_available,
                         allocated_amount_keur=inv_amt,
                         allocated_per_sponsor_keur=((inv_id, inv_amt),),
                         remaining_cash_after_tier_keur=inv_remaining,
@@ -406,16 +398,16 @@ def run_multi_investor_waterfall(
 
             inv_total_alloc = sum(e.allocated_amount_keur for e in inv_tier_entries)
             running_cumulative += inv_total_alloc
+            # Investor-level available for the period = ownership_pct × aggregate available
+            inv_available_period = inv.ownership_percentage * p_result.available_cash_keur
 
             inv_period_results.append(
                 PeriodWaterfallResult(
                     period_index=p_result.period_index,
-                    available_cash_keur=p_result.available_cash_keur,
+                    available_cash_keur=inv_available_period,
                     tier_entries=tuple(inv_tier_entries),
                     total_allocated_keur=inv_total_alloc,
-                    total_remaining_cash_keur=(
-                        p_result.available_cash_keur - inv_total_alloc
-                    ),
+                    total_remaining_cash_keur=inv_available_period - inv_total_alloc,
                     cumulative_distributions_by_sponsor_keur=((inv_id, running_cumulative),),
                 )
             )

@@ -696,6 +696,125 @@ class TestMultiInvestorAggregateReconciliation:
 
 
 
+    def test_per_investor_total_remaining_equals_available_minus_allocated(self):
+        """Per-investor total_remaining = available - allocated (cash conservation)."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        by_id = {r.investor_id: r for r in result.per_investor_results}
+        lp = by_id["LP-1"]
+
+        for p in lp.waterfall_result.period_results:
+            expected_remaining = p.available_cash_keur - p.total_allocated_keur
+            assert p.total_remaining_cash_keur == pytest.approx(expected_remaining, abs=0.01),                 f"remaining={p.total_remaining_cash_keur} should be avail - alloc = {expected_remaining}"
+
+
+class TestPerInvestorCashConservation:
+    """Tests proving Option A: all per-investor entry fields are investor-level."""
+
+    def test_every_tier_entry_passes_investor_level_cash_conservation(self):
+        """Every per-investor TierAllocationEntry satisfies:
+        available_before - allocated = remaining (for that investor).
+
+        This is the Option A invariant: all three fields are scaled by ownership_pct.
+        """
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        by_id = {r.investor_id: r for r in result.per_investor_results}
+
+        for pi_result in result.per_investor_results:
+            inv = pi_result.investor_id
+            ownership_pct = pi_result.ownership_pct
+
+            for p in pi_result.waterfall_result.period_results:
+                for entry in p.tier_entries:
+                    avail = entry.available_cash_before_tier_keur
+                    alloc = entry.allocated_amount_keur
+                    rem = entry.remaining_cash_after_tier_keur
+
+                    # Option A invariant: avail - alloc = rem (investor-level)
+                    expected_rem = avail - alloc
+                    assert rem == pytest.approx(expected_rem, abs=0.01), (
+                        f"{inv} tier {entry.tier_index}: "
+                        f"avail={avail:.2f} - alloc={alloc:.2f} = {expected_rem:.2f}, "
+                        f"but remaining={rem:.2f}"
+                    )
+
+    def test_no_tier_entry_contains_aggregate_available_cash(self):
+        """Per-investor available_cash_before_tier must be investor-level (ownership × aggregate),
+        never the full aggregate available when only the investor allocation is shown."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        by_id = {r.investor_id: r for r in result.per_investor_results}
+
+        for pi_result in result.per_investor_results:
+            inv = pi_result.investor_id
+            ownership_pct = pi_result.ownership_pct
+
+            for p_result in agg_result.period_results if False else []:
+                # Compare each per-investor entry's available against aggregate
+                pass  # placeholder
+
+        # More direct test: check that per-investor available != aggregate available
+        # for any tier where the investor's allocation is only a fraction
+        for pi_result in result.per_investor_results:
+            inv = pi_result.investor_id
+            ownership_pct = pi_result.ownership_pct
+
+            for p_per_inv, p_agg in zip(
+                pi_result.waterfall_result.period_results,
+                result.aggregate_waterfall_result.period_results
+            ):
+                for inv_entry, agg_entry in zip(p_per_inv.tier_entries, p_agg.tier_entries):
+                    # If investor allocation < aggregate allocation,
+                    # then available must also be < aggregate available
+                    if agg_entry.available_cash_before_tier_keur > 0:
+                        if ownership_pct < 1.0:
+                            expected_avail = ownership_pct * agg_entry.available_cash_before_tier_keur
+                            assert inv_entry.available_cash_before_tier_keur == pytest.approx(
+                                expected_avail, abs=0.01
+                            ), (
+                                f"{inv} tier {inv_entry.tier_index}: "
+                                f"available={inv_entry.available_cash_before_tier_keur:.2f} "
+                                f"should be {ownership_pct} x {agg_entry.available_cash_before_tier_keur:.2f} "
+                                f"= {expected_avail:.2f}"
+                            )
+                        else:
+                            assert inv_entry.available_cash_before_tier_keur == pytest.approx(
+                                agg_entry.available_cash_before_tier_keur, abs=0.01
+                            )
+
+    def test_investor_level_cash_conservation_across_all_tiers_in_period(self):
+        """For each period, investor's total allocations across all tiers
+        equals their ownership percentage of the aggregate available minus
+        their ownership percentage of aggregate remaining."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        for pi_result in result.per_investor_results:
+            inv = pi_result.investor_id
+            ownership_pct = pi_result.ownership_pct
+
+            for p_per_inv, p_agg in zip(
+                pi_result.waterfall_result.period_results,
+                result.aggregate_waterfall_result.period_results
+            ):
+                # Sum of per-investor allocations across all tiers
+                inv_total_period = sum(e.allocated_amount_keur for e in p_per_inv.tier_entries)
+
+                # Expected: ownership_pct * (aggregate available - aggregate remaining)
+                # = ownership_pct * aggregate allocated (since avail - remaining = alloc)
+                # But aggregate remaining = 0 at end of all tiers, so:
+                expected = ownership_pct * p_agg.available_cash_keur
+
+                assert inv_total_period == pytest.approx(expected, abs=0.01), (
+                    f"{inv} period {p_per_inv.period_index}: "
+                    f"total_alloc={inv_total_period:.2f} should be "
+                    f"{ownership_pct} x {p_agg.available_cash_keur:.2f} = {expected:.2f}"
+                )
+
 class TestPreferredReturnPerInvestor:
     def test_lp_pref_accrued_positive(self):
         inputs = _make_basic_inputs()
