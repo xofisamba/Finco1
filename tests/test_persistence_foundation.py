@@ -522,6 +522,21 @@ class TestInMemorySnapshotStore:
         assert mstore.scenarios.load(sc.id) == sc
         assert not mstore.projects.exists(sc.id)
 
+    def test_load_rejects_wrong_schema_version(self):
+        """load() must raise SchemaVersionMismatchError when stored schema_version is unsupported."""
+        store: InMemorySnapshotStore[ProjectSnapshot] = InMemorySnapshotStore()
+        ps = ProjectSnapshot.create(name="Test", technology_type="solar")
+        # Manually plant a corrupted snapshot with wrong schema_version
+        import copy
+        corrupted = copy.deepcopy(ps)
+        object.__setattr__(corrupted, "schema_version", 99)
+        store.save(corrupted)
+        # Confirm the corrupted snapshot is stored
+        assert store.exists(ps.id)
+        # load() must raise, not silently return the corrupted object
+        with pytest.raises(SchemaVersionMismatchError, match="schema_version=99"):
+            store.load(ps.id)
+
 
 # ===========================================================================
 # Immutability guarantees

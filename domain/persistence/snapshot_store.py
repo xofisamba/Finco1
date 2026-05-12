@@ -124,9 +124,18 @@ class InMemorySnapshotStore(SnapshotStore[T]):
         sid = str(snapshot_id)
         if sid not in self._store:
             raise SnapshotNotFoundError(f"No snapshot found with id={sid}")
+        snapshot = self._store[sid]
+        # Validate schema version if the snapshot carries one
+        if hasattr(snapshot, "schema_version"):
+            from domain.persistence.snapshot_base import SCHEMA_VERSION
+            if snapshot.schema_version != SCHEMA_VERSION:
+                raise SchemaVersionMismatchError(
+                    f"snapshot {sid} has schema_version={snapshot.schema_version}, "
+                    f"but only version {SCHEMA_VERSION} is supported"
+                )
         # Return a fresh deep copy so callers cannot mutate stored state
         import copy
-        return copy.deepcopy(self._store[sid])
+        return copy.deepcopy(snapshot)
 
     def exists(self, snapshot_id: SnapshotID | str) -> bool:
         return str(snapshot_id) in self._store
