@@ -75,7 +75,7 @@ Annual compounding maps directly to Excel's built-in XIRR verification: the spon
 
 ## 4. Decision 2: Catch-up Algorithm
 
-### Chosen Default: **Full GP catch-up (100% to GP until GP has received pref + 100% of remaining equity)**
+### Chosen Default: **Full GP catch-up after sponsor return of capital and preferred return — 100% to GP until GP reaches the agreed promote share, then residual split applies**
 
 The waterfall allocates **100% of distributions to the GP** until the GP has received an amount equal to the sponsor's pref accrual plus 100% of the remaining sponsor equity commitment. This is the "full catch-up" model.
 
@@ -83,7 +83,7 @@ After the catch-up is satisfied, distributions split between GP and sponsor acco
 
 ### Rationale
 
-Full GP catch-up is the standard for project finance SPVs where the GP has typically funded 10-20% of equity but carries 100% of the promote. The GP receives no distributions until the sponsor has received their preferred return **and** the sponsor's remaining equity has been returned — this means the sponsor must effectively get their money back plus pref before GP starts earning carry.
+Full GP catch-up means: (1) Sponsor/LP first receives return of capital plus preferred return. (2) GP then receives 100% of distributions as catch-up until GP reaches the agreed promote share. (3) Residual distributions split according to the promote ratio. The GP receives no distributions in phase (1); sponsor receives nothing in phase (2).
 
 A partial catch-up (e.g., 50% to GP until GP has 20% of distributions) is a variation used in some fund structures but is less common in single-asset project finance where the SPV is a single-purpose vehicle.
 
@@ -105,7 +105,7 @@ The catch-up creates a **distribution log** with two phases: (1) sponsor-only ph
 
 ### Fit to FincoGPT Scope
 
-Full GP catch-up aligns with the TUHO/Oborovo model structure where the sponsor is the primary equity investor and the GP (if any) holds a carried interest. This is the simplest formulation that satisfies both sponsor protection and GP incentive alignment.
+Full GP catch-up aligns with the TUHO/Oborovo model structure where the sponsor is the primary equity investor and the GP (if any) holds a carried interest. The three-phase structure (return of capital → GP catch-up → promote split) is the standard formulation in project finance and satisfies both sponsor protection and GP incentive alignment.
 
 ---
 
@@ -255,7 +255,7 @@ The following are explicitly **not** in Phase 7C:
 | Decision | Locked Default |
 |---|---|
 | Compounding convention | **Annual** — preferred return compounded once per year |
-| Catch-up algorithm | **Full GP catch-up** — 100% to GP until sponsor pref + full equity returned |
+| Catch-up algorithm | **Full GP catch-up** after sponsor return of capital and preferred return — 100% to GP until GP reaches the agreed promote share, then residual split applies |
 | Promote vesting timing | **Per-period** — IRR checked each semiannual period; promote allocates period-by-period |
 | Multi-asset aggregation | **Deal-by-deal** — each SPV/project is independent; no cross-project hurdle aggregation |
 | Excel audit sheet | **Single sheet, tier column** — return-of-equity / pref / promote tiers in one sheet |
