@@ -63,6 +63,8 @@ domain/persistence/
 
 2. **`HoldCoDistributionSchedule` gap (noted in 7AB review, still open)** — `holdco_distribution_by_period` is a raw `tuple[float, ...]` passed into `SponsorCashflowRunnerInputs`. No schema type enforces period alignment, WHT basis, or dividend/opex decomposition. This is a latent source of mis-wiring in future callers. *Recommended for Phase 7F.*
 
+3. **PR #60 fixes (merged 2026-05-12):** GP catch-up threshold now uses `lp_invested_capital_keur`; PROMOTE uses explicit carry split; PREF removed from aggregate cascade. See `docs/phase7f_sponsor_integration_readiness.md` for full status.
+
 ---
 
 ## 2. Immutability and Audit-Safety
@@ -189,9 +191,9 @@ InMemorySnapshotStore             ← append-only, deepcopy on load
 
 ## 4. Known Gaps Before Phase 7F
 
-### Gap 1: RESIDUAL tier not yet exercised in tests ⚠️ MEDIUM
+### Gap 1: RESIDUAL tier exercised by PR #60 tests ✅ RESOLVED
 
-The aggregate waterfall includes a `RESIDUAL` tier (tier_index=2), and the per-investor assembly correctly processes it. However, no test exercises the RESIDUAL tier with actual cash distributions. When/if RESIDUAL cash flows are added to the model, the tier should work without further changes — but this is unverified.
+The aggregate waterfall includes a `RESIDUAL` tier (tier_index=3, post-#60 cascade: `[ROC, GP_CATCH_UP, PROMOTE, RESIDUAL]`). PR #60 added `TestLpGpAllocation.test_residual_split_is_80_20` confirming the RESIDUAL tier allocates 80% to LP, 20% to GP on remaining cash distributions.
 
 ### Gap 2: No `HoldCoDistributionSchedule` schema type ⚠️ LOW-MEDIUM
 
@@ -209,9 +211,9 @@ There is no comparison of sponsor IRR/XIRR against actual Excel outputs for TUHO
 
 `SponsorCapitalAccount` has `contributions_by_period` and `distributions_by_period` as read-only properties, but no method to compute the running balance at a given period. The runner computes balances imperatively. A `balance_at_period(period_index) -> float` method would make the capital account self-contained.
 
-### Gap 6: Persistence not integrated with ORM ⚠️ MEDIUM
+### Gap 6: Persistence not integrated with ORM ⚠️ MEDIUM — Phase 7F in progress
 
-`SponsorSnapshot` and related types exist in `domain/persistence/` but are not yet wired to the SQLAlchemy `Project`/`Scenario` models in `persistence/models.py`. The `InputSnapshot` and `ResultSnapshot` ORM models exist but `sponsor_snapshot` has no ORM counterpart. Phase 7F should add a `SponsorSnapshot` ORM model and wire `Scenario` to include it.
+`SponsorSnapshot` and related types exist in `domain/persistence/` but are not yet wired to the SQLAlchemy `Project`/`Scenario` models in `persistence/models.py`. The `InputSnapshot` and `ResultSnapshot` ORM models exist but `sponsor_snapshot` has no ORM counterpart. Phase 7F (branch `phase7f-sponsor-integration-readiness`) is scoped to address this gap.
 
 ---
 
@@ -328,19 +330,21 @@ Phase 7F should wire the persistence layer as the source for sponsor waterfall E
 
 5. **Add `balance_at_period()` to `SponsorCapitalAccount`** — makes capital account self-contained and queryable without imperative balance tracking.
 
+6. **App/orchestrator wiring** — create `app/sponsor_runner.py` with `SponsorRunConfig`; call `run_multi_investor_waterfall()` from project inputs; wire to Excel export. See `docs/phase7f_sponsor_integration_readiness.md`.
+
 ### P2 — Before Phase 8 governance
 
-6. **RESIDUAL tier golden test** — add a test that exercises the RESIDUAL tier with actual cash distributions to confirm it assembles correctly per-investor.
+7. **RESIDUAL tier golden test** — ✅ RESOLVED by PR #60 (`test_residual_split_is_80_20`).
 
-7. **Excel golden validation for sponsor IRR** — capture actual XIRR benchmarks from TUHO/Oborovo Excel model to confirm the 183-day approximation is acceptable.
+8. **Excel golden validation for sponsor IRR** — capture actual XIRR benchmarks from TUHO/Oborovo Excel model to confirm the 183-day approximation is acceptable.
 
-8. **Co-investor ROC priority decision** — clarify whether CO_INVESTOR requires a separate ROC tier before LP ROC, and design accordingly.
+9. **Co-investor ROC priority decision** — clarify whether CO_INVESTOR requires a separate ROC tier before LP ROC, and design accordingly.
 
-9. **Multiple GP preparation** — document whether the 1-GP constraint is a hard product requirement or a temporary simplification; if the latter, begin registry/waterfall generalization work.
+10. **Multiple GP preparation** — document whether the 1-GP constraint is a hard product requirement or a temporary simplification; if the latter, begin registry/waterfall generalization work.
 
 ---
 
-## 9. Phase 7 Summary
+## 9. Phase 7 Summary (Updated by PR #60)
 
 | Property | Status |
 |----------|--------|
@@ -348,11 +352,12 @@ Phase 7F should wire the persistence layer as the source for sponsor waterfall E
 | Immutability | ✅ All results frozen; persistence append-only; no source mutation |
 | Audit-safety | ✅ Schema version, NaN/Inf rejection, SHA-256 hashes, UTC timestamps |
 | Data flow completeness | ✅ Sponsor CF → IRR → Waterfall → Capital account → Persistence |
-| Multi-investor correctness | ✅ Option A per-investor assembly; LP/GP proportional ROC; no first-takes-all |
-| Validation coverage | ✅ 2952 tests; tier ordering, cash conservation, immutability |
+| Multi-investor correctness | ✅ Option A per-investor assembly; LP/GP proportional ROC; GP catch-up GP-only; PROMOTE uses explicit carry split |
+| PR #60 fixes | ✅ `lp_invested_capital_keur` added; PREF removed from aggregate; explicit `promote_shares`; `PreferredReturnAllocation.entry_for()` fixed |
+| Validation coverage | ✅ 2974 tests; tier ordering, cash conservation, RESIDUAL exercised, GP catch-up GP-only |
 | Persistence/domain separation | ✅ Persistence never mutates domain; domain has no persistence deps |
 | Export/persistence consistency | ⚠️ Gap — not yet wired; persistence → export path missing |
-| Known gaps | 6 identified (2 P0, 3 P1, 1 P2) |
+| Known gaps | 5 identified (1 MEDIUM, 3 LOW, 1 MEDIUM-in-progress) |
 | Risks for Phase 8 | 5 identified (1 MEDIUM, 4 LOW) |
 
-**Phase 7 is a solid foundation. The identified gaps are manageable and do not block Phase 7F persistence integration work.**
+**Phase 7 is a solid foundation.** PR #60 resolved the three critical waterfall bugs (GP catch-up threshold, PROMOTE carry economics, PREF double-counting). Remaining gaps are manageable and do not block Phase 7F integration work.
