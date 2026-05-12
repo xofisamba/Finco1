@@ -11,8 +11,8 @@
 
 | Sub-phase | Module | File | PR |
 |-----------|--------|------|-----|
-| 7C-1 | Sponsor waterfall tier schema | `domain/sponsor/sponsor_waterfall_tier.py` | #47 |
-| 7C-2 | Preferred return calculator | `domain/sponsor/preferred_return_calculator.py` | #50 |
+| 7C-1 | Sponsor waterfall tier schema | `domain/sponsor/sponsor_waterfall_tier.py` | #50 |
+| 7C-2 | Preferred return calculator | `domain/sponsor/preferred_return_calculator.py` | #47 |
 | 7C-3 | Waterfall allocation runner | `domain/sponsor/waterfall_runner.py` + `waterfall_allocation_result.py` | #51 |
 | 7C-4 | Capital account tier annotation | `domain/sponsor/capital_account_tier_annotation.py` | #52 |
 | 7C-5 | Audit Excel waterfall sheets | `app/sponsor_waterfall_excel_export.py` | #53 |
