@@ -64,9 +64,25 @@ Factory that constructs a `CapitalStack` from an `InvestorRegistry` and per-inve
 
 ---
 
-## 4. Multi-Investor Waterfall Architecture
+## 4. Multi-Investor Waterfall Architecture (Updated by PR #60)
 
 **File:** `domain/sponsor/multi_investor_waterfall_runner.py`
+**Status:** PR #60 bug fixes merged (2026-05-12)
+
+### Cascade Change (PR #60)
+
+Previous (pre-#60) aggregate cascade was incorrect:
+- `[RETURN_OF_CAPITAL, PREFERRED_RETURN, GP_CATCH_UP, PROMOTE, RESIDUAL]`
+- PREF was double-counted (per-investor in Step 1 AND tier in aggregate)
+- GP_CATCH_UP used proportional shares instead of GP-only
+- PROMOTE used proportional ownership instead of explicit carry split
+
+**PR #60 fix — correct 4-tier aggregate cascade:**
+- `[RETURN_OF_CAPITAL, GP_CATCH_UP, PROMOTE, RESIDUAL]`
+- PREFERRED_RETURN removed from aggregate (computed per-investor in Step 1 only)
+- GP_CATCH_UP: sponsor_shares = 100% to GP (not proportional)
+- PROMOTE: explicit carry split via `promote_shares` (GP gets `gp_promote_share`; non-GP split proportionally)
+- RESIDUAL: same as PROMOTE
 
 ### Why NOT Sequential Per-Investor ROC Tiers
 
@@ -132,7 +148,24 @@ For each investor, their per-investor `WaterfallAllocationResult` is assembled b
 
 ---
 
-## 8. Known Limitations
+**Phase 1 — Per-Investor Preferred Return**
+Each investor's preferred return is computed independently via `PreferredReturnCalculator` from their own invested capital history. Results are stored in `PerInvestorWaterfallResult.pref_result`. Unpaid PREF accrues as a balance carried forward.
+
+**Phase 2 — Aggregate Waterfall (4 tiers, post-#60)**
+A single aggregate waterfall runs via Phase 7C `run_waterfall()` with tiers:
+- `[RETURN_OF_CAPITAL, GP_CATCH_UP, PROMOTE, RESIDUAL]`
+- ROC: proportional sponsor shares (LP×80%, GP×20%)
+- GP_CATCH_UP: sponsor_shares = 100% to GP (GP-only catch-up)
+- PROMOTE: explicit carry split (LP×(1−gp_promote_share), GP×gp_promote_share)
+- RESIDUAL: same carry split as PROMOTE
+
+**Key fix (PR #60):** `lp_invested_capital_keur` field added to `WaterfallRunnerInputs`. GP catch-up threshold uses LP's committed capital (not first-period invested which was 0.0).
+
+This aggregate waterfall produces correctly distributed totals across all investors.
+
+---
+
+## 8. Known Limitations (Updated by PR #60)
 
 1. **Exactly 1 GP required.** The `InvestorRegistry` validates exactly one GP. Multiple GPs or zero GPs are rejected. This matches the current project scope (single sponsor).
 
@@ -140,15 +173,17 @@ For each investor, their per-investor `WaterfallAllocationResult` is assembled b
 
 3. **PREF uses aggregate hurdle_rate_pa.** All investors share the same hurdle rate from `MultiInvestorWaterfallInputs.hurdle_rate_pa`. Per-investor hurdle rates are not supported.
 
-4. **No per-investor capital account persistence.** The capital account is derived from the aggregate result. A separate per-investor capital account display/service layer is not yet built.
+4. **RESIDUAL tier now exercised in PR #60 tests.** The aggregate waterfall's RESIDUAL tier is tested in `TestLpGpAllocation` to confirm 80/20 split on final residue.
 
-5. **RESIDUAL tier not yet wired.** The aggregate waterfall has a RESIDUAL tier but it is not connected to the per-investor result assembly in the current implementation.
+5. **PROMOTE now uses explicit carry split.** Pre-#60, PROMOTE used proportional ownership shares. Post-#60, PROMOTE uses `promote_shares` (GP gets `gp_promote_share`; non-GP investors split the residual proportionally).
+
+6. **PREF removed from aggregate cascade.** Pre-#60, PREF was double-counted (per-investor Step 1 AND aggregate tier). Post-#60, `pref_result=None` is passed to aggregate `WaterfallRunnerInputs`.
 
 ---
 
-## 9. Phase 7E Readiness Assessment
+## 9. Phase 7E–7F Readiness Assessment
 
-**Phase 7E: Persistence Foundation**
+**Phase 7E: Persistence Foundation** — ✅ Complete
 
 | Dependency | Status | Notes |
 |---|---|---|
@@ -158,19 +193,40 @@ For each investor, their per-investor `WaterfallAllocationResult` is assembled b
 | Per-investor result structures | ✅ Ready | `PerInvestorWaterfallResult`, `WaterfallAllocationResult` are plain dataclasses |
 | Preferred return per investor | ✅ Ready | `PreferredReturnResult` stored per investor |
 | Aggregate waterfall integration | ✅ Ready | Uses Phase 7C `run_waterfall()` unchanged |
+| `lp_invested_capital_keur` field | ✅ Ready | Added by PR #60; fixes GP catch-up threshold |
+| Explicit promote shares | ✅ Ready | Added by PR #60; PROMOTE/RESIDUAL use carry split not ownership |
+| PREF removed from aggregate | ✅ Ready | Added by PR #60; `pref_result=None` passed to aggregate |
 
-**No blockers for Phase 7E.** The domain layer is clean and persistence-agnostic.
+**Phase 7F: Sponsor Integration Readiness** — Documentation only in this branch
+
+| Task | Status | Notes |
+|---|---|---|
+| `docs/phase7f_sponsor_integration_readiness.md` | ✅ Created | This branch |
+| App/orchestrator integration | ⏳ Pending | Gap: no code path from project inputs → `run_multi_investor_waterfall()` |
+| SponsorSnapshot → ORM | ⏳ Pending | `SponsorSnapshot` exists in `domain/persistence/`, not wired to SQLAlchemy |
+| Sponsor → Excel export | ⏳ Pending | `write_sponsor_waterfall_audit_sheets()` exists, not wired to real data |
+
+**No blockers for Phase 7F.** The domain layer is clean and persistence-agnostic.
 
 ---
 
-## 10. Recommended Phase 7E Implementation Order
+## 10. Recommended Phase 7E–7F Implementation Order
 
-1. **Persist `InvestorRegistry`** — add `InvestorRegistry` to the scenario model and repository (save/load)
-2. **Persist `CapitalStack`** — add `CapitalStack` to scenario model and repository
-3. **Extend `ScenarioModel` with multi-investor fields** — add `investor_registry`, `capital_stack`, `hurdle_rate_pa`, `gp_promote_share`, `compounding_convention`
-4. **Update waterfall inputs construction** — build `MultiInvestorWaterfallInputs` from persisted scenario model
-5. **Update `run_sponsor_waterfall`** — route to `run_multi_investor_waterfall()` when multi-investor mode is active
-6. **Update export/UI** — wire per-investor results to Excel export and Streamlit display
-7. **Add migration** — migrate existing single-investor scenarios to the multi-investor model
+### Phase 7E complete order (reference)
 
-**Note:** Items 6–7 are out of scope for Phase 7E Persistence Foundation per the agreed phase boundaries.
+1. ~~Persist `InvestorRegistry`~~ — done in Phase 7E
+2. ~~Persist `CapitalStack`~~ — done in Phase 7E
+3. ~~Extend `ScenarioModel` with multi-investor fields~~ — done in Phase 7E
+4. ~~Update waterfall inputs construction~~ — done in Phase 7E
+5. ~~Update `run_sponsor_waterfall`~~ — deferred to Phase 7F (out of 7E scope)
+6. ~~Update export/UI~~ — deferred to Phase 7F (out of 7E scope)
+7. ~~Add migration~~ — deferred to Phase 7F (out of 7E scope)
+
+### Phase 7F new order (from `docs/phase7f_sponsor_integration_readiness.md`)
+
+1. **Wire sponsor waterfall into app layer** — Create `app/sponsor_runner.py` with `SponsorRunConfig`; call `run_multi_investor_waterfall()`
+2. **Wire `SponsorSnapshot` to ORM** — Add `SponsorSnapshotModel`, FK on `Scenario`, update `ScenarioRepository`
+3. **Wire sponsor results to Excel export** — Pass per-investor results to `write_sponsor_waterfall_audit_sheets()`
+4. **Wire to UI** — Streamlit pages: accept LP/GP config, display per-investor waterfall
+5. **Add sponsor IRR** — `run_sponsor_irr()` on cashflow result
+6. **Address remaining open issues** — O-1 (Oborovo/TUHO calibration), O-2 (persistence migration), O-3 (typed SponsorSnapshot)
