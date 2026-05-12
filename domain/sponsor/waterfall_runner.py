@@ -256,11 +256,10 @@ def run_waterfall(inputs: WaterfallRunnerInputs) -> WaterfallAllocationResult:
     tier_by_index = {t.tier_index: t for t in inputs.tiers}
     sorted_tier_indices = sorted(tier_by_index.keys())
 
-    # Cumulative tracking across periods (for ROC balance)
+    # Cumulative tracking across periods
     cumulative_repaid_roc = {s.sponsor_code: 0.0 for t in inputs.tiers for s in t.sponsor_shares}
-
-    # Cumulative tracking for GP catch-up
     cumulative_gp_received = {s.sponsor_code: 0.0 for t in inputs.tiers for s in t.sponsor_shares}
+    cumulative_distributions = {s.sponsor_code: 0.0 for t in inputs.tiers for s in t.sponsor_shares}
 
     period_results: list[PeriodWaterfallResult] = []
 
@@ -322,13 +321,9 @@ def run_waterfall(inputs: WaterfallRunnerInputs) -> WaterfallAllocationResult:
             )
             tier_entries.append(entry)
             remaining = remaining_after
-
-        # Build cumulative distributions by sponsor
-        # Sum across all tier allocations for this period
-        all_sponsors: dict[str, float] = {}
-        for entry in tier_entries:
-            for code, amt in entry.allocated_per_sponsor_keur:
-                all_sponsors[code] = all_sponsors.get(code, 0.0) + amt
+            # Update cumulative distribution tracker for this period's allocations
+            for code, amt in per_sp:
+                cumulative_distributions[code] += amt
 
         total_allocated = sum(e.allocated_amount_keur for e in tier_entries)
 
@@ -338,7 +333,9 @@ def run_waterfall(inputs: WaterfallRunnerInputs) -> WaterfallAllocationResult:
             tier_entries=tuple(tier_entries),
             total_allocated_keur=total_allocated,
             total_remaining_cash_keur=remaining,
-            cumulative_distributions_by_sponsor_keur=tuple(sorted(all_sponsors.items())),
+            cumulative_distributions_by_sponsor_keur=tuple(
+                sorted(cumulative_distributions.items())
+            ),
         )
         period_results.append(period_result)
 

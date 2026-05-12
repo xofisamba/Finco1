@@ -484,3 +484,44 @@ class TestNaNInfRejection:
                 cumulative_invested_by_period=(10000.0,),
                 num_periods=1,
             )
+
+
+# ── Cumulative distributions ─────────────────────────────────────────────────
+
+class TestCumulativeDistributions:
+    def test_cumulative_distributions_period_2_equals_period_1_plus_period_2(self):
+        tiers = [
+            make_tier(0, TierType.RETURN_OF_CAPITAL, [
+                make_share("SPONSOR-1", 0.6),
+                make_share("LP-1", 0.4),
+            ]),
+        ]
+        # Period 0: cash=3000 -> SPONSOR-1=1800, LP-1=1200
+        # Period 1: cash=5000 -> SPONSOR-1=3000, LP-1=2000
+        # Period 2: cash=2000 -> SPONSOR-1=1200, LP-1=800
+        result = run(tiers, [3000.0, 5000.0, 2000.0],
+                     cumulative_invested=[10000.0, 10000.0, 10000.0])
+        p0 = result.period_results[0]
+        p1 = result.period_results[1]
+        p2 = result.period_results[2]
+        cum0 = dict(p0.cumulative_distributions_by_sponsor_keur)
+        assert cum0["SPONSOR-1"] == pytest.approx(1800.0)
+        assert cum0["LP-1"] == pytest.approx(1200.0)
+        cum1 = dict(p1.cumulative_distributions_by_sponsor_keur)
+        assert cum1["SPONSOR-1"] == pytest.approx(1800.0 + 3000.0)
+        assert cum1["LP-1"] == pytest.approx(1200.0 + 2000.0)
+        cum2 = dict(p2.cumulative_distributions_by_sponsor_keur)
+        assert cum2["SPONSOR-1"] == pytest.approx(4800.0 + 1200.0)
+        assert cum2["LP-1"] == pytest.approx(3200.0 + 800.0)
+
+    def test_cumulative_increases_across_periods(self):
+        tiers = [
+            make_tier(0, TierType.RETURN_OF_CAPITAL, [make_share("SPONSOR-1")]),
+        ]
+        result = run(tiers, [1000.0, 2000.0, 3000.0],
+                    cumulative_invested=[10000.0, 10000.0, 10000.0])
+        p0 = dict(result.period_results[0].cumulative_distributions_by_sponsor_keur)
+        p1 = dict(result.period_results[1].cumulative_distributions_by_sponsor_keur)
+        p2 = dict(result.period_results[2].cumulative_distributions_by_sponsor_keur)
+        assert p2["SPONSOR-1"] > p1["SPONSOR-1"]
+        assert p1["SPONSOR-1"] > p0["SPONSOR-1"]
