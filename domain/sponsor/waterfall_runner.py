@@ -14,7 +14,7 @@ No forward-looking projections. No distribution allocation. No promote logic.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from typing import Any
 
@@ -72,6 +72,10 @@ class WaterfallRunnerInputs:
     pref_result: PreferredReturnResult | None
     cumulative_invested_by_period: tuple[float, ...]
     num_periods: int
+    # LP's cumulative preferred return distributions by period (kEUR).
+    # Used for GP catch-up threshold: gp_target = promote_rate/(1-promote_rate) × max(0, lp_cum_pref - lp_invested)
+    # Optional — required when a GP_CATCH_UP tier is present in multi-investor mode.
+    lp_cumulative_pref_by_period: tuple[float, ...] = field(default_factory=tuple)
 
     def __post_init__(self):
         if not isinstance(self.tiers, (list, tuple)):
@@ -291,8 +295,27 @@ def run_waterfall(inputs: WaterfallRunnerInputs) -> WaterfallAllocationResult:
                     )
 
             elif tier.tier_type == TierType.GP_CATCH_UP:
-                # promote_threshold: sum of all sponsor investments (cumulative_invested at last period)
-                promote_threshold = inputs.cumulative_invested_by_period[-1]
+                # promote_threshold: (promote_rate / (1-promote_rate)) × max(0, lp_cum_pref - lp_invested)
+                # This is the institutional 8-and-20 carry formula:
+                #   GP catches up to (promote_rate/(1-promote_rate)) × LP's preferred return above LP invested capital.
+                # lp_cumulative_pref_by_period comes from PreferredReturnAllocation.lp_catch_up_trigger_by_period().
+                # Single-investor mode (empty lp_cumulative_pref_by_period): falls back to total invested capital.
+                lp_cum_pref_by_period = inputs.lp_cumulative_pref_by_period
+                if lp_cum_pref_by_period and p < len(lp_cum_pref_by_period):
+                    lp_cum_pref = lp_cum_pref_by_period[p]
+                    lp_invested = inputs.cumulative_invested_by_period[0] if inputs.cumulative_invested_by_period else 0.0
+                    lp_catch_up_trigger = max(0.0, lp_cum_pref - lp_invested)
+                    # Extract promote_rate from tier sponsor_shares (GP's allocation % in the CATCH_UP tier)
+                    promote_rate = 0.20  # default for 8-and-20
+                    for s in tier.sponsor_shares:
+                        if s.allocation_percentage > 0 and s.allocation_percentage < 1.0:
+                            promote_rate = s.allocation_percentage
+                            break
+                    # GP's catch-up target: promote_rate/(1-promote_rate) × trigger
+                    promote_threshold = (promote_rate / (1.0 - promote_rate)) * lp_catch_up_trigger
+                else:
+                    # Single-investor fallback: use total invested capital
+                    promote_threshold = inputs.cumulative_invested_by_period[-1] if inputs.cumulative_invested_by_period else 0.0
                 total_gp_received = sum(cumulative_gp_received.values())
                 alloc, per_sp = _allocate_gp_catch_up(
                     tier, remaining, promote_threshold, total_gp_received
