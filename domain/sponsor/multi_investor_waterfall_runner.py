@@ -372,23 +372,51 @@ def run_multi_investor_waterfall(
         inv = registry.investor_for(inv_id)
         pref_result = pref_results_by_investor[inv_id]
 
-        # Per-period waterfall entries (from aggregate result)
+        # Build per-investor waterfall entries:
+        # Each aggregate tier entry is filtered to show only this investor's allocation.
+        # allocated_amount_keur = only this investor's share (not the full tier total).
+        # allocated_per_sponsor_keur = ((inv_id, amount),) — only this investor.
+        # remaining_cash_after_tier_keur = available after this investor's tier share.
         inv_period_results: list[PeriodWaterfallResult] = []
+        running_cumulative = 0.0
         for p_result in agg_result.period_results:
-            entries = list(p_result.tier_entries)
-            entries.sort(key=lambda e: e.tier_index)
-            total_alloc = sum(e.allocated_amount_keur for e in entries)
-            remaining = p_result.available_cash_keur - total_alloc
-            inv_dist = sum(e.allocation_for(inv_id) for e in entries)
+            inv_tier_entries: list[TierAllocationEntry] = []
+            for entry in p_result.tier_entries:
+                inv_amt = entry.allocation_for(inv_id)
+                # Per-investor remaining = aggregate remaining + (aggregate allocation - investor allocation)
+                # = aggregate remaining + other investors' allocations from this tier
+                if entry.remaining_cash_after_tier_keur >= 0:
+                    inv_remaining = (
+                        entry.remaining_cash_after_tier_keur
+                        + entry.allocated_amount_keur
+                        - inv_amt
+                    )
+                else:
+                    inv_remaining = 0.0
+                inv_tier_entries.append(
+                    TierAllocationEntry(
+                        tier_index=entry.tier_index,
+                        tier_type=entry.tier_type,
+                        available_cash_before_tier_keur=entry.available_cash_before_tier_keur,
+                        allocated_amount_keur=inv_amt,
+                        allocated_per_sponsor_keur=((inv_id, inv_amt),),
+                        remaining_cash_after_tier_keur=inv_remaining,
+                    )
+                )
+
+            inv_total_alloc = sum(e.allocated_amount_keur for e in inv_tier_entries)
+            running_cumulative += inv_total_alloc
 
             inv_period_results.append(
                 PeriodWaterfallResult(
                     period_index=p_result.period_index,
                     available_cash_keur=p_result.available_cash_keur,
-                    tier_entries=tuple(entries),
-                    total_allocated_keur=total_alloc,
-                    total_remaining_cash_keur=remaining,
-                    cumulative_distributions_by_sponsor_keur=((inv_id, inv_dist),),
+                    tier_entries=tuple(inv_tier_entries),
+                    total_allocated_keur=inv_total_alloc,
+                    total_remaining_cash_keur=(
+                        p_result.available_cash_keur - inv_total_alloc
+                    ),
+                    cumulative_distributions_by_sponsor_keur=((inv_id, running_cumulative),),
                 )
             )
 

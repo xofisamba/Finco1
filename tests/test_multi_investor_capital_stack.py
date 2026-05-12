@@ -569,6 +569,98 @@ class TestNoMutation:
         run_multi_investor_waterfall(inputs)
         assert str(inputs) == inputs_str_before
 
+class TestNoMutation:
+    def test_inputs_not_mutated(self):
+        inputs = _make_basic_inputs()
+        inputs_str_before = str(inputs)
+        run_multi_investor_waterfall(inputs)
+        assert str(inputs) == inputs_str_before
+
+
+class TestPerInvestorAllocationCorrectness:
+    """Tests proving per-investor allocations are correct and isolated."""
+
+    def test_lp_80pct_gp_20pct_split_proportional(self):
+        """LP (80%) and GP (20%) each receive their exact proportional share."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        by_id = {r.investor_id: r for r in result.per_investor_results}
+        lp = by_id["LP-1"]
+        gp = by_id["GP-1"]
+
+        lp_total = lp.waterfall_result.total_allocated_keur
+        gp_total = gp.waterfall_result.total_allocated_keur
+        agg_total = result.aggregate_waterfall_result.total_allocated_keur
+
+        # LP should get 80%, GP should get 20%
+        assert lp_total == pytest.approx(agg_total * 0.80, abs=0.01),             f"LP total {lp_total} should be 80% of aggregate {agg_total}"
+        assert gp_total == pytest.approx(agg_total * 0.20, abs=0.01),             f"GP total {gp_total} should be 20% of aggregate {agg_total}"
+        # Sanity check: LP > GP (LP invested more)
+        assert lp_total > gp_total
+
+    def test_sum_of_per_investor_totals_equals_aggregate(self):
+        """Sum of all per-investor total_allocated equals aggregate total."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        sum_per_inv = sum(
+            r.waterfall_result.total_allocated_keur
+            for r in result.per_investor_results
+        )
+        agg_total = result.aggregate_waterfall_result.total_allocated_keur
+
+        assert sum_per_inv == pytest.approx(agg_total, abs=0.01),             f"Sum of per-investor ({sum_per_inv}) should equal aggregate ({agg_total})"
+
+    def test_no_investor_contains_another_investors_allocation(self):
+        """Per-investor tier entries contain only that investor's allocation."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        by_id = {r.investor_id: r for r in result.per_investor_results}
+
+        for pi_result in result.per_investor_results:
+            inv_id = pi_result.investor_id
+            for p in pi_result.waterfall_result.period_results:
+                for entry in p.tier_entries:
+                    # Each tier entry's allocated_amount should equal allocation_for(inv_id)
+                    assert entry.allocated_amount_keur == pytest.approx(
+                        entry.allocation_for(inv_id), abs=0.01
+                    ), f"{inv_id} tier entry allocated_amount should match allocation_for"
+                    # allocated_per_sponsor_keur should only contain this investor
+                    codes = [c for c, _ in entry.allocated_per_sponsor_keur]
+                    assert codes == [inv_id],                         f"{inv_id} tier entry should only contain their own sponsor code, got {codes}"
+
+    def test_cumulative_distributions_increase_across_periods(self):
+        """Cumulative distributions must be monotonically increasing."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        for pi_result in result.per_investor_results:
+            prev_cumulative = 0.0
+            for p in pi_result.waterfall_result.period_results:
+                # cumulative_distributions_by_sponsor_keur is ((inv_id, cumulative),)
+                entry = p.cumulative_distributions_by_sponsor_keur[0]
+                cumulative = entry[1]
+                assert cumulative >= prev_cumulative - 0.01,                     f"{pi_result.investor_id} cumulative should increase: prev={prev_cumulative}, curr={cumulative}"
+                prev_cumulative = cumulative
+
+            # Also verify period total_allocated_keur makes sense
+            for p in pi_result.waterfall_result.period_results:
+                assert p.total_allocated_keur >= 0
+
+    def test_per_investor_total_remaining_equals_available_minus_allocated(self):
+        """Per-investor total_remaining = available - allocated (cash conservation)."""
+        inputs = _make_basic_inputs()
+        result = run_multi_investor_waterfall(inputs)
+
+        by_id = {r.investor_id: r for r in result.per_investor_results}
+        lp = by_id["LP-1"]
+
+        for p in lp.waterfall_result.period_results:
+            expected_remaining = p.available_cash_keur - p.total_allocated_keur
+            assert p.total_remaining_cash_keur == pytest.approx(expected_remaining, abs=0.01),                 f"remaining={p.total_remaining_cash_keur} should be avail - alloc = {expected_remaining}"
+
 class TestMultiInvestorAggregateReconciliation:
     def test_multi_roc_no_first_investor_takes_all(self):
         """Regression test: aggregate proportional ROC must not allocate
