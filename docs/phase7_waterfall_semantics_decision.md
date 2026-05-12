@@ -248,7 +248,17 @@ aggregate_tiers = (
 
 ### 7.2 Phase 7F-2: Wire PREF result into waterfall inputs
 
-Currently `pref_result=None` in aggregate waterfall. Change to pass per-investor preferred return results into the aggregate waterfall as `WaterfallRunnerInputs.pref_result`. The Phase 7C `PreferredReturnResult` already supports multi-sponsor via `sponsor_code`.
+Currently `pref_result=None` in aggregate waterfall.
+
+**Correction:** `PreferredReturnResult` is currently single-sponsor — it tracks one investor's preferred return at a time and does not support multi-sponsor allocation inside a single result. The calculator is per-investor by design.
+
+Two approaches to wire PREF into the cascade:
+
+- **Approach A (recommended):** Keep per-investor `PreferredReturnResult` calculations unchanged. Introduce a thin `PreferredReturnAllocation` result type that aggregates per-investor unpaid preferred claims for use as waterfall cascade input. The aggregate waterfall receives this allocation and deducts each investor's unpaid preferred from available cash in priority order (LP before GP).
+
+- **Approach B:** Extend `WaterfallRunnerInputs.pref_result` to accept a list of per-investor results rather than a single result. The runner iterates over investors in priority order and deducts unpaid preferred balances before allocating to GP catch-up.
+
+Neither approach requires changing `PreferredReturnResult` itself or the `PreferredReturnCalculator`.
 
 ### 7.3 Phase 7F-3: Implement GP catch-up formula
 
@@ -282,25 +292,25 @@ All 59 Phase 7D tests will need review. The aggregate tier ordering changes mean
 
 ---
 
-## 8. Impact on Phase 7F, Phase 8, and External Pilot Readiness
+## 8. Impact on Phase 7 Stabilization, Phase 8, and External Pilot Readiness
 
-### Phase 7F (Persistence Foundation — current)
+### Phase 7 Stabilization / Pre-7F Correction
 
-If Option A is chosen, Phase 7F must incorporate the waterfall tier order changes before persistence snapshots are created. Persisting snapshots with the old (incorrect) tier order would create a migration burden.
+If Option A is chosen, the waterfall tier order changes must be implemented and merged before any new persistence snapshots are created. Persisting snapshots with the old (incorrect) proportional tier structure would require a migration. Since Phase 7E (Persistence Foundation) is already complete and merged, the carry-semantics fix belongs in the Phase 7 Stabilization branch — a pre-7F correction — before proceeding to Phase 7F feature work.
 
-**Recommendation:** Implement Option A changes in Phase 7F before persistence snapshots are created for the sponsor waterfall.
+**Recommendation:** Implement Option A changes in the Phase 7 Stabilization branch before merging to `main`, then proceed to Phase 7F with correct carry semantics already baked in.
 
-### Phase 7F scope additions
+### Phase 7 Stabilization scope additions
 
 | Item | Impact |
 |------|--------|
 | Add GP_CATCH_UP tier | Small — runner change only |
-| Add PREF tier to aggregate waterfall | Medium — need to wire pref_result per investor |
+| Add PREF tier to aggregate waterfall | Medium — need new PREF allocation adapter/result type |
 | GP catch-up formula | Medium — new allocation logic |
-| Golden 8-and-20 tests | Small — new test file |
-| Rename/adjust tests | Small — tier index assertions |
+| Golden 8-and-20 tests | Medium — new test file + edge case coverage |
+| Rename/adjust existing tests | Small — tier index assertions |
 
-**Estimated Phase 7F delta:** +1–2 days of implementation work.
+**Estimated Phase 7 Stabilization delta:** +2–4 days of implementation work.
 
 ### Phase 8 (External Pilot)
 
@@ -325,11 +335,11 @@ Option A makes the model **usable for real LP/GP co-investment analysis**. Optio
 2. The current PROMOTE tier is misleading — it is proportional allocation, not carry.
 3. Fixing carry semantics post-persistence is harder than doing it now.
 4. An external pilot cannot use proportional waterfall as a substitute for carry.
-5. The Phase 7F delta is manageable (+1–2 days).
+5. The Phase 7 Stabilization delta is estimated +2–4 days.
 
 **Next steps:**
 1. Create Phase 7F branch from `phase7-waterfall-semantics-decision` after merge
 2. Implement Option A follow-ups (sections 7.1–7.6)
 3. Update `phase7d_closeout_review.md` and `phase7_claude_architecture_review.md`
 4. Confirm all 2952 tests pass (with updated golden tests)
-5. Proceed to Phase 7F persistence integration with correct waterfall semantics
+5. Proceed to Phase 7F feature work with correct waterfall semantics baked in
