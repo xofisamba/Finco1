@@ -4,9 +4,11 @@ Deterministic preferred return accrual engine.
 Pure function: no mutation, no side effects, no I/O.
 
 Compounding conventions (from SponsorWaterfallTier):
-  - ANNUAL   : accrual = opening_invested * hurdle_rate  (compounded once/year)
-  - SIMPLE   : accrual = opening_invested * hurdle_rate * accrual_periods (no compounding)
-  - SEMIANNUAL: accrual = opening_invested * ((1 + hurdle_rate)^0.5 - 1) per half-year
+  - ANNUAL   : full annual hurdle applied once per year at annual boundaries
+              (odd period indices: 1, 3, 5...). Even periods (0, 2, 4...) are the
+              first half of each year → 0 accrual in those periods.
+  - SIMPLE   : opening_invested * hurdle_rate * accrual_periods (no compounding)
+  - SEMIANNUAL: opening_invested * ((1 + hurdle_rate)^0.5 - 1) per half-year
 
 Hurdle satisfaction: once cumulative_accrued_pref >= cumulative_invested * hurdle_rate,
   hurdle_satisfied = True and stays True for all remaining periods.
@@ -17,7 +19,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Any
 
 from domain.sponsor.sponsor_waterfall_tier import (
     SponsorWaterfallTier,
@@ -46,14 +47,15 @@ class PreferredReturnCalculatorInputs:
     tier : SponsorWaterfallTier
         PREFERRED_RETURN tier from Phase 7C-1 schema.
         Must have tier_type == TierType.PREFERRED_RETURN.
-    cumulative_invested_by_period : list[float]
+    cumulative_invested_by_period : list[float] | tuple[float, ...]
         Cumulative equity invested by sponsor at end of each period (kEUR).
         Index p = value at end of period p.
-        Must be non-negative. Length = num_periods.
-    distributions_by_period : tuple[float, ...]
+        Must be non-negative and non-decreasing across periods.
+        Length = num_periods. Normalized to tuple on construction.
+    distributions_by_period : list[float] | tuple[float, ...]
         Per-period distribution delta applied to preferred return balance at end of
         each period (kEUR). Value at index p = distribution delta in period p.
-        Must be non-negative.
+        Must be non-negative. Normalized to tuple on construction.
     num_periods : int
         Number of semiannual periods to compute.
         For ANNUAL compounding convention, accrual occurs at annual boundaries
@@ -63,9 +65,9 @@ class PreferredReturnCalculatorInputs:
     Notes
     -----
     - cumulative_invested_by_period[p] - cumulative_invested_by_period[p-1]
-      = equity injected in period p (>= 0 by construction, rejected if < 0)
+      = equity injected in period p (>= 0, rejected if < 0)
     - distributions_by_period is a per-period delta (NOT cumulative)
-    - Both tuples must have length == num_periods
+    - Both are normalized to tuples in __post_init__ for frozen-dataclass safety
     """
     tier: SponsorWaterfallTier
     cumulative_invested_by_period: tuple[float, ...]
@@ -83,6 +85,17 @@ class PreferredReturnCalculatorInputs:
             raise TypeError("cumulative_invested_by_period must be list or tuple")
         if not isinstance(self.distributions_by_period, (list, tuple)):
             raise TypeError("distributions_by_period must be list or tuple")
+        # Normalize to tuples for immutable frozen-dataclass safety
+        object.__setattr__(
+            self,
+            "cumulative_invested_by_period",
+            tuple(self.cumulative_invested_by_period),
+        )
+        object.__setattr__(
+            self,
+            "distributions_by_period",
+            tuple(self.distributions_by_period),
+        )
         if len(self.cumulative_invested_by_period) != self.num_periods:
             raise ValueError(
                 f"cumulative_invested_by_period length ({len(self.cumulative_invested_by_period)}) "
@@ -100,6 +113,17 @@ class PreferredReturnCalculatorInputs:
                 raise ValueError(f"cumulative_invested_by_period[{i}] must be finite, got {val}")
             if val < 0:
                 raise ValueError(f"cumulative_invested_by_period[{i}] must be >= 0, got {val}")
+        # Validate cumulative invested is non-decreasing
+        for p in range(1, self.num_periods):
+            delta = (
+                self.cumulative_invested_by_period[p]
+                - self.cumulative_invested_by_period[p - 1]
+            )
+            if delta < 0:
+                raise ValueError(
+                    f"cumulative_invested_by_period must be non-decreasing; "
+                    f"period {p} delta {delta} is negative"
+                )
         for i, val in enumerate(self.distributions_by_period):
             if not isinstance(val, (int, float)):
                 raise TypeError(f"distributions_by_period[{i}] must be float")
@@ -111,24 +135,11 @@ class PreferredReturnCalculatorInputs:
             raise ValueError(f"num_periods must be positive int, got {self.num_periods}")
 
 
-# ── Core accrual calculation ───────────────────────────────────────────────────
+# ── Core accrual helpers ────────────────────────────────────────────────────────
 
 def _accrue_pref_simple(opening_invested: float, hurdle_rate: float, accrual_periods: float) -> float:
     """Simple interest accrual: no compounding."""
     return opening_invested * hurdle_rate * accrual_periods
-
-
-def _accrue_pref_annual(opening_invested: float, hurdle_rate: float, accrual_periods: float) -> float:
-    """Annual compounding accrual — applied once per year, not per semiannual period.
-
-    In a semiannual period engine (accrual_periods=0.5), ANNUAL convention accrues
-    the full hurdle_rate only at annual boundaries (even period indices: 0, 2, 4, ...).
-    For odd periods (1, 3, 5, ...) the accrual is 0 — the annual accrual already
-    happened at the preceding even period.
-
-    This ensures 8% annual hurdle → 800 per 10k per year (not 1600).
-    """
-    return 0.0  # caller applies this only at annual boundary
 
 
 def _accrue_pref_semiannual(opening_invested: float, hurdle_rate: float, accrual_periods: float) -> float:
@@ -149,11 +160,18 @@ def _accrue_pref(
     convention: CompoundingConvention,
     accrual_periods: float,
 ) -> float:
-    """Dispatch accrual by compounding convention."""
+    """Dispatch accrual by compounding convention.
+
+    Note: ANNUAL convention is handled inline in calculate_preferred_return()
+    to correctly apply accrual only at annual boundaries (odd period indices).
+    This dispatch exists for SIMPLE and SEMIANNUAL only.
+    """
     if convention == CompoundingConvention.SIMPLE:
         return _accrue_pref_simple(opening_invested, hurdle_rate, accrual_periods)
     elif convention == CompoundingConvention.ANNUAL:
-        return _accrue_pref_annual(opening_invested, hurdle_rate, accrual_periods)
+        # Defensive fallback: should not be reached; ANNUAL is handled inline.
+        # Accrue at annual boundary (odd period index) for 1 full year.
+        return opening_invested * hurdle_rate
     elif convention == CompoundingConvention.SEMIANNUAL:
         return _accrue_pref_semiannual(opening_invested, hurdle_rate, accrual_periods)
     else:
@@ -187,14 +205,16 @@ def calculate_preferred_return(
 
     Accrual base
     ------------
-    opening_invested_capital_keur = max(0, cumulative_invested_by_period[p-1]) at period p.
-    First period (p=0): opening_invested = cumulative_invested_by_period[0] (all injected at p=0).
+    opening_invested_capital_keur = cumulative_invested_by_period[p-1] at period p.
+    First period (p=0): opening_invested = cumulative_invested_by_period[0]
+    (all injected at p=0). Must be non-negative and non-decreasing by construction.
 
     Accrual formula (per convention)
     -------------------------------
     SIMPLE    : opening_invested * hurdle_rate * accrual_periods
-    ANNUAL    : full hurdle_rate applied once at each annual boundary (even period index),
-                zero in odd periods — so 8% → 800 per 10k per year (not 1600)
+    ANNUAL    : full hurdle_rate applied once at each annual boundary
+                (odd period index: 1, 3, 5...); zero in even periods (0, 2, 4...)
+                so 8% → 800 per 10k per year, not 1600
     SEMIANNUAL: opening_invested * ((1 + hurdle_rate)^accrual_periods - 1)
     """
     tier = inputs.tier
@@ -213,9 +233,9 @@ def calculate_preferred_return(
     for p in range(inputs.num_periods):
         # Opening invested capital at start of period p
         if p == 0:
-            opening_invested = max(0.0, inputs.cumulative_invested_by_period[0])
+            opening_invested = inputs.cumulative_invested_by_period[0]
         else:
-            opening_invested = max(0.0, inputs.cumulative_invested_by_period[p - 1])
+            opening_invested = inputs.cumulative_invested_by_period[p - 1]
 
         # Equity injected during period p
         if p == 0:
@@ -227,19 +247,15 @@ def calculate_preferred_return(
             )
 
         # Accrue preferred return for this period
-        # For ANNUAL convention: accrue only at annual boundaries (even period indices).
-        # The annual accrual is calculated once per year using the opening invested at
-        # the start of that year (the even period index). Odd periods receive 0 accrual.
+        # For ANNUAL convention: accrue only at annual boundaries (odd period indices).
+        # Even period indices (0, 2, 4...) are the first half of a year → 0 accrual.
+        # Odd indices (1, 3, 5...) are the annual boundary → full annual accrual.
         if convention == CompoundingConvention.ANNUAL:
             if p % 2 == 0:
-                # Even period index (0, 2, 4...): first half of year — no accrual yet.
-                # The annual accrual is recorded at the END of the year (odd index).
+                # Even period index: first half of year — no accrual yet.
                 accrued = 0.0
             else:
-                # Odd period index (1, 3, 5...): annual boundary — full year accrued.
-                # Opening invested is the capital in place at the START of this year
-                # (end of the preceding even period, i.e., p-1 which has the same index
-                # as the opening of this year).
+                # Odd period index: annual boundary — full year accrued.
                 accrued = opening_invested * hurdle_rate
         else:
             accrued = _accrue_pref(opening_invested, hurdle_rate, convention, accrual_periods)

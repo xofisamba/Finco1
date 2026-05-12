@@ -385,6 +385,16 @@ class TestNaNInfRejection:
                 num_periods=1,
             )
 
+    def test_rejects_decreasing_cumulative_invested(self):
+        tier = make_pref_tier()
+        with pytest.raises(ValueError, match="cumulative_invested_by_period must be non-decreasing"):
+            PreferredReturnCalculatorInputs(
+                tier=tier,
+                cumulative_invested_by_period=(10000.0, 5000.0),
+                distributions_by_period=(0.0, 0.0),
+                num_periods=2,
+            )
+
 
 # ── Input validation ─────────────────────────────────────────────────────────
 
