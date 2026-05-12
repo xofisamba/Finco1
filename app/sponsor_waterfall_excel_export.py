@@ -74,14 +74,20 @@ def build_waterfall_allocation_table(result) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
 
-    # Add cumulative distributions from period result
-    cum_map = dict(period_result.cumulative_distributions_by_sponsor_keur)
-    for code in cum_map:
+    # Collect all sponsor codes across ALL periods for cumulative distribution columns
+    all_cum_codes = set()
+    for pr in result.period_results:
+        for code, _ in pr.cumulative_distributions_by_sponsor_keur:
+            all_cum_codes.add(code)
+
+    # Add cumdist_* columns for the full union of sponsor codes (initialized to 0.0)
+    for code in sorted(all_cum_codes):
         col = f"cumdist_{code}_keur"
         if col not in df.columns:
             df[col] = 0.0
-    # Fill using period-level cumulative
-    for idx, period_result in enumerate(result.period_results):
+
+    # Fill each period's rows from that period's cumulative distributions
+    for period_result in result.period_results:
         mask = df["period_index"] == period_result.period_index
         for code, amt in period_result.cumulative_distributions_by_sponsor_keur:
             col = f"cumdist_{code}_keur"

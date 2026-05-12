@@ -403,3 +403,64 @@ class TestAllTierTypes:
         assert tier_type_col is not None
         assert "RETURN_OF_CAPITAL" in str(ws.cell(3, tier_type_col).value)
         assert "PREFERRED_RETURN" in str(ws.cell(4, tier_type_col).value)
+
+class TestCumulativeDistributionColumns:
+    def test_cumdist_column_for_sponsor_only_in_early_period(self):
+        """A sponsor appearing only in an earlier period still gets a cumdist_ column."""
+        # SPONSOR-1 appears in period 0 and 1; LP-1 only in period 0
+        per_sp = 5000.0 / 2  # 2500 each
+        period0_entries = [
+            TierAllocationEntry(
+                tier_index=0,
+                tier_type=TierType.RETURN_OF_CAPITAL,
+                available_cash_before_tier_keur=5000.0,
+                allocated_amount_keur=5000.0,
+                allocated_per_sponsor_keur=(("SPONSOR-1", per_sp), ("LP-1", per_sp)),
+                remaining_cash_after_tier_keur=0.0,
+            ),
+        ]
+        period1_entries = [
+            TierAllocationEntry(
+                tier_index=0,
+                tier_type=TierType.RETURN_OF_CAPITAL,
+                available_cash_before_tier_keur=5000.0,
+                allocated_amount_keur=5000.0,
+                allocated_per_sponsor_keur=(("SPONSOR-1", 5000.0),),  # LP-1 NOT here
+                remaining_cash_after_tier_keur=0.0,
+            ),
+        ]
+        period_results = [
+            PeriodWaterfallResult(
+                period_index=0,
+                available_cash_keur=5000.0,
+                tier_entries=tuple(period0_entries),
+                total_allocated_keur=5000.0,
+                total_remaining_cash_keur=0.0,
+                cumulative_distributions_by_sponsor_keur=(
+                    ("SPONSOR-1", per_sp), ("LP-1", per_sp)
+                ),
+            ),
+            PeriodWaterfallResult(
+                period_index=1,
+                available_cash_keur=5000.0,
+                tier_entries=tuple(period1_entries),
+                total_allocated_keur=5000.0,
+                total_remaining_cash_keur=0.0,
+                cumulative_distributions_by_sponsor_keur=(
+                    ("SPONSOR-1", per_sp + 5000.0),  # LP-1 drops out
+                ),
+            ),
+        ]
+        result = WaterfallAllocationResult(
+            investor_id="WATERFALL",
+            period_results=tuple(period_results),
+            total_allocated_keur=10000.0,
+            total_distributions_by_sponsor_keur=(("SPONSOR-1", 7500.0), ("LP-1", 2500.0)),
+        )
+        df = build_waterfall_allocation_table(result)
+        # LP-1 only appears in period 0 but its cumdist column must still exist
+        assert "cumdist_LP-1_keur" in df.columns
+        # And it should have values (0.0 before period 0, per_sp in period 0, then unchanged)
+        lp_cum = df["cumdist_LP-1_keur"].tolist()
+        # Period 0 has LP-1 cumdist = 2500
+        assert 2500.0 in lp_cum
