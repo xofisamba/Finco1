@@ -6,7 +6,7 @@ Deterministic. Immutable. Audit-safe.
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any
 
 from domain.sponsor.equity_injection import EquityInjection
 from domain.sponsor.sponsor_cashflow_result import (
