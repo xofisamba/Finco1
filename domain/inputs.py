@@ -324,6 +324,13 @@ class FinancingParams:
     shl_tenor_years: int = 0
     shl_idc_keur: float = 0.0
 
+    # TUHO-specific: cap SHL sweep at Excel R99-equivalent cash.
+    # When True, the SHL principal repayment is capped at min(cf_available, R99_equivalent)
+    # rather than using the raw cf_after_reserves. This matches how Excel distributes
+    # cash priority: senior DS first, then SHL capped at remaining FCF.
+    # Oborovo keeps this False (its R99 ≈ cf, so no effective change).
+    use_senior_sweep_cash_cap_for_shl: bool = False
+
     @property
     def all_in_rate(self) -> float:
         """All-in senior debt interest rate."""

@@ -251,6 +251,10 @@ def run_waterfall(
     debt_sizing_method: str = "dscr_sculpt",
     # Per-period DSCR schedule for dual-DSCR sculpting (PPA vs merchant periods)
     dscr_schedule: list[float] | None = None,
+    # TUHO-specific: cap SHL sweep cash at R99-equivalent (Excel-compatible).
+    # Prevents SHL principal from consuming cash that Excel would hold back as
+    # sculpted FCF reserve. Oborovo keeps this False (its R99 ≈ cf, no effective change).
+    use_senior_sweep_cash_cap_for_shl: bool = False,
 ) -> WaterfallResult:
     """Run full waterfall with iterative debt sculpting.
 
@@ -665,6 +669,25 @@ def run_waterfall(
         else:
             shl_tenor_periods = tenor_periods + 2  # bullet 1 year after senior payoff
         is_final_shl_period = (shl_balance > 0 and op_period_counter == shl_tenor_periods - 1)
+
+        # ── TUHO SHL cash-cap (Excel R99-equivalent) — INVALID, disabled for PR A ──
+        # CURRENTLY DISABLED: The previous implementation used remaining_senior_balance
+        # as the R99-equivalent, which is a DEBT BALANCE not a CASH FLOW.
+        # This caused the cap to go to 0 when senior debt was repaid, blocking SHL
+        # repayment in the sweep phase — the opposite of the intended behavior.
+        #
+        # VALID R99-EQUIVALENT: Should be cf_after_tax - senior_ds - senior_sweep_amount.
+        # The senior_sweep_amount is computed in the distribution section (lines 756-765)
+        # AFTER the SHL call, so it is not available at this point in the code.
+        #
+        # SPLIT: PR A (flag + tests), PR B (reorder waterfall to compute senior sweep
+        # cash before SHL service call).
+        #
+        # TODO (PR B): Reorder so senior sweep amount is computed before SHL call.
+        # Then re-enable with: r99_equivalent_cf = max(0.0, cf_after_tax - senior_ds - senior_sweep_amount - dsra_contrib)
+        # For now, no cap is applied (flag still propagated, tests still run).
+        if use_senior_sweep_cash_cap_for_shl and shl_repayment_method == "pik_then_sweep":
+            pass  # DISABLED — awaiting PR B senior-sweep reorder
 
         if is_shl_disbursement_period:
             # Y1-H1: disbursement period - balance already includes IDC
