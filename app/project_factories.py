@@ -382,15 +382,18 @@ def create_default_tuho_wind1() -> ProjectInputs:
         min_llcr=1.15,
         # TUHO Excel CF rows R75-R80 show zero DSRA target/funding/balance — no reserve account
         dsra_months=0,
-        amortization_type="fixed_ds",  # TUHO uses fixed DS (annuity-like)
-        fixed_ds_keur=2116.0,  # Fixed semi-annual debt service from Excel (DS = 2,116 kEUR)
-        debt_sizing_method="fixed",  # TUHO: debt amount fixed at 43,359 kEUR
-        fixed_debt_keur=43359.0,  # Excel-verified debt amount (hardcoded from Excel)
-        dscr_schedule=None,  # Per-period DSCR targets not used for fixed DS approach
+        # TUHO Excel uses dual-DSCR sculpting:
+        #  1.20 during PPA periods 1-24 through 31-Dec-2041,
+        #  1.4125 during merchant periods 25-28.
+        amortization_type="sculpted",
+        fixed_ds_keur=0.0,
+        debt_sizing_method="fixed",
+        fixed_debt_keur=43359.0,
+        dscr_schedule=[1.2] * 24 + [1.4125] * 4,
         equity_irr_method="shl_plus_dividends",  # TUHO: equity CF = SHL interest only (brief Sprint 13)
         shl_repayment_method="pik_then_sweep",  # TUHO: PIK phase Y1-Y14, sweep phase Y15+
         shl_idc_keur=3568.69,  # Construction IDC from Excel — opening SHL balance = 29,135 + 3,569 = 32,704
-        use_senior_sweep_cash_cap_for_shl=True,  # TUHO: cap SHL sweep at Excel R99-equivalent cash
+        use_senior_sweep_cash_cap_for_shl=False,  # TUHO: SHL cap DISABLED — PR B2 uses fcf_waterfall approach
     )
 
     tax = TaxParams(

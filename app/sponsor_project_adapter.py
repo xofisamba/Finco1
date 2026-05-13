@@ -137,7 +137,7 @@ def build_oborovo_adapter(
 def build_tuho_adapter(
     project_factory: Callable[[], Any] | None = None,
     golden_lp_equity_irr: float | None = 0.1161,
-    golden_total_distributions_keur: float | None = 118314.0,
+    golden_total_distributions_keur: float | None = 151709.0,  # Excel CF R119 Net Dividends target (PR B2 SHL fcf_waterfall pending)
 ) -> ProjectToSponsorAdapter:
     """Build TUHO Wind 1 sponsor adapter.
 
@@ -148,7 +148,10 @@ def build_tuho_adapter(
     golden_lp_equity_irr
         Golden LP equity IRR target (Excel reference).  Defaults to 11.61%.
     golden_total_distributions_keur
-        Golden total distributions target.  Defaults to 118,314 kEUR.
+        Excel CF R119 Net Dividends target (151,709 kEUR). This is the
+        true calibration target. The interim Python model output after PR
+        B1 is ~174,948 kEUR pending PR B2 SHL fcf_waterfall mechanics.
+        Defaults to 151,709 kEUR.
 
     Returns
     -------
