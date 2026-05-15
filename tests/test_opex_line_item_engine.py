@@ -20,7 +20,8 @@ def make_group(code="G1", name="Group 1", inflation=0.0, wth=0.0, items=None, co
 def make_item(code="I1", name="Item 1", budget=100.0, basis=OpexBasis.FIXED_ANNUAL_KEUR,
               group_code="G1", inflation=None, wth=0.0, active_flags=None,
               explicit_schedule=None, manual_overrides=None, step_changes=None,
-              selected_group_codes=None, notes=""):
+              selected_group_codes=None, notes="",
+              inflation_start_exponent=0):
     return OpexItem(
         code=code,
         name=name,
@@ -35,6 +36,7 @@ def make_item(code="I1", name="Item 1", budget=100.0, basis=OpexBasis.FIXED_ANNU
         step_changes=tuple(step_changes) if step_changes else (),
         selected_group_codes=tuple(selected_group_codes) if selected_group_codes else (),
         notes=notes,
+        inflation_start_exponent=inflation_start_exponent,
     )
 
 
@@ -265,14 +267,21 @@ class TestOpexGroupTotal:
 
 
 class TestOpexContingency:
-    """Test 10: contingency — 6% of selected groups only"""
+    """Test 10: contingency — pct item is sole mechanism (no double-count).
+
+    After adding PCT_OF_SELECTED_GROUPS to _compute_item_base (pass1),
+    the pct item correctly computes base = sum(selected) * pct / 100.
+    The group.contingency_pct adds NOTHING extra in pass2 when a pct item exists
+    (use contingency_pct=0 to avoid double-counting).
+    For B.13 modeling: group.contingency_pct=0, item.budget=6, item provides the 6% mechanism.
+    """
 
     def test_contingency_pct_of_selected_groups(self):
         # Group A with one item
         item_a = make_item(code="IA", name="Item A", budget=1000.0, group_code="GA")
         group_a = make_group(code="GA", name="Group A", items=[item_a])
 
-        # Group C (contingency) with 6% of Group A
+        # Group C (contingency): pct item IS the mechanism (contingency_pct=0)
         item_c = make_item(
             code="IC", name="Contingency",
             budget=6.0,  # 6%
@@ -283,31 +292,23 @@ class TestOpexContingency:
         group_c = make_group(
             code="GC", name="Contingency Group",
             items=[item_c],
-            contingency_pct=6.0
+            contingency_pct=0.0  # item IS the contingency, no extra pass2
         )
 
         result = compute_annual_opex([group_a, group_c], years=2)
 
-        # Y1: Group A = 1000, Contingency item base (pass1) = 6
-        # Contingency amount (pass2) = 6% × 1000 = 60
+        # Y1: Group A = 1000
+        # pct item in pass1: base = 1000 * 6/100 = 60
         gr_a = result.group_result(1, "GA")
         gr_c = result.group_result(1, "GC")
         ir_c = result.item_result(1, "GC", "IC")
 
-        # Group A total = 1000
         assert abs(gr_a.group_total_keur - 1000.0) < 0.01
-
-        # Contingency item: total_keur = 60 (the computed contingency amount)
-        # calculated_keur reflects the actual amount after pass2 update
+        # pct item gives 60 (6% of 1000), no extra pass2 contingency
         assert abs(ir_c.total_keur - 60.0) < 0.01
         assert abs(ir_c.calculated_keur - 60.0) < 0.01
-
-        # Group C total = item base (6) + contingency_amount (60) = 66
-        assert abs(gr_c.group_total_keur - 66.0) < 0.01
-        assert abs(gr_c.contingency_from_groups_keur - 60.0) < 0.01
-
-        # Grand total Y1 = GA(1000) + GC(66) = 1066
-        assert abs(result.total_for_year(1) - 1066.0) < 0.01
+        assert abs(gr_c.group_total_keur - 60.0) < 0.01
+        assert abs(gr_c.contingency_from_groups_keur - 0.0) < 0.01
 
     def test_contingency_excludes_non_selected_groups(self):
         item_a = make_item(code="IA", name="Item A", budget=1000.0, group_code="GA")
@@ -324,18 +325,18 @@ class TestOpexContingency:
             group_code="GC",
             selected_group_codes=["GA"]
         )
-        group_c = make_group(code="GC", name="Contingency", items=[item_c], contingency_pct=10.0)
+        group_c = make_group(
+            code="GC", name="Contingency",
+            items=[item_c],
+            contingency_pct=0.0
+        )
 
         result = compute_annual_opex([group_a, group_b, group_c], years=1)
 
         gr_c = result.group_result(1, "GC")
-        ir_c = result.item_result(1, "GC", "IC")
-        # Contingency = 10% × GA(1000) = 100 (only selected GA, not GB)
-        # Item IC total = 100 (contingency portion only)
-        # Group GC total = item base(10) + contingency(100) = 110
-        assert abs(ir_c.total_keur - 100.0) < 0.01
-        assert abs(gr_c.group_total_keur - 110.0) < 0.01
-        assert abs(gr_c.contingency_from_groups_keur - 100.0) < 0.01
+        # pct item = 10% of GA (1000) = 100. GB is not selected.
+        assert abs(gr_c.group_total_keur - 100.0) < 0.01
+        assert abs(result.group_result(1, "GA").group_total_keur - 1000.0) < 0.01
 
 
 class TestOpexWTH:
@@ -537,3 +538,173 @@ class TestOpexResultHelpers:
 
         miss = result.item_result(1, "G1", "I99")
         assert miss is None
+
+class TestExplicitScheduleNoInflation:
+    """A. EXPLICIT_SCHEDULE must not be inflated — values are already final."""
+
+    def test_explicit_schedule_ignored_inflation_rate(self):
+        """Explicit [100, 200, 300] with inflation 10% returns exactly 100, 200, 300."""
+        item = make_item(budget=100.0, basis=OpexBasis.EXPLICIT_SCHEDULE,
+                         inflation=0.10, explicit_schedule=[100.0, 200.0, 300.0])
+        group = make_group(items=[item])
+        result = compute_annual_opex([group], years=3)
+
+        assert abs(result.item_result(1, "G1", "I1").total_keur - 100.0) < 0.01
+        assert abs(result.item_result(2, "G1", "I1").total_keur - 200.0) < 0.01
+        assert abs(result.item_result(3, "G1", "I1").total_keur - 300.0) < 0.01
+
+    def test_explicit_schedule_with_wth_still_applies_wth(self):
+        """WTH is added cost — still applies to explicit schedule values."""
+        item = make_item(budget=100.0, basis=OpexBasis.EXPLICIT_SCHEDULE,
+                         wth=0.10, explicit_schedule=[100.0, 200.0, 300.0])
+        group = make_group(items=[item])
+        result = compute_annual_opex([group], years=3)
+
+        # Y1: 100 + 10% WTH = 110
+        assert abs(result.item_result(1, "G1", "I1").total_keur - 110.0) < 0.01
+        # Y2: 200 + 10% WTH = 220
+        assert abs(result.item_result(2, "G1", "I1").total_keur - 220.0) < 0.01
+
+    def test_explicit_schedule_with_manual_override_uses_override(self):
+        """Manual override takes precedence even for explicit_schedule items."""
+        item = make_item(budget=100.0, basis=OpexBasis.EXPLICIT_SCHEDULE,
+                         explicit_schedule=[100.0, 200.0, 300.0],
+                         manual_overrides=[ManualOverride(year_index=2, value_keur=999.0)])
+        group = make_group(items=[item])
+        result = compute_annual_opex([group], years=3)
+
+        assert abs(result.item_result(1, "G1", "I1").total_keur - 100.0) < 0.01
+        assert result.item_result(2, "G1", "I1").is_manual_override is True
+        assert abs(result.item_result(2, "G1", "I1").total_keur - 999.0) < 0.01
+        assert abs(result.item_result(3, "G1", "I1").total_keur - 300.0) < 0.01
+
+    def test_explicit_schedule_inactive_flag_wins(self):
+        """Inactive flag → 0 even for explicit_schedule items."""
+        item = make_item(budget=100.0, basis=OpexBasis.EXPLICIT_SCHEDULE,
+                         explicit_schedule=[100.0, 200.0, 300.0],
+                         active_flags=[True, False, True])
+        group = make_group(items=[item])
+        result = compute_annual_opex([group], years=3)
+
+        assert abs(result.item_result(1, "G1", "I1").total_keur - 100.0) < 0.01
+        assert result.item_result(2, "G1", "I1").active is False
+        assert result.item_result(2, "G1", "I1").total_keur == 0.0
+        assert abs(result.item_result(3, "G1", "I1").total_keur - 300.0) < 0.01
+
+
+class TestInflationStartExponent:
+    """B. inflation_start_exponent shifts the inflation exponent."""
+
+    def test_default_start_exponent_zero(self):
+        """Default inflation_start_exponent=0: Y1=base, Y2=base*1.02, Y3=base*1.02^2."""
+        item = make_item(budget=100.0, inflation=0.02)  # no explicit start
+        group = make_group(items=[item])
+        result = compute_annual_opex([group], years=3)
+
+        assert abs(result.item_result(1, "G1", "I1").total_keur - 100.0) < 0.01
+        assert abs(result.item_result(2, "G1", "I1").total_keur - 102.0) < 0.01
+        assert abs(result.item_result(3, "G1", "I1").total_keur - 104.04) < 0.01
+
+    def test_start_exponent_one_shifts_by_one(self):
+        """inflation_start_exponent=1: Y1=base*1.02, Y2=base*1.02^2, Y3=base*1.02^3."""
+        item = make_item(budget=100.0, inflation=0.02, wth=0.0,
+                         active_flags=None, explicit_schedule=None, manual_overrides=None,
+                         step_changes=None, selected_group_codes=None,
+                         notes="", inflation_start_exponent=1)
+        group = make_group(items=[item])
+        result = compute_annual_opex([group], years=3)
+
+        # Y1: 100 * (1.02)^(1-1+1) = 100 * 1.02^1 = 102
+        assert abs(result.item_result(1, "G1", "I1").total_keur - 102.0) < 0.01
+        # Y2: 100 * (1.02)^(2-1+1) = 100 * 1.02^2 = 104.04
+        assert abs(result.item_result(2, "G1", "I1").total_keur - 104.04) < 0.01
+        # Y3: 100 * (1.02)^(3-1+1) = 100 * 1.02^3 = 106.1208
+        assert abs(result.item_result(3, "G1", "I1").total_keur - 106.1208) < 0.01
+
+    def test_start_exponent_zero_with_step_change(self):
+        """Step changes reset inflation from step year (inflation_start_exponent not involved)."""
+        item = make_item(budget=100.0, inflation=0.02,
+                         step_changes=[OpexItemStep(year_index=2, new_budget_keur=200.0)])
+        group = make_group(items=[item])
+        result = compute_annual_opex([group], years=3)
+
+        # Y1: 100 * (1.02)^0 = 100
+        assert abs(result.item_result(1, "G1", "I1").total_keur - 100.0) < 0.01
+        # Y2: step to 200, exponent resets: 200 * (1.02)^(2-2) = 200
+        assert abs(result.item_result(2, "G1", "I1").total_keur - 200.0) < 0.01
+        # Y3: 200 * (1.02)^(3-2) = 200 * 1.02 = 204
+        assert abs(result.item_result(3, "G1", "I1").total_keur - 204.0) < 0.01
+
+
+class TestContingencySelectedGroups:
+    """C. B.13 contingency = pct × sum of selected groups, no self-reference.
+
+    The pct item IS the contingency mechanism. Use contingency_pct=0 on the group
+    to avoid double-counting (pass1 item + pass2 group contingency).
+    """
+
+    def test_contingency_pct_of_selected_groups(self):
+        """6% of selected groups — pct item is sole mechanism, no extra group contingency."""
+        g1 = make_group(code="G1", items=[make_item(budget=100.0, group_code="G1")])
+        g2 = make_group(code="G2", items=[make_item(budget=200.0, group_code="G2")])
+        contingency_item = make_item(
+            code="C1", budget=6.0, basis=OpexBasis.PCT_OF_SELECTED_GROUPS,
+            group_code="CG", selected_group_codes=["G1", "G2"]
+        )
+        # contingency_pct=0: the pct item itself IS the contingency (no double-count)
+        contingency_group = make_group(code="CG", items=[contingency_item], contingency_pct=0.0)
+        result = compute_annual_opex([g1, g2, contingency_group], years=1)
+
+        gr = result.group_result(1, "CG")
+        # G1=100, G2=200, selected sum=300, 6%=18
+        assert abs(gr.group_total_keur - 18.0) < 0.01
+        assert abs(gr.contingency_from_groups_keur - 0.0) < 0.01  # no extra pass2 contingency
+
+    def test_contingency_does_not_include_itself(self):
+        """Selected groups do not include the contingency group itself."""
+        g1 = make_group(code="G1", items=[make_item(budget=1000.0, group_code="G1")])
+        contingency_item = make_item(
+            code="C1", budget=10.0, basis=OpexBasis.PCT_OF_SELECTED_GROUPS,
+            group_code="CG", selected_group_codes=["G1"]  # CG not in list
+        )
+        contingency_group = make_group(code="CG", items=[contingency_item], contingency_pct=0.0)
+        result = compute_annual_opex([g1, contingency_group], years=1)
+
+        gr = result.group_result(1, "CG")
+        # CG total = 10% × G1(1000) = 100  (pct item only, no extra contingency)
+        assert abs(gr.group_total_keur - 100.0) < 0.01
+        assert abs(result.group_result(1, "G1").group_total_keur - 1000.0) < 0.01
+
+    def test_contingency_changes_when_base_group_changes(self):
+        """Contingency automatically updates when base group totals change."""
+        g1 = make_group(code="G1", items=[make_item(budget=100.0, group_code="G1", inflation=0.02)])
+        g2 = make_group(code="G2", items=[make_item(budget=200.0, group_code="G2", inflation=0.02)])
+        contingency_item = make_item(
+            code="C1", budget=6.0, basis=OpexBasis.PCT_OF_SELECTED_GROUPS,
+            group_code="CG", selected_group_codes=["G1", "G2"]
+        )
+        contingency_group = make_group(code="CG", items=[contingency_item], contingency_pct=0.0)
+        result = compute_annual_opex([g1, g2, contingency_group], years=3)
+
+        # Y1: G1=100, G2=200, sum=300, 6%=18
+        assert abs(result.group_result(1, "CG").group_total_keur - 18.0) < 0.01
+        # Y2: G1=102, G2=204, sum=306, 6%=18.36
+        assert abs(result.group_result(2, "CG").group_total_keur - 18.36) < 0.01
+        # Y3: G1=104.04, G2=208.08, sum=312.12, 6%=18.7272
+        assert abs(result.group_result(3, "CG").group_total_keur - 18.7272) < 0.01
+
+    def test_contingency_with_inactive_base_groups(self):
+        """Inactive base groups contribute 0 to contingency base."""
+        g1 = make_group(code="G1", items=[make_item(budget=100.0, group_code="G1")])
+        # G2 has budget=0 → 0 contribution
+        g2 = make_group(code="G2", items=[make_item(budget=0.0, group_code="G2")])
+        contingency_item = make_item(
+            code="C1", budget=6.0, basis=OpexBasis.PCT_OF_SELECTED_GROUPS,
+            group_code="CG", selected_group_codes=["G1", "G2", "G3"]  # G3 doesn't exist
+        )
+        contingency_group = make_group(code="CG", items=[contingency_item], contingency_pct=0.0)
+        result = compute_annual_opex([g1, g2, contingency_group], years=1)
+
+        gr = result.group_result(1, "CG")
+        # G1=100, G2=0, G3 not present → sum=100, 6%=6
+        assert abs(gr.group_total_keur - 6.0) < 0.01

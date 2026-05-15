@@ -125,6 +125,11 @@ class OpexItem:
     step_changes: tuple[OpexItemStep, ...] = field(default_factory=tuple)
     selected_group_codes: tuple[str, ...] = field(default_factory=tuple)
     notes: str = ""
+    # Inflation exponent offset: shifts the inflation exponent.
+    # Default 0: Y1 exponent = year_index - 1 (no inflation in year 1)
+    # Set to 1 for groups like B.07 where Excel uses exponent = year_index
+    #   (so Y1 gets 1× inflation, Y2 gets 2× inflation, etc.)
+    inflation_start_exponent: int = 0
 
     def is_active(self, year_index: int) -> bool:
         """Return whether item is active in the given year (1-based)."""
