@@ -1104,7 +1104,16 @@ def cached_run_waterfall(
     periods_list = list(engine.periods())
     revenue_dict = full_revenue_schedule(inputs, engine)
     generation_dict = full_generation_schedule(inputs, engine)
-    opex_annual = opex_schedule_annual(inputs, inputs.info.horizon_years)
+    if inputs.info.use_opex_line_item_engine:
+        from domain.opex.runtime_adapter import opex_line_item_adapter
+        # Line-item engine: TUHO template only, returns dict[year, kEUR]
+        opex_adapter_result = opex_line_item_adapter(
+            inputs, capacity_mw=inputs.technical.capacity_mw
+        )
+        # opex_adapter_result is dict[year_index, kEUR]; use directly
+        opex_annual = opex_adapter_result
+    else:
+        opex_annual = opex_schedule_annual(inputs, inputs.info.horizon_years)
 
     # Build EBITDA schedule
     op_periods = [p for p in periods_list if p.is_operation]
