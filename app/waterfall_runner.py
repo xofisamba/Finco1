@@ -47,6 +47,10 @@ class WaterfallRunConfig:
     shl_tenor_years: int = 0               # 0 = bullet at senior maturity
     shl_wht_rate: float = 0.0              # WHT on SHL interest
 
+    # TUHO-specific: cap SHL sweep cash at R99-equivalent (Excel-compatible).
+    # Prevents SHL principal from consuming cash that Excel would hold back.
+    use_senior_sweep_cash_cap_for_shl: bool = False
+
     # Returns
     discount_rate_project: float = 0.0641
     discount_rate_equity: float = 0.0965
@@ -143,6 +147,7 @@ class WaterfallRunConfig:
             debt_sizing_method=ds_method,
             fixed_debt_keur=fin.fixed_debt_keur,
             dscr_schedule=fin.dscr_schedule,
+            use_senior_sweep_cash_cap_for_shl=getattr(fin, "use_senior_sweep_cash_cap_for_shl", False),
         )
 
 
@@ -218,6 +223,7 @@ class WaterfallRunner:
             advanced_opex_line_items=config.advanced_opex_line_items,
             advanced_capex_line_items=config.advanced_capex_line_items,
             advanced_capex_depreciation_schedule=config.advanced_capex_depreciation_schedule,
+            use_senior_sweep_cash_cap_for_shl=config.use_senior_sweep_cash_cap_for_shl,
         )
 
     def run_with_defaults(self) -> object:

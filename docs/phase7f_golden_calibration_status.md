@@ -1,5 +1,6 @@
 # Phase 7F Golden Calibration — Status
 
+**Branch:** `phase7f-tuho-distribution-calibration` (Phase 7F-4C — in progress)
 **Branch:** `phase7f-golden-calibration-foundation` (Phase 7F-3 ✅ merged)
 **Branch:** `phase7f-full-horizon-sponsor-wiring` (Phase 7F-4 ✅ PR #64)
 
@@ -46,10 +47,12 @@
 | GP promote | 20% |
 | Project debt | 43,359 kEUR |
 | SHL opening balance | 32,704 kEUR |
-| **Full-horizon LP distributions** | **94,651 kEUR** |
-| **Full-horizon GP distributions** | **23,663 kEUR** |
-| **Full-horizon total** | **118,314 kEUR** |
+| **Full-horizon LP distributions** | **121,367 kEUR** |
+| **Full-horizon GP distributions** | **30,342 kEUR** |
+| **Full-horizon total** | **151,709 kEUR** (Excel R119 Net Dividends) |
 | LP equity IRR (Excel) | 11.61% |
+
+> **Important:** Python `distribution_keur` maps to Excel **R119 Net Dividends**, not R99 FCF for Distribution. The model SPV distributions are post-senior-debt and post-SHL cashflow available to equity sponsors.
 
 ---
 
@@ -97,20 +100,36 @@ report = calibration_report(adapter)
 | Aggregate = sum | yes | yes | exact | ✅ |
 | LP IRR approx | ~11.0% | 10.60% | ±5pp | ✅ (approx) |
 
-### TUHO Full Horizon Results ⚠️ (Known Divergence)
+### TUHO Full Horizon Results ⚠️ (Known Divergence — CIT/SHL not yet reconciled)
 
-| Metric | Model | Golden | Status |
+| Metric | PR B1 Python (interim) | Excel R119 (true target) | Status |
 |---|---|---|---|
-| SPV total dist | ~180,570 kEUR | 118,314 kEUR | ⚠️ +52.6% — **known divergence** |
-| LP total dist | ~144,456 kEUR | 94,651 kEUR | ⚠️ |
-| GP total dist | ~36,114 kEUR | 23,663 kEUR | ⚠️ |
+| SPV total dist | ~174,948 kEUR | 151,709 kEUR | ⚠️ **PR B2 pending: SHL fcf_waterfall** |
+| LP total dist (80%) | ~139,959 kEUR | 121,367 kEUR | ⚠️ |
+| GP total dist (20%) | ~34,990 kEUR | 30,342 kEUR | ⚠️ |
 | LP/GP ratio | 4.000 | 4.000 | ✅ |
-| First dist period | **33** (2046-12-31) | 1 (2030-06-30) | ⚠️ |
+| First dist period | **34** (2047-06-30) | **37** (2048-12-31) | ⚠️ |
 | Aggregate = sum | yes | yes | ✅ |
+
+**TUHO Excel row mapping (from CF sheet analysis):**
+
+| Excel Row | Description | Value | First non-zero period |
+|---|---|---|---|
+| R99 | FCF for Distribution | 234,745 kEUR | Period 2 |
+| R102 | FCF for SHL | 234,745 kEUR | Period 2 |
+| R104 | Net SHL | -82,486 kEUR | — |
+| R106 | FCF for dividends | 152,259 kEUR | Period 37 |
+| R119 | **Net Dividends** | **151,709 kEUR** | Period 37 |
+
+Python `distribution_keur` maps to **R119 Net Dividends** (post-senior/post-SHL equity cash), NOT R99 FCF for Distribution.
+
+**Root cause of divergence:** Python model has 0 distributions until period 33 due to DSRA funding/lockup mechanics. Excel R119 Net Dividends first non-zero period is 37. The 4-period gap and ~19% total difference indicate CIT/SHL treatment differences that must be reconciled before TUHO can be marked calibrated.
+
+**Do NOT loosen tests to hide the delta. Do NOT mark TUHO fully calibrated.**
 
 **TUHO divergence root cause:** Model has 0 distributions until period 33 (2046-12-31) due to reserve-fill / lockup mechanics. Fixture golden is from a 3-period partial extract that starts at period 1 (2030-06-30) — this does not reflect the full model behavior. The **sponsor runner correctly processes whatever `available_cash_by_period` it receives**; the divergence is a project-model vs Excel fixture issue.
 
-**Action required:** Update TUHO golden reference to match model output (180,570 kEUR) once Excel model alignment is confirmed.
+**Action required:** Reconcile CIT and SHL treatment before TUHO can be marked as calibrated. Target: Excel R119 Net Dividends = 151,709 kEUR.
 
 ### Known Divergence: TUHO Model vs Fixture
 
@@ -120,7 +139,7 @@ Root cause: model has 0 distributions for periods 0-32 (construction / DSRA fill
 Fixture: shows positive distributions from period 1 (first operating period)
 ```
 
-This is a **project-model vs Excel** divergence, NOT a sponsor runner bug.
+This is a **project-model vs Excel** divergence in DSRA/lockup behavior + CIT/SHL treatment, NOT a sponsor runner bug.
 
 ---
 

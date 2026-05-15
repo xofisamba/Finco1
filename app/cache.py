@@ -30,6 +30,7 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> int:
         inputs.capex.total_capex,
         inputs.financing.gearing_ratio,
         inputs.financing.senior_tenor_years,
+        inputs.financing.use_senior_sweep_cash_cap_for_shl,
         inputs.revenue.ppa_base_tariff,
         inputs.revenue.ppa_term_years,
         inputs.info.cod_date.toordinal() if hasattr(inputs.info.cod_date, "toordinal") else 0,

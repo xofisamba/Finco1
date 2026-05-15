@@ -40,6 +40,9 @@ def run_waterfall_v3_core(
     advanced_opex_line_items: tuple | None = None,
     advanced_capex_line_items: tuple | None = None,
     advanced_capex_depreciation_schedule: "DepreciationSchedule | None" = None,
+    # TUHO-specific: cap SHL sweep cash at R99-equivalent (Excel-compatible).
+    # Prevents SHL principal from consuming cash that Excel would hold back.
+    use_senior_sweep_cash_cap_for_shl: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -178,6 +181,7 @@ def run_waterfall_v3_core(
         prior_tax_loss_keur=inputs.tax.initial_tax_loss_keur,
         debt_sizing_method=debt_sizing_method,
         dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, "dscr_schedule", None),
+        use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
     )
 
 
