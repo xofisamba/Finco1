@@ -373,6 +373,7 @@ def cached_run_waterfall_v3(
     share_capital_keur: float = 0.0,  # Only used when equity_irr_method="combined"
     sculpt_capex_keur: float = 0.0,  # CAPEX for equity base; used in "combined" method for equity_irr = sculpt_capex - debt
     debt_sizing_method: str = "dscr_sculpt",  # "dscr_sculpt" | "gearing_cap" | "fixed"
+    dscr_schedule: list[float] | None = None,  # Per-period DSCR targets for dual-DSCR sculpting
 ) -> "WaterfallResult":
     """Cached waterfall computation with proper hash_funcs.
 
@@ -471,4 +472,5 @@ def cached_run_waterfall_v3(
         share_capital_keur=share_capital_keur,
         sculpt_capex_keur=sculpt_capex_keur,
         debt_sizing_method=debt_sizing_method,
+        dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, 'dscr_schedule', None),
     )

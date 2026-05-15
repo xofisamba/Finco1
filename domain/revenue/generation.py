@@ -2,21 +2,44 @@
 
 Matches Excel CF sheet row 21 formula:
     G21 = $B21 × G$7 × G$6 × G$20 × (1-G$19) × (1-Degradation)
-    
-Where:
-- B21: capacity (MW)
-- G7: day_fraction (period days / 365)
-- G6: operation flag (1 if operating, 0 if not)
-- G20: operating hours for yield scenario
-- G19: curtailment assumption
-- Degradation: annual degradation factor
 
 NOTE: This module contains PURE functions only.
 Caching is handled in utils/cache.py at the app layer.
 """
+from dataclasses import dataclass
 from typing import Sequence, Optional
 from domain.inputs import TechnicalParams, ProjectInputs
 from domain.period_engine import PeriodEngine, PeriodMeta
+
+
+@dataclass(frozen=True)
+class RevenuePeriodBreakdown:
+    """Period-level revenue decomposition for audit and export.
+
+    Fields:
+        period_index: Model period index (0-based)
+        operating_period_index: 0-based operating period within operating life
+        period_end_date: End date of this period (for Excel comparison)
+        production_mwh: Generation in MWh
+        effective_power_price_eur_per_mwh: PPA or market price for this period
+        power_revenue_keur: Generation × price / 1000
+        co2_sales_eur_per_mwh: CO2 price from schedule (EUR/MWh)
+        co2_sales_revenue_keur: Production × co2_eur / 1000
+        balancing_cost_eur_per_mwh: Balancing cost from schedule (EUR/MWh)
+        balancing_cost_keur: Production × balancing_eur / 1000
+        total_revenue_keur: power_revenue - balancing + co2
+    """
+    period_index: int
+    operating_period_index: int
+    period_end_date: 'date'
+    production_mwh: float
+    effective_power_price_eur_per_mwh: float
+    power_revenue_keur: float
+    co2_sales_eur_per_mwh: float
+    co2_sales_revenue_keur: float
+    balancing_cost_eur_per_mwh: float
+    balancing_cost_keur: float
+    total_revenue_keur: float
 
 
 def period_generation(
@@ -197,36 +220,37 @@ def full_revenue_schedule(
     engine: PeriodEngine,
 ) -> dict[int, float]:
     """Generate full schedule of period revenue in kEUR.
-    
+
     Revenue includes:
     - PPA revenue (during PPA term)
     - Spot/market revenue (after PPA)
     - Balancing cost deduction (PV)
-    - CO2 certificates (if enabled)
-    
+    - CO2 certificates from schedule
+
     Args:
         inputs: Project inputs
         engine: Period engine
-    
+
     Returns:
         Dict mapping period_index → revenue_kEUR
     """
     revenue = {}
-    
+    operating_period_index = 0  # 0-based index of current operation period
+
     for period in engine.periods():
         if not period.is_operation:
             revenue[period.index] = 0.0
             continue
-        
+
         # Generation
         if inputs.technical.yield_scenario == "P_50":
             hours = inputs.technical.operating_hours_p50
         else:
             hours = inputs.technical.operating_hours_p90_10y
-        
+
         availability = inputs.technical.combined_availability
         degradation = (1 - inputs.technical.pv_degradation) ** (period.year_index - 1)
-        
+
         generation_mwh = (
             inputs.technical.capacity_mw
             * hours
@@ -234,31 +258,124 @@ def full_revenue_schedule(
             * availability
             * degradation
         )
-        
-        # Determine price
-        if period.is_ppa_active:
-            # PPA active: use tariff with PPA index
-            tariff = inputs.revenue.tariff_at_year(period.year_index)
-            revenue_keur = generation_mwh * tariff / 1000
-        else:
-            # Post-PPA: use market price
-            market_price = inputs.revenue.market_price_at_year(period.year_index)
-            revenue_keur = generation_mwh * market_price / 1000
-        
-        # Apply balancing cost deduction (PV - % of revenue)
-        balancing_deduction = revenue_keur * inputs.revenue.balancing_cost_pv
-        revenue_keur -= balancing_deduction
 
-        # Wind balancing cost (EUR/MWh absolute, e.g. 8.0 EUR/MWh for TUHO)
-        if inputs.revenue.balancing_cost_wind_eur_mwh > 0:
-            wind_bal_cost = generation_mwh * inputs.revenue.balancing_cost_wind_eur_mwh / 1000
-            revenue_keur -= wind_bal_cost
-        
-        # CO2 certificates (if enabled)
-        if inputs.revenue.co2_enabled:
-            co2_revenue = generation_mwh * inputs.revenue.co2_price_eur / 1000
-            revenue_keur += co2_revenue
-        
+        # Effective power price (PPA or market)
+        if period.is_ppa_active:
+            effective_price = inputs.revenue.tariff_at_year(period.year_index)
+        else:
+            effective_price = inputs.revenue.market_price_at_year(period.year_index)
+
+        power_revenue_keur = generation_mwh * effective_price / 1000
+
+        # Phase 7G: Use generic schedule-based inputs (operating_period_index derived explicitly)
+        balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
+            operating_period_index=operating_period_index,
+            operating_year_index=period.year_index,
+            period_in_year=period.period_in_year,
+        )
+        co2_eur_mwh = inputs.revenue.co2_sales_schedule.value_for_period(
+            operating_period_index=operating_period_index,
+            operating_year_index=period.year_index,
+            period_in_year=period.period_in_year,
+        )
+
+        balancing_cost_keur = generation_mwh * balancing_eur_mwh / 1000
+        co2_revenue_keur = generation_mwh * co2_eur_mwh / 1000
+
+        # PV balancing (% of revenue) — still used for solar BESS
+        balancing_deduction = power_revenue_keur * inputs.revenue.balancing_cost_pv
+
+        revenue_keur = power_revenue_keur - balancing_deduction - balancing_cost_keur + co2_revenue_keur
         revenue[period.index] = revenue_keur
-    
+
+        operating_period_index += 1
+
     return revenue
+
+
+def full_revenue_breakdown_schedule(
+    inputs: ProjectInputs,
+    engine: PeriodEngine,
+) -> list[RevenuePeriodBreakdown]:
+    """Generate full schedule of period revenue decomposition.
+
+    Returns a list of RevenuePeriodBreakdown for each operation period.
+    Use this for audit/export rather than full_revenue_schedule when
+    decomposition fields are needed.
+
+    Args:
+        inputs: Project inputs
+        engine: Period engine
+
+    Returns:
+        List of RevenuePeriodBreakdown ordered by operation period
+    """
+    breakdowns = []
+    operating_period_index = 0
+
+    for period in engine.periods():
+        if not period.is_operation:
+            continue
+
+        # Generation
+        if inputs.technical.yield_scenario == "P_50":
+            hours = inputs.technical.operating_hours_p50
+        else:
+            hours = inputs.technical.operating_hours_p90_10y
+
+        availability = inputs.technical.combined_availability
+        degradation = (1 - inputs.technical.pv_degradation) ** (period.year_index - 1)
+
+        generation_mwh = (
+            inputs.technical.capacity_mw
+            * hours
+            * period.day_fraction
+            * availability
+            * degradation
+        )
+
+        # Effective power price
+        if period.is_ppa_active:
+            effective_price = inputs.revenue.tariff_at_year(period.year_index)
+        else:
+            effective_price = inputs.revenue.market_price_at_year(period.year_index)
+
+        power_revenue_keur = generation_mwh * effective_price / 1000
+
+        # Schedule values (operating_period_index is explicit, not derived from period_index)
+        co2_eur_mwh = inputs.revenue.co2_sales_schedule.value_for_period(
+            operating_period_index=operating_period_index,
+            operating_year_index=period.year_index,
+            period_in_year=period.period_in_year,
+        )
+        balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
+            operating_period_index=operating_period_index,
+            operating_year_index=period.year_index,
+            period_in_year=period.period_in_year,
+        )
+
+        co2_revenue_keur = generation_mwh * co2_eur_mwh / 1000
+        balancing_cost_keur = generation_mwh * balancing_eur_mwh / 1000
+
+        # PV balancing (% of revenue)
+        balancing_deduction = power_revenue_keur * inputs.revenue.balancing_cost_pv
+
+        total_revenue_keur = power_revenue_keur - balancing_deduction - balancing_cost_keur + co2_revenue_keur
+
+        breakdowns.append(RevenuePeriodBreakdown(
+            period_index=period.index,
+            operating_period_index=operating_period_index,
+            period_end_date=period.end_date,
+            production_mwh=generation_mwh,
+            effective_power_price_eur_per_mwh=effective_price,
+            power_revenue_keur=power_revenue_keur,
+            co2_sales_eur_per_mwh=co2_eur_mwh,
+            co2_sales_revenue_keur=co2_revenue_keur,
+            balancing_cost_eur_per_mwh=balancing_eur_mwh,
+            balancing_cost_keur=balancing_cost_keur,
+            total_revenue_keur=total_revenue_keur,
+        ))
+
+        operating_period_index += 1
+
+    return breakdowns

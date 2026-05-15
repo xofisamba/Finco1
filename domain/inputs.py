@@ -220,13 +220,71 @@ class TechnicalParams:
 
 
 @dataclass(frozen=True)
+class RevenueAdjustmentSchedule:
+    """Generic schedule for revenue adjustment inputs (balancing cost, CO2).
+
+    Supports three modes:
+    - constant: single value applied to all periods
+    - annual: one value per year (applied to both H1 and H2 of each year)
+    - semiannual: one value per model period (indexed by op_idx)
+
+    Mode is inferred from which field is populated:
+    - if semiannual_values is non-empty → mode = semiannual
+    - elif annual_values is non-empty → mode = annual
+    - else → mode = constant (constant_value used)
+
+    Used for balancing_cost_schedule and co2_sales_schedule in RevenueParams.
+    """
+    constant_value: float = 0.0
+    annual_values: tuple[float, ...] = ()
+    semiannual_values: tuple[float, ...] = ()
+
+    def value_for_period(
+        self,
+        *,
+        operating_period_index: int,
+        operating_year_index: int,
+        period_in_year: int,
+    ) -> float:
+        """Return the value in EUR/MWh for a given period.
+
+        SCHEDULE CONTRACT (user-facing, operating-period based):
+        - semiannual_values[0] = first OPERATING period (Y1-H1)
+        - semiannual_values[1] = second OPERATING period (Y1-H2)
+        - annual_values[0] = first OPERATING year (both H1 and H2)
+        - Construction/stub periods do NOT consume schedule values
+        - No dummy construction values required
+
+        Args:
+            operating_period_index: 0-based index of the operation period within the
+                operating life. 0 = first operating period (Y1-H1), 1 = Y1-H2, etc.
+                Must be passed explicitly by the caller.
+            operating_year_index: 1-based operating year (1=Y1, 2=Y2, ...)
+            period_in_year: 1=H1, 2=H2
+
+        Returns:
+            Value in EUR/MWh for this period
+        """
+        # Semiannual: indexed by operating_period_index (op_idx)
+        if self.semiannual_values and operating_period_index < len(self.semiannual_values):
+            return self.semiannual_values[operating_period_index]
+        # Annual: indexed by operating year (0-based)
+        if self.annual_values:
+            year_idx_0 = operating_year_index - 1
+            if year_idx_0 < len(self.annual_values):
+                return self.annual_values[year_idx_0]
+        # Constant: fallback for all other cases
+        return self.constant_value
+
+
+@dataclass(frozen=True)
 class RevenueParams:
     """Revenue parameters including PPA and market pricing.
 
     Corresponds to Excel Inputs rows 78-141.
     """
     ppa_base_tariff: float         # Inputs!D78 - Base PPA tariff (57 €/MWh)
-    ppa_term_years: int           # Inputs!D81 - PPA term in years (12)
+    ppa_term_years: float       # Inputs!D81 - PPA term in years (supports 12.5 for mid-year expiry)
     ppa_index: float = 0.02        # Inputs!D83 - PPA annual index (2%)
     ppa_production_share: float = 1.0  # Inputs!D80 - Share of production in PPA
     market_scenario: str = "Central"  # Inputs!B103 - Market scenario name
@@ -234,9 +292,17 @@ class RevenueParams:
     market_inflation: float = 0.02  # Inputs!B129 - Market price inflation (2%)
     balancing_cost_pv: float = 0.025  # Inputs!D114 - Balancing cost % (2.5%)
     balancing_cost_bess: float = 0.025  # Inputs!D115 - BESS balancing cost
-    balancing_cost_wind_eur_mwh: float = 0.0  # Wind balancing cost (EUR/MWh), e.g. 8.0 for TUHO
-    co2_enabled: bool = False      # Inputs!D139 - CO2 certificates enabled
-    co2_price_eur: float = 1.5     # Inputs!E141 - CO2 price (1.5 €/ton)
+    # Phase 7G: Generic schedule-based inputs (replacing wind scalar + co2 scalar)
+    balancing_cost_schedule: RevenueAdjustmentSchedule = field(
+        default_factory=lambda: RevenueAdjustmentSchedule(constant_value=0.0)
+    )
+    co2_sales_schedule: RevenueAdjustmentSchedule = field(
+        default_factory=lambda: RevenueAdjustmentSchedule(constant_value=0.0)
+    )
+    # Deprecated scalar fields (kept for backward compat; use schedules above for new projects)
+    balancing_cost_wind_eur_mwh: float = 0.0  # Wind balancing cost (EUR/MWh)
+    co2_enabled: bool = False      # CO2 certificates enabled (use co2_sales_schedule instead)
+    co2_price_eur: float = 1.5     # CO2 price (€/ton) — use co2_sales_schedule instead
 
     def tariff_at_year(self, year: int) -> float:
         """Return PPA tariff in year with escalation.
@@ -318,6 +384,9 @@ class FinancingParams:
     # "fixed" → debt = fixed_debt_keur (override)
     debt_sizing_method: str = "dscr_sculpt"
     fixed_debt_keur: float | None = None  # Override sculpted debt with fixed amount
+    # Per-period DSCR targets for dual-DSCR sculpting (PPA vs merchant)
+    # e.g., [1.20] * 24 + [1.45] * 40 for TUHO: 24 PPA periods at 1.20x, then merchant at 1.45x
+    dscr_schedule: list[float] | None = None
 
     # SHL repayment method:
     # "bullet" — sav principal na kraju tenora, kamate cash
@@ -679,9 +748,9 @@ class ProjectInputs:
             company="Akuo Energy Med",
             code="TUHO-WIND-1",
             country_iso="HR",
-            financial_close=date(2028, 6, 30),
-            construction_months=18,  # COD = 2029-12-30
-            cod_date=date(2029, 12, 30),
+            financial_close=date(2029, 7, 1),  # COD = 2030-01-01 (Y1-H1 starts Jan 1, 2030)
+            construction_months=6,  # 6 months → COD = 2030-01-01
+            cod_date=date(2030, 1, 1),
             horizon_years=30,
             period_frequency=PeriodFrequency.SEMESTRIAL,
         )
@@ -698,27 +767,58 @@ class ProjectInputs:
         )
 
         # Market price curve (post-PPA merchant, Central scenario)
-        # PPA: 60 EUR/MWh × 12 years, escalation 2%
-        # Post-PPA: ~45 EUR/MWh, escalation 2%
+        # PPA: 60 EUR/MWh × 12 years (expires Y12-H2, Dec 2041), escalation 2%
+        # Post-PPA merchant from Y13-H1 onwards (index 12 = Y13)
+        # Brief verified: Y13-H1=109.33, Y14-H1=109.33, Y14-H2=109.50, Y15+=+1.5%/yr
         market_prices = (
-            65.0, 66.3, 67.6, 69.0, 70.4, 71.8, 73.2, 74.7, 76.2, 77.7,
-            79.3, 80.9, 82.5, 84.2, 85.9, 87.6, 89.4, 91.2, 93.0, 94.9,
-            96.8, 98.7, 100.7, 102.7, 104.8, 106.9, 109.0, 111.2, 113.4, 115.7,
+            65.0, 66.3, 67.6, 69.0, 70.4, 71.8, 73.2, 74.7, 76.2, 77.7,  # Y1-Y10 (market ref, unused during PPA)
+            79.3, 80.9,           # Y11-Y12 (market ref, unused during PPA)
+            109.33, 109.50,       # Y13-Y14 merchant (109.33, 109.50 — brief verified)
+            111.14, 112.80, 114.50,  # Y15-Y17 (~1.5%/yr escalation from 109.50)
+            116.21, 117.95, 119.72,  # Y18-Y20
+            121.51, 123.34, 125.19,  # Y21-Y23
+            127.07, 128.97, 130.91,  # Y24-Y26
+            132.87, 134.86, 136.87,  # Y27-Y29
+            138.92,                  # Y30
         )
 
         revenue = RevenueParams(
             ppa_base_tariff=60.0,  # Tariff Y1 = 60 EUR/MWh
-            ppa_term_years=12,
+            ppa_term_years=12.0,  # PPA expires at end of Y12-H2 (Dec 2041) — 12 years from COD Dec 2029
             ppa_index=0.02,
             ppa_production_share=1.0,
             market_scenario="Central",
             market_prices_curve=market_prices,
-            market_inflation=0.02,
+            market_inflation=0.015,  # 1.5%/year post-PPA spot escalation (brief: ~1.5%/yr)
             balancing_cost_pv=0.0,  # Wind: no PV balancing
             balancing_cost_bess=0.0,
-            balancing_cost_wind_eur_mwh=0.0,  # 0 — balancing costs are in OpEx, NOT revenue deduction
-            co2_enabled=True,  # TUHO has CO2 certificate revenue
-            co2_price_eur=4.191,  # CO2 price Y1 from TUHO Excel (302.9 kEUR/H)
+            # Phase 7G: generic schedule-based inputs
+            balancing_cost_schedule=RevenueAdjustmentSchedule(constant_value=8.0),
+            co2_sales_schedule=RevenueAdjustmentSchedule(
+                # User-facing: indexed by op_idx (operating period), NOT by period_index
+                # op_idx 0 = Y1-H1, op_idx 1 = Y1-H2, ..., op_idx 59 = Y30-H2
+                semiannual_values=(
+                    4.1911, 4.1911, 3.783, 3.783,
+                    3.375, 3.375, 2.967, 2.967,
+                    2.45, 2.45, 2.35, 2.35,
+                    2.2, 2.2, 2.1, 2.1,
+                    2.05, 2.05, 1.95, 1.95,
+                    1.8, 1.8, 1.7, 1.7,
+                    1.6, 1.6, 1.5, 1.5,
+                    1.4, 1.4, 1.3, 1.3,
+                    1.2, 1.2, 1.15, 1.15,
+                    1.05, 1.05, 1.0, 1.0,
+                    0.95, 0.95, 0.9, 0.9,
+                    0.85, 0.85, 0.8, 0.8,
+                    0.8, 0.8, 0.8, 0.8,
+                    0.75, 0.75, 0.75, 0.75,
+                    0.7, 0.7, 0.7, 0.7,
+                ),
+            ),
+            # Deprecated scalar fields (kept for compat; schedules above take precedence)
+            balancing_cost_wind_eur_mwh=0.0,  # Use balancing_cost_schedule instead
+            co2_enabled=False,  # Use co2_sales_schedule instead
+            co2_price_eur=0.0,  # Use co2_sales_schedule instead
         )
 
         financing = FinancingParams(
@@ -739,10 +839,11 @@ class ProjectInputs:
             lockup_dscr=1.10,
             min_llcr=1.15,
             dsra_months=6,
-            amortization_type="fixed_ds",  # TUHO uses fixed DS (annuity-like), not sculpted
+            amortization_type="fixed_ds",  # TUHO uses fixed DS (annuity-like)
             fixed_ds_keur=2116.0,  # Fixed semi-annual debt service from Excel (DS = 2,116 kEUR)
-            debt_sizing_method="fixed",  # TUHO: Excel Macro uses avg DSCR 1.45x target
+            debt_sizing_method="fixed",  # TUHO: debt amount fixed at 43,359 kEUR
             fixed_debt_keur=43359.0,  # Excel-verified debt amount (hardcoded from Excel)
+            dscr_schedule=None,  # Per-period DSCR targets not used for fixed DS approach
             equity_irr_method="shl_plus_dividends",  # TUHO: equity CF = SHL interest only (brief Sprint 13)
             shl_repayment_method="pik_then_sweep",  # TUHO: PIK phase Y1-Y14, sweep phase Y15+
             shl_idc_keur=3568.69,  # Construction IDC from Excel — opening SHL balance = 29,135 + 3,569 = 32,704
@@ -814,6 +915,12 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.revenue.market_prices_curve,
         inputs.revenue.market_inflation,
         inputs.revenue.balancing_cost_pv,
+        inputs.revenue.balancing_cost_schedule.constant_value,
+        inputs.revenue.balancing_cost_schedule.annual_values,
+        inputs.revenue.balancing_cost_schedule.semiannual_values,
+        inputs.revenue.co2_sales_schedule.constant_value,
+        inputs.revenue.co2_sales_schedule.annual_values,
+        inputs.revenue.co2_sales_schedule.semiannual_values,
         inputs.capex.epc_contract.amount_keur,
         inputs.capex.production_units.amount_keur,
         inputs.capex.contingencies.amount_keur,

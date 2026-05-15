@@ -8,7 +8,7 @@ from typing import Optional
 
 from domain.inputs import (
     ProjectInputs, ProjectInfo, CapexStructure, CapexItem,
-    OpexItem, TechnicalParams, RevenueParams, FinancingParams, TaxParams,
+    OpexItem, TechnicalParams, RevenueParams, RevenueAdjustmentSchedule, FinancingParams, TaxParams,
     PeriodFrequency
 )
 from domain.period_engine import PeriodEngine, PeriodFrequency as PF
@@ -153,8 +153,10 @@ def _build_inputs_from_session() -> ProjectInputs:
         market_scenario="Central",
         market_prices_curve=market_prices,
         market_inflation=0.02,
-        balancing_cost_pv=0.025,
+        balancing_cost_pv=0.025 if s.technology == 'Solar' else 0.0,
         balancing_cost_bess=0.025,
+        balancing_cost_schedule=RevenueAdjustmentSchedule(constant_value=0.0),
+        co2_sales_schedule=RevenueAdjustmentSchedule(constant_value=0.0),
         co2_enabled=False,
         co2_price_eur=1.5,
     )
