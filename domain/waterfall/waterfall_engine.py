@@ -31,6 +31,7 @@ from domain.returns.xirr import xirr, xnpv
 from domain.returns.sponsor_cashflows import build_sponsor_cashflows
 from domain.period_engine import hash_engine_for_cache
 from domain.tax.engine import atad_adjustment
+from domain.distribution_account import compute_tuho_r99_input_period
 from domain.waterfall.shl_engine import compute_shl_period_v3
 from domain.waterfall.tax_engine import compute_period_tax, TaxPeriodResult
 from utils.logging_config import get_logger
@@ -89,6 +90,22 @@ class WaterfallPeriod:
     shl_pik_keur: float = 0.0  # PIK amount capitalized this period
     # Debt schedule tracking (for financial statements)
     senior_balance_keur: float = 0.0  # Closing balance after principal payment
+    # Phase 7F C1d audit-only R99/R102 bridge fields. These values do not feed
+    # runtime cash routing, SHL service, senior debt, tax, or distributions.
+    corporate_tax_cash_keur: float = field(
+        default=0.0,
+        metadata={
+            "sign": "positive cash tax paid in the period",
+            "basis": "current Python H2-only cash-tax timing: tax_keur in H2, 0 in H1",
+        },
+    )
+    r69_fcf_banks_keur: float = 0.0
+    r84_fcf_junior_keur: float = 0.0
+    r98_distribution_account_keur: float = 0.0
+    r99_fcf_for_distribution_keur: float = 0.0
+    r100_carryforward_keur: float = 0.0
+    r102_fcf_for_shl_keur: float = 0.0
+    fcf_for_shl_keur: float = 0.0
 
 
 @dataclass
@@ -493,6 +510,7 @@ def run_waterfall(
     # Track all periods
     all_dsrs = []
     lockup_count = 0
+    audit_previous_r100 = 0.0
 
     for i, period in enumerate(periods):
         if not period.is_operation:
@@ -807,6 +825,30 @@ def run_waterfall(
         # Cash balance - after sweep
         cash_balance = cash_balance + cf_after_reserves - dist
 
+        opex_val = opex_schedule[i] if opex_schedule is not None and i < len(opex_schedule) else max(0.0, rev - ebitda)
+        dsra_release_or_funding = dsra_withdrawal - dsra_contrib
+        r99_audit = compute_tuho_r99_input_period(
+            revenue_keur=rev,
+            opex_keur=opex_val,
+            local_tax_keur=0.0,
+            cash_interest_on_reserves_keur=0.0,
+            corporate_tax_cash_keur=tax_this_period,
+            senior_ds_keur=senior_ds,
+            dsra_release_or_funding_keur=dsra_release_or_funding,
+            junior_ds_keur=0.0,
+            reserve_sweep_keur=0.0,
+            previous_r100_carryforward_keur=audit_previous_r100,
+            year_index=period.year_index,
+            senior_tenor_years=tenor_periods // 2,
+            dscr=dscr,
+            lockup_dscr=lockup_dscr,
+            dsra_balance_keur=dsra_balance,
+            dsra_target_keur=0.0,
+            jdsra_balance_keur=0.0,
+            jdsra_target_keur=0.0,
+        )
+        audit_previous_r100 = r99_audit.r100_carryforward_keur
+
         # LLCR/PLCR - remaining FCF from next period onwards (not including current)
         # Use waterfall index i (not op_period_counter) to correctly index ebitda_schedule
         remaining_fcf = ebitda_schedule[i + 1:] if i + 1 < len(ebitda_schedule) else []
@@ -817,7 +859,6 @@ def run_waterfall(
         rate_for_llcr = rate_schedule[period_in_tenor] if rate_schedule and period_in_tenor < len(rate_schedule) else rate_per_period
         llcr_val = compute_llcr(remaining_fcf, remaining_balance, rate_for_llcr, tenor_periods - period_in_tenor)
         plcr_val = compute_plcr(remaining_fcf, remaining_balance, rate_for_llcr, len(remaining_fcf))
-        opex_val = opex_schedule[i] if opex_schedule is not None and i < len(opex_schedule) else max(0.0, rev - ebitda)
         wp = WaterfallPeriod(
             period=period.index,
             date=period.end_date,
@@ -856,6 +897,14 @@ def run_waterfall(
             cum_distribution_keur=cum_distribution,
             cash_balance_keur=cash_balance,
             senior_balance_keur=max(0.0, remaining_senior_balance - sp),  # Closing balance after principal payment
+            corporate_tax_cash_keur=tax_this_period,
+            r69_fcf_banks_keur=r99_audit.r69_fcf_banks_keur,
+            r84_fcf_junior_keur=r99_audit.r84_fcf_junior_keur,
+            r98_distribution_account_keur=r99_audit.r98_distribution_account_keur,
+            r99_fcf_for_distribution_keur=r99_audit.r99_fcf_for_distribution_keur,
+            r100_carryforward_keur=r99_audit.r100_carryforward_keur,
+            r102_fcf_for_shl_keur=r99_audit.r102_fcf_for_shl_keur,
+            fcf_for_shl_keur=r99_audit.fcf_for_shl_keur,
         )
 
         waterfall_periods.append(wp)
