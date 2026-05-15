@@ -35,6 +35,8 @@ class ProjectInfo:
     cod_date: date                  # Inputs!D11 - Commercial operation date
     horizon_years: int             # Inputs!D14 - Investment horizon in years
     period_frequency: PeriodFrequency  # Inputs!D18 - "Semestrial", "Annual", etc.
+    # Feature flag: use new OPEX line-item engine instead of legacy OpexItem path
+    use_opex_line_item_engine: bool = False  # Default False — OFF unless explicitly set
 
 
 @dataclass(frozen=True)

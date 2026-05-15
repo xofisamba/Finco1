@@ -1046,13 +1046,15 @@ def cached_run_waterfall(
         WaterfallResult with all computed periods and metrics
     """
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
-    from domain.opex.projections import opex_schedule_annual
 
-    # Build schedules
-    periods_list = list(engine.periods())
-    revenue_dict = full_revenue_schedule(inputs, engine)
-    generation_dict = full_generation_schedule(inputs, engine)
-    opex_annual = opex_schedule_annual(inputs, inputs.info.horizon_years)
+    # ── OPEX schedule ─────────────────────────────────────────────────────────────
+    # Feature flag: use new OPEX line-item engine if explicitly enabled
+    if inputs.info.use_opex_line_item_engine:
+        from domain.opex.runtime_adapter import opex_line_item_adapter
+        opex_annual = opex_line_item_adapter(inputs)
+    else:
+        from domain.opex.projections import opex_schedule_annual
+        opex_annual = opex_schedule_annual(inputs, inputs.info.horizon_years)
 
     # Build EBITDA schedule
     op_periods = [p for p in periods_list if p.is_operation]
