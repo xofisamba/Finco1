@@ -198,13 +198,24 @@ def revenue_decomposition_schedule(
             ppa_share=inputs.revenue.ppa_production_share,
         )
         balancing_cost_pv_keur = energy_revenue_keur * inputs.revenue.balancing_cost_pv
-        balancing_cost_wind_keur = 0.0
-        if inputs.revenue.balancing_cost_wind_eur_mwh > 0:
-            balancing_cost_wind_keur = generation_mwh * inputs.revenue.balancing_cost_wind_eur_mwh / 1000
+        op_idx = period.operating_period_index
+        op_year = period.operating_year_index
+        period_in_yr = period.period_in_year
+        balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
+            operating_period_index=op_idx,
+            operating_year_index=op_year,
+            period_in_year=period_in_yr,
+        )
+        co2_eur_mwh = inputs.revenue.co2_sales_schedule.value_for_period(
+            operating_period_index=op_idx,
+            operating_year_index=op_year,
+            period_in_year=period_in_yr,
+        )
+        balancing_cost_wind_keur = generation_mwh * balancing_eur_mwh / 1000
         co2_revenue_keur = _certificate_revenue_keur(
             generation_mwh=generation_mwh,
             enabled=inputs.revenue.co2_enabled,
-            price_eur_mwh=inputs.revenue.co2_price_eur,
+            price_eur_mwh=co2_eur_mwh,
         )
         revenue_keur = energy_revenue_keur - balancing_cost_pv_keur - balancing_cost_wind_keur + co2_revenue_keur
 
@@ -218,6 +229,8 @@ def revenue_decomposition_schedule(
             "balancing_cost_pv_keur": balancing_cost_pv_keur,
             "balancing_cost_wind_keur": balancing_cost_wind_keur,
             "co2_revenue_keur": co2_revenue_keur,
+            "balancing_cost_eur_mwh": balancing_eur_mwh,
+            "co2_eur_mwh": co2_eur_mwh,
             "revenue_keur": revenue_keur,
         }
 

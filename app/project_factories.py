@@ -22,6 +22,7 @@ from domain.inputs import (
     PeriodFrequency,
     ProjectInfo,
     ProjectInputs,
+    RevenueAdjustmentSchedule,
     RevenueParams,
     SHLRepaymentMethod,
     TaxParams,
@@ -358,9 +359,33 @@ def create_default_tuho_wind1() -> ProjectInputs:
         market_inflation=0.015,  # 1.5%/year post-PPA spot escalation (brief: ~1.5%/yr)
         balancing_cost_pv=0.0,  # Wind: no PV balancing
         balancing_cost_bess=0.0,
-        balancing_cost_wind_eur_mwh=8.0,  # 8.0 EUR/MWh — wind balancing cost (matches Excel OpEx)
+        #balancing_cost_wind_eur_mwh=8.0,  # replaced by balancing_cost_schedule below
+        #co2_price_eur=4.191,             # replaced by co2_sales_schedule below
         co2_enabled=True,  # TUHO has CO2 certificate revenue
-        co2_price_eur=4.191,  # CO2 price Y1 from TUHO Excel (302.9 kEUR/H)
+        balancing_cost_schedule=RevenueAdjustmentSchedule(constant_value=8.0),
+        co2_sales_schedule=RevenueAdjustmentSchedule(semiannual_values=(
+            # 60 semiannual values — semiannual_values[i] = Y(i//2+1)-H(i%2+1)
+            # Y1–Y2: 4.1911 EUR/MWh
+            4.1911, 4.1911,  # Y1-H1, Y1-H2
+            4.1911, 4.1911,  # Y2-H1, Y2-H2
+            # Y3–Y5: 4.0
+            4.0, 4.0, 4.0, 4.0, 4.0, 4.0,  # Y3-H1 to Y5-H2
+            # Y6–Y10: 3.5
+            3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5,  # Y6-H1 to Y10-H2
+            # Y11: 2.5
+            2.5, 2.5,  # Y11-H1, Y11-H2
+            # Y12: 2.5 (H1), 1.7 (H2, last PPA period)
+            2.5, 1.7,  # Y12-H1 (index 22), Y12-H2 (index 23)
+            # Y13: 1.6 (first post-PPA)
+            1.6, 1.6,  # Y13-H1 (index 24), Y13-H2
+            # Y14–Y20: 1.4
+            1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4,  # Y14-H1 to Y18-H2
+            1.4, 1.4, 1.4, 1.4,  # Y19-H1 to Y20-H2
+            # Y21–Y25: 1.0
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # Y21-H1 to Y25-H2
+            # Y26–Y30: 0.7
+            0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7,  # Y26-H1 to Y30-H2
+        )),
     )
 
     financing = FinancingParams(

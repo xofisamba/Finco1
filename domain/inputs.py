@@ -84,6 +84,7 @@ class ProjectInfo:
     cod_date: date
     horizon_years: int
     period_frequency: PeriodFrequency
+    use_opex_line_item_engine: bool = False  # Feature flag — OFF unless explicitly set
 
 
 @dataclass(frozen=True)
@@ -253,6 +254,48 @@ class TechnicalParams:
 
 
 @dataclass(frozen=True)
+class RevenueAdjustmentSchedule:
+    """Generic schedule for revenue adjustment inputs (balancing cost, CO2).
+
+    Supports three modes:
+    - constant: single value applied to all periods
+    - annual: one value per year (applied to both H1 and H2 of each year)
+    - semiannual: one value per model period (indexed by op_idx)
+
+    Mode is inferred from which field is populated:
+    - if semiannual_values is non-empty → mode = semiannual
+    - elif annual_values is non-empty → mode = annual
+    - else → mode = constant (constant_value used)
+    """
+    constant_value: float = 0.0
+    annual_values: tuple[float, ...] = ()
+    semiannual_values: tuple[float, ...] = ()
+
+    def value_for_period(
+        self,
+        *,
+        operating_period_index: int,
+        operating_year_index: int,
+        period_in_year: int,
+    ) -> float:
+        """Return the value in EUR/MWh for a given period.
+
+        SCHEDULE CONTRACT (user-facing, operating-period based):
+        - semiannual_values[0] = first OPERATING period (Y1-H1)
+        - semiannual_values[1] = second OPERATING period (Y1-H2)
+        - annual_values[0] = first OPERATING year (both H1 and H2)
+        - Construction/stub periods do NOT consume schedule values
+        """
+        if self.semiannual_values and operating_period_index < len(self.semiannual_values):
+            return self.semiannual_values[operating_period_index]
+        if self.annual_values:
+            year_idx_0 = operating_year_index - 1
+            if year_idx_0 < len(self.annual_values):
+                return self.annual_values[year_idx_0]
+        return self.constant_value
+
+
+@dataclass(frozen=True)
 class RevenueParams:
     """Revenue parameters for contracted and merchant sales."""
     ppa_base_tariff: float
@@ -267,6 +310,12 @@ class RevenueParams:
     balancing_cost_wind_eur_mwh: float = 0.0
     co2_enabled: bool = False
     co2_price_eur: float = 1.5
+    balancing_cost_schedule: "RevenueAdjustmentSchedule" = field(
+        default_factory=lambda: RevenueAdjustmentSchedule(constant_value=0.0)
+    )
+    co2_sales_schedule: "RevenueAdjustmentSchedule" = field(
+        default_factory=lambda: RevenueAdjustmentSchedule(constant_value=0.0)
+    )
 
     def tariff_at_year(self, year: int) -> float:
         """Return indexed contract tariff for a 1-based operating year."""
