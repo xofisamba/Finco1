@@ -22,6 +22,7 @@ from domain.inputs import (
     PeriodFrequency,
     ProjectInfo,
     ProjectInputs,
+    RevenueAdjustmentSchedule,
     RevenueParams,
     SHLRepaymentMethod,
     TaxParams,
@@ -332,20 +333,16 @@ def create_default_tuho_wind1() -> ProjectInputs:
         bess_enabled=False,
     )
 
-    # Market price curve (post-PPA merchant, Central scenario)
-    # PPA: 60 EUR/MWh × 12 years (expires Y12-H2, Dec 2041), escalation 2%
-    # Post-PPA merchant from Y13-H1 onwards (index 12 = Y13)
-    # Brief verified: Y13-H1=109.33, Y14-H1=109.33, Y14-H2=109.50, Y15+=+1.5%/yr
+    # Market price curve from TUHO Excel CF row 27.
+    # Values are annual pairs in Excel; PPA-period entries are retained for
+    # diagnostics but unused until the first merchant period, Y13-H1.
     market_prices = (
-        65.0, 66.3, 67.6, 69.0, 70.4, 71.8, 73.2, 74.7, 76.2, 77.7,  # Y1-Y10 (market ref, unused during PPA)
-        79.3, 80.9,           # Y11-Y12 (market ref, unused during PPA)
-        109.33, 109.50,       # Y13-Y14 merchant (109.33, 109.50 — brief verified)
-        111.14, 112.80, 114.50,  # Y15-Y17 (~1.5%/yr escalation from 109.50)
-        116.21, 117.95, 119.72,  # Y18-Y20
-        121.51, 123.34, 125.19,  # Y21-Y23
-        127.07, 128.97, 130.91,  # Y24-Y26
-        132.87, 134.86, 136.87,  # Y27-Y29
-        138.92,                  # Y30
+        94.5540, 100.9690, 102.6256, 104.5038, 105.6042,
+        107.1357, 111.2716, 108.2148, 105.5754, 106.9539,
+        107.5379, 108.6338, 109.3260, 109.5042, 110.8026,
+        112.0560, 115.3512, 117.9612, 120.5820, 123.2293,
+        125.8720, 128.5255, 131.7129, 134.1300, 136.5316,
+        139.7415, 142.1460, 143.9984, 145.7752, 146.7453,
     )
 
     revenue = RevenueParams(
@@ -358,9 +355,20 @@ def create_default_tuho_wind1() -> ProjectInputs:
         market_inflation=0.015,  # 1.5%/year post-PPA spot escalation (brief: ~1.5%/yr)
         balancing_cost_pv=0.0,  # Wind: no PV balancing
         balancing_cost_bess=0.0,
-        balancing_cost_wind_eur_mwh=8.0,  # 8.0 EUR/MWh — wind balancing cost (matches Excel OpEx)
         co2_enabled=True,  # TUHO has CO2 certificate revenue
-        co2_price_eur=4.191,  # CO2 price Y1 from TUHO Excel (302.9 kEUR/H)
+        balancing_cost_schedule=RevenueAdjustmentSchedule(constant_value=8.0),
+        first_merchant_operating_period_index=24,
+        co2_sales_schedule=RevenueAdjustmentSchedule(semiannual_values=(
+            4.191063312, 4.191063312, 3.783032455, 3.783032455,
+            3.375001599, 3.375001599, 2.966970742, 2.966970742,
+            2.45, 2.45, 2.35, 2.35, 2.2, 2.2, 2.1, 2.1,
+            2.05, 2.05, 1.95, 1.95, 1.8, 1.8, 1.7, 1.7,
+            1.6, 1.6, 1.5, 1.5, 1.4, 1.4, 1.3, 1.3,
+            1.2, 1.2, 1.15, 1.15, 1.05, 1.05, 1.0, 1.0,
+            0.95, 0.95, 0.9, 0.9, 0.85, 0.85, 0.8, 0.8,
+            0.8, 0.8, 0.8, 0.8, 0.75, 0.75, 0.75, 0.75,
+            0.7, 0.7, 0.7, 0.7,
+        )),
     )
 
     financing = FinancingParams(

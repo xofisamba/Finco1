@@ -253,6 +253,35 @@ class TechnicalParams:
 
 
 @dataclass(frozen=True)
+class RevenueAdjustmentSchedule:
+    """Operating-period schedule for revenue adjustment inputs.
+
+    The schedule is indexed by operating periods only: semiannual_values[0] is
+    Y1-H1, semiannual_values[1] is Y1-H2, and construction/stub periods do not
+    consume values.
+    """
+    constant_value: float = 0.0
+    annual_values: tuple[float, ...] = ()
+    semiannual_values: tuple[float, ...] = ()
+
+    def value_for_period(
+        self,
+        *,
+        operating_period_index: int,
+        operating_year_index: int,
+        period_in_year: int,
+    ) -> float:
+        """Return the EUR/MWh value for a given operating period."""
+        if self.semiannual_values and operating_period_index < len(self.semiannual_values):
+            return self.semiannual_values[operating_period_index]
+        if self.annual_values:
+            year_idx = operating_year_index - 1
+            if year_idx < len(self.annual_values):
+                return self.annual_values[year_idx]
+        return self.constant_value
+
+
+@dataclass(frozen=True)
 class RevenueParams:
     """Revenue parameters for contracted and merchant sales."""
     ppa_base_tariff: float
@@ -267,6 +296,9 @@ class RevenueParams:
     balancing_cost_wind_eur_mwh: float = 0.0
     co2_enabled: bool = False
     co2_price_eur: float = 1.5
+    balancing_cost_schedule: RevenueAdjustmentSchedule | None = None
+    co2_sales_schedule: RevenueAdjustmentSchedule | None = None
+    first_merchant_operating_period_index: int | None = None
 
     def tariff_at_year(self, year: int) -> float:
         """Return indexed contract tariff for a 1-based operating year."""
@@ -330,6 +362,10 @@ class FinancingParams:
     # cash priority: senior DS first, then SHL capped at remaining FCF.
     # Oborovo keeps this False (its R99 ≈ cf, so no effective change).
     use_senior_sweep_cash_cap_for_shl: bool = False
+
+    # TUHO-only Phase 7F C1a flag for a future R99/R102 input engine.
+    # Default false so runtime waterfall behavior remains unchanged.
+    use_tuho_r99_input_engine: bool = False
 
     @property
     def all_in_rate(self) -> float:

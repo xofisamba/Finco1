@@ -190,27 +190,45 @@ def revenue_decomposition_schedule(
 
         tariff = inputs.revenue.tariff_at_year(period.year_index)
         market_price = inputs.revenue.market_price_at_year(period.year_index)
+        ppa_active = period.is_ppa_active
+        first_merchant_idx = inputs.revenue.first_merchant_operating_period_index
+        if first_merchant_idx is not None:
+            ppa_active = period.operating_period_index < first_merchant_idx
         energy_revenue_keur = _period_energy_revenue_keur(
             generation_mwh=generation_mwh,
             ppa_tariff=tariff,
             market_price=market_price,
-            ppa_active=period.is_ppa_active,
+            ppa_active=ppa_active,
             ppa_share=inputs.revenue.ppa_production_share,
         )
         balancing_cost_pv_keur = energy_revenue_keur * inputs.revenue.balancing_cost_pv
-        balancing_cost_wind_keur = 0.0
-        if inputs.revenue.balancing_cost_wind_eur_mwh > 0:
-            balancing_cost_wind_keur = generation_mwh * inputs.revenue.balancing_cost_wind_eur_mwh / 1000
+        if inputs.revenue.balancing_cost_schedule is not None:
+            balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
+                operating_period_index=period.operating_period_index,
+                operating_year_index=period.operating_year_index,
+                period_in_year=period.period_in_year,
+            )
+        else:
+            balancing_eur_mwh = inputs.revenue.balancing_cost_wind_eur_mwh
+        balancing_cost_wind_keur = generation_mwh * balancing_eur_mwh / 1000
+        if inputs.revenue.co2_sales_schedule is not None:
+            co2_eur_mwh = inputs.revenue.co2_sales_schedule.value_for_period(
+                operating_period_index=period.operating_period_index,
+                operating_year_index=period.operating_year_index,
+                period_in_year=period.period_in_year,
+            )
+        else:
+            co2_eur_mwh = inputs.revenue.co2_price_eur
         co2_revenue_keur = _certificate_revenue_keur(
             generation_mwh=generation_mwh,
             enabled=inputs.revenue.co2_enabled,
-            price_eur_mwh=inputs.revenue.co2_price_eur,
+            price_eur_mwh=co2_eur_mwh,
         )
         revenue_keur = energy_revenue_keur - balancing_cost_pv_keur - balancing_cost_wind_keur + co2_revenue_keur
 
         decompositions[period.index] = {
             "is_operation": True,
-            "is_ppa_active": period.is_ppa_active,
+            "is_ppa_active": ppa_active,
             "generation_mwh": generation_mwh,
             "ppa_tariff_eur_mwh": tariff,
             "market_price_eur_mwh": market_price,
@@ -218,6 +236,8 @@ def revenue_decomposition_schedule(
             "balancing_cost_pv_keur": balancing_cost_pv_keur,
             "balancing_cost_wind_keur": balancing_cost_wind_keur,
             "co2_revenue_keur": co2_revenue_keur,
+            "balancing_cost_eur_mwh": balancing_eur_mwh,
+            "co2_eur_mwh": co2_eur_mwh,
             "revenue_keur": revenue_keur,
         }
 

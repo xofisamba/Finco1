@@ -41,6 +41,9 @@ class PeriodMeta:
     days_in_period: int
     day_fraction: float
     is_leap_year: bool
+    # Derived operating-period counters. Construction periods keep defaults.
+    operating_period_index: int = -1
+    operating_year_index: int = 0
 
 
 class PeriodEngine:
@@ -166,12 +169,16 @@ class PeriodEngine:
         period_index = 2
         year_index = 1
         period_in_year = 1
+        operating_period_index = 0
+        operating_year_index = 1
 
         while current_date < self._horizon_end:
             end = self._next_semiannual_end_after(current_date)
             if end > self._horizon_end:
                 end = self._horizon_end
             days = self._days_between(current_date, end)
+            if current_date == self._cod and current_date.day == 1:
+                days += 1
             if days <= 0:
                 break
 
@@ -189,6 +196,8 @@ class PeriodEngine:
                 days_in_period=days,
                 day_fraction=days / (366.0 if is_leap else 365.0),
                 is_leap_year=is_leap,
+                operating_period_index=operating_period_index,
+                operating_year_index=operating_year_index,
             ))
 
             period_index += 1
@@ -198,6 +207,8 @@ class PeriodEngine:
             else:
                 period_in_year = 1
                 year_index += 1
+                operating_year_index += 1
+            operating_period_index += 1
 
         return periods
 
