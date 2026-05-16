@@ -85,6 +85,7 @@ class ProjectInfo:
     horizon_years: int
     period_frequency: PeriodFrequency
     use_opex_line_item_engine: bool = False
+    use_construction_schedule_engine: bool = False
 
 
 @dataclass(frozen=True)

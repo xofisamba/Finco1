@@ -74,6 +74,11 @@ def run_waterfall_v3_core(
     from domain.financing.depreciation_schedule import build_depreciation_schedule
 
     _ = use_tuho_r99_input_engine  # C1a intentionally leaves runtime behavior unchanged.
+    construction_diagnostic = None
+    if getattr(inputs.info, "use_construction_schedule_engine", False):
+        from domain.construction.runtime_adapter import build_runtime_construction_schedule
+
+        construction_diagnostic = build_runtime_construction_schedule(inputs)
 
     all_periods = list(engine.periods())
     periods_list = [p for p in all_periods if p.is_operation]
@@ -154,7 +159,7 @@ def run_waterfall_v3_core(
         else inputs.capex.total_capex
     )
 
-    return run_waterfall(
+    result = run_waterfall(
         ebitda_schedule=ebitda_schedule,
         revenue_schedule=revenue_schedule,
         generation_schedule=generation_schedule,
@@ -192,6 +197,9 @@ def run_waterfall_v3_core(
         dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, "dscr_schedule", None),
         use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
     )
+    if construction_diagnostic is not None:
+        result.construction_schedule_diagnostic = construction_diagnostic
+    return result
 
 
 __all__ = ["run_waterfall_v3_core"]
