@@ -82,6 +82,8 @@ The runtime raises explicit errors for:
 - Missing SHL FCF cash schedule.
 - Enabling the flag without selecting `fcf_waterfall`.
 
+There is no fallback from a missing fixture/source schedule to `cf_after_tax - senior_ds`; the path fails closed until a validated R99/R102 runtime source exists.
+
 ## Remaining Blocker
 
 The remaining blocker is still the runtime-safe R99/R102 source. This branch validates the SHL mechanics independently with an Excel-backed fixture schedule. It does not prove that the current runtime can generate the correct R99/R102 cash basis.

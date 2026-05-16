@@ -153,6 +153,21 @@ def test_tuho_fcf_waterfall_missing_cash_source_rejected():
         _run(project)
 
 
+def test_tuho_fcf_waterfall_never_falls_back_to_cf_after_tax_less_senior_ds():
+    project = create_default_tuho_wind1()
+    legacy = _run(project)
+    assert legacy.periods[0].cf_after_tax_keur - legacy.periods[0].senior_ds_keur != 0
+
+    project = replace(
+        project,
+        info=replace(project.info, use_shl_fcf_waterfall_engine=True),
+        financing=replace(project.financing, shl_repayment_method=SHLRepaymentMethod.FCF_WATERFALL.value),
+    )
+
+    with pytest.raises(ValueError, match="cash_schedule"):
+        _run(project)
+
+
 def test_tuho_fixture_backed_fcf_waterfall_matches_shl_mechanics():
     result = _run(_tuho_fcf_project())
     excel_rows = _tuho_excel_shl_rows()
@@ -199,6 +214,8 @@ def test_minimum_retained_cash_buffer_reduces_distributions_and_is_respected():
     buffer_50 = _run(_tuho_fcf_project(minimum_cash_retained_keur=50.0))
     buffer_100 = _run(_tuho_fcf_project(minimum_cash_retained_keur=100.0))
 
+    assert buffer_50.total_distribution_keur == pytest.approx(148_055.1845, abs=0.01)
+    assert buffer_100.total_distribution_keur == pytest.approx(142_848.7803, abs=0.01)
     assert buffer_50.total_distribution_keur < base.total_distribution_keur
     assert buffer_100.total_distribution_keur < buffer_50.total_distribution_keur
 
