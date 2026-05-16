@@ -43,6 +43,8 @@ def run_waterfall_v3_core(
     # TUHO-specific: cap SHL sweep cash at R99-equivalent (Excel-compatible).
     # Prevents SHL principal from consuming cash that Excel would hold back.
     use_senior_sweep_cash_cap_for_shl: bool = False,
+    # Phase 7F C1a: propagated for config identity only; not wired into runtime yet.
+    use_tuho_r99_input_engine: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -71,13 +73,20 @@ def run_waterfall_v3_core(
     from domain.opex.projections import opex_schedule_period
     from domain.financing.depreciation_schedule import build_depreciation_schedule
 
+    _ = use_tuho_r99_input_engine  # C1a intentionally leaves runtime behavior unchanged.
+
     all_periods = list(engine.periods())
     periods_list = [p for p in all_periods if p.is_operation]
     revenue_dict = full_revenue_schedule(inputs, engine)
     generation_dict = full_generation_schedule(inputs, engine)
 
-    # OPEX: use advanced line-item engine if provided, otherwise fall back to legacy path
-    if advanced_opex_line_items:
+    # OPEX: default legacy path remains unchanged. The Phase 7H line-item
+    # engine is available only behind an explicit project/config flag.
+    if getattr(inputs.info, "use_opex_line_item_engine", False):
+        from domain.opex.runtime_adapter import build_runtime_opex_schedule
+
+        opex_period = build_runtime_opex_schedule(inputs, engine).period_schedule_keur
+    elif advanced_opex_line_items:
         from app.opex_engine import apply_opex_line_items_to_project
         horizon_years = inputs.info.horizon_years
         annual_opex = apply_opex_line_items_to_project(advanced_opex_line_items, horizon_years)
