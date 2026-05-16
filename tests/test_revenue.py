@@ -10,6 +10,7 @@ from domain.revenue.generation import (
     period_revenue,
     full_generation_schedule,
     full_revenue_schedule,
+    revenue_decomposition_schedule,
 )
 from domain.revenue.tariff import (
     ppa_tariff_at_period,
@@ -165,3 +166,53 @@ class TestTariffCalculation:
         revenue = co2_certificates_revenue(gen_mwh, co2_price)
         expected = 10000 * 1.5 / 1000  # 15 kEUR
         assert abs(revenue - expected) < 0.1
+
+
+class TestTUHORevenueCalibration:
+    """Phase 7G TUHO revenue component calibration."""
+
+    @staticmethod
+    def _tuho_revenue_rows():
+        from app.project_factories import create_default_tuho_wind1
+        from app.ui_runner import _build_period_engine
+
+        project = create_default_tuho_wind1()
+        engine = _build_period_engine(project)
+        decomposition = revenue_decomposition_schedule(project, engine)
+        op_periods = [period for period in engine.periods() if period.is_operation][:60]
+        return [(idx, period, decomposition[period.index]) for idx, period in enumerate(op_periods)]
+
+    def test_tuho_first_operating_period_day_count_matches_excel(self):
+        rows = self._tuho_revenue_rows()
+
+        op_idx, period, decomposition = rows[0]
+
+        assert op_idx == 0
+        assert period.days_in_period == 181
+        assert decomposition["generation_mwh"] == pytest.approx(72_271.068, abs=0.01)
+
+    def test_tuho_ppa_merchant_boundary_matches_excel(self):
+        rows = self._tuho_revenue_rows()
+
+        op23 = rows[23]
+        op24 = rows[24]
+
+        assert op23[2]["is_ppa_active"] is True
+        assert op24[2]["is_ppa_active"] is False
+        assert op24[2]["market_price_eur_mwh"] == pytest.approx(109.326, abs=0.001)
+        assert op24[2]["energy_revenue_keur"] == pytest.approx(7_901.107, abs=0.1)
+
+    def test_tuho_revenue_components_match_excel_rows(self):
+        rows = self._tuho_revenue_rows()
+
+        production_mwh = sum(row[2]["generation_mwh"] for row in rows)
+        power_revenue = sum(row[2]["energy_revenue_keur"] for row in rows)
+        co2_revenue = sum(row[2]["co2_revenue_keur"] for row in rows)
+        balancing_cost = sum(row[2]["balancing_cost_wind_keur"] for row in rows)
+        total_revenue = sum(row[2]["revenue_keur"] for row in rows)
+
+        assert production_mwh == pytest.approx(4_372_200.0, abs=0.1)
+        assert power_revenue == pytest.approx(451_606.9, abs=0.5)
+        assert co2_revenue == pytest.approx(7_158.2, abs=0.5)
+        assert balancing_cost == pytest.approx(34_977.6, abs=0.5)
+        assert total_revenue == pytest.approx(423_787.5, abs=0.5)
