@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Optional
 from app.waterfall_core import run_waterfall_v3_core
 from domain.inputs import EquityIRRMethod, DebtSizingMethod, SHLRepaymentMethod
 from domain.senior_rate_schedule import SeniorDebtInterestConfig, build_senior_period_rate_schedule
+from domain.senior_sculpting import SeniorSculptingConfig
 
 if TYPE_CHECKING:
     from app.depreciation_engine import DepreciationSchedule
@@ -65,6 +66,8 @@ class WaterfallRunConfig:
     rate_schedule: Optional[list[float]] = None  # Per-period Euribor curve
     use_senior_rate_schedule_engine: bool = False
     senior_debt_interest_config: SeniorDebtInterestConfig = field(default_factory=SeniorDebtInterestConfig)
+    use_senior_sculpting_basis_engine: bool = False
+    senior_sculpting_config: SeniorSculptingConfig = field(default_factory=SeniorSculptingConfig)
 
     # Equity IRR method
     equity_irr_method: EquityIRRMethod = EquityIRRMethod.EQUITY_ONLY
@@ -94,7 +97,8 @@ class WaterfallRunConfig:
             f"wf_{self.rate_per_period:.6f}_{self.tenor_periods}_"
             f"{self.target_dscr:.3f}_{self.shl_amount_keur:.0f}_"
             f"r99_{int(self.use_tuho_r99_input_engine)}_"
-            f"sr_{int(self.use_senior_rate_schedule_engine)}"
+            f"sr_{int(self.use_senior_rate_schedule_engine)}_"
+            f"ss_{int(self.use_senior_sculpting_basis_engine)}"
         )
 
     @classmethod
@@ -138,6 +142,21 @@ class WaterfallRunConfig:
                 op_periods,
                 tenor_periods,
             )
+        use_senior_sculpting_basis_engine = getattr(
+            inputs.info,
+            "use_senior_sculpting_basis_engine",
+            False,
+        )
+        senior_sculpting_config = getattr(
+            fin,
+            "senior_sculpting_config",
+            SeniorSculptingConfig(),
+        )
+        if use_senior_sculpting_basis_engine and not senior_sculpting_config.enabled:
+            raise ValueError(
+                "use_senior_sculpting_basis_engine=True requires enabled "
+                "senior_sculpting_config"
+            )
 
         # Map SHL repayment method — FinancingParams may use str or enum
         shl_repayment = fin.shl_repayment_method
@@ -178,6 +197,8 @@ class WaterfallRunConfig:
             rate_schedule=rate_schedule,
             use_senior_rate_schedule_engine=use_senior_rate_schedule_engine,
             senior_debt_interest_config=senior_debt_interest_config,
+            use_senior_sculpting_basis_engine=use_senior_sculpting_basis_engine,
+            senior_sculpting_config=senior_sculpting_config,
             use_senior_sweep_cash_cap_for_shl=getattr(fin, "use_senior_sweep_cash_cap_for_shl", False),
             use_tuho_r99_input_engine=getattr(fin, "use_tuho_r99_input_engine", False),
         )
@@ -247,6 +268,11 @@ class WaterfallRunner:
             fixed_debt_keur=config.fixed_debt_keur,
             fixed_ds_keur=config.fixed_ds_keur,
             rate_schedule=config.rate_schedule,
+            senior_sculpting_config=(
+                config.senior_sculpting_config
+                if config.use_senior_sculpting_basis_engine
+                else None
+            ),
             equity_irr_method=config.equity_irr_method.value,
             share_capital_keur=config.share_capital_keur,
             sculpt_capex_keur=sculpt_capex,
