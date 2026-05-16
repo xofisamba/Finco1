@@ -84,6 +84,7 @@ class ProjectInfo:
     cod_date: date
     horizon_years: int
     period_frequency: PeriodFrequency
+    use_opex_line_item_engine: bool = False
 
 
 @dataclass(frozen=True)
