@@ -19,6 +19,24 @@ SUPPORTED_PROJECT_CODES = {"TUHO-WIND-1", "Oborovo", "OBR-001"}
 
 
 @dataclass(frozen=True)
+class SeniorDebtConstructionDiagnostic:
+    """Audit-only senior opening debt reconciliation."""
+
+    opening_balance_source: str
+    manual_opening_senior_balance_keur: float
+    computed_senior_principal_draw_keur: float
+    computed_senior_idc_keur: float
+    computed_opening_senior_excluding_idc_keur: float
+    computed_opening_senior_including_idc_keur: float
+    senior_idc_manual_value_keur: float
+    opening_balance_delta_excluding_idc_keur: float
+    opening_balance_delta_including_idc_keur: float
+    idc_delta_keur: float
+    repayment_timing_notes: tuple[str, ...]
+    cod_transition_notes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ConstructionRuntimeResult:
     """Diagnostic construction runtime bridge result."""
 
@@ -37,6 +55,7 @@ class ConstructionRuntimeResult:
     senior_idc_delta_to_target_keur: float | None
     monthly_entries: tuple[ConstructionMonthlyEntry, ...]
     validation_notes: tuple[str, ...]
+    senior_debt_diagnostic: SeniorDebtConstructionDiagnostic
     source_result: ConstructionScheduleResult
 
 
@@ -56,6 +75,7 @@ def build_runtime_construction_schedule(inputs) -> ConstructionRuntimeResult:
 
     result = compute_construction_schedule(config)
     notes = _build_validation_notes(inputs, result)
+    senior_diagnostic = _build_senior_debt_diagnostic(inputs, result)
     return ConstructionRuntimeResult(
         project_code=project_code,
         construction_months=len(result.monthly_entries),
@@ -72,6 +92,7 @@ def build_runtime_construction_schedule(inputs) -> ConstructionRuntimeResult:
         senior_idc_delta_to_target_keur=result.senior_idc_delta_to_target_keur,
         monthly_entries=result.monthly_entries,
         validation_notes=tuple(notes),
+        senior_debt_diagnostic=senior_diagnostic,
         source_result=result,
     )
 
@@ -111,4 +132,48 @@ def _build_validation_notes(inputs, result: ConstructionScheduleResult) -> list[
     return notes
 
 
-__all__ = ["ConstructionRuntimeResult", "build_runtime_construction_schedule"]
+def _build_senior_debt_diagnostic(
+    inputs,
+    result: ConstructionScheduleResult,
+) -> SeniorDebtConstructionDiagnostic:
+    financing = getattr(inputs, "financing", None)
+    capex = getattr(inputs, "capex", None)
+    manual_opening = 0.0
+    if financing is not None:
+        manual_opening = float(
+            getattr(financing, "fixed_debt_keur", None)
+            or getattr(financing, "senior_debt_amount_keur", 0.0)
+            or 0.0
+        )
+    manual_idc = float(getattr(capex, "idc_keur", 0.0) or 0.0)
+    computed_excluding_idc = result.total_senior_draw_keur
+    computed_including_idc = result.total_senior_draw_keur + result.total_senior_idc_keur
+    return SeniorDebtConstructionDiagnostic(
+        opening_balance_source="manual_fixed_debt_keur_diagnostic_only",
+        manual_opening_senior_balance_keur=manual_opening,
+        computed_senior_principal_draw_keur=result.total_senior_draw_keur,
+        computed_senior_idc_keur=result.total_senior_idc_keur,
+        computed_opening_senior_excluding_idc_keur=computed_excluding_idc,
+        computed_opening_senior_including_idc_keur=computed_including_idc,
+        senior_idc_manual_value_keur=manual_idc,
+        opening_balance_delta_excluding_idc_keur=manual_opening - computed_excluding_idc,
+        opening_balance_delta_including_idc_keur=manual_opening - computed_including_idc,
+        idc_delta_keur=manual_idc - result.total_senior_idc_keur,
+        repayment_timing_notes=(
+            "runtime senior repayment starts in first operating period",
+            "fixed_debt_keur overrides sculpted opening debt when provided",
+            "no construction IDC is added to fixed_debt_keur in this branch",
+        ),
+        cod_transition_notes=(
+            "construction diagnostic COD balance is audit-only",
+            "runtime COD opening balance remains the manual financing input",
+            "computed senior IDC is not capitalized into runtime debt",
+        ),
+    )
+
+
+__all__ = [
+    "ConstructionRuntimeResult",
+    "SeniorDebtConstructionDiagnostic",
+    "build_runtime_construction_schedule",
+]
