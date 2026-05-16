@@ -8,11 +8,12 @@ FincoGPT update: WaterfallRunner now calls the uncached calculation core.
 Streamlit caching remains in app/cache.py only.
 """
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Optional
 
 from app.waterfall_core import run_waterfall_v3_core
 from domain.inputs import EquityIRRMethod, DebtSizingMethod, SHLRepaymentMethod
+from domain.senior_rate_schedule import SeniorDebtInterestConfig, build_senior_period_rate_schedule
 
 if TYPE_CHECKING:
     from app.depreciation_engine import DepreciationSchedule
@@ -50,6 +51,7 @@ class WaterfallRunConfig:
     # TUHO-specific: cap SHL sweep cash at R99-equivalent (Excel-compatible).
     # Prevents SHL principal from consuming cash that Excel would hold back.
     use_senior_sweep_cash_cap_for_shl: bool = False
+    use_tuho_r99_input_engine: bool = False
 
     # Returns
     discount_rate_project: float = 0.0641
@@ -61,6 +63,8 @@ class WaterfallRunConfig:
 
     # Rate schedule
     rate_schedule: Optional[list[float]] = None  # Per-period Euribor curve
+    use_senior_rate_schedule_engine: bool = False
+    senior_debt_interest_config: SeniorDebtInterestConfig = field(default_factory=SeniorDebtInterestConfig)
 
     # Equity IRR method
     equity_irr_method: EquityIRRMethod = EquityIRRMethod.EQUITY_ONLY
@@ -86,7 +90,12 @@ class WaterfallRunConfig:
 
     def cache_key(self) -> str:
         """Generate cache key from config parameters."""
-        return f"wf_{self.rate_per_period:.6f}_{self.tenor_periods}_{self.target_dscr:.3f}_{self.shl_amount_keur:.0f}"
+        return (
+            f"wf_{self.rate_per_period:.6f}_{self.tenor_periods}_"
+            f"{self.target_dscr:.3f}_{self.shl_amount_keur:.0f}_"
+            f"r99_{int(self.use_tuho_r99_input_engine)}_"
+            f"sr_{int(self.use_senior_rate_schedule_engine)}"
+        )
 
     @classmethod
     def from_inputs(cls, inputs: "ProjectInputs", engine: "PeriodEngine") -> "WaterfallRunConfig":
@@ -110,6 +119,25 @@ class WaterfallRunConfig:
             rate_per_period = (fin.base_rate + fin.margin_bps / 10000.0) / 2
         else:
             rate_per_period = cls.rate_per_period  # use default
+
+        use_senior_rate_schedule_engine = getattr(inputs.info, "use_senior_rate_schedule_engine", False)
+        senior_debt_interest_config = getattr(
+            fin,
+            "senior_debt_interest_config",
+            SeniorDebtInterestConfig(),
+        )
+        rate_schedule = None
+        if use_senior_rate_schedule_engine:
+            if not senior_debt_interest_config.enabled:
+                raise ValueError(
+                    "use_senior_rate_schedule_engine=True requires enabled "
+                    "senior_debt_interest_config"
+                )
+            rate_schedule = build_senior_period_rate_schedule(
+                senior_debt_interest_config,
+                op_periods,
+                tenor_periods,
+            )
 
         # Map SHL repayment method — FinancingParams may use str or enum
         shl_repayment = fin.shl_repayment_method
@@ -147,7 +175,11 @@ class WaterfallRunConfig:
             debt_sizing_method=ds_method,
             fixed_debt_keur=fin.fixed_debt_keur,
             dscr_schedule=fin.dscr_schedule,
+            rate_schedule=rate_schedule,
+            use_senior_rate_schedule_engine=use_senior_rate_schedule_engine,
+            senior_debt_interest_config=senior_debt_interest_config,
             use_senior_sweep_cash_cap_for_shl=getattr(fin, "use_senior_sweep_cash_cap_for_shl", False),
+            use_tuho_r99_input_engine=getattr(fin, "use_tuho_r99_input_engine", False),
         )
 
 
@@ -224,6 +256,7 @@ class WaterfallRunner:
             advanced_capex_line_items=config.advanced_capex_line_items,
             advanced_capex_depreciation_schedule=config.advanced_capex_depreciation_schedule,
             use_senior_sweep_cash_cap_for_shl=config.use_senior_sweep_cash_cap_for_shl,
+            use_tuho_r99_input_engine=config.use_tuho_r99_input_engine,
         )
 
     def run_with_defaults(self) -> object:
