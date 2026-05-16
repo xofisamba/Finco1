@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Optional, TYPE_CHECKING
 
 from domain.senior_rate_schedule import SeniorDebtInterestConfig
+from domain.senior_sculpting import SeniorSculptingConfig
 
 if TYPE_CHECKING:
     from domain.revenue.bess import BessParams
@@ -89,6 +90,7 @@ class ProjectInfo:
     use_opex_line_item_engine: bool = False
     use_construction_schedule_engine: bool = False
     use_senior_rate_schedule_engine: bool = False
+    use_senior_sculpting_basis_engine: bool = False
 
 
 @dataclass(frozen=True)
@@ -356,6 +358,7 @@ class FinancingParams:
     fixed_debt_keur: float | None = None
     dscr_schedule: list[float] | None = None
     senior_debt_interest_config: SeniorDebtInterestConfig = field(default_factory=SeniorDebtInterestConfig)
+    senior_sculpting_config: SeniorSculptingConfig = field(default_factory=SeniorSculptingConfig)
 
     shl_repayment_method: str = "bullet"
     shl_pik_switch_period: int = 0

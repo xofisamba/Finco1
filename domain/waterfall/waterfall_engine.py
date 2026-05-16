@@ -32,6 +32,10 @@ from domain.returns.sponsor_cashflows import build_sponsor_cashflows
 from domain.period_engine import hash_engine_for_cache
 from domain.tax.engine import atad_adjustment
 from domain.distribution_account import compute_tuho_r99_input_period
+from domain.senior_sculpting import (
+    SeniorSculptingMode,
+    validate_explicit_debt_service_schedule,
+)
 from domain.waterfall.shl_engine import compute_shl_period_v3
 from domain.waterfall.tax_engine import compute_period_tax, TaxPeriodResult
 from utils.logging_config import get_logger
@@ -254,6 +258,7 @@ def run_waterfall(
     fixed_debt_keur: float | None = None,  # Override sculpted debt (for P90 sizing scenarios)
     fixed_ds_keur: float | None = None,  # Fixed debt service per period (kEUR)
     rate_schedule: list[float] | None = None,  # Per-period rate schedule (Euribor curve). If None, uses flat rate_per_period.
+    senior_sculpting_config: object | None = None,
     # Fiscal reintegration components (IDC + bank fees + commitment fees during construction)
     idc_keur: float = 0.0,
     bank_fees_keur: float = 0.0,
@@ -457,6 +462,51 @@ def run_waterfall(
             for t in range(tenor_periods)
         ]
 
+    explicit_senior_ds_schedule_active = False
+    if senior_sculpting_config is not None and getattr(senior_sculpting_config, "enabled", False):
+        mode = senior_sculpting_config.mode
+        if mode == SeniorSculptingMode.LEGACY:
+            pass
+        elif mode == SeniorSculptingMode.EXPLICIT_DEBT_SERVICE_SCHEDULE:
+            explicit_senior_ds_schedule_active = True
+            explicit_ds = validate_explicit_debt_service_schedule(
+                senior_sculpting_config,
+                tenor_periods,
+            )
+            debt = balance_schedule[0] if balance_schedule else sculpt_result.debt_keur
+            balance_schedule_explicit = []
+            interest_schedule = []
+            principal_schedule = []
+            payments = []
+            dscr_sched_explicit = []
+            balance = debt
+            for t in range(tenor_periods):
+                balance_schedule_explicit.append(balance)
+                interest = balance * rate_schedule[t]
+                principal = min(balance, max(0.0, explicit_ds[t] - interest))
+                payment = interest + principal
+                dscr = cfads_for_sculpt[t] / payment if payment > 0 else float("inf")
+                interest_schedule.append(interest)
+                principal_schedule.append(principal)
+                payments.append(payment)
+                dscr_sched_explicit.append(dscr)
+                balance = max(0.0, balance - principal)
+            balance_schedule = balance_schedule_explicit + [balance]
+            valid_dsrs = [d for d in dscr_sched_explicit if not (d == float("inf"))]
+            sculpt_result = replace(
+                sculpt_result,
+                debt_keur=debt,
+                balance_schedule=balance_schedule,
+                interest_schedule=interest_schedule,
+                principal_schedule=principal_schedule,
+                payment_schedule=payments,
+                dscr_schedule=dscr_sched_explicit,
+                avg_dscr=sum(valid_dsrs) / len(valid_dsrs) if valid_dsrs else 0.0,
+                min_dscr=min(valid_dsrs) if valid_dsrs else 0.0,
+            )
+        else:
+            raise ValueError(f"Senior sculpting mode is not implemented: {mode.value}")
+
     # Step 2: Run waterfall for each period
     waterfall_periods = []
 
@@ -572,7 +622,7 @@ def run_waterfall(
 
             # Fixed DS approach: fixed payment = interest + principal
             # Principal = fixed_ds - interest (but cap at remaining balance for balloon)
-            if period_in_tenor == tenor_periods - 1:
+            if period_in_tenor == tenor_periods - 1 and not explicit_senior_ds_schedule_active:
                 # Last period: balloon - pay off entire remaining balance
                 sp = opening_balance
                 senior_ds = si + sp
