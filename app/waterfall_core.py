@@ -231,13 +231,31 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
     """
 
     from domain.distribution_account import compute_tuho_r99_input_period
-    from domain.waterfall.tax_engine import compute_period_tax
+    from domain.tax.loss_carryforward import (
+        LossCarryforwardConfig,
+        compute_loss_carryforward_period,
+    )
+    from domain.tax.loss_carryforward import LossCarryforwardPeriodInput
 
     interest_limitation_by_period = _tuho_interest_limitation_by_period()
 
     previous_r100 = 0.0
     previous_tax = 0.0
-    prior_tax_loss = result.periods[0].tax_loss_opening_audit_keur if result.periods else 0.0
+    loss_buckets = ()
+    if result.periods and result.periods[0].tax_loss_opening_audit_keur > 0:
+        from domain.tax.loss_carryforward import LossCarryforwardBucket
+
+        loss_config = LossCarryforwardConfig()
+        loss_buckets = (
+            LossCarryforwardBucket(
+                amount_keur=result.periods[0].tax_loss_opening_audit_keur,
+                periods_remaining=loss_config.max_carryforward_periods,
+                source_period_index=None,
+            ),
+        )
+    else:
+        loss_config = LossCarryforwardConfig()
+
     for operating_index, period in enumerate(result.periods):
         interest_limitation = interest_limitation_by_period.get(operating_index)
         fiscal_reintegration = (
@@ -246,33 +264,37 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
             else 0.0
         )
 
-        tax_result = compute_period_tax(
+        taxable_before_losses = _tax_bridge_taxable_income_before_losses(
             ebitda_keur=period.ebitda_keur,
             depreciation_keur=period.depreciation_keur,
             senior_interest_keur=period.interest_senior_keur,
             shl_interest_keur=period.interest_shl_keur,
-            loss_carryforward_keur=prior_tax_loss,
-            tax_rate=tax_rate,
             fiscal_reintegration_keur=fiscal_reintegration,
         )
-        prior_tax_loss = tax_result.loss_carryforward_remaining_keur
+        loss_result = compute_loss_carryforward_period(
+            LossCarryforwardPeriodInput(
+                period_index=operating_index,
+                taxable_income_before_losses_keur=taxable_before_losses,
+                opening_buckets=loss_buckets,
+            ),
+            loss_config,
+        )
+        loss_buckets = loss_result.closing_buckets
+        tax_keur = loss_result.taxable_profit_after_losses_keur * tax_rate
 
         period.fiscal_reintegration_audit_keur = fiscal_reintegration
-        period.taxable_income_before_losses_audit_keur = (
-            tax_result.taxable_income_before_losses_keur
+        period.taxable_income_before_losses_audit_keur = taxable_before_losses
+        period.tax_loss_opening_audit_keur = loss_result.losses_n_1_keur
+        period.tax_loss_used_audit_keur = loss_result.allocated_losses_keur
+        period.tax_loss_closing_audit_keur = loss_result.losses_n_keur
+        period.taxable_profit_after_losses_audit_keur = (
+            loss_result.taxable_profit_after_losses_keur
         )
-        period.tax_loss_opening_audit_keur = (
-            tax_result.loss_carryforward_remaining_keur
-            + tax_result.loss_carryforward_applied_keur
-        )
-        period.tax_loss_used_audit_keur = tax_result.loss_carryforward_applied_keur
-        period.tax_loss_closing_audit_keur = tax_result.loss_carryforward_remaining_keur
-        period.taxable_profit_after_losses_audit_keur = tax_result.taxable_income_keur
-        period.taxable_profit_keur = tax_result.taxable_income_keur
-        period.tax_keur = tax_result.tax_keur
-        period.cit_accrual_audit_keur = tax_result.tax_keur
+        period.taxable_profit_keur = loss_result.taxable_profit_after_losses_keur
+        period.tax_keur = tax_keur
+        period.cit_accrual_audit_keur = tax_keur
         period.r67_excel_style_cash_tax_diagnostic_keur = (
-            -(previous_tax + tax_result.tax_keur) if period.period_in_year == 2 else 0.0
+            -(previous_tax + tax_keur) if period.period_in_year == 2 else 0.0
         )
         period.cash_tax_excel_style_h2_diagnostic_keur = (
             period.r67_excel_style_cash_tax_diagnostic_keur
@@ -318,9 +340,32 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
         period.r102_fcf_for_shl_keur = r99_audit.r102_fcf_for_shl_keur
         period.fcf_for_shl_keur = r99_audit.fcf_for_shl_keur
         previous_r100 = r99_audit.r100_carryforward_keur
-        previous_tax = tax_result.tax_keur
+        previous_tax = tax_keur
 
     result.total_tax_keur = sum(period.tax_keur for period in result.periods)
+
+
+def _tax_bridge_taxable_income_before_losses(
+    *,
+    ebitda_keur: float,
+    depreciation_keur: float,
+    senior_interest_keur: float,
+    shl_interest_keur: float,
+    fiscal_reintegration_keur: float,
+) -> float:
+    """Return signed taxable income before losses using legacy ATAD inputs."""
+
+    total_interest = senior_interest_keur + shl_interest_keur
+    deductible_interest_limit = max(ebitda_keur * 0.30, 3000.0)
+    disallowed_interest = max(0.0, total_interest - deductible_interest_limit)
+    deductible_interest = total_interest - disallowed_interest
+    return (
+        ebitda_keur
+        - depreciation_keur
+        - deductible_interest
+        + disallowed_interest
+        + fiscal_reintegration_keur
+    )
 
 
 def _tuho_interest_limitation_by_period():
