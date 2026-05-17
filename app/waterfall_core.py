@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
     from domain.period_engine import PeriodEngine
+    from domain.waterfall.waterfall_engine import WaterfallResult
 
 
 def run_waterfall_v3_core(
@@ -209,24 +210,74 @@ def run_waterfall_v3_core(
         use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
     )
     if use_tax_bridge_engine:
-        _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods, lockup_dscr)
+        _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods, lockup_dscr, tax_rate)
     if construction_diagnostic is not None:
         result.construction_schedule_diagnostic = construction_diagnostic
     return result
 
 
-def _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods: int, lockup_dscr: float) -> None:
-    """Promote the audit H2 annual cash-tax pairing to runtime cash tax.
+def _apply_tuho_tax_bridge_runtime_cash_tax(
+    result: "WaterfallResult",
+    tenor_periods: int,
+    lockup_dscr: float,
+    tax_rate: float,
+) -> None:
+    """Promote the TUHO tax bridge to runtime tax fields behind the flag.
 
-    This is intentionally narrow: it updates the tax cash fields and C1d
-    R69/R84/R99/R102 audit bridge, but it does not accept R99/R102 as a runtime
+    This is intentionally narrow: it consumes the fixture-backed R34 fiscal
+    reintegration schedule, updates accrued/cash tax fields, and refreshes the
+    C1d R69/R84/R99/R102 audit bridge. It does not accept R99/R102 as a runtime
     source and does not enable SHL FCF waterfall.
     """
 
     from domain.distribution_account import compute_tuho_r99_input_period
+    from domain.waterfall.tax_engine import compute_period_tax
+
+    interest_limitation_by_period = _tuho_interest_limitation_by_period()
 
     previous_r100 = 0.0
-    for period in result.periods:
+    previous_tax = 0.0
+    prior_tax_loss = result.periods[0].tax_loss_opening_audit_keur if result.periods else 0.0
+    for operating_index, period in enumerate(result.periods):
+        interest_limitation = interest_limitation_by_period.get(operating_index)
+        fiscal_reintegration = (
+            interest_limitation.fiscal_reintegration_keur
+            if interest_limitation is not None
+            else 0.0
+        )
+
+        tax_result = compute_period_tax(
+            ebitda_keur=period.ebitda_keur,
+            depreciation_keur=period.depreciation_keur,
+            senior_interest_keur=period.interest_senior_keur,
+            shl_interest_keur=period.interest_shl_keur,
+            loss_carryforward_keur=prior_tax_loss,
+            tax_rate=tax_rate,
+            fiscal_reintegration_keur=fiscal_reintegration,
+        )
+        prior_tax_loss = tax_result.loss_carryforward_remaining_keur
+
+        period.fiscal_reintegration_audit_keur = fiscal_reintegration
+        period.taxable_income_before_losses_audit_keur = (
+            tax_result.taxable_income_before_losses_keur
+        )
+        period.tax_loss_opening_audit_keur = (
+            tax_result.loss_carryforward_remaining_keur
+            + tax_result.loss_carryforward_applied_keur
+        )
+        period.tax_loss_used_audit_keur = tax_result.loss_carryforward_applied_keur
+        period.tax_loss_closing_audit_keur = tax_result.loss_carryforward_remaining_keur
+        period.taxable_profit_after_losses_audit_keur = tax_result.taxable_income_keur
+        period.taxable_profit_keur = tax_result.taxable_income_keur
+        period.tax_keur = tax_result.tax_keur
+        period.cit_accrual_audit_keur = tax_result.tax_keur
+        period.r67_excel_style_cash_tax_diagnostic_keur = (
+            -(previous_tax + tax_result.tax_keur) if period.period_in_year == 2 else 0.0
+        )
+        period.cash_tax_excel_style_h2_diagnostic_keur = (
+            period.r67_excel_style_cash_tax_diagnostic_keur
+        )
+
         tax_cash = (
             -period.cash_tax_excel_style_h2_diagnostic_keur
             if period.period_in_year == 2
@@ -267,6 +318,49 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods: int, lockup_d
         period.r102_fcf_for_shl_keur = r99_audit.r102_fcf_for_shl_keur
         period.fcf_for_shl_keur = r99_audit.fcf_for_shl_keur
         previous_r100 = r99_audit.r100_carryforward_keur
+        previous_tax = tax_result.tax_keur
+
+    result.total_tax_keur = sum(period.tax_keur for period in result.periods)
+
+
+def _tuho_interest_limitation_by_period():
+    """Build TUHO R34 fiscal reintegration results from the Excel extraction."""
+
+    import json
+    from pathlib import Path
+
+    from domain.tax.interest_limitation import (
+        InterestLimitationConfig,
+        InterestLimitationPeriodInput,
+        InterestLimitationSignConvention,
+        compute_interest_limitation_period,
+    )
+
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "tests"
+        / "fixtures"
+        / "interest_limitation"
+        / "tuho_interest_limitation_fixture.json"
+    )
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    config = InterestLimitationConfig(
+        sign_convention=InterestLimitationSignConvention.SUBTRACT_FROM_TI,
+        notes="TUHO tax bridge runtime flag consumes committed Excel R34 fixture.",
+    )
+    return {
+        int(row["period_index"]): compute_interest_limitation_period(
+            InterestLimitationPeriodInput(
+                period_index=int(row["period_index"]),
+                gross_shl_interest_keur=float(row["gross_shl_interest_r27"]),
+                ebitda_keur=float(row["ebitda"]),
+                thin_cap_active=bool(row["thin_cap_gate_r45"]),
+                ratio_adjustment_keur=float(row["r59_ratio_adjustment"]),
+            ),
+            config,
+        )
+        for row in fixture["periods"]
+    }
 
 
 __all__ = ["run_waterfall_v3_core"]
