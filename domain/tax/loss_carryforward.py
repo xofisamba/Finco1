@@ -19,6 +19,7 @@ class LossCarryforwardConfig:
     expiry_method: str = "fifo_per_vintage"
     country_template: str = "generic"
     loss_usage_order: str = "fifo"
+    expire_before_use: bool = False
 
     def __init__(
         self,
@@ -28,6 +29,7 @@ class LossCarryforwardConfig:
         expiry_method: str = "fifo_per_vintage",
         country_template: str = "generic",
         loss_usage_order: str = "fifo",
+        expire_before_use: bool = False,
         max_carryforward_years: int | None = None,
     ) -> None:
         if max_carryforward_years is not None:
@@ -41,6 +43,7 @@ class LossCarryforwardConfig:
         object.__setattr__(self, "expiry_method", expiry_method)
         object.__setattr__(self, "country_template", country_template)
         object.__setattr__(self, "loss_usage_order", loss_usage_order)
+        object.__setattr__(self, "expire_before_use", expire_before_use)
         self.__post_init__()
 
     @property
@@ -89,23 +92,60 @@ class LossCarryforwardConfig:
             periods_per_year=periods_per_year,
             explicit_override_periods=override_periods,
             country_template=country_template,
+            expire_before_use=True,
         )
 
 
 @dataclass(frozen=True)
 class LossCarryforwardBucket:
-    """One remaining loss bucket, tracked by periods until expiry."""
+    """One loss vintage, tracked from generation through expiry and usage."""
 
     amount_keur: float
     periods_remaining: int
     source_period_index: int | None = None
     source_label: str = ""
+    generated_loss_keur: float | None = None
+    remaining_loss_keur: float | None = None
+    expiry_period_index: int | None = None
 
     def __post_init__(self) -> None:
         if self.amount_keur < 0:
             raise ValueError("Loss bucket amount must be non-negative")
         if self.periods_remaining < 0:
             raise ValueError("Loss bucket periods_remaining must be non-negative")
+        if self.generated_loss_keur is not None and self.generated_loss_keur < 0:
+            raise ValueError("Loss bucket generated_loss_keur must be non-negative")
+        if self.remaining_loss_keur is not None and self.remaining_loss_keur < 0:
+            raise ValueError("Loss bucket remaining_loss_keur must be non-negative")
+        if self.expiry_period_index is not None and self.expiry_period_index < 0:
+            raise ValueError("Loss bucket expiry_period_index must be non-negative")
+        if self.generated_loss_keur is None:
+            object.__setattr__(self, "generated_loss_keur", self.amount_keur)
+        if self.remaining_loss_keur is None:
+            object.__setattr__(self, "remaining_loss_keur", self.amount_keur)
+        if abs(self.amount_keur - float(self.remaining_loss_keur)) > 1e-9:
+            raise ValueError("Loss bucket amount_keur must equal remaining_loss_keur")
+
+
+def _bucket_is_expired(
+    bucket: LossCarryforwardBucket,
+    period_index: int,
+    config: LossCarryforwardConfig,
+) -> bool:
+    if not config.expire_before_use:
+        return False
+    if bucket.expiry_period_index is not None:
+        return period_index >= bucket.expiry_period_index
+    return bucket.periods_remaining <= 1
+
+
+def _periods_remaining_after_period(
+    bucket: LossCarryforwardBucket,
+    period_index: int,
+) -> int:
+    if bucket.expiry_period_index is not None:
+        return max(bucket.expiry_period_index - period_index, 0)
+    return max(bucket.periods_remaining - 1, 0)
 
 
 @dataclass(frozen=True)
@@ -160,11 +200,22 @@ def compute_loss_carryforward_period(
 ) -> LossCarryforwardPeriodResult:
     """Compute one FIFO rolling loss carry-forward period."""
 
-    opening_buckets = tuple(
+    raw_opening_buckets = tuple(
         bucket for bucket in period_input.opening_buckets if bucket.amount_keur > 0
+    )
+    expired_at_open = tuple(
+        bucket
+        for bucket in raw_opening_buckets
+        if _bucket_is_expired(bucket, period_input.period_index, config)
+    )
+    opening_buckets = tuple(
+        bucket
+        for bucket in raw_opening_buckets
+        if not _bucket_is_expired(bucket, period_input.period_index, config)
     )
     opening_loss = sum(bucket.amount_keur for bucket in opening_buckets)
     taxable_before = period_input.taxable_income_before_losses_keur
+    expired_losses = sum(bucket.amount_keur for bucket in expired_at_open)
 
     losses_used = 0.0
     taxable_profit = 0.0
@@ -184,6 +235,9 @@ def compute_loss_carryforward_period(
                         periods_remaining=bucket.periods_remaining,
                         source_period_index=bucket.source_period_index,
                         source_label=bucket.source_label,
+                        generated_loss_keur=bucket.generated_loss_keur,
+                        remaining_loss_keur=residual,
+                        expiry_period_index=bucket.expiry_period_index,
                     )
                 )
         taxable_profit = max(0.0, remaining_income)
@@ -193,19 +247,22 @@ def compute_loss_carryforward_period(
         taxable_profit = 0.0
         generated_loss = -taxable_before
 
-    expired_losses = 0.0
     aged_buckets: list[LossCarryforwardBucket] = []
     for bucket in retained_buckets:
-        remaining = bucket.periods_remaining - 1
-        if remaining <= 0:
+        remaining = _periods_remaining_after_period(bucket, period_input.period_index)
+        if not config.expire_before_use and remaining <= 0:
             expired_losses += bucket.amount_keur
-        else:
+            continue
+        if remaining >= 0:
             aged_buckets.append(
                 LossCarryforwardBucket(
                     amount_keur=bucket.amount_keur,
                     periods_remaining=remaining,
                     source_period_index=bucket.source_period_index,
                     source_label=bucket.source_label,
+                    generated_loss_keur=bucket.generated_loss_keur,
+                    remaining_loss_keur=bucket.amount_keur,
+                    expiry_period_index=bucket.expiry_period_index,
                 )
             )
 
@@ -216,6 +273,9 @@ def compute_loss_carryforward_period(
                 periods_remaining=config.duration_periods,
                 source_period_index=period_input.period_index,
                 source_label=f"generated_period_{period_input.period_index}",
+                generated_loss_keur=generated_loss,
+                remaining_loss_keur=generated_loss,
+                expiry_period_index=period_input.period_index + config.duration_periods,
             )
         )
 
@@ -255,6 +315,9 @@ def compute_loss_carryforward_schedule(
                 periods_remaining=cfg.duration_periods,
                 source_period_index=None,
                 source_label="opening_loss",
+                generated_loss_keur=opening_loss_keur,
+                remaining_loss_keur=opening_loss_keur,
+                expiry_period_index=cfg.duration_periods,
             ),
         )
 
