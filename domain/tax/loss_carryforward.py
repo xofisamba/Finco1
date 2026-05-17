@@ -37,6 +37,7 @@ class LossCarryforwardBucket:
     amount_keur: float
     periods_remaining: int
     source_period_index: int | None = None
+    source_label: str = ""
 
     def __post_init__(self) -> None:
         if self.amount_keur < 0:
@@ -120,6 +121,7 @@ def compute_loss_carryforward_period(
                         amount_keur=residual,
                         periods_remaining=bucket.periods_remaining,
                         source_period_index=bucket.source_period_index,
+                        source_label=bucket.source_label,
                     )
                 )
         taxable_profit = max(0.0, remaining_income)
@@ -141,6 +143,7 @@ def compute_loss_carryforward_period(
                     amount_keur=bucket.amount_keur,
                     periods_remaining=remaining,
                     source_period_index=bucket.source_period_index,
+                    source_label=bucket.source_label,
                 )
             )
 
@@ -150,6 +153,7 @@ def compute_loss_carryforward_period(
                 amount_keur=generated_loss,
                 periods_remaining=config.max_carryforward_periods,
                 source_period_index=period_input.period_index,
+                source_label=f"generated_period_{period_input.period_index}",
             )
         )
 
@@ -188,6 +192,7 @@ def compute_loss_carryforward_schedule(
                 amount_keur=opening_loss_keur,
                 periods_remaining=cfg.max_carryforward_periods,
                 source_period_index=None,
+                source_label="opening_loss",
             ),
         )
 
