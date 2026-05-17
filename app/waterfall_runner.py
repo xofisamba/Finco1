@@ -54,6 +54,7 @@ class WaterfallRunConfig:
     use_senior_sweep_cash_cap_for_shl: bool = False
     use_tuho_r99_input_engine: bool = False
     use_shl_fcf_waterfall_engine: bool = False
+    use_tax_bridge_engine: bool = False
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 
@@ -102,7 +103,8 @@ class WaterfallRunConfig:
             f"r99_{int(self.use_tuho_r99_input_engine)}_"
             f"sr_{int(self.use_senior_rate_schedule_engine)}_"
             f"ss_{int(self.use_senior_sculpting_basis_engine)}_"
-            f"sfw_{int(self.use_shl_fcf_waterfall_engine)}"
+            f"sfw_{int(self.use_shl_fcf_waterfall_engine)}_"
+            f"taxb_{int(self.use_tax_bridge_engine)}"
         )
 
     @classmethod
@@ -183,6 +185,10 @@ class WaterfallRunConfig:
                     "shl_fcf_waterfall_cash_schedule_keur"
                 )
 
+        use_tax_bridge_engine = getattr(inputs.info, "use_tax_bridge_engine", False)
+        if use_tax_bridge_engine and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+            raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
+
         # Map equity_irr_method — FinancingParams stores as str, config expects enum
         from domain.inputs import EquityIRRMethod
         eq_irr = fin.equity_irr_method
@@ -221,6 +227,7 @@ class WaterfallRunConfig:
             use_senior_sweep_cash_cap_for_shl=getattr(fin, "use_senior_sweep_cash_cap_for_shl", False),
             use_tuho_r99_input_engine=getattr(fin, "use_tuho_r99_input_engine", False),
             use_shl_fcf_waterfall_engine=use_shl_fcf_waterfall_engine,
+            use_tax_bridge_engine=use_tax_bridge_engine,
             shl_fcf_waterfall_cash_schedule_keur=shl_fcf_cash_schedule,
             shl_fcf_waterfall_minimum_cash_retained_keur=getattr(
                 fin,
@@ -310,6 +317,7 @@ class WaterfallRunner:
             use_senior_sweep_cash_cap_for_shl=config.use_senior_sweep_cash_cap_for_shl,
             use_tuho_r99_input_engine=config.use_tuho_r99_input_engine,
             use_shl_fcf_waterfall_engine=config.use_shl_fcf_waterfall_engine,
+            use_tax_bridge_engine=config.use_tax_bridge_engine,
             shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
             shl_fcf_waterfall_minimum_cash_retained_keur=(
                 config.shl_fcf_waterfall_minimum_cash_retained_keur

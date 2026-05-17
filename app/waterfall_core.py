@@ -47,6 +47,7 @@ def run_waterfall_v3_core(
     # Phase 7F C1a: propagated for config identity only; not wired into runtime yet.
     use_tuho_r99_input_engine: bool = False,
     use_shl_fcf_waterfall_engine: bool = False,
+    use_tax_bridge_engine: bool = False,
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = (),
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
 ) -> dict:
@@ -78,6 +79,8 @@ def run_waterfall_v3_core(
     from domain.financing.depreciation_schedule import build_depreciation_schedule
 
     _ = use_tuho_r99_input_engine  # C1a intentionally leaves runtime behavior unchanged.
+    if use_tax_bridge_engine and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+        raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
     construction_diagnostic = None
     if getattr(inputs.info, "use_construction_schedule_engine", False):
         from domain.construction.runtime_adapter import build_runtime_construction_schedule
@@ -205,9 +208,65 @@ def run_waterfall_v3_core(
         dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, "dscr_schedule", None),
         use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
     )
+    if use_tax_bridge_engine:
+        _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods, lockup_dscr)
     if construction_diagnostic is not None:
         result.construction_schedule_diagnostic = construction_diagnostic
     return result
+
+
+def _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods: int, lockup_dscr: float) -> None:
+    """Promote the audit H2 annual cash-tax pairing to runtime cash tax.
+
+    This is intentionally narrow: it updates the tax cash fields and C1d
+    R69/R84/R99/R102 audit bridge, but it does not accept R99/R102 as a runtime
+    source and does not enable SHL FCF waterfall.
+    """
+
+    from domain.distribution_account import compute_tuho_r99_input_period
+
+    previous_r100 = 0.0
+    for period in result.periods:
+        tax_cash = (
+            -period.cash_tax_excel_style_h2_diagnostic_keur
+            if period.period_in_year == 2
+            else 0.0
+        )
+        period.corporate_tax_cash_keur = tax_cash
+        period.cash_tax_current_period_audit_keur = tax_cash
+        period.cf_after_tax_keur = period.ebitda_keur - tax_cash
+
+        dsra_release_or_funding = max(0.0, -period.dsra_contribution_keur) - max(
+            0.0, period.dsra_contribution_keur
+        )
+        r99_audit = compute_tuho_r99_input_period(
+            revenue_keur=period.revenue_keur,
+            opex_keur=period.opex_keur,
+            local_tax_keur=0.0,
+            cash_interest_on_reserves_keur=0.0,
+            corporate_tax_cash_keur=tax_cash,
+            senior_ds_keur=period.senior_ds_keur,
+            dsra_release_or_funding_keur=dsra_release_or_funding,
+            junior_ds_keur=0.0,
+            reserve_sweep_keur=0.0,
+            previous_r100_carryforward_keur=previous_r100,
+            year_index=period.year_index,
+            senior_tenor_years=tenor_periods // 2,
+            dscr=period.dscr,
+            lockup_dscr=lockup_dscr,
+            dsra_balance_keur=period.dsra_balance_keur,
+            dsra_target_keur=0.0,
+            jdsra_balance_keur=0.0,
+            jdsra_target_keur=0.0,
+        )
+        period.r69_fcf_banks_keur = r99_audit.r69_fcf_banks_keur
+        period.r84_fcf_junior_keur = r99_audit.r84_fcf_junior_keur
+        period.r98_distribution_account_keur = r99_audit.r98_distribution_account_keur
+        period.r99_fcf_for_distribution_keur = r99_audit.r99_fcf_for_distribution_keur
+        period.r100_carryforward_keur = r99_audit.r100_carryforward_keur
+        period.r102_fcf_for_shl_keur = r99_audit.r102_fcf_for_shl_keur
+        period.fcf_for_shl_keur = r99_audit.fcf_for_shl_keur
+        previous_r100 = r99_audit.r100_carryforward_keur
 
 
 __all__ = ["run_waterfall_v3_core"]
