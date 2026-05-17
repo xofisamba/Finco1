@@ -13,21 +13,83 @@ from typing import Sequence
 class LossCarryforwardConfig:
     """Configuration for a rolling loss carry-forward schedule."""
 
-    max_carryforward_years: int = 5
+    duration_years: int = 5
     periods_per_year: int = 2
+    explicit_override_periods: int | None = None
+    expiry_method: str = "fifo_per_vintage"
+    country_template: str = "generic"
     loss_usage_order: str = "fifo"
+
+    def __init__(
+        self,
+        duration_years: int = 5,
+        periods_per_year: int = 2,
+        explicit_override_periods: int | None = None,
+        expiry_method: str = "fifo_per_vintage",
+        country_template: str = "generic",
+        loss_usage_order: str = "fifo",
+        max_carryforward_years: int | None = None,
+    ) -> None:
+        if max_carryforward_years is not None:
+            if max_carryforward_years <= 0:
+                raise ValueError("max_carryforward_years must be positive")
+            duration_years = max_carryforward_years
+
+        object.__setattr__(self, "duration_years", duration_years)
+        object.__setattr__(self, "periods_per_year", periods_per_year)
+        object.__setattr__(self, "explicit_override_periods", explicit_override_periods)
+        object.__setattr__(self, "expiry_method", expiry_method)
+        object.__setattr__(self, "country_template", country_template)
+        object.__setattr__(self, "loss_usage_order", loss_usage_order)
+        self.__post_init__()
+
+    @property
+    def duration_periods(self) -> int:
+        if self.explicit_override_periods is not None:
+            return self.explicit_override_periods
+        return self.duration_years * self.periods_per_year
+
+    @property
+    def max_carryforward_years(self) -> int:
+        """Backward-compatible alias for the original config field."""
+
+        return self.duration_years
 
     @property
     def max_carryforward_periods(self) -> int:
-        return self.max_carryforward_years * self.periods_per_year
+        """Backward-compatible alias for duration_periods."""
+
+        return self.duration_periods
 
     def __post_init__(self) -> None:
-        if self.max_carryforward_years <= 0:
-            raise ValueError("max_carryforward_years must be positive")
+        if self.duration_years <= 0:
+            raise ValueError("duration_years must be positive")
         if self.periods_per_year <= 0:
             raise ValueError("periods_per_year must be positive")
+        if self.explicit_override_periods is not None and self.explicit_override_periods <= 0:
+            raise ValueError("explicit_override_periods must be positive")
+        if self.expiry_method != "fifo_per_vintage":
+            raise ValueError("Only fifo_per_vintage expiry is implemented")
         if self.loss_usage_order != "fifo":
             raise ValueError("Only FIFO loss usage is implemented")
+
+    @classmethod
+    def excel_compatibility(
+        cls,
+        *,
+        override_periods: int,
+        duration_years: int = 5,
+        periods_per_year: int = 2,
+        country_template: str = "excel_compatibility",
+    ) -> "LossCarryforwardConfig":
+        """Build an explicit workbook-parity config for non-law windows."""
+
+        return cls(
+            duration_years=duration_years,
+            periods_per_year=periods_per_year,
+            explicit_override_periods=override_periods,
+            country_template=country_template,
+        )
 
 
 @dataclass(frozen=True)
@@ -151,7 +213,7 @@ def compute_loss_carryforward_period(
         aged_buckets.append(
             LossCarryforwardBucket(
                 amount_keur=generated_loss,
-                periods_remaining=config.max_carryforward_periods,
+                periods_remaining=config.duration_periods,
                 source_period_index=period_input.period_index,
                 source_label=f"generated_period_{period_input.period_index}",
             )
@@ -190,7 +252,7 @@ def compute_loss_carryforward_schedule(
         buckets = (
             LossCarryforwardBucket(
                 amount_keur=opening_loss_keur,
-                periods_remaining=cfg.max_carryforward_periods,
+                periods_remaining=cfg.duration_periods,
                 source_period_index=None,
                 source_label="opening_loss",
             ),
