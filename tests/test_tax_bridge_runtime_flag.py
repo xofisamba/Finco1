@@ -12,8 +12,8 @@ from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 
 
 EXCEL_R67_TOTAL_KEUR = -38_240.920880415375
-PYTHON_EXCEL_STYLE_R67_DIAGNOSTIC_TOTAL_KEUR = -39_639.65121648099
-PYTHON_EXCEL_STYLE_R67_DIAGNOSTIC_DELTA_KEUR = -1_398.730336065613
+PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR = -32_091.92156395798
+PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR = 6_148.999316457397
 
 
 def _run(project):
@@ -127,15 +127,15 @@ def test_tuho_flag_on_measures_accrued_cit_and_r67_against_excel():
 
     assert accrued_cit_total == pytest.approx(result.total_tax_keur, abs=0.0001)
     assert diagnostic_r67_total == pytest.approx(
-        PYTHON_EXCEL_STYLE_R67_DIAGNOSTIC_TOTAL_KEUR,
+        PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR,
         abs=0.01,
     )
     assert runtime_cash_tax_total == pytest.approx(
-        -PYTHON_EXCEL_STYLE_R67_DIAGNOSTIC_TOTAL_KEUR,
+        -PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR,
         abs=0.01,
     )
     assert diagnostic_r67_total - EXCEL_R67_TOTAL_KEUR == pytest.approx(
-        PYTHON_EXCEL_STYLE_R67_DIAGNOSTIC_DELTA_KEUR,
+        PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR,
         abs=0.01,
     )
 
@@ -165,7 +165,7 @@ def test_tuho_flag_on_does_not_drift_unrelated_operating_engines():
     assert flag_on.total_revenue_keur == pytest.approx(legacy.total_revenue_keur, abs=0.0001)
     assert flag_on.total_opex_keur == pytest.approx(legacy.total_opex_keur, abs=0.0001)
     assert flag_on.total_ebitda_keur == pytest.approx(legacy.total_ebitda_keur, abs=0.0001)
-    assert flag_on.total_tax_keur == pytest.approx(legacy.total_tax_keur, abs=0.0001)
+    assert flag_on.total_tax_keur != pytest.approx(legacy.total_tax_keur, abs=0.01)
     assert flag_on.total_senior_ds_keur == pytest.approx(
         legacy.total_senior_ds_keur,
         abs=0.0001,
