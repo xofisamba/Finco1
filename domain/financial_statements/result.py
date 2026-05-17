@@ -42,6 +42,83 @@ class TaxBridgeResult:
 
 
 @dataclass(frozen=True)
+class BalanceSheetPeriodResult:
+    period_index: int
+    date: date
+    gross_fixed_assets_keur: float
+    accumulated_depreciation_keur: float
+    net_fixed_assets_keur: float
+    dsra_balance_keur: float
+    jdsra_balance_keur: float
+    distribution_account_keur: float
+    cash_keur: float
+    total_assets_keur: float
+    share_capital_keur: float
+    legal_reserve_keur: float
+    retained_earnings_keur: float
+    shl_balance_keur: float
+    junior_balance_keur: float
+    senior_balance_keur: float
+    refinancing_keur: float
+    short_term_loan_keur: float
+    total_liabilities_equity_keur: float
+    balance_check_keur: float
+    cash_is_residual: bool = True
+
+
+@dataclass(frozen=True)
+class BalanceSheetResult:
+    periods: tuple[BalanceSheetPeriodResult, ...]
+
+    @property
+    def max_abs_balance_check_keur(self) -> float:
+        return max((abs(period.balance_check_keur) for period in self.periods), default=0.0)
+
+
+@dataclass(frozen=True)
+class PFCashWaterfallPeriodResult:
+    period_index: int
+    date: date
+    revenue_cash_keur: float
+    opex_cash_keur: float
+    ebitda_cash_keur: float
+    senior_cash_interest_keur: float
+    cash_tax_keur: float
+    fcf_banks_keur: float
+    senior_total_ds_keur: float
+    dsra_funding_keur: float
+    dsra_release_keur: float
+    fcf_junior_keur: float
+    junior_ds_keur: float
+    other_cash_keur: float
+    distribution_account_pre_lockup_keur: float
+    lockup_applied: bool
+    lockup_reason: str | None
+    fcf_for_distribution_keur: float
+    distribution_account_carryforward_keur: float
+    fcf_for_shl_keur: float
+    shl_cash_interest_keur: float
+    shl_pik_keur: float
+    shl_principal_keur: float
+    net_shl_cash_outflow_keur: float
+    fcf_for_dividends_keur: float
+    net_dividends_keur: float
+    r99_runtime_source_accepted: bool = False
+
+
+@dataclass(frozen=True)
+class PFCashWaterfallResult:
+    periods: tuple[PFCashWaterfallPeriodResult, ...]
+
+    @property
+    def r99_r102_identity_holds(self) -> bool:
+        return all(
+            abs(period.fcf_for_distribution_keur - period.fcf_for_shl_keur) <= 0.0001
+            for period in self.periods
+        )
+
+
+@dataclass(frozen=True)
 class PnLPeriodResult:
     period: int
     date: date
@@ -130,3 +207,5 @@ class FinancialStatementsResult:
     config: FinancialStatementsConfig
     pnl: PnLStatementResult
     tax_bridge: TaxBridgeResult
+    balance_sheet: BalanceSheetResult
+    pf_cash_waterfall: PFCashWaterfallResult
