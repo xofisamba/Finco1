@@ -241,20 +241,10 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
 
     previous_r100 = 0.0
     previous_tax = 0.0
-    loss_buckets = ()
-    if result.periods and result.periods[0].tax_loss_opening_audit_keur > 0:
-        from domain.tax.loss_carryforward import LossCarryforwardBucket
-
-        loss_config = LossCarryforwardConfig()
-        loss_buckets = (
-            LossCarryforwardBucket(
-                amount_keur=result.periods[0].tax_loss_opening_audit_keur,
-                periods_remaining=loss_config.max_carryforward_periods,
-                source_period_index=None,
-            ),
-        )
-    else:
-        loss_config = LossCarryforwardConfig()
+    loss_config = LossCarryforwardConfig()
+    loss_buckets = _tuho_tax_bridge_opening_loss_buckets(
+        result.periods[0].tax_loss_opening_audit_keur if result.periods else 0.0,
+    )
 
     for operating_index, period in enumerate(result.periods):
         interest_limitation = interest_limitation_by_period.get(operating_index)
@@ -365,6 +355,33 @@ def _tax_bridge_taxable_income_before_losses(
         - deductible_interest
         + disallowed_interest
         + fiscal_reintegration_keur
+    )
+
+
+def _tuho_tax_bridge_opening_loss_buckets(opening_loss_keur: float):
+    """Return TUHO flag-on opening loss buckets.
+
+    The current Excel extraction does not yet expose construction-period loss
+    vintages. This explicit bucket preserves the known 25,000 kEUR opening loss
+    amount while modeling it as a near-expiry construction-period bucket instead
+    of resetting its age at COD.
+    """
+
+    if opening_loss_keur <= 0:
+        return ()
+
+    from domain.tax.loss_carryforward import LossCarryforwardBucket
+
+    return (
+        LossCarryforwardBucket(
+            amount_keur=opening_loss_keur,
+            periods_remaining=1,
+            source_period_index=None,
+            source_label=(
+                "TUHO explicit construction-period opening loss bucket; "
+                "near-expiry assumption pending full pre-COD Excel loss extract"
+            ),
+        ),
     )
 
 
