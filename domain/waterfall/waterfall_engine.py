@@ -104,6 +104,13 @@ class WaterfallPeriod:
             "basis": "current Python H2-only cash-tax timing: tax_keur in H2, 0 in H1",
         },
     )
+    r67_excel_style_cash_tax_diagnostic_keur: float = field(
+        default=0.0,
+        metadata={
+            "sign": "negative cash tax outflow, matching Excel CF R67 convention",
+            "basis": "audit-only annual H2 pairing: -(current tax_keur + previous period tax_keur) in H2, 0 in H1",
+        },
+    )
     r69_fcf_banks_keur: float = 0.0
     r84_fcf_junior_keur: float = 0.0
     r98_distribution_account_keur: float = 0.0
@@ -581,6 +588,7 @@ def run_waterfall(
     all_dsrs = []
     lockup_count = 0
     audit_previous_r100 = 0.0
+    previous_operating_tax_keur = 0.0
 
     for i, period in enumerate(periods):
         if not period.is_operation:
@@ -721,6 +729,9 @@ def run_waterfall(
         # Cash tax is paid in the second period of each fiscal year.
         is_tax_period = period.period_in_year == 2
         tax_this_period = tax if is_tax_period else 0.0
+        r67_excel_style_cash_tax_diagnostic = (
+            -(previous_operating_tax_keur + tax) if is_tax_period else 0.0
+        )
 
         # CF after tax
         cf_after_tax = ebitda - tax_this_period
@@ -985,6 +996,7 @@ def run_waterfall(
             cash_balance_keur=cash_balance,
             senior_balance_keur=max(0.0, remaining_senior_balance - sp),  # Closing balance after principal payment
             corporate_tax_cash_keur=tax_this_period,
+            r67_excel_style_cash_tax_diagnostic_keur=r67_excel_style_cash_tax_diagnostic,
             r69_fcf_banks_keur=r99_audit.r69_fcf_banks_keur,
             r84_fcf_junior_keur=r99_audit.r84_fcf_junior_keur,
             r98_distribution_account_keur=r99_audit.r98_distribution_account_keur,
@@ -995,6 +1007,7 @@ def run_waterfall(
         )
 
         waterfall_periods.append(wp)
+        previous_operating_tax_keur = tax
 
         # Track CFs for returns
         # Project IRR = unlevered (EBITDA - unlevered tax)
