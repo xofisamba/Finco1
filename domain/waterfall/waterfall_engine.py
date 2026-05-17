@@ -32,6 +32,7 @@ from domain.returns.sponsor_cashflows import build_sponsor_cashflows
 from domain.period_engine import hash_engine_for_cache
 from domain.tax.engine import atad_adjustment
 from domain.distribution_account import compute_tuho_r99_input_period
+from domain.shl_fcf_waterfall import compute_shl_fcf_waterfall_period
 from domain.senior_sculpting import (
     SeniorSculptingMode,
     validate_explicit_debt_service_schedule,
@@ -251,6 +252,9 @@ def run_waterfall(
     shl_repayment_method: str = "bullet",  # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
     shl_tenor_years: int = 0,  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
     shl_wht_rate: float = 0.0,  # Withholding tax rate on SHL interest
+    use_shl_fcf_waterfall_engine: bool = False,
+    shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = (),
+    shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
     discount_rate_project: float = 0.0641,
     discount_rate_equity: float = 0.0965,
     financial_close: 'date' = None,
@@ -311,6 +315,22 @@ def run_waterfall(
         - Hybrid project revenue aggregation (solar + wind + BESS)
         Currently: BESS status is "partial" — revenue shown but waterfall not fully instrumented
     """
+    if shl_repayment_method == "fcf_waterfall":
+        if not use_shl_fcf_waterfall_engine:
+            raise ValueError(
+                "shl_repayment_method='fcf_waterfall' requires "
+                "use_shl_fcf_waterfall_engine=True"
+            )
+        if len(shl_fcf_waterfall_cash_schedule_keur) < len(periods):
+            raise ValueError(
+                "shl_fcf_waterfall_cash_schedule_keur must cover all operating periods"
+            )
+    elif use_shl_fcf_waterfall_engine:
+        raise ValueError(
+            "use_shl_fcf_waterfall_engine=True requires "
+            "shl_repayment_method='fcf_waterfall'"
+        )
+
     # Step 1: Iterative sculpting to find debt amount
     # Use provided rate_schedule if available, otherwise use flat rate
     if rate_schedule is None:
@@ -757,7 +777,21 @@ def run_waterfall(
         if use_senior_sweep_cash_cap_for_shl and shl_repayment_method == "pik_then_sweep":
             pass  # DISABLED — awaiting PR B senior-sweep reorder
 
-        if is_shl_disbursement_period:
+        fcf_waterfall_result = None
+        if shl_repayment_method == "fcf_waterfall":
+            fcf_waterfall_result = compute_shl_fcf_waterfall_period(
+                opening_shl_balance_keur=shl_balance,
+                shl_rate=shl_rate,
+                day_fraction=0.5,
+                fcf_for_shl_keur=shl_fcf_waterfall_cash_schedule_keur[i],
+                withholding_tax_rate=shl_wht_rate,
+                minimum_cash_retained_keur=shl_fcf_waterfall_minimum_cash_retained_keur,
+            )
+            shi = fcf_waterfall_result.cash_interest_paid_keur
+            shp = fcf_waterfall_result.principal_paid_keur
+            shl_pik = fcf_waterfall_result.pik_keur
+            shl_balance = fcf_waterfall_result.closing_balance_keur
+        elif is_shl_disbursement_period:
             # Y1-H1: disbursement period - balance already includes IDC
             # No SHL interest, no PIK, no payments
             shi = 0.0; shp = 0.0; shl_pik = 0.0
@@ -816,7 +850,10 @@ def run_waterfall(
         sweep_dscr_threshold = 1.35
         remaining_senior_balance = balance_schedule[period_in_tenor] if period_in_tenor < len(balance_schedule) else 0
 
-        if shl_repayment_method == "pik_then_sweep":
+        if shl_repayment_method == "fcf_waterfall":
+            dist = fcf_waterfall_result.distribution_keur if fcf_waterfall_result else 0.0
+            sweep_amount = 0.0
+        elif shl_repayment_method == "pik_then_sweep":
     # 3-tier waterfall: senior → SHL → dividends
             if lockup:
                 dist = 0
@@ -865,7 +902,7 @@ def run_waterfall(
         cum_distribution += dist  # jednom, na kraju svih logika
 
         # DSRA release in last 2 periods - add to distribution
-        if i >= len(periods) - 2 and dsra_balance > 0:
+        if shl_repayment_method != "fcf_waterfall" and i >= len(periods) - 2 and dsra_balance > 0:
             dsra_release = dsra_balance
             dsra_balance = 0.0
             dsra_contribution_keur = -dsra_release  # negative = release

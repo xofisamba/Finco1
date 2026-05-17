@@ -46,6 +46,9 @@ def run_waterfall_v3_core(
     use_senior_sweep_cash_cap_for_shl: bool = False,
     # Phase 7F C1a: propagated for config identity only; not wired into runtime yet.
     use_tuho_r99_input_engine: bool = False,
+    use_shl_fcf_waterfall_engine: bool = False,
+    shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = (),
+    shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -180,6 +183,9 @@ def run_waterfall_v3_core(
         shl_repayment_method=shl_repayment_method,
         shl_tenor_years=shl_tenor_years,
         shl_wht_rate=shl_wht_rate,
+        use_shl_fcf_waterfall_engine=use_shl_fcf_waterfall_engine,
+        shl_fcf_waterfall_cash_schedule_keur=shl_fcf_waterfall_cash_schedule_keur,
+        shl_fcf_waterfall_minimum_cash_retained_keur=shl_fcf_waterfall_minimum_cash_retained_keur,
         discount_rate_project=discount_rate_project,
         discount_rate_equity=discount_rate_equity,
         financial_close=inputs.info.financial_close,

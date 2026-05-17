@@ -53,6 +53,9 @@ class WaterfallRunConfig:
     # Prevents SHL principal from consuming cash that Excel would hold back.
     use_senior_sweep_cash_cap_for_shl: bool = False
     use_tuho_r99_input_engine: bool = False
+    use_shl_fcf_waterfall_engine: bool = False
+    shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
+    shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 
     # Returns
     discount_rate_project: float = 0.0641
@@ -98,7 +101,8 @@ class WaterfallRunConfig:
             f"{self.target_dscr:.3f}_{self.shl_amount_keur:.0f}_"
             f"r99_{int(self.use_tuho_r99_input_engine)}_"
             f"sr_{int(self.use_senior_rate_schedule_engine)}_"
-            f"ss_{int(self.use_senior_sculpting_basis_engine)}"
+            f"ss_{int(self.use_senior_sculpting_basis_engine)}_"
+            f"sfw_{int(self.use_shl_fcf_waterfall_engine)}"
         )
 
     @classmethod
@@ -163,6 +167,21 @@ class WaterfallRunConfig:
         if isinstance(shl_repayment, str):
             from domain.inputs import SHLRepaymentMethod
             shl_repayment = SHLRepaymentMethod(shl_repayment)
+        use_shl_fcf_waterfall_engine = getattr(inputs.info, "use_shl_fcf_waterfall_engine", False)
+        shl_fcf_cash_schedule = tuple(getattr(fin, "shl_fcf_waterfall_cash_schedule_keur", ()))
+        if shl_repayment is SHLRepaymentMethod.FCF_WATERFALL:
+            if not use_shl_fcf_waterfall_engine:
+                raise ValueError(
+                    "shl_repayment_method='fcf_waterfall' requires "
+                    "use_shl_fcf_waterfall_engine=True"
+                )
+            if getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+                raise ValueError("SHL fcf_waterfall is currently supported only for TUHO-WIND-1")
+            if not shl_fcf_cash_schedule:
+                raise ValueError(
+                    "SHL fcf_waterfall requires explicit fixture-backed "
+                    "shl_fcf_waterfall_cash_schedule_keur"
+                )
 
         # Map equity_irr_method — FinancingParams stores as str, config expects enum
         from domain.inputs import EquityIRRMethod
@@ -201,6 +220,13 @@ class WaterfallRunConfig:
             senior_sculpting_config=senior_sculpting_config,
             use_senior_sweep_cash_cap_for_shl=getattr(fin, "use_senior_sweep_cash_cap_for_shl", False),
             use_tuho_r99_input_engine=getattr(fin, "use_tuho_r99_input_engine", False),
+            use_shl_fcf_waterfall_engine=use_shl_fcf_waterfall_engine,
+            shl_fcf_waterfall_cash_schedule_keur=shl_fcf_cash_schedule,
+            shl_fcf_waterfall_minimum_cash_retained_keur=getattr(
+                fin,
+                "shl_fcf_waterfall_minimum_cash_retained_keur",
+                0.0,
+            ),
         )
 
 
@@ -283,6 +309,11 @@ class WaterfallRunner:
             advanced_capex_depreciation_schedule=config.advanced_capex_depreciation_schedule,
             use_senior_sweep_cash_cap_for_shl=config.use_senior_sweep_cash_cap_for_shl,
             use_tuho_r99_input_engine=config.use_tuho_r99_input_engine,
+            use_shl_fcf_waterfall_engine=config.use_shl_fcf_waterfall_engine,
+            shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
+            shl_fcf_waterfall_minimum_cash_retained_keur=(
+                config.shl_fcf_waterfall_minimum_cash_retained_keur
+            ),
         )
 
     def run_with_defaults(self) -> object:

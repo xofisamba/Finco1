@@ -44,6 +44,7 @@ class SHLRepaymentMethod(Enum):
     PIK = "pik"
     ACCRUED = "accrued"
     PIK_THEN_SWEEP = "pik_then_sweep"
+    FCF_WATERFALL = "fcf_waterfall"
 
 
 class YieldScenario(Enum):
@@ -91,6 +92,7 @@ class ProjectInfo:
     use_construction_schedule_engine: bool = False
     use_senior_rate_schedule_engine: bool = False
     use_senior_sculpting_basis_engine: bool = False
+    use_shl_fcf_waterfall_engine: bool = False
 
 
 @dataclass(frozen=True)
@@ -364,6 +366,8 @@ class FinancingParams:
     shl_pik_switch_period: int = 0
     shl_tenor_years: int = 0
     shl_idc_keur: float = 0.0
+    shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
+    shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 
     # TUHO-specific: cap SHL sweep at Excel R99-equivalent cash.
     # When True, the SHL principal repayment is capped at min(cf_available, R99_equivalent)
