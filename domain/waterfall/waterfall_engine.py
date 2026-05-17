@@ -111,6 +111,18 @@ class WaterfallPeriod:
             "basis": "audit-only annual H2 pairing: -(current tax_keur + previous period tax_keur) in H2, 0 in H1",
         },
     )
+    # Phase 6 audit-only tax-basis bridge fields. These values expose inputs and
+    # outputs already used by compute_period_tax; they do not feed runtime cashflows.
+    tax_depreciation_audit_keur: float = 0.0
+    fiscal_reintegration_audit_keur: float = 0.0
+    taxable_income_before_losses_audit_keur: float = 0.0
+    tax_loss_opening_audit_keur: float = 0.0
+    tax_loss_used_audit_keur: float = 0.0
+    tax_loss_closing_audit_keur: float = 0.0
+    taxable_profit_after_losses_audit_keur: float = 0.0
+    cit_accrual_audit_keur: float = 0.0
+    cash_tax_current_period_audit_keur: float = 0.0
+    cash_tax_excel_style_h2_diagnostic_keur: float = 0.0
     r69_fcf_banks_keur: float = 0.0
     r84_fcf_junior_keur: float = 0.0
     r98_distribution_account_keur: float = 0.0
@@ -705,6 +717,8 @@ def run_waterfall(
         else:
             fiscal_reintegration = 0.0
 
+        tax_loss_opening = prior_tax_loss
+
         # compute_period_tax now owns: ATAD, loss carryforward, fiscal reintegration
         # waterfall_engine just reads the result
         tax_result: TaxPeriodResult = compute_period_tax(
@@ -997,6 +1011,16 @@ def run_waterfall(
             senior_balance_keur=max(0.0, remaining_senior_balance - sp),  # Closing balance after principal payment
             corporate_tax_cash_keur=tax_this_period,
             r67_excel_style_cash_tax_diagnostic_keur=r67_excel_style_cash_tax_diagnostic,
+            tax_depreciation_audit_keur=dep,
+            fiscal_reintegration_audit_keur=fiscal_reintegration,
+            taxable_income_before_losses_audit_keur=tax_result.taxable_income_before_losses_keur,
+            tax_loss_opening_audit_keur=tax_loss_opening,
+            tax_loss_used_audit_keur=tax_result.loss_carryforward_applied_keur,
+            tax_loss_closing_audit_keur=tax_result.loss_carryforward_remaining_keur,
+            taxable_profit_after_losses_audit_keur=tax_result.taxable_income_keur,
+            cit_accrual_audit_keur=tax,
+            cash_tax_current_period_audit_keur=tax_this_period,
+            cash_tax_excel_style_h2_diagnostic_keur=r67_excel_style_cash_tax_diagnostic,
             r69_fcf_banks_keur=r99_audit.r69_fcf_banks_keur,
             r84_fcf_junior_keur=r99_audit.r84_fcf_junior_keur,
             r98_distribution_account_keur=r99_audit.r98_distribution_account_keur,
