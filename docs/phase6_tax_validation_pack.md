@@ -68,7 +68,7 @@ It is NOT a production-code implementation branch. It compiles findings from all
 | R34 fiscal reintegration | R34 = −R54 = 0 for TUHO yr13–30; R54 formula inspected | Solved |
 | Book/tax depreciation split | `taxable_income = ebitda − book_dep − deductible_int + disallowed + tax_dep + fiscal_reint` | Working |
 | SHL gross-accrued source ownership | `shl_gross_accrued_interest_keur` confirmed as fixture source for tax bridge | Working |
-| CO2 revenue (TUHO) | CO2 revenue confirmed Y1 = 611 kEUR, co2_price = 4.191 EUR/MWh | Solved |
+| CO2 revenue (TUHO) | ✅ Confirmed — Y1 = 611 kEUR is **CF R35 "CO2 Certificates Sales"**; **CF R36** is the CO2 price per MWh (4.191 EUR/MWh) | Solved |
 | Tax bridge CIT = 18% for TUHO | 18% confirmed for yr13–30; 31% for yr1–12 | Solved |
 
 ### B. Known Structural Differences (Intentional) ⚠️
@@ -76,7 +76,7 @@ It is NOT a production-code implementation branch. It compiles findings from all
 | Item | Python (canonical) | Excel (TUHO) | Rationale |
 |------|--------------------|--------------|-----------|
 | **Depreciation useful life** | 30-year straight-line | 20-year (Excel Inputs D358–D379) | Python canonical policy; Excel is project-specific input |
-| **ATAD interest limitation** | Applied (deductible = min(total_int, max(30%×EBITDA, 3000))) | Not visible in R35 | Python applies ATAD; Excel appears not to apply ATAD to R35 |
+| ATAD / thin-cap visibility | ⚠️ R34 = 0 for Y13–30 **because thin-cap is not binding in profit years**. R34 is **non-zero for Y4–12** (construction period), total around **−9,243 kEUR**, and is calibrated. Excel has a thin-cap / fiscal reintegration mechanism; it is not visible in R35 during profit years but is active in loss/construction years. | Documented |
 | **Loss carryforward window** | Croatia vintage mode, 5-year × 2 semiannual periods | Rolling SUMIF over variable lookback window | Python has a canonical Croatia policy; Excel is project-specific |
 
 ### C. Known Residuals ⚠️
