@@ -218,10 +218,9 @@ def run_waterfall_v3_core(
     if use_shl_gross_accrued_for_pnl:
         _apply_tuho_shl_gross_accrued_interest_bridge(result)
     if use_tax_bridge_engine:
-        cit_start = getattr(inputs.tax, "cit_cash_tax_start_operating_index", None)
         _apply_tuho_tax_bridge_runtime_cash_tax(
             result, tenor_periods, lockup_dscr, tax_rate,
-            cit_cash_tax_start_operating_index=cit_start,
+            cit_cash_tax_start_operating_index=tuho_cit_cash_tax_start_operating_index,
         )
     if construction_diagnostic is not None:
         result.construction_schedule_diagnostic = construction_diagnostic

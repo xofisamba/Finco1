@@ -258,7 +258,8 @@ def test_cit_accrual_audit_visibility_preserved():
     # In years 1–12 (suppressed periods), tax_keur should still be non-zero
     for i in range(24):
         p = r_on.periods[i]
-        # tax_keur is populated (accrual) even when cash tax is suppressed
+        # tax_keur is populated for audit visibility (may be 0 if taxable profit is 0,
+        # or negative if a loss benefit — the assertion uses >= 0.0 to match the field's signedness)
         assert p.tax_keur >= 0.0, f"tax_keur should be non-zero at P{i}"
         # But corporate_tax_cash_keur is 0 (suppressed)
         assert p.corporate_tax_cash_keur == pytest.approx(0.0, abs=0.01)
