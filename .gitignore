@@ -33,3 +33,4 @@ reporting/__pycache__/
 *.xlsx
 !tests/fixtures/*.xlsx
 !tests/fixtures/*.xlsm
+20260330_TUHO_BP.xlsm
