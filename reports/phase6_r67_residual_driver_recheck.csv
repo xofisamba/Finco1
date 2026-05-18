@@ -1,0 +1,24 @@
+driver,amount_keur,sign,direction,confidence,type,note
+Baseline residual (Python flag-on vs Excel),+5271,positive,Python overpays Excel,based on fixture,baseline,"Python R67=-43,512 vs Excel=-38,241; residual=+5,271"
+Loss-window canonical (Croatia 10-period vs Excel 5-period),-661,negative,Python overpays more,based on tax validation pack,canonical,"Croatia 10-period: losses expire later → lower CIT → R67 more negative"
+Useful-life canonical (20yr/12yr vs 30yr flat),-2532,negative,Python overpays more,first-order CIT estimate,canonical,"+1,688 CIT benefit Y13-20, -4,220 CIT cost Y21-30, net -2,532"
+SHL gross-accrued source contribution,+2306,positive,Python less negative than without SHL,directional,diagnostic,"~12,810 kEUR SHL gross-accrued in Y13-30; ×18% = +2,306 CIT impact vs Excel if different"
+ATAD / interest limitation,unknown,TBD,TBD,not computed,diagnostic,ATAD 30% EBITDA cap on deductible interest may differ
+R34 fiscal reintegration,0,neutral,No effect,confirmed zero,neutral,"Y13-30 fiscal reintegration = 0 in Python flag-on"
+Tax depreciation addback vs book depreciation,unknown,TBD,If Excel tax dep differs, major driver,directional,diagnostic,"Implied tax addback ~40,113 kEUR vs book dep ~42,415 kEUR (Y13-30)"
+Unexplained residual (approx),+191,negative,Python overpays slightly,balance,unexplained,"~2,078 - 661 - 2,532 + 2,306 = ~191 kEUR; near ±2,000 threshold"
+,,,,,,
+Summary,,,,,,
+Component,Delta_keur,,,,,
+Baseline residual,+5271,,,,,
+Loss-window effect,-661,,,,,
+Useful-life effect,-2532,,,,,
+SHL gross-accrued,+2306,,,,,
+First-order combined residual,+2078,,,,,
+Remaining unexplained,~+191,,,,,
+Gate threshold,±2000,,,,,
+Gate status,FAIL (by ~78 kEUR),,,,,
+,,,,,,
+gate,target,estimate,pass_fail
+Cumulative Y13-30 residual,±2000 kEUR,~+2078 kEUR,FAIL
+Annual Y13-20 residual,±200 kEUR/yr,~+211 kEUR/yr,FAIL
