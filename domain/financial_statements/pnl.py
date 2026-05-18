@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from domain.depreciation import (
+    AssetClassConfig,
+    DepreciationLedgerInput,
+    DepreciationPolicy,
+    build_depreciation_ledger,
+)
 from domain.financial_statements.excel_mapping import PNL_ROW_MAPPINGS
 from domain.financial_statements.retained_earnings import compute_retained_earnings_schedule
 from domain.financial_statements.result import PnLPeriodResult, PnLStatementResult
 from domain.waterfall.waterfall_engine import WaterfallPeriod, WaterfallResult
+
+TUHO_BOOK_DEPRECIATION_TOTAL_KEUR = 72_993.7
+TUHO_TAX_DEPRECIATION_TOTAL_KEUR = 70_691.5
 
 
 def _assemble_pnl_period(
@@ -13,12 +22,19 @@ def _assemble_pnl_period(
     retained_earnings_keur: float,
     *,
     use_shl_gross_accrued_for_pnl: bool = False,
+    book_depreciation_keur: float | None = None,
+    recompute_taxable_income_from_pnl: bool = False,
 ) -> PnLPeriodResult:
     revenues = period.revenue_keur
     operating_expenses = -period.opex_keur
     local_tax = 0.0
     wht_on_interests = 0.0
-    depreciation = -period.tax_depreciation_audit_keur
+    depreciation_source = (
+        book_depreciation_keur
+        if book_depreciation_keur is not None
+        else period.tax_depreciation_audit_keur
+    )
+    depreciation = -depreciation_source
     total_expenses = operating_expenses + local_tax + wht_on_interests + depreciation
     ebit = revenues + total_expenses
 
@@ -48,7 +64,11 @@ def _assemble_pnl_period(
     earnings_before_tax = ebit + financial_earnings
 
     fiscal_reintegration = period.fiscal_reintegration_audit_keur
-    taxable_income_before_losses = period.taxable_income_before_losses_audit_keur
+    taxable_income_before_losses = (
+        earnings_before_tax + fiscal_reintegration
+        if recompute_taxable_income_from_pnl
+        else period.taxable_income_before_losses_audit_keur
+    )
     losses_n_1 = -period.tax_loss_opening_audit_keur
     allocated_losses = period.tax_loss_used_audit_keur
     losses_n = -period.tax_loss_closing_audit_keur
@@ -110,16 +130,35 @@ def assemble_pnl(
     project_code = getattr(waterfall_result, "project_code", "")
     if use_shl_gross_accrued_for_pnl and project_code != "TUHO-WIND-1":
         raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
+    use_book_depreciation_for_pnl = getattr(
+        waterfall_result,
+        "use_book_depreciation_for_pnl",
+        False,
+    )
+    if use_book_depreciation_for_pnl and project_code != "TUHO-WIND-1":
+        raise ValueError("Book depreciation P&L bridge is currently supported only for TUHO-WIND-1")
+
+    book_depreciation_schedule = (
+        _tuho_book_depreciation_schedule(len(waterfall_result.periods))
+        if use_book_depreciation_for_pnl
+        else ()
+    )
 
     periods_without_retained: list[PnLPeriodResult] = []
     net_income_schedule: list[float] = []
     dividends_paid_schedule: list[float] = []
 
-    for period in waterfall_result.periods:
+    for idx, period in enumerate(waterfall_result.periods):
         provisional = _assemble_pnl_period(
             period,
             retained_earnings_keur=0.0,
             use_shl_gross_accrued_for_pnl=use_shl_gross_accrued_for_pnl,
+            book_depreciation_keur=(
+                book_depreciation_schedule[idx]
+                if use_book_depreciation_for_pnl
+                else None
+            ),
+            recompute_taxable_income_from_pnl=use_book_depreciation_for_pnl,
         )
         periods_without_retained.append(provisional)
         net_income_schedule.append(provisional.net_income_keur)
@@ -149,3 +188,39 @@ def assemble_pnl(
         row_mapping=PNL_ROW_MAPPINGS,
         totals_by_row=totals_by_row,
     )
+
+
+def _tuho_book_depreciation_schedule(period_count: int) -> tuple[float, ...]:
+    """Return the TUHO aggregate book depreciation fixture schedule.
+
+    Category-level CAPEX mapping is intentionally not inferred here. This
+    default-off bridge uses the committed aggregate Dep R30 / P&L R13 fixture
+    as an attribution harness until category fixtures are available.
+    """
+
+    ledger = build_depreciation_ledger(
+        DepreciationLedgerInput(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="tuho_aggregate_fixture",
+                    gross_asset_basis_keur=TUHO_BOOK_DEPRECIATION_TOTAL_KEUR,
+                    book_depreciable_basis_keur=TUHO_BOOK_DEPRECIATION_TOTAL_KEUR,
+                    tax_depreciable_basis_keur=TUHO_TAX_DEPRECIATION_TOTAL_KEUR,
+                    placed_in_service_period=0,
+                    depreciation_start_period=0,
+                    source_label="TUHO aggregate Dep R30/R31 fixture",
+                ),
+            ),
+            policies={
+                "tuho_aggregate_fixture": DepreciationPolicy(
+                    useful_life_book_periods=period_count,
+                    useful_life_tax_periods=period_count,
+                    period_frequency="semiannual",
+                )
+            },
+            period_count=period_count,
+            period_frequency="semiannual",
+            cod_period=0,
+        )
+    )
+    return tuple(period.book_depreciation_keur for period in ledger.aggregate_periods())
