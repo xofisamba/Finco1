@@ -1,0 +1,23 @@
+category,item,status,note
+Solved,R35 formula chain,PASS,"R35=EBIT+FinEarns, NO ATAD"
+Solved,R43/R67 annual H1+H2 timing,PASS,"18% x annual, cash outflow in H2"
+Solved,Years 1-12 R67 timing fix,PASS,H2 holds annual CIT
+Solved,Loss rows R36-R39 do not affect R35,PASS,R36-R39 reduce R41 only
+Solved,R34 fiscal reintegration,PASS,R34=0 for TUHO yr13-30
+Solved,Book/tax depreciation split in tax bridge,PASS,taxable_income formula working
+Solved,CO2 revenue TUHO,PASS,"Y1=611 kEUR, co2_price=4.191"
+Solved,Tax bridge CIT rate 18%,PASS,Confirmed for yr13-30
+Known Difference,Depreciation useful life,WARN,Python 30yr vs Excel 20yr
+Known Difference,ATAD not visible in Excel R35,WARN,Python applies ATAD; Excel does not
+Known Difference,Loss carryforward window,WARN,Python Croatia vintage vs Excel rolling SUMIF
+Residual,R67 residual yr13-30,FAIL,"+5,271 kEUR (Python>Excel)"
+Residual,R67 residual yr13-20,FAIL,"+5,697 kEUR"
+Residual,R67 residual yr21-30,FAIL,-425 kEUR
+Residual,Depreciation standalone CIT impact,WARN,"-2,783 kEUR net (opposite to total residual)"
+Residual,Remaining unallocated after depreciation,OPEN,"Approx +8,055 kEUR"
+Blocked,R99 runtime promotion,BLOCKED,Requires external sign-off
+Blocked,R102 promotion,BLOCKED,Requires external sign-off
+Blocked,SHL FCF runtime source,NOT APPROVED,Requires R99 gate
+Future,Per-category useful_life_years from inputs,TODO,Domain/depreciation module
+Future,Loss-window governance clarification,TODO,Croatian 5yr x2 vs Excel rolling
+Future,R99 design with guardrails,TODO,Only after external sign-off
