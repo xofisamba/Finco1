@@ -4,7 +4,7 @@
 `phase6-r67-residual-driver-recheck`
 
 ## Status
-**Diagnostic/recheck only. No production code changes. No runtime behavior changes.**
+**First-order diagnostic decomposition. Not a full tax-bridge recomputation.**
 
 ---
 
@@ -21,7 +21,11 @@ All tables follow this convention.
 
 ## 2. What This Branch Does
 
-Performs a full residual-driver recheck to decompose the ~+2,078 kEUR first-order residual estimate into explained and unexplained components. Produces a driver table identifying the main sources of the gap between Python flag-on R67 and Excel R67 target.
+Performs a **first-order residual-driver diagnostic decomposition**. This is not a full tax-bridge recomputation.
+
+The goal is to identify candidate drivers of the residual between Python flag-on R67 and Excel R67 target, and to document which drivers are confirmed vs. speculative.
+
+**Full runtime recomputation with canonical useful-life and loss-window settings remains future work.**
 
 Creates:
 - `docs/phase6_r67_residual_driver_recheck.md` (this file)
@@ -31,6 +35,7 @@ Creates:
 
 ## 3. What This Branch Does NOT Do
 
+- ❌ Not a full tax-bridge recomputation
 - ❌ No production runtime changes
 - ❌ No waterfall runtime changes
 - ❌ No factory opt-in
@@ -52,18 +57,60 @@ Creates:
 |--------|------:|
 | Python R67 (Y13-30) | −43,512 kEUR |
 | Excel R67 target (Y13-30) | −38,241 kEUR |
-| **Baseline residual** | **+5,271 kEUR** (Python overpays) |
+| **Baseline residual** | **+5,271 kEUR** (Python overpays Excel) |
 
 ### First-Order Combined Estimate (Prior Branch, CIT-Adjusted)
 
-| Component | Delta (kEUR) |
-|-----------|-------------:|
-| Baseline residual | +5,271 |
-| Useful-life CIT impact | −2,532 |
-| Loss-window effect | −661 |
-| **First-order combined estimate** | **~+2,078** |
+| Component | Delta (kEUR) | Sign | Note |
+|-----------|-------------:|------:|------|
+| Baseline residual | +5,271 | Positive | Python overpays |
+| Useful-life CIT impact | −2,532 | Negative | 20yr/12yr vs 30yr flat, net CIT impact ×18% |
+| Loss-window effect | −661 | Negative | Croatia 10-period vs Excel 5-period, CIT impact |
+| **First-order combined residual estimate** | **~+2,078** | **Positive** | Python overpays Excel by ~2,078 kEUR |
 
-### Gate Status (First-Order Estimate)
+---
+
+## 5. Candidate Driver Decomposition
+
+### Confirmed Canonical Drivers
+
+| Driver | Amount (kEUR) | Sign | Direction | Confidence | Note |
+|--------|-------------:|------:|-----------|-----------|------|
+| **Loss-window canonical** | −661 | Negative | Python overpays more with Croatia 10-period vs Excel 5-period | Directional; ~660 kEUR from tax validation pack | Confirmed canonical direction |
+| **Useful-life canonical** | −2,532 | Negative | Net CIT impact: 20yr/12yr front-loaded vs 30yr flat over Y13-30 | First-order; directional | CIT impact = dep_delta × 18%; +1,688 Y13-20, −4,220 Y21-30 |
+
+### Candidate Drivers (Require Source Verification)
+
+| Driver | Amount (kEUR) | Sign | Direction | Confidence | Note |
+|--------|-------------:|------:|-----------|-----------|------|
+| **SHL gross-accrued source basis** | up to +2,306 | Positive | Python less negative if Excel treats SHL gross-accrued differently | Candidate only; not proven as Excel/Python delta | ~12,810 kEUR SHL gross-accrued in Y13-30; ×18% = +2,306 kEUR max impact. Not yet verified as actual Excel/Python difference |
+| **Tax depreciation / addback** | unknown | TBD | Python may use different tax dep addback vs Excel | Candidate only; not source-mapped | Implied tax addback ~40,113 kEUR vs book dep ~42,415 kEUR (Y13-30). This is a large number but not yet proven as residual driver |
+
+### Non-Drivers (Confirmed)
+
+| Driver | Amount | Confidence | Note |
+|--------|--------|-----------|------|
+| R34 fiscal reintegration | 0 kEUR | Confirmed zero | Y13-30 fiscal reintegration = 0 in Python flag-on |
+
+### Waterfall Table (First-Order Estimate)
+
+| Component | Amount (kEUR) | Note |
+|-----------|-------------:|------|
+| Baseline residual | +5,271 | Python flag-on vs Excel target |
+| Less: Loss-window canonical effect | −661 | Croatia 10-period vs Excel 5-period |
+| Less: Useful-life canonical effect | −2,532 | 20yr/12yr vs 30yr flat, CIT-adjusted |
+| **Subtotal after confirmed canonical drivers** | **+2,078** | First-order estimate |
+| Plus: SHL gross-accrued candidate | +2,306 | Max; not proven as Excel/Python delta |
+| Plus: Tax dep/addback candidate | unknown | Large but unquantified |
+| **Final residual estimate** | **not reliably quantifiable** | SHL and tax-dep drivers are candidates, not confirmed |
+
+**Remaining unexplained: not reliably quantified in this branch.** SHL gross-accrued and tax depreciation/addback are candidate drivers requiring source-row verification before they can be used in residual acceptance.
+
+---
+
+## 6. Gate Evaluation (First-Order Estimate Only)
+
+**These gate results are based on the first-order corrected estimate, not a full recomputation.**
 
 | Gate | Target | First-Order Estimate | PASS/FAIL |
 |------|--------|----------------------|-----------|
@@ -72,127 +119,44 @@ Creates:
 
 ---
 
-## 5. Driver Decomposition
-
-### Driver Table (Current Python Runtime vs Excel Target)
-
-| Driver | Amount (kEUR) | Sign | Direction | Confidence | Type | Note |
-|--------|-------------:|------:|-----------|-----------|------|------|
-| **1. Loss-window canonical** | −661 | Negative | Python overpays more with Croatia 10-period vs Excel 5-period | Directional, ~660 kEUR from tax validation pack | Canonical | Independent of useful-life |
-| **2. Useful-life canonical** | −2,532 | Negative | Net CIT impact: front-loaded depreciation (20yr) vs flat (30yr) over Y13-30 | First-order, directional | Canonical | +1,688 in Y13-20, −4,220 in Y21-30, net −2,532 |
-| **3. Tax dep addback > book dep** | +unknown | Positive | Python uses tax dep addback > book dep (EBITDA - book_dep + addback), making R35 higher vs Excel → R67 more negative | Diagnostic only | Diagnostic | Flag-on runtime shows implied tax addback of ~40,113 kEUR vs book dep of ~42,415 kEUR (Y13-30); if Excel addback differs, this is a driver |
-| **4. SHL gross-accrued** | +2,306 | Positive | Flag-on includes SHL gross-accrued in R35 basis; if Excel uses different SHL treatment, this affects residual | Directional | Canonical | ~12,810 kEUR gross-accrued in Y13-30; CIT impact ~+2,306 kEUR (partial explanation) |
-| **5. ATAD / interest limitation** | unknown | TBD | ATAD interest limitation may differ between Python and Excel | Unknown | Diagnostic | Deductible interest capped at 30% EBITDA |
-| **6. R34 fiscal reintegration** | ~0 | Neutral | Fiscal reintegration is zero in Y13-30 in Python flag-on | Confirmed zero | Neutral | Not a driver |
-| **7. Remaining unexplained** | ~434 | Negative | Residual after explained drivers = ~2,078 − 661 − 2,532 + 2,306 = ~191... still above gate | Approximate | Unexplained | Near threshold, likely within loss engine non-linearity |
-
-*Note: The sum of explained drivers is approximately 2,078 kEUR. The "remaining unexplained" of ~191 kEUR is close to the ±2,000 kEUR gate threshold — this may indicate the residual is close to being within gates after proper accounting.*
-
-### Interpretation
-
-The residual is partially explained by:
-- Loss-window effect (−661 kEUR): Croatia 10-period canonical vs Excel 5-period
-- Useful-life effect (−2,532 kEUR): 20yr/12yr canonical vs 30yr flat
-- SHL gross-accrued contribution (+2,306 kEUR): Python includes SHL gross-accrued in R35 basis
-
-The net explained effect (~2,078 kEUR) matches the first-order combined estimate. The remaining unexplained amount (~191 kEUR) is near the gate threshold — this suggests the residual is primarily explained by the two canonical decisions and the SHL gross-accrued source, with a small remaining gap.
-
----
-
-## 6. SHL Gross-Accrued Source Analysis
-
-The tax bridge (`use_tax_bridge_engine=True`) includes SHL gross-accrued interest in the R35 basis:
-
-```
-R35 = EBITDA − book_dep + tax_addback − interest_senior − interest_shl + SHL_gross_accrued + R34 + ATAD_addback
-```
-
-| Period | SHL gross-accrued (kEUR) | CIT impact (×18%) |
-|--------|-------------------------:|------------------:|
-| Y01-12 (construction) | 33,235 | +5,982 |
-| Y13-18 (PIK phase) | 12,810 | +2,306 |
-| Y13-30 total | 12,810 | +2,306 |
-| **Total** | **46,045** | **+8,288** |
-
-If Excel uses a different SHL gross-accrued treatment (e.g., Excel may not include it in R35 or uses a different amount), this would directly affect the residual. The SHL gross-accrued is a material driver in the R35 basis.
-
----
-
-## 7. Tax Depreciation Addback Analysis
-
-Python flag-on runtime shows a large tax depreciation addback in operating periods:
-
-| Metric | Y13-30 Total |
-|--------|-------------:|
-| Book depreciation | 42,415 kEUR |
-| Implied tax addback | 40,113 kEUR |
-| Implied total tax dep | 82,528 kEUR |
-| Tax dep per period | 2,292 kEUR/period |
-| Tax dep per year | 4,585 kEUR/year |
-| Book dep per year | 2,356 kEUR/year |
-
-The tax addback (difference between tax dep and book dep) is a large positive contributor to R35. If Excel uses different tax depreciation amounts, this would be a primary driver of the residual.
-
----
-
-## 8. Gate Evaluation
-
-| Gate | Target | Full Recompute | First-Order Estimate | PASS/FAIL |
-|------|--------|-----------------|----------------------|-----------|
-| Cumulative Y13-30 residual | ≤ ±2,000 kEUR | ~+2,078 kEUR (current runtime) | ~+2,078 kEUR (combined) | **FAIL** |
-| Annual Y13-20 | ≤ ±200 kEUR/yr | ~+211 kEUR/yr | N/A | **FAIL** |
-
-Both gates fail. The cumulative gate fails by approximately 78 kEUR on the first-order combined estimate. The full runtime recomputation with canonical decisions applied would be needed for precise gate status.
-
----
-
-## 9. R99/R102 Gate Status
+## 7. R99/R102 Gate Status
 
 **R99/R102 remain BLOCKED.**
 
-Gates fail on both the current runtime and the first-order combined estimate. The residual is primarily explained by canonical decisions and the SHL gross-accrued source — but the cumulative residual (~+2,078 kEUR) still exceeds the ±2,000 kEUR gate.
+Gates fail on the first-order estimate. The residual is not reliably quantified due to unverified candidate drivers (SHL gross-accrued, tax depreciation/addback).
 
 R99 is only unblocked after:
 1. ✅ Useful-life canonical decision
 2. ✅ Loss-window canonical decision
-3. ⬜ Residual within gates or explicit sign-off accepting residual
+3. ⬜ Residual within gates, or explicit acceptance with documented rationale
 4. ⬜ External sign-off or explicit internal approval
 
 **Runtime adapter (`phase6-depreciation-engine-runtime-adapter`) remains blocked.**
 
 ---
 
-## 10. Recommended Next Step
+## 8. Recommended Next Step
 
-**Option B — Residual Acceptance Review**
+**`phase6-tax-residual-acceptance-review`** — or **`phase6-shl-taxdep-source-verification`** as a prerequisite.
 
-The residual (~+2,078 kEUR) is within ~78 kEUR of the ±2,000 kEUR cumulative gate. The primary drivers are:
-1. Loss-window canonical (Croatia 10-period vs Excel 5-period): −661 kEUR
-2. Useful-life canonical (20yr/12yr vs 30yr flat): −2,532 kEUR
-3. SHL gross-accrued contribution: +2,306 kEUR
+Two options:
+- **Option A:** Accept the ~+2,078 kEUR first-order residual as a known consequence of correct policy (requires external sign-off), OR
+- **Option B:** Run a narrow source verification branch to confirm or rule out SHL gross-accrued and/or tax depreciation/addback as material drivers before deciding on acceptance
 
-The remaining unexplained gap (~191 kEUR) is small. The residual is close to gate threshold but does not pass it on the first-order estimate.
-
-Recommended next branch: **`phase6-tax-residual-acceptance-review`**
-
-Goal: explicit review to determine whether to:
-- Accept the ~+2,078 kEUR residual as a known consequence of correct policy (requires external sign-off), OR
-- Investigate a narrowly scoped remaining driver (e.g., SHL gross-accrued source vs Excel treatment)
-
-**Do not recommend runtime adapter as next step unless residual acceptance review explicitly decides to proceed.**
+Do not recommend runtime adapter as next step unless residual acceptance is explicitly decided.
 
 ---
 
-## 11. Deliverables Created
+## 9. Deliverables Created
 
 - `docs/phase6_r67_residual_driver_recheck.md` (this file)
 - `reports/phase6_r67_residual_driver_recheck.csv`
 
 ---
 
-## 12. Tests
+## 10. Tests
 
-No new tests added — diagnostic-only recheck branch. Existing suites confirm no regressions:
+No new tests added — diagnostic-only branch. Existing suites confirm no regressions:
 
 ```
 tests/test_depreciation_category_capex_extraction.py
