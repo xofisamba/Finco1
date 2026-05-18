@@ -51,7 +51,7 @@ Creates:
 ### Industry Context
 
 For wind turbines:
-- **Industry standard**: 20–25 years (OEM warranties typically 20–25 years; most wind farms depreciated over 20–25 years)
+- **Common range**: 20–25 years (prior external review characterized 20–25 years as common for wind assets; OEM warranties typically 20–25 years)
 - **Python 30-year**: Conservative over-assumption; valid for modelling conservatism but not aligned with project inputs
 - **Excel 20-year**: Project-specific input from TUHO turbine supply contract
 
@@ -61,7 +61,7 @@ The `domain/depreciation_offline` engine supports:
 - Per-category `useful_life_years` via `AssetCategoryRule`
 - `start_period` offset for mid-project COD
 - Multiple `asset_class` categories with independent lives
-- Croatia template defaults already partially defined in `domain/tax/loss_carryforward.py` style
+- Croatia template defaults via the offline depreciation engine's config/template structures
 
 ### Dep R30 Near-Parity Result (PR #84)
 
@@ -125,13 +125,13 @@ The `domain/depreciation_offline` engine supports:
 
 ## 5. Recommended Canonical Decision
 
-### **Option C — Croatia Renewable Template Default, with Project-Input When Available**
+### Recommended: Project-Input First, Croatia Renewable Template Fallback
 
-**Decision:**
+**Decision hierarchy (Option B + Option C hybrid):**
 
-1. **Project-input useful life is canonical when explicitly provided** in the project configuration. This aligns the Python model with the actual asset contract and avoids TUHO-only hardcoding.
+1. **Explicit project-input `useful_life_years` wins** — when a project configuration provides an explicit useful life for a category, that value is canonical and overrides any template default.
 
-2. **Croatia renewable template defaults** apply when explicit project input is missing:
+2. **Croatia renewable template default applies** when no explicit project input is given:
 
 | Category Type | Default Useful Life | Notes |
 |-------------|----------:|--------|
