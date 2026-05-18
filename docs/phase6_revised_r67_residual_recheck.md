@@ -129,7 +129,7 @@ The loss-window canonical (Croatia 10-period) vs Excel 5-period diagnostic overr
 | Loss-window effect | −661 |
 | **Estimated combined residual** | **+2,078** |
 
-**First-order CIT-adjusted combined residual ≈ +2,078 kEUR** (Python overpays Excel by ~2,078 kEUR over Yr13–30)
+**First-order CIT-adjusted combined residual estimate ≈ +2,078 kEUR** (Python overpays Excel by ~2,078 kEUR over Yr13–30; first-order estimate, pending full recomputation / external sign-off)
 
 This is substantially lower than the baseline +5,271 kEUR. The useful-life canonical decision, when properly converted to CIT impact, reduces the residual. However, the result remains above the cumulative gate threshold (±2,000 kEUR) and still requires full residual-driver recheck or external sign-off.
 
@@ -144,9 +144,9 @@ After applying the corrected CIT-adjusted methodology:
 | Cumulative Y13–30 residual | ≤ ±2,000 kEUR | +5,271 kEUR | ~+2,078 kEUR | **FAIL** (barely, approx) |
 | Max annual residual (Yr13–20) | ≤ ±200 kEUR/yr | N/A | ~+211 kEUR/yr (CIT impact) | **FAIL** |
 
-**Cumulative gate:** ~+2,078 kEUR vs ±2,000 kEUR threshold — FAIL by ~78 kEUR, directionally close. Full tax bridge recomputation may change this figure.
+**Cumulative gate:** ~+2,078 kEUR vs ±2,000 kEUR threshold — FAIL by ~78 kEUR on this first-order estimate, pending full recomputation / external sign-off.
 
-**Annual gate:** +211 kEUR/yr (CIT impact) vs ±200 kEUR/yr — FAIL by ~11 kEUR/yr. Annual gate also fails.
+**Annual gate:** +211 kEUR/yr (CIT impact) vs ±200 kEUR/yr — FAIL by ~11 kEUR/yr on this first-order estimate. Both gates fail on this first-order estimate, pending full recomputation / external sign-off.
 
 *Both gates remain FAIL after corrected methodology. The useful-life canonical decision does not bring residual within gates on its own.*
 
@@ -165,7 +165,7 @@ The net CIT impact (−2,532 kEUR) partially offsets the baseline overpayment, r
 
 ### Why Does the Residual Still Fail Gates?
 
-Even after improvement, the residual (+2,078 kEUR) remains above the ±2,000 kEUR cumulative threshold. The annual gate (+211 kEUR/yr) also fails by ~11 kEUR/yr.
+Even after improvement, the first-order residual estimate (+2,078 kEUR) remains above the ±2,000 kEUR cumulative threshold. The annual gate (+211 kEUR/yr) also fails by ~11 kEUR/yr.
 
 The canonical decisions do not fully close the gap — they reduce it. Remaining questions:
 - Are there additional unexplained drivers beyond useful-life and loss-window?
@@ -196,10 +196,10 @@ R99 is only unblocked after:
 
 Three honest options for consideration:
 - **Option A — Accept residual as known consequence of correct policy**; proceed to runtime adapter design with gate FAIL (requires external sign-off)
-- **Option B — Full residual-driver recheck**; decompose remaining unexplained gap with full tax bridge recomputation
+- **Option B — Full residual-driver recheck**; goal is full driver recheck / full recomputation to determine whether the ~+2,078 kEUR first-order estimate can be reduced below the +-2,000 kEUR gate threshold or must be accepted with external sign-off
 - **Option C — Do not proceed to runtime adapter** until gates pass or explicit residual acceptance
 
-This branch shows the corrected residual is approximately +2,078 kEUR — below the catastrophic ~20,000 kEUR but still above the ±2,000 kEUR gate threshold. Option B is the recommended next step before any decision to proceed despite gate FAIL.
+This branch shows the corrected first-order residual estimate is approximately +2,078 kEUR - substantially lower than the baseline +5,271 kEUR and substantially lower than the initial uncorrected estimate (the ~-20,000 kEUR figure in an earlier draft was a methodology error; depreciation delta is not directly comparable to R67 without applying the 18% CIT rate). Gates fail on this first-order estimate, pending full recomputation / external sign-off. Option B is the recommended next step before any decision to proceed despite gate FAIL. Option B is the recommended next step before any decision to proceed despite gate FAIL.
 
 ---
 
