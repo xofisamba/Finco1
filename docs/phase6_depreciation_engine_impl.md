@@ -198,25 +198,56 @@ The exact category-level CAPEX breakdown for TUHO (how much of the 72,993.7 kEUR
 
 ---
 
-## 10. R99/R102 Status
+## 10. Namespace Decision / Temporary Isolation
 
-**BLOCKED.** The depreciation offline engine does not unblock R99/R102. R99 promotion is only authorized after:
-1. Useful-life canonical decision (resolved by this engine)
-2. Loss-window canonical decision (pending)
-3. Residual recheck after depreciation engine integration (pending Stage 3)
-4. External reviewer sign-off on Phase 6 validation pack (pending)
+The Stage 1 design (`docs/phase6_depreciation_engine_design.md`) proposed `domain/depreciation/` as the package name. This implementation uses `domain/depreciation_offline/` instead.
+
+**Reason:** `domain/depreciation/` already exists on `main` and contains the pre-existing offline book/tax depreciation ledger (asset.py, ledger.py, schedule.py, result.py). That package and its `__init__.py` public API are **untouched** by this branch. Creating a new top-level package avoids breaking the existing depreciation APIs consumed by `waterfall_core.py` and the existing test suite.
+
+`domain/depreciation_offline/` is a **temporary isolated namespace** for Stage 2. Before Stage 3 (runtime adapter), one of the following must be decided:
+
+- **Option A:** Migrate the new engine into `domain/depreciation/` safely (requires API design review)
+- **Option B:** Keep `depreciation_offline` as a separate experimental package permanently
+- **Option C:** Create a facade that makes source ownership explicit (new engine → `depreciation_offline`; legacy → `depreciation`)
+
+The runtime adapter **must not consume both packages ambiguously**. This decision is pending and must be resolved before Stage 3.
 
 ---
 
-## 11. Next Branch
+## 11. R99/R102 Status
 
-Recommended: **`phase6-depreciation-engine-runtime-adapter`** (Stage 3)
+**BLOCKED.** The depreciation offline engine does **not** unblock R99/R102.
 
-Stage 3 scope:
-- TUHO-only guarded runtime adapter behind a feature flag (default OFF)
-- Compare R67 residual before/after integration
-- Keep R99 BLOCKED throughout
-- No factory opt-in
-- Oborovo remains guarded
+The useful-life canonical decision is **NOT** resolved by this offline engine. The engine enables testing 20y/30y/category-specific configurations, but the canonical policy decision remains pending until:
+1. Category-level CAPEX extraction (next branch: `phase6-dep-category-capex-extraction`)
+2. TUHO Dep R30/R31 parity recheck
+3. External reviewer sign-off on Phase 6 validation pack
 
-OR: **`phase6-loss-window-design`** — resolve the 5-year Croatian loss window rolling SUMIF vs pool design before integrating the depreciation engine.
+R99 promotion is only authorized after all of the above plus the loss-window canonical decision.
+
+---
+
+## 12. TUHO Parity — xfail Test Clarification
+
+`test_tuho_dep_r30_synthetic_parity` is **xfail / expected failure**.
+
+This is **not a failed implementation**. The xfail documents that:
+- Exact TUHO Dep R30/R31 parity is blocked by missing category-level CAPEX split
+- No scalar plugs or synthetic fitting should be used to force parity
+- The offline engine is functionally correct; parity requires source data that is not yet extracted
+
+---
+
+## 13. Next Branch
+
+**`phase6-dep-category-capex-extraction`** (or `phase6-dep-category-capex-source-mapping`)
+
+Goal: Extract TUHO category-level CAPEX split from Excel Inputs D358–D379 (or equivalent source rows) so the offline engine can reproduce Dep R30/R31 without synthetic approximation.
+
+Stage 3 (runtime adapter) is explicitly deferred until:
+- Category-level CAPEX split is extracted
+- Offline engine achieves TUHO Dep R30/R31 parity within ±1 kEUR/period or documents why not
+- Useful-life canonical decision is made
+- R99 remains BLOCKED throughout
+
+**Alternative:** `phase6-loss-window-design` — resolve the 5-year Croatian loss window rolling SUMIF vs pool design before integrating the depreciation engine.
