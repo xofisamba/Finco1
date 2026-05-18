@@ -1,0 +1,23 @@
+driver,amount_keur,sign,direction,confidence,type,note
+Baseline residual (Python flag-on vs Excel),+5271,positive,Python overpays Excel,fixture-documented,based,"Python R67=-43,512 vs Excel=-38,241; residual=+5,271"
+Loss-window canonical (Croatia 10-period vs Excel 5-period),-661,negative,Python overpays more,directional,based,from tax validation pack; ~660 kEUR CIT impact
+Useful-life canonical (20yr/12yr vs 30yr flat),-2532,negative,Python overpays more,first-order CIT estimate,based,"+1,688 kEUR Y13-20, -4,220 kEUR Y21-30, net -2,532 kEUR CIT impact"
+Subtotal after confirmed canonical drivers,+2078,positive,Python overpays Excel,first-order estimate,derived,"= baseline + loss-window + useful-life"
+SHL gross-accrued candidate contribution,up to +2306,positive,Python less negative if Excel differs,candidate only,unverified,"~12,810 kEUR Y13-30 SHL gross-accrued; x18% = +2,306 kEUR max. NOT proven as actual Excel/Python delta"
+Tax depreciation/addback,unknown,TBD,TBD,candidate only,unverified,"Implied tax addback ~40,113 kEUR vs book dep ~42,415 kEUR Y13-30. Large but not source-mapped"
+R34 fiscal reintegration,0,neutral,No effect,confirmed zero,neutral,Y13-30 fiscal reintegration = 0 in Python flag-on
+Remaining unexplained,not reliably quantified,N/A,N/A,unquantified,unexplained,"SHL and tax-dep drivers are candidates, not confirmed; cannot compute reliable remaining unexplained"
+,,,,,,
+Waterfall,,,,,,
+Component,Amount_keur,Note,,,,,
+Baseline residual,+5271,Python overpays Excel by 5,271 kEUR,,,,
+Less: Loss-window canonical,-661,Croatia 10-period vs Excel 5-period,,,,
+Less: Useful-life canonical,-2532,20yr/12yr vs 30yr flat, CIT-adjusted,,,,
+Subtotal after confirmed canonical drivers,+2078,first-order estimate,,,,
+Plus: SHL gross-accrued candidate,up to +2306,NOT proven as Excel/Python delta,,,,
+Plus: Tax depreciation/addback,unknown,NOT source-verified,,,,
+Final residual estimate,not reliably quantified,requires source verification of candidate drivers,,,,
+,,,,,,
+gate,target_k eur,estimate,pass_fail,note
+Cumulative Y13-30 residual,+-2000,+2078,FAIL,"first-order estimate only; not full recomputation"
+Annual Y13-20 residual,+-200 kEUR/yr,+211 kEUR/yr,FAIL,"first-order CIT impact estimate; not full recomputation"
