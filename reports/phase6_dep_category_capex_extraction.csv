@@ -1,0 +1,20 @@
+source_sheet,source_row,source_cell,excel_category_label,mapped_category_id,capex_amount_keur,useful_life_years,is_financing_cost,depreciation_target,notes
+CapEx,6,C6,Production Unit,turbines,35000.0,20,False,book=tax,C.01; Total Production Unit incl wind turbines
+CapEx,12,C12,EPC Contract,epc,13560.0,20,False,book=tax,C.02; Total EPC Contract
+CapEx,17,C17,Grid connection,grid_connection,30.0,20,False,book=tax,C.03; Grid connection (minor)
+CapEx,21,C21,Monitoring & Telecom,monitoring,100.0,20,False,book=tax,C.04; Monitoring & Telecom
+CapEx,25,C25,Operation Investments,operation_investments,1000.0,20,False,book=tax,C.05; Operation Investments
+CapEx,32,C32,Insurances,insurances,468.75,20,False,book=tax,C.06; Insurances
+CapEx,39,C39,Land Securing Costs,land_securing,512.44,0,False,non_depreciable,C.07; Land — non-depreciable
+CapEx,43,C43,Bank due diligence,bank_due_diligence,420.0,20,False,book=tax,C.08; Bank due diligence
+CapEx,64,C64,Construction Management,construction_mgmt_1,40.0,20,False,book=tax,C.09; Construction Management
+CapEx,72,C72,Audit&Accounting&Legal,audit_legal,42.0,20,False,book=tax,"C.11; Audit, Accounting & Legal"
+CapEx,79,C79,Construction Management,construction_mgmt_2,1742.25,20,False,book=tax,C.12; Construction Management 2
+CapEx,87,C87,Contingencies,contingencies,3036.94,20,False,book=tax,C.13; Contingencies
+CapEx,94,C94,Project Rights,project_rights,14739.15,20,False,book=tax,C.16; Project Rights
+CapEx,106,C106,Structuring Fees,bank_fees,467.11,12,True,tax_12yr,C.17.01; Structuring/Arrangement Fee
+CapEx,110,C110,IDCs LT debt,idc,1519.56,12,True,tax_12yr,C.17.02; IDCs LT debt
+CapEx,111,C111,IDCs VAT debt,idc,122.31,12,True,tax_12yr,C.17.02; IDCs VAT portion
+CapEx,113,C113,Commitment Fees LT debt,commitment_fees,166.72,12,True,tax_12yr,C.17.02; Commitment Fees LT
+CapEx,114,C114,Commitment Fees VAT debt,commitment_fees,26.47,12,True,tax_12yr,C.17.02; Commitment Fees VAT
+Inputs,379,F379,VAT Costs,vat_costs,148.78,20,False,book=tax,Inputs!F379; VAT during construction
