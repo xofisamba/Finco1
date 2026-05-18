@@ -1,0 +1,8 @@
+driver,approx_cit_keur,direction_note,confidence
+Depreciation useful-life mismatch,-2783,"Standalone estimate; yr13-20:+1,597 / yr21-30:-4,380; sign depends on substitution order",High
+SHL gross-accrued (Python fixture vs Excel),-2209,Standalone counterfactual estimate; sign depends on substitution order/loss-engine interaction; not isolated proof,Medium
+Senior interest delta,-2023,Standalone counterfactual estimate; sign depends on substitution order/loss-engine interaction; not isolated proof,Medium
+EBITDA/source delta,-1754,Standalone counterfactual estimate; not additive,Medium
+Loss carryforward (yr13 only),-2043,Yr13 timing effect; interacts with annual R41 and loss engine,High
+OBSERVED RESIDUAL (yr13-30),5271,"Python cash tax > Excel; documented, not mathematically closed",High
+Remaining unattributed (approx),8055,Not a closed waterfall; standalone estimates only,Low
