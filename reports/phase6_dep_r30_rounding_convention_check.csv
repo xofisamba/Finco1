@@ -1,0 +1,61 @@
+op_idx,year,half,frac,excel_pl13,excel_dep30,engine,diff,reason
+0,0,H1,0.0,0.0,0.0,1854.1205,1854.1205,op_idx=0 is pre-COD; Excel=0; engine=0
+1,1,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+2,1,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+3,2,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+4,2,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+5,3,H2,0.497268,1850.5645,1850.5645,1854.1205,3.556,Excel applies leap-year frac (0.4973); engine constant=1758.20; Excel=1850.56 vs engine=1854.12 (diff=+3.56)
+6,3,H1,0.502732,1870.9004,1870.9004,1854.1205,-16.7799,Excel applies leap-year frac (0.5027); engine constant=1758.20; Excel=1870.90 vs engine=1854.12 (diff=-16.78)
+7,4,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+8,4,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+9,5,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+10,5,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+11,6,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+12,6,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+13,7,H2,0.497268,1850.5645,1850.5645,1854.1205,3.556,Excel applies leap-year frac (0.4973); engine constant=1758.20; Excel=1850.56 vs engine=1854.12 (diff=+3.56)
+14,7,H1,0.502732,1870.9004,1870.9004,1854.1205,-16.7799,Excel applies leap-year frac (0.5027); engine constant=1758.20; Excel=1870.90 vs engine=1854.12 (diff=-16.78)
+15,8,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+16,8,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+17,9,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+18,9,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+19,10,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+20,10,H1,0.50411,1876.0262,1876.0262,1854.1205,-21.9057,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1854.12 (diff=-21.91)
+21,11,H2,0.497268,1850.5645,1850.5645,1854.1205,3.556,Excel applies leap-year frac (0.4973); engine constant=1758.20; Excel=1850.56 vs engine=1854.12 (diff=+3.56)
+22,11,H1,0.502732,1870.9004,1870.9004,1854.1205,-16.7799,Excel applies leap-year frac (0.5027); engine constant=1758.20; Excel=1870.90 vs engine=1854.12 (diff=-16.78)
+23,12,H2,0.49589,1845.4388,1845.4388,1854.1205,8.6817,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1845.44 vs engine=1854.12 (diff=+8.68)
+24,12,H1,0.50411,1876.0262,1876.0262,1758.1968,-117.8294,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1876.03 vs engine=1758.20 (diff=-117.83)
+25,13,H2,0.49589,1756.4517,1756.4517,1758.1968,1.745,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1756.45 vs engine=1758.20 (diff=+1.75)
+26,13,H1,0.50411,1785.5642,1785.5642,1758.1968,-27.3675,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1785.56 vs engine=1758.20 (diff=-27.37)
+27,14,H2,0.49589,1756.4517,1756.4517,1758.1968,1.745,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1756.45 vs engine=1758.20 (diff=+1.75)
+28,14,H1,0.50411,1785.5642,1785.5642,1758.1968,-27.3675,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1785.56 vs engine=1758.20 (diff=-27.37)
+29,15,H2,0.497268,1761.3303,1761.3303,1758.1968,-3.1336,Excel applies leap-year frac (0.4973); engine constant=1758.20; Excel=1761.33 vs engine=1758.20 (diff=-3.13)
+30,15,H1,0.502732,1780.6856,1780.6856,1758.1968,-22.4889,Excel applies leap-year frac (0.5027); engine constant=1758.20; Excel=1780.69 vs engine=1758.20 (diff=-22.49)
+31,16,H2,0.49589,1756.4517,1756.4517,1758.1968,1.745,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1756.45 vs engine=1758.20 (diff=+1.75)
+32,16,H1,0.50411,1785.5642,1785.5642,1758.1968,-27.3675,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1785.56 vs engine=1758.20 (diff=-27.37)
+33,17,H2,0.49589,1756.4517,1756.4517,1758.1968,1.745,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1756.45 vs engine=1758.20 (diff=+1.75)
+34,17,H1,0.50411,1785.5642,1785.5642,1758.1968,-27.3675,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1785.56 vs engine=1758.20 (diff=-27.37)
+35,18,H2,0.49589,1756.4517,1756.4517,1758.1968,1.745,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1756.45 vs engine=1758.20 (diff=+1.75)
+36,18,H1,0.50411,1785.5642,1785.5642,1758.1968,-27.3675,Excel applies leap-year frac (0.5041); engine constant=1758.20; Excel=1785.56 vs engine=1758.20 (diff=-27.37)
+37,19,H2,0.497268,1761.3303,1761.3303,1758.1968,-3.1336,Excel applies leap-year frac (0.4973); engine constant=1758.20; Excel=1761.33 vs engine=1758.20 (diff=-3.13)
+38,19,H1,0.502732,1780.6856,1780.6856,1758.1968,-22.4889,Excel applies leap-year frac (0.5027); engine constant=1758.20; Excel=1780.69 vs engine=1758.20 (diff=-22.49)
+39,20,H2,0.49589,1756.4517,1756.4517,1758.1968,1.745,Excel applies leap-year frac (0.4959); engine constant=1758.20; Excel=1756.45 vs engine=1758.20 (diff=+1.75)
+40,20,H1,0.50411,1785.5642,1785.5642,0.0,-1785.5642,op_idx>39: 20yr main assets fully depreciated; both=0
+41,21,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+42,21,H1,0.50411,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+43,22,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+44,22,H1,0.50411,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+45,23,H2,0.497268,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+46,23,H1,0.502732,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+47,24,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+48,24,H1,0.50411,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+49,25,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+50,25,H1,0.50411,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+51,26,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+52,26,H1,0.50411,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+53,27,H2,0.497268,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+54,27,H1,0.502732,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+55,28,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+56,28,H1,0.50411,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+57,29,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+58,29,H1,0.50411,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
+59,30,H2,0.49589,0.0,0.0,0.0,0.0,op_idx>39: 20yr main assets fully depreciated; both=0
