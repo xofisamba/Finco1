@@ -233,15 +233,35 @@ def test_tuho_dep_r30_parity_vs_extracted_csv():
 
     max_diff = max(abs(d) for d in diffs)
     mean_diff = sum(abs(d) for d in diffs) / len(diffs)
+    within_5 = sum(1 for d in diffs if abs(d) <= 5.0)
+    within_1 = sum(1 for d in diffs if abs(d) <= 1.0)
 
-    # Document actual parity: max diff ~3.13 kEUR, mean ~0.93 kEUR
-    # The offline engine overestimates by ~1.75 kEUR/period on average
-    # This is a near-parity result, not exact.
-    # We use a tolerance of ±5 kEUR for documentation purposes only.
-    TOLERANCE = 5.0  # kEUR per period (informational)
-    within_tolerance = sum(1 for d in diffs if abs(d) <= TOLERANCE)
-    print(f"\nTUHO Dep R30 parity: max|diff|={max_diff:.2f}kEUR mean|diff|={mean_diff:.2f}kEUR {within_tolerance}/{len(diffs)} within ±{TOLERANCE}kEUR")
-    print(f"Note: Near-parity (~0.1% relative). Exact ±1kEUR parity not achieved.")
+    # Assertions: near-parity diagnostic bounds
+    # These are NOT Stage 3 gates — they document the current observed outcome
+    assert max_diff <= 5.0, (
+        f"Near-parity bound: max|diff|={max_diff:.2f}kEUR exceeds ±5kEUR tolerance. "
+        f"Parity has degraded — investigate before runtime integration."
+    )
+    assert mean_diff <= 1.5, (
+        f"Near-parity bound: mean|diff|={mean_diff:.2f}kEUR exceeds ±1.5kEUR tolerance. "
+        f"Parity has degraded — investigate before runtime integration."
+    )
+    assert within_5 == len(diffs), (
+        f"Near-parity: only {within_5}/{len(diffs)} periods within ±5kEUR. "
+        f"Should be all {len(diffs)} periods."
+    )
+    assert within_1 >= 10, (
+        f"Near-parity: only {within_1}/{len(diffs)} periods within ±1kEUR. "
+        f"Expected ≥10/18. Exact ±1kEUR parity is NOT achieved — this is diagnostic only."
+    )
+
+    # Print informative summary for human review
+    print(f"\nTUHO Dep R30 near-parity diagnostic:")
+    print(f"  max|diff| = {max_diff:.2f} kEUR (tolerance: ≤5 kEUR)")
+    print(f"  mean|diff| = {mean_diff:.2f} kEUR (tolerance: ≤1.5 kEUR)")
+    print(f"  within ±5 kEUR: {within_5}/{len(diffs)}")
+    print(f"  within ±1 kEUR: {within_1}/{len(diffs)}")
+    print(f"  Note: ±5 kEUR is a diagnostic tolerance, NOT a Stage 3 gate.")
 
 
 # -----------------------------------------------------------------------

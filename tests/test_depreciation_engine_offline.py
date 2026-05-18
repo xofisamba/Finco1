@@ -378,15 +378,21 @@ def test_tuho_dep_r30_synthetic_parity():
             )
 
     # Mismatches are expected — exact category-level CAPEX split is not available.
-    # Mark as xfail per spec: diagnostic test, not a hard assertion.
+    # Mark as xfail: this test uses the old synthetic single-category approach
+    # (TUHO_BOOK_TOTAL as one category) and is superseded by the extracted
+    # category test in test_depreciation_category_capex_extraction.py.
+    # The category-level CAPEX split IS now available (reports/phase6_dep_category_capex_extraction.csv)
+    # but this test is kept as a historical record of the synthetic approach.
+    # The extracted-category parity test (test_tuho_dep_r30_parity_vs_extracted_csv)
+    # asserts near-parity bounds instead.
     if mismatches:
         gap_summary = "; ".join(mismatches[:3])
         pytest.xfail(
-            f"TUHO synthetic single-category 20yr schedule does not match extracted Dep R30. "
-            f"DIAGNOSTIC / EXPECTED — exact category-level CAPEX split not available. "
-            f"First mismatches: {gap_summary}. "
-            f"See reports/phase6_dep_r30_excel_crosscheck.csv and "
-            f"docs/phase6_depreciation_engine_impl.md for context."
+            f"Historical: synthetic single-category 20yr schedule vs extracted Dep R30. "
+            f"Superseded by test_tuho_dep_r30_parity_vs_extracted_csv which uses extracted "
+            f"category data. First mismatches: {gap_summary}. "
+            f"See reports/phase6_dep_category_capex_extraction.csv and "
+            f"docs/phase6_dep_category_capex_extraction.md for resolution."
         )
 
 

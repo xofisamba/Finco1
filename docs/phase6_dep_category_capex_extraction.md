@@ -84,6 +84,22 @@ Creates:
 
 ## 6. Dep R30/R31 Parity Result
 
+### Tolerance Status
+
+| Tolerance | Outcome | Note |
+|-----------|---------|------|
+| **±1 kEUR per-period** | NOT achieved | 10/18 H1 periods within tolerance |
+| **±5 kEUR per-period** | **Achieved** (diagnostic) | 18/18 H1 periods within tolerance |
+
+**±5 kEUR is a diagnostic tolerance only. It is NOT a Stage 3 gate.**
+
+Before runtime integration, explicitly decide:
+- **Option A:** Accept ±5 kEUR near-parity for adapter testing (depreciation contribution to R67)
+- **Option B:** Investigate Excel rounding/mid-period convention to reach ±1 kEUR (next branch: `phase6-dep-r30-rounding-convention-check`)
+- **Option C:** Keep adapter blocked until exact ±1 kEUR parity is achieved
+
+Stage 3 runtime adapter must not treat ±5 kEUR as a final tax calibration tolerance. The R67 residual (~5,271 kEUR) dwarfs the ~3 kEUR per-period depreciation difference, but the depreciation contribution should still be understood before integration.
+
 ### Dep R30 (Book Depreciation)
 
 | Metric | Value |
@@ -98,7 +114,7 @@ Creates:
 - Two periods (op_idx 28, 36) show a −3.13 kEUR difference
 - These differences are within ~0.1% relative accuracy
 - **Exact ±1 kEUR per-period parity is not achieved**
-- **Root cause: minor rounding/floating-point differences, not missing source data** (the prior xfail was based on missing category split — now resolved, but near-parity is the actual outcome)
+- **Root cause: minor rounding/floating-point differences, not missing source data**
 
 ### Dep R31 (Financing Costs — Tax)
 
@@ -112,35 +128,29 @@ Creates:
 
 ---
 
-## 7. xfail Resolution
+## 7. xfail Status
 
-**Prior xfail:** `test_tuho_dep_r30_synthetic_parity` in `test_depreciation_engine_offline.py`
+**Test:** `test_tuho_dep_r30_synthetic_parity` in `test_depreciation_engine_offline.py`
 
-**Cause of original xfail:** Missing category-level CAPEX split — the synthetic test used a single 72,993.7 kEUR category, which could not reproduce Excel's multi-category depreciation schedule.
+**Original xfail reason:** "missing category-level CAPEX split"
 
-**Resolution:** The category-level CAPEX split is now extracted and documented. The offline engine with all 17 categories produces near-parity (max 3.13 kEUR diff, ~0.1% relative). The prior xfail is now understood to be a **near-parity documentation test**, not a missing-source-data problem.
+**Updated xfail reason:** "Historical: synthetic single-category 20yr schedule vs extracted Dep R30. Superseded by `test_tuho_dep_r30_parity_vs_extracted_csv` which uses extracted category data."
 
-**What changed:**
-- The xfail reason was "missing category-level CAPEX split" — this is now resolved
-- The actual outcome is near-parity (~3 kEUR max diff), not exact parity
-- The xfail test in `test_depreciation_engine_offline.py` remains as a historical record
-- A new passing test `test_tuho_dep_r30_parity_vs_extracted_csv` in `test_depreciation_category_capex_extraction.py` documents the actual near-parity result with informative output
-
-**Exact ±1 kEUR parity: NOT achieved** — the offline engine is functionally correct, but minor differences (likely floating-point / rounding in Excel's per-category schedules) prevent exact parity.
+The original xfail reason is resolved (category-level CAPEX split is now extracted). The xfail is kept as a historical marker of the synthetic approach. The new passing test `test_tuho_dep_r30_parity_vs_extracted_csv` asserts near-parity diagnostic bounds instead.
 
 ---
 
 ## 8. Stage 3 Status
 
-**Stage 3 (runtime adapter) remains BLOCKED pending:**
+**Stage 3 (runtime adapter) is BLOCKED pending:**
 
-1. ✅ Category-level CAPEX split — **RESOLVED** (this branch)
-2. ⚠️ Near-parity achieved (~3 kEUR max diff) — acceptable but not exact
+1. ✅ Category-level CAPEX split — **RESOLVED**
+2. ⚠️ Near-parity (~3 kEUR max diff) — diagnostic only; not a Stage 3 gate
 3. ⬜ Useful-life canonical decision — **PENDING**
 4. ⬜ Loss-window canonical decision — **PENDING**
 5. ⬜ R99 external sign-off — **PENDING**
 
-The offline engine can now be used for Stage 3 design with a **±5 kEUR tolerance** assumption for the depreciation contribution to R67.
+**The ±5 kEUR diagnostic tolerance is not a Stage 3 gate.** Stage 3 adapter design should proceed with explicit awareness that depreciation near-parity is ~3 kEUR per period, not exact.
 
 ---
 
@@ -166,6 +176,10 @@ The offline engine can now be used for Stage 3 design with a **±5 kEUR toleranc
 - `tests/test_depreciation_category_capex_extraction.py` — 9 tests
 - `docs/phase6_dep_category_capex_extraction.md` — this file
 
+### Modified Files
+- `tests/test_depreciation_engine_offline.py` — xfail reason updated to "historical/synthetic superseded"
+- `tests/test_depreciation_category_capex_extraction.py` — assertions added to parity test
+
 ### No Runtime / Production Files Changed
 - `app/waterfall_core.py` — NOT MODIFIED
 - `app/waterfall_runner.py` — NOT MODIFIED
@@ -182,11 +196,14 @@ The offline engine can now be used for Stage 3 design with a **±5 kEUR toleranc
 
 ## 12. Recommended Next Branch
 
-**`phase6-depreciation-engine-runtime-adapter`** (Stage 3)
+**`phase6-dep-r30-rounding-convention-check`** (primary)
 
-Required before Stage 3:
-- Accept near-parity with ±5 kEUR tolerance for depreciation contribution
-- Resolve useful-life canonical decision
-- Resolve loss-window canonical decision
+Goal: Investigate why extracted category data produces max 3.13 kEUR/period difference vs Excel Dep R30 — likely due to Excel rounding, half-period conventions, or mid-period COD. Decide whether ±5 kEUR near-parity is acceptable or whether ±1 kEUR parity can be reached.
 
-OR: **`phase6-loss-window-design`** — resolve the 5-year Croatian loss window rolling SUMIF vs pool design first.
+**Alternative:** `phase6-loss-window-design` — resolve the 5-year Croatian loss window rolling SUMIF vs pool design first.
+
+**Do NOT recommend runtime adapter as immediate next branch while:**
+- Useful-life canonical decision is pending
+- Loss-window decision is pending
+- Exact ±1 kEUR parity is not achieved
+- Stage 3 is explicitly blocked
