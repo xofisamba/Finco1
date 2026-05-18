@@ -93,6 +93,7 @@ class WaterfallPeriod:
     # SHL balance (for tracking PIK accumulation)
     shl_balance_keur: float = 0.0  # Closing SHL balance after PIK capitalization
     shl_pik_keur: float = 0.0  # PIK amount capitalized this period
+    shl_gross_accrued_interest_keur: float = 0.0  # Audit-only gross accrued SHL interest for P&L R27 bridge
     # Debt schedule tracking (for financial statements)
     senior_balance_keur: float = 0.0  # Closing balance after principal payment
     # Phase 7F C1d audit-only R99/R102 bridge fields. These values do not feed
@@ -163,6 +164,8 @@ class WaterfallResult:
     target_dscr: float = 0.0   # Target DSCR from financing inputs
     actual_min_dscr: float = 0.0  # Actual minimum DSCR achieved
     actual_avg_dscr: float = 0.0  # Actual average DSCR achieved
+    project_code: str = ""
+    use_shl_gross_accrued_for_pnl: bool = False
 
 
 def compute_ebitda_schedule(
@@ -782,6 +785,12 @@ def run_waterfall(
         else:
             shl_tenor_periods = tenor_periods + 2  # bullet 1 year after senior payoff
         is_final_shl_period = (shl_balance > 0 and op_period_counter == shl_tenor_periods - 1)
+        shl_opening_balance = shl_balance
+        shl_gross_accrued_interest = (
+            max(0.0, shl_opening_balance) * shl_rate_per
+            if shl_opening_balance > 0 and shl_rate_per > 0
+            else 0.0
+        )
 
         # ── TUHO SHL cash-cap (Excel R99-equivalent) — INVALID, disabled for PR A ──
         # CURRENTLY DISABLED: The previous implementation used remaining_senior_balance
@@ -995,6 +1004,7 @@ def run_waterfall(
             shl_service_keur=shl_svc,
             shl_balance_keur=shl_balance,
             shl_pik_keur=shl_pik,
+            shl_gross_accrued_interest_keur=shl_gross_accrued_interest,
             dsra_contribution_keur=dsra_contrib,
             dsra_balance_keur=dsra_balance,
             mra_contribution_keur=0,

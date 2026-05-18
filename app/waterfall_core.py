@@ -49,6 +49,7 @@ def run_waterfall_v3_core(
     use_tuho_r99_input_engine: bool = False,
     use_shl_fcf_waterfall_engine: bool = False,
     use_tax_bridge_engine: bool = False,
+    use_shl_gross_accrued_for_pnl: bool = False,
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = (),
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
 ) -> dict:
@@ -82,6 +83,8 @@ def run_waterfall_v3_core(
     _ = use_tuho_r99_input_engine  # C1a intentionally leaves runtime behavior unchanged.
     if use_tax_bridge_engine and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
         raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
+    if use_shl_gross_accrued_for_pnl and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+        raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
     construction_diagnostic = None
     if getattr(inputs.info, "use_construction_schedule_engine", False):
         from domain.construction.runtime_adapter import build_runtime_construction_schedule
@@ -209,11 +212,45 @@ def run_waterfall_v3_core(
         dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, "dscr_schedule", None),
         use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
     )
+    result.project_code = getattr(inputs.info, "code", "")
+    result.use_shl_gross_accrued_for_pnl = use_shl_gross_accrued_for_pnl
+    if use_shl_gross_accrued_for_pnl:
+        _apply_tuho_shl_gross_accrued_interest_bridge(result)
     if use_tax_bridge_engine:
         _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods, lockup_dscr, tax_rate)
     if construction_diagnostic is not None:
         result.construction_schedule_diagnostic = construction_diagnostic
     return result
+
+
+def _apply_tuho_shl_gross_accrued_interest_bridge(result: "WaterfallResult") -> None:
+    """Apply the committed TUHO Excel R27 gross-accrued SHL bridge.
+
+    The waterfall engine always exposes its formula-derived gross-accrual audit
+    field. The TUHO P&L bridge flag uses the committed Excel DS R122/R27 extract
+    as the calibrated source for R27 while leaving SHL cash, PIK, WHT, and
+    distributions untouched.
+    """
+
+    import json
+    from pathlib import Path
+
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "tests"
+        / "fixtures"
+        / "interest_limitation"
+        / "tuho_interest_limitation_fixture.json"
+    )
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    r27_by_period = {
+        int(row["period_index"]): float(row["gross_shl_interest_r27"])
+        for row in fixture["periods"]
+    }
+
+    for operating_index, period in enumerate(result.periods):
+        if operating_index in r27_by_period:
+            period.shl_gross_accrued_interest_keur = r27_by_period[operating_index]
 
 
 def _apply_tuho_tax_bridge_runtime_cash_tax(
