@@ -278,7 +278,14 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
 
     previous_r100 = 0.0
     previous_tax = 0.0
-    loss_config = LossCarryforwardConfig()
+    # Croatia tax-law-correct mode: 5-year rolling window, semiannual periods (×2 = 10 periods).
+    # This replaces the generic default which inadvertently used a 30-period no-expiry pool.
+    loss_config = LossCarryforwardConfig(
+        duration_years=5,
+        periods_per_year=2,
+        country_template="croatia",
+        expire_before_use=True,
+    )
     loss_buckets = _tuho_tax_bridge_opening_loss_buckets(
         result.periods[0].tax_loss_opening_audit_keur if result.periods else 0.0,
     )
