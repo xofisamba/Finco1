@@ -66,13 +66,19 @@ Attribution target: residual ±200 kEUR. Current result: 3,977 kEUR unattributed
 
 ---
 
-## Key Observations
+## Verdict
 
-### Depreciation gap (most material identified driver, +1,159 kEUR)
+**First-pass sequential attribution did not reconcile.**
+
+Only +1,295 kEUR of the +5,271 kEUR Y13–30 residual is explained by the tested independent drivers. The remaining **+3,977 kEUR indicates material interaction terms or missing counterfactual mechanics.**
+
+Attribution target ±200 kEUR NOT met. This branch is a non-reconciling first-pass diagnostic, not a completed attribution.
+
+### Depreciation — largest identified partial driver (+1,159 kEUR)
 - Years 13–20: Excel P&L R13 book depreciation ≈ 1,786 kEUR/period; Python ledger book depreciation ≈ 1,217 kEUR/period. Python has lower depreciation deductions → higher TI → Python overpays.
 - Years 21–30: Excel Dep R30 = 0.00 (fiscal depreciation row); Python ledger book depreciation ≈ 1,217 kEUR/period. Python depreciation deductions continue while Excel shows zero → Python underpays slightly.
 
-The Excel Dep R30 = 0.00 for years 21–30 is a structural difference in the Excel model's depreciation schedule. Python's depreciation ledger is modeled as a straight-line annuity over 30 years; Excel appears to have an earlier write-off or different asset grouping.
+**Candidate structural difference requiring crosscheck, not final proof of accelerated depreciation.**
 
 ### SHL interest gap (−302 kEUR)
 - Years 13–20: Python SHL gross-accrued (from fixture) is lower than Excel P&L R27 in early years (yr13: 1,520 vs 1,703 kEUR). Python deducts less SHL interest → higher TI → slight overpayment.
@@ -119,11 +125,11 @@ For years 13–20: P&L R13 ≈ Dep R30 (book depreciation ≈ fiscal depreciatio
 
 ---
 
-## R99/R102 Readiness
+## R99/R102 Status
 
-- R99 (FCF for distribution): **READY** — flag-off path unchanged; flag-on path uses R67 source correctly.
-- R102 (FCF for SHL): **READY** — no SHL FCF consumption in flag-on.
-- No R99/R102 changes required for this diagnostic.
+**BLOCKED / audit-only.**
+
+R99/R102 must not be promoted while the Y13–30 R67 residual remains +3,977 kEUR unattributed. This branch makes no R99/R102 runtime-source decision. No SHL FCF opt-in.
 
 ---
 
@@ -131,15 +137,16 @@ For years 13–20: P&L R13 ≈ Dep R30 (book depreciation ≈ fiscal depreciatio
 
 | Priority | Branch | Goal |
 |----------|--------|------|
-| P1 | `phase6-dep-r30-excel-crosscheck` | Verify Dep R30 zero for yr21–30; confirm Excel depreciation schedule vs Python straight-line ledger |
-| P2 | `phase6-tax-bridge-counterfactual` | Recompute Python TI using Excel's inputs in isolation to achieve additive bridge attribution |
-| Contingent | `phase6-loss-engine-construction-period` | If P1/P2 confirm loss CF is primary residual, bridge Excel's construction-period opening loss into Python loss engine |
+| P1 | `phase6-tax-bridge-counterfactual-attribution` | Build diagnostic-only counterfactual recomputation using Excel inputs and Python tax mechanics to produce additive driver attribution |
+| P2 | `phase6-dep-r30-excel-crosscheck` | Verify Excel Dep R30/P&L R13 behavior and whether Python ledger should align to Excel depreciation schedule |
+
+**Recommended ordering:** If the objective is to explain the full residual, do P1 (counterfactual attribution) first. If the objective is to pursue the largest known partial driver, do P2 (dep crosscheck) first. Do not implement production bridge yet.
 
 ---
 
 ## Removed from Immediate Scope
-- `phase6-loss-carryforward-source-bridge` — contingent on attribution success (loss CF currently shows +739 kEUR in yr13 only; insufficient alone to explain +5,271 kEUR)
-- `phase6-legal-reserve-source-bridge` — confirmed not applicable (effective rate = 18% × annual R41)
+- `phase6-loss-carryforward-source-bridge` — contingent on attribution success
+- `phase6-legal-reserve-source-bridge` — confirmed not applicable
 - `phase6-formula-inspection-r41-r43` — confirmed not applicable
 
 ---
