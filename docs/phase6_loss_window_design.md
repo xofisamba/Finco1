@@ -74,11 +74,13 @@ class LossCarryforwardConfig:
 
 ### Python Modes
 
-| Mode | Config | Duration | expire_before_use | CIT total (TUHO) |
-|------|---------|----------:|-------------------|-----------------:|
-| Legacy generic | `LossCarryforwardConfig()` | indefinite (no expiry) | `False` | ~36,092 kEUR |
-| Croatia legal | `duration_years=5, periods_per_year=2` | 10 periods | `True` | ~36,284 kEUR |
-| Excel parity | `explicit_override_periods=5` | 5 periods | `True` | ~38,241 kEUR |
+| Mode | Config | Duration | expire_before_use | Notes |
+|------|---------|----------:|-------------------|-------|
+| Legacy generic | `LossCarryforwardConfig()` | Indefinite (no expiry) | `False` | Legacy pool behavior |
+| Croatia legal | `duration_years=5, periods_per_year=2` | **10 periods** | `True` | Canonical — selected for legal/policy correctness |
+| Excel parity | `explicit_override_periods=5` | 5 periods | `True` | Workbook-specific diagnostic override only |
+
+**Note: Do not compare CIT totals across different source bases.** Loss-window impact must be interpreted only within the same R35/R41 source basis. CIT totals in this document are indicative of direction only; exact figures require identical inputs, period ranges, and source bridges.
 
 ### FIFO Per Vintage
 Each loss bucket carries its own `expiry_period_index`. Buckets expire at the start of the period `>= expiry_period_index`. FIFO usage: oldest valid buckets consumed first.
@@ -127,14 +129,15 @@ $B$36 = 5
 | Does it expire construction losses differently? | **No** — same rolling window applies |
 | Is the Excel behavior a workbook-specific shortcut? | **Likely yes** — 5 columns is a convention, not a named policy |
 
-### Excel vs Python CIT Impact
+### Excel vs Python — Directional Impact
 
-| Scenario | Window | CIT total | Delta |
-|---------|--------:|----------:|------:|
-| Excel compatibility | 5 periods | 38,240.9 kEUR | baseline |
-| Croatia tax-law-correct | 10 periods | 37,580.2 kEUR | −660.7 kEUR |
+| Scenario | Window | Direction vs Excel | Note |
+|---------|--------:|:------------------|------|
+| Excel TUHO | 5 periods | Baseline | Workbook-specific 5-column rolling SUMIF |
+| Croatia legal | 10 periods | Losses expire later | 5-year statutory × 2 semiannual periods |
+| Excel parity | 5 periods | Losses expire earlier | Same 5-period window as Excel |
 
-The 660.7 kEUR difference is entirely explained by 5-period vs 10-period expiry: in the 10-period mode, losses expire after 5 years and are unavailable for years 6–10 of operation, while in the 5-period mode they expire after 2.5 years.
+**Do not compare CIT totals across different source bases.** The 660.7 kEUR directional delta was documented in the tax validation pack under specific R35/R41 source assumptions. Exact figures require identical inputs, period ranges, and source bridges — which are not guaranteed across diagnostic runs.
 
 ### Why R39 Is Zero yr13–30
 After year 13 H1/H2, the construction-period opening loss balance is fully consumed. R39 (carriable losses) becomes 0.00 because all prior losses have been used up. Excel does not create a new carryforward until a period generates new losses (R38 < 0), and TUHO years 13–30 generate positive taxable income every period.
@@ -151,8 +154,8 @@ After year 13 H1/H2, the construction-period opening loss balance is fully consu
 | Construction losses | Included | Included | Included via opening balance | Included |
 | Opening balance | Supported | Supported | Supported (yr13 opening loss) | Supported |
 | R37 allocation trigger | R36≤0 AND R32>0 | Same | Same | Same |
-| Flag/runtime status | `use_tax_bridge_engine=False` default | `use_tax_bridge_engine=True` | N/A | Keep as canonical |
-| CIT yr13–30 | ~36,092 kEUR | ~36,284 kEUR | ~38,241 kEUR | Python closer to Excel with Croatia mode |
+| Flag/runtime status | `use_tax_bridge_engine=False` default | `use_tax_bridge_engine=True` | N/A | Croatia legal as canonical |
+| Policy rationale | Legacy pool | **Legal/policy correctness** | Workbook-specific | Selected for legal correctness, not Excel parity |
 
 ---
 
@@ -162,7 +165,7 @@ After year 13 H1/H2, the construction-period opening loss balance is fully consu
 
 **Rationale:**
 
-1. **Legal correctness**: Croatian corporate tax law provides for a 5-year loss carryforward. Converting to semiannual periods (10 periods) is the legally correct interpretation. The Excel 5-period behavior appears to be a workbook-specific convention, not an intentional tax policy.
+1. **Legal correctness**: Croatian corporate tax law provides for a 5-year loss carryforward. Converting to semiannual periods (10 periods) is the legally correct interpretation. The Croatia legal 10-period mode is selected for legal/policy correctness, **not because it maximizes Excel parity**.
 
 2. **Evidence against Option B**: The Excel behavior (5 columns) is a literal column-count interpretation. In a semiannual model, 5 columns = 2.5 years, which does not match the statutory 5-year window.
 
@@ -173,7 +176,12 @@ After year 13 H1/H2, the construction-period opening loss balance is fully consu
 5. **Preference constraint satisfied**: "Avoid TUHO-only hardcoded behavior. Prefer explicit policy-mode configuration if both legal and Excel parity modes need support." The Croatia mode is the canonical default; Excel mode is explicit and non-default.
 
 ### Why Not Option C (Dual-Mode)?
-Dual-mode would add complexity (two code paths, two test suites) for a ~660 kEUR CIT difference. The Croatian legal interpretation is the correct canonical behavior. Excel parity mode is already available as an explicit override for diagnostic purposes only.
+The engine already has a diagnostic override capability via `explicit_override_periods=5`. This is sufficient for regression testing and Excel parity diagnostics. We do **not** recommend:
+- Making Excel 5-period mode the canonical default
+- Exposing dual-mode broadly in runtime
+- Adding a `policy_mode` enum to the config at this time
+
+Dual-mode would introduce two code paths for a ~660 kEUR CIT difference — not justified without stronger evidence that Excel parity is the correct canonical target.
 
 ### Why Not Option D (Defer)?
 The legal analysis is complete. The implementation exists. The only remaining work is confirming that the 10-period Croatia mode is the correct canonical default and ensuring it is wired as such. Deferring does not improve the decision.
@@ -263,14 +271,6 @@ tests/test_cit_h2_annual_trigger.py
 
 ## 13. Recommended Next Branch
 
-**`phase6-depreciation-engine-runtime-adapter`** (Stage 3)
+**`phase6-useful-life-canonical-design`** — the useful-life canonical decision remains the primary open blocker for Stage 3. This branch (loss-window design) is now complete; the next canonical decision is the useful-life policy.
 
-Prerequisites before Stage 3:
-- Useful-life canonical decision
-- Loss-window canonical decision (this branch — complete)
-- Residual recheck
-- External sign-off
-
-OR, if useful-life decision is also pending: **`phase6-useful-life-canonical-design`**
-
-**Do not proceed to Stage 3 until both canonical decisions are resolved.**
+**Do not proceed to Stage 3 (`phase6-depreciation-engine-runtime-adapter`) while useful-life decision is pending.** Stage 3 requires both canonical decisions resolved before the runtime adapter is designed.**
