@@ -1,0 +1,42 @@
+=== R67 Summary ===
+Years 13-30 R67: -43512.36
+Excel target:   -38240.90
+Residual:       -5271.46
+
+=== Period detail P24-P59 ===
+P24 | yr13H1 | ebitda=   6140.28 | tax_keur=   720.46 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=   364.50 | shl_int=  1495.42 | book_dep=  1168.51
+P25 | yr13H2 | ebitda=   6242.06 | tax_keur=   760.09 | cash_tax=   1480.55 | r67_diag=  -1480.55 | sen_int=   277.81 | shl_int=  1520.20 | book_dep=  1187.88
+P26 | yr14H1 | ebitda=   6115.46 | tax_keur=   769.09 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=   187.02 | shl_int=  1495.42 | book_dep=  1168.51
+P27 | yr14H2 | ebitda=   6216.82 | tax_keur=   810.93 | cash_tax=   1580.02 | r67_diag=  -1580.02 | sen_int=    95.63 | shl_int=  1520.20 | book_dep=  1187.88
+P28 | yr15H1 | ebitda=   6187.85 | tax_keur=   831.89 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=  1499.57 | book_dep=  1171.75
+P29 | yr15H2 | ebitda=   6255.84 | tax_keur=   874.96 | cash_tax=   1706.84 | r67_diag=  -1706.84 | sen_int=     0.00 | shl_int=  1329.14 | book_dep=  1184.63
+P30 | yr16H1 | ebitda=   6221.79 | tax_keur=   900.08 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=  1153.21 | book_dep=  1168.51
+P31 | yr16H2 | ebitda=   6324.91 | tax_keur=   951.62 | cash_tax=   1851.70 | r67_diag=  -1851.70 | sen_int=     0.00 | shl_int=   969.71 | book_dep=  1187.88
+P32 | yr17H1 | ebitda=   6419.49 | tax_keur=  1000.79 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=   779.67 | book_dep=  1168.51
+P33 | yr17H2 | ebitda=   6525.89 | tax_keur=  1058.15 | cash_tax=   2058.95 | r67_diag=  -2058.95 | sen_int=     0.00 | shl_int=   567.13 | book_dep=  1187.88
+P34 | yr18H1 | ebitda=   6570.29 | tax_keur=  1099.95 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=   361.35 | book_dep=  1168.51
+P35 | yr18H2 | ebitda=   6679.19 | tax_keur=  1163.05 | cash_tax=   2263.00 | r67_diag=  -2263.00 | sen_int=     0.00 | shl_int=   119.13 | book_dep=  1187.88
+P36 | yr19H1 | ebitda=   6735.89 | tax_keur=  1205.55 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1171.75
+P37 | yr19H2 | ebitda=   6809.91 | tax_keur=  1218.88 | cash_tax=   2424.43 | r67_diag=  -2424.43 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1184.63
+P38 | yr20H1 | ebitda=   6868.64 | tax_keur=  1229.45 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P39 | yr20H2 | ebitda=   6982.48 | tax_keur=  1249.94 | cash_tax=   2479.39 | r67_diag=  -2479.39 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P40 | yr21H1 | ebitda=   7018.60 | tax_keur=  1256.44 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P41 | yr21H2 | ebitda=   7134.93 | tax_keur=  1277.38 | cash_tax=   2533.82 | r67_diag=  -2533.82 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P42 | yr22H1 | ebitda=   7168.19 | tax_keur=  1283.37 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P43 | yr22H2 | ebitda=   7287.00 | tax_keur=  1304.75 | cash_tax=   2588.12 | r67_diag=  -2588.12 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P44 | yr23H1 | ebitda=   7375.59 | tax_keur=  1320.70 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1171.75
+P45 | yr23H2 | ebitda=   7456.64 | tax_keur=  1335.29 | cash_tax=   2655.99 | r67_diag=  -2655.99 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1184.63
+P46 | yr24H1 | ebitda=   7485.20 | tax_keur=  1340.43 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P47 | yr24H2 | ebitda=   7609.27 | tax_keur=  1362.76 | cash_tax=   2703.19 | r67_diag=  -2703.19 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P48 | yr25H1 | ebitda=   7616.44 | tax_keur=  1364.05 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P49 | yr25H2 | ebitda=   7742.68 | tax_keur=  1386.78 | cash_tax=   2750.83 | r67_diag=  -2750.83 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P50 | yr26H1 | ebitda=   7804.73 | tax_keur=  1397.94 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P51 | yr26H2 | ebitda=   7934.09 | tax_keur=  1421.23 | cash_tax=   2819.17 | r67_diag=  -2819.17 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P52 | yr27H1 | ebitda=   7951.81 | tax_keur=  1424.42 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1171.75
+P53 | yr27H2 | ebitda=   8039.19 | tax_keur=  1440.15 | cash_tax=   2864.57 | r67_diag=  -2864.57 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1184.63
+P54 | yr28H1 | ebitda=   8017.06 | tax_keur=  1436.16 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P55 | yr28H2 | ebitda=   8149.94 | tax_keur=  1460.08 | cash_tax=   2896.25 | r67_diag=  -2896.25 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P56 | yr29H1 | ebitda=   8093.73 | tax_keur=  1449.96 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P57 | yr29H2 | ebitda=   8227.88 | tax_keur=  1474.11 | cash_tax=   2924.08 | r67_diag=  -2924.08 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
+P58 | yr30H1 | ebitda=   8114.09 | tax_keur=  1453.63 | cash_tax=      0.00 | r67_diag=      0.00 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1168.51
+P59 | yr30H2 | ebitda=   8248.58 | tax_keur=  1477.84 | cash_tax=   2931.47 | r67_diag=  -2931.47 | sen_int=     0.00 | shl_int=     0.00 | book_dep=  1187.88
