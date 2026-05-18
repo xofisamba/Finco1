@@ -85,7 +85,13 @@ class TaxParams:
     # SHL interest cap (for foreign sovereign - thin cap adjustment)
     shl_cap_applies: bool = True
     shl_interest_cap_rate: float = 0.0  # Max deductible SHL interest rate
-    
+
+    # TUHO Excel-compatible CIT cash timing start period (0-based operating index).
+    # When set, cash tax / R67 diagnostic is suppressed for operating_index < value.
+    # Default None = no suppression (CIT cash tax from period 0).
+    # TUHO Excel model shows first non-zero R67 at operating_index 25 (year 13 H2).
+    cit_cash_tax_start_operating_index: int | None = None
+
     def taxable_income(self, ebitda: float, interest: float, depreciation: float) -> float:
         """Calculate taxable income.
         

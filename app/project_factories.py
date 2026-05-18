@@ -416,6 +416,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
         wht_sponsor_dividends=0.05,
         wht_sponsor_shl_interest=0.0,  # 0% WHT on SHL interest per Excel R406
         shl_cap_applies=True,
+        cit_cash_tax_start_operating_index=25,  # TUHO Excel: first non-zero R67 at P25
     )
 
     return ProjectInputs(
