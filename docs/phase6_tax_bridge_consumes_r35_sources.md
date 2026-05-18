@@ -3,8 +3,9 @@
 ## Branch
 `phase6-tax-bridge-consumes-r35-sources`
 
-## HEAD
-`99de7f8` (pre-change baseline)
+## HEADs
+- **Implementation commit:** `0bf0ec1cadeb0172c8706e7281ffc8b39a2d7300`
+- **Baseline (pre-change):** `99de7f8d2d46fd0ffdbe8c515d79f0897d69ea17`
 
 ## What Changed
 
@@ -38,10 +39,47 @@ The TUHO tax bridge's `_tax_bridge_taxable_income_before_losses` function was up
 | Total CIT | 39,649.8 kEUR | 45,835.3 kEUR | +6,185.6 kEUR |
 
 ### Key Driver of Change
-- **Book depreciation (1,216.6 kEUR/period)** is higher than **tax depreciation (1,178.2 kEUR/period)** by **38.4 kEUR/period**
-- This means P&L cost is higher → taxable income is **lower** in the book-cost sense
-- But R35 formula uses `EBITDA − book_dep + tax_addback`: so book dep (higher) reduces income more, then tax addback (lower) adds back less → net effect is higher taxable income (+9,364.4 kEUR cumulative)
-- **SHL gross-accrued (R27 fixture)** is non-zero for TUHO → preferred over formula
+
+R35 movement is the **combined result** of three R35 source basis changes, not depreciation alone:
+
+**1. Depreciation split effect (lowers R35 by ~2,302 kEUR cumulative)**
+> Book depreciation (72,993.7 kEUR total / 60 periods) > Tax depreciation (70,691.5 kEUR total / 60 periods)
+>
+> R35 formula: `EBITDA − book_dep + tax_dep + interest_items + fiscal_reintegration`
+>
+> Since book_dep > tax_dep, the term `−book_dep + tax_dep` is negative, lowering R35 by the full book-tax cumulative difference of **~2,302 kEUR** over the model life. This effect alone moves R35 in the opposite direction from the total observed movement.
+
+**2. SHL gross-accrued interest source (primary driver of +9,364 kEUR R35 increase)**
+> The validated Excel R27 fixture provides per-period gross-accrued SHL interest that differs from the formula-derived amount. This fixture-extracted source is used as the preferred SHL input to the ATAD interest limitation computation in R35.
+>
+> Because ATAD deductibility is capped at 30% EBITDA (with a 3,000 kEUR floor), and the gross-accrued fixture produces a different interest base than the legacy formula, the combined ATAD disallowed-allowed interest split shifts R35 upward substantially.
+
+**3. Interest limitation mechanics**
+> The gross-accrued SHL interest (non-zero for all 60 TUHO operating periods, ranging ~1,297–1,660 kEUR/period) interacts with the ATAD cap. The net effect of the source substitution is an R35 increase of ~9,364 kEUR, which is the dominant driver of the total movement.
+
+**Summary:** The depreciation split alone would lower R35 by ~2,302 kEUR. The combined R35 source basis changes — primarily the SHL gross-accrued fixture substitution — produce a net +9,364 kEUR movement.
+
+## `_tuho_shl_gross_accrued_by_period()` — Calibration Bridge Note
+
+> **This is a temporary TUHO-only fixture-backed calibration bridge.**
+>
+> - Default-off; activated only inside `_apply_tuho_tax_bridge_runtime_cash_tax` when `use_tax_bridge_engine=True`
+> - TUHO-specific; not a generalized production data model
+> - Reads the validated Excel R27 fixture (`tests/fixtures/interest_limitation/tuho_interest_limitation_fixture.json`)
+> - Should later move to a proper source-data or domain fixture layer before any broader use
+
+## R67 Status
+
+| | Value |
+|---|---|
+| Excel R67 target | -38,240.9 kEUR |
+| Flag ON R67 (new) | -45,825.2 kEUR |
+| Residual | **-7,584.3 kEUR (not yet calibrated)** |
+
+- **R35 source consumption is complete** (this branch)
+- **R67 is not yet calibrated** — the residual has widened vs the pre-branch state because the R35 basis now uses the correct sources, which changes how losses and tax flow through
+- **Next branch:** `phase6-r67-full-calibration-validation`
+- **R99/R102:** remain blocked / audit-only (`fcf_for_shl_keur = 0.0` across all periods)
 
 ## Default Behavior
 - **Unchanged** — flag defaults to `False`; factories do not opt in
@@ -60,9 +98,9 @@ The TUHO tax bridge's `_tax_bridge_taxable_income_before_losses` function was up
 - **Oborovo tax bridge** — guarded; raises `ValueError` if flag is set
 
 ## R99 Readiness Status
-- **R99 FCF for distribution**: audit-only field populated, but `fcf_for_shl_keur` and `fcf_for_distribution_keur` remain the waterfall-engine defaults (no SHL FCF opt-in)
-- R99/R102 remain blocked behind the "no SHL FCF opt-in" constraint
-- Next step: phase6d or dedicated R99 wiring branch to bring in `distribution_account.compute_tuho_r99_input_period`
+- **BLOCKED** — R99/R102 remain audit-only
+- `fcf_for_shl_keur` is 0.0 across all periods; no SHL FCF waterfall opt-in
+- Next step: `phase6-r67-full-calibration-validation` → subsequent branch for R99 wiring
 
 ## Tests
 
@@ -73,7 +111,10 @@ The TUHO tax bridge's `_tax_bridge_taxable_income_before_losses` function was up
 | `tests/test_tax_bridge_runtime_flag.py` (8) | ✅ 8/8 passed |
 | `tests/test_shl_gross_interest_pnl_bridge.py` (9) | ✅ 9/9 passed |
 | `tests/test_book_depreciation_pnl_bridge.py` (6) | ✅ 6/6 passed |
-| **Total** | **43/43 passed** |
+| `tests/test_r35_full_validation.py` (7) | ✅ 7/7 passed |
+| `tests/test_financial_statements_excel_export.py` (5) | ✅ 5/5 passed |
+| `tests/test_shl_fcf_waterfall_runtime_flag.py` (10) | ✅ 10/10 passed |
+| **Total** | **65/65 passed** |
 
 ## Merge Recommendation
 
@@ -84,4 +125,6 @@ The change is ready to merge into `main`. Key validations:
 3. ✅ No factory opt-in
 4. ✅ No SHL FCF opt-in
 5. ✅ Oborovo flag-on remains guarded
-6. ✅ All 43 tests pass
+6. ✅ All 65 tests pass
+7. ✅ R35 source consumption complete; R67 not yet calibrated
+8. ✅ R99/R102 remain blocked
