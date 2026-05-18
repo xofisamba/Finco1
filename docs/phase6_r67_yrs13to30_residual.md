@@ -57,9 +57,13 @@ After PR #71 (CIT cash timing fix, years 1–12 suppressed):
 
 ## Cash Tax Timing Convention
 
-**Confirmed pattern:** `cash_tax_H2 = -(tax_keur_H1 + tax_keur_H2) = -tax_keur_H2` (since H1 tax_keur = 0 for all periods).
+**Confirmed pattern:** Tax accrual (`tax_keur`) exists in both H1 and H2. Corporate cash tax / R67 is paid only in H2.
 
-Python shows `cash_tax = -2 × tax_keur` per H2 period because `r67_diag = cash_tax = -(tax_keur_{prev H1} + tax_keur_{curr H2})`. Since H1 always has zero cash tax (by construction), the annual payment is stored in the H2 period's r67 field.
+
+- H2 R67 = negative of the full annual CIT cash payment:
+  `r67_H2 = -(H1_tax_keur + H2_tax_keur)`
+- H1 R67 / cash tax = 0 by timing convention, **not** because H1 tax accrual is zero
+- Example: P24 tax_keur=720.46, P25 tax_keur=760.09 → P25 cash_tax = 1,480.55 = 720.46 + 760.09
 
 ---
 
@@ -179,7 +183,7 @@ Gap per year is relatively uniform: ~260-504 kEUR/year, growing slowly. This is 
 ---
 
 ## Tests Created
-`tests/test_r67_yrs13to30_residual.py` — 17 tests asserting:
+`tests/test_r67_yrs13to30_residual.py` — 20 tests asserting:
 - Default TUHO unchanged
 - Default Oborovo unchanged  
 - No factory opt-in
