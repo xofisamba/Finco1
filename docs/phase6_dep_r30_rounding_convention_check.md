@@ -98,7 +98,7 @@ The category CAPEX extraction (PR #83) correctly identified all 17 categories. T
 
 ## 4. Can Exact ±1 kEUR Parity Be Achieved?
 
-**No clean fix without a structural convention change.**
+**No exact ±1 kEUR parity under the current flat semiannual convention.**
 
 To match Excel exactly, the engine would need per-category leap frac application — equivalent to changing the formula from per-period flat straight-line to per-annual-with-leap-adjustment. This is a structural convention change, not a scalar plug.
 
@@ -120,7 +120,7 @@ Exact ±1 kEUR parity cannot be achieved by the current flat semiannual conventi
 
 **Not a missing data problem.** All 17 categories correctly extracted.
 
-**Exact ±1 kEUR parity cannot be achieved without a structural convention change** (applying leap frac per-category), which would be a scalar fit disguised as a convention.
+**Exact ±1 kEUR parity cannot be achieved under the current flat semiannual convention. It would require adding a generic actual-day / leap_frac depreciation convention to the offline engine. That is a legitimate optional convention if designed generically, but it is a structural convention change and should not be slipped in as a silent fix.**
 
 **Recommendation:** Accept near-parity, document ±5 kEUR as diagnostic-only, proceed with Stage 3 design awareness.
 
