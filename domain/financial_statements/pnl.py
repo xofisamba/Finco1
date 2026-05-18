@@ -11,6 +11,8 @@ from domain.waterfall.waterfall_engine import WaterfallPeriod, WaterfallResult
 def _assemble_pnl_period(
     period: WaterfallPeriod,
     retained_earnings_keur: float,
+    *,
+    use_shl_gross_accrued_for_pnl: bool = False,
 ) -> PnLPeriodResult:
     revenues = period.revenue_keur
     operating_expenses = -period.opex_keur
@@ -26,7 +28,12 @@ def _assemble_pnl_period(
     senior_interest_expense = -period.senior_interest_keur
     refinancing_interest = 0.0
     junior_interest = 0.0
-    shl_interest_expense = -period.shl_interest_keur
+    shl_interest_source = (
+        period.shl_gross_accrued_interest_keur
+        if use_shl_gross_accrued_for_pnl
+        else period.shl_interest_keur
+    )
+    shl_interest_expense = -shl_interest_source
     interest_on_cash = 0.0
     financial_earnings = (
         interest_from_reserve_accounts
@@ -95,12 +102,25 @@ def assemble_pnl(
     waterfall_result: WaterfallResult,
     opening_retained_earnings_keur: float = 0.0,
 ) -> PnLStatementResult:
+    use_shl_gross_accrued_for_pnl = getattr(
+        waterfall_result,
+        "use_shl_gross_accrued_for_pnl",
+        False,
+    )
+    project_code = getattr(waterfall_result, "project_code", "")
+    if use_shl_gross_accrued_for_pnl and project_code != "TUHO-WIND-1":
+        raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
+
     periods_without_retained: list[PnLPeriodResult] = []
     net_income_schedule: list[float] = []
     dividends_paid_schedule: list[float] = []
 
     for period in waterfall_result.periods:
-        provisional = _assemble_pnl_period(period, retained_earnings_keur=0.0)
+        provisional = _assemble_pnl_period(
+            period,
+            retained_earnings_keur=0.0,
+            use_shl_gross_accrued_for_pnl=use_shl_gross_accrued_for_pnl,
+        )
         periods_without_retained.append(provisional)
         net_income_schedule.append(provisional.net_income_keur)
         dividends_paid_schedule.append(period.distribution_keur)

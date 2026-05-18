@@ -55,6 +55,7 @@ class WaterfallRunConfig:
     use_tuho_r99_input_engine: bool = False
     use_shl_fcf_waterfall_engine: bool = False
     use_tax_bridge_engine: bool = False
+    use_shl_gross_accrued_for_pnl: bool = False
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 
@@ -104,7 +105,8 @@ class WaterfallRunConfig:
             f"sr_{int(self.use_senior_rate_schedule_engine)}_"
             f"ss_{int(self.use_senior_sculpting_basis_engine)}_"
             f"sfw_{int(self.use_shl_fcf_waterfall_engine)}_"
-            f"taxb_{int(self.use_tax_bridge_engine)}"
+            f"taxb_{int(self.use_tax_bridge_engine)}_"
+            f"shlg_{int(self.use_shl_gross_accrued_for_pnl)}"
         )
 
     @classmethod
@@ -188,6 +190,13 @@ class WaterfallRunConfig:
         use_tax_bridge_engine = getattr(inputs.info, "use_tax_bridge_engine", False)
         if use_tax_bridge_engine and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
             raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
+        use_shl_gross_accrued_for_pnl = getattr(
+            inputs.info,
+            "use_shl_gross_accrued_for_pnl",
+            False,
+        )
+        if use_shl_gross_accrued_for_pnl and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+            raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
 
         # Map equity_irr_method — FinancingParams stores as str, config expects enum
         from domain.inputs import EquityIRRMethod
@@ -228,6 +237,7 @@ class WaterfallRunConfig:
             use_tuho_r99_input_engine=getattr(fin, "use_tuho_r99_input_engine", False),
             use_shl_fcf_waterfall_engine=use_shl_fcf_waterfall_engine,
             use_tax_bridge_engine=use_tax_bridge_engine,
+            use_shl_gross_accrued_for_pnl=use_shl_gross_accrued_for_pnl,
             shl_fcf_waterfall_cash_schedule_keur=shl_fcf_cash_schedule,
             shl_fcf_waterfall_minimum_cash_retained_keur=getattr(
                 fin,
@@ -318,6 +328,7 @@ class WaterfallRunner:
             use_tuho_r99_input_engine=config.use_tuho_r99_input_engine,
             use_shl_fcf_waterfall_engine=config.use_shl_fcf_waterfall_engine,
             use_tax_bridge_engine=config.use_tax_bridge_engine,
+            use_shl_gross_accrued_for_pnl=config.use_shl_gross_accrued_for_pnl,
             shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
             shl_fcf_waterfall_minimum_cash_retained_keur=(
                 config.shl_fcf_waterfall_minimum_cash_retained_keur

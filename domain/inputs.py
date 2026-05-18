@@ -94,6 +94,7 @@ class ProjectInfo:
     use_senior_sculpting_basis_engine: bool = False
     use_shl_fcf_waterfall_engine: bool = False
     use_tax_bridge_engine: bool = False
+    use_shl_gross_accrued_for_pnl: bool = False
 
 
 @dataclass(frozen=True)
