@@ -1,0 +1,14 @@
+segment,python_r67_keur,excel_target_keur,residual_keur,note
+Yr01-12,0.00,0.00,0.00,construction period - no tax
+Yr13-20,-15844.88,,,"flag-on runtime; residual by segment not separately extracted"
+Yr21-30,-27667.48,,,"flag-on runtime; residual by segment not separately extracted"
+Yr13-30,-43512.36,-38240.90,+5271.46,"current baseline; useful_life=30yr flat; loss_window=Croatia 10-period"
+,,,,,
+counterfactual,python_r67_estimate_keur,delta_vs_baseline_keur,direction,note
+Useful-life canonical (20yr main + 12yr fin),-57677,-14065,worse,"net depreciation -14065 kEUR over Y13-30; first-order estimate only"
+Loss-window (Croatia 10-period vs Excel 5-period),-44172,-660,worse,"approx -660 kEUR CIT saving with Croatia 10-period; directional estimate"
+Combined canonical estimate,-58237,-14725,worse,"combined first-order estimate; non-linear loss interactions may differ"
+,,,,,
+gate,target_k eur,current_state,after_canonical_estimate,pass_fail
+Cumulative Y13-30 residual,±2000,+5271,-20000,FAIL
+Max annual residual,±200/yr,~+1172/yr,~+1172/yr (yr13-20),FAIL
