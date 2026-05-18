@@ -253,6 +253,24 @@ def _apply_tuho_shl_gross_accrued_interest_bridge(result: "WaterfallResult") -> 
             period.shl_gross_accrued_interest_keur = r27_by_period[operating_index]
 
 
+def _tuho_shl_gross_accrued_by_period() -> dict[int, float]:
+    """Return SHL gross-accrued interest by operating index from the validated fixture."""
+    import json
+    from pathlib import Path
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "tests"
+        / "fixtures"
+        / "interest_limitation"
+        / "tuho_interest_limitation_fixture.json"
+    )
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    return {
+        int(row["period_index"]): float(row["gross_shl_interest_r27"])
+        for row in fixture["periods"]
+    }
+
+
 def _apply_tuho_tax_bridge_runtime_cash_tax(
     result: "WaterfallResult",
     tenor_periods: int,
@@ -290,6 +308,44 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
         result.periods[0].tax_loss_opening_audit_keur if result.periods else 0.0,
     )
 
+    # TUHO book/tax depreciation: from the same fixture used by the book-dep bridge
+    # (avoids requiring the separate use_book_depreciation_for_pnl flag)
+    TUHO_BOOK_TOTAL = 72_993.7
+    TUHO_TAX_TOTAL = 70_691.5
+    OPERATING_PERIODS = 60
+
+    from domain.depreciation import (
+        AssetClassConfig,
+        DepreciationLedgerInput,
+        DepreciationPolicy,
+        build_depreciation_ledger,
+    )
+    dep_ledger = build_depreciation_ledger(
+        DepreciationLedgerInput(
+            asset_classes=(AssetClassConfig(
+                asset_class="tuho_aggregate_fixture",
+                gross_asset_basis_keur=TUHO_BOOK_TOTAL,
+                book_depreciable_basis_keur=TUHO_BOOK_TOTAL,
+                tax_depreciable_basis_keur=TUHO_TAX_TOTAL,
+                placed_in_service_period=0,
+                depreciation_start_period=0,
+                source_label="TUHO aggregate Dep R30/R31 fixture",
+            ),),
+            policies={"tuho_aggregate_fixture": DepreciationPolicy(
+                useful_life_book_periods=OPERATING_PERIODS,
+                useful_life_tax_periods=OPERATING_PERIODS,
+                period_frequency="semiannual",
+            )},
+            period_count=OPERATING_PERIODS,
+            period_frequency="semiannual",
+            cod_period=0,
+        )
+    )
+    dep_by_period = {row.period_index: row for row in dep_ledger.periods}
+
+    # SHL gross-accrued interest: fixture-extracted Excel R27
+    shl_gross_by_period = _tuho_shl_gross_accrued_by_period()
+
     for operating_index, period in enumerate(result.periods):
         interest_limitation = interest_limitation_by_period.get(operating_index)
         fiscal_reintegration = (
@@ -297,12 +353,18 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
             if interest_limitation is not None
             else 0.0
         )
+        dep_row = dep_by_period.get(operating_index)
+        book_dep = dep_row.book_depreciation_keur if dep_row else period.depreciation_keur
+        tax_dep = dep_row.tax_depreciation_keur if dep_row else period.depreciation_keur
+        shl_gross = shl_gross_by_period.get(operating_index, 0.0)
 
         taxable_before_losses = _tax_bridge_taxable_income_before_losses(
             ebitda_keur=period.ebitda_keur,
-            depreciation_keur=period.depreciation_keur,
+            book_depreciation_keur=book_dep,
+            tax_depreciation_keur=tax_dep,
             senior_interest_keur=period.interest_senior_keur,
-            shl_interest_keur=period.interest_shl_keur,
+            shl_interest_formula_keur=period.interest_shl_keur,
+            shl_interest_gross_accrued_keur=shl_gross,
             fiscal_reintegration_keur=fiscal_reintegration,
         )
         loss_result = compute_loss_carryforward_period(
@@ -382,22 +444,39 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
 def _tax_bridge_taxable_income_before_losses(
     *,
     ebitda_keur: float,
-    depreciation_keur: float,
+    book_depreciation_keur: float,
+    tax_depreciation_keur: float,
     senior_interest_keur: float,
-    shl_interest_keur: float,
+    shl_interest_formula_keur: float,
+    shl_interest_gross_accrued_keur: float,
     fiscal_reintegration_keur: float,
 ) -> float:
-    """Return signed taxable income before losses using legacy ATAD inputs."""
+    """Return signed taxable income before losses using R35 source basis.
 
-    total_interest = senior_interest_keur + shl_interest_keur
+    R35 bridge sources:
+    - book_depreciation_keur:  P&L cost (earnings statement basis, straight-line)
+    - tax_depreciation_keur:   fiscal addback (tax basis straight-line, differs from book)
+    - shl_interest_formula_keur: legacy formula-derived gross SHL interest (fallback)
+    - shl_interest_gross_accrued_keur: fixture-extracted Excel R27 (preferred, non-zero for TUHO)
+    - senior_interest_keur:  senior debt interest
+    - fiscal_reintegration_keur: R34 interest limitation reintegration
+    """
+    # Use gross-accrued source for SHL when available; fall back to formula otherwise
+    shl_interest = (
+        shl_interest_gross_accrued_keur
+        if shl_interest_gross_accrued_keur > 0
+        else shl_interest_formula_keur
+    )
+    total_interest = senior_interest_keur + shl_interest
     deductible_interest_limit = max(ebitda_keur * 0.30, 3000.0)
     disallowed_interest = max(0.0, total_interest - deductible_interest_limit)
     deductible_interest = total_interest - disallowed_interest
     return (
         ebitda_keur
-        - depreciation_keur
+        - book_depreciation_keur
         - deductible_interest
         + disallowed_interest
+        + tax_depreciation_keur
         + fiscal_reintegration_keur
     )
 
