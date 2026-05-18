@@ -13,9 +13,9 @@ from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 
 EXCEL_R67_TOTAL_KEUR = -38_240.9  # Excel R67 target (sum of H2 cash tax, years 13-30 only)
 LEGACY_R67_OFF_KEUR = -39_639.7   # Python flag OFF R67 total
-FLAG_ON_R67_KEUR = -45_825.2      # Python flag ON R67 total (all 60 periods)
-FLAG_ON_R67_YEARS_13_TO_30_KEUR = -43_512.4  # Python flag ON R67 for periods 24-59
-PYTHON_R67_YEARS_1_TO_12_KEUR = -2_312.9     # Python R67 in years 1-12 (Excel has 0)
+FLAG_ON_R67_KEUR = -43_512.4      # Python flag ON R67 total after CIT timing fix (years 13-30 only; years 1-12 now suppressed)
+FLAG_ON_R67_YEARS_13_TO_30_KEUR = -43_512.4  # Python flag ON R67 for periods 24-59 (unchanged by fix)
+PYTHON_R67_YEARS_1_TO_12_KEUR = 0.0     # Python R67 in years 1-12 (now suppressed to 0 by cit_cash_tax_start fix)
 
 
 def _run(project):
@@ -72,8 +72,8 @@ def test_r67_residual_is_calculated_and_documented():
     r67 = sum(p.cash_tax_excel_style_h2_diagnostic_keur for p in result.periods)
     residual = r67 - EXCEL_R67_TOTAL_KEUR
     assert abs(residual) > 5_000  # residual is large but documented
-    # residual should be approximately -7,584 kEUR (currently known)
-    assert residual == pytest.approx(-7_584.3, abs=1.0)
+    # residual should be approximately -5,271 kEUR (years 13-30 only; years 1-12 now suppressed)
+    assert residual == pytest.approx(-5_271.5, abs=1.0)
 
 
 # ---------------------------------------------------------------------------

@@ -52,6 +52,7 @@ def run_waterfall_v3_core(
     use_shl_gross_accrued_for_pnl: bool = False,
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = (),
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
+    tuho_cit_cash_tax_start_operating_index: int | None = None,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -217,7 +218,11 @@ def run_waterfall_v3_core(
     if use_shl_gross_accrued_for_pnl:
         _apply_tuho_shl_gross_accrued_interest_bridge(result)
     if use_tax_bridge_engine:
-        _apply_tuho_tax_bridge_runtime_cash_tax(result, tenor_periods, lockup_dscr, tax_rate)
+        cit_start = getattr(inputs.tax, "cit_cash_tax_start_operating_index", None)
+        _apply_tuho_tax_bridge_runtime_cash_tax(
+            result, tenor_periods, lockup_dscr, tax_rate,
+            cit_cash_tax_start_operating_index=cit_start,
+        )
     if construction_diagnostic is not None:
         result.construction_schedule_diagnostic = construction_diagnostic
     return result
@@ -276,6 +281,7 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
     tenor_periods: int,
     lockup_dscr: float,
     tax_rate: float,
+    cit_cash_tax_start_operating_index: int | None = None,
 ) -> None:
     """Promote the TUHO tax bridge to runtime tax fields behind the flag.
 
@@ -283,6 +289,11 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
     reintegration schedule, updates accrued/cash tax fields, and refreshes the
     C1d R69/R84/R99/R102 audit bridge. It does not accept R99/R102 as a runtime
     source and does not enable SHL FCF waterfall.
+
+    Args:
+        cit_cash_tax_start_operating_index: when set (0-based), cash tax / R67
+            diagnostic is suppressed for operating_index < value. Excel-compatible
+            TUHO: operating_index 25 = first non-zero R67 (year 13 H2).
     """
 
     from domain.distribution_account import compute_tuho_r99_input_period
@@ -389,8 +400,16 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
         period.taxable_profit_keur = loss_result.taxable_profit_after_losses_keur
         period.tax_keur = tax_keur
         period.cit_accrual_audit_keur = tax_keur
+
+        # Suppress cash tax before the Excel-compatible start period.
+        # Default (None) = no suppression. TUHO Excel: operating_index 25.
+        suppressed = (
+            cit_cash_tax_start_operating_index is not None
+            and operating_index < cit_cash_tax_start_operating_index
+        )
+
         period.r67_excel_style_cash_tax_diagnostic_keur = (
-            -(previous_tax + tax_keur) if period.period_in_year == 2 else 0.0
+            -(previous_tax + tax_keur) if (period.period_in_year == 2 and not suppressed) else 0.0
         )
         period.cash_tax_excel_style_h2_diagnostic_keur = (
             period.r67_excel_style_cash_tax_diagnostic_keur
@@ -398,7 +417,7 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
 
         tax_cash = (
             -period.cash_tax_excel_style_h2_diagnostic_keur
-            if period.period_in_year == 2
+            if (period.period_in_year == 2 and not suppressed)
             else 0.0
         )
         period.corporate_tax_cash_keur = tax_cash

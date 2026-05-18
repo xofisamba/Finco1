@@ -415,6 +415,11 @@ class TaxParams:
 
     shl_cap_applies: bool = True
 
+    # TUHO Excel-compatible CIT cash tax start period (0-based operating index).
+    # When set, cash tax / R67 diagnostic is suppressed for operating_index < value.
+    # TUHO Excel: first non-zero R67 at operating_index 25 (year 13 H2).
+    cit_cash_tax_start_operating_index: int | None = None
+
     @property
     def initial_tax_loss_keur(self) -> float:
         """Initial tax loss carryforward available at commercial operation."""

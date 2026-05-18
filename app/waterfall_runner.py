@@ -56,6 +56,10 @@ class WaterfallRunConfig:
     use_shl_fcf_waterfall_engine: bool = False
     use_tax_bridge_engine: bool = False
     use_shl_gross_accrued_for_pnl: bool = False
+    # TUHO Excel-compatible CIT cash tax start period (0-based operating index).
+    # When set, R67 diagnostic and corporate_tax_cash are suppressed for
+    # operating_index < value. TUHO Excel: value=25 (first non-zero R67 at P25).
+    tuho_cit_cash_tax_start_operating_index: int | None = None
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 
@@ -190,6 +194,9 @@ class WaterfallRunConfig:
         use_tax_bridge_engine = getattr(inputs.info, "use_tax_bridge_engine", False)
         if use_tax_bridge_engine and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
             raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
+        tuho_cit_cash_tax_start_operating_index = getattr(
+            inputs.tax, "cit_cash_tax_start_operating_index", None
+        ) if use_tax_bridge_engine else None
         use_shl_gross_accrued_for_pnl = getattr(
             inputs.info,
             "use_shl_gross_accrued_for_pnl",
@@ -238,6 +245,7 @@ class WaterfallRunConfig:
             use_shl_fcf_waterfall_engine=use_shl_fcf_waterfall_engine,
             use_tax_bridge_engine=use_tax_bridge_engine,
             use_shl_gross_accrued_for_pnl=use_shl_gross_accrued_for_pnl,
+            tuho_cit_cash_tax_start_operating_index=tuho_cit_cash_tax_start_operating_index,
             shl_fcf_waterfall_cash_schedule_keur=shl_fcf_cash_schedule,
             shl_fcf_waterfall_minimum_cash_retained_keur=getattr(
                 fin,
@@ -329,6 +337,7 @@ class WaterfallRunner:
             use_shl_fcf_waterfall_engine=config.use_shl_fcf_waterfall_engine,
             use_tax_bridge_engine=config.use_tax_bridge_engine,
             use_shl_gross_accrued_for_pnl=config.use_shl_gross_accrued_for_pnl,
+            tuho_cit_cash_tax_start_operating_index=config.tuho_cit_cash_tax_start_operating_index,
             shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
             shl_fcf_waterfall_minimum_cash_retained_keur=(
                 config.shl_fcf_waterfall_minimum_cash_retained_keur
