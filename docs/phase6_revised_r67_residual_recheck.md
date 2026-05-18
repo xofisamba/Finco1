@@ -8,13 +8,25 @@
 
 ---
 
-## 1. What This Branch Does
+## 1. Sign Convention
 
-Recomputes and documents the revised TUHO R67 residual after the two canonical decisions are now formally documented:
-1. Loss-window canonical decision (PR #85): Croatia legal 10-period vintage model
-2. Useful-life canonical decision (PR #86): project-input first, Croatia 20yr/12yr template fallback
+**Residual** is presented as Python cash-tax overpayment vs Excel:
+`residual = abs(Python R67) − abs(Excel R67)`
 
-This branch does NOT promote runtime sources, enable R99/R102, or implement the canonical decisions in runtime. Counterfactuals are computed offline using the depreciation engine.
+- **Positive residual** = Python pays MORE cash tax than Excel (R67 more negative)
+- **Negative residual** = Python pays LESS cash tax than Excel (R67 less negative)
+
+All tables and delta columns follow this convention.
+
+---
+
+## 2. What This Branch Does
+
+Recomputes and documents the revised TUHO R67 residual after the two canonical decisions are formally documented:
+1. Loss-window canonical (PR #85): Croatia legal 10-period vintage model
+2. Useful-life canonical (PR #86): project-input first, Croatia 20yr/12yr template fallback
+
+**Methodology correction:** Depreciation delta must be converted to CIT/R67 impact via the 18% CIT rate before comparing to R67 residual. Depreciation delta ≠ R67 delta.
 
 Creates:
 - `docs/phase6_revised_r67_residual_recheck.md` (this file)
@@ -22,7 +34,7 @@ Creates:
 
 ---
 
-## 2. What This Branch Does NOT Do
+## 3. What This Branch Does NOT Do
 
 - ❌ No production runtime changes
 - ❌ No waterfall runtime changes
@@ -32,184 +44,175 @@ Creates:
 - ❌ No scalar plugs
 - ❌ No residual adjustments
 - ❌ No silent switch from 30-year to 20-year runtime depreciation
-- ❌ No silent actual-day / leap_frac implementation
 - ❌ Oborovo remains guarded
 - ❌ No changes to `app/waterfall_core.py`, `app/waterfall_runner.py`, `app/project_factories.py`
 
 ---
 
-## 3. Baseline Residual Table (Pre-Canonical Decisions)
+## 4. Baseline Residual Table (Pre-Canonical Decisions)
 
 Current runtime state (`use_tax_bridge_engine=True`, TUHO flag-on):
 
 | Segment | Python R67 (kEUR) | Excel Target (kEUR) | Residual (kEUR) |
 |---------|------------------:|--------------------:|----------------:|
 | Yr1–12 | 0.00 | 0.00 | 0.00 |
-| Yr13–20 | −15,844.88 | see note | see note |
-| Yr21–30 | −27,667.48 | see note | see note |
 | **Yr13–30** | **−43,512.36** | **−38,240.90** | **+5,271.46** |
 
-*Note: Excel segment targets (Yr13–20 and Yr21–30 separately) are not explicitly extracted in this recheck. The Yr13–30 total is from `test_r67_yrs13to30_residual.py` fixtures.*
-
-The baseline residual of **+5,271 kEUR** means Python is more negative than Excel by ~5.3M EUR over the operating period. This was documented in prior branches; no canonical decisions had been formally made at that point.
+*Positive residual means Python overpays Excel by 5,271 kEUR over Yr13–30.*
 
 ---
 
-## 4. Depreciation Counterfactual
+## 5. Corrected Counterfactual Methodology
 
-### What Changed in the Offline Engine
+**R67 = cash tax = CIT.** Depreciation affects taxable income, which determines CIT. The approximate CIT/R67 impact of a depreciation change is:
 
-The offline `DepreciationEngine` was used to compute per-period depreciation under two configurations:
+```
+CIT impact ≈ depreciation_delta × 18% (CIT rate)
+```
 
-| Configuration | Main CAPEX (kEUR) | Fin. Costs (kEUR) | Main Life | Fin. Life |
-|-------------|------------------:|-----------------:|----------:|----------:|
-| Current (30yr flat) | 70,327.87 | 2,302.17 | 30yr | 30yr |
-| Useful-life canonical | 70,327.87 | 2,302.17 | **20yr** | **12yr** |
-
-Total CAPEX is identical in both configurations (72,630.04 kEUR). Only the depreciation timing differs.
-
-### Per-Period Annual Depreciation Comparison
-
-| Year | 30yr Annual (kEUR) | 20+12yr Annual (kEUR) | Delta (kEUR) | Direction |
-|------|-------------------:|----------------------:|-------------:|----------|
-| Yr13–20 | 2,344.26 | 3,516.39 | **+1,172.13** | More dep → lower CIT → R67 less negative |
-| Yr21–30 | 2,344.26 | 0.00 | **−2,344.26** | No dep → higher CIT → R67 more negative |
-| **Yr13–30 total** | **42,196.72** | **28,131.15** | **−14,065.57** | Net: R67 more negative |
-
-### Key Observation
-
-The 20+12yr canonical policy produces **more** depreciation in years 13–20 (assets still alive) but **zero** depreciation in years 21–30 (both main and financing assets fully written off by end of year 20). The 30yr policy produces equal depreciation throughout all 30 years.
-
-This is the expected behavior of a shorter useful-life policy — front-loaded depreciation — but it **worsens** the R67 residual in aggregate.
+Depreciation delta is NOT directly comparable to R67 residual — conversion required.
 
 ---
 
-## 5. Counterfactual Analysis
+## 6. Useful-Life Canonical Counterfactual (Offline, CIT-Adjusted)
 
-### A. Current Runtime Baseline
-- `use_tax_bridge_engine=True` for TUHO
-- Implied 30-year straight-line depreciation (runtime default)
-- Croatia 10-period loss window (flag-on default)
-- **R67 Y13–30: −43,512 kEUR** (fixture-documented)
+Applying 20yr main + 12yr financing via offline depreciation engine, then converting to CIT impact:
 
-### B. Useful-Life Canonical Counterfactual (Offline)
+### Depreciation Delta by Segment
 
-Applying 20yr main + 12yr financing via offline engine (no runtime change):
+| Segment | 30yr Annual Dep (kEUR) | 20+12yr Annual Dep (kEUR) | Dep Delta (kEUR) | CIT Rate | CIT Impact (kEUR) | R67 Direction |
+|---------|----------------------:|--------------------------:|----------------:|--------:|-------------------:|---------------|
+| Yr13–20 (8 yrs) | 2,344.26 | 3,516.39 | **+9,377** | ×18% | **+1,688** | R67 less negative |
+| Yr21–30 (10 yrs) | 2,344.26 | 0.00 | **−23,443** | ×18% | **−4,220** | R67 more negative |
+| **Yr13–30 total** | — | — | **−14,065** | ×18% | **−2,532** | **Net: R67 more negative** |
+
+### CIT Impact Calculation
+
+| Step | Value |
+|------|------:|
+| Yr13–20 dep delta | +9,377 kEUR |
+| Yr13–20 CIT impact | +9,377 × 18% = **+1,688 kEUR** (less cash tax) |
+| Yr21–30 dep delta | −23,443 kEUR |
+| Yr21–30 CIT impact | −23,443 × 18% = **−4,220 kEUR** (more cash tax) |
+| **Net CIT impact** | **−2,532 kEUR** (Python pays more overall vs Excel) |
+
+### Estimated New R67
+
+| Component | Value (kEUR) |
+|-----------|-------------:|
+| Baseline residual | +5,271 |
+| + Useful-life CIT impact | −2,532 |
+| **Subtotal** | **+2,739** |
+
+*Note: This is a first-order approximation. Loss engine non-linearity means actual R67 after re-running the tax bridge with canonical lives may differ. Do not treat as precise prediction.*
+
+---
+
+## 7. Loss-Window Counterfactual (Directional)
+
+The loss-window canonical (Croatia 10-period) vs Excel 5-period diagnostic override:
 
 | Effect | Value | Direction |
 |--------|------:|----------|
-| Yr13–20 additional depreciation | +9,377 kEUR | R67 less negative |
-| Yr21–30 reduced depreciation | −23,443 kEUR | R67 more negative |
-| **Net depreciation effect** | **−14,065 kEUR** | **R67 more negative** |
-| Estimated new R67 | ~−57,577 kEUR | |
-| Delta vs current baseline | ~−14,065 kEUR | Residual worsens |
+| Croatia 10-period vs Excel 5-period CIT delta | ~−661 kEUR | R67 more negative |
 
-*Note: This is a first-order approximation. The loss engine has non-linear interactions with taxable income — the actual R67 after re-running the tax bridge with canonical lives may differ from this simple sum.*
-
-### C. Loss-Window Counterfactual (Directional)
-
-The loss-window canonical decision (Croatia 10-period) vs Excel 5-period diagnostic override:
-
-| Effect | Value | Direction |
-|--------|------:|----------|
-| Croatia 10-period vs Excel 5-period CIT delta | ~−660 kEUR | R67 more negative (Croatia: losses expire later, more available, lower CIT) |
-
-*This directional estimate is from the tax validation pack. The loss-window effect is independent of the depreciation effect and additive (approximately) in the first-order.*
-
-### D. Combined Canonical Counterfactual (Estimated)
-
-| Component | Delta vs Baseline |
-|-----------|-------------------:|
-| Useful-life (20+12yr) | −14,065 kEUR |
-| Loss-window (Croatia 10-period) | −660 kEUR |
-| **Combined estimate** | **−14,725 kEUR** |
-| Estimated new R67 | **~−58,237 kEUR** |
-| Residual vs Excel | **~−20,000 kEUR** |
-
-*Warning: These estimates are directional. Non-linear loss engine interactions mean the actual combined R67 after re-computing the full tax bridge with both canonical decisions applied may differ. Do not treat these as precise predictions.*
+*Directional estimate from tax validation pack. Within same depreciation/source basis only — do not compare across different source bases.*
 
 ---
 
-## 6. Residual Gates
+## 8. Combined Canonical Estimate (CIT-Adjusted)
 
-From the Phase 6 tax validation pack, gates are:
+| Component | Delta (kEUR) |
+|-----------|-------------:|
+| Baseline residual | +5,271 |
+| Useful-life CIT impact | −2,532 |
+| Loss-window effect | −661 |
+| **Estimated combined residual** | **+2,078** |
 
-| Gate | Target | Estimated State | PASS/FAIL |
-|------|--------|-----------------|-----------|
-| Cumulative Y13–30 residual | ≤ ±2,000 kEUR | ~+5,271 kEUR (baseline) → ~−20,000 kEUR (estimated combined) | **FAIL** |
-| Max annual residual | ≤ ±200 kEUR/yr | yr13–20 per-year R67 diff ~+1,172 kEUR | **FAIL** |
+**First-order CIT-adjusted combined residual ≈ +2,078 kEUR** (Python overpays Excel by ~2,078 kEUR over Yr13–30)
 
-Both gates **FAIL** in both the baseline and the combined canonical counterfactual. The useful-life canonical decision **worsens** the cumulative residual in aggregate (net −14,065 kEUR), though it improves yr13–20 by +9,377 kEUR.
-
----
-
-## 7. Explaining Residual Movement
-
-### Why Does Useful-Life Canonical Worsen the Residual?
-
-The 30-year flat depreciation policy spreads CAPEX evenly over 30 years. The 20+12yr canonical policy front-loads depreciation into years 13–20 (higher per-year depreciation) but zeroes out in years 21–30.
-
-Since R67 = cumulative cash tax paid = cumulative CIT, the effect on R67 is:
-- Years 13–20: Higher depreciation → lower taxable income → lower CIT → R67 less negative (positive movement of ~+9,377 kEUR)
-- Years 21–30: Zero depreciation → higher taxable income → higher CIT → R67 more negative (negative movement of ~−23,443 kEUR)
-- **Net: −14,065 kEUR** (worse residual)
-
-### Why Not Choose 20+12yr Then?
-
-The canonical decision (PR #86) was made for **legal/policy correctness**, not for minimizing the R67 residual. The 20-year useful life for wind turbines reflects the actual asset contract and industry practice. The 30-year assumption was a conservative modelling choice, not a tax-policy target.
-
-The residual worsens as a consequence of switching to the correct policy. This is expected and documented — not a reason to reverse the canonical decision.
+This is substantially lower than the baseline +5,271 kEUR. The useful-life canonical decision, when properly converted to CIT impact, reduces the residual. However, the result remains above the cumulative gate threshold (±2,000 kEUR) and still requires full residual-driver recheck or external sign-off.
 
 ---
 
-## 8. R99/R102 Gate Status
+## 9. Residual Gates (Corrected)
+
+After applying the corrected CIT-adjusted methodology:
+
+| Gate | Target | Baseline | After Canonical (est.) | PASS/FAIL |
+|------|--------|----------|------------------------|-----------|
+| Cumulative Y13–30 residual | ≤ ±2,000 kEUR | +5,271 kEUR | ~+2,078 kEUR | **FAIL** (barely, approx) |
+| Max annual residual (Yr13–20) | ≤ ±200 kEUR/yr | N/A | ~+211 kEUR/yr (CIT impact) | **FAIL** |
+
+**Cumulative gate:** ~+2,078 kEUR vs ±2,000 kEUR threshold — FAIL by ~78 kEUR, directionally close. Full tax bridge recomputation may change this figure.
+
+**Annual gate:** +211 kEUR/yr (CIT impact) vs ±200 kEUR/yr — FAIL by ~11 kEUR/yr. Annual gate also fails.
+
+*Both gates remain FAIL after corrected methodology. The useful-life canonical decision does not bring residual within gates on its own.*
+
+---
+
+## 10. Explaining Residual Movement
+
+### Why Does the Corrected Estimate Show Improvement?
+
+Baseline residual was +5,271 kEUR (Python overpays). After applying CIT-adjusted useful-life effect (−2,532 kEUR):
+
+- Yr13–20: higher depreciation → lower taxable income → less CIT paid (+1,688 kEUR benefit) — Python overpayment reduced
+- Yr21–30: zero depreciation → higher taxable income → more CIT paid (−4,220 kEUR cost) — Python overpayment increased
+
+The net CIT impact (−2,532 kEUR) partially offsets the baseline overpayment, reducing residual from +5,271 to ~+2,739 kEUR before loss-window. Adding loss-window (−661 kEUR) gives ~+2,078 kEUR.
+
+### Why Does the Residual Still Fail Gates?
+
+Even after improvement, the residual (+2,078 kEUR) remains above the ±2,000 kEUR cumulative threshold. The annual gate (+211 kEUR/yr) also fails by ~11 kEUR/yr.
+
+The canonical decisions do not fully close the gap — they reduce it. Remaining questions:
+- Are there additional unexplained drivers beyond useful-life and loss-window?
+- What is the actual full-recomputed R67 after wiring canonical decisions?
+- Does external sign-off or residual acceptance apply?
+
+---
+
+## 11. R99/R102 Gate Status
 
 **R99/R102 remain BLOCKED.**
 
-This branch does NOT unblock R99. The residual gates FAIL both before and after the canonical decisions. The useful-life canonical decision moves the residual in the **wrong direction** for gate compliance.
+This branch does NOT unblock R99. Gates FAIL both before and after the canonical decisions (though the corrected residual is substantially lower than the uncorrected estimate suggested).
 
 R99 is only unblocked after:
 1. ✅ Useful-life canonical decision
 2. ✅ Loss-window canonical decision
-3. ⬜ Revised R67 residual recheck — **this branch shows gates still FAIL**
-4. ⬜ External sign-off or explicit internal approval to accept residual
-5. ⬜ Decision on whether to proceed with runtime adapter despite gate FAIL
+3. ⬜ Revised R67 residual recheck — **gates still FAIL; external sign-off required**
+4. ⬜ External sign-off or explicit internal approval to proceed despite gate FAIL
 
 **Runtime adapter (`phase6-depreciation-engine-runtime-adapter`) remains blocked.**
 
 ---
 
-## 9. What This Means for Next Steps
+## 12. Recommended Next Branch
 
-Three honest options:
+**`phase6-r67-residual-driver-recheck`**
 
-**Option A — Accept residual as a known consequence of correct policy**
-- The 20yr/12yr canonical is legally/policy correct
-- The residual (~20,000 kEUR cumulative) is a documented gap, not a bug
-- Recommend proceeding with runtime adapter design in a new branch
-- Risk: gate FAIL remains
+Three honest options for consideration:
+- **Option A — Accept residual as known consequence of correct policy**; proceed to runtime adapter design with gate FAIL (requires external sign-off)
+- **Option B — Full residual-driver recheck**; decompose remaining unexplained gap with full tax bridge recomputation
+- **Option C — Do not proceed to runtime adapter** until gates pass or explicit residual acceptance
 
-**Option B — Investigate remaining drivers before runtime adapter**
-- The residual is large; there may be other unexplained components beyond useful-life and loss-window
-- Recommend: `phase6-r67-residual-driver-recheck`
-- Goal: decompose remaining gap into explained/unexplained portions
-
-**Option C — Do not proceed to runtime adapter**
-- Gates fail; residual is large and worsens under canonical policy
-- R99/R102 remain blocked indefinitely until external sign-off or residual closure
+This branch shows the corrected residual is approximately +2,078 kEUR — below the catastrophic ~20,000 kEUR but still above the ±2,000 kEUR gate threshold. Option B is the recommended next step before any decision to proceed despite gate FAIL.
 
 ---
 
-## 10. Deliverables Created
+## 13. Deliverables Created
 
 - `docs/phase6_revised_r67_residual_recheck.md` (this file)
 - `reports/phase6_revised_r67_residual_recheck.csv`
 
 ---
 
-## 11. Tests
+## 14. Tests
 
-No new tests added — this is a diagnostic-only recheck branch. Existing suites confirm no regressions:
+No new tests added — diagnostic-only recheck branch. Existing suites confirm no regressions:
 
 ```
 tests/test_depreciation_category_capex_extraction.py
@@ -222,15 +225,3 @@ tests/test_cit_h2_annual_trigger.py
 ```
 
 **87 passed, 1 xfailed** (combined suite, unchanged)
-
----
-
-## 12. Recommended Next Branch
-
-**`phase6-r67-residual-driver-recheck`** — recommended as next diagnostic step.
-
-Rationale:
-- The combined canonical counterfactual produces a large estimated residual (~−20,000 kEUR vs Excel)
-- Before proceeding to runtime adapter design, the remaining unexplained gap should be decomposed
-- Option A (accept residual and proceed) is viable but requires explicit sign-off to proceed despite gate FAIL
-- This branch does not change runtime behavior and does not implement the canonical decisions in runtime

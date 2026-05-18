@@ -1,14 +1,17 @@
-segment,python_r67_keur,excel_target_keur,residual_keur,note
-Yr01-12,0.00,0.00,0.00,construction period - no tax
-Yr13-20,-15844.88,,,"flag-on runtime; residual by segment not separately extracted"
-Yr21-30,-27667.48,,,"flag-on runtime; residual by segment not separately extracted"
-Yr13-30,-43512.36,-38240.90,+5271.46,"current baseline; useful_life=30yr flat; loss_window=Croatia 10-period"
+segment,python_r67_keur,excel_target_keur,residual_keur,sign_convention
+Yr01-12,0.00,0.00,0.00,"positive = Python overpays Excel"
+Yr13-30_current,-43512.36,-38240.90,+5271.46,"positive = Python overpays Excel by 5,271 kEUR"
 ,,,,,
-counterfactual,python_r67_estimate_keur,delta_vs_baseline_keur,direction,note
-Useful-life canonical (20yr main + 12yr fin),-57677,-14065,worse,"net depreciation -14065 kEUR over Y13-30; first-order estimate only"
-Loss-window (Croatia 10-period vs Excel 5-period),-44172,-660,worse,"approx -660 kEUR CIT saving with Croatia 10-period; directional estimate"
-Combined canonical estimate,-58237,-14725,worse,"combined first-order estimate; non-linear loss interactions may differ"
+counterfactual,depreciation_delta_keur,cit_rate,estimated_cit_impact_keur,residual_after_impact_keur,direction,note
+Useful-life canonical Yr13-20,+9377,18%,+1688,,R67 less negative,"more depreciation → lower taxable income → less CIT paid"
+Useful-life canonical Yr21-30,-23443,18%,-4220,,R67 more negative,"zero depreciation → higher taxable income → more CIT paid"
+Useful-life canonical net,-14065,18%,-2532,-2739,net R67 more negative,"net CIT impact = -2,532 kEUR; subtotal vs baseline = +2,739 kEUR"
+Loss-window (Croatia 10-period vs Excel 5-period),,,,-661,R67 more negative,directional estimate from tax validation pack
+Combined canonical estimate,,,,-2078,,first-order CIT-adjusted estimate; non-linear loss interactions may differ
 ,,,,,
-gate,target_k eur,current_state,after_canonical_estimate,pass_fail
-Cumulative Y13-30 residual,±2000,+5271,-20000,FAIL
-Max annual residual,±200/yr,~+1172/yr,~+1172/yr (yr13-20),FAIL
+baseline_residual_keur,useful_life_cit_impact_keur,loss_window_impact_keur,combined_estimate_keur
++5271,-2532,-661,+2078
+,,,,,
+gate,target_k eur,current_state,after_canonical_estimate,pass_fail,note
+Cumulative Y13-30 residual,±2000,+5271,~+2078,FAIL,"+2,078 kEUR vs ±2,000 kEUR threshold — FAIL by ~78 kEUR; full bridge recompute may differ"
+Max annual residual Yr13-20,±200/yr,N/A,~+211/yr,FAIL,"+211 kEUR/yr CIT impact vs ±200 kEUR/yr — FAIL by ~11 kEUR/yr"
