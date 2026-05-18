@@ -134,14 +134,16 @@ P&L R39 Carriable losses (col30) = **-5,867.62 kEUR**
 - P59 yr30H2: **4,106.00** (unchanged — no losses used or generated)
 
 ### Interpretation
-The **4,106 kEUR positive balance** in years 16–30 represents accumulated profits minus losses, carried forward without expiry. This is an Excel model behavior — it does not match the Croatian 5-year rolling expire-before-use rule.
+Excel P&L R39 shows a model-specific carried-loss / cumulative tax position pattern. It is negative through early operating periods, reaches zero, then becomes +4,106 kEUR and remains constant through years 16–30.
+
+This suggests Excel's R36/R37/R38/R39 formula chain is materially different from Python's current loss engine. Python's current tax bridge does not import or reproduce this Excel R39 construction-period/cumulative loss position into years 13–30.
 
 **Evidence quality: HIGH** — directly extracted from P&L R39 "Carriable losses" row for each period. The 4,106 kEUR figure appears consistently from yr16 onwards.
 
-**However**, whether this is:
+**The exact legal/tax meaning of positive R39 requires formula inspection.** Whether this is:
 - An explicit construction-period opening balance (model-set)
 - An accumulated result from formula chain (construction-period losses + operating-period profits)
-- A hybrid (construction-period losses never expire in this model, unlike Croatian tax law)
+- A hybrid (construction-period losses never expire in this model)
 
 **Cannot be confirmed from data values alone.** Would require formula inspection of P&L R36/R38/R39 cells.
 
@@ -152,7 +154,7 @@ The **4,106 kEUR positive balance** in years 16–30 represents accumulated prof
 ### Observed effective rates (Excel P&L):
 | Period | P&L R41 TP | P&L R43 CIT | Effective Rate |
 |--------|----------:|----------:|--------------:|
-| P25 yr13H2 | 0.00 | 120.19 | 18.0% on TP=0 (partial allocation) |
+| P25 yr13H2 | 0.00 | 120.19 | N/M (TP=0, partial loss allocation, not meaningful) |
 | P27 yr14H2 | 2,558.45 | 955.24 | **37.3%** |
 | P29 yr15H2 | 2,902.62 | 1,084.54 | **37.3%** |
 | P37 yr19H2 | 5,003.76 | 1,811.25 | **36.2%** |
@@ -177,9 +179,9 @@ Standard 18% CIT on TP_N would produce ~1,407 kEUR (18% × 7,817 avg TP) for yea
 
 ## Dominant Residual Driver
 
-**Confidence level: HIGH (construction-period loss), MEDIUM (legal reserve effective rate anomaly)**
+**Confidence level: HIGH (construction-period loss pattern), MEDIUM (legal reserve effective rate anomaly)**
 
-Primary: **Excel appears to apply a model-specific construction-period loss balance into years 13–30.** This reduces taxable income (P&L R41) in years 13–19, partially matching Python's pre-loss-exhaustion periods. Python uses Croatia 5-year rolling expire-before-use, exhausting all prior losses by year 12.
+Primary: **Excel P&L R39 shows a model-specific construction-period/cumulative tax position pattern** that reduces taxable income (P&L R41) in years 13–19. Python's current tax bridge does not import or reproduce this Excel R39 pattern into years 13–30.
 
 Secondary: **Effective rate anomaly (~36%)** in Excel years 14+ may reflect a legal reserve appropriation or accounting treatment not yet identified in the Python model.
 
