@@ -71,7 +71,7 @@ Within years 13–30, Python R67 (-43,512 kEUR) vs Excel R67 (-38,241 kEUR) — 
 4. **Tax rate or loss interaction differences**
 
 ## R99 Readiness Status
-**BLOCKED** — R99/R102 remain audit-only. `fcf_for_shl_keur = 0.0` across all periods. No SHL FCF runtime opt-in.
+**BLOCKED** — R99/R102 remain audit-only. `fcf_for_shl_keur` and `r102_fcf_for_shl_keur` are pre-existing audit fields (non-zero in both flag OFF and flag ON). The tax bridge flag does not change their values and does not promote R99/R102 to a runtime distribution source.
 
 ## Root-Cause Hypothesis
 
