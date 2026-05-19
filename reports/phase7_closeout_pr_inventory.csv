@@ -1,0 +1,15 @@
+component,pr_number,branch,type,status,key_output,tests,flag_dependent,audit_only,blocked
+SHL Cash Sweep Source Map,97,senior-debt-dscr-source-map,DOCS,merged,Macro!R50 hardcoded value documented,0,False,True,False
+SHL Cash Sweep Source Map (continued),98,shl-cash-sweep-source-map,REPORT,merged,100% cash sweep confirmed,R98+ audit only,False,True,False
+SHL Canonical Module Design,99,shl-canonical-module-design,DESIGN,merged,ShlEngine dataclass + interfaces defined,test_shl_canonical_module_design_doc.py (1),False,True,False
+Senior Debt Canonical Module Design,100,senior-debt-canonical-module-design,DESIGN,merged,SeniorDebtSizingEngine dataclass + interfaces,test_senior_debt_canonical_module_design_doc.py (1),False,True,False
+SHL Source Map Metric Reconciliation,101,shl-source-map-metric-reconciliation,FIX,merged,Gross=53,351 / Cash=38,755 / PIK=14,596 reconciled,0,False,True,False
+Depreciation Canonical Module Design,102,depreciation-canonical-module-design,DESIGN,merged,DepreciationEngine dataclass + interfaces,test_depreciation_canonical_module_design_doc.py (1),False,True,False
+SHL Engine Implementation,103,shl-engine-implementation,ENGINE,merged,"domain/shl/__init__.py, runtime_adapter.py, fcf_waterfall.py",test_shl_engine.py (5),use_shl_canonical_engine=False,True,False
+Senior Debt Sizing Flag,104,senior-debt-sizing-flag,ENGINE,merged,"domain/senior_debt_sizing/engine.py, __init__.py, result.py",test_senior_debt_sizing_policy.py (10),use_senior_debt_sizing=False,True,False
+Depreciation Runtime Integration,105,depreciation-runtime-integration,ENGINE,merged,"domain/depreciation/engine.py, result.py, tax_bridge.py",test_depreciation_engine.py (17),use_canonical_tax_depreciation_bridge=False,True,False
+Model Stack Validation Pack,106,model-stack-validation-pack,VALIDATION,merged,86 tests covering SHL+SeniorDebtSizing+Depreciation+Waterfall,test_model_stack_validation_pack.py (86),False,False,False
+SHL Runtime Flag Wiring,107/108,shl-runtime-flag-wiring,WIRING,merged,use_shl_canonical_engine flag added to domain/inputs.py,test_shl_runtime_flag.py (14),use_shl_canonical_engine=False,True,False
+R98/R99/R102 Source Ownership Design,109,r99-r102-source-ownership-design,DESIGN,merged,R98/R99/R102 ownership matrix documented; R99/R102 BLOCKED,0,False,True,True
+Tax Runtime Bridge,110,tax-runtime-bridge,BRIDGE,merged,domain/depreciation/tax_bridge.py + use_canonical_tax_depreciation_bridge flag,test_depreciation_tax_bridge.py (10),use_canonical_tax_depreciation_bridge=False,True,False
+Runtime Stack Freeze,111,runtime-stack-freeze,FREEZE,merged,docs/phase7_runtime_stack_freeze.md + reports/phase7_runtime_stack_inventory.csv,0,False,True,False
