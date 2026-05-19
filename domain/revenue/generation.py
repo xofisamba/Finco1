@@ -208,13 +208,16 @@ def revenue_decomposition_schedule(
             ppa_share=inputs.revenue.ppa_production_share,
         )
         # Phase 7: explicit certificate and balancing cost inputs (EUR/MWh)
-        # Use schedule if available (TUHO), otherwise fall back to flat inputs.
+        # Fallback priority (per PR #90 backward-compat requirement):
+        #   schedule > co2_certificate_price_eur_per_mwh > co2_price_eur
         if inputs.revenue.co2_sales_schedule is not None:
             co2_eur_mwh = inputs.revenue.co2_sales_schedule.value_for_period(
                 operating_period_index=period.operating_period_index,
                 operating_year_index=period.operating_year_index,
                 period_in_year=period.period_in_year,
             )
+        elif inputs.revenue.co2_certificate_price_eur_per_mwh != 0.0:
+            co2_eur_mwh = inputs.revenue.co2_certificate_price_eur_per_mwh
         else:
             co2_eur_mwh = inputs.revenue.co2_price_eur
         co2_certificate_revenue_keur = _certificate_revenue_keur(
@@ -222,16 +225,19 @@ def revenue_decomposition_schedule(
             enabled=inputs.revenue.co2_enabled,
             price_eur_mwh=co2_eur_mwh,
         )
-        # Phase 7: explicit balancing cost EUR/MWh (used when no schedule)
+        # Phase 7: explicit balancing cost EUR/MWh
+        # Fallback priority:
+        #   schedule > balancing_cost_eur_per_mwh > balancing_cost_wind_eur_mwh
         if inputs.revenue.balancing_cost_schedule is not None:
             balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
                 operating_period_index=period.operating_period_index,
                 operating_year_index=period.operating_year_index,
                 period_in_year=period.period_in_year,
             )
-        else:
-            # Fall back to explicit EUR/MWh inputs if no schedule defined
+        elif inputs.revenue.balancing_cost_eur_per_mwh != 0.0:
             balancing_eur_mwh = inputs.revenue.balancing_cost_eur_per_mwh
+        else:
+            balancing_eur_mwh = inputs.revenue.balancing_cost_wind_eur_mwh
         balancing_cost_pv_keur = energy_revenue_keur * inputs.revenue.balancing_cost_pv
         balancing_cost_wind_keur = generation_mwh * balancing_eur_mwh / 1000
         balancing_cost_keur = balancing_cost_pv_keur + balancing_cost_wind_keur

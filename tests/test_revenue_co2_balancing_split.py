@@ -234,6 +234,154 @@ class TestRevenueSplitParity:
         assert total > 200_000, f"Oborovo total revenue {total:,.0f} seems too low"
 
 
+class TestBackwardCompatibility:
+    """Test backward compatibility for legacy input fields.
+
+    Priority chain for balancing EUR/MWh:
+      schedule > balancing_cost_eur_per_mwh > balancing_cost_wind_eur_mwh
+
+    Priority chain for CO2 EUR/MWh:
+      schedule > co2_certificate_price_eur_per_mwh > co2_price_eur
+    """
+
+    def test_legacy_balancing_cost_wind_eur_mwh_still_works_when_new_field_is_zero(
+        self, tuho, engine
+    ):
+        """Legacy balancing_cost_wind_eur_mwh activates when both new field=0 and no schedule."""
+        from dataclasses import replace
+        from domain.inputs import RevenueAdjustmentSchedule
+
+        # Patch TUHO: new field=0, no schedule, old field=8.0
+        patched_rev = replace(
+            tuho.revenue,
+            balancing_cost_eur_per_mwh=0.0,
+            balancing_cost_schedule=None,
+            balancing_cost_wind_eur_mwh=8.0,
+        )
+        patched_tuho = replace(tuho, revenue=patched_rev)
+        decomposition = revenue_decomposition_schedule(patched_tuho, engine)
+        op_periods = [p for p in engine.periods() if p.is_operation]
+
+        for period in op_periods[:3]:
+            dec = decomposition[period.index]
+            gen_mwh = dec["generation_mwh"]
+            expected_cost = gen_mwh * 8.0 / 1000  # legacy value
+            assert dec["balancing_cost_wind_keur"] == pytest.approx(expected_cost, abs=0.01)
+
+    def test_new_balancing_cost_eur_per_mwh_overrides_legacy_when_nonzero(
+        self, tuho, engine
+    ):
+        """New balancing_cost_eur_per_mwh overrides legacy when non-zero and no schedule."""
+        from dataclasses import replace
+
+        # Patch TUHO: new field=10.0 (non-zero), no schedule, old field=8.0
+        patched_rev = replace(
+            tuho.revenue,
+            balancing_cost_eur_per_mwh=10.0,
+            balancing_cost_schedule=None,
+            balancing_cost_wind_eur_mwh=8.0,
+        )
+        patched_tuho = replace(tuho, revenue=patched_rev)
+        decomposition = revenue_decomposition_schedule(patched_tuho, engine)
+        op_periods = [p for p in engine.periods() if p.is_operation]
+
+
+        for period in op_periods[:3]:
+            dec = decomposition[period.index]
+            gen_mwh = dec["generation_mwh"]
+            expected_cost = gen_mwh * 10.0 / 1000  # new field value
+            assert dec["balancing_cost_wind_keur"] == pytest.approx(expected_cost, abs=0.01)
+
+    def test_schedule_still_overrides_both_balancing_fields(self, tuho, engine):
+        """balancing_cost_schedule takes priority over both legacy and new fields."""
+        from dataclasses import replace
+        from domain.inputs import RevenueAdjustmentSchedule
+
+        # Patch TUHO: schedule=5.0 (non-zero), new field=10.0, old field=8.0
+        patched_rev = replace(
+            tuho.revenue,
+            balancing_cost_eur_per_mwh=10.0,
+            balancing_cost_schedule=RevenueAdjustmentSchedule(constant_value=5.0),
+            balancing_cost_wind_eur_mwh=8.0,
+        )
+        patched_tuho = replace(tuho, revenue=patched_rev)
+        decomposition = revenue_decomposition_schedule(patched_tuho, engine)
+        op_periods = [p for p in engine.periods() if p.is_operation]
+
+        for period in op_periods[:3]:
+            dec = decomposition[period.index]
+            gen_mwh = dec["generation_mwh"]
+            expected_cost = gen_mwh * 5.0 / 1000  # schedule wins
+            assert dec["balancing_cost_wind_keur"] == pytest.approx(expected_cost, abs=0.01)
+
+    def test_legacy_co2_price_eur_still_works_when_new_field_is_zero(
+        self, tuho, engine
+    ):
+        """Legacy co2_price_eur activates when new field=0 and no schedule."""
+        from dataclasses import replace
+
+        # co2_price_eur=5.0 in patched; new field=0, no schedule
+        patched_rev = replace(
+            tuho.revenue,
+            co2_certificate_price_eur_per_mwh=0.0,
+            co2_sales_schedule=None,
+            co2_price_eur=5.0,
+            co2_enabled=True,
+        )
+        patched_tuho = replace(tuho, revenue=patched_rev)
+        decomposition = revenue_decomposition_schedule(patched_tuho, engine)
+        op_periods = [p for p in engine.periods() if p.is_operation]
+
+        for period in op_periods[:3]:
+            dec = decomposition[period.index]
+            gen_mwh = dec["generation_mwh"]
+            expected_co2 = gen_mwh * 5.0 / 1000
+            assert dec["co2_certificate_revenue_keur"] == pytest.approx(expected_co2, abs=0.01)
+
+    def test_new_co2_certificate_price_overrides_legacy_when_nonzero(
+        self, tuho, engine
+    ):
+        """New co2_certificate_price_eur_per_mwh overrides legacy when non-zero and no schedule."""
+        from dataclasses import replace
+
+        patched_rev = replace(
+            tuho.revenue,
+            co2_certificate_price_eur_per_mwh=7.0,  # non-zero
+            co2_sales_schedule=None,
+            co2_price_eur=5.0,  # legacy fallback
+            co2_enabled=True,
+        )
+        patched_tuho = replace(tuho, revenue=patched_rev)
+        decomposition = revenue_decomposition_schedule(patched_tuho, engine)
+        op_periods = [p for p in engine.periods() if p.is_operation]
+        for period in op_periods[:3]:
+            dec = decomposition[period.index]
+            gen_mwh = dec["generation_mwh"]
+            expected_co2 = gen_mwh * 7.0 / 1000  # new field wins
+            assert dec["co2_certificate_revenue_keur"] == pytest.approx(expected_co2, abs=0.01)
+
+    def test_co2_schedule_still_overrides_both_co2_fields(self, tuho, engine):
+        """co2_sales_schedule takes priority over both legacy co2_price_eur and new field."""
+        from dataclasses import replace
+        from domain.inputs import RevenueAdjustmentSchedule
+
+        patched_rev = replace(
+            tuho.revenue,
+            co2_certificate_price_eur_per_mwh=7.0,
+            co2_sales_schedule=RevenueAdjustmentSchedule(constant_value=3.0),
+            co2_price_eur=5.0,
+            co2_enabled=True,
+        )
+        patched_tuho = replace(tuho, revenue=patched_rev)
+        decomposition = revenue_decomposition_schedule(patched_tuho, engine)
+        op_periods = [p for p in engine.periods() if p.is_operation]
+        for period in op_periods[:3]:
+            dec = decomposition[period.index]
+            gen_mwh = dec["generation_mwh"]
+            expected_co2 = gen_mwh * 3.0 / 1000  # schedule wins
+            assert dec["co2_certificate_revenue_keur"] == pytest.approx(expected_co2, abs=0.01)
+
+
 class TestSignConvention:
     """Test sign convention for balancing cost display."""
 
