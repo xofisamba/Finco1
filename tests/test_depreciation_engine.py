@@ -1,223 +1,544 @@
-"""Tests for app.depreciation_engine — generate_schedule(), DepreciationSchedule, DepreciationRule."""
+"""Phase 7 — Depreciation Engine tests."""
 import pytest
-from app.depreciation_engine import (
-    generate_schedule,
-    DepreciationSchedule,
-    DepreciationEntry,
-    DepreciationRule,
-    ASSET_CLASS_RULES,
-    DEFAULT_RULE,
+
+from domain.depreciation.asset import AssetClassConfig
+from domain.depreciation.engine import (
+    DepreciationEngine,
+    DepreciationEngineInputs,
+    DepreciationEngineResult,
 )
-from app.capex_engine import CapexLineItem, AssetClass
+from domain.depreciation.schedule import DepreciationPolicy
 
 
-def _item(name, amount, asset_class, code=None, group=None):
-    """Helper: build a minimal CapexLineItem with required code/group."""
-    return CapexLineItem(
-        code=code or f"CODE-{name[:4].upper()}",
-        name=name,
-        group=group or "Test",
-        amount_keur=amount,
-        asset_class=asset_class,
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+def make_engine_inputs(
+    project_name="TUHO",
+    asset_classes=None,
+    policies=None,
+    period_count=63,
+    period_frequency="semiannual",
+    cod_period=2,
+):
+    if asset_classes is None:
+        asset_classes = (
+            AssetClassConfig(
+                asset_class="Wind Turbine",
+                gross_asset_basis_keur=8000.0,
+                book_depreciable_basis_keur=8000.0,
+                tax_depreciable_basis_keur=8000.0,
+                placed_in_service_period=1,  # period 1 = col G = construction
+                depreciation_start_period=2,  # starts at period 2 (COD)
+            ),
+        )
+    if policies is None:
+        policies = {
+            "default": DepreciationPolicy(
+                method="straight_line",
+                useful_life_book_periods=40,  # 20 years × 2 semiannual periods
+                useful_life_tax_periods=40,
+                period_frequency="semiannual",
+            ),
+        }
+
+    return DepreciationEngineInputs(
+        project_name=project_name,
+        asset_classes=asset_classes,
+        policies=policies,
+        period_count=period_count,
+        period_frequency=period_frequency,
+        cod_period=cod_period,
     )
 
 
-class TestDepreciationEngineBasic:
-    def test_land_produces_no_depreciation(self):
-        """LAND is non-depreciable."""
-        items = [_item("Land", 5000, AssetClass.LAND)]
-        schedule = generate_schedule(items, total_periods=30)
-        # LAND produces no entries (method == "none" → skipped)
-        land_entries = [e for e in schedule.entries if 'land' in e.asset_class.lower()]
-        assert len(land_entries) == 0, "LAND should produce no depreciation entries"
-        # All other entries should be zero
-        assert all(e.annual_amount_keur == 0 for e in schedule.entries), "All entries should be zero"
+# ---------------------------------------------------------------------------
+# Straight-line semiannual depreciation
+# ---------------------------------------------------------------------------
 
-    def test_generation_linear_schedule_totals_correctly(self):
-        """GENERATION asset class depreciates linearly over 25 years."""
-        items = [_item("SolarModules", 25000, AssetClass.GENERATION)]
-        schedule = generate_schedule(items, total_periods=30)
+class TestStraightLineSemiannual:
+    def test_semiannual_depreciation_rate(self):
+        """8% annual rate, semiannual → 4% per period."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Wind Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    method="straight_line",
+                    useful_life_book_periods=40,
+                    useful_life_tax_periods=40,
+                    period_frequency="semiannual",
+                ),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
 
-        gen_entries = [e for e in schedule.entries if 'generation' in e.asset_class.lower()]
-        assert len(gen_entries) == 25, f"Should have 25 entries (one per year), got {len(gen_entries)}"
+        # Per period: 10000 / 40 = 250 kEUR
+        # Period 2 (first depreciation) = 250
+        period_2_rows = result.ledger_result.periods_for_index(2)
+        assert len(period_2_rows) == 1
+        assert period_2_rows[0].book_depreciation_keur == pytest.approx(250.0, rel=1e-9)
+        # Period 3 = 250, etc.
+        period_3_rows = result.ledger_result.periods_for_index(3)
+        assert period_3_rows[0].book_depreciation_keur == pytest.approx(250.0, rel=1e-9)
 
-        annual_amount = gen_entries[0].annual_amount_keur
-        assert abs(annual_amount - 1000) < 1, f"25y straight-line of 25000 → ~1000/yr, got {annual_amount}"
+    def test_depreciation_sums_to_basis(self):
+        """Total depreciation over life = depreciable basis."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    useful_life_book_periods=40,
+                    useful_life_tax_periods=40,
+                ),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+        assert result.total_book_depreciation_keur == pytest.approx(10000.0, rel=1e-6)
 
-        # Total should equal original amount (sum of all annual depreciation)
-        total = sum(e.annual_amount_keur for e in gen_entries)
-        assert abs(total - 25000) < 1, f"Total depreciation should = 25000, got {total}"
 
-    def test_grid_schedule_totals_correctly(self):
-        """GRID asset class depreciates over 20 years."""
-        items = [_item("GridConnection", 20000, AssetClass.GRID)]
-        schedule = generate_schedule(items, total_periods=25)
+# ---------------------------------------------------------------------------
+# Book vs tax useful-life separation
+# ---------------------------------------------------------------------------
 
-        grid_entries = [e for e in schedule.entries if 'grid' in e.asset_class.lower()]
-        assert len(grid_entries) == 20, f"Should have 20 entries, got {len(grid_entries)}"
-        total = sum(e.annual_amount_keur for e in grid_entries)
-        assert abs(total - 20000) < 1, f"Total should = 20000, got {total}"
+class TestBookTaxSeparation:
+    def test_book_and_tax_useful_lives_diverge(self):
+        """Book 20yr (40 periods), tax 12yr (24 periods) → different depreciation."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Wind Turbine",
+                    gross_asset_basis_keur=12000.0,
+                    book_depreciable_basis_keur=12000.0,
+                    tax_depreciable_basis_keur=12000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    useful_life_book_periods=40,   # 20 years
+                    useful_life_tax_periods=24,     # 12 years
+                    period_frequency="semiannual",
+                ),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
 
-    def test_zero_amount_item_handled(self):
-        """Zero-amount items produce no depreciation."""
-        items = [
-            _item("Valid", 10000, AssetClass.GENERATION),
-            _item("Zero", 0, AssetClass.GRID),
-        ]
-        schedule = generate_schedule(items, total_periods=25)
-        non_zero_zero = [e for e in schedule.entries if e.annual_amount_keur > 0 and abs(e.annual_amount_keur) < 0.001]
-        assert len(non_zero_zero) == 0
+        # Tax: 12000/24 = 500/period for first 24 periods
+        # Book: 12000/40 = 300/period for first 40 periods
+        period_5 = result.ledger_result.periods_for_index(5)[0]
+        assert period_5.book_depreciation_keur == pytest.approx(300.0, rel=1e-9)
+        assert period_5.tax_depreciation_keur == pytest.approx(500.0, rel=1e-9)
 
-    def test_total_depreciation_equals_total_depreciable_basis(self):
-        """Sum of all depreciation = sum of all depreciable capex."""
-        items = [
-            _item("Solar", 25000, AssetClass.GENERATION),
-            _item("Grid", 10000, AssetClass.GRID),
-            _item("Dev", 2000, AssetClass.DEVELOPMENT),
-        ]
-        schedule = generate_schedule(items, total_periods=30)
-        total_depr = sum(e.annual_amount_keur for e in schedule.entries)
-        total_basis = sum(i.amount_keur for i in items)
-        assert abs(total_depr - total_basis) < 10, f"Total depreciation {total_depr} should ≈ basis {total_basis}"
+        # After tax life ends (period > 25), tax = 0, book continues
+        period_30 = result.ledger_result.periods_for_index(30)[0]
+        assert period_30.book_depreciation_keur == pytest.approx(300.0, rel=1e-9)
+        assert period_30.tax_depreciation_keur == pytest.approx(0.0, abs=0.01)
 
-    def test_schedule_stops_at_end_of_life(self):
-        """Entries stop after asset life ends."""
-        items = [_item("Dev", 5000, AssetClass.DEVELOPMENT)]
-        schedule = generate_schedule(items, total_periods=30)
+        # Total book: 300 * 40 = 12000
+        # Total tax: 500 * 24 = 12000
+        assert result.total_book_depreciation_keur == pytest.approx(12000.0, rel=1e-6)
+        assert result.total_tax_depreciation_keur == pytest.approx(12000.0, rel=1e-6)
 
-        dev_entries = [e for e in schedule.entries if 'development' in e.asset_class.lower()]
-        assert len(dev_entries) == 5, f"Development should depreciate over 5y, got {len(dev_entries)}"
 
-    def test_default_rule_path(self):
-        """Unknown asset class uses DEFAULT_RULE."""
-        rule = ASSET_CLASS_RULES.get("UNKNOWN_CATEGORY", DEFAULT_RULE)
-        assert rule.life_years == 20, "DEFAULT_RULE should be 20y linear"
-        assert rule.method == "linear"
+# ---------------------------------------------------------------------------
+# Land non-depreciable
+# ---------------------------------------------------------------------------
 
-    def test_total_by_period_aggregation(self):
-        """total_by_period sums all asset classes per period."""
-        items = [
-            _item("Solar", 25000, AssetClass.GENERATION),  # 25y
-            _item("Grid", 10000, AssetClass.GRID),          # 20y
-        ]
-        schedule = generate_schedule(items, total_periods=30)
+class TestLandNonDepreciable:
+    def test_land_has_zero_depreciation(self):
+        """Land is non-depreciable by default."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Land",
+                    gross_asset_basis_keur=500.0,
+                    book_depreciable_basis_keur=0.0,  # land = not depreciable
+                    tax_depreciable_basis_keur=0.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    useful_life_book_periods=40,
+                    useful_life_tax_periods=40,
+                ),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+        # All periods should show 0 depreciation for land
+        land_rows = [r for r in result.ledger_result.periods if r.asset_class == "Land"]
+        assert len(land_rows) > 0
+        for row in land_rows:
+            assert row.book_depreciation_keur == pytest.approx(0.0, abs=1e-9)
+            assert row.tax_depreciation_keur == pytest.approx(0.0, abs=1e-9)
 
-        assert len(schedule.total_by_period) == 30
-        # Year 0: both contributing
-        p0 = schedule.total_by_period[0]
-        assert p0 > 0, f"Year 0 should have depreciation, got {p0}"
-        # Year 19 (last year of GRID): both still contributing
-        p19 = schedule.total_by_period[19]
-        solar_annual = 25000 / 25  # = 1000
-        grid_annual = 10000 / 20   # = 500
-        assert abs(p19 - (solar_annual + grid_annual)) < 1, f"Year 19 should have both: ~{solar_annual + grid_annual}, got {p19}"
-        # Year 20: only GENERATION still depreciating (GRID is done)
-        p20 = schedule.total_by_period[20]
-        assert abs(p20 - solar_annual) < 1, f"Year 20 should only have GENERATION: ~{solar_annual}, got {p20}"
-        # Year 24 (1-indexed): GENERATION still depreciating (period=24, last year of 25y life)
-        p24 = schedule.total_by_period[24]
-        assert abs(p24 - solar_annual) < 1, f"Year 24 should only have GENERATION: ~{solar_annual}, got {p24}"
-        # Year 25 (1-indexed = period 25): GENERATION done after 25 years
-        p25 = schedule.total_by_period[25]
-        assert p25 == 0, f"Year 25 should be 0 (GENERATION done), got {p25}"
-        # Year 26+: all zero
-        assert all(v == 0 for v in schedule.total_by_period[26:])
 
-    def test_total_remaining_decreases(self):
-        """remaining_basis decreases each period."""
-        items = [_item("Solar", 25000, AssetClass.GENERATION)]
-        schedule = generate_schedule(items, total_periods=30)
+# ---------------------------------------------------------------------------
+# Financing costs 12-year policy
+# ---------------------------------------------------------------------------
 
-        remaining = schedule.total_remaining_by_period
-        assert remaining[0] > remaining[1] > remaining[2]
-        assert remaining[24] < remaining[23]
-        assert remaining[25] == 0, "After 25 years, remaining should be 0"
+class TestFinancingCostsPolicy:
+    def test_financing_costs_use_12_year_policy(self):
+        """Financing costs depreciated over 12 years (24 semiannual periods)."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Financing Costs",
+                    gross_asset_basis_keur=2000.0,
+                    book_depreciable_basis_keur=2000.0,
+                    tax_depreciable_basis_keur=2000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    useful_life_book_periods=40,
+                    useful_life_tax_periods=40,
+                ),
+                "Financing Costs": DepreciationPolicy(
+                    useful_life_book_periods=24,  # 12 years
+                    useful_life_tax_periods=24,
+                ),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
 
-    def test_multiple_asset_classes_aggregate(self):
-        """Multiple asset classes produce separate entries per period."""
-        items = [
-            _item("Solar", 25000, AssetClass.GENERATION),
-            _item("Grid", 10000, AssetClass.GRID),
-            _item("Dev", 2000, AssetClass.DEVELOPMENT),
-        ]
-        schedule = generate_schedule(items, total_periods=30)
+        period_5 = result.ledger_result.periods_for_index(5)[0]
+        # 2000/24 ≈ 83.33 per period
+        assert period_5.book_depreciation_keur == pytest.approx(83.33, rel=1e-2)
+        # Tax same as book for financing costs
+        assert period_5.tax_depreciation_keur == pytest.approx(83.33, rel=1e-2)
 
-        # In year 0, all 3 should contribute
-        year0_entries = [e for e in schedule.entries if e.period == 0]
-        assert len(year0_entries) >= 3, f"Year 0 should have ≥3 entries, got {len(year0_entries)}"
 
-    def test_no_negative_depreciation(self):
-        """No entry should have negative depreciation."""
-        items = [
-            _item("Solar", 25000, AssetClass.GENERATION),
-            _item("Grid", 10000, AssetClass.GRID),
-        ]
-        schedule = generate_schedule(items, total_periods=30)
-        negatives = [e for e in schedule.entries if e.annual_amount_keur < 0]
-        assert len(negatives) == 0, f"No negative depreciation entries, found: {negatives}"
+# ---------------------------------------------------------------------------
+# Construction / placed-in-service timing
+# ---------------------------------------------------------------------------
 
-    def test_deterministic_behavior(self):
-        """Same input always produces same schedule."""
-        items = [_item("Solar", 25000, AssetClass.GENERATION)]
-        s1 = generate_schedule(items, total_periods=30)
-        s2 = generate_schedule(items, total_periods=30)
-        assert s1.total_by_period == s2.total_by_period, "Deterministic output"
+class TestConstructionTiming:
+    def test_no_depreciation_before_cod(self):
+        """No depreciation in construction period (before placed-in-service)."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=1,   # construction period = col G = period 1
+                    depreciation_start_period=2,  # starts at COD = period 2
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(useful_life_book_periods=40, useful_life_tax_periods=40),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
 
-    def test_accumulated_remaining_accounting(self):
-        """For any entry, accumulated + remaining_basis ≈ original basis."""
-        items = [_item("Solar", 25000, AssetClass.GENERATION)]
-        schedule = generate_schedule(items, total_periods=30)
+        # Period 1 (construction): no depreciation
+        period_1_rows = result.ledger_result.periods_for_index(1)
+        assert len(period_1_rows) == 1
+        assert period_1_rows[0].book_depreciation_keur == pytest.approx(0.0, abs=1e-9)
 
-        # Check first generation entry's accounting
-        for entry in schedule.entries:
-            if 'generation' in entry.asset_class.lower() and entry.period == 0:
-                check = entry.accumulated_keur + entry.remaining_basis_keur
-                assert abs(check - 25000) < 10, (
-                    f"accumulated({entry.accumulated_keur}) + remaining({entry.remaining_basis_keur}) "
-                    f"should ≈ 25000"
-                )
-                break
+        # Period 2 (COD): depreciation starts
+        period_2_rows = result.ledger_result.periods_for_index(2)
+        assert period_2_rows[0].book_depreciation_keur > 0
 
-    def test_epc_depreciation_25_years(self):
-        """EPC asset class depreciates over 25 years."""
-        items = [_item("EPC", 25000, AssetClass.EPC)]
-        schedule = generate_schedule(items, total_periods=30)
-        epc_entries = [e for e in schedule.entries if 'epc' in e.asset_class.lower()]
-        assert len(epc_entries) == 25, f"EPC should have 25 entries, got {len(epc_entries)}"
-        total = sum(e.annual_amount_keur for e in epc_entries)
-        assert abs(total - 25000) < 1
+    def test_gross_basis_zero_before_placed_in_service(self):
+        """Gross basis is 0 before placed_in_service_period."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=3,  # first appears at period 3
+                    depreciation_start_period=3,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(useful_life_book_periods=40, useful_life_tax_periods=40),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
 
-    def test_contingency_depreciation_5_years(self):
-        """CONTINGENCY asset class depreciates over 5 years."""
-        items = [_item("Contingency", 5000, AssetClass.CONTINGENCY)]
-        schedule = generate_schedule(items, total_periods=10)
-        cont_entries = [e for e in schedule.entries if 'contingency' in e.asset_class.lower()]
-        assert len(cont_entries) == 5, f"Contingency should have 5 entries, got {len(cont_entries)}"
+        # Period 1, 2: gross_basis = 0
+        for idx in [1, 2]:
+            rows = result.ledger_result.periods_for_index(idx)
+            if rows:
+                assert rows[0].gross_asset_basis_keur == pytest.approx(0.0, abs=1e-9)
 
-    def test_other_uses_explicit_rule(self):
-        """OTHER asset class has an explicit 10-year rule in ASSET_CLASS_RULES."""
-        items = [_item("Other", 20000, AssetClass.OTHER)]
-        schedule = generate_schedule(items, total_periods=25)
-        other_entries = [e for e in schedule.entries if 'other' in e.asset_class.lower()]
-        assert len(other_entries) == 10, f"OTHER should depreciate over 10y (explicit rule), got {len(other_entries)}"
-        total = sum(e.annual_amount_keur for e in other_entries)
-        assert abs(total - 20000) < 1
 
-    def test_empty_line_items_returns_empty_entries(self):
-        """Empty input produces an empty schedule."""
-        schedule = generate_schedule([], total_periods=30)
-        assert len(schedule.entries) == 0
-        assert len(schedule.total_by_period) == 30
-        assert all(v == 0 for v in schedule.total_by_period)
+# ---------------------------------------------------------------------------
+# Accumulated depreciation and NBV roll-forward
+# ---------------------------------------------------------------------------
 
-    def test_mixed_land_and_depreciable(self):
-        """LAND excluded; only depreciable assets appear in entries."""
-        items = [
-            _item("Land", 5000, AssetClass.LAND),
-            _item("Solar", 25000, AssetClass.GENERATION),
-        ]
-        schedule = generate_schedule(items, total_periods=30)
-        land_entries = [e for e in schedule.entries if 'land' in e.asset_class.lower()]
-        assert len(land_entries) == 0
-        solar_entries = [e for e in schedule.entries if 'generation' in e.asset_class.lower()]
-        assert len(solar_entries) == 25
+class TestAccumulatedDepreciation:
+    def test_accumulated_book_increases(self):
+        """Accumulated book depreciation increases each period."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(useful_life_book_periods=40, useful_life_tax_periods=40),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+
+        period_5 = result.ledger_result.periods_for_index(5)[0]
+        period_10 = result.ledger_result.periods_for_index(10)[0]
+
+        # Accumulated grows over time
+        assert period_10.accumulated_book_depreciation_keur > period_5.accumulated_book_depreciation_keur
+
+    def test_nbv_decreases_to_zero(self):
+        """NBV decreases to zero at end of depreciation life."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(useful_life_book_periods=40, useful_life_tax_periods=40),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+
+        # At period 41 (end of life): NBV should be 0
+        last_depr_period = result.ledger_result.periods_for_index(41)
+        if last_depr_period:
+            assert last_depr_period[0].nbv_book_keur == pytest.approx(0.0, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Unsupported method raises error
+# ---------------------------------------------------------------------------
+
+class TestUnsupportedMethod:
+    def test_unsupported_method_raises(self):
+        """DepreciationPolicy with unsupported method raises ValueError."""
+        with pytest.raises(ValueError, match="Only straight_line"):
+            DepreciationPolicy(method="declining_balance")
+
+
+# ---------------------------------------------------------------------------
+# Audit rows
+# ---------------------------------------------------------------------------
+
+class TestAuditRows:
+    def test_audit_rows_populated(self):
+        """Audit rows are populated for all periods and asset classes."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(useful_life_book_periods=40, useful_life_tax_periods=40),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+
+        assert len(result.audit_rows) > 0
+        first_row = result.audit_rows[0]
+        assert hasattr(first_row, "period_index")
+        assert hasattr(first_row, "asset_class")
+        assert hasattr(first_row, "book_depreciation_keur")
+        assert hasattr(first_row, "nbv_book_keur")
+        assert hasattr(first_row, "is_land")
+        assert hasattr(first_row, "is_depreciable")
+        assert hasattr(first_row, "warnings")
+
+
+# ---------------------------------------------------------------------------
+# R99/R102 not touched
+# ---------------------------------------------------------------------------
+
+class TestNoR99:
+    def test_engine_does_not_compute_distribution(self):
+        """DepreciationEngine does not compute R99/R102 or distribution gates."""
+        inputs = make_engine_inputs(period_count=5)
+        result = DepreciationEngine.compute(inputs)
+        # Result has no distribution-related fields
+        assert not hasattr(result, "cash_for_distribution")
+        assert not hasattr(result, "distribution_gate")
+        assert not hasattr(result, "r99_triggered")
+
+
+# ---------------------------------------------------------------------------
+# Total non-depreciable basis
+# ---------------------------------------------------------------------------
+
+class TestNonDepreciableBasis:
+    def test_land_counted_in_non_depreciable(self):
+        """Land basis is counted in total_non_depreciable_basis."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Land",
+                    gross_asset_basis_keur=500.0,
+                    book_depreciable_basis_keur=0.0,
+                    tax_depreciable_basis_keur=0.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+                AssetClassConfig(
+                    asset_class="Turbine",
+                    gross_asset_basis_keur=10000.0,
+                    book_depreciable_basis_keur=10000.0,
+                    tax_depreciable_basis_keur=10000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(useful_life_book_periods=40, useful_life_tax_periods=40),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+        # Non-depreciable should be counted
+        assert result.total_non_depreciable_basis_keur > 0
+
+
+# ---------------------------------------------------------------------------
+# Default policy fallback
+# ---------------------------------------------------------------------------
+
+class TestDefaultPolicy:
+    def test_unknown_asset_class_uses_default_policy(self):
+        """Asset class without explicit policy uses 'default' policy."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Unknown Asset",
+                    gross_asset_basis_keur=5000.0,
+                    book_depreciable_basis_keur=5000.0,
+                    tax_depreciable_basis_keur=5000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    useful_life_book_periods=40,
+                    useful_life_tax_periods=40,
+                ),
+            },
+            period_count=63,
+        )
+        # Should not raise — uses default policy
+        result = DepreciationEngine.compute(inputs)
+        assert result.total_book_depreciation_keur > 0
+
+
+# ---------------------------------------------------------------------------
+# Croatia renewable fallback useful life policy
+# ---------------------------------------------------------------------------
+
+class TestCroatiaRenewableFallback:
+    def test_main_renewable_20_year_fallback(self):
+        """Main renewable CAPEX → 20 years (40 semiannual periods)."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="Wind Turbine",
+                    gross_asset_basis_keur=8000.0,
+                    book_depreciable_basis_keur=8000.0,
+                    tax_depreciable_basis_keur=8000.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    useful_life_book_periods=40,  # 20 years semiannual
+                    useful_life_tax_periods=40,
+                ),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+        period_depr = result.ledger_result.periods_for_index(5)[0]
+        assert period_depr.book_depreciation_keur == pytest.approx(200.0, rel=1e-9)  # 8000/40
+
+    def test_vat_20_year_if_basis_eligible(self):
+        """VAT capitalized → 20 years if basis-eligible."""
+        inputs = make_engine_inputs(
+            asset_classes=(
+                AssetClassConfig(
+                    asset_class="VAT Recovered",
+                    gross_asset_basis_keur=1600.0,
+                    book_depreciable_basis_keur=1600.0,
+                    tax_depreciable_basis_keur=1600.0,
+                    placed_in_service_period=1,
+                    depreciation_start_period=2,
+                ),
+            ),
+            policies={
+                "default": DepreciationPolicy(
+                    useful_life_book_periods=40,  # 20 years
+                    useful_life_tax_periods=40,
+                ),
+            },
+            period_count=63,
+        )
+        result = DepreciationEngine.compute(inputs)
+        period_depr = result.ledger_result.periods_for_index(5)[0]
+        assert period_depr.book_depreciation_keur == pytest.approx(40.0, rel=1e-9)  # 1600/40
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
