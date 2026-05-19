@@ -137,7 +137,7 @@ tuho = replace(tuho,
 - **UNMAPPED:** source not available in Excel fixture
 - **APPROXIMATE:** source basis differs but comparison is meaningful
 
-## Top 10 Material Deltas (period-level)
+## Top material delta categories
 
 > Note: Full delta flag list in Delta Flags sheet of the workbook.
 
@@ -148,13 +148,16 @@ Top contributors to period-level variance:
 4. Depreciation — straight-line (Python) vs accelerated (Excel) in early periods
 5. R67 cash tax — H2-only vs H1+H2 annual CIT timing
 
-## Modules Within Tolerance
+## Modules apparently within tolerance under this report basis
 
-- Senior interest (exact match)
-- Senior principal repayment (exact match)
-- Book depreciation (exact match)
-- EBITDA (exact match)
-- Total OPEX (exact match)
+- Senior interest
+- Senior principal repayment
+- EBITDA / total OPEX, subject to source-basis caveats (prior model-stack comparison flagged Book Dep R30 and OPEX as material under a different/source-expanded basis)
+
+**Known caveats:**
+- Prior model-stack comparison flagged Book Dep R30 and OPEX as material under a different source basis
+- This workbook should be used for visibility, not final parity certification
+- SHL gross-accrued is a candidate driver — source verification pending
 
 ## Modules Outside Tolerance
 
@@ -169,7 +172,9 @@ Top contributors to period-level variance:
 
 ## Recommended Next Branch
 
-`phase8-shl-sculpt-consolidation` — consolidate SHL PIK + sweep phase logic, consolidate sculpting debt sizing, remove SHL FCF waterfall flag dependency on Phase 6 CIT bridge.
+`phase7-model-stack-blueprint` — canonical model-stack blueprint, derived from this 60-period comparison workbook. Evidence base for Phase 7.
+
+SHL/senior consolidation may be considered later as a Phase 7/8 workstream, but the immediate next step is `phase7-model-stack-blueprint`.
 
 ## Generated Outputs
 
@@ -194,4 +199,10 @@ tests/test_r67_yrs13to30_residual.py         26 passed
 tests/test_cit_h2_annual_trigger.py          10 passed
 ```
 
-**Total: 153 passed, 1 xfailed**
+**Total: 147 passed, 1 xfailed**
+
+**Generated outputs (not committed to repo):**
+- `reports/phase6_model_stack_60_period_comparison.xlsx` — 11-sheet comparison workbook (64 KB)
+- `reports/phase6_model_stack_60_period_comparison_long.csv` — long-format CSV (313 KB)
+- `reports/phase6_model_stack_60_period_comparison_wide.csv` — wide-format CSV (57 KB)
+- `scripts/export_phase6_model_stack_60_period_comparison.py` — export script
