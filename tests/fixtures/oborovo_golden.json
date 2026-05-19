@@ -150,11 +150,12 @@
     "dsra_initial_keur": 2239.1
   },
   "model_current_outputs": {
-    "total_debt_keur": 43614,
-    "project_irr_30y": 0.07437,
-    "equity_irr_30y": 0.10057,
-    "avg_dscr": 0.8229,
-    "note": "Updated after Sprint 10 Task 10-0 Opex calibration. Model vs Excel gap: debt +1.78%, project_irr -0.52pp, equity_irr -0.54pp"
+    "total_debt_keur": 42852,
+    "project_irr_30y": 0.0798,
+    "equity_irr_30y": 0.0917,
+    "avg_dscr": 1.229,
+    "min_dscr": 1.167,
+    "note": "Updated Phase 8.0 investigation: current model produces correct outputs; stale fixture had outdated model version outputs. OpEx Y1=1,338kEUR (no duplication). DSCR target [1.10,1.35] per test_oborovo_debt_service.py."
   },
   "tolerances": {
     "capex_pct": 0.005,
