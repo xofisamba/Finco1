@@ -1,0 +1,36 @@
+category,bcode,name,excel_sheet,excel_row,excel_base_keur_per_year,excel_inflation_rate,excel_basis,python_group_code,python_item_code,python_basis,python_base_keur_per_year,confidence,delta_class,notes
+B.01,B.01.1,Asset Management Contract,OpEx,OpEx,138.0,0.02,FIXED_ANNUAL_KEUR,B.01,B.01.1,FIXED_ANNUAL_KEUR,138.0,EXACT,EXACT,Matches Excel base exactly
+B.01,B.01.2,Operation Management Contract,OpEx,OpEx,67.0,0.02,FIXED_ANNUAL_KEUR,B.01,B.01.2,FIXED_ANNUAL_KEUR,67.0,EXACT,EXACT,Matches Excel base exactly
+B.01,B.01.3,Performance monitoring,OpEx,OpEx,35.0,0.02,FIXED_ANNUAL_KEUR,B.01,B.01.3,FIXED_ANNUAL_KEUR,35.0,EXACT,EXACT,Matches Excel base exactly
+B.01,B.01.4,Technical Inspections,OpEx,OpEx,0.0,0.02,FIXED_ANNUAL_KEUR,B.01,B.01.4,FIXED_ANNUAL_KEUR,0.0,EXACT,ZERO_LINE,Zero line both Excel and Python
+B.01,B.01.5,Meteorological / Weather,OpEx,OpEx,18.0,0.02,FIXED_ANNUAL_KEUR,B.01,B.01.5,FIXED_ANNUAL_KEUR,18.0,EXACT,EXACT,Matches Excel base exactly
+B.01,B.01.9,Bazefield / Onboarding,OpEx,OpEx,22.0,0.02,FIXED_ANNUAL_KEUR,B.01,B.01.6,FIXED_ANNUAL_KEUR,22.0,EXACT,STRUCTURAL_ACCEPT,Python B.01.6 maps to Excel B.01.9 — code mismatch accepted as structural
+B.02,B.02.1,O&M Preventive & Corrective (explicit schedule),OpEx,OpEx,explicit,0.0,EXPLICIT_SCHEDULE,B.02,B.02.1,EXPLICIT_SCHEDULE,0.0,EXACT,EXPLICIT_SCHEDULE,"Explicit 30-yr schedule. Y1-2:385.6,Y3-5:465.6,Y6-10:588,Y11-15:628,Y16-20:676,Y21-25:756,Y26-30:828. Inflation=0%."
+B.02,B.02.2,Minor Maintenance,OpEx,OpEx,27.0,0.0,FIXED_ANNUAL_KEUR,B.02,B.02.2,FIXED_ANNUAL_KEUR,27.0,EXACT,EXACT,Matches Excel base. B.02 group inflation=0%
+B.02,B.02.3,HV Substation & O&M Building,OpEx,OpEx,0.0,0.0,FIXED_ANNUAL_KEUR,B.02,B.02.3,FIXED_ANNUAL_KEUR,0.0,EXACT,ZERO_LINE,Zero line both Excel and Python
+B.02,B.02.4,HSE Prevention Plan,OpEx,OpEx,6.0,0.0,FIXED_ANNUAL_KEUR,B.02,B.02.4,FIXED_ANNUAL_KEUR,6.0,EXACT,EXACT,Matches Excel base. B.02 group inflation=0%
+B.02,B.02.5,Met Station Maintenance,OpEx,OpEx,0.0,0.0,FIXED_ANNUAL_KEUR,B.02,B.02.5,FIXED_ANNUAL_KEUR,0.0,EXACT,ZERO_LINE,Zero line both Excel and Python
+B.02,B.02.6,Blade Maintenance,OpEx,OpEx,0.0,0.0,FIXED_ANNUAL_KEUR,B.02,B.02.6,FIXED_ANNUAL_KEUR,0.0,EXACT,ZERO_LINE,Zero line both Excel and Python
+B.02,B.02.7,Vehicle / Special Equipment,OpEx,OpEx,8.0,0.0,FIXED_ANNUAL_KEUR,B.02,B.02.7,FIXED_ANNUAL_KEUR,8.0,EXACT,EXACT,Matches Excel base. B.02 group inflation=0%
+B.02,B.02.8,Others,OpEx,OpEx,0.0,0.0,FIXED_ANNUAL_KEUR,B.02,B.02.8,FIXED_ANNUAL_KEUR,0.0,EXACT,ZERO_LINE,Zero line both Excel and Python
+B.03,B.03.1,Vegetation management,OpEx,OpEx,28.0,0.02,FIXED_ANNUAL_KEUR,B.03,B.03.1,FIXED_ANNUAL_KEUR,28.0,EXACT,EXACT,Matches Excel base exactly
+B.03,B.03.2,Repair roads,OpEx,OpEx,20.0,0.02,FIXED_ANNUAL_KEUR,B.03,B.03.2,FIXED_ANNUAL_KEUR,20.0,EXACT,EXACT,Matches Excel base exactly
+B.03,B.03.3,Pest control,OpEx,OpEx,10.0,0.02,FIXED_ANNUAL_KEUR,B.03,B.03.3,FIXED_ANNUAL_KEUR,10.0,EXACT,EXACT,Matches Excel base exactly
+B.03,B.03.9,Others / Inspections,OpEx,OpEx,10.0,0.02,FIXED_ANNUAL_KEUR,B.03,B.03.4,FIXED_ANNUAL_KEUR,10.0,EXACT,STRUCTURAL_ACCEPT,Python B.03.4 maps to Excel B.03.9 — code mismatch accepted as structural
+B.04,B.04.2,Subscription to water supply,OpEx,OpEx,1.0,0.02,FIXED_ANNUAL_KEUR,B.04,B.04.2,FIXED_ANNUAL_KEUR,1.0,EXACT,EXACT,Matches Excel base exactly
+B.04,B.04.3,Others,OpEx,OpEx,1.0,0.02,FIXED_ANNUAL_KEUR,B.04,B.04.3,FIXED_ANNUAL_KEUR,1.0,EXACT,EXACT,Matches Excel base exactly
+B.05,B.05.1,Surveillance systems,OpEx,OpEx,30.0,0.02,FIXED_ANNUAL_KEUR,B.05,B.05.1,FIXED_ANNUAL_KEUR,30.0,EXACT,EXACT,Matches Excel base exactly
+B.05,B.05.2,Surveillance patrols,OpEx,OpEx,15.0,0.02,FIXED_ANNUAL_KEUR,B.05,B.05.2,FIXED_ANNUAL_KEUR,15.0,EXACT,EXACT,Matches Excel base exactly
+B.06,B.06.1,Operation All Risk w/ Business Interruption,OpEx,OpEx,400.0,0.02,FIXED_ANNUAL_KEUR,B.06,B.06.1,FIXED_ANNUAL_KEUR,400.0,EXACT,EXACT,Matches Excel base exactly
+B.07,B.07.1,Land Leases,OpEx,OpEx,200.0,0.02,FIXED_ANNUAL_KEUR,B.07,B.07.1,FIXED_ANNUAL_KEUR,200.0,EXACT,EXACT,Matches Excel base exactly
+B.07,B.07.4,Property tax,OpEx,OpEx,48.88,0.02,FIXED_ANNUAL_KEUR,B.07,B.07.2,FIXED_ANNUAL_KEUR,48.88,EXACT,EXACT,Python B.07.2 = Property tax maps to Excel B.07.4. Structural code mismatch.
+B.08,B.08.1,Power consumption,OpEx,OpEx,50.0,0.02,FIXED_ANNUAL_KEUR,B.08,B.08.1,FIXED_ANNUAL_KEUR,50.0,EXACT,EXACT,Matches Excel base exactly
+B.08,B.08.2,Grid Usage fee,OpEx,OpEx,30.0,0.02,FIXED_ANNUAL_KEUR,B.08,B.08.2,FIXED_ANNUAL_KEUR,30.0,EXACT,EXACT,Matches Excel base exactly
+B.09,B.09,Telecom Fees (B.09.1 + B.09.2),OpEx,OpEx,0.0,0.0,FIXED_ANNUAL_KEUR,B.09,"B.09.1, B.09.2",FIXED_ANNUAL_KEUR,0.0,EXACT,ZERO_LINE,Both B.09.1 (0 kEUR) and B.09.2 (0 kEUR) are zero lines
+B.10,B.10.1,Auditors closing,OpEx,OpEx,8.0,0.02,FIXED_ANNUAL_KEUR,B.10,B.10.1,FIXED_ANNUAL_KEUR,8.0,EXACT,EXACT,Matches Excel base exactly
+B.10,B.10.2,Accounting closing,OpEx,OpEx,8.0,0.02,FIXED_ANNUAL_KEUR,B.10,B.10.2,FIXED_ANNUAL_KEUR,8.0,EXACT,EXACT,Matches Excel base exactly
+B.10,B.10.3,"Legal closing, Yr1 only",OpEx,OpEx,3.0,0.02,FIXED_ANNUAL_KEUR,B.10,B.10.3,FIXED_ANNUAL_KEUR,3.0,EXACT,EXACT,Matches Excel base exactly
+B.11,B.11.1,"Agency Fee, active Y1-Y14",OpEx,OpEx,20.0,0.02,FIXED_ANNUAL_KEUR,B.11,B.11.1,FIXED_ANNUAL_KEUR,20.0,EXACT,ACTIVE_FLAG,"Active Y1-Y14 only (14 active flags, 16 inactive). Excel base=20 kEUR applies Y1-Y14."
+B.12,B.12.1,Mitigation measures,OpEx,OpEx,50.0,0.02,FIXED_ANNUAL_KEUR,B.12,B.12.1,FIXED_ANNUAL_KEUR,50.0,EXACT,EXACT,Matches Excel base exactly
+B.12,B.12.3,Fauna & Flora Monitoring,OpEx,OpEx,30.0,0.02,FIXED_ANNUAL_KEUR,B.12,B.12.3,FIXED_ANNUAL_KEUR,30.0,EXACT,EXACT,Matches Excel base exactly
+B.13,B.13,Contingencies 6% of B.01-B.12,OpEx,OpEx,6%,0.0,PCT_OF_SELECTED_GROUPS,B.13,B.13.1,PCT_OF_SELECTED_GROUPS,6.0,EXACT,CONTINGENCY_PCT,"6% of sum(B.01:B.12). B.13 does not self-reference. Total incl. contingencies: 84,674.78 kEUR."
