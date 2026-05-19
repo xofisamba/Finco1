@@ -180,10 +180,16 @@ def revenue_decomposition_schedule(
                 "generation_mwh": 0.0,
                 "ppa_tariff_eur_mwh": 0.0,
                 "market_price_eur_mwh": 0.0,
+                "electricity_revenue_keur": 0.0,
+                "co2_certificate_revenue_keur": 0.0,
+                "balancing_cost_keur": 0.0,
+                "net_revenue_after_balancing_keur": 0.0,
                 "energy_revenue_keur": 0.0,
                 "balancing_cost_pv_keur": 0.0,
                 "balancing_cost_wind_keur": 0.0,
                 "co2_revenue_keur": 0.0,
+                "co2_eur_mwh": 0.0,
+                "balancing_cost_eur_mwh": 0.0,
                 "revenue_keur": 0.0,
             }
             continue
@@ -201,16 +207,8 @@ def revenue_decomposition_schedule(
             ppa_active=ppa_active,
             ppa_share=inputs.revenue.ppa_production_share,
         )
-        balancing_cost_pv_keur = energy_revenue_keur * inputs.revenue.balancing_cost_pv
-        if inputs.revenue.balancing_cost_schedule is not None:
-            balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
-                operating_period_index=period.operating_period_index,
-                operating_year_index=period.operating_year_index,
-                period_in_year=period.period_in_year,
-            )
-        else:
-            balancing_eur_mwh = inputs.revenue.balancing_cost_wind_eur_mwh
-        balancing_cost_wind_keur = generation_mwh * balancing_eur_mwh / 1000
+        # Phase 7: explicit certificate and balancing cost inputs (EUR/MWh)
+        # Use schedule if available (TUHO), otherwise fall back to flat inputs.
         if inputs.revenue.co2_sales_schedule is not None:
             co2_eur_mwh = inputs.revenue.co2_sales_schedule.value_for_period(
                 operating_period_index=period.operating_period_index,
@@ -219,12 +217,33 @@ def revenue_decomposition_schedule(
             )
         else:
             co2_eur_mwh = inputs.revenue.co2_price_eur
-        co2_revenue_keur = _certificate_revenue_keur(
+        co2_certificate_revenue_keur = _certificate_revenue_keur(
             generation_mwh=generation_mwh,
             enabled=inputs.revenue.co2_enabled,
             price_eur_mwh=co2_eur_mwh,
         )
-        revenue_keur = energy_revenue_keur - balancing_cost_pv_keur - balancing_cost_wind_keur + co2_revenue_keur
+        # Phase 7: explicit balancing cost EUR/MWh (used when no schedule)
+        if inputs.revenue.balancing_cost_schedule is not None:
+            balancing_eur_mwh = inputs.revenue.balancing_cost_schedule.value_for_period(
+                operating_period_index=period.operating_period_index,
+                operating_year_index=period.operating_year_index,
+                period_in_year=period.period_in_year,
+            )
+        else:
+            # Fall back to explicit EUR/MWh inputs if no schedule defined
+            balancing_eur_mwh = inputs.revenue.balancing_cost_eur_per_mwh
+        balancing_cost_pv_keur = energy_revenue_keur * inputs.revenue.balancing_cost_pv
+        balancing_cost_wind_keur = generation_mwh * balancing_eur_mwh / 1000
+        balancing_cost_keur = balancing_cost_pv_keur + balancing_cost_wind_keur
+        # Net revenue after all deductions
+        net_revenue_after_balancing_keur = (
+            energy_revenue_keur
+            - balancing_cost_pv_keur
+            - balancing_cost_wind_keur
+            + co2_certificate_revenue_keur
+        )
+        # Legacy total for backward compatibility
+        revenue_keur = net_revenue_after_balancing_keur
 
         decompositions[period.index] = {
             "is_operation": True,
@@ -232,12 +251,18 @@ def revenue_decomposition_schedule(
             "generation_mwh": generation_mwh,
             "ppa_tariff_eur_mwh": tariff,
             "market_price_eur_mwh": market_price,
+            # Phase 7: explicit revenue split
+            "electricity_revenue_keur": energy_revenue_keur,
+            "co2_certificate_revenue_keur": co2_certificate_revenue_keur,
+            "balancing_cost_keur": balancing_cost_keur,
+            "net_revenue_after_balancing_keur": net_revenue_after_balancing_keur,
+            # Legacy aliases for backward compatibility
             "energy_revenue_keur": energy_revenue_keur,
+            "co2_revenue_keur": co2_certificate_revenue_keur,
             "balancing_cost_pv_keur": balancing_cost_pv_keur,
             "balancing_cost_wind_keur": balancing_cost_wind_keur,
-            "co2_revenue_keur": co2_revenue_keur,
-            "balancing_cost_eur_mwh": balancing_eur_mwh,
             "co2_eur_mwh": co2_eur_mwh,
+            "balancing_cost_eur_mwh": balancing_eur_mwh,
             "revenue_keur": revenue_keur,
         }
 
