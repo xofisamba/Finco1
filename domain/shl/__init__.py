@@ -24,6 +24,10 @@ from domain.shl.result import (
 )
 from domain.shl.engine import ShlEngine
 from domain.shl.audit import to_audit_dataframe, to_csv, to_model_summary
+from domain.shl.runtime_adapter import (
+    ShlRuntimeAdapter,
+    run_canonical_shl,
+)
 
 __all__ = [
     "ShlEngine",
@@ -36,4 +40,6 @@ __all__ = [
     "to_audit_dataframe",
     "to_csv",
     "to_model_summary",
+    "ShlRuntimeAdapter",
+    "run_canonical_shl",
 ]
