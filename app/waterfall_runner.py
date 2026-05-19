@@ -56,6 +56,10 @@ class WaterfallRunConfig:
     use_shl_fcf_waterfall_engine: bool = False
     use_tax_bridge_engine: bool = False
     use_shl_gross_accrued_for_pnl: bool = False
+    # Phase 8.1: canonical SHL engine wiring — replaces legacy SHL output fields only.
+    # When True, canonical ShlEngine output is used for SHL-specific fields at runtime.
+    # TUHO-WIND-1 and OBOROVO-SOLAR-1 only.
+    use_shl_canonical_engine: bool = False
     # TUHO Excel-compatible CIT cash tax start period (0-based operating index).
     # When set, R67 diagnostic and corporate_tax_cash are suppressed for
     # operating_index < value. TUHO Excel: value=25 (first non-zero R67 at P25).
@@ -110,7 +114,8 @@ class WaterfallRunConfig:
             f"ss_{int(self.use_senior_sculpting_basis_engine)}_"
             f"sfw_{int(self.use_shl_fcf_waterfall_engine)}_"
             f"taxb_{int(self.use_tax_bridge_engine)}_"
-            f"shlg_{int(self.use_shl_gross_accrued_for_pnl)}"
+            f"shlg_{int(self.use_shl_gross_accrued_for_pnl)}_"
+            f"canon_{int(self.use_shl_canonical_engine)}"
         )
 
     @classmethod
@@ -204,6 +209,17 @@ class WaterfallRunConfig:
         )
         if use_shl_gross_accrued_for_pnl and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
             raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
+
+        use_shl_canonical_engine = getattr(
+            inputs.info,
+            "use_shl_canonical_engine",
+            False,
+        )
+        if use_shl_canonical_engine and getattr(inputs.info, "code", "") not in ("TUHO-WIND-1", "OBOROVO-SOLAR-1"):
+            raise ValueError(
+                "Canonical SHL engine is currently supported only for "
+                "TUHO-WIND-1 and OBOROVO-SOLAR-1"
+            )
 
         # Map equity_irr_method — FinancingParams stores as str, config expects enum
         from domain.inputs import EquityIRRMethod
@@ -337,6 +353,7 @@ class WaterfallRunner:
             use_shl_fcf_waterfall_engine=config.use_shl_fcf_waterfall_engine,
             use_tax_bridge_engine=config.use_tax_bridge_engine,
             use_shl_gross_accrued_for_pnl=config.use_shl_gross_accrued_for_pnl,
+            use_shl_canonical_engine=config.use_shl_canonical_engine,
             tuho_cit_cash_tax_start_operating_index=config.tuho_cit_cash_tax_start_operating_index,
             shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
             shl_fcf_waterfall_minimum_cash_retained_keur=(
