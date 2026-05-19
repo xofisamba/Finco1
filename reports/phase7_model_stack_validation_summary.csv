@@ -1,0 +1,44 @@
+module,validation_category,status,expected_behavior,observed_behavior,regression_detected,runtime_risk,notes
+domain/shl,engine_positive_gross,pass,Gross accrued > 0,Gross accrued positive,no,low,Pure domain engine
+domain/shl,engine_less_than_interest_only,pass,Gross < interest-only envelope,Gross < 82704 kEUR for 63 periods,no,low,Amortization reduces gross vs interest-only
+domain/shl,cash_plus_pik_equals_gross,pass,Cash + PIK = Gross,Cash + PIK = Gross (conservation),no,low,Waterfall order correct
+domain/shl,closing_balance_reconciliation,pass,closing = opening + PIK - principal,Engine produces correct closing per period,no,low,Per-period reconciliation holds
+domain/shl,no_minimum_reserve,pass,No reserve accumulation,total_cash_consumed >= 0,no,low,Reserve = 0 by default
+domain/shl,100_percent_cash_sweep,pass,All post-senior cash consumed,total_cash_consumed >= 0,no,low,TUHO behavior: 100% sweep
+domain/shl,no_r99_r102_gate,pass,No DSCR gate in engine,No r99_triggered/distribution_gate,no,low,R99/R102 BLOCKED
+domain/shl,pik_when_no_cash,pass,PIK > 0 when cash=0,total_pik > 0 with cash=0,no,low,PIK triggers correctly
+domain/shl,principal_repaid_when_sufficient_cash,pass,Principal > 0 when cash > interest,total_principal > 0 with cash=500,no,low,Principal repayment waterfall correct
+domain/shl,importability,pass,All imports succeed,ShlEngine importable,no,low,No import-time side effects
+domain/senior_debt_sizing,cfads_separation,pass,sizing and actual CFADS separated,SizingPolicy has sizing_cfads field,no,low,EXPLICIT_CFADS mode
+domain/senior_debt_sizing,minimum_dscr_explicit,pass,Minimum DSCR explicit input,policy.inferred_minimum_dscr=1.45,no,low,Not hardcoded
+domain/senior_debt_sizing,sizing_path_explicit,pass,Sizing uses sizing_cfads,result.sizing_cfads_keur_by_period populated,no,low,No actual CFADS in sizing
+domain/senior_debt_sizing,result_sizing_only,pass,Result contains only sizing fields,No distribution/IRR fields,no,low,Domain boundary clean
+domain/senior_debt_sizing,macro_r50_like,pass,Sizing CFADS/DSCR = capacity,63-period capacity array,no,low,SizingMode.EXPLICIT_CFADS
+domain/senior_debt_sizing,no_r99_r102,pass,No distribution gate,No r99/r102 attributes,no,low,R99/R102 BLOCKED
+domain/senior_debt_sizing,importability,pass,All imports succeed,SeniorDebtSizingEngine importable,no,low,No import-time side effects
+domain/depreciation,straight_line_annual,pass,SL = basis / life,250/period for 10k/40,no,low,Semiannual timing correct
+domain/depreciation,sums_to_basis,pass,Total = basis,total_book_depr = 10000,no,low,Full depreciation lifecycle
+domain/depreciation,book_tax_life_divergence,pass,Book 40 periods, Tax 24 periods,Book 300, Tax 500 per period,no,low,Separate book/tax lives
+domain/depreciation,land_non_depreciable,pass,Land = 0 depreciation,Land rows all 0,no,low,Land basis = 0
+domain/depreciation,financing_12yr_policy,pass,Financing costs 12yr (24 periods),2400/24 = 100/period,no,low,IDC policy correct
+domain/depreciation,no_depr_before_cod,pass,No depreciation in construction,Period 1 book_depr = 0,no,low,COD at period 2
+domain/depreciation,accumulated_increases,pass,Accumulated grows each period,p20 > p5 accumulated,no,low,NBV roll-forward correct
+domain/depreciation,nbv_zero_end_of_life,pass,NBV = 0 at end of life,Period 41 NBV = 0,no,low,40-period life fully depreciates
+domain/depreciation,unsupported_method_raises,pass,Non-SL raises ValueError,declining_balance → ValueError,no,low,Fail-fast for unsupported methods
+domain/depreciation,audit_rows_complete,pass,All audit fields present,All 11 fields in audit rows,no,low,DepreciationAuditRow complete
+domain/depreciation,no_distribution,pass,No R99/R102 computed,No distribution_gate,no,low,R99/R102 BLOCKED
+domain/depreciation,land_in_non_depreciable,pass,Land counted in non-depr basis,total_non_depreciable > 0,no,low,Land tracked correctly
+domain/depreciation,default_policy_fallback,pass,Unknown asset uses default policy,No raise, no depreciation 0,no,low,Default policy fallback works
+domain/depreciation,croatia_main_20yr,pass,Main renewable 20yr,8000/40 = 200/period,no,low,Croatia policy documented
+domain/depreciation,croatia_vat_20yr,pass,VAT 20yr if basis-eligible,1600/40 = 40/period,no,low,Croatia policy documented
+cross_module,no_circular_imports,pass,No SHL→SeniorDebt or SHL→Depr imports,All three modules isolated,no,low,Clean module boundaries
+cross_module,shl_post_senior_concept,pass,SHL takes post-senior cash,total_cash_consumed >= 0,no,low,SHL conceptually post-senior
+cross_module,depr_book_tax_separate,pass,Book and tax depreciation separate,Both positive in period 5,no,low,Separate outputs for P&L vs TaxEngine
+cross_module,no_sponsor_irr,pass,No module computes sponsor IRR,No irr attributes found,no,low,IRR not in scope
+cross_module,no_r99_r102_in_any_module,pass,No R99/R102 in any module,No r99/r102 attributes found,no,low,All three modules confirmed clean
+runtime_safety,no_new_flags_enabled,pass,No new flags forced on,DEFAULT_FLAGS check passed,no,low,Default-off behavior preserved
+runtime_safety,engine_pure_function,pass,Deterministic output from inputs,Same inputs → same output,no,low,No side effects
+runtime_safety,all_engines_importable,pass,All three engines importable,All import without error,no,low,No import-time side effects
+r99_blockers,shl_r99_blocked,pass,SHL has no distribution gate,No distribution_gate/r99_triggered,no,low,Confirmed BLOCKED
+r99_blockers,senior_r99_blocked,pass,SeniorDebtSizing has no gate,No distribution_gate/r99_triggered,no,low,Confirmed BLOCKED
+r99_blockers,depr_r99_blocked,pass,Depreciation has no gate,No distribution_gate/r99_triggered,no,low,Confirmed BLOCKED
