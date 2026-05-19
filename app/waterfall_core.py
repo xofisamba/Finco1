@@ -54,6 +54,7 @@ def run_waterfall_v3_core(
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
     tuho_cit_cash_tax_start_operating_index: int | None = None,
     use_shl_canonical_engine: bool = False,
+    use_depreciation_canonical_engine: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -241,6 +242,33 @@ def run_waterfall_v3_core(
         from domain.shl.canonical_wiring import apply_canonical_shl_wiring
         apply_canonical_shl_wiring(result, wiring_result)
         result._canonical_shl_wiring = wiring_result
+    # Phase 8: wire canonical DepreciationEngine into runtime when flag is True.
+    # Canonical engine computes per-asset-class book and tax depreciation;
+    # its outputs override waterfall period depreciation_keur and
+    # tax_depreciation_audit_keur after run_waterfall completes.
+    # R99/R102: BLOCKED — depreciation wiring affects P&L and tax-shield only.
+    if use_depreciation_canonical_engine:
+        from domain.depreciation.canonical_wiring import build_canonical_depreciation_wiring
+        dep_wiring = build_canonical_depreciation_wiring(
+            project_name=getattr(inputs.info, 'name', 'Project'),
+            capex_items=inputs.capex.capex_items(),
+            horizon_years=horizon_years,
+            cod_period=2,  # semiannual: COD = period 2 (first operating period)
+            period_frequency="semiannual",
+        )
+        if dep_wiring.canonical_engine_result is not None:
+            # Override waterfall period depreciation fields with canonical values
+            from domain.depreciation.canonical_wiring import wire_canonical_depreciation_into_waterfall
+            wiring_result = wire_canonical_depreciation_into_waterfall(
+                dep_wiring.canonical_engine_result,
+                period_count=len(result.periods),
+            )
+            for i, period in enumerate(result.periods):
+                if i < len(wiring_result.book_depreciation_by_period):
+                    period.depreciation_keur = wiring_result.book_depreciation_by_period[i]
+                if i < len(wiring_result.tax_depreciation_by_period):
+                    period.tax_depreciation_audit_keur = wiring_result.tax_depreciation_by_period[i]
+            result._canonical_depreciation_wiring = wiring_result
     return result
 
 
