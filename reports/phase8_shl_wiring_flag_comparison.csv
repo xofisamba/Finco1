@@ -1,0 +1,21 @@
+project,metric,flag_false_value,flag_true_value,delta,expected,status,notes
+TUHO-WIND-1,total_senior_ds_keur,65826.388,65826.388,+0.000,MUST NOT CHANGE,PASS,senior DS unchanged
+TUHO-WIND-1,equity_irr,0.111495,0.111495,+0.000000,MUST NOT CHANGE,PASS,IRR unchanged; model vs golden gap pre-existing (11.15% vs 9.17%)
+TUHO-WIND-1,project_irr,0.094102,0.094102,+0.000000,MUST NOT CHANGE,PASS,IRR unchanged; model vs golden gap pre-existing
+TUHO-WIND-1,actual_avg_dscr,1.554228,1.554228,+0.000000,MUST NOT CHANGE,PASS,DSCR unchanged
+TUHO-WIND-1,distribution_keur_total,SAME,SAME,+0.000,MUST NOT CHANGE,PASS,distribution unchanged
+TUHO-WIND-1,r99_keur_p0,unchanged,unchanged,+0,MUST NOT CHANGE,PASS,R99 BLOCKED
+TUHO-WIND-1,r102_keur_p0,unchanged,unchanged,+0,MUST NOT CHANGE,PASS,R102 BLOCKED
+TUHO-WIND-1,shl_interest_keur_p0,1081.087,1081.087,+0.000,MUST NOT CHANGE,PASS,SHL field unchanged vs legacy
+TUHO-WIND-1,shl_balance_keur_p0,32919.304,32919.304,+0.000,MUST NOT CHANGE,PASS,SHL field unchanged vs legacy
+TUHO-WIND-1,shl_pik_keur_p0,215.614,215.614,+0.000,MUST NOT CHANGE,PASS,PIK unchanged; canonical matches legacy
+OBOROVO-SOLAR-1,total_senior_ds_keur,63500.894,63500.894,+0.000,MUST NOT CHANGE,PASS,senior DS unchanged
+OBOROVO-SOLAR-1,equity_irr,0.091683,0.091683,+0.000000,MUST NOT CHANGE,PASS,IRR unchanged; model vs golden gap pre-existing
+OBOROVO-SOLAR-1,project_irr,0.079847,0.079847,+0.000000,MUST NOT CHANGE,PASS,IRR unchanged
+OBOROVO-SOLAR-1,actual_avg_dscr,1.229040,1.229040,+0.000000,MUST NOT CHANGE,PASS,DSCR unchanged
+OBOROVO-SOLAR-1,distribution_keur_total,SAME,SAME,+0.000,MUST NOT CHANGE,PASS,distribution unchanged
+OBOROVO-SOLAR-1,r99_keur_p0,unchanged,unchanged,+0,MUST NOT CHANGE,PASS,R99 BLOCKED
+OBOROVO-SOLAR-1,r102_keur_p0,unchanged,unchanged,+0,MUST NOT CHANGE,PASS,R102 BLOCKED
+OBOROVO-SOLAR-1,shl_interest_keur_p0,0.000,0.000,+0.000,MUST NOT CHANGE,PASS,Oborovo SHL is bullet; no interest in pre-op period
+OBOROVO-SOLAR-1,shl_balance_keur_p0,14716.200,14716.200,+0.000,MUST NOT CHANGE,PASS,bullet structure; balance constant until sweep
+OBOROVO-SOLAR-1,shl_pik_keur_p0,0.000,0.000,+0.000,MUST NOT CHANGE,PASS,Oborovo has no PIK
