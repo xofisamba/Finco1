@@ -1,0 +1,25 @@
+component,type,file_path,runtime_status,flag_name,default_value,source_of_truth_status,audit_only,blocked_reason,tests,notes
+SHL Engine (canonical),canonical,domain/shl/runtime_adapter.py,audit_only,use_shl_canonical_engine,False,audit_only,True,canonical not wired to runtime,-,test_shl_runtime_flag.py (14 tests); audit-only adapter for ShlEngine
+SHL Engine (legacy),runtime,domain/shl/engine.py,runtime,use_shl_canonical_engine,False,runtime_source,False,legacy active by default,test_shl_engine.py (5 tests),ShlEngine.compute() not wired as runtime source
+SHL FCF Waterfall,canonical,domain/shl/fcf_waterfall.py,audit_only,use_shl_fcf_waterfall_engine,False,audit_only,True,requires use_shl_canonical_engine=True,-,test_shl_fcf_waterfall_runtime_flag.py (11 tests)
+Senior Debt Sizing Engine,canonical,domain/senior_debt_sizing/engine.py,audit_only,use_senior_debt_sizing,False,audit_only,True,not wired to app/waterfall_core.py,-,test_senior_debt_sizing_policy.py (10 tests); pure domain sizing policy
+Senior Rate Schedule Engine,runtime,domain/senior_rate_schedule.py,runtime,use_senior_rate_schedule_engine,False,runtime_source,False,active by default,-,
+Senior Sculpting Basis Engine,runtime,domain/senior_sculpting/,runtime,use_senior_sculpting_basis_engine,False,runtime_source,False,active by default,-,
+DepreciationEngine (canonical),canonical,domain/depreciation/engine.py,audit_only,use_canonical_tax_depreciation_bridge,False,audit_only,True,not wired to TaxEngine,-,test_depreciation_engine.py (17 tests)
+Tax Bridge Adapter,canonical,domain/depreciation/tax_bridge.py,audit_only,use_canonical_tax_depreciation_bridge,False,audit_only,True,not wired to TaxEngine,-,test_depreciation_tax_bridge.py (10 tests)
+DepreciationSchedule (legacy),runtime,app/depreciation_engine.py,runtime,use_depreciation_engine,False,runtime_source,False,active by default,-,
+TaxEngine,runtime,domain/waterfall/tax_engine.py,runtime,use_tax_bridge_engine,False,runtime_source,False,active by default,-,
+TaxBridge (financial statements),audit,domain/financial_statements/tax_bridge.py,audit_only,use_tax_bridge_engine,False,audit_only,True,assembles waterfall audit fields,-,test_depreciation_tax_bridge.py has validation
+DistributionAccount,engine,domain/distribution_account/,runtime (gate),none,False,runtime_source,False,owns R99 gate logic;-,"compute_tuho_r99_input_period" audit only,app/waterfall_core.py ~line 429,R99 = 0 (locked) until conditions met; gate is BLOCKED
+R98 Distribution Account Balance,row,app/waterfall_core.py,audit_only,none,False,audit_only,True,gate logic in DistributionAccount,-,audit field r98_distribution_account_keur
+R99 FCF for Distribution Gate,row,app/waterfall_core.py,audit_only,none,False,audit_only,True,gate not promoted;- BLOCKED,-,audit field r99_fcf_for_distribution_keur
+R100 Carryforward,row,app/waterfall_core.py,audit_only,none,False,audit_only,True,-,-,audit field r100_carryforward_keur
+R102 FCF for SHL,row,app/waterfall_core.py,audit_only,none,False,audit_only,True,gate not promoted;- BLOCKED,-,audit field r102_fcf_for_shl_keur
+R119 Final Dividend,row,app/waterfall_core.py,audit_only,none,False,audit_only,True,owned by SponsorEngine,-,audit field final_dividend_keur
+SponsorEngine,engine,app/sponsor.py,runtime,none,False,runtime_source,False,receives distributions from WaterfallEngine;-,-,test_sponsor_irr.py (if exists)
+WaterfallEngine,runtime,domain/waterfall/waterfall_engine.py,runtime,none,False,runtime_source,False,CFADS → waterfall → debt + SHL + distribution;-,-,test_waterfall_engine.py (if exists)
+Book Depreciation Bridge,audit,domain/financial_statements/depreciation_bridge.py,audit_only,use_book_depreciation_for_pnl,False,audit_only,True,not wired to P&L runtime;-,-,test_book_depreciation_for_pnl_bridge.py (if exists)
+SHL Gross Accrued for PNL,audit,domain/shl/,audit_only,use_shl_gross_accrued_for_pnl,False,audit_only,True,not wired to P&L;-,-,test_shl_gross_interest_pnl_bridge.py
+R67 Cash Tax Diagnostic,audit,domain/waterfall/r67_diagnostic.py,audit_only,use_tuho_r99_input_engine,False,audit_only,True,R67 suppressed for years 0-12 TUHO,-,test_r67_cash_tax_diagnostic.py (if exists)
+Construction Schedule Engine,canonical,domain/construction/schedule_engine.py,audit_only,use_construction_schedule_engine,False,audit_only,True,not wired to waterfall construction block,-,test_construction_schedule_engine.py (if exists)
+Model Stack Validation Pack,validation,tests/test_model_stack_validation_pack.py,validation,none,False,validation_only,True,validation tests only,-,test_model_stack_validation_pack.py (86 tests)
