@@ -9,8 +9,8 @@ TUHO Excel allocates **100% of post-senior cash to SHL** until SHL is fully serv
 |--------|------------:|
 | SHL Debt Service (incl. WHT) | **82,486** |
 | SHL Gross Accrued Interest | 53,351 |
-| SHL Net Cash Interest Paid | 49,782 |
-| SHL PIK Capitalized | 11,027 |
+| SHL Cash Interest Paid | 38,755 |
+| SHL PIK Capitalized | 14,596 |
 | SHL Principal Repaid | 43,731 |
 
 ---
@@ -143,7 +143,7 @@ Current gate status: **6/16 gates done** per `docs/phase7_model_stack_blueprint.
 
 - [x] TUHO SHL waterfall mapped period-by-period
 - [x] CF!R102 = 100% of post-senior cash (cash_sweep_pct = 1.0 for all 36 operating periods)
-- [x] SHL gross accrued = 53,351 kEUR, PIK = 11,027 kEUR, principal = 43,731 kEUR verified
+- [x] SHL gross accrued = 53,351 kEUR, cash int = 38,755 kEUR, PIK = 14,596 kEUR, principal = 43,731 kEUR verified
 - [x] PIK trigger condition documented: `MAX(gross - cash × outstanding_pct, 0)`
 - [x] No minimum cash reserve found in TUHO
 - [x] Gap vs current Python SHL documented
