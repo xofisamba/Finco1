@@ -53,6 +53,7 @@ def run_waterfall_v3_core(
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = (),
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
     tuho_cit_cash_tax_start_operating_index: int | None = None,
+    use_shl_canonical_engine: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -224,6 +225,22 @@ def run_waterfall_v3_core(
         )
     if construction_diagnostic is not None:
         result.construction_schedule_diagnostic = construction_diagnostic
+    # Phase 8.1: wire canonical ShlEngine into runtime when flag is True.
+    # R99/R102: BLOCKED — canonical wiring affects SHL fields only.
+    if use_shl_canonical_engine:
+        from domain.shl.canonical_wiring import wire_canonical_shl_into_waterfall
+        wiring_result = wire_canonical_shl_into_waterfall(
+            waterfall_result=result,
+            shl_amount_keur=shl_amount,
+            shl_rate=shl_rate,
+            shl_idc_keur=shl_idc_keur,
+            shl_repayment_method=shl_repayment_method,
+            shl_wht_rate=shl_wht_rate,
+            shl_tenor_years=shl_tenor_years,
+        )
+        from domain.shl.canonical_wiring import apply_canonical_shl_wiring
+        apply_canonical_shl_wiring(result, wiring_result)
+        result._canonical_shl_wiring = wiring_result
     return result
 
 
