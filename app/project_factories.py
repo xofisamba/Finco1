@@ -166,6 +166,10 @@ def create_default_oborovo() -> ProjectInputs:
         balancing_cost_bess=0.025,
         co2_enabled=True,  # Excel has CO2 certificate revenue (83 kEUR semi-annual)
         co2_price_eur=1.5,
+        # Phase 7: explicit EUR/MWh inputs for revenue split display
+        # Source: Oborovo Excel — CO2 certificate price = 1.5 EUR/MWh (Y1 semi-annual)
+        co2_certificate_price_eur_per_mwh=1.5,
+        balancing_cost_eur_per_mwh=0.0,  # No explicit balancing cost in Oborovo Excel
     )
 
     financing = FinancingParams(
@@ -356,8 +360,15 @@ def create_default_tuho_wind1() -> ProjectInputs:
         balancing_cost_pv=0.0,  # Wind: no PV balancing
         balancing_cost_bess=0.0,
         co2_enabled=True,  # TUHO has CO2 certificate revenue
+        # Phase 7: explicit EUR/MWh inputs for revenue split display
+        # Balancing: TUHO Excel CF row 30 = 8.0 EUR/MWh (constant across all periods)
+        # Source: RevenueAdjustmentSchedule(constant_value=8.0) — same value as flat input
+        balancing_cost_eur_per_mwh=8.0,
         balancing_cost_schedule=RevenueAdjustmentSchedule(constant_value=8.0),
         first_merchant_operating_period_index=24,
+        # CO2: TUHO Excel CF row 31 starts at 4.191 EUR/MWh (Y1-H1/Y1-H2)
+        # Source: TUHO Excel CF sheet row 31 semiannual values starting 4.191063312
+        co2_certificate_price_eur_per_mwh=4.191063312,  # flat default; schedule overrides
         co2_sales_schedule=RevenueAdjustmentSchedule(semiannual_values=(
             4.191063312, 4.191063312, 3.783032455, 3.783032455,
             3.375001599, 3.375001599, 2.966970742, 2.966970742,

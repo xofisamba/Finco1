@@ -308,6 +308,11 @@ class RevenueParams:
     balancing_cost_wind_eur_mwh: float = 0.0
     co2_enabled: bool = False
     co2_price_eur: float = 1.5
+    # Phase 7: explicit certificate and balancing cost inputs (EUR/MWh)
+    # Used to expose separate electricity / CO2 certificate / balancing lines
+    # in the revenue decomposition, matching Excel P&L presentation.
+    co2_certificate_price_eur_per_mwh: float = 0.0
+    balancing_cost_eur_per_mwh: float = 0.0
     balancing_cost_schedule: RevenueAdjustmentSchedule | None = None
     co2_sales_schedule: RevenueAdjustmentSchedule | None = None
     first_merchant_operating_period_index: int | None = None
