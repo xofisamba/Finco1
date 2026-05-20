@@ -1,0 +1,8 @@
+case_id,project,senior_debt_sizing_mode,minimum_sizing_dscr,distribution_account_audit,enable_r99_r102_runtime,tax_bridge_mode,depreciation_mode,shl_mode,expected_runtime_change,expected_status,notes
+A,TUHO,default,None,True,False,TUHO,canonical,canonical,none,pass,baseline audit mode
+B,TUHO,explicit_macro_r50,None,True,False,TUHO,canonical,canonical,none,pass,Macro!R50 explicit
+C,TUHO,derive_from_minimum_dscr,1.45,True,False,TUHO,canonical,canonical,none,pass,1.45x DSCR derive
+D,TUHO,default,None,True,True,TUHO,canonical,canonical,none,R99_R102_STILL_BLOCKED,enable flag does not change output
+E,Oborovo,default,None,True,False,blocked,canonical,canonical,none,pass,Oborovo guard active
+F,Oborovo,default,None,True,False,blocked,canonical,canonical,none,pass,Oborovo TaxBridge blocked
+G,TUHO+Oborovo,mixed,None,True,False,TUHO only,canonical,canonical,none,pass,isolation maintained
