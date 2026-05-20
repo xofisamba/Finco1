@@ -1,0 +1,23 @@
+project,metric,flag_false_value,flag_true_value,delta,expected,status,notes
+TUHO-WIND-1,total_senior_ds_keur,65826.388,65826.388,0.0,MUST NOT CHANGE,PASS,senior DS unchanged
+TUHO-WIND-1,equity_irr,0.111495,0.111495,0.0,MUST NOT CHANGE,PASS,IRR unchanged; model vs golden gap pre-existing
+TUHO-WIND-1,project_irr,0.094102,0.094102,0.0,MUST NOT CHANGE,PASS,IRR unchanged
+TUHO-WIND-1,actual_avg_dscr,1.554228,1.554228,0.0,MUST NOT CHANGE,PASS,DSCR unchanged
+TUHO-WIND-1,distribution_keur_total,SAME,SAME,0.0,MUST NOT CHANGE,PASS,distribution unchanged
+TUHO-WIND-1,r99_keur_p0,unchanged,unchanged,0,MUST NOT CHANGE,PASS,R99 BLOCKED by depreciation canonical
+TUHO-WIND-1,r102_keur_p0,unchanged,unchanged,0,MUST NOT CHANGE,PASS,R102 BLOCKED by depreciation canonical
+TUHO-WIND-1,total_book_depreciation_keur,70691.5,70691.5,0.0,N/A,PASS,canonical book dep total
+TUHO-WIND-1,total_tax_depreciation_keur,70691.5,70691.5,0.0,N/A,PASS,canonical tax dep total
+TUHO-WIND-1,all_book_non_negative,True,True,N/A,True,PASS,book dep validation
+TUHO-WIND-1,all_tax_non_negative,True,True,N/A,True,PASS,tax dep validation
+OBOROVO-SOLAR-1,total_senior_ds_keur,63500.895,63500.895,0.0,MUST NOT CHANGE,PASS,senior DS unchanged
+OBOROVO-SOLAR-1,equity_irr,0.091683,0.091683,0.0,MUST NOT CHANGE,PASS,IRR unchanged; model vs golden gap pre-existing
+OBOROVO-SOLAR-1,project_irr,0.079847,0.079847,0.0,MUST NOT CHANGE,PASS,IRR unchanged
+OBOROVO-SOLAR-1,actual_avg_dscr,1.229040,1.229040,0.0,MUST NOT CHANGE,PASS,DSCR unchanged
+OBOROVO-SOLAR-1,distribution_keur_total,SAME,SAME,0.0,MUST NOT CHANGE,PASS,distribution unchanged
+OBOROVO-SOLAR-1,r99_keur_p0,unchanged,unchanged,0,MUST NOT CHANGE,PASS,R99 BLOCKED by depreciation canonical
+OBOROVO-SOLAR-1,r102_keur_p0,unchanged,unchanged,0,MUST NOT CHANGE,PASS,R102 BLOCKED by depreciation canonical
+OBOROVO-SOLAR-1,total_book_depreciation_keur,55999.1,55999.1,0.0,N/A,PASS,canonical book dep total
+OBOROVO-SOLAR-1,total_tax_depreciation_keur,55999.1,55999.1,0.0,N/A,PASS,canonical tax dep total
+OBOROVO-SOLAR-1,all_book_non_negative,True,True,N/A,True,PASS,book dep validation
+OBOROVO-SOLAR-1,all_tax_non_negative,True,True,N/A,True,PASS,tax dep validation
