@@ -1,12 +1,182 @@
-"""TUHO R99/R102 input-engine helpers.
+"""DistributionAccount engine — canonical cash routing after senior debt and SHL.
 
-This module is intentionally standalone in C1a. It validates the R99/R102 cash
-input before any runtime SHL waterfall path consumes it.
+All outputs are AUDIT-ONLY. This module does NOT route production cashflows.
+R99/R102 remain BLOCKED per G1/G8 governance rules.
 """
 
 from __future__ import annotations
 
-from domain.distribution_account.result import R99InputResult
+from domain.distribution_account.inputs import (
+    DistributionAccountInputs,
+    DistributionAccountPeriodInput,
+    R99R102GateInputs,
+)
+from domain.distribution_account.result import (
+    DistributionAccountResult,
+    DistributionAccountPeriodResult,
+    DistributionGateResult,
+    R99InputResult,
+    BLOCKED_REASONS,
+)
+from domain.distribution_account.gates import (
+    evaluate_r99_gate,
+    evaluate_r102_gate,
+    evaluate_dscr_gate,
+    evaluate_lockup_gate,
+    evaluate_oborovo_guard,
+    evaluate_cash_gate,
+)
+
+
+class DistributionAccountEngine:
+    """Canonical DistributionAccount engine.
+
+    All outputs remain AUDIT-ONLY. Do NOT route production cashflows.
+    R99/R102 remain BLOCKED per G1/G8 governance.
+    """
+
+    @staticmethod
+    def compute(inputs: DistributionAccountInputs) -> DistributionAccountResult:
+        """Compute DistributionAccount results across all periods.
+
+        This is AUDIT-ONLY. All outputs are candidate values.
+        No production cashflow routing occurs.
+        """
+        project_name = inputs.project_name
+        period_results: list[DistributionAccountPeriodResult] = []
+
+        total_equity_candidate = 0.0
+        total_equity_paid = 0.0
+        total_shl_sweep = 0.0
+        total_retained = 0.0
+
+        for period_input in inputs.period_inputs:
+            result = DistributionAccountEngine._compute_period(period_input)
+            period_results.append(result)
+
+            total_equity_candidate += result.equity_distribution_candidate_keur
+            total_equity_paid += result.equity_distribution_paid_keur
+            total_shl_sweep += result.cash_swept_to_shl_keur
+            total_retained += result.cash_retained_keur
+
+        final_closing = (
+            period_results[-1].closing_distribution_account_balance_keur
+            if period_results else 0.0
+        )
+
+        return DistributionAccountResult(
+            project_name=project_name,
+            period_results=tuple(period_results),
+            total_equity_distribution_candidate_keur=total_equity_candidate,
+            total_equity_distribution_paid_keur=total_equity_paid,
+            total_cash_swept_to_shl_keur=total_shl_sweep,
+            total_cash_retained_keur=total_retained,
+            final_closing_balance_keur=final_closing,
+            is_tuho=inputs.is_tuho,
+            is_oborovo=inputs.is_oborovo,
+        )
+
+    @staticmethod
+    def _compute_period(inp: DistributionAccountPeriodInput) -> DistributionAccountPeriodResult:
+        """Compute DistributionAccount result for a single period."""
+        opening_balance = inp.opening_distribution_account_balance_keur
+
+        # Cash available for distribution = post-SHL cash (or post-senior if no SHL)
+        # + opening balance (for top-up context)
+        # + any other inflows
+        cash_for_dist = inp.post_shl_cash_available_keur  # residual after SHL
+        if cash_for_dist < 0:
+            cash_for_dist = 0.0
+
+        # DSRA top-up assessment
+        dsra_top_up = 0.0
+        if inp.dsra_current_balance_keur < inp.dsra_required_balance_keur:
+            shortfall = inp.dsra_required_balance_keur - inp.dsra_current_balance_keur
+            dsra_top_up = min(shortfall, cash_for_dist)
+            cash_for_dist -= dsra_top_up
+
+        # Minimum cash reserve
+        cash_retained = 0.0
+        if cash_for_dist < inp.minimum_cash_reserve_keur:
+            cash_retained = cash_for_dist
+            cash_for_dist = 0.0
+
+        # Evaluate gates (all should fail/pass based on audit status)
+        r99_gate = evaluate_r99_gate(
+            inp.r99_gate_inputs,
+            cash_for_dist,
+            inp.enable_r99_r102_runtime,
+        )
+        r102_gate = evaluate_r102_gate(
+            inp.r102_gate_inputs,
+            cash_for_dist,
+            inp.enable_r99_r102_runtime,
+        )
+        dscr_gate = evaluate_dscr_gate(inp.actual_dscr, inp.target_distribution_dscr)
+        lockup_gate = evaluate_lockup_gate(
+            period_index=inp.period_index,
+            senior_tenor_years=0,  # not provided here; use lockup_dscr
+            dsra_balance=inp.dsra_current_balance_keur,
+            dsra_target=inp.dsra_required_balance_keur,
+            jdsra_balance=inp.jdsra_current_balance_keur,
+            jdsra_target=inp.jdsra_required_balance_keur,
+            cash=cash_for_dist,
+        )
+        oborovo_gate = evaluate_oborovo_guard(inp.is_oborovo)
+        cash_gate = evaluate_cash_gate(cash_for_dist)
+
+        # Compute equity distribution candidate
+        # (not paid — audit-only)
+        equity_candidate = cash_for_dist  # simplified
+
+        # All distributions blocked in audit-only mode
+        equity_paid = 0.0
+        shl_sweep = 0.0
+
+        # Closing balance: opening + dsra_top_up (if funded)
+        # Cash retained goes to distribution account balance
+        closing_balance = opening_balance + cash_retained + dsra_top_up
+
+        # Build blocked reason
+        blocked = ""
+        if not r99_gate.passed and r99_gate.blocked_reason:
+            blocked = r99_gate.blocked_reason
+        elif not r102_gate.passed and r102_gate.blocked_reason:
+            blocked = r102_gate.blocked_reason
+        elif not dscr_gate.passed:
+            blocked = dscr_gate.blocked_reason
+        elif not lockup_gate.passed:
+            blocked = lockup_gate.blocked_reason
+        elif not oborovo_gate.passed:
+            blocked = oborovo_gate.blocked_reason
+        elif not cash_gate.passed:
+            blocked = cash_gate.blocked_reason
+
+        warnings: list[str] = []
+        if inp.enable_r99_r102_runtime:
+            warnings.append("enable_r99_r102_runtime=True — audit-only mode warning")
+        if inp.is_oborovo and not oborovo_gate.passed:
+            warnings.append("Oborovo project — TUHO gates not applicable")
+
+        return DistributionAccountPeriodResult(
+            period_index=inp.period_index,
+            opening_distribution_account_balance_keur=opening_balance,
+            closing_distribution_account_balance_keur=closing_balance,
+            cash_available_for_distribution_keur=cash_for_dist,
+            equity_distribution_candidate_keur=equity_candidate,
+            equity_distribution_paid_keur=equity_paid,
+            cash_swept_to_shl_keur=shl_sweep,
+            cash_retained_keur=cash_retained,
+            dsra_top_up_keur=dsra_top_up,
+            r99_gate_result=r99_gate,
+            r102_gate_result=r102_gate,
+            dscr_gate_result=dscr_gate,
+            lockup_gate_result=lockup_gate,
+            oborovo_gate_result=oborovo_gate,
+            blocked_reason=blocked,
+            warnings=tuple(warnings),
+        )
+
 
 
 def compute_tuho_r99_input_period(
