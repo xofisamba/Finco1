@@ -37,6 +37,12 @@ class ShlPeriodResult:
         True if 100% of post-senior cash went to SHL.
     reserve_applied : bool
         True if minimum cash reserve was retained.
+    distribution_account_r102_sweep_candidate_keur : float | None, default None
+        R102 sweep candidate provided by DistributionAccount (kEUR).
+        None means no external R102 input was provided (legacy behavior).
+    r102_sweep_applied_keur : float, default 0.0
+        R102 sweep amount consumed from available cash before interest (kEUR).
+        Always 0.0 when candidate is None.
     tranche_opening_balances_keur : Tuple[float, ...]
         Opening balance per tranche.
     tranche_gross_accrued_keur : Tuple[float, ...]
@@ -64,6 +70,8 @@ class ShlPeriodResult:
     pik_triggered: bool
     cash_sweep_100_pct: bool
     reserve_applied: bool
+    distribution_account_r102_sweep_candidate_keur: float | None = None
+    r102_sweep_applied_keur: float = 0.0
     tranche_opening_balances_keur: Tuple[float, ...] = ()
     tranche_gross_accrued_keur: Tuple[float, ...] = ()
     tranche_cash_int_paid_keur: Tuple[float, ...] = ()
@@ -162,6 +170,10 @@ class ShlAuditRow:
         "SHL_Active", "SHL_Inactive", or "N/A".
     warnings : Tuple[str, ...]
         Non-fatal warnings.
+    distribution_account_r102_sweep_candidate_keur : float | None
+        R102 sweep candidate from DistributionAccount (kEUR). None if not provided.
+    r102_sweep_applied_keur : float
+        R102 sweep consumed from available cash (kEUR). 0.0 when candidate is None.
     """
     period_index: int
     excel_col: str
@@ -181,3 +193,5 @@ class ShlAuditRow:
     reserve_applied: bool
     classification: str
     warnings: Tuple[str, ...] = ()
+    distribution_account_r102_sweep_candidate_keur: float | None = None
+    r102_sweep_applied_keur: float = 0.0
