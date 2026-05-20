@@ -1,0 +1,11 @@
+module,current_status,runtime_role,audit_role,source_of_truth,phase9_change,next_action,notes
+SeniorDebtSizing,READY,runtime engine,runtime engine,SeniorDebtSizingEngine,Policy wiring confirmed (explicit_cfads, derive_from_minimum_dscr),None,No ownership changes in Phase 9
+DistributionAccount,READY,audit-only (not runtime),audit engine,DistributionAccountEngine,Audit-first implementation complete (PR #124/#125/#126),Implement runtime flag,equity_distribution_paid_keur=0.0 always; enable_distribution_account_runtime=False
+R99/R102,BLOCKED,not promoted,audit values computed,R99/R102 runtime wiring design,Design complete (PR #127),Do not promote until G20 unblocked,R99/R102 remains BLOCKED; audit-only
+SHL,READY (audit),post-senior cash sweep,interest/principal computation,ShlEngine,SHL R102 input designed (PR #132),Implement SHL R102 input contract,SponsorCashflowRunner / SponsorEngine,READY (audit),sponsor IRR/MOIC computation,sponsor cashflow computation,SponsorCashflowRunner,Sponsor handoff designed (PR #133),Implement sponsor handoff contract,distribution_received_keur=0.0; holdco_distribution_by_period used instead
+TaxBridge,READY (current),CIT cash computation,CIT cash computation,TaxBridge,No changes in Phase 9,None,TaxBridge remains active CIT source
+Canonical Depreciation,NOT IMPLEMENTED,N/A (deprecated),N/A,N/A,No Phase 9 change,Separate design branch for CIT source decision,Orthogonal to R99/R102; future decision
+Legacy Waterfall,READY (unchanged),N/A (no changes),N/A,N/A,No changes in Phase 9,None,app/waterfall_core.py unchanged
+Oborovo guard,READY,guard active for TUHO gates,guard active for TUHO gates,DistributionAccountEngine,Guard implemented and tested (PR #125),None,Oborovo does not receive TUHO-specific gates
+TUHO calibration,READY,calibrated (with gaps),calibrated (with gaps),Model outputs vs Excel,TUHO calibration deep dive (PR #131),None,Project IRR within ±0.5pp; Equity IRR within ±1.0pp tolerance
+Oborovo calibration,READY,calibrated (with gaps),calibrated (with gaps),Model outputs vs Excel,Oborovo OpEx correction (PR #130),None,OpEx confirmed correct 1,338 kEUR; equity IRR gap outside tolerance

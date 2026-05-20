@@ -1,0 +1,26 @@
+gate_id,gate_name,category,status,evidence,blocker,required_next_action,owner_module,notes
+G01,DistributionAccount implementation exists,prerequisite,READY,PR #124 implementation complete,None,None,domain/distribution_account,Audit-first module implemented
+G02,DistributionAccount audit export exists,prerequisite,READY,PR #126 to_audit_rows/to_csv implemented,None,None,domain/distribution_account,Audit export available
+G03,R99/R102 audit values validated,validation,PENDING,Audit values must match TUHO Excel,Excel source-map not validated,Validate TUHO Excel source-map,domain/distribution_account,Requires Phase 7F fixture validation
+G04,TUHO Excel source-map validated,source_map,PENDING,TUHO source-map complete for relevant rows,Not yet validated,Complete TUHO source-map validation,domain/distribution_account,Requires Phase 7F source-map pass
+G05,Oborovo guard implemented,guard,READY,PR #125 oborovo_guard blocks TUHO gates,None,None,domain/distribution_account,Oborovo guard active
+G06,SHL R102 runtime input designed,design,READY,PR #132 design complete,None,None,domain/shl/ShlEngine,G06 READY — field: distribution_account_r102_sweep_candidate_keur
+G07,SHL R102 runtime input implemented,implementation,PENDING,Design complete (G06),Design not implemented,Implement SHL R102 input contract,domain/shl/ShlEngine,G07 PENDING
+G08,DSCR stability validation designed,design,PENDING,DSCR impact analysis needed,DSCR impact unknown,DSCR stability analysis with full model run,domain/distribution_account,DSCR ±0.05 threshold
+G09,DSCR stability validation passed,validation,PENDING,DSCR stable when distributions enabled,Design not complete,Full model run after distributions enabled,domain/distribution_account,Requires future runtime flag
+G10,Circular dependency analysis complete,analysis,READY,Section 11 design doc + PR #128,None,None,domain/distribution_account,No circular dependency found
+G11,Default-off runtime flag designed,design,READY,Section 13 design doc,None,None,domain/distribution_account,enable_distribution_account_runtime=False
+G12,Default-off runtime flag implemented,implementation,PENDING,Flag must exist in inputs,Design not implemented,Implement flag in DistributionAccountInputs,domain/distribution_account,G12 PENDING
+G13,Cross-module validation matrix designed,design,READY,PR #128 matrix complete,None,None,domain/distribution_account,Matrix of all module dependencies
+G14,Cross-module validation passed,validation,PENDING,All module pairs validated,Design not complete,Validate all module pairs after runtime flags added,domain/,G14 PENDING after implementation
+G15,Sponsor cashflow handoff designed,design,READY,PR #133 design complete,None,None,domain/sponsor/SponsorCashflowRunner,G15 READY — field pair: equity_distribution_paid_keur → distribution_received_keur
+G16,Sponsor cashflow handoff validated,validation,PENDING,Handoff validated with sponsor runs,Design not implemented,Validate sponsor receives distributions correctly,domain/sponsor/SponsorCashflowRunner,G16 PENDING
+G17,Rollback/kill-switch documented,rollback,READY,Kill-switch is False by default,None,None,domain/distribution_account,Default-off flag = kill-switch
+G18,No app default behavior change,safety,READY,app/waterfall_core.py unchanged,None,None,app/,No changes to waterfall core
+G19,Explicit approval recorded,governance,PENDING,Explicit sign-off on DSCR impact,All prior gates must pass,G2 rule: explicit approval required,management,G19 PENDING
+G20,R99/R102 promotion allowed,promotion,BLOCKED,G8 rule,R99/R102 remains BLOCKED until all gates pass,Do not promote until G19 complete,G8,Final gate — BLOCKED
+G21,Canonical depreciation CIT source design,design,PENDING,Separate design needed,Not yet designed,Canonical depreciation CIT source design branch,domain/depreciation_v2,Orthogonal to R99/R102
+G22,Canonical depreciation CIT source flag,implementation,PENDING,Flag must exist if approved,Design not complete,Implement flag after canonical depreciation design,domain/depreciation_v2,Default-off after approval
+G23,External/bankability model review,external,PENDING,External review prep,Model must be stable,phase9-bankability-review-pack,management,Future gate
+G24,TUHO/Oborovo calibration reviewed,calibration,READY,PR #129/PR #131 reviewed,TUHO/Oborovo calibration complete,None,domain/,TUHO/Oborovo calibration reviewed
+G25,Oborovo OpEx calibration corrected,calibration,READY,PR #130 corrected fixture issue,None,None,domain/,Oborovo OpEx confirmed correct
