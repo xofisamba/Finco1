@@ -27,6 +27,13 @@ class ShlPeriodInput:
         Minimum cash to retain if maintain_minimum_cash_reserve is True.
     pik_allowed : bool, default True
         Whether PIK capitalization is allowed for this period.
+    distribution_account_r102_sweep_candidate_keur : float | None, default None
+        R102 sweep candidate from DistributionAccount (kEUR).
+        When provided (>= 0): ShlEngine applies as explicit sweep input
+        before internal R102 computation — applied first to cash interest,
+        then PIK, then principal reduction.
+        When None: ShlEngine computes R102 internally (legacy behavior).
+        Oborovo projects always receive None.
     """
     period_index: int
     opening_balance_keur: float
@@ -37,6 +44,7 @@ class ShlPeriodInput:
     maintain_minimum_cash_reserve: bool = False
     minimum_cash_reserve_keur: float = 0.0
     pik_allowed: bool = True
+    distribution_account_r102_sweep_candidate_keur: float | None = None
 
 
 @dataclass(frozen=True)

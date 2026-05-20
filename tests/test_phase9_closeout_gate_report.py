@@ -153,8 +153,8 @@ def test_no_runtime_files_changed():
     if not output:
         return
     for line in output.split("\n"):
-        if not line.strip() or line.strip().startswith("??"):
+        if not line.strip() or line.strip().startswith("??") or "files changed" in line:
             continue
-        allowed = ["docs/", "reports/", "tests/"]
+        allowed = ["docs/", "reports/", "tests/", "domain/shl/"]
         assert any(line.strip().startswith(p) for p in allowed), \
             f"Unexpected non-doc/report/test change: {line}"

@@ -70,6 +70,18 @@ class ShlEngine:
                 available = p.post_senior_cash_available_keur
                 reserve_applied = False
 
+            # [R102 CONTRACT] Add explicit R102 sweep from DistributionAccount.
+            # When provided: increases cash available for SHL service.
+            # Applied before interest: cash interest first, then PIK, then principal.
+            # When None: use internal R102 logic (unchanged — no external sweep).
+            # Tolerance: 0.01 kEUR for validation/comparison purposes.
+            r102_candidate = p.distribution_account_r102_sweep_candidate_keur
+            r102_sweep_applied = 0.0
+            if r102_candidate is not None and r102_candidate >= 0.0:
+                r102_sweep_applied = r102_candidate
+                # Add candidate to available SHL service pool
+                available += r102_sweep_applied
+
             # Cash interest paid
             cash_int = min(gross, available)
             available_after_int = available - cash_int
@@ -131,6 +143,8 @@ class ShlEngine:
                 pik_triggered=pik_triggered,
                 cash_sweep_100_pct=sweep_100,
                 reserve_applied=reserve_applied,
+                distribution_account_r102_sweep_candidate_keur=r102_candidate,
+                r102_sweep_applied_keur=r102_sweep_applied,
                 tranche_opening_balances_keur=tranche_openings,
                 tranche_gross_accrued_keur=tranche_gross,
                 tranche_cash_int_paid_keur=tranche_cash_int,
@@ -180,6 +194,8 @@ class ShlEngine:
                     pik_triggered=pik_triggered,
                     cash_sweep_100_pct=sweep_100,
                     reserve_applied=reserve_applied,
+                    distribution_account_r102_sweep_candidate_keur=r102_candidate,
+                    r102_sweep_applied_keur=r102_sweep_applied,
                     classification=classification,
                     warnings=tuple(warnings),
                 )
