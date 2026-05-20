@@ -198,6 +198,74 @@ class TestExplicitDistributionInput:
         assert result.period_results[5].capital_account_balance_keur == pytest.approx(7000.0)
 
 
+class TestExplicitTupleSemantics:
+    """Case 2b: Explicit tuple behavior — all-zero, length, no-fallback."""
+
+    def test_all_zero_tuple_produces_zero_distribution_no_fallback(self):
+        """All-zero explicit tuple results in zero distribution inflow, not fallback to HoldCo."""
+        # holdco says 2000 in p4, but explicit override is all zeros → zero wins
+        nonzero_holdco = make_distributions(10, 0.0)
+        holdco_list = list(nonzero_holdco)
+        holdco_list[4] = 2000.0
+        nonzero_holdco = tuple(holdco_list)
+        all_zero_override = make_distributions(10, 0.0)
+        inputs = make_inputs(
+            distributions=nonzero_holdco,
+            distribution_account_override=all_zero_override,
+        )
+        result = run_sponsor_cashflows(inputs)
+        # Explicit all-zero override must win, no fallback to holdco's 2000
+        assert result.period_results[4].distribution_received_keur == pytest.approx(0.0)
+        assert result.period_results[4].net_cashflow_keur == pytest.approx(0.0)
+
+    def test_explicit_zero_in_one_period_no_fallback_to_holdco(self):
+        """Explicit zero in one period overrides holdco's non-zero, no fallback."""
+        # holdco says 5000 in p3, explicit says 0 → explicit wins
+        nonzero_holdco = make_distributions(10, 0.0)
+        holdco_list = list(nonzero_holdco)
+        holdco_list[3] = 5000.0
+        nonzero_holdco = tuple(holdco_list)
+        partial_override = make_distributions(10, 0.0)  # all zeros
+        inputs = make_inputs(
+            distributions=nonzero_holdco,
+            distribution_account_override=partial_override,
+        )
+        result = run_sponsor_cashflows(inputs)
+        assert result.period_results[3].distribution_received_keur == pytest.approx(0.0)
+        assert result.period_results[3].net_cashflow_keur == pytest.approx(0.0)
+        # But p5 uses explicit override (2000), not holdco (0)
+        override_list = list(partial_override)
+        override_list[5] = 2000.0
+        partial_override = tuple(override_list)
+        inputs2 = make_inputs(
+            distributions=nonzero_holdco,  # holdco says 0 at p5
+            distribution_account_override=partial_override,
+        )
+        result2 = run_sponsor_cashflows(inputs2)
+        assert result2.period_results[5].distribution_received_keur == pytest.approx(2000.0)
+
+    def test_length_mismatch_raises_value_error(self):
+        """Length mismatch between override and period_count raises ValueError."""
+        bad_override = make_distributions(5, 1000.0)  # 5 periods, not 10
+        inputs = make_inputs(
+            distributions=make_distributions(10, 0.0),
+            distribution_account_override=bad_override,
+        )
+        with pytest.raises(ValueError, match="distribution_account_received_by_period.*expected 10.*got 5"):
+            run_sponsor_cashflows(inputs)
+
+    def test_all_zero_override_yields_zero_net_cashflow_every_period(self):
+        """All-zero explicit tuple yields zero net cashflow in every period."""
+        inputs = make_inputs(
+            distributions=make_distributions(10, 0.0),
+            distribution_account_override=make_distributions(10, 0.0),
+        )
+        result = run_sponsor_cashflows(inputs)
+        for p in result.period_results:
+            assert p.distribution_received_keur == pytest.approx(0.0)
+            assert p.net_cashflow_keur == pytest.approx(-p.equity_injected_keur)
+
+
 class TestBlockedDistributionAccountBehavior:
     """Case 3: DistributionAccount audit/default output remains equity_distribution_paid_keur = 0."""
 
@@ -420,9 +488,14 @@ class TestNoAppWaterfallCoreChanges:
             return
         for line in output.split("\n"):
             stripped = line.strip()
-            if not stripped or stripped.startswith("??") or stripped.startswith(" "):
-                continue
-            if "files changed" in stripped:
+            # Skip blank, untracked (??), diff-range prefix (...), summary lines
+            if (
+                not stripped
+                or stripped.startswith("??")
+                or stripped.startswith("...")
+                or "files changed" in stripped
+                or "|" not in stripped
+            ):
                 continue
             # Only domain/sponsor/ changes allowed (plus docs/reports/tests)
             allowed = ["domain/sponsor/", "docs/", "reports/", "tests/"]
