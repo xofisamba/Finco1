@@ -1,0 +1,21 @@
+gate_id,gate_name,category,status,blocker,required_evidence,owner_module,notes
+G01,DistributionAccount implementation exists,prerequisite,READY,None,PR #124 implementation complete,domain/distribution_account,Implemented as audit-first module in Phase 9
+G02,DistributionAccount audit export exists,prerequisite,READY,None,PR #126 audit export implemented,domain/distribution_account,to_audit_rows() and to_csv() available
+G03,R99/R102 audit values validated,validation,PENDING,Excel source-map not validated,Audit values must match TUHO!DS!R99/R102,domain/distribution_account,Requires Phase 7F TUHO Excel fixture validation
+G04,TUHO Excel source-map validated,source_map,PENDING,Not yet validated,TUHO source-map complete for all relevant rows,domain/distribution_account,Requires Phase 7F source-map pass before runtime promotion
+G05,Oborovo guard implemented,guard,READY,None,PR #125 oborovo_guard blocks TUHO-specific gates,domain/distribution_account,Oborovo guard present and tested; R99/R102 blocked for Oborovo
+G06,SHL R102 runtime input designed,design,PENDING,DistributionAccount runtime not wired,R102 as explicit runtime input parameter to ShlEngine,domain/shl/ShlEngine,Document how ShlEngine accepts R102 as explicit input
+G07,SHL R102 runtime input implemented,implementation,PENDING,Design not complete,R102 wired as runtime input to ShlEngine,domain/shl/ShlEngine,Requires PR in phase9-shl-r102-wiring branch
+G08,DSCR stability validation designed,design,PENDING,DSCR impact unknown,DSCR stability analysis with ±0.05 threshold,domain/distribution_account,Document DSCR impact of distributions on debt sizing
+G09,DSCR stability validation passed,validation,PENDING,Design not complete,DSCR stable when distributions are enabled (±0.05),domain/distribution_account,Requires Phase 9 DSCR stability analysis; full model run
+G10,Circular dependency analysis complete,analysis,PENDING,Not yet analyzed,Explicit containment rules documented,domain/distribution_account,First pass done in Section 11 of design doc; needs validation
+G11,Default-off runtime flag designed,design,PENDING,Not yet designed,enable_distribution_account_runtime flag spec,domain/distribution_account,Proposed in Section 13 of design doc
+G12,Default-off runtime flag implemented,implementation,PENDING,Design not complete,Flag exists in DistributionAccountInputs,domain/distribution_account,Requires PR in phase9-distribution-account-runtime-wiring
+G13,Cross-module validation matrix designed,design,READY,None,Matrix of module dependencies,domain/distribution_account,Proposed in Section 14 of design doc
+G14,Cross-module validation matrix passed,validation,PENDING,Design not complete,All module pairs validated,domain/,Requires Phase 9 cross-module validation pass
+G15,Sponsor cashflow handoff designed,design,PENDING,Not yet designed,R99 routed to SponsorEngine as explicit input,domain/sponsor/SponsorEngine,Document sponsor input contract for equity distribution
+G16,Sponsor cashflow handoff validated,validation,PENDING,Design not complete,Sponsor receives equity distribution correctly,domain/sponsor/SponsorEngine,Requires sponsor runtime validation test
+G17,Rollback/kill-switch documented,rollback,READY,None,Kill-switch is set False by default,domain/distribution_account,Default-off flag serves as kill-switch; Section 16
+G18,No app default behavior change,safety,READY,None,app/waterfall_core.py unchanged,app/,No changes to waterfall core; audit-only remains default
+G19,Explicit approval recorded,governance,PENDING,G2 rule,Explicit sign-off on DSCR impact and circular dependency,management,G2 rule requires explicit approval before runtime flag enable
+G20,R99/R102 promotion allowed,promotion,BLOCKED,G8 rule,R99/R102 remains BLOCKED until all prior gates pass,G8,Final promotion gate — remains BLOCKED
