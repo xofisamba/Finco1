@@ -45,6 +45,12 @@ class SponsorCashflowRunnerInputs:
     holdco_distribution_by_period : tuple[float, ...]
         Distribution from HoldCo to sponsor per period (kEUR).
         Length must equal period_count.
+        IGNORED when distribution_account_received_by_period is provided.
+    distribution_account_received_by_period : tuple[float, ...] | None, optional
+        Explicit distribution cashflow from DistributionAccount per period (kEUR).
+        When provided (non-None), overrides holdco_distribution_by_period for this period.
+        Default None means use holdco_distribution_by_period (existing behavior).
+        Length must equal period_count.
     holdco_dividend_by_period : tuple[float, ...]
         Dividend component of distribution per period (kEUR).
         Used for WHT calculation basis. Length must match
@@ -71,6 +77,7 @@ class SponsorCashflowRunnerInputs:
     wht_rate: float
     holdco_opex_by_period: tuple[float, ...]
     period_count: int
+    distribution_account_received_by_period: tuple[float, ...] | None = None
     metadata: tuple[tuple[str, Any], ...] = ()
     notes: tuple[str, ...] = ()
 
@@ -104,6 +111,13 @@ class SponsorCashflowRunnerInputs:
             object.__setattr__(self, "notes", tuple(str(n) for n in (
                 self.notes if isinstance(self.notes, (list, tuple)) else [self.notes]
             )))
+        # Normalize distribution_account_received_by_period to tuple when provided
+        if self.distribution_account_received_by_period is not None:
+            if not isinstance(self.distribution_account_received_by_period, tuple):
+                object.__setattr__(self, "distribution_account_received_by_period",
+                    tuple(self.distribution_account_received_by_period))
+        else:
+            object.__setattr__(self, "distribution_account_received_by_period", None)
 
 
 # ── Metadata normalization ────────────────────────────────────────────────────
@@ -228,6 +242,13 @@ def run_sponsor_cashflows(
         inputs.period_count,
     )
 
+    if inputs.distribution_account_received_by_period is not None:
+        _validate_series(
+            "distribution_account_received_by_period",
+            inputs.distribution_account_received_by_period,
+            inputs.period_count,
+        )
+
     for inj in inputs.equity_injections:
         if inj.period_index < 0 or inj.period_index >= inputs.period_count:
             raise ValueError(
@@ -256,6 +277,9 @@ def run_sponsor_cashflows(
     for t in range(inputs.period_count):
         equity_injected = injection_by_period.get(t, 0.0)
         distribution = inputs.holdco_distribution_by_period[t]
+        # Override with DistributionAccount handoff when provided
+        if inputs.distribution_account_received_by_period is not None:
+            distribution = inputs.distribution_account_received_by_period[t]
         dividend_component = inputs.holdco_dividend_by_period[t]
         opex = inputs.holdco_opex_by_period[t]
         wht = distribution * inputs.wht_rate
