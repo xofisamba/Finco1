@@ -112,7 +112,7 @@ def test_no_runtime_files_changed():
     import subprocess
     result = subprocess.run(
         ["git", "diff", "--stat", "origin/main...HEAD"],
-        cwd="/root/.openclaw/workspace/finco1",
+        cwd=str(Path(__file__).resolve().parents[1]),
         capture_output=True, text=True,
     )
     output = result.stdout.strip()
