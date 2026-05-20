@@ -1,0 +1,6 @@
+period_index,project_name,operating_period_index,period_date,opening_balance_keur,closing_balance_keur,cash_available_for_distribution_keur,equity_distribution_candidate_keur,equity_distribution_paid_keur,cash_swept_to_shl_keur,cash_retained_keur,dsra_top_up_keur,r99_gate_passed,r102_gate_passed,dscr_gate_passed,lockup_gate_passed,oborovo_guard_passed,blocked_reason,is_tuho,is_oborovo
+1,TUHO,1,2029-12-31,0.00,0.00,300.00,300.00,0.00,0.00,0.00,0.00,False,False,True,True,True,R99 gate not promoted to runtime — audit-only,True,False
+2,TUHO,2,2030-12-31,50.00,50.00,350.00,350.00,0.00,0.00,0.00,0.00,False,False,True,True,True,R99 gate not promoted to runtime — audit-only,True,False
+3,TUHO,3,2031-12-31,100.00,100.00,400.00,400.00,0.00,0.00,0.00,0.00,False,False,True,True,True,R99 gate not promoted to runtime — audit-only,True,False
+4,TUHO,4,2032-12-31,150.00,150.00,450.00,450.00,0.00,0.00,0.00,0.00,False,False,True,True,True,R99 gate not promoted to runtime — audit-only,True,False
+5,TUHO,5,2033-12-31,200.00,200.00,500.00,500.00,0.00,0.00,0.00,0.00,False,False,True,True,True,R99 gate not promoted to runtime — audit-only,True,False
