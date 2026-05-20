@@ -1,0 +1,15 @@
+subsystem,test_case,expected,actual,status,notes
+CO2 bridge flag,flag_default_is_false,False,False,OK,use_co2_revenue_bridge=False in run_waterfall_v3_core signature
+CO2 bridge flag,flag_accepted_explicit_true,True accepted,True accepted,OK,flag=True does not raise for TUHO-WIND-1
+CO2 bridge flag,flag_raises_for_oborovo,ValueError,ValueError,OK,TUHO-only guard works
+TUHO CO2 Y1,revenue_decomposition_y1_co2,610.8 kEUR,610.8 kEUR,OK,Y1 = generation_mwh * co2_price / 1000
+TUHO revenue Y1,bridge_adds_co2_to_revenue,base+611,base+611,OK,rev = base_rev + co2 when flag=True
+TUHO EBITDA Y1,bridge_increases_ebitda,ebitda+611,ebitda+611,OK,ebitda = max(0, rev - opex) increases
+TUHO Y1 generation,generation_y1,145750 MWh,145750 MWh,OK,From revenue_decomposition_schedule
+Audit metadata,co2_revenue_bridge_metadata_exists,True,True,OK,_co2_revenue_bridge dict attached to result
+Audit metadata,period_attribute_exists,co2_revenue_bridge_keur,co2_revenue_bridge_keur,OK,Per-period attribute attached
+TaxEngine,no_cit_change,unchanged,unchanged,OK,TaxEngine not passed CO2 yet
+R99 gate,r99_unchanged,unchanged,unchanged,OK,R99 still BLOCKED
+R102 gate,r102_unchanged,unchanged,unchanged,OK,R102 still BLOCKED
+DistributionAccount,da_unchanged,unchanged,unchanged,OK,No runtime routing change
+Oborovo guard,oborovo_raises_on_flag_true,ValueError,ValueError,OK,Oborovo blocked from CO2 bridge
