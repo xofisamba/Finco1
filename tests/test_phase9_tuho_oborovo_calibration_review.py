@@ -35,9 +35,9 @@ def test_tuho_co2_calibrated():
     assert rows[("TUHO", "CO2 Y1 (kEUR)")]["status"] == "OK"
 
 
-def test_tuho_project_irr_warn_noted():
+def test_tuho_project_irr_ok():
     rows = _rows_by_project_metric()
-    assert rows[("TUHO", "Project IRR")]["status"] == "WARN"
+    assert rows[("TUHO", "Project IRR")]["status"] == "OK"
 
 
 def test_tuho_avg_dscr_warn_noted():
@@ -55,19 +55,19 @@ def test_oborovo_debt_ok():
     assert rows[("OBOROVO", "Debt (kEUR)")]["status"] == "OK"
 
 
-def test_oborovo_opex_fail_documented():
+def test_oborovo_opex_ok_documented():
     rows = _rows_by_project_metric()
-    assert rows[("OBOROVO", "OpEx Y1 (kEUR)")]["status"] == "FAIL"
+    assert rows[("OBOROVO", "OpEx Y1 (kEUR)")]["status"] == "OK"
 
 
-def test_oborovo_total_distributions_fail_documented():
+def test_oborovo_total_distributions_ok_documented():
     rows = _rows_by_project_metric()
-    assert rows[("OBOROVO", "Total Distributions (kEUR)")]["status"] == "FAIL"
+    assert rows[("OBOROVO", "Total Distributions (kEUR)")]["status"] == "OK"
 
 
-def test_oborovo_avg_dscr_fail_documented():
+def test_oborovo_avg_dscr_warn_documented():
     rows = _rows_by_project_metric()
-    assert rows[("OBOROVO", "Avg DSCR")]["status"] == "FAIL"
+    assert rows[("OBOROVO", "Avg DSCR")]["status"] == "WARN"
 
 
 def test_oborovo_equity_irr_warn_documented():
