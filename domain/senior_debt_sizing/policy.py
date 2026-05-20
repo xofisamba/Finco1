@@ -41,14 +41,22 @@ class SeniorDebtSizingPolicy:
     sizing_cfads_keur_by_period : Tuple[float, ...]
         Explicit sizing CFADS per period (kEUR).
         For TUHO: from Macro!R50 extraction (PR #97).
+        For DERIVE_FROM_MINIMUM_DSCR mode: holds actual_cfads (input),
+        from which sizing_cfads is derived as actual / minimum_sizing_dscr.
     source_cell : str, default "Macro!R50"
-        Provenance marker.
+        Provenance marker. Value depends on sizing_mode:
+        - EXPLICIT_CFADS: "Macro!R50" (TUHO source)
+        - DERIVE_FROM_MINIMUM_DSCR: "derived-from-actual-cfads" (NOT Macro!R50)
     notes : str, default ""
         Additional notes.
     inferred_minimum_dscr : float, optional
         The minimum actual DSCR that this sizing CFADS appears to support.
         For TUHO: approximately 1.45x (inferred from PR #97 analysis).
         This is an economic interpretation, NOT a proven Excel formula.
+    minimum_sizing_dscr : float, optional
+        For DERIVE_FROM_MINIMUM_DSCR mode only: the minimum DSCR floor applied
+        to actual_cfads to derive sizing_cfads. Default 1.45.
+        Ignored for EXPLICIT_CFADS mode.
     """
     project_name: str
     sizing_mode: SizingMode
@@ -56,6 +64,7 @@ class SeniorDebtSizingPolicy:
     source_cell: str = "Macro!R50"
     notes: str = ""
     inferred_minimum_dscr: Optional[float] = None
+    minimum_sizing_dscr: Optional[float] = None
 
 
 @dataclass(frozen=True)
