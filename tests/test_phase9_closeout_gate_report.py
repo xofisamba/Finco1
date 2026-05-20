@@ -143,9 +143,10 @@ def test_closeout_doc_has_required_sections():
 
 def test_no_runtime_files_changed():
     import subprocess
+    repo_root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         ["git", "diff", "--stat", "origin/main...HEAD"],
-        cwd="/root/.openclaw/workspace/finco1",
+        cwd=str(repo_root),
         capture_output=True, text=True,
     )
     output = result.stdout.strip()
