@@ -11,6 +11,7 @@ class TaxPeriodResult:
     """
     # Pre-loss taxable income components
     ebitda_keur: float
+    co2_cit_bridge_keur: float  # CO2 revenue included in EBITDA for CIT (Phase 9)
     depreciation_keur: float
     deductible_interest_keur: float
     disallowed_interest_keur: float  # ATAD addback
@@ -38,6 +39,7 @@ def compute_period_tax(
     atad_ebitda_limit: float = 0.30,
     atad_min_threshold_keur: float = 3000.0,
     loss_carryforward_cap: float = 1.0,
+    co2_revenue_keur: float = 0.0,  # Phase 9: CO2 CIT bridge — adds to EBITDA for taxable income
 ) -> TaxPeriodResult:
     """
     Compute tax for a single period.
@@ -79,8 +81,10 @@ def compute_period_tax(
         disallowed_interest = 0.0
     
     # Taxable income before losses (but after all deductables and addbacks)
+    # Phase 9: CO2 CIT bridge — co2_revenue_keur is added to EBITDA for taxable income
     taxable_before_losses = (
         ebitda_keur
+        + co2_revenue_keur
         - depreciation_keur
         - deductible_interest
         + disallowed_interest
@@ -100,6 +104,7 @@ def compute_period_tax(
     
     return TaxPeriodResult(
         ebitda_keur=ebitda_keur,
+        co2_cit_bridge_keur=co2_revenue_keur,
         depreciation_keur=depreciation_keur,
         deductible_interest_keur=deductible_interest,
         disallowed_interest_keur=disallowed_interest,
