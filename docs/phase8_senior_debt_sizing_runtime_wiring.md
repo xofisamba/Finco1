@@ -101,6 +101,56 @@ if use_senior_debt_sizing_engine:
 - ❌ R99/R102 promotion — BLOCKED
 - ❌ Macro!R50 eksplicitne vrijednosti — koristi se proxy derivation (ebitda × (1 − tax))
 
+---
+
+
+## Audit/Post-Processing vs Runtime Source — VAŽNO
+
+> Ovaj odjeljak je obavezan pojašnjenje dodan nakon PR #118.
+
+### Current state: audit/diagnostic output only
+
+`use_senior_debt_sizing_engine=True` u currentnom wiring-u:
+
+- ✅ Attach-a `_canonical_senior_debt_sizing` kao audit/diagnostic output
+- ❌ **NE overriding** senior debt, debt service, DSCR, leverage, distributions, ili sponsor economics
+
+### Sizing CFADS je proxy — ne Macro!R50
+
+Trenutni `sizing_cfads` je izveden iz:
+
+```python
+sizing_cfads = ebitda * (1 - tax_rate)  # legacy proxy, NE Macro!R50
+```
+
+Ovo je **ista formula** koju waterfall koristi interno za `cfads_for_sculpt`.
+Eksplicitni sizing CFADS iz Macro!R50 **još nije wire-an** u projekt inputse.
+
+### Invariant: actual_cfads ≠ sizing_cfads
+
+```
+sizing_cfads (Macro!R50, future)   →  debt capacity computation
+actual_cfads (CF!R69, waterfall)    →  full model CFADS
+```
+
+Trenutni proxy koristi istu bazu kao i legacy waterfall — razlikuje se samo u
+labeliranju. Pravi Macro!R50 eksplicitni sizing CFADS bit će wire-an u budućem branchu.
+
+
+### Što treba biti wire-an u budućem branchu
+
+Da bi `SeniorDebtSizingEngine` bio koristan kao kalibracijski/reference izvor:
+
+1. `FinancingParams.sizing_cfads_keur_by_period` — eksplicitne vrijednosti per period (Macro!R50)
+2. Te vrijednosti moraju biti dostupne u `build_canonical_senior_debt_sizing_from_inputs()`
+3. Tek onda `use_senior_debt_sizing_engine=True` može zamijeniti legacy `cfads_for_sculpt` derivation
+
+Do tada: **validation-only wiring** — result je tu samo za dijagnostiku, ne utječe na runtime.
+
+### Tax Bridge interaction
+
+`use_senior_debt_sizing_engine` wiring nema efekta na TaxBridge. TaxBridge koristi svoju nezavisnu depreciation ledger — potpuno odvojeno od debt sizing komputacije.
+
 ## Validation
 
 ```bash

@@ -181,6 +181,42 @@ Prerequisites confirmed:
 - [x] R99/R102 BLOCKED
 - [x] Zero DSCR/IRR/distribution drift across all combos
 
+---
+
+## 13. Audit vs Runtime Source — Flag Semantics Clarification
+
+> **Required clarification added after Phase 8 was approved.**
+
+
+### Depreciation canonical wiring: audit-only, not CIT source
+
+`use_depreciation_canonical_engine=True`:
+- ✅ Overrides `depreciation_keur` and `tax_depreciation_audit_keur` as **post-processing/audit fields**
+- ❌ Does **NOT** change CIT, cash tax, or distributions
+- ❌ Canonical DepreciationEngine is **NOT yet** the CIT depreciation source
+
+TaxBridge builds its own independent depreciation ledger; canonical depreciation runs after and only overrides waterfall audit fields.
+
+### SeniorDebtSizing wiring: audit-only, not runtime override
+
+`use_senior_debt_sizing_engine=True`:
+- ✅ Attaches `_canonical_senior_debt_sizing` as **audit/diagnostic output**
+- ❌ Does **NOT** override senior debt, debt service, DSCR, leverage, distributions, or sponsor economics
+- Current sizing CFADS is a **proxy** derived from `ebitda * (1 - tax)` — NOT the Excel Macro!R50 hardcoded sizing CFADS
+- `actual_cfads != sizing_cfads` invariant is preserved (but proxy is derived from the same base as legacy)
+
+### Why this matters for future work
+
+A future branch that promotes canonical depreciation as the CIT source must replace the TaxBridge fixture ledger, not merely override waterfall period audit fields. Similarly, a future branch that wires Macro!R50 explicit sizing CFADS into `FinancingParams.sizing_cfads_keur_by_period` will enable true canonical senior debt sizing as a calibration reference.
+
+Prerequisites confirmed:
+- [x] SHL canonical wired and stable
+- [x] Depreciation canonical wired and stable
+- [x] Tax bridge stable and TUHO-only
+- [x] No cross-module hidden coupling
+- [x] R99/R102 BLOCKED
+- [x] Zero DSCR/IRR/distribution drift across all combos
+
 Scope for `phase8-senior-debt-sizing-runtime-wiring`:
 - Wire `SeniorDebtSizing` output into waterfall result behind a runtime flag
 - `use_senior_debt_canonical_engine: bool = False` (default)
