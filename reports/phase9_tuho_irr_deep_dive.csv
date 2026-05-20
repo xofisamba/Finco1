@@ -1,0 +1,12 @@
+component,excel_value,model_value,delta,likely_driver,status,evidence_source,notes
+project_irr,9.47%,9.41%,-0.06pp,essentially calibrated — within ±0.5pp tolerance,OK,model run + golden fixture,project IRR essentially calibrated (previously misreported as 10.46%)
+capex_total,exact,43,359 kEUR,+0,total capex/debt matches Excel exactly (43,359 kEUR),OK,debt reconciliation,debt match confirms capex timing correct
+IDC_financing_costs,exact,see construction,+0,senior_idc_target_keur calibrated — construction config matches,OK,construction template,IDC matches Excel target
+CO2_Y1_revenue,611 kEUR included,611 kEUR,+0,CO2 Y1 confirmed exact per PR #122,OK,PR #122 calibration,CO2 calibrated — not driver of IRR delta
+tax_cash_timing,exact,same,+0,TaxBridge CIT timing consistent with Excel,OK,TaxBridge docs,no tax driver identified
+depreciation_source,canonical separate from CIT,canonical separate,+0,canonical depreciation not CIT source — consistent,OK,canonical depreciation docs,no driver
+distribution_blocked,R99/R102 blocked,R99/R102 blocked,+0 impact,distributions blocked keeps cash in project — would slightly increase project IRR (less cash out) — model IRR slightly lower suggests distributions not main driver,OK,DISTRIBUTION_ACCOUNT audit,distributions blocked reduces cash out → project IRR would be slightly higher; model is slightly lower so distributions not main driver
+SHL_timing,PIK+cash interest paid,canonical SHL,+0,SHL principal 43,731 kEUR repaid — timing consistent with debt matching,OK,SHL engine,SHL affects equity IRR more than project IRR
+equity_irr,11.61%,11.15%,-0.46pp,likely SHL treatment + revenue timing — within ±1.0pp tolerance,OK,model run + SHL reconciliation,equity IRR -0.46pp is within ±1.0pp but warrants monitoring
+terminal_value,assumed same,assumed same,+0,no terminal value adjustment applied,N/A,N/A,N/A
+IRR_delta_explained,total -0.06pp,-0.06pp,-0.06pp,"project IRR essentially calibrated; equity IRR -0.46pp likely driven by SHL treatment and revenue assumptions; both within documented tolerances",OK,"model run, SHL engine","project IRR within ±0.5pp; equity IRR within ±1.0pp; no unresolved gap"
