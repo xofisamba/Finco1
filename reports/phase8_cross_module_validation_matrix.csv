@@ -1,0 +1,121 @@
+project,shl_flag,depreciation_flag,tax_bridge_flag,metric,baseline_value,test_value,delta,expected_to_change,status,notes
+TUHO-WIND-1,False,False,False,Senior Debt (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,Total Debt Service (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,Avg DSCR,1.5542,1.5542,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,Min DSCR,1.3856,1.3856,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,Equity IRR,0.1115,0.1115,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,Project IRR,0.0941,0.0941,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,Book Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,
+TUHO-WIND-1,False,False,False,Tax Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,
+TUHO-WIND-1,False,False,False,Distributions (kEUR),173572.2884,173572.2884,0.000000,no,PASS,
+TUHO-WIND-1,True,False,False,Senior Debt (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,True,False,False,Total Debt Service (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,True,False,False,Avg DSCR,1.5542,1.5542,0.000000,no,PASS,
+TUHO-WIND-1,True,False,False,Min DSCR,1.3856,1.3856,0.000000,no,PASS,
+TUHO-WIND-1,True,False,False,Equity IRR,0.1115,0.1115,0.000000,no,PASS,
+TUHO-WIND-1,True,False,False,Project IRR,0.0941,0.0941,0.000000,no,PASS,
+TUHO-WIND-1,True,False,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,canonical SHL active
+TUHO-WIND-1,True,False,False,Book Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,
+TUHO-WIND-1,True,False,False,Tax Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,
+TUHO-WIND-1,True,False,False,Distributions (kEUR),173572.2884,173572.2884,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,Senior Debt (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,Total Debt Service (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,Avg DSCR,1.5542,1.5542,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,Min DSCR,1.3856,1.3856,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,Equity IRR,0.1115,0.1115,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,Project IRR,0.0941,0.0941,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,
+TUHO-WIND-1,False,True,False,Book Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,canonical depreciation active
+TUHO-WIND-1,False,True,False,Tax Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,tax bridge/depr canonical active
+TUHO-WIND-1,False,True,False,Distributions (kEUR),173572.2884,173572.2884,0.000000,no,PASS,
+TUHO-WIND-1,True,True,False,Senior Debt (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,True,True,False,Total Debt Service (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,True,True,False,Avg DSCR,1.5542,1.5542,0.000000,no,PASS,
+TUHO-WIND-1,True,True,False,Min DSCR,1.3856,1.3856,0.000000,no,PASS,
+TUHO-WIND-1,True,True,False,Equity IRR,0.1115,0.1115,0.000000,no,PASS,
+TUHO-WIND-1,True,True,False,Project IRR,0.0941,0.0941,0.000000,no,PASS,
+TUHO-WIND-1,True,True,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,canonical SHL active
+TUHO-WIND-1,True,True,False,Book Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,canonical depreciation active
+TUHO-WIND-1,True,True,False,Tax Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,tax bridge/depr canonical active
+TUHO-WIND-1,True,True,False,Distributions (kEUR),173572.2884,173572.2884,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,Senior Debt (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,Total Debt Service (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,Avg DSCR,1.5542,1.5542,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,Min DSCR,1.3856,1.3856,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,Equity IRR,0.1115,0.1115,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,Project IRR,0.0941,0.0941,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,
+TUHO-WIND-1,False,True,True,Book Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,canonical depreciation active
+TUHO-WIND-1,False,True,True,Tax Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,tax bridge/depr canonical active
+TUHO-WIND-1,False,True,True,Distributions (kEUR),173572.2884,173572.2884,0.000000,no,PASS,
+TUHO-WIND-1,True,True,True,Senior Debt (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,True,True,True,Total Debt Service (kEUR),65826.3883,65826.3883,0.000000,no,PASS,
+TUHO-WIND-1,True,True,True,Avg DSCR,1.5542,1.5542,0.000000,no,PASS,
+TUHO-WIND-1,True,True,True,Min DSCR,1.3856,1.3856,0.000000,no,PASS,
+TUHO-WIND-1,True,True,True,Equity IRR,0.1115,0.1115,0.000000,no,PASS,
+TUHO-WIND-1,True,True,True,Project IRR,0.0941,0.0941,0.000000,no,PASS,
+TUHO-WIND-1,True,True,True,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,canonical SHL active
+TUHO-WIND-1,True,True,True,Book Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,canonical depreciation active
+TUHO-WIND-1,True,True,True,Tax Depreciation (kEUR),70691.5400,70691.5400,0.000000,yes,N/A,tax bridge/depr canonical active
+TUHO-WIND-1,True,True,True,Distributions (kEUR),173572.2884,173572.2884,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,Senior Debt (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,Total Debt Service (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,Avg DSCR,1.2290,1.2290,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,Min DSCR,1.1671,1.1671,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,Equity IRR,0.0917,0.0917,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,Project IRR,0.0798,0.0798,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,False,False,Book Depreciation (kEUR),55996.5609,55996.5609,0.000000,yes,N/A,
+OBOROVO-SOLAR-1,False,False,False,Tax Depreciation (kEUR),55996.5609,55996.5609,0.000000,yes,N/A,
+OBOROVO-SOLAR-1,False,False,False,Distributions (kEUR),104699.4270,104699.4270,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,False,False,Senior Debt (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,False,False,Total Debt Service (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,False,False,Avg DSCR,1.2290,1.2290,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,False,False,Min DSCR,1.1671,1.1671,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,False,False,Equity IRR,0.0917,0.0917,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,False,False,Project IRR,0.0798,0.0798,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,False,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,canonical SHL active
+OBOROVO-SOLAR-1,True,False,False,Book Depreciation (kEUR),55996.5609,55996.5609,0.000000,yes,N/A,
+OBOROVO-SOLAR-1,True,False,False,Tax Depreciation (kEUR),55996.5609,55996.5609,0.000000,yes,N/A,
+OBOROVO-SOLAR-1,True,False,False,Distributions (kEUR),104699.4270,104699.4270,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,Senior Debt (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,Total Debt Service (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,Avg DSCR,1.2290,1.2290,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,Min DSCR,1.1671,1.1671,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,Equity IRR,0.0917,0.0917,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,Project IRR,0.0798,0.0798,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,
+OBOROVO-SOLAR-1,False,True,False,Book Depreciation (kEUR),55996.5609,55999.0900,2.529090,yes,N/A,canonical depreciation active
+OBOROVO-SOLAR-1,False,True,False,Tax Depreciation (kEUR),55996.5609,55999.0900,2.529090,yes,N/A,tax bridge/depr canonical active
+OBOROVO-SOLAR-1,False,True,False,Distributions (kEUR),104699.4270,104699.4270,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,True,False,Senior Debt (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,True,False,Total Debt Service (kEUR),63500.8946,63500.8946,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,True,False,Avg DSCR,1.2290,1.2290,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,True,False,Min DSCR,1.1671,1.1671,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,True,False,Equity IRR,0.0917,0.0917,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,True,False,Project IRR,0.0798,0.0798,0.000000,no,PASS,
+OBOROVO-SOLAR-1,True,True,False,SHL Balance (kEUR),0.0000,0.0000,0.000000,no,PASS,canonical SHL active
+OBOROVO-SOLAR-1,True,True,False,Book Depreciation (kEUR),55996.5609,55999.0900,2.529090,yes,N/A,canonical depreciation active
+OBOROVO-SOLAR-1,True,True,False,Tax Depreciation (kEUR),55996.5609,55999.0900,2.529090,yes,N/A,tax bridge/depr canonical active
+OBOROVO-SOLAR-1,True,True,False,Distributions (kEUR),104699.4270,104699.4270,0.000000,no,PASS,
+TUHO-WIND-1,False,False,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,False,False,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,True,False,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,True,False,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,False,True,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,False,True,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,True,True,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,True,True,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,False,True,True,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,False,True,True,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,True,True,True,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+TUHO-WIND-1,True,True,True,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,False,False,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,False,False,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,True,False,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,True,False,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,False,True,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,False,True,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,True,True,False,R99 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
+OBOROVO-SOLAR-1,True,True,False,R102 Exposed,False,False,N/A,no,PASS,R99/R102 must remain BLOCKED
