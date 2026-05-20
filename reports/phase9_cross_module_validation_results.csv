@@ -1,0 +1,8 @@
+case_id,project,status,baseline_drift_senior_debt_keur,baseline_drift_shl_balance_keur,baseline_drift_tax_keur,baseline_drift_depreciation_keur,baseline_drift_distribution_keur,r99_status,r102_status,oborovo_guard_status,hidden_coupling_detected,notes
+A,TUHO,PASS,0.0,0.0,0.0,0.0,0.0,BLOCKED,BLOCKED,NOT_APPLICABLE,False,baseline audit mode
+B,TUHO,PASS,0.0,0.0,0.0,0.0,0.0,BLOCKED,BLOCKED,NOT_APPLICABLE,False,Macro!R50 mode
+C,TUHO,PASS,0.0,0.0,0.0,0.0,0.0,BLOCKED,BLOCKED,NOT_APPLICABLE,False,derive 1.45x mode
+D,TUHO,PASS,0.0,0.0,0.0,0.0,0.0,BLOCKED,BLOCKED,NOT_APPLICABLE,False,enable flag does not change output
+E,Oborovo,PASS,0.0,0.0,0.0,0.0,0.0,BLOCKED,BLOCKED,ACTIVE,False,Oborovo guard verified
+F,Oborovo,PASS,0.0,0.0,0.0,0.0,0.0,BLOCKED,BLOCKED,ACTIVE,False,Oborovo TaxBridge verified
+G,TUHO+Oborovo,PASS,0.0,0.0,0.0,0.0,0.0,BLOCKED,BLOCKED,ACTIVE,False,isolation confirmed
