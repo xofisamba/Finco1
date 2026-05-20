@@ -38,7 +38,9 @@ R99/R102: BLOCKED — this adapter does not compute distribution gates.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+import csv
+import os
+from typing import Optional, Tuple, Dict
 
 from domain.senior_debt_sizing.engine import SeniorDebtSizingEngine
 from domain.senior_debt_sizing.policy import (
@@ -46,6 +48,116 @@ from domain.senior_debt_sizing.policy import (
     SeniorDebtDSCRPolicy,
     SizingMode,
 )
+
+def load_senior_debt_sizing_csv(
+    csv_path: str,
+    project_name: str = "TUHO",
+) -> Dict[str, Tuple[float, ...]]:
+    """Load senior debt sizing data from Phase 7 extraction CSV.
+
+    Loads both sizing CFADS (Macro!R50) and actual CFADS (CF!R69) from the
+    61-period extraction CSV by numeric period_index.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to phase7_tuho_senior_debt_sizing_extraction.csv.
+    project_name : str
+        Project name for returned fixtures.
+
+    Returns
+    -------
+    dict with keys:
+        "sizing_cfads_keur_by_period": Tuple[float, ...] — 61 periods from Macro!R50
+        "actual_cfads_keur_by_period": Tuple[float, ...] — 61 periods from CF!R69
+        "target_dscr_by_period": Tuple[float, ...] — 61 periods from DS!R19
+        "sizing_total_keur": float — sum of sizing CFADS
+        "actual_total_keur": float — sum of actual CFADS
+        "delta_keur": float — sizing - actual
+        "period_count": int — number of periods (61)
+        "project_name": str
+
+    Raises
+    ------
+    FileNotFoundError
+        If CSV does not exist.
+    ValueError
+        If CSV has unexpected format or no valid rows.
+    """
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
+
+    with open(csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if not rows:
+        raise ValueError(f"CSV is empty: {csv_path}")
+
+    # Build dict keyed by period_index
+    by_period: Dict[int, Dict] = {}
+    for r in rows:
+        pi = r.get("period_index", "").strip()
+        ec = r.get("excel_col", "").strip()
+        if not pi or not ec:
+            continue
+        try:
+            idx = int(float(pi))
+        except (ValueError, TypeError):
+            continue
+        by_period[idx] = r
+
+    if not by_period:
+        raise ValueError(f"No valid period_index/excel_col rows in CSV: {csv_path}")
+
+    # Build 61-period tuples (period_index 1-61 only)
+    sizing_list = []
+    actual_list = []
+    dscr_list = []
+
+    for idx in range(1, 62):  # periods 1-61 only
+        r = by_period.get(idx, {})
+        sizing_list.append(
+            float(r.get("macro_r50_sizing_cfads_keur", "0") or "0")
+        )
+        actual_list.append(
+            float(r.get("cf_r69_actual_cfads_keur", "0") or "0")
+        )
+        dscr_list.append(
+            float(r.get("ds_r19_target_dscr", "0") or "0")
+        )
+
+    sizing_cfads = tuple(sizing_list)
+    actual_cfads = tuple(actual_list)
+    target_dscr = tuple(dscr_list)
+
+    sizing_total = sum(sizing_cfads)
+    actual_total = sum(actual_cfads)
+    delta = sizing_total - actual_total
+
+    return {
+        "sizing_cfads_keur_by_period": sizing_cfads,
+        "actual_cfads_keur_by_period": actual_cfads,
+        "target_dscr_by_period": target_dscr,
+        "sizing_total_keur": sizing_total,
+        "actual_total_keur": actual_total,
+        "delta_keur": delta,
+        "period_count": len(sizing_cfads),
+        "project_name": project_name,
+    }
+
+
+def load_senior_debt_sizing_csv_fixture(
+    csv_path: str = "reports/phase7_tuho_senior_debt_sizing_extraction.csv",
+    project_name: str = "TUHO",
+) -> Dict[str, Tuple[float, ...]]:
+    """Load senior debt sizing CSV with optional path resolution.
+
+    Resolves relative paths relative to the finco1 workspace root.
+    """
+    if not os.path.isabs(csv_path):
+        csv_path = os.path.join(os.path.dirname(__file__), "..", "..", csv_path)
+    return load_senior_debt_sizing_csv(csv_path, project_name)
 
 
 @dataclass(frozen=True)
@@ -91,6 +203,7 @@ def compute_canonical_senior_debt_sizing(
     sizing_mode: SizingMode = SizingMode.EXPLICIT_CFADS,
     source_cell: str = "Macro!R50",
     notes: str = "",
+    minimum_sizing_dscr: Optional[float] = None,
 ) -> CanonicalSeniorDebtSizingResult:
     """Compute canonical senior debt sizing result.
 
@@ -106,6 +219,7 @@ def compute_canonical_senior_debt_sizing(
         Explicit sizing CFADS per semiannual period (kEUR).
         Must be provided explicitly — not derived from actual CFADS.
         Source: Macro!R50 (TUHO) or equivalent for other projects.
+        For DERIVE_FROM_MINIMUM_DSCR mode: holds actual_cfads as input.
     target_dscr_by_period : tuple[float, ...]
         Per-period DSCR targets. Source: DS!R19 or FinancingParams.dscr_schedule.
         Must be configurable — NOT hardcoded to a single value.
@@ -113,19 +227,23 @@ def compute_canonical_senior_debt_sizing(
         Sizing mode (default: EXPLICIT_CFADS).
     source_cell : str
         Provenance marker for sizing CFADS source.
+        EXPLICIT_CFADS: "Macro!R50"
+        DERIVE_FROM_MINIMUM_DSCR: "derived-from-actual-cfads" (NOT Macro!R50)
     notes : str
         Additional notes.
+    minimum_sizing_dscr : float, optional
+        For DERIVE_FROM_MINIMUM_DSCR mode only: minimum DSCR floor applied
+        to actual_cfads to derive sizing_cfads. Default 1.45.
 
     Returns
     -------
     CanonicalSeniorDebtSizingResult
         Canonical debt service capacity result with per-period and total values.
-
-    Raises
-    ------
-    ValueError
-        If sizing_mode is DERIVE_FROM_MINIMUM_DSCR (not implemented yet).
     """
+    # Adjust source_cell based on sizing mode
+    if sizing_mode == SizingMode.DERIVE_FROM_MINIMUM_DSCR:
+        source_cell = "derived-from-actual-cfads"
+
     # Build canonical policy and DSCR policy
     sizing_policy = SeniorDebtSizingPolicy(
         project_name=project_name,
@@ -133,6 +251,7 @@ def compute_canonical_senior_debt_sizing(
         sizing_cfads_keur_by_period=sizing_cfads_keur_by_period,
         source_cell=source_cell,
         notes=notes,
+        minimum_sizing_dscr=minimum_sizing_dscr if minimum_sizing_dscr is not None else 1.45,
     )
 
     dscr_policy = SeniorDebtDSCRPolicy(

@@ -125,15 +125,45 @@ class TestSizingEngineExplicitMode:
 
 
 class TestSizingEngineDeriveMode:
-    def test_derive_mode_raises_error(self):
+    def test_derive_mode_uses_1_45_minimum_dscr(self):
         policy = SeniorDebtSizingPolicy(
             project_name="NewProject",
             sizing_mode=SizingMode.DERIVE_FROM_MINIMUM_DSCR,
-            sizing_cfads_keur_by_period=(1000.0,),
+            sizing_cfads_keur_by_period=(2900.0,),  # actual_cfads
+            minimum_sizing_dscr=1.45,
+        )
+        dscr_policy = SeniorDebtDSCRPolicy(target_dscr_by_period=(1.20,))
+        result = SeniorDebtSizingEngine.compute(policy, dscr_policy)
+        # sizing_cfads = actual / 1.45 = 2900 / 1.45 ≈ 2000
+        assert result.sizing_cfads_keur_by_period[0] == pytest.approx(2000.0, rel=1e-4)
+        # capacity = sizing_cfads / target_dscr = 2000 / 1.20 ≈ 1666.67
+        assert result.debt_service_capacity_keur_by_period[0] == pytest.approx(1666.67, rel=1e-4)
+        assert result.sizing_mode == SizingMode.DERIVE_FROM_MINIMUM_DSCR
+
+    def test_derive_mode_source_not_macro_r50(self):
+        policy = SeniorDebtSizingPolicy(
+            project_name="NewProject",
+            sizing_mode=SizingMode.DERIVE_FROM_MINIMUM_DSCR,
+            sizing_cfads_keur_by_period=(3000.0,),
+            minimum_sizing_dscr=1.45,
         )
         dscr_policy = SeniorDebtDSCRPolicy(target_dscr_by_period=(1.0,))
-        with pytest.raises(ValueError, match="not yet implemented"):
-            SeniorDebtSizingEngine.compute(policy, dscr_policy)
+        result = SeniorDebtSizingEngine.compute(policy, dscr_policy)
+        # DERIVE mode does NOT claim Macro!R50 provenance
+        assert result.total_sizing_cfads_keur > 0
+        # sizing_cfads = 3000/1.45 ≈ 2069 kEUR (different from input)
+        assert result.total_sizing_cfads_keur == pytest.approx(3000.0 / 1.45, rel=1e-4)
+
+    def test_derive_mode_default_dscr_is_1_45(self):
+        policy = SeniorDebtSizingPolicy(
+            project_name="NewProject",
+            sizing_mode=SizingMode.DERIVE_FROM_MINIMUM_DSCR,
+            sizing_cfads_keur_by_period=(1450.0,),
+        )
+        dscr_policy = SeniorDebtDSCRPolicy(target_dscr_by_period=(1.0,))
+        result = SeniorDebtSizingEngine.compute(policy, dscr_policy)
+        # Default minimum_sizing_dscr = 1.45
+        assert result.sizing_cfads_keur_by_period[0] == pytest.approx(1000.0, rel=1e-4)
 
 
 # ---------------------------------------------------------------------------

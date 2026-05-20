@@ -16,8 +16,8 @@ class SeniorDebtSizingEngine:
     Does NOT wire SHL, tax, or distribution.
     Does NOT apply R99/R102 gates.
 
-    Usage
-    -----
+    Usage (EXPLICIT_CFADS mode)
+    ----------------------------
     policy = SeniorDebtSizingPolicy(
         project_name="TUHO",
         sizing_mode=SizingMode.EXPLICIT_CFADS,
@@ -32,6 +32,20 @@ class SeniorDebtSizingEngine:
     )
     result = SeniorDebtSizingEngine.compute(policy, dscr_policy)
     # result.debt_service_capacity_keur_by_period[t] = sizing_cfads[t] / target_dscr[t]
+
+    Usage (DERIVE_FROM_MINIMUM_DSCR mode)
+    --------------------------------------
+    actual_cfads = (3000.0, ...)  # from CF!R69
+    policy = SeniorDebtSizingPolicy(
+        project_name="NewProject",
+        sizing_mode=SizingMode.DERIVE_FROM_MINIMUM_DSCR,
+        sizing_cfads_keur_by_period=actual_cfads,
+        minimum_sizing_dscr=1.45,
+    )
+    dscr_policy = SeniorDebtDSCRPolicy(target_dscr_by_period=(1.20,) * 63)
+    result = SeniorDebtSizingEngine.compute(policy, dscr_policy)
+    # sizing_cfads[t] = actual_cfads[t] / 1.45
+    # capacity[t] = sizing_cfads[t] / target_dscr[t]
     """
 
     @staticmethod
@@ -61,10 +75,7 @@ class SeniorDebtSizingEngine:
         if sizing_policy.sizing_mode == SizingMode.EXPLICIT_CFADS:
             return SeniorDebtSizingEngine._compute_explicit(sizing_policy, dscr_policy)
         elif sizing_policy.sizing_mode == SizingMode.DERIVE_FROM_MINIMUM_DSCR:
-            raise ValueError(
-                "SizingMode.DERIVE_FROM_MINIMUM_DSCR is not yet implemented. "
-                "Set sizing_mode=EXPLICIT_CFADS for now."
-            )
+            return SeniorDebtSizingEngine._compute_derive_from_minimum_dscr(sizing_policy, dscr_policy)
         else:
             raise ValueError(f"Unknown sizing mode: {sizing_policy.sizing_mode}")
 
@@ -90,6 +101,52 @@ class SeniorDebtSizingEngine:
 
         return SeniorDebtSizingResult(
             sizing_mode=SizingMode.EXPLICIT_CFADS,
+            debt_service_capacity_keur_by_period=tuple(debt_service_capacity),
+            sizing_cfads_keur_by_period=sizing_cfads,
+            target_dscr_by_period=target_dsrs,
+            total_sizing_cfads_keur=total_sizing_cfads,
+            total_debt_service_capacity_keur=total_ds_capacity,
+        )
+
+    @staticmethod
+    def _compute_derive_from_minimum_dscr(
+        sizing_policy: SeniorDebtSizingPolicy,
+        dscr_policy: SeniorDebtDSCRPolicy,
+    ) -> SeniorDebtSizingResult:
+        """Derive sizing CFADS from actual CFADS via minimum DSCR floor.
+
+        sizing_cfads[t] = actual_cfads[t] / minimum_sizing_dscr
+        capacity[t] = sizing_cfads[t] / target_dscr[t]
+
+        This mode does NOT claim Macro!R50 provenance.
+        """
+        actual_cfads = sizing_policy.sizing_cfads_keur_by_period
+        minimum_dscr = (
+            sizing_policy.minimum_sizing_dscr
+            if sizing_policy.minimum_sizing_dscr is not None
+            else 1.45
+        )
+        target_dsrs = dscr_policy.target_dscr_by_period
+
+        # Derive sizing CFADS = actual / minimum_dscr
+        sizing_cfads = tuple(
+            cfads / minimum_dscr for cfads in actual_cfads
+        )
+
+        # Compute debt service capacity = sizing_cfads / target_dscr
+        debt_service_capacity = []
+        for cfads, dscr in zip(sizing_cfads, target_dsrs):
+            if dscr > 0:
+                capacity = cfads / dscr
+            else:
+                capacity = 0.0
+            debt_service_capacity.append(capacity)
+
+        total_sizing_cfads = sum(sizing_cfads)
+        total_ds_capacity = sum(debt_service_capacity)
+
+        return SeniorDebtSizingResult(
+            sizing_mode=SizingMode.DERIVE_FROM_MINIMUM_DSCR,
             debt_service_capacity_keur_by_period=tuple(debt_service_capacity),
             sizing_cfads_keur_by_period=sizing_cfads,
             target_dscr_by_period=target_dsrs,
