@@ -1,7 +1,8 @@
 """DistributionAccount engine — canonical cash routing after senior debt and SHL.
 
-All outputs are AUDIT-ONLY. This module does NOT route production cashflows.
-R99/R102 remain BLOCKED per G1/G8 governance rules.
+Audit-only: equity_distribution_paid_keur is now computed from gate evaluation,
+but remains AUDIT-ONLY. Outputs are NOT routed to WaterfallEngine.distribution_keur
+or Sponsor. R99/R102 remain BLOCKED per G1/G8 governance rules.
 """
 
 from __future__ import annotations
@@ -125,12 +126,26 @@ class DistributionAccountEngine:
         oborovo_gate = evaluate_oborovo_guard(inp.is_oborovo)
         cash_gate = evaluate_cash_gate(cash_for_dist)
 
-        # Compute equity distribution candidate
-        # (not paid — audit-only)
+        # Compute equity distribution candidate and paid amounts
+        # equity_candidate = theoretical max based on cash
+        # equity_paid = what passes all gates (audit output, not runtime)
         equity_candidate = cash_for_dist  # simplified
 
-        # All distributions blocked in audit-only mode
-        equity_paid = 0.0
+        # Phase 9: Gate-driven equity paid computation (audit-only).
+        # When all gates pass: equity_paid = equity_candidate.
+        # When any gate fails: equity_paid = 0.0.
+        # R99/R102 remain BLOCKED for runtime routing.
+        all_gates_passed = (
+            r99_gate.passed and
+            r102_gate.passed and
+            dscr_gate.passed and
+            lockup_gate.passed and
+            oborovo_gate.passed and
+            cash_gate.passed
+        )
+        equity_paid = equity_candidate if all_gates_passed else 0.0
+
+        # SHL sweep remains 0.0 (not wired to ShlEngine in this branch)
         shl_sweep = 0.0
 
         # Closing balance: opening + dsra_top_up (if funded)

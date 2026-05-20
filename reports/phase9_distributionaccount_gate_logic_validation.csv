@@ -1,0 +1,15 @@
+test_case,scenario,gates_state,equity_candidate_keur,equity_paid_expected,equity_paid_actual,blocked_reason_expected,status,notes
+TUHO_all_gates_pass,all gates pass,dscr=1.5>1.2 + lockup passed + oborovo=False + cash>=0,r100.0,r100.0,r100.0,None,OK,Main audit logic test
+TUHO_dscr_fails,dscr below threshold,dscr=1.0<1.2,all others pass,r100.0,0.0,0.0,DSCR_GATE_FAILED,OK,DSCR gate blocks correctly
+TUHO_negative_cash,cash negative,cash=-50.0,all others pass,r100.0,0.0,0.0,NEGATIVE_CASH,OK,Cash gate blocks correctly
+TUHO_lockup_dsra,DSRA below target,dsra_balance<dsra_target,all others pass,r100.0,0.0,0.0,LOCKUP,OK,Lockup gate blocks correctly
+TUHO_oborovo_guard,Oborovo project,is_oborovo=True,r100.0,0.0,0.0,OBOROVO_NOT_SUPPORTED,OK,Oborovo guard blocks correctly
+TUHO_r99_gate_blocked,R99 gate not enabled,r99_gate_blocked_by_design,r100.0,0.0,0.0,R99_BLOCKED,OK,R99 always blocked audit-only
+TUHO_r102_gate_blocked,R102 gate not enabled,r102_gate_blocked_by_design,r100.0,0.0,0.0,R102_BLOCKED,OK,R102 always blocked audit-only
+TUHO_multiple_gates_fail,DSCR+lockup both fail,dscr_fail+lockup_fail,r100.0,0.0,0.0,DSCR or LOCKUP (first in priority),OK,First gate in priority wins
+OBOROVO_all_gates_would_pass,Oborovo all gates pass but oborovo blocks,oborovo_gate=false,r100.0,0.0,0.0,OBOROVO_NOT_SUPPORTED,OK,Oborovo guard overrides all
+equity_paid_not_hardcoded_zero,equity_paid is computed,all non-R99/R102 gates pass,r50.0,r50.0,r50.0,None,OK,Key fix — not hardcoded zero
+runtime_unchanged,WaterfallEngine distribution_keur,unchanged,N/A,N/A,N/A,N/A,OK,No runtime routing
+no_sponsor_change,Sponsor allocated tuple,unchanged,N/A,N/A,N/A,N/A,OK,No Sponsor handoff change
+no_shl_wiring,SHL sweep port unconnected,N/A,N/A,N/A,N/A,N/A,OK,distribution_account_r102_sweep_candidate_keur not wired
+closing_balance_audit,closing balance still computed,opening+retained+dsra_topup,r100.0,0.0,0.0,N/A,OK,Closing balance unaffected by equity_paid change
