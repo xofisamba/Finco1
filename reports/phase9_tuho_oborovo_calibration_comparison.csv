@@ -1,0 +1,17 @@
+project,metric,excel_value,model_value,tolerance,tolerance_type,status,notes
+TUHO,Debt (kEUR),43359,43359,433.59,±1%,OK,N/A
+OBOROVO,Debt (kEUR),42852,42797,428.52,±1%,OK,-0.1%
+TUHO,Equity IRR,11.61%,11.81%,1.0pp,±1.0pp,OK,+0.20pp within tol
+OBOROVO,Equity IRR,10.60%,9.88%,1.0pp,±1.0pp,WARN,-0.72pp outside tol
+TUHO,Project IRR,9.47%,10.46%,0.5pp,±0.5pp,WARN,+0.99pp outside tol
+OBOROVO,Project IRR,7.96%,7.42%,0.5pp,±0.5pp,WARN,-0.54pp outside tol
+TUHO,Avg DSCR,1.451,1.682,0.05,±0.05,WARN,+0.231 outside tol
+OBOROVO,Avg DSCR,1.147,0.848,0.05,±0.05,FAIL,-0.299 outside tol
+TUHO,CO2 Y1 (kEUR),611,611,exact,exact,OK,calibrated
+OBOROVO,OpEx Y1 (kEUR),1338,1998,exact,exact,FAIL,OpEx too high by ~660; B.01/B.02 agg issue
+TUHO,Full-horizon LP distributions (kEUR),121367,121367,1213.67,±1%,OK,golden fixture
+TUHO,Full-horizon GP distributions (kEUR),30342,30342,303.42,±1%,OK,golden fixture
+OBOROVO,Total Distributions (kEUR),104918,120096,5245.9,±5%,FAIL,+14.5% over
+OBOROVO,LP Distributions (kEUR),83934,95985,4196.7,±5%,FAIL,+14.4% over
+OBOROVO,GP Distributions (kEUR),20984,24111,1049.2,±5%,FAIL,+14.9% over
+TUHO,SHL amount (kEUR),32704,32704,327.04,±1%,OK,pik_then_sweep
