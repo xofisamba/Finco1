@@ -55,6 +55,7 @@ def run_waterfall_v3_core(
     tuho_cit_cash_tax_start_operating_index: int | None = None,
     use_shl_canonical_engine: bool = False,
     use_depreciation_canonical_engine: bool = False,
+    use_senior_debt_sizing_engine: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -269,6 +270,39 @@ def run_waterfall_v3_core(
                 if i < len(wiring_result.tax_depreciation_by_period):
                     period.tax_depreciation_audit_keur = wiring_result.tax_depreciation_by_period[i]
             result._canonical_depreciation_wiring = wiring_result
+    # Phase 8: canonical SeniorDebtSizing wiring.
+    # Computes debt service capacity from explicit sizing_cfads and per-period dscr_schedule.
+    # Result is attached as _canonical_senior_debt_sizing audit attribute.
+    # R99/R102: BLOCKED — sizing wiring does not touch distribution gates.
+    # R99/R102: BLOCKED — this wiring does not affect R99/R102 gates.
+    if use_senior_debt_sizing_engine:
+        from domain.senior_debt_sizing.canonical_wiring import (
+            build_canonical_senior_debt_sizing_from_inputs,
+        )
+        # Extract EBITDA schedule and DSCR schedule from project inputs
+        op_periods = [p for p in result.periods if getattr(p, 'is_operation', False)]
+        horizon_years = inputs.info.horizon_years
+        ebitda_schedule = []
+        for p in op_periods:
+            ebitda_val = (
+                getattr(p, 'revenue_keur', 0.0)
+                - getattr(p, 'opex_keur', 0.0)
+            )
+            ebitda_schedule.append(ebitda_val)
+        dscr_schedule = (
+            inputs.financing.dscr_schedule
+            if inputs.financing.dscr_schedule
+            else [1.15] * (horizon_years * 2)
+        )
+        sizing_result = build_canonical_senior_debt_sizing_from_inputs(
+            project_name=getattr(inputs.info, 'name', 'Project'),
+            project_code=getattr(inputs.info, 'code', ''),
+            ebitda_schedule=tuple(ebitda_schedule),
+            tax_rate=inputs.tax.corporate_rate,
+            dscr_schedule=tuple(dscr_schedule[:len(ebitda_schedule)]),
+            use_explicit_sizing_cfads=False,  # Until Macro!R50 values are wired
+        )
+        result._canonical_senior_debt_sizing = sizing_result
     return result
 
 
