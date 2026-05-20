@@ -65,6 +65,12 @@ class WaterfallRunConfig:
     # depreciation; waterfall uses canonical outputs for depreciation_keur and
     # tax_depreciation_audit_keur at runtime.
     use_depreciation_canonical_engine: bool = False
+    # Phase 8: canonical SeniorDebtSizing wiring — computes debt service capacity
+    # from explicit sizing_cfads and per-period dscr_schedule.
+    # When True, canonical SeniorDebtSizingEngine result is attached as
+    # _canonical_senior_debt_sizing audit attribute.
+    # R99/R102: BLOCKED — sizing wiring does not touch distribution gates.
+    use_senior_debt_sizing_engine: bool = False
     # TUHO Excel-compatible CIT cash tax start period (0-based operating index).
     # When set, R67 diagnostic and corporate_tax_cash are suppressed for
     # operating_index < value. TUHO Excel: value=25 (first non-zero R67 at P25).
@@ -121,7 +127,8 @@ class WaterfallRunConfig:
             f"taxb_{int(self.use_tax_bridge_engine)}_"
             f"shlg_{int(self.use_shl_gross_accrued_for_pnl)}_"
             f"canon_{int(self.use_shl_canonical_engine)}_"
-            f"depcanon_{int(self.use_depreciation_canonical_engine)}"
+            f"depcanon_{int(self.use_depreciation_canonical_engine)}_"
+            f"sds_{int(self.use_senior_debt_sizing_engine)}"
         )
 
     @classmethod
@@ -274,6 +281,9 @@ class WaterfallRunConfig:
             use_tax_bridge_engine=use_tax_bridge_engine,
             use_shl_gross_accrued_for_pnl=use_shl_gross_accrued_for_pnl,
             use_depreciation_canonical_engine=use_depreciation_canonical_engine,
+            use_senior_debt_sizing_engine=getattr(
+                inputs.info, "use_senior_debt_sizing_engine", False
+            ),
             tuho_cit_cash_tax_start_operating_index=tuho_cit_cash_tax_start_operating_index,
             shl_fcf_waterfall_cash_schedule_keur=shl_fcf_cash_schedule,
             shl_fcf_waterfall_minimum_cash_retained_keur=getattr(
@@ -368,6 +378,7 @@ class WaterfallRunner:
             use_shl_gross_accrued_for_pnl=config.use_shl_gross_accrued_for_pnl,
             use_shl_canonical_engine=config.use_shl_canonical_engine,
             use_depreciation_canonical_engine=config.use_depreciation_canonical_engine,
+            use_senior_debt_sizing_engine=config.use_senior_debt_sizing_engine,
             tuho_cit_cash_tax_start_operating_index=config.tuho_cit_cash_tax_start_operating_index,
             shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
             shl_fcf_waterfall_minimum_cash_retained_keur=(
