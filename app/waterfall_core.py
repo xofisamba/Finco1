@@ -60,6 +60,10 @@ def run_waterfall_v3_core(
     # TUHO-only; default=False preserves legacy baseline.
     # R99/R102: BLOCKED — CO2 bridge affects revenue/EBITDA only, no CIT or distribution change.
     use_co2_revenue_bridge: bool = False,
+    # Phase 9: CO2→CIT bridge — add CO2 to taxable income (not EBITDA).
+    # TUHO-only; default=False preserves legacy baseline.
+    # R99/R102: BLOCKED — only taxable income affected.
+    use_co2_cit_bridge: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -125,6 +129,28 @@ def run_waterfall_v3_core(
                 co2_revenue_by_period[period_idx] = co2_keur
                 co2_base_revenue_by_period[period_idx] = base_rev
 
+    # Phase 9 CO2→CIT bridge: extract CO2 for taxable income injection.
+    # CO2 is added directly to taxable income in TaxEngine (not EBITDA).
+    # Must not be used simultaneously with use_co2_revenue_bridge=True.
+    # R99/R102: BLOCKED — only taxable income / cash tax affected.
+    co2_cit_bridge_by_period: dict[int, float] = {}
+    if use_co2_cit_bridge:
+        if getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+            raise ValueError(
+                "CO2 CIT bridge (use_co2_cit_bridge=True) is currently supported "
+                "only for TUHO-WIND-1"
+            )
+        if use_co2_revenue_bridge:
+            raise ValueError(
+                "use_co2_cit_bridge and use_co2_revenue_bridge cannot both be True; "
+                "they target different computation chains"
+            )
+        decompositions = revenue_decomposition_schedule(inputs, engine)
+        for period_idx, decomp in decompositions.items():
+            if decomp.get("is_operation", False):
+                co2_keur = decomp.get("co2_revenue_keur", 0.0)
+                co2_cit_bridge_by_period[period_idx] = co2_keur
+
     # OPEX: default legacy path remains unchanged. The Phase 7H line-item
     # engine is available only behind an explicit project/config flag.
     if getattr(inputs.info, "use_opex_line_item_engine", False):
@@ -182,9 +208,10 @@ def run_waterfall_v3_core(
     for p in periods_list:
         rev = revenue_dict.get(p.index, 0)
         # Phase 9 CO2 bridge: add CO2 certificate revenue to base revenue.
-        # This also increases EBITDA since ebitda = max(0, rev - opex).
-        # TUHO-only. TaxEngine and R99/R102 remain unchanged.
-        if use_co2_revenue_bridge:
+        # When use_co2_revenue_bridge=True: adds to EBITDA via rev→ebitda chain.
+        # When use_co2_cit_bridge=True: SKIP here; CO2 added to taxable income only.
+        # TUHO-only. R99/R102 remain unchanged.
+        if use_co2_revenue_bridge and not use_co2_cit_bridge:
             co2_add = co2_revenue_by_period.get(p.index, 0.0)
             rev = rev + co2_add
         gen = generation_dict.get(p.index, 0)
@@ -246,6 +273,7 @@ def run_waterfall_v3_core(
         debt_sizing_method=debt_sizing_method,
         dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, "dscr_schedule", None),
         use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
+        co2_cit_bridge_by_period=co2_cit_bridge_by_period,
     )
     result.project_code = getattr(inputs.info, "code", "")
     # Phase 9 CO2 revenue bridge audit metadata.
@@ -264,6 +292,22 @@ def run_waterfall_v3_core(
                 setattr(wp, "co2_revenue_bridge_keur", co2_revenue_by_period[p_idx])
     else:
         result._co2_revenue_bridge = {"enabled": False}
+
+    # Phase 9 CO2→CIT bridge audit metadata.
+    # R99/R102: BLOCKED — bridge only affects taxable income / cash tax.
+    if use_co2_cit_bridge:
+        result._co2_cit_bridge = {
+            "enabled": True,
+            "co2_by_period": co2_cit_bridge_by_period,
+            "project_code": getattr(inputs.info, "code", ""),
+        }
+        # Annotate each period with its CO2 CIT bridge contribution for audit visibility
+        for wp in result.periods:
+            p_idx = getattr(wp, "period", None)
+            if p_idx in co2_cit_bridge_by_period:
+                setattr(wp, "co2_cit_bridge_keur", co2_cit_bridge_by_period[p_idx])
+    else:
+        result._co2_cit_bridge = {"enabled": False}
     result.use_shl_gross_accrued_for_pnl = use_shl_gross_accrued_for_pnl
     if use_shl_gross_accrued_for_pnl:
         _apply_tuho_shl_gross_accrued_interest_bridge(result)

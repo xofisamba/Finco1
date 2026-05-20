@@ -303,6 +303,10 @@ def run_waterfall(
     # Prevents SHL principal from consuming cash that Excel would hold back as
     # sculpted FCF reserve. Oborovo keeps this False (its R99 ≈ cf, no effective change).
     use_senior_sweep_cash_cap_for_shl: bool = False,
+    # Phase 9 CO2→CIT bridge: CO2 revenue added to taxable income (not EBITDA).
+    # Must be used with use_co2_revenue_bridge=False to avoid double-counting.
+    # R99/R102: BLOCKED — only taxable income is affected.
+    co2_cit_bridge_by_period: dict[int, float] | None = None,
 ) -> WaterfallResult:
     """Run full waterfall with iterative debt sculpting.
 
@@ -724,6 +728,10 @@ def run_waterfall(
 
         # compute_period_tax now owns: ATAD, loss carryforward, fiscal reintegration
         # waterfall_engine just reads the result
+        # Phase 9 CO2→CIT bridge: extract CO2 for this period from bridge dict
+        co2_cit_bridge_keur = (
+            co2_cit_bridge_by_period.get(i, 0.0) if co2_cit_bridge_by_period else 0.0
+        )
         tax_result: TaxPeriodResult = compute_period_tax(
             ebitda_keur=ebitda,
             depreciation_keur=dep,
@@ -736,6 +744,7 @@ def run_waterfall(
             atad_ebitda_limit=0.30,
             atad_min_threshold_keur=3000.0,
             loss_carryforward_cap=loss_carryforward_cap,
+            co2_revenue_keur=co2_cit_bridge_keur,
         )
 
         # Use result directly — no manual recompute

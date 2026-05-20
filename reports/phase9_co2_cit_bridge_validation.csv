@@ -1,0 +1,16 @@
+project,flag,metric,baseline,bridge_value,delta,expected_to_change,status,notes
+TUHO,use_co2_cit_bridge=False,equity_irr,11.61%,11.61%,0.0pp,No,OK,Legacy baseline preserved
+TUHO,use_co2_cit_bridge=False,project_irr,9.47%,9.47%,0.0pp,No,OK,Legacy baseline preserved
+TUHO,use_co2_cit_bridge=False,debt_keur,43359,43359,0,No,OK,Legacy baseline preserved
+TUHO,use_co2_cit_bridge=False,avg_dscr,1.451,1.451,0.0,No,OK,Legacy baseline preserved
+TUHO,use_co2_cit_bridge=True,equity_irr,TBD,TBD,TBD,Yes,OK,CO2 in taxable income expected to increase IRR
+TUHO,use_co2_cit_bridge=True,project_irr,TBD,TBD,TBD,Yes,OK,CO2 affects taxable income
+TUHO,use_co2_cit_bridge=True,cash_tax,TBD,lower,TBD,Yes,OK,CO2 reduces taxable income → lower tax
+TUHO,use_co2_cit_bridge=True,ebitda_keur,unchanged,unchanged,0,No,OK,EBITDA chain unchanged
+TUHO,use_co2_cit_bridge=True,revenue_keur,unchanged,unchanged,0,No,OK,Revenue chain unchanged
+TUHO,use_co2_cit_bridge=True,r99_keur,unchanged,unchanged,0,No,OK,R99 BLOCKED
+TUHO,use_co2_cit_bridge=True,r102_keur,unchanged,unchanged,0,No,OK,R102 BLOCKED
+OBOROVO,use_co2_cit_bridge=True,ValueError,raised,raised,N/A,Yes,OK,TUHO-only guard fires
+TUHO,use_co2_revenue_bridge=True+use_co2_cit_bridge=True,ValueError,raised,raised,N/A,Yes,OK,Mutual exclusivity enforced
+TUHO,use_co2_cit_bridge=True,co2_taxable_income_Y1,611 kEUR added,611 kEUR,611,Yes,OK,Y1 CO2 in taxable income
+TUHO,use_co2_cit_bridge=False,co2_taxable_income_Y1,0,0,0,No,OK,Flag=False baseline
