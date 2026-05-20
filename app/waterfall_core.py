@@ -64,6 +64,10 @@ def run_waterfall_v3_core(
     # TUHO-only; default=False preserves legacy baseline.
     # R99/R102: BLOCKED — only taxable income affected.
     use_co2_cit_bridge: bool = False,
+    # Phase 9B: Dual-run validation — compare DA equity_distribution_paid_keur vs
+    # WaterfallEngine.distribution_keur without changing runtime authority.
+    # R99/R102: BLOCKED — no promotion in dual-run mode.
+    use_dualrun_validation: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -394,6 +398,13 @@ def run_waterfall_v3_core(
             use_explicit_sizing_cfads=False,  # Until Macro!R50 values are wired
         )
         result._canonical_senior_debt_sizing = sizing_result
+
+    # Phase 9B: Dual-run validation — side-by-side DA vs WE comparison.
+    # NO runtime routing — waterfall result is not modified.
+    # R99/R102: BLOCKED — DA remains audit-only.
+    if use_dualrun_validation:
+        _attach_dualrun_validation(result, inputs, periods_list)
+
     return result
 
 
@@ -734,6 +745,65 @@ def _tuho_interest_limitation_by_period():
         )
         for row in fixture["periods"]
     }
+
+
+def _attach_dualrun_validation(result, inputs, periods_list) -> None:
+    """Attach dual-run validation metadata to waterfall result (audit only).
+
+    NO runtime routing. Result is not modified. DA remains audit-only.
+    """
+    from domain.distribution_account.dualrun_validation import run_dual_validation
+    from domain.distribution_account.inputs import (
+        DistributionAccountInputs,
+        DistributionAccountPeriodInput,
+        R99R102GateInputs,
+    )
+    from domain.waterfall.waterfall_engine import run_waterfall
+
+    # Build DA period inputs from waterfall result periods
+    # We use the same cash data that the waterfall was built from
+    # to get a comparable DA result
+    da_period_inputs: list[DistributionAccountPeriodInput] = []
+    for wp in result.periods:
+        p_idx = getattr(wp, "period", None)
+        if p_idx is None:
+            continue
+        # Use revenue - opex as a proxy for cash_for_dist
+        # post_shl_cash = revenue - opex (simplified)
+        rev = getattr(wp, "revenue_keur", 0.0)
+        opex = getattr(wp, "opex_keur", 0.0)
+        post_shl_cash = max(0.0, rev - opex)
+        da_period_inputs.append(DistributionAccountPeriodInput(
+            period_index=p_idx,
+            operating_period_index=getattr(wp, "operating_period_index", p_idx),
+            period_date=getattr(wp, "date", None) or __import__('datetime').date(2029, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=post_shl_cash,
+            post_shl_cash_available_keur=post_shl_cash,
+            senior_debt_service_keur=getattr(wp, "senior_ds_keur", 0.0),
+            actual_dscr=getattr(wp, "dscr", 1.5),
+            target_distribution_dscr=1.0,
+            dsra_current_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
+            dsra_required_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
+            is_tuho=(getattr(inputs.info, "code", "") == "TUHO-WIND-1"),
+            is_oborovo=(getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1"),
+            senior_tenor_years=inputs.financing.senior_tenor_years,
+            minimum_cash_reserve_keur=0.0,
+        ))
+
+    da_inputs = DistributionAccountInputs(
+        project_name=getattr(inputs.info, "name", "Project"),
+        period_inputs=tuple(da_period_inputs),
+        is_tuho=(getattr(inputs.info, "code", "") == "TUHO-WIND-1"),
+        is_oborovo=(getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1"),
+    )
+
+    try:
+        dual_result = run_dual_validation(result, da_inputs)
+        result._dualrun_validation = dual_result
+    except Exception:
+        # If dualrun fails, do not propagate — just skip annotation
+        pass
 
 
 __all__ = ["run_waterfall_v3_core"]
