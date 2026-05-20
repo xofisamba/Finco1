@@ -144,3 +144,41 @@ are populated by the legacy waterfall engine's internal computation and are
 
 This maintains the Phase 8 design constraint: canonical engines are
 **post-processing adapters**, not runtime cash-flow routers.
+
+---
+
+## 8. Interaction with Tax Bridge — IMPORTANT
+
+> **This section is a required clarification added after Phase 8 was approved.**
+
+### How Tax Bridge interacts with canonical depreciation wiring
+
+`_apply_tuho_tax_bridge_runtime_cash_tax` (enabled by `use_tax_bridge_engine=True`) builds its **own independent depreciation ledger** from the TUHO aggregate fixture before canonical depreciation wiring runs.
+
+Canonical depreciation wiring (`use_depreciation_canonical_engine=True`) runs **after** the tax bridge, as a post-processing adapter.
+
+### What this means in practice
+
+| Scenario | What happens |
+|---|---|
+| `use_tax_bridge_engine=True` only | TaxBridge computes CIT using its own independent depreciation ledger; canonical depreciation has no effect on CIT |
+| `use_depreciation_canonical_engine=True` only | Canonical DepreciationEngine overrides `depreciation_keur` and `tax_depreciation_audit_keur` as **post-processing/audit fields**; CIT is computed by the legacy waterfall path |
+| Both flags = True | TaxBridge runs first (its own depreciation ledger → CIT); then canonical depreciation runs and overrides `depreciation_keur` and `tax_depreciation_audit_keur` as audit fields — **CIT is NOT re-computed** |
+
+### Canonical DepreciationEngine is NOT yet the CIT depreciation source
+
+Enabling `use_depreciation_canonical_engine=True`:
+- ✅ Overrides `period.depreciation_keur` (book depreciation) as audit field
+- ✅ Overrides `period.tax_depreciation_audit_keur` (tax depreciation) as audit field
+- ❌ Does **NOT** change CIT, cash tax, or distributions
+- ❌ Is **NOT** the CIT depreciation source in the current wiring
+
+**This is intentional and safe for Phase 8** because it avoids economic drift — the TaxBridge owns the CIT computation path, and canonical depreciation only provides a per-asset-class audit view.
+
+### Future work: making canonical depreciation the CIT source
+
+A future branch that makes canonical depreciation the CIT source must:
+1. **Replace the TaxBridge fixture ledger** (the TUHO aggregate depreciation fixture used by `_apply_tuho_tax_bridge_runtime_cash_tax`)
+2. Not merely override waterfall period audit fields
+
+The current Phase 8 design correctly separates these concerns: TaxBridge → CIT computation; Canonical Depreciation → audit view only.
