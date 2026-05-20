@@ -132,6 +132,8 @@ def test_no_runtime_files_changed():
         allowed_prefixes = ["docs/", "reports/", "tests/", "  "]
         if any(line.strip().startswith(p) for p in allowed_prefixes):
             continue
+        if "files changed" in line or "insertion" in line or "deletion" in line:
+            continue
         if line.strip().startswith("??") and any(
             line.strip().endswith(ext) for ext in [".md", ".csv", ".py"]
         ):
