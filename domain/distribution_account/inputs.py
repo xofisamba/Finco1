@@ -1,0 +1,52 @@
+"""Input dataclasses for canonical DistributionAccount."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Optional
+
+
+@dataclass(frozen=True)
+class R99R102GateInputs:
+    """Gate inputs for R99/R102 evaluation."""
+    cumulative_fcf_keur: float = 0.0
+    senior_debt_outstanding_keur: float = 0.0
+    shl_balance_keur: float = 0.0
+    current_dscr: float = 0.0
+    # future fields can be added here
+
+
+@dataclass(frozen=True)
+class DistributionAccountPeriodInput:
+    """Single period input for DistributionAccount engine."""
+    period_index: int
+    operating_period_index: int
+    period_date: date
+    opening_distribution_account_balance_keur: float
+    post_senior_cash_available_keur: float
+    post_shl_cash_available_keur: float
+    senior_debt_service_keur: float
+    actual_dscr: float
+    # All fields below have defaults (must come after non-defaults)
+    dsra_top_up_keur: float = 0.0
+    target_distribution_dscr: float = 1.0
+    r99_gate_inputs: R99R102GateInputs = field(default_factory=R99R102GateInputs)
+    r102_gate_inputs: R99R102GateInputs = field(default_factory=R99R102GateInputs)
+    project_name: str = ""
+    is_tuho: bool = False
+    is_oborovo: bool = False
+    dsra_required_balance_keur: float = 0.0
+    dsra_current_balance_keur: float = 0.0
+    jdsra_required_balance_keur: float = 0.0
+    jdsra_current_balance_keur: float = 0.0
+    enable_r99_r102_runtime: bool = False
+    minimum_cash_reserve_keur: float = 0.0
+
+
+@dataclass(frozen=True)
+class DistributionAccountInputs:
+    """Collection of period inputs for DistributionAccount engine."""
+    project_name: str
+    period_inputs: tuple[DistributionAccountPeriodInput, ...]
+    is_tuho: bool = False
+    is_oborovo: bool = False
