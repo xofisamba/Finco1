@@ -56,6 +56,10 @@ def run_waterfall_v3_core(
     use_shl_canonical_engine: bool = False,
     use_depreciation_canonical_engine: bool = False,
     use_senior_debt_sizing_engine: bool = False,
+    # Phase 9: CO2 revenue bridge — wire CO2 certificate revenue into period.revenue_keur.
+    # TUHO-only; default=False preserves legacy baseline.
+    # R99/R102: BLOCKED — CO2 bridge affects revenue/EBITDA only, no CIT or distribution change.
+    use_co2_revenue_bridge: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -80,7 +84,7 @@ def run_waterfall_v3_core(
       depreciable lives (solar modules 25 yr, inverters 10 yr, etc.).
     """
     from domain.waterfall.waterfall_engine import run_waterfall
-    from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
+    from domain.revenue.generation import full_revenue_schedule, full_generation_schedule, revenue_decomposition_schedule
     from domain.opex.projections import opex_schedule_period
     from domain.financing.depreciation_schedule import build_depreciation_schedule
 
@@ -99,6 +103,27 @@ def run_waterfall_v3_core(
     periods_list = [p for p in all_periods if p.is_operation]
     revenue_dict = full_revenue_schedule(inputs, engine)
     generation_dict = full_generation_schedule(inputs, engine)
+
+    # Phase 9 CO2 revenue bridge: extract CO2 certificate revenue by period.
+    # When use_co2_revenue_bridge=True, CO2 is added to period.revenue_keur
+    # (and therefore EBITDA) before the waterfall run.
+    # TUHO-only guard: bridge is only activated for TUHO-WIND-1 project code.
+    # R99/R102: BLOCKED — CO2 bridge only affects revenue/EBITDA chain.
+    co2_revenue_by_period: dict[int, float] = {}
+    co2_base_revenue_by_period: dict[int, float] = {}
+    if use_co2_revenue_bridge:
+        if getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+            raise ValueError(
+                "CO2 revenue bridge (use_co2_revenue_bridge=True) is currently supported "
+                "only for TUHO-WIND-1"
+            )
+        decompositions = revenue_decomposition_schedule(inputs, engine)
+        for period_idx, decomp in decompositions.items():
+            if decomp.get("is_operation", False):
+                co2_keur = decomp.get("co2_revenue_keur", 0.0)
+                base_rev = revenue_dict.get(period_idx, 0.0)
+                co2_revenue_by_period[period_idx] = co2_keur
+                co2_base_revenue_by_period[period_idx] = base_rev
 
     # OPEX: default legacy path remains unchanged. The Phase 7H line-item
     # engine is available only behind an explicit project/config flag.
@@ -156,6 +181,12 @@ def run_waterfall_v3_core(
 
     for p in periods_list:
         rev = revenue_dict.get(p.index, 0)
+        # Phase 9 CO2 bridge: add CO2 certificate revenue to base revenue.
+        # This also increases EBITDA since ebitda = max(0, rev - opex).
+        # TUHO-only. TaxEngine and R99/R102 remain unchanged.
+        if use_co2_revenue_bridge:
+            co2_add = co2_revenue_by_period.get(p.index, 0.0)
+            rev = rev + co2_add
         gen = generation_dict.get(p.index, 0)
         opex = opex_period.get(p.index, 0)
         ebitda = max(0, rev - opex)
@@ -217,6 +248,22 @@ def run_waterfall_v3_core(
         use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
     )
     result.project_code = getattr(inputs.info, "code", "")
+    # Phase 9 CO2 revenue bridge audit metadata.
+    # R99/R102: BLOCKED — bridge only affects revenue/EBITDA.
+    if use_co2_revenue_bridge:
+        result._co2_revenue_bridge = {
+            "enabled": True,
+            "co2_by_period": co2_revenue_by_period,
+            "base_revenue_by_period": co2_base_revenue_by_period,
+            "project_code": getattr(inputs.info, "code", ""),
+        }
+        # Annotate each period with its CO2 bridge contribution for audit visibility
+        for wp in result.periods:
+            p_idx = getattr(wp, "period", None)
+            if p_idx in co2_revenue_by_period:
+                setattr(wp, "co2_revenue_bridge_keur", co2_revenue_by_period[p_idx])
+    else:
+        result._co2_revenue_bridge = {"enabled": False}
     result.use_shl_gross_accrued_for_pnl = use_shl_gross_accrued_for_pnl
     if use_shl_gross_accrued_for_pnl:
         _apply_tuho_shl_gross_accrued_interest_bridge(result)
