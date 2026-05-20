@@ -41,6 +41,7 @@ class DistributionAccountPeriodInput:
     jdsra_current_balance_keur: float = 0.0
     enable_r99_r102_runtime: bool = False
     minimum_cash_reserve_keur: float = 0.0
+    senior_tenor_years: int = 0  # explicit lockup policy; 0 = no tenor-based lockup
 
 
 @dataclass(frozen=True)
