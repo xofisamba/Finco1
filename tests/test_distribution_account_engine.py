@@ -301,3 +301,167 @@ class TestNoRuntimeOwnershipChanges:
         # Result is audit-only — equity_distribution_paid must be 0
         assert result.total_equity_distribution_paid_keur == 0.0
         assert result.total_equity_distribution_candidate_keur >= 0
+
+class TestEnableRuntimeSafety:
+    """Tests proving enable_r99_r102_runtime=True does NOT enable production routing."""
+
+    def test_enable_runtime_true_still_audit_only(self):
+        """Even with enable_r99_r102_runtime=True, equity_distribution_paid_keur stays 0."""
+        inp = DistributionAccountPeriodInput(
+            period_index=5, operating_period_index=5,
+            period_date=date(2033, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=1000.0,
+            post_shl_cash_available_keur=800.0,
+            senior_debt_service_keur=200.0,
+            actual_dscr=1.5,
+            target_distribution_dscr=1.0,
+            enable_r99_r102_runtime=True,  # set to True
+            is_tuho=True,
+        )
+        inputs = DistributionAccountInputs(
+            project_name="TUHO",
+            period_inputs=(inp,),
+            is_tuho=True,
+        )
+        result = DistributionAccountEngine.compute(inputs)
+        period_result = result.period_results[0]
+        assert period_result.equity_distribution_paid_keur == 0.0
+        assert period_result.cash_swept_to_shl_keur == 0.0
+        # R99 gate must still report BLOCKED even when enable_runtime=True
+        assert period_result.r99_gate_result.passed is False
+        assert "R99" in period_result.r99_gate_result.blocked_reason
+
+    def test_enable_runtime_true_emits_warning(self):
+        """enable_r99_r102_runtime=True must emit a warning."""
+        inp = DistributionAccountPeriodInput(
+            period_index=1, operating_period_index=1,
+            period_date=date(2029, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=100.0,
+            post_shl_cash_available_keur=100.0,
+            senior_debt_service_keur=0.0,
+            actual_dscr=1.5,
+            enable_r99_r102_runtime=True,
+            is_tuho=True,
+        )
+        inputs = DistributionAccountInputs(
+            project_name="TUHO",
+            period_inputs=(inp,),
+            is_tuho=True,
+        )
+        result = DistributionAccountEngine.compute(inputs)
+        period_result = result.period_results[0]
+        warnings = period_result.warnings
+        assert any("enable_r99_r102_runtime=True" in w for w in warnings)
+
+
+class TestOborovoGuardStrengthened:
+    """Strengthened tests proving Oborovo projects are fully isolated from TUHO gates."""
+
+    def test_oborovo_equity_distribution_paid_is_zero(self):
+        """Oborovo audit-only outputs — equity_distribution_paid_keur must be 0."""
+        inp = DistributionAccountPeriodInput(
+            period_index=1, operating_period_index=1,
+            period_date=date(2029, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=1000.0,
+            post_shl_cash_available_keur=800.0,
+            senior_debt_service_keur=0.0,
+            actual_dscr=1.5,
+            target_distribution_dscr=1.0,
+            is_oborovo=True,
+            is_tuho=False,
+        )
+        inputs = DistributionAccountInputs(
+            project_name="Oborovo",
+            period_inputs=(inp,),
+            is_oborovo=True,
+            is_tuho=False,
+        )
+        result = DistributionAccountEngine.compute(inputs)
+        period_result = result.period_results[0]
+        assert period_result.equity_distribution_paid_keur == 0.0
+        assert period_result.cash_swept_to_shl_keur == 0.0
+
+    def test_oborovo_guard_blocks_and_emits_warning(self):
+        """Oborovo guard blocks and a warning is emitted."""
+        inp = DistributionAccountPeriodInput(
+            period_index=3, operating_period_index=3,
+            period_date=date(2031, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=500.0,
+            post_shl_cash_available_keur=500.0,
+            senior_debt_service_keur=0.0,
+            actual_dscr=1.5,
+            is_oborovo=True,
+            is_tuho=False,
+        )
+        inputs = DistributionAccountInputs(
+            project_name="Oborovo",
+            period_inputs=(inp,),
+            is_oborovo=True,
+            is_tuho=False,
+        )
+        result = DistributionAccountEngine.compute(inputs)
+        period_result = result.period_results[0]
+        assert period_result.oborovo_gate_result.passed is False
+        assert len(period_result.warnings) > 0
+        assert any("Oborovo" in w for w in period_result.warnings)
+
+
+class TestBlockedReasonsComplete:
+    """Verify all expected blocked reasons are present in BLOCKED_REASONS."""
+
+    def test_all_expected_blocked_reasons_present(self):
+        from domain.distribution_account.result import BLOCKED_REASONS
+        expected = {"R99_BLOCKED", "R102_BLOCKED", "DSCR_GATE_FAILED",
+                    "OBOROVO_NOT_SUPPORTED", "NEGATIVE_CASH",
+                    "DISTRIBUTION_ACCOUNT_NOT_PROMOTED", "LOCKUP",
+                    "SENIOR_TENOR"}
+        for reason in expected:
+            assert reason in BLOCKED_REASONS, f"Missing blocked reason: {reason}"
+
+
+class TestSeniorTenorYearsField:
+    """Tests for senior_tenor_years field in DistributionAccountPeriodInput."""
+
+    def test_senior_tenor_years_default_zero(self):
+        """senior_tenor_years defaults to 0 (no tenor-based lockup)."""
+        inp = DistributionAccountPeriodInput(
+            period_index=1, operating_period_index=1,
+            period_date=date(2029, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=100.0,
+            post_shl_cash_available_keur=100.0,
+            senior_debt_service_keur=0.0,
+            actual_dscr=1.5,
+        )
+        assert inp.senior_tenor_years == 0
+
+    def test_senior_tenor_years_passed_to_lockup_gate(self):
+        """senior_tenor_years is passed to evaluate_lockup_gate via inp field."""
+        inp = DistributionAccountPeriodInput(
+            period_index=1, operating_period_index=1,
+            period_date=date(2029, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=100.0,
+            post_shl_cash_available_keur=100.0,
+            senior_debt_service_keur=0.0,
+            actual_dscr=1.5,
+            senior_tenor_years=3,  # 3-year lockup
+            dsra_required_balance_keur=0.0,
+            dsra_current_balance_keur=0.0,
+            jdsra_required_balance_keur=0.0,
+            jdsra_current_balance_keur=0.0,
+        )
+        inputs = DistributionAccountInputs(
+            project_name="TUHO",
+            period_inputs=(inp,),
+            is_tuho=True,
+        )
+        result = DistributionAccountEngine.compute(inputs)
+        period_result = result.period_results[0]
+        # period_index=1 <= senior_tenor_years=3, lockup should be active
+        assert period_result.lockup_gate_result.passed is False
+        assert "within_senior_tenor" in str(period_result.lockup_gate_result.details)

@@ -115,7 +115,7 @@ class DistributionAccountEngine:
         dscr_gate = evaluate_dscr_gate(inp.actual_dscr, inp.target_distribution_dscr)
         lockup_gate = evaluate_lockup_gate(
             period_index=inp.period_index,
-            senior_tenor_years=0,  # not provided here; use lockup_dscr
+            senior_tenor_years=inp.senior_tenor_years,  # from inputs; 0 = no tenor-based lockup
             dsra_balance=inp.dsra_current_balance_keur,
             dsra_target=inp.dsra_required_balance_keur,
             jdsra_balance=inp.jdsra_current_balance_keur,
