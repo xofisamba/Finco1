@@ -35,12 +35,17 @@ class TestDualRunPeriodResult:
             period_index=1,
             operating_period_index=1,
             runtime_distribution_keur=1000.0,
-            da_paid_distribution_keur=1000.0,
+            da_governed_paid_distribution_keur=1000.0,
+            da_economic_paid_distribution_keur=1000.0,
             delta_keur=0.0,
+            delta_economic_keur=0.0,
             absolute_delta_keur=0.0,
             delta_pct=0.0,
+            delta_economic_pct=0.0,
             classification="IDENTICAL",
+            classification_economic="IDENTICAL",
             gates_passed=True,
+            economic_gates_evaluated=True,
             r99_blocked=False,
             r102_blocked=False,
             dscr_passed=True,
@@ -52,18 +57,25 @@ class TestDualRunPeriodResult:
         )
         assert r.runtime_distribution_keur == 1000.0
         assert r.runtime_authoritative is True
+        assert r.da_economic_paid_distribution_keur == 1000.0
+        assert r.classification_economic == "IDENTICAL"
 
     def test_r99_blocked_classification(self):
         r = DualRunPeriodResult(
             period_index=2,
             operating_period_index=2,
             runtime_distribution_keur=500.0,
-            da_paid_distribution_keur=0.0,
+            da_governed_paid_distribution_keur=0.0,
+            da_economic_paid_distribution_keur=500.0,
             delta_keur=-500.0,
+            delta_economic_keur=0.0,
             absolute_delta_keur=500.0,
             delta_pct=100.0,
+            delta_economic_pct=0.0,
             classification="EXPECTED_GATE_DIFFERENCE",
+            classification_economic="IDENTICAL",
             gates_passed=False,
+            economic_gates_evaluated=True,
             r99_blocked=True,
             r102_blocked=True,
             dscr_passed=False,
@@ -75,6 +87,10 @@ class TestDualRunPeriodResult:
         )
         assert r.r99_blocked is True
         assert r.classification == "EXPECTED_GATE_DIFFERENCE"
+        assert r.da_economic_paid_distribution_keur == 500.0
+        assert r.classification_economic == "IDENTICAL"
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -193,22 +209,31 @@ class TestDualRunResult:
             period_results=(
                 DualRunPeriodResult(
                     period_index=1, operating_period_index=1,
-                    runtime_distribution_keur=1000.0, da_paid_distribution_keur=200.0,
+                    runtime_distribution_keur=1000.0,
+                    da_governed_paid_distribution_keur=200.0,
+                    da_economic_paid_distribution_keur=200.0,
                     delta_keur=-800.0, absolute_delta_keur=800.0, delta_pct=80.0,
+                    delta_economic_keur=-800.0, delta_economic_pct=80.0,
                     classification="BLOCKING",
-                    gates_passed=True, r99_blocked=False, r102_blocked=False,
+                    classification_economic="BLOCKING",
+                    gates_passed=True, economic_gates_evaluated=True,
+                    r99_blocked=False, r102_blocked=False,
                     dscr_passed=True, lockup_passed=True, cash_passed=True,
                     oborovo_passed=True, blocked_reason="", runtime_authoritative=True,
                 ),
             ),
             total_runtime_distribution_keur=1000.0,
-            total_da_paid_keur=200.0,
+            total_da_governed_paid_keur=200.0,
+            total_da_economic_paid_keur=200.0,
             total_delta_keur=-800.0,
+            total_delta_economic_keur=-800.0,
             identical_periods=0,
             rounding_periods=0,
             expected_gate_diff_periods=0,
             unexpected_diff_periods=0,
             blocking_periods=1,
+            identical_economic_periods=0,
+            rounding_economic_periods=0,
             all_invariants_held=False,
             runtime_unchanged=True,
             sponsor_unchanged=True,
@@ -225,22 +250,31 @@ class TestDualRunResult:
             period_results=(
                 DualRunPeriodResult(
                     period_index=1, operating_period_index=1,
-                    runtime_distribution_keur=1000.0, da_paid_distribution_keur=1000.0,
+                    runtime_distribution_keur=1000.0,
+                    da_governed_paid_distribution_keur=1000.0,
+                    da_economic_paid_distribution_keur=1000.0,
                     delta_keur=0.0, absolute_delta_keur=0.0, delta_pct=0.0,
+                    delta_economic_keur=0.0, delta_economic_pct=0.0,
                     classification="IDENTICAL",
-                    gates_passed=True, r99_blocked=False, r102_blocked=False,
+                    classification_economic="IDENTICAL",
+                    gates_passed=True, economic_gates_evaluated=True,
+                    r99_blocked=False, r102_blocked=False,
                     dscr_passed=True, lockup_passed=True, cash_passed=True,
                     oborovo_passed=True, blocked_reason="", runtime_authoritative=True,
                 ),
             ),
             total_runtime_distribution_keur=1000.0,
-            total_da_paid_keur=1000.0,
+            total_da_governed_paid_keur=1000.0,
+            total_da_economic_paid_keur=1000.0,
             total_delta_keur=0.0,
+            total_delta_economic_keur=0.0,
             identical_periods=1,
             rounding_periods=0,
             expected_gate_diff_periods=0,
             unexpected_diff_periods=0,
             blocking_periods=0,
+            identical_economic_periods=1,
+            rounding_economic_periods=0,
             all_invariants_held=True,
             runtime_unchanged=True,
             sponsor_unchanged=True,
@@ -395,11 +429,11 @@ class TestRealisticCashSourceForDualRun:
         ) as mock_run:
             _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
             assert mock_run.called
-            _, da_inputs = mock_run.call_args[0]
+            _, governed_inputs, economic_inputs = mock_run.call_args[0]
             # r99_fcf=500 > 0 → post_shl_cash = 500
-            assert da_inputs.period_inputs[0].post_shl_cash_available_keur == 500.0
+            assert governed_inputs.period_inputs[0].post_shl_cash_available_keur == 500.0
             # Must NOT be revenue - opex = 700
-            assert da_inputs.period_inputs[0].post_shl_cash_available_keur != 700.0
+            assert governed_inputs.period_inputs[0].post_shl_cash_available_keur != 700.0
 
     def test_da_input_not_revenue_minus_opex(self):
         """DA post_shl_cash must not equal revenue - opex when r99_fcf = 0."""
@@ -434,8 +468,8 @@ class TestRealisticCashSourceForDualRun:
             "domain.distribution_account.dualrun_validation.run_dual_validation"
         ) as mock_run:
             _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
-            _, da_inputs = mock_run.call_args[0]
-            post_shl = da_inputs.period_inputs[0].post_shl_cash_available_keur
+            _, governed_inputs, economic_inputs = mock_run.call_args[0]
+            post_shl = governed_inputs.period_inputs[0].post_shl_cash_available_keur
             assert post_shl != 700.0, "DA input must not use revenue - opex proxy"
             assert post_shl == 350.0, "DA input should use cf_after_reserves (= 350)"
 
@@ -472,8 +506,8 @@ class TestRealisticCashSourceForDualRun:
             "domain.distribution_account.dualrun_validation.run_dual_validation"
         ) as mock_run:
             _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
-            _, da_inputs = mock_run.call_args[0]
-            post_shl = da_inputs.period_inputs[0].post_shl_cash_available_keur
+            _, governed_inputs, economic_inputs = mock_run.call_args[0]
+            post_shl = governed_inputs.period_inputs[0].post_shl_cash_available_keur
             expected = max(0.0, 600.0 - 200.0)  # = 400
             assert post_shl != 700.0, "Must not use revenue - opex"
             assert post_shl == expected, f"Should use cf_after_tax - senior_ds = {expected}"
@@ -657,7 +691,7 @@ class TestDeterministicComparison:
         assert len(result1.period_results) == len(result2.period_results)
         for p1, p2 in zip(result1.period_results, result2.period_results):
             assert p1.classification == p2.classification
-            assert p1.da_paid_distribution_keur == p2.da_paid_distribution_keur
+            assert p1.da_governed_paid_distribution_keur == p2.da_governed_paid_distribution_keur
 
 
 # ---------------------------------------------------------------------------
@@ -729,7 +763,7 @@ class TestMatrixPopulation:
             fieldnames = reader.fieldnames
         required = {
             "project", "period", "runtime_distribution_keur",
-            "da_paid_distribution_keur", "delta_keur", "delta_pct",
+            "da_governed_paid_distribution_keur", "da_economic_paid_distribution_keur", "delta_keur", "delta_economic_keur", "delta_pct", "delta_economic_pct",
             "classification", "gates_passed", "runtime_authoritative",
             "validation_error", "notes",
         }
@@ -795,7 +829,102 @@ class TestMatrixPopulation:
                 f"Combo {r['flag_combo']} missing phase_c_ready: {r['phase_c_ready']}"
 
 
+    def test_supported_for_phase_c_column_present(self):
+        """Matrix CSV must have supported_for_phase_c column."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            fieldnames = csv.DictReader(f).fieldnames
+        assert "supported_for_phase_c" in fieldnames, \
+            "supported_for_phase_c column missing from matrix CSV"
+
+    def test_supported_combos_have_no_unexpected_or_blocking(self):
+        """Supported combos must have zero UNEXPECTED and zero BLOCKING rows."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        supported = [r for r in rows if r["supported_for_phase_c"] == "True"
+                     and r["classification"] not in ("NO_DUALRUN_RESULT", "DUALRUN_EXCEPTION")]
+        unexpected = [r for r in supported if r["classification_economic"] == "UNEXPECTED"]
+        blocking = [r for r in supported if r["classification_economic"] == "BLOCKING"]
+        assert len(unexpected) == 0, f"Supported combos have {len(unexpected)} UNEXPECTED rows"
+        assert len(blocking) == 0, f"Supported combos have {len(blocking)} BLOCKING rows"
+
+    def test_unsupported_combos_are_isolated(self):
+        """Unsupported combos must have supported_for_phase_c=False."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        unsupported = [r for r in rows if r["flag_combo"] in ("tax_bridge", "shl+deprec+tax_bridge")]
+        assert len(unsupported) > 0, "tax_bridge combos must exist in matrix"
+        for r in unsupported:
+            assert r["supported_for_phase_c"] == "False", \
+                f"Combo {r['flag_combo']} must have supported_for_phase_c=False"
+
+    def test_phase_c_ready_false_when_unsupported_combos_exist(self):
+        """phase_c_ready must be False for unsupported combos."""
+        import csv
+        from pathlib import Path
+        summary_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_summary.csv"
+        with open(summary_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        for r in rows:
+            if r["flag_combo"] in ("tax_bridge", "shl+deprec+tax_bridge"):
+                assert r["phase_c_ready"] == "False", \
+                    f"Unsupported combo {r['flag_combo']} must have phase_c_ready=False"
+                assert r["phase_c_supported"] == "False", \
+                    f"Unsupported combo must have phase_c_supported=False"
+
+    def test_phase_c_ready_requires_identical_or_rounding(self):
+        """phase_c_ready=True requires positive IDENTICAL/ROUNDING count in summary."""
+        import csv
+        from pathlib import Path
+        summary_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_summary.csv"
+        with open(summary_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        for r in rows:
+            if r["phase_c_ready"] == "True":
+                ident_econ = int(r.get("identical_economic", 0))
+                round_econ = int(r.get("rounding_economic", 0))
+                assert ident_econ + round_econ > 0, \
+                    f"Combo {r['flag_combo']} phase_c_ready=True but identical_econ={ident_econ} rounding_econ={round_econ}"
+                assert r["phase_c_supported"] == "True", \
+                    f"phase_c_ready=True requires phase_c_supported=True"
+                assert int(r["unexpected"]) == 0, f"phase_c_ready=True but unexpected={r['unexpected']}"
+                assert int(r["blocking"]) == 0, f"phase_c_ready=True but blocking={r['blocking']}"
+
+    def test_phase_c_supported_field_in_summary(self):
+        """Summary CSV must have phase_c_supported field for every combo."""
+        import csv
+        from pathlib import Path
+        summary_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_summary.csv"
+        with open(summary_path, newline="", encoding="utf-8") as f:
+            fieldnames = csv.DictReader(f).fieldnames
+        assert "phase_c_supported" in fieldnames, "phase_c_supported field missing from summary CSV"
+
+    def test_no_blocking_in_supported_rows(self):
+        """Supported rows must have zero BLOCKING classification_economic."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        supported_blocking = [
+            r for r in rows
+            if r["supported_for_phase_c"] == "True"
+            and r["classification_economic"] == "BLOCKING"
+        ]
+        assert len(supported_blocking) == 0, \
+            f"Supported rows must have 0 BLOCKING, found {len(supported_blocking)}"
+
+
 class TestInvariantPreservation:
+
     """Tests proving runtime invariants are maintained."""
 
     def test_runtime_authoritative_true_in_all_rows(self):

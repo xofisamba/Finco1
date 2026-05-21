@@ -40,6 +40,7 @@ class DistributionAccountPeriodInput:
     jdsra_required_balance_keur: float = 0.0
     jdsra_current_balance_keur: float = 0.0
     enable_r99_r102_runtime: bool = False
+    audit_economic_mode: bool = False  # audit-only: bypass R99/R102 governance for economic comparison
     minimum_cash_reserve_keur: float = 0.0
     senior_tenor_years: int = 0  # explicit lockup policy; 0 = no tenor-based lockup
 
