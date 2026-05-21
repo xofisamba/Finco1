@@ -1,0 +1,15 @@
+project,flag_combo,total_runtime,total_da,identical,rounding,expected_gate_diff,unexpected,blocking,phase_c_ready,validation_error
+TUHO-WIND-1,baseline,326165.352432406,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,shl_canonical,326165.352432406,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,deprec_canonical,326165.352432406,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,shl+deprec,326165.352432406,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,tax_bridge,326165.352432406,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,shl+deprec+tax_bridge,326165.352432406,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,co2_revenue_bridge,332911.31156111235,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,co2_cit_bridge,325775.26232135383,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,co2_revenue+cit,0.0,0.0,0,0,0,0,0,False,ValueError: use_co2_cit_bridge and use_co2_revenue_bridge cannot both be True; they target different computation chains
+TUHO-WIND-1,shl+co2_revenue,332911.31156111235,0.0,0,0,61,0,0,True,None
+TUHO-WIND-1,deprec+co2_revenue,332911.31156111235,0.0,0,0,61,0,0,True,None
+OBOROVO-SOLAR-1,baseline,181019.1125688387,0.0,0,0,60,0,0,True,None
+OBOROVO-SOLAR-1,shl_canonical,181019.1125688387,0.0,0,0,60,0,0,True,None
+OBOROVO-SOLAR-1,oborovo_shl,181019.1125688387,0.0,0,0,60,0,0,True,None

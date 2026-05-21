@@ -834,9 +834,11 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
     try:
         dual_result = run_dual_validation(result, da_inputs)
         result._dualrun_validation = dual_result
-    except Exception:
-        # If dualrun fails, do not propagate — just skip annotation
-        pass
+    except Exception as exc:
+        # Attach the exception so failure is observable (not silent).
+        # is DualRunResult: validation succeeded.
+        # is Exception: dual-run validation itself failed with an error.
+        result._dualrun_validation = exc
 
 
 __all__ = ["run_waterfall_v3_core"]

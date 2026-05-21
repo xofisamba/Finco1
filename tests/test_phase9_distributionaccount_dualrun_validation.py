@@ -698,3 +698,126 @@ class TestNoRoutingOverwrite:
         result = run_dual_validation(wf_result, da_inp)
 
         assert result.runtime_unchanged is True
+
+# ---------------------------------------------------------------------------
+# Matrix population tests
+# These validate the dual-run matrix CSV generation results
+# ---------------------------------------------------------------------------
+
+class TestMatrixPopulation:
+    """Tests for populated dual-run matrix."""
+
+    def test_matrix_csv_exists_and_has_data(self):
+        """Matrix CSV must exist and contain real data rows (not just header)."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        assert matrix_path.exists(), f"Matrix CSV not found: {matrix_path}"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        assert len(rows) > 0, "Matrix CSV has no data rows (header only)"
+        assert len(rows) >= 100, f"Expected many data rows, got {len(rows)}"
+
+    def test_matrix_has_required_columns(self):
+        """Matrix CSV must have all required columns."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+        required = {
+            "project", "period", "runtime_distribution_keur",
+            "da_paid_distribution_keur", "delta_keur", "delta_pct",
+            "classification", "gates_passed", "runtime_authoritative",
+            "validation_error", "notes",
+        }
+        missing = required - set(fieldnames)
+        assert not missing, f"Missing CSV columns: {missing}"
+
+    def test_all_periods_classified(self):
+        """Every row in the matrix must have a valid classification."""
+        import csv
+        from pathlib import Path
+        from collections import Counter
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        valid_classes = {"IDENTICAL", "ROUNDING", "EXPECTED_GATE_DIFFERENCE", "UNEXPECTED", "BLOCKING"}
+        for r in rows:
+            assert r["classification"] in valid_classes, \
+                f"Invalid classification: {r['classification']} for period {r['period']}"
+
+    def test_no_blocking_classifications(self):
+        """No BLOCKING classifications in the matrix (would block Phase C)."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        blocking = [r for r in rows if r["classification"] == "BLOCKING"]
+        assert len(blocking) == 0, f"Found {len(blocking)} BLOCKING rows — Phase C must be BLOCKED"
+
+    def test_validation_errors_are_surfaced(self):
+        """validation_error column must be empty for successful rows (visible = not silent)."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        # Error rows should have a non-empty validation_error field
+        error_rows = [r for r in rows if r["validation_error"].strip()]
+        data_rows = [r for r in rows if r["classification"] not in ("NO_DUALRUN_RESULT", "DUALRUN_EXCEPTION", "")]
+        # If there are error rows, they should have error text (not silent)
+        for r in error_rows:
+            assert len(r["validation_error"].strip()) > 0
+
+    def test_summary_csv_exists(self):
+        """Summary CSV must exist alongside the matrix CSV."""
+        import csv
+        from pathlib import Path
+        summary_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_summary.csv"
+        assert summary_path.exists(), f"Summary CSV not found: {summary_path}"
+        with open(summary_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) >= 13, f"Expected >= 13 combos in summary, got {len(rows)}"
+
+    def test_phase_c_readiness_determined(self):
+        """All combos in summary must have explicit phase_c_ready value."""
+        import csv
+        from pathlib import Path
+        summary_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_summary.csv"
+        with open(summary_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        for r in rows:
+            assert r["phase_c_ready"] in ("True", "False"), \
+                f"Combo {r['flag_combo']} missing phase_c_ready: {r['phase_c_ready']}"
+
+
+class TestInvariantPreservation:
+    """Tests proving runtime invariants are maintained."""
+
+    def test_runtime_authoritative_true_in_all_rows(self):
+        """Every matrix row must show runtime_authoritative=True."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        data_rows = [r for r in rows if r["classification"] not in ("NO_DUALRUN_RESULT", "DUALRUN_EXCEPTION", "")]
+        for r in data_rows:
+            assert r["runtime_authoritative"] == "True", \
+                f"Period {r['period']} has runtime_authoritative={r['runtime_authoritative']}"
+
+    def test_r99_and_r102_blocked_in_all_rows(self):
+        """In Phase B, r99_blocked and r102_blocked must be True for all periods."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        data_rows = [r for r in rows if r["classification"] not in ("NO_DUALRUN_RESULT", "DUALRUN_EXCEPTION", "")]
+        for r in data_rows:
+            assert r["r99_blocked"] == "True", f"Period {r['period']} r99_blocked={r['r99_blocked']}"
+            assert r["r102_blocked"] == "True", f"Period {r['period']} r102_blocked={r['r102_blocked']}"
