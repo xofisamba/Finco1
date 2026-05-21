@@ -1,0 +1,2 @@
+blocking_reason,detail,period_count,total_delta_keur,first_period,last_period,notes
+DA_lockup_within_senior_tenor,"DA zeroes distributions during senior tenor (periods 1-28 = 14 years). Legacy pays out, DA=0.",13,-41613.26,2,14,Lockup is by design - DA gates distributions within senior tenor. Legacy ignores lockup.
