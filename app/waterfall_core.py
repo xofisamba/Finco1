@@ -790,9 +790,26 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
         cf_after_tax = getattr(wp, "cf_after_tax_keur", 0.0)
         senior_ds = getattr(wp, "senior_ds_keur", 0.0)
 
-        if r99_fcf > 0:
+        # Cash source selection — use the same source as runtime distribution
+        #
+        # The waterfall runtime distributes cf_after_reserves_keur (via the distribution
+        # section of waterfall_engine.py). In normal (non-tax_bridge) mode, r99_fcf
+        # and cf_after_reserves are computed from the same CF and are equal.
+        #
+        # In TUHO tax_bridge mode (_apply_tuho_tax_bridge_runtime_cash_tax),
+        # r99_fcf is recomputed with cash-tax (bridge overwrites cf_after_tax but
+        # NOT cf_after_reserves). This causes r99_fcf != cf_after_reserves.
+        #
+        # For Phase C comparison to be meaningful, DA must use the SAME cash source
+        # as the runtime distribution. When r99_fcf diverges from cf_after_reserves,
+        # use cf_after_reserves (runtime's distribution source).
+        #
+        # Approach: detect divergence and use cf_after_reserves in that case.
+        if r99_fcf > 0 and cf_after_reserves > 0 and abs(r99_fcf - cf_after_reserves) < 0.01:
+            # Normal non-tax-bridge: r99_fcf == cf_after_reserves, use either
             post_shl_cash = r99_fcf
         elif cf_after_reserves > 0:
+            # Tax-bridge divergence: runtime distributes cf_after_reserves
             post_shl_cash = cf_after_reserves
         else:
             post_shl_cash = max(0.0, cf_after_tax - senior_ds)

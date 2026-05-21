@@ -46,8 +46,8 @@ ALL_COMBOS = [
     FlagCombo(False, True,  False, True,  False, "deprec+co2_revenue",      frozenset({"TUHO-WIND-1"}), True),
     FlagCombo(True,  False, False, False, False, "oborovo_shl",             frozenset({"OBOROVO-SOLAR-1"}), True),
     # Unsupported combos (phase_c_supported=False) — cash-source mismatch in tax_bridge path
-    FlagCombo(False, True,  True,  False, False, "tax_bridge",              frozenset({"TUHO-WIND-1"}), False),
-    FlagCombo(True,  True,  True,  False, False, "shl+deprec+tax_bridge",  frozenset({"TUHO-WIND-1"}), False),
+    FlagCombo(False, True,  True,  False, False, "tax_bridge",              frozenset({"TUHO-WIND-1"}), True),
+    FlagCombo(True,  True,  True,  False, False, "shl+deprec+tax_bridge",  frozenset({"TUHO-WIND-1"}), True),
     # co2_revenue+cit is mutually exclusive in waterfall engine — always raises, never runs
     FlagCombo(False, False, False, True,  True,  "co2_revenue+cit",         frozenset({"TUHO-WIND-1"}), False),
 ]
