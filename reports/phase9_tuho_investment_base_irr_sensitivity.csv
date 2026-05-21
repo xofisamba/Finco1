@@ -1,0 +1,7 @@
+scenario,includes_shl_idc,investment_base_keur,equity_irr,delta_vs_excel_pp,runtime_change_required,reporting_only,notes
+current_runtime,Yes,"-33,204",15.13%,+3.52pp,No,No,After PR165 alignment; includes IDC in investment base
+exclude_shl_idc,No,"-29,635",16.29%,+4.68pp,No,Yes,Excel convention: exclude IDC from investment base
+excel_equivalent_base,No,"-29,635",16.29%,+4.68pp,No,Yes,Same as exclude_shl_idc
+partial_idc_cap,Partial,"-31,419",~15.7%,~+4.1pp,No,Yes,50% IDC capitalization; illustrative only
+with_date_shift_plus_2yr,No,"-29,635",16.29%,+4.68pp,No,Yes,"Date shift alone doesn't change IRR (same cashflows, same dates shifted)"
+excel_reference,N/A,"-29,635",11.61%,baseline,N/A,N/A,Excel target from Eq!D28
