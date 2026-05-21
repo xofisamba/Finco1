@@ -1,0 +1,12 @@
+gate_id,gate_name,status,evidence,blocker,required_next_action,notes
+G20-01,Production/Revenue Parity,WARN,Total revenue PASS (+0.01%). Production matches.,None,None required,Within tolerance
+G20-02,OPEX/EBITDA Parity,PASS,EBITDA PASS (-0.20%). OPEX WARN (+0.87%) but within tolerance.,None,None required,Sub-category mapping incomplete (not gate blocker)
+G20-03,Senior Debt Parity,ACCEPTED_CONVENTION,"Senior debt fixed at 43,359 kEUR. DSCR = ACCEPTED_CONVENTION.",None,None required,Mode flag for SHL engine
+G20-04,SHL Parity,PASS,SHL rate PASS. First principal repayment PASS (P25 aligned PR#165).,None,None required,SHL mechanics aligned
+G20-05,Distribution Parity,WARN,Distribution definition differs. Total = WARN. Timing = ACCEPTED_CONVENTION.,None,Document convention,Model definition correct for sponsor
+G20-06,Tax/CFADS Parity,MISSING_EVIDENCE,Tax = PASS (both 0). CFADS = MISSING_EVIDENCE (definition differs).,None,Map CFADS formula,Tax matches. CFADS mapping needed.
+G20-07,Project IRR Parity,PASS,Project IRR = 9.41% vs 9.47% (within ±0.5pp).,None,None required,Calibration verified
+G20-08,Equity IRR Parity,WARN,Equity IRR = ~11.32% vs 11.61% (gap = 0.29pp).,G20 BLOCKED,Implement reconciliation IRR or accept gap,XIRR convention. G20 BLOCKED.
+G20-09,Reconciliation IRR Decision,MISSING_EVIDENCE,Reconciliation IRR not implemented.,Stakeholder decision,Create reconciliation IRR view,Recommended: apply Excel date+base conventions
+G20-G,G20 Overall Gate,BLOCKER,Equity IRR gap 0.29pp unresolved. Reconciliation IRR not implemented.,Equity IRR gap; Reconciliation IRR missing,Accept gap OR implement reconciliation IRR,G20 BLOCKED
+R99-01,R99/R102 Runtime Promotion,BLOCKER,R99/R102 NOT approved in this branch. No runtime changes.,Runtime promotion NOT approved,Separate approval process needed,R99/R102 NOT APPROVED
