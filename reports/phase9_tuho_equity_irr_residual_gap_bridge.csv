@@ -1,0 +1,9 @@
+component,before_gap_pp,after_gap_pp,estimated_impact_pp,evidence_status,affects_runtime,affects_reporting,recommended_action,notes
+XIRR date convention,+3.52pp,+1.23pp,-2.29pp,CONFIRMED,YES,YES,Add Excel-equivalent reconciliation IRR with construction-date start,Construction period (2028-2030) adds outflows and delays first return; model starts at COD (2030). This is the DOMINANT driver of the remaining gap.
+XIRR horizon length,+1.23pp,+1.23pp,~0.0pp,CONFIRMED,NO,YES,Accept — terminal periods have negligible IRR impact,Excel 121 periods vs model 61 periods: S6 shows Excel IRR unchanged at 11.61% when truncated. Terminal period has no material effect.
+Construction period,+1.23pp,+1.23pp,~0.0pp,CONFIRMED,YES,YES,Document as Excel-specific convention; model starts at COD,Excel includes 2-year construction outflow; model starts at COD. True runtime difference in period definition.
+Terminal period,+1.23pp,+1.23pp,~0.0pp,CONFIRMED,NO,YES,Accept — not material,Excel 2090 terminal vs model 2060: negligible XIRR impact confirmed by S6.
+SHL IDC investment base,+1.23pp,+2.40pp,+1.17pp,CONFIRMED,NO,YES,Align reporting harness: exclude IDC for Excel comparison,IDC in inv_base pushes IRR up (larger denominator). Counterintuitive but confirmed.
+SHL interest rate source,+2.40pp,+2.40pp,~0.0pp,UNRESOLVED,YES,NO,Do NOT change SHL rate in this branch; separate investigation needed,Model SHL rate 7.93% vs Excel implied ~2.1% annual. Runtime mismatch but SHL rate not to be changed here.
+Dividend timing,+2.40pp,+2.40pp,~0.0pp,PARTIAL,YES,YES,Accept — SHL balance=0 at P14 triggers distributions correctly,"Model dist P15, Excel div P35. Difference in PIK trigger. Acceptable given SHL balance trajectory."
+Residual unexplained,+2.40pp,+2.40pp,~0.0pp,MINIMAL,NO,NO,Accept as model uncertainty,Remaining gap from unmodelled Excel conventions; not worth runtime risk.
