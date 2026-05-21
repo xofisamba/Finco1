@@ -1,0 +1,7 @@
+case_id,project,status,distribution_total_keur,sponsor_distribution_total_keur,shl_r102_applied_keur,baseline_delta_keur,r99_r102_status,oborovo_guard_status,hidden_coupling_detected,notes
+tuho_baseline_default,TUHO-WIND-1,PASS,326165.35,0.0,0.0,0.0,BLOCKED_GOVERNED,N/A,False,"baseline default, no drift from legacy"
+tuho_da_wiring_only,TUHO-WIND-1,PASS,284552.08,0.0,0.0,-41613.28,BLOCKED_GOVERNED,N/A,False,DA wired pass-through; legacy=326165
+tuho_taxbridge_default,TUHO-WIND-1,PASS,326165.35,0.0,0.0,0.0,BLOCKED_GOVERNED,N/A,False,tax_bridge baseline
+tuho_da_wiring_plus_taxbridge,TUHO-WIND-1,PASS,284552.08,0.0,0.0,-41613.28,BLOCKED_GOVERNED,N/A,False,DA wiring + tax_bridge
+oborovo_baseline_default,OBOROVO-SOLAR-1,PASS,181019.11,0.0,0.0,0.0,N/A,N/A,False,Oborovo baseline
+oborovo_da_wiring_guard,OBOROVO-SOLAR-1,PASS,181019.11,0.0,0.0,0.0,N/A,GUARD_FIRED,False,"guard blocks, source=oborovo_guard_blocked"

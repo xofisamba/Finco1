@@ -1,0 +1,9 @@
+gate_id,gate_name,previous_status,current_status,evidence,blocker,required_next_action,owner_module,notes
+G01,SHL R102 input wiring,IN_PROGRESS,READY,PR #136; distribution_account_r102_sweep_candidate_keur in SHL engine,none,none,domain/shl,"SHL R102 input contract implemented, default=None, R99/R102 BLOCKED"
+G02,Sponsor distribution handoff,IN_PROGRESS,READY,be088e7; distribution_account_received_by_period in SponsorCashflowRunnerInputs,none,none,domain/sponsor,"Sponsor handoff implemented, default=None, legacy behavior preserved"
+G03,DA runtime wiring,IN_PROGRESS,READY,PR #151; use_distributionaccount_runtime_wiring flag in run_waterfall_v3_core,none,none,app/waterfall_core,DA wired as pass-through alias when flag=True; TUHO total 326165->284552
+G04,TaxBridge dual-run reconciliation,IN_PROGRESS,READY,"PR #150; tax_bridge cash-source reconciled, 0 UNEXPECTED/0 BLOCKING",none,none,app/waterfall_core,cf_after_reserves used when r99_fcf diverges from it
+G05,DA dual-run economic gate eval,IN_PROGRESS,READY,PR #149; audit_economic_mode flag in DistributionAccountPeriodInput,none,none,domain/distribution_account,Economic mode evaluates gates without promotion
+G06,Phase C combo validation,PENDING,READY,This branch; all supported combos show 0 UNEXPECTED/0 BLOCKING,none,proceed to G07,all,TUHO and Oborovo combos validated
+G07,R99/R102 final promotion approval,BLOCKED,BLOCKED,G20 governance design; no runtime promotion implemented anywhere,G20 governance pending design review,phase9-r99-r102-runtime-flag-design-review,domain/distribution_account,R99/R102 remains BLOCKED; must be explicitly approved later
+G08,G20 Oborovo promotion,BLOCKED,BLOCKED,Oborovo guard not yet designed; guard blocks DA wiring for non-TUHO,guard design not approved,separate Oborovo guard review,domain/distribution_account,Oborovo guard fires on flag=True; no TUHO-specific gates apply to Oborovo
