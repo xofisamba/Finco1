@@ -392,6 +392,11 @@ class FinancingParams:
     # Default false so runtime waterfall behavior remains unchanged.
     use_tuho_r99_input_engine: bool = False
 
+    # Phase 9 TUHO-only SHL principal eligibility alignment.
+    # Default false so runtime waterfall behavior remains unchanged.
+    use_tuho_shl_repayment_alignment: bool = False
+    tuho_shl_principal_eligibility_start_period: int | None = None
+
     @property
     def all_in_rate(self) -> float:
         """All-in senior debt interest rate."""

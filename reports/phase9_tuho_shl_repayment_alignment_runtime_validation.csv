@@ -1,0 +1,6 @@
+scenario,alignment_enabled,first_principal_period,first_principal_date,total_principal_repaid_keur,equity_irr,project_irr,avg_dscr,distribution_keur,runtime_drift_detected,notes
+TUHO baseline,false,29,2044-06-30,38028.0,0.11149508,0.09410162,1.55422840,173516.2,false,Current default runtime path; alignment config not enabled.
+TUHO alignment OFF,false,29,2044-06-30,38028.0,0.11149508,0.09410162,1.55422840,173516.2,false,Explicitly equivalent to baseline; first principal remains P29.
+TUHO alignment ON,true,25,2042-06-30,38028.0,0.11323257,0.09410162,1.55422840,180021.7,expected_controlled_shl_timing_change,TUHO-only eligibility starts at configured P25 while preserving interest-first sweep mechanics.
+Oborovo baseline,false,29,2044-12-31,14716.2,0.09168300,0.07984708,1.22904033,104699.4,false,Oborovo remains on default behavior.
+Oborovo alignment attempt blocked,true,BLOCKED,BLOCKED,BLOCKED,BLOCKED,BLOCKED,BLOCKED,BLOCKED,false,TUHO SHL repayment alignment is currently supported only for TUHO-WIND-1
