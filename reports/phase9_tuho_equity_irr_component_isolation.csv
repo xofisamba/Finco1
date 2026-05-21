@@ -1,0 +1,7 @@
+scenario,investment_base_keur,includes_shl_idc_in_t0,includes_shl_interest,includes_shl_principal,includes_dividends,applies_double_count_bug,timing_basis,computed_irr,delta_vs_excel_pp,component_changed,notes
+Excel reference,"-29,635",No,Yes,Yes (P24+),Yes (P35+),No,"121 periods, 2028-2090",11.61%,0.00pp,N/A,Excel target
+S1 model current,"-33,204",Yes,Yes,Yes (P1+),Yes (P15+),No,"61 periods, 2030-2060",15.13%,+3.52pp,N/A,Corrected shl_plus_dividends
+S2 excel_inv_base,"-29,635",No,Yes,Yes (P1+),Yes (P15+),No,"61 periods, 2030-2060",16.29%,+4.68pp,investment_base,Model with Excel investment base
+S3 no IDC,"-29,635",No,Yes,Yes (P1+),Yes (P15+),No,"61 periods, 2030-2060",16.29%,+4.68pp,shl_idc_t0,Excludes IDC from investment base
+S4 double-count,"-33,204",Yes,Yes (double),Yes,Yes,Yes,61 periods,17.81%,+6.20pp,build_sponsor_cashflows,build_sponsor_cashflows adds shi on top of equity_cf
+S5 double+excel_inv,"-29,635",No,Yes (double),Yes,Yes,Yes,61 periods,19.49%,+7.88pp,both,Double-count + Excel investment base
