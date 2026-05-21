@@ -1,0 +1,6 @@
+method,initial_investment_base,includes_shl_interest,includes_shl_principal,includes_dividends,includes_wht,includes_pik,includes_terminal_cash,timing_convention,computed_irr,target_or_reference,status,notes
+Excel 11.61% (Eq!D28),UNKNOWN,UNKNOWN,UNKNOWN,YES,UNKNOWN,UNKNOWN,UNKNOWN,semi-annual,11.61%,11.61% TARGET,MISSING_EVIDENCE,"Sheet: Eq, Cell: D28. Excel workbook not in repo. Source: Sprint 21 gap register."
+model corrected shl_plus_dividends,"-33,203.69",Yes (shi when bal>0),No,Yes (dist when bal=0),No,No (PIK不进CF),No,semi-annual,15.49%,14.96% CORRECTED,ACTIVE_METHOD,"shl_plus_dividends with corrected SHL params, no double-count"
+model build_sponsor_cashflows buggy,"-33,203.69",Yes (double-counted),Yes (double-counted),Yes,No,No,No,semi-annual,26.66%,BUG,BUGGY,build_sponsor_cashflows adds shi+shp on top of equity_cf which already=shi when bal>0
+model equity_only (wrong),"-33,203.69",No,No,Yes,No,No,No,semi-annual,56.73%,WRONG,WRONG_METHOD,"equity_only uses tiny investment base, wrong for TUHO"
+calibrated reference (Sprint 21),-33203.69,No (shl_bal=0 bug),No,Yes,No,No,No,semi-annual,11.15%,REFERENCE,STALE,"Was correct at time of Sprint 21, but shl_balance=0 bug makes it unreliable"
