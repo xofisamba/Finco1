@@ -56,6 +56,8 @@ class WaterfallRunConfig:
     use_shl_fcf_waterfall_engine: bool = False
     use_tax_bridge_engine: bool = False
     use_shl_gross_accrued_for_pnl: bool = False
+    use_tuho_shl_repayment_alignment: bool = False
+    tuho_shl_principal_eligibility_start_period: int | None = None
     # Phase 8.1: canonical SHL engine wiring — replaces legacy SHL output fields only.
     # When True, canonical ShlEngine output is used for SHL-specific fields at runtime.
     # TUHO-WIND-1 and OBOROVO-SOLAR-1 only.
@@ -126,6 +128,8 @@ class WaterfallRunConfig:
             f"sfw_{int(self.use_shl_fcf_waterfall_engine)}_"
             f"taxb_{int(self.use_tax_bridge_engine)}_"
             f"shlg_{int(self.use_shl_gross_accrued_for_pnl)}_"
+            f"shla_{int(self.use_tuho_shl_repayment_alignment)}_"
+            f"shlp_{self.tuho_shl_principal_eligibility_start_period or 0}_"
             f"canon_{int(self.use_shl_canonical_engine)}_"
             f"depcanon_{int(self.use_depreciation_canonical_engine)}_"
             f"sds_{int(self.use_senior_debt_sizing_engine)}"
@@ -222,6 +226,13 @@ class WaterfallRunConfig:
         )
         if use_shl_gross_accrued_for_pnl and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
             raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
+        use_tuho_shl_repayment_alignment = getattr(
+            fin,
+            "use_tuho_shl_repayment_alignment",
+            False,
+        )
+        if use_tuho_shl_repayment_alignment and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+            raise ValueError("TUHO SHL repayment alignment is currently supported only for TUHO-WIND-1")
 
         use_shl_canonical_engine = getattr(
             inputs.info,
@@ -280,6 +291,12 @@ class WaterfallRunConfig:
             use_shl_fcf_waterfall_engine=use_shl_fcf_waterfall_engine,
             use_tax_bridge_engine=use_tax_bridge_engine,
             use_shl_gross_accrued_for_pnl=use_shl_gross_accrued_for_pnl,
+            use_tuho_shl_repayment_alignment=use_tuho_shl_repayment_alignment,
+            tuho_shl_principal_eligibility_start_period=getattr(
+                fin,
+                "tuho_shl_principal_eligibility_start_period",
+                None,
+            ),
             use_depreciation_canonical_engine=use_depreciation_canonical_engine,
             use_senior_debt_sizing_engine=getattr(
                 inputs.info, "use_senior_debt_sizing_engine", False
@@ -328,6 +345,11 @@ class WaterfallRunner:
         """
         if config is None:
             config = WaterfallRunConfig()
+        if (
+            config.use_tuho_shl_repayment_alignment
+            and getattr(self.inputs.info, "code", "") != "TUHO-WIND-1"
+        ):
+            raise ValueError("TUHO SHL repayment alignment is currently supported only for TUHO-WIND-1")
 
         # S4-1: Use sculpt_capex_keur from inputs.capex when config does not override it.
         sculpt_capex = (
@@ -376,6 +398,10 @@ class WaterfallRunner:
             use_shl_fcf_waterfall_engine=config.use_shl_fcf_waterfall_engine,
             use_tax_bridge_engine=config.use_tax_bridge_engine,
             use_shl_gross_accrued_for_pnl=config.use_shl_gross_accrued_for_pnl,
+            use_tuho_shl_repayment_alignment=config.use_tuho_shl_repayment_alignment,
+            tuho_shl_principal_eligibility_start_period=(
+                config.tuho_shl_principal_eligibility_start_period
+            ),
             use_shl_canonical_engine=config.use_shl_canonical_engine,
             use_depreciation_canonical_engine=config.use_depreciation_canonical_engine,
             use_senior_debt_sizing_engine=config.use_senior_debt_sizing_engine,

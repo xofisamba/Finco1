@@ -50,6 +50,8 @@ def run_waterfall_v3_core(
     use_shl_fcf_waterfall_engine: bool = False,
     use_tax_bridge_engine: bool = False,
     use_shl_gross_accrued_for_pnl: bool = False,
+    use_tuho_shl_repayment_alignment: bool = False,
+    tuho_shl_principal_eligibility_start_period: int | None = None,
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = (),
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0,
     tuho_cit_cash_tax_start_operating_index: int | None = None,
@@ -106,6 +108,8 @@ def run_waterfall_v3_core(
         raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
     if use_shl_gross_accrued_for_pnl and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
         raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
+    if use_tuho_shl_repayment_alignment and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
+        raise ValueError("TUHO SHL repayment alignment is currently supported only for TUHO-WIND-1")
     construction_diagnostic = None
     if getattr(inputs.info, "use_construction_schedule_engine", False):
         from domain.construction.runtime_adapter import build_runtime_construction_schedule
@@ -282,6 +286,10 @@ def run_waterfall_v3_core(
         debt_sizing_method=debt_sizing_method,
         dscr_schedule=dscr_schedule if dscr_schedule is not None else getattr(inputs.financing, "dscr_schedule", None),
         use_senior_sweep_cash_cap_for_shl=use_senior_sweep_cash_cap_for_shl,
+        use_tuho_shl_repayment_alignment=use_tuho_shl_repayment_alignment,
+        tuho_shl_principal_eligibility_start_period=(
+            tuho_shl_principal_eligibility_start_period
+        ),
         co2_cit_bridge_by_period=co2_cit_bridge_by_period,
     )
     result.project_code = getattr(inputs.info, "code", "")

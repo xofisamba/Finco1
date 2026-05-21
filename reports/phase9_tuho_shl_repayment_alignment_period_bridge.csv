@@ -1,0 +1,61 @@
+period,date,excel_shl_principal_keur,model_before_alignment_keur,model_after_alignment_keur,delta_before_keur,delta_after_keur,senior_ds_keur,shl_interest_keur,repayment_allowed_before,repayment_allowed_after,notes
+1,2030-06-30,0.000,0.000,0.000,0.000,0.000,1989.107,0.000,False,False,Before configured eligibility period.
+2,2030-12-31,0.000,0.000,0.000,0.000,0.000,2022.075,1099.006,False,False,Before configured eligibility period.
+3,2031-06-30,0.000,0.000,0.000,0.000,0.000,2011.897,1093.474,False,False,Before configured eligibility period.
+4,2031-12-31,0.000,0.000,0.000,0.000,0.000,2045.244,1111.598,False,False,Before configured eligibility period.
+5,2032-06-30,0.000,0.000,0.000,0.000,0.000,2041.092,1109.342,False,False,Before configured eligibility period.
+6,2032-12-31,0.000,0.000,0.000,0.000,0.000,2063.522,1121.532,False,False,Before configured eligibility period.
+7,2033-06-30,0.000,0.000,0.000,0.000,0.000,2059.740,1119.477,False,False,Before configured eligibility period.
+8,2033-12-31,0.000,0.000,0.000,0.000,0.000,2093.880,1138.032,False,False,Before configured eligibility period.
+9,2034-06-30,0.000,0.000,0.000,0.000,0.000,2079.711,1130.332,False,False,Before configured eligibility period.
+10,2034-12-31,0.000,0.000,0.000,0.000,0.000,2114.182,1149.066,False,False,Before configured eligibility period.
+11,2035-06-30,0.000,0.000,0.000,0.000,0.000,2119.986,1152.221,False,False,Before configured eligibility period.
+12,2035-12-31,0.000,0.000,0.000,0.000,0.000,2155.124,1171.318,False,False,Before configured eligibility period.
+13,2036-06-30,0.000,0.000,0.000,0.000,0.000,2164.704,1176.525,False,False,Before configured eligibility period.
+14,2036-12-31,0.000,0.000,0.000,0.000,0.000,2188.492,1189.454,False,False,Before configured eligibility period.
+15,2037-06-30,0.000,0.000,0.000,0.000,0.000,2200.570,1196.019,False,False,Before configured eligibility period.
+16,2037-12-31,0.000,0.000,0.000,0.000,0.000,2237.044,1215.842,False,False,Before configured eligibility period.
+17,2038-06-30,0.000,0.000,0.000,0.000,0.000,2245.580,1220.482,False,False,Before configured eligibility period.
+18,2038-12-31,0.000,0.000,0.000,0.000,0.000,2282.800,1240.711,False,False,Before configured eligibility period.
+19,2039-06-30,0.000,0.000,0.000,0.000,0.000,2289.065,1244.116,False,False,Before configured eligibility period.
+20,2039-12-31,0.000,0.000,0.000,0.000,0.000,2327.005,1264.737,False,False,Before configured eligibility period.
+21,2040-06-30,0.000,0.000,0.000,0.000,0.000,2337.508,1270.445,False,False,Before configured eligibility period.
+22,2040-12-31,0.000,0.000,0.000,0.000,0.000,2363.195,988.065,False,False,Before configured eligibility period.
+23,2041-06-30,0.000,0.000,0.000,0.000,0.000,2376.175,1291.461,False,False,Before configured eligibility period.
+24,2041-12-31,0.000,0.000,0.000,0.000,0.000,2415.559,931.494,False,False,Before configured eligibility period.
+25,2042-06-30,1498.782,0.000,1265.203,-1498.782,-233.579,3379.664,1495.418,False,True,Alignment enables principal before current P29 start while preserving cash availability.
+26,2042-12-31,1463.879,0.000,477.004,-1463.879,-986.875,3435.680,1469.626,False,True,Alignment enables principal before current P29 start while preserving cash availability.
+27,2043-06-30,1647.946,0.000,1322.551,-1647.946,-325.395,3365.998,1426.907,False,True,Alignment enables principal before current P29 start while preserving cash availability.
+28,2043-12-31,817.916,0.000,509.346,-817.916,-308.570,3421.788,1397.687,False,True,Alignment enables principal before current P29 start while preserving cash availability.
+29,2044-06-30,4663.948,4688.274,4829.213,24.326,165.265,0.000,1358.632,True,True,Both paths active.
+30,2044-12-31,3818.751,4013.881,4161.988,195.130,343.237,0.000,1181.038,True,True,Both paths active.
+31,2045-06-30,5029.318,5068.576,5220.491,39.258,191.173,0.000,1001.298,True,True,Both paths active.
+32,2045-12-31,4090.998,4430.540,4591.046,339.542,500.048,0.000,809.201,True,True,Both paths active.
+33,2046-06-30,5601.121,5639.817,5804.018,38.696,202.897,0.000,615.468,True,True,Both paths active.
+34,2046-12-31,4483.633,4997.910,5171.396,514.277,687.763,0.000,393.649,True,True,Both paths active.
+35,2047-06-30,6164.860,6208.939,4675.755,44.079,-1489.105,0.000,183.870,True,True,Both paths active.
+36,2047-12-31,4449.546,2980.072,0.000,-1469.474,-4449.546,0.000,0.000,True,False,No SHL principal repayment.
+37,2048-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+38,2048-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+39,2049-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+40,2049-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+41,2050-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+42,2050-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+43,2051-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+44,2051-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+45,2052-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+46,2052-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+47,2053-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+48,2053-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+49,2054-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+50,2054-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+51,2055-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+52,2055-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+53,2056-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+54,2056-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+55,2057-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+56,2057-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+57,2058-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+58,2058-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+59,2059-06-30,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.
+60,2059-12-31,0.000,0.000,0.000,0.000,0.000,0.000,0.000,False,False,No SHL principal repayment.

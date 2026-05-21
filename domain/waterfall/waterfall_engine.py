@@ -315,6 +315,8 @@ def run_waterfall(
     # Prevents SHL principal from consuming cash that Excel would hold back as
     # sculpted FCF reserve. Oborovo keeps this False (its R99 ≈ cf, no effective change).
     use_senior_sweep_cash_cap_for_shl: bool = False,
+    use_tuho_shl_repayment_alignment: bool = False,
+    tuho_shl_principal_eligibility_start_period: int | None = None,
     # Phase 9 CO2→CIT bridge: CO2 revenue added to taxable income (not EBITDA).
     # Must be used with use_co2_revenue_bridge=False to avoid double-counting.
     # R99/R102: BLOCKED — only taxable income is affected.
@@ -797,6 +799,14 @@ def run_waterfall(
         is_shl_disbursement_period = (op_period_counter == 1 and shl_repayment_method == "pik_then_sweep")
 
         shl_rate_per = shl_rate * getattr(period, "day_fraction", 0.5)
+        if (
+            use_tuho_shl_repayment_alignment
+            and shl_repayment_method == "pik_then_sweep"
+            and tuho_shl_principal_eligibility_start_period is not None
+            and op_period_counter >= tuho_shl_principal_eligibility_start_period
+            and _cf_for_shl >= max(0.0, shl_balance * shl_rate_per)
+        ):
+            _pik_trigger = True
 
         # SHL tenor - when does bullet repay?
         # shl_tenor_years = 0 means bullet at end of senior tenor (default)
@@ -1316,4 +1326,14 @@ def cached_run_waterfall(
         prior_tax_loss_keur=inputs.tax.prior_tax_loss_keur,
         fixed_debt_keur=inputs.financing.fixed_debt_keur,
         fixed_ds_keur=inputs.financing.fixed_ds_keur,
+        use_tuho_shl_repayment_alignment=getattr(
+            inputs.financing,
+            "use_tuho_shl_repayment_alignment",
+            False,
+        ),
+        tuho_shl_principal_eligibility_start_period=getattr(
+            inputs.financing,
+            "tuho_shl_principal_eligibility_start_period",
+            None,
+        ),
     )
