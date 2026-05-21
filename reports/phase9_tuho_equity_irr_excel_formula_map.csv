@@ -1,0 +1,11 @@
+workbook_path,sheet,cell,value,formula,precedent_range,precedent_description,extraction_status,notes
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,D28,0.11609525084495542,"=XIRR(G28:DW28,G$23:DW$23)",G28:DW28 + G23:DW23,Equity CF range + date range,EXTRACTED,Excel equity IRR = 11.61%
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G28,-29635.18,=G27+G24,G27 + G24,Dividend + SHL total,EXTRACTED,Initial equity CF = SHL drawdown + share capital
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G24,-29135.18,=G25+G26,G25 + G26,SHL principal + SHL interest,EXTRACTED,SHL total = -29135.18 (drawdown)
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G25,-29135.18,=(G23=$B$9)*G18+...,"G18, G23, F23, H12, I12, F25:F25",SHL principal schedule,PARTIAL,Complex interpolation formula; B9/B10/B12 not in Inputs sheet
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G26,0,=(G23=$B$9)*G19+...,"G19, G23, F23, H12, I12, F26:F26",SHL PIK interest schedule,PARTIAL,Complex interpolation formula; balance grows during PIK
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G27,-500,=(G23=$B$9)*G20+...,"G20, G23, F23, H12, I12, F27:F27",Share capital injection,PARTIAL,Complex interpolation formula
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G23,2028-06-30,=Flags!G32,Flags!G32,Period start date,EXTRACTED,First cashflow date
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G18,0,N/A,N/A,SHL drawdown reference in formula,EXTRACTED,CF!G18 = 0 (period 0 = construction)
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G19,0,N/A,N/A,SHL interest reference in formula,EXTRACTED,CF!G19 = 0 (PIK start at 0)
+/root/.openclaw/media/inbound/20260330_TUHO_BP---cb609a8e-8b9a-4e28-b478-bb618eeae31e.xlsm,Eq,G20,0,N/A,N/A,Share capital reference in formula,EXTRACTED,CF!G20 = 0 (equity injection = 0 at construction)

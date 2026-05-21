@@ -1,0 +1,122 @@
+period,date,excel_cashflow_keur,model_shl_plus_dividends_cashflow_keur,delta_keur,model_distribution_keur,model_shl_interest_keur,model_shl_principal_keur,likely_driver,notes
+0,2028-06-30,-29635.18,-33203.69,3568.51,0,0,0,investment_base_difference,"Excel=-29635, Model=-33204"
+1,2030-07-01,959.08,0,959.08,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+2,2031-01-01,969.7,0,969.7,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+3,2031-07-01,966.96,0,966.96,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+4,2032-01-01,983.01,0,983.01,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+5,2032-07-01,976.22,0,976.22,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+6,2033-01-01,987.04,0,987.04,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+7,2033-07-01,987.52,0,987.52,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+8,2034-01-01,1003.96,0,1003.96,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+9,2034-07-01,999.8,0,999.8,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+10,2035-01-01,1016.43,0,1016.43,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+11,2035-07-01,1010.11,0,1010.11,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+12,2036-01-01,1026.94,0,1026.94,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+13,2036-07-01,1033.46,0,1033.46,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+14,2037-01-01,1044.96,0,1044.96,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+15,2037-07-01,1052.56,0,1052.56,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+16,2038-01-01,1070.14,0,1070.14,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+17,2038-07-01,1076.0,0,1076.0,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+18,2039-01-01,1093.96,0,1093.96,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+19,2039-07-01,1098.93,0,1098.93,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+20,2040-01-01,1117.23,0,1117.23,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+21,2040-07-01,1120.96,0,1120.96,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+22,2041-01-01,1133.43,0,1133.43,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+23,2041-07-01,1141.79,0,1141.79,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+24,2042-01-01,1172.27,0,1172.27,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+25,2042-07-01,3232.98,0,3232.98,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+26,2043-01-01,3167.87,0,3167.87,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+27,2043-07-01,3260.24,0,3260.24,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+28,2044-01-01,2416.58,0,2416.58,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+29,2044-07-01,6185.94,0,6185.94,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+30,2045-01-01,5181.53,0,5181.53,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+31,2045-07-01,6205.64,0,6205.64,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+32,2046-01-01,5098.57,0,5098.57,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+33,2046-07-01,6414.48,0,6414.48,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+34,2047-01-01,5101.23,0,5101.23,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+35,2047-07-01,6577.01,0,6577.01,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+36,2048-01-01,5059.9,0,5059.9,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+37,2048-07-01,6755.24,0,6755.24,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+38,2049-01-01,5039.04,0,5039.04,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+39,2049-07-01,6898.69,0,6898.69,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+40,2050-01-01,4618.94,0,4618.94,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+41,2050-07-01,7023.36,0,7023.36,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+42,2051-01-01,4614.28,0,4614.28,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+43,2051-07-01,7188.08,0,7188.08,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+44,2052-01-01,4722.57,0,4722.57,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+45,2052-07-01,7411.42,0,7411.42,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+46,2053-01-01,4835.11,0,4835.11,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+47,2053-07-01,7537.59,0,7537.59,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+48,2054-01-01,4951.97,0,4951.97,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+49,2054-07-01,7686.34,0,7686.34,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+50,2055-01-01,5049.78,0,5049.78,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+51,2055-07-01,7855.13,0,7855.13,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+52,2056-01-01,5160.4,0,5160.4,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+53,2056-07-01,8021.75,0,8021.75,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+54,2057-01-01,5233.0,0,5233.0,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+55,2057-07-01,8107.13,0,8107.13,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+56,2058-01-01,5325.79,0,5325.79,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+57,2058-07-01,8205.19,0,8205.19,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+58,2059-01-01,5389.89,0,5389.89,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+59,2059-07-01,8248.13,0,8248.13,0,0,0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+60,2060-01-01,5372.21,56.12,5316.08,56.12,0.0,0.0,investment_base_carryforward,inv_base diff=3569 affects all subsequent CFs
+61,2060-07-01,0,0,0,0,0,0,match,within tolerance
+62,2061-01-01,0,0,0,0,0,0,match,within tolerance
+63,2061-07-01,0,0,0,0,0,0,match,within tolerance
+64,2062-01-01,0,0,0,0,0,0,match,within tolerance
+65,2062-07-01,0,0,0,0,0,0,match,within tolerance
+66,2063-01-01,0,0,0,0,0,0,match,within tolerance
+67,2063-07-01,0,0,0,0,0,0,match,within tolerance
+68,2064-01-01,0,0,0,0,0,0,match,within tolerance
+69,2064-07-01,0,0,0,0,0,0,match,within tolerance
+70,2065-01-01,0,0,0,0,0,0,match,within tolerance
+71,2065-07-01,0,0,0,0,0,0,match,within tolerance
+72,2066-01-01,0,0,0,0,0,0,match,within tolerance
+73,2066-07-01,0,0,0,0,0,0,match,within tolerance
+74,2067-01-01,0,0,0,0,0,0,match,within tolerance
+75,2067-07-01,0,0,0,0,0,0,match,within tolerance
+76,2068-01-01,0,0,0,0,0,0,match,within tolerance
+77,2068-07-01,0,0,0,0,0,0,match,within tolerance
+78,2069-01-01,0,0,0,0,0,0,match,within tolerance
+79,2069-07-01,0,0,0,0,0,0,match,within tolerance
+80,2070-01-01,0,0,0,0,0,0,match,within tolerance
+81,2070-07-01,0,0,0,0,0,0,match,within tolerance
+82,2071-01-01,0,0,0,0,0,0,match,within tolerance
+83,2071-07-01,0,0,0,0,0,0,match,within tolerance
+84,2072-01-01,0,0,0,0,0,0,match,within tolerance
+85,2072-07-01,0,0,0,0,0,0,match,within tolerance
+86,2073-01-01,0,0,0,0,0,0,match,within tolerance
+87,2073-07-01,0,0,0,0,0,0,match,within tolerance
+88,2074-01-01,0,0,0,0,0,0,match,within tolerance
+89,2074-07-01,0,0,0,0,0,0,match,within tolerance
+90,2075-01-01,0,0,0,0,0,0,match,within tolerance
+91,2075-07-01,0,0,0,0,0,0,match,within tolerance
+92,2076-01-01,0,0,0,0,0,0,match,within tolerance
+93,2076-07-01,0,0,0,0,0,0,match,within tolerance
+94,2077-01-01,0,0,0,0,0,0,match,within tolerance
+95,2077-07-01,0,0,0,0,0,0,match,within tolerance
+96,2078-01-01,0,0,0,0,0,0,match,within tolerance
+97,2078-07-01,0,0,0,0,0,0,match,within tolerance
+98,2079-01-01,0,0,0,0,0,0,match,within tolerance
+99,2079-07-01,0,0,0,0,0,0,match,within tolerance
+100,2080-01-01,0,0,0,0,0,0,match,within tolerance
+101,2080-07-01,0,0,0,0,0,0,match,within tolerance
+102,2081-01-01,0,0,0,0,0,0,match,within tolerance
+103,2081-07-01,0,0,0,0,0,0,match,within tolerance
+104,2082-01-01,0,0,0,0,0,0,match,within tolerance
+105,2082-07-01,0,0,0,0,0,0,match,within tolerance
+106,2083-01-01,0,0,0,0,0,0,match,within tolerance
+107,2083-07-01,0,0,0,0,0,0,match,within tolerance
+108,2084-01-01,0,0,0,0,0,0,match,within tolerance
+109,2084-07-01,0,0,0,0,0,0,match,within tolerance
+110,2085-01-01,0,0,0,0,0,0,match,within tolerance
+111,2085-07-01,0,0,0,0,0,0,match,within tolerance
+112,2086-01-01,0,0,0,0,0,0,match,within tolerance
+113,2086-07-01,0,0,0,0,0,0,match,within tolerance
+114,2087-01-01,0,0,0,0,0,0,match,within tolerance
+115,2087-07-01,0,0,0,0,0,0,match,within tolerance
+116,2088-01-01,0,0,0,0,0,0,match,within tolerance
+117,2088-07-01,0,0,0,0,0,0,match,within tolerance
+118,2089-01-01,0,0,0,0,0,0,match,within tolerance
+119,2089-07-01,0,0,0,0,0,0,match,within tolerance
+120,2090-01-01,0,0,0,0,0,0,match,within tolerance
