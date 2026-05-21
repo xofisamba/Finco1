@@ -108,12 +108,14 @@ class DistributionAccountEngine:
             cash_for_dist,
             inp.enable_r99_r102_runtime,
             audit_economic_mode=inp.audit_economic_mode,
+            runtime_economic_mode=inp.runtime_economic_mode,
         )
         r102_gate = evaluate_r102_gate(
             inp.r102_gate_inputs,
             cash_for_dist,
             inp.enable_r99_r102_runtime,
             audit_economic_mode=inp.audit_economic_mode,
+            runtime_economic_mode=inp.runtime_economic_mode,
         )
         dscr_gate = evaluate_dscr_gate(inp.actual_dscr, inp.target_distribution_dscr)
         lockup_gate = evaluate_lockup_gate(

@@ -16,20 +16,27 @@ def evaluate_r99_gate(
     cash_available: float,
     enable_runtime: bool,
     audit_economic_mode: bool = False,
+    runtime_economic_mode: bool = False,
 ) -> DistributionGateResult:
     """Evaluate R99 gate.
 
     R99 is the equity distribution gate.
 
     In normal (governed) mode: always BLOCKED — R99/R102 not promoted to runtime.
-    In audit_economic_mode: evaluate gate using cash logic to produce economic value
-    for comparison purposes only. Output cannot be routed to runtime.
+    In audit_economic_mode: evaluate gate using cash logic for audit/comparison only.
+        Result is audit/comparison only — must never flow to runtime via audit mode.
+    In runtime_economic_mode: evaluate gate for explicit runtime staging under
+        use_distributionaccount_runtime_wiring=True — still pre-G20, not G20 promotion.
 
     Args:
         audit_economic_mode: if True, evaluate R99 using cash inputs (not governance).
             Result is audit/comparison only — must never flow to runtime.
+        runtime_economic_mode: if True, evaluate R99 using cash inputs for explicit
+            runtime staging — allowed behind use_distributionaccount_runtime_wiring=True,
+            still not G20 promotion.
     """
-    if not audit_economic_mode:
+    gate_active = audit_economic_mode or runtime_economic_mode
+    if not gate_active:
         # Normal governed mode: R99 not promoted — always blocked
         return DistributionGateResult(
             gate_name="r99_gate",
@@ -59,6 +66,7 @@ def evaluate_r102_gate(
     cash_available: float,
     enable_runtime: bool,
     audit_economic_mode: bool = False,
+    runtime_economic_mode: bool = False,
 ) -> DistributionGateResult:
     """Evaluate R102 gate.
 
@@ -66,13 +74,19 @@ def evaluate_r102_gate(
 
     In normal (governed) mode: always BLOCKED — R99/R102 not promoted to runtime.
     In audit_economic_mode: evaluate gate to determine SHL sweep eligibility.
-    Output is audit/comparison only — must never flow to runtime.
+        Output is audit/comparison only — must never flow to runtime.
+    In runtime_economic_mode: evaluate gate for explicit runtime staging under
+        use_distributionaccount_runtime_wiring=True — still pre-G20, not G20 promotion.
 
     Args:
         audit_economic_mode: if True, evaluate R102 using cash inputs (not governance).
             Result is audit/comparison only — must never flow to runtime.
+        runtime_economic_mode: if True, evaluate R102 using cash inputs for explicit
+            runtime staging — allowed behind use_distributionaccount_runtime_wiring=True,
+            still not G20 promotion.
     """
-    if not audit_economic_mode:
+    gate_active = audit_economic_mode or runtime_economic_mode
+    if not gate_active:
         # Normal governed mode: R102 not promoted — always blocked
         return DistributionGateResult(
             gate_name="r102_gate",

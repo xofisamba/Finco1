@@ -41,6 +41,12 @@ class DistributionAccountPeriodInput:
     jdsra_current_balance_keur: float = 0.0
     enable_r99_r102_runtime: bool = False
     audit_economic_mode: bool = False  # audit-only: bypass R99/R102 governance for economic comparison
+    # Phase 9C-fix: distinct from audit_economic_mode — enables gate evaluation for explicit
+    # runtime staging (DA wiring via use_distributionaccount_runtime_wiring=True).
+    # Still NOT G20 promotion. Still pre-G20 staging. TUHO-only. Oborovo-guarded.
+    # dual-run validation uses audit_economic_mode=True (comparison-only, never routed).
+    # DA runtime wiring uses runtime_economic_mode=True (staging, explicitly allowed).
+    runtime_economic_mode: bool = False
     minimum_cash_reserve_keur: float = 0.0
     senior_tenor_years: int = 0  # explicit lockup policy; 0 = no tenor-based lockup
 
