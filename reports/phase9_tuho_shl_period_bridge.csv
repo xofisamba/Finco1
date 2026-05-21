@@ -1,0 +1,122 @@
+period,date,excel_shl_balance_keur,model_shl_balance_keur,balance_delta_keur,excel_shl_interest_keur,model_shl_interest_keur,interest_delta_keur,excel_shl_principal_keur,model_shl_principal_keur,principal_delta_keur,excel_pik_keur,model_pik_keur,excel_dividend_keur,model_distribution_keur,dividend_delta_keur,classification,notes
+0,2028-06-30,-29135.18,0,-29135.18,0,0,0,-29135.18,0,-29135.18,0,0,-500,0,-500,construction_investment,"t0 construction: excel_bal=-29135, model=N/A"
+1,2030-07-01,959.08,30930.2,-29971.11,959.08,1296.7,-337.62,0,1773.49,-1773.49,0,0,0,0,0,principal_timing_gap,"Model repays shp=1773.49, Excel shp=0 (PIK phase)"
+2,2031-01-01,969.7,29035.5,-28065.8,969.7,1226.38,-256.69,0,1894.7,-1894.7,0,0,0,0,0,principal_timing_gap,"Model repays shp=1894.70, Excel shp=0 (PIK phase)"
+3,2031-07-01,966.96,27081.38,-26114.43,966.96,1151.26,-184.3,0,1954.11,-1954.11,0,0,0,0,0,principal_timing_gap,"Model repays shp=1954.11, Excel shp=0 (PIK phase)"
+4,2032-01-01,983.01,24998.32,-24015.31,983.01,1073.78,-90.77,0,2083.06,-2083.06,0,0,0,0,0,principal_timing_gap,"Model repays shp=2083.06, Excel shp=0 (PIK phase)"
+5,2032-07-01,976.22,22839.07,-21862.85,976.22,991.18,-14.96,0,2159.25,-2159.25,0,0,0,0,0,principal_timing_gap,"Model repays shp=2159.25, Excel shp=0 (PIK phase)"
+6,2033-01-01,987.04,20559.58,-19572.54,987.04,905.57,81.47,0,2279.48,-2279.48,0,0,0,0,0,principal_timing_gap,"Model repays shp=2279.48, Excel shp=0 (PIK phase)"
+7,2033-07-01,987.52,18195.55,-17208.03,987.52,815.19,172.33,0,2364.03,-2364.03,0,0,0,0,0,principal_timing_gap,"Model repays shp=2364.03, Excel shp=0 (PIK phase)"
+8,2034-01-01,1003.96,15685.1,-14681.14,1003.96,721.45,282.5,0,2510.46,-2510.46,0,0,0,0,0,principal_timing_gap,"Model repays shp=2510.46, Excel shp=0 (PIK phase)"
+9,2034-07-01,999.8,13096.97,-12097.17,999.8,621.91,377.88,0,2588.13,-2588.13,0,0,0,0,0,principal_timing_gap,"Model repays shp=2588.13, Excel shp=0 (PIK phase)"
+10,2035-01-01,1016.43,10353.01,-9336.59,1016.43,519.29,497.13,0,2743.95,-2743.95,0,0,0,0,0,principal_timing_gap,"Model repays shp=2743.95, Excel shp=0 (PIK phase)"
+11,2035-07-01,1010.11,7491.3,-6481.2,1010.11,410.5,599.61,0,2861.71,-2861.71,0,0,0,0,0,principal_timing_gap,"Model repays shp=2861.71, Excel shp=0 (PIK phase)"
+12,2036-01-01,1026.94,4461.89,-3434.95,1026.94,297.03,729.91,0,3029.41,-3029.41,0,0,0,0,0,principal_timing_gap,"Model repays shp=3029.41, Excel shp=0 (PIK phase)"
+13,2036-07-01,1033.46,1297.58,-264.11,1033.46,176.91,856.55,0,3164.32,-3164.32,0,0,0,0,0,principal_timing_gap,"Model repays shp=3164.32, Excel shp=0 (PIK phase)"
+14,2037-01-01,1044.96,0.0,1044.96,1044.96,51.45,993.51,0,1297.58,-1297.58,0,0,0,0,0,principal_timing_gap,"Model repays shp=1297.58, Excel shp=0 (PIK phase)"
+15,2037-07-01,1052.56,0.0,1052.56,1052.56,0.0,1052.56,0,0.0,0.0,0,0,0,3351.73,-3351.73,pik_phase,"PIK phase: bal_model=0, bal_excel=1053"
+16,2038-01-01,1070.14,0.0,1070.14,1070.14,0.0,1070.14,0,0.0,0.0,0,0,0,3226.38,-3226.38,pik_phase,"PIK phase: bal_model=0, bal_excel=1070"
+17,2038-07-01,1076.0,0.0,1076.0,1076.0,0.0,1076.0,0,0.0,0.0,0,0,0,3466.06,-3466.06,pik_phase,"PIK phase: bal_model=0, bal_excel=1076"
+18,2039-01-01,1093.96,0.0,1093.96,1093.96,0.0,1093.96,0,0.0,0.0,0,0,0,3289.95,-3289.95,pik_phase,"PIK phase: bal_model=0, bal_excel=1094"
+19,2039-07-01,1098.93,0.0,1098.93,1098.93,0.0,1098.93,0,0.0,0.0,0,0,0,3533.18,-3533.18,pik_phase,"PIK phase: bal_model=0, bal_excel=1099"
+20,2040-01-01,1117.23,0.0,1117.23,1117.23,0.0,1117.23,0,0.0,0.0,0,0,0,3351.36,-3351.36,pik_phase,"PIK phase: bal_model=0, bal_excel=1117"
+21,2040-07-01,1120.96,0.0,1120.96,1120.96,0.0,1120.96,0,0.0,0.0,0,0,0,3607.95,-3607.95,pik_phase,"PIK phase: bal_model=0, bal_excel=1121"
+22,2041-01-01,1133.43,0.0,1133.43,1133.43,0.0,1133.43,0,0.0,0.0,0,0,0,3401.3,-3401.3,pik_phase,"PIK phase: bal_model=0, bal_excel=1133"
+23,2041-07-01,1141.79,0.0,1141.79,1141.79,0.0,1141.79,0,0.0,0.0,0,0,0,3667.64,-3667.64,pik_phase,"PIK phase: bal_model=0, bal_excel=1142"
+24,2042-01-01,1172.27,0.0,1172.27,1163.99,0.0,1163.99,8.28,0.0,8.28,0,0,0,3474.37,-3474.37,excel_principal_phase,Excel principal phase; model already repaid
+25,2042-07-01,3232.98,0.0,3232.98,1734.52,0.0,1734.52,1498.46,0.0,1498.46,0,0,0,6140.28,-6140.28,excel_principal_phase,Excel principal phase; model already repaid
+26,2043-01-01,3167.87,0.0,3167.87,1702.84,0.0,1702.84,1465.03,0.0,1465.03,0,0,0,5736.64,-5736.64,excel_principal_phase,Excel principal phase; model already repaid
+27,2043-07-01,3260.24,0.0,3260.24,1616.96,0.0,1616.96,1643.29,0.0,1643.29,0,0,0,6115.46,-6115.46,excel_principal_phase,Excel principal phase; model already repaid
+28,2044-01-01,2416.58,0.0,2416.58,1577.49,0.0,1577.49,839.1,0.0,839.1,0,0,0,5713.92,-5713.92,excel_principal_phase,Excel principal phase; model already repaid
+29,2044-07-01,6185.94,0.0,6185.94,1526.87,0.0,1526.87,4659.08,0.0,4659.08,0,0,0,6187.85,-6187.85,excel_principal_phase,Excel principal phase; model already repaid
+30,2045-01-01,5181.53,0.0,5181.53,1355.75,0.0,1355.75,3825.78,0.0,3825.78,0,0,0,5748.72,-5748.72,excel_principal_phase,Excel principal phase; model already repaid
+31,2045-07-01,6205.64,0.0,6205.64,1181.87,0.0,1181.87,5023.77,0.0,5023.77,0,0,0,6221.79,-6221.79,excel_principal_phase,Excel principal phase; model already repaid
+32,2046-01-01,5098.57,0.0,5098.57,998.86,0.0,998.86,4099.71,0.0,4099.71,0,0,0,5811.21,-5811.21,excel_principal_phase,Excel principal phase; model already repaid
+33,2046-07-01,6414.48,0.0,6414.48,819.93,0.0,819.93,5594.54,0.0,5594.54,0,0,0,6419.49,-6419.49,excel_principal_phase,Excel principal phase; model already repaid
+34,2047-01-01,5101.23,0.0,5101.23,607.9,0.0,607.9,4493.33,0.0,4493.33,0,0,0,5992.09,-5992.09,excel_principal_phase,Excel principal phase; model already repaid
+35,2047-07-01,6574.72,0.0,6574.72,419.74,0.0,419.74,6154.98,0.0,6154.98,0,0,2.29,6570.29,-6568.0,excel_principal_phase,Excel principal phase; model already repaid
+36,2048-01-01,4603.83,0.0,4603.83,178.47,0.0,178.47,4425.36,0.0,4425.36,0,0,456.07,6130.06,-5673.99,excel_principal_phase,Excel principal phase; model already repaid
+37,2048-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,6755.24,6735.89,19.36,distribution_phase,Both in distribution phase: model=6735.89
+38,2049-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,5039.04,6247.38,-1208.34,distribution_phase,Both in distribution phase: model=6247.38
+39,2049-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,6898.69,6868.64,30.05,distribution_phase,Both in distribution phase: model=6868.64
+40,2050-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,4618.94,6403.02,-1784.08,distribution_phase,Both in distribution phase: model=6403.02
+41,2050-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,7023.36,7018.6,4.76,distribution_phase,Both in distribution phase: model=7018.60
+42,2051-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,4614.28,6540.23,-1925.95,distribution_phase,Both in distribution phase: model=6540.23
+43,2051-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,7188.08,7168.19,19.9,distribution_phase,Both in distribution phase: model=7168.19
+44,2052-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,4722.57,6677.09,-1954.51,distribution_phase,Both in distribution phase: model=6677.09
+45,2052-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,7411.42,7375.59,35.84,distribution_phase,Both in distribution phase: model=7375.59
+46,2053-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,4835.11,6829.44,-1994.33,distribution_phase,Both in distribution phase: model=6829.44
+47,2053-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,7537.59,7485.2,52.39,distribution_phase,Both in distribution phase: model=7485.20
+48,2054-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,4951.97,6967.13,-2015.16,distribution_phase,Both in distribution phase: model=6967.13
+49,2054-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,7686.34,7616.44,69.9,distribution_phase,Both in distribution phase: model=7616.44
+50,2055-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,5049.78,7087.2,-2037.42,distribution_phase,Both in distribution phase: model=7087.20
+51,2055-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,7855.13,7804.73,50.4,distribution_phase,Both in distribution phase: model=7804.73
+52,2056-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,5160.4,7259.47,-2099.07,distribution_phase,Both in distribution phase: model=7259.47
+53,2056-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,8021.75,7951.81,69.95,distribution_phase,Both in distribution phase: model=7951.81
+54,2057-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,5233.0,7353.73,-2120.73,distribution_phase,Both in distribution phase: model=7353.73
+55,2057-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,8107.13,8017.06,90.06,distribution_phase,Both in distribution phase: model=8017.06
+56,2058-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,5325.79,7453.74,-2127.95,distribution_phase,Both in distribution phase: model=7453.74
+57,2058-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,8205.19,8093.73,111.46,distribution_phase,Both in distribution phase: model=8093.73
+58,2059-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,5389.89,7523.88,-2133.98,distribution_phase,Both in distribution phase: model=7523.88
+59,2059-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,8248.13,8114.09,134.04,distribution_phase,Both in distribution phase: model=8114.09
+60,2060-01-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,5372.21,7542.51,-2170.3,distribution_phase,Both in distribution phase: model=7542.51
+61,2060-07-01,0,0.0,0.0,0,0.0,0.0,0,0.0,0.0,0,0,0,56.12,-56.12,distribution_phase,Both in distribution phase: model=56.12
+62,2061-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+63,2061-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+64,2062-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+65,2062-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+66,2063-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+67,2063-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+68,2064-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+69,2064-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+70,2065-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+71,2065-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+72,2066-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+73,2066-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+74,2067-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+75,2067-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+76,2068-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+77,2068-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+78,2069-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+79,2069-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+80,2070-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+81,2070-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+82,2071-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+83,2071-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+84,2072-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+85,2072-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+86,2073-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+87,2073-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+88,2074-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+89,2074-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+90,2075-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+91,2075-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+92,2076-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+93,2076-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+94,2077-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+95,2077-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+96,2078-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+97,2078-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+98,2079-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+99,2079-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+100,2080-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+101,2080-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+102,2081-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+103,2081-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+104,2082-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+105,2082-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+106,2083-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+107,2083-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+108,2084-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+109,2084-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+110,2085-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+111,2085-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+112,2086-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+113,2086-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+114,2087-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+115,2087-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+116,2088-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+117,2088-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+118,2089-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+119,2089-07-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
+120,2090-01-01,0,0,0,0,0,0,0,0,0,0,0,0,0,0,both_zero,Both balance=0
