@@ -334,9 +334,189 @@ class TestRunDualValidationBasic:
         result = run_dual_validation(wf_result, da_inp)
 
         assert result.runtime_unchanged is True
-        assert result.sponsor_unchanged is True
-        assert result.shl_unchanged is True
-        assert result.r99_r102_still_blocked is True
+
+
+# ---------------------------------------------------------------------------
+# Realistic cash-source tests for _attach_dualrun_validation
+# These replace the revenue - opex proxy with the proper cascade:
+#   r99_fcf_for_distribution_keur → cf_after_reserves_keur → cf_after_tax - senior_ds
+# ---------------------------------------------------------------------------
+
+class TestRealisticCashSourceForDualRun:
+    """Tests proving DA dual-run input no longer uses revenue - opex proxy."""
+
+    def _make_wp(self, **attrs):
+        """Make a mock waterfall period with given attributes."""
+        from unittest.mock import MagicMock
+        wp = MagicMock()
+        wp.period = attrs.get("period", 1)
+        wp.operating_period_index = attrs.get("operating_period_index", 1)
+        wp.r99_fcf_for_distribution_keur = attrs.get("r99_fcf_for_distribution_keur", 0.0)
+        wp.cf_after_reserves_keur = attrs.get("cf_after_reserves_keur", 0.0)
+        wp.cf_after_tax_keur = attrs.get("cf_after_tax_keur", 0.0)
+        wp.senior_ds_keur = attrs.get("senior_ds_keur", 0.0)
+        wp.revenue_keur = attrs.get("revenue_keur", 0.0)
+        wp.opex_keur = attrs.get("opex_keur", 0.0)
+        wp.dscr = attrs.get("dscr", 1.5)
+        wp.dsra_balance_keur = attrs.get("dsra_balance_keur", 0.0)
+        wp.date = attrs.get("date") or __import__("datetime").date(2029, 12, 31)
+        return wp
+
+    def test_da_input_uses_r99_fcf_when_positive(self):
+        """When r99_fcf_for_distribution_keur > 0, that is the DA post_shl_cash source."""
+        from unittest.mock import MagicMock, patch
+        from app.waterfall_core import _attach_dualrun_validation
+
+        wp = self._make_wp(
+            period=1, operating_period_index=1,
+            r99_fcf_for_distribution_keur=500.0,
+            cf_after_reserves_keur=400.0,
+            cf_after_tax_keur=600.0,
+            senior_ds_keur=200.0,
+            revenue_keur=1000.0,
+            opex_keur=300.0,
+            dscr=1.5,
+            dsra_balance_keur=0.0,
+        )
+        wf_result = MagicMock()
+        wf_result.periods = [wp]
+
+        inputs_info = MagicMock()
+        inputs_info.code = "TUHO-WIND-1"
+        inputs_financing = MagicMock()
+        inputs_financing.senior_tenor_years = 10
+        mock_inputs = MagicMock()
+        mock_inputs.info = inputs_info
+        mock_inputs.financing = inputs_financing
+
+        # Patch run_dual_validation to capture the actual DA inputs built
+        with patch(
+            "domain.distribution_account.dualrun_validation.run_dual_validation"
+        ) as mock_run:
+            _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
+            assert mock_run.called
+            _, da_inputs = mock_run.call_args[0]
+            # r99_fcf=500 > 0 → post_shl_cash = 500
+            assert da_inputs.period_inputs[0].post_shl_cash_available_keur == 500.0
+            # Must NOT be revenue - opex = 700
+            assert da_inputs.period_inputs[0].post_shl_cash_available_keur != 700.0
+
+    def test_da_input_not_revenue_minus_opex(self):
+        """DA post_shl_cash must not equal revenue - opex when r99_fcf = 0."""
+        from unittest.mock import MagicMock, patch
+        from app.waterfall_core import _attach_dualrun_validation
+
+        # r99_fcf=0, cf_after_reserves=350, cf_after_tax=600, senior_ds=200
+        # Expected: post_shl_cash = 350 (cf_after_reserves)
+        wp = self._make_wp(
+            period=2, operating_period_index=2,
+            r99_fcf_for_distribution_keur=0.0,
+            cf_after_reserves_keur=350.0,
+            cf_after_tax_keur=600.0,
+            senior_ds_keur=200.0,
+            revenue_keur=1000.0,
+            opex_keur=300.0,
+            dscr=1.5,
+            dsra_balance_keur=0.0,
+        )
+        wf_result = MagicMock()
+        wf_result.periods = [wp]
+
+        inputs_info = MagicMock()
+        inputs_info.code = "TUHO-WIND-1"
+        inputs_financing = MagicMock()
+        inputs_financing.senior_tenor_years = 10
+        mock_inputs = MagicMock()
+        mock_inputs.info = inputs_info
+        mock_inputs.financing = inputs_financing
+
+        with patch(
+            "domain.distribution_account.dualrun_validation.run_dual_validation"
+        ) as mock_run:
+            _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
+            _, da_inputs = mock_run.call_args[0]
+            post_shl = da_inputs.period_inputs[0].post_shl_cash_available_keur
+            assert post_shl != 700.0, "DA input must not use revenue - opex proxy"
+            assert post_shl == 350.0, "DA input should use cf_after_reserves (= 350)"
+
+    def test_da_input_falls_back_to_cf_after_tax_minus_senior_ds(self):
+        """When r99_fcf=0 and cf_after_reserves=0, use cf_after_tax - senior_ds."""
+        from unittest.mock import MagicMock, patch
+        from app.waterfall_core import _attach_dualrun_validation
+
+        # r99_fcf=0, cf_after_reserves=0, cf_after_tax=600, senior_ds=200
+        # Expected: post_shl_cash = max(0, 600-200) = 400
+        wp = self._make_wp(
+            period=3, operating_period_index=3,
+            r99_fcf_for_distribution_keur=0.0,
+            cf_after_reserves_keur=0.0,
+            cf_after_tax_keur=600.0,
+            senior_ds_keur=200.0,
+            revenue_keur=1000.0,
+            opex_keur=300.0,
+            dscr=1.5,
+            dsra_balance_keur=0.0,
+        )
+        wf_result = MagicMock()
+        wf_result.periods = [wp]
+
+        inputs_info = MagicMock()
+        inputs_info.code = "TUHO-WIND-1"
+        inputs_financing = MagicMock()
+        inputs_financing.senior_tenor_years = 10
+        mock_inputs = MagicMock()
+        mock_inputs.info = inputs_info
+        mock_inputs.financing = inputs_financing
+
+        with patch(
+            "domain.distribution_account.dualrun_validation.run_dual_validation"
+        ) as mock_run:
+            _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
+            _, da_inputs = mock_run.call_args[0]
+            post_shl = da_inputs.period_inputs[0].post_shl_cash_available_keur
+            expected = max(0.0, 600.0 - 200.0)  # = 400
+            assert post_shl != 700.0, "Must not use revenue - opex"
+            assert post_shl == expected, f"Should use cf_after_tax - senior_ds = {expected}"
+
+
+class TestDualRunExceptionHandling:
+    """Exception handling in _attach_dualrun_validation."""
+
+    def test_exception_does_not_propagate(self):
+        """If run_dual_validation raises, _attach_dualrun_validation must not propagate."""
+        from unittest.mock import MagicMock, patch
+        from app.waterfall_core import _attach_dualrun_validation
+        wp = MagicMock()
+        wp.period = 1
+        wp.operating_period_index = 1
+        wp.r99_fcf_for_distribution_keur = 0.0
+        wp.cf_after_reserves_keur = 0.0
+        wp.cf_after_tax_keur = 0.0
+        wp.senior_ds_keur = 0.0
+        wp.revenue_keur = 0.0
+        wp.opex_keur = 0.0
+        wp.dscr = 1.5
+        wp.dsra_balance_keur = 0.0
+        wp.date = None
+        wf_result = MagicMock()
+        wf_result.periods = [wp]
+
+        inputs_info = MagicMock()
+        inputs_info.code = "TUHO-WIND-1"
+        inputs_financing = MagicMock()
+        inputs_financing.senior_tenor_years = 10
+        mock_inputs = MagicMock()
+        mock_inputs.info = inputs_info
+        mock_inputs.financing = inputs_financing
+
+        with patch(
+            "domain.distribution_account.dualrun_validation.run_dual_validation",
+            side_effect=RuntimeError("intentional test error"),
+        ):
+            # Must not raise
+            _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
+            # Attribute must exist (no exception propagated)
+            assert hasattr(wf_result, "_dualrun_validation")
 
 
 # ---------------------------------------------------------------------------

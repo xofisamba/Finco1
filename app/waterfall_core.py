@@ -751,6 +751,18 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
     """Attach dual-run validation metadata to waterfall result (audit only).
 
     NO runtime routing. Result is not modified. DA remains audit-only.
+
+    Cash source hierarchy for DA dual-run input (best available):
+      1. r99_fcf_for_distribution_keur   — post-tax, post-senior-DS, post-reserves
+         (TUHO R99 engine; zero for non-TUHO when engine is not active)
+      2. cf_after_reserves_keur          — post-senior-DS, post-reserve sweep
+         (available on every period after DSRA block)
+      3. cf_after_tax_keur               — post-tax cash before debt service
+         (fallback only; not a distribution proxy)
+
+    The revenue - opex proxy is NOT used. See docs/phase9_distributionaccount_
+    dualrun_validation.md §Limitations for cases where none of the above
+    fields reflects true distributable cash.
     """
     from domain.distribution_account.dualrun_validation import run_dual_validation
     from domain.distribution_account.inputs import (
@@ -758,29 +770,50 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
         DistributionAccountPeriodInput,
         R99R102GateInputs,
     )
-    from domain.waterfall.waterfall_engine import run_waterfall
 
     # Build DA period inputs from waterfall result periods
-    # We use the same cash data that the waterfall was built from
-    # to get a comparable DA result
     da_period_inputs: list[DistributionAccountPeriodInput] = []
     for wp in result.periods:
         p_idx = getattr(wp, "period", None)
         if p_idx is None:
             continue
-        # Use revenue - opex as a proxy for cash_for_dist
-        # post_shl_cash = revenue - opex (simplified)
-        rev = getattr(wp, "revenue_keur", 0.0)
-        opex = getattr(wp, "opex_keur", 0.0)
-        post_shl_cash = max(0.0, rev - opex)
+
+        # -----------------------------------------------------------------
+        # Cash source selection (best available, descending preference)
+        # -----------------------------------------------------------------
+        # Source 1: TUHO R99 engine output — clean post-tax / post-senior-DS
+        # after lockup assessment. Zero when engine is inactive (non-TUHO).
+        r99_fcf = getattr(wp, "r99_fcf_for_distribution_keur", 0.0)
+        # Source 2: cf_after_reserves — cash after DSRA/MRA and senior service.
+        # Set even when r99_fcf is the primary source (provides audit trail).
+        cf_after_reserves = getattr(wp, "cf_after_reserves_keur", 0.0)
+        # Source 3: cf_after_tax — post-tax before debt service (fallback only).
+        cf_after_tax = getattr(wp, "cf_after_tax_keur", 0.0)
+        senior_ds = getattr(wp, "senior_ds_keur", 0.0)
+
+        # Determine primary cash source and document origin
+        if r99_fcf > 0:
+            post_shl_cash = r99_fcf
+            cash_source = "r99_fcf_for_distribution_keur"
+        elif cf_after_reserves > 0:
+            post_shl_cash = cf_after_reserves
+            cash_source = "cf_after_reserves_keur"
+        else:
+            # Fallback: cf_after_tax minus senior debt service.
+            # This is imperfect — see docs §Limitations.
+            post_shl_cash = max(0.0, cf_after_tax - senior_ds)
+            cash_source = "cf_after_tax_minus_senior_ds (imperfect fallback)"
+
+        post_senior_cash = max(0.0, cf_after_tax - senior_ds)
+
         da_period_inputs.append(DistributionAccountPeriodInput(
             period_index=p_idx,
             operating_period_index=getattr(wp, "operating_period_index", p_idx),
             period_date=getattr(wp, "date", None) or __import__('datetime').date(2029, 12, 31),
             opening_distribution_account_balance_keur=0.0,
-            post_senior_cash_available_keur=post_shl_cash,
+            post_senior_cash_available_keur=post_senior_cash,
             post_shl_cash_available_keur=post_shl_cash,
-            senior_debt_service_keur=getattr(wp, "senior_ds_keur", 0.0),
+            senior_debt_service_keur=senior_ds,
             actual_dscr=getattr(wp, "dscr", 1.5),
             target_distribution_dscr=1.0,
             dsra_current_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
