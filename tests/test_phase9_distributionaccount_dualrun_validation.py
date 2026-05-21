@@ -396,15 +396,20 @@ class TestRealisticCashSourceForDualRun:
         wp.date = attrs.get("date") or __import__("datetime").date(2029, 12, 31)
         return wp
 
-    def test_da_input_uses_r99_fcf_when_positive(self):
-        """When r99_fcf_for_distribution_keur > 0, that is the DA post_shl_cash source."""
+    def test_da_input_uses_cf_after_reserves_when_diverging_from_r99_fcf(self):
+        """When r99_fcf diverges from cf_after_reserves, use cf_after_reserves (runtime source).
+
+        In TUHO tax_bridge mode, r99_fcf (= cf_after_tax with bridge cash tax) differs from
+        cf_after_reserves (runtime's actual distribution source). Using cf_after_reserves
+        when they diverge ensures DA economic mode matches runtime distribution behavior.
+        """
         from unittest.mock import MagicMock, patch
         from app.waterfall_core import _attach_dualrun_validation
 
         wp = self._make_wp(
             period=1, operating_period_index=1,
             r99_fcf_for_distribution_keur=500.0,
-            cf_after_reserves_keur=400.0,
+            cf_after_reserves_keur=400.0,  # diverges by 100 → tax_bridge heuristic
             cf_after_tax_keur=600.0,
             senior_ds_keur=200.0,
             revenue_keur=1000.0,
@@ -430,10 +435,8 @@ class TestRealisticCashSourceForDualRun:
             _attach_dualrun_validation(wf_result, mock_inputs, wf_result.periods)
             assert mock_run.called
             _, governed_inputs, economic_inputs = mock_run.call_args[0]
-            # r99_fcf=500 > 0 → post_shl_cash = 500
-            assert governed_inputs.period_inputs[0].post_shl_cash_available_keur == 500.0
-            # Must NOT be revenue - opex = 700
-            assert governed_inputs.period_inputs[0].post_shl_cash_available_keur != 700.0
+            # r99_fcf=500, cf_after_reserves=400, delta=100 > 1 → use cf_after_reserves
+            assert governed_inputs.period_inputs[0].post_shl_cash_available_keur == 400.0
 
     def test_da_input_not_revenue_minus_opex(self):
         """DA post_shl_cash must not equal revenue - opex when r99_fcf = 0."""
@@ -854,17 +857,21 @@ class TestMatrixPopulation:
         assert len(blocking) == 0, f"Supported combos have {len(blocking)} BLOCKING rows"
 
     def test_unsupported_combos_are_isolated(self):
-        """Unsupported combos must have supported_for_phase_c=False."""
+        """Unsupported combos must have supported_for_phase_c=False in summary CSV.
+
+        co2_revenue+cit raises an exception in the waterfall engine (mutually exclusive
+        flags) so it has 0 rows in the matrix. Check the summary CSV instead.
+        """
         import csv
         from pathlib import Path
-        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
-        with open(matrix_path, newline="", encoding="utf-8") as f:
+        summary_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_summary.csv"
+        with open(summary_path, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
-        unsupported = [r for r in rows if r["flag_combo"] in ("tax_bridge", "shl+deprec+tax_bridge")]
-        assert len(unsupported) > 0, "tax_bridge combos must exist in matrix"
+        unsupported = [r for r in rows if r["flag_combo"] == "co2_revenue+cit"]
+        assert len(unsupported) > 0, "co2_revenue+cit must exist in summary CSV"
         for r in unsupported:
-            assert r["supported_for_phase_c"] == "False", \
-                f"Combo {r['flag_combo']} must have supported_for_phase_c=False"
+            assert r["phase_c_supported"] == "False", \
+                f"Combo {r['flag_combo']} must have phase_c_supported=False"
 
     def test_phase_c_ready_false_when_unsupported_combos_exist(self):
         """phase_c_ready must be False for unsupported combos."""
@@ -874,11 +881,30 @@ class TestMatrixPopulation:
         with open(summary_path, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
         for r in rows:
-            if r["flag_combo"] in ("tax_bridge", "shl+deprec+tax_bridge"):
+            if r["flag_combo"] == "co2_revenue+cit":
                 assert r["phase_c_ready"] == "False", \
                     f"Unsupported combo {r['flag_combo']} must have phase_c_ready=False"
                 assert r["phase_c_supported"] == "False", \
                     f"Unsupported combo must have phase_c_supported=False"
+
+
+    def test_tax_bridge_now_supported(self):
+        """tax_bridge and shl+deprec+tax_bridge combos must have zero UNEXPECTED/BLOCKING."""
+        import csv
+        from pathlib import Path
+        matrix_path = Path(__file__).resolve().parents[1] / "reports" / "phase9_distributionaccount_dualrun_matrix.csv"
+        with open(matrix_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        for combo_label in ("tax_bridge", "shl+deprec+tax_bridge"):
+            combo_rows = [r for r in rows if r["flag_combo"] == combo_label]
+            assert len(combo_rows) > 0, f"{combo_label} must exist in matrix"
+            for r in combo_rows:
+                assert r["classification_economic"] in ("IDENTICAL", "ROUNDING", "EXPECTED_GATE_DIFFERENCE"), \
+                    f"{combo_label} period {r['period']} has unexpected {r['classification_economic']}"
+                assert r["classification_economic"] not in ("UNEXPECTED", "BLOCKING"), \
+                    f"{combo_label} period {r['period']} has {r['classification_economic']}"
+                assert r["supported_for_phase_c"] == "True", \
+                    f"{combo_label} must have supported_for_phase_c=True"
 
     def test_phase_c_ready_requires_identical_or_rounding(self):
         """phase_c_ready=True requires positive IDENTICAL/ROUNDING count in summary."""
