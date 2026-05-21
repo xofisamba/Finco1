@@ -1,0 +1,4 @@
+method,before_fix_irr,after_fix_irr,delta_pp,notes
+shl_plus_dividends,17.81%,15.10%,-2.71pp,Synthetic validation path confirms shi/shp are not added twice
+shl_plus_dividends_project_diagnostic,17.82%,15.13%,-2.69pp,Project diagnostic from PR 158 / PR 161 confirmation
+remaining_gap_vs_excel,15.13%,11.61%,-3.52pp,Excel target still lower; G20 and R99/R102 remain blocked
