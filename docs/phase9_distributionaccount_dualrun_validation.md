@@ -1,0 +1,229 @@
+# Phase 9B — DistributionAccount Dual-Run Validation
+
+## 1. Executive Summary
+
+**Task type:** DUAL-RUN VALIDATION — NO RUNTIME ROUTING.
+
+Phase 9B validates the DistributionAccount gate logic by running it **side-by-side** with the WaterfallEngine without changing runtime authority. `distribution_keur` remains the sole runtime-authoritative distribution source throughout.
+
+This branch validates whether DA gate-driven `equity_distribution_paid_keur` produces results consistent enough with WaterfallEngine `distribution_keur` to support Phase C (DA-authoritative) transition.
+
+**Key question:** Is DA gate logic sufficiently aligned with WaterfallEngine runtime logic that Phase C can begin safely?
+
+## 2. Current Runtime Authority Confirmation
+
+**Runtime authority:** `WaterfallEngine.distribution_keur` (waterfall_engine.py:1026)
+
+| Item | Status |
+|---|---|
+| `distribution_keur` source | WaterfallEngine — SOLE runtime authority |
+| `equity_distribution_paid_keur` source | DistributionAccount — gate-driven but AUDIT-ONLY |
+| Sponsor reads | `distribution_keur` directly from WaterfallEngine |
+| HoldCo reads | `distribution_keur` via adapter |
+| SHL reads | Internal SHL logic only |
+| R99/R102 | BLOCKED for runtime — audit-only |
+
+**This branch does NOT change any of the above.**
+
+## 3. Dual-Run Validation Architecture
+
+```
+run_waterfall_v3_core(..., use_dualrun_validation=True)
+  └── run_waterfall()  → runtime result (UNCHANGED)
+  └── _attach_dualrun_validation(result, inputs, periods_list)
+        └── build DistributionAccountInputs from waterfall period data
+        └── run_dual_validation(result, da_inputs)
+              └── WaterfallResult + DA inputs → DualRunResult
+        └── result._dualrun_validation = DualRunResult (annotation ONLY)
+```
+
+**Key architectural points:**
+- `use_dualrun_validation=True` is an opt-in flag — default is False (no performance impact in production)
+- `_attach_dualrun_validation` is called AFTER the waterfall run completes
+- The waterfall result is **never modified** — dual-run is annotation only
+- DistributionAccount inputs are **reconstructed** from waterfall period data for comparison
+- No routing replacement, no ownership transfer, no Sponsor/SHL/R99/R102 changes
+
+## 4. Validation Methodology
+
+### 4.1 Per-period comparison
+
+For each period in the waterfall result:
+1. Extract `runtime_distribution_keur = period.distribution_keur`
+2. Reconstruct equivalent DA inputs from waterfall period data
+3. Run DistributionAccount engine in audit-only mode
+4. Extract `da_paid_distribution_keur = period_result.equity_distribution_paid_keur`
+5. Compute delta: `delta_keur = da_paid - runtime`
+6. Classify divergence (see Section 9)
+
+### 4.2 DA input reconstruction
+
+DA inputs are reconstructed using the same period data the waterfall was built from:
+- `post_shl_cash_available_keur` = max(0, `revenue_keur` - `opex_keur`)
+- `actual_dscr` = `dscr` from waterfall period
+- `senior_debt_service_keur` = `senior_ds_keur` from waterfall period
+- `dsra_*` fields from waterfall period balances
+
+Note: DA inputs are reconstructed rather than re-passed to avoid tight coupling. This is intentional — Phase B tests whether DA gate logic is self-contained and consistent.
+
+### 4.3 Required flag combinations
+
+| Combination | Project | SHL | Deprec | CO2 Rev | CO2 CIT | Notes |
+|---|---|---|---|---|---|---|
+| 1 | TUHO | OFF | OFF | OFF | OFF | Baseline |
+| 2 | TUHO | ON | OFF | OFF | OFF | SHL canonical |
+| 3 | TUHO | OFF | ON | OFF | OFF | Deprec canonical |
+| 4 | TUHO | OFF | OFF | ON | OFF | CO2 revenue bridge |
+| 5 | TUHO | OFF | OFF | OFF | ON | CO2→CIT bridge |
+| 6 | TUHO | ON | ON | OFF | OFF | SHL + Deprec |
+| 7 | Oborovo | OFF | OFF | — | — | Baseline |
+| 8 | Oborovo | ON | OFF | — | — | SHL canonical |
+
+## 5. Runtime Invariants
+
+These must HOLD TRUE for all periods in all flag combinations:
+
+| Invariant | Description | Test |
+|---|---|---|
+| RI-1 | `result._dualrun_validation.runtime_unchanged == True` | Phase B does not modify waterfall result |
+| RI-2 | `result._dualrun_validation.sponsor_unchanged == True` | No Sponsor routing changes |
+| RI-3 | `result._dualrun_validation.shl_unchanged == True` | No SHL routing changes |
+| RI-4 | `result._dualrun_validation.r99_r102_still_blocked == True` | R99/R102 not promoted |
+| RI-5 | Exactly one runtime distribution truth per period | `distribution_keur` only, no dual-authoritative |
+| RI-6 | No fallback semantics | No implicit routing or shared mutable state |
+| RI-7 | Deterministic per-period comparison | Same inputs → same DA output |
+| RI-8 | `use_dualrun_validation=False` has zero impact | Flag is a no-op by default |
+
+## 6. Sponsor Invariants
+
+| Invariant | Description |
+|---|---|
+| SI-1 | Sponsor receives `distribution_keur` tuple from WaterfallEngine (unchanged) |
+| SI-2 | SponsorWaterfallTier.allocate receives same input as without dual-run |
+| SI-3 | No DA result is passed to Sponsor adapter |
+| SI-4 | `allocated_per_sponsor_keur` is derived solely from `distribution_keur` |
+
+## 7. SHL Invariants
+
+| Invariant | Description |
+|---|---|
+| HI-1 | SHL reads from internal SHL logic only (unchanged) |
+| HI-2 | `distribution_account_r102_sweep_candidate_keur` port remains unconnected |
+| HI-3 | SHL service order unchanged: senior → DSRA → R102 → SHL → equity |
+| HI-4 | No DA output is passed to SHL engine |
+
+## 8. R99/R102 Invariants
+
+| Invariant | Description |
+|---|---|
+| RI-99-1 | `evaluate_r99_gate()` always called with `enable_runtime=False` |
+| RI-99-2 | `r99_gate_result.passed == False` for all periods in Phase B |
+| RI-102-1 | `evaluate_r102_gate()` always called with `enable_runtime=False` |
+| RI-102-2 | `r102_gate_result.passed == False` for all periods in Phase B |
+| RI-99-3 | `r99_fcf_for_distribution_keur` remains audit-only benchmark |
+| RI-102-3 | `r102_fcf_for_shl_keur` remains audit-only benchmark |
+
+## 9. Divergence Classification Rules
+
+| Class | Condition | Phase C Impact |
+|---|---|---|
+| **IDENTICAL** | `delta_keur == 0` | ✅ Safe |
+| **ROUNDING** | all gates pass AND `|delta| <= 1 kEUR` | ✅ Safe (numerical) |
+| **EXPECTED_GATE_DIFFERENCE** | R99/R102 blocked OR DSCR/lockup/cash gate fails | ✅ Expected in Phase B |
+| **UNEXPECTED** | all gates pass AND `|delta| > 1 kEUR` | ⚠️ Investigate before Phase C |
+| **BLOCKING** | UNEXPECTED with large delta suggests logic mismatch | ❌ Block Phase C |
+
+**Classification logic:**
+```python
+def classify_delta(delta, runtime_dist, gates_passed, r99_blocked, ..., cash_passed):
+    if abs(delta) < 0.001:          → IDENTICAL
+    if gates_passed and abs(delta) <= 1.0:  → ROUNDING
+    if r99_blocked or r102_blocked: → EXPECTED_GATE_DIFFERENCE
+    if not dscr_passed or not lockup_passed or not cash_passed:
+                                      → EXPECTED_GATE_DIFFERENCE
+    if gates_passed and pct > 0.01:  → UNEXPECTED
+    else:                            → BLOCKING
+```
+
+## 10. TUHO Validation Results
+
+*To be populated by running `run_waterfall_v3_core(..., use_dualrun_validation=True)` across all 6 TUHO combinations.*
+
+Expected pattern:
+- Baseline (OFF/OFF/OFF/OFF): DA should produce results consistent with WE when DA gates would pass
+- CO2 bridges: DA should be unaffected (CO2 → tax only, not distributions)
+- SHL canonical: Compare with and without SHL
+
+## 11. Oborovo Validation Results
+
+*To be populated by running dual-run for Oborovo.*
+
+Note: Oborovo has `oborovo_guard` which always blocks in DA (PR #144). This is an **EXPECTED_GATE_DIFFERENCE**.
+
+## 12. Hidden Coupling Findings
+
+### 12.1 Known couplings
+
+| From | To | Type | Risk |
+|---|---|---|---|
+| WaterfallEngine | DistributionAccount | DA input reconstruction | Medium — approximations in cash proxy |
+| `post_shl_cash_available_keur` | DA gate evaluation | Data flow | Low — inputs are explicit |
+| `actual_dscr` | DSCR gate | Data flow | Low — direct passthrough |
+| `dsra_current_balance_keur` | Lockup gate | Data flow | Low — direct passthrough |
+
+### 12.2 Risk: DA input approximation
+
+DA inputs are reconstructed from waterfall periods using `revenue - opex` as a proxy for `post_shl_cash_available_keur`. This is an approximation because:
+- The waterfall may apply cash reserve deductions before distribution
+- SHL may have already consumed some cash
+
+If this approximation causes significant delta even when gates pass, the Phase C design must account for precise input threading.
+
+## 13. Runtime Safety Assessment
+
+| Item | Assessment | Risk |
+|---|---|---|
+| Runtime routing | NONE — no routing added | ✅ Safe |
+| Sponsor wiring | UNCHANGED — reads WE directly | ✅ Safe |
+| SHL wiring | UNCHANGED — port remains disconnected | ✅ Safe |
+| R99/R102 promotion | NONE — still BLOCKED | ✅ Safe |
+| Fallback semantics | NONE — no implicit routing | ✅ Safe |
+| Dual-authoritative runtime | NONE — WE sole authority | ✅ Safe |
+
+## 14. Remaining Blockers
+
+| Blocker | Severity | Resolution |
+|---|---|---|
+| Hidden DA→WE coupling via input reconstruction | MEDIUM | Investigate per-combination deltas |
+| UNEXPECTED divergence classification | HIGH | Investigate before Phase C |
+| Oborovo `oborovo_guard` always blocks | LOW | Expected — Oborovo needs explicit guard bypass |
+| `distribution_account_r102_sweep_candidate_keur` port unconnected | LOW | Phase C wiring only |
+
+## 15. Recommendation for Phase C
+
+**To be determined by dual-run results.**
+
+**Preliminary gates for Phase C readiness:**
+1. Zero `BLOCKING` classifications across all TUHO/Oborovo combinations
+2. Zero `UNEXPECTED` classifications after ROUNDING threshold adjustment
+3. All runtime invariants (RI-1 through RI-8) hold
+4. Sponsor, SHL, R99/R102 invariants hold
+5. Input approximation analysis complete — no systematic bias found
+
+**If all gates pass:** Phase C (DA-authoritative) can begin — `distribution_keur` becomes pass-through alias.
+
+**If blockers remain:** Phase C is BLOCKED. Remediation required before ownership transfer.
+
+## Change Table (this branch)
+
+| File | Change |
+|---|---|
+| `app/waterfall_core.py` | Added `use_dualrun_validation` flag + `_attach_dualrun_validation()` helper |
+| `domain/distribution_account/dualrun_validation.py` | New — DualRunResult, DualRunPeriodResult, run_dual_validation() |
+| `docs/phase9_distributionaccount_dualrun_validation.md` | New — this design doc |
+| `reports/phase9_distributionaccount_dualrun_matrix.csv` | New — per-period comparison matrix |
+| `tests/test_phase9_distributionaccount_dualrun_validation.py` | New — validation tests |
+
+## R99/R102 Status
+
+**BLOCKED throughout Phase 9B.** No promotion. No runtime wiring. Audit-only evaluation continues.
