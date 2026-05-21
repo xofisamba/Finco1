@@ -495,7 +495,7 @@ def _apply_distributionaccount_runtime_wiring(
             is_oborovo=is_oborovo,
             senior_tenor_years=senior_tenor_years,
             minimum_cash_reserve_keur=0.0,
-            audit_economic_mode=True,  # Economic mode: gates evaluated for distribution
+            runtime_economic_mode=True,  # Runtime staging mode: gates for explicit wiring only
         ))
 
     da_inputs = DistributionAccountInputs(
