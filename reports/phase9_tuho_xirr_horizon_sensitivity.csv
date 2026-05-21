@@ -1,0 +1,9 @@
+scenario,period_count,start_date,end_date,includes_construction_period,includes_terminal_periods,investment_base_keur,equity_irr,delta_vs_excel_pp,runtime_change_required,reporting_only,notes
+current_model_method,61,2030-06-30,2060-01-01,No,No,"-33,204",15.13%,+3.52pp,No,No,Model current state after PR165 alignment
+model_plus_2yr_date_shift,61,2028-06-30,2058-01-01,Yes,No,"-33,204",12.84%,+1.23pp,No,Yes,Date shift shows construction period is dominant driver
+excel_inv_base_no_idc,61,2030-06-30,2060-01-01,No,No,"-29,635",16.29%,+4.68pp,No,Yes,Excel investment base (excl. IDC) gives higher IRR
+excel_inv_plus_date_shift,61,2028-06-30,2058-01-01,Yes,No,"-29,635",13.74%,+2.13pp,No,Yes,"Both conventions: date shift reduces, IDC convention increases"
+excel_truncated_61_periods,61,2028-06-30,2040-01-01,Yes,No (truncated),"-29,635",11.61%,0.00pp,No,N/A,Excel IRR unchanged with horizon truncation — terminal periods have negligible IRR impact
+model_cfs_on_excel_dates,61,2028-06-30,2040-01-01,Yes,No,"-33,204",12.84%,+1.23pp,No,Yes,Model CFs on Excel construction-start date shows date shift is dominant
+excel_cfs_on_model_dates,61,2030-06-30,2060-01-01,No,No,"-29,635",13.53%,+1.92pp,No,Yes,Excel CFs on model dates: cash flow timing drives remaining gap
+current_model_with_no_change,61,2030-06-30,2060-01-01,No,No,"-33,204",15.13%,+3.52pp,No,No,Baseline: no changes made in this branch
