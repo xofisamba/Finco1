@@ -114,6 +114,12 @@ class WaterfallPeriod:
     )
     # Phase 6 audit-only tax-basis bridge fields. These values expose inputs and
     # outputs already used by compute_period_tax; they do not feed runtime cashflows.
+    # Phase 9C: Audit metadata for DA runtime wiring.
+    # Set when use_distributionaccount_runtime_wiring=True.
+    legacy_distribution_keur: float = 0.0  # Original runtime distribution before override
+    da_paid_distribution_keur: float = 0.0  # DA equity_distribution_paid_keur
+    distribution_source: str = ""  # "runtime" or "distribution_account"
+    distribution_wiring_delta_keur: float = 0.0  # da - legacy for audit
     tax_depreciation_audit_keur: float = 0.0
     fiscal_reintegration_audit_keur: float = 0.0
     taxable_income_before_losses_audit_keur: float = 0.0
@@ -166,6 +172,12 @@ class WaterfallResult:
     actual_avg_dscr: float = 0.0  # Actual average DSCR achieved
     project_code: str = ""
     use_shl_gross_accrued_for_pnl: bool = False
+    # Phase 9C: Audit metadata for DA runtime wiring.
+    # Set when use_distributionaccount_runtime_wiring=True.
+    legacy_distribution_keur: float = 0.0
+    da_paid_distribution_keur: float = 0.0
+    distribution_source: str = ""
+    distribution_wiring_delta_keur: float = 0.0
 
 
 def compute_ebitda_schedule(

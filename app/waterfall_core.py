@@ -68,6 +68,11 @@ def run_waterfall_v3_core(
     # WaterfallEngine.distribution_keur without changing runtime authority.
     # R99/R102: BLOCKED — no promotion in dual-run mode.
     use_dualrun_validation: bool = False,
+    # Phase 9C: Wire DA equity_distribution_paid_keur into runtime distribution.
+    # Flag=True: distribution_keur = DA equity_distribution_paid_keur (audit metadata attached).
+    # Flag=False: exact legacy runtime behavior, distribution_keur unchanged.
+    # R99/R102: BLOCKED — no promotion. SHL R102: UNCONNECTED.
+    use_distributionaccount_runtime_wiring: bool = False,
 ) -> dict:
     """Run the full waterfall without Streamlit cache dependencies.
 
@@ -405,7 +410,124 @@ def run_waterfall_v3_core(
     if use_dualrun_validation:
         _attach_dualrun_validation(result, inputs, periods_list)
 
+    # Phase 9C: Wire DA equity_distribution_paid_keur into runtime distribution.
+    # Flag=True: distribution_keur = DA equity_distribution_paid_keur.
+    # Flag=False: exact legacy runtime behavior, distribution_keur unchanged.
+    # R99/R102: BLOCKED. SHL R102: UNCONNECTED. Sponsor: reads distribution_keur only.
+    if use_distributionaccount_runtime_wiring:
+        _apply_distributionaccount_runtime_wiring(result, inputs)
+
     return result
+
+
+def _apply_distributionaccount_runtime_wiring(
+    result: "WaterfallResult",
+    inputs: "ProjectInputs",
+) -> None:
+    """Wire DA equity_distribution_paid_keur into runtime distribution_keur.
+
+    When use_distributionaccount_runtime_wiring=True, the waterfall result's
+    distribution_keur is replaced with DA's equity_distribution_paid_keur.
+    Audit metadata is attached to each period and the result.
+
+    NO runtime routing when flag=False. distribution_keur remains unchanged.
+    R99/R102: BLOCKED in DA (governed mode). SHL R102: unconnected.
+    """
+    from domain.distribution_account.engine import DistributionAccountEngine
+    compute_da = DistributionAccountEngine.compute
+    from domain.distribution_account.inputs import (
+        DistributionAccountInputs,
+        DistributionAccountPeriodInput,
+    )
+
+    is_tuho = (getattr(inputs.info, "code", "") == "TUHO-WIND-1")
+    is_oborovo = (getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1")
+    senior_tenor_years = inputs.financing.senior_tenor_years
+
+    # Oborovo guard: DA engine has TUHO-specific gates; runtime wiring not yet supported
+    if not is_tuho:
+        result.distribution_source = "oborovo_guard_blocked"
+        result.da_paid_distribution_keur = 0.0
+        result.legacy_distribution_keur = result.total_distribution_keur
+        result.distribution_wiring_delta_keur = 0.0
+        for wp in result.periods:
+            wp.distribution_source = "oborovo_guard_blocked"
+            wp.da_paid_distribution_keur = 0.0
+            wp.legacy_distribution_keur = wp.distribution_keur
+            wp.distribution_wiring_delta_keur = 0.0
+        return
+
+    # Build DA period inputs using the same cash-source logic as dual-run
+    da_period_inputs: list[DistributionAccountPeriodInput] = []
+    for wp in result.periods:
+        p_idx = getattr(wp, "period", None)
+        if p_idx is None:
+            continue
+
+        r99_fcf = getattr(wp, "r99_fcf_for_distribution_keur", 0.0)
+        cf_after_reserves = getattr(wp, "cf_after_reserves_keur", 0.0)
+        cf_after_tax = getattr(wp, "cf_after_tax_keur", 0.0)
+        senior_ds = getattr(wp, "senior_ds_keur", 0.0)
+
+        # Use the same cash source selection as dual-run
+        if r99_fcf > 0 and cf_after_reserves > 0 and abs(r99_fcf - cf_after_reserves) < 0.01:
+            post_shl_cash = r99_fcf
+        elif cf_after_reserves > 0:
+            post_shl_cash = cf_after_reserves
+        else:
+            post_shl_cash = max(0.0, cf_after_tax - senior_ds)
+
+        post_senior_cash = max(0.0, cf_after_tax - senior_ds)
+
+        da_period_inputs.append(DistributionAccountPeriodInput(
+            period_index=p_idx,
+            operating_period_index=getattr(wp, "operating_period_index", p_idx),
+            period_date=getattr(wp, "date", None) or __import__("datetime").date(2029, 12, 31),
+            opening_distribution_account_balance_keur=0.0,
+            post_senior_cash_available_keur=post_senior_cash,
+            post_shl_cash_available_keur=post_shl_cash,
+            senior_debt_service_keur=senior_ds,
+            actual_dscr=getattr(wp, "dscr", 1.5),
+            target_distribution_dscr=1.0,
+            dsra_current_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
+            dsra_required_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
+            is_tuho=is_tuho,
+            is_oborovo=is_oborovo,
+            senior_tenor_years=senior_tenor_years,
+            minimum_cash_reserve_keur=0.0,
+            audit_economic_mode=True,  # Economic mode: gates evaluated for distribution
+        ))
+
+    da_inputs = DistributionAccountInputs(
+        project_name=getattr(inputs.info, "name", "Project"),
+        period_inputs=tuple(da_period_inputs),
+        is_tuho=is_tuho,
+        is_oborovo=is_oborovo,
+    )
+
+    da_result = compute_da(da_inputs)
+
+    # Wire DA output into waterfall result
+    total_da_paid = 0.0
+    for wp, da_period in zip(result.periods, da_result.period_results):
+        legacy_dist = wp.distribution_keur
+        da_paid = da_period.equity_distribution_paid_keur
+
+        wp.legacy_distribution_keur = legacy_dist
+        wp.da_paid_distribution_keur = da_paid
+        wp.distribution_source = "distribution_account"
+        wp.distribution_wiring_delta_keur = da_paid - legacy_dist
+        # Pass-through alias: distribution_keur becomes DA paid when flag=True
+        wp.distribution_keur = da_paid
+
+        total_da_paid += da_paid
+
+    result.da_paid_distribution_keur = total_da_paid
+    result.legacy_distribution_keur = result.total_distribution_keur
+    result.distribution_source = "distribution_account"
+    result.distribution_wiring_delta_keur = total_da_paid - result.total_distribution_keur
+    # Recalculate total - pre-wiring sum is stale after per-period overrides
+    result.total_distribution_keur = sum(p.distribution_keur for p in result.periods)
 
 
 def _apply_tuho_shl_gross_accrued_interest_bridge(result: "WaterfallResult") -> None:
