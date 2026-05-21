@@ -1,0 +1,61 @@
+period,excel_shl_principal_keur,model_shl_principal_keur,delta_keur,excel_repayment_active,model_repayment_active,classification,notes
+1,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+2,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+3,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+4,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+5,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+6,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+7,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+8,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+9,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+10,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+11,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+12,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+13,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+14,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+15,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+16,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+17,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+18,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+19,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+20,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+21,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+22,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+23,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+24,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+25,1498.782,0.0,-1498.782,True,False,Excel active / model blocked,Excel has SHL principal while model remains in PIK/cash-interest phase.
+26,1463.879,0.0,-1463.879,True,False,Excel active / model blocked,Excel has SHL principal while model remains in PIK/cash-interest phase.
+27,1647.946,0.0,-1647.946,True,False,Excel active / model blocked,Excel has SHL principal while model remains in PIK/cash-interest phase.
+28,817.916,0.0,-817.916,True,False,Excel active / model blocked,Excel has SHL principal while model remains in PIK/cash-interest phase.
+29,4663.948,4688.274,24.326,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+30,3818.751,4013.881,195.13,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+31,5029.318,5068.576,39.259,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+32,4090.998,4430.54,339.542,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+33,5601.121,5639.817,38.696,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+34,4483.633,4997.91,514.277,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+35,6164.86,6208.939,44.079,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+36,4449.546,2980.072,-1469.475,True,True,Both active,Both repay principal; amount differs by available cash and timing.
+37,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+38,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+39,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+40,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+41,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+42,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+43,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+44,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+45,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+46,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+47,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+48,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+49,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+50,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+51,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+52,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+53,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+54,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+55,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+56,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+57,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+58,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+59,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
+60,0.0,0.0,0.0,False,False,Both inactive,No SHL principal in either source.
