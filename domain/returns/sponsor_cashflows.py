@@ -45,7 +45,7 @@ def build_sponsor_cashflows(
 
     Returns:
         sponsor_cfs: list with t0 = -(share_capital + shl + shl_idc),
-        then per-period: equity_cf + shi + shp
+        then per-period sponsor cash flow.
     """
     # t0: total sponsor investment
     t0 = -(share_capital_keur + shl_amount_keur + shl_idc_keur)
@@ -55,11 +55,14 @@ def build_sponsor_cashflows(
         equity_cf = equity_cf_per_period[i]
         shi = shl_interest_paid_per_period[i]
         shp = shl_principal_paid_per_period[i]
-        # For "shl_interest_only": equity CF already = shi + shp (includes SHL flows)
-        # For other methods: equity CF excludes SHL, so add them separately
-        if equity_irr_method == "shl_interest_only":
-            sponsor_cf = equity_cf  # no double-counting
+        # For SHL-specific methods, equity_cf is already the selected sponsor
+        # stream assembled upstream. Adding shi/shp here would double-count SHL
+        # cash flows and inflate sponsor/equity IRR.
+        if equity_irr_method in {"shl_interest_only", "shl_plus_dividends"}:
+            sponsor_cf = equity_cf
         else:
+            # Preserve existing semantics for methods whose equity stream is
+            # distribution-only and therefore excludes paid SHL cash flows.
             sponsor_cf = equity_cf + shi + shp
         cfs.append(sponsor_cf)
 
