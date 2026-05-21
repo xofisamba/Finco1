@@ -1,0 +1,6 @@
+method,equity_irr,investment_base_keur,total_distributions_keur,total_shl_interest_keur,total_shl_principal_keur,total_shl_cashflows_keur,includes_shl_principal,includes_shl_interest,includes_pik,includes_wht,includes_terminal_cash,timing_convention,status,notes
+calibrated_reference,11.15%,-,-,-,-,-,-,-,-,-,-,-,REFERENCE,"From Sprint 21, DA wiring, shl_balance=0 bug (used equity_only)"
+shl_plus_dividends_corrected,14.96%,"-33,203.69","284,342.39","10,183.52","32,703.69","42,887.21",No,Yes,N/A,No,N/A,cash,CORRECTED,"shl_plus_dividends without double-count, equity_cf=shi when bal>0 else dist"
+shl_plus_dividends_bSC,26.66%,"-33,203.69","284,342.39","10,183.52","32,703.69","42,887.21",Yes,Yes,N/A,No,N/A,cash,BUG,build_sponsor_cashflows double-counts shi+shp on top of equity_cf
+excel_target,11.61%,-,-,-,-,-,-,-,-,-,-,-,TARGET,Excel XIRR reference
+equity_only_buggy,56.73%,"-33,203.69","284,342.39",0.00,0.00,0.00,No,No,N/A,N/A,N/A,cash,WRONG,equity_only with correct SHL params gives 56.73% — investment base too small

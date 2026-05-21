@@ -1,0 +1,8 @@
+component,calibrated_total_keur,shl_plus_dividends_total_keur,delta_keur,estimated_irr_impact,classification,notes
+initial_investment_base,-32703.69,-32703.69,0.0,NONE,same investment base
+total_distributions,284342.39,284342.39,0.0,NONE,same total distributions
+shl_interest,0.0,10183.52,10183.52,+3.6pp,DRIVER,calibrated had shl_bal=0 so shi=0; corrected has shi=10183
+shl_principal,0.0,32703.69,32703.69,-5.8pp,OFFSETTING,"shp (full balance) returned in CFs; in calibrated equity_only, shp goes to equity via dist"
+terminal_cash,0.0,0.0,0.0,NONE,no terminal cash
+sign_convention,N/A,N/A,N/A,NONE,consistent
+timing,same,same,same,NONE,same dates
