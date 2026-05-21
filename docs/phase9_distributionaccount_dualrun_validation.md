@@ -56,15 +56,35 @@ For each period in the waterfall result:
 5. Compute delta: `delta_keur = da_paid - runtime`
 6. Classify divergence (see Section 9)
 
-### 4.2 DA input reconstruction
+### 4.2 DA input reconstruction (cash-source cascade)
 
-DA inputs are reconstructed using the same period data the waterfall was built from:
-- `post_shl_cash_available_keur` = max(0, `revenue_keur` - `opex_keur`)
+DA inputs are reconstructed from waterfall period fields using a priority cascade
+(best available source → fallback):
+
+| Priority | Source field | Description | When zero/unavailable |
+|---|---|---|---|
+| 1 (best) | `r99_fcf_for_distribution_keur` | TUHO R99 engine: post-tax, post-senior-DS, post-reserves after lockup assessment | Zero for non-TUHO projects; zero when TUHO R99 engine inactive |
+| 2 | `cf_after_reserves_keur` | Cash after DSRA/MRA contributions and senior debt service | Zero for non-SHLA projects or pre-DSRA periods |
+| 3 (fallback) | `cf_after_tax_keur - senior_ds_keur` | Post-tax cash minus senior debt service (imperfect; see §Limitations) | Always available |
+
+**The `revenue - opex` proxy is NOT used.**
+
+Additional fields reconstructed from waterfall period:
 - `actual_dscr` = `dscr` from waterfall period
-- `senior_debt_service_keur` = `senior_ds_keur` from waterfall period
+- `senior_debt_service_keur` = `senior_ds_keur`
 - `dsra_*` fields from waterfall period balances
 
 Note: DA inputs are reconstructed rather than re-passed to avoid tight coupling. This is intentional — Phase B tests whether DA gate logic is self-contained and consistent.
+
+### 4.2.1 Cash-source limitations
+
+The fallback (`cf_after_tax - senior_ds`) is imperfect because:
+- It does not account for DSRA/MRA contribution cycles (which temporarily lock up cash)
+- It does not reflect SHL PIK or sweep mechanics that may consume cash
+- `cf_after_reserves_keur` is the preferred fallback when available but is zero in early operating periods before the reserve cycle is established
+
+For TUHO with the R99 engine active (`use_tax_bridge_engine=True`), `r99_fcf_for_distribution_keur` provides the correct distributable cash at each stage of the R69/R84/R98/R99/R102 cascade.
+
 
 ### 4.3 Required flag combinations
 
