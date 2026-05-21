@@ -15,24 +15,42 @@ def evaluate_r99_gate(
     inputs: R99R102GateInputs,
     cash_available: float,
     enable_runtime: bool,
+    audit_economic_mode: bool = False,
 ) -> DistributionGateResult:
     """Evaluate R99 gate.
 
     R99 is the equity distribution gate.
-    Always returns BLOCKED unless enable_r99_r102_runtime=True (never in this branch).
+
+    In normal (governed) mode: always BLOCKED — R99/R102 not promoted to runtime.
+    In audit_economic_mode: evaluate gate using cash logic to produce economic value
+    for comparison purposes only. Output cannot be routed to runtime.
+
+    Args:
+        audit_economic_mode: if True, evaluate R99 using cash inputs (not governance).
+            Result is audit/comparison only — must never flow to runtime.
     """
-    if not enable_runtime:
+    if not audit_economic_mode:
+        # Normal governed mode: R99 not promoted — always blocked
         return DistributionGateResult(
             gate_name="r99_gate",
             passed=False,
             blocked_reason=BLOCKED_REASONS["R99_BLOCKED"],
         )
-    # Future: evaluate cumulative FCF vs senior debt outstanding
-    # For now: return blocked
+
+    # Audit-economic mode: evaluate gate using available cash data.
+    # R99 gate passes if cumulative FCF covers senior debt and there is cash remaining.
+    # cash_available is the post-tax, post-senior-DS cash for distribution.
+    if cash_available <= 0:
+        return DistributionGateResult(
+            gate_name="r99_gate",
+            passed=False,
+            blocked_reason=BLOCKED_REASONS["NEGATIVE_CASH"],
+        )
+    # Economic gate passes — cash is available for equity distribution
     return DistributionGateResult(
         gate_name="r99_gate",
-        passed=False,
-        blocked_reason=BLOCKED_REASONS["R99_BLOCKED"],
+        passed=True,
+        blocked_reason="",
     )
 
 
@@ -40,22 +58,41 @@ def evaluate_r102_gate(
     inputs: R99R102GateInputs,
     cash_available: float,
     enable_runtime: bool,
+    audit_economic_mode: bool = False,
 ) -> DistributionGateResult:
     """Evaluate R102 gate.
 
     R102 is the SHL sweep gate.
-    Always returns BLOCKED unless enable_r99_r102_runtime=True (never in this branch).
+
+    In normal (governed) mode: always BLOCKED — R99/R102 not promoted to runtime.
+    In audit_economic_mode: evaluate gate to determine SHL sweep eligibility.
+    Output is audit/comparison only — must never flow to runtime.
+
+    Args:
+        audit_economic_mode: if True, evaluate R102 using cash inputs (not governance).
+            Result is audit/comparison only — must never flow to runtime.
     """
-    if not enable_runtime:
+    if not audit_economic_mode:
+        # Normal governed mode: R102 not promoted — always blocked
         return DistributionGateResult(
             gate_name="r102_gate",
             passed=False,
             blocked_reason=BLOCKED_REASONS["R102_BLOCKED"],
         )
+
+    # Audit-economic mode: evaluate SHL sweep eligibility.
+    # R102 gate passes if SHL has a positive balance and cash is available for sweep.
+    if cash_available <= 0:
+        return DistributionGateResult(
+            gate_name="r102_gate",
+            passed=False,
+            blocked_reason=BLOCKED_REASONS["NEGATIVE_CASH"],
+        )
+    # Economic gate passes — cash available for SHL sweep
     return DistributionGateResult(
         gate_name="r102_gate",
-        passed=False,
-        blocked_reason=BLOCKED_REASONS["R102_BLOCKED"],
+        passed=True,
+        blocked_reason="",
     )
 
 

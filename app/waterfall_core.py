@@ -752,6 +752,10 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
 
     NO runtime routing. Result is not modified. DA remains audit-only.
 
+    Runs two DA evaluations side-by-side:
+    1. Governed mode (normal) — R99/R102 always BLOCKED
+    2. Economic mode (audit-only) — R99/R102 evaluated using cash logic
+
     Cash source hierarchy for DA dual-run input (best available):
       1. r99_fcf_for_distribution_keur   — post-tax, post-senior-DS, post-reserves
          (TUHO R99 engine; zero for non-TUHO when engine is not active)
@@ -760,9 +764,7 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
       3. cf_after_tax_keur               — post-tax cash before debt service
          (fallback only; not a distribution proxy)
 
-    The revenue - opex proxy is NOT used. See docs/phase9_distributionaccount_
-    dualrun_validation.md §Limitations for cases where none of the above
-    fields reflects true distributable cash.
+    The revenue - opex proxy is NOT used.
     """
     from domain.distribution_account.dualrun_validation import run_dual_validation
     from domain.distribution_account.inputs import (
@@ -771,8 +773,10 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
         R99R102GateInputs,
     )
 
-    # Build DA period inputs from waterfall result periods
-    da_period_inputs: list[DistributionAccountPeriodInput] = []
+    # Build DA period inputs for both governed and economic modes
+    governed_periods: list[DistributionAccountPeriodInput] = []
+    economic_periods: list[DistributionAccountPeriodInput] = []
+
     for wp in result.periods:
         p_idx = getattr(wp, "period", None)
         if p_idx is None:
@@ -781,32 +785,26 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
         # -----------------------------------------------------------------
         # Cash source selection (best available, descending preference)
         # -----------------------------------------------------------------
-        # Source 1: TUHO R99 engine output — clean post-tax / post-senior-DS
-        # after lockup assessment. Zero when engine is inactive (non-TUHO).
         r99_fcf = getattr(wp, "r99_fcf_for_distribution_keur", 0.0)
-        # Source 2: cf_after_reserves — cash after DSRA/MRA and senior service.
-        # Set even when r99_fcf is the primary source (provides audit trail).
         cf_after_reserves = getattr(wp, "cf_after_reserves_keur", 0.0)
-        # Source 3: cf_after_tax — post-tax before debt service (fallback only).
         cf_after_tax = getattr(wp, "cf_after_tax_keur", 0.0)
         senior_ds = getattr(wp, "senior_ds_keur", 0.0)
 
-        # Determine primary cash source and document origin
         if r99_fcf > 0:
             post_shl_cash = r99_fcf
-            cash_source = "r99_fcf_for_distribution_keur"
         elif cf_after_reserves > 0:
             post_shl_cash = cf_after_reserves
-            cash_source = "cf_after_reserves_keur"
         else:
-            # Fallback: cf_after_tax minus senior debt service.
-            # This is imperfect — see docs §Limitations.
             post_shl_cash = max(0.0, cf_after_tax - senior_ds)
-            cash_source = "cf_after_tax_minus_senior_ds (imperfect fallback)"
 
         post_senior_cash = max(0.0, cf_after_tax - senior_ds)
 
-        da_period_inputs.append(DistributionAccountPeriodInput(
+        is_tuho = (getattr(inputs.info, "code", "") == "TUHO-WIND-1")
+        is_oborovo = (getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1")
+        senior_tenor_years = inputs.financing.senior_tenor_years
+
+        # Common fields for both governed and economic inputs
+        common_fields = dict(
             period_index=p_idx,
             operating_period_index=getattr(wp, "operating_period_index", p_idx),
             period_date=getattr(wp, "date", None) or __import__('datetime').date(2029, 12, 31),
@@ -818,26 +816,42 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
             target_distribution_dscr=1.0,
             dsra_current_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
             dsra_required_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
-            is_tuho=(getattr(inputs.info, "code", "") == "TUHO-WIND-1"),
-            is_oborovo=(getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1"),
-            senior_tenor_years=inputs.financing.senior_tenor_years,
+            is_tuho=is_tuho,
+            is_oborovo=is_oborovo,
+            senior_tenor_years=senior_tenor_years,
             minimum_cash_reserve_keur=0.0,
+        )
+
+        # Governed mode: R99/R102 always blocked (normal DA behavior)
+        governed_periods.append(DistributionAccountPeriodInput(
+            **common_fields,
+            audit_economic_mode=False,
         ))
 
-    da_inputs = DistributionAccountInputs(
+        # Economic mode: R99/R102 evaluated using cash logic (audit-only)
+        economic_periods.append(DistributionAccountPeriodInput(
+            **common_fields,
+            audit_economic_mode=True,
+        ))
+
+    governed_inputs = DistributionAccountInputs(
         project_name=getattr(inputs.info, "name", "Project"),
-        period_inputs=tuple(da_period_inputs),
-        is_tuho=(getattr(inputs.info, "code", "") == "TUHO-WIND-1"),
-        is_oborovo=(getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1"),
+        period_inputs=tuple(governed_periods),
+        is_tuho=is_tuho,
+        is_oborovo=is_oborovo,
+    )
+
+    economic_inputs = DistributionAccountInputs(
+        project_name=getattr(inputs.info, "name", "Project"),
+        period_inputs=tuple(economic_periods),
+        is_tuho=is_tuho,
+        is_oborovo=is_oborovo,
     )
 
     try:
-        dual_result = run_dual_validation(result, da_inputs)
+        dual_result = run_dual_validation(result, governed_inputs, economic_inputs)
         result._dualrun_validation = dual_result
     except Exception as exc:
-        # Attach the exception so failure is observable (not silent).
-        # is DualRunResult: validation succeeded.
-        # is Exception: dual-run validation itself failed with an error.
         result._dualrun_validation = exc
 
 
