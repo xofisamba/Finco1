@@ -1,0 +1,8 @@
+component,model_amount_keur,excel_amount_keur,delta_keur,included_in_model_irr,included_in_excel_irr,classification,notes
+sponsor_equity,500.0,500.0,0.0,Yes,Yes,match,Share capital injection
+shl_drawdown,29135.0,29135.0,0.0,Yes,Yes,match,SHL drawdown same in both
+shl_idc,3568.69,0.0,3568.69,Yes (in model),No (in Excel),reporting_convention,SHL IDC capitalized in model; Excel equity IRR excludes it
+total_investment_base,33203.69,29635.18,3568.51,,,,Model = shl_drawdown + shl_idc + share_cap; Excel = shl_drawdown + share_cap
+capitalized_interest_during_pik,N/A,N/A,N/A,N/A,N/A,N/A,PIK interest capitalization tracked separately in waterfall
+fees,0.0,0.0,0.0,N/A,N/A,none,No fees in either model or Excel
+retained_cash,N/A,N/A,N/A,N/A,N/A,N/A,"Tracked in DSRA, not in investment base"
