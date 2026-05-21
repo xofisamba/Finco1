@@ -1,0 +1,7 @@
+case_id,project,flags,legacy_distribution_total_keur,da_paid_distribution_total_keur,runtime_distribution_total_keur,distribution_delta_keur,expected_status,actual_status,r99_r102_status,oborovo_guard_status,notes
+tuho_baseline_flagFalse,TUHO-WIND-1,default,326165.35,0.0,326165.35,0.0,UNCHANGED_LEGACY,PASS,BLOCKED_GOVERNED,N/A,"Baseline TUHO, flag=False"
+tuho_baseline_flagTrue,TUHO-WIND-1,use_distributionaccount_runtime_wiring=True,326165.35,284552.08,284552.08,-41613.28,DA_WIRED,PASS,BLOCKED_GOVERNED,N/A,"DA wired pass-through alias, 13 lockup periods zeroed"
+oborovo_baseline_flagFalse,OBOROVO-SOLAR-1,default,181019.11,0.0,181019.11,0.0,UNCHANGED_LEGACY,PASS,N/A,N/A,"Oborovo baseline, flag=False"
+oborovo_flagTrue_guardBlocked,OBOROVO-SOLAR-1,use_distributionaccount_runtime_wiring=True,181019.11,0.0,181019.11,0.0,GUARD_BLOCKED,PASS,N/A,GUARD_FIRED,"Oborovo guard blocks, distribution_source=oborovo_guard_blocked"
+tuho_taxbridge_flagFalse,TUHO-WIND-1,"use_tax_bridge_engine=True, use_distributionaccount_runtime_wiring=False",326165.35,0.0,326165.35,0.0,UNCHANGED_LEGACY,PASS,BLOCKED_GOVERNED,N/A,"TUHO + tax_bridge, flag=False"
+tuho_taxbridge_flagTrue,TUHO-WIND-1,"use_tax_bridge_engine=True, use_distributionaccount_runtime_wiring=True",326165.35,284552.08,284552.08,-41613.28,DA_WIRED,PASS,BLOCKED_GOVERNED,N/A,"TUHO + tax_bridge + DA wiring, pass-through alias active"
