@@ -1,0 +1,14 @@
+case_id,project,da_runtime_wiring,shl_r102_input,sponsor_handoff_input,tax_bridge,expected_runtime_change,expected_status,notes
+tuho_baseline_default,TUHO-WIND-1,False,,,False,none,PASS,"baseline default flags, no drift"
+tuho_da_wiring_only,TUHO-WIND-1,True,,,False,distribution=da_paid,PASS,"DA wired, TUHO total 284552"
+tuho_shl_r102_only,TUHO-WIND-1,False,True,,False,shl_r102_candidate,PASS,SHL R102 candidate provided
+tuho_sponsor_handoff_only,TUHO-WIND-1,False,,True,False,sponsor_handoff,PASS,explicit sponsor distribution provided
+tuho_da_wiring_plus_taxbridge,TUHO-WIND-1,True,,,True,distribution=da_paid,PASS,DA wiring + tax_bridge
+tuho_da_wiring_plus_sponsor,TUHO-WIND-1,True,,True,False,distribution=da_paid,PASS,DA wiring + sponsor handoff
+tuho_da_wiring_plus_shl_r102,TUHO-WIND-1,True,True,,False,distribution=da_paid,PASS,DA wiring + SHL R102 candidate
+tuho_all_three_inputs,TUHO-WIND-1,True,True,True,True,distribution=da_paid,PASS,DA wiring + SHL R102 + sponsor handoff
+oborovo_baseline_default,OBOROVO-SOLAR-1,False,,,False,none,PASS,Oborovo baseline default flags
+oborovo_da_wiring_guard,OBOROVO-SOLAR-1,True,,,False,guard_blocks,PASS,"Oborovo guard fires, distribution unchanged"
+oborovo_shl_r102_only,OBOROVO-SOLAR-1,False,True,,False,shl_r102_candidate,PASS,SHL R102 candidate provided
+oborovo_sponsor_handoff_only,OBOROVO-SOLAR-1,False,,True,False,sponsor_handoff,PASS,explicit sponsor distribution for Oborovo
+oborovo_all_inputs_guard,OBOROVO-SOLAR-1,True,True,True,False,guard_blocks,PASS,Oborovo guard fires even with all inputs
