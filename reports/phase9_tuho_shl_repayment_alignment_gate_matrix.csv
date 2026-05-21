@@ -1,0 +1,9 @@
+gate_id,gate_name,current_status,required_before_implementation,evidence_available,missing_evidence,owner_module,notes
+GATE_EXCEL_TIMING,Excel repayment timing evidence,available,yes,yes,none,fixtures/reports,Excel fixture shows first SHL principal P25 / 2042-06-30
+GATE_MODEL_P29,Model P29 runtime evidence,available,yes,yes,none,domain/waterfall,PR 163 trace shows current model first SHL principal P29 / 2044-06-30
+GATE_ZERO_DRIFT,Default-off / zero drift requirement,required,yes,partial,implementation branch proof,waterfall runner,Implementation must prove default behavior bit-identical
+GATE_OBOROVO,Oborovo guard,required,yes,partial,implementation branch proof,project guard,Oborovo must remain unchanged or explicitly rejected if alignment config is on
+GATE_R99_NOT_APPROVED,R99/R102 not approved,blocked,yes,yes,approved runtime source,DistributionAccount/R99/R102,R99/R102 runtime source must not be promoted in alignment implementation
+GATE_G20_BLOCKED,G20 blocked,blocked,yes,yes,G20 approval,governance,G20 remains BLOCKED after this design
+GATE_SPONSOR_IRR,Sponsor IRR parity,not achieved,yes,partial,post-implementation IRR bridge,returns/reporting,Need recompute after P25 alignment and fixed investment-base convention
+GATE_SHL_SCHEDULE,SHL balance/principal schedule parity,not achieved,yes,partial,post-implementation period bridge,SHL repayment eligibility,Need P25-P28 principal parity and balance bridge without changing interest/PIK/WHT

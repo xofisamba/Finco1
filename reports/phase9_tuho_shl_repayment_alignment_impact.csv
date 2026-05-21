@@ -1,0 +1,6 @@
+scenario,first_principal_period,first_principal_date,total_principal_repaid_keur,expected_equity_irr,delta_vs_current_pp,delta_vs_excel_pp,runtime_change_required,notes
+current_model,29,2044-06-30,38028.0,current observed path,0.00,ESTIMATE_REQUIRED,false,Current main behavior after PR 163; Excel mismatch remains
+excel_fixture,25,2042-06-30,43730.7,11.61%,ESTIMATE_REQUIRED,0.00,false,Excel target fixture path; not a runtime source
+alignment_target_config_driven,25,2042-06-30,ESTIMATE_REQUIRED,ESTIMATE_REQUIRED,ESTIMATE_REQUIRED,ESTIMATE_REQUIRED,true,Requires implementation to recompute schedule and IRR; do not mark pass before implementation
+no_change_documented_convention,29,2044-06-30,38028.0,current observed path,0.00,ESTIMATE_REQUIRED,false,No runtime change; G20 remains blocked
+r99_r102_source_promotion_candidate,25,2042-06-30,ESTIMATE_REQUIRED,ESTIMATE_REQUIRED,ESTIMATE_REQUIRED,ESTIMATE_REQUIRED,true,Rejected for now because R99/R102 runtime promotion remains not approved
