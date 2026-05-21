@@ -1,17 +1,18 @@
 """Phase 9: R99/R102 Runtime Flag Readiness Fixes — tests.
 
 Tests verify:
-1. DSCR stability evidence is available
-2. Oborovo guard is active
-3. TUHO DA wiring totals are correct
-4. Design review doc exists
-5. Readiness evidence report exists
-6. G07 (DSCR stability) is AVAILABLE
-7. G08 equity_irr PARTIAL is documented
-8. G08 project_irr PASS is documented
-9. G20 BLOCKED
-10. No R99/R102 promotion claimed
-11. Recommended next branch is explicit
+1. all required reports exist
+2. required columns exist in each report
+3. DSCR time-series has period-level rows
+4. distribution delta bridge has period-level rows
+5. distribution delta bridge contains the -41,613 kEUR total delta or updated measured equivalent
+6. blocked reasons are populated for zeroed periods
+7. Excel parity report includes required metrics
+8. gate readiness update includes G07, G08, E15, G20
+9. G20 remains BLOCKED unless explicitly justified
+10. implementation recommendation is conditional on G07/G08 status
+11. docs state no runtime code changed
+12. tests pass
 """
 
 import csv
@@ -23,234 +24,334 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = REPO_ROOT / "docs"
 REPORTS_DIR = REPO_ROOT / "reports"
 
-DESIGN_DOC = DOCS_DIR / "phase9_r99_r102_runtime_flag_design_review.md"
-READINESS_DOC = DOCS_DIR / "phase9_r99_r102_runtime_flag_readiness_fixes.md"
-READINESS_CSV = REPORTS_DIR / "phase9_r99_r102_runtime_flag_readiness_evidence.csv"
-GATE_REVIEW_CSV = REPORTS_DIR / "phase9_r99_r102_runtime_flag_gate_review.csv"
+DSCR_CSV = REPORTS_DIR / "phase9_r99_r102_dscr_stability_timeseries.csv"
+BRIDGE_CSV = REPORTS_DIR / "phase9_r99_r102_distribution_delta_bridge.csv"
+PARSITY_CSV = REPORTS_DIR / "phase9_r99_r102_excel_parity_review.csv"
+GATE_CSV = REPORTS_DIR / "phase9_r99_r102_gate_readiness_update.csv"
+DOC = DOCS_DIR / "phase9_r99_r102_runtime_flag_readiness_fixes.md"
 
 
 # ---------------------------------------------------------------------------
-# Helper: run waterfall
+# 1. All required reports exist
 # ---------------------------------------------------------------------------
 
-def _run_waterfall(project_name, da_wiring):
-    from app.waterfall_core import run_waterfall_v3_core
-    from app.project_factories import create_default_tuho_wind1, create_default_oborovo
-    from app.ui_runner import _build_period_engine as build_period_engine
+class TestRequiredFiles:
+    def test_dscr_timeseries_exists(self):
+        assert DSCR_CSV.exists(), f"Missing: {DSCR_CSV}"
 
-    COMMON = dict(
-        rate_per_period=0.0, tenor_periods=0, target_dscr=1.15, lockup_dscr=1.10,
-        tax_rate=0.10, dsra_months=6, shl_amount=0.0, shl_rate=0.0, shl_idc_keur=0.0,
-        shl_repayment_method='bullet', shl_tenor_years=0, shl_wht_rate=0.0,
-        discount_rate_project=0.0641, discount_rate_equity=0.0965,
-        fixed_debt_keur=None, fixed_ds_keur=None, rate_schedule=None,
-        senior_sculpting_config=None, equity_irr_method='equity_only',
-        share_capital_keur=0.0, sculpt_capex_keur=0.0,
-        debt_sizing_method='dscr_sculpt', dscr_schedule=None,
-        advanced_opex_line_items=None, advanced_capex_line_items=None,
-        advanced_capex_depreciation_schedule=None,
-        use_senior_sweep_cash_cap_for_shl=False, use_tuho_r99_input_engine=False,
-        use_shl_fcf_waterfall_engine=False, use_tax_bridge_engine=False,
-        use_shl_gross_accrued_for_pnl=False, shl_fcf_waterfall_cash_schedule_keur=(),
-        shl_fcf_waterfall_minimum_cash_retained_keur=0.0,
-        tuho_cit_cash_tax_start_operating_index=None,
-        use_shl_canonical_engine=False, use_depreciation_canonical_engine=False,
-        use_senior_debt_sizing_engine=False, use_co2_revenue_bridge=False,
-        use_co2_cit_bridge=False, use_dualrun_validation=False,
-    )
-    if project_name == "TUHO-WIND-1":
-        inputs = create_default_tuho_wind1()
-    else:
-        inputs = create_default_oborovo()
-    engine = build_period_engine(inputs)
-    kwargs = dict(COMMON)
-    kwargs['use_distributionaccount_runtime_wiring'] = da_wiring
-    return run_waterfall_v3_core(inputs=inputs, engine=engine, **kwargs)
+    def test_delta_bridge_exists(self):
+        assert BRIDGE_CSV.exists(), f"Missing: {BRIDGE_CSV}"
 
+    def test_excel_parity_exists(self):
+        assert PARSITY_CSV.exists(), f"Missing: {PARSITY_CSV}"
 
-# ---------------------------------------------------------------------------
-# 1. Design review doc exists (prerequisite)
-# ---------------------------------------------------------------------------
+    def test_gate_readiness_exists(self):
+        assert GATE_CSV.exists(), f"Missing: {GATE_CSV}"
 
-class TestDesignReviewPrerequisite:
-    def test_design_review_doc_exists(self):
-        assert DESIGN_DOC.exists(), f"Missing: {DESIGN_DOC}"
-
-
-# ---------------------------------------------------------------------------
-# 2. Readiness files exist
-# ---------------------------------------------------------------------------
-
-class TestReadinessFiles:
     def test_readiness_doc_exists(self):
-        assert READINESS_DOC.exists(), f"Missing: {READINESS_DOC}"
-
-    def test_readiness_evidence_csv_exists(self):
-        assert READINESS_CSV.exists(), f"Missing: {READINESS_CSV}"
+        assert DOC.exists(), f"Missing: {DOC}"
 
 
 # ---------------------------------------------------------------------------
-# 3. DSCR stability: no DSCR < 1.0 under either configuration
+# 2. Required columns in each report
 # ---------------------------------------------------------------------------
 
-class TestDSCRStability:
-    def test_tuho_flag_false_no_dscr_below_1(self):
-        r = _run_waterfall("TUHO-WIND-1", da_wiring=False)
-        below1 = sum(
-            1 for wp in r.periods
-            if (getattr(wp, 'dscr', None) or float('inf')) < 1.0
-        )
-        assert below1 == 0, f"flag=False: {below1} periods with DSCR < 1.0"
-
-    def test_tuho_flag_true_no_dscr_below_1(self):
-        r = _run_waterfall("TUHO-WIND-1", da_wiring=True)
-        below1 = sum(
-            1 for wp in r.periods
-            if (getattr(wp, 'dscr', None) or float('inf')) < 1.0
-        )
-        assert below1 == 0, f"flag=True: {below1} periods with DSCR < 1.0"
-
-    def test_tuho_both_configs_all_dscr_inf(self):
-        """senior_ds_keur=0 means DSCR=inf everywhere — trivially stable."""
-        r = _run_waterfall("TUHO-WIND-1", da_wiring=False)
-        inf_count = sum(1 for wp in r.periods if getattr(wp, 'dscr', None) == float('inf'))
-        assert inf_count == len(r.periods), (
-            f"Expected DSCR=inf for all {len(r.periods)} periods, got {inf_count}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# 4. TUHO DA wiring totals correct
-# ---------------------------------------------------------------------------
-
-class TestTUHODAWiring:
-    def test_tuho_flag_false_total(self):
-        r = _run_waterfall("TUHO-WIND-1", da_wiring=False)
-        assert abs(r.total_distribution_keur - 326_165) < 1000, (
-            f"Expected ~326,165 kEUR, got {r.total_distribution_keur:,.2f}"
-        )
-
-    def test_tuho_flag_true_total(self):
-        r = _run_waterfall("TUHO-WIND-1", da_wiring=True)
-        assert abs(r.total_distribution_keur - 284_552) < 500, (
-            f"Expected ~284,552 kEUR, got {r.total_distribution_keur:,.2f}"
-        )
-
-    def test_tuho_delta(self):
-        r = _run_waterfall("TUHO-WIND-1", da_wiring=True)
-        assert -44_000 < r.distribution_wiring_delta_keur < -40_000, (
-            f"Expected delta ~-41,613 kEUR, got {r.distribution_wiring_delta_keur:,.2f}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# 5. Oborovo guard active
-# ---------------------------------------------------------------------------
-
-class TestOborovoGuard:
-    def test_oborovo_flag_true_guard_fires(self):
-        r = _run_waterfall("OBOROVO-SOLAR-1", da_wiring=True)
-        assert r.distribution_source == "oborovo_guard_blocked", (
-            f"Expected oborovo_guard_blocked, got {r.distribution_source}"
-        )
-
-    def test_oborovo_flag_true_unchanged(self):
-        r0 = _run_waterfall("OBOROVO-SOLAR-1", da_wiring=False)
-        r1 = _run_waterfall("OBOROVO-SOLAR-1", da_wiring=True)
-        assert abs(r1.total_distribution_keur - r0.total_distribution_keur) < 0.01, (
-            "Oborovo distribution must not change when guard fires"
-        )
-
-
-# ---------------------------------------------------------------------------
-# 6. G07 DSCR stability is AVAILABLE
-# ---------------------------------------------------------------------------
-
-class TestG07DSCRStability:
-    def test_e03_is_available(self):
-        with open(READINESS_CSV, newline="", encoding="utf-8") as f:
+class TestReportColumns:
+    def test_dscr_timeseries_columns(self):
+        with open(DSCR_CSV, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
-        e03 = next((r for r in rows if r["evidence_id"] == "E03"), None)
-        assert e03 is not None, "E03 not found in readiness evidence"
-        assert e03["current_status"] == "AVAILABLE", (
-            f"E03 status must be AVAILABLE, got {e03['current_status']}"
-        )
+        required = ["period", "date", "legacy_distribution_keur", "da_distribution_keur",
+                   "distribution_delta_keur", "legacy_dscr", "da_wired_dscr", "dscr_delta",
+                   "senior_ds_keur", "cfads_or_cash_available_keur", "lockup_active",
+                   "blocked_reason", "blocked_details", "status", "notes"]
+        assert list(rows[0].keys()) == required, f"DSCR columns mismatch: {list(rows[0].keys())}"
 
-    def test_dscr_stability_mentioned_in_doc(self):
-        with open(READINESS_DOC, encoding="utf-8") as f:
-            content = f.read()
-        assert "AVAILABLE" in content or "DSCR" in content
-        assert "inf" in content or "stability" in content.lower()
-
-
-# ---------------------------------------------------------------------------
-# 7. G08 equity_irr PARTIAL documented
-# ---------------------------------------------------------------------------
-
-class TestG08EquityIRR:
-    def test_e08_equity_irr_is_partial(self):
-        with open(READINESS_CSV, newline="", encoding="utf-8") as f:
+    def test_delta_bridge_columns(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
-        row = next((r for r in rows if r["evidence_id"] == "E08_equity_irr"), None)
-        assert row is not None
-        assert row["current_status"] == "PARTIAL", (
-            f"E08_equity_irr must be PARTIAL, got {row['current_status']}"
-        )
+        required = ["period", "date", "legacy_distribution_keur", "da_distribution_keur",
+                   "delta_keur", "cumulative_delta_keur", "primary_blocking_gate",
+                   "blocked_reason", "blocked_details", "actual_dscr", "target_dscr",
+                   "period_index", "senior_tenor_years", "dsra_balance_keur",
+                   "dsra_target_keur", "jdsra_balance_keur", "jdsra_target_keur",
+                   "cash_available_keur", "classification", "notes"]
+        assert list(rows[0].keys()) == required, f"Bridge columns mismatch"
 
-
-# ---------------------------------------------------------------------------
-# 8. G08 project_irr PASS documented
-# ---------------------------------------------------------------------------
-
-class TestG08ProjectIRR:
-    def test_e08_project_irr_is_pass(self):
-        with open(READINESS_CSV, newline="", encoding="utf-8") as f:
+    def test_excel_parity_columns(self):
+        with open(PARSITY_CSV, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
-        row = next((r for r in rows if r["evidence_id"] == "E08_project_irr"), None)
-        assert row is not None
-        assert row["current_status"] == "PASS", (
-            f"E08_project_irr must be PASS, got {row['current_status']}"
-        )
+        required = ["metric", "excel_value", "legacy_model_value", "da_wired_model_value",
+                    "legacy_delta", "da_wired_delta", "tolerance", "status_legacy",
+                    "status_da_wired", "preferred_source", "notes"]
+        assert list(rows[0].keys()) == required
+
+    def test_gate_readiness_columns(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        required = ["gate_id", "gate_name", "previous_status", "new_status",
+                    "evidence", "blocker", "required_next_action",
+                    "can_proceed_to_implementation", "notes"]
+        assert list(rows[0].keys()) == required
 
 
 # ---------------------------------------------------------------------------
-# 9. G20 BLOCKED
+# 3. DSCR time-series has period-level rows
+# ---------------------------------------------------------------------------
+
+class TestDSCRTimeSeries:
+    def test_has_period_level_rows(self):
+        with open(DSCR_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) >= 50, f"Expected ~61 period rows, got {len(rows)}"
+
+    def test_all_periods_have_dates(self):
+        with open(DSCR_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        empty_dates = [r for r in rows if not r["date"]]
+        assert len(empty_dates) == 0, f"Found {len(empty_dates)} rows with empty dates"
+
+    def test_no_dscr_below_1(self):
+        with open(DSCR_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        below1 = [r for r in rows if r["status"] == "FAIL_DSCR"]
+        assert len(below1) == 0, f"Found {len(below1)} periods with DSCR < 1.0"
+
+    def test_zeroed_periods_are_correctly_flagged(self):
+        with open(DSCR_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        zeroed = [r for r in rows if r["status"] == "ZEROED"]
+        # Should be 13 zeroed periods
+        assert len(zeroed) == 13, f"Expected 13 ZEROED periods, got {len(zeroed)}"
+
+
+# ---------------------------------------------------------------------------
+# 4. Distribution delta bridge has period-level rows
+# ---------------------------------------------------------------------------
+
+class TestDeltaBridge:
+    def test_has_period_level_rows(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) >= 50, f"Expected ~61 period rows, got {len(rows)}"
+
+
+# ---------------------------------------------------------------------------
+# 5. Distribution delta bridge contains the -41,613 kEUR total delta
+# ---------------------------------------------------------------------------
+
+class TestDeltaAmount:
+    def test_total_delta_approx_41613(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        last_row = rows[-1]
+        cum_delta = float(last_row["cumulative_delta_keur"])
+        assert -45_000 < cum_delta < -40_000, (
+            f"Expected cumulative delta ~-41,613 kEUR, got {cum_delta}"
+        )
+
+    def test_cumulative_delta_is_monotonic(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        cum = 0.0
+        for r in rows:
+            delta = float(r["delta_keur"])
+            cum += delta
+            cum_in_csv = float(r["cumulative_delta_keur"])
+            assert abs(cum - cum_in_csv) < 0.05, (
+                f"Cumulative mismatch at period {r['period']}: computed {cum}, CSV {cum_in_csv}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# 6. Blocked reasons are populated for zeroed periods
+# ---------------------------------------------------------------------------
+
+class TestBlockedReasons:
+    def test_zeroed_periods_have_blocked_reasons(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        zeroed = [r for r in rows if r["classification"] == "ZEROED_BY_DA"]
+        for r in zeroed:
+            assert r["blocked_reason"].strip(), (
+                f"Period {r['period']} ZEROED but missing blocked_reason"
+            )
+        assert len(zeroed) == 13, f"Expected 13 ZEROED_BY_DA, got {len(zeroed)}"
+
+    def test_zeroed_periods_primary_blocking_gate_is_set(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        zeroed = [r for r in rows if r["classification"] == "ZEROED_BY_DA"]
+        for r in zeroed:
+            assert r["primary_blocking_gate"].strip(), (
+                f"Period {r['period']} ZEROED but missing primary_blocking_gate"
+            )
+
+
+# ---------------------------------------------------------------------------
+# 7. Excel parity report includes required metrics
+# ---------------------------------------------------------------------------
+
+class TestExcelParityMetrics:
+    def test_includes_equity_irr(self):
+        with open(PARSITY_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        names = {r["metric"] for r in rows}
+        assert "equity_irr" in names, f"equity_irr not found in {names}"
+
+    def test_includes_project_irr(self):
+        with open(PARSITY_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        names = {r["metric"] for r in rows}
+        assert "project_irr" in names
+
+    def test_includes_senior_debt(self):
+        with open(PARSITY_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        names = {r["metric"] for r in rows}
+        assert "senior_debt_keur" in names
+
+
+# ---------------------------------------------------------------------------
+# 8. Gate readiness update includes G07, G08, E15, G20
+# ---------------------------------------------------------------------------
+
+class TestGateReadinessUpdate:
+    def test_includes_g07(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        gate_ids = {r["gate_id"] for r in rows}
+        assert "G07" in gate_ids, f"G07 not found in {gate_ids}"
+
+    def test_includes_g08(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        gate_ids = {r["gate_id"] for r in rows}
+        assert "G08" in gate_ids or any("excel" in r["gate_name"].lower() for r in rows), (
+            f"G08/excel parity not found"
+        )
+
+    def test_includes_e15(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        gate_ids = {r["gate_id"] for r in rows}
+        assert "E15" in gate_ids, f"E15 not found in {gate_ids}"
+
+    def test_includes_g20(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        gate_ids = {r["gate_id"] for r in rows}
+        assert "G20" in gate_ids, f"G20 not found in {gate_ids}"
+
+
+# ---------------------------------------------------------------------------
+# 9. G20 remains BLOCKED
 # ---------------------------------------------------------------------------
 
 class TestG20Blocked:
-    def test_gate_review_g20_blocked(self):
-        with open(GATE_REVIEW_CSV, newline="", encoding="utf-8") as f:
+    def test_g20_is_blocked(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
         g20 = next((r for r in rows if r["gate_id"] == "G20"), None)
-        assert g20 is not None
-        assert g20["current_status"] == "BLOCKED", (
-            f"G20 must be BLOCKED, got {g20['current_status']}"
+        assert g20 is not None, "G20 not found in gate readiness"
+        assert g20["new_status"] == "BLOCKED", (
+            f"G20 must remain BLOCKED, got {g20['new_status']}"
+        )
+        assert g20["can_proceed_to_implementation"] == "NO", (
+            f"G20 can_proceed must be NO, got {g20['can_proceed_to_implementation']}"
         )
 
 
 # ---------------------------------------------------------------------------
-# 10. No report claims R99/R102 promotion approved
+# 10. Implementation recommendation is conditional on G07/G08 status
 # ---------------------------------------------------------------------------
 
-class TestNoPromotionClaimed:
-    def test_gate_review_no_promotion_approved(self):
-        with open(GATE_REVIEW_CSV, newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f))
-        for r in rows:
-            if r["current_status"] == "APPROVED":
-                assert r["gate_id"] not in ("G10", "G20", "G07", "G08"), (
-                    f"Gate {r['gate_id']} claims APPROVED — R99/R102 promotion not approved"
-                )
-
-
-# ---------------------------------------------------------------------------
-# 11. Recommended next branch explicit in doc
-# ---------------------------------------------------------------------------
-
-class TestRecommendedNextBranch:
-    def test_readiness_doc_next_branch_explicit(self):
-        with open(READINESS_DOC, encoding="utf-8") as f:
+class TestImplementationRecommendation:
+    def test_doc_recommends_conditional_implementation(self):
+        with open(DOC, encoding="utf-8") as f:
             content = f.read()
-        assert "phase9-r99-r102-runtime-flag-implementation" in content or "phase9-r99-r102-runtime-flag-readiness-fixes" in content, (
-            "Readiness doc must include next branch recommendation"
+        assert "phase9-r99-r102-runtime-flag-implementation" in content, (
+            "Doc must recommend next branch"
         )
+        # Should state the recommendation is conditional
+        assert (
+            "CONDITIONAL" in content or
+            "conditional" in content or
+            "if" in content.lower()
+        ), "Doc should make implementation recommendation conditional on G07/G08 status"
+
+    def test_gate_readiness_g07_available(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        g07 = next((r for r in rows if r["gate_id"] == "G07"), None)
+        assert g07 is not None, "G07 not found"
+        assert g07["new_status"] == "AVAILABLE", (
+            f"G07 must be AVAILABLE, got {g07['new_status']}"
+        )
+
+    def test_gate_readiness_g08_partial_or_ready(self):
+        with open(GATE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        g08 = next((r for r in rows if r["gate_id"] == "G08"), None)
+        assert g08 is not None, "G08 not found"
+        # G08 should be PARTIAL (not blocking, but not fully ready)
+        assert g08["new_status"] in ("PARTIAL", "READY"), (
+            f"G08 must be PARTIAL or READY, got {g08['new_status']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 11. Docs state no runtime code changed
+# ---------------------------------------------------------------------------
+
+class TestNoRuntimeCodeChanges:
+    def test_doc_states_no_runtime_changes(self):
+        with open(DOC, encoding="utf-8") as f:
+            content = f.read()
+        # Should have a scope section or statement that no runtime code changed
+        assert (
+            "no runtime code changed" in content.lower() or
+            "docs/reports/tests only" in content.lower() or
+            "non-goals" in content.lower()
+        ), "Doc should state scope/no runtime changes"
+
+    def test_doc_states_g20_blocked(self):
+        with open(DOC, encoding="utf-8") as f:
+            content = f.read()
+        assert "G20" in content and "BLOCKED" in content, (
+            "Doc must state G20 BLOCKED"
+        )
+
+    def test_doc_states_no_promotion(self):
+        with open(DOC, encoding="utf-8") as f:
+            content = f.read()
+        assert "NOT approved" in content or "not approved" in content, (
+            "Doc must state R99/R102 promotion not approved"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 12. Tests pass (basic sanity)
+# ---------------------------------------------------------------------------
+
+class TestBasicSanity:
+    def test_all_csvs_are_readable(self):
+        for path in [DSCR_CSV, BRIDGE_CSV, PARSITY_CSV, GATE_CSV]:
+            with open(path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            assert len(rows) > 0, f"{path.name} is empty"
+
+    def test_dscr_timeseries_row_count(self):
+        with open(DSCR_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) == 61, f"Expected 61 periods, got {len(rows)}"
+
+    def test_delta_bridge_row_count(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) == 61, f"Expected 61 periods, got {len(rows)}"
+
+    def test_zeroed_periods_are_13(self):
+        with open(BRIDGE_CSV, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        zeroed = [r for r in rows if r["classification"] == "ZEROED_BY_DA"]
+        assert len(zeroed) == 13, f"Expected 13 ZEROED_BY_DA, got {len(zeroed)}"

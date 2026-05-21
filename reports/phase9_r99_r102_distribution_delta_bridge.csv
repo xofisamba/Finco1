@@ -1,0 +1,62 @@
+period,date,legacy_distribution_keur,da_distribution_keur,delta_keur,cumulative_delta_keur,primary_blocking_gate,blocked_reason,blocked_details,actual_dscr,target_dscr,period_index,senior_tenor_years,dsra_balance_keur,dsra_target_keur,jdsra_balance_keur,jdsra_target_keur,cash_available_keur,classification,notes
+2,2030-06-30,3070.19,0.0,-3070.19,-3070.19,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,1,14,0,0,0,0,3070.19,ZEROED_BY_DA,lockup_active=False
+3,2030-12-31,3121.08,0.0,-3121.08,-6191.28,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,2,14,0,0,0,0,3121.08,ZEROED_BY_DA,lockup_active=False
+4,2031-06-30,3105.37,0.0,-3105.37,-9296.65,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,1,14,0,0,0,0,3105.37,ZEROED_BY_DA,lockup_active=False
+5,2031-12-31,3156.84,0.0,-3156.84,-12453.49,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,2,14,0,0,0,0,3156.84,ZEROED_BY_DA,lockup_active=False
+6,2032-06-30,3150.43,0.0,-3150.43,-15603.92,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,1,14,0,0,0,0,3150.43,ZEROED_BY_DA,lockup_active=False
+7,2032-12-31,3185.05,0.0,-3185.05,-18788.98,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,2,14,0,0,0,0,3185.05,ZEROED_BY_DA,lockup_active=False
+8,2033-06-30,3179.22,0.0,-3179.22,-21968.19,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,1,14,0,0,0,0,3179.22,ZEROED_BY_DA,lockup_active=False
+9,2033-12-31,3231.91,0.0,-3231.91,-25200.11,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,2,14,0,0,0,0,3231.91,ZEROED_BY_DA,lockup_active=False
+10,2034-06-30,3210.04,0.0,-3210.04,-28410.15,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,1,14,0,0,0,0,3210.04,ZEROED_BY_DA,lockup_active=False
+11,2034-12-31,3263.25,0.0,-3263.25,-31673.4,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,2,14,0,0,0,0,3263.25,ZEROED_BY_DA,lockup_active=False
+12,2035-06-30,3272.21,0.0,-3272.21,-34945.6,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,1,14,0,0,0,0,3272.21,ZEROED_BY_DA,lockup_active=False
+13,2035-12-31,3326.44,0.0,-3326.44,-38272.05,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,2,14,0,0,0,0,3326.44,ZEROED_BY_DA,lockup_active=False
+14,2036-06-30,3341.23,0.0,-3341.23,-41613.28,R99/R102/LOCKUP,DA equity_paid=0; legacy>0; gate or lockup blocked,DA equity_paid=0; legacy>0; gate or lockup blocked,inf,1.0,1,14,0,0,0,0,3341.23,ZEROED_BY_DA,lockup_active=False
+15,2036-12-31,3158.61,3158.61,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,3158.61,UNCHANGED,lockup_active=False
+16,2037-06-30,3396.59,3396.59,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,3396.59,UNCHANGED,lockup_active=False
+17,2037-12-31,3226.38,3226.38,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,3226.38,UNCHANGED,lockup_active=False
+18,2038-06-30,3466.06,3466.06,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,3466.06,UNCHANGED,lockup_active=False
+19,2038-12-31,3289.95,3289.95,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,3289.95,UNCHANGED,lockup_active=False
+20,2039-06-30,3533.18,3533.18,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,3533.18,UNCHANGED,lockup_active=False
+21,2039-12-31,3351.36,3351.36,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,3351.36,UNCHANGED,lockup_active=False
+22,2040-06-30,3607.95,3607.95,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,3607.95,UNCHANGED,lockup_active=False
+23,2040-12-31,3401.3,3401.3,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,3401.3,UNCHANGED,lockup_active=False
+24,2041-06-30,3667.64,3667.64,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,3667.64,UNCHANGED,lockup_active=False
+25,2041-12-31,3474.37,3474.37,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,3474.37,UNCHANGED,lockup_active=False
+26,2042-06-30,6140.28,6140.28,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6140.28,UNCHANGED,lockup_active=False
+27,2042-12-31,5736.64,5736.64,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,5736.64,UNCHANGED,lockup_active=False
+28,2043-06-30,6115.46,6115.46,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6115.46,UNCHANGED,lockup_active=False
+29,2043-12-31,5713.92,5713.92,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,5713.92,UNCHANGED,lockup_active=False
+30,2044-06-30,6187.85,6187.85,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6187.85,UNCHANGED,lockup_active=False
+31,2044-12-31,5748.72,5748.72,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,5748.72,UNCHANGED,lockup_active=False
+32,2045-06-30,6221.79,6221.79,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6221.79,UNCHANGED,lockup_active=False
+33,2045-12-31,5811.21,5811.21,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,5811.21,UNCHANGED,lockup_active=False
+34,2046-06-30,6419.49,6419.49,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6419.49,UNCHANGED,lockup_active=False
+35,2046-12-31,5992.09,5992.09,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,5992.09,UNCHANGED,lockup_active=False
+36,2047-06-30,6570.29,6570.29,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6570.29,UNCHANGED,lockup_active=False
+37,2047-12-31,6130.06,6130.06,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,6130.06,UNCHANGED,lockup_active=False
+38,2048-06-30,6735.89,6735.89,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6735.89,UNCHANGED,lockup_active=False
+39,2048-12-31,6247.38,6247.38,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,6247.38,UNCHANGED,lockup_active=False
+40,2049-06-30,6868.64,6868.64,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,6868.64,UNCHANGED,lockup_active=False
+41,2049-12-31,6403.02,6403.02,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,6403.02,UNCHANGED,lockup_active=False
+42,2050-06-30,7018.6,7018.6,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,7018.6,UNCHANGED,lockup_active=False
+43,2050-12-31,6540.23,6540.23,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,6540.23,UNCHANGED,lockup_active=False
+44,2051-06-30,7168.19,7168.19,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,7168.19,UNCHANGED,lockup_active=False
+45,2051-12-31,6677.09,6677.09,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,6677.09,UNCHANGED,lockup_active=False
+46,2052-06-30,7375.59,7375.59,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,7375.59,UNCHANGED,lockup_active=False
+47,2052-12-31,6829.44,6829.44,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,6829.44,UNCHANGED,lockup_active=False
+48,2053-06-30,7485.2,7485.2,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,7485.2,UNCHANGED,lockup_active=False
+49,2053-12-31,6967.13,6967.13,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,6967.13,UNCHANGED,lockup_active=False
+50,2054-06-30,7616.44,7616.44,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,7616.44,UNCHANGED,lockup_active=False
+51,2054-12-31,7087.2,7087.2,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,7087.2,UNCHANGED,lockup_active=False
+52,2055-06-30,7804.73,7804.73,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,7804.73,UNCHANGED,lockup_active=False
+53,2055-12-31,7259.47,7259.47,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,7259.47,UNCHANGED,lockup_active=False
+54,2056-06-30,7951.81,7951.81,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,7951.81,UNCHANGED,lockup_active=False
+55,2056-12-31,7353.73,7353.73,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,7353.73,UNCHANGED,lockup_active=False
+56,2057-06-30,8017.06,8017.06,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,8017.06,UNCHANGED,lockup_active=False
+57,2057-12-31,7453.74,7453.74,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,7453.74,UNCHANGED,lockup_active=False
+58,2058-06-30,8093.73,8093.73,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,8093.73,UNCHANGED,lockup_active=False
+59,2058-12-31,7523.88,7523.88,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,7523.88,UNCHANGED,lockup_active=False
+60,2059-06-30,8114.09,8114.09,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,8114.09,UNCHANGED,lockup_active=False
+61,2059-12-31,7542.51,7542.51,0.0,-41613.28,N/A,,,inf,1.0,2,14,0,0,0,0,7542.51,UNCHANGED,lockup_active=False
+62,2060-01-01,56.12,56.12,0.0,-41613.28,N/A,,,inf,1.0,1,14,0,0,0,0,56.12,UNCHANGED,lockup_active=False

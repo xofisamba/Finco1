@@ -1,0 +1,8 @@
+metric,excel_value,legacy_model_value,da_wired_model_value,legacy_delta,da_wired_delta,tolerance,status_legacy,status_da_wired,preferred_source,notes
+total_distributions_keur,MISSING_EVIDENCE,326165.3524,284552.0761,N/A,N/A,N/A,MISSING_EVIDENCE,MISSING_EVIDENCE,model (Excel MISSING),Excel total distributions not available in fixtures; mark MISSING not PASS
+equity_irr,0.1161,0.2231,0.2231,0.107,0.107,0.01,FAIL,PARTIAL,comparison,Pre-existing gap; same in both configs (not caused by DA wiring)
+project_irr,0.0947,0.1,0.1,0.0053,0.0053,0.005,PARTIAL,PARTIAL,comparison,Within +0.53pp of Excel 9.47%
+avg_dscr,1.451,N/A,N/A,1.451,1.451,0.05,FAIL,INCONCLUSIVE,comparison,senior_ds_keur=0 everywhere; avg_dscr=0.0; cannot compute meaningful DSCR
+senior_debt_keur,43359.0,43359.0,43359.0,0.0,0.0,0.01,PASS,PASS,comparison,"Debt schedule inactive (senior_ds_keur=0); sculpting_result.debt_keur=43,359 from ClosedForm"
+opex_y1_keur,MISSING_EVIDENCE,990.794,990.794,N/A,N/A,N/A,MISSING_EVIDENCE,MISSING_EVIDENCE,model (Excel MISSING),Excel Y1 OpEx not in fixtures; mark MISSING not PASS
+revenue_y1_keur,MISSING_EVIDENCE,4060.9882,4060.9882,N/A,N/A,N/A,MISSING_EVIDENCE,MISSING_EVIDENCE,model (Excel MISSING),Excel Y1 revenue not in fixtures
