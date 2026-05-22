@@ -1,0 +1,404 @@
+<!-- Workspace Shell — Tab Panels — Phase 9.5 -->
+<div class="workspace-content" id="workspace-content">
+
+  <!-- ═══════════════════════════════════════════════ OVERVIEW ══ -->
+  <div class="tab-panel active" id="panel-overview">
+    <div class="panel-header">
+      <div class="panel-title">Overview</div>
+      <div class="panel-desc">Key performance indicators and governance status for the active project.</div>
+    </div>
+
+    <div class="kpi-grid" id="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Project IRR</div>
+        <div class="kpi-value" id="kpi-project-irr">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Equity IRR</div>
+        <div class="kpi-value" id="kpi-equity-irr">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Avg DSCR</div>
+        <div class="kpi-value" id="kpi-avg-dscr">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Senior Debt</div>
+        <div class="kpi-value" id="kpi-senior-debt">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Revenue</div>
+        <div class="kpi-value" id="kpi-revenue">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">EBITDA</div>
+        <div class="kpi-value" id="kpi-ebitda">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Distributions</div>
+        <div class="kpi-value" id="kpi-distributions">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Warnings</div>
+        <div class="kpi-value warning" id="kpi-warnings">—</div>
+      </div>
+    </div>
+
+    <!-- Governance Cards Row -->
+    <div class="audit-panel" style="margin:1.25rem 0;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Governance Status</div>
+          <span class="badge badge-blocked">Blocked</span>
+        </div>
+        <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">G20 Gate</span>
+            <span class="badge badge-blocked">BLOCKED</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">R99/R102 Promotion</span>
+            <span class="badge badge-notapproved">NOT APPROVED</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Equity IRR Gap</span>
+            <span style="font-weight:600; color:var(--text);">0.29pp <span class="badge badge-pass">Within Tolerance</span></span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+            <span style="color:var(--text-2); font-weight:500;">TUHO Parity</span>
+            <span class="badge badge-convention">Audit-Only</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">TUHO Parity — Phase 9</div>
+          <span class="badge badge-convention">DA-Wired Audit</span>
+        </div>
+        <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
+            <span class="badge badge-pass">PASS</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">SHL Opening</span>
+            <span class="badge badge-pass">PASS</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Distributions</span>
+            <span class="badge badge-convention">ACCEPTED CONV</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Equity IRR</span>
+            <span class="badge badge-warn">WARN / 0.29pp</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+            <span style="color:var(--text-2); font-weight:500;">Tax/CFADS</span>
+            <span class="badge badge-missing">MISSING_EVIDENCE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ INPUTS ══ -->
+  <div class="tab-panel" id="panel-inputs">
+    <div class="panel-header">
+      <div class="panel-title">Inputs</div>
+      <div class="panel-desc">Configure project inputs including capacity, dates, revenue, and operational parameters.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">⚙️</div>
+      <div class="placeholder-title">Inputs Configuration</div>
+      <div class="placeholder-desc">Project inputs are configured via the sidebar form (left panel). This tab provides a structured view of all input sections.</div>
+      <div class="placeholder-note">Future phase: structured input table view + inline editing.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ CONSTRUCTION ══ -->
+  <div class="tab-panel" id="panel-construction">
+    <div class="panel-header">
+      <div class="panel-title">Construction</div>
+      <div class="panel-desc">Construction period, CAPEX drawdown, and project delivery schedule.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">🏗️</div>
+      <div class="placeholder-title">Construction Phase</div>
+      <div class="placeholder-desc">CAPEX drawdown schedule and COD milestone tracking will appear here.</div>
+      <div class="placeholder-note">Future phase: construction timeline chart, milestone tracker.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ PRODUCTION ══ -->
+  <div class="tab-panel" id="panel-production">
+    <div class="panel-header">
+      <div class="panel-title">Production</div>
+      <div class="panel-desc">P50/P90 energy yield, capacity factor, and availability assumptions.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">⚡</div>
+      <div class="placeholder-title">Production Forecast</div>
+      <div class="placeholder-desc">Energy yield projections and capacity factor analysis will appear here.</div>
+      <div class="placeholder-note">Future phase: yield duration curve, availability assumptions table.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ REVENUE ══ -->
+  <div class="tab-panel" id="panel-revenue">
+    <div class="panel-header">
+      <div class="panel-title">Revenue</div>
+      <div class="panel-desc">Tariff schedule, PPA term, and revenue projections over the investment horizon.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">💰</div>
+      <div class="placeholder-title">Revenue Model</div>
+      <div class="placeholder-desc">Tariff, PPA, and revenue projections will appear here.</div>
+      <div class="placeholder-note">Future phase: revenue waterfall, tariff escalation chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ OPEX ══ -->
+  <div class="tab-panel" id="panel-opex">
+    <div class="panel-header">
+      <div class="panel-title">OPEX</div>
+      <div class="panel-desc">Operating expenditure schedule including fixed and variable cost components.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">📤</div>
+      <div class="placeholder-title">Operating Expenditure</div>
+      <div class="placeholder-desc">OPEX breakdown and escalation schedule will appear here.</div>
+      <div class="placeholder-note">Future phase: OPEX table, escalation chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ CAPEX ══ -->
+  <div class="tab-panel" id="panel-capex">
+    <div class="panel-header">
+      <div class="panel-title">CAPEX</div>
+      <div class="panel-desc">Total capital expenditure, unit cost per MW, and construction cost breakdown.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">🏗️</div>
+      <div class="placeholder-title">Capital Expenditure</div>
+      <div class="placeholder-desc">CAPEX breakdown and unit cost analysis will appear here.</div>
+      <div class="placeholder-note">Future phase: CAPEX table, cost per MW chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ SENIOR DEBT ══ -->
+  <div class="tab-panel" id="panel-senior-debt">
+    <div class="panel-header">
+      <div class="panel-title">Senior Debt</div>
+      <div class="panel-desc">Senior debt sizing, DSCR sculpting, tenor, and interest rate assumptions.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">🏦</div>
+      <div class="placeholder-title">Senior Debt Schedule</div>
+      <div class="placeholder-desc">Debt sculpting, DSCR profile, and principal schedule will appear here.</div>
+      <div class="placeholder-note">Future phase: debt schedule table, DSCR chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ SHL ══ -->
+  <div class="tab-panel" id="panel-shl">
+    <div class="panel-header">
+      <div class="panel-title">SHL — Standby Hydro Lockbox</div>
+      <div class="panel-desc">SHL account mechanics, sweep triggers, and liquidity reserve policy.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">🔄</div>
+      <div class="placeholder-title">SHL Mechanics</div>
+      <div class="placeholder-desc">SHL balance, sweep triggers, and lockbox policy will appear here.</div>
+      <div class="placeholder-note">Future phase: SHL waterfall, account balance table.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ TAX ══ -->
+  <div class="tab-panel" id="panel-tax">
+    <div class="panel-header">
+      <div class="panel-title">Tax</div>
+      <div class="panel-desc">Corporate income tax, tax holidays, and tax loss carryforward schedule.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">📄</div>
+      <div class="placeholder-title">Tax Schedule</div>
+      <div class="placeholder-desc">CIT schedule, tax holidays, and R35/R69 period mapping will appear here.</div>
+      <div class="placeholder-note">Status: MISSING_EVIDENCE for TUHO parity — R35/R69 mapping not confirmed.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ P&L ══ -->
+  <div class="tab-panel" id="panel-pl">
+    <div class="panel-header">
+      <div class="panel-title">P&amp;L — Profit &amp; Loss</div>
+      <div class="panel-desc">Income statement showing revenue, EBITDA, interest, and net profit over the horizon.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">📊</div>
+      <div class="placeholder-title">Profit &amp; Loss Statement</div>
+      <div class="placeholder-desc">Full P&amp;L statement with revenue, EBITDA, interest, and net profit will appear here.</div>
+      <div class="placeholder-note">Future phase: P&amp;L table, EBITDA chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ CASH FLOW ══ -->
+  <div class="tab-panel" id="panel-cashflow">
+    <div class="panel-header">
+      <div class="panel-title">Cash Flow</div>
+      <div class="panel-desc">Cash flow waterfall from revenue through debt service to equity distributions.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">💳</div>
+      <div class="placeholder-title">Cash Flow Statement</div>
+      <div class="placeholder-desc">Cash flow waterfall with debt service, sweeps, and distributions will appear here.</div>
+      <div class="placeholder-note">Future phase: cash flow table, DSCR chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ BALANCE SHEET ══ -->
+  <div class="tab-panel" id="panel-balance">
+    <div class="panel-header">
+      <div class="panel-title">Balance Sheet</div>
+      <div class="panel-desc">Assets, liabilities, and equity balances across the investment horizon.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">📐</div>
+      <div class="placeholder-title">Balance Sheet</div>
+      <div class="placeholder-desc">Balance sheet projections across the investment horizon will appear here.</div>
+      <div class="placeholder-note">Future phase: balance sheet table, asset/liability chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ DISTRIBUTIONS ══ -->
+  <div class="tab-panel" id="panel-distributions">
+    <div class="panel-header">
+      <div class="panel-title">Distributions</div>
+      <div class="panel-desc">Equity distribution schedule, lockup periods, and distribution constraints.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">💸</div>
+      <div class="placeholder-title">Equity Distributions</div>
+      <div class="placeholder-desc">Distribution schedule with lockup, sweep, and constraints will appear here.</div>
+      <div class="placeholder-note">Future phase: distribution table, cash available for distribution chart.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ SPONSOR / EQUITY ══ -->
+  <div class="tab-panel" id="panel-sponsor">
+    <div class="panel-header">
+      <div class="panel-title">Sponsor / Equity</div>
+      <div class="panel-desc">Equity contribution schedule, return metrics (IRR, MoM), and sponsor waterfall.</div>
+    </div>
+    <div class="placeholder-panel">
+      <div class="placeholder-icon">👤</div>
+      <div class="placeholder-title">Sponsor / Equity Returns</div>
+      <div class="placeholder-desc">Equity contribution, return metrics, and sponsor waterfall will appear here.</div>
+      <div class="placeholder-note">Status: R99/R102 runtime flags NOT APPROVED for production promotion.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ AUDIT / PARITY ══ -->
+  <div class="tab-panel" id="panel-audit">
+    <div class="panel-header">
+      <div class="panel-title">Audit / Parity</div>
+      <div class="panel-desc">TUHO horizontal parity review: source map, gap register, and convention acceptance log.</div>
+    </div>
+
+    <div class="sheet-card">
+      <div class="card-header">
+        <div class="card-title">TUHO Parity — Audit-Only Status</div>
+        <span class="badge badge-convention">Audit-Only</span>
+      </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
+          <span class="badge badge-pass">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">SHL Opening Balance</span>
+          <span class="badge badge-pass">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Distributions</span>
+          <span class="badge badge-convention">ACCEPTED CONV</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Equity IRR</span>
+          <span class="badge badge-warn">WARN / 0.29pp</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Tax / CFADS</span>
+          <span class="badge badge-missing">MISSING_EVIDENCE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Governance status cards -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-top:1rem;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">G20 Gate</div>
+          <span class="badge badge-blocked">BLOCKED</span>
+        </div>
+        <div style="font-size:0.8rem; color:var(--muted); line-height:1.5;">
+          Equity IRR residual is within ±1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">R99 / R102 Promotion</div>
+          <span class="badge badge-notapproved">NOT APPROVED</span>
+        </div>
+        <div style="font-size:0.8rem; color:var(--muted); line-height:1.5;">
+          R99/R102 runtime flags are not approved for production promotion. Sponsor waterfall defaults remain in factory mode.
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:1rem;">
+      <a href="#download-parity" class="btn btn-outline" style="width:auto; display:inline-flex;">
+        📊 Open Parity Workbook
+      </a>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════ DOWNLOADS ══ -->
+  <div class="tab-panel" id="panel-downloads">
+    <div class="panel-header">
+      <div class="panel-title">Downloads &amp; Audit Artefacts</div>
+      <div class="panel-desc">Export model outputs, parity workbooks, gap registers, and source maps.</div>
+    </div>
+
+    <div class="downloads-grid">
+      <a href="/download" class="download-item">
+        <div class="download-icon">📥</div>
+        <div class="download-info">
+          <div class="download-name">Model Export (.xlsx)</div>
+          <div class="download-desc">Full model output workbook</div>
+        </div>
+      </a>
+      <a href="#download-parity" class="download-item">
+        <div class="download-icon">📊</div>
+        <div class="download-info">
+          <div class="download-name">Parity Workbook</div>
+          <div class="download-desc">TUHO horizontal review (XLSX)</div>
+        </div>
+      </a>
+      <a href="#download-gap" class="download-item">
+        <div class="download-icon">🔍</div>
+        <div class="download-info">
+          <div class="download-name">Gap Register</div>
+          <div class="download-desc">All parity gaps and statuses</div>
+        </div>
+      </a>
+      <a href="#download-source" class="download-item">
+        <div class="download-icon">🗂️</div>
+        <div class="download-info">
+          <div class="download-name">Source Map</div>
+          <div class="download-desc">Column-by-column provenance</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+</div><!-- .workspace-content -->

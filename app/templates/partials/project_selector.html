@@ -1,0 +1,59 @@
+<!-- Project Selector — Excel-like workspace sidebar — Phase 9.5 -->
+<div class="project-selector" id="project-selector">
+  <div class="ps-header">
+    <div class="ps-label">Projects</div>
+    <button class="ps-add-btn" id="ps-add-btn" title="Add New Project">+</button>
+  </div>
+
+  <div class="ps-list" id="ps-list">
+    <!-- TUHO Wind 72MW — active -->
+    <div class="ps-card active" id="ps-tuho" data-project="tuho" onclick="switchProject('tuho')">
+      <div class="ps-card-icon">� Wind</div>
+      <div class="ps-card-info">
+        <div class="ps-card-name">TUHO Wind</div>
+        <div class="ps-card-meta">72 MW · Estonia</div>
+      </div>
+      <div class="ps-card-status ps-card-status--active">●</div>
+    </div>
+
+    <!-- Oborovo Solar 53.63MW -->
+    <div class="ps-card" id="ps-oborovo" data-project="oborovo" onclick="switchProject('oborovo')">
+      <div class="ps-card-icon">☀ Solar</div>
+      <div class="ps-card-info">
+        <div class="ps-card-name">Oborovo Solar</div>
+        <div class="ps-card-meta">53.63 MW · Croatia</div>
+      </div>
+      <div class="ps-card-status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function switchProject(projectId) {
+    // Deactivate all cards
+    document.querySelectorAll('.ps-card').forEach(function(card) {
+      card.classList.remove('active');
+      var statusDot = card.querySelector('.ps-card-status');
+      if (statusDot) statusDot.textContent = '';
+      statusDot && statusDot.classList.remove('ps-card-status--active');
+    });
+
+    // Activate selected card
+    var activeCard = document.getElementById('ps-' + projectId);
+    if (activeCard) {
+      activeCard.classList.add('active');
+      var statusDot = activeCard.querySelector('.ps-card-status');
+      if (statusDot) {
+        statusDot.textContent = '●';
+        statusDot.classList.add('ps-card-status--active');
+      }
+    }
+
+    // Dispatch custom event for workspace tabs to listen to
+    document.dispatchEvent(new CustomEvent('projectChanged', { detail: { project: projectId } }));
+  }
+
+  document.getElementById('ps-add-btn') && document.getElementById('ps-add-btn').addEventListener('click', function() {
+    alert('New Project — coming in a future phase.');
+  });
+</script>

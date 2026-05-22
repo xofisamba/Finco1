@@ -974,3 +974,378 @@ body {
   .downloads-grid { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase 9.5 — Excel-like Project Workspace UI Shell
+   New styles: project sidebar, top tabs bar, tab panels, sheet cards
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Top Tabs Bar (sticky ribbon below header) ──────────────────────────── */
+.top-tabs-bar {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 150;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+.top-tabs-inner {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.top-tabs-inner::-webkit-scrollbar { display: none; }
+
+.tab-ribbon {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  padding: 0 1rem;
+  min-width: max-content;
+}
+
+/* Excel-like tab buttons */
+.ws-tab {
+  padding: 0.55rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s;
+  margin-bottom: -1px;
+  font-family: inherit;
+}
+
+.ws-tab:hover {
+  color: var(--text-2);
+}
+
+.ws-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: var(--surface);
+}
+
+/* ── Project Sidebar (workspace left panel) ─────────────────────────────── */
+.project-sidebar {
+  position: fixed;
+  left: 0;
+  top: calc(var(--header-h) + 48px); /* below header + tabs bar ~48px */
+  width: var(--sidebar-w);
+  height: calc(100vh - var(--header-h) - 48px);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  z-index: 100;
+}
+
+.project-sidebar::-webkit-scrollbar { width: 3px; }
+.project-sidebar::-webkit-scrollbar-track { background: transparent; }
+.project-sidebar::-webkit-scrollbar-thumb { background: var(--sidebar-border); border-radius: 3px; }
+
+/* Branding strip inside project sidebar */
+.ps-brand {
+  padding: 1rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.ps-brand-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.ps-brand-sub {
+  font-size: 0.62rem;
+  color: var(--sidebar-muted);
+  margin-top: 0.1rem;
+}
+
+/* ── Project Selector ──────────────────────────────────────────────────── */
+.project-selector {
+  padding: 0.75rem 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.ps-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.ps-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sidebar-muted);
+  opacity: 0.7;
+}
+
+.ps-add-btn {
+  width: 20px;
+  height: 20px;
+  background: var(--sidebar-hover);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 4px;
+  color: var(--sidebar-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.ps-add-btn:hover { background: var(--primary); color: white; border-color: var(--primary); }
+
+.ps-list { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.ps-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  position: relative;
+}
+
+.ps-card:hover {
+  background: var(--sidebar-hover);
+  border-color: var(--sidebar-border);
+}
+
+.ps-card.active {
+  background: var(--sidebar-hover);
+  border-color: var(--primary);
+}
+
+.ps-card-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.ps-card-info { flex: 1; min-width: 0; }
+
+.ps-card-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--sidebar-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-card-meta {
+  font-size: 0.65rem;
+  color: var(--sidebar-muted);
+  margin-top: 0.05rem;
+}
+
+.ps-card-status {
+  font-size: 0.5rem;
+  color: var(--sidebar-muted);
+  flex-shrink: 0;
+  width: 8px;
+  text-align: center;
+}
+
+.ps-card-status--active {
+  color: var(--primary);
+}
+
+/* ── Project Sidebar Sections ───────────────────────────────────────────── */
+.ps-section {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.ps-section-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sidebar-muted);
+  opacity: 0.7;
+  margin-bottom: 0.5rem;
+}
+
+/* Action buttons */
+.ps-actions { display: flex; flex-direction: column; gap: 0.3rem; }
+
+.ps-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  background: var(--sidebar-hover);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 6px;
+  color: var(--sidebar-text);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+.ps-action-btn:hover { background: var(--sidebar-active); color: white; border-color: var(--primary); }
+.ps-action-btn--primary { background: var(--primary); border-color: var(--primary); color: white; }
+.ps-action-btn--primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+
+.ps-action-icon { font-size: 0.9rem; flex-shrink: 0; }
+
+/* Scenario list */
+.ps-scenario-list { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.ps-scenario-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+.ps-scenario-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+.ps-scenario-item.active { color: var(--sidebar-text); }
+
+.ps-scenario-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sidebar-border);
+  flex-shrink: 0;
+}
+.ps-scenario-dot--active { background: var(--accent); }
+
+/* Governance items */
+.ps-gov-list { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.ps-gov-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.75rem;
+}
+.ps-gov-item--blocked .ps-gov-label { color: var(--blocked-text); }
+
+.ps-gov-label { color: var(--sidebar-text); font-weight: 500; }
+
+/* Downloads shortcuts */
+.ps-downloads { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.ps-download-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--sidebar-muted);
+  text-decoration: none;
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+.ps-download-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
+.ps-download-item span { font-size: 0.9rem; }
+
+/* ── Workspace Content Area ─────────────────────────────────────────────── */
+.workspace-content {
+  flex: 1;
+  min-width: 0;
+  padding: 1.5rem 2rem;
+}
+
+/* ── Tab Panels ─────────────────────────────────────────────────────────── */
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.panel-header {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+
+.panel-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Sheet Card (white card) ────────────────────────────────────────────── */
+.sheet-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+/* ── Placeholder Panel ──────────────────────────────────────────────────── */
+.placeholder-panel {
+  text-align: center;
+  padding: 3rem 2rem;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  max-width: 560px;
+}
+
+.placeholder-icon { font-size: 2.5rem; margin-bottom: 0.85rem; }
+
+.placeholder-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 0.4rem;
+}
+
+.placeholder-desc {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+.placeholder-note {
+  font-size: 0.75rem;
+  color: var(--teal);
+  background: var(--teal-light);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  font-weight: 500;
+}

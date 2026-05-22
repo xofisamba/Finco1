@@ -18,7 +18,7 @@
       <div class="brand-logo">F</div>
       <div class="brand-text">
         <span class="brand-name">Finco One</span>
-        <span class="brand-sub">Clean-Energy Project Finance</span>
+        <span class="brand-sub">Project Finance Model</span>
       </div>
     </div>
     <div class="header-right">
@@ -33,146 +33,100 @@
   </div>
 </header>
 
-<!-- App shell: sidebar-nav + sidebar-input + content -->
+<!-- Excel-like tab ribbon — sits below header, above the layout -->
+{% include "partials/workspace_tabs.html" %}
+
+<!-- App shell: project-sidebar + sidebar-input + content -->
 <div class="app-layout">
 
-  <!-- Dark navy left sidebar — navigation -->
-  <nav class="sidebar-nav" id="sidebar-nav">
-    <div class="sidebar-nav-section">
-      <div class="sidebar-nav-section-label">Overview</div>
-      <a href="#dashboard" class="sidebar-nav-link active">
-        <span class="nav-icon">🏠</span>
-        Dashboard
-      </a>
-      <a href="#audit" class="sidebar-nav-link">
-        <span class="nav-icon">📋</span>
-        Audit / Parity
-        <span class="nav-badge badge-blocked">2</span>
-      </a>
+  <!-- Project workspace sidebar — replaces sidebar-nav -->
+  <nav class="project-sidebar" id="project-sidebar">
+
+    <!-- Branding strip -->
+    <div class="ps-brand">
+      <div class="ps-brand-name">Finco One</div>
+      <div class="ps-brand-sub">Project Finance Model</div>
     </div>
 
-    <div class="sidebar-nav-divider"></div>
+    <!-- Project selector -->
+    {% include "partials/project_selector.html" %}
 
-    <div class="sidebar-nav-section">
-      <div class="sidebar-nav-section-label">Inputs</div>
-      <a href="#inputs-project" class="sidebar-nav-link">
-        <span class="nav-icon">⚙️</span>
-        Project Setup
-      </a>
-      <a href="#inputs-dates" class="sidebar-nav-link">
-        <span class="nav-icon">📅</span>
-        Dates / COD
-      </a>
-      <a href="#inputs-production" class="sidebar-nav-link">
-        <span class="nav-icon">⚡</span>
-        Production
-      </a>
-      <a href="#inputs-revenue" class="sidebar-nav-link">
-        <span class="nav-icon">💰</span>
-        Revenue
-      </a>
-      <a href="#inputs-opex" class="sidebar-nav-link">
-        <span class="nav-icon">📤</span>
-        OPEX
-      </a>
-      <a href="#inputs-capex" class="sidebar-nav-link">
-        <span class="nav-icon">🏗️</span>
-        CAPEX
-      </a>
+    <!-- Workspace Actions -->
+    <div class="ps-section">
+      <div class="ps-section-label">Actions</div>
+      <div class="ps-actions">
+        <button class="ps-action-btn" id="btn-new-project">
+          <span class="ps-action-icon">+</span> New Project
+        </button>
+        <button class="ps-action-btn">
+          <span class="ps-action-icon">⧉</span> Duplicate Scenario
+        </button>
+        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model">
+          <span class="ps-action-icon">⚡</span> Run Model
+        </button>
+        <button class="ps-action-btn" id="btn-save">
+          <span class="ps-action-icon">💾</span> Save
+        </button>
+        <button class="ps-action-btn" id="btn-load">
+          <span class="ps-action-icon">📂</span> Load
+        </button>
+      </div>
     </div>
 
-    <div class="sidebar-nav-divider"></div>
-
-    <div class="sidebar-nav-section">
-      <div class="sidebar-nav-section-label">Financing</div>
-      <a href="#inputs-debt" class="sidebar-nav-link">
-        <span class="nav-icon">🏦</span>
-        Senior Debt
-      </a>
-      <a href="#inputs-shl" class="sidebar-nav-link">
-        <span class="nav-icon">🔄</span>
-        SHL
-      </a>
-      <a href="#inputs-tax" class="sidebar-nav-link">
-        <span class="nav-icon">📄</span>
-        Tax
-      </a>
-      <a href="#inputs-distribution" class="sidebar-nav-link">
-        <span class="nav-icon">💸</span>
-        Distributions
-      </a>
-      <a href="#inputs-sponsor" class="sidebar-nav-link">
-        <span class="nav-icon">👤</span>
-        Sponsor / Equity
-      </a>
+    <!-- Scenario selector -->
+    <div class="ps-section">
+      <div class="ps-section-label">Scenario</div>
+      <div class="ps-scenario-list">
+        <div class="ps-scenario-item active">
+          <span class="ps-scenario-dot ps-scenario-dot--active"></span>
+          Base
+        </div>
+        <div class="ps-scenario-item">
+          <span class="ps-scenario-dot"></span>
+          Audit
+        </div>
+      </div>
     </div>
 
-    <div class="sidebar-nav-divider"></div>
-
-    <div class="sidebar-nav-section">
-      <div class="sidebar-nav-section-label">Outputs</div>
-      <a href="#output-pl" class="sidebar-nav-link">
-        <span class="nav-icon">📊</span>
-        P&amp;L
-      </a>
-      <a href="#output-cashflow" class="sidebar-nav-link">
-        <span class="nav-icon">💳</span>
-        Cash Flow
-      </a>
-      <a href="#output-balance" class="sidebar-nav-link">
-        <span class="nav-icon">📐</span>
-        Balance Sheet
-      </a>
-      <a href="#output-debt" class="sidebar-nav-link">
-        <span class="nav-icon">🏦</span>
-        Debt Schedule
-      </a>
-      <a href="#output-returns" class="sidebar-nav-link">
-        <span class="nav-icon">📈</span>
-        Returns
-      </a>
-      <a href="#output-warnings" class="sidebar-nav-link">
-        <span class="nav-icon">⚠️</span>
-        Warnings
-      </a>
+    <!-- Governance panel -->
+    <div class="ps-section">
+      <div class="ps-section-label">Governance</div>
+      <div class="ps-gov-list">
+        <div class="ps-gov-item ps-gov-item--blocked">
+          <div class="ps-gov-label">G20 Gate</div>
+          <span class="badge badge-blocked">BLOCKED</span>
+        </div>
+        <div class="ps-gov-item">
+          <div class="ps-gov-label">R99/R102 Promotion</div>
+          <span class="badge badge-notapproved">NOT APPROVED</span>
+        </div>
+      </div>
     </div>
 
-    <div class="sidebar-nav-divider"></div>
-
-    <div class="sidebar-nav-section">
-      <div class="sidebar-nav-section-label">Downloads</div>
-      <a href="/download" class="sidebar-nav-link">
-        <span class="nav-icon">📥</span>
-        Model Export
-      </a>
-      <a href="#download-parity" class="sidebar-nav-link">
-        <span class="nav-icon">📊</span>
-        Parity Workbook
-      </a>
-      <a href="#download-gap" class="sidebar-nav-link">
-        <span class="nav-icon">🔍</span>
-        Gap Register
-      </a>
+    <!-- Downloads shortcuts -->
+    <div class="ps-section">
+      <div class="ps-section-label">Downloads</div>
+      <div class="ps-downloads">
+        <a href="/download" class="ps-download-item">
+          <span>📥</span> Model Export
+        </a>
+        <a href="#download-parity" class="ps-download-item">
+          <span>📊</span> Parity Workbook
+        </a>
+        <a href="#download-gap" class="ps-download-item">
+          <span>🔍</span> Gap Register
+        </a>
+      </div>
     </div>
 
-    <div class="sidebar-nav-divider"></div>
+  </nav><!-- .project-sidebar -->
 
-    <div class="sidebar-nav-section">
-      <div class="sidebar-nav-section-label">Governance</div>
-      <a href="#governance" class="sidebar-nav-link">
-        <span class="nav-icon">🛡️</span>
-        G20 / Gates
-        <span class="nav-badge badge-blocked">BLOCKED</span>
-      </a>
-    </div>
-  </nav>
-
-  <!-- Left panel: input form (for non-dashboard views or form fallback) -->
+  <!-- Left panel: input form -->
   <aside class="sidebar-input" id="sidebar-input">
     {% block sidebar_input %}{% endblock %}
   </aside>
 
-  <!-- Page content — override in child templates -->
+  <!-- Page content -->
   <main class="content">
     {% block body %}{% endblock %}
   </main>
@@ -181,30 +135,10 @@
 
 <script>
   function activateNav(el) {
-    // 1. Update active nav state
     document.querySelectorAll('.sidebar-nav-link').forEach(l => l.classList.remove('active'));
     if (el) el.classList.add('active');
-
-    // 2. Open the target details section (anchor nav → details open)
-    if (el) {
-      const href = el.getAttribute('href');
-      if (href && href.startsWith('#')) {
-        const id = href.substring(1);
-        if (id && id !== 'dashboard' && id !== 'audit') {
-          const target = document.getElementById(id);
-          if (target && target.tagName === 'DETAILS' && !target.hasAttribute('open')) {
-            target.setAttribute('open', '');
-          }
-          // Scroll to target
-          if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }
-      }
-    }
   }
 
-  // HTMX global loading indicator
   document.body.addEventListener('htmx:beforeRequest', function(e) {
     if (e.detail.target) e.detail.target.classList.add('htmx-loading');
   });
@@ -212,7 +146,6 @@
     if (e.detail.target) e.detail.target.classList.remove('htmx-loading');
   });
 
-  // Collapsible input groups
   document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.input-group-summary').forEach(function(summary) {
       summary.addEventListener('click', function() {
