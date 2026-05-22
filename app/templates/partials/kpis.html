@@ -1,8 +1,11 @@
-<div class="card">
-  <div class="card-title">📈 KPI Results — {{ run_data.project_type }} / {{ run_data.scenario }}</div>
+<div class="card" style="margin-top:1.5rem;">
+  <div class="card-header">
+    <div class="card-title">📈 Model Run Results — {{ run_data.project_type }} / {{ run_data.scenario }}</div>
+    <span class="badge badge-pass">Ready</span>
+  </div>
 
   {% if integration_status != 'full' %}
-  <div class="alert alert-warning">
+  <div class="alert alert-warning" style="margin-bottom:1rem;">
     ⚠️ Integration status: {{ integration_status }}{% if integration_note %}: {{ integration_note }}{% endif %}
   </div>
   {% endif %}
@@ -27,7 +30,7 @@
   </div>
 
   {% if messages %}
-  <div style="margin-top:1rem;">
+  <div style="margin-top:0.85rem;">
     {% for msg in messages %}
     <div class="alert alert-info">{{ msg }}</div>
     {% endfor %}

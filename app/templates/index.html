@@ -1,216 +1,466 @@
 {% extends "base.html" %}
 
 {% block body %}
-<!-- Main layout: sidebar + content -->
-<div class="app-layout">
 
-  <!-- Sidebar: Input Form -->
-  <aside class="sidebar">
-    <form id="main-form"
-          hx-disabled-elt="button[type=submit],button[name=run],button[name=compare]">
+<!-- ── Dashboard View ──────────────────────────────────────────────── -->
+<section id="dashboard" class="content-section">
 
-      <!-- PROJECT section -->
-      <div class="form-section">
-        <div class="form-section-label">Project</div>
+  <!-- Governance Banner -->
+  <div class="gov-banner gov-blocked" style="margin-bottom:1.5rem;">
+    <div class="gov-icon">🛡️</div>
+    <div class="gov-content">
+      <div class="gov-title">G20 Gate — BLOCKED</div>
+      <div class="gov-desc">Equity IRR residual (0.29pp) is within ±1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.</div>
+    </div>
+    <span class="badge badge-blocked">Blocked</span>
+  </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label for="project_type">Type</label>
-            <select name="project_type" id="project_type" required>
-              {% for pt in project_types %}
-              <option value="{{ pt }}" {% if form_data.get('project_type') == pt %}selected{% endif %}>{{ pt }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="field">
-            <label for="scenario">Scenario</label>
-            <select name="scenario" id="scenario" required>
-              {% for sc in scenarios %}
-              <option value="{{ sc }}" {% if form_data.get('scenario') == sc %}selected{% endif %}>{{ sc }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
+  <!-- Dashboard KPI Cards -->
+  <div class="section-header">
+    <div class="section-title">Key Performance Indicators</div>
+  </div>
 
-        <div class="field">
-          <label for="capacity_mw">Capacity (MW)</label>
-          <input type="number" name="capacity_mw" id="capacity_mw" placeholder="e.g. 50" step="any" min="0" />
-        </div>
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Project IRR</div>
+      <div class="kpi-value" id="kpi-project-irr">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Equity IRR</div>
+      <div class="kpi-value" id="kpi-equity-irr">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Avg DSCR</div>
+      <div class="kpi-value" id="kpi-avg-dscr">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Senior Debt</div>
+      <div class="kpi-value" id="kpi-senior-debt">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Revenue</div>
+      <div class="kpi-value" id="kpi-revenue">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">EBITDA</div>
+      <div class="kpi-value" id="kpi-ebitda">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Distributions</div>
+      <div class="kpi-value" id="kpi-distributions">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Warnings</div>
+      <div class="kpi-value warning" id="kpi-warnings">—</div>
+    </div>
+  </div>
+
+  <!-- Audit / Governance Cards Row -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1.5rem;">
+
+    <!-- G20 / Governance Status -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Governance Status</div>
+        <span class="badge badge-blocked">Blocked</span>
       </div>
-
-      <!-- REVENUE section -->
-      <div class="form-section">
-        <div class="form-section-label">Revenue</div>
-
-        <div class="field-row">
-          <div class="field">
-            <label for="tariff_eur_mwh">Tariff (EUR/MWh)</label>
-            <input type="number" name="tariff_eur_mwh" id="tariff_eur_mwh" placeholder="e.g. 85" step="any" min="0" />
-          </div>
-          <div class="field">
-            <label for="p50_hours">P50 Hours</label>
-            <input type="number" name="p50_hours" id="p50_hours" placeholder="e.g. 1600" step="any" min="0" />
-          </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">G20 Gate</span>
+          <span class="badge badge-blocked">BLOCKED</span>
         </div>
-      </div>
-
-      <!-- CAPEX section -->
-      <div class="form-section">
-        <div class="form-section-label">CAPEX</div>
-
-        <div class="field">
-          <label for="total_capex_keur">Total CAPEX (kEUR)</label>
-          <input type="number" name="total_capex_keur" id="total_capex_keur" placeholder="factory default" step="any" min="0" />
-          <span class="field-hint">Leave blank for factory default</span>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">R99/R102 Promotion</span>
+          <span class="badge badge-notapproved">NOT APPROVED</span>
         </div>
-      </div>
-
-      <!-- OPEX section -->
-      <div class="form-section">
-        <div class="form-section-label">OPEX</div>
-
-        <div class="field">
-          <label for="opex_y1_keur">OPEX Y1 (kEUR)</label>
-          <input type="number" name="opex_y1_keur" id="opex_y1_keur" placeholder="factory default" step="any" min="0" />
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Equity IRR Gap</span>
+          <span style="font-weight:600; color:var(--text);">0.29pp <span class="badge badge-pass">Within Tolerance</span></span>
         </div>
-      </div>
-
-      <!-- DEBT section -->
-      <div class="form-section">
-        <div class="form-section-label">Debt</div>
-
-        <div class="field-row">
-          <div class="field">
-            <label for="gearing_pct">Gearing (%)</label>
-            <input type="number" name="gearing_pct" id="gearing_pct" placeholder="e.g. 75" step="any" min="0" max="100" />
-          </div>
-          <div class="field">
-            <label for="target_dscr">Target DSCR</label>
-            <input type="number" name="target_dscr" id="target_dscr" placeholder="e.g. 1.30" step="any" min="0" />
-          </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+          <span style="color:var(--text-2); font-weight:500;">TUHO Parity</span>
+          <span class="badge badge-convention">Audit-Only</span>
         </div>
-
-        <div class="field-row">
-          <div class="field">
-            <label for="interest_rate_pct">Interest Rate (%)</label>
-            <input type="number" name="interest_rate_pct" id="interest_rate_pct" placeholder="e.g. 6.5" step="any" min="0" />
-          </div>
-          <div class="field">
-            <label for="tenor_years">Tenor (Years)</label>
-            <input type="number" name="tenor_years" id="tenor_years" placeholder="e.g. 20" step="any" min="0" />
-          </div>
-        </div>
-      </div>
-
-      <!-- Actions -->
-      <div class="form-actions">
-        <button type="button" name="validate" class="btn btn-outline"
-                hx-post="/validate"
-                hx-form="#main-form"
-                hx-target="#validation-result"
-                hx-swap="innerHTML"
-                hx-indicator="#validate-indicator">
-          Validate
-        </button>
-        <span id="validate-indicator" class="htmx-indicator">Validating...</span>
-
-        <button type="button" name="run" class="btn btn-primary" hx-post="/run" hx-form="#main-form" hx-target="#results-area" hx-swap="innerHTML" hx-indicator="#run-indicator">
-          Run Model
-        </button>
-        <span id="run-indicator" class="htmx-indicator">Running model...</span>
-
-        <button type="button" name="compare" class="btn btn-accent" hx-post="/compare" hx-form="#main-form" hx-target="#comparison-area" hx-swap="innerHTML" hx-indicator="#compare-indicator">
-          Compare Scenarios
-        </button>
-        <span id="compare-indicator" class="htmx-indicator">Comparing...</span>
-
-        <button type="submit" form="main-form" formaction="/download" formmethod="POST" class="btn btn-secondary">
-          Download Excel
-        </button>
-
-        <button type="button" class="btn btn-outline"
-                hx-post="/save-run"
-                hx-form="#main-form"
-                hx-target="#save-result"
-                hx-swap="innerHTML"
-                hx-indicator="#save-indicator">
-          Save Run
-        </button>
-        <span id="save-indicator" class="htmx-indicator">Saving...</span>
-      </div>
-
-      <!-- Save result feedback (HTMX target) -->
-      <div id="save-result"></div>
-
-      <!-- Validation feedback -->
-      <div id="validation-result"></div>
-    </form>
-  </aside>
-
-  <!-- Main content -->
-  <main class="content">
-
-    <!-- Status banner -->
-    <div class="status-banner">
-      <div class="status-item">
-        <span class="status-dot status-dot--green"></span>
-        <span>Model Active</span>
-      </div>
-      <div class="status-sep">·</div>
-      <div class="status-item">
-        <span>Screening-grade — not audited financial advice</span>
       </div>
     </div>
 
-    <!-- Caveats banner (collapsible via semantic HTML) -->
-    <details class="caveats-banner" id="caveats-banner" open>
-      <summary class="caveats-banner-summary">
-        <div class="caveats-icon">⚠️</div>
-        <div class="caveats-summary-text">
-          <span class="caveats-summary-label">Screening-grade model — for advisory use only. Validate with project-specific data.</span>
+    <!-- TUHO Parity Summary -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">TUHO Parity — Phase 9</div>
+        <span class="badge badge-convention">DA-Wired Audit</span>
+      </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
+          <span class="badge badge-pass">PASS</span>
         </div>
-      </summary>
-      <div class="caveats-body">
-        <ul class="caveats-list">
-          {% for c in caveats %}
-          <li>{{ c }}</li>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">SHL Opening</span>
+          <span class="badge badge-pass">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Distributions</span>
+          <span class="badge badge-convention">ACCEPTED CONV</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Equity IRR</span>
+          <span class="badge badge-warn">WARN / 0.29pp</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+          <span style="color:var(--text-2); font-weight:500;">Tax/CFADS</span>
+          <span class="badge badge-missing">MISSING_EVIDENCE</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Downloads Section -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Downloads &amp; Audit Artefacts</div>
+    </div>
+    <div class="downloads-grid">
+      <a href="/download" class="download-item">
+        <div class="download-icon">📥</div>
+        <div class="download-info">
+          <div class="download-name">Model Export (.xlsx)</div>
+          <div class="download-desc">Full model output workbook</div>
+        </div>
+      </a>
+      <a href="#download-parity" class="download-item">
+        <div class="download-icon">📊</div>
+        <div class="download-info">
+          <div class="download-name">Parity Workbook</div>
+          <div class="download-desc">TUHO horizontal review (XLSX)</div>
+        </div>
+      </a>
+      <a href="#download-gap" class="download-item">
+        <div class="download-icon">🔍</div>
+        <div class="download-info">
+          <div class="download-name">Gap Register</div>
+          <div class="download-desc">All parity gaps and statuses</div>
+        </div>
+      </a>
+      <a href="#download-source" class="download-item">
+        <div class="download-icon">🗂️</div>
+        <div class="download-info">
+          <div class="download-name">Source Map</div>
+          <div class="download-desc">Column-by-column provenance</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Model Run placeholder (when model not yet run) -->
+  <div id="model-output-area">
+    <div class="empty-state">
+      <div class="empty-icon">⚡</div>
+      <div class="empty-title">Configure &amp; run the model</div>
+      <div class="empty-desc">Use the input panels on the left to configure your project, then click <strong>Run Model</strong> to see KPIs and outputs here.</div>
+    </div>
+  </div>
+
+</section>
+
+{% endblock %}
+
+{% block sidebar_input %}
+<!-- Input form: stays available on left, dashboard shows KPIs above -->
+<form id="main-form"
+      hx-disabled-elt="button[type=submit],button[name=run],button[name=compare]">
+
+  <!-- PROJECT section -->
+  <details class="input-group" open>
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>⚙️</span>
+        <span>Project Setup</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div class="field">
+        <label for="project_type">Project Type</label>
+        <select name="project_type" id="project_type" required>
+          {% for pt in project_types %}
+          <option value="{{ pt }}" {% if form_data.get('project_type') == pt %}selected{% endif %}>{{ pt }}</option>
           {% endfor %}
-        </ul>
-        <div class="caveats-detail-note">
-          <strong>TUHO CO2 caveat:</strong> 611 kEUR Y1 CO2 revenue missing — model understates revenue for TUHO wind assets.<br>
-          <strong>Oborovo OpEx caveat:</strong> 660 kEUR Y1 OpEx duplication — model overstates OpEx for Oborovo solar.
-        </div>
+        </select>
       </div>
-    </details>
-
-    <!-- KPI Results -->
-    <div id="results-area">
-      <div class="empty-state">
-        <div class="empty-icon">📊</div>
-        <div class="empty-title">No results yet</div>
-        <div class="empty-desc">Configure your project in the sidebar and click <strong>Run Model</strong> to see KPIs</div>
+      <div class="field">
+        <label for="scenario">Scenario</label>
+        <select name="scenario" id="scenario" required>
+          {% for sc in scenarios %}
+          <option value="{{ sc }}" {% if form_data.get('scenario') == sc %}selected{% endif %}>{{ sc }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="capacity_mw">Capacity (MW)</label>
+        <input type="number" name="capacity_mw" id="capacity_mw" placeholder="e.g. 50" step="any" min="0" />
       </div>
     </div>
+  </details>
 
-    <!-- Scenario Comparison -->
-    <div id="comparison-area"></div>
-
-    <!-- Saved Runs History (loads on page load) -->
-    <div id="history-area"
-         hx-get="/runs"
-         hx-trigger="load, refreshHistory from:body"
-         hx-swap="innerHTML">
-    </div>
-
-    <!-- Footer -->
-    <footer class="content-footer">
-      <div class="footer-inner">
-        <span>FincoGPT Internal Advisory Platform — Not audited — Internal use only</span>
-        <span class="footer-sep">·</span>
-        <span>v1.7 Private Pilot · HTMX Internal Demo</span>
+  <!-- DATES section -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>📅</span>
+        <span>Dates / COD</span>
       </div>
-    </footer>
-  </main>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div class="field">
+        <label for="cod_date">COD Date</label>
+        <input type="text" name="cod_date" id="cod_date" placeholder="2030-06-30" />
+      </div>
+      <div class="field">
+        <label for="construction_months">Construction (months)</label>
+        <input type="number" name="construction_months" id="construction_months" placeholder="18" step="any" min="0" />
+      </div>
+      <div class="field">
+        <label for="horizon_years">Horizon (years)</label>
+        <input type="number" name="horizon_years" id="horizon_years" placeholder="30" step="any" min="0" />
+      </div>
+    </div>
+  </details>
 
-</div><!-- .app-layout -->
+  <!-- PRODUCTION section -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>⚡</span>
+        <span>Production</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div class="field">
+        <label for="p50_hours">P50 Hours / year</label>
+        <input type="number" name="p50_hours" id="p50_hours" placeholder="e.g. 1600" step="any" min="0" />
+      </div>
+      <div class="field">
+        <label for="capacity_factor">Capacity Factor (%)</label>
+        <input type="number" name="capacity_factor" id="capacity_factor" placeholder="e.g. 35" step="any" min="0" max="100" />
+      </div>
+    </div>
+  </details>
+
+  <!-- REVENUE section -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>💰</span>
+        <span>Revenue / Tariff</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div class="field">
+        <label for="tariff_eur_mwh">Tariff (EUR/MWh)</label>
+        <input type="number" name="tariff_eur_mwh" id="tariff_eur_mwh" placeholder="e.g. 85" step="any" min="0" />
+      </div>
+      <div class="field">
+        <label for="ppa_term_years">PPA Term (years)</label>
+        <input type="number" name="ppa_term_years" id="ppa_term_years" placeholder="10" step="any" min="0" />
+      </div>
+    </div>
+  </details>
+
+  <!-- OPEX section -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>📤</span>
+        <span>OPEX</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div class="field">
+        <label for="opex_y1_keur">OPEX Y1 (kEUR)</label>
+        <input type="number" name="opex_y1_keur" id="opex_y1_keur" placeholder="factory default" step="any" min="0" />
+        <span class="field-hint">Leave blank for factory default</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- CAPEX section -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>🏗️</span>
+        <span>CAPEX</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div class="field">
+        <label for="total_capex_keur">Total CAPEX (kEUR)</label>
+        <input type="number" name="total_capex_keur" id="total_capex_keur" placeholder="factory default" step="any" min="0" />
+        <span class="field-hint">Leave blank for factory default</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- SENIOR DEBT section -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>🏦</span>
+        <span>Senior Debt</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div class="field">
+        <label for="gearing_pct">Gearing (%)</label>
+        <input type="number" name="gearing_pct" id="gearing_pct" placeholder="e.g. 75" step="any" min="0" max="100" />
+      </div>
+      <div class="field">
+        <label for="target_dscr">Target DSCR</label>
+        <input type="number" name="target_dscr" id="target_dscr" placeholder="e.g. 1.30" step="any" min="0" />
+      </div>
+      <div class="field">
+        <label for="interest_rate_pct">Interest Rate (%)</label>
+        <input type="number" name="interest_rate_pct" id="interest_rate_pct" placeholder="e.g. 6.5" step="any" min="0" />
+      </div>
+      <div class="field">
+        <label for="tenor_years">Tenor (years)</label>
+        <input type="number" name="tenor_years" id="tenor_years" placeholder="e.g. 20" step="any" min="0" />
+      </div>
+    </div>
+  </details>
+
+  <!-- SHL section (placeholder) -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>🔄</span>
+        <span>SHL</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div style="font-size:0.8rem; color:var(--muted); padding:0.5rem 0; line-height:1.5;">
+        SHL assumptions managed via waterfall defaults. Runtime configuration only — no direct UI inputs available in this version.
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-top:1px solid var(--border); margin-top:0.5rem;">
+        <span style="color:var(--text-2); font-weight:500; font-size:0.78rem;">Status</span>
+        <span class="badge badge-missing">Not in UI</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- TAX section (placeholder) -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>📄</span>
+        <span>Tax</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div style="font-size:0.8rem; color:var(--muted); padding:0.5rem 0; line-height:1.5;">
+        Tax assumptions managed via TaxBridge defaults. CIT=0 during construction. R35/R69 period mapping is MISSING_EVIDENCE for TUHO parity.
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-top:1px solid var(--border); margin-top:0.5rem;">
+        <span style="color:var(--text-2); font-weight:500; font-size:0.78rem;">Status</span>
+        <span class="badge badge-missing">MISSING_EVIDENCE</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- DISTRIBUTION section (placeholder) -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>💸</span>
+        <span>Distributions</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div style="font-size:0.8rem; color:var(--muted); padding:0.5rem 0; line-height:1.5;">
+        Distribution timing and lockup managed via DistributionAccount defaults. Distributions begin ~P15 for TUHO (SHL repaid P14).
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-top:1px solid var(--border); margin-top:0.5rem;">
+        <span style="color:var(--text-2); font-weight:500; font-size:0.78rem;">Feed Type</span>
+        <span class="badge badge-convention">AUDIT-ONLY</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- SPONSOR section (placeholder) -->
+  <details class="input-group">
+    <summary class="input-group-summary">
+      <div class="input-group-name">
+        <span>👤</span>
+        <span>Sponsor / Equity</span>
+      </div>
+      <span class="input-group-chevron">▾</span>
+    </summary>
+    <div class="input-group-body">
+      <div style="font-size:0.8rem; color:var(--muted); padding:0.5rem 0; line-height:1.5;">
+        Sponsor equity assumptions from project factory defaults. R99/R102 runtime flags not approved for production promotion.
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-top:1px solid var(--border); margin-top:0.5rem;">
+        <span style="color:var(--text-2); font-weight:500; font-size:0.78rem;">R99/R102</span>
+        <span class="badge badge-notapproved">NOT APPROVED</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- Actions -->
+  <div class="form-actions">
+    <button type="button" name="run" class="btn btn-primary"
+            hx-post="/run"
+            hx-form="#main-form"
+            hx-target="#model-output-area"
+            hx-swap="innerHTML"
+            hx-indicator="#run-indicator">
+      ⚡ Run Model
+    </button>
+    <span id="run-indicator" class="htmx-indicator">Running model...</span>
+
+    <button type="button" name="compare" class="btn btn-accent"
+            hx-post="/compare"
+            hx-form="#main-form"
+            hx-target="#model-output-area"
+            hx-swap="innerHTML"
+            hx-indicator="#compare-indicator">
+      📊 Compare
+    </button>
+    <span id="compare-indicator" class="htmx-indicator">Comparing...</span>
+
+    <button type="submit" form="main-form" formaction="/download" formmethod="POST" class="btn btn-secondary">
+      📥 Download Excel
+    </button>
+
+    <button type="button" class="btn btn-outline"
+            hx-post="/validate"
+            hx-form="#main-form"
+            hx-target="#validation-result"
+            hx-swap="innerHTML"
+            hx-indicator="#validate-indicator">
+      ✓ Validate
+    </button>
+    <span id="validate-indicator" class="htmx-indicator">Validating...</span>
+
+    <button type="button" class="btn btn-ghost"
+            hx-post="/save-run"
+            hx-form="#main-form"
+            hx-target="#save-result"
+            hx-swap="innerHTML">
+      💾 Save Run
+    </button>
+  </div>
+
+  <div id="save-result"></div>
+  <div id="validation-result"></div>
+</form>
 {% endblock %}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}FincoGPT — Internal Advisory Platform{% endblock %}</title>
+  <title>{% block title %}Finco One — Project Finance Platform{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/vendor/htmx.min.js"></script>
@@ -14,15 +14,15 @@
 <header class="top-header">
   <div class="header-inner">
     <div class="header-brand">
-      <span class="brand-logo">F</span>
+      <div class="brand-logo">F</div>
       <div class="brand-text">
-        <span class="brand-name">FincoGPT</span>
-        <span class="brand-sub">Internal Advisory Platform</span>
+        <span class="brand-name">Finco One</span>
+        <span class="brand-sub">Clean-Energy Project Finance</span>
       </div>
     </div>
     <div class="header-right">
       <span class="env-badge">INTERNAL DEMO</span>
-      <span class="version-badge">v1.7 Private Pilot</span>
+      <span class="version-badge">v1.7 Pilot</span>
       {% if user %}
       <form method="POST" action="/logout" style="display:inline;">
         <button type="submit" class="logout-btn">Sign out</button>
@@ -32,16 +32,178 @@
   </div>
 </header>
 
-<!-- Page content — override in child templates -->
-{% block body %}{% endblock %}
+<!-- App shell: sidebar-nav + sidebar-input + content -->
+<div class="app-layout">
+
+  <!-- Dark navy left sidebar — navigation -->
+  <nav class="sidebar-nav" id="sidebar-nav">
+    <div class="sidebar-nav-section">
+      <div class="sidebar-nav-section-label">Overview</div>
+      <a href="#dashboard" class="sidebar-nav-link active" onclick="activateNav(this)">
+        <span class="nav-icon">🏠</span>
+        Dashboard
+      </a>
+      <a href="#audit" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">📋</span>
+        Audit / Parity
+        <span class="nav-badge badge-blocked">2</span>
+      </a>
+    </div>
+
+    <div class="sidebar-nav-divider"></div>
+
+    <div class="sidebar-nav-section">
+      <div class="sidebar-nav-section-label">Inputs</div>
+      <a href="#inputs-project" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">⚙️</span>
+        Project Setup
+      </a>
+      <a href="#inputs-dates" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">📅</span>
+        Dates / COD
+      </a>
+      <a href="#inputs-production" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">⚡</span>
+        Production
+      </a>
+      <a href="#inputs-revenue" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">💰</span>
+        Revenue
+      </a>
+      <a href="#inputs-opex" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">📤</span>
+        OPEX
+      </a>
+      <a href="#inputs-capex" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">🏗️</span>
+        CAPEX
+      </a>
+    </div>
+
+    <div class="sidebar-nav-divider"></div>
+
+    <div class="sidebar-nav-section">
+      <div class="sidebar-nav-section-label">Financing</div>
+      <a href="#inputs-debt" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">🏦</span>
+        Senior Debt
+      </a>
+      <a href="#inputs-shl" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">🔄</span>
+        SHL
+      </a>
+      <a href="#inputs-tax" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">📄</span>
+        Tax
+      </a>
+      <a href="#inputs-distribution" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">💸</span>
+        Distributions
+      </a>
+      <a href="#inputs-sponsor" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">👤</span>
+        Sponsor / Equity
+      </a>
+    </div>
+
+    <div class="sidebar-nav-divider"></div>
+
+    <div class="sidebar-nav-section">
+      <div class="sidebar-nav-section-label">Outputs</div>
+      <a href="#output-pl" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">📊</span>
+        P&amp;L
+      </a>
+      <a href="#output-cashflow" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">💳</span>
+        Cash Flow
+      </a>
+      <a href="#output-balance" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">📐</span>
+        Balance Sheet
+      </a>
+      <a href="#output-debt" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">🏦</span>
+        Debt Schedule
+      </a>
+      <a href="#output-returns" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">📈</span>
+        Returns
+      </a>
+      <a href="#output-warnings" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">⚠️</span>
+        Warnings
+      </a>
+    </div>
+
+    <div class="sidebar-nav-divider"></div>
+
+    <div class="sidebar-nav-section">
+      <div class="sidebar-nav-section-label">Downloads</div>
+      <a href="/download" class="sidebar-nav-link">
+        <span class="nav-icon">📥</span>
+        Model Export
+      </a>
+      <a href="#download-parity" class="sidebar-nav-link">
+        <span class="nav-icon">📊</span>
+        Parity Workbook
+      </a>
+      <a href="#download-gap" class="sidebar-nav-link">
+        <span class="nav-icon">🔍</span>
+        Gap Register
+      </a>
+    </div>
+
+    <div class="sidebar-nav-divider"></div>
+
+    <div class="sidebar-nav-section">
+      <div class="sidebar-nav-section-label">Governance</div>
+      <a href="#governance" class="sidebar-nav-link" onclick="activateNav(this)">
+        <span class="nav-icon">🛡️</span>
+        G20 / Gates
+        <span class="nav-badge badge-blocked">BLOCKED</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Left panel: input form (for non-dashboard views or form fallback) -->
+  <aside class="sidebar-input" id="sidebar-input">
+    {% block sidebar_input %}{% endblock %}
+  </aside>
+
+  <!-- Page content — override in child templates -->
+  <main class="content">
+    {% block body %}{% endblock %}
+  </main>
+
+</div><!-- .app-layout -->
 
 <script>
-  // Global HTMX loading indicator
+  function activateNav(el) {
+    document.querySelectorAll('.sidebar-nav-link').forEach(l => l.classList.remove('active'));
+    if (el) el.classList.add('active');
+  }
+
+  // HTMX global loading indicator
   document.body.addEventListener('htmx:beforeRequest', function(e) {
     if (e.detail.target) e.detail.target.classList.add('htmx-loading');
   });
   document.body.addEventListener('htmx:afterRequest', function(e) {
     if (e.detail.target) e.detail.target.classList.remove('htmx-loading');
+  });
+
+  // Collapsible input groups
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.input-group-summary').forEach(function(summary) {
+      summary.addEventListener('click', function() {
+        var group = summary.parentElement;
+        if (group.hasAttribute('open')) {
+          group.removeAttribute('open');
+        } else {
+          group.setAttribute('open', '');
+        }
+      });
+    });
   });
 </script>
 
