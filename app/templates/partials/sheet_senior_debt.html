@@ -1,0 +1,87 @@
+<!-- sheet_senior_debt.html — senior debt facility (TUHO Wind 1 — read-only) -->
+<div class="sheet-card" style="margin-bottom:1.25rem;">
+  <div class="section-header">Senior Debt Facility</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <div class="assumption-label">Facility Amount</div>
+      <div class="assumption-value">43,359 kEUR</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">Tenor</div>
+      <div class="assumption-value">20 years (40 semiannual periods)</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">Grace Period</div>
+      <div class="assumption-value">0 (fully amortising from P1)</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">DSCR Target</div>
+      <div class="assumption-value">1.20x</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">Loan Rate</div>
+      <div class="assumption-value">8% p.a. (4% per semiannual period)</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">Repayment Method</div>
+      <div class="assumption-value">Sweep-based (cash sweep after DSCR threshold)</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">Commitment Fee</div>
+      <div class="assumption-value">0.5% p.a.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<div class="sheet-card">
+  <div class="section-header">Debt Service Preview — First 4 Periods (kEUR)</div>
+  <table class="sheet-table" style="width:100%;">
+    <thead>
+      <tr>
+        <th class="period-col">Period</th>
+        <th class="num-col">Opening</th>
+        <th class="num-col">Interest</th>
+        <th class="num-col">Principal</th>
+        <th class="num-col">Closing</th>
+        <th class="num-col">DSCR</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="period-col">Y1-H1</td>
+        <td class="num-col">43,359</td>
+        <td class="num-col">1,734</td>
+        <td class="num-col">382</td>
+        <td class="num-col">42,977</td>
+        <td class="num-col">1.26x</td>
+      </tr>
+      <tr>
+        <td class="period-col">Y1-H2</td>
+        <td class="num-col">42,977</td>
+        <td class="num-col">1,719</td>
+        <td class="num-col">397</td>
+        <td class="num-col">42,580</td>
+        <td class="num-col">1.24x</td>
+      </tr>
+      <tr>
+        <td class="period-col">Y2-H1</td>
+        <td class="num-col">42,580</td>
+        <td class="num-col">1,703</td>
+        <td class="num-col">413</td>
+        <td class="num-col">42,167</td>
+        <td class="num-col">1.22x</td>
+      </tr>
+      <tr>
+        <td class="period-col">Y2-H2</td>
+        <td class="num-col">42,167</td>
+        <td class="num-col">1,687</td>
+        <td class="num-col">429</td>
+        <td class="num-col">41,738</td>
+        <td class="num-col">1.21x</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="table-note">DSCR = CFADS / Debt Service. Target 1.20x minimum. Sample values based on 8% p.a. rate, sweep Sculpting.</div>
+</div>

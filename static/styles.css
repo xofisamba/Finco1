@@ -1349,3 +1349,131 @@ body {
   display: inline-block;
   font-weight: 500;
 }
+
+/* ── Excel-like Sheet Tables ─────────────────────────────────────────────── */
+.sheet-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.sheet-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.sheet-table th {
+  background: #1e3a5f;
+  color: white;
+  padding: 0.35rem 0.75rem;
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.sheet-table td {
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 0.8rem;
+}
+
+.sheet-table tbody tr:nth-child(even) td {
+  background: var(--surface-2);
+}
+
+.sheet-table tbody tr:hover td {
+  background: var(--primary-light);
+}
+
+.sheet-table .total-row td {
+  font-weight: 700;
+  border-top: 2px solid var(--border-strong);
+  border-bottom: none;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* ── Assumption Grid ─────────────────────────────────────────────────────── */
+.assumption-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.assumption-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.assumption-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.assumption-value {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── Section Divider ──────────────────────────────────────────────────────── */
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 1.25rem 0;
+}
+
+/* ── Metric Columns ──────────────────────────────────────────────────────── */
+.metric-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  min-width: 140px;
+}
+
+.metric-value {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: right;
+  color: var(--text);
+}
+
+.period-col {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.num-col {
+  text-align: right;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+
+/* ── Table Notes ──────────────────────────────────────────────────────────── */
+.table-note {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+}

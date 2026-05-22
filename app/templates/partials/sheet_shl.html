@@ -1,0 +1,84 @@
+<!-- sheet_shl.html — SHL facility (TUHO Wind 1 — read-only) -->
+<div class="sheet-card" style="margin-bottom:1.25rem;">
+  <div class="section-header">SHL — Standby Hydro Lockbox</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <div class="assumption-label">Opening Balance (at COD)</div>
+      <div class="assumption-value">32,704 kEUR</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">PIK Rate</div>
+      <div class="assumption-value">7.93% p.a. (3.965% per semiannual period)</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">IDC Capitalised</div>
+      <div class="assumption-value">1,520 kEUR (included in opening balance)</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">Sweep Method</div>
+      <div class="assumption-value">pik_then_sweep — PIK accrues first, then cash sweep reduces balance</div>
+    </div>
+    <div class="assumption-item">
+      <div class="assumption-label">SHL Purpose</div>
+      <div class="assumption-value">Reserve account for debt service shortfalls, tax holiday coverage, lockbox mechanics</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<div class="sheet-card">
+  <div class="section-header">SHL Balance Preview — First 4 Periods (kEUR)</div>
+  <table class="sheet-table" style="width:100%;">
+    <thead>
+      <tr>
+        <th class="period-col">Period</th>
+        <th class="num-col">Opening</th>
+        <th class="num-col">PIK Rate</th>
+        <th class="num-col">PIK Interest</th>
+        <th class="num-col">PIK Capitalised</th>
+        <th class="num-col">Cash Sweep</th>
+        <th class="num-col">Closing</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="period-col">Y1-H1</td>
+        <td class="num-col">32,704</td>
+        <td class="num-col">3.965%</td>
+        <td class="num-col">1,298</td>
+        <td class="num-col">1,298</td>
+        <td class="num-col">0</td>
+        <td class="num-col">34,002</td>
+      </tr>
+      <tr>
+        <td class="period-col">Y1-H2</td>
+        <td class="num-col">34,002</td>
+        <td class="num-col">3.965%</td>
+        <td class="num-col">1,349</td>
+        <td class="num-col">1,349</td>
+        <td class="num-col">0</td>
+        <td class="num-col">35,351</td>
+      </tr>
+      <tr>
+        <td class="period-col">Y2-H1</td>
+        <td class="num-col">35,351</td>
+        <td class="num-col">3.965%</td>
+        <td class="num-col">1,401</td>
+        <td class="num-col">1,401</td>
+        <td class="num-col">0</td>
+        <td class="num-col">36,752</td>
+      </tr>
+      <tr>
+        <td class="period-col">Y2-H2</td>
+        <td class="num-col">36,752</td>
+        <td class="num-col">3.965%</td>
+        <td class="num-col">1,457</td>
+        <td class="num-col">1,457</td>
+        <td class="num-col">0</td>
+        <td class="num-col">38,209</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="table-note">PIK accrues and capitalises each period (pik_then_sweep). Cash sweep applied when DSCR > 1.20x threshold. Sample values.</div>
+</div>
