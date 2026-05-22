@@ -1,0 +1,84 @@
+<!-- Sheet: OPEX — TUHO Wind 1 -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">📊 OPEX</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Template preview</span>
+    Static TUHO factory snapshot — not live run output
+  </span>
+</div>
+
+<!-- OPEX Schedule Y1 -->
+<div class="sheet-card">
+  <div class="section-header">OPEX Schedule — Y1 (kEUR)</div>
+  <table class="sheet-table">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th class="num-col">Y1 (kEUR)</th>
+        <th class="num-col">Inflation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Technical Management</td><td class="num-col">279.99</td><td class="num-col">2%</td></tr>
+      <tr><td>O&amp;M Preventive &amp; Corrective</td><td class="num-col">426.60</td><td class="num-col">2%</td></tr>
+      <tr><td>Maintain Site</td><td class="num-col">68.00</td><td class="num-col">2%</td></tr>
+      <tr><td>Clean Material</td><td class="num-col">5.00</td><td class="num-col">2%</td></tr>
+      <tr><td>Security</td><td class="num-col">50.00</td><td class="num-col">2%</td></tr>
+      <tr><td>Insurance</td><td class="num-col">468.74</td><td class="num-col">2%</td></tr>
+      <tr><td>Lease &amp; Property Tax</td><td class="num-col">248.88</td><td class="num-col">2%</td></tr>
+      <tr><td>Power Expenses</td><td class="num-col">93.72</td><td class="num-col">2%</td></tr>
+      <tr><td>Audit &amp; Accounting &amp; Legal</td><td class="num-col">23.99</td><td class="num-col">2%</td></tr>
+      <tr><td>Bank Fees (opex)</td><td class="num-col">20.00</td><td class="num-col">2%</td></tr>
+      <tr><td>Environmental &amp; Social Management</td><td class="num-col">200.00</td><td class="num-col">2%</td></tr>
+      <tr><td>Contingencies</td><td class="num-col">113.09</td><td class="num-col">6%</td></tr>
+      <tr class="total-row"><td>Total Y1 OPEX</td><td class="num-col">1,998</td><td class="num-col">—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- OPEX Assumptions -->
+<div class="sheet-card">
+  <div class="section-header">OPEX Assumptions</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Y1 OPEX Total</span>
+      <span class="metric-value">1,998 kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Inflation (standard)</span>
+      <span class="metric-value">2% annually</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Inflation (contingencies)</span>
+      <span class="metric-value">6% annually</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">OPEX/MW (Y1)</span>
+      <span class="metric-value">~57 kEUR/MW</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Largest Item</span>
+      <span class="metric-value">Insurance (468 kEUR)</span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- Escalation Note -->
+<div class="sheet-card">
+  <div class="section-header">Escalation</div>
+  <p style="font-size:0.85rem;color:var(--text-muted);">
+    OPEX inflates annually per category rate. Contingencies escalate at 6%/yr; all other items at 2%/yr.
+    Future: live OPEX projection driven by runtime <code>opex_engine</code>.
+  </p>
+</div>
+
+<div class="table-note">
+  <span class="badge badge-preview">Template preview</span>
+  Values above are hardcoded UI seed data from TUHO factory assumptions.
+  Not yet dynamically bound to active project runtime outputs.
+</div>

@@ -103,170 +103,62 @@
 
   <!-- ═══════════════════════════════════════════════ INPUTS ══ -->
   <div class="tab-panel" id="panel-inputs">
-    <div class="panel-header">
-      <div class="panel-title">Inputs</div>
-      <div class="panel-desc">Configure project inputs including capacity, dates, revenue, and operational parameters.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">⚙️</div>
-      <div class="placeholder-title">Inputs Configuration</div>
-      <div class="placeholder-desc">Project inputs are configured via the sidebar form (left panel). This tab provides a structured view of all input sections.</div>
-      <div class="placeholder-note">Future phase: structured input table view + inline editing.</div>
-    </div>
+    {% include "partials/sheet_inputs.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ CONSTRUCTION ══ -->
   <div class="tab-panel" id="panel-construction">
-    <div class="panel-header">
-      <div class="panel-title">Construction</div>
-      <div class="panel-desc">Construction period, CAPEX drawdown, and project delivery schedule.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">🏗️</div>
-      <div class="placeholder-title">Construction Phase</div>
-      <div class="placeholder-desc">CAPEX drawdown schedule and COD milestone tracking will appear here.</div>
-      <div class="placeholder-note">Future phase: construction timeline chart, milestone tracker.</div>
-    </div>
+    {% include "partials/sheet_construction.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ PRODUCTION ══ -->
   <div class="tab-panel" id="panel-production">
-    <div class="panel-header">
-      <div class="panel-title">Production</div>
-      <div class="panel-desc">P50/P90 energy yield, capacity factor, and availability assumptions.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">⚡</div>
-      <div class="placeholder-title">Production Forecast</div>
-      <div class="placeholder-desc">Energy yield projections and capacity factor analysis will appear here.</div>
-      <div class="placeholder-note">Future phase: yield duration curve, availability assumptions table.</div>
-    </div>
+    {% include "partials/sheet_production.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ REVENUE ══ -->
   <div class="tab-panel" id="panel-revenue">
-    <div class="panel-header">
-      <div class="panel-title">Revenue</div>
-      <div class="panel-desc">Tariff schedule, PPA term, and revenue projections over the investment horizon.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">💰</div>
-      <div class="placeholder-title">Revenue Model</div>
-      <div class="placeholder-desc">Tariff, PPA, and revenue projections will appear here.</div>
-      <div class="placeholder-note">Future phase: revenue waterfall, tariff escalation chart.</div>
-    </div>
+    {% include "partials/sheet_revenue.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ OPEX ══ -->
   <div class="tab-panel" id="panel-opex">
-    <div class="panel-header">
-      <div class="panel-title">OPEX</div>
-      <div class="panel-desc">Operating expenditure schedule including fixed and variable cost components.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">📤</div>
-      <div class="placeholder-title">Operating Expenditure</div>
-      <div class="placeholder-desc">OPEX breakdown and escalation schedule will appear here.</div>
-      <div class="placeholder-note">Future phase: OPEX table, escalation chart.</div>
-    </div>
+    {% include "partials/sheet_opex.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ CAPEX ══ -->
   <div class="tab-panel" id="panel-capex">
-    <div class="panel-header">
-      <div class="panel-title">CAPEX</div>
-      <div class="panel-desc">Total capital expenditure, unit cost per MW, and construction cost breakdown.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">🏗️</div>
-      <div class="placeholder-title">Capital Expenditure</div>
-      <div class="placeholder-desc">CAPEX breakdown and unit cost analysis will appear here.</div>
-      <div class="placeholder-note">Future phase: CAPEX table, cost per MW chart.</div>
-    </div>
+    {% include "partials/sheet_capex.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ SENIOR DEBT ══ -->
   <div class="tab-panel" id="panel-senior-debt">
-    <div class="panel-header">
-      <div class="panel-title">Senior Debt</div>
-      <div class="panel-desc">Senior debt sizing, DSCR sculpting, tenor, and interest rate assumptions.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">🏦</div>
-      <div class="placeholder-title">Senior Debt Schedule</div>
-      <div class="placeholder-desc">Debt sculpting, DSCR profile, and principal schedule will appear here.</div>
-      <div class="placeholder-note">Future phase: debt schedule table, DSCR chart.</div>
-    </div>
+    {% include "partials/sheet_senior_debt.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ SHL ══ -->
   <div class="tab-panel" id="panel-shl">
-    <div class="panel-header">
-      <div class="panel-title">SHL — Standby Hydro Lockbox</div>
-      <div class="panel-desc">SHL account mechanics, sweep triggers, and liquidity reserve policy.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">🔄</div>
-      <div class="placeholder-title">SHL Mechanics</div>
-      <div class="placeholder-desc">SHL balance, sweep triggers, and lockbox policy will appear here.</div>
-      <div class="placeholder-note">Future phase: SHL waterfall, account balance table.</div>
-    </div>
+    {% include "partials/sheet_shl.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ TAX ══ -->
   <div class="tab-panel" id="panel-tax">
-    <div class="panel-header">
-      <div class="panel-title">Tax</div>
-      <div class="panel-desc">Corporate income tax, tax holidays, and tax loss carryforward schedule.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">📄</div>
-      <div class="placeholder-title">Tax Schedule</div>
-      <div class="placeholder-desc">CIT schedule, tax holidays, and R35/R69 period mapping will appear here.</div>
-      <div class="placeholder-note">Status: MISSING_EVIDENCE for TUHO parity — R35/R69 mapping not confirmed.</div>
-    </div>
+    {% include "partials/sheet_tax.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ P&L ══ -->
   <div class="tab-panel" id="panel-pl">
-    <div class="panel-header">
-      <div class="panel-title">P&amp;L — Profit &amp; Loss</div>
-      <div class="panel-desc">Income statement showing revenue, EBITDA, interest, and net profit over the horizon.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">📊</div>
-      <div class="placeholder-title">Profit &amp; Loss Statement</div>
-      <div class="placeholder-desc">Full P&amp;L statement with revenue, EBITDA, interest, and net profit will appear here.</div>
-      <div class="placeholder-note">Future phase: P&amp;L table, EBITDA chart.</div>
-    </div>
+    {% include "partials/sheet_financials.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ CASH FLOW ══ -->
   <div class="tab-panel" id="panel-cashflow">
-    <div class="panel-header">
-      <div class="panel-title">Cash Flow</div>
-      <div class="panel-desc">Cash flow waterfall from revenue through debt service to equity distributions.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">💳</div>
-      <div class="placeholder-title">Cash Flow Statement</div>
-      <div class="placeholder-desc">Cash flow waterfall with debt service, sweeps, and distributions will appear here.</div>
-      <div class="placeholder-note">Future phase: cash flow table, DSCR chart.</div>
-    </div>
+    {% include "partials/sheet_financials.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ BALANCE SHEET ══ -->
   <div class="tab-panel" id="panel-balance">
-    <div class="panel-header">
-      <div class="panel-title">Balance Sheet</div>
-      <div class="panel-desc">Assets, liabilities, and equity balances across the investment horizon.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">📐</div>
-      <div class="placeholder-title">Balance Sheet</div>
-      <div class="placeholder-desc">Balance sheet projections across the investment horizon will appear here.</div>
-      <div class="placeholder-note">Future phase: balance sheet table, asset/liability chart.</div>
-    </div>
+    {% include "partials/sheet_financials.html" %}
   </div>
 
   <!-- ═══════════════════════════════════════════════ DISTRIBUTIONS ══ -->

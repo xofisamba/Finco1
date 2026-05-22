@@ -1,0 +1,120 @@
+<!-- Sheet: Senior Debt — TUHO Wind 1 -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🏦 Senior Debt</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Template preview</span>
+    Static TUHO factory snapshot — not live run output
+  </span>
+</div>
+
+<!-- Debt Facility Summary -->
+<div class="sheet-card">
+  <div class="section-header">Debt Facility Summary</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Facility Amount</span>
+      <span class="metric-value">43,359 kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Tenor</span>
+      <span class="metric-value">20 years (40 semiannual periods)</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Grace Period</span>
+      <span class="metric-value">0 (start Y1-H1)</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Loan Rate</span>
+      <span class="metric-value">8.00% p.a. (4.00% semiannual)</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Repayment</span>
+      <span class="metric-value">Cash sweep</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">DSCR Target</span>
+      <span class="metric-value">1.20x</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">First Debt Service</span>
+      <span class="metric-value">Y1-H1</span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- Debt Service Preview -->
+<div class="sheet-card">
+  <div class="section-header">Debt Service Preview — First 4 Periods</div>
+  <table class="sheet-table">
+    <thead>
+      <tr>
+        <th>Period</th>
+        <th class="num-col">Opening (kEUR)</th>
+        <th class="num-col">Interest (kEUR)</th>
+        <th class="num-col">Principal (kEUR)</th>
+        <th class="num-col">DSCR</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Y1-H1</td>
+        <td class="num-col">43,359</td>
+        <td class="num-col">1,734</td>
+        <td class="num-col">—</td>
+        <td class="num-col">1.20x</td>
+      </tr>
+      <tr>
+        <td>Y1-H2</td>
+        <td class="num-col">43,359</td>
+        <td class="num-col">1,734</td>
+        <td class="num-col">~382</td>
+        <td class="num-col">1.20x</td>
+      </tr>
+      <tr>
+        <td>Y2-H1</td>
+        <td class="num-col">~42,977</td>
+        <td class="num-col">1,719</td>
+        <td class="num-col">~397</td>
+        <td class="num-col">1.21x</td>
+      </tr>
+      <tr>
+        <td>Y2-H2</td>
+        <td class="num-col">~42,580</td>
+        <td class="num-col">1,703</td>
+        <td class="num-col">~413</td>
+        <td class="num-col">1.22x</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="table-note">DSCR-based sculpting; principal amount varies by CFADS. Preview illustrative.</p>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- Funding Sources -->
+<div class="sheet-card">
+  <div class="section-header">Funding Sources</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Senior Debt</span>
+      <span class="metric-value">43,359 kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Equity</span>
+      <span class="metric-value">29,635 kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Total Funding</span>
+      <span class="metric-value">72,994 kEUR</span>
+    </div>
+  </div>
+</div>
+
+<div class="table-note">
+  <span class="badge badge-preview">Template preview</span>
+  Values above are hardcoded UI seed data from TUHO factory assumptions.
+  Not yet dynamically bound to active project runtime outputs.
+</div>
