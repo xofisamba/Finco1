@@ -1,3 +1,4 @@
+import json
 """HTMX internal demo web interface for Finco1 model."""
 import os
 from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, status
@@ -459,7 +460,7 @@ async def run(request: Request):
         ctx = get_project_context(active_project)
         project_name = ctx.name
         try:
-            result = run_project(active_project, "Base")
+            result = run_project(active_project.upper(), "Base")
             kpis = _format_kpis(result["kpis"])
             runtime_summary = runtime_summary_to_dict(result, active_project, project_name)
             # Persist to sessionStorage so output tabs can read it on next page load
