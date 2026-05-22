@@ -286,11 +286,13 @@ body {
   flex-shrink: 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
-  position: sticky;
+  position: fixed;
   top: var(--header-h);
+  left: 0;
   height: calc(100vh - var(--header-h));
   overflow-y: auto;
   padding: 1.5rem 1.25rem;
+  z-index: 50;
 }
 
 .sidebar-input::-webkit-scrollbar { width: 4px; }
