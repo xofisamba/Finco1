@@ -2,166 +2,18 @@
 
 {% block body %}
 
-<!-- ── Dashboard View ──────────────────────────────────────────────── -->
-<section id="dashboard" class="content-section">
-
-  <!-- Governance Banner -->
-  <div class="gov-banner gov-blocked" style="margin-bottom:1.5rem;">
-    <div class="gov-icon">🛡️</div>
-    <div class="gov-content">
-      <div class="gov-title">G20 Gate — BLOCKED</div>
-      <div class="gov-desc">Equity IRR residual (0.29pp) is within ±1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.</div>
-    </div>
-    <span class="badge badge-blocked">Blocked</span>
+<!-- Governance Banner -->
+<div class="gov-banner gov-blocked" style="margin-bottom:1.5rem;">
+  <div class="gov-icon">🛡️</div>
+  <div class="gov-content">
+    <div class="gov-title">G20 Gate — BLOCKED</div>
+    <div class="gov-desc">Equity IRR residual (0.29pp) is within ±1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.</div>
   </div>
+  <span class="badge badge-blocked">Blocked</span>
+</div>
 
-  <!-- Dashboard KPI Cards -->
-  <div class="section-header">
-    <div class="section-title">Key Performance Indicators</div>
-  </div>
-
-  <div class="kpi-grid" id="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-label">Project IRR</div>
-      <div class="kpi-value" id="kpi-project-irr">—</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Equity IRR</div>
-      <div class="kpi-value" id="kpi-equity-irr">—</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Avg DSCR</div>
-      <div class="kpi-value" id="kpi-avg-dscr">—</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Senior Debt</div>
-      <div class="kpi-value" id="kpi-senior-debt">—</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Total Revenue</div>
-      <div class="kpi-value" id="kpi-revenue">—</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">EBITDA</div>
-      <div class="kpi-value" id="kpi-ebitda">—</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Distributions</div>
-      <div class="kpi-value" id="kpi-distributions">—</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Warnings</div>
-      <div class="kpi-value warning" id="kpi-warnings">—</div>
-    </div>
-  </div>
-
-  <!-- Audit / Governance Cards Row -->
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1.5rem;">
-
-    <!-- G20 / Governance Status -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Governance Status</div>
-        <span class="badge badge-blocked">Blocked</span>
-      </div>
-      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
-          <span style="color:var(--text-2); font-weight:500;">G20 Gate</span>
-          <span class="badge badge-blocked">BLOCKED</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
-          <span style="color:var(--text-2); font-weight:500;">R99/R102 Promotion</span>
-          <span class="badge badge-notapproved">NOT APPROVED</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
-          <span style="color:var(--text-2); font-weight:500;">Equity IRR Gap</span>
-          <span style="font-weight:600; color:var(--text);">0.29pp <span class="badge badge-pass">Within Tolerance</span></span>
-        </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
-          <span style="color:var(--text-2); font-weight:500;">TUHO Parity</span>
-          <span class="badge badge-convention">Audit-Only</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- TUHO Parity Summary -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">TUHO Parity — Phase 9</div>
-        <span class="badge badge-convention">DA-Wired Audit</span>
-      </div>
-      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
-          <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
-          <span class="badge badge-pass">PASS</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
-          <span style="color:var(--text-2); font-weight:500;">SHL Opening</span>
-          <span class="badge badge-pass">PASS</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
-          <span style="color:var(--text-2); font-weight:500;">Distributions</span>
-          <span class="badge badge-convention">ACCEPTED CONV</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
-          <span style="color:var(--text-2); font-weight:500;">Equity IRR</span>
-          <span class="badge badge-warn">WARN / 0.29pp</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
-          <span style="color:var(--text-2); font-weight:500;">Tax/CFADS</span>
-          <span class="badge badge-missing">MISSING_EVIDENCE</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Downloads Section -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">Downloads &amp; Audit Artefacts</div>
-    </div>
-    <div class="downloads-grid">
-      <a href="/download" class="download-item">
-        <div class="download-icon">📥</div>
-        <div class="download-info">
-          <div class="download-name">Model Export (.xlsx)</div>
-          <div class="download-desc">Full model output workbook</div>
-        </div>
-      </a>
-      <a href="#download-parity" class="download-item">
-        <div class="download-icon">📊</div>
-        <div class="download-info">
-          <div class="download-name">Parity Workbook</div>
-          <div class="download-desc">TUHO horizontal review (XLSX)</div>
-        </div>
-      </a>
-      <a href="#download-gap" class="download-item">
-        <div class="download-icon">🔍</div>
-        <div class="download-info">
-          <div class="download-name">Gap Register</div>
-          <div class="download-desc">All parity gaps and statuses</div>
-        </div>
-      </a>
-      <a href="#download-source" class="download-item">
-        <div class="download-icon">🗂️</div>
-        <div class="download-info">
-          <div class="download-name">Source Map</div>
-          <div class="download-desc">Column-by-column provenance</div>
-        </div>
-      </a>
-    </div>
-  </div>
-
-  <!-- Model Run placeholder (when model not yet run) -->
-  <div id="model-output-area">
-    <div class="empty-state">
-      <div class="empty-icon">⚡</div>
-      <div class="empty-title">Configure &amp; run the model</div>
-      <div class="empty-desc">Use the input panels on the left to configure your project, then click <strong>Run Model</strong> to see KPIs and outputs here.</div>
-    </div>
-  </div>
-
-</section>
+<!-- Workspace Shell — tab panels loaded here -->
+{% include "partials/workspace_shell.html" %}
 
 {% endblock %}
 
