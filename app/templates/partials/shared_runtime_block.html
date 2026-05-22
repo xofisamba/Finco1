@@ -1,0 +1,176 @@
+<!-- Shared Runtime Block — rendered inside every output tab after a Run.
+     Phase 9.5 — Output Tabs Runtime Summary Binding
+
+     Usage:
+       INCLUDE partial (via sessionStorage, not Jinja include)
+       (no context variables needed — reads from JS sessionStorage)
+
+     If sessionStorage key 'lastRuntimeSummary' is absent or empty,
+     the block is silently hidden (display:none) so it never shows
+     stale/blank data when no run has happened yet.
+-->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+
+  <!-- Primary KPIs grid (mirrors overview KPI card set) -->
+  <div class="runtime-block-kpis" id="runtime-block-kpis">
+    <!-- Populated by JS from sessionStorage -->
+  </div>
+
+  <!-- Secondary KPIs (select metrics per tab) -->
+  <div class="runtime-block-secondary" id="runtime-block-secondary">
+  </div>
+</div>
+
+<style>
+.runtime-block {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+  background: var(--bg-secondary, #fafbff);
+}
+.runtime-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.85rem;
+  background: #f0f4ff;
+  border-bottom: 1px solid var(--border, #ddd);
+  font-size: 0.78rem;
+}
+.runtime-block-title {
+  font-weight: 600;
+  color: var(--text, #333);
+}
+.runtime-block-project {
+  font-weight: 700;
+  color: var(--accent, #2563eb);
+  margin-left: auto;
+}
+.runtime-block-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+}
+.runtime-block-secondary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  padding: 0 0.85rem 0.75rem;
+}
+
+/* Individual metric rows inside secondary */
+.rb-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.rb-metric-label {
+  font-size: 0.68rem;
+  color: var(--text-2, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rb-metric-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text, #111);
+}
+.rb-metric-value.rb-missing {
+  color: var(--muted, #999);
+  font-style: italic;
+  font-weight: 400;
+}
+.rb-metric-value.rb-pass { color: #166534; }
+.rb-metric-value.rb-warn { color: #854d0e; }
+.rb-metric-value.rb-blocked { color: #991b1b; }
+
+/* Preview notice used inside each output tab */
+.preview-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #fefce8;
+  border: 1px solid #eab308;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #854d0e;
+  margin-bottom: 1rem;
+}
+</style>
+
+<script>
+(function() {
+  "use strict";
+
+  // Read last runtime summary from sessionStorage and populate the block.
+  // Called on page load AND after every HTMX swap.
+  function _populateRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return; // no run yet — stay hidden
+
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    var block = document.getElementById("shared-runtime-block");
+    if (!block) return;
+
+    // Show the block
+    block.style.display = "";
+
+    // Project name
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name ? data.project_name : "";
+
+    // KPI grid
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR",      key: "project_irr",         suffix: "" },
+        { label: "Equity IRR",      key: "equity_irr",          suffix: "" },
+        { label: "Avg DSCR",         key: "avg_dscr",            suffix: "" },
+        { label: "Min DSCR",         key: "min_dscr",             suffix: "" },
+        { label: "Senior Debt",      key: "senior_debt_keur",     suffix: "" },
+        { label: "Total Revenue",    key: "total_revenue_keur",   suffix: "" },
+        { label: "EBITDA",          key: "total_ebitda_keur",   suffix: "" },
+        { label: "Total OPEX",      key: "total_opex_keur",     suffix: "" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric">' +
+                  '<span class="rb-metric-label">' + kv.label + '</span>' +
+                  '<span class="' + cls + '">' + val + '</span>' +
+                '</div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+  }
+
+  // Expose globally so HTMX onSwap can call it after each run response
+  window._populateRuntimeBlock = _populateRuntimeBlock;
+
+  // Auto-populate whenever HTMX swaps #model-output-area (POST /run response)
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && e.target.id === "model-output-area") {
+      _populateRuntimeBlock();
+    }
+  });
+
+  // Populate on DOM ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateRuntimeBlock);
+  } else {
+    _populateRuntimeBlock();
+  }
+})();
+</script>

@@ -1,11 +1,37 @@
-<!-- Sheet: Tax — {{ project_ctx.name }} -->
-
+<!-- Sheet: Tax — {{ project_ctx.name }}
+     Phase 9.5 — Output Tabs Runtime Summary Binding -->
 <div class="sheet-banner">
   <span class="sheet-banner-tag">🏛️ Tax</span>
   <span class="sheet-banner-badge">
     <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   </span>
 </div>
+
+<!-- Live Runtime Summary -->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+  <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+  <div class="runtime-block-secondary" id="tax-secondary-metrics">
+    <div class="rb-metric">
+      <span class="rb-metric-label">CIT Status</span>
+      <span class="rb-metric-value" id="tax-status">NOT_AVAILABLE</span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">G20 Gate</span>
+      <span class="rb-metric-value rb-blocked">BLOCKED</span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">R99/R102</span>
+      <span class="rb-metric-value rb-blocked">NOT APPROVED</span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
 
 <!-- CIT Assumptions -->
 <div class="sheet-card">
@@ -28,14 +54,68 @@
 
 <div class="section-divider"></div>
 
-<!-- Tax note -->
+<!-- Tax Output Preview -->
 <div class="sheet-card">
   <div class="section-header">Output Preview</div>
-  <div class="placeholder-panel" style="padding:1.5rem;">
-    <div class="placeholder-desc">Live tax/CFADS preview is not yet bound to this project. Run the model to generate tax output.</div>
+  <div class="preview-notice">
+    <span>📋</span>
+    <span><strong>Preview schedule</strong> — static factory values, not live calculated output. Run the model to see actual tax output above.</span>
   </div>
 </div>
 
 <div class="table-note">
   <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>
+
+<script>
+(function() {
+  "use strict";
+  function _populateTaxRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    var block = document.getElementById("shared-runtime-block");
+    if (block) block.style.display = "";
+
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name || "";
+
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR", key: "project_irr" },
+        { label: "Equity IRR",  key: "equity_irr" },
+        { label: "Avg DSCR",     key: "avg_dscr" },
+        { label: "Total Revenue", key: "total_revenue_keur" },
+        { label: "EBITDA",      key: "total_ebitda_keur" },
+        { label: "Total OPEX",  key: "total_opex_keur" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+
+    // Tax/CFADS not yet in RuntimeSummary — show as NOT_AVAILABLE
+    var taxEl = document.getElementById("tax-status");
+    if (taxEl) taxEl.textContent = "AUDIT-ONLY";
+  }
+  window._populateTaxRuntimeBlock = _populateTaxRuntimeBlock;
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-tax"))) {
+      _populateTaxRuntimeBlock();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateTaxRuntimeBlock);
+  } else {
+    _populateTaxRuntimeBlock();
+  }
+})();
+</script>

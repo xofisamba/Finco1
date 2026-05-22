@@ -462,7 +462,8 @@ async def run(request: Request):
             result = run_project(active_project, "Base")
             kpis = _format_kpis(result["kpis"])
             runtime_summary = runtime_summary_to_dict(result, active_project, project_name)
-            return templates.TemplateResponse(
+            # Persist to sessionStorage so output tabs can read it on next page load
+            runtime_html = templates.TemplateResponse(
                 request=request,
                 name="partials/runtime_summary.html",
                 context={
@@ -473,6 +474,25 @@ async def run(request: Request):
                     "integration_status": result.get("integration_status", "full"),
                 },
             )
+            # Prepend sessionStorage save script
+            from fastapi.responses import HTMLResponse
+            body = runtime_html.body
+            body_str = body.decode("utf-8")
+            save_tag = (
+                '<script>'
+                'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(runtime_summary) + ');'
+                'window._populateRuntimeBlock && window._populateRuntimeBlock();'
+                '</script>'
+            )
+            if body_str.startswith("<!DOCTYPE"):
+                # Inject after <head> or at start of <body>
+                body_str = body_str.replace(
+                    "<body",
+                    save_tag + "<body"
+                )
+            else:
+                body_str = save_tag + body_str
+            return HTMLResponse(content=body_str, status_code=runtime_html.status_code)
         except Exception as e:
             return templates.TemplateResponse(
                 request=request,

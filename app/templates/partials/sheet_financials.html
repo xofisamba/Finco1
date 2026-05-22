@@ -1,5 +1,10 @@
-<!-- Sheet: Financial Statements — TUHO Wind 1 -->
+<!-- Sheet: Financial Statements (P&L / Cash Flow / Balance Sheet)
+     Phase 9.5 — Output Tabs Runtime Summary Binding
+     {{ project_ctx.name }}
 
+     Live runtime data (sessionStorage → shared JS) shown first.
+     Static preview tables labeled clearly below.
+-->
 <div class="sheet-banner">
   <span class="sheet-banner-tag">📈 Financial Statements</span>
   <span class="sheet-banner-badge">
@@ -8,11 +13,38 @@
   </span>
 </div>
 
+<!-- ── Live Runtime Summary (sessionStorage, no server round-trip) ─────────── -->
+<div id="fs-runtime-block">
+  <div class="runtime-block" id="shared-runtime-block" style="display:none;">
+    <div class="runtime-block-header">
+      <span class="badge badge-runtime">Runtime summary</span>
+      <span class="runtime-block-title">— last run</span>
+      <span class="runtime-block-project" id="runtime-block-project"></span>
+    </div>
+    <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+  </div>
+
+  <!-- Tab-specific secondary metrics for Financial Statements -->
+  <div class="runtime-block-secondary" id="fs-secondary-metrics" style="display:none;">
+    <div class="rb-metric">
+      <span class="rb-metric-label">Total Distributions</span>
+      <span class="rb-metric-value" id="fs-total-dist"></span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">SHL Opening</span>
+      <span class="rb-metric-value" id="fs-shl-opening"></span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
 <!-- ── P&L ───────────────────────────────────────────────────────── -->
 <div class="sheet-card">
   <div class="section-header">Income Statement (P&amp;L)</div>
-  <div class="subsection-label">
-    Preview financial statements — static illustrative TUHO schedule, not live calculated output
+  <div class="preview-notice">
+    <span>📋</span>
+    <span><strong>Preview schedule</strong> — static illustrative TUHO values, not live calculated output. Run the model to see actual results above.</span>
   </div>
   <table class="sheet-table">
     <thead>
@@ -48,8 +80,9 @@
 <!-- ── Cash Flow ──────────────────────────────────────────────────── -->
 <div class="sheet-card">
   <div class="section-header">Cash Flow</div>
-  <div class="subsection-label">
-    Preview financial statements — static illustrative TUHO schedule, not live calculated output
+  <div class="preview-notice">
+    <span>📋</span>
+    <span><strong>Preview schedule</strong> — static illustrative TUHO values, not live calculated output. Run the model to see actual results above.</span>
   </div>
   <table class="sheet-table">
     <thead>
@@ -81,8 +114,9 @@
 <!-- ── Balance Sheet ─────────────────────────────────────────────── -->
 <div class="sheet-card">
   <div class="section-header">Balance Sheet</div>
-  <div class="subsection-label">
-    Preview financial statements — static illustrative TUHO schedule, not live calculated output
+  <div class="preview-notice">
+    <span>📋</span>
+    <span><strong>Preview schedule</strong> — static illustrative TUHO values, not live calculated output. Run the model to see actual results above.</span>
   </div>
   <table class="sheet-table">
     <thead>
@@ -117,3 +151,70 @@
   Not yet dynamically bound to active project runtime outputs.
   Live financial statements will be driven by the waterfall engine in a future branch.
 </div>
+
+<!-- Financial Statements JS: populate secondary metrics + primary KPIs from sessionStorage -->
+<script>
+(function() {
+  "use strict";
+
+  function _populateFSRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    // Show primary runtime block
+    var block = document.getElementById("shared-runtime-block");
+    if (block) block.style.display = "";
+
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name || "";
+
+    // Primary KPIs
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR",    key: "project_irr" },
+        { label: "Equity IRR",      key: "equity_irr" },
+        { label: "Avg DSCR",         key: "avg_dscr" },
+        { label: "Total Revenue",  key: "total_revenue_keur" },
+        { label: "EBITDA",          key: "total_ebitda_keur" },
+        { label: "Total OPEX",      key: "total_opex_keur" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+
+    // Secondary: distributions + SHL opening
+    var secBlock = document.getElementById("fs-secondary-metrics");
+    if (secBlock) {
+      var distEl = document.getElementById("fs-total-dist");
+      if (distEl) distEl.textContent = data.total_distributions_keur || "NOT_AVAILABLE";
+      var shlEl = document.getElementById("fs-shl-opening");
+      if (shlEl) shlEl.textContent = data.shl_opening_keur || "NOT_AVAILABLE";
+      secBlock.style.display = "";
+    }
+  }
+
+  window._populateFSRuntimeBlock = _populateFSRuntimeBlock;
+
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-pl") || e.target.closest("#panel-cashflow") || e.target.closest("#panel-balance"))) {
+      _populateFSRuntimeBlock();
+    }
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateFSRuntimeBlock);
+  } else {
+    _populateFSRuntimeBlock();
+  }
+})();
+</script>
