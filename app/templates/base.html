@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Finco One — Project Finance Platform{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=phase9_5_nav_fix" />
   <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/app.js" defer></script>
 </head>
 <body>
 
@@ -39,11 +40,11 @@
   <nav class="sidebar-nav" id="sidebar-nav">
     <div class="sidebar-nav-section">
       <div class="sidebar-nav-section-label">Overview</div>
-      <a href="#dashboard" class="sidebar-nav-link active" onclick="activateNav(this)">
+      <a href="#dashboard" class="sidebar-nav-link active">
         <span class="nav-icon">🏠</span>
         Dashboard
       </a>
-      <a href="#audit" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#audit" class="sidebar-nav-link">
         <span class="nav-icon">📋</span>
         Audit / Parity
         <span class="nav-badge badge-blocked">2</span>
@@ -54,27 +55,27 @@
 
     <div class="sidebar-nav-section">
       <div class="sidebar-nav-section-label">Inputs</div>
-      <a href="#inputs-project" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-project" class="sidebar-nav-link">
         <span class="nav-icon">⚙️</span>
         Project Setup
       </a>
-      <a href="#inputs-dates" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-dates" class="sidebar-nav-link">
         <span class="nav-icon">📅</span>
         Dates / COD
       </a>
-      <a href="#inputs-production" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-production" class="sidebar-nav-link">
         <span class="nav-icon">⚡</span>
         Production
       </a>
-      <a href="#inputs-revenue" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-revenue" class="sidebar-nav-link">
         <span class="nav-icon">💰</span>
         Revenue
       </a>
-      <a href="#inputs-opex" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-opex" class="sidebar-nav-link">
         <span class="nav-icon">📤</span>
         OPEX
       </a>
-      <a href="#inputs-capex" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-capex" class="sidebar-nav-link">
         <span class="nav-icon">🏗️</span>
         CAPEX
       </a>
@@ -84,23 +85,23 @@
 
     <div class="sidebar-nav-section">
       <div class="sidebar-nav-section-label">Financing</div>
-      <a href="#inputs-debt" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-debt" class="sidebar-nav-link">
         <span class="nav-icon">🏦</span>
         Senior Debt
       </a>
-      <a href="#inputs-shl" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-shl" class="sidebar-nav-link">
         <span class="nav-icon">🔄</span>
         SHL
       </a>
-      <a href="#inputs-tax" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-tax" class="sidebar-nav-link">
         <span class="nav-icon">📄</span>
         Tax
       </a>
-      <a href="#inputs-distribution" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-distribution" class="sidebar-nav-link">
         <span class="nav-icon">💸</span>
         Distributions
       </a>
-      <a href="#inputs-sponsor" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#inputs-sponsor" class="sidebar-nav-link">
         <span class="nav-icon">👤</span>
         Sponsor / Equity
       </a>
@@ -110,27 +111,27 @@
 
     <div class="sidebar-nav-section">
       <div class="sidebar-nav-section-label">Outputs</div>
-      <a href="#output-pl" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#output-pl" class="sidebar-nav-link">
         <span class="nav-icon">📊</span>
         P&amp;L
       </a>
-      <a href="#output-cashflow" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#output-cashflow" class="sidebar-nav-link">
         <span class="nav-icon">💳</span>
         Cash Flow
       </a>
-      <a href="#output-balance" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#output-balance" class="sidebar-nav-link">
         <span class="nav-icon">📐</span>
         Balance Sheet
       </a>
-      <a href="#output-debt" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#output-debt" class="sidebar-nav-link">
         <span class="nav-icon">🏦</span>
         Debt Schedule
       </a>
-      <a href="#output-returns" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#output-returns" class="sidebar-nav-link">
         <span class="nav-icon">📈</span>
         Returns
       </a>
-      <a href="#output-warnings" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#output-warnings" class="sidebar-nav-link">
         <span class="nav-icon">⚠️</span>
         Warnings
       </a>
@@ -158,7 +159,7 @@
 
     <div class="sidebar-nav-section">
       <div class="sidebar-nav-section-label">Governance</div>
-      <a href="#governance" class="sidebar-nav-link" onclick="activateNav(this)">
+      <a href="#governance" class="sidebar-nav-link">
         <span class="nav-icon">🛡️</span>
         G20 / Gates
         <span class="nav-badge badge-blocked">BLOCKED</span>
@@ -180,8 +181,27 @@
 
 <script>
   function activateNav(el) {
+    // 1. Update active nav state
     document.querySelectorAll('.sidebar-nav-link').forEach(l => l.classList.remove('active'));
     if (el) el.classList.add('active');
+
+    // 2. Open the target details section (anchor nav → details open)
+    if (el) {
+      const href = el.getAttribute('href');
+      if (href && href.startsWith('#')) {
+        const id = href.substring(1);
+        if (id && id !== 'dashboard' && id !== 'audit') {
+          const target = document.getElementById(id);
+          if (target && target.tagName === 'DETAILS' && !target.hasAttribute('open')) {
+            target.setAttribute('open', '');
+          }
+          // Scroll to target
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      }
+    }
   }
 
   // HTMX global loading indicator
