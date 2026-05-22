@@ -303,6 +303,7 @@ body {
 .content {
   flex: 1;
   min-width: 0;
+  margin-left: var(--sidebar-w);   /* offset so main content sits to the right of fixed sidebar */
   padding: 1.75rem 2rem;
 }
 
