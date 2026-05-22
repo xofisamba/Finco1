@@ -1,0 +1,18 @@
+section,metric,period_or_total,excel_value,model_value,delta,root_cause,classification,recommended_action,notes
+Operations,Production,total/horizon,4372200.0,4372200.0,0.0,Runtime model data now sourced from period.generation_mwh.,PASS,None,Prior pack zero-feed defect fixed.
+Revenue,Total revenue,total/horizon,423787.48695062846,423787.486950696,6.752088665962219e-08,Runtime model data now sourced from period.revenue_keur.,PASS,None,Within known tolerance from PR #168.
+Revenue,CO2,total/horizon,,7158.17576605992,,Excel CO2 row not separately mapped in committed extract.,MISSING_EVIDENCE,Map Excel CO2 row if reviewer requires sub-line parity.,"Model CO2 is visible, Excel split is missing."
+Revenue,Balancing,total/horizon,,-34977.6,,Excel balancing row not separately mapped in committed extract.,MISSING_EVIDENCE,Map Excel balancing row if reviewer requires sub-line parity.,"Model balancing cost is visible, Excel split is missing."
+Costs / EBITDA,OPEX,total/horizon,84674.77873934135,85408.27413448403,733.4953951426869,Known local-tax/minor-row grouping difference.,WARN,Keep sub-line attribution branch open.,Total within tolerance but sub-line ownership remains partial.
+Senior Debt,Debt service,total/horizon,66181.34723683617,65826.38828020643,-354.95895662973635,Runtime fields wired from senior period outputs.,PASS,None,Senior rows no longer zeroed by reporting feed.
+SHL,SHL Opening Balance,total/horizon,1243882.6407311016,1161441.7213736488,-82440.91935745277,Runtime feed fixed from shl_amount + IDC / prior closing balance.,PASS,None,"P1 model opening is around 32,704 kEUR."
+SHL,SHL Principal Repaid,total/horizon,43730.69873728115,38028.01009465598,-5702.688642625166,Default runtime/off path differs from Excel timing; alignment path remains config-gated.,WARN,Use flag-state legend; do not mix paths.,P25 alignment exists but is not default/factory opt-in.
+Tax / CFADS,Taxable Income,total/horizon,184326.26019880685,245220.2845360055,60894.02433719864,R35 audit field wired but residual row ownership remains under review.,WARN,Continue R35/tax basis closeout.,No longer entirely MISSING_EVIDENCE.
+Tax / CFADS,CIT Cash,total/horizon,-38240.920880415375,20140.22414240874,58381.145022824116,R67 cash CIT wired from runtime field.,PASS,None,Cash CIT evidence present.
+Tax / CFADS,CFADS,total/horizon,300926.78733087174,318238.9886738032,17312.201342931483,R69 FCF banks audit field wired.,PASS,None,CFADS evidence present.
+Distributions,Net Dividends / Distribution,total/horizon,151709.3935867215,173516.1639437714,21806.770357049885,Excel dividend definition differs from runtime distribution_keur.,ACCEPTED_CONVENTION,Review using flag-state legend.,Default runtime distribution row uses one flag state.
+Distributions,DA-wired / pre-G20 staging,total/horizon,,252412.60039359677,,Audit-only R99 staging row is shown separately.,ACCEPTED_CONVENTION,Do not treat as runtime source.,Separate annotation fixes prior mixed-feed defect.
+Returns,Equity IRR,total/horizon,,,,Equity IRR remains below Excel target after known convention fixes.,WARN,Final G20 gate review required.,G20 remains blocked.
+Returns,Reconciliation IRR,total/horizon,,,,Excel-date/ex-IFC reconciliation IRR view is not implemented.,MISSING_EVIDENCE,Implement reviewer-only reconciliation IRR if required.,Do not mark G20 pass without this or stakeholder waiver.
+Governance,G20,total/horizon,,,,G20 requires final stakeholder acceptance or reconciliation IRR evidence.,BLOCKER,Proceed to final parity/gate review only.,G20 remains BLOCKED.
+Governance,R99/R102,total/horizon,,,,Runtime promotion remains explicitly unapproved.,BLOCKER,No promotion in this branch.,R99/R102 remains NOT approved.
