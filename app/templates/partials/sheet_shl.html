@@ -13,11 +13,11 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">SHL Amount</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.shl_amount_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_amount_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Opening Balance</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.shl_amount_keur + project_ctx.shl_idc_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_amount_keur + project_ctx.shl_idc_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">SHL Rate</span>
@@ -25,7 +25,7 @@
     </div>
     <div class="assumption-item">
       <span class="metric-label">IDC (capitalised)</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.shl_idc_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_idc_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">WHT on SHL Interest</span>

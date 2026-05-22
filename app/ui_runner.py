@@ -73,7 +73,7 @@ def _build_period_engine(project_inputs):
     )
 
 
-def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanced_capex_line_items=None, project_type="solar"):
+def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanced_capex_line_items=None, project_type="solar", use_dualrun_validation: bool = False):
     """Run waterfall using config derived from project inputs."""
     from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
     runner = WaterfallRunner(inputs=project_inputs, engine=engine)
@@ -95,6 +95,8 @@ def _run_waterfall(project_inputs, engine, advanced_opex_line_items=None, advanc
         )
         updates["advanced_capex_depreciation_schedule"] = depr_schedule
         updates["advanced_capex_line_items"] = advanced_capex_line_items
+    if use_dualrun_validation:
+        updates["use_dualrun_validation"] = True
     if updates:
         config = replace(config, **updates)
     return runner.run(config)
@@ -122,7 +124,8 @@ def _advanced_opex_warnings(line_items) -> list[str]:
 def run_demo_project(project_type: str, scenario: str = "Base",
                    project_inputs_override=None,
                    advanced_opex_line_items=None,
-                   advanced_capex_line_items=None) -> DemoResult:
+                   advanced_capex_line_items=None,
+                   use_dualrun_validation: bool = False) -> DemoResult:
     """Create and run a demo project, returning results for UI display."""
     from app.project_factories import (
         create_default_solar_project,
@@ -214,7 +217,7 @@ def run_demo_project(project_type: str, scenario: str = "Base",
                         advanced_opex_line_items = tuple(_scale_item(i) for i in advanced_opex_line_items)
 
             engine = _build_period_engine(proj)
-            result.result = _run_waterfall(proj, engine, advanced_opex_line_items, advanced_capex_line_items, project_type)
+            result.result = _run_waterfall(proj, engine, advanced_opex_line_items, advanced_capex_line_items, project_type, use_dualrun_validation)
             result.project_inputs = proj
 
             # Surface model warnings to user
