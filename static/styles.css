@@ -610,6 +610,7 @@ body {
 .badge-convention { background: var(--convention-bg); color: var(--convention-text);   border-color: var(--convention-border); }
 .badge-missing { background: var(--missing-bg);       color: var(--missing-text);       border-color: var(--missing-border); }
 .badge-notapproved { background: var(--notapproved-bg); color: var(--notapproved-text); border-color: var(--notapproved-border); }
+.badge-runtime { background: #f0f4ff; color: #1a56db; border-color: #bfdbfe; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; padding: 0.2rem 0.55rem; border-radius: 100px; border: 1px solid; text-transform: uppercase; white-space: nowrap; }
 
 /* ── OPEX Contingency Method Badges ──────────────────────────────────────── */
 .method-badge {

@@ -269,6 +269,58 @@ class TestNoRuntimeModelFilesChanged:
         assert stdout == "" or "origin/main...HEAD" in result.stderr
 
 
+class TestUILabelConsistency:
+    """Phase 9.5 UI closeout: label and badge consistency checks."""
+
+    SHEETS = [
+        "sheet_financials.html",
+        "sheet_senior_debt.html",
+        "sheet_shl.html",
+        "sheet_tax.html",
+    ]
+
+    @pytest.mark.parametrize("sheet", SHEETS)
+    def test_preview_labels_present(self, sheet):
+        """Each output sheet must contain 'Preview schedule' or 'Template preview' label."""
+        path = os.path.join(PARTIALS, sheet)
+        content = open(path, encoding="utf-8").read()
+        has_preview = (
+            "Preview schedule" in content or
+            "Template preview" in content or
+            "badge-preview" in content
+        )
+        assert has_preview, f"{sheet}: must contain 'Preview schedule' or 'Template preview'"
+
+    @pytest.mark.parametrize("sheet", SHEETS)
+    def test_runtime_summary_labels_present(self, sheet):
+        """Each output sheet must contain 'Runtime summary' label."""
+        path = os.path.join(PARTIALS, sheet)
+        content = open(path, encoding="utf-8").read()
+        assert "Runtime summary" in content, \
+            f"{sheet}: must contain 'Runtime summary'"
+
+    def test_governance_labels_present_in_tax_tab(self):
+        """Tax tab must show G20 and R99/R102 governance labels."""
+        path = os.path.join(PARTIALS, "sheet_tax.html")
+        content = open(path, encoding="utf-8").read()
+        assert "G20" in content or "BLOCKED" in content, \
+            "Tax tab must contain G20 label"
+        assert "R99" in content or "R102" in content or "NOT APPROVED" in content, \
+            "Tax tab must contain R99/R102 label"
+
+    def test_no_inline_onclick_handlers(self):
+        """Rendered output sheets must not contain inline onclick= handlers (except htmx)."""
+        import re
+        for sheet in ["sheet_financials.html", "sheet_senior_debt.html",
+                      "sheet_shl.html", "sheet_tax.html"]:
+            path = os.path.join(PARTIALS, sheet)
+            content = open(path, encoding="utf-8").read()
+            # Find all onclick= attributes
+            onclick_matches = re.findall(r'onclick=["\']([^"\']*)["\']', content)
+            non_htmx = [h for h in onclick_matches if "htmx" not in h.lower()]
+            assert not non_htmx, f"{sheet}: found non-htmx onclick handlers: {non_htmx}"
+
+
 # Pytest fixtures
 
 from tests.test_auth_lite import (
