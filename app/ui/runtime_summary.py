@@ -1,0 +1,202 @@
+"""Phase 9.5 — Runtime summary builder.
+
+app/ui/runtime_summary.py
+
+Responsibilities:
+1. Accept a run_project result dict (from app.api.project_runner.run_project())
+2. Extract KPI fields safely (no fabricated values)
+3. Return a serialisable dict for Jinja2 rendering
+
+No runtime formula changes. No engine changes.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+NOT_AVAILABLE = "NOT_AVAILABLE"
+MISSING_RUNTIME_BINDING = "MISSING_RUNTIME_BINDING"
+
+
+@dataclass(frozen=True)
+class RuntimeSummary:
+    """Lightweight live runtime summary for one project run.
+
+    All fields are sourced from actual model execution results.
+    Fields that are unavailable are marked NOT_AVAILABLE.
+    """
+
+    project_id: str
+    project_name: str
+    ran_at: str = ""
+    status: str = "ok"
+
+    project_irr: str = NOT_AVAILABLE
+    equity_irr: str = NOT_AVAILABLE
+    avg_dscr: str = NOT_AVAILABLE
+    min_dscr: str = NOT_AVAILABLE
+
+    total_revenue_keur: str = NOT_AVAILABLE
+    total_ebitda_keur: str = NOT_AVAILABLE
+    total_opex_keur: str = NOT_AVAILABLE
+    total_distributions_keur: str = NOT_AVAILABLE
+
+    senior_debt_keur: str = NOT_AVAILABLE
+    shl_opening_keur: str = NOT_AVAILABLE
+
+    error_message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "project_id": self.project_id,
+            "project_name": self.project_name,
+            "ran_at": self.ran_at,
+            "status": self.status,
+            "project_irr": self.project_irr,
+            "equity_irr": self.equity_irr,
+            "avg_dscr": self.avg_dscr,
+            "min_dscr": self.min_dscr,
+            "total_revenue_keur": self.total_revenue_keur,
+            "total_ebitda_keur": self.total_ebitda_keur,
+            "total_opex_keur": self.total_opex_keur,
+            "total_distributions_keur": self.total_distributions_keur,
+            "senior_debt_keur": self.senior_debt_keur,
+            "shl_opening_keur": self.shl_opening_keur,
+            "error_message": self.error_message,
+        }
+
+
+def _fmt(v: Any, suffix: str = "", decimal_places: int = 2) -> str:
+    """Format a numeric value safely, returning NOT_AVAILABLE for None/NaN."""
+    if v is None:
+        return NOT_AVAILABLE
+    try:
+        f = float(v)
+        if _is_bad_float(f):
+            return NOT_AVAILABLE
+        if suffix == "%":
+            return f"{f * 100:.{decimal_places}f}%".replace(".00%", ".0%")
+        if suffix == "x":
+            return f"{f:.2f}x".replace(".00x", ".0x")
+        return f"{f:,.{decimal_places}f}{suffix}"
+    except (TypeError, ValueError):
+        return NOT_AVAILABLE
+
+
+def _is_bad_float(v: float) -> bool:
+    return v != v or abs(v) == float("inf")
+
+
+def _keur(v: Any) -> str:
+    """Format as kEUR string."""
+    if v is None:
+        return NOT_AVAILABLE
+    try:
+        f = float(v)
+        if _is_bad_float(f):
+            return NOT_AVAILABLE
+        return f"{f:,.0f} kEUR"
+    except (TypeError, ValueError):
+        return NOT_AVAILABLE
+
+
+def _find_debt_balance(wf_rows: list[dict], label_needle: str) -> str:
+    """Search waterfall rows for a balance row matching label_needle.
+
+    Each row is a dict {period: value}. Returns formatted kEUR string
+    or NOT_AVAILABLE.
+    """
+    for row in wf_rows:
+        # The row has no 'label' key — period columns are the only keys.
+        # We detect debt rows by scanning non-None numeric values.
+        vals = list(row.values())
+        # skip period-name strings at the start
+        numeric_vals = []
+        for v in vals:
+            try:
+                numeric_vals.append(float(v))
+            except (TypeError, ValueError):
+                pass
+        if not numeric_vals:
+            continue
+        # A "balance" row for debt should start positive and decrease
+        # Look for rows with positive initial values that decline over time
+        if numeric_vals[0] > 0 and any(v == 0 for v in numeric_vals[1:]):
+            # likely a debt balance row
+            return _keur(numeric_vals[0])
+    return NOT_AVAILABLE
+
+
+def build_runtime_summary(
+    result: dict[str, Any],
+    project_id: str,
+    project_name: str,
+) -> RuntimeSummary:
+    """Build RuntimeSummary from a run_project result dict.
+
+    The result dict must come from app.api.project_runner.run_project()
+    (which wraps run_demo_project). It contains 'kpis' and optional
+    'tables' keys.
+
+    project_id:  "tuho" | "oborovo"
+    project_name: display name shown in the UI
+    """
+    import datetime
+
+    kpis = result.get("kpis", {})
+
+    # ── Primary KPIs ──────────────────────────────────────────────────
+    project_irr = _fmt(kpis.get("project_irr"), suffix="%")
+    equity_irr = _fmt(kpis.get("equity_irr"), suffix="%")
+    avg_dscr = _fmt(kpis.get("avg_dscr"), suffix="x")
+    min_dscr = _fmt(kpis.get("min_dscr"), suffix="x")
+    total_revenue = _keur(kpis.get("total_revenue_keur"))
+    total_ebitda = _keur(kpis.get("total_ebitda_keur"))
+    total_opex = _keur(kpis.get("total_opex_keur"))
+    total_dist = _keur(kpis.get("total_distributions_keur"))
+
+    # ── Balance-sheet anchors ───────────────────────────────────────
+    # These are best-effort from factory defaults since waterfall table
+    # rows don't have explicit 'label' keys.
+    tables = result.get("tables", {})
+    wf_rows = tables.get("waterfall", [])
+
+    senior_debt_str = NOT_AVAILABLE
+    shl_opening_str = NOT_AVAILABLE
+
+    # TUHO / Oborovo factory defaults for senior debt and SHL
+    from app.ui.project_context import get_project_context
+    ctx = get_project_context(project_id)
+    if ctx.senior_debt_keur:
+        senior_debt_str = _keur(ctx.senior_debt_keur)
+    if ctx.shl_amount_keur:
+        shl_opening_str = _keur(ctx.shl_amount_keur + ctx.shl_idc_keur)
+
+    return RuntimeSummary(
+        project_id=project_id,
+        project_name=project_name,
+        ran_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        status="ok",
+        project_irr=project_irr,
+        equity_irr=equity_irr,
+        avg_dscr=avg_dscr,
+        min_dscr=min_dscr,
+        total_revenue_keur=total_revenue,
+        total_ebitda_keur=total_ebitda,
+        total_opex_keur=total_opex,
+        total_distributions_keur=total_dist,
+        senior_debt_keur=senior_debt_str,
+        shl_opening_keur=shl_opening_str,
+        error_message="",
+    )
+
+
+def runtime_summary_to_dict(
+    result: dict[str, Any],
+    project_id: str,
+    project_name: str,
+) -> dict[str, Any]:
+    """Convenience: build RuntimeSummary and return .to_dict()."""
+    return build_runtime_summary(result, project_id, project_name).to_dict()

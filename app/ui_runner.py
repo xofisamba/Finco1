@@ -36,6 +36,17 @@ PROJECT_CONFIGS = {
         "status": "partial",
         "note": PARTIAL_NOTE,
     },
+    # Phase 9.5 — named project bindings
+    "TUHO": {
+        "factory": "create_default_tuho_wind1",
+        "status": "full",
+        "note": None,
+    },
+    "Oborovo": {
+        "factory": "create_default_oborovo",
+        "status": "full",
+        "note": None,
+    },
 }
 
 
@@ -119,6 +130,8 @@ def run_demo_project(project_type: str, scenario: str = "Base",
         create_default_bess_project,
         create_default_solar_bess_project,
         create_default_wind_bess_project,
+        create_default_tuho_wind1,
+        create_default_oborovo,
     )
     from app.portfolio_runner import run_portfolio_from_inputs
     from domain.portfolio.inputs import PortfolioInputs
@@ -130,6 +143,9 @@ def run_demo_project(project_type: str, scenario: str = "Base",
         "BESS": create_default_bess_project,
         "Solar+BESS": create_default_solar_bess_project,
         "Wind+BESS": create_default_wind_bess_project,
+        # Phase 9.5 — named project bindings
+        "TUHO": create_default_tuho_wind1,
+        "Oborovo": create_default_oborovo,
     }
 
     result = DemoResult(project_type=project_type)

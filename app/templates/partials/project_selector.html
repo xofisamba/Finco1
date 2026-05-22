@@ -8,7 +8,9 @@
     <!-- TUHO Wind -->
     <a href="/?project=tuho"
        class="ps-card {% if project_ctx.code == 'TUHO' %}active{% endif %}"
-       id="ps-tuho" data-project="tuho">
+       id="ps-tuho"
+       data-project="tuho"
+       onclick="setActiveProject('tuho'); return true;">
       <div class="ps-card-icon">💨 Wind</div>
       <div class="ps-card-info">
         <div class="ps-card-name">TUHO Wind 1</div>
@@ -24,7 +26,9 @@
     <!-- Oborovo Solar -->
     <a href="/?project=oborovo"
        class="ps-card {% if project_ctx.code == 'OBOROVO' %}active{% endif %}"
-       id="ps-oborovo" data-project="oborovo">
+       id="ps-oborovo"
+       data-project="oborovo"
+       onclick="setActiveProject('oborovo'); return true;">
       <div class="ps-card-icon">☀ Solar</div>
       <div class="ps-card-info">
         <div class="ps-card-name">Oborovo Solar PV</div>
@@ -38,3 +42,33 @@
     </a>
   </div>
 </div>
+
+<script>
+  /**
+   * setActiveProject — Phase 9.5
+   * Sets the hidden active_project input so the next "Run Model" submits
+   * with the correct project identifier.
+   */
+  function setActiveProject(projectId) {
+    var input = document.getElementById('active_project');
+    if (input) {
+      input.value = projectId;
+    }
+    // Also persist in sessionStorage so switching back/forward preserves context
+    try { sessionStorage.setItem('active_project', projectId); } catch(e) {}
+  }
+
+  /**
+   * On page load, restore active project from sessionStorage if set.
+   * This handles back/forward browser navigation.
+   */
+  (function() {
+    try {
+      var stored = sessionStorage.getItem('active_project');
+      if (stored) {
+        var input = document.getElementById('active_project');
+        if (input && !input.value) input.value = stored;
+      }
+    } catch(e) {}
+  })();
+</script>

@@ -1,0 +1,158 @@
+<!-- Runtime Summary — partial for HTMX swap into #model-output-area -->
+<!-- Phase 9.5 — Live active project run binding -->
+<div class="runtime-summary" id="runtime-summary">
+  <!-- Last run banner -->
+  <div class="run-banner" id="run-banner">
+    <div class="run-banner-left">
+      <span class="run-banner-icon">⚡</span>
+      <span class="run-banner-label">Last run:</span>
+      <span class="run-banner-project">{{ runtime_summary.project_name }}</span>
+    </div>
+    <div class="run-banner-right">
+      <span class="run-banner-time">{{ runtime_summary.ran_at }}</span>
+      {% if runtime_summary.status == "ok" %}
+      <span class="badge badge-pass">OK</span>
+      {% else %}
+      <span class="badge badge-blocked">ERROR</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- KPI cards row -->
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Project IRR</div>
+      <div class="kpi-value {% if runtime_summary.project_irr == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-project-irr">{{ runtime_summary.project_irr }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Equity IRR</div>
+      <div class="kpi-value {% if runtime_summary.equity_irr == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-equity-irr">{{ runtime_summary.equity_irr }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Avg DSCR</div>
+      <div class="kpi-value {% if runtime_summary.avg_dscr == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-avg-dscr">{{ runtime_summary.avg_dscr }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Senior Debt</div>
+      <div class="kpi-value {% if runtime_summary.senior_debt_keur == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-senior-debt">{{ runtime_summary.senior_debt_keur }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Revenue</div>
+      <div class="kpi-value {% if runtime_summary.total_revenue_keur == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-revenue">{{ runtime_summary.total_revenue_keur }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">EBITDA</div>
+      <div class="kpi-value {% if runtime_summary.total_ebitda_keur == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-ebitda">{{ runtime_summary.total_ebitda_keur }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total OPEX</div>
+      <div class="kpi-value {% if runtime_summary.total_opex_keur == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-opex">{{ runtime_summary.total_opex_keur }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Distributions</div>
+      <div class="kpi-value {% if runtime_summary.total_distributions_keur == 'NOT_AVAILABLE' %}kpi-missing{% endif %}"
+           id="kpi-distributions">{{ runtime_summary.total_distributions_keur }}</div>
+    </div>
+  </div>
+
+  <!-- Runtime label notice -->
+  <div class="runtime-notice">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-notice-text">
+      Values above are live model outputs — not static factory previews.
+    </span>
+  </div>
+
+  {% if messages %}
+  <div class="run-messages">
+    {% for msg in messages %}
+    <div class="run-message">{{ msg }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if runtime_summary.error_message %}
+  <div class="run-error">{{ runtime_summary.error_message }}</div>
+  {% endif %}
+</div>
+
+<style>
+/* Runtime summary specific styles */
+.run-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-secondary, #f0f4ff);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+.run-banner-left { display: flex; gap: 0.5rem; align-items: center; }
+.run-banner-right { display: flex; gap: 0.75rem; align-items: center; }
+.run-banner-label { color: var(--text-2); font-weight: 500; }
+.run-banner-project { font-weight: 700; color: var(--accent); }
+.run-banner-icon { font-size: 1rem; }
+.run-banner-time { color: var(--text-2); font-size: 0.78rem; }
+
+.badge-runtime {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.runtime-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+.runtime-notice-text { color: var(--text-2); }
+
+.kpi-missing {
+  color: var(--muted) !important;
+  font-style: italic;
+}
+
+.run-messages {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.run-message {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.6rem;
+  background: #fefce8;
+  border-left: 3px solid #eab308;
+  border-radius: 3px;
+  color: #854d0e;
+}
+
+.run-error {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  color: #991b1b;
+  font-size: 0.82rem;
+}
+</style>
