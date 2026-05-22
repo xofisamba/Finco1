@@ -1,0 +1,4 @@
+section,metric,period,excel_value,model_value,delta,severity,classification,root_cause,action,notes
+Revenue,Electricity Revenue (Y1),2030-06-30,4060.988185324519,4060.988185324519,0,LOW,PASS,Aligned,None,
+SHL,PIK Capitalized,2030-06-30,MISSING_EVIDENCE,0.0,N/A,HIGH,MISSING_EVIDENCE,PIK not in committed extract,Map SHL PIK rows,
+Tax,Taxable Income (Y1),2030-06-30,MISSING_EVIDENCE,655.1143745939253,N/A,HIGH,MISSING_EVIDENCE,R35 not mapped,Map R35 rows,

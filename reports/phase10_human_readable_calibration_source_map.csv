@@ -1,0 +1,9 @@
+section,metric,excel_source,model_source,source_status,notes
+Operations,Production (MWh),CF!R18 (committed extract),runtime.generation_mwh,COMMITTED,
+Revenue,Electricity Revenue (kEUR),Revenue sheet (committed),runtime.revenue_keur,COMMITTED,
+Revenue,CO2 Revenue,MISSING_EVIDENCE,MISSING_EVIDENCE,MISSING_EVIDENCE,CO2 not in runtime period data
+OPEX,Total OPEX,OPEX schedule (committed),runtime.opex_keur,COMMITTED,
+Senior Debt,DSCR,MISSING_EVIDENCE,runtime.dscr,MISSING_EVIDENCE,Excel DSCR not mapped
+SHL,PIK Capitalized,MISSING_EVIDENCE,runtime.shl_pik_keur,MISSING_EVIDENCE,PIK not in committed SHL extract
+Returns,Project IRR,9.41% (calibration ref),runtime.project_irr,COMMITTED,
+Governance,G20 Status,G20 gate,G20 gate,COMMITTED,BLOCKED — no runtime change

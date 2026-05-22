@@ -1,0 +1,10 @@
+Metric,Value,Source,Classification
+Project IRR,9.41%,Model (live runtime),PASS
+Equity IRR,11.15%,Model (live runtime),PASS
+Avg DSCR,1.230x,Model (live runtime),PASS
+Min DSCR,1.200x,Model (live runtime),PASS
+Total Revenue (kEUR),"423,844",Model (live runtime),PASS
+Total OPEX (kEUR),"85,408",Model (live runtime),PASS
+G20 Status,BLOCKED,Governance gate,GOVERNANCE_BLOCKER
+R99 Status,NOT APPROVED,Governance gate,GOVERNANCE_BLOCKER
+R102 Status,NOT APPROVED,Governance gate,GOVERNANCE_BLOCKER
