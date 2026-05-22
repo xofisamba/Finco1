@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Finco One — Excel-Like Workspace Wireframe</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --sidebar-bg: #0f1b2d;
+    --sidebar-border: #1e3a5f;
+    --sidebar-w: 260px;
+    --header-h: 56px;
+    --tab-h: 40px;
+    --primary: #1a56db;
+    --text: #0f172a;
+    --text-2: #64748b;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --sidebar-text: #c8d6e8;
+    --sidebar-muted: #7a96b8;
+    --sidebar-hover: #1d3352;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f6f8fb;
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── Top Header ── */
+  .top-header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: var(--header-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 1.5rem;
+    z-index: 200;
+  }
+  .brand { display: flex; align-items: center; gap: 0.75rem; }
+  .brand-logo {
+    width: 32px; height: 32px; border-radius: 6px;
+    background: var(--primary); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.1rem;
+  }
+  .brand-name { font-weight: 700; font-size: 0.95rem; }
+  .brand-sub { font-size: 0.72rem; color: var(--text-2); margin-left: 0.5rem; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+  .env-badge {
+    background: #fef9c3; color: #854d0e; border: 1px solid #fde047;
+    font-size: 0.65rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px;
+  }
+  .version-badge {
+    background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;
+    font-size: 0.65rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px;
+  }
+  .sign-out-btn {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    padding: 0.3rem 0.75rem; font-size: 0.78rem; cursor: pointer;
+  }
+
+  /* ── App Layout ── */
+  .app-layout {
+    display: flex;
+    min-height: 100vh;
+    padding-top: var(--header-h);
+  }
+
+  /* ── Left Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    flex: 0 0 var(--sidebar-w);
+    position: fixed;
+    left: 0; top: var(--header-h); bottom: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--sidebar-border);
+    overflow-y: auto;
+    padding: 1rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .sidebar-section { padding: 0 1rem; margin-bottom: 1rem; }
+  .sidebar-section-label {
+    font-size: 0.58rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--sidebar-muted);
+    margin-bottom: 0.4rem;
+  }
+  .project-selector {
+    width: 100%; background: var(--sidebar-hover); border: 1px solid var(--sidebar-border);
+    color: white; border-radius: 6px; padding: 0.4rem 0.6rem;
+    font-size: 0.82rem; cursor: pointer;
+  }
+  .scenario-row {
+    display: flex; gap: 0.4rem; align-items: center; margin-top: 0.4rem;
+  }
+  .scenario-select {
+    flex: 1; background: var(--sidebar-hover); border: 1px solid var(--sidebar-border);
+    color: white; border-radius: 6px; padding: 0.35rem 0.5rem; font-size: 0.78rem;
+  }
+  .btn-duplicate {
+    background: var(--sidebar-hover); border: 1px solid var(--sidebar-border);
+    color: var(--sidebar-text); border-radius: 6px; padding: 0.35rem 0.5rem;
+    font-size: 0.72rem; cursor: pointer; white-space: nowrap;
+  }
+  .sidebar-divider { border: none; border-top: 1px solid var(--sidebar-border); margin: 0.5rem 0; }
+  .sidebar-action-row { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+  .btn-primary-sm {
+    flex: 1; background: var(--primary); color: white; border: none;
+    border-radius: 6px; padding: 0.45rem 0.5rem; font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.3rem;
+  }
+  .btn-secondary-sm {
+    flex: 1; background: transparent; color: var(--sidebar-text);
+    border: 1px solid var(--sidebar-border); border-radius: 6px;
+    padding: 0.4rem 0.4rem; font-size: 0.75rem; cursor: pointer;
+  }
+  .sidebar-link {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 0.75rem; font-size: 0.78rem; color: var(--sidebar-text);
+    text-decoration: none; border-radius: 6px; margin: 0.1rem 0;
+    transition: background 0.12s;
+  }
+  .sidebar-link:hover { background: var(--sidebar-hover); color: white; }
+  .sidebar-link .nav-icon { font-size: 0.9rem; }
+  .gov-item {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.2rem 0.75rem; font-size: 0.72rem; color: var(--sidebar-muted);
+  }
+  .badge-blocked { background: #ef4444; color: white; border-radius: 999px; padding: 0.05rem 0.4rem; font-size: 0.6rem; font-weight: 600; }
+  .badge-warn { background: #f59e0b; color: white; border-radius: 999px; padding: 0.05rem 0.4rem; font-size: 0.6rem; font-weight: 600; }
+  .badge-ok { background: #22c55e; color: white; border-radius: 999px; padding: 0.05rem 0.4rem; font-size: 0.6rem; font-weight: 600; }
+
+  /* ── Tab Ribbon ── */
+  .tab-ribbon {
+    position: fixed;
+    top: var(--header-h); left: var(--sidebar-w); right: 0;
+    height: var(--tab-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    z-index: 100;
+  }
+  .tab-ribbon::-webkit-scrollbar { height: 0; }
+  .tab {
+    display: flex; align-items: center; padding: 0 1rem;
+    font-size: 0.78rem; color: var(--text-2); cursor: pointer;
+    border-right: 1px solid var(--border); white-space: nowrap;
+    transition: color 0.12s, border-bottom 0.12s;
+    flex-shrink: 0;
+  }
+  .tab:hover { color: var(--text); background: #f8fafc; }
+  .tab.active {
+    color: var(--primary); font-weight: 600;
+    border-bottom: 2px solid var(--primary);
+    background: white;
+  }
+
+  /* ── Main Workspace ── */
+  .main-wrapper {
+    margin-left: var(--sidebar-w);
+    padding-top: calc(var(--header-h) + var(--tab-h));
+    width: calc(100% - var(--sidebar-w));
+    min-height: 100vh;
+    padding: 1.5rem 2rem;
+  }
+
+  /* ── Sheet: OPEX Example ── */
+  .sheet-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.25rem;
+  }
+  .sheet-title {
+    font-size: 1rem; font-weight: 700; color: var(--text);
+  }
+  .sheet-meta { font-size: 0.72rem; color: var(--text-2); }
+  .period-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .period-table th, .period-table td {
+    padding: 0.4rem 0.6rem; text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+  .period-table th {
+    background: #f8fafc; font-weight: 600; font-size: 0.72rem;
+    color: var(--text-2); position: sticky; top: 0;
+  }
+  .period-table th:first-child, .period-table td:first-child {
+    text-align: left; position: sticky; left: 0;
+    background: white; z-index: 1;
+  }
+  .period-table th:first-child { z-index: 2; background: #f8fafc; }
+  .period-table td { color: var(--text); }
+  .period-table td:first-child { color: var(--text-2); font-size: 0.75rem; }
+  .period-table tr.total td { font-weight: 700; border-top: 2px solid var(--border); }
+  .period-table tr:hover td { background: #f8fafc; }
+  .section-label {
+    font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-2);
+    margin: 1.5rem 0 0.5rem 0;
+  }
+  .info-box {
+    background: #fef9c3; border: 1px solid #fde047; border-radius: 8px;
+    padding: 0.75rem 1rem; font-size: 0.78rem; color: #854d0e;
+    margin-bottom: 1rem;
+  }
+  .info-box.blocked {
+    background: #fef2f2; border: 1px solid #fecaca;
+    color: #991b1b;
+  }
+</style>
+</head>
+<body>
+
+<!-- Top Header -->
+<header class="top-header">
+  <div class="brand">
+    <div class="brand-logo">F</div>
+    <div>
+      <div class="brand-name">Finco One</div>
+      <div class="brand-sub">Clean-Energy Project Finance</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="env-badge">INTERNAL DEMO</span>
+    <span class="version-badge">v1.7 Pilot</span>
+    <button class="sign-out-btn">Sign out</button>
+  </div>
+</header>
+
+<div class="app-layout">
+
+  <!-- Left Sidebar: Project Workspace -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Active Project</div>
+      <select class="project-selector">
+        <option value="tuho">TUHO Wind — Croatia</option>
+        <option value="oborovo">Oborovo Solar — Croatia</option>
+      </select>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Scenario</div>
+      <div class="scenario-row">
+        <select class="scenario-select">
+          <option value="base">Base</option>
+          <option value="sensitivity">Sensitivity</option>
+        </select>
+        <button class="btn-duplicate">📋 Duplicate</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Runs / History</div>
+      <a href="#" class="sidebar-link"><span class="nav-icon">🕐</span> Run History</a>
+      <a href="#" class="sidebar-link"><span class="nav-icon">📊</span> Portfolio View</a>
+    </div>
+
+    <hr class="sidebar-divider" />
+
+    <div class="sidebar-section">
+      <div class="sidebar-action-row">
+        <button class="btn-primary-sm">▶ Run Model</button>
+      </div>
+      <div class="sidebar-action-row" style="margin-top: 0.35rem;">
+        <button class="btn-secondary-sm">⚡ Compare</button>
+        <button class="btn-secondary-sm">📥 Export</button>
+      </div>
+    </div>
+
+    <hr class="sidebar-divider" />
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Downloads</div>
+      <a href="#" class="sidebar-link"><span class="nav-icon">📥</span> Model Export (.xlsx)</a>
+      <a href="#" class="sidebar-link"><span class="nav-icon">📊</span> Parity Workbook</a>
+      <a href="#" class="sidebar-link"><span class="nav-icon">🔍</span> Gap Register</a>
+    </div>
+
+    <hr class="sidebar-divider" />
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">🛡️ Governance</div>
+      <div class="gov-item">
+        G20 Gate <span class="badge-blocked">BLOCKED</span>
+      </div>
+      <div class="gov-item" style="padding-left: 1.1rem; font-size: 0.68rem; color: #991b1b;">
+        0.29pp equity IRR residual
+      </div>
+      <div class="gov-item">
+        R99/R102 <span class="badge-warn">NOT APPROVED</span>
+      </div>
+      <div class="gov-item">
+        CO2 <span class="badge-ok">Enabled</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Tab Ribbon -->
+  <nav class="tab-ribbon">
+    <div class="tab active">Overview</div>
+    <div class="tab">Inputs</div>
+    <div class="tab">Construction</div>
+    <div class="tab">Production</div>
+    <div class="tab">Revenue</div>
+    <div class="tab">OPEX</div>
+    <div class="tab">CAPEX</div>
+    <div class="tab">Senior Debt</div>
+    <div class="tab">SHL</div>
+    <div class="tab">Tax</div>
+    <div class="tab">P&amp;L</div>
+    <div class="tab">Cash Flow</div>
+    <div class="tab">Balance Sheet</div>
+    <div class="tab">Distributions</div>
+    <div class="tab">Sponsor / Equity</div>
+    <div class="tab">Audit / Parity</div>
+    <div class="tab">Downloads</div>
+  </nav>
+
+  <!-- Main Workspace -->
+  <main class="main-wrapper">
+    <div class="info-box blocked">
+      🛡️ G20 Gate: <strong>BLOCKED</strong> — 0.29pp equity IRR residual, within tolerance but requires stakeholder approval
+    </div>
+
+    <div class="section-label">OPERATING EXPENSES — OPEX Schedule (EUR '000)</div>
+
+    <table class="period-table">
+      <thead>
+        <tr>
+          <th>Line Item</th>
+          <th>Y1</th><th>Y2</th><th>Y3</th><th>Y4</th><th>Y5</th>
+          <th>...</th>
+          <th>Y29</th><th>Y30</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Personnel</td>
+          <td>120</td><td>123</td><td>127</td><td>130</td><td>134</td>
+          <td>...</td>
+          <td>195</td><td>201</td>
+        </tr>
+        <tr>
+          <td>O&amp;M</td>
+          <td>80</td><td>82</td><td>85</td><td>87</td><td>90</td>
+          <td>...</td>
+          <td>131</td><td>135</td>
+        </tr>
+        <tr>
+          <td>Insurance</td>
+          <td>45</td><td>46</td><td>48</td><td>49</td><td>50</td>
+          <td>...</td>
+          <td>73</td><td>75</td>
+        </tr>
+        <tr>
+          <td>Land Lease</td>
+          <td>30</td><td>31</td><td>32</td><td>32</td><td>33</td>
+          <td>...</td>
+          <td>48</td><td>50</td>
+        </tr>
+        <tr>
+          <td>Other Costs</td>
+          <td>15</td><td>16</td><td>16</td><td>17</td><td>17</td>
+          <td>...</td>
+          <td>25</td><td>26</td>
+        </tr>
+        <tr class="total">
+          <td>Total OPEX</td>
+          <td>290</td><td>298</td><td>307</td><td>315</td><td>324</td>
+          <td>...</td>
+          <td>472</td><td>486</td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</div>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>
