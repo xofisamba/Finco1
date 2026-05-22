@@ -224,3 +224,40 @@ class TestNoRuntimeChanges:
             f"Unexpected file changes (runtime model files touched): {disallowed}\n"
             f"All changed files: {changed}"
         )
+
+class TestLayoutAlignment:
+    """Layout alignment polish — canonical CSS variables must exist."""
+
+    def test_css_has_canonical_spacing_variables(self):
+        with open(os.path.join(REPO_ROOT, "static/styles.css")) as f:
+            css = f.read()
+        assert "--tabs-h" in css, "Missing canonical --tabs-h variable"
+        assert "--content-px" in css, "Missing canonical --content-px variable"
+        assert "--content-py" in css, "Missing canonical --content-py variable"
+        assert "--sp-" in css, "Missing canonical spacing scale (--sp-*)"
+
+    def test_project_sidebar_uses_canonical_variables(self):
+        with open(os.path.join(REPO_ROOT, "static/styles.css")) as f:
+            css = f.read()
+        idx = css.find(".project-sidebar {")
+        block = css[idx:idx+400]
+        assert "var(--tabs-h)" in block, "project-sidebar should use --tabs-h"
+
+    def test_top_tabs_bar_exists(self):
+        with open(os.path.join(REPO_ROOT, "static/styles.css")) as f:
+            css = f.read()
+        assert ".top-tabs-bar {" in css
+
+    def test_workspace_content_uses_content_variables(self):
+        with open(os.path.join(REPO_ROOT, "static/styles.css")) as f:
+            css = f.read()
+        idx = css.find(".workspace-content {")
+        block = css[idx:idx+200]
+        assert "var(--content-py)" in block or "var(--content-px)" in block
+
+    def test_app_layout_uses_sidebar_offset(self):
+        with open(os.path.join(REPO_ROOT, "static/styles.css")) as f:
+            css = f.read()
+        idx = css.find(".app-layout {")
+        block = css[idx:idx+200]
+        assert "var(--sidebar-w)" in block
