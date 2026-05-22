@@ -1,20 +1,20 @@
-gap_id,category,issue,excel_value,model_value,delta,severity,affects_runtime,affects_reporting,affects_bankability,affects_g20,recommended_action,status,notes
-G-01,Operations,Production period-level,"~145,740 MWh/yr","~145,742 MWh/yr",+2 MWh/yr,LOW,NO,YES,NO,NO,None,PASS,Minor rounding
-G-02,Revenue,Total revenue,"423,787 kEUR","423,844 kEUR",+57 kEUR,LOW,NO,YES,NO,NO,None,PASS,Within 0.1%
-G-03,OPEX,OPEX sub-category mapping,"84,675 kEUR","85,408 kEUR",+733 kEUR,MEDIUM,NO,YES,NO,NO,Map sub-items,WARN,Within 1% tolerance. Sub-mapping incomplete.
-G-04,EBITDA,EBITDA total,"339,113 kEUR","338,435 kEUR",-678 kEUR,LOW,NO,YES,NO,NO,None,PASS,Within 0.2%
-G-05,Senior Debt,Senior debt amount,"43,359 kEUR","43,359 kEUR",0,LOW,NO,NO,NO,NO,None,PASS,Exact match
-G-06,Senior Debt,DSCR computation,~1.2x,inf,N/A,LOW,YES,YES,NO,NO,Use senior_sweep mode,ACCEPTED_CONVENTION,Mode flag not error
-G-07,SHL,SHL opening balance,"32,704 kEUR","30,930 kEUR","-1,774 kEUR",MEDIUM,NO,YES,NO,NO,Verify reporting,ACCEPTED_CONVENTION,P1 principal convention
-G-08,SHL,First principal repayment,P29 (2044-06-30),P25 (2042-06-30),4 periods,MEDIUM,YES,YES,NO,NO,PR#165 done,PASS,P29 bug fixed
-G-09,SHL,SHL interest total,"38,755 kEUR","10,260+PIK kEUR",N/A,LOW,NO,YES,NO,NO,Use sum for comparison,ACCEPTED_CONVENTION,PIK treatment differs
-G-10,SHL,SHL rate,7.93%,7.93%,0,LOW,NO,NO,NO,NO,None,PASS,Exact match
-G-11,Tax,Corporate tax total,0 kEUR,0 kEUR,0,LOW,NO,YES,NO,NO,None,PASS,CIT=0 match
-G-12,Tax_CFADS,CFADS definition,EBIT+financing,EBITDA-tax,N/A,MEDIUM,NO,YES,NO,NO,Map CFADS formula,MISSING_EVIDENCE,Requires mapping
-G-13,Distributions,Distribution total,"151,209 kEUR","281,349 kEUR","+130,140 kEUR",MEDIUM,NO,YES,NO,NO,Use equity subset,ACCEPTED_CONVENTION,Definition differs
-G-14,Distributions,First distribution timing,P35,P15,20 periods,LOW,NO,YES,NO,NO,Document,ACCEPTED_CONVENTION,SHL balance=0 at P14
-G-15,Returns,Project IRR,9.47%,9.41%,-0.06pp,LOW,NO,YES,NO,NO,None,PASS,Within tolerance
-G-16,Returns,Equity IRR gap,11.61%,~11.32%,-0.29pp,MEDIUM,NO,YES,YES,YES,Reconciliation IRR,WARN,G20 BLOCKED
-G-17,Returns,XIRR date convention,2028-06-30,2030-06-30,2 years,LOW,NO,YES,YES,YES,Document,ACCEPTED_CONVENTION,Construction vs COD
-G-18,Returns,XIRR investment base,"-29,635 (excl IDC)","-33,204 (incl IDC)","-3,569 kEUR",LOW,NO,YES,YES,YES,Document,ACCEPTED_CONVENTION,IDC convention
-G-19,Returns,Reconciliation IRR,11.61%,Not implemented,N/A,MEDIUM,NO,YES,YES,YES,Create IRR view,MISSING_EVIDENCE,Not yet implemented
+metric,section,period,excel_value,model_value,delta,classification,severity,root_cause,recommended_action,accepted_for_closeout
+,,,"~145,740 MWh/yr","~145,742 MWh/yr",+2 MWh/yr,,LOW,,None,
+,,,"423,787 kEUR","423,844 kEUR",+57 kEUR,,LOW,,None,
+,,,"84,675 kEUR","85,408 kEUR",+733 kEUR,,MEDIUM,,Map sub-items,
+,,,"339,113 kEUR","338,435 kEUR",-678 kEUR,,LOW,,None,
+,,,"43,359 kEUR","43,359 kEUR",0,,LOW,,None,
+,,,~1.2x,inf,N/A,,LOW,,Use senior_sweep mode,
+,,,"32,704 kEUR","30,930 kEUR","-1,774 kEUR",,MEDIUM,,Verify reporting,
+,,,P29 (2044-06-30),P25 (2042-06-30),4 periods,,MEDIUM,,PR#165 done,
+,,,"38,755 kEUR","10,260+PIK kEUR",N/A,,LOW,,Use sum for comparison,
+,,,7.93%,7.93%,0,,LOW,,None,
+,,,0 kEUR,0 kEUR,0,,LOW,,None,
+,,,EBIT+financing,EBITDA-tax,N/A,,MEDIUM,,Map CFADS formula,
+,,,"151,209 kEUR","281,349 kEUR","+130,140 kEUR",,MEDIUM,,Use equity subset,
+,,,P35,P15,20 periods,,LOW,,Document,
+,,,9.47%,9.41%,-0.06pp,,LOW,,None,
+,,,11.61%,~11.32%,-0.29pp,,MEDIUM,,Reconciliation IRR,
+,,,2028-06-30,2030-06-30,2 years,,LOW,,Document,
+,,,"-29,635 (excl IDC)","-33,204 (incl IDC)","-3,569 kEUR",,LOW,,Document,
+,,,11.61%,Not implemented,N/A,,MEDIUM,,Create IRR view,
