@@ -34,6 +34,7 @@ from app.auth import (
 # Import persistence
 from app.persistence.repository import save_run, get_run, list_runs, delete_run, count_runs
 from app.ui.project_context import get_project_context, all_project_ids
+from app.ui.runtime_summary import runtime_summary_to_dict, build_runtime_summary, NOT_AVAILABLE
 
 # ── FastAPI app ────────────────────────────────────────────────────────────
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -427,12 +428,18 @@ async def validate(request: Request):
 
 @app.post("/run")
 async def run(request: Request):
-    """Run model with custom inputs. Requires auth."""
+    """Run model with custom inputs. Requires auth.
+
+    Accepts optional active_project field from form (hidden input set by JS).
+    If active_project is set, runs the named project (TUHO/Oborovo) instead of
+    building a schema from arbitrary form inputs.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
+    active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
     capacity_mw = form.get("capacity_mw", "")
@@ -444,6 +451,35 @@ async def run(request: Request):
     target_dscr = form.get("target_dscr", "")
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
+
+    # ── Phase 9.5: Named project binding ──────────────────────────────
+    # If active_project is set, run the named project factory directly.
+    # This bypasses arbitrary form inputs and uses factory defaults.
+    if active_project in ("tuho", "oborovo"):
+        ctx = get_project_context(active_project)
+        project_name = ctx.name
+        try:
+            result = run_project(active_project, "Base")
+            kpis = _format_kpis(result["kpis"])
+            runtime_summary = runtime_summary_to_dict(result, active_project, project_name)
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/runtime_summary.html",
+                context={
+                    "kpis": kpis,
+                    "runtime_summary": runtime_summary,
+                    "run_data": {"project_type": active_project, "scenario": "Base"},
+                    "messages": result.get("messages", []),
+                    "integration_status": result.get("integration_status", "full"),
+                },
+            )
+        except Exception as e:
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/errors.html",
+                context={"errors": [f"Model error ({active_project}): {str(e)}"]},
+            )
+    # ── Standard form-based run (no active_project) ─────────────────
 
     errors = []
     if not _validate_form(project_type, scenario, errors):

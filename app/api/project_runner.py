@@ -46,6 +46,8 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         "kpis": {
             "total_revenue_keur": result.total_revenue_keur,
             "total_ebitda_keur": result.total_ebitda_keur,
+            "total_opex_keur": getattr(result, 'total_opex_keur', None),
+            "total_distributions_keur": getattr(result, 'total_distribution_keur', None),
             "project_irr": result.project_irr,
             "equity_irr": result.equity_irr,
             "min_dscr": result.actual_min_dscr,
