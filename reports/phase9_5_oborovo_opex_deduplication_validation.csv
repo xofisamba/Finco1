@@ -1,0 +1,19 @@
+project,metric,before_value_keur,after_value_keur,expected_value_keur,delta_keur,status,source,notes
+TUHO,Y1 OPEX,1998.05,1998.05,1998.05,0.00,OK,factory_direct,No change — TUHO unchanged
+Oborovo,Y1 OPEX,1338.08,1338.08,1338.08,0.00,OK,factory_direct,Was always 1338.08 — confirmed by Sprint 11
+Oborovo,OPEX line items,15,15,15,0,OK,factory_direct,No duplicates
+Oborovo,Contingency method,fixed_amount,fixed_amount,fixed_amount,N/A,OK,project_context.py,Oborovo uses fixed_amount contingency
+TUHO,OPEX line items,12,12,12,0,OK,factory_direct,No drift in TUHO item count
+Oborovo,Technical Management,198.0,198.0,198.0,0.00,OK,Sprint 11 fix,Split from legacy 703 kEUR in Sprint 11
+Oborovo,Infrastructure Maintenance,244.0,244.0,244.0,0.00,OK,Sprint 11 fix,Aggregated from B.02+sub-items
+Oborovo,Insurance,255.0,255.0,255.0,0.00,OK,factory_direct,
+Oborovo,Lease & Property Tax,208.08,208.08,208.08,0.00,OK,factory_direct,
+TUHO,Technical Management,279.99,279.99,279.99,0.00,OK,factory_direct,No change in TUHO
+TUHO,O&M Preventive & Corrective,426.60,426.60,426.60,0.00,OK,factory_direct,No change in TUHO
+Oborovo,UI context opex_y1_total,1338.08,1338.08,1338.08,0.00,OK,app/ui/project_context.py,No TUHO leakage in Oborovo context
+TUHO,UI context opex_y1_total,1998.01,1998.01,1998.01,0.00,OK,app/ui/project_context.py,No drift in TUHO UI context
+TUHO,Contingency method,percentage_of_opex,percentage_of_opex,percentage_of_opex,N/A,OK,project_context.py,TUHO uses % of OPEX at 6%
+Oborovo,Y1 OPEX runtime,1338.08,1338.08,1338.08,0.00,OK,opex_schedule_period,Confirmed via waterfall period data
+TUHO,Y1 OPEX runtime,1998.01,1998.01,1998.01,0.00,OK,opex_schedule_period,Confirmed via waterfall period data
+Oborovo,No TUHO leakage,NO,NO,NO,NO,OK,factory_comparison,Distinct item sets confirmed
+Oborovo,Environmenta&Social Y1,32.0,32.0,32.0,0.00,OK,Sprint 11 fix,Fixed from 200 kEUR legacy value
