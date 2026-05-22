@@ -1,4 +1,4 @@
-/* Finco One — Sidebar Navigation Fix — phase9_5_nav_fix */
+/* Finco One — Workspace Tabs Functional Fix — phase9_5_workspace_tabs_functional_fix */
 
 /* ── Tab Switching (workspace tabs) ───────────────────────────────────── */
 var activeTab = 'overview';
@@ -21,10 +21,29 @@ function switchTab(tabId) {
   var activePanel = document.getElementById('panel-' + tabId);
   if (activePanel) activePanel.classList.add('active');
 
-  // Scroll active tab into view
+  // Update URL hash for bookmarkability
+  if (history.pushState) {
+    history.pushState(null, '', '#' + tabId);
+  }
+
+  // Scroll workspace top into view
+  var workspace = document.getElementById('workspace-content');
+  if (workspace) {
+    workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Scroll active tab into view in ribbon
   if (activeBtn) {
     activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }
+
+  // Dispatch custom event
+  document.dispatchEvent(new CustomEvent('tabChanged', { detail: { tab: tabId } }));
+}
+
+/* Activate a tab by its data-tab attribute value */
+function activateTab(tabId) {
+  switchTab(tabId);
 }
 
 /* ── Project Switching (sidebar project cards) ────────────────────────── */
@@ -54,18 +73,55 @@ function switchProject(projectId) {
   document.dispatchEvent(new CustomEvent('projectChanged', { detail: { project: projectId } }));
 }
 
+/* ── DOM Initialisation ───────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', function () {
 
-  /* Sidebar nav links — open matching details section + scroll on click */
+  /* ── Tab click handlers (data-tab based, CSP-safe) ── */
+  document.querySelectorAll('.ws-tab[data-tab]').forEach(function(tabBtn) {
+    tabBtn.addEventListener('click', function() {
+      var tabId = tabBtn.getAttribute('data-tab');
+      if (tabId) switchTab(tabId);
+    });
+  });
+
+  /* ── Restore tab from URL hash ── */
+  var hash = window.location.hash.replace('#', '');
+  if (hash) {
+    var hashTab = document.querySelector('.ws-tab[data-tab="' + hash + '"]');
+    if (hashTab) {
+      /* Defer so panels are already in DOM */
+      setTimeout(function() { switchTab(hash); }, 0);
+    }
+  } else {
+    /* Ensure overview is active by default */
+    var defaultTab = document.querySelector('.ws-tab[data-tab="overview"]');
+    var defaultPanel = document.getElementById('panel-overview');
+    if (defaultTab && !defaultTab.classList.contains('active')) {
+      defaultTab.classList.add('active');
+    }
+    if (defaultPanel && !defaultPanel.classList.contains('active')) {
+      defaultPanel.classList.add('active');
+    }
+    /* Hide all other panels */
+    document.querySelectorAll('.tab-panel').forEach(function(p) {
+      if (p.id !== 'panel-overview') p.classList.remove('active');
+    });
+  }
+
+  /* ── Hash change listener ── */
+  window.addEventListener('hashchange', function() {
+    var h = window.location.hash.replace('#', '');
+    if (h && h !== activeTab) switchTab(h);
+  });
+
+  /* ── Sidebar nav links ── */
   document.querySelectorAll('.sidebar-nav-link').forEach(function (link) {
     link.addEventListener('click', function (e) {
       var href = link.getAttribute('href');
       if (!href || !href.startsWith('#')) return;
 
-
       var id = href.substring(1);
       if (!id || id === 'dashboard' || id === 'audit') return;
-
 
       /* Update active nav state */
       document.querySelectorAll('.sidebar-nav-link').forEach(function (l) {
@@ -86,7 +142,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  /* New Project button */
+  /* ── New Project button ── */
   var addBtn = document.getElementById('ps-add-btn');
   if (addBtn) {
     addBtn.addEventListener('click', function () {
@@ -94,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  /* Run Model button */
+  /* ── Run Model button ── */
   var runBtn = document.getElementById('btn-run-model');
   if (runBtn) {
     runBtn.addEventListener('click', function () {
@@ -106,7 +162,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  /* Save / Load buttons */
+  /* ── Save / Load buttons ── */
   var saveBtn = document.getElementById('btn-save');
   if (saveBtn) {
     saveBtn.addEventListener('click', function () {
@@ -125,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  /* Duplicate scenario button */
+  /* ── Duplicate scenario button ── */
   var dupBtn = document.querySelector('.ps-action-btn:nth-child(2)');
   if (dupBtn) {
     dupBtn.addEventListener('click', function () {

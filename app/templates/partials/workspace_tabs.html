@@ -3,52 +3,24 @@
   <div class="top-tabs-inner">
     <div class="tab-ribbon" id="tab-ribbon">
 
-      <button class="ws-tab active" id="tab-overview" onclick="switchTab('overview')">Overview</button>
-      <button class="ws-tab" id="tab-inputs" onclick="switchTab('inputs')">Inputs</button>
-      <button class="ws-tab" id="tab-construction" onclick="switchTab('construction')">Construction</button>
-      <button class="ws-tab" id="tab-production" onclick="switchTab('production')">Production</button>
-      <button class="ws-tab" id="tab-revenue" onclick="switchTab('revenue')">Revenue</button>
-      <button class="ws-tab" id="tab-opex" onclick="switchTab('opex')">OPEX</button>
-      <button class="ws-tab" id="tab-capex" onclick="switchTab('capex')">CAPEX</button>
-      <button class="ws-tab" id="tab-senior-debt" onclick="switchTab('senior-debt')">Senior Debt</button>
-      <button class="ws-tab" id="tab-shl" onclick="switchTab('shl')">SHL</button>
-      <button class="ws-tab" id="tab-tax" onclick="switchTab('tax')">Tax</button>
-      <button class="ws-tab" id="tab-pl" onclick="switchTab('pl')">P&amp;L</button>
-      <button class="ws-tab" id="tab-cashflow" onclick="switchTab('cashflow')">Cash Flow</button>
-      <button class="ws-tab" id="tab-balance" onclick="switchTab('balance')">Balance Sheet</button>
-      <button class="ws-tab" id="tab-distributions" onclick="switchTab('distributions')">Distributions</button>
-      <button class="ws-tab" id="tab-sponsor" onclick="switchTab('sponsor')">Sponsor / Equity</button>
-      <button class="ws-tab" id="tab-audit" onclick="switchTab('audit')">Audit / Parity</button>
-      <button class="ws-tab" id="tab-downloads" onclick="switchTab('downloads')">Downloads</button>
+      <button class="ws-tab active" id="tab-overview" data-tab="overview">Overview</button>
+      <button class="ws-tab" id="tab-inputs" data-tab="inputs">Inputs</button>
+      <button class="ws-tab" id="tab-construction" data-tab="construction">Construction</button>
+      <button class="ws-tab" id="tab-production" data-tab="production">Production</button>
+      <button class="ws-tab" id="tab-revenue" data-tab="revenue">Revenue</button>
+      <button class="ws-tab" id="tab-opex" data-tab="opex">OPEX</button>
+      <button class="ws-tab" id="tab-capex" data-tab="capex">CAPEX</button>
+      <button class="ws-tab" id="tab-senior-debt" data-tab="senior-debt">Senior Debt</button>
+      <button class="ws-tab" id="tab-shl" data-tab="shl">SHL</button>
+      <button class="ws-tab" id="tab-tax" data-tab="tax">Tax</button>
+      <button class="ws-tab" id="tab-pl" data-tab="pl">P&amp;L</button>
+      <button class="ws-tab" id="tab-cashflow" data-tab="cashflow">Cash Flow</button>
+      <button class="ws-tab" id="tab-balance" data-tab="balance">Balance Sheet</button>
+      <button class="ws-tab" id="tab-distributions" data-tab="distributions">Distributions</button>
+      <button class="ws-tab" id="tab-sponsor" data-tab="sponsor">Sponsor / Equity</button>
+      <button class="ws-tab" id="tab-audit" data-tab="audit">Audit / Parity</button>
+      <button class="ws-tab" id="tab-downloads" data-tab="downloads">Downloads</button>
 
     </div>
   </div>
 </div>
-
-<script>
-  var activeTab = 'overview';
-
-  function switchTab(tabId) {
-    if (!tabId) return;
-    activeTab = tabId;
-
-    // Update tab button states
-    document.querySelectorAll('.ws-tab').forEach(function(btn) {
-      btn.classList.remove('active');
-    });
-    var activeBtn = document.getElementById('tab-' + tabId);
-    if (activeBtn) activeBtn.classList.add('active');
-
-    // Show/hide panels
-    document.querySelectorAll('.tab-panel').forEach(function(panel) {
-      panel.classList.remove('active');
-    });
-    var activePanel = document.getElementById('panel-' + tabId);
-    if (activePanel) activePanel.classList.add('active');
-
-    // Scroll active tab into view
-    if (activeBtn) {
-      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
-  }
-</script>
