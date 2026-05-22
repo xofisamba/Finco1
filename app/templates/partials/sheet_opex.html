@@ -28,7 +28,7 @@
       {% endfor %}
       <tr class="total-row">
         <td>Total Y1 OPEX</td>
-        <td class="num-col">{{ "%,.0f"|format(project_ctx.opex_y1_total_keur) }}</td>
+        <td class="num-col">{{ "{:,.0f}".format(project_ctx.opex_y1_total_keur) }}</td>
         <td class="num-col">—</td>
       </tr>
     </tbody>
@@ -43,7 +43,7 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Y1 OPEX Total</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.opex_y1_total_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.opex_y1_total_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Inflation (standard)</span>

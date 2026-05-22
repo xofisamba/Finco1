@@ -77,6 +77,11 @@ class WaterfallRunConfig:
     # When set, R67 diagnostic and corporate_tax_cash are suppressed for
     # operating_index < value. TUHO Excel: value=25 (first non-zero R67 at P25).
     tuho_cit_cash_tax_start_operating_index: int | None = None
+    # Phase 9: DistributionAccount dual-run validation (audit-only).
+    # When True, attaches _dualrun_validation to the result for comparison
+    # between WaterfallEngine.distribution_keur and DA.equity_distribution_paid_keur.
+    # R99/R102: BLOCKED in this branch.
+    use_dualrun_validation: bool = False
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 
@@ -406,6 +411,7 @@ class WaterfallRunner:
             use_depreciation_canonical_engine=config.use_depreciation_canonical_engine,
             use_senior_debt_sizing_engine=config.use_senior_debt_sizing_engine,
             tuho_cit_cash_tax_start_operating_index=config.tuho_cit_cash_tax_start_operating_index,
+            use_dualrun_validation=config.use_dualrun_validation,
             shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
             shl_fcf_waterfall_minimum_cash_retained_keur=(
                 config.shl_fcf_waterfall_minimum_cash_retained_keur

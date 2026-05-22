@@ -14,9 +14,10 @@ def _sanitize_df(df):
 
 
 def run_project(project_type: str, scenario: str, period_view: str = "Semiannual",
-               project_inputs_override=None):
+               project_inputs_override=None, use_dualrun_validation: bool = False):
     demo = run_demo_project(project_type, scenario,
-                            project_inputs_override=project_inputs_override)
+                            project_inputs_override=project_inputs_override,
+                            use_dualrun_validation=use_dualrun_validation)
     result = demo.result
 
     # Build tables
@@ -53,6 +54,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
             "min_dscr": result.actual_min_dscr,
             "avg_dscr": result.actual_avg_dscr,
         },
+        "dualrun_validation": getattr(result, '_dualrun_validation', None),
         "tables": {
             "waterfall": wf.to_dict(orient="records"),
             "revenue": rev.to_dict(orient="records"),

@@ -18,10 +18,10 @@
       </tr>
     </thead>
     <tbody>
-      <tr><td>EPC Contract</td><td class="num-col">{{ "%,.0f"|format(project_ctx.epc_contract_keur) }}</td></tr>
-      <tr><td>IDC (Interest During Construction)</td><td class="num-col">{{ "%,.0f"|format(project_ctx.idc_keur) }}</td></tr>
-      <tr><td>Bank Fees</td><td class="num-col">{{ "%,.0f"|format(project_ctx.bank_fees_keur) }}</td></tr>
-      <tr class="total-row"><td>Total CAPEX</td><td class="num-col">{{ "%,.0f"|format(project_ctx.total_capex_keur) }}</td></tr>
+      <tr><td>EPC Contract</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.epc_contract_keur) }}</td></tr>
+      <tr><td>IDC (Interest During Construction)</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.idc_keur) }}</td></tr>
+      <tr><td>Bank Fees</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.bank_fees_keur) }}</td></tr>
+      <tr class="total-row"><td>Total CAPEX</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.total_capex_keur) }}</td></tr>
     </tbody>
   </table>
 </div>
@@ -55,11 +55,11 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Senior Debt</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.senior_debt_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">SHL Amount</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.shl_amount_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_amount_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">SHL Rate</span>

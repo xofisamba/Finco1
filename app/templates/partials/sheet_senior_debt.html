@@ -13,7 +13,7 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Facility Amount</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.senior_debt_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Tenor</span>
