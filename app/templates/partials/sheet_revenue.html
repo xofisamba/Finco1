@@ -1,10 +1,9 @@
-<!-- Sheet: Revenue — TUHO Wind 1 -->
+<!-- Sheet: Revenue — {{ project_ctx.name }} -->
 
 <div class="sheet-banner">
   <span class="sheet-banner-tag">💰 Revenue</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">Template preview</span>
-    Static TUHO factory snapshot — not live run output
+    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   </span>
 </div>
 
@@ -14,19 +13,15 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">PPA Tariff (Y1)</span>
-      <span class="metric-value">60.00 EUR/MWh</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.ppa_tariff_eur_mwh) }} EUR/MWh</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">PPA Term</span>
-      <span class="metric-value">12 years (Y1–Y12)</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">PPA Expiry</span>
-      <span class="metric-value">Dec 2041</span>
+      <span class="metric-value">{{ project_ctx.ppa_term_years }} years</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Tariff Index</span>
-      <span class="metric-value">2% annually</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.ppa_index_pct * 100) }}% annually</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Production Share</span>
@@ -42,97 +37,28 @@
   <div class="section-header">CO2 Certificate Revenue</div>
   <div class="assumption-grid">
     <div class="assumption-item">
-      <span class="metric-label">CO2 Price (Y1)</span>
-      <span class="metric-value">4.191 EUR/MWh</span>
-    </div>
-    <div class="assumption-item">
       <span class="metric-label">CO2 Enabled</span>
-      <span class="metric-value">Yes</span>
+      <span class="metric-value">{% if project_ctx.co2_enabled %}Yes{% else %}No{% endif %}</span>
     </div>
+    {% if project_ctx.co2_enabled and project_ctx.co2_price_eur_mwh %}
     <div class="assumption-item">
-      <span class="metric-label">Price Schedule</span>
-      <span class="metric-value">Declining ~10%/yr</span>
+      <span class="metric-label">CO2 Price (Y1)</span>
+      <span class="metric-value">{{ "%.3f"|format(project_ctx.co2_price_eur_mwh) }} EUR/MWh</span>
     </div>
-    <div class="assumption-item">
-      <span class="metric-label">Balancing Cost</span>
-      <span class="metric-value">8.00 EUR/MWh (flat)</span>
-    </div>
+    {% endif %}
   </div>
 </div>
 
 <div class="section-divider"></div>
 
-<!-- Revenue Preview (First 4 Semiannual Periods) -->
+<!-- Revenue note -->
 <div class="sheet-card">
-  <div class="section-header">Revenue Preview — First 4 Periods</div>
-  <table class="sheet-table">
-    <thead>
-      <tr>
-        <th>Period</th>
-        <th class="num-col">MWh</th>
-        <th class="num-col">PPA (EUR/MWh)</th>
-        <th class="num-col">PPA Rev (kEUR)</th>
-        <th class="num-col">CO2 (kEUR)</th>
-        <th class="num-col">Total Rev (kEUR)</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Y1-H1</td>
-        <td class="num-col">72,870</td>
-        <td class="num-col">60.00</td>
-        <td class="num-col">4,372</td>
-        <td class="num-col">305</td>
-        <td class="num-col">4,677</td>
-      </tr>
-      <tr>
-        <td>Y1-H2</td>
-        <td class="num-col">72,870</td>
-        <td class="num-col">61.20</td>
-        <td class="num-col">4,460</td>
-        <td class="num-col">305</td>
-        <td class="num-col">4,765</td>
-      </tr>
-      <tr>
-        <td>Y2-H1</td>
-        <td class="num-col">72,870</td>
-        <td class="num-col">62.42</td>
-        <td class="num-col">4,549</td>
-        <td class="num-col">276</td>
-        <td class="num-col">4,825</td>
-      </tr>
-      <tr>
-        <td>Y2-H2</td>
-        <td class="num-col">72,870</td>
-        <td class="num-col">63.67</td>
-        <td class="num-col">4,640</td>
-        <td class="num-col">276</td>
-        <td class="num-col">4,916</td>
-      </tr>
-    </tbody>
-  </table>
-  <p class="table-note">PPA tariff inflates 2%/yr. CO2 price declines ~10%/yr from 4.191 base.</p>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- Market Post-PPA -->
-<div class="sheet-card">
-  <div class="section-header">Merchant Period (Y13+)</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Market Scenario</span>
-      <span class="metric-value">Central</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">First Merchant Period</span>
-      <span class="metric-value">Y13-H1 (Jan 2042)</span>
-    </div>
+  <div class="section-header">Output Preview</div>
+  <div class="placeholder-panel" style="padding:1.5rem;">
+    <div class="placeholder-desc">Live revenue schedule preview is not yet bound to this project. Run the model to generate revenue output.</div>
   </div>
 </div>
 
 <div class="table-note">
-  <span class="badge badge-preview">Template preview</span>
-  Values above are hardcoded UI seed data from TUHO factory assumptions.
-  Not yet dynamically bound to active project runtime outputs.
+  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>

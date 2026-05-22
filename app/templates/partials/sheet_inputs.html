@@ -1,10 +1,9 @@
-<!-- Sheet: Inputs — TUHO Wind 1 -->
+<!-- Sheet: Inputs — {{ project_ctx.name }} -->
 
 <div class="sheet-banner">
   <span class="sheet-banner-tag">📋 Inputs</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">Template preview</span>
-    Static TUHO factory snapshot — not live run output
+    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   </span>
 </div>
 
@@ -14,27 +13,27 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Project Name</span>
-      <span class="metric-value">TUHO Wind 1</span>
+      <span class="metric-value">{{ project_ctx.name }}</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Company</span>
-      <span class="metric-value">Akuo Energy Med</span>
+      <span class="metric-value">{{ project_ctx.company }}</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Project Code</span>
-      <span class="metric-value">TUHO-WIND-1</span>
+      <span class="metric-value">{{ project_ctx.code }}</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Country</span>
-      <span class="metric-value">🇭🇷 Croatia (HR)</span>
+      <span class="metric-value">{% if project_ctx.country_iso == 'HR' %}🇭🇷 Croatia (HR){% elif project_ctx.country_iso == 'EE' %}🇪🇪 Estonia (EE){% else %}{{ project_ctx.country_iso }}{% endif %}</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Technology</span>
-      <span class="metric-value">Wind Onshore</span>
+      <span class="metric-value">{{ project_ctx.technology }}{% if project_ctx.technology == 'Wind' %} Onshore{% endif %}</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Capacity</span>
-      <span class="metric-value">35 MW</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.capacity_mw) }} MW</span>
     </div>
   </div>
 </div>
@@ -47,23 +46,23 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Financial Close</span>
-      <span class="metric-value">2029-07-01</span>
+      <span class="metric-value">{{ project_ctx.financial_close }}</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">COD</span>
-      <span class="metric-value">2030-01-01</span>
+      <span class="metric-value">{{ project_ctx.cod_date }}</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Construction Period</span>
-      <span class="metric-value">6 months</span>
+      <span class="metric-value">{{ project_ctx.construction_months }} months</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Horizon</span>
-      <span class="metric-value">30 years</span>
+      <span class="metric-value">{{ project_ctx.horizon_years }} years</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Period Frequency</span>
-      <span class="metric-value">Semestrial</span>
+      <span class="metric-value">{{ project_ctx.period_frequency }}</span>
     </div>
   </div>
 </div>
@@ -76,27 +75,27 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Installed Capacity</span>
-      <span class="metric-value">35 MW</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.capacity_mw) }} MW</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">P50 Hours</span>
-      <span class="metric-value">4,164 hrs/yr</span>
+      <span class="metric-value">{{ "%,d"|format(project_ctx.operating_hours_p50|int) }} hrs/yr</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">P90 10Y Hours</span>
-      <span class="metric-value">3,620 hrs/yr</span>
+      <span class="metric-value">{{ "%,d"|format(project_ctx.operating_hours_p50|int) }} hrs/yr</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Availability</span>
-      <span class="metric-value">100%</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.plant_availability * 100) }}% plant / {{ "%.0f"|format(project_ctx.grid_availability * 100) }}% grid</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Capacity Factor</span>
-      <span class="metric-value">~47.5%</span>
+      <span class="metric-value">~{{ "%.1f"|format(project_ctx.operating_hours_p50 / 8760 * 100) }}%</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Degradation</span>
-      <span class="metric-value">0% (wind)</span>
+      <span class="metric-value">{% if project_ctx.pv_degradation is none %}0% (wind){% else %}{{ "%.1f"|format(project_ctx.pv_degradation * 100) }}%/yr (solar){% endif %}</span>
     </div>
   </div>
 </div>
@@ -109,23 +108,19 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">PPA Tariff</span>
-      <span class="metric-value">60.00 EUR/MWh</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.ppa_tariff_eur_mwh) }} EUR/MWh</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">PPA Term</span>
-      <span class="metric-value">12 years (Y1–Y12)</span>
+      <span class="metric-value">{{ project_ctx.ppa_term_years }} years</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">PPA Index</span>
-      <span class="metric-value">2% annually</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Market Scenario</span>
-      <span class="metric-value">Central (post-PPA)</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.ppa_index_pct * 100) }}% annually</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">CO2 Revenue</span>
-      <span class="metric-value">Enabled — 4.191 EUR/MWh</span>
+      <span class="metric-value">{% if project_ctx.co2_enabled %}Enabled — {{ "%.3f"|format(project_ctx.co2_price_eur_mwh) }} EUR/MWh{% else %}Disabled{% endif %}</span>
     </div>
   </div>
 </div>
@@ -138,25 +133,19 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Y1 OPEX Total</span>
-      <span class="metric-value">1,998 kEUR</span>
+      <span class="metric-value">{{ "%,.0f"|format(project_ctx.opex_y1_total_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Total CAPEX</span>
-      <span class="metric-value">72,994 kEUR</span>
+      <span class="metric-value">{{ "%,.0f"|format(project_ctx.total_capex_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Senior Debt</span>
-      <span class="metric-value">43,359 kEUR</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Equity</span>
-      <span class="metric-value">29,635 kEUR</span>
+      <span class="metric-value">{{ "%,.0f"|format(project_ctx.senior_debt_keur) }} kEUR</span>
     </div>
   </div>
 </div>
 
 <div class="table-note">
-  <span class="badge badge-preview">Template preview</span>
-  Values above are hardcoded UI seed data from TUHO factory assumptions.
-  Not yet dynamically bound to active project runtime outputs.
+  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>

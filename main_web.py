@@ -33,6 +33,7 @@ from app.auth import (
 
 # Import persistence
 from app.persistence.repository import save_run, get_run, list_runs, delete_run, count_runs
+from app.ui.project_context import get_project_context, all_project_ids
 
 # ── FastAPI app ────────────────────────────────────────────────────────────
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -332,11 +333,14 @@ async def health(request: Request):
 # ── Protected Routes ────────────────────────────────────────────────────────
 
 @app.get("/")
-async def index(request: Request):
-    """Main input form. Requires auth."""
+async def index(request: Request, project: str | None = None):
+    """Main input form. Requires auth. Supports ?project=tuho|oborovo."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+
+    ctx = get_project_context(project)
+    available_projects = all_project_ids()
 
     return templates.TemplateResponse(
         request=request,
@@ -349,6 +353,8 @@ async def index(request: Request):
             "validation_errors": [],
             "success_message": None,
             "user": user,
+            "project_ctx": ctx,
+            "available_projects": available_projects,
         },
     )
 
