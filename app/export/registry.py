@@ -111,6 +111,18 @@ def default_export_registry() -> ExportRegistry:
                 notes="Values are sourced from existing runtime outputs.",
             ),
             ExportArtifact(
+                artifact_name="Phase 10 institutional workbook skeleton",
+                category=ExportCategory.WORKBOOK,
+                project_scope="TUHO, Oborovo",
+                format="xlsx",
+                runtime_or_preview="runtime",
+                governance_sensitive=True,
+                current_status="foundation",
+                description="Institutional workbook skeleton with governance and runtime summary sheets.",
+                path="/exports/institutional-workbook.xlsx",
+                notes="Structured review workbook only; placeholder sheets do not fabricate values.",
+            ),
+            ExportArtifact(
                 artifact_name="Phase 10 export registry",
                 category=ExportCategory.VALIDATION,
                 project_scope="portfolio",

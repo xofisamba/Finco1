@@ -2,6 +2,7 @@ artifact_name,category,project_scope,format,runtime_or_preview,governance_sensit
 TUHO full line-item horizontal review workbook,parity,TUHO,xlsx,review,yes,accepted_with_minor_follow_up,Primary parity evidence base; G20 still requires stakeholder gate sign-off.
 TUHO final parity closeout status,governance,TUHO,csv,review,yes,g20_blocked_pending_stakeholder_acceptance,No runtime approval implied.
 Phase 10 runtime summary export,runtime,"TUHO, Oborovo",csv,runtime,yes,foundation,Values are sourced from existing runtime outputs.
+Phase 10 institutional workbook skeleton,workbook,"TUHO, Oborovo",xlsx,runtime,yes,foundation,Structured review workbook only; placeholder sheets do not fabricate values.
 Phase 10 export registry,validation,portfolio,csv,review,no,foundation,Centralizes artifact metadata for reviewer workflows.
 TUHO horizontal source map,source_map,TUHO,csv,review,yes,available,Keeps missing evidence explicit rather than silently filling values.
 TUHO horizontal gap analysis,audit,TUHO,csv,review,yes,available,G20 and R99/R102 rows remain governance blockers.

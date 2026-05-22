@@ -36,20 +36,22 @@ from app.auth import (
 from app.persistence.repository import save_run, get_run, list_runs, delete_run, count_runs
 from app.ui.project_context import get_project_context, all_project_ids
 from app.ui.runtime_summary import runtime_summary_to_dict, build_runtime_summary, NOT_AVAILABLE
+from app.export.runtime_summary import build_runtime_summary_csv
+from app.export.institutional_workbook import export_institutional_workbook_skeleton
 
-# ── FastAPI app ────────────────────────────────────────────────────────────
+# -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
 
-# ── Template setup ──────────────────────────────────────────────────────────
+# -- Template setup -----------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"))
 templates.env.globals["htmx"] = True
 
-# ── Static files ────────────────────────────────────────────────────────────
+# -- Static files -------------------------------------------------------------
 if os.path.exists(os.path.join(BASE_DIR, "static")):
     app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
-# ── Observability middleware ─────────────────────────────────────────────────
+# -- Observability middleware -------------------------------------------------
 # Import only if middleware files exist (graceful degradation)
 try:
     from app.logging_config import configure_logging
@@ -69,14 +71,14 @@ try:
 except Exception:
     pass  # middleware registration failure should not break the app
 
-# ── Shared caveats (visible in UI) ─────────────────────────────────────────
+# -- Shared caveats (visible in UI) -------------------------------------------
 CAVEATS = [
-    "TUHO CO2 revenue missing (611 kEUR Y1) — model understates revenue",
-    "Oborovo OpEx duplication (+660 kEUR Y1) — model overstates OpEx",
-    "Model outputs are screening-grade — not audited financial advice",
+    "TUHO CO2 revenue missing (611 kEUR Y1) - model understates revenue",
+    "Oborovo OpEx duplication (+660 kEUR Y1) - model overstates OpEx",
+    "Model outputs are screening-grade - not audited financial advice",
 ]
 
-# ── KPI names ───────────────────────────────────────────────────────────────
+# -- KPI names ----------------------------------------------------------------
 KPI_LABELS = {
     "project_irr": "Project IRR",
     "equity_irr": "Equity IRR",
@@ -89,7 +91,7 @@ KPI_LABELS = {
 SCENARIOS = ["Base", "Downside", "Upside"]
 PROJECT_TYPES = ["Solar", "Wind"]
 
-# ── Auth dependency ─────────────────────────────────────────────────────────
+# -- Auth dependency ----------------------------------------------------------
 
 def get_current_user(request: Request):
     """Extract session from cookie. Returns None if not authenticated."""
@@ -100,14 +102,14 @@ def get_current_user(request: Request):
     return decode_session_token(token)
 
 def require_auth(request: Request):
-    """Require auth — returns user or raises redirect to /login."""
+    """Require auth - returns user or raises redirect to /login."""
     user = get_current_user(request)
     if not user:
         # Return redirect URL for caller to use (avoiding async issues)
         raise HTTPException(status_code=302)
     return user
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+# -- Helpers ------------------------------------------------------------------
 
 def _build_schema_from_form(
     project_type: str,
@@ -124,7 +126,7 @@ def _build_schema_from_form(
 ) -> ProjectInputsSchema:
     """Build ProjectInputsSchema from form fields.
     
-    Blank optional fields → None → factory defaults preserved.
+    Blank optional fields -> None -> factory defaults preserved.
     Raises ValueError for invalid numeric values.
     """
     def _float(val: Optional[str]) -> Optional[float]:
@@ -196,7 +198,7 @@ def _validate_numeric_field(name: str, val: Optional[str], max_val: Optional[flo
         if f < 0:
             return None, f"{name} must be non-negative"
         if max_val is not None and f > max_val:
-            return None, f"{name} must be ≤ {max_val}"
+            return None, f"{name} must be <= {max_val}"
         return f, None
     except ValueError:
         return None, f"{name} must be a number"
@@ -208,7 +210,7 @@ def _format_kpis(kpis: dict) -> list[dict]:
     for key, label in KPI_LABELS.items():
         val = kpis.get(key)
         if val is None:
-            display = "—"
+            display = "-"
         elif key in ("project_irr", "equity_irr"):
             display = f"{val * 100:.2f}%"
         elif key in ("min_dscr", "avg_dscr"):
@@ -221,7 +223,7 @@ def _format_kpis(kpis: dict) -> list[dict]:
     return rows
 
 
-# ── Auth Routes ─────────────────────────────────────────────────────────────
+# -- Auth Routes --------------------------------------------------------------
 
 def _get_client_ip(request: Request) -> str:
     """Extract client IP from request, checking X-Forwarded-For first."""
@@ -311,11 +313,11 @@ async def logout():
     return response
 
 
-# ── Public Routes ───────────────────────────────────────────────────────────
+# -- Public Routes ------------------------------------------------------------
 
 @app.get("/public-health")
 async def public_health():
-    """Public health check — no auth required."""
+    """Public health check - no auth required."""
     return {
         "status": "ok",
         "app": "fincogpt",
@@ -325,14 +327,14 @@ async def public_health():
 
 @app.get("/health")
 async def health(request: Request):
-    """Private health check — requires auth."""
+    """Private health check - requires auth."""
     user = get_current_user(request)
     if not user:
         return JSONResponse({"status": "unauthenticated", "detail": "Login required"}, status_code=401)
     return JSONResponse({"status": "ok"})
 
 
-# ── Protected Routes ────────────────────────────────────────────────────────
+# -- Protected Routes ---------------------------------------------------------
 
 @app.get("/")
 async def index(request: Request, project: str | None = None):
@@ -453,7 +455,7 @@ async def run(request: Request):
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
 
-    # ── Phase 9.5: Named project binding ──────────────────────────────
+    # -- Phase 9.5: Named project binding -------------------------------------
     # If active_project is set, run the named project factory directly.
     # This bypasses arbitrary form inputs and uses factory defaults.
     if active_project in ("tuho", "oborovo"):
@@ -501,7 +503,7 @@ async def run(request: Request):
                 name="partials/errors.html",
                 context={"errors": [f"Model error ({active_project}): {str(e)}"]},
             )
-    # ── Standard form-based run (no active_project) ─────────────────
+    # -- Standard form-based run (no active_project) --------------------------
 
     errors = []
     if not _validate_form(project_type, scenario, errors):
@@ -681,7 +683,7 @@ async def download_post(request: Request):
 
 @app.get("/download")
 async def download_get(request: Request, project_type: str = "Solar", scenario: str = "Base"):
-    """Generate Excel export (GET — uses factory defaults). Requires auth."""
+    """Generate Excel export (GET - uses factory defaults). Requires auth."""
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
@@ -706,6 +708,61 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             content=f"<html><body><h2>Excel generation failed</h2><p>{str(e)}</p><a href='/'>Back</a></body></html>",
             status_code=500,
         )
+
+
+@app.get("/exports/runtime-summary.csv")
+async def runtime_summary_export(request: Request, project: str = "tuho"):
+    """Download standardized Phase 10 runtime summary CSV. Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        csv_text = build_runtime_summary_csv(project)
+    except ValueError as exc:
+        return HTMLResponse(
+            content=f"<html><body><h2>Runtime summary export failed</h2><p>{str(exc)}</p><a href='/'>Back</a></body></html>",
+            status_code=400,
+        )
+
+    safe_project = project.strip().lower() if project else "tuho"
+    filename = f"phase10_{safe_project}_runtime_summary.csv"
+    data = csv_text.encode("utf-8")
+    return StreamingResponse(
+        iter([data]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+        },
+    )
+
+
+@app.get("/exports/institutional-workbook.xlsx")
+async def institutional_workbook_export(request: Request, project: str = "tuho"):
+    """Download Phase 10 institutional workbook skeleton. Requires auth."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        workbook_bytes = export_institutional_workbook_skeleton(project)
+    except ValueError as exc:
+        return HTMLResponse(
+            content=f"<html><body><h2>Institutional workbook export failed</h2><p>{str(exc)}</p><a href='/'>Back</a></body></html>",
+            status_code=400,
+        )
+
+    safe_project = project.strip().lower() if project else "tuho"
+    filename = f"phase10_{safe_project}_institutional_workbook_skeleton.xlsx"
+    return StreamingResponse(
+        iter([workbook_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(workbook_bytes)),
+        },
+    )
 
 
 @app.get("/runs")
@@ -847,7 +904,7 @@ async def get_run_endpoint(request: Request, run_id: str):
                 "total_capex_keur": record.inputs.get("total_capex_keur", ""),
                 "gearing_pct": record.inputs.get("gearing_pct", ""),
             },
-            "messages": [f"Loaded run {run_id} from {record.created_at.strftime('%Y-%m-%d %H:%M')}"],
+            "messages": [f"Loaded run {run_id} from {record.created_at.strftime('%Y-%m-%d %H:%M')}"] ,
             "integration_status": "full",
         },
     )
