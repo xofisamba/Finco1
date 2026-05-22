@@ -53,7 +53,7 @@
     </div>
     <div class="assumption-item">
       <span class="metric-label">Inflation (contingencies)</span>
-      <span class="metric-value">6% annually</span>
+      <span class="metric-value">6% of other OPEX — no separate contingency inflation</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">OPEX/MW (Y1)</span>
@@ -68,11 +68,46 @@
 
 <div class="section-divider"></div>
 
+<!-- Contingency Method -->
+<div class="sheet-card">
+  <div class="section-header">Contingency Method</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Method</span>
+      <span class="method-badge method-pct">% of other OPEX</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Percentage</span>
+      <span class="metric-value">6% of sum(B.01 – B.12)</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Y1 Contingency</span>
+      <span class="metric-value">113.09 kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Inflation on contingency</span>
+      <span class="metric-value no-inflation">None — indirect via underlying OPEX</span>
+    </div>
+  </div>
+  <div class="method-note">
+    <span class="method-badge method-pct">% of OPEX</span>
+    No separate inflation is applied to the contingency itself.
+    The contingency grows because the underlying OPEX items inflate (2%/yr on most lines).
+  </div>
+  <div class="method-note method-fixed" style="display:none;">
+    <span class="method-badge method-fixed">Fixed amount + inflation</span>
+    Contingency is entered as a fixed kEUR amount and escalates by its own inflation rate.
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
 <!-- Escalation Note -->
 <div class="sheet-card">
   <div class="section-header">Escalation</div>
   <p style="font-size:0.85rem;color:var(--text-muted);">
-    OPEX inflates annually per category rate. Contingencies escalate at 6%/yr; all other items at 2%/yr.
+    OPEX inflates annually per category rate (2%/yr on most items).<br>
+    Contingency: <strong>% of other OPEX</strong> — grows indirectly through the underlying lines, no separate contingency inflation.<br>
     Future: live OPEX projection driven by runtime <code>opex_engine</code>.
   </p>
 </div>

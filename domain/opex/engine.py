@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from domain.opex.line_items import OpexBasis, OpexGroup, OpexItem
+from domain.opex.line_items import OpexBasis, OpexContingencyMethod, OpexGroup, OpexItem
 from domain.opex.result import (
     OpexAnnualResult,
     OpexGroupAnnualResult,
@@ -59,6 +59,74 @@ def compute_annual_opex(
             )
 
     for group in groups:
+        # Handle explicit contingency groups: percentage_of_opex method
+        if group.contingency_pct > 0 and group.contingency_method == OpexContingencyMethod.PERCENTAGE_OF_OPEX:
+            for pos, year in enumerate(year_indices):
+                index = next(
+                    idx
+                    for idx, result in enumerate(group_results)
+                    if result.group_code == group.code and result.year_index == year
+                )
+                original = group_results[index]
+                # Base = sum of all OTHER groups' totals for this year (excludes this contingency group)
+                contingency_base = sum(
+                    group_totals[g.code][pos]
+                    for g in groups
+                    if g.code != group.code
+                )
+                contingency_keur = group.contingency_pct / 100.0 * contingency_base
+
+                # Update the contingency item result with the computed amount
+                updated_items = list(original.item_results)
+                for idx, item_res in enumerate(updated_items):
+                    # Find the primary contingency item (PCT_OF_SELECTED_GROUPS basis)
+                    # Replace its total with the correct percentage-of-opex calculation
+                    pass  # placeholder – we update by item code below
+
+                # Rebuild item results with the correct contingency amount
+                updated_item_results: list[OpexItemAnnualResult] = []
+                for item_res in original.item_results:
+                    if item_res.basis == OpexBasis.PCT_OF_SELECTED_GROUPS.value:
+                        # Replace with correct percentage-of-opex result (no separate inflation)
+                        updated_item_results.append(
+                            OpexItemAnnualResult(
+                                year_index=item_res.year_index,
+                                group_code=item_res.group_code,
+                                group_name=item_res.group_name,
+                                item_code=item_res.item_code,
+                                item_name=item_res.item_name,
+                                active=item_res.active,
+                                basis=item_res.basis,
+                                budget_keur=item_res.budget_keur,
+                                calculated_keur=contingency_keur,
+                                manual_override_keur=item_res.manual_override_keur,
+                                inflation_rate=0.0,  # No separate inflation in percentage mode
+                                wth_rate=item_res.wth_rate,
+                                wth_keur=contingency_keur * item_res.wth_rate,
+                                total_keur=contingency_keur * (1 + item_res.wth_rate),
+                                is_manual_override=item_res.is_manual_override,
+                            )
+                        )
+                    else:
+                        updated_item_results.append(item_res)
+
+                new_total = sum(r.total_keur for r in updated_item_results)
+                group_totals[group.code][pos] = new_total
+                totals_by_year[pos] += contingency_keur  # delta only
+                group_results[index] = OpexGroupAnnualResult(
+                    year_index=year,
+                    group_code=group.code,
+                    group_name=group.name,
+                    item_results=tuple(updated_item_results),
+                    group_total_keur=new_total,
+                    contingency_from_groups_keur=contingency_keur,
+                    contingency_method=group.contingency_method.value,
+                    contingency_pct=group.contingency_pct,
+                    contingency_base_keur=contingency_base,
+                )
+            continue
+
+        # Handle fixed_amount contingency or non-contingency PCT_OF_SELECTED_GROUPS
         selected_items = [
             item for item in group.items if item.basis == OpexBasis.PCT_OF_SELECTED_GROUPS
         ]
@@ -102,6 +170,13 @@ def compute_annual_opex(
                 item_results=tuple(updated_items),
                 group_total_keur=original.group_total_keur + added_total,
                 contingency_from_groups_keur=added_total if group.contingency_pct else 0.0,
+                contingency_method=group.contingency_method.value,
+                contingency_pct=group.contingency_pct,
+                contingency_base_keur=sum(
+                    group_totals[g.code][pos]
+                    for g in groups
+                    if g.code != group.code
+                ) if group.contingency_pct else 0.0,
             )
 
     return OpexAnnualResult(

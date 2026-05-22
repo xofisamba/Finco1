@@ -611,6 +611,47 @@ body {
 .badge-missing { background: var(--missing-bg);       color: var(--missing-text);       border-color: var(--missing-border); }
 .badge-notapproved { background: var(--notapproved-bg); color: var(--notapproved-text); border-color: var(--notapproved-border); }
 
+/* ── OPEX Contingency Method Badges ──────────────────────────────────────── */
+.method-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 100px;
+  border: 1px solid;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.method-badge.method-pct {
+  background: var(--primary-light, #eff6ff);
+  color: var(--primary, #1a56db);
+  border-color: var(--primary, #1a56db);
+}
+.method-badge.method-fixed {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+.method-note {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--primary-light, #eff6ff);
+  border-left: 3px solid var(--primary, #1a56db);
+  font-size: 0.8rem;
+  color: var(--text-2, #6b7280);
+}
+.method-note.method-fixed {
+  background: #fef3c7;
+  border-left-color: #f59e0b;
+}
+.metric-value.no-inflation {
+  color: var(--primary, #1a56db);
+  font-weight: 600;
+}
+
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);

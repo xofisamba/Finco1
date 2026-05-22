@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from domain.opex.line_items import OpexBasis, OpexGroup, OpexItem
+from domain.opex.line_items import OpexBasis, OpexContingencyMethod, OpexGroup, OpexItem
 
 B02_EXPLICIT_SCHEDULE = (
     385.6,
@@ -71,6 +71,7 @@ def _group(
     *,
     inflation: float = 0.02,
     contingency_pct: float = 0.0,
+    contingency_method: OpexContingencyMethod = OpexContingencyMethod.FIXED_AMOUNT,
 ) -> OpexGroup:
     return OpexGroup(
         code=code,
@@ -78,6 +79,7 @@ def _group(
         inflation_rate=inflation,
         items=items,
         contingency_pct=contingency_pct,
+        contingency_method=contingency_method,
     )
 
 
@@ -237,5 +239,7 @@ def build_tuho_opex_template() -> list[OpexGroup]:
                 ),
             ),
             inflation=0.0,
+            contingency_pct=6.0,
+            contingency_method=OpexContingencyMethod.PERCENTAGE_OF_OPEX,
         ),
     ]

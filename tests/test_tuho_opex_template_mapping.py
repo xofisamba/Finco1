@@ -1,7 +1,7 @@
 import pytest
 
 from domain.opex.engine import compute_annual_opex
-from domain.opex.line_items import OpexBasis
+from domain.opex.line_items import OpexBasis, OpexContingencyMethod
 from domain.opex.templates.tuho import B02_EXPLICIT_SCHEDULE, B11_ACTIVE_FLAGS, build_tuho_opex_template
 
 EXCEL_ANNUAL_TOTALS = (
@@ -89,12 +89,16 @@ def test_b13_equals_six_percent_of_b01_to_b12_without_self_reference():
     assert b13_item.basis == OpexBasis.PCT_OF_SELECTED_GROUPS
     assert "B.13" not in b13_item.selected_group_codes
     assert b13_item.budget_keur == 6.0
-    assert groups_by_code["B.13"].contingency_pct == 0.0
+    assert groups_by_code["B.13"].contingency_pct == 6.0
+    assert groups_by_code["B.13"].contingency_method == OpexContingencyMethod.PERCENTAGE_OF_OPEX
 
     for year in range(1, 31):
         selected = sum(result.group_result(year, f"B.{idx:02d}").group_total_keur for idx in range(1, 13))
-        b13 = result.group_result(year, "B.13").group_total_keur
-        assert b13 == pytest.approx(selected * 0.06, abs=0.01)
+        b13 = result.group_result(year, "B.13")
+        assert b13.group_total_keur == pytest.approx(selected * 0.06, abs=0.01)
+        assert b13.contingency_method == "percentage_of_opex"
+        assert b13.contingency_pct == 6.0
+        assert b13.contingency_base_keur == pytest.approx(selected, abs=0.01)
 
 
 def test_selected_annual_values_match_excel():
