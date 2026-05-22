@@ -1,0 +1,17 @@
+sheet_order,sheet_name,implemented_level,runtime_or_preview,governance_sensitive,notes
+1,Cover,implemented,review,yes,Institutional cover sheet with provenance.
+2,Governance,implemented,review,yes,Governance metadata and approval status.
+3,Runtime Summary,implemented,runtime,yes,Existing runtime summary values only.
+4,Inputs,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+5,Construction,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+6,OPEX,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+7,CAPEX,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+8,Revenue,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+9,Senior Debt,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+10,SHL,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+11,Tax,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+12,P&L,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+13,Cash Flow,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+14,Balance Sheet,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
+15,Audit,placeholder,review,yes,Phase 10 placeholder - audit binding pending.
+16,Gap Register,placeholder,review,yes,Phase 10 placeholder - gap workflow pending.
