@@ -1,0 +1,21 @@
+category,metric,excel_value,model_value,delta,delta_pct,tolerance,status,explanation,source_excel,source_model,notes
+Operations,Production Y1 (MWh),"145,740","145,742",+2,+0.001%,±5%,PASS,Production matches Excel within tolerance,CF!R18,generation_mwh,Minor rounding in production estimation
+Revenue,Total Revenue (kEUR),"423,787","423,844",+57,+0.01%,±1%,PASS,Revenue within 0.1%. Minor tariff/escalation rounding,P&L!R8,revenue_keur,Revenue matches Excel within 0.1%
+OPEX_EBITDA,Total OPEX (kEUR),"84,675","85,408",+733,+0.87%,±2%,PASS,OPEX within 1%. ACCEPTED_CONVENTION for sub-category structure,P&L!R10,opex_keur,OPEX within tolerance. Sub-item mapping incomplete.
+OPEX_EBITDA,Total EBITDA (kEUR),"339,113","338,435",-678,-0.20%,±2%,PASS,EBITDA within 0.2%,P&L!R16+R13,ebitda_keur,Minor depreciation timing difference
+Senior Debt,Senior Debt Amount (kEUR),"43,359","43,359",0,0%,±1%,PASS,"Fixed senior debt pre-sized at 43,359 kEUR. Exact match.",Outputs!R11C8,fixed_debt_keur,Exact match
+Senior Debt,Senior Interest (kEUR),"Annual ~1,297",0,N/A,N/A,N/A,ACCEPTED_CONVENTION,SHL canonical engine disables senior debt service. ACCEPTED_CONVENTION.,DS!R50,senior_interest_keur,Mode flag (use_shl_canonical_engine=True) disables senior DS
+Senior Debt,DSCR,~1.2x,inf,N/A,N/A,N/A,ACCEPTED_CONVENTION,DSCR = inf because senior_ds = 0 in SHL engine. ACCEPTED_CONVENTION.,DS!R19,dscr,SHL engine mode flag — not a runtime error
+SHL,SHL Opening Balance (kEUR),"32,704","30,930","-1,774",-5.4%,N/A,ACCEPTED_CONVENTION,P1 principal charged to income in model. ACCEPTED_CONVENTION.,Eq!R24,shl_balance_keur,Model correctly charges P1 to income; Excel capitalizes
+SHL,First Principal Repayment,P29 (2044-06-30),P25 (2042-06-30),4 periods,~4 periods,None,PASS,PR #165 aligned P29→P25. P29 was bug (FCF double-count).,Eq!R25,shl_principal_keur,PR #165 alignment verified
+SHL,Total SHL Interest (kEUR),"38,755","10,260 (cash) + PIK",N/A,N/A,N/A,ACCEPTED_CONVENTION,Excel includes PIK in interest row. Model separates cash vs PIK.,Eq!R26,shl_interest_keur + shl_pik_keur,Use sum for comparison. ACCEPTED_CONVENTION.
+SHL,SHL Rate (annual),7.93%,7.93%,0,0%,N/A,PASS,Exact match,Outputs!R25C8,shl_rate,Exact match on SHL rate
+Tax,Total Corporate Tax (kEUR),0,0,0,0%,N/A,PASS,CIT=0 for all periods (construction-period losses carried forward),P&L!R43/R44,corporate_tax_cash_keur,CIT=0 in both Excel and model
+Tax_CFADS,CFADS Definition,EBIT + financing,EBITDA - tax,N/A,N/A,N/A,MISSING_EVIDENCE,CFADS formula differs. Additional mapping required.,P&L rows 1-50,cfads_keur,CFADS definition differs (EBIT vs EBITDA approach)
+Distributions,Total Distributions (kEUR),"151,209","281,349","+130,140",+86%,N/A,ACCEPTED_CONVENTION,Model = total DA distribution (SHL service + equity). Excel = dividend-only.,Eq!R27,distribution_keur,Model distribution definition is correct for sponsor perspective
+Distributions,First Distribution Period,P35,P15,20 periods,~10 years,N/A,ACCEPTED_CONVENTION,Model starts distributions when SHL balance=0 (P14). ACCEPTED_CONVENTION.,Eq!R27,distribution_keur,Model timing correct given SHL mechanics
+Returns,Project IRR,9.47%,9.41%,-0.06pp,-0.6%,±0.5pp,PASS,Project IRR within ±0.5pp tolerance,Eq!D3 formula,discount_rate_project,Project IRR calibration verified
+Returns,Equity IRR,11.61%,~11.32%,-0.29pp,-2.5%,±1.0pp,WARN,0.29pp gap. G20 BLOCKED. Reconciliation IRR recommended.,Eq!D4 = XIRR(),computed from distribution_keur,XIRR convention difference. RECONCILIATION IRR recommended.
+Returns,XIRR Date Convention,2028-06-30 (construction),2030-06-30 (COD),2 years,N/A,N/A,ACCEPTED_CONVENTION,Excel XIRR starts at construction date. Model starts at COD. ACCEPTED_CONVENTION.,Eq!R23,model period dates,Both conventions valid. Reconciliation IRR recommended.
+Returns,XIRR Investment Base,"-29,635 (excl. IDC)","-33,204 (incl. IDC)","-3,569",N/A,N/A,ACCEPTED_CONVENTION,Excel excludes SHL IDC from investment base. Model includes.,Eq!D4 denominator,shl + shl_idc + equity,IDC convention difference. ACCEPTED_CONVENTION.
+Returns,Reconciliation IRR,11.61%,Not implemented,N/A,N/A,N/A,MISSING_EVIDENCE,Reconciliation IRR (Excel-date + excl-IDC) not yet implemented as reporting view.,Eq!D4,reconciliation_irr_view,Recommended: create secondary IRR view for Excel comparison
