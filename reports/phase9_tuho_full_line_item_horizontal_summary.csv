@@ -1,0 +1,15 @@
+item,value,status
+workbook,reports\phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,PASS
+SHL feed,runtime WaterfallPeriod SHL fields,PASS
+distribution feed,default distribution_keur; DA staging separate,PASS
+Tax/CFADS feed,R35/R67/R69 wired where available,PASS
+model_equity_irr,0.11149507555645398,WARN
+model_project_irr,0.09410162472306152,PASS
+G20,BLOCKED,BLOCKER
+R99/R102,NOT APPROVED,BLOCKER
+count_PASS,6,PASS
+count_WARN,4,WARN
+count_FAIL,0,FAIL
+count_ACCEPTED_CONVENTION,2,ACCEPTED_CONVENTION
+count_MISSING_EVIDENCE,3,MISSING_EVIDENCE
+count_BLOCKER,2,BLOCKER

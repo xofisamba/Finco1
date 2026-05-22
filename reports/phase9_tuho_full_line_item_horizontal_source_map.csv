@@ -1,0 +1,31 @@
+metric,excel_source,model_source,source_status,notes
+Operations / Production,CF production extract,WaterfallPeriod.generation_mwh,runtime output,"Model production now sourced from runtime periods, not zeroed PR #168 feed."
+Operations / Availability / load factor,Not in committed fixture,Not mapped,MISSING_EVIDENCE,Specific availability/load-factor source was not present in committed extracts.
+Operations / Price,P&L R8 / production,WaterfallPeriod.revenue_keur / generation_mwh,derived,Reviewer price proxy derived from total revenue divided by production.
+Revenue / Electricity revenue,P&L R8 total revenues,WaterfallPeriod.revenue_keur,runtime output,Electricity revenue presented as total revenue until Excel sub-splits are mapped.
+Revenue / CO2,Not separately mapped,revenue_decomposition_schedule.co2_revenue_keur,partial evidence,Model CO2 exists; Excel CO2 row is not separately mapped in committed fixture.
+Revenue / Balancing,Not separately mapped,revenue_decomposition_schedule balancing cost fields,partial evidence,Model balancing cost exists; Excel balancing row is not separately mapped in committed fixture.
+Revenue / Other operating income,Not in committed fixture,Not mapped,MISSING_EVIDENCE,No separate other-operating-income row found in committed extracts.
+Revenue / Total revenue,P&L R8,WaterfallPeriod.revenue_keur,runtime output,Primary total revenue parity row.
+Costs / EBITDA / OPEX,CF R38 / P&L R10,WaterfallPeriod.opex_keur,runtime output,OPEX shown as positive cost in review workbook.
+Costs / EBITDA / EBITDA,CF R40,WaterfallPeriod.ebitda_keur,runtime output,EBITDA parity row.
+Costs / EBITDA / EBITDA margin,CF R40 / P&L R8,WaterfallPeriod.ebitda_keur / revenue_keur,derived,Derived reviewer ratio.
+Senior Debt / Opening balance,DS senior opening balance,derived from fixed_debt_keur and prior closing,runtime output,Opening balance derived without changing runtime.
+Senior Debt / Closing balance,DS senior closing balance,WaterfallPeriod.senior_balance_keur,runtime output,Closing senior balance.
+Senior Debt / Drawdown,No operating drawdown,No operating drawdown,ACCEPTED_CONVENTION,Operating horizon starts after construction drawdown.
+Senior Debt / Principal repayment,DS R49,WaterfallPeriod.senior_principal_keur,runtime output,Senior principal row.
+Senior Debt / Interest,DS R50,WaterfallPeriod.senior_interest_keur,runtime output,Senior interest row.
+Senior Debt / Debt service,CF R70,WaterfallPeriod.senior_ds_keur,runtime output,Debt service shown as positive outflow.
+Senior Debt / DSCR,CF average DSCR period,WaterfallPeriod.dscr,runtime output,DSCR row.
+SHL / SHL Opening Balance,Eq SHL opening balance,derived from shl_amount+shl_idc and prior WaterfallPeriod.shl_balance_keur,runtime output,Critical PR #168 fix: model P1 opening balance is non-zero.
+SHL / SHL Gross Accrued Interest,Eq gross accrued interest,WaterfallPeriod.shl_gross_accrued_interest_keur,runtime output,Gross accrued interest is separate from cash interest and PIK.
+SHL / SHL Cash Interest Paid,Eq paid net interest,WaterfallPeriod.shl_interest_keur,runtime output,Cash interest paid row.
+SHL / SHL PIK Capitalized,Eq capitalized interest,WaterfallPeriod.shl_pik_keur,runtime output,PIK row.
+SHL / SHL Principal Repaid,Eq principal flow,WaterfallPeriod.shl_principal_keur,runtime output,Default/off path shown; P25 alignment remains config-gated.
+SHL / SHL Closing Balance,Eq SHL closing balance,WaterfallPeriod.shl_balance_keur,runtime output,Closing SHL balance row.
+Tax / CFADS / Taxable Income,P&L R35,WaterfallPeriod.taxable_income_before_losses_audit_keur,runtime audit output,Tax/CFADS is no longer entirely missing; taxable income is wired.
+Tax / CFADS / CIT Cash,CF R67,WaterfallPeriod.corporate_tax_cash_keur,runtime output,Cash CIT row.
+Tax / CFADS / CFADS,CF R69,WaterfallPeriod.r69_fcf_banks_keur,runtime audit output,CFADS / FCF banks evidence is wired from R69 audit field.
+Distributions / Net Dividends / Distribution,Eq net dividend flow,WaterfallPeriod.distribution_keur,default runtime / legacy path,Model distribution row uses one defined flag state: default runtime / legacy path.
+Distributions / DA-wired / pre-G20 staging,Not a runtime source,WaterfallPeriod.r99_fcf_for_distribution_keur,audit-only / pre-G20 staging,Separate annotation row; not mixed into model distribution row.
+Distributions / Lockup / blocked reason,CF lockup rows not separately mapped,WaterfallPeriod.lockup_active,runtime output,Blank means not locked in that period.
