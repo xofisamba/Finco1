@@ -1,10 +1,9 @@
-<!-- Sheet: OPEX — TUHO Wind 1 -->
+<!-- Sheet: OPEX — {{ project_ctx.name }} -->
 
 <div class="sheet-banner">
   <span class="sheet-banner-tag">📊 OPEX</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">Template preview</span>
-    Static TUHO factory snapshot — not live run output
+    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   </span>
 </div>
 
@@ -20,19 +19,18 @@
       </tr>
     </thead>
     <tbody>
-      <tr><td>Technical Management</td><td class="num-col">279.99</td><td class="num-col">2%</td></tr>
-      <tr><td>O&amp;M Preventive &amp; Corrective</td><td class="num-col">426.60</td><td class="num-col">2%</td></tr>
-      <tr><td>Maintain Site</td><td class="num-col">68.00</td><td class="num-col">2%</td></tr>
-      <tr><td>Clean Material</td><td class="num-col">5.00</td><td class="num-col">2%</td></tr>
-      <tr><td>Security</td><td class="num-col">50.00</td><td class="num-col">2%</td></tr>
-      <tr><td>Insurance</td><td class="num-col">468.74</td><td class="num-col">2%</td></tr>
-      <tr><td>Lease &amp; Property Tax</td><td class="num-col">248.88</td><td class="num-col">2%</td></tr>
-      <tr><td>Power Expenses</td><td class="num-col">93.72</td><td class="num-col">2%</td></tr>
-      <tr><td>Audit &amp; Accounting &amp; Legal</td><td class="num-col">23.99</td><td class="num-col">2%</td></tr>
-      <tr><td>Bank Fees (opex)</td><td class="num-col">20.00</td><td class="num-col">2%</td></tr>
-      <tr><td>Environmental &amp; Social Management</td><td class="num-col">200.00</td><td class="num-col">2%</td></tr>
-      <tr><td>Contingencies</td><td class="num-col">113.09</td><td class="num-col">6%</td></tr>
-      <tr class="total-row"><td>Total Y1 OPEX</td><td class="num-col">1,998</td><td class="num-col">—</td></tr>
+      {% for item in project_ctx.opex_items %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td class="num-col">{{ "%.2f"|format(item.y1_keur) }}</td>
+        <td class="num-col">{% if item.inflation_pct > 0 %}{{ "%.0f"|format(item.inflation_pct * 100) }}%{% else %}Flat{% endif %}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total-row">
+        <td>Total Y1 OPEX</td>
+        <td class="num-col">{{ "%,.0f"|format(project_ctx.opex_y1_total_keur) }}</td>
+        <td class="num-col">—</td>
+      </tr>
     </tbody>
   </table>
 </div>
@@ -45,23 +43,15 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Y1 OPEX Total</span>
-      <span class="metric-value">1,998 kEUR</span>
+      <span class="metric-value">{{ "%,.0f"|format(project_ctx.opex_y1_total_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Inflation (standard)</span>
       <span class="metric-value">2% annually</span>
     </div>
     <div class="assumption-item">
-      <span class="metric-label">Inflation (contingencies)</span>
-      <span class="metric-value">6% of other OPEX — no separate contingency inflation</span>
-    </div>
-    <div class="assumption-item">
       <span class="metric-label">OPEX/MW (Y1)</span>
-      <span class="metric-value">~57 kEUR/MW</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Largest Item</span>
-      <span class="metric-value">Insurance (468 kEUR)</span>
+      <span class="metric-value">~{{ "%.0f"|format(project_ctx.opex_y1_total_keur / project_ctx.capacity_mw) }} kEUR/MW</span>
     </div>
   </div>
 </div>
@@ -74,46 +64,33 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Method</span>
-      <span class="method-badge method-pct">% of other OPEX</span>
+      <span class="method-badge {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}method-pct{% else %}method-fixed{% endif %}">
+        {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}% of other OPEX{% else %}Fixed amount + inflation{% endif %}
+      </span>
     </div>
+    {% if project_ctx.opex_contingency_pct %}
     <div class="assumption-item">
       <span class="metric-label">Percentage</span>
-      <span class="metric-value">6% of sum(B.01 – B.12)</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.opex_contingency_pct) }}% of sum(non-contingency OPEX)</span>
     </div>
-    <div class="assumption-item">
-      <span class="metric-label">Y1 Contingency</span>
-      <span class="metric-value">113.09 kEUR</span>
-    </div>
+    {% endif %}
     <div class="assumption-item">
       <span class="metric-label">Inflation on contingency</span>
-      <span class="metric-value no-inflation">None — indirect via underlying OPEX</span>
+      <span class="metric-value no-inflation">{% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}None — indirect via underlying OPEX{% else %}Applies group inflation{% endif %}</span>
     </div>
   </div>
-  <div class="method-note">
+  <div class="method-note {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}method-pct-note{% else %}method-fixed-note{% endif %}">
+    {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}
     <span class="method-badge method-pct">% of OPEX</span>
     No separate inflation is applied to the contingency itself.
     The contingency grows because the underlying OPEX items inflate (2%/yr on most lines).
-  </div>
-  <div class="method-note method-fixed" style="display:none;">
+    {% else %}
     <span class="method-badge method-fixed">Fixed amount + inflation</span>
     Contingency is entered as a fixed kEUR amount and escalates by its own inflation rate.
+    {% endif %}
   </div>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- Escalation Note -->
-<div class="sheet-card">
-  <div class="section-header">Escalation</div>
-  <p style="font-size:0.85rem;color:var(--text-muted);">
-    OPEX inflates annually per category rate (2%/yr on most items).<br>
-    Contingency: <strong>% of other OPEX</strong> — grows indirectly through the underlying lines, no separate contingency inflation.<br>
-    Future: live OPEX projection driven by runtime <code>opex_engine</code>.
-  </p>
 </div>
 
 <div class="table-note">
-  <span class="badge badge-preview">Template preview</span>
-  Values above are hardcoded UI seed data from TUHO factory assumptions.
-  Not yet dynamically bound to active project runtime outputs.
+  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>

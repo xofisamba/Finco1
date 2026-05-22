@@ -1,10 +1,9 @@
-<!-- Sheet: Tax — TUHO Wind 1 -->
+<!-- Sheet: Tax — {{ project_ctx.name }} -->
 
 <div class="sheet-banner">
   <span class="sheet-banner-tag">🏛️ Tax</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">Template preview</span>
-    Static TUHO factory snapshot — not live run output
+    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   </span>
 </div>
 
@@ -14,86 +13,29 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">CIT Rate</span>
-      <span class="metric-value">0% entire tenor</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.cit_rate_pct * 100) }}%</span>
     </div>
     <div class="assumption-item">
-      <span class="metric-label">CIT Cash (all periods)</span>
-      <span class="metric-value">0 kEUR — Phase 9 accepted convention</span>
+      <span class="metric-label">Loss Carryforward</span>
+      <span class="metric-value">{{ project_ctx.loss_carryforward_years }} years</span>
     </div>
     <div class="assumption-item">
-      <span class="metric-label">Reason</span>
-      <span class="metric-value">Construction carryforward; large opening tax loss</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Convention Source</span>
-      <span class="metric-value">Phase 9 — CIT=0 blanket acceptance</span>
+      <span class="metric-label">Convention</span>
+      <span class="badge badge-convention">AUDIT-ONLY</span>
     </div>
   </div>
 </div>
 
 <div class="section-divider"></div>
 
-<!-- Depreciation -->
+<!-- Tax note -->
 <div class="sheet-card">
-  <div class="section-header">Depreciation</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Method</span>
-      <span class="metric-value">Straight-line</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Useful Life</span>
-      <span class="metric-value">20 years</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Depreciation Y1</span>
-      <span class="metric-value">~1,178 kEUR/semiannual</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Book Value Start</span>
-      <span class="metric-value">72,994 kEUR (total capex)</span>
-    </div>
+  <div class="section-header">Output Preview</div>
+  <div class="placeholder-panel" style="padding:1.5rem;">
+    <div class="placeholder-desc">Live tax/CFADS preview is not yet bound to this project. Run the model to generate tax output.</div>
   </div>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- Tax Bridge -->
-<div class="sheet-card">
-  <div class="section-header">Tax Bridge</div>
-  <table class="sheet-table">
-    <thead>
-      <tr>
-        <th>Item</th>
-        <th class="num-col">Status</th>
-        <th>Notes</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr><td>R35 (taxable income)</td><td class="num-col">MISSING_EVIDENCE</td><td>Not yet mapped to runtime</td></tr>
-      <tr><td>R67 (cash tax)</td><td class="num-col">MISSING_EVIDENCE</td><td>Not yet mapped to runtime</td></tr>
-      <tr><td>Interest Limitation</td><td class="num-col">Not yet wired</td><td>Future: EBITDA-based ratio test</td></tr>
-      <tr><td>Loss Carryforward</td><td class="num-col">Not yet wired</td><td>Future: rolling window</td></tr>
-    </tbody>
-  </table>
-  <p class="table-note">CIT=0 for full tenor per Phase 9 accepted convention. Tax bridge runtime wiring is a future branch deliverable.</p>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- Convention Notes -->
-<div class="sheet-card">
-  <div class="section-header">Accepted Conventions</div>
-  <ul style="font-size:0.85rem;color:var(--text-muted);padding-left:1.2rem;margin:0;">
-    <li>CIT = 0 for all 60 periods (construction carryforward exhausted)</li>
-    <li>Depreciation: straight-line 20 years (book only, no tax acceleration)</li>
-    <li>Interest: P&amp;L interest expense = cash interest (no accrued distinction)</li>
-    <li>R35/R67 not yet cross-validated against Excel — MISSING_EVIDENCE</li>
-  </ul>
 </div>
 
 <div class="table-note">
-  <span class="badge badge-preview">Template preview</span>
-  Values above are hardcoded UI seed data from TUHO factory assumptions.
-  Not yet dynamically bound to active project runtime outputs.
+  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>
