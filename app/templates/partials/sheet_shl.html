@@ -1,0 +1,125 @@
+<!-- Sheet: SHL — TUHO Wind 1 -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🔒 Subordinated Holdco Loan (SHL)</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Template preview</span>
+    Static TUHO factory snapshot — not live run output
+  </span>
+</div>
+
+<!-- SHL Facility Summary -->
+<div class="sheet-card">
+  <div class="section-header">SHL Facility Summary</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Opening Balance</span>
+      <span class="metric-value">32,704 kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">PIK Rate</span>
+      <span class="metric-value">7.93% p.a.</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">IDC (capitalised)</span>
+      <span class="metric-value">1,520 kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Method</span>
+      <span class="metric-value">PIK then sweep (pik_then_sweep)</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">WHT on SHL</span>
+      <span class="metric-value">0%</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">SHL/Equity Ratio</span>
+      <span class="metric-value">~1.10x</span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- SHL Schedule Preview -->
+<div class="sheet-card">
+  <div class="section-header">SHL Schedule Preview — First 4 Periods</div>
+  <table class="sheet-table">
+    <thead>
+      <tr>
+        <th>Period</th>
+        <th class="num-col">Opening (kEUR)</th>
+        <th class="num-col">PIK Interest (kEUR)</th>
+        <th class="num-col">PIK Capitalised (kEUR)</th>
+        <th class="num-col">Sweep (kEUR)</th>
+        <th class="num-col">Closing (kEUR)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Y1-H1</td>
+        <td class="num-col">32,704</td>
+        <td class="num-col">1,297</td>
+        <td class="num-col">1,297</td>
+        <td class="num-col">—</td>
+        <td class="num-col">34,001</td>
+      </tr>
+      <tr>
+        <td>Y1-H2</td>
+        <td class="num-col">34,001</td>
+        <td class="num-col">1,347</td>
+        <td class="num-col">1,347</td>
+        <td class="num-col">—</td>
+        <td class="num-col">35,348</td>
+      </tr>
+      <tr>
+        <td>Y2-H1</td>
+        <td class="num-col">35,348</td>
+        <td class="num-col">1,401</td>
+        <td class="num-col">1,401</td>
+        <td class="num-col">—</td>
+        <td class="num-col">36,749</td>
+      </tr>
+      <tr>
+        <td>Y2-H2</td>
+        <td class="num-col">36,749</td>
+        <td class="num-col">1,457</td>
+        <td class="num-col">1,457</td>
+        <td class="num-col">—</td>
+        <td class="num-col">38,206</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="table-note">PIK interest capitalised each period. Sweep begins when FCF &gt; accrued SHL. Preview only.</p>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- SHL Mechanics -->
+<div class="sheet-card">
+  <div class="section-header">SHL Mechanics</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Trigger</span>
+      <span class="metric-value">FCF &gt; accrued SHL balance</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Capitalisation</span>
+      <span class="metric-value">PIK interest added to principal</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Cash Sweep</span>
+      <span class="metric-value">After PIK capitalisation</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Source: TUHO Excel</span>
+      <span class="metric-value">SHL opening = 32,704 kEUR</span>
+    </div>
+  </div>
+</div>
+
+<div class="table-note">
+  <span class="badge badge-preview">Template preview</span>
+  Values above are hardcoded UI seed data from TUHO factory assumptions.
+  Not yet dynamically bound to active project runtime outputs.
+</div>
