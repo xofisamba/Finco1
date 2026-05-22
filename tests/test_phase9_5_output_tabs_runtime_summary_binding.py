@@ -73,7 +73,7 @@ class TestRuntimeSummaryBinding:
         obo_summary = json.loads(m2.group(1))
 
         # Active project must differ
-        assert tuho_summary.get("active_project") != obo_summary.get("active_project"), \
+        assert tuho_summary.get("project_id") != obo_summary.get("project_id"), \
             "TUHO and Oborovo must have different active_project in runtime summary"
 
         # Revenue must differ (guardrails: TUHO ~423M, Oborovo ~238M)
