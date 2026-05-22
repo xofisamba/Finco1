@@ -1,0 +1,11 @@
+source_file,sheet_or_section,metric,period_level_available,total_available,excel_or_model,usable_for_workbook,notes
+phase9_tuho_full_line_item_period_bridge.csv,PER_BRIDGE,"Senior Debt, Revenue, OPEX, EBITDA, SHL, DSCR",61 periods,33 cols,EXCEL,YES,senior/revenue/opex/ebitda/shl/dscr columns available; DS computed from interest+principal
+phase9_tuho_shl_period_bridge.csv,SHL_BRIDGE,"SHL balance, interest, principal, PIK, dividend",121 periods,18 cols,EXCEL,PARTIAL,interest=GROSS (not cash); closing/service not in bridge; pik=0
+phase9_tuho_full_semester_horizontal_parity_workbook.xlsx,SEMESTER_PARITY,"All sections 61 periods: Senior Debt, SHL, Revenue, OPEX, Tax, CFADS",61 periods,63 cols,EXCEL+MODEL,YES,14 sheets with Excel/Model/Delta; Tax R35/R67 MISSING; Book Dep MISSING
+phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,LINE_ITEM_REVIEW,8-period sample only (not full 61),8 periods,8 cols,EXCEL+MODEL,PARTIAL,Limited to 8 periods; do NOT use for full workbook; Gap Analysis reference only
+phase9_tuho_full_line_item_parity_summary.csv,PARITY_SUMM,Summary metrics,N/A,12 cols,BOTH,YES,
+phase9_tuho_calibration_gap_register.csv,CALIB_GAP,"Calibration gaps: DSCR, IRR, R99/R102",7 periods,12 cols,BOTH,YES,7 known calibration gaps documented
+phase9_tuho_full_line_item_gap_register.csv,GAP_REG,Line-item gap register,19 periods,14 cols,BOTH,YES,19 gap entries with severity/classification
+phase9_tuho_equity_irr_excel_source_map.csv,EIRR_MAP,Equity IRR source mapping,12 periods,9 cols,BOTH,YES,
+phase9_equity_irr_reconciliation.csv,EIRR_REC,Equity IRR reconciliation,5 periods,13 cols,BOTH,YES,
+phase9_equity_irr_cashflow_bridge.csv,EIRR_CF,Equity IRR cashflow bridge,61 periods,6 cols,BOTH,YES,

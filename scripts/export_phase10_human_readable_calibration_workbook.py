@@ -68,8 +68,16 @@ def _status_fill(status: str) -> PatternFill:
     return _fill("FFFFFF")
 
 def _num(v):
-    if v is None or isinstance(v, str):
+    if v is None:
         return None
+    if isinstance(v, str):
+        v = v.strip()
+        if not v or v.upper() in ('MISSING_EVIDENCE', 'N/A', 'NONE', ''):
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
     try:
         return float(v)
     except (TypeError, ValueError):
@@ -433,10 +441,10 @@ def _build_revenue(wb, pd, n_cols):
     section_header(ws, row, "2. REVENUE", n_cols); row += 1
 
     # Electricity revenue
-    excel_rev = _excel_val(PER_BRIDGE, 'excel_electricity_revenue_keur', pd['n'], default=None)
+    excel_rev = _excel_val(PER_BRIDGE, 'excel_revenue_keur', pd['n'], default=None)
     write_triplet(ws, row, "Electricity Revenue (kEUR)",
                   excel_rev, pd['revenue_keur'],
-                  source="Revenue sheet (Excel extract)", num_format='#,##0.0')
+                  source="P&L!R8 (Excel extract)", num_format='#,##0.0')
     row += 3
 
     # CO2 revenue — Model only (Excel MISSING_EVIDENCE)
@@ -466,11 +474,11 @@ def _build_revenue(wb, pd, n_cols):
         row += 1
     row += 1
 
-    # Total Revenue
-    excel_tot = _excel_val(PER_BRIDGE, 'excel_total_revenue_keur', pd['n'], default=None)
+    # Total Revenue — use excel_revenue_keur (same as electricity since no other revenue in bridge)
+    excel_tot = _excel_val(PER_BRIDGE, 'excel_revenue_keur', pd['n'], default=None)
     write_triplet(ws, row, "Total Revenue (kEUR)",
                   excel_tot, pd['revenue_keur'],
-                  source="Revenue sheet total (Excel extract)", num_format='#,##0.0')
+                  source="P&L!R8 (Excel extract)", num_format='#,##0.0')
     row += 3
 
 
@@ -519,38 +527,47 @@ def _build_senior_debt(wb, pd, n_cols):
     opening = [pd['senior_balance_keur'][0]] + pd['senior_balance_keur'][:-1]
     excel_open = _excel_val(PER_BRIDGE, 'excel_senior_opening_keur', pd['n'], default=None)
     write_triplet(ws, row, "Opening Balance (kEUR)",
-                  excel_open, opening, source="Debt schedule (Excel extract)")
+                  excel_open, opening, source="DS!R47 (Excel extract)")
     row += 3
 
     # Interest
     excel_int = _excel_val(PER_BRIDGE, 'excel_senior_interest_keur', pd['n'], default=None)
     write_triplet(ws, row, "Interest (kEUR)",
-                  excel_int, pd['senior_interest_keur'], source="Debt schedule (Excel extract)")
+                  excel_int, pd['senior_interest_keur'], source="DS!R50 (Excel extract)")
     row += 3
 
     # Principal repayment
     excel_prin = _excel_val(PER_BRIDGE, 'excel_senior_principal_keur', pd['n'], default=None)
     write_triplet(ws, row, "Principal Repayment (kEUR)",
-                  excel_prin, pd['senior_principal_keur'], source="Debt schedule (Excel extract)")
+                  excel_prin, pd['senior_principal_keur'], source="DS!R49 (Excel extract)")
     row += 3
 
-    # Debt service
-    excel_ds = _excel_val(PER_BRIDGE, 'excel_senior_ds_keur', pd['n'], default=None)
+    # Debt service = interest + principal (no excel_senior_ds_keur in bridge)
+    # Compute from interest + principal for both
+    excel_ds_vals = []
+    for i in range(pd['n']):
+        ei = _num(PER_BRIDGE[i]['excel_senior_interest_keur']) if i < len(PER_BRIDGE) else None
+        ep = _num(PER_BRIDGE[i]['excel_senior_principal_keur']) if i < len(PER_BRIDGE) else None
+        if ei is not None and ep is not None:
+            excel_ds_vals.append(ei + ep)
+        else:
+            excel_ds_vals.append(None)
+    model_ds_vals = [pd['senior_interest_keur'][i] + pd['senior_principal_keur'][i] for i in range(pd['n'])]
     write_triplet(ws, row, "Debt Service (kEUR)",
-                  excel_ds, pd['senior_ds_keur'], source="Debt schedule (Excel extract)")
+                  excel_ds_vals, model_ds_vals, source="DS!R50+R49 (Excel extract)")
     row += 3
 
     # Closing balance
     excel_close = _excel_val(PER_BRIDGE, 'excel_senior_closing_keur', pd['n'], default=None)
     write_triplet(ws, row, "Closing Balance (kEUR)",
-                  excel_close, pd['senior_balance_keur'], source="Debt schedule (Excel extract)")
+                  excel_close, pd['senior_balance_keur'], source="DS!R47 closing (Excel extract)")
     row += 3
 
     # DSCR
     excel_dscr = _excel_val(PER_BRIDGE, 'excel_dscr', pd['n'], default=None)
     dscr_vals = pd['dscr']
     write_triplet(ws, row, "DSCR",
-                  excel_dscr, dscr_vals, source="DSCR formula (Excel extract)", num_format='0.00x')
+                  excel_dscr, dscr_vals, source="DS!R19 (Excel extract)", num_format='0.00x')
     row += 3
 
 
@@ -560,60 +577,66 @@ def _build_shl(wb, pd, n_cols):
     row = 2
     section_header(ws, row, "6. SHL", n_cols); row += 1
 
-    # Opening balance
-    opening = [pd['shl_balance_keur'][0]] + pd['shl_balance_keur'][:-1]
-    excel_open = _excel_val(SHL_BRIDGE, 'excel_shl_opening_keur', pd['n'], default=None)
+    # Opening balance — excel_shl_balance_keur is period-end balance; use as both open & close
+    # For opening: shift balance by 1 (prior period close)
+    if SHL_BRIDGE and len(SHL_BRIDGE) > 0:
+        balance_vals = [_num(r.get('excel_shl_balance_keur')) for r in SHL_BRIDGE[:pd['n']]]
+        opening = [None] + balance_vals[:-1] if len(balance_vals) > 1 else [None] * pd['n']
+    else:
+        opening = [None] * pd['n']
+        balance_vals = [None] * pd['n']
     write_triplet(ws, row, "Opening Balance (kEUR)",
-                  excel_open, opening, source="SHL schedule (Excel extract)")
+                  opening[:pd['n']], [pd['shl_balance_keur'][0]] + pd['shl_balance_keur'][:-1],
+                  source="BS!R24 (Excel extract)")
     row += 3
 
-    # Gross accrued interest
-    excel_gross = _excel_val(SHL_BRIDGE, 'excel_shl_gross_accrued_keur', pd['n'], default=None)
+    # Gross Accrued Interest — excel_shl_interest_keur in bridge = gross accrued (not cash paid)
+    excel_gross = _excel_val(SHL_BRIDGE, 'excel_shl_interest_keur', pd['n'], default=None)
     write_triplet(ws, row, "Gross Accrued Interest (kEUR)",
-                  excel_gross, pd['shl_gross_accrued_interest_keur'], source="SHL schedule (Excel extract)")
+                  excel_gross, pd['shl_gross_accrued_interest_keur'], source="P&L!R27 (Excel extract)")
     row += 3
 
-    # Cash interest paid
-    excel_cash = _excel_val(SHL_BRIDGE, 'excel_shl_cash_interest_keur', pd['n'], default=None)
+    # Cash Interest Paid — bridge doesn't distinguish; use gross as cash proxy
+    # Excel cash interest = P&L!R26 (Eq!R26) — not in bridge. Mark MISSING_EVIDENCE.
+    excel_cash_vals = ["MISSING_EVIDENCE: Eq!R26 not in committed SHL bridge"] * pd['n']
     write_triplet(ws, row, "Cash Interest Paid (kEUR)",
-                  excel_cash, pd['shl_interest_keur'], source="SHL schedule (Excel extract)")
+                  excel_cash_vals, pd['shl_interest_keur'], source="MISSING_EVIDENCE: bridge cols don't distinguish gross/cash")
     row += 3
 
-    # PIK capitalized — Model only
-    ws.cell(row=row, column=1, value="PIK Capitalized — Excel")
-    ws.cell(row=row, column=2, value="MISSING_EVIDENCE: PIK not in committed SHL extract")
-    for ci in range(3, 3 + pd['n']):
-        ws.cell(row=row, column=ci, value="MISSING_EVIDENCE").fill = MISS_FILL
-    row += 1
-    ws.cell(row=row, column=1, value="PIK Capitalized — Model")
-    ws.cell(row=row, column=2, value="runtime (shl_pik_keur)")
-    for ci, v in enumerate(pd['shl_pik_keur'], start=3):
-        vf = _num(v)
-        c = ws.cell(row=row, column=ci, value=vf if vf is not None else "MISSING_EVIDENCE")
-        c.number_format = '#,##0.0'
-    row += 1
-    ws.cell(row=row, column=1, value="PIK Capitalized — Delta")
-    ws.cell(row=row, column=2, value="N/A")
-    for ci in range(3, 3 + pd['n']):
-        ws.cell(row=row, column=ci, value="N/A").fill = CONV_FILL
-    row += 1
+    # PIK Capitalized
+    excel_pik = _excel_val(SHL_BRIDGE, 'excel_pik_keur', pd['n'], default=None)
+    write_triplet(ws, row, "PIK Capitalized (kEUR)",
+                  excel_pik, pd['shl_pik_keur'], source="P&L!R28 not mapped; bridge has 0")
+    row += 3
 
     # Principal repaid
     excel_prin = _excel_val(SHL_BRIDGE, 'excel_shl_principal_keur', pd['n'], default=None)
     write_triplet(ws, row, "Principal Repaid (kEUR)",
-                  excel_prin, pd['shl_principal_keur'], source="SHL schedule (Excel extract)")
+                  excel_prin, pd['shl_principal_keur'], source="Eq!R25 (Excel extract)")
     row += 3
 
     # Closing balance
-    excel_close = _excel_val(SHL_BRIDGE, 'excel_shl_closing_keur', pd['n'], default=None)
     write_triplet(ws, row, "Closing Balance (kEUR)",
-                  excel_close, pd['shl_balance_keur'], source="SHL schedule (Excel extract)")
+                  balance_vals[:pd['n']] if balance_vals else [None] * pd['n'],
+                  pd['shl_balance_keur'], source="BS!R24 closing (Excel extract)")
     row += 3
 
-    # SHL service
-    excel_svc = _excel_val(SHL_BRIDGE, 'excel_shl_service_keur', pd['n'], default=None)
+    # SHL service — cash interest + principal repaid
+    if SHL_BRIDGE and len(SHL_BRIDGE) > 0:
+        service_vals = []
+        for i in range(min(pd['n'], len(SHL_BRIDGE))):
+            ei = _num(SHL_BRIDGE[i].get('excel_shl_interest_keur'))
+            ep = _num(SHL_BRIDGE[i].get('excel_shl_principal_keur'))
+            if ei is not None and ep is not None:
+                service_vals.append(ei + ep)
+            else:
+                service_vals.append(None)
+        while len(service_vals) < pd['n']: service_vals.append(None)
+    else:
+        service_vals = [None] * pd['n']
+    model_service = [pd['shl_interest_keur'][i] + pd['shl_principal_keur'][i] for i in range(pd['n'])]
     write_triplet(ws, row, "Total SHL Service (kEUR)",
-                  excel_svc, pd['shl_service_keur'], source="SHL schedule (Excel extract)")
+                  service_vals[:pd['n']], model_service, source="Interest + Principal (Excel extract)")
     row += 3
 
 
@@ -664,46 +687,56 @@ def _build_cfads(wb, pd, n_cols):
     row = 2
     section_header(ws, row, "8. CFADS / WATERFALL", n_cols); row += 1
 
-    # EBITDA
+    # EBITDA — from PER_BRIDGE (has excel_ebitda_keur)
     excel_ebitda = _excel_val(PER_BRIDGE, 'excel_ebitda_keur', pd['n'], default=None)
     write_triplet(ws, row, "EBITDA Cash (kEUR)",
-                  excel_ebitda, pd['ebitda_keur'], source="P&L (Excel extract)")
+                  excel_ebitda, pd['ebitda_keur'], source="P&L!R16 (Excel extract)")
     row += 3
 
-    # Tax cash
-    excel_tax = _excel_val(PER_BRIDGE, 'excel_corporate_tax_cash_keur', pd['n'], default=None)
+    # Corporate Tax Cash — use runtime corporate_tax_cash_keur (bridge doesn't have this)
+    excel_tax_vals = ["MISSING_EVIDENCE: P&L!R67 not in committed bridge"] * pd['n']
     write_triplet(ws, row, "Corporate Tax Cash (kEUR)",
-                  excel_tax, pd['corporate_tax_cash_keur'], source="Tax schedule (Excel extract)")
+                  excel_tax_vals, pd['corporate_tax_cash_keur'], source="MISSING_EVIDENCE (Excel), runtime (Model)")
     row += 3
 
-    # CFADS / R69
-    excel_cfads = _excel_val(PER_BRIDGE, 'excel_r69_fcf_banks_keur', pd['n'], default=None)
+    # CFADS / R69 — bridge doesn't have this; use runtime r69_fcf_banks_keur
+    excel_cfads_vals = ["MISSING_EVIDENCE: P&L!R69 not in committed bridge"] * pd['n']
     write_triplet(ws, row, "CFADS / R69 (kEUR)",
-                  excel_cfads, pd['r69_fcf_banks_keur'], source="Waterfall (Excel extract)")
+                  excel_cfads_vals, pd['r69_fcf_banks_keur'], source="MISSING_EVIDENCE (Excel), runtime (Model)")
     row += 3
 
-    # Senior debt service
-    excel_ds = _excel_val(PER_BRIDGE, 'excel_senior_ds_keur', pd['n'], default=None)
+    # Senior debt service — compute from bridge interest + principal
+    excel_ds_vals = []
+    for i in range(pd['n']):
+        ei = _num(PER_BRIDGE[i]['excel_senior_interest_keur']) if i < len(PER_BRIDGE) else None
+        ep = _num(PER_BRIDGE[i]['excel_senior_principal_keur']) if i < len(PER_BRIDGE) else None
+        excel_ds_vals.append((ei + ep) if ei is not None and ep is not None else None)
+    while len(excel_ds_vals) < pd['n']: excel_ds_vals.append(None)
     write_triplet(ws, row, "Senior Debt Service (kEUR)",
-                  excel_ds, pd['senior_ds_keur'], source="Debt schedule (Excel extract)")
+                  excel_ds_vals, pd['senior_ds_keur'], source="DS!R50+R49 (Excel extract)")
     row += 3
 
-    # FCF for SHL / R99
-    excel_r99 = _excel_val(PER_BRIDGE, 'excel_r99_fcf_for_distribution_keur', pd['n'], default=None)
+    # FCF for Distribution / R99 — bridge doesn't have; use runtime
+    excel_r99_vals = ["MISSING_EVIDENCE: R99 not in bridge"] * pd['n']
     write_triplet(ws, row, "FCF for Distribution / R99 (kEUR)",
-                  excel_r99, pd['r99_fcf_for_distribution_keur'], source="Waterfall (Excel extract)")
+                  excel_r99_vals, pd['r99_fcf_for_distribution_keur'], source="MISSING_EVIDENCE (Excel), runtime (Model)")
     row += 3
 
-    # SHL service
-    excel_shl = _excel_val(PER_BRIDGE, 'excel_shl_service_keur', pd['n'], default=None)
+    # SHL service — compute from bridge shl_interest + shl_principal
+    excel_shl_vals = []
+    for i in range(pd['n']):
+        ei = _num(SHL_BRIDGE[i]['excel_shl_interest_keur']) if i < len(SHL_BRIDGE) else None
+        ep = _num(SHL_BRIDGE[i]['excel_shl_principal_keur']) if i < len(SHL_BRIDGE) else None
+        excel_shl_vals.append((ei + ep) if ei is not None and ep is not None else None)
+    while len(excel_shl_vals) < pd['n']: excel_shl_vals.append(None)
     write_triplet(ws, row, "SHL Service (kEUR)",
-                  excel_shl, pd['shl_service_keur'], source="SHL schedule (Excel extract)")
+                  excel_shl_vals, pd['shl_service_keur'], source="Interest + Principal (Excel extract)")
     row += 3
 
-    # FCF after SHL / R102
-    excel_r102 = _excel_val(PER_BRIDGE, 'excel_r102_fcf_for_shl_keur', pd['n'], default=None)
+    # FCF after SHL / R102 — bridge doesn't have; use runtime
+    excel_r102_vals = ["MISSING_EVIDENCE: R102 not in bridge"] * pd['n']
     write_triplet(ws, row, "FCF After SHL / R102 (kEUR)",
-                  excel_r102, pd['r102_fcf_for_shl_keur'], source="Waterfall (Excel extract)")
+                  excel_r102_vals, pd['r102_fcf_for_shl_keur'], source="MISSING_EVIDENCE (Excel), runtime (Model)")
     row += 3
 
 
@@ -814,22 +847,32 @@ def _build_source_map(wb):
     sources = [
         ("Operations", "Production (MWh)",          "CF!R18 (committed extract)",    "runtime.generation_mwh",         "COMMITTED", ""),
         ("Operations", "Availability",                "MISSING_EVIDENCE",             "MISSING_EVIDENCE",               "MISSING_EVIDENCE", "Not in committed extract"),
-        ("Revenue",    "Electricity Revenue (kEUR)",   "Revenue sheet (committed)",    "runtime.revenue_keur",           "COMMITTED", ""),
-        ("Revenue",    "CO2 Revenue",                 "MISSING_EVIDENCE",             "MISSING_EVIDENCE",               "MISSING_EVIDENCE", "CO2 not in runtime period data"),
-        ("Revenue",    "Balancing",                    "MISSING_EVIDENCE",             "MISSING_EVIDENCE",               "MISSING_EVIDENCE", "Balancing not in extract"),
-        ("Revenue",    "Total Revenue",               "Revenue sheet total",          "runtime.revenue_keur",           "COMMITTED", ""),
-        ("OPEX",       "Total OPEX (kEUR)",            "OPEX schedule (committed)",    "runtime.opex_keur",              "COMMITTED", ""),
+        ("Revenue",    "Electricity Revenue (kEUR)",   "P&L!R8 (Excel extract)",     "runtime.revenue_keur",           "COMMITTED", "excel_revenue_keur in PER_BRIDGE"),
+        ("Revenue",    "CO2 Revenue",                 "MISSING_EVIDENCE",             "MISSING_EVIDENCE",               "MISSING_EVIDENCE", "CF!R35 not in committed extract"),
+        ("Revenue",    "Balancing",                    "MISSING_EVIDENCE",             "MISSING_EVIDENCE",               "MISSING_EVIDENCE", "CF!R30 not in extract"),
+        ("Revenue",    "Total Revenue",               "P&L!R8 (Excel extract)",      "runtime.revenue_keur",           "COMMITTED", "same as electricity revenue"),
+        ("OPEX",       "Total OPEX (kEUR)",            "OPEX schedule (committed)",    "runtime.opex_keur",              "COMMITTED", "excel_opex_keur in PER_BRIDGE"),
         ("OPEX",       "EBITDA",                       "EBITDA line (committed)",      "runtime.ebitda_keur",            "COMMITTED", ""),
         ("Senior Debt","Opening Balance",             "Debt schedule (committed)",    "runtime.senior_balance (lagged)", "COMMITTED", ""),
         ("Senior Debt","Interest",                     "Debt schedule (committed)",    "runtime.senior_interest_keur",    "COMMITTED", ""),
         ("Senior Debt","Principal Repayment",          "Debt schedule (committed)",    "runtime.senior_principal_keur",   "COMMITTED", ""),
-        ("Senior Debt","DSCR",                         "MISSING_EVIDENCE",             "runtime.dscr",                   "MISSING_EVIDENCE", "Excel DSCR not mapped"),
-        ("SHL",        "Opening Balance",              "SHL schedule (committed)",     "runtime.shl_balance (lagged)",    "COMMITTED", ""),
-        ("SHL",        "PIK Capitalized",              "MISSING_EVIDENCE",             "runtime.shl_pik_keur",           "MISSING_EVIDENCE", "PIK not in committed SHL extract"),
-        ("SHL",        "Closing Balance",              "SHL schedule (committed)",     "runtime.shl_balance_keur",        "COMMITTED", ""),
-        ("Tax",        "Taxable Income (R35)",         "MISSING_EVIDENCE",             "runtime.taxable_profit_keur",    "MISSING_EVIDENCE", "R35 not mapped in committed extract"),
-        ("Tax",        "CIT Cash (R67)",               "MISSING_EVIDENCE",             "runtime.corporate_tax_cash_keur","MISSING_EVIDENCE", "R67 not in committed extract"),
-        ("CFADS",      "CFADS / R69",                  "MISSING_EVIDENCE",             "runtime.r69_fcf_banks_keur",     "MISSING_EVIDENCE", "R69 not in committed extract"),
+        ("Senior Debt","Opening Balance",             "DS!R47 (Excel extract)",    "runtime.senior_balance (lagged)", "COMMITTED", ""),
+        ("Senior Debt","Interest",                     "DS!R50 (Excel extract)",    "runtime.senior_interest_keur",    "COMMITTED", ""),
+        ("Senior Debt","Principal Repayment",          "DS!R49 (Excel extract)",    "runtime.senior_principal_keur",   "COMMITTED", ""),
+        ("Senior Debt","Debt Service",                 "DS!R50+R49 (computed)",    "runtime.senior_ds_keur",          "COMMITTED", ""),
+        ("Senior Debt","DSCR",                         "DS!R19 (Excel extract)",    "runtime.dscr",                   "COMMITTED", "excel_dscr in PER_BRIDGE"),
+        ("SHL",        "Opening Balance",              "BS!R24 (Excel extract)",    "runtime.shl_balance (lagged)",    "COMMITTED", "excel_shl_balance_keur in SHL_BRIDGE"),
+        ("SHL",        "Gross Accrued Interest",       "P&L!R27 (Excel extract)",   "runtime.shl_gross_accrued_interest_keur","COMMITTED", "excel_shl_interest_keur in SHL_BRIDGE = gross"),
+        ("SHL",        "Cash Interest Paid",           "MISSING_EVIDENCE",          "runtime.shl_interest_keur",      "MISSING_EVIDENCE", "Eq!R26 not in committed SHL bridge"),
+        ("SHL",        "PIK Capitalized",              "P&L!R28 not mapped",        "runtime.shl_pik_keur",           "MISSING_EVIDENCE", "PIK column in bridge = 0"),
+        ("SHL",        "Principal Repaid",              "Eq!R25 (Excel extract)",    "runtime.shl_principal_keur",      "COMMITTED", "excel_shl_principal_keur in SHL_BRIDGE"),
+        ("SHL",        "Closing Balance",              "BS!R24 closing (Excel)",    "runtime.shl_balance_keur",        "COMMITTED", "excel_shl_balance_keur in SHL_BRIDGE"),
+        ("Tax",        "Tax Depreciation",             "Tax schedule (Excel extract)","runtime.tax_depreciation_audit_keur","COMMITTED", "tax_depreciation in runtime"),
+        ("Tax",        "Taxable Income (R35)",         "MISSING_EVIDENCE",          "runtime.taxable_profit_keur",    "MISSING_EVIDENCE", "P&L!R35 not mapped in committed extract"),
+        ("Tax",        "CIT Cash (R67)",               "MISSING_EVIDENCE",           "runtime.corporate_tax_cash_keur","MISSING_EVIDENCE", "P&L!R67 not in committed extract"),
+        ("CFADS",      "EBITDA",                       "P&L!R16 (Excel extract)",    "runtime.ebitda_keur",             "COMMITTED", "excel_ebitda_keur in PER_BRIDGE"),
+        ("CFADS",      "CFADS / R69",                  "MISSING_EVIDENCE",           "runtime.r69_fcf_banks_keur",     "MISSING_EVIDENCE", "P&L!R69 not in committed extract"),
+        ("Distributions","Distribution",               "Distribution account (Excel)","runtime.distribution_keur",      "COMMITTED", "excel_distribution_keur in PER_BRIDGE"),
         ("Returns",    "Project IRR",                  "9.41% (calibration ref)",      "runtime.project_irr",            "COMMITTED", ""),
         ("Returns",    "Equity IRR",                   "11.15% (calibration ref)",    "runtime.equity_irr",              "COMMITTED", ""),
         ("Governance", "G20 Status",                   "G20 gate",                     "G20 gate",                       "COMMITTED", "BLOCKED — no runtime change"),
