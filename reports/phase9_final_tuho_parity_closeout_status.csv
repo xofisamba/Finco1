@@ -1,0 +1,18 @@
+category,metric,status,excel_value,model_value,delta,classification,accepted,required_decision,notes
+Operations,Production,PASS,4372200.0,4372200.0,0.0,technical parity,yes,none,Corrected workbook uses runtime period generation and Excel production evidence.
+Revenue,Revenue,PASS,423787.5,423787.5,0.0,technical parity,yes,none,Total revenue horizon matches within rounding.
+Costs,OPEX,WARN,84674.8,85408.3,733.5,accepted convention,pending,accept OPEX local-tax/minor grouping,Known local-tax/minor row grouping residual.
+Costs,EBITDA,PASS,339112.7,338379.2,-733.5,technical parity with OPEX convention,yes,none,EBITDA follows revenue and OPEX convention.
+Senior Debt,Senior Debt,PASS,66181.3,65826.4,-355.0,minor residual,yes,none,Senior debt service evidence available; residual immaterial for closeout review.
+SHL,SHL Opening,PASS,32703.9,32703.7,-0.2,technical parity,yes,none,P1 opening balance feed corrected in PR #169.
+SHL,SHL Interest / PIK,PASS,,,,accepted presentation convention,yes,none,Workbook separates gross accrued interest cash interest and PIK.
+SHL,SHL Principal,WARN,43730.7,38028.0,-5702.7,accepted convention,pending,accept default/off vs alignment flag-state presentation,Timing alignment remains config-gated; default runtime path shown.
+Tax,Taxable Income / R35,WARN,184326.3,245220.3,60894.0,governed residual,pending,accept R35 governed residual or request follow-up,Known Phase 6 tax-basis residual; no runtime blocker per independent review.
+Tax,CIT / R67,PASS,-38240.9,20140.2,58381.1,evidence wired,yes,none,CIT cash row is wired; sign convention and tax bridge residual are documented.
+Cash Flow,CFADS / R69,PASS,300926.8,318239.0,17312.2,evidence wired,yes,none,R69-visible CFADS evidence is wired.
+Distributions,Distributions,ACCEPTED_CONVENTION,151709.4,173516.2,21806.8,presentation convention,pending,accept distribution vs dividend definition,Default runtime distribution_keur is authoritative; DA-wired staging is separate audit-only.
+Returns,Project IRR,PASS,,0.0941016,,technical parity,yes,none,Project IRR stable in corrected pack.
+Returns,Equity IRR,WARN,0.1161,0.111495,-0.004605,minor residual,pending,accept about -0.29pp closeout residual or require reconciliation IRR,Independent review says accept with minor follow-up.
+Returns,Reconciliation IRR,MISSING_EVIDENCE,,,,missing reporting view,no,waive or require reporting-view implementation,Not implemented in corrected workbook.
+Governance,G20,BLOCKED,,,,stakeholder gate,no,stakeholder gate sign-off required,Technically unblocked but governance/stakeholder acceptance remains required.
+Governance,R99/R102,BLOCKED,,,,runtime promotion not approved,no,separate R99/R102 promotion approval required,Runtime promotion remains not approved.

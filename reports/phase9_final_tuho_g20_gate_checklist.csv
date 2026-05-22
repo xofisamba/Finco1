@@ -1,0 +1,11 @@
+gate_id,gate_name,status,evidence_artifact,blocker_type,stakeholder_decision_required,required_next_action,notes
+G20-01,Production / Revenue evidence,PASS,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,none,no,none,Production and total revenue evidence is available.
+G20-02,OPEX / EBITDA evidence,WARN,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,accepted convention,yes,accept OPEX local-tax/minor grouping or request sub-line follow-up,OPEX grouping residual is documented.
+G20-03,Senior Debt evidence,PASS,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,none,no,none,Senior debt service evidence is reviewer-visible.
+G20-04,SHL evidence,PASS,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,none,no,none,SHL opening and period fields are corrected and non-zero.
+G20-05,Tax / CFADS evidence,WARN,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,governed residual,yes,accept R35 governed residual or request follow-up,Tax/CFADS is no longer entirely missing evidence.
+G20-06,Distribution evidence,WARN,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,accepted convention,yes,accept distribution/dividend convention,Default runtime distribution row is separated from DA-wired audit staging.
+G20-07,Project IRR evidence,PASS,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,none,no,none,Project IRR is stable in corrected pack.
+G20-08,Equity IRR evidence,WARN,reports/phase9_tuho_full_line_item_horizontal_review_workbook.xlsx,minor residual,yes,accept residual or request reconciliation IRR,Independent review verdict is accept with minor follow-up.
+G20-09,Reconciliation IRR decision,BLOCKED,docs/phase9_final_tuho_parity_closeout_review.md,missing evidence,yes,waive reconciliation IRR or implement reporting view,Required before formal G20 sign-off if stakeholders do not waive.
+G20-10,R99/R102 promotion prerequisite,BLOCKED,docs/phase9_final_tuho_parity_closeout_review.md,runtime promotion not approved,yes,separate R99/R102 promotion review,Not approved by this closeout pack.
