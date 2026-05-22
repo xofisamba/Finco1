@@ -1,4 +1,4 @@
-"""Tests for auth lite — lightweight session-based auth for FincoGPT."""
+"""Tests for auth lite — lightweight session-based auth for Finco One."""
 
 import os
 os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-for-pytest-only")
@@ -107,7 +107,7 @@ class TestAuthRoutes:
     def test_login_page_redirects_authenticated_user(self, authenticated_tc):
         r = authenticated_tc.get("/login", follow_redirects=True)
         assert r.status_code == 200
-        assert "Sign in" not in r.text or "FincoGPT" in r.text
+        assert "Sign in" not in r.text or "Finco One" in r.text
 
     # ── POST /login (valid credentials) ────────────────────────────────
 
@@ -171,7 +171,7 @@ class TestAuthRoutes:
     def test_protected_route_with_valid_session_works(self, authenticated_tc):
         r = authenticated_tc.get("/")
         assert r.status_code == 200
-        assert "FincoGPT" in r.text
+        assert "Finco One" in r.text
 
     def test_health_without_auth_returns_401(self, tc):
         r = tc.get("/health")
@@ -336,7 +336,7 @@ class TestRateLimiting:
         # Verify session works: GET / should return main page (not redirect to login)
         r = tc.get("/", follow_redirects=False)
         assert r.status_code == 200, f"GET / after login should work (200), got {r.status_code}"
-        assert "FincoGPT" in r.text, "GET / should show main page after login"
+        assert "Finco One" in r.text, "GET / should show main page after login"
 
         # After successful login clears the counter, one more failed attempt
         # should still be a 401 (not pre-emptively locked out).
