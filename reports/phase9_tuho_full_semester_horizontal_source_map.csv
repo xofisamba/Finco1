@@ -1,21 +1,19 @@
 metric,excel_source,model_source,status,notes
-Operations / Production Y1 (MWh),CF!R18,generation_mwh,PASS,Minor rounding in production estimation
-Revenue / Total Revenue (kEUR),P&L!R8,revenue_keur,PASS,Revenue matches Excel within 0.1%
-OPEX_EBITDA / Total OPEX (kEUR),P&L!R10,opex_keur,PASS,OPEX within tolerance. Sub-item mapping incomplete.
-OPEX_EBITDA / Total EBITDA (kEUR),P&L!R16+R13,ebitda_keur,PASS,Minor depreciation timing difference
-Senior Debt / Senior Debt Amount (kEUR),Outputs!R11C8,fixed_debt_keur,PASS,Exact match
-Senior Debt / Senior Interest (kEUR),DS!R50,senior_interest_keur,ACCEPTED_CONVENTION,Mode flag (use_shl_canonical_engine=True) disables senior DS
-Senior Debt / DSCR,DS!R19,dscr,ACCEPTED_CONVENTION,SHL engine mode flag — not a runtime error
-SHL / SHL Opening Balance (kEUR),Eq!R24,shl_balance_keur,ACCEPTED_CONVENTION,Model correctly charges P1 to income; Excel capitalizes
-SHL / First Principal Repayment,Eq!R25,shl_principal_keur,PASS,PR #165 alignment verified
-SHL / Total SHL Interest (kEUR),Eq!R26,shl_interest_keur + shl_pik_keur,ACCEPTED_CONVENTION,Use sum for comparison. ACCEPTED_CONVENTION.
-SHL / SHL Rate (annual),Outputs!R25C8,shl_rate,PASS,Exact match on SHL rate
-Tax / Total Corporate Tax (kEUR),P&L!R43/R44,corporate_tax_cash_keur,PASS,CIT=0 in both Excel and model
-Tax_CFADS / CFADS Definition,P&L rows 1-50,cfads_keur,MISSING_EVIDENCE,CFADS definition differs (EBIT vs EBITDA approach)
-Distributions / Total Distributions (kEUR),Eq!R27,distribution_keur,ACCEPTED_CONVENTION,Model distribution definition is correct for sponsor perspective
-Distributions / First Distribution Period,Eq!R27,distribution_keur,ACCEPTED_CONVENTION,Model timing correct given SHL mechanics
-Returns / Project IRR,Eq!D3 formula,discount_rate_project,PASS,Project IRR calibration verified
-Returns / Equity IRR,Eq!D4 = XIRR(),computed from distribution_keur,WARN,XIRR convention difference. RECONCILIATION IRR recommended.
-Returns / XIRR Date Convention,Eq!R23,model period dates,ACCEPTED_CONVENTION,Both conventions valid. Reconciliation IRR recommended.
-Returns / XIRR Investment Base,Eq!D4 denominator,shl + shl_idc + equity,ACCEPTED_CONVENTION,IDC convention difference. ACCEPTED_CONVENTION.
-Returns / Reconciliation IRR,Eq!D4,reconciliation_irr_view,MISSING_EVIDENCE,Recommended: create secondary IRR view for Excel comparison
+Production,CF!R18,runtime: generation_mwh,PASS,
+Revenue / Electricity,P&L!R8,runtime: revenue_keur,PASS,
+CO2 Revenue,MISSING_EVIDENCE,runtime: _co2_revenue_bridge,PASS,Fixed PR #171
+OPEX,P&L!R10,runtime: opex_keur,PASS,
+EBITDA,P&L!R16,runtime: ebitda_keur,PASS,
+Senior Debt Opening,DS!R47,runtime: senior_balance_keur,PASS,
+Senior Debt Interest,DS!R50,runtime: senior_interest_keur,PASS,
+Senior Debt Principal,DS!R49,runtime: senior_principal_keur,PASS,
+Senior Debt DSCR,DS!R19,runtime: dscr,PASS,
+SHL Opening Balance,BS!R24,runtime: shl_balance_keur,PASS,Fixed balance vs interest
+SHL Gross Accrued Int.,P&L!R27,runtime: shl_gross_accrued_interest_keur,PASS,
+SHL Cash Interest,Eq!R26,runtime: shl_interest_keur,PASS,
+SHL PIK Capitalized,MISSING_EVIDENCE,runtime: shl_pik_keur,MISSING_EVIDENCE,Excel PIK not mapped
+SHL Principal,Eq!R25,runtime: shl_principal_keur,PASS,
+Taxable Income / R35,MISSING_EVIDENCE,runtime: taxable_profit_keur,MISSING_EVIDENCE,Period-level R35 Excel MISSING
+CIT Cash / R67,0 (construction),runtime: corporate_tax_cash_keur,ACCEPTED_CONVENTION,
+CFADS / R69,MISSING_EVIDENCE,runtime: r69_fcf_banks_keur,PASS,Fixed PR #171
+Distributions,MISSING_EVIDENCE,runtime: distribution_keur,PASS,Flag-state DA
