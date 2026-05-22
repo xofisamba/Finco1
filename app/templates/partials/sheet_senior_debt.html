@@ -1,11 +1,37 @@
-<!-- Sheet: Senior Debt — {{ project_ctx.name }} -->
-
+<!-- Sheet: Senior Debt — {{ project_ctx.name }}
+     Phase 9.5 — Output Tabs Runtime Summary Binding -->
 <div class="sheet-banner">
   <span class="sheet-banner-tag">🏦 Senior Debt</span>
   <span class="sheet-banner-badge">
     <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   </span>
 </div>
+
+<!-- Live Runtime Summary -->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+  <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+  <div class="runtime-block-secondary" id="sd-secondary-metrics">
+    <div class="rb-metric">
+      <span class="rb-metric-label">Senior Debt</span>
+      <span class="rb-metric-value" id="sd-senior-debt"></span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">Avg DSCR</span>
+      <span class="rb-metric-value" id="sd-avg-dscr"></span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">Min DSCR</span>
+      <span class="rb-metric-value" id="sd-min-dscr"></span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
 
 <!-- Debt Facility Summary -->
 <div class="sheet-card">
@@ -41,11 +67,66 @@
 <!-- Debt Service Preview -->
 <div class="sheet-card">
   <div class="section-header">Output Preview</div>
-  <div class="placeholder-panel" style="padding:1.5rem;">
-    <div class="placeholder-desc">Live debt service schedule preview is not yet bound to this project. Run the model to generate debt output.</div>
+  <div class="preview-notice">
+    <span>📋</span>
+    <span><strong>Preview schedule</strong> — static factory values, not live calculated output. Run the model to see actual senior debt output above.</span>
   </div>
 </div>
 
 <div class="table-note">
   <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>
+
+<script>
+(function() {
+  "use strict";
+  function _populateSDRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    var block = document.getElementById("shared-runtime-block");
+    if (block) block.style.display = "";
+
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name || "";
+
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR", key: "project_irr" },
+        { label: "Equity IRR",  key: "equity_irr" },
+        { label: "Avg DSCR",     key: "avg_dscr" },
+        { label: "Min DSCR",     key: "min_dscr" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+
+    var sdEl = document.getElementById("sd-senior-debt");
+    if (sdEl) sdEl.textContent = data.senior_debt_keur || "NOT_AVAILABLE";
+    var avgEl = document.getElementById("sd-avg-dscr");
+    if (avgEl) avgEl.textContent = data.avg_dscr || "NOT_AVAILABLE";
+    var minEl = document.getElementById("sd-min-dscr");
+    if (minEl) minEl.textContent = data.min_dscr || "NOT_AVAILABLE";
+  }
+  window._populateSDRuntimeBlock = _populateSDRuntimeBlock;
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-senior-debt"))) {
+      _populateSDRuntimeBlock();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateSDRuntimeBlock);
+  } else {
+    _populateSDRuntimeBlock();
+  }
+})();
+</script>

@@ -1,11 +1,33 @@
-<!-- Sheet: SHL — {{ project_ctx.name }} -->
-
+<!-- Sheet: SHL — {{ project_ctx.name }}
+     Phase 9.5 — Output Tabs Runtime Summary Binding -->
 <div class="sheet-banner">
   <span class="sheet-banner-tag">🔒 Subordinated Holdco Loan (SHL)</span>
   <span class="sheet-banner-badge">
     <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   </span>
 </div>
+
+<!-- Live Runtime Summary -->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+  <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+  <div class="runtime-block-secondary" id="shl-secondary-metrics">
+    <div class="rb-metric">
+      <span class="rb-metric-label">SHL Opening</span>
+      <span class="rb-metric-value" id="shl-opening"></span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">Total Distributions</span>
+      <span class="rb-metric-value" id="shl-total-dist"></span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
 
 <!-- SHL Facility Summary -->
 <div class="sheet-card">
@@ -39,11 +61,64 @@
 <!-- SHL Schedule Preview -->
 <div class="sheet-card">
   <div class="section-header">Output Preview</div>
-  <div class="placeholder-panel" style="padding:1.5rem;">
-    <div class="placeholder-desc">Live SHL schedule preview is not yet bound to this project. Run the model to generate SHL output.</div>
+  <div class="preview-notice">
+    <span>📋</span>
+    <span><strong>Preview schedule</strong> — static factory values, not live calculated output. Run the model to see actual SHL output above.</span>
   </div>
 </div>
 
 <div class="table-note">
   <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>
+
+<script>
+(function() {
+  "use strict";
+  function _populateSHLRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    var block = document.getElementById("shared-runtime-block");
+    if (block) block.style.display = "";
+
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name || "";
+
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR", key: "project_irr" },
+        { label: "Equity IRR",  key: "equity_irr" },
+        { label: "Avg DSCR",     key: "avg_dscr" },
+        { label: "Total Revenue", key: "total_revenue_keur" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+
+    var shlOpEl = document.getElementById("shl-opening");
+    if (shlOpEl) shlOpEl.textContent = data.shl_opening_keur || "NOT_AVAILABLE";
+    var distEl = document.getElementById("shl-total-dist");
+    if (distEl) distEl.textContent = data.total_distributions_keur || "NOT_AVAILABLE";
+  }
+  window._populateSHLRuntimeBlock = _populateSHLRuntimeBlock;
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-shl"))) {
+      _populateSHLRuntimeBlock();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateSHLRuntimeBlock);
+  } else {
+    _populateSHLRuntimeBlock();
+  }
+})();
+</script>
