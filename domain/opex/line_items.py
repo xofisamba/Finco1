@@ -20,6 +20,23 @@ class OpexBasis(Enum):
     INACTIVE = "inactive"
 
 
+class OpexContingencyMethod(Enum):
+    """How OPEX contingency is calculated.
+
+    FIXED_AMOUNT:
+        Contingency is a fixed kEUR amount (budget_keur) that escalates
+        by the group's inflation_rate each year.
+
+    PERCENTAGE_OF_OPEX:
+        Contingency = contingency_pct × sum(non-contingency OPEX).
+        No separate inflation is applied to the contingency itself;
+        inflation is already embedded in the underlying OPEX lines.
+    """
+
+    FIXED_AMOUNT = "fixed_amount"
+    PERCENTAGE_OF_OPEX = "percentage_of_opex"
+
+
 @dataclass(frozen=True)
 class OpexItemStep:
     """Step change that resets an item's pre-inflation base from a year."""
@@ -94,9 +111,16 @@ class OpexGroup:
     order: int = 0
     editable: bool = True
     contingency_pct: float = 0.0
+    contingency_method: OpexContingencyMethod = OpexContingencyMethod.FIXED_AMOUNT
 
     def item_by_code(self, code: str) -> OpexItem | None:
         for item in self.items:
             if item.code == code:
                 return item
         return None
+
+    def is_contingency_group(self) -> bool:
+        """True when this group contains only contingency items."""
+        return self.contingency_pct > 0.0 or any(
+            item.basis == OpexBasis.PCT_OF_SELECTED_GROUPS for item in self.items
+        )

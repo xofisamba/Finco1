@@ -32,6 +32,9 @@ class OpexGroupAnnualResult:
     item_results: tuple[OpexItemAnnualResult, ...]
     group_total_keur: float
     contingency_from_groups_keur: float = 0.0
+    contingency_method: str = "fixed_amount"  # "fixed_amount" | "percentage_of_opex"
+    contingency_pct: float = 0.0
+    contingency_base_keur: float = 0.0  # sum of non-contingency OPEX used as base
 
     def item_result(self, item_code: str) -> OpexItemAnnualResult | None:
         for item in self.item_results:
