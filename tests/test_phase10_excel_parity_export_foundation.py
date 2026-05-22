@@ -86,11 +86,14 @@ def test_downloads_tab_renders_export_registry_entries():
     assert "R99/R102 NOT APPROVED" in rendered
 
 
-def test_runtime_summary_route_is_registered_without_preview_label():
-    main_web = (ROOT / "main_web.py").read_text(encoding="utf-8")
-    assert '@app.get("/exports/runtime-summary.csv")' in main_web
-    assert "build_runtime_summary_csv(project)" in main_web
-    assert "runtime_or_preview" not in main_web
+def test_runtime_summary_links_are_runtime_not_preview():
+    partial = (ROOT / "app" / "templates" / "partials" / "export_registry.html").read_text(
+        encoding="utf-8"
+    )
+    assert "/exports/runtime-summary.csv?project=tuho" in partial
+    assert "/exports/runtime-summary.csv?project=oborovo" in partial
+    assert "runtime" in partial
+    assert "preview" not in partial.lower()
 
 
 def test_docs_state_no_runtime_changes_and_governance_status():
