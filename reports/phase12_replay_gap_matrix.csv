@@ -1,0 +1,8 @@
+metadata_item,currently_captured,replay_critical,missing?,source,destination,governance_sensitive,notes
+commit_sha,yes,yes,no,git HEAD,review/export layers,yes,Resolved in this branch.
+factory_template_revision,partial,yes,yes,template provenance helper,review/export layers,yes,No separate semantic factory version exists yet.
+runtime_flag_snapshot,yes,yes,no,project inputs + financing,review/export layers,yes,Resolved as provenance capture only.
+full_runtime_tree_snapshot,no,yes,yes,not implemented,replay engine,yes,Out of scope for this branch; do not imply deterministic full replay.
+editable_state_replay,no,yes,yes,not implemented,future editable-grid work,yes,Future Phase 13+ concern.
+environment_capture,partial,no,yes,local runtime environment,review docs,no,Some assumptions remain external to persisted metadata.
+scenario_run_export_linkage,yes,yes,no,persistence repository,lineage and export history,yes,Strengthened in this branch.
