@@ -1221,9 +1221,16 @@ def _workbook_metadata_rows(runtime_summary_rows: list[dict[str, str]]) -> list[
         ("Workbook type", "Institutional calibration and governance review pack"),
         ("Workbook version", WORKBOOK_VERSION),
         ("Export timestamp", runtime_summary_rows[0]["generated_at"]),
+        ("Runtime timestamp", runtime_summary_rows[0]["runtime_timestamp"]),
+        ("Commit SHA", runtime_summary_rows[0]["commit_sha"]),
+        ("Source branch", runtime_summary_rows[0]["source_branch"]),
+        ("Template origin", runtime_summary_rows[0]["template_origin"]),
+        ("Template revision", runtime_summary_rows[0]["template_revision"]),
+        ("Runtime flags captured", runtime_summary_rows[0]["runtime_flag_count"]),
         ("Runtime / review label", "Review workbook with runtime-derived values and explicit governance overlays"),
         ("Governance status", runtime_by_metric["g20_status"]["value"]),
         ("R99/R102 posture", runtime_by_metric["r99_r102_status"]["value"]),
+        ("Replay limitations", runtime_summary_rows[0]["replay_limitations"]),
         ("Review readiness", "Safe for review with explicit governance interpretation and evidence limits"),
     ]
 
@@ -1256,8 +1263,16 @@ def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows
     sheet["B9"] = generated_at
     sheet["A10"] = "Runtime / Review"
     sheet["B10"] = "Review pack with runtime-derived values, explicit preview/review labels, and no runtime authority changes"
+    sheet["A11"] = "Commit SHA"
+    sheet["B11"] = runtime_summary_rows[0]["commit_sha"]
+    sheet["A12"] = "Runtime Timestamp"
+    sheet["B12"] = runtime_summary_rows[0]["runtime_timestamp"]
+    sheet["A13"] = "Template Origin"
+    sheet["B13"] = runtime_summary_rows[0]["template_origin"]
+    sheet["A14"] = "Runtime Flag Snapshot"
+    sheet["B14"] = f"{runtime_summary_rows[0]['runtime_flag_count']} flags captured for replay provenance"
 
-    for row in range(5, 11):
+    for row in range(5, 15):
         sheet.cell(row=row, column=1).fill = META_FILL
         sheet.cell(row=row, column=1).font = BOLD_FONT
         sheet.cell(row=row, column=1).border = THIN_BORDER
@@ -1283,8 +1298,8 @@ def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows
             sheet.cell(row=row, column=5).fill = GOVERNANCE_FILL
         row += 1
 
-    sheet["A13"] = "Key Metrics"
-    sheet["A13"].font = BOLD_FONT
+    sheet["A16"] = "Key Metrics"
+    sheet["A16"].font = BOLD_FONT
     metric_map = {row["metric"]: row for row in runtime_summary_rows}
     metric_rows = [
         ("Project IRR", metric_map["project_irr"]["value"]),
@@ -1294,7 +1309,7 @@ def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows
         ("Total EBITDA (kEUR)", metric_map["total_ebitda_keur"]["value"]),
         ("Total Distributions (kEUR)", metric_map["total_distributions_keur"]["value"]),
     ]
-    row = 14
+    row = 17
     for label, value in metric_rows:
         sheet.cell(row=row, column=1, value=label).fill = META_FILL
         sheet.cell(row=row, column=1).font = BOLD_FONT
@@ -1302,8 +1317,8 @@ def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows
         sheet.cell(row=row, column=2, value=value).border = THIN_BORDER
         row += 1
 
-    sheet["D13"] = "Review Status Summary"
-    sheet["D13"].font = BOLD_FONT
+    sheet["D16"] = "Review Status Summary"
+    sheet["D16"].font = BOLD_FONT
     summary_rows_out = [
         ("PASS", counts.get(PASS, 0)),
         ("Accepted conventions", counts.get(ACCEPTED_CONVENTION, 0)),
@@ -1311,7 +1326,7 @@ def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows
         ("Governance blockers", counts.get(GOVERNANCE_BLOCKER, 0)),
         ("Engineering follow-up", engineering_items),
     ]
-    row = 14
+    row = 17
     for label, value in summary_rows_out:
         sheet.cell(row=row, column=4, value=label).fill = META_FILL
         sheet.cell(row=row, column=4).font = BOLD_FONT
@@ -1319,20 +1334,21 @@ def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows
         sheet.cell(row=row, column=5, value=value).border = THIN_BORDER
         row += 1
 
-    sheet["A22"] = "Important Reviewer Notes"
-    sheet["A22"].font = BOLD_FONT
+    sheet["A25"] = "Important Reviewer Notes"
+    sheet["A25"].font = BOLD_FONT
     notes = [
         "This workbook is presentation-polished and reviewer-ready, but it does not approve G20 or promote R99/R102.",
         "Accepted conventions and evidence limitations remain visible rather than hidden behind synthetic tie-outs.",
+        runtime_summary_rows[0]["replay_limitations"],
         "Use Navigation first, then Executive Dashboard, Review Signoff, and the discipline sheets in meeting order.",
     ]
-    row = 23
+    row = 26
     for note in notes:
         sheet.cell(row=row, column=1, value=note)
         sheet.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
         row += 1
 
-    nav = sheet["D22"]
+    nav = sheet["D25"]
     nav.value = "Open Navigation"
     nav.hyperlink = "#'Navigation'!A1"
     nav.style = "Hyperlink"
@@ -1917,6 +1933,7 @@ def _write_notes(sheet) -> None:
         ("Already runtime-verified", "Revenue, core OPEX totals, runtime summary KPIs, and the current institutional workbook binding are already sourced from existing runtime outputs."),
         ("Governance-only blockers", "R99 and R102 remain audit-visible but governance-blocked; this pack does not change their status."),
         ("What remains unresolved", "A separate reconciliation IRR scalar is still not available as committed evidence, so this branch explains the gap instead of manufacturing a synthetic answer."),
+        ("Replay limitations", "Deterministic replay is not fully guaranteed yet. Runtime trees, editable-state replay, and full environment capture are still outside the scope of this pack."),
         ("Phase 11 transition view", "Phase 11 should focus on export/product polish, workflow maturity, and optional deeper evidence layers rather than reopening runtime calibration by default."),
         ("Roadmap view", "Reviewer follow-up can now split cleanly into reporting, evidence, governance, or product-polish workstreams rather than broad model redesign."),
     ]

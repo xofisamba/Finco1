@@ -12,6 +12,7 @@ from app.api.project_runner import run_project
 from app.excel_export import build_excel_export
 from app.ui_runner import run_demo_project
 from app.capex_engine import build_capex_line_items_from_defaults
+from app.project_factories import create_default_oborovo, create_default_tuho_wind1
 
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
@@ -53,9 +54,10 @@ from app.persistence.repository import (
     save_run,
     save_scenario,
 )
+from app.persistence.provenance import build_replay_metadata, utc_now_iso
 from app.ui.project_context import get_project_context, all_project_ids
 from app.ui.runtime_summary import runtime_summary_to_dict, build_runtime_summary, NOT_AVAILABLE
-from app.export.runtime_summary import build_runtime_summary_csv
+from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 
 # -- FastAPI app --------------------------------------------------------------
@@ -172,6 +174,42 @@ def _project_persistence_metadata(project_ctx, form_snapshot: dict | None = None
     return "tuho", "TUHO Wind 1"
 
 
+def _project_inputs_for_code(project_code: str):
+    code = (project_code or "tuho").strip().lower()
+    if code == "oborovo":
+        return create_default_oborovo()
+    return create_default_tuho_wind1()
+
+
+def _replay_metadata_for_project(
+    project_code: str,
+    *,
+    export_type: str | None = None,
+    workbook_type: str | None = None,
+    export_timestamp: str | None = None,
+    runtime_timestamp: str | None = None,
+    project_id: str | None = None,
+    scenario_id: str | None = None,
+    runtime_snapshot_id: str | None = None,
+    artifact_name: str | None = None,
+) -> dict:
+    project_inputs = _project_inputs_for_code(project_code)
+    governance_state = _governance_snapshot(project_code)
+    return build_replay_metadata(
+        project_key=project_code,
+        project_inputs=project_inputs,
+        governance_state=governance_state,
+        project_id=project_id,
+        scenario_id=scenario_id,
+        runtime_timestamp=runtime_timestamp,
+        export_timestamp=export_timestamp,
+        runtime_snapshot_id=runtime_snapshot_id,
+        artifact_name=artifact_name,
+        export_type=export_type,
+        workbook_type=workbook_type,
+    )
+
+
 def _current_project_workspace(user, project_ctx):
     project_code, project_name = _project_persistence_metadata(project_ctx)
     project_record = save_project(
@@ -181,6 +219,11 @@ def _current_project_workspace(user, project_ctx):
         source_project_template=project_code,
         governance_state=_governance_snapshot(project_code),
         last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="workspace_project_state",
+        ),
     )
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
     history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
@@ -850,6 +893,14 @@ async def download_post(request: Request):
             artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
             project_id=project_record.project_id if project_record else None,
             governance_state=_governance_snapshot(project_code),
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                export_type="excel_model_export",
+                export_timestamp=utc_now_iso(),
+                runtime_timestamp=utc_now_iso(),
+                project_id=project_record.project_id if project_record else None,
+                artifact_name=filename,
+            ),
         )
         return StreamingResponse(
             iter([excel_bytes]),
@@ -890,6 +941,14 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
             project_id=project_record.project_id if project_record else None,
             governance_state=_governance_snapshot(project_code),
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                export_type="excel_model_export",
+                export_timestamp=utc_now_iso(),
+                runtime_timestamp=utc_now_iso(),
+                project_id=project_record.project_id if project_record else None,
+                artifact_name=filename,
+            ),
         )
         return StreamingResponse(
             iter([excel_bytes]),
@@ -914,7 +973,12 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
         return RedirectResponse(url="/login", status_code=302)
 
     try:
-        csv_text = build_runtime_summary_csv(project)
+        runtime_rows = build_runtime_summary_rows(project)
+        csv_text = build_runtime_summary_csv(
+            project,
+            generated_at=runtime_rows[0]["generated_at"],
+            source_branch=runtime_rows[0]["source_branch"],
+        )
     except ValueError as exc:
         return HTMLResponse(
             content=f"<html><body><h2>Runtime summary export failed</h2><p>{str(exc)}</p><a href='/'>Back</a></body></html>",
@@ -933,6 +997,19 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
         artifact_path=f"/exports/runtime-summary.csv?project={safe_project}",
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
+        replay_metadata={
+            "commit_sha": runtime_rows[0]["commit_sha"],
+            "branch_name": runtime_rows[0]["source_branch"],
+            "runtime_timestamp": runtime_rows[0]["runtime_timestamp"],
+            "export_timestamp": runtime_rows[0]["generated_at"],
+            "template_origin": runtime_rows[0]["template_origin"],
+            "template_revision": runtime_rows[0]["template_revision"],
+            "runtime_flag_count": runtime_rows[0]["runtime_flag_count"],
+            "runtime_flags_json": runtime_rows[0]["runtime_flags_json"],
+            "replay_limitations_notice": runtime_rows[0]["replay_limitations"],
+            "artifact_name": filename,
+            "export_type": "runtime_summary_csv",
+        },
     )
     return StreamingResponse(
         iter([data]),
@@ -952,6 +1029,7 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
         return RedirectResponse(url="/login", status_code=302)
 
     try:
+        runtime_rows = build_runtime_summary_rows(project)
         workbook_bytes = export_institutional_workbook_skeleton(project)
     except ValueError as exc:
         return HTMLResponse(
@@ -970,6 +1048,20 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
         artifact_path=f"/exports/institutional-workbook.xlsx?project={safe_project}",
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
+        replay_metadata={
+            "commit_sha": runtime_rows[0]["commit_sha"],
+            "branch_name": runtime_rows[0]["source_branch"],
+            "runtime_timestamp": runtime_rows[0]["runtime_timestamp"],
+            "export_timestamp": runtime_rows[0]["generated_at"],
+            "template_origin": runtime_rows[0]["template_origin"],
+            "template_revision": runtime_rows[0]["template_revision"],
+            "runtime_flag_count": runtime_rows[0]["runtime_flag_count"],
+            "runtime_flags_json": runtime_rows[0]["runtime_flags_json"],
+            "replay_limitations_notice": runtime_rows[0]["replay_limitations"],
+            "artifact_name": filename,
+            "export_type": "institutional_workbook",
+            "workbook_type": "institutional_workbook_runtime_binding",
+        },
     )
     return StreamingResponse(
         iter([workbook_bytes]),
@@ -1082,6 +1174,11 @@ async def save_scenario_endpoint(request: Request):
         source_project_template=project_code,
         governance_state=_governance_snapshot(project_code),
         last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="saved_scenario_workspace",
+        ),
     )
     save_scenario(
         user_id=user.user_id,
@@ -1092,6 +1189,11 @@ async def save_scenario_endpoint(request: Request):
         snapshot=snapshot,
         governance_state=_governance_snapshot(project_code),
         last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=project_record.project_id,
+            export_type="saved_scenario_snapshot",
+        ),
     )
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
     history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
@@ -1340,6 +1442,9 @@ async def save_run_endpoint(request: Request):
     form = await request.form()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
+    active_project = (form.get("active_project", "") or "").strip().lower()
+    project_code = active_project or project_type.lower() or "tuho"
+    project_name = "TUHO Wind 1" if project_code == "tuho" else "Oborovo Solar PV" if project_code == "oborovo" else project_type
 
     # Never trust user_id from client; always derive from session.
     user_id = user.user_id
@@ -1396,9 +1501,12 @@ async def save_run_endpoint(request: Request):
             scenario=scenario,
             inputs=inputs,
             kpis=kpis,
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                export_type="saved_run_metadata",
+                runtime_timestamp=utc_now_iso(),
+            ),
         )
-        project_code = active_project or project_type.lower() or "tuho"
-        project_name = "TUHO Wind 1" if project_code == "tuho" else "Oborovo Solar PV" if project_code == "oborovo" else project_type
         save_project(
             user_id=user_id,
             project_code=project_code,
@@ -1406,6 +1514,12 @@ async def save_run_endpoint(request: Request):
             source_project_template=project_code,
             governance_state=_governance_snapshot(project_code),
             last_run_summary=kpis,
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                project_id=None,
+                export_type="saved_run_project_state",
+                runtime_timestamp=run_record.created_at.isoformat(),
+            ),
         )
         return templates.TemplateResponse(
             request=request,
