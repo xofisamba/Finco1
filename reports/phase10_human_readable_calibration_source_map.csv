@@ -1,0 +1,32 @@
+metric,excel_source,model_source,source_status,notes
+Operations / Production,CF production extract,WaterfallPeriod.generation_mwh,COMMITTED,Excel from phase9_tuho_full_line_item_period_bridge.csv; model from live runtime
+Operations / Availability,Not in committed fixture,Not mapped,MISSING_EVIDENCE,Specific availability/load-factor not in committed extract
+Operations / Price,P&L R8 / production,WaterfallPeriod.revenue_keur/generation_mwh,derived,Reviewer-derived proxy
+Revenue / Electricity revenue,P&L R8 total revenues,WaterfallPeriod.revenue_keur,COMMITTED,Excel from period_bridge; model from live runtime
+Revenue / CO2,Not separately mapped,revenue_decomposition_schedule.co2_revenue,partial evidence,Model CO2 exists; Excel CO2 row not in committed fixture
+Revenue / Balancing,Not separately mapped,revenue_decomposition balancing cost,partial evidence,Model balancing exists; Excel row not in committed fixture
+Revenue / Other operating income,Not in committed fixture,Not mapped,MISSING_EVIDENCE,No separate other-op-income row found in committed extracts
+Revenue / Total revenue,P&L R8,WaterfallPeriod.revenue_keur,COMMITTED,Total revenue row
+Costs / EBITDA / OPEX,CF R38 / P&L R10,WaterfallPeriod.opex_keur,COMMITTED,OPEX from period_bridge; model from live runtime
+Costs / EBITDA / EBITDA,CF R40,WaterfallPeriod.ebitda_keur,COMMITTED,EBITDA from period_bridge; model from live runtime
+Costs / EBITDA / EBITDA margin,CF R40 / P&L R8,ebitda_keur / revenue_keur,derived,Derived reviewer ratio
+Senior Debt / Opening balance,DS senior opening balance,derived from prior closing + current principal,COMMITTED,Opening derived without runtime change
+Senior Debt / Closing balance,DS senior closing balance,WaterfallPeriod.senior_balance_keur,COMMITTED,Closing from period_bridge; model from live runtime
+Senior Debt / Drawdown,No operating drawdown,No operating drawdown,ACCEPTED_CONVENTION,Operating horizon starts after construction drawdown
+Senior Debt / Principal repayment,DS R49,WaterfallPeriod.senior_principal_keur,COMMITTED,Principal from period_bridge; model from live runtime
+Senior Debt / Interest,DS R50,WaterfallPeriod.senior_interest_keur,COMMITTED,Interest from period_bridge; model from live runtime
+Senior Debt / Debt service,CF R70,WaterfallPeriod.senior_ds_keur,COMMITTED,DS = interest+principal
+Senior Debt / DSCR,CF average DSCR period,WaterfallPeriod.dscr,COMMITTED,DSCR from period_bridge; model from live runtime
+SHL / SHL Opening Balance,Eq SHL opening balance,WaterfallPeriod.shl_balance_keur (prior period closing),COMMITTED,Opening balance derived from prior closing
+SHL / SHL Gross Accrued Interest,Eq gross accrued interest,shl_gross_accrued_interest_keur,COMMITTED,Runtime field available
+SHL / SHL Cash Interest Paid,Eq paid net interest,WaterfallPeriod.shl_interest_keur,COMMITTED,Cash interest from period_bridge; model from live runtime
+SHL / SHL PIK Capitalized,Eq capitalized interest (PIK),WaterfallPeriod.shl_pik_keur,COMMITTED,PIK from period_bridge excel_shl_pik; model from live runtime
+SHL / SHL Principal Repaid,Eq principal flow,WaterfallPeriod.shl_principal_keur,COMMITTED,Principal from period_bridge; model from live runtime
+SHL / SHL Closing Balance,Eq SHL closing balance,WaterfallPeriod.shl_balance_keur,COMMITTED,Closing from period_bridge; model from live runtime
+Tax / CFADS / Taxable Income,MISSING_EVIDENCE (P&L R35 not in bridge),WaterfallPeriod.taxable_profit_keur,COMMITTED,Excel: MISSING_EVIDENCE — not in period_bridge; model: live runtime
+Tax / CFADS / CIT Cash,ACCEPTED_CONVENTION (construction=0),WaterfallPeriod.corporate_tax_cash_keur,COMMITTED,"Excel: 0 construction, model: live runtime"
+Tax / CFADS / CFADS,MISSING_EVIDENCE (CF R69 not in bridge),WaterfallPeriod.cf_after_tax_keur / r69_fcf_banks,COMMITTED,Excel: MISSING_EVIDENCE; model: live runtime CFADS
+Distributions / Net Dividends,Eq net dividend flow,WaterfallPeriod.distribution_keur,COMMITTED,Distribution from period_bridge; model from live runtime
+Distributions / Lockup reason,CF lockup rows not separately mapped,WaterfallPeriod.lockup flag,partial evidence,Lockup reason from runtime flag
+Returns / Project IRR,CF !NPV / investment,computed from full cash flow,derived,Project IRR computed from model full-horizon CF
+Returns / Equity IRR,Eq cashflows / investment base,computed from equity cashflows,derived,Equity IRR differs by method; investment base gap documented
