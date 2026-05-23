@@ -1,0 +1,8 @@
+item,issue_type,action_taken,status,evidence,notes
+stale CO2 test assertions fixed,BLOCKER,Updated stale CO2 and Balancing unavailable-split expectations from MISSING_EVIDENCE to SOURCE_NOT_AVAILABLE,done,"tests/test_phase10_co2_balancing_source_map_hardening.py; tests/test_phase10_calibration_reconciliation_pack.py",No report values were changed.
+top-level persistence removed,HIGH,Removed orphaned top-level persistence package,done,"persistence/ removed; no live app imports",Legacy namespace ambiguity removed.
+domain/persistence removed,HIGH,Removed orphaned domain persistence package and its orphaned legacy test importer,done,"domain/persistence/ removed; tests/test_persistence_foundation.py removed",app/persistence/ remains canonical.
+persistence consolidation doc added,HIGH,Added authoritative persistence ownership and boundary documentation,done,docs/phase12_persistence_consolidation.md,Documents app/persistence responsibilities and editable-grid prerequisites.
+MISSING_EVIDENCE boundary clarified,MEDIUM,Added migration-status table to governance semantics cleanup doc,done,docs/phase12_governance_semantics_cleanup.md,Clarifies legacy-frozen vs active surfaces.
+G20 remains BLOCKED,GOVERNANCE,No approval state changed,confirmed,"Governance docs and workbook/report guidance",Closeout cleanup only.
+R99/R102 remain NOT APPROVED,GOVERNANCE,No promotion state changed,confirmed,"Governance docs and workbook/report guidance",Closeout cleanup only.

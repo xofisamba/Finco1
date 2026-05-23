@@ -85,10 +85,10 @@ def test_no_fabricated_split_values_introduced():
     _generate()
     rows = _csv_rows(SOURCE_MAP)
     by_metric = {row["metric"]: row for row in rows}
-    assert by_metric["CO2 Revenue"]["runtime_value_available"] == "MISSING_EVIDENCE"
-    assert by_metric["CO2 Revenue"]["excel_value_available"] == "MISSING_EVIDENCE"
-    assert by_metric["Balancing Revenue"]["runtime_value_available"] == "MISSING_EVIDENCE"
-    assert by_metric["Balancing Revenue"]["excel_value_available"] == "MISSING_EVIDENCE"
+    assert by_metric["CO2 Revenue"]["runtime_value_available"] == "SOURCE_NOT_AVAILABLE"
+    assert by_metric["CO2 Revenue"]["excel_value_available"] == "SOURCE_NOT_AVAILABLE"
+    assert by_metric["Balancing Revenue"]["runtime_value_available"] == "SOURCE_NOT_AVAILABLE"
+    assert by_metric["Balancing Revenue"]["excel_value_available"] == "SOURCE_NOT_AVAILABLE"
 
 
 def test_gap_register_contains_co2_balancing_rows():

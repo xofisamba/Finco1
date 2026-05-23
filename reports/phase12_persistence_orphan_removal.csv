@@ -1,0 +1,4 @@
+path,importer_count,removed,rationale,notes
+persistence/,0,yes,Zero live application importers and already superseded by app/persistence/,Historical legacy namespace only.
+domain/persistence/,1 legacy test importer only,yes,No live app importers; only orphaned legacy test referenced it,Removed together with tests/test_persistence_foundation.py to avoid a false second source of truth.
+app/persistence/,active,no,Canonical application persistence namespace,Retained as the only live application persistence package.
