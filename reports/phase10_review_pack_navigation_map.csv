@@ -1,24 +1,25 @@
 sheet_name,reviewer_role,primary_purpose,navigation_priority,governance_sensitive,notes
-Navigation,All reviewers,"Start here, understand the pack, and jump to major sections.",1,yes,"Contains legend, governance warning, and hyperlinks."
-Executive Dashboard,IC / lender / governance lead,"See overall parity posture, major risks, blockers, and next actions without drilling into row detail first.",2,yes,Best first stop after Navigation for non-engineering readers.
-Executive Summary,IC / lender / audit lead,"See parity posture, counts, top material gaps, and stakeholder items.",3,yes,Best first stop after the dashboard for evidence detail.
-Review Signoff,Governance / PMO / reviewers,"Track manual signoff readiness by area, evidence completeness, runtime verification, and recommended action.",4,yes,Workbook-only workflow tracker; not persistence.
-Governance,IC / governance,Review G20 and R99/R102 status and what is engineering versus approval gating.,5,yes,Governance warning banner lives here.
-Governance Timeline,Governance / lender / audit,Understand which Phase 9 and Phase 10 checkpoints are complete versus still pending.,6,yes,Timeline of parity and governance milestones.
-Readiness Matrix,All reviewers,"See maturity across runtime, export, evidence, and governance dimensions by review area.",7,yes,Fast maturity scan for IC and lender meetings.
-Runtime Summary,All reviewers,Anchor the pack to current runtime outputs and labels.,8,yes,Runtime versus review labels preserved.
-Revenue Reconciliation,Commercial / audit,"Review revenue lines, totals, and missing evidence treatment.",9,yes,CO2 and balancing remain explicit evidence gaps.
-CO2 & Balancing Reconciliation,Commercial / audit / governance,See grouped-versus-separate evidence quality for revenue sub-lines and understand where CO2/balancing remains an evidence problem rather than a runtime failure.,10,yes,Dedicated source-map hardening sheet.
-OPEX Reconciliation,Operations / audit,"Review OPEX totals, contingency breakout status, and EBITDA bridge.",11,yes,Grouped OPEX residuals remain documented.
-Senior Debt Reconciliation,Lender / debt reviewer,"Review debt schedule visibility, DSCR residuals, and timing notes.",12,yes,Debt rows remain runtime-transparent.
-SHL Reconciliation,Sponsor / audit,"Review SHL opening, accrued, cash, PIK, principal, and balance treatment.",13,yes,Presentation and evidence limitations are explicit.
-Tax R35-R67-R69,Tax / audit,"Review governed tax residuals, runtime audit fields, and evidence gaps.",14,yes,No tax runtime changes in this pack.
-CFADS Waterfall,Lender / cashflow reviewer,"Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.",15,yes,Governance blockers are highlighted.
-Distributions Sponsor,Sponsor / IC,Review distribution definition and DA staging separation.,16,yes,No mixed authoritative path.
-Returns Reconciliation,IC / sponsor,"Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.",17,yes,Equity IRR residual remains a stakeholder matter.
-IRR Reconciliation,IC / lender / governance,"Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.",18,yes,Purpose-built reviewer sheet for IRR interpretation.
-Calibration Residual Closeout,Governance / IC / audit,"See the final classification of remaining residuals, governance blockers, accepted conventions, and carry-forward items.",19,yes,Phase 10 closeout reference sheet.
-Gap Register,All reviewers,"Sort and filter all open items by severity, owner, and next action.",20,yes,Primary action list.
-Source Inventory,Audit / model validation,Understand evidence confidence and where each metric comes from.,21,yes,Useful for provenance checks.
-Accepted Conventions,Governance / audit,Separate accepted convention drift from runtime defects.,22,yes,Not a runtime-fix sheet.
-Reviewer Notes,All reviewers,"Read the non-engineering guide to unknowns, blockers, and next steps.",23,yes,Best closing sheet.
+Cover,All reviewers,"See the pack identity, review posture, key metrics, and how the workbook should be used before opening detail sheets.",1,yes,Primary cover sheet for institutional review distribution.
+Navigation,All reviewers,"Start here, understand the pack, and jump to major sections.",2,yes,"Contains legend, governance warning, and hyperlinks."
+Executive Dashboard,IC / lender / governance lead,"See overall parity posture, major risks, blockers, and next actions without drilling into row detail first.",3,yes,Best first stop after Navigation for non-engineering readers.
+Executive Summary,IC / lender / audit lead,"See parity posture, counts, top material gaps, and stakeholder items.",4,yes,Best first stop after the dashboard for evidence detail.
+Review Signoff,Governance / PMO / reviewers,"Track manual signoff readiness by area, evidence completeness, runtime verification, and recommended action.",5,yes,Workbook-only workflow tracker; not persistence.
+Governance,IC / governance,Review G20 and R99/R102 status and what is engineering versus approval gating.,6,yes,Governance warning banner lives here.
+Governance Timeline,Governance / lender / audit,Understand which Phase 9 and Phase 10 checkpoints are complete versus still pending.,7,yes,Timeline of parity and governance milestones.
+Readiness Matrix,All reviewers,"See maturity across runtime, export, evidence, and governance dimensions by review area.",8,yes,Fast maturity scan for IC and lender meetings.
+Runtime Summary,All reviewers,Anchor the pack to current runtime outputs and labels.,9,yes,Runtime versus review labels preserved.
+Revenue Reconciliation,Commercial / audit,"Review revenue lines, totals, and missing evidence treatment.",10,yes,CO2 and balancing remain explicit evidence gaps.
+CO2 & Balancing Reconciliation,Commercial / audit / governance,See grouped-versus-separate evidence quality for revenue sub-lines and understand where CO2/balancing remains an evidence problem rather than a runtime failure.,11,yes,Dedicated source-map hardening sheet.
+OPEX Reconciliation,Operations / audit,"Review OPEX totals, contingency breakout status, and EBITDA bridge.",12,yes,Grouped OPEX residuals remain documented.
+Senior Debt Reconciliation,Lender / debt reviewer,"Review debt schedule visibility, DSCR residuals, and timing notes.",13,yes,Debt rows remain runtime-transparent.
+SHL Reconciliation,Sponsor / audit,"Review SHL opening, accrued, cash, PIK, principal, and balance treatment.",14,yes,Presentation and evidence limitations are explicit.
+Tax R35-R67-R69,Tax / audit,"Review governed tax residuals, runtime audit fields, and evidence gaps.",15,yes,No tax runtime changes in this pack.
+CFADS Waterfall,Lender / cashflow reviewer,"Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.",16,yes,Governance blockers are highlighted.
+Distributions Sponsor,Sponsor / IC,Review distribution definition and DA staging separation.,17,yes,No mixed authoritative path.
+Returns Reconciliation,IC / sponsor,"Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.",18,yes,Equity IRR residual remains a stakeholder matter.
+IRR Reconciliation,IC / lender / governance,"Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.",19,yes,Purpose-built reviewer sheet for IRR interpretation.
+Calibration Residual Closeout,Governance / IC / audit,"See the final classification of remaining residuals, governance blockers, accepted conventions, and carry-forward items.",20,yes,Phase 10 closeout reference sheet.
+Gap Register,All reviewers,"Sort and filter all open items by severity, owner, and next action.",21,yes,Primary action list.
+Source Inventory,Audit / model validation,Understand evidence confidence and where each metric comes from.,22,yes,Useful for provenance checks.
+Accepted Conventions,Governance / audit,Separate accepted convention drift from runtime defects.,23,yes,Not a runtime-fix sheet.
+Reviewer Notes,All reviewers,"Read the non-engineering guide to unknowns, blockers, and next steps.",24,yes,Best closing sheet.

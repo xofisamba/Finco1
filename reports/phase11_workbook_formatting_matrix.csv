@@ -1,0 +1,25 @@
+sheet,formatting_status,navigation_status,print_ready,reviewer_target,governance_sensitive,notes
+Cover,standardized,cover-entry,yes,All reviewers,yes,Primary cover sheet for institutional review distribution.
+Navigation,standardized,hyperlink-enabled,yes,All reviewers,yes,"Contains legend, governance warning, and hyperlinks."
+Executive Dashboard,standardized,hyperlink-enabled,yes,IC / lender / governance lead,yes,Best first stop after Navigation for non-engineering readers.
+Executive Summary,standardized,hyperlink-enabled,yes,IC / lender / audit lead,yes,Best first stop after the dashboard for evidence detail.
+Review Signoff,standardized,hyperlink-enabled,yes,Governance / PMO / reviewers,yes,Workbook-only workflow tracker; not persistence.
+Governance,standardized,hyperlink-enabled,yes,IC / governance,yes,Governance warning banner lives here.
+Governance Timeline,standardized,hyperlink-enabled,yes,Governance / lender / audit,yes,Timeline of parity and governance milestones.
+Readiness Matrix,standardized,hyperlink-enabled,yes,All reviewers,yes,Fast maturity scan for IC and lender meetings.
+Runtime Summary,standardized,hyperlink-enabled,yes,All reviewers,yes,Runtime versus review labels preserved.
+Revenue Reconciliation,standardized,hyperlink-enabled,yes,Commercial / audit,yes,CO2 and balancing remain explicit evidence gaps.
+CO2 & Balancing Reconciliation,standardized,hyperlink-enabled,yes,Commercial / audit / governance,yes,Dedicated source-map hardening sheet.
+OPEX Reconciliation,standardized,hyperlink-enabled,yes,Operations / audit,yes,Grouped OPEX residuals remain documented.
+Senior Debt Reconciliation,standardized,hyperlink-enabled,yes,Lender / debt reviewer,yes,Debt rows remain runtime-transparent.
+SHL Reconciliation,standardized,hyperlink-enabled,yes,Sponsor / audit,yes,Presentation and evidence limitations are explicit.
+Tax R35-R67-R69,standardized,hyperlink-enabled,yes,Tax / audit,yes,No tax runtime changes in this pack.
+CFADS Waterfall,standardized,hyperlink-enabled,yes,Lender / cashflow reviewer,yes,Governance blockers are highlighted.
+Distributions Sponsor,standardized,hyperlink-enabled,yes,Sponsor / IC,yes,No mixed authoritative path.
+Returns Reconciliation,standardized,hyperlink-enabled,yes,IC / sponsor,yes,Equity IRR residual remains a stakeholder matter.
+IRR Reconciliation,standardized,hyperlink-enabled,yes,IC / lender / governance,yes,Purpose-built reviewer sheet for IRR interpretation.
+Calibration Residual Closeout,standardized,hyperlink-enabled,yes,Governance / IC / audit,yes,Phase 10 closeout reference sheet.
+Gap Register,standardized,hyperlink-enabled,yes,All reviewers,yes,Primary action list.
+Source Inventory,standardized,hyperlink-enabled,yes,Audit / model validation,yes,Useful for provenance checks.
+Accepted Conventions,standardized,hyperlink-enabled,yes,Governance / audit,yes,Not a runtime-fix sheet.
+Reviewer Notes,standardized,hyperlink-enabled,yes,All reviewers,yes,Best closing sheet.

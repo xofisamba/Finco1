@@ -1,0 +1,6 @@
+sheet,formatting_status,navigation_status,print_ready,reviewer_target,governance_sensitive,notes
+Cover,enhanced,cover + navigation entry point,yes,All reviewers,yes,"Institutional title block, governance summary, and key metrics added."
+Navigation,enhanced,hyperlink index + quick links,yes,All reviewers,yes,Primary workbook navigation and reviewer legend.
+Executive Dashboard,enhanced,primary reviewer entry point,yes,IC / lender / governance,yes,Readiness and residual posture tightened for meeting use.
+Review workflow sheets,enhanced,linked from dashboard/navigation,yes,Governance / PMO / audit,yes,"Review Signoff, Governance Timeline, and Readiness Matrix are formatted for walkthrough use."
+Discipline sheets,standardized,back-to-navigation links + consistent freeze panes,yes,Commercial / debt / SHL / tax / returns,yes,Consistent print settings and provenance metadata across all major sections.

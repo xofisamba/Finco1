@@ -57,6 +57,7 @@ def test_required_sheets_exist():
     _generate_if_missing()
     wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
     expected = [
+        "Cover",
         "Navigation",
         "Executive Dashboard",
         "Executive Summary",
@@ -95,6 +96,7 @@ def test_navigation_sheet_exists_and_has_hyperlinks():
                 hyperlinks.append(str(cell.hyperlink.target))
     assert any("Executive Dashboard" in link for link in hyperlinks)
     assert any("Gap Register" in link for link in hyperlinks)
+    assert any("Cover" in link for link in hyperlinks)
 
 
 def test_horizontal_periods_exist():

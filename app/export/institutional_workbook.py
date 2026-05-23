@@ -248,23 +248,43 @@ def _source_branch() -> str:
 
 
 def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
-    sheet["A1"] = "Phase 10 Institutional Workbook"
+    sheet["A1"] = "Institutional Runtime Workbook"
     sheet["A1"].fill = TITLE_FILL
-    sheet["A1"].font = WHITE_FONT
+    sheet["A1"].font = Font(color="FFFFFF", bold=True, size=18, name="Calibri")
+    sheet["A2"] = bundle.project_name
+    sheet["A2"].font = Font(size=14, bold=True, name="Calibri")
+    sheet["A3"] = "Institutional lender, IC, and audit workbook built from existing runtime outputs and documented assumptions."
+    sheet["A3"].alignment = Alignment(wrap_text=True)
     rows = [
         ("Project", bundle.project_name),
-        ("Export type", "institutional_workbook_runtime_binding"),
+        ("Workbook type", "institutional_workbook_runtime_binding"),
         ("Generated at", bundle.generated_at),
         ("Source branch", bundle.branch or _source_branch()),
+        ("Workbook version", "Phase 11 institutional export polish"),
         ("Runtime / preview", "runtime-bound workbook with explicit assumption sections"),
+        ("Governance status", f"G20 {bundle.runtime_rows[0]['g20_status']} / R99-R102 {bundle.runtime_rows[0]['r99_r102_status']}"),
         ("Purpose", "Institutional review workbook fed from existing runtime outputs and documented assumptions."),
-        ("Status", "Phase 10 runtime binding branch - not final bankability"),
+        ("Status", "Phase 11 product polish layer - not final bankability"),
     ]
-    for row_idx, (label, value) in enumerate(rows, start=3):
+    for row_idx, (label, value) in enumerate(rows, start=5):
         sheet.cell(row=row_idx, column=1, value=label)
         sheet.cell(row=row_idx, column=2, value=value)
         sheet.cell(row=row_idx, column=1).fill = META_FILL
         sheet.cell(row=row_idx, column=1).font = HEADER_FONT
+        sheet.cell(row=row_idx, column=1).border = THIN_BORDER
+        sheet.cell(row=row_idx, column=2).border = THIN_BORDER
+        sheet.cell(row=row_idx, column=2).alignment = Alignment(wrap_text=True)
+    sheet["D5"] = "Reviewer readiness"
+    sheet["D5"].font = HEADER_FONT
+    sheet["D6"] = "Use this workbook as the runtime-facing base export."
+    sheet["D7"] = "Detailed gaps and governance overlays live in the calibration reconciliation pack."
+    sheet["D8"] = "Runtime formulas remain authoritative and unchanged."
+    sheet["D9"] = "Export metadata, provenance, and labels are standardized for lender/audit review."
+    for row_idx in range(6, 10):
+        sheet.cell(row=row_idx, column=4).alignment = Alignment(wrap_text=True)
+    sheet.column_dimensions["A"].width = 24
+    sheet.column_dimensions["B"].width = 44
+    sheet.column_dimensions["D"].width = 46
 
 
 def _write_governance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
@@ -796,6 +816,14 @@ def _fill_classification_row(sheet, row_idx: int, classification: str) -> None:
 def _format_sheet(sheet) -> None:
     sheet.freeze_panes = "A7"
     sheet.sheet_view.showGridLines = False
+    sheet.page_setup.orientation = "landscape"
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 0
+    sheet.print_title_rows = "$1:$6"
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.oddHeader.left.text = "Institutional runtime workbook"
+    sheet.oddHeader.center.text = sheet.title
+    sheet.oddHeader.right.text = "Phase 11 polish"
     for letter, width in (("A", 28), ("B", 22), ("C", 18), ("D", 48), ("E", 16)):
         sheet.column_dimensions[letter].width = width
     for row in sheet.iter_rows():
