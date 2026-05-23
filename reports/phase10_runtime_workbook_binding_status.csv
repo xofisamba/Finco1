@@ -1,0 +1,17 @@
+sheet_name,runtime_binding_level,runtime_or_preview,implemented_fields,remaining_placeholders,governance_sensitive,notes
+Cover,implemented,review,"project, timestamp, export type, branch, runtime/preview, purpose, status",none,yes,Institutional cover sheet with provenance.
+Governance,implemented,review,"governance status, G20, R99/R102, provenance",none,yes,Governance metadata and approval status.
+Runtime Summary,implemented,runtime,"IRR, revenue, EBITDA, OPEX, DSCR, distributions, SHL service",none,yes,Existing runtime summary values only.
+Inputs,runtime_bound,runtime + template,"project metadata, technical assumptions, governance labels, input summary","detailed scenario override matrix",yes,Project metadata and assumption binding from existing context.
+Construction,summary_bound,template + runtime,"dates, duration, capex anchors, financing anchors","full construction spend curve",yes,Construction timing and funding summary from existing inputs and runtime anchors.
+OPEX,runtime_bound,runtime + template,"runtime total OPEX, contingency method, line items","full escalator schedule by period",yes,OPEX assumptions plus runtime total binding.
+CAPEX,summary_bound,template + runtime,"total capex, funding anchors, capex summary, capex items","full spend curve by construction period",yes,CAPEX summary and item binding.
+Revenue,runtime_bound,runtime + template,"PPA assumptions, availability, runtime revenue table","separate CO2/balancing sub-line sheets",yes,Revenue assumptions and period revenue table from existing runtime outputs.
+Senior Debt,runtime_bound,runtime + template,"debt assumptions, DSCR, debt service table","expanded covenant analytics",yes,Senior debt assumptions and period debt service schedule from existing runtime outputs.
+SHL,runtime_bound,runtime + template,"opening balance, rate, repayment method, SHL schedule","separate accrued-versus-cash reviewer view",yes,SHL assumptions and runtime SHL cashflow / balance schedule.
+Tax,runtime_bound,runtime + template,"CIT assumptions, tax bridge periods, cash tax","expanded phase 6 residual diagnostics",yes,Tax assumptions and tax bridge periods from existing assembled statements.
+P&L,runtime_bound,runtime,"assembled revenues, opex, depreciation, EBIT, EBT, taxable income, net income","extra sub-line mapping beyond assembled statement",yes,Offline assembled P&L using existing runtime result as source.
+Cash Flow,runtime_bound,runtime,"assembled PF cash waterfall, FCF, debt service, SHL, dividends","distribution account detail sheet",yes,Offline PF cash waterfall using existing runtime result as source.
+Balance Sheet,runtime_bound,runtime,"assembled assets, liabilities, equity, balance check","full capital accounts breakout",yes,Offline balance sheet assembly from existing runtime result.
+Audit,runtime_bound,review,"runtime sources, provenance, sheet coverage",none,yes,Runtime source notes, provenance, and audit boundary statements.
+Gap Register,runtime_bound,review,"known gaps, accepted conventions, governance blockers",none,yes,Known gaps and accepted conventions reused from existing documentation.
