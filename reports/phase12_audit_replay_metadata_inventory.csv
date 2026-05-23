@@ -1,0 +1,11 @@
+metadata_item,currently_captured,replay_critical,missing?,source,destination,governance_sensitive,notes
+commit_sha,yes,yes,no,git HEAD,persisted runs + exports + workbook metadata,yes,Concrete code version anchor for audit review.
+branch_name,yes,no,no,git branch,persisted exports + workbook metadata,no,Helpful context when commit SHA alone is not enough for reviewer orientation.
+export_timestamp,yes,yes,no,export generation time,exports + workbook metadata,no,Separates artifact generation time from runtime execution time.
+runtime_timestamp,yes,yes,no,runtime execution wrapper,persisted runs + exports + workbook metadata,no,Improves replay traceability for the actual runtime evaluation.
+template_origin,yes,yes,no,project factory binding,persisted runs + exports + workbook metadata,yes,Lightweight provenance only; not a separate template versioning system.
+template_revision,yes,no,no,template provenance helper,persisted runs + exports + workbook metadata,yes,Captured honestly as not separately versioned.
+runtime_flag_snapshot,yes,yes,no,project inputs + financing flags,persisted exports + runtime summary rows,yes,Provenance only; flags remain non-authoritative metadata.
+governance_snapshot,yes,yes,no,governance snapshot helper,projects + scenarios + exports,yes,Preserves G20 and R99/R102 posture alongside artifacts.
+scenario_run_export_lineage,partial,yes,yes,persistence repository lineage methods,exports + reviewer lineage views,yes,Lineage exists but deterministic replay is still incomplete.
+replay_limitations_notice,yes,yes,no,provenance helper,workbook metadata + replay docs,yes,Prevents overstatement of replay guarantees.
