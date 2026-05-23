@@ -20,11 +20,13 @@ WORKBOOK = REPORTS / "phase10_calibration_reconciliation_pack.xlsx"
 GAP_REGISTER = REPORTS / "phase10_calibration_gap_register.csv"
 SOURCE_INVENTORY = REPORTS / "phase10_calibration_source_inventory.csv"
 SUMMARY = REPORTS / "phase10_calibration_reconciliation_summary.csv"
+NAVIGATION_MAP = REPORTS / "phase10_review_pack_navigation_map.csv"
 DOC = DOCS / "phase10_calibration_gap_reconciliation_pack.md"
+NAV_DOC = DOCS / "phase10_review_pack_polish_and_lender_navigation.md"
 
 
 def _generate_if_missing() -> None:
-    if all(path.exists() for path in (WORKBOOK, GAP_REGISTER, SOURCE_INVENTORY, SUMMARY)):
+    if all(path.exists() for path in (WORKBOOK, GAP_REGISTER, SOURCE_INVENTORY, SUMMARY, NAVIGATION_MAP)):
         return
     write_calibration_reconciliation_pack()
 
@@ -53,6 +55,7 @@ def test_required_sheets_exist():
     _generate_if_missing()
     wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
     expected = [
+        "Navigation",
         "Executive Summary",
         "Governance",
         "Runtime Summary",
@@ -72,11 +75,19 @@ def test_required_sheets_exist():
     assert wb.sheetnames == expected
 
 
+def test_navigation_sheet_exists_and_has_hyperlinks():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK)
+    ws = wb["Navigation"]
+    assert ws["E20"].hyperlink is not None
+    assert ws["A37"].hyperlink is not None
+
+
 def test_horizontal_periods_exist():
     _generate_if_missing()
     wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
     ws = wb["Revenue Reconciliation"]
-    headers = [ws.cell(row=1, column=col).value for col in range(1, ws.max_column + 1)]
+    headers = [ws.cell(row=5, column=col).value for col in range(1, ws.max_column + 1)]
     assert "P1" in headers
     assert "P61" in headers
 
@@ -85,9 +96,18 @@ def test_classification_and_root_cause_columns_exist():
     _generate_if_missing()
     wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
     ws = wb["Revenue Reconciliation"]
-    headers = [ws.cell(row=1, column=col).value for col in range(1, ws.max_column + 1)]
+    headers = [ws.cell(row=5, column=col).value for col in range(1, ws.max_column + 1)]
     assert "Classification" in headers
     assert "Root Cause" in headers
+
+
+def test_severity_legend_exists():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    text = _sheet_text(wb, "Navigation")
+    assert "Status Legend" in text
+    assert "ACCEPTED_CONVENTION" in text
+    assert "GOVERNANCE_BLOCKER" in text
 
 
 def test_non_pass_rows_contain_explanations():
@@ -123,6 +143,7 @@ def test_governance_sheet_contains_gate_status():
     text = _sheet_text(wb, "Governance")
     assert "G20 status BLOCKED" in text
     assert "R99/R102 status NOT APPROVED" in text
+    assert "Governance Warning" in text
 
 
 def test_runtime_vs_preview_labels_exist():
@@ -131,6 +152,15 @@ def test_runtime_vs_preview_labels_exist():
     text = _sheet_text(wb, "Runtime Summary") + " " + _sheet_text(wb, "Governance")
     assert "Runtime / Preview" in text
     assert "review" in text.lower() or "runtime" in text.lower()
+
+
+def test_executive_summary_contains_classification_counts():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    text = _sheet_text(wb, "Executive Summary")
+    assert "Classification Counts" in text
+    assert "Top 10 Material Gaps" in text
+    assert "What Is Engineering vs Governance" in text
 
 
 def test_missing_evidence_rows_are_not_zero_filled():
@@ -149,11 +179,48 @@ def test_missing_evidence_rows_are_not_zero_filled():
     assert first_period_value.startswith("MISSING_EVIDENCE")
 
 
+def test_gap_register_contains_reviewer_columns():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    ws = wb["Gap Register"]
+    headers = [ws.cell(row=5, column=col).value for col in range(1, ws.max_column + 1)]
+    assert "Owner" in headers
+    assert "Requires Stakeholder Decision?" in headers
+    assert "Requires Runtime Change?" in headers
+    assert "Expected Roadmap Phase" in headers
+
+
+def test_reviewer_notes_expanded():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    text = _sheet_text(wb, "Reviewer Notes")
+    assert "Already runtime-verified" in text
+    assert "Governance-only blockers" in text
+    assert "Roadmap view" in text
+
+
 def test_doc_states_governance_limits():
     content = DOC.read_text(encoding="utf-8")
+    nav_content = NAV_DOC.read_text(encoding="utf-8")
     assert "G20 remains `BLOCKED`" in content
     assert "R99/R102 remain `NOT APPROVED`" in content
     assert "no runtime formula changes" in content
+    assert "navigation philosophy" in nav_content.lower()
+
+
+def test_navigation_map_report_exists_and_has_required_columns():
+    _generate_if_missing()
+    rows = _csv_rows(NAVIGATION_MAP)
+    assert rows
+    required = {
+        "sheet_name",
+        "reviewer_role",
+        "primary_purpose",
+        "navigation_priority",
+        "governance_sensitive",
+        "notes",
+    }
+    assert required.issubset(rows[0].keys())
 
 
 def test_no_runtime_model_formula_files_changed():
