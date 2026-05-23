@@ -1,6 +1,6 @@
 metric,value,unit,notes
-runtime_coverage_pct,94.1,percent,Rows with runtime-side values surfaced in the workbook.
-evidence_coverage_pct,58.8,percent,Rows not blocked solely by missing evidence.
-unresolved_gap_count,45,count,All rows still outside PASS status.
+runtime_coverage_pct,89.5,percent,Rows with runtime-side values surfaced in the workbook.
+evidence_coverage_pct,59.6,percent,Rows not blocked solely by missing evidence.
+unresolved_gap_count,50,count,All rows still outside PASS status.
 governance_blocker_count,3,count,Rows blocked by approval or stakeholder governance.
 accepted_convention_count,4,count,Rows explained by accepted convention rather than runtime defect.
