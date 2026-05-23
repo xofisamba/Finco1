@@ -1563,3 +1563,76 @@ body {
   margin-bottom: 0.65rem;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
+
+/* Phase 12 sidebar persistence workspace */
+.scenario-message {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 0.74rem;
+  color: var(--text);
+}
+
+.ps-mini-empty {
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.45;
+  padding: 0.35rem 0 0.15rem;
+}
+
+.ps-saved-list,
+.ps-export-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.ps-saved-item,
+.ps-export-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.55rem 0.65rem;
+  background: var(--surface);
+}
+
+.ps-saved-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.45rem;
+}
+
+.ps-saved-title,
+.ps-export-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ps-saved-meta,
+.ps-export-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.ps-saved-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.ps-mini-btn {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.7rem;
+  padding: 0.28rem 0.5rem;
+  cursor: pointer;
+}
+
+.ps-mini-btn:hover {
+  background: var(--bg);
+}
