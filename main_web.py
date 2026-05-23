@@ -35,12 +35,15 @@ from app.auth import (
 # Import persistence
 from app.persistence.repository import (
     archive_scenario,
+    build_export_lineage,
+    compare_scenarios,
     count_runs,
     delete_run,
     duplicate_scenario,
     get_project_by_code,
     get_run,
     get_scenario,
+    get_scenario_history,
     list_exports,
     list_runs,
     list_scenarios,
@@ -180,11 +183,44 @@ def _current_project_workspace(user, project_ctx):
         last_run_summary={},
     )
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
+    history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
-    return project_record, scenarios, exports
+    export_lineage = build_export_lineage(user.user_id, project_id=project_record.project_id, limit=8)
+    scenario_summary_cards = []
+    export_counts: dict[str, int] = {}
+    for entry in export_lineage:
+        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
+    for item in scenarios:
+        summary = item.last_run_summary or {}
+        scenario_summary_cards.append(
+            {
+                "scenario_id": item.scenario_id,
+                "scenario_name": item.scenario_name,
+                "project_code": item.project_code,
+                "updated_at": item.updated_at,
+                "copied_from_scenario_id": item.copied_from_scenario_id,
+                "project_irr": summary.get("project_irr"),
+                "equity_irr": summary.get("equity_irr"),
+                "avg_dscr": summary.get("avg_dscr"),
+                "export_count": export_counts.get(item.scenario_name, 0),
+                "governance_state": item.governance_state,
+            }
+        )
+    return project_record, scenarios, history, exports, export_lineage, scenario_summary_cards
 
 
-def _render_scenario_workspace(request: Request, user, project_record, scenarios, exports, message: str | None = None):
+def _render_scenario_workspace(
+    request: Request,
+    user,
+    project_record,
+    scenarios,
+    history,
+    exports,
+    export_lineage,
+    scenario_summary_cards,
+    message: str | None = None,
+    compare_result: dict | None = None,
+):
     return templates.TemplateResponse(
         request=request,
         name="partials/scenario_workspace.html",
@@ -192,10 +228,42 @@ def _render_scenario_workspace(request: Request, user, project_record, scenarios
             "user": user,
             "project_record": project_record,
             "scenario_records": scenarios,
+            "scenario_history": history,
             "export_records": exports,
+            "export_lineage": export_lineage,
+            "scenario_summary_cards": scenario_summary_cards,
             "workspace_message": message,
+            "compare_result": compare_result,
         },
     )
+
+
+def _workspace_refresh_payload(user, project_record):
+    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
+    history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
+    exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
+    export_lineage = build_export_lineage(user.user_id, project_id=project_record.project_id, limit=8)
+    export_counts = {}
+    for entry in export_lineage:
+        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
+    scenario_summary_cards = []
+    for item in scenarios:
+        summary = item.last_run_summary or {}
+        scenario_summary_cards.append(
+            {
+                "scenario_id": item.scenario_id,
+                "scenario_name": item.scenario_name,
+                "project_code": item.project_code,
+                "updated_at": item.updated_at,
+                "copied_from_scenario_id": item.copied_from_scenario_id,
+                "project_irr": summary.get("project_irr"),
+                "equity_irr": summary.get("equity_irr"),
+                "avg_dscr": summary.get("avg_dscr"),
+                "export_count": export_counts.get(item.scenario_name, 0),
+                "governance_state": item.governance_state,
+            }
+        )
+    return scenarios, history, exports, export_lineage, scenario_summary_cards
 
 # -- Helpers ------------------------------------------------------------------
 
@@ -433,7 +501,14 @@ async def index(request: Request, project: str | None = None):
 
     ctx = get_project_context(project)
     available_projects = all_project_ids()
-    project_record, scenario_records, export_records = _current_project_workspace(user, ctx)
+    (
+        project_record,
+        scenario_records,
+        scenario_history,
+        export_records,
+        export_lineage,
+        scenario_summary_cards,
+    ) = _current_project_workspace(user, ctx)
 
     return templates.TemplateResponse(
         request=request,
@@ -450,7 +525,11 @@ async def index(request: Request, project: str | None = None):
             "available_projects": available_projects,
             "project_record": project_record,
             "scenario_records": scenario_records,
+            "scenario_history": scenario_history,
             "export_records": export_records,
+            "export_lineage": export_lineage,
+            "scenario_summary_cards": scenario_summary_cards,
+            "compare_result": None,
             "workspace_message": None,
         },
     )
@@ -910,8 +989,79 @@ async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
         return RedirectResponse(url="/login", status_code=302)
 
     project_ctx = get_project_context(project)
-    project_record, scenarios, exports = _current_project_workspace(user, project_ctx)
-    return _render_scenario_workspace(request, user, project_record, scenarios, exports)
+    project_record, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_ctx)
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        scenarios,
+        history,
+        exports,
+        export_lineage,
+        scenario_summary_cards,
+    )
+
+
+@app.get("/scenarios/history")
+async def scenario_history_endpoint(request: Request, project: str = "tuho"):
+    """Refresh scenario history and lineage for the active project."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_ctx = get_project_context(project)
+    project_record, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
+    scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        scenarios,
+        history,
+        exports,
+        export_lineage,
+        scenario_summary_cards,
+        message="Refreshed scenario history and export lineage.",
+    )
+
+
+@app.get("/scenarios/compare")
+async def scenario_compare_endpoint(
+    request: Request,
+    project: str = "tuho",
+    left_scenario_id: str | None = None,
+    right_scenario_id: str | None = None,
+):
+    """Render a lightweight, governance-aware scenario comparison."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_ctx = get_project_context(project)
+    project_record, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
+    scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
+
+    compare_result = None
+    message = "Select two saved scenarios to compare."
+    if left_scenario_id and right_scenario_id:
+        compare_result = compare_scenarios(user.user_id, left_scenario_id, right_scenario_id)
+        if compare_result is None:
+            message = "Could not compare those scenarios."
+        else:
+            message = "Scenario compare ready. Review numeric deltas together with governance posture."
+
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        scenarios,
+        history,
+        exports,
+        export_lineage,
+        scenario_summary_cards,
+        message=message,
+        compare_result=compare_result,
+    )
 
 
 @app.post("/scenarios/save")
@@ -944,13 +1094,38 @@ async def save_scenario_endpoint(request: Request):
         last_run_summary={},
     )
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
+    history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
+    export_lineage = build_export_lineage(user.user_id, project_id=project_record.project_id, limit=8)
+    scenario_summary_cards = []
+    export_counts = {}
+    for entry in export_lineage:
+        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
+    for item in scenarios:
+        summary = item.last_run_summary or {}
+        scenario_summary_cards.append(
+            {
+                "scenario_id": item.scenario_id,
+                "scenario_name": item.scenario_name,
+                "project_code": item.project_code,
+                "updated_at": item.updated_at,
+                "copied_from_scenario_id": item.copied_from_scenario_id,
+                "project_irr": summary.get("project_irr"),
+                "equity_irr": summary.get("equity_irr"),
+                "avg_dscr": summary.get("avg_dscr"),
+                "export_count": export_counts.get(item.scenario_name, 0),
+                "governance_state": item.governance_state,
+            }
+        )
     return _render_scenario_workspace(
         request,
         user,
         project_record,
         scenarios,
+        history,
         exports,
+        export_lineage,
+        scenario_summary_cards,
         message=f"Saved scenario snapshot for {project_name}.",
     )
 
@@ -988,13 +1163,38 @@ async def duplicate_scenario_endpoint(request: Request, scenario_id: str):
     duplicate_scenario(user.user_id, scenario_id)
     project_record = get_project_by_code(user.user_id, original.project_code)
     scenarios = list_scenarios(user.user_id, project_id=original.project_id, include_archived=False, limit=12)
+    history = get_scenario_history(user.user_id, project_id=original.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=original.project_id, limit=8)
+    export_lineage = build_export_lineage(user.user_id, project_id=original.project_id, limit=8)
+    export_counts = {}
+    for entry in export_lineage:
+        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
+    scenario_summary_cards = []
+    for item in scenarios:
+        summary = item.last_run_summary or {}
+        scenario_summary_cards.append(
+            {
+                "scenario_id": item.scenario_id,
+                "scenario_name": item.scenario_name,
+                "project_code": item.project_code,
+                "updated_at": item.updated_at,
+                "copied_from_scenario_id": item.copied_from_scenario_id,
+                "project_irr": summary.get("project_irr"),
+                "equity_irr": summary.get("equity_irr"),
+                "avg_dscr": summary.get("avg_dscr"),
+                "export_count": export_counts.get(item.scenario_name, 0),
+                "governance_state": item.governance_state,
+            }
+        )
     return _render_scenario_workspace(
         request,
         user,
         project_record,
         scenarios,
+        history,
         exports,
+        export_lineage,
+        scenario_summary_cards,
         message=f"Duplicated {original.scenario_name}.",
     )
 
@@ -1018,13 +1218,38 @@ async def rename_scenario_endpoint(request: Request, scenario_id: str):
     rename_scenario(user.user_id, scenario_id, new_name)
     project_record = get_project_by_code(user.user_id, record.project_code)
     scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    history = get_scenario_history(user.user_id, project_id=record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=record.project_id, limit=8)
+    export_lineage = build_export_lineage(user.user_id, project_id=record.project_id, limit=8)
+    export_counts = {}
+    for entry in export_lineage:
+        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
+    scenario_summary_cards = []
+    for item in scenarios:
+        summary = item.last_run_summary or {}
+        scenario_summary_cards.append(
+            {
+                "scenario_id": item.scenario_id,
+                "scenario_name": item.scenario_name,
+                "project_code": item.project_code,
+                "updated_at": item.updated_at,
+                "copied_from_scenario_id": item.copied_from_scenario_id,
+                "project_irr": summary.get("project_irr"),
+                "equity_irr": summary.get("equity_irr"),
+                "avg_dscr": summary.get("avg_dscr"),
+                "export_count": export_counts.get(item.scenario_name, 0),
+                "governance_state": item.governance_state,
+            }
+        )
     return _render_scenario_workspace(
         request,
         user,
         project_record,
         scenarios,
+        history,
         exports,
+        export_lineage,
+        scenario_summary_cards,
         message=f"Renamed scenario to {new_name}.",
     )
 
@@ -1043,13 +1268,38 @@ async def archive_scenario_endpoint(request: Request, scenario_id: str):
     archive_scenario(user.user_id, scenario_id)
     project_record = get_project_by_code(user.user_id, record.project_code)
     scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    history = get_scenario_history(user.user_id, project_id=record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=record.project_id, limit=8)
+    export_lineage = build_export_lineage(user.user_id, project_id=record.project_id, limit=8)
+    export_counts = {}
+    for entry in export_lineage:
+        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
+    scenario_summary_cards = []
+    for item in scenarios:
+        summary = item.last_run_summary or {}
+        scenario_summary_cards.append(
+            {
+                "scenario_id": item.scenario_id,
+                "scenario_name": item.scenario_name,
+                "project_code": item.project_code,
+                "updated_at": item.updated_at,
+                "copied_from_scenario_id": item.copied_from_scenario_id,
+                "project_irr": summary.get("project_irr"),
+                "equity_irr": summary.get("equity_irr"),
+                "avg_dscr": summary.get("avg_dscr"),
+                "export_count": export_counts.get(item.scenario_name, 0),
+                "governance_state": item.governance_state,
+            }
+        )
     return _render_scenario_workspace(
         request,
         user,
         project_record,
         scenarios,
+        history,
         exports,
+        export_lineage,
+        scenario_summary_cards,
         message=f"Archived {record.scenario_name}.",
     )
 
