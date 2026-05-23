@@ -1,4 +1,9 @@
-"""Repository helpers for lightweight project, scenario, run, and export persistence."""
+"""Repository helpers for lightweight project, scenario, run, and export persistence.
+
+This module is the authoritative persistence repository for the web app.
+It persists snapshots and review metadata, but never computes or overrides
+financial model outputs.
+"""
 
 from __future__ import annotations
 
@@ -42,6 +47,7 @@ class RunRecord:
     kpis: dict[str, Any]
     excel_path: Optional[str] = None
     notes: Optional[str] = None
+    replay_metadata: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -54,6 +60,7 @@ class RunRecord:
             "kpis": self.kpis,
             "excel_path": self.excel_path,
             "notes": self.notes,
+            "replay_metadata": self.replay_metadata or {},
         }
 
     @classmethod
@@ -68,6 +75,7 @@ class RunRecord:
             kpis=_from_json(row["kpis_json"], {}),
             excel_path=row["excel_path"],
             notes=row["notes"],
+            replay_metadata=_from_json(row["replay_metadata_json"], {}),
         )
 
 
@@ -80,6 +88,7 @@ class ProjectRecord:
     source_project_template: str
     governance_state: dict[str, Any]
     last_run_summary: dict[str, Any]
+    replay_metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
 
@@ -93,6 +102,7 @@ class ProjectRecord:
             source_project_template=row["source_project_template"],
             governance_state=_from_json(row["governance_state_json"], {}),
             last_run_summary=_from_json(row["last_run_summary_json"], {}),
+            replay_metadata=_from_json(row["replay_metadata_json"], {}),
             created_at=_from_iso(row["created_at"]),
             updated_at=_from_iso(row["updated_at"]),
         )
@@ -111,6 +121,7 @@ class ScenarioRecord:
     snapshot: dict[str, Any]
     governance_state: dict[str, Any]
     last_run_summary: dict[str, Any]
+    replay_metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
 
@@ -128,6 +139,7 @@ class ScenarioRecord:
             snapshot=_from_json(row["snapshot_json"], {}),
             governance_state=_from_json(row["governance_state_json"], {}),
             last_run_summary=_from_json(row["last_run_summary_json"], {}),
+            replay_metadata=_from_json(row["replay_metadata_json"], {}),
             created_at=_from_iso(row["created_at"]),
             updated_at=_from_iso(row["updated_at"]),
         )
@@ -145,6 +157,7 @@ class ScenarioExportRecord:
     project_code: str
     governance_state: dict[str, Any]
     runtime_snapshot_id: Optional[str]
+    replay_metadata: dict[str, Any]
     created_at: datetime
 
     @classmethod
@@ -160,6 +173,7 @@ class ScenarioExportRecord:
             project_code=row["project_code"],
             governance_state=_from_json(row["governance_state_json"], {}),
             runtime_snapshot_id=row["runtime_snapshot_id"],
+            replay_metadata=_from_json(row["replay_metadata_json"], {}),
             created_at=_from_iso(row["created_at"]),
         )
 
@@ -199,15 +213,19 @@ def save_run(
     kpis: dict,
     excel_path: Optional[str] = None,
     notes: Optional[str] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
 ) -> RunRecord:
     run_id = uuid.uuid4().hex[:16]
     created_at = _now_utc()
+    replay_metadata = dict(replay_metadata or {})
+    replay_metadata.setdefault("run_id", run_id)
+    replay_metadata.setdefault("runtime_timestamp", created_at.isoformat())
 
     with get_cursor() as cur:
         cur.execute(
             """
-            INSERT INTO runs (run_id, user_id, project_type, scenario, created_at, inputs_json, kpis_json, excel_path, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO runs (run_id, user_id, project_type, scenario, created_at, inputs_json, kpis_json, excel_path, notes, replay_metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -219,6 +237,7 @@ def save_run(
                 _to_json(kpis),
                 excel_path,
                 notes,
+                _to_json(replay_metadata),
             ),
         )
 
@@ -232,6 +251,7 @@ def save_run(
         kpis=kpis,
         excel_path=excel_path,
         notes=notes,
+        replay_metadata=replay_metadata,
     )
 
 
@@ -270,10 +290,12 @@ def save_project(
     source_project_template: str,
     governance_state: Optional[dict[str, Any]] = None,
     last_run_summary: Optional[dict[str, Any]] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
 ) -> ProjectRecord:
     now = _now_utc()
     governance_state = governance_state or {}
     last_run_summary = last_run_summary or {}
+    replay_metadata = dict(replay_metadata or {})
 
     with get_cursor() as cur:
         cur.execute(
@@ -284,10 +306,11 @@ def save_project(
         if existing:
             project_id = existing["project_id"]
             created_at = _from_iso(existing["created_at"])
+            replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
                 UPDATE projects
-                SET project_name=?, source_project_template=?, governance_state_json=?, last_run_summary_json=?, updated_at=?
+                SET project_name=?, source_project_template=?, governance_state_json=?, last_run_summary_json=?, replay_metadata_json=?, updated_at=?
                 WHERE project_id=? AND user_id=?
                 """,
                 (
@@ -295,6 +318,7 @@ def save_project(
                     source_project_template,
                     _to_json(governance_state),
                     _to_json(last_run_summary),
+                    _to_json(replay_metadata),
                     now.isoformat(),
                     project_id,
                     user_id,
@@ -303,12 +327,13 @@ def save_project(
         else:
             project_id = uuid.uuid4().hex[:16]
             created_at = now
+            replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
                 INSERT INTO projects (
                     project_id, user_id, project_code, project_name, source_project_template,
-                    governance_state_json, last_run_summary_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    governance_state_json, last_run_summary_json, replay_metadata_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
@@ -318,6 +343,7 @@ def save_project(
                     source_project_template,
                     _to_json(governance_state),
                     _to_json(last_run_summary),
+                    _to_json(replay_metadata),
                     created_at.isoformat(),
                     now.isoformat(),
                 ),
@@ -331,6 +357,7 @@ def save_project(
         source_project_template=source_project_template,
         governance_state=governance_state,
         last_run_summary=last_run_summary,
+        replay_metadata=replay_metadata,
         created_at=created_at,
         updated_at=now,
     )
@@ -372,11 +399,15 @@ def save_scenario(
     governance_state: Optional[dict[str, Any]] = None,
     last_run_summary: Optional[dict[str, Any]] = None,
     copied_from_scenario_id: Optional[str] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
 ) -> ScenarioRecord:
     scenario_id = uuid.uuid4().hex[:16]
     now = _now_utc()
     governance_state = governance_state or {}
     last_run_summary = last_run_summary or {}
+    replay_metadata = dict(replay_metadata or {})
+    replay_metadata.setdefault("project_id", project_id)
+    replay_metadata.setdefault("scenario_id", scenario_id)
 
     with get_cursor() as cur:
         cur.execute(
@@ -384,9 +415,9 @@ def save_scenario(
             INSERT INTO scenarios (
                 scenario_id, project_id, user_id, scenario_name, project_code,
                 source_project_template, copied_from_scenario_id, archived,
-                snapshot_json, governance_state_json, last_run_summary_json,
+                snapshot_json, governance_state_json, last_run_summary_json, replay_metadata_json,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
             """,
             (
                 scenario_id,
@@ -399,6 +430,7 @@ def save_scenario(
                 _to_json(snapshot),
                 _to_json(governance_state),
                 _to_json(last_run_summary),
+                _to_json(replay_metadata),
                 now.isoformat(),
                 now.isoformat(),
             ),
@@ -416,6 +448,7 @@ def save_scenario(
         snapshot=snapshot,
         governance_state=governance_state,
         last_run_summary=last_run_summary,
+        replay_metadata=replay_metadata,
         created_at=now,
         updated_at=now,
     )
@@ -482,6 +515,7 @@ def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] =
         governance_state=record.governance_state,
         last_run_summary=record.last_run_summary,
         copied_from_scenario_id=record.scenario_id,
+        replay_metadata=record.replay_metadata,
     )
 
 
@@ -495,18 +529,25 @@ def record_export(
     scenario_id: Optional[str] = None,
     governance_state: Optional[dict[str, Any]] = None,
     runtime_snapshot_id: Optional[str] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
 ) -> ScenarioExportRecord:
     export_id = uuid.uuid4().hex[:16]
     created_at = _now_utc()
     governance_state = governance_state or {}
+    replay_metadata = dict(replay_metadata or {})
+    replay_metadata.setdefault("project_id", project_id)
+    replay_metadata.setdefault("scenario_id", scenario_id)
+    replay_metadata.setdefault("export_id", export_id)
+    replay_metadata.setdefault("runtime_snapshot_id", runtime_snapshot_id)
+    replay_metadata.setdefault("export_timestamp", created_at.isoformat())
 
     with get_cursor() as cur:
         cur.execute(
             """
             INSERT INTO scenario_exports (
                 export_id, scenario_id, project_id, user_id, export_type, artifact_name,
-                artifact_path, project_code, governance_state_json, runtime_snapshot_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                artifact_path, project_code, governance_state_json, runtime_snapshot_id, replay_metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 export_id,
@@ -519,6 +560,7 @@ def record_export(
                 project_code,
                 _to_json(governance_state),
                 runtime_snapshot_id,
+                _to_json(replay_metadata),
                 created_at.isoformat(),
             ),
         )
@@ -534,6 +576,7 @@ def record_export(
         project_code=project_code,
         governance_state=governance_state,
         runtime_snapshot_id=runtime_snapshot_id,
+        replay_metadata=replay_metadata,
         created_at=created_at,
     )
 
@@ -653,6 +696,7 @@ def build_export_lineage(
                 "copied_from_scenario_id": scenario.copied_from_scenario_id if scenario else None,
                 "created_at": item.created_at,
                 "governance_state": item.governance_state,
+                "replay_metadata": item.replay_metadata,
             }
         )
     return lineage
