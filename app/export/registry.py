@@ -123,6 +123,18 @@ def default_export_registry() -> ExportRegistry:
                 notes="Inputs, OPEX, CAPEX, Revenue, Senior Debt, SHL, Tax, P&L, Cash Flow, Balance Sheet, Audit, and Gap Register now carry structured runtime/export content.",
             ),
             ExportArtifact(
+                artifact_name="Phase 10 calibration reconciliation pack",
+                category=ExportCategory.AUDIT,
+                project_scope="TUHO",
+                format="xlsx",
+                runtime_or_preview="review",
+                governance_sensitive=True,
+                current_status="review_evidence_pack",
+                description="Reviewer-grade reconciliation workbook explaining Excel-versus-model gaps, classifications, and actions.",
+                path="reports/phase10_calibration_reconciliation_pack.xlsx",
+                notes="Audit-only evidence pack; G20 remains blocked and R99/R102 remain not approved.",
+            ),
+            ExportArtifact(
                 artifact_name="Phase 10 export registry",
                 category=ExportCategory.VALIDATION,
                 project_scope="portfolio",

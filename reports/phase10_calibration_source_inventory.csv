@@ -1,0 +1,7 @@
+metric,source_file,period_level_available,total_available,evidence_side,confidence_level,usable_for_reconciliation,notes
+"Revenue, OPEX, EBITDA, Senior Debt, Distribution, DSCR",reports/phase9_tuho_full_line_item_period_bridge.csv,yes (61 periods),yes,excel,high,yes,"Primary committed period bridge for revenue, opex, debt, and distributions."
+"SHL opening, interest, principal, closing",reports/phase9_tuho_shl_period_bridge.csv,partial,yes,excel,medium,yes,Gross accrued interest is mapped; cash interest and PIK remain partially evidenced.
+Runtime summary KPIs,app/export/runtime_summary.py,no,yes,runtime,high,yes,Authoritative runtime summary export foundation.
+Phase 9 accepted conventions,reports/phase9_final_tuho_accepted_conventions.csv,no,yes,governance,high,yes,Governed convention decisions reused for reviewer clarity.
+Calibration gap baseline,reports/phase9_tuho_calibration_gap_register.csv,no,yes,review,medium,yes,Used to classify known residuals and governance blockers.
+Runtime-to-workbook binding coverage,reports/phase10_runtime_workbook_binding_status.csv,no,yes,review,high,yes,Tracks which workbook sheets are runtime-bound versus placeholder-forward.
