@@ -66,6 +66,7 @@ def test_required_sheets_exist():
         "Readiness Matrix",
         "Runtime Summary",
         "Revenue Reconciliation",
+        "CO2 & Balancing Reconciliation",
         "OPEX Reconciliation",
         "Senior Debt Reconciliation",
         "SHL Reconciliation",

@@ -27,6 +27,8 @@ RUNTIME_BINDING_PENDING = "RUNTIME_BINDING_PENDING"
 GOVERNANCE_BLOCKER = "GOVERNANCE_BLOCKER"
 GOVERNANCE_REVIEW = "GOVERNANCE_REVIEW"
 MATERIAL_DELTA = "MATERIAL_DELTA"
+EVIDENCE_LIMITATION = "EVIDENCE_LIMITATION"
+GROUPED_SOURCE_ONLY = "GROUPED_SOURCE_ONLY"
 
 VALID_CLASSIFICATIONS = {
     PASS,
@@ -36,6 +38,10 @@ VALID_CLASSIFICATIONS = {
     MISSING_EVIDENCE,
     RUNTIME_BINDING_PENDING,
     GOVERNANCE_BLOCKER,
+    GOVERNANCE_REVIEW,
+    MATERIAL_DELTA,
+    EVIDENCE_LIMITATION,
+    GROUPED_SOURCE_ONLY,
 }
 
 THIN_BORDER = Border(
@@ -82,6 +88,9 @@ DEFAULT_RUNTIME_BINDING_GAP_REGISTER = REPORTS_DIR / "phase10_runtime_binding_ga
 DEFAULT_IRR_RECONCILIATION_SUMMARY = REPORTS_DIR / "phase10_irr_reconciliation_summary.csv"
 DEFAULT_IRR_CONVENTION_MAP = REPORTS_DIR / "phase10_irr_convention_map.csv"
 DEFAULT_IRR_GOVERNANCE_ITEMS = REPORTS_DIR / "phase10_irr_governance_items.csv"
+DEFAULT_CO2_BALANCING_SOURCE_MAP = REPORTS_DIR / "phase10_co2_balancing_source_map.csv"
+DEFAULT_CO2_BALANCING_GAP_SUMMARY = REPORTS_DIR / "phase10_co2_balancing_gap_summary.csv"
+DEFAULT_CO2_BALANCING_EVIDENCE_QUALITY = REPORTS_DIR / "phase10_co2_balancing_evidence_quality.csv"
 
 
 @dataclass(frozen=True)
@@ -120,6 +129,9 @@ class ReconciliationArtifacts:
     irr_reconciliation_summary_path: Path
     irr_convention_map_path: Path
     irr_governance_items_path: Path
+    co2_balancing_source_map_path: Path
+    co2_balancing_gap_summary_path: Path
+    co2_balancing_evidence_quality_path: Path
 
 
 def _num(value) -> float | None:
@@ -221,6 +233,8 @@ def _fill_for_classification(classification: str) -> PatternFill:
         GOVERNANCE_BLOCKER: GOVERNANCE_FILL,
         GOVERNANCE_REVIEW: CONVENTION_FILL,
         MATERIAL_DELTA: FAIL_FILL,
+        EVIDENCE_LIMITATION: WARN_FILL,
+        GROUPED_SOURCE_ONLY: PENDING_FILL,
     }.get(classification, META_FILL)
 
 
@@ -341,6 +355,16 @@ def _source_inventory_rows(period_count: int) -> list[dict[str, str]]:
             "notes": "Authoritative runtime summary export foundation.",
         },
         {
+            "metric": "CO2 / balancing revenue sub-lines",
+            "source_file": "reports/phase9_tuho_full_line_item_period_bridge.csv + runtime.revenue_keur",
+            "period_level_available": "grouped only",
+            "total_available": "partial",
+            "evidence_side": "excel+runtime",
+            "confidence_level": "low",
+            "usable_for_reconciliation": "partial",
+            "notes": "Electricity revenue total is committed, but CO2 and balancing remain grouped-only or missing across current evidence sources.",
+        },
+        {
             "metric": "Phase 9 accepted conventions",
             "source_file": "reports/phase9_final_tuho_accepted_conventions.csv",
             "period_level_available": "no",
@@ -369,6 +393,110 @@ def _source_inventory_rows(period_count: int) -> list[dict[str, str]]:
             "confidence_level": "high",
             "usable_for_reconciliation": "yes",
             "notes": "Tracks which workbook sheets are runtime-bound versus placeholder-forward.",
+        },
+    ]
+
+
+def _co2_balancing_report_rows(runtime: dict, per_bridge: list[dict[str, str]]) -> list[dict[str, str]]:
+    total_revenue_runtime = _sum_numeric(runtime["revenue_keur"]) or 0.0
+    total_revenue_excel = _sum_numeric(_col(per_bridge, "excel_revenue_keur", int(runtime["count"]), None))
+    total_revenue_excel = 0.0 if total_revenue_excel is None else total_revenue_excel
+    return [
+        {
+            "metric": "Electricity Revenue",
+            "runtime_source": "runtime.revenue_keur",
+            "excel_source": "phase9_tuho_full_line_item_period_bridge.csv / excel_revenue_keur",
+            "grouped_or_separate": "SEPARATE",
+            "evidence_quality": "HIGH",
+            "runtime_available": "yes",
+            "excel_available": "yes",
+            "workbook_bound": "yes",
+            "classification": PASS,
+            "runtime_value_available": f"{total_revenue_runtime:.1f}",
+            "excel_value_available": f"{total_revenue_excel:.1f}",
+            "unresolved_reason": "",
+            "governance_sensitive": "no",
+            "notes": "Electricity revenue is the only revenue sub-line with strong committed evidence on both sides.",
+        },
+        {
+            "metric": "CO2 Revenue",
+            "runtime_source": "none",
+            "excel_source": "none",
+            "grouped_or_separate": "SEPARATE_REQUESTED_BUT_UNAVAILABLE",
+            "evidence_quality": "MISSING",
+            "runtime_available": "no",
+            "excel_available": "no",
+            "workbook_bound": "yes",
+            "classification": MISSING_EVIDENCE,
+            "runtime_value_available": "MISSING_EVIDENCE",
+            "excel_value_available": "MISSING_EVIDENCE",
+            "unresolved_reason": "Neither the committed Excel evidence set nor runtime period exports expose a standalone CO2 revenue row.",
+            "governance_sensitive": "yes",
+            "notes": "Do not synthesize a CO2 split from total revenue.",
+        },
+        {
+            "metric": "Balancing Revenue",
+            "runtime_source": "none",
+            "excel_source": "none",
+            "grouped_or_separate": "SEPARATE_REQUESTED_BUT_UNAVAILABLE",
+            "evidence_quality": "MISSING",
+            "runtime_available": "no",
+            "excel_available": "no",
+            "workbook_bound": "yes",
+            "classification": MISSING_EVIDENCE,
+            "runtime_value_available": "MISSING_EVIDENCE",
+            "excel_value_available": "MISSING_EVIDENCE",
+            "unresolved_reason": "Standalone balancing revenue is not committed in the current Excel extracts or runtime export fields.",
+            "governance_sensitive": "yes",
+            "notes": "Missing balancing evidence should stay explicit rather than being netted into a guessed split.",
+        },
+        {
+            "metric": "Grouped Revenue Evidence",
+            "runtime_source": "runtime.revenue_keur",
+            "excel_source": "phase9_tuho_full_line_item_period_bridge.csv / excel_revenue_keur",
+            "grouped_or_separate": "GROUPED_ONLY",
+            "evidence_quality": "MEDIUM",
+            "runtime_available": "yes",
+            "excel_available": "yes",
+            "workbook_bound": "yes",
+            "classification": GROUPED_SOURCE_ONLY,
+            "runtime_value_available": f"{total_revenue_runtime:.1f}",
+            "excel_value_available": f"{total_revenue_excel:.1f}",
+            "unresolved_reason": "The committed evidence currently supports revenue only at grouped total level for CO2/balancing-sensitive review.",
+            "governance_sensitive": "yes",
+            "notes": "This grouped row helps reviewers separate evidence limitations from runtime-total concerns.",
+        },
+        {
+            "metric": "Runtime Aggregation Boundary",
+            "runtime_source": "runtime.revenue_keur",
+            "excel_source": "not applicable",
+            "grouped_or_separate": "GROUPED_ONLY",
+            "evidence_quality": "LOW",
+            "runtime_available": "yes",
+            "excel_available": "no",
+            "workbook_bound": "yes",
+            "classification": EVIDENCE_LIMITATION,
+            "runtime_value_available": "aggregate only",
+            "excel_value_available": "N/A",
+            "unresolved_reason": "Runtime revenue is available as a total, but the current runtime export surface does not publish separate CO2 or balancing components.",
+            "governance_sensitive": "no",
+            "notes": "This is a reporting/source-map limitation, not a runtime revenue defect.",
+        },
+        {
+            "metric": "Excel Extraction Boundary",
+            "runtime_source": "not applicable",
+            "excel_source": "phase9_tuho_full_line_item_period_bridge.csv / excel_revenue_keur",
+            "grouped_or_separate": "GROUPED_ONLY",
+            "evidence_quality": "LOW",
+            "runtime_available": "no",
+            "excel_available": "yes",
+            "workbook_bound": "yes",
+            "classification": EVIDENCE_LIMITATION,
+            "runtime_value_available": "N/A",
+            "excel_value_available": "aggregate only",
+            "unresolved_reason": "The committed Excel bridge gives a total revenue row but not a durable CO2-versus-balancing split.",
+            "governance_sensitive": "yes",
+            "notes": "This should be treated as an extraction/evidence-quality issue rather than a model defect.",
         },
     ]
 
@@ -813,9 +941,11 @@ def _severity_order(classification: str) -> int:
         WARN: 2,
         GOVERNANCE_REVIEW: 3,
         RUNTIME_BINDING_PENDING: 3,
-        MISSING_EVIDENCE: 4,
-        ACCEPTED_CONVENTION: 5,
-        PASS: 6,
+        EVIDENCE_LIMITATION: 4,
+        GROUPED_SOURCE_ONLY: 4,
+        MISSING_EVIDENCE: 5,
+        ACCEPTED_CONVENTION: 6,
+        PASS: 7,
     }
     return order.get(classification, 99)
 
@@ -855,18 +985,19 @@ def _navigation_rows() -> list[dict[str, str]]:
         {"sheet_name": "Readiness Matrix", "reviewer_role": "All reviewers", "primary_purpose": "See maturity across runtime, export, evidence, and governance dimensions by review area.", "navigation_priority": "7", "governance_sensitive": "yes", "notes": "Fast maturity scan for IC and lender meetings."},
         {"sheet_name": "Runtime Summary", "reviewer_role": "All reviewers", "primary_purpose": "Anchor the pack to current runtime outputs and labels.", "navigation_priority": "8", "governance_sensitive": "yes", "notes": "Runtime versus review labels preserved."},
         {"sheet_name": "Revenue Reconciliation", "reviewer_role": "Commercial / audit", "primary_purpose": "Review revenue lines, totals, and missing evidence treatment.", "navigation_priority": "9", "governance_sensitive": "yes", "notes": "CO2 and balancing remain explicit evidence gaps."},
-        {"sheet_name": "OPEX Reconciliation", "reviewer_role": "Operations / audit", "primary_purpose": "Review OPEX totals, contingency breakout status, and EBITDA bridge.", "navigation_priority": "10", "governance_sensitive": "yes", "notes": "Grouped OPEX residuals remain documented."},
-        {"sheet_name": "Senior Debt Reconciliation", "reviewer_role": "Lender / debt reviewer", "primary_purpose": "Review debt schedule visibility, DSCR residuals, and timing notes.", "navigation_priority": "11", "governance_sensitive": "yes", "notes": "Debt rows remain runtime-transparent."},
-        {"sheet_name": "SHL Reconciliation", "reviewer_role": "Sponsor / audit", "primary_purpose": "Review SHL opening, accrued, cash, PIK, principal, and balance treatment.", "navigation_priority": "12", "governance_sensitive": "yes", "notes": "Presentation and evidence limitations are explicit."},
-        {"sheet_name": "Tax R35-R67-R69", "reviewer_role": "Tax / audit", "primary_purpose": "Review governed tax residuals, runtime audit fields, and evidence gaps.", "navigation_priority": "13", "governance_sensitive": "yes", "notes": "No tax runtime changes in this pack."},
-        {"sheet_name": "CFADS Waterfall", "reviewer_role": "Lender / cashflow reviewer", "primary_purpose": "Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.", "navigation_priority": "14", "governance_sensitive": "yes", "notes": "Governance blockers are highlighted."},
-        {"sheet_name": "Distributions Sponsor", "reviewer_role": "Sponsor / IC", "primary_purpose": "Review distribution definition and DA staging separation.", "navigation_priority": "15", "governance_sensitive": "yes", "notes": "No mixed authoritative path."},
-        {"sheet_name": "Returns Reconciliation", "reviewer_role": "IC / sponsor", "primary_purpose": "Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.", "navigation_priority": "16", "governance_sensitive": "yes", "notes": "Equity IRR residual remains a stakeholder matter."},
-        {"sheet_name": "IRR Reconciliation", "reviewer_role": "IC / lender / governance", "primary_purpose": "Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.", "navigation_priority": "17", "governance_sensitive": "yes", "notes": "Purpose-built reviewer sheet for IRR interpretation."},
-        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "18", "governance_sensitive": "yes", "notes": "Primary action list."},
-        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "19", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
-        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "20", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
-        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "21", "governance_sensitive": "yes", "notes": "Best closing sheet."},
+        {"sheet_name": "CO2 & Balancing Reconciliation", "reviewer_role": "Commercial / audit / governance", "primary_purpose": "See grouped-versus-separate evidence quality for revenue sub-lines and understand where CO2/balancing remains an evidence problem rather than a runtime failure.", "navigation_priority": "10", "governance_sensitive": "yes", "notes": "Dedicated source-map hardening sheet."},
+        {"sheet_name": "OPEX Reconciliation", "reviewer_role": "Operations / audit", "primary_purpose": "Review OPEX totals, contingency breakout status, and EBITDA bridge.", "navigation_priority": "11", "governance_sensitive": "yes", "notes": "Grouped OPEX residuals remain documented."},
+        {"sheet_name": "Senior Debt Reconciliation", "reviewer_role": "Lender / debt reviewer", "primary_purpose": "Review debt schedule visibility, DSCR residuals, and timing notes.", "navigation_priority": "12", "governance_sensitive": "yes", "notes": "Debt rows remain runtime-transparent."},
+        {"sheet_name": "SHL Reconciliation", "reviewer_role": "Sponsor / audit", "primary_purpose": "Review SHL opening, accrued, cash, PIK, principal, and balance treatment.", "navigation_priority": "13", "governance_sensitive": "yes", "notes": "Presentation and evidence limitations are explicit."},
+        {"sheet_name": "Tax R35-R67-R69", "reviewer_role": "Tax / audit", "primary_purpose": "Review governed tax residuals, runtime audit fields, and evidence gaps.", "navigation_priority": "14", "governance_sensitive": "yes", "notes": "No tax runtime changes in this pack."},
+        {"sheet_name": "CFADS Waterfall", "reviewer_role": "Lender / cashflow reviewer", "primary_purpose": "Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.", "navigation_priority": "15", "governance_sensitive": "yes", "notes": "Governance blockers are highlighted."},
+        {"sheet_name": "Distributions Sponsor", "reviewer_role": "Sponsor / IC", "primary_purpose": "Review distribution definition and DA staging separation.", "navigation_priority": "16", "governance_sensitive": "yes", "notes": "No mixed authoritative path."},
+        {"sheet_name": "Returns Reconciliation", "reviewer_role": "IC / sponsor", "primary_purpose": "Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.", "navigation_priority": "17", "governance_sensitive": "yes", "notes": "Equity IRR residual remains a stakeholder matter."},
+        {"sheet_name": "IRR Reconciliation", "reviewer_role": "IC / lender / governance", "primary_purpose": "Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.", "navigation_priority": "18", "governance_sensitive": "yes", "notes": "Purpose-built reviewer sheet for IRR interpretation."},
+        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "19", "governance_sensitive": "yes", "notes": "Primary action list."},
+        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "20", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
+        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "21", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
+        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "22", "governance_sensitive": "yes", "notes": "Best closing sheet."},
     ]
 
 
@@ -890,6 +1021,8 @@ def _write_navigation(sheet, runtime_summary_rows: list[dict[str, str]]) -> None
         "WARN means the row is materially explainable but still worth reviewer attention.",
         "ACCEPTED_CONVENTION means the difference is understood and documented as a presentation or definition choice.",
         "MISSING_EVIDENCE means the evidence is not available; it is not a hidden zero.",
+        "EVIDENCE_LIMITATION means the runtime or Excel side exists only at a broader level than the reviewer wants.",
+        "GROUPED_SOURCE_ONLY means the available evidence supports only a grouped revenue row, not a defensible sub-line split.",
         "RUNTIME_BINDING_PENDING means the runtime logic exists but the reporting breakout is not yet first-class.",
         "GOVERNANCE_BLOCKER means the row is visible for review but cannot be treated as approved runtime authority.",
     ]
@@ -907,6 +1040,8 @@ def _write_navigation(sheet, runtime_summary_rows: list[dict[str, str]]) -> None
         (FAIL, FAIL_FILL),
         (ACCEPTED_CONVENTION, CONVENTION_FILL),
         (MISSING_EVIDENCE, MISS_FILL),
+        (EVIDENCE_LIMITATION, WARN_FILL),
+        (GROUPED_SOURCE_ONLY, PENDING_FILL),
         (RUNTIME_BINDING_PENDING, PENDING_FILL),
         (GOVERNANCE_BLOCKER, GOVERNANCE_FILL),
     ]
@@ -973,7 +1108,7 @@ def _write_exec_summary(sheet, summary_rows: list[dict[str, str]], runtime_summa
     for row in summary_rows:
         counts[row["classification"]] = counts.get(row["classification"], 0) + 1
     r = 8
-    for key in [PASS, WARN, FAIL, ACCEPTED_CONVENTION, MISSING_EVIDENCE, RUNTIME_BINDING_PENDING, GOVERNANCE_BLOCKER]:
+    for key in [PASS, WARN, FAIL, ACCEPTED_CONVENTION, MISSING_EVIDENCE, EVIDENCE_LIMITATION, GROUPED_SOURCE_ONLY, RUNTIME_BINDING_PENDING, GOVERNANCE_BLOCKER]:
         sheet.cell(row=r, column=1, value=key)
         sheet.cell(row=r, column=2, value=counts.get(key, 0))
         sheet.cell(row=r, column=1).fill = _fill_for_classification(key)
@@ -1048,7 +1183,7 @@ def _signoff_status(rows: list[dict[str, str]]) -> str:
         return "GOVERNANCE_PENDING"
     if FAIL in classes or MATERIAL_DELTA in classes:
         return "BLOCKED"
-    if MISSING_EVIDENCE in classes or RUNTIME_BINDING_PENDING in classes:
+    if MISSING_EVIDENCE in classes or RUNTIME_BINDING_PENDING in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes:
         return "IN_REVIEW"
     if WARN in classes:
         return "READY_FOR_SIGNOFF"
@@ -1082,14 +1217,14 @@ def _review_signoff_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, s
                 "reviewer": reviewer_map.get(area, "Review"),
                 "review_status": _signoff_status(area_rows) if area_rows else "NOT_STARTED",
                 "current_status": _signoff_status(area_rows) if area_rows else "NOT_STARTED",
-                "evidence_complete": "no" if MISSING_EVIDENCE in classes else "yes",
+                "evidence_complete": "no" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "yes",
                 "runtime_verified": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
                 "governance_reviewed": "pending" if GOVERNANCE_BLOCKER in classes else "yes",
                 "stakeholder_decision_required": "yes" if any(row["requires_stakeholder_decision"] == "yes" for row in area_rows) else "no",
                 "runtime_ready": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
-                "evidence_ready": "no" if MISSING_EVIDENCE in classes else "yes",
+                "evidence_ready": "no" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "yes",
                 "governance_ready": "no" if GOVERNANCE_BLOCKER in classes else "yes",
-                "blocker_type": "governance" if GOVERNANCE_BLOCKER in classes else "evidence" if MISSING_EVIDENCE in classes else "runtime_binding" if RUNTIME_BINDING_PENDING in classes else "none",
+                "blocker_type": "governance" if GOVERNANCE_BLOCKER in classes else "evidence" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "runtime_binding" if RUNTIME_BINDING_PENDING in classes else "none",
                 "recommended_action": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
                 "recommended_next_step": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
                 "notes": area_rows[0]["notes"] if area_rows else "",
@@ -1124,7 +1259,7 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
     sheet["A7"] = "Classification Counts"
     sheet["A7"].font = BOLD_FONT
     row = 8
-    for key in [PASS, WARN, FAIL, ACCEPTED_CONVENTION, MISSING_EVIDENCE, RUNTIME_BINDING_PENDING, GOVERNANCE_BLOCKER]:
+    for key in [PASS, WARN, FAIL, ACCEPTED_CONVENTION, MISSING_EVIDENCE, EVIDENCE_LIMITATION, GROUPED_SOURCE_ONLY, RUNTIME_BINDING_PENDING, GOVERNANCE_BLOCKER]:
         sheet.cell(row=row, column=1, value=key).fill = _fill_for_classification(key)
         sheet.cell(row=row, column=2, value=counts.get(key, 0))
         row += 1
@@ -1136,6 +1271,8 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
         ("Runtime completeness estimate", f"{runtime_ready} of {total_items} tracked rows are runtime-backed or convention-classified."),
         ("Evidence completeness estimate", f"{evidence_ready} of {total_items} tracked rows are not blocked solely by missing evidence."),
         ("Unresolved material delta summary", f"{unresolved} rows remain non-PASS, with the largest concentration in governed tax and evidence-bound review items."),
+        ("CO2 / balancing evidence summary", "Revenue sub-line totals remain strongest at grouped level; standalone CO2 and balancing rows are still evidence-limited rather than runtime-failed."),
+        ("Grouped vs separated evidence summary", "Electricity revenue is well evidenced separately, while CO2 and balancing remain grouped-only or missing in committed sources."),
         ("IRR parity summary", "Project IRR is within tolerance; equity IRR remains a governed interpretation topic rather than a newly identified runtime defect."),
         ("IRR convention summary", "XIRR anchors, SHL IDC investment-base treatment, and distribution-definition framing remain the main IRR interpretation drivers."),
         ("Accepted convention count", counts.get(ACCEPTED_CONVENTION, 0)),
@@ -1375,6 +1512,8 @@ def _write_notes(sheet) -> None:
         ("Lender reviewer focus", "Focus on debt, DSCR, CFADS, governance blockers, and whether missing evidence affects reliance on credit-facing outputs."),
         ("Audit reviewer focus", "Focus on Source Inventory, Accepted Conventions, missing evidence discipline, and whether every non-PASS row has a defensible explanation."),
         ("Engineer focus", "Focus only on rows still marked runtime binding pending or areas that would need a dedicated follow-up branch."),
+        ("How to interpret grouped revenue evidence", "Grouped revenue evidence means the current sources only support a total or combined view. It does not mean the runtime engine is mixing rows incorrectly."),
+        ("CO2 / balancing reviewer caution", "If a row is labeled GROUPED_SOURCE_ONLY or MISSING_EVIDENCE, do not infer a synthetic CO2 or balancing split. Reviewers should treat that as a source-map limitation."),
         ("How to interpret IRR drift", "Start with the IRR Reconciliation sheet. Small project or equity IRR deltas can come from date anchors, distribution framing, or other documented conventions before they imply a runtime defect."),
         ("When IRR drift is acceptable", "Treat convention-backed drift as reviewable if the root cause is explicit, runtime values are stable, and the remaining gap is a governance or presentation issue rather than an unexplained economics change."),
         ("Stakeholder decisions", "Equity IRR residual, reconciliation IRR reporting view, and R99/R102 governance promotion remain outside this branch."),
@@ -1557,6 +1696,39 @@ def _irr_summary_row(entry: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _co2_balancing_summary_row(entry: dict[str, str]) -> dict[str, str]:
+    runtime_total = entry["runtime_value_available"]
+    excel_total = entry["excel_value_available"]
+    delta_total = "N/A"
+    runtime_num = _num(runtime_total)
+    excel_num = _num(excel_total)
+    if runtime_num is not None and excel_num is not None:
+        delta_total = str(runtime_num - excel_num)
+    return {
+        "section": "CO2 / Balancing",
+        "metric": entry["metric"],
+        "excel_total": str(excel_total),
+        "model_total": str(runtime_total),
+        "delta_total": delta_total,
+        "status": "REVIEW" if entry["classification"] != PASS else "OK",
+        "classification": entry["classification"],
+        "root_cause": entry["unresolved_reason"],
+        "recommended_action": (
+            "Keep grouped until stronger source evidence exists."
+            if entry["classification"] == GROUPED_SOURCE_ONLY
+            else "Preserve explicit evidence gap; do not synthesize a split."
+            if entry["classification"] in {MISSING_EVIDENCE, EVIDENCE_LIMITATION}
+            else "None"
+        ),
+        "governance_impact": "Revenue-source interpretation only" if entry["governance_sensitive"] == "yes" else "None",
+        "notes": entry["notes"],
+        "owner": "Commercial / Audit",
+        "requires_stakeholder_decision": "yes" if entry["governance_sensitive"] == "yes" else "no",
+        "requires_runtime_change": "no",
+        "expected_roadmap_phase": "Phase 10",
+    }
+
+
 def _write_irr_reconciliation_sheet(sheet, irr_rows: list[dict[str, str]], runtime_summary_rows: list[dict[str, str]]) -> None:
     generated_at = runtime_summary_rows[0]["generated_at"]
     project_name = runtime_summary_rows[0]["project"]
@@ -1630,6 +1802,92 @@ def _write_irr_reconciliation_sheet(sheet, irr_rows: list[dict[str, str]], runti
     sheet.freeze_panes = "A8"
 
 
+def _write_co2_balancing_sheet(sheet, rows: list[dict[str, str]], runtime_summary_rows: list[dict[str, str]]) -> None:
+    generated_at = runtime_summary_rows[0]["generated_at"]
+    project_name = runtime_summary_rows[0]["project"]
+    _apply_provenance_banner(sheet, "CO2 & Balancing Reconciliation", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", generated_at, project_name)
+
+    sheet["A5"] = "Reviewer Guidance"
+    sheet["A5"].font = BOLD_FONT
+    sheet["B5"] = "Use this sheet to see which revenue rows are truly separated, which are grouped-only, and which remain missing on one or both evidence sides. Grouped evidence is not a runtime defect by itself."
+    headers = [
+        "Metric",
+        "Runtime Source",
+        "Excel Source",
+        "Grouped / Separate",
+        "Evidence Quality",
+        "Runtime Available",
+        "Excel Available",
+        "Workbook Bound",
+        "Runtime Value",
+        "Excel Value",
+        "Classification",
+        "Unresolved Reason",
+        "Notes",
+    ]
+    for idx, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=7, column=idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    row = 8
+    for entry in rows:
+        values = [
+            entry["metric"],
+            entry["runtime_source"],
+            entry["excel_source"],
+            entry["grouped_or_separate"],
+            entry["evidence_quality"],
+            entry["runtime_available"],
+            entry["excel_available"],
+            entry["workbook_bound"],
+            entry["runtime_value_available"],
+            entry["excel_value_available"],
+            entry["classification"],
+            entry["unresolved_reason"],
+            entry["notes"],
+        ]
+        for idx, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=idx, value=value)
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+            if idx == 11:
+                cell.fill = _fill_for_classification(str(value))
+            elif row % 2 == 0:
+                cell.fill = ROW_ALT_FILL
+            if idx in {9, 10} and isinstance(value, (int, float)):
+                cell.number_format = K_EUR_FORMAT
+        row += 1
+
+    sheet["A18"] = "Evidence Policy"
+    sheet["A18"].font = BOLD_FONT
+    sheet["A19"] = "If runtime revenue exists only as an aggregate, it stays aggregated."
+    sheet["A20"] = "If Excel evidence exists only as grouped revenue, it stays grouped."
+    sheet["A21"] = "Standalone CO2 or balancing values are never fabricated from totals."
+    sheet["A22"] = "Grouped-source rows are there to explain evidence boundaries, not to imply a hidden model error."
+
+    widths = {
+        "A": 24,
+        "B": 24,
+        "C": 32,
+        "D": 24,
+        "E": 16,
+        "F": 14,
+        "G": 14,
+        "H": 14,
+        "I": 14,
+        "J": 14,
+        "K": 22,
+        "L": 42,
+        "M": 36,
+    }
+    for col, width in widths.items():
+        sheet.column_dimensions[col].width = width
+    sheet.freeze_panes = "A8"
+
+
 def _scalar_totals(runtime: dict) -> dict[str, tuple[str | float, str | float]]:
     return {
         "Project IRR": (0.0947, runtime["project_irr"]),
@@ -1676,6 +1934,9 @@ def write_calibration_reconciliation_pack(
     irr_reconciliation_summary_path: Path | str = DEFAULT_IRR_RECONCILIATION_SUMMARY,
     irr_convention_map_path: Path | str = DEFAULT_IRR_CONVENTION_MAP,
     irr_governance_items_path: Path | str = DEFAULT_IRR_GOVERNANCE_ITEMS,
+    co2_balancing_source_map_path: Path | str = DEFAULT_CO2_BALANCING_SOURCE_MAP,
+    co2_balancing_gap_summary_path: Path | str = DEFAULT_CO2_BALANCING_GAP_SUMMARY,
+    co2_balancing_evidence_quality_path: Path | str = DEFAULT_CO2_BALANCING_EVIDENCE_QUALITY,
 ) -> ReconciliationArtifacts:
     workbook_path = Path(workbook_path)
     gap_register_path = Path(gap_register_path)
@@ -1689,6 +1950,9 @@ def write_calibration_reconciliation_pack(
     irr_reconciliation_summary_path = Path(irr_reconciliation_summary_path)
     irr_convention_map_path = Path(irr_convention_map_path)
     irr_governance_items_path = Path(irr_governance_items_path)
+    co2_balancing_source_map_path = Path(co2_balancing_source_map_path)
+    co2_balancing_gap_summary_path = Path(co2_balancing_gap_summary_path)
+    co2_balancing_evidence_quality_path = Path(co2_balancing_evidence_quality_path)
 
     for path in (
         workbook_path,
@@ -1703,6 +1967,9 @@ def write_calibration_reconciliation_pack(
         irr_reconciliation_summary_path,
         irr_convention_map_path,
         irr_governance_items_path,
+        co2_balancing_source_map_path,
+        co2_balancing_gap_summary_path,
+        co2_balancing_evidence_quality_path,
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1716,6 +1983,7 @@ def write_calibration_reconciliation_pack(
     source_inventory = _source_inventory_rows(int(runtime["count"]))
     specs_by_sheet = _build_specs(runtime, per_bridge, shl_bridge)
     irr_rows = _irr_report_rows(runtime, conventions)
+    co2_balancing_rows = _co2_balancing_report_rows(runtime, per_bridge)
 
     workbook = Workbook()
     navigation = workbook.active
@@ -1739,6 +2007,7 @@ def write_calibration_reconciliation_pack(
 
     for sheet_name in [
         "Revenue Reconciliation",
+        "CO2 & Balancing Reconciliation",
         "OPEX Reconciliation",
         "Senior Debt Reconciliation",
         "SHL Reconciliation",
@@ -1747,13 +2016,18 @@ def write_calibration_reconciliation_pack(
         "Distributions Sponsor",
         "Returns Reconciliation",
     ]:
-        _write_reconciliation_sheet(
-            workbook.create_sheet(sheet_name),
-            specs_by_sheet[sheet_name],
-            runtime,
-            summary_rows,
-            scalar_totals,
-        )
+        if sheet_name == "CO2 & Balancing Reconciliation":
+            _write_co2_balancing_sheet(workbook.create_sheet(sheet_name), co2_balancing_rows, runtime_rows)
+            for entry in co2_balancing_rows:
+                summary_rows.append(_co2_balancing_summary_row(entry))
+        else:
+            _write_reconciliation_sheet(
+                workbook.create_sheet(sheet_name),
+                specs_by_sheet[sheet_name],
+                runtime,
+                summary_rows,
+                scalar_totals,
+            )
 
     for entry in irr_rows:
         summary_rows.append(_irr_summary_row(entry))
@@ -1788,6 +2062,25 @@ def write_calibration_reconciliation_pack(
     _write_csv(irr_reconciliation_summary_path, irr_rows)
     _write_csv(irr_convention_map_path, _irr_convention_map_rows(irr_rows))
     _write_csv(irr_governance_items_path, _irr_governance_item_rows(irr_rows))
+    _write_csv(co2_balancing_source_map_path, co2_balancing_rows)
+    _write_csv(co2_balancing_gap_summary_path, [row for row in co2_balancing_rows if row["classification"] != PASS])
+    _write_csv(
+        co2_balancing_evidence_quality_path,
+        [
+            {
+                "metric": row["metric"],
+                "runtime_value_available": row["runtime_value_available"],
+                "excel_value_available": row["excel_value_available"],
+                "grouped_or_separate": row["grouped_or_separate"],
+                "evidence_quality": row["evidence_quality"],
+                "classification": row["classification"],
+                "unresolved_reason": row["unresolved_reason"],
+                "governance_sensitive": row["governance_sensitive"],
+                "notes": row["notes"],
+            }
+            for row in co2_balancing_rows
+        ],
+    )
     write_review_pack_navigation_map_csv(navigation_map_path)
 
     return ReconciliationArtifacts(
@@ -1803,6 +2096,9 @@ def write_calibration_reconciliation_pack(
         irr_reconciliation_summary_path=irr_reconciliation_summary_path,
         irr_convention_map_path=irr_convention_map_path,
         irr_governance_items_path=irr_governance_items_path,
+        co2_balancing_source_map_path=co2_balancing_source_map_path,
+        co2_balancing_gap_summary_path=co2_balancing_gap_summary_path,
+        co2_balancing_evidence_quality_path=co2_balancing_evidence_quality_path,
     )
 
 
@@ -1842,6 +2138,7 @@ def _runtime_binding_inventory_rows(summary_rows: list[dict[str, str]]) -> list[
     rows: list[dict[str, str]] = []
     sheet_map = {
         "Revenue": "Revenue Reconciliation",
+        "CO2 / Balancing": "CO2 & Balancing Reconciliation",
         "OPEX": "OPEX Reconciliation",
         "Senior Debt": "Senior Debt Reconciliation",
         "SHL": "SHL Reconciliation",

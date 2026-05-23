@@ -3,6 +3,12 @@ Revenue,Electricity Revenue,Commercial,Revenue Reconciliation,yes,no,,high,PASS,
 Revenue,CO2 Revenue,Commercial,Revenue Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Do not silently roll this into zero or total revenue.
 Revenue,Balancing Revenue,Commercial,Revenue Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Total revenue remains the authoritative comparable line.
 Revenue,Total Revenue,Commercial,Revenue Reconciliation,yes,no,,high,PASS,
+CO2 / Balancing,Electricity Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,yes,no,,high,PASS,Electricity revenue is the only revenue sub-line with strong committed evidence on both sides.
+CO2 / Balancing,CO2 Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,Neither the committed Excel evidence set nor runtime period exports expose a standalone CO2 revenue row.,low,MISSING_EVIDENCE,Do not synthesize a CO2 split from total revenue.
+CO2 / Balancing,Balancing Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,Standalone balancing revenue is not committed in the current Excel extracts or runtime export fields.,low,MISSING_EVIDENCE,Missing balancing evidence should stay explicit rather than being netted into a guessed split.
+CO2 / Balancing,Grouped Revenue Evidence,Commercial / Audit,CO2 & Balancing Reconciliation,yes,no,,high,GROUPED_SOURCE_ONLY,This grouped row helps reviewers separate evidence limitations from runtime-total concerns.
+CO2 / Balancing,Runtime Aggregation Boundary,Commercial / Audit,CO2 & Balancing Reconciliation,yes,no,,high,EVIDENCE_LIMITATION,"This is a reporting/source-map limitation, not a runtime revenue defect."
+CO2 / Balancing,Excel Extraction Boundary,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,The committed Excel bridge gives a total revenue row but not a durable CO2-versus-balancing split.,low,EVIDENCE_LIMITATION,This should be treated as an extraction/evidence-quality issue rather than a model defect.
 OPEX,Total OPEX,Operations,OPEX Reconciliation,yes,no,,high,WARN,Residual is documented rather than runtime-fixed here.
 OPEX,Contingency,Operations,OPEX Reconciliation,yes,no,,medium,RUNTIME_BINDING_PENDING,Do not treat missing breakout as a zero contingency.
 OPEX,EBITDA,Operations,OPEX Reconciliation,yes,no,,high,PASS,
