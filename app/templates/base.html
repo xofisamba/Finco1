@@ -3,15 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}Finco One — Project Finance Platform{% endblock %}</title>
+  <title>{% block title %}Finco One - Project Finance Platform{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
-  <link rel="stylesheet" href="/static/styles.css?v=phase9_5_nav_fix" />
+  <link rel="stylesheet" href="/static/styles.css?v=phase12_persistence_foundation" />
   <script src="/static/vendor/htmx.min.js"></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
 
-<!-- Fixed top header -->
 <header class="top-header">
   <div class="header-inner">
     <div class="header-brand">
@@ -33,62 +32,63 @@
   </div>
 </header>
 
-<!-- Excel-like tab ribbon — sits below header, above the layout -->
 {% include "partials/workspace_tabs.html" %}
 
-<!-- App shell: project-sidebar + sidebar-input + content -->
 <div class="app-layout">
-
-  <!-- Project workspace sidebar — replaces sidebar-nav -->
   <nav class="project-sidebar" id="project-sidebar">
-
-    <!-- Branding strip -->
     <div class="ps-brand">
       <div class="ps-brand-name">Finco One</div>
       <div class="ps-brand-sub">Project Finance Model</div>
     </div>
 
-    <!-- Project selector -->
     {% include "partials/project_selector.html" %}
 
-    <!-- Workspace Actions -->
     <div class="ps-section">
       <div class="ps-section-label">Actions</div>
       <div class="ps-actions">
-        <button class="ps-action-btn" id="btn-new-project">
+        <button class="ps-action-btn" id="btn-new-project" type="button">
           <span class="ps-action-icon">+</span> New Project
         </button>
-        <button class="ps-action-btn">
-          <span class="ps-action-icon">⧉</span> Duplicate Scenario
+        <button class="ps-action-btn" id="btn-duplicate-scenario" type="button">
+          <span class="ps-action-icon">Copy</span> Duplicate Scenario
         </button>
-        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model">
-          <span class="ps-action-icon">⚡</span> Run Model
+        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model" type="button">
+          <span class="ps-action-icon">Run</span> Run Model
         </button>
-        <button class="ps-action-btn" id="btn-save">
-          <span class="ps-action-icon">💾</span> Save
+        <button class="ps-action-btn"
+                id="btn-save"
+                type="button"
+                hx-post="/scenarios/save"
+                hx-include="#main-form"
+                hx-target="#saved-scenario-panel"
+                hx-swap="outerHTML">
+          <span class="ps-action-icon">Save</span> Save Scenario
         </button>
-        <button class="ps-action-btn" id="btn-load">
-          <span class="ps-action-icon">📂</span> Load
+        <button class="ps-action-btn"
+                id="btn-load"
+                type="button"
+                hx-get="/scenarios?project={{ project_ctx.id }}"
+                hx-target="#saved-scenario-panel"
+                hx-swap="outerHTML">
+          <span class="ps-action-icon">Load</span> Refresh Saved
         </button>
       </div>
     </div>
 
-    <!-- Scenario selector -->
     <div class="ps-section">
       <div class="ps-section-label">Scenario</div>
       <div class="ps-scenario-list">
         <div class="ps-scenario-item active">
           <span class="ps-scenario-dot ps-scenario-dot--active"></span>
-          Base
-        </div>
-        <div class="ps-scenario-item">
-          <span class="ps-scenario-dot"></span>
-          Audit
+          {{ project_record.project_name if project_record else "Base" }}
         </div>
       </div>
     </div>
 
-    <!-- Governance panel -->
+    <div id="saved-scenario-panel">
+      {% include "partials/scenario_workspace.html" %}
+    </div>
+
     <div class="ps-section">
       <div class="ps-section-label">Governance</div>
       <div class="ps-gov-list">
@@ -103,39 +103,36 @@
       </div>
     </div>
 
-    <!-- Downloads shortcuts -->
     <div class="ps-section">
       <div class="ps-section-label">Downloads</div>
       <div class="ps-downloads">
         <a href="/download" class="ps-download-item">
-          <span>📥</span> Model Export
+          <span>Export</span> Model Export
         </a>
-        <a href="#download-parity" class="ps-download-item">
-          <span>📊</span> Parity Workbook
+        <a href="/exports/runtime-summary.csv?project={{ project_ctx.id }}" class="ps-download-item">
+          <span>CSV</span> Runtime Summary
         </a>
-        <a href="#download-gap" class="ps-download-item">
-          <span>🔍</span> Gap Register
+        <a href="/exports/institutional-workbook.xlsx?project={{ project_ctx.id }}" class="ps-download-item">
+          <span>XLSX</span> Workbook
         </a>
       </div>
     </div>
+  </nav>
 
-  </nav><!-- .project-sidebar -->
-
-  <!-- Left panel: input form -->
   <aside class="sidebar-input" id="sidebar-input">
     {% block sidebar_input %}{% endblock %}
   </aside>
 
-  <!-- Page content -->
   <main class="content">
     {% block body %}{% endblock %}
   </main>
-
-</div><!-- .app-layout -->
+</div>
 
 <script>
   function activateNav(el) {
-    document.querySelectorAll('.sidebar-nav-link').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('.sidebar-nav-link').forEach(function(link) {
+      link.classList.remove('active');
+    });
     if (el) el.classList.add('active');
   }
 
