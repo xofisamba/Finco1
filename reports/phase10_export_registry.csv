@@ -3,7 +3,7 @@ TUHO full line-item horizontal review workbook,parity,TUHO,xlsx,review,yes,accep
 TUHO final parity closeout status,governance,TUHO,csv,review,yes,g20_blocked_pending_stakeholder_acceptance,No runtime approval implied.
 Phase 10 runtime summary export,runtime,"TUHO, Oborovo",csv,runtime,yes,foundation,Values are sourced from existing runtime outputs.
 Phase 10 institutional workbook skeleton,workbook,"TUHO, Oborovo",xlsx,runtime,yes,runtime_binding_in_progress,"Inputs, OPEX, CAPEX, Revenue, Senior Debt, SHL, Tax, P&L, Cash Flow, Balance Sheet, Audit, and Gap Register now carry structured runtime/export content."
-Phase 10 calibration reconciliation pack,audit,TUHO,xlsx,review,yes,review_evidence_pack,Executive review and governance evidence pack; G20 remains blocked and R99/R102 remain not approved.
+Phase 10 calibration reconciliation pack,audit,TUHO,xlsx,review,yes,review_evidence_pack,Executive review and governance evidence pack with explicit IRR interpretation layer; G20 remains blocked and R99/R102 remain not approved.
 Phase 10 runtime binding inventory,source_map,TUHO,csv,review,yes,evidence_expansion,Helps distinguish true evidence gaps from reporting-layer binding gaps.
 Phase 10 evidence coverage summary,validation,TUHO,csv,review,yes,evidence_expansion,Used by the Executive Dashboard to quantify review maturity without overstating certainty.
 Phase 10 export registry,validation,portfolio,csv,review,no,foundation,Centralizes artifact metadata for reviewer workflows.
