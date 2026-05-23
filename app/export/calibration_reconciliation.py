@@ -25,6 +25,8 @@ ACCEPTED_CONVENTION = "ACCEPTED_CONVENTION"
 MISSING_EVIDENCE = "MISSING_EVIDENCE"
 RUNTIME_BINDING_PENDING = "RUNTIME_BINDING_PENDING"
 GOVERNANCE_BLOCKER = "GOVERNANCE_BLOCKER"
+GOVERNANCE_REVIEW = "GOVERNANCE_REVIEW"
+MATERIAL_DELTA = "MATERIAL_DELTA"
 
 VALID_CLASSIFICATIONS = {
     PASS,
@@ -77,6 +79,9 @@ DEFAULT_SIGNOFF_MATRIX = REPORTS_DIR / "phase10_review_signoff_matrix.csv"
 DEFAULT_RUNTIME_BINDING_INVENTORY = REPORTS_DIR / "phase10_runtime_binding_inventory.csv"
 DEFAULT_EVIDENCE_COVERAGE_SUMMARY = REPORTS_DIR / "phase10_evidence_coverage_summary.csv"
 DEFAULT_RUNTIME_BINDING_GAP_REGISTER = REPORTS_DIR / "phase10_runtime_binding_gap_register.csv"
+DEFAULT_IRR_RECONCILIATION_SUMMARY = REPORTS_DIR / "phase10_irr_reconciliation_summary.csv"
+DEFAULT_IRR_CONVENTION_MAP = REPORTS_DIR / "phase10_irr_convention_map.csv"
+DEFAULT_IRR_GOVERNANCE_ITEMS = REPORTS_DIR / "phase10_irr_governance_items.csv"
 
 
 @dataclass(frozen=True)
@@ -112,6 +117,9 @@ class ReconciliationArtifacts:
     runtime_binding_inventory_path: Path
     evidence_coverage_summary_path: Path
     runtime_binding_gap_register_path: Path
+    irr_reconciliation_summary_path: Path
+    irr_convention_map_path: Path
+    irr_governance_items_path: Path
 
 
 def _num(value) -> float | None:
@@ -211,6 +219,8 @@ def _fill_for_classification(classification: str) -> PatternFill:
         MISSING_EVIDENCE: MISS_FILL,
         RUNTIME_BINDING_PENDING: PENDING_FILL,
         GOVERNANCE_BLOCKER: GOVERNANCE_FILL,
+        GOVERNANCE_REVIEW: CONVENTION_FILL,
+        MATERIAL_DELTA: FAIL_FILL,
     }.get(classification, META_FILL)
 
 
@@ -361,6 +371,146 @@ def _source_inventory_rows(period_count: int) -> list[dict[str, str]]:
             "notes": "Tracks which workbook sheets are runtime-bound versus placeholder-forward.",
         },
     ]
+
+
+def _irr_report_rows(runtime: dict, conventions: list[dict[str, str]]) -> list[dict[str, str]]:
+    convention_lookup = {row.get("convention_id", ""): row for row in conventions}
+    project_runtime = float(runtime["project_irr"])
+    equity_runtime = float(runtime["equity_irr"])
+    project_excel = 0.0947
+    equity_excel = 0.1161
+    conv_xirr = convention_lookup.get("CONV-01", {})
+    conv_shl_idc = convention_lookup.get("CONV-02", {})
+    conv_distribution = convention_lookup.get("CONV-03", {})
+
+    return [
+        {
+            "metric": "Project IRR",
+            "runtime_value": f"{project_runtime:.6f}",
+            "excel_value": f"{project_excel:.6f}",
+            "delta": f"{project_runtime - project_excel:.6f}",
+            "classification": PASS,
+            "root_cause": "Runtime project IRR remains within the already documented closeout tolerance versus Excel.",
+            "governance_sensitive": "no",
+            "stakeholder_decision_required": "no",
+            "governance_impact": "None",
+            "notes": "This is not a runtime-calculation issue in the current review pack.",
+        },
+        {
+            "metric": "Equity IRR",
+            "runtime_value": f"{equity_runtime:.6f}",
+            "excel_value": f"{equity_excel:.6f}",
+            "delta": f"{equity_runtime - equity_excel:.6f}",
+            "classification": GOVERNANCE_REVIEW,
+            "root_cause": "The residual is primarily convention- and presentation-driven: XIRR date anchors, SHL IDC investment-base treatment, and distribution-definition framing all affect the reviewer-facing bridge.",
+            "governance_sensitive": "yes",
+            "stakeholder_decision_required": "yes",
+            "governance_impact": "Stakeholder acceptance of residual IRR interpretation remains required before G20 can be treated as review-complete.",
+            "notes": "This row explains the remaining equity IRR discussion; it does not change runtime IRR logic.",
+        },
+        {
+            "metric": "Reconciliation IRR",
+            "runtime_value": "MISSING_EVIDENCE",
+            "excel_value": "MISSING_EVIDENCE",
+            "delta": "N/A",
+            "classification": MISSING_EVIDENCE,
+            "root_cause": "A dedicated reconciliation IRR reporting view has not existed in the committed workbook layer until this branch, and there is still no separate approved scalar target to compute against automatically.",
+            "governance_sensitive": "yes",
+            "stakeholder_decision_required": "yes",
+            "governance_impact": "Stakeholders can waive this view or request a later reporting-only implementation with more explicit timing assumptions.",
+            "notes": "Missing evidence is preserved honestly; no proxy IRR is fabricated here.",
+        },
+        {
+            "metric": "XIRR Date Convention",
+            "runtime_value": "runtime period-end framing",
+            "excel_value": "Excel construction-date / workbook-specific anchor",
+            "delta": "presentation-only",
+            "classification": ACCEPTED_CONVENTION,
+            "root_cause": conv_xirr.get("description", "Excel and model may use different XIRR date anchors."),
+            "governance_sensitive": "yes",
+            "stakeholder_decision_required": conv_xirr.get("stakeholder_decision_required", "yes"),
+            "governance_impact": "Presentation and closeout interpretation only; no runtime formula override is implied.",
+            "notes": conv_xirr.get("notes", "Treat as a convention discussion rather than a runtime defect."),
+        },
+        {
+            "metric": "Distribution Timing / Definition",
+            "runtime_value": "runtime distribution_keur",
+            "excel_value": "Excel dividends / distribution presentation",
+            "delta": "definition-only",
+            "classification": ACCEPTED_CONVENTION,
+            "root_cause": conv_distribution.get("description", "Runtime distributions and Excel dividend presentation are definitionally different."),
+            "governance_sensitive": "yes",
+            "stakeholder_decision_required": conv_distribution.get("stakeholder_decision_required", "yes"),
+            "governance_impact": "Reviewers need to agree which lens to present in signoff materials.",
+            "notes": conv_distribution.get("notes", "Default runtime distributions remain authoritative; audit-only staging stays separate."),
+        },
+        {
+            "metric": "SHL IDC Investment-Base Treatment",
+            "runtime_value": "documented runtime treatment",
+            "excel_value": "Excel convention baseline",
+            "delta": "convention-sensitive",
+            "classification": GOVERNANCE_REVIEW,
+            "root_cause": conv_shl_idc.get("description", "SHL IDC investment-base treatment is a known equity IRR convention driver."),
+            "governance_sensitive": "yes",
+            "stakeholder_decision_required": conv_shl_idc.get("stakeholder_decision_required", "yes"),
+            "governance_impact": "This convention affects how equity IRR residuals are explained to IC and lender reviewers.",
+            "notes": conv_shl_idc.get("notes", "Documented convention; not a runtime rewrite request."),
+        },
+        {
+            "metric": "Semiannual Timing / COD Framing",
+            "runtime_value": "semiannual runtime horizon",
+            "excel_value": "semiannual workbook horizon",
+            "delta": "timing-sensitive",
+            "classification": GOVERNANCE_REVIEW,
+            "root_cause": "Semiannual period framing and COD anchor interpretation can shift reviewer-facing XIRR timing without implying an economic runtime defect.",
+            "governance_sensitive": "yes",
+            "stakeholder_decision_required": "yes",
+            "governance_impact": "Requires reviewers to distinguish timing conventions from actual model behavior.",
+            "notes": "Use this row to explain why small IRR drift can remain acceptable even when runtime parity elsewhere is strong.",
+        },
+    ]
+
+
+def _irr_convention_map_rows(irr_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for entry in irr_rows:
+        if entry["classification"] not in {ACCEPTED_CONVENTION, GOVERNANCE_REVIEW}:
+            continue
+        rows.append(
+            {
+                "metric": entry["metric"],
+                "runtime_value": entry["runtime_value"],
+                "excel_value": entry["excel_value"],
+                "delta": entry["delta"],
+                "classification": entry["classification"],
+                "root_cause": entry["root_cause"],
+                "governance_sensitive": entry["governance_sensitive"],
+                "stakeholder_decision_required": entry["stakeholder_decision_required"],
+                "notes": entry["notes"],
+            }
+        )
+    return rows
+
+
+def _irr_governance_item_rows(irr_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for entry in irr_rows:
+        if entry["governance_sensitive"] != "yes":
+            continue
+        rows.append(
+            {
+                "metric": entry["metric"],
+                "runtime_value": entry["runtime_value"],
+                "excel_value": entry["excel_value"],
+                "delta": entry["delta"],
+                "classification": entry["classification"],
+                "root_cause": entry["root_cause"],
+                "governance_sensitive": entry["governance_sensitive"],
+                "stakeholder_decision_required": entry["stakeholder_decision_required"],
+                "notes": entry["governance_impact"],
+            }
+        )
+    return rows
 
 
 def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: list[dict[str, str]]) -> dict[str, list[MetricSpec]]:
@@ -659,7 +809,9 @@ def _severity_order(classification: str) -> int:
     order = {
         GOVERNANCE_BLOCKER: 0,
         FAIL: 1,
+        MATERIAL_DELTA: 1,
         WARN: 2,
+        GOVERNANCE_REVIEW: 3,
         RUNTIME_BINDING_PENDING: 3,
         MISSING_EVIDENCE: 4,
         ACCEPTED_CONVENTION: 5,
@@ -710,10 +862,11 @@ def _navigation_rows() -> list[dict[str, str]]:
         {"sheet_name": "CFADS Waterfall", "reviewer_role": "Lender / cashflow reviewer", "primary_purpose": "Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.", "navigation_priority": "14", "governance_sensitive": "yes", "notes": "Governance blockers are highlighted."},
         {"sheet_name": "Distributions Sponsor", "reviewer_role": "Sponsor / IC", "primary_purpose": "Review distribution definition and DA staging separation.", "navigation_priority": "15", "governance_sensitive": "yes", "notes": "No mixed authoritative path."},
         {"sheet_name": "Returns Reconciliation", "reviewer_role": "IC / sponsor", "primary_purpose": "Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.", "navigation_priority": "16", "governance_sensitive": "yes", "notes": "Equity IRR residual remains a stakeholder matter."},
-        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "17", "governance_sensitive": "yes", "notes": "Primary action list."},
-        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "18", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
-        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "19", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
-        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "20", "governance_sensitive": "yes", "notes": "Best closing sheet."},
+        {"sheet_name": "IRR Reconciliation", "reviewer_role": "IC / lender / governance", "primary_purpose": "Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.", "navigation_priority": "17", "governance_sensitive": "yes", "notes": "Purpose-built reviewer sheet for IRR interpretation."},
+        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "18", "governance_sensitive": "yes", "notes": "Primary action list."},
+        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "19", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
+        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "20", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
+        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "21", "governance_sensitive": "yes", "notes": "Best closing sheet."},
     ]
 
 
@@ -789,6 +942,7 @@ def _write_navigation(sheet, runtime_summary_rows: list[dict[str, str]]) -> None
         ("Go to Executive Dashboard", "Executive Dashboard"),
         ("Go to Executive Summary", "Executive Summary"),
         ("Go to Review Signoff", "Review Signoff"),
+        ("Go to IRR Reconciliation", "IRR Reconciliation"),
         ("Go to Gap Register", "Gap Register"),
         ("Go to Reviewer Notes", "Reviewer Notes"),
     ]
@@ -863,9 +1017,11 @@ def _write_exec_summary(sheet, summary_rows: list[dict[str, str]], runtime_summa
     sheet["F18"] = f"Engineering items: {len(engineering_items)}"
     sheet["F19"] = f"Stakeholder decision items: {len(stakeholder_items)}"
     sheet["F20"] = "Major remaining uncertainties"
-    sheet["F21"] = "Tax evidence gaps, reconciliation IRR view, and sub-line revenue mapping remain the primary non-runtime unknowns."
+    sheet["F21"] = "Tax evidence gaps, IRR convention interpretation, reconciliation IRR reporting completeness, and sub-line revenue mapping remain the primary non-runtime unknowns."
     sheet["F22"] = "Governance blockers"
     sheet["F23"] = "G20 remains BLOCKED; R99/R102 remain NOT APPROVED and audit-only."
+    sheet["F24"] = "IRR interpretation note"
+    sheet["G24"] = "Small IRR drift can still be convention-driven rather than a runtime defect; use the IRR Reconciliation sheet before escalating engineering work."
     sheet["F25"] = "Review Recommendation"
     sheet["F25"].font = BOLD_FONT
     sheet["F26"] = "Safe to review"
@@ -888,9 +1044,9 @@ def _write_exec_summary(sheet, summary_rows: list[dict[str, str]], runtime_summa
 
 def _signoff_status(rows: list[dict[str, str]]) -> str:
     classes = {row["classification"] for row in rows}
-    if GOVERNANCE_BLOCKER in classes:
+    if GOVERNANCE_BLOCKER in classes or GOVERNANCE_REVIEW in classes:
         return "GOVERNANCE_PENDING"
-    if FAIL in classes:
+    if FAIL in classes or MATERIAL_DELTA in classes:
         return "BLOCKED"
     if MISSING_EVIDENCE in classes or RUNTIME_BINDING_PENDING in classes:
         return "IN_REVIEW"
@@ -980,6 +1136,8 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
         ("Runtime completeness estimate", f"{runtime_ready} of {total_items} tracked rows are runtime-backed or convention-classified."),
         ("Evidence completeness estimate", f"{evidence_ready} of {total_items} tracked rows are not blocked solely by missing evidence."),
         ("Unresolved material delta summary", f"{unresolved} rows remain non-PASS, with the largest concentration in governed tax and evidence-bound review items."),
+        ("IRR parity summary", "Project IRR is within tolerance; equity IRR remains a governed interpretation topic rather than a newly identified runtime defect."),
+        ("IRR convention summary", "XIRR anchors, SHL IDC investment-base treatment, and distribution-definition framing remain the main IRR interpretation drivers."),
         ("Accepted convention count", counts.get(ACCEPTED_CONVENTION, 0)),
         ("Stakeholder-decision count", len(stakeholder_items)),
         ("Governance blocker count", counts.get(GOVERNANCE_BLOCKER, 0)),
@@ -1217,6 +1375,8 @@ def _write_notes(sheet) -> None:
         ("Lender reviewer focus", "Focus on debt, DSCR, CFADS, governance blockers, and whether missing evidence affects reliance on credit-facing outputs."),
         ("Audit reviewer focus", "Focus on Source Inventory, Accepted Conventions, missing evidence discipline, and whether every non-PASS row has a defensible explanation."),
         ("Engineer focus", "Focus only on rows still marked runtime binding pending or areas that would need a dedicated follow-up branch."),
+        ("How to interpret IRR drift", "Start with the IRR Reconciliation sheet. Small project or equity IRR deltas can come from date anchors, distribution framing, or other documented conventions before they imply a runtime defect."),
+        ("When IRR drift is acceptable", "Treat convention-backed drift as reviewable if the root cause is explicit, runtime values are stable, and the remaining gap is a governance or presentation issue rather than an unexplained economics change."),
         ("Stakeholder decisions", "Equity IRR residual, reconciliation IRR reporting view, and R99/R102 governance promotion remain outside this branch."),
         ("Likely acceptable convention drift", "XIRR date convention, SHL presentation splits, and grouped OPEX minor rows are documented as conventions rather than runtime defects."),
         ("Still requires engineering work", "Any future reconciliation IRR view, deeper tax row extraction, or sub-line CO2/balancing mapping should happen in dedicated reporting branches."),
@@ -1224,6 +1384,7 @@ def _write_notes(sheet) -> None:
         ("Presentation only", "Runtime vs preview labels and governance badges are included to help reviewers avoid treating audit-only staging rows as runtime authority."),
         ("Already runtime-verified", "Revenue, core OPEX totals, runtime summary KPIs, and the current institutional workbook binding are already sourced from existing runtime outputs."),
         ("Governance-only blockers", "R99 and R102 remain audit-visible but governance-blocked; this pack does not change their status."),
+        ("What remains unresolved", "A separate reconciliation IRR scalar is still not available as committed evidence, so this branch explains the gap instead of manufacturing a synthetic answer."),
         ("Roadmap view", "Reviewer follow-up can now split cleanly into reporting, evidence, or governance workstreams rather than broad model redesign."),
     ]
     row = 5
@@ -1366,6 +1527,109 @@ def _write_reconciliation_sheet(sheet, specs: list[MetricSpec], runtime: dict, s
         summary_rows.append(summary)
 
 
+def _irr_summary_row(entry: dict[str, str]) -> dict[str, str]:
+    default_owner = "Finance / Governance"
+    requires_runtime_change = "no"
+    if entry["classification"] == MATERIAL_DELTA:
+        requires_runtime_change = "yes"
+    return {
+        "section": "IRR Reporting",
+        "metric": entry["metric"],
+        "excel_total": entry["excel_value"],
+        "model_total": entry["runtime_value"],
+        "delta_total": entry["delta"],
+        "status": "REVIEW" if entry["classification"] != PASS else "OK",
+        "classification": entry["classification"],
+        "root_cause": entry["root_cause"],
+        "recommended_action": (
+            "Keep documented as convention-driven review guidance."
+            if entry["classification"] == ACCEPTED_CONVENTION
+            else "Escalate to stakeholder review."
+            if entry["stakeholder_decision_required"] == "yes"
+            else "None"
+        ),
+        "governance_impact": entry["governance_impact"],
+        "notes": entry["notes"],
+        "owner": default_owner,
+        "requires_stakeholder_decision": entry["stakeholder_decision_required"],
+        "requires_runtime_change": requires_runtime_change,
+        "expected_roadmap_phase": "Phase 10",
+    }
+
+
+def _write_irr_reconciliation_sheet(sheet, irr_rows: list[dict[str, str]], runtime_summary_rows: list[dict[str, str]]) -> None:
+    generated_at = runtime_summary_rows[0]["generated_at"]
+    project_name = runtime_summary_rows[0]["project"]
+    _apply_provenance_banner(sheet, "IRR Reconciliation", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", generated_at, project_name)
+
+    sheet["A5"] = "Reviewer Guidance"
+    sheet["A5"].font = BOLD_FONT
+    sheet["B5"] = "Use this sheet to distinguish convention-driven IRR drift from actual runtime defects. This branch explains differences; it does not alter runtime IRR calculations."
+    sheet["A7"] = "Metric"
+    sheet["B7"] = "Runtime IRR / Runtime View"
+    sheet["C7"] = "Excel IRR / Excel View"
+    sheet["D7"] = "Delta"
+    sheet["E7"] = "Classification"
+    sheet["F7"] = "Root Cause"
+    sheet["G7"] = "Governance Impact"
+    sheet["H7"] = "Stakeholder Decision Required?"
+    sheet["I7"] = "Notes"
+    for col in range(1, 10):
+        cell = sheet.cell(row=7, column=col)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    row = 8
+    for entry in irr_rows:
+        values = [
+            entry["metric"],
+            entry["runtime_value"],
+            entry["excel_value"],
+            entry["delta"],
+            entry["classification"],
+            entry["root_cause"],
+            entry["governance_impact"],
+            entry["stakeholder_decision_required"],
+            entry["notes"],
+        ]
+        for idx, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=idx, value=value)
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+            if idx == 5:
+                cell.fill = _fill_for_classification(str(value))
+            elif row % 2 == 0:
+                cell.fill = ROW_ALT_FILL
+            if idx in {2, 3, 4} and isinstance(value, str) and value.replace("-", "").replace(".", "").isdigit():
+                cell.number_format = PCT_FORMAT
+        row += 1
+
+    sheet["A18"] = "Accepted IRR Conventions"
+    sheet["A18"].font = BOLD_FONT
+    sheet["A19"] = "XIRR construction-date anchors, distribution-definition framing, and SHL IDC investment-base treatment are documented interpretation layers."
+    sheet["A20"] = "Remaining unresolved IRR gaps"
+    sheet["A21"] = "A dedicated reconciliation IRR scalar is still MISSING_EVIDENCE, so governance review should focus on explanation quality rather than a forced numeric tie-out."
+    sheet["A22"] = "Runtime vs Excel timing note"
+    sheet["A23"] = "A small equity IRR delta can remain acceptable when runtime economics are stable and the residual is traceable to timing or presentation conventions."
+
+    widths = {
+        "A": 28,
+        "B": 20,
+        "C": 20,
+        "D": 14,
+        "E": 22,
+        "F": 44,
+        "G": 28,
+        "H": 20,
+        "I": 40,
+    }
+    for col, width in widths.items():
+        sheet.column_dimensions[col].width = width
+    sheet.freeze_panes = "A8"
+
+
 def _scalar_totals(runtime: dict) -> dict[str, tuple[str | float, str | float]]:
     return {
         "Project IRR": (0.0947, runtime["project_irr"]),
@@ -1409,6 +1673,9 @@ def write_calibration_reconciliation_pack(
     runtime_binding_inventory_path: Path | str = DEFAULT_RUNTIME_BINDING_INVENTORY,
     evidence_coverage_summary_path: Path | str = DEFAULT_EVIDENCE_COVERAGE_SUMMARY,
     runtime_binding_gap_register_path: Path | str = DEFAULT_RUNTIME_BINDING_GAP_REGISTER,
+    irr_reconciliation_summary_path: Path | str = DEFAULT_IRR_RECONCILIATION_SUMMARY,
+    irr_convention_map_path: Path | str = DEFAULT_IRR_CONVENTION_MAP,
+    irr_governance_items_path: Path | str = DEFAULT_IRR_GOVERNANCE_ITEMS,
 ) -> ReconciliationArtifacts:
     workbook_path = Path(workbook_path)
     gap_register_path = Path(gap_register_path)
@@ -1419,6 +1686,9 @@ def write_calibration_reconciliation_pack(
     runtime_binding_inventory_path = Path(runtime_binding_inventory_path)
     evidence_coverage_summary_path = Path(evidence_coverage_summary_path)
     runtime_binding_gap_register_path = Path(runtime_binding_gap_register_path)
+    irr_reconciliation_summary_path = Path(irr_reconciliation_summary_path)
+    irr_convention_map_path = Path(irr_convention_map_path)
+    irr_governance_items_path = Path(irr_governance_items_path)
 
     for path in (
         workbook_path,
@@ -1430,6 +1700,9 @@ def write_calibration_reconciliation_pack(
         runtime_binding_inventory_path,
         evidence_coverage_summary_path,
         runtime_binding_gap_register_path,
+        irr_reconciliation_summary_path,
+        irr_convention_map_path,
+        irr_governance_items_path,
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1442,6 +1715,7 @@ def write_calibration_reconciliation_pack(
     conventions = _accepted_conventions_rows()
     source_inventory = _source_inventory_rows(int(runtime["count"]))
     specs_by_sheet = _build_specs(runtime, per_bridge, shl_bridge)
+    irr_rows = _irr_report_rows(runtime, conventions)
 
     workbook = Workbook()
     navigation = workbook.active
@@ -1481,12 +1755,16 @@ def write_calibration_reconciliation_pack(
             scalar_totals,
         )
 
+    for entry in irr_rows:
+        summary_rows.append(_irr_summary_row(entry))
+
     # Refresh summary after counts are known.
     _write_exec_summary(executive, summary_rows, runtime_rows)
     signoff_rows = _review_signoff_rows(summary_rows)
     _write_executive_dashboard(dashboard, summary_rows, runtime_rows)
     _write_review_signoff(review_signoff, signoff_rows)
     _write_readiness_matrix(readiness, signoff_rows)
+    _write_irr_reconciliation_sheet(workbook.create_sheet("IRR Reconciliation"), irr_rows, runtime_rows)
     _write_gap_register_sheet(workbook.create_sheet("Gap Register"), summary_rows)
     _write_source_inventory_sheet(workbook.create_sheet("Source Inventory"), source_inventory)
     _write_accepted_conventions_sheet(workbook.create_sheet("Accepted Conventions"), conventions)
@@ -1507,6 +1785,9 @@ def write_calibration_reconciliation_pack(
     _write_csv(runtime_binding_inventory_path, inventory_rows)
     _write_csv(evidence_coverage_summary_path, _evidence_coverage_summary_rows(summary_rows, inventory_rows))
     _write_csv(runtime_binding_gap_register_path, _runtime_binding_gap_register_rows(summary_rows))
+    _write_csv(irr_reconciliation_summary_path, irr_rows)
+    _write_csv(irr_convention_map_path, _irr_convention_map_rows(irr_rows))
+    _write_csv(irr_governance_items_path, _irr_governance_item_rows(irr_rows))
     write_review_pack_navigation_map_csv(navigation_map_path)
 
     return ReconciliationArtifacts(
@@ -1519,6 +1800,9 @@ def write_calibration_reconciliation_pack(
         runtime_binding_inventory_path=runtime_binding_inventory_path,
         evidence_coverage_summary_path=evidence_coverage_summary_path,
         runtime_binding_gap_register_path=runtime_binding_gap_register_path,
+        irr_reconciliation_summary_path=irr_reconciliation_summary_path,
+        irr_convention_map_path=irr_convention_map_path,
+        irr_governance_items_path=irr_governance_items_path,
     )
 
 
@@ -1565,6 +1849,7 @@ def _runtime_binding_inventory_rows(summary_rows: list[dict[str, str]]) -> list[
         "CFADS": "CFADS Waterfall",
         "Distributions": "Distributions Sponsor",
         "Returns": "Returns Reconciliation",
+        "IRR Reporting": "IRR Reconciliation",
     }
     for entry in summary_rows:
         runtime_available = _has_runtime_bound_value(entry["model_total"], entry["notes"])

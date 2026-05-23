@@ -43,3 +43,10 @@ Returns,Reconciliation IRR,Finance / Governance,Returns Reconciliation,no,yes,Re
 Returns,MOIC,Finance / Governance,Returns Reconciliation,no,yes,MOIC is not yet exported as a first-class runtime/reporting metric in the current workbook foundations.,low,RUNTIME_BINDING_PENDING,Do not invent a proxy here.
 Returns,Average DSCR,Finance / Governance,Returns Reconciliation,yes,no,,high,WARN,See Total column for scalar value.
 Returns,Minimum DSCR,Finance / Governance,Returns Reconciliation,yes,no,,medium,MISSING_EVIDENCE,See Total column for scalar value.
+IRR Reporting,Project IRR,Finance / Governance,IRR Reconciliation,yes,no,,high,PASS,This is not a runtime-calculation issue in the current review pack.
+IRR Reporting,Equity IRR,Finance / Governance,IRR Reconciliation,yes,no,,high,GOVERNANCE_REVIEW,This row explains the remaining equity IRR discussion; it does not change runtime IRR logic.
+IRR Reporting,Reconciliation IRR,Finance / Governance,IRR Reconciliation,no,yes,"A dedicated reconciliation IRR reporting view has not existed in the committed workbook layer until this branch, and there is still no separate approved scalar target to compute against automatically.",low,MISSING_EVIDENCE,Missing evidence is preserved honestly; no proxy IRR is fabricated here.
+IRR Reporting,XIRR Date Convention,Finance / Governance,IRR Reconciliation,yes,no,,high,ACCEPTED_CONVENTION,Accept waiver or request phase9-tuho-equity-irr-reporting-view-implementation.
+IRR Reporting,Distribution Timing / Definition,Finance / Governance,IRR Reconciliation,yes,no,,high,ACCEPTED_CONVENTION,Default runtime distribution is authoritative; DA-wired staging is audit-only.
+IRR Reporting,SHL IDC Investment-Base Treatment,Finance / Governance,IRR Reconciliation,yes,no,,high,GOVERNANCE_REVIEW,Stakeholder should accept or request a separate reporting view.
+IRR Reporting,Semiannual Timing / COD Framing,Finance / Governance,IRR Reconciliation,yes,no,,high,GOVERNANCE_REVIEW,Use this row to explain why small IRR drift can remain acceptable even when runtime parity elsewhere is strong.

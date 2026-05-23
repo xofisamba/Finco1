@@ -73,6 +73,7 @@ def test_required_sheets_exist():
         "CFADS Waterfall",
         "Distributions Sponsor",
         "Returns Reconciliation",
+        "IRR Reconciliation",
         "Gap Register",
         "Source Inventory",
         "Accepted Conventions",
@@ -221,6 +222,7 @@ def test_reviewer_notes_expanded():
     assert "IC reviewer focus" in text
     assert "Lender reviewer focus" in text
     assert "Audit reviewer focus" in text
+    assert "How to interpret IRR drift" in text
 
 
 def test_review_signoff_contains_workflow_statuses():
@@ -243,6 +245,15 @@ def test_governance_timeline_and_readiness_matrix_exist():
     assert "review_area" in readiness_text
     assert "runtime_complete" in readiness_text
     assert "governance_status" in readiness_text
+
+
+def test_irr_reconciliation_sheet_exists_and_is_navigable():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    text = _sheet_text(wb, "IRR Reconciliation")
+    assert "Project IRR" in text
+    assert "Equity IRR" in text
+    assert "Reconciliation IRR" in text
 
 
 def test_doc_states_governance_limits():

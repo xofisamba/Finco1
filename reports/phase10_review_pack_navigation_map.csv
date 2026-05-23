@@ -15,7 +15,8 @@ Tax R35-R67-R69,Tax / audit,"Review governed tax residuals, runtime audit fields
 CFADS Waterfall,Lender / cashflow reviewer,"Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.",14,yes,Governance blockers are highlighted.
 Distributions Sponsor,Sponsor / IC,Review distribution definition and DA staging separation.,15,yes,No mixed authoritative path.
 Returns Reconciliation,IC / sponsor,"Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.",16,yes,Equity IRR residual remains a stakeholder matter.
-Gap Register,All reviewers,"Sort and filter all open items by severity, owner, and next action.",17,yes,Primary action list.
-Source Inventory,Audit / model validation,Understand evidence confidence and where each metric comes from.,18,yes,Useful for provenance checks.
-Accepted Conventions,Governance / audit,Separate accepted convention drift from runtime defects.,19,yes,Not a runtime-fix sheet.
-Reviewer Notes,All reviewers,"Read the non-engineering guide to unknowns, blockers, and next steps.",20,yes,Best closing sheet.
+IRR Reconciliation,IC / lender / governance,"Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.",17,yes,Purpose-built reviewer sheet for IRR interpretation.
+Gap Register,All reviewers,"Sort and filter all open items by severity, owner, and next action.",18,yes,Primary action list.
+Source Inventory,Audit / model validation,Understand evidence confidence and where each metric comes from.,19,yes,Useful for provenance checks.
+Accepted Conventions,Governance / audit,Separate accepted convention drift from runtime defects.,20,yes,Not a runtime-fix sheet.
+Reviewer Notes,All reviewers,"Read the non-engineering guide to unknowns, blockers, and next steps.",21,yes,Best closing sheet.

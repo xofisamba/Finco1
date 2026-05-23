@@ -130,9 +130,9 @@ def default_export_registry() -> ExportRegistry:
                 runtime_or_preview="review",
                 governance_sensitive=True,
                 current_status="review_evidence_pack",
-                description="Executive, lender, and audit review workbook with dashboard, signoff flow, classifications, governance impacts, and next actions.",
+                description="Executive, lender, and audit review workbook with dashboard, signoff flow, classifications, IRR reconciliation guidance, governance impacts, and next actions.",
                 path="reports/phase10_calibration_reconciliation_pack.xlsx",
-                notes="Executive review and governance evidence pack; G20 remains blocked and R99/R102 remain not approved.",
+                notes="Executive review and governance evidence pack with explicit IRR interpretation layer; G20 remains blocked and R99/R102 remain not approved.",
             ),
             ExportArtifact(
                 artifact_name="Phase 10 runtime binding inventory",
