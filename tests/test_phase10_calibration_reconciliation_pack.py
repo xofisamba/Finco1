@@ -75,6 +75,7 @@ def test_required_sheets_exist():
         "Distributions Sponsor",
         "Returns Reconciliation",
         "IRR Reconciliation",
+        "Calibration Residual Closeout",
         "Gap Register",
         "Source Inventory",
         "Accepted Conventions",

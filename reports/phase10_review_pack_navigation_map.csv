@@ -17,7 +17,8 @@ CFADS Waterfall,Lender / cashflow reviewer,"Review cashflow rows, tax cash visib
 Distributions Sponsor,Sponsor / IC,Review distribution definition and DA staging separation.,16,yes,No mixed authoritative path.
 Returns Reconciliation,IC / sponsor,"Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.",17,yes,Equity IRR residual remains a stakeholder matter.
 IRR Reconciliation,IC / lender / governance,"Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.",18,yes,Purpose-built reviewer sheet for IRR interpretation.
-Gap Register,All reviewers,"Sort and filter all open items by severity, owner, and next action.",19,yes,Primary action list.
-Source Inventory,Audit / model validation,Understand evidence confidence and where each metric comes from.,20,yes,Useful for provenance checks.
-Accepted Conventions,Governance / audit,Separate accepted convention drift from runtime defects.,21,yes,Not a runtime-fix sheet.
-Reviewer Notes,All reviewers,"Read the non-engineering guide to unknowns, blockers, and next steps.",22,yes,Best closing sheet.
+Calibration Residual Closeout,Governance / IC / audit,"See the final classification of remaining residuals, governance blockers, accepted conventions, and carry-forward items.",19,yes,Phase 10 closeout reference sheet.
+Gap Register,All reviewers,"Sort and filter all open items by severity, owner, and next action.",20,yes,Primary action list.
+Source Inventory,Audit / model validation,Understand evidence confidence and where each metric comes from.,21,yes,Useful for provenance checks.
+Accepted Conventions,Governance / audit,Separate accepted convention drift from runtime defects.,22,yes,Not a runtime-fix sheet.
+Reviewer Notes,All reviewers,"Read the non-engineering guide to unknowns, blockers, and next steps.",23,yes,Best closing sheet.

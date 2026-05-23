@@ -1,0 +1,3 @@
+item,category,runtime_impact,governance_impact,current_status,classification,owner,recommended_action,roadmap_phase,notes
+G20 gate signoff,Governance blockers,None,Blocks final gate acceptance,blocked,GOVERNANCE_BLOCKER,Governance,Keep blocked until stakeholder signoff is complete.,Phase 10,"Technical evidence is mature, but governance approval still sits outside this branch."
+R99/R102 runtime promotion,Governance blockers,Audit-only fields remain non-authoritative,Blocks runtime promotion,blocked,GOVERNANCE_BLOCKER,Governance / Finance,Maintain audit-only posture until explicit approval.,Phase 10,This remains a governance decision rather than a runtime-instability issue.

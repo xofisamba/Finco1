@@ -91,6 +91,10 @@ DEFAULT_IRR_GOVERNANCE_ITEMS = REPORTS_DIR / "phase10_irr_governance_items.csv"
 DEFAULT_CO2_BALANCING_SOURCE_MAP = REPORTS_DIR / "phase10_co2_balancing_source_map.csv"
 DEFAULT_CO2_BALANCING_GAP_SUMMARY = REPORTS_DIR / "phase10_co2_balancing_gap_summary.csv"
 DEFAULT_CO2_BALANCING_EVIDENCE_QUALITY = REPORTS_DIR / "phase10_co2_balancing_evidence_quality.csv"
+DEFAULT_FINAL_RESIDUAL_REGISTRY = REPORTS_DIR / "phase10_final_residual_registry.csv"
+DEFAULT_GOVERNANCE_BLOCKER_SUMMARY = REPORTS_DIR / "phase10_governance_blocker_summary.csv"
+DEFAULT_ACCEPTED_CONVENTIONS_REGISTRY = REPORTS_DIR / "phase10_accepted_conventions_registry.csv"
+DEFAULT_PHASE11_CARRY_FORWARD_ITEMS = REPORTS_DIR / "phase10_phase11_carry_forward_items.csv"
 
 
 @dataclass(frozen=True)
@@ -132,6 +136,10 @@ class ReconciliationArtifacts:
     co2_balancing_source_map_path: Path
     co2_balancing_gap_summary_path: Path
     co2_balancing_evidence_quality_path: Path
+    final_residual_registry_path: Path
+    governance_blocker_summary_path: Path
+    accepted_conventions_registry_path: Path
+    phase11_carry_forward_items_path: Path
 
 
 def _num(value) -> float | None:
@@ -499,6 +507,205 @@ def _co2_balancing_report_rows(runtime: dict, per_bridge: list[dict[str, str]]) 
             "notes": "This should be treated as an extraction/evidence-quality issue rather than a model defect.",
         },
     ]
+
+
+def _final_closeout_rows(summary_rows: list[dict[str, str]], conventions: list[dict[str, str]]) -> list[dict[str, str]]:
+    convention_lookup = {row.get("convention_id", ""): row for row in conventions}
+    rows = [
+        {
+            "item": "Project IRR residual",
+            "category": "Resolved residuals",
+            "runtime_impact": "None",
+            "governance_impact": "None",
+            "current_status": "closed in review pack",
+            "classification": "RESOLVED",
+            "owner": "Finance / Governance",
+            "recommended_action": "Keep as resolved unless a new evidence conflict appears.",
+            "roadmap_phase": "Phase 10",
+            "notes": "Project IRR remains within documented tolerance and is not a remaining calibration blocker.",
+        },
+        {
+            "item": "Electricity revenue total tie-out",
+            "category": "Resolved residuals",
+            "runtime_impact": "None",
+            "governance_impact": "None",
+            "current_status": "closed in review pack",
+            "classification": "RESOLVED",
+            "owner": "Commercial",
+            "recommended_action": "Use as baseline revenue row in future review packs.",
+            "roadmap_phase": "Phase 10",
+            "notes": "This remains the strongest committed revenue evidence row on both runtime and Excel sides.",
+        },
+        {
+            "item": "XIRR construction-date convention",
+            "category": "Accepted conventions",
+            "runtime_impact": "None",
+            "governance_impact": "Reviewer interpretation required",
+            "current_status": "documented",
+            "classification": "ACCEPTED_CONVENTION",
+            "owner": "Finance / Governance",
+            "recommended_action": "Keep in the accepted-conventions registry and use IRR Reconciliation for meetings.",
+            "roadmap_phase": "Phase 10",
+            "notes": convention_lookup.get("CONV-01", {}).get("description", "Construction-date convention remains an interpretation layer."),
+        },
+        {
+            "item": "SHL IDC investment-base convention",
+            "category": "Accepted conventions",
+            "runtime_impact": "None",
+            "governance_impact": "Stakeholder interpretation",
+            "current_status": "documented",
+            "classification": "ACCEPTED_CONVENTION",
+            "owner": "Finance / Sponsor",
+            "recommended_action": "Retain as a convention item unless stakeholders request a distinct reporting-only lens.",
+            "roadmap_phase": "Phase 10",
+            "notes": convention_lookup.get("CONV-02", {}).get("description", "SHL IDC investment-base treatment remains a known convention driver."),
+        },
+        {
+            "item": "Distribution vs dividend definition",
+            "category": "Accepted conventions",
+            "runtime_impact": "None",
+            "governance_impact": "Presentation choice",
+            "current_status": "documented",
+            "classification": "ACCEPTED_CONVENTION",
+            "owner": "Governance / Sponsor",
+            "recommended_action": "Continue showing default runtime distributions separately from audit-only DA staging.",
+            "roadmap_phase": "Phase 10",
+            "notes": convention_lookup.get("CONV-03", {}).get("description", "Distribution and dividend views remain definitionally different."),
+        },
+        {
+            "item": "Grouped CO2 / balancing revenue evidence",
+            "category": "Accepted conventions",
+            "runtime_impact": "None",
+            "governance_impact": "Reviewer caution required",
+            "current_status": "documented",
+            "classification": "ACCEPTED_CONVENTION",
+            "owner": "Commercial / Audit",
+            "recommended_action": "Treat grouped revenue evidence as an evidence-quality boundary, not a runtime failure.",
+            "roadmap_phase": "Phase 10",
+            "notes": "This branch formalizes grouped-versus-separate evidence handling for revenue sub-lines.",
+        },
+        {
+            "item": "CO2 standalone evidence",
+            "category": "Remaining evidence limitations",
+            "runtime_impact": "None",
+            "governance_impact": "Stakeholder review context only",
+            "current_status": "open evidence gap",
+            "classification": "EVIDENCE_LIMITATION",
+            "owner": "Commercial / Audit",
+            "recommended_action": "Keep as explicit missing evidence unless a dedicated extraction branch is approved.",
+            "roadmap_phase": "Phase 11",
+            "notes": "No committed runtime or Excel-side standalone CO2 row exists in the current pack.",
+        },
+        {
+            "item": "Balancing standalone evidence",
+            "category": "Remaining evidence limitations",
+            "runtime_impact": "None",
+            "governance_impact": "Stakeholder review context only",
+            "current_status": "open evidence gap",
+            "classification": "EVIDENCE_LIMITATION",
+            "owner": "Commercial / Audit",
+            "recommended_action": "Preserve as missing evidence rather than synthesizing a balancing split.",
+            "roadmap_phase": "Phase 11",
+            "notes": "Balancing remains unavailable as a durable committed sub-line on both sides.",
+        },
+        {
+            "item": "Reconciliation IRR scalar",
+            "category": "Remaining evidence limitations",
+            "runtime_impact": "None",
+            "governance_impact": "Stakeholder signoff choice",
+            "current_status": "not implemented",
+            "classification": "MISSING_EVIDENCE",
+            "owner": "Finance / Governance",
+            "recommended_action": "Waive or open a later reporting-only implementation if reviewers require it.",
+            "roadmap_phase": "Phase 11",
+            "notes": "The workbook now explains the IRR gap clearly, but there is still no separate approved reconciliation scalar.",
+        },
+        {
+            "item": "G20 gate signoff",
+            "category": "Governance blockers",
+            "runtime_impact": "None",
+            "governance_impact": "Blocks final gate acceptance",
+            "current_status": "blocked",
+            "classification": "GOVERNANCE_BLOCKER",
+            "owner": "Governance",
+            "recommended_action": "Keep blocked until stakeholder signoff is complete.",
+            "roadmap_phase": "Phase 10",
+            "notes": "Technical evidence is mature, but governance approval still sits outside this branch.",
+        },
+        {
+            "item": "R99/R102 runtime promotion",
+            "category": "Governance blockers",
+            "runtime_impact": "Audit-only fields remain non-authoritative",
+            "governance_impact": "Blocks runtime promotion",
+            "current_status": "blocked",
+            "classification": "GOVERNANCE_BLOCKER",
+            "owner": "Governance / Finance",
+            "recommended_action": "Maintain audit-only posture until explicit approval.",
+            "roadmap_phase": "Phase 10",
+            "notes": "This remains a governance decision rather than a runtime-instability issue.",
+        },
+        {
+            "item": "MOIC reporting view",
+            "category": "Remaining engineering work",
+            "runtime_impact": "None",
+            "governance_impact": "None",
+            "current_status": "follow-up candidate",
+            "classification": "ENGINEERING_FOLLOWUP",
+            "owner": "Finance / Reporting",
+            "recommended_action": "Add a reporting-only MOIC view if external reviewers ask for it.",
+            "roadmap_phase": "Phase 11",
+            "notes": "This is enhancement work, not a current model defect.",
+        },
+        {
+            "item": "Deeper revenue source extraction",
+            "category": "Remaining engineering work",
+            "runtime_impact": "None",
+            "governance_impact": "Improves evidence clarity only",
+            "current_status": "follow-up candidate",
+            "classification": "ENGINEERING_FOLLOWUP",
+            "owner": "Commercial / Reporting",
+            "recommended_action": "Pursue only if separate CO2 or balancing rows become review-critical.",
+            "roadmap_phase": "Phase 11",
+            "notes": "Future extraction work should improve evidence, not rewrite revenue formulas.",
+        },
+        {
+            "item": "Equity IRR residual acceptance",
+            "category": "Stakeholder decision items",
+            "runtime_impact": "None",
+            "governance_impact": "Required for final interpretation comfort",
+            "current_status": "pending stakeholder decision",
+            "classification": "STAKEHOLDER_DECISION",
+            "owner": "Governance / IC",
+            "recommended_action": "Accept the convention-driven residual or request a future reporting-only enhancement.",
+            "roadmap_phase": "Phase 10",
+            "notes": "The IRR sheet now isolates interpretation from runtime correctness more clearly.",
+        },
+        {
+            "item": "Grouped revenue evidence acceptance",
+            "category": "Stakeholder decision items",
+            "runtime_impact": "None",
+            "governance_impact": "Affects how reviewers read revenue sub-line maturity",
+            "current_status": "pending stakeholder decision",
+            "classification": "STAKEHOLDER_DECISION",
+            "owner": "Commercial / Governance",
+            "recommended_action": "Accept grouped evidence as sufficient for current review or request deeper extraction in Phase 11.",
+            "roadmap_phase": "Phase 10",
+            "notes": "This is a quality-of-evidence question, not a runtime revenue correction.",
+        },
+        {
+            "item": "Phase 11 export/product polish transition",
+            "category": "Recommended Phase 11 carry-forward items",
+            "runtime_impact": "None",
+            "governance_impact": "Improves review workflow maturity",
+            "current_status": "carry forward",
+            "classification": "ENGINEERING_FOLLOWUP",
+            "owner": "Product / Reporting",
+            "recommended_action": "Move remaining presentation and workflow enhancements into the Phase 11 roadmap.",
+            "roadmap_phase": "Phase 11",
+            "notes": "Phase 10 closeout should end broad calibration ambiguity, not attempt productization work.",
+        },
+    ]
+    return rows
 
 
 def _irr_report_rows(runtime: dict, conventions: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -994,10 +1201,11 @@ def _navigation_rows() -> list[dict[str, str]]:
         {"sheet_name": "Distributions Sponsor", "reviewer_role": "Sponsor / IC", "primary_purpose": "Review distribution definition and DA staging separation.", "navigation_priority": "16", "governance_sensitive": "yes", "notes": "No mixed authoritative path."},
         {"sheet_name": "Returns Reconciliation", "reviewer_role": "IC / sponsor", "primary_purpose": "Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.", "navigation_priority": "17", "governance_sensitive": "yes", "notes": "Equity IRR residual remains a stakeholder matter."},
         {"sheet_name": "IRR Reconciliation", "reviewer_role": "IC / lender / governance", "primary_purpose": "Explain runtime IRR versus Excel IRR, convention drift, and whether remaining gaps are engineering or governance-sensitive.", "navigation_priority": "18", "governance_sensitive": "yes", "notes": "Purpose-built reviewer sheet for IRR interpretation."},
-        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "19", "governance_sensitive": "yes", "notes": "Primary action list."},
-        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "20", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
-        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "21", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
-        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "22", "governance_sensitive": "yes", "notes": "Best closing sheet."},
+        {"sheet_name": "Calibration Residual Closeout", "reviewer_role": "Governance / IC / audit", "primary_purpose": "See the final classification of remaining residuals, governance blockers, accepted conventions, and carry-forward items.", "navigation_priority": "19", "governance_sensitive": "yes", "notes": "Phase 10 closeout reference sheet."},
+        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "20", "governance_sensitive": "yes", "notes": "Primary action list."},
+        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "21", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
+        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "22", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
+        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "23", "governance_sensitive": "yes", "notes": "Best closing sheet."},
     ]
 
 
@@ -1078,6 +1286,7 @@ def _write_navigation(sheet, runtime_summary_rows: list[dict[str, str]]) -> None
         ("Go to Executive Summary", "Executive Summary"),
         ("Go to Review Signoff", "Review Signoff"),
         ("Go to IRR Reconciliation", "IRR Reconciliation"),
+        ("Go to Calibration Residual Closeout", "Calibration Residual Closeout"),
         ("Go to Gap Register", "Gap Register"),
         ("Go to Reviewer Notes", "Reviewer Notes"),
     ]
@@ -1197,6 +1406,7 @@ def _review_signoff_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, s
 
     reviewer_map = {
         "Revenue": "Commercial",
+        "CO2 / Balancing": "Commercial / Audit",
         "OPEX": "Operations",
         "Senior Debt": "Lender / Debt",
         "SHL": "Sponsor / Audit",
@@ -1204,9 +1414,10 @@ def _review_signoff_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, s
         "CFADS": "Finance / Waterfall",
         "Distributions": "Governance / Sponsor",
         "Returns": "IC / Finance",
+        "IRR Reporting": "Finance / Governance",
     }
     rows_out: list[dict[str, str]] = []
-    for area in ["Revenue", "OPEX", "Senior Debt", "SHL", "Tax", "CFADS", "Distributions", "Returns"]:
+    for area in ["Revenue", "CO2 / Balancing", "OPEX", "Senior Debt", "SHL", "Tax", "CFADS", "Distributions", "Returns", "IRR Reporting"]:
         area_rows = grouped.get(area, [])
         classes = {row["classification"] for row in area_rows}
         rows_out.append(
@@ -1220,6 +1431,7 @@ def _review_signoff_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, s
                 "evidence_complete": "no" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "yes",
                 "runtime_verified": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
                 "governance_reviewed": "pending" if GOVERNANCE_BLOCKER in classes else "yes",
+                "governance_owner": "Governance" if GOVERNANCE_BLOCKER in classes or any(row["requires_stakeholder_decision"] == "yes" for row in area_rows) else "Area owner",
                 "stakeholder_decision_required": "yes" if any(row["requires_stakeholder_decision"] == "yes" for row in area_rows) else "no",
                 "runtime_ready": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
                 "evidence_ready": "no" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "yes",
@@ -1227,6 +1439,7 @@ def _review_signoff_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, s
                 "blocker_type": "governance" if GOVERNANCE_BLOCKER in classes else "evidence" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "runtime_binding" if RUNTIME_BINDING_PENDING in classes else "none",
                 "recommended_action": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
                 "recommended_next_step": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
+                "roadmap_owner": "Phase 11 / Reporting" if any(row["expected_roadmap_phase"] == "Phase 11" for row in area_rows) else "Phase 10 / Review",
                 "notes": area_rows[0]["notes"] if area_rows else "",
             }
         )
@@ -1275,6 +1488,8 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
         ("Grouped vs separated evidence summary", "Electricity revenue is well evidenced separately, while CO2 and balancing remain grouped-only or missing in committed sources."),
         ("IRR parity summary", "Project IRR is within tolerance; equity IRR remains a governed interpretation topic rather than a newly identified runtime defect."),
         ("IRR convention summary", "XIRR anchors, SHL IDC investment-base treatment, and distribution-definition framing remain the main IRR interpretation drivers."),
+        ("Final residual posture summary", "Most remaining Phase 10 items are now governance, evidence, or accepted-convention matters rather than open runtime-calibration defects."),
+        ("Engineering follow-up count", len(engineering_items)),
         ("Accepted convention count", counts.get(ACCEPTED_CONVENTION, 0)),
         ("Stakeholder-decision count", len(stakeholder_items)),
         ("Governance blocker count", counts.get(GOVERNANCE_BLOCKER, 0)),
@@ -1349,8 +1564,10 @@ def _write_review_signoff(sheet, signoff_rows: list[dict[str, str]]) -> None:
         "evidence_complete",
         "runtime_verified",
         "governance_reviewed",
+        "governance_owner",
         "stakeholder_decision_required",
         "recommended_action",
+        "roadmap_owner",
         "notes",
     ]
     for idx, header in enumerate(headers, start=1):
@@ -1366,7 +1583,7 @@ def _write_review_signoff(sheet, signoff_rows: list[dict[str, str]]) -> None:
             cell.alignment = Alignment(wrap_text=True)
         row += 1
     sheet.freeze_panes = "A6"
-    for col, width in {"A": 18, "B": 20, "C": 20, "D": 18, "E": 14, "F": 14, "G": 16, "H": 18, "I": 32, "J": 40}.items():
+    for col, width in {"A": 18, "B": 20, "C": 20, "D": 18, "E": 14, "F": 14, "G": 16, "H": 18, "I": 18, "J": 32, "K": 18, "L": 40}.items():
         sheet.column_dimensions[col].width = width
 
 
@@ -1516,15 +1733,20 @@ def _write_notes(sheet) -> None:
         ("CO2 / balancing reviewer caution", "If a row is labeled GROUPED_SOURCE_ONLY or MISSING_EVIDENCE, do not infer a synthetic CO2 or balancing split. Reviewers should treat that as a source-map limitation."),
         ("How to interpret IRR drift", "Start with the IRR Reconciliation sheet. Small project or equity IRR deltas can come from date anchors, distribution framing, or other documented conventions before they imply a runtime defect."),
         ("When IRR drift is acceptable", "Treat convention-backed drift as reviewable if the root cause is explicit, runtime values are stable, and the remaining gap is a governance or presentation issue rather than an unexplained economics change."),
+        ("How to interpret remaining residuals", "Use the Calibration Residual Closeout sheet first. Items tagged as accepted conventions, evidence limitations, or stakeholder decisions should not be escalated as runtime defects by default."),
+        ("What should not be treated as runtime defects", "Grouped source evidence, missing reconciliation-only views, accepted XIRR conventions, and governance-blocked audit fields are not runtime-calculation failures."),
+        ("Acceptable PF convention drift", "Minor timing or presentation residuals can remain acceptable when the economics are stable and the root cause is explicit for reviewers."),
+        ("Intentionally unresolved items", "A few residuals remain intentionally open because the correct treatment is governance review, evidence hardening, or later reporting enhancement rather than forced parity."),
         ("Stakeholder decisions", "Equity IRR residual, reconciliation IRR reporting view, and R99/R102 governance promotion remain outside this branch."),
         ("Likely acceptable convention drift", "XIRR date convention, SHL presentation splits, and grouped OPEX minor rows are documented as conventions rather than runtime defects."),
-        ("Still requires engineering work", "Any future reconciliation IRR view, deeper tax row extraction, or sub-line CO2/balancing mapping should happen in dedicated reporting branches."),
+        ("Still requires engineering work", "Any future reconciliation IRR view, deeper tax row extraction, sub-line CO2/balancing mapping, or export/product polish should happen in dedicated follow-up branches."),
         ("Evidence limitation only", "Rows marked MISSING_EVIDENCE are not zero and should not be interpreted as model failures."),
         ("Presentation only", "Runtime vs preview labels and governance badges are included to help reviewers avoid treating audit-only staging rows as runtime authority."),
         ("Already runtime-verified", "Revenue, core OPEX totals, runtime summary KPIs, and the current institutional workbook binding are already sourced from existing runtime outputs."),
         ("Governance-only blockers", "R99 and R102 remain audit-visible but governance-blocked; this pack does not change their status."),
         ("What remains unresolved", "A separate reconciliation IRR scalar is still not available as committed evidence, so this branch explains the gap instead of manufacturing a synthetic answer."),
-        ("Roadmap view", "Reviewer follow-up can now split cleanly into reporting, evidence, or governance workstreams rather than broad model redesign."),
+        ("Phase 11 transition view", "Phase 11 should focus on export/product polish, workflow maturity, and optional deeper evidence layers rather than reopening runtime calibration by default."),
+        ("Roadmap view", "Reviewer follow-up can now split cleanly into reporting, evidence, governance, or product-polish workstreams rather than broad model redesign."),
     ]
     row = 5
     for label, value in notes:
@@ -1602,6 +1824,48 @@ def _write_accepted_conventions_sheet(sheet, rows: list[dict[str, str]]) -> None
     sheet.freeze_panes = "A6"
     for col, width in {"A": 14, "B": 32, "C": 48, "D": 28, "E": 18, "F": 18, "G": 30}.items():
         sheet.column_dimensions[col].width = width
+
+
+def _accepted_conventions_registry_rows(conventions: list[dict[str, str]]) -> list[dict[str, str]]:
+    rows = []
+    for entry in conventions:
+        rows.append(
+            {
+                "item": entry.get("convention", ""),
+                "category": "accepted_convention",
+                "status": entry.get("accepted_for_closeout", ""),
+                "governance_sensitive": entry.get("stakeholder_decision_required", ""),
+                "runtime_impact": entry.get("runtime_impact", "None"),
+                "recommended_action": entry.get("notes", ""),
+                "target_phase": "Phase 10",
+                "notes": entry.get("description", ""),
+            }
+        )
+    rows.extend(
+        [
+            {
+                "item": "Grouped revenue evidence handling",
+                "category": "accepted_convention",
+                "status": "documented",
+                "governance_sensitive": "yes",
+                "runtime_impact": "None",
+                "recommended_action": "Keep grouped totals explicit until stronger evidence exists.",
+                "target_phase": "Phase 10",
+                "notes": "CO2 and balancing evidence should not be split synthetically from totals.",
+            },
+            {
+                "item": "OPEX contingency / minor-row grouping",
+                "category": "accepted_convention",
+                "status": "documented",
+                "governance_sensitive": "yes",
+                "runtime_impact": "None",
+                "recommended_action": "Carry forward as presentation convention unless deeper sub-line review is required.",
+                "target_phase": "Phase 10",
+                "notes": "Known OPEX grouping residual remains documented rather than runtime-fixed.",
+            },
+        ]
+    )
+    return rows
 
 
 def _write_gap_register_sheet(sheet, summary_rows: list[dict[str, str]]) -> None:
@@ -1888,6 +2152,69 @@ def _write_co2_balancing_sheet(sheet, rows: list[dict[str, str]], runtime_summar
     sheet.freeze_panes = "A8"
 
 
+def _write_calibration_residual_closeout_sheet(sheet, rows: list[dict[str, str]], runtime_summary_rows: list[dict[str, str]]) -> None:
+    generated_at = runtime_summary_rows[0]["generated_at"]
+    project_name = runtime_summary_rows[0]["project"]
+    _apply_provenance_banner(sheet, "Calibration Residual Closeout", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", generated_at, project_name)
+    sheet["A5"] = "Reviewer Guidance"
+    sheet["A5"].font = BOLD_FONT
+    sheet["B5"] = "This sheet is the final Phase 10 residual reference. Use it to separate resolved items, accepted convention drift, evidence limitations, governance blockers, engineering follow-up, and stakeholder decisions."
+    headers = [
+        "item",
+        "category",
+        "runtime_impact",
+        "governance_impact",
+        "current_status",
+        "classification",
+        "owner",
+        "recommended_action",
+        "roadmap_phase",
+        "notes",
+    ]
+    for idx, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=7, column=idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    row = 8
+    for entry in rows:
+        for idx, key in enumerate(headers, start=1):
+            cell = sheet.cell(row=row, column=idx, value=entry[key])
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+            if key == "classification":
+                color = {
+                    "RESOLVED": PASS_FILL,
+                    "ACCEPTED_CONVENTION": CONVENTION_FILL,
+                    "EVIDENCE_LIMITATION": WARN_FILL,
+                    "GOVERNANCE_BLOCKER": GOVERNANCE_FILL,
+                    "ENGINEERING_FOLLOWUP": PENDING_FILL,
+                    "STAKEHOLDER_DECISION": SECTION_FILL,
+                    "MISSING_EVIDENCE": MISS_FILL,
+                }.get(str(entry[key]), META_FILL)
+                cell.fill = color
+            elif row % 2 == 0:
+                cell.fill = ROW_ALT_FILL
+        row += 1
+
+    sheet["A24"] = "Closeout framing"
+    sheet["A24"].font = BOLD_FONT
+    sheet["A25"] = "Safe for review"
+    sheet["B25"] = "Yes — the remaining residuals are now classified explicitly."
+    sheet["A26"] = "Requires governance interpretation"
+    sheet["B26"] = "Yes — governance blockers and stakeholder decisions remain outside runtime stability."
+    sheet["A27"] = "Requires future engineering enhancement"
+    sheet["B27"] = "Only for reporting/evidence improvements, not broad runtime redesign."
+    sheet["A28"] = "Not runtime-critical"
+    sheet["B28"] = "Accepted conventions and evidence limitations are documented rather than silently normalized."
+
+    widths = {"A": 28, "B": 24, "C": 18, "D": 24, "E": 18, "F": 22, "G": 20, "H": 34, "I": 16, "J": 48}
+    for col, width in widths.items():
+        sheet.column_dimensions[col].width = width
+    sheet.freeze_panes = "A8"
+
+
 def _scalar_totals(runtime: dict) -> dict[str, tuple[str | float, str | float]]:
     return {
         "Project IRR": (0.0947, runtime["project_irr"]),
@@ -1937,6 +2264,10 @@ def write_calibration_reconciliation_pack(
     co2_balancing_source_map_path: Path | str = DEFAULT_CO2_BALANCING_SOURCE_MAP,
     co2_balancing_gap_summary_path: Path | str = DEFAULT_CO2_BALANCING_GAP_SUMMARY,
     co2_balancing_evidence_quality_path: Path | str = DEFAULT_CO2_BALANCING_EVIDENCE_QUALITY,
+    final_residual_registry_path: Path | str = DEFAULT_FINAL_RESIDUAL_REGISTRY,
+    governance_blocker_summary_path: Path | str = DEFAULT_GOVERNANCE_BLOCKER_SUMMARY,
+    accepted_conventions_registry_path: Path | str = DEFAULT_ACCEPTED_CONVENTIONS_REGISTRY,
+    phase11_carry_forward_items_path: Path | str = DEFAULT_PHASE11_CARRY_FORWARD_ITEMS,
 ) -> ReconciliationArtifacts:
     workbook_path = Path(workbook_path)
     gap_register_path = Path(gap_register_path)
@@ -1953,6 +2284,10 @@ def write_calibration_reconciliation_pack(
     co2_balancing_source_map_path = Path(co2_balancing_source_map_path)
     co2_balancing_gap_summary_path = Path(co2_balancing_gap_summary_path)
     co2_balancing_evidence_quality_path = Path(co2_balancing_evidence_quality_path)
+    final_residual_registry_path = Path(final_residual_registry_path)
+    governance_blocker_summary_path = Path(governance_blocker_summary_path)
+    accepted_conventions_registry_path = Path(accepted_conventions_registry_path)
+    phase11_carry_forward_items_path = Path(phase11_carry_forward_items_path)
 
     for path in (
         workbook_path,
@@ -1970,6 +2305,10 @@ def write_calibration_reconciliation_pack(
         co2_balancing_source_map_path,
         co2_balancing_gap_summary_path,
         co2_balancing_evidence_quality_path,
+        final_residual_registry_path,
+        governance_blocker_summary_path,
+        accepted_conventions_registry_path,
+        phase11_carry_forward_items_path,
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1984,6 +2323,7 @@ def write_calibration_reconciliation_pack(
     specs_by_sheet = _build_specs(runtime, per_bridge, shl_bridge)
     irr_rows = _irr_report_rows(runtime, conventions)
     co2_balancing_rows = _co2_balancing_report_rows(runtime, per_bridge)
+    final_closeout_rows = _final_closeout_rows([], conventions)
 
     workbook = Workbook()
     navigation = workbook.active
@@ -2039,6 +2379,7 @@ def write_calibration_reconciliation_pack(
     _write_review_signoff(review_signoff, signoff_rows)
     _write_readiness_matrix(readiness, signoff_rows)
     _write_irr_reconciliation_sheet(workbook.create_sheet("IRR Reconciliation"), irr_rows, runtime_rows)
+    _write_calibration_residual_closeout_sheet(workbook.create_sheet("Calibration Residual Closeout"), final_closeout_rows, runtime_rows)
     _write_gap_register_sheet(workbook.create_sheet("Gap Register"), summary_rows)
     _write_source_inventory_sheet(workbook.create_sheet("Source Inventory"), source_inventory)
     _write_accepted_conventions_sheet(workbook.create_sheet("Accepted Conventions"), conventions)
@@ -2081,6 +2422,10 @@ def write_calibration_reconciliation_pack(
             for row in co2_balancing_rows
         ],
     )
+    _write_csv(final_residual_registry_path, final_closeout_rows)
+    _write_csv(governance_blocker_summary_path, [row for row in final_closeout_rows if row["classification"] == "GOVERNANCE_BLOCKER"])
+    _write_csv(accepted_conventions_registry_path, _accepted_conventions_registry_rows(conventions))
+    _write_csv(phase11_carry_forward_items_path, [row for row in final_closeout_rows if row["roadmap_phase"] == "Phase 11"])
     write_review_pack_navigation_map_csv(navigation_map_path)
 
     return ReconciliationArtifacts(
@@ -2099,6 +2444,10 @@ def write_calibration_reconciliation_pack(
         co2_balancing_source_map_path=co2_balancing_source_map_path,
         co2_balancing_gap_summary_path=co2_balancing_gap_summary_path,
         co2_balancing_evidence_quality_path=co2_balancing_evidence_quality_path,
+        final_residual_registry_path=final_residual_registry_path,
+        governance_blocker_summary_path=governance_blocker_summary_path,
+        accepted_conventions_registry_path=accepted_conventions_registry_path,
+        phase11_carry_forward_items_path=phase11_carry_forward_items_path,
     )
 
 
