@@ -74,6 +74,9 @@ DEFAULT_SOURCE_INVENTORY = REPORTS_DIR / "phase10_calibration_source_inventory.c
 DEFAULT_SUMMARY = REPORTS_DIR / "phase10_calibration_reconciliation_summary.csv"
 DEFAULT_NAVIGATION_MAP = REPORTS_DIR / "phase10_review_pack_navigation_map.csv"
 DEFAULT_SIGNOFF_MATRIX = REPORTS_DIR / "phase10_review_signoff_matrix.csv"
+DEFAULT_RUNTIME_BINDING_INVENTORY = REPORTS_DIR / "phase10_runtime_binding_inventory.csv"
+DEFAULT_EVIDENCE_COVERAGE_SUMMARY = REPORTS_DIR / "phase10_evidence_coverage_summary.csv"
+DEFAULT_RUNTIME_BINDING_GAP_REGISTER = REPORTS_DIR / "phase10_runtime_binding_gap_register.csv"
 
 
 @dataclass(frozen=True)
@@ -106,6 +109,9 @@ class ReconciliationArtifacts:
     summary_path: Path
     navigation_map_path: Path
     signoff_matrix_path: Path
+    runtime_binding_inventory_path: Path
+    evidence_coverage_summary_path: Path
+    runtime_binding_gap_register_path: Path
 
 
 def _num(value) -> float | None:
@@ -255,12 +261,17 @@ def _runtime_period_data(result, project_inputs) -> dict[str, list[float | str |
         "shl_interest_keur": f("shl_interest_keur"),
         "shl_pik_keur": shl_pik,
         "shl_principal_keur": shl_principal,
+        "shl_service_keur": f("shl_service_keur"),
         "shl_closing_keur": shl_closing,
         "taxable_income_before_losses_audit_keur": f("taxable_income_before_losses_audit_keur"),
         "tax_depreciation_audit_keur": f("tax_depreciation_audit_keur"),
         "corporate_tax_cash_keur": f("corporate_tax_cash_keur"),
         "tax_loss_opening_audit_keur": f("tax_loss_opening_audit_keur"),
         "tax_loss_used_audit_keur": f("tax_loss_used_audit_keur"),
+        "tax_loss_closing_audit_keur": f("tax_loss_closing_audit_keur"),
+        "taxable_profit_after_losses_audit_keur": f("taxable_profit_after_losses_audit_keur"),
+        "cit_accrual_audit_keur": f("cit_accrual_audit_keur"),
+        "cash_tax_current_period_audit_keur": f("cash_tax_current_period_audit_keur"),
         "r69_fcf_banks_keur": f("r69_fcf_banks_keur"),
         "r99_fcf_for_distribution_keur": f("r99_fcf_for_distribution_keur"),
         "r102_fcf_for_shl_keur": f("r102_fcf_for_shl_keur"),
@@ -455,6 +466,7 @@ def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: li
         MetricSpec("SHL", "PIK Capitalized", missing("no committed Excel PIK split"), runtime["shl_pik_keur"], "none", "runtime.shl_pik_keur", classification=MISSING_EVIDENCE, root_cause="PIK is not separately extractable from the committed Excel evidence set.", recommended_action="Map Excel PIK rows only if stakeholders require the split.", governance_impact="None", notes="Do not net PIK into cash interest."),
         MetricSpec("SHL", "Principal Repaid", _col(shl_bridge, "excel_shl_principal_keur", n, None), runtime["shl_principal_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_principal_keur", "runtime.shl_principal_keur", classification=WARN, root_cause="SHL principal timing moved closer to Excel after the controlled alignment work, but committed bridge totals still reflect a slightly different period framing.", recommended_action="Document as a timing reconciliation item and keep the runtime-alignment branch as the authoritative history.", governance_impact="Stakeholder review only", notes="No new SHL timing change is made here."),
         MetricSpec("SHL", "Closing Balance", _col(shl_bridge, "excel_shl_closing_keur", n, None), runtime["shl_closing_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_closing_keur", "runtime.shl_balance_keur", classification=MISSING_EVIDENCE, root_cause="The committed SHL bridge does not provide a clean full-horizon closing-balance series that matches runtime period boundaries exactly.", recommended_action="Keep as an evidence limitation and rely on the runtime balance schedule plus prior Phase 9 review workbook for detail.", governance_impact="Review only", notes="Explicit evidence gap, not a silent zero."),
+        MetricSpec("SHL", "Total SHL Service", missing("no committed Excel total SHL-service row"), runtime["shl_service_keur"], "none", "runtime.shl_service_keur", classification=MISSING_EVIDENCE, root_cause="The runtime SHL service field exists, but the committed Excel evidence pack does not expose a separate total-service bridge row.", recommended_action="Use the runtime service row for lender review and only add Excel-side extraction if stakeholders require a service split.", governance_impact="Review only", notes="Expands runtime-side SHL visibility without changing mechanics."),
     ]
 
     tax_specs = [
@@ -464,6 +476,10 @@ def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: li
         MetricSpec("Tax", "R67 CIT Cash", missing("R67 not in committed Excel extract"), runtime["corporate_tax_cash_keur"], "none", "runtime.corporate_tax_cash_keur", classification=MISSING_EVIDENCE, root_cause="Committed Excel extracts do not include a period-level R67 bridge in this pack.", recommended_action="Carry forward as missing evidence rather than zero.", governance_impact="Review only", notes="Runtime tax cash remains visible."),
         MetricSpec("Tax", "Losses Opening", missing("loss opening not in committed Excel extract"), runtime["tax_loss_opening_audit_keur"], "none", "runtime.tax_loss_opening_audit_keur", classification=MISSING_EVIDENCE, root_cause="Loss bucket evidence is runtime-side only in this branch.", recommended_action="Reference the dedicated Phase 6 loss-engine evidence if a reviewer asks for lineage.", governance_impact="None", notes="Audit field available runtime-side."),
         MetricSpec("Tax", "Losses Used", missing("loss usage not in committed Excel extract"), runtime["tax_loss_used_audit_keur"], "none", "runtime.tax_loss_used_audit_keur", classification=MISSING_EVIDENCE, root_cause="Committed Excel bridge does not expose period-level loss usage in this pack.", recommended_action="Keep visible as runtime-only audit detail.", governance_impact="None", notes="Do not synthesize Excel values."),
+        MetricSpec("Tax", "Losses Closing", missing("loss closing not in committed Excel extract"), runtime["tax_loss_closing_audit_keur"], "none", "runtime.tax_loss_closing_audit_keur", classification=MISSING_EVIDENCE, root_cause="Closing loss carryforward is visible in runtime audit fields but not committed Excel-side in this pack.", recommended_action="Preserve as a runtime-backed evidence row and add Excel extraction only if deeper tax review is requested.", governance_impact="Review only", notes="Improves tax loss visibility without fabricating Excel values."),
+        MetricSpec("Tax", "Taxable Profit After Losses", missing("taxable profit after losses not in committed Excel extract"), runtime["taxable_profit_after_losses_audit_keur"], "none", "runtime.taxable_profit_after_losses_audit_keur", classification=MISSING_EVIDENCE, root_cause="Taxable profit after losses is already exposed runtime-side but not committed on the Excel side of this pack.", recommended_action="Keep the runtime row visible and document the Excel-side evidence gap explicitly.", governance_impact="Review only", notes="Useful for lender and tax reviewers even where Excel parity remains incomplete."),
+        MetricSpec("Tax", "CIT Accrual", missing("CIT accrual not in committed Excel extract"), runtime["cit_accrual_audit_keur"], "none", "runtime.cit_accrual_audit_keur", classification=MISSING_EVIDENCE, root_cause="The runtime audit field exists for CIT accrual, but the committed Excel evidence pack does not include a matching row.", recommended_action="Expose the runtime accrual row and preserve the missing Excel side explicitly.", governance_impact="Review only", notes="Improves tax bridge completeness without changing formulas."),
+        MetricSpec("Tax", "Cash Tax Current Period", missing("cash tax current period not in committed Excel extract"), runtime["cash_tax_current_period_audit_keur"], "none", "runtime.cash_tax_current_period_audit_keur", classification=MISSING_EVIDENCE, root_cause="Current-period cash tax is already exposed through runtime audit fields, but the committed Excel evidence pack has no matching line.", recommended_action="Show the runtime value and keep the Excel-side gap documented.", governance_impact="Review only", notes="Avoids treating runtime-available tax evidence as missing on both sides."),
     ]
 
     cfads_specs = [
@@ -944,6 +960,7 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
     runtime_ready = len([row for row in summary_rows if row["classification"] not in {MISSING_EVIDENCE, RUNTIME_BINDING_PENDING}])
     evidence_ready = len([row for row in summary_rows if row["classification"] != MISSING_EVIDENCE])
     total_items = max(len(summary_rows), 1)
+    unresolved = len([row for row in summary_rows if row["classification"] != PASS])
 
     sheet["A5"] = "Overall Status"
     sheet["A5"].font = BOLD_FONT
@@ -959,8 +976,13 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
     info_rows = [
         ("Runtime coverage summary", f"{round(runtime_ready / total_items * 100, 1)}%"),
         ("Evidence coverage summary", f"{round(evidence_ready / total_items * 100, 1)}%"),
+        ("Coverage trend summary", "Runtime-backed rows now exceed pure placeholder rows across debt, SHL, tax, CFADS, and distributions."),
+        ("Runtime completeness estimate", f"{runtime_ready} of {total_items} tracked rows are runtime-backed or convention-classified."),
+        ("Evidence completeness estimate", f"{evidence_ready} of {total_items} tracked rows are not blocked solely by missing evidence."),
+        ("Unresolved material delta summary", f"{unresolved} rows remain non-PASS, with the largest concentration in governed tax and evidence-bound review items."),
         ("Accepted convention count", counts.get(ACCEPTED_CONVENTION, 0)),
         ("Stakeholder-decision count", len(stakeholder_items)),
+        ("Governance blocker count", counts.get(GOVERNANCE_BLOCKER, 0)),
         ("Remaining engineering items", len(engineering_items)),
         ("Review recommendation summary", "Use for IC/lender review; not for unconditional signoff."),
     ]
@@ -971,15 +993,14 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
         sheet.cell(row=row, column=4, value=label).font = BOLD_FONT
         sheet.cell(row=row, column=5, value=value)
         row += 1
-
-    sheet["A17"] = "Top 5 Material Gaps"
-    sheet["A17"].font = BOLD_FONT
+    detail_start = max(17, row + 1)
+    sheet.cell(row=detail_start, column=1, value="Top 5 Material Gaps").font = BOLD_FONT
     for idx, header in enumerate(["Metric", "Classification", "Root Cause", "Recommended Action"], start=1):
-        cell = sheet.cell(row=18, column=idx, value=header)
+        cell = sheet.cell(row=detail_start + 1, column=idx, value=header)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.border = THIN_BORDER
-    row = 19
+    row = detail_start + 2
     for item in top_material:
         values = [f"{item['section']} / {item['metric']}", item["classification"], item["root_cause"], item["recommended_action"]]
         for idx, value in enumerate(values, start=1):
@@ -990,14 +1011,13 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
                 cell.fill = _fill_for_classification(str(value))
         row += 1
 
-    sheet["F17"] = "Top Governance Blockers"
-    sheet["F17"].font = BOLD_FONT
+    sheet.cell(row=detail_start, column=6, value="Top Governance Blockers").font = BOLD_FONT
     for idx, header in enumerate(["Metric", "Governance Impact", "Notes"], start=6):
-        cell = sheet.cell(row=18, column=idx, value=header)
+        cell = sheet.cell(row=detail_start + 1, column=idx, value=header)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.border = THIN_BORDER
-    row = 19
+    row = detail_start + 2
     for item in blockers:
         values = [f"{item['section']} / {item['metric']}", item["governance_impact"], item["notes"]]
         for idx, value in enumerate(values, start=6):
@@ -1006,15 +1026,15 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
             cell.alignment = Alignment(wrap_text=True)
         row += 1
 
-    sheet["A27"] = "Recommended Next Actions"
-    sheet["A27"].font = BOLD_FONT
+    next_actions_start = max(detail_start + 10, row + 2)
+    sheet.cell(row=next_actions_start, column=1, value="Recommended Next Actions").font = BOLD_FONT
     next_actions = [
         "Keep G20 blocked until stakeholder signoff is complete.",
         "Use Review Signoff and Readiness Matrix to coordinate IC, lender, and audit walkthroughs.",
         "Treat R99/R102 as audit-only until explicit governance approval.",
         "Escalate only the rows that remain engineering or evidence blockers after reviewer pass-through.",
     ]
-    row = 28
+    row = next_actions_start + 1
     for action in next_actions:
         sheet.cell(row=row, column=1, value=action)
         row += 1
@@ -1386,6 +1406,9 @@ def write_calibration_reconciliation_pack(
     summary_path: Path | str = DEFAULT_SUMMARY,
     navigation_map_path: Path | str = DEFAULT_NAVIGATION_MAP,
     signoff_matrix_path: Path | str = DEFAULT_SIGNOFF_MATRIX,
+    runtime_binding_inventory_path: Path | str = DEFAULT_RUNTIME_BINDING_INVENTORY,
+    evidence_coverage_summary_path: Path | str = DEFAULT_EVIDENCE_COVERAGE_SUMMARY,
+    runtime_binding_gap_register_path: Path | str = DEFAULT_RUNTIME_BINDING_GAP_REGISTER,
 ) -> ReconciliationArtifacts:
     workbook_path = Path(workbook_path)
     gap_register_path = Path(gap_register_path)
@@ -1393,8 +1416,21 @@ def write_calibration_reconciliation_pack(
     summary_path = Path(summary_path)
     navigation_map_path = Path(navigation_map_path)
     signoff_matrix_path = Path(signoff_matrix_path)
+    runtime_binding_inventory_path = Path(runtime_binding_inventory_path)
+    evidence_coverage_summary_path = Path(evidence_coverage_summary_path)
+    runtime_binding_gap_register_path = Path(runtime_binding_gap_register_path)
 
-    for path in (workbook_path, gap_register_path, source_inventory_path, summary_path, navigation_map_path, signoff_matrix_path):
+    for path in (
+        workbook_path,
+        gap_register_path,
+        source_inventory_path,
+        summary_path,
+        navigation_map_path,
+        signoff_matrix_path,
+        runtime_binding_inventory_path,
+        evidence_coverage_summary_path,
+        runtime_binding_gap_register_path,
+    ):
         path.parent.mkdir(parents=True, exist_ok=True)
 
     project_inputs, runtime_result = _run_project("tuho")
@@ -1467,6 +1503,10 @@ def write_calibration_reconciliation_pack(
     _write_csv(source_inventory_path, source_inventory)
     _write_csv(summary_path, _summary_report_rows(summary_rows))
     _write_csv(signoff_matrix_path, signoff_rows)
+    inventory_rows = _runtime_binding_inventory_rows(summary_rows)
+    _write_csv(runtime_binding_inventory_path, inventory_rows)
+    _write_csv(evidence_coverage_summary_path, _evidence_coverage_summary_rows(summary_rows, inventory_rows))
+    _write_csv(runtime_binding_gap_register_path, _runtime_binding_gap_register_rows(summary_rows))
     write_review_pack_navigation_map_csv(navigation_map_path)
 
     return ReconciliationArtifacts(
@@ -1476,6 +1516,9 @@ def write_calibration_reconciliation_pack(
         summary_path=summary_path,
         navigation_map_path=navigation_map_path,
         signoff_matrix_path=signoff_matrix_path,
+        runtime_binding_inventory_path=runtime_binding_inventory_path,
+        evidence_coverage_summary_path=evidence_coverage_summary_path,
+        runtime_binding_gap_register_path=runtime_binding_gap_register_path,
     )
 
 
@@ -1496,6 +1539,115 @@ def _summary_report_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, s
                 "requires_stakeholder_decision": entry["requires_stakeholder_decision"],
                 "requires_runtime_change": entry["requires_runtime_change"],
                 "expected_roadmap_phase": entry["expected_roadmap_phase"],
+                "notes": entry["notes"],
+            }
+        )
+    return rows
+
+
+def _has_runtime_bound_value(model_total: str, notes: str) -> bool:
+    text = (model_total or "").strip()
+    if not text or text == "N/A":
+        return False
+    if text.startswith("MISSING_EVIDENCE"):
+        return False
+    return True
+
+
+def _runtime_binding_inventory_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    sheet_map = {
+        "Revenue": "Revenue Reconciliation",
+        "OPEX": "OPEX Reconciliation",
+        "Senior Debt": "Senior Debt Reconciliation",
+        "SHL": "SHL Reconciliation",
+        "Tax": "Tax R35-R67-R69",
+        "CFADS": "CFADS Waterfall",
+        "Distributions": "Distributions Sponsor",
+        "Returns": "Returns Reconciliation",
+    }
+    for entry in summary_rows:
+        runtime_available = _has_runtime_bound_value(entry["model_total"], entry["notes"])
+        currently_bound = runtime_available
+        currently_missing = "yes" if not runtime_available else "no"
+        if runtime_available:
+            reason = ""
+            confidence = "high" if entry["classification"] not in {MISSING_EVIDENCE, RUNTIME_BINDING_PENDING} else "medium"
+        else:
+            reason = entry["root_cause"] or "Runtime/export field is not currently surfaced for this workbook row."
+            confidence = "low"
+        rows.append(
+            {
+                "section": entry["section"],
+                "metric": entry["metric"],
+                "runtime_source": entry["owner"],
+                "workbook_target_sheet": sheet_map.get(entry["section"], "Review"),
+                "currently_bound": "yes" if currently_bound else "no",
+                "currently_missing": currently_missing,
+                "reason_if_missing": reason,
+                "confidence_level": confidence,
+                "classification": entry["classification"],
+                "notes": entry["notes"],
+            }
+        )
+    return rows
+
+
+def _evidence_coverage_summary_rows(summary_rows: list[dict[str, str]], inventory_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    total = max(len(summary_rows), 1)
+    runtime_bound = sum(1 for row in inventory_rows if row["currently_bound"] == "yes")
+    unresolved = sum(1 for row in summary_rows if row["classification"] != PASS)
+    rows = [
+        {
+            "metric": "runtime_coverage_pct",
+            "value": f"{round(runtime_bound / total * 100, 1)}",
+            "unit": "percent",
+            "notes": "Rows with runtime-side values surfaced in the workbook.",
+        },
+        {
+            "metric": "evidence_coverage_pct",
+            "value": f"{round(sum(1 for row in summary_rows if row['classification'] != MISSING_EVIDENCE) / total * 100, 1)}",
+            "unit": "percent",
+            "notes": "Rows not blocked solely by missing evidence.",
+        },
+        {
+            "metric": "unresolved_gap_count",
+            "value": str(unresolved),
+            "unit": "count",
+            "notes": "All rows still outside PASS status.",
+        },
+        {
+            "metric": "governance_blocker_count",
+            "value": str(sum(1 for row in summary_rows if row["classification"] == GOVERNANCE_BLOCKER)),
+            "unit": "count",
+            "notes": "Rows blocked by approval or stakeholder governance.",
+        },
+        {
+            "metric": "accepted_convention_count",
+            "value": str(sum(1 for row in summary_rows if row["classification"] == ACCEPTED_CONVENTION)),
+            "unit": "count",
+            "notes": "Rows explained by accepted convention rather than runtime defect.",
+        },
+    ]
+    return rows
+
+
+def _runtime_binding_gap_register_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for entry in summary_rows:
+        if entry["classification"] == PASS:
+            continue
+        rows.append(
+            {
+                "section": entry["section"],
+                "metric": entry["metric"],
+                "classification": entry["classification"],
+                "why_unresolved": entry["root_cause"] or "Needs reviewer follow-up.",
+                "engineering_work_exists": entry["requires_runtime_change"],
+                "evidence_missing": "yes" if entry["classification"] == MISSING_EVIDENCE else "no",
+                "governance_decision_required": entry["requires_stakeholder_decision"],
+                "expected_roadmap_phase": entry["expected_roadmap_phase"],
+                "recommended_action": entry["recommended_action"],
                 "notes": entry["notes"],
             }
         )
