@@ -130,9 +130,9 @@ def default_export_registry() -> ExportRegistry:
                 runtime_or_preview="review",
                 governance_sensitive=True,
                 current_status="review_evidence_pack",
-                description="Lender and audit review workbook explaining Excel-versus-model gaps, classifications, governance impacts, and next actions.",
+                description="Executive, lender, and audit review workbook with dashboard, signoff flow, classifications, governance impacts, and next actions.",
                 path="reports/phase10_calibration_reconciliation_pack.xlsx",
-                notes="Audit-only evidence pack; G20 remains blocked and R99/R102 remain not approved.",
+                notes="Executive review and governance evidence pack; G20 remains blocked and R99/R102 remain not approved.",
             ),
             ExportArtifact(
                 artifact_name="Phase 10 export registry",

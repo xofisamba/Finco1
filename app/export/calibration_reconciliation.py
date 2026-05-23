@@ -73,6 +73,7 @@ DEFAULT_GAP_REGISTER = REPORTS_DIR / "phase10_calibration_gap_register.csv"
 DEFAULT_SOURCE_INVENTORY = REPORTS_DIR / "phase10_calibration_source_inventory.csv"
 DEFAULT_SUMMARY = REPORTS_DIR / "phase10_calibration_reconciliation_summary.csv"
 DEFAULT_NAVIGATION_MAP = REPORTS_DIR / "phase10_review_pack_navigation_map.csv"
+DEFAULT_SIGNOFF_MATRIX = REPORTS_DIR / "phase10_review_signoff_matrix.csv"
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,7 @@ class ReconciliationArtifacts:
     source_inventory_path: Path
     summary_path: Path
     navigation_map_path: Path
+    signoff_matrix_path: Path
 
 
 def _num(value) -> float | None:
@@ -677,21 +679,25 @@ def _apply_provenance_banner(sheet, title: str, runtime_label: str, governance_s
 def _navigation_rows() -> list[dict[str, str]]:
     return [
         {"sheet_name": "Navigation", "reviewer_role": "All reviewers", "primary_purpose": "Start here, understand the pack, and jump to major sections.", "navigation_priority": "1", "governance_sensitive": "yes", "notes": "Contains legend, governance warning, and hyperlinks."},
-        {"sheet_name": "Executive Summary", "reviewer_role": "IC / lender / audit lead", "primary_purpose": "See parity posture, counts, top material gaps, and stakeholder items.", "navigation_priority": "2", "governance_sensitive": "yes", "notes": "Best first stop after Navigation."},
-        {"sheet_name": "Governance", "reviewer_role": "IC / governance", "primary_purpose": "Review G20 and R99/R102 status and what is engineering versus approval gating.", "navigation_priority": "3", "governance_sensitive": "yes", "notes": "Governance warning banner lives here."},
-        {"sheet_name": "Runtime Summary", "reviewer_role": "All reviewers", "primary_purpose": "Anchor the pack to current runtime outputs and labels.", "navigation_priority": "4", "governance_sensitive": "yes", "notes": "Runtime versus review labels preserved."},
-        {"sheet_name": "Revenue Reconciliation", "reviewer_role": "Commercial / audit", "primary_purpose": "Review revenue lines, totals, and missing evidence treatment.", "navigation_priority": "5", "governance_sensitive": "yes", "notes": "CO2 and balancing remain explicit evidence gaps."},
-        {"sheet_name": "OPEX Reconciliation", "reviewer_role": "Operations / audit", "primary_purpose": "Review OPEX totals, contingency breakout status, and EBITDA bridge.", "navigation_priority": "6", "governance_sensitive": "yes", "notes": "Grouped OPEX residuals remain documented."},
-        {"sheet_name": "Senior Debt Reconciliation", "reviewer_role": "Lender / debt reviewer", "primary_purpose": "Review debt schedule visibility, DSCR residuals, and timing notes.", "navigation_priority": "7", "governance_sensitive": "yes", "notes": "Debt rows remain runtime-transparent."},
-        {"sheet_name": "SHL Reconciliation", "reviewer_role": "Sponsor / audit", "primary_purpose": "Review SHL opening, accrued, cash, PIK, principal, and balance treatment.", "navigation_priority": "8", "governance_sensitive": "yes", "notes": "Presentation and evidence limitations are explicit."},
-        {"sheet_name": "Tax R35-R67-R69", "reviewer_role": "Tax / audit", "primary_purpose": "Review governed tax residuals, runtime audit fields, and evidence gaps.", "navigation_priority": "9", "governance_sensitive": "yes", "notes": "No tax runtime changes in this pack."},
-        {"sheet_name": "CFADS Waterfall", "reviewer_role": "Lender / cashflow reviewer", "primary_purpose": "Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.", "navigation_priority": "10", "governance_sensitive": "yes", "notes": "Governance blockers are highlighted."},
-        {"sheet_name": "Distributions Sponsor", "reviewer_role": "Sponsor / IC", "primary_purpose": "Review distribution definition and DA staging separation.", "navigation_priority": "11", "governance_sensitive": "yes", "notes": "No mixed authoritative path."},
-        {"sheet_name": "Returns Reconciliation", "reviewer_role": "IC / sponsor", "primary_purpose": "Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.", "navigation_priority": "12", "governance_sensitive": "yes", "notes": "Equity IRR residual remains a stakeholder matter."},
-        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "13", "governance_sensitive": "yes", "notes": "Primary action list."},
-        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "14", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
-        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "15", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
-        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "16", "governance_sensitive": "yes", "notes": "Best closing sheet."},
+        {"sheet_name": "Executive Dashboard", "reviewer_role": "IC / lender / governance lead", "primary_purpose": "See overall parity posture, major risks, blockers, and next actions without drilling into row detail first.", "navigation_priority": "2", "governance_sensitive": "yes", "notes": "Best first stop after Navigation for non-engineering readers."},
+        {"sheet_name": "Executive Summary", "reviewer_role": "IC / lender / audit lead", "primary_purpose": "See parity posture, counts, top material gaps, and stakeholder items.", "navigation_priority": "3", "governance_sensitive": "yes", "notes": "Best first stop after the dashboard for evidence detail."},
+        {"sheet_name": "Review Signoff", "reviewer_role": "Governance / PMO / reviewers", "primary_purpose": "Track manual signoff readiness by area, evidence completeness, runtime verification, and recommended action.", "navigation_priority": "4", "governance_sensitive": "yes", "notes": "Workbook-only workflow tracker; not persistence."},
+        {"sheet_name": "Governance", "reviewer_role": "IC / governance", "primary_purpose": "Review G20 and R99/R102 status and what is engineering versus approval gating.", "navigation_priority": "5", "governance_sensitive": "yes", "notes": "Governance warning banner lives here."},
+        {"sheet_name": "Governance Timeline", "reviewer_role": "Governance / lender / audit", "primary_purpose": "Understand which Phase 9 and Phase 10 checkpoints are complete versus still pending.", "navigation_priority": "6", "governance_sensitive": "yes", "notes": "Timeline of parity and governance milestones."},
+        {"sheet_name": "Readiness Matrix", "reviewer_role": "All reviewers", "primary_purpose": "See maturity across runtime, export, evidence, and governance dimensions by review area.", "navigation_priority": "7", "governance_sensitive": "yes", "notes": "Fast maturity scan for IC and lender meetings."},
+        {"sheet_name": "Runtime Summary", "reviewer_role": "All reviewers", "primary_purpose": "Anchor the pack to current runtime outputs and labels.", "navigation_priority": "8", "governance_sensitive": "yes", "notes": "Runtime versus review labels preserved."},
+        {"sheet_name": "Revenue Reconciliation", "reviewer_role": "Commercial / audit", "primary_purpose": "Review revenue lines, totals, and missing evidence treatment.", "navigation_priority": "9", "governance_sensitive": "yes", "notes": "CO2 and balancing remain explicit evidence gaps."},
+        {"sheet_name": "OPEX Reconciliation", "reviewer_role": "Operations / audit", "primary_purpose": "Review OPEX totals, contingency breakout status, and EBITDA bridge.", "navigation_priority": "10", "governance_sensitive": "yes", "notes": "Grouped OPEX residuals remain documented."},
+        {"sheet_name": "Senior Debt Reconciliation", "reviewer_role": "Lender / debt reviewer", "primary_purpose": "Review debt schedule visibility, DSCR residuals, and timing notes.", "navigation_priority": "11", "governance_sensitive": "yes", "notes": "Debt rows remain runtime-transparent."},
+        {"sheet_name": "SHL Reconciliation", "reviewer_role": "Sponsor / audit", "primary_purpose": "Review SHL opening, accrued, cash, PIK, principal, and balance treatment.", "navigation_priority": "12", "governance_sensitive": "yes", "notes": "Presentation and evidence limitations are explicit."},
+        {"sheet_name": "Tax R35-R67-R69", "reviewer_role": "Tax / audit", "primary_purpose": "Review governed tax residuals, runtime audit fields, and evidence gaps.", "navigation_priority": "13", "governance_sensitive": "yes", "notes": "No tax runtime changes in this pack."},
+        {"sheet_name": "CFADS Waterfall", "reviewer_role": "Lender / cashflow reviewer", "primary_purpose": "Review cashflow rows, tax cash visibility, and audit-only R99/R102 staging.", "navigation_priority": "14", "governance_sensitive": "yes", "notes": "Governance blockers are highlighted."},
+        {"sheet_name": "Distributions Sponsor", "reviewer_role": "Sponsor / IC", "primary_purpose": "Review distribution definition and DA staging separation.", "navigation_priority": "15", "governance_sensitive": "yes", "notes": "No mixed authoritative path."},
+        {"sheet_name": "Returns Reconciliation", "reviewer_role": "IC / sponsor", "primary_purpose": "Review project IRR, equity IRR, DSCR, and reconciliation-view gaps.", "navigation_priority": "16", "governance_sensitive": "yes", "notes": "Equity IRR residual remains a stakeholder matter."},
+        {"sheet_name": "Gap Register", "reviewer_role": "All reviewers", "primary_purpose": "Sort and filter all open items by severity, owner, and next action.", "navigation_priority": "17", "governance_sensitive": "yes", "notes": "Primary action list."},
+        {"sheet_name": "Source Inventory", "reviewer_role": "Audit / model validation", "primary_purpose": "Understand evidence confidence and where each metric comes from.", "navigation_priority": "18", "governance_sensitive": "yes", "notes": "Useful for provenance checks."},
+        {"sheet_name": "Accepted Conventions", "reviewer_role": "Governance / audit", "primary_purpose": "Separate accepted convention drift from runtime defects.", "navigation_priority": "19", "governance_sensitive": "yes", "notes": "Not a runtime-fix sheet."},
+        {"sheet_name": "Reviewer Notes", "reviewer_role": "All reviewers", "primary_purpose": "Read the non-engineering guide to unknowns, blockers, and next steps.", "navigation_priority": "20", "governance_sensitive": "yes", "notes": "Best closing sheet."},
     ]
 
 
@@ -764,7 +770,9 @@ def _write_navigation(sheet, runtime_summary_rows: list[dict[str, str]]) -> None
         row += 1
 
     quick_links = [
+        ("Go to Executive Dashboard", "Executive Dashboard"),
         ("Go to Executive Summary", "Executive Summary"),
+        ("Go to Review Signoff", "Review Signoff"),
         ("Go to Gap Register", "Gap Register"),
         ("Go to Reviewer Notes", "Reviewer Notes"),
     ]
@@ -842,9 +850,272 @@ def _write_exec_summary(sheet, summary_rows: list[dict[str, str]], runtime_summa
     sheet["F21"] = "Tax evidence gaps, reconciliation IRR view, and sub-line revenue mapping remain the primary non-runtime unknowns."
     sheet["F22"] = "Governance blockers"
     sheet["F23"] = "G20 remains BLOCKED; R99/R102 remain NOT APPROVED and audit-only."
+    sheet["F25"] = "Review Recommendation"
+    sheet["F25"].font = BOLD_FONT
+    sheet["F26"] = "Safe to review"
+    sheet["G26"] = "Yes - the workbook is suitable for review meetings and signoff preparation."
+    sheet["F27"] = "Safe to rely on without caveats"
+    sheet["G27"] = "No - governance blockers, accepted conventions, and evidence gaps remain explicit."
+    sheet["F28"] = "Evidence confidence summary"
+    sheet["G28"] = "High for runtime-backed totals, medium for timing-sensitive debt/SHL bridges, lower where source evidence is still missing."
+    runtime_ready = len([row for row in summary_rows if row["classification"] not in {MISSING_EVIDENCE, RUNTIME_BINDING_PENDING}])
+    total_items = max(len(summary_rows), 1)
+    sheet["F29"] = "Runtime coverage summary"
+    sheet["G29"] = f"{round(runtime_ready / total_items * 100, 1)}% of tracked rows have runtime-backed or convention-classified coverage."
+    sheet["F30"] = "Governance heatmap summary"
+    sheet["G30"] = f"{counts.get(GOVERNANCE_BLOCKER, 0)} governance blockers and {len(stakeholder_items)} stakeholder-decision items remain open."
     for col, width in {"A": 32, "B": 18, "C": 28, "D": 24, "E": 18, "F": 24}.items():
         sheet.column_dimensions[col].width = width
+    sheet.column_dimensions["G"].width = 48
     sheet.freeze_panes = "A8"
+
+
+def _signoff_status(rows: list[dict[str, str]]) -> str:
+    classes = {row["classification"] for row in rows}
+    if GOVERNANCE_BLOCKER in classes:
+        return "GOVERNANCE_PENDING"
+    if FAIL in classes:
+        return "BLOCKED"
+    if MISSING_EVIDENCE in classes or RUNTIME_BINDING_PENDING in classes:
+        return "IN_REVIEW"
+    if WARN in classes:
+        return "READY_FOR_SIGNOFF"
+    return "ACCEPTED"
+
+
+def _review_signoff_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for row in summary_rows:
+        grouped.setdefault(row["section"], []).append(row)
+
+    reviewer_map = {
+        "Revenue": "Commercial",
+        "OPEX": "Operations",
+        "Senior Debt": "Lender / Debt",
+        "SHL": "Sponsor / Audit",
+        "Tax": "Tax / Audit",
+        "CFADS": "Finance / Waterfall",
+        "Distributions": "Governance / Sponsor",
+        "Returns": "IC / Finance",
+    }
+    rows_out: list[dict[str, str]] = []
+    for area in ["Revenue", "OPEX", "Senior Debt", "SHL", "Tax", "CFADS", "Distributions", "Returns"]:
+        area_rows = grouped.get(area, [])
+        classes = {row["classification"] for row in area_rows}
+        rows_out.append(
+            {
+                "review_area": area,
+                "reviewer_type": reviewer_map.get(area, "Review"),
+                "owner": area_rows[0]["owner"] if area_rows else "Review",
+                "reviewer": reviewer_map.get(area, "Review"),
+                "review_status": _signoff_status(area_rows) if area_rows else "NOT_STARTED",
+                "current_status": _signoff_status(area_rows) if area_rows else "NOT_STARTED",
+                "evidence_complete": "no" if MISSING_EVIDENCE in classes else "yes",
+                "runtime_verified": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
+                "governance_reviewed": "pending" if GOVERNANCE_BLOCKER in classes else "yes",
+                "stakeholder_decision_required": "yes" if any(row["requires_stakeholder_decision"] == "yes" for row in area_rows) else "no",
+                "runtime_ready": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
+                "evidence_ready": "no" if MISSING_EVIDENCE in classes else "yes",
+                "governance_ready": "no" if GOVERNANCE_BLOCKER in classes else "yes",
+                "blocker_type": "governance" if GOVERNANCE_BLOCKER in classes else "evidence" if MISSING_EVIDENCE in classes else "runtime_binding" if RUNTIME_BINDING_PENDING in classes else "none",
+                "recommended_action": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
+                "recommended_next_step": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
+                "notes": area_rows[0]["notes"] if area_rows else "",
+            }
+        )
+    return rows_out
+
+
+def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtime_summary_rows: list[dict[str, str]]) -> None:
+    generated_at = runtime_summary_rows[0]["generated_at"]
+    project_name = runtime_summary_rows[0]["project"]
+    _apply_provenance_banner(sheet, "Executive Dashboard", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", generated_at, project_name)
+
+    counts: dict[str, int] = {key: 0 for key in VALID_CLASSIFICATIONS}
+    for row in summary_rows:
+        counts[row["classification"]] = counts.get(row["classification"], 0) + 1
+    top_material = sorted(
+        [row for row in summary_rows if row["classification"] != PASS],
+        key=lambda row: (_severity_order(row["classification"]), -_materiality_value(row)),
+    )[:5]
+    blockers = [row for row in summary_rows if row["classification"] == GOVERNANCE_BLOCKER][:5]
+    stakeholder_items = [row for row in summary_rows if row["requires_stakeholder_decision"] == "yes"]
+    engineering_items = [row for row in summary_rows if row["requires_runtime_change"] == "yes"]
+    runtime_ready = len([row for row in summary_rows if row["classification"] not in {MISSING_EVIDENCE, RUNTIME_BINDING_PENDING}])
+    evidence_ready = len([row for row in summary_rows if row["classification"] != MISSING_EVIDENCE])
+    total_items = max(len(summary_rows), 1)
+
+    sheet["A5"] = "Overall Status"
+    sheet["A5"].font = BOLD_FONT
+    sheet["B5"] = "Technically reviewable with explicit governance blockers and stakeholder decisions still pending."
+    sheet["A7"] = "Classification Counts"
+    sheet["A7"].font = BOLD_FONT
+    row = 8
+    for key in [PASS, WARN, FAIL, ACCEPTED_CONVENTION, MISSING_EVIDENCE, RUNTIME_BINDING_PENDING, GOVERNANCE_BLOCKER]:
+        sheet.cell(row=row, column=1, value=key).fill = _fill_for_classification(key)
+        sheet.cell(row=row, column=2, value=counts.get(key, 0))
+        row += 1
+
+    info_rows = [
+        ("Runtime coverage summary", f"{round(runtime_ready / total_items * 100, 1)}%"),
+        ("Evidence coverage summary", f"{round(evidence_ready / total_items * 100, 1)}%"),
+        ("Accepted convention count", counts.get(ACCEPTED_CONVENTION, 0)),
+        ("Stakeholder-decision count", len(stakeholder_items)),
+        ("Remaining engineering items", len(engineering_items)),
+        ("Review recommendation summary", "Use for IC/lender review; not for unconditional signoff."),
+    ]
+    sheet["D7"] = "Readiness Snapshot"
+    sheet["D7"].font = BOLD_FONT
+    row = 8
+    for label, value in info_rows:
+        sheet.cell(row=row, column=4, value=label).font = BOLD_FONT
+        sheet.cell(row=row, column=5, value=value)
+        row += 1
+
+    sheet["A17"] = "Top 5 Material Gaps"
+    sheet["A17"].font = BOLD_FONT
+    for idx, header in enumerate(["Metric", "Classification", "Root Cause", "Recommended Action"], start=1):
+        cell = sheet.cell(row=18, column=idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+    row = 19
+    for item in top_material:
+        values = [f"{item['section']} / {item['metric']}", item["classification"], item["root_cause"], item["recommended_action"]]
+        for idx, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=idx, value=value)
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True)
+            if idx == 2:
+                cell.fill = _fill_for_classification(str(value))
+        row += 1
+
+    sheet["F17"] = "Top Governance Blockers"
+    sheet["F17"].font = BOLD_FONT
+    for idx, header in enumerate(["Metric", "Governance Impact", "Notes"], start=6):
+        cell = sheet.cell(row=18, column=idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+    row = 19
+    for item in blockers:
+        values = [f"{item['section']} / {item['metric']}", item["governance_impact"], item["notes"]]
+        for idx, value in enumerate(values, start=6):
+            cell = sheet.cell(row=row, column=idx, value=value)
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True)
+        row += 1
+
+    sheet["A27"] = "Recommended Next Actions"
+    sheet["A27"].font = BOLD_FONT
+    next_actions = [
+        "Keep G20 blocked until stakeholder signoff is complete.",
+        "Use Review Signoff and Readiness Matrix to coordinate IC, lender, and audit walkthroughs.",
+        "Treat R99/R102 as audit-only until explicit governance approval.",
+        "Escalate only the rows that remain engineering or evidence blockers after reviewer pass-through.",
+    ]
+    row = 28
+    for action in next_actions:
+        sheet.cell(row=row, column=1, value=action)
+        row += 1
+
+    for col, width in {"A": 28, "B": 18, "C": 12, "D": 24, "E": 26, "F": 28, "G": 24, "H": 36}.items():
+        sheet.column_dimensions[col].width = width
+    sheet.freeze_panes = "A8"
+
+
+def _write_review_signoff(sheet, signoff_rows: list[dict[str, str]]) -> None:
+    _apply_provenance_banner(sheet, "Review Signoff", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", "see Runtime Summary", "TUHO Wind 1")
+    headers = [
+        "review_area",
+        "owner",
+        "reviewer",
+        "review_status",
+        "evidence_complete",
+        "runtime_verified",
+        "governance_reviewed",
+        "stakeholder_decision_required",
+        "recommended_action",
+        "notes",
+    ]
+    for idx, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=5, column=idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+    row = 6
+    for entry in signoff_rows:
+        for idx, key in enumerate(headers, start=1):
+            cell = sheet.cell(row=row, column=idx, value=entry[key])
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True)
+        row += 1
+    sheet.freeze_panes = "A6"
+    for col, width in {"A": 18, "B": 20, "C": 20, "D": 18, "E": 14, "F": 14, "G": 16, "H": 18, "I": 32, "J": 40}.items():
+        sheet.column_dimensions[col].width = width
+
+
+def _write_governance_timeline(sheet) -> None:
+    _apply_provenance_banner(sheet, "Governance Timeline", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", "see Runtime Summary", "TUHO Wind 1")
+    headers = ["milestone", "date", "status", "dependency", "notes"]
+    for idx, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=5, column=idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+    rows = [
+        ("Phase 9 TUHO parity closeout review", "2026-05-23", "completed", "corrected review workbook", "Accepted with minor follow-up."),
+        ("Phase 10 export foundation", "2026-05-23", "completed", "runtime summary export", "Foundation for institutional exports."),
+        ("Phase 10 runtime-to-workbook binding", "2026-05-23", "completed", "institutional workbook skeleton", "Runtime-bound workbook sections available."),
+        ("Phase 10 calibration reconciliation pack", "2026-05-23", "completed", "runtime workbook binding", "Source-backed classification layer established."),
+        ("Phase 10 lender/audit navigation polish", "2026-05-23", "completed", "calibration reconciliation pack", "Navigation and reviewer usability improved."),
+        ("Executive dashboard and signoff flow", "2026-05-23", "in_review", "navigation-polished workbook", "Adds governance workflow support inside the workbook."),
+        ("Stakeholder signoff / G20 gate review", "pending", "blocked", "executive dashboard + signoff completion", "G20 remains blocked until formal signoff."),
+        ("R99/R102 promotion review", "pending", "blocked", "explicit governance approval", "Still not approved in this branch."),
+    ]
+    row = 6
+    for values in rows:
+        for idx, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=idx, value=value)
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True)
+        row += 1
+    sheet.freeze_panes = "A6"
+    for col, width in {"A": 34, "B": 14, "C": 14, "D": 26, "E": 42}.items():
+        sheet.column_dimensions[col].width = width
+
+
+def _write_readiness_matrix(sheet, signoff_rows: list[dict[str, str]]) -> None:
+    _apply_provenance_banner(sheet, "Readiness Matrix", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", "see Runtime Summary", "TUHO Wind 1")
+    headers = ["review_area", "runtime_complete", "export_complete", "parity_status", "evidence_strength", "governance_status", "remaining_work", "roadmap_phase"]
+    for idx, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=5, column=idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.border = THIN_BORDER
+    row = 6
+    for entry in signoff_rows:
+        parity_status = entry["current_status"]
+        evidence_strength = "high" if entry["evidence_ready"] == "yes" else "medium" if entry["runtime_ready"] == "yes" else "limited"
+        governance_status = "blocked" if entry["governance_ready"] == "no" else "reviewable"
+        values = [
+            entry["review_area"],
+            entry["runtime_ready"],
+            "yes",
+            parity_status,
+            evidence_strength,
+            governance_status,
+            entry["recommended_next_step"],
+            "Phase 10",
+        ]
+        for idx, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=idx, value=value)
+            cell.border = THIN_BORDER
+            cell.alignment = Alignment(wrap_text=True)
+        row += 1
+    sheet.freeze_panes = "A6"
+    for col, width in {"A": 18, "B": 14, "C": 14, "D": 18, "E": 18, "F": 18, "G": 42, "H": 14}.items():
+        sheet.column_dimensions[col].width = width
 
 
 def _write_governance(sheet) -> None:
@@ -921,6 +1192,11 @@ def _write_runtime_summary(sheet, runtime_summary_rows: list[dict[str, str]]) ->
 def _write_notes(sheet) -> None:
     _apply_provenance_banner(sheet, "Reviewer Notes", "review", "G20 BLOCKED / R99-R102 NOT APPROVED", "see Runtime Summary", "TUHO Wind 1")
     notes = [
+        ("Suggested review order", "Executive Dashboard -> Executive Summary -> Review Signoff -> Readiness Matrix -> Gap Register -> discipline sheets -> Reviewer Notes."),
+        ("IC reviewer focus", "Focus on parity posture, top governance blockers, equity IRR residual treatment, and whether remaining gaps change investment conclusions."),
+        ("Lender reviewer focus", "Focus on debt, DSCR, CFADS, governance blockers, and whether missing evidence affects reliance on credit-facing outputs."),
+        ("Audit reviewer focus", "Focus on Source Inventory, Accepted Conventions, missing evidence discipline, and whether every non-PASS row has a defensible explanation."),
+        ("Engineer focus", "Focus only on rows still marked runtime binding pending or areas that would need a dedicated follow-up branch."),
         ("Stakeholder decisions", "Equity IRR residual, reconciliation IRR reporting view, and R99/R102 governance promotion remain outside this branch."),
         ("Likely acceptable convention drift", "XIRR date convention, SHL presentation splits, and grouped OPEX minor rows are documented as conventions rather than runtime defects."),
         ("Still requires engineering work", "Any future reconciliation IRR view, deeper tax row extraction, or sub-line CO2/balancing mapping should happen in dedicated reporting branches."),
@@ -1109,14 +1385,16 @@ def write_calibration_reconciliation_pack(
     source_inventory_path: Path | str = DEFAULT_SOURCE_INVENTORY,
     summary_path: Path | str = DEFAULT_SUMMARY,
     navigation_map_path: Path | str = DEFAULT_NAVIGATION_MAP,
+    signoff_matrix_path: Path | str = DEFAULT_SIGNOFF_MATRIX,
 ) -> ReconciliationArtifacts:
     workbook_path = Path(workbook_path)
     gap_register_path = Path(gap_register_path)
     source_inventory_path = Path(source_inventory_path)
     summary_path = Path(summary_path)
     navigation_map_path = Path(navigation_map_path)
+    signoff_matrix_path = Path(signoff_matrix_path)
 
-    for path in (workbook_path, gap_register_path, source_inventory_path, summary_path, navigation_map_path):
+    for path in (workbook_path, gap_register_path, source_inventory_path, summary_path, navigation_map_path, signoff_matrix_path):
         path.parent.mkdir(parents=True, exist_ok=True)
 
     project_inputs, runtime_result = _run_project("tuho")
@@ -1133,14 +1411,21 @@ def write_calibration_reconciliation_pack(
     navigation = workbook.active
     navigation.title = "Navigation"
     _write_navigation(navigation, runtime_rows)
+    dashboard = workbook.create_sheet("Executive Dashboard")
     executive = workbook.create_sheet("Executive Summary")
+    review_signoff = workbook.create_sheet("Review Signoff")
+    governance = workbook.create_sheet("Governance")
+    governance_timeline = workbook.create_sheet("Governance Timeline")
+    readiness = workbook.create_sheet("Readiness Matrix")
+    runtime_summary = workbook.create_sheet("Runtime Summary")
 
     summary_rows: list[dict[str, str]] = []
     scalar_totals = _scalar_totals(runtime)
 
     _write_exec_summary(executive, summary_rows, runtime_rows)
-    _write_governance(workbook.create_sheet("Governance"))
-    _write_runtime_summary(workbook.create_sheet("Runtime Summary"), runtime_rows)
+    _write_governance(governance)
+    _write_governance_timeline(governance_timeline)
+    _write_runtime_summary(runtime_summary, runtime_rows)
 
     for sheet_name in [
         "Revenue Reconciliation",
@@ -1162,6 +1447,10 @@ def write_calibration_reconciliation_pack(
 
     # Refresh summary after counts are known.
     _write_exec_summary(executive, summary_rows, runtime_rows)
+    signoff_rows = _review_signoff_rows(summary_rows)
+    _write_executive_dashboard(dashboard, summary_rows, runtime_rows)
+    _write_review_signoff(review_signoff, signoff_rows)
+    _write_readiness_matrix(readiness, signoff_rows)
     _write_gap_register_sheet(workbook.create_sheet("Gap Register"), summary_rows)
     _write_source_inventory_sheet(workbook.create_sheet("Source Inventory"), source_inventory)
     _write_accepted_conventions_sheet(workbook.create_sheet("Accepted Conventions"), conventions)
@@ -1177,6 +1466,7 @@ def write_calibration_reconciliation_pack(
     _write_csv(gap_register_path, summary_rows)
     _write_csv(source_inventory_path, source_inventory)
     _write_csv(summary_path, _summary_report_rows(summary_rows))
+    _write_csv(signoff_matrix_path, signoff_rows)
     write_review_pack_navigation_map_csv(navigation_map_path)
 
     return ReconciliationArtifacts(
@@ -1185,6 +1475,7 @@ def write_calibration_reconciliation_pack(
         source_inventory_path=source_inventory_path,
         summary_path=summary_path,
         navigation_map_path=navigation_map_path,
+        signoff_matrix_path=signoff_matrix_path,
     )
 
 
