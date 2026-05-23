@@ -117,10 +117,10 @@ def default_export_registry() -> ExportRegistry:
                 format="xlsx",
                 runtime_or_preview="runtime",
                 governance_sensitive=True,
-                current_status="foundation",
-                description="Institutional workbook skeleton with governance and runtime summary sheets.",
+                current_status="runtime_binding_in_progress",
+                description="Institutional workbook with runtime-bound review sheets and explicit remaining placeholders.",
                 path="/exports/institutional-workbook.xlsx",
-                notes="Structured review workbook only; placeholder sheets do not fabricate values.",
+                notes="Inputs, OPEX, CAPEX, Revenue, Senior Debt, SHL, Tax, P&L, Cash Flow, Balance Sheet, Audit, and Gap Register now carry structured runtime/export content.",
             ),
             ExportArtifact(
                 artifact_name="Phase 10 export registry",

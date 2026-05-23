@@ -2,16 +2,16 @@ sheet_order,sheet_name,implemented_level,runtime_or_preview,governance_sensitive
 1,Cover,implemented,review,yes,Institutional cover sheet with provenance.
 2,Governance,implemented,review,yes,Governance metadata and approval status.
 3,Runtime Summary,implemented,runtime,yes,Existing runtime summary values only.
-4,Inputs,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-5,Construction,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-6,OPEX,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-7,CAPEX,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-8,Revenue,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-9,Senior Debt,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-10,SHL,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-11,Tax,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-12,P&L,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-13,Cash Flow,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-14,Balance Sheet,placeholder,preview,yes,Phase 10 placeholder - runtime binding pending.
-15,Audit,placeholder,review,yes,Phase 10 placeholder - audit binding pending.
-16,Gap Register,placeholder,review,yes,Phase 10 placeholder - gap workflow pending.
+4,Inputs,runtime_bound,runtime + template,yes,Project metadata and assumption binding from existing context.
+5,Construction,summary_bound,template + runtime,yes,Construction timing and funding summary from existing inputs and runtime anchors.
+6,OPEX,runtime_bound,runtime + template,yes,OPEX assumptions plus runtime total binding.
+7,CAPEX,summary_bound,template + runtime,yes,CAPEX summary, funding split anchors, and capex item binding.
+8,Revenue,runtime_bound,runtime + template,yes,Revenue assumptions and period revenue table from existing runtime outputs.
+9,Senior Debt,runtime_bound,runtime + template,yes,Senior debt assumptions and period debt service schedule from existing runtime outputs.
+10,SHL,runtime_bound,runtime + template,yes,SHL assumptions and runtime SHL cashflow / balance schedule.
+11,Tax,runtime_bound,runtime + template,yes,Tax assumptions and tax bridge periods from existing assembled statements.
+12,P&L,runtime_bound,runtime,yes,Offline assembled P&L using existing runtime result as source.
+13,Cash Flow,runtime_bound,runtime,yes,Offline PF cash waterfall using existing runtime result as source.
+14,Balance Sheet,runtime_bound,runtime,yes,Offline balance sheet assembly from existing runtime result.
+15,Audit,runtime_bound,review,yes,Runtime source notes, provenance, and audit boundary statements.
+16,Gap Register,runtime_bound,review,yes,Known gaps and accepted conventions reused from existing documentation.
