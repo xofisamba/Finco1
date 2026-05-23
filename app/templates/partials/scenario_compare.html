@@ -1,0 +1,34 @@
+<div class="ps-compare-results">
+  <div class="ps-compare-heading">
+    {{ compare_result.left.scenario_name }} vs {{ compare_result.right.scenario_name }}
+  </div>
+  <div class="ps-compare-note">
+    Runtime metrics and governance posture are shown together so reviewers can see numeric drift and review-state differences in one place.
+  </div>
+
+  <div class="ps-compare-table">
+    <div class="ps-compare-row ps-compare-row--head">
+      <span>Metric</span>
+      <span>Left</span>
+      <span>Right</span>
+      <span>Delta</span>
+    </div>
+    {% for row in compare_result.metrics %}
+    <div class="ps-compare-row">
+      <span>{{ row.metric }}</span>
+      <span>{{ row.left_value if row.left_value is not none else "pending" }}</span>
+      <span>{{ row.right_value if row.right_value is not none else "pending" }}</span>
+      <span>{{ row.delta if row.delta is not none else "n/a" }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="ps-compare-governance">
+    {% for row in compare_result.governance_rows %}
+    <div class="ps-history-item">
+      <div class="ps-history-title">{{ row.label }}</div>
+      <div class="ps-history-meta">{{ row.left_value }} → {{ row.right_value }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
