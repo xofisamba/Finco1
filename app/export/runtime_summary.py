@@ -12,6 +12,7 @@ from pathlib import Path
 import csv
 import os
 
+from app.persistence.provenance import build_replay_metadata
 from app.project_factories import create_default_oborovo, create_default_tuho_wind1
 from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 from domain.period_engine import PeriodEngine
@@ -29,6 +30,13 @@ RUNTIME_SUMMARY_COLUMNS = [
     "export_type",
     "generated_at",
     "source_branch",
+    "commit_sha",
+    "runtime_timestamp",
+    "template_origin",
+    "template_revision",
+    "runtime_flag_count",
+    "runtime_flags_json",
+    "replay_limitations",
     "notes",
 ]
 
@@ -75,11 +83,23 @@ def build_runtime_summary_rows(
 ) -> list[dict[str, str]]:
     project_inputs, result = _run_project(project)
     project_name = project_inputs.info.name
+    runtime_timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     timestamp = generated_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
     branch = source_branch or _source_branch()
     governance_status = "review_only"
     g20_status = "BLOCKED"
     r99_r102_status = "NOT APPROVED"
+    replay_metadata = build_replay_metadata(
+        project_key=_project_key(project),
+        project_inputs=project_inputs,
+        governance_state={
+            "g20_status": g20_status,
+            "r99_r102_status": r99_r102_status,
+        },
+        runtime_timestamp=runtime_timestamp,
+        export_timestamp=timestamp,
+        export_type="runtime_summary_csv",
+    )
 
     values = [
         ("active_project", project_name, "", "Factory-bound active project runtime output."),
@@ -127,6 +147,13 @@ def build_runtime_summary_rows(
                 "export_type": "runtime_summary_csv",
                 "generated_at": timestamp,
                 "source_branch": branch,
+                "commit_sha": replay_metadata["commit_sha"],
+                "runtime_timestamp": replay_metadata["runtime_timestamp"],
+                "template_origin": replay_metadata["template_origin"],
+                "template_revision": replay_metadata["template_revision"],
+                "runtime_flag_count": str(replay_metadata["runtime_flag_count"]),
+                "runtime_flags_json": replay_metadata["runtime_flags_json"],
+                "replay_limitations": replay_metadata["replay_limitations_notice"],
                 "notes": notes,
             }
         )

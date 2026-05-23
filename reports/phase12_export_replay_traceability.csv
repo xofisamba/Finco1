@@ -1,0 +1,10 @@
+metadata_item,currently_captured,replay_critical,missing?,source,destination,governance_sensitive,notes
+project_id,yes,yes,no,projects table,scenario and export lineage,yes,Primary project anchor for scenario and export traceability.
+scenario_id,yes,yes,no,scenarios table,run/export lineage,yes,Primary saved-scenario anchor.
+run_id,yes,yes,no,runs table,persisted run metadata,yes,Identifies the saved runtime execution wrapper.
+export_id,yes,yes,no,scenario_exports table,export lineage + workbook provenance,yes,Identifies each generated artifact.
+runtime_snapshot_id,partial,no,yes,export history,scenario exports,yes,Exists as a lightweight hook; full runtime snapshot tree is not persisted.
+copied_from_scenario_id,yes,no,no,scenarios table,scenario lineage views,yes,Supports duplicated-scenario ancestry.
+governance_state_snapshot,yes,yes,no,governance snapshot helper,projects + scenarios + exports,yes,Preserves review posture at artifact time.
+runtime_flags_reference,yes,yes,no,replay metadata JSON,review/export layers,yes,Flag snapshot is now linked to exports and workbook metadata.
+replay_limitations_notice,yes,yes,no,provenance helper,review/export layers,yes,Makes current replay boundaries explicit for auditors and lenders.

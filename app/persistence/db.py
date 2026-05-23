@@ -1,4 +1,9 @@
-"""Lightweight SQLite persistence for runs, scenarios, and exports."""
+"""Lightweight SQLite persistence for runs, scenarios, and exports.
+
+`app.persistence` is the single active persistence backend for the pilot
+product workflow. It stores snapshots and workflow metadata only.
+Runtime calculations remain authoritative in the model layer.
+"""
 
 import os
 from contextlib import contextmanager
@@ -35,7 +40,8 @@ def _init_schema(conn):
             inputs_json  TEXT NOT NULL,
             kpis_json    TEXT NOT NULL,
             excel_path   TEXT,
-            notes        TEXT
+            notes        TEXT,
+            replay_metadata_json TEXT NOT NULL DEFAULT '{}'
         )
         """
     )
@@ -51,6 +57,7 @@ def _init_schema(conn):
             source_project_template  TEXT NOT NULL,
             governance_state_json    TEXT NOT NULL,
             last_run_summary_json    TEXT NOT NULL,
+            replay_metadata_json     TEXT NOT NULL DEFAULT '{}',
             created_at               TEXT NOT NULL,
             updated_at               TEXT NOT NULL
         )
@@ -74,6 +81,7 @@ def _init_schema(conn):
             snapshot_json             TEXT NOT NULL,
             governance_state_json     TEXT NOT NULL,
             last_run_summary_json     TEXT NOT NULL,
+            replay_metadata_json      TEXT NOT NULL DEFAULT '{}',
             created_at                TEXT NOT NULL,
             updated_at                TEXT NOT NULL,
             FOREIGN KEY(project_id) REFERENCES projects(project_id)
@@ -97,6 +105,7 @@ def _init_schema(conn):
             project_code              TEXT NOT NULL,
             governance_state_json     TEXT NOT NULL,
             runtime_snapshot_id       TEXT,
+            replay_metadata_json      TEXT NOT NULL DEFAULT '{}',
             created_at                TEXT NOT NULL,
             FOREIGN KEY(scenario_id) REFERENCES scenarios(scenario_id),
             FOREIGN KEY(project_id) REFERENCES projects(project_id)
@@ -106,7 +115,20 @@ def _init_schema(conn):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_exports_user_project ON scenario_exports(user_id, project_id, created_at DESC)"
     )
+    _ensure_column(conn, "runs", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
+    _ensure_column(conn, "projects", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
+    _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
+    _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
     conn.commit()
+
+
+def _ensure_column(conn, table_name: str, column_name: str, column_sql: str) -> None:
+    columns = {
+        row[1]
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in columns:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
 
 
 @contextmanager

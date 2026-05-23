@@ -1,0 +1,16 @@
+flag_name,default_state,governance_sensitive,source_object,source_path,captured_in_replay_metadata,notes
+use_opex_line_item_engine,false,no,ProjectInfo,domain.inputs.ProjectInfo,yes,Existing default-off runtime flag.
+use_construction_schedule_engine,false,no,ProjectInfo,domain.inputs.ProjectInfo,yes,Existing default-off runtime flag.
+use_senior_rate_schedule_engine,false,no,ProjectInfo,domain.inputs.ProjectInfo,yes,Existing default-off runtime flag.
+use_senior_sculpting_basis_engine,false,no,ProjectInfo,domain.inputs.ProjectInfo,yes,Existing default-off runtime flag.
+use_shl_fcf_waterfall_engine,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Governance-sensitive SHL flag remains provenance only here.
+use_shl_canonical_engine,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Canonical SHL path state is captured without changing behavior.
+use_canonical_tax_depreciation_bridge,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Tax bridge provenance only.
+use_depreciation_canonical_engine,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Depreciation runtime flag captured for replay context.
+use_tax_bridge_engine,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Runtime tax bridge state captured only as metadata.
+use_senior_debt_sizing_engine,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Debt sizing flag captured only as provenance.
+use_shl_gross_accrued_for_pnl,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Phase 6 provenance retained for replay context.
+use_book_depreciation_for_pnl,false,yes,ProjectInfo,domain.inputs.ProjectInfo,yes,Phase 6 provenance retained for replay context.
+use_senior_sweep_cash_cap_for_shl,false,yes,FinancingParams,domain.inputs.FinancingParams,yes,Financing-side runtime flag.
+use_tuho_r99_input_engine,false,yes,FinancingParams,domain.inputs.FinancingParams,yes,R99 runtime promotion remains not approved.
+use_tuho_shl_repayment_alignment,false,yes,FinancingParams,domain.inputs.FinancingParams,yes,TUHO alignment state captured for audit replay context.
