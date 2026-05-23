@@ -189,7 +189,8 @@ def test_workspace_templates_and_routes_exist():
     assert 'current_saved_scenario_id' in index_template
 
     assert 'Saved Scenarios' in scenario_workspace
-    assert 'Last Exports' in scenario_workspace
+    assert 'Scenario Cards' in scenario_workspace
+    assert 'Export Lineage' in scenario_workspace
     assert 'Load' in scenario_workspace
     assert 'Duplicate' in scenario_workspace
     assert 'Archive' in scenario_workspace
