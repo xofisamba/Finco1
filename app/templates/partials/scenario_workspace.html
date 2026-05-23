@@ -1,0 +1,70 @@
+<div id="saved-scenario-panel" class="scenario-workspace" data-project-code="{{ project_record.project_code }}">
+  <div id="scenario-action-result">
+    {% if workspace_message %}
+    <div class="scenario-message">{{ workspace_message }}</div>
+    {% endif %}
+  </div>
+
+  <div class="ps-section">
+    <div class="ps-section-label">Saved Scenarios</div>
+    {% if not scenario_records %}
+    <div class="ps-mini-empty">
+      No saved scenarios yet. Save the current setup to create a reusable snapshot.
+    </div>
+    {% else %}
+    <div class="ps-saved-list">
+      {% for item in scenario_records %}
+      <div class="ps-saved-item">
+        <div class="ps-saved-main">
+          <div class="ps-saved-title">{{ item.scenario_name }}</div>
+          <div class="ps-saved-meta">
+            {{ item.project_code|upper }} · {{ item.snapshot.get("scenario", "Base") }} ·
+            {{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}
+          </div>
+        </div>
+        <div class="ps-saved-actions">
+          <button class="ps-mini-btn"
+                  hx-get="/scenarios/{{ item.scenario_id }}/load"
+                  hx-target="#scenario-action-result"
+                  hx-swap="innerHTML">
+            Load
+          </button>
+          <button class="ps-mini-btn"
+                  hx-post="/scenarios/{{ item.scenario_id }}/duplicate"
+                  hx-target="#saved-scenario-panel"
+                  hx-swap="outerHTML">
+            Duplicate
+          </button>
+          <button class="ps-mini-btn"
+                  hx-post="/scenarios/{{ item.scenario_id }}/archive"
+                  hx-target="#saved-scenario-panel"
+                  hx-swap="outerHTML">
+            Archive
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="ps-section">
+    <div class="ps-section-label">Last Exports</div>
+    {% if not export_records %}
+    <div class="ps-mini-empty">
+      No exports tracked yet for this project workspace.
+    </div>
+    {% else %}
+    <div class="ps-export-list">
+      {% for item in export_records %}
+      <div class="ps-export-item">
+        <div class="ps-export-title">{{ item.artifact_name }}</div>
+        <div class="ps-export-meta">
+          {{ item.export_type }} · {{ item.created_at.strftime("%Y-%m-%d %H:%M") }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
