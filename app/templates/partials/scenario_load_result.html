@@ -1,0 +1,11 @@
+<div class="scenario-message">
+  Loaded {{ record.scenario_name }}. The form has been refreshed with the saved snapshot.
+</div>
+<script>
+  (function() {
+    var snapshot = {{ record.snapshot | tojson }};
+    if (window.applyScenarioSnapshot) {
+      window.applyScenarioSnapshot(snapshot, "{{ record.scenario_id }}");
+    }
+  })();
+</script>
