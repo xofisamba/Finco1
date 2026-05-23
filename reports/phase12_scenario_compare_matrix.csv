@@ -1,0 +1,11 @@
+metric,compare_available,governance_sensitive,source,notes
+Revenue,yes,no,last_run_summary.total_revenue_keur,Uses saved summary if available
+OPEX,yes,no,snapshot.opex_y1_keur,Uses saved scenario snapshot
+EBITDA,yes,no,last_run_summary.total_ebitda_keur,Uses saved summary if available
+Senior Debt,yes,no,last_run_summary.senior_debt_keur,Foundation compare only
+SHL,yes,yes,last_run_summary.shl_balance_keur,Visible without changing SHL mechanics
+DSCR,yes,no,last_run_summary.avg_dscr,Governance-aware compare still shown
+Project IRR,yes,yes,last_run_summary.project_irr,Interpret together with governance posture
+Equity IRR,yes,yes,last_run_summary.equity_irr,Interpret together with governance posture
+CAPEX,yes,no,snapshot.total_capex_keur,Snapshot-level comparison
+Distributions,yes,yes,last_run_summary.distribution_keur,Presentation only, no authority change
