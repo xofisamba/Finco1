@@ -1,0 +1,7 @@
+entity,tracked,source,governance_sensitive,reviewer_use,notes
+export artifact type,yes,scenario_exports.export_type,no,Review lineage,Visible in export lineage list
+export timestamp,yes,scenario_exports.created_at,no,Audit trail,Visible in workspace
+scenario association,partial,scenario_exports.scenario_id,yes,Lineage review,Shown when scenario-linked
+project association,yes,scenario_exports.project_id,yes,Workspace traceability,Links export to active project
+governance snapshot,yes,scenario_exports.governance_state_json,yes,Reviewer context,Preserves G20 and R99/R102 posture
+copied-from ancestry,partial,scenario copied_from_scenario_id,yes,Reviewer context,Surfaced through linked scenario lineage
