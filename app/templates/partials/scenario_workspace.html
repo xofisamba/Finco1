@@ -6,6 +6,35 @@
   </div>
 
   <div class="ps-section">
+    <div class="ps-section-label">Scenario Cards</div>
+    {% if not scenario_summary_cards %}
+    <div class="ps-mini-empty">
+      No saved scenarios yet. Save the current setup to start building history and compare views.
+    </div>
+    {% else %}
+    <div class="ps-saved-list">
+      {% for item in scenario_summary_cards %}
+      <div class="ps-saved-item">
+        <div class="ps-saved-main">
+          <div class="ps-saved-title">{{ item.scenario_name }}</div>
+          <div class="ps-saved-meta">
+            {{ item.project_code|upper }} · updated {{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}
+            {% if item.copied_from_scenario_id %}· copied lineage{% endif %}
+          </div>
+        </div>
+        <div class="ps-saved-stats">
+          <span class="ps-stat-chip">Exports {{ item.export_count }}</span>
+          <span class="ps-stat-chip">Proj IRR {{ item.project_irr if item.project_irr is not none else "pending" }}</span>
+          <span class="ps-stat-chip">Eq IRR {{ item.equity_irr if item.equity_irr is not none else "pending" }}</span>
+          <span class="ps-stat-chip">DSCR {{ item.avg_dscr if item.avg_dscr is not none else "pending" }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="ps-section">
     <div class="ps-section-label">Saved Scenarios</div>
     {% if not scenario_records %}
     <div class="ps-mini-empty">
@@ -20,6 +49,7 @@
           <div class="ps-saved-meta">
             {{ item.project_code|upper }} · {{ item.snapshot.get("scenario", "Base") }} ·
             {{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}
+            {% if item.copied_from_scenario_id %}· copied from {{ item.copied_from_scenario_id[:8] }}{% endif %}
           </div>
         </div>
         <div class="ps-saved-actions">
@@ -49,18 +79,78 @@
   </div>
 
   <div class="ps-section">
-    <div class="ps-section-label">Last Exports</div>
-    {% if not export_records %}
+    <div class="ps-section-label">Compare Scenarios</div>
+    {% if scenario_records|length < 2 %}
+    <div class="ps-mini-empty">
+      Save at least two scenarios to unlock side-by-side compare.
+    </div>
+    {% else %}
+    <form class="ps-compare-form"
+          hx-get="/scenarios/compare"
+          hx-target="#saved-scenario-panel"
+          hx-swap="outerHTML">
+      <input type="hidden" name="project" value="{{ project_record.project_code }}" />
+      <label class="ps-compare-label">
+        Left
+        <select name="left_scenario_id">
+          {% for item in scenario_records %}
+          <option value="{{ item.scenario_id }}" {% if compare_result and compare_result.left.scenario_id == item.scenario_id %}selected{% endif %}>{{ item.scenario_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="ps-compare-label">
+        Right
+        <select name="right_scenario_id">
+          {% for item in scenario_records %}
+          <option value="{{ item.scenario_id }}" {% if compare_result and compare_result.right.scenario_id == item.scenario_id %}selected{% endif %}>{{ item.scenario_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="ps-mini-btn" type="submit">Compare</button>
+    </form>
+    {% endif %}
+
+    {% if compare_result %}
+    {% include "partials/scenario_compare.html" %}
+    {% endif %}
+  </div>
+
+  <div class="ps-section">
+    <div class="ps-section-label">Scenario History</div>
+    {% if not scenario_history %}
+    <div class="ps-mini-empty">No scenario history yet.</div>
+    {% else %}
+    <div class="ps-history-list">
+      {% for item in scenario_history %}
+      <div class="ps-history-item">
+        <div class="ps-history-title">{{ item.scenario_name }}</div>
+        <div class="ps-history-meta">
+          {{ item.created_at.strftime("%Y-%m-%d %H:%M") }} → {{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}
+          {% if item.archived %}· archived{% endif %}
+          {% if item.copied_from_scenario_id %}· duplicated lineage{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="ps-section">
+    <div class="ps-section-label">Export Lineage</div>
+    {% if not export_lineage %}
     <div class="ps-mini-empty">
       No exports tracked yet for this project workspace.
     </div>
     {% else %}
     <div class="ps-export-list">
-      {% for item in export_records %}
+      {% for item in export_lineage %}
       <div class="ps-export-item">
         <div class="ps-export-title">{{ item.artifact_name }}</div>
         <div class="ps-export-meta">
-          {{ item.export_type }} · {{ item.created_at.strftime("%Y-%m-%d %H:%M") }}
+          {{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at.strftime("%Y-%m-%d %H:%M") }}
+        </div>
+        <div class="ps-export-meta">
+          Governance: {{ item.governance_state.get("g20_status", "BLOCKED") }} / {{ item.governance_state.get("r99_r102_status", "NOT APPROVED") }}
         </div>
       </div>
       {% endfor %}

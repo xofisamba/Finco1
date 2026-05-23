@@ -1604,6 +1604,22 @@ body {
   margin-bottom: 0.45rem;
 }
 
+.ps-saved-stats {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.ps-stat-chip {
+  font-size: 0.68rem;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+}
+
 .ps-saved-title,
 .ps-export-title {
   font-size: 0.78rem;
@@ -1635,4 +1651,94 @@ body {
 
 .ps-mini-btn:hover {
   background: var(--bg);
+}
+
+.ps-history-list,
+.ps-compare-governance {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ps-history-item {
+  border-left: 2px solid var(--border);
+  padding-left: 0.55rem;
+}
+
+.ps-history-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ps-history-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.ps-compare-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.45rem;
+  align-items: end;
+}
+
+.ps-compare-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--text-2);
+}
+
+.ps-compare-label select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.38rem 0.45rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.ps-compare-results {
+  margin-top: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem;
+  background: var(--surface);
+}
+
+.ps-compare-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ps-compare-note {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0.35rem 0 0.6rem;
+}
+
+.ps-compare-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  margin-bottom: 0.7rem;
+}
+
+.ps-compare-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 0.8fr;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--text);
+  padding: 0.26rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ps-compare-row--head {
+  font-weight: 700;
+  color: var(--text-2);
 }

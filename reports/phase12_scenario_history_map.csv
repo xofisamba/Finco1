@@ -1,0 +1,7 @@
+entity,tracked,source,governance_sensitive,reviewer_use,notes
+scenario created timestamp,yes,scenarios.created_at,no,Timeline review,Shown in history view
+scenario updated timestamp,yes,scenarios.updated_at,no,Timeline review,Shown in history view
+copied-from lineage,yes,scenarios.copied_from_scenario_id,yes,Lineage review,Supports duplicated scenario traceability
+archived state,yes,scenarios.archived,no,Workspace hygiene,Soft archive only
+last run summary,partial,scenarios.last_run_summary_json,yes,Review summary,Visible where saved summary exists
+export count,yes,derived from export lineage,yes,Reviewer triage,Shown on scenario cards
