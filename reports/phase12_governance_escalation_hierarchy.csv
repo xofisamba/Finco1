@@ -1,0 +1,16 @@
+label,hierarchy_tier,review_signal,blocks_approval,runtime_risk,notes
+PASS,1,informational,no,none,Aligned within tolerance.
+ACCEPTED_CONVENTION,2,informational,no,none,Documented interpretation choice only.
+WARN,3,review,no,low,Explainable residual.
+EVIDENCE_LIMITATION,4,review,no,none,Evidence exists but only at broader level.
+GROUPED_SOURCE_ONLY,4,review,no,none,Grouped evidence only.
+MISSING_EXCEL_EVIDENCE,5,review,no,none,Excel-side evidence gap.
+MISSING_REVIEW_SCALAR,5,review,no,none,Reviewer-facing scalar gap.
+SOURCE_NOT_AVAILABLE,5,review,no,none,No defensible standalone source.
+RUNTIME_BINDING_PENDING,5,review,no,low,Reporting breakout pending.
+GOVERNANCE_REVIEW,6,governance_review,contextual,low,Needs governance interpretation.
+STAKEHOLDER_DECISION,7,decision_required,contextual,none,Owner decision required.
+GOVERNANCE_BLOCKER,8,blocking,yes,governance_only,Visible but not approved runtime authority.
+FAIL,9,blocking,yes,high,Material unexplained divergence.
+BLOCKED,10,workflow_blocked,yes,none,Workflow or gate state blocked.
+NOT_APPROVED,10,workflow_blocked,yes,none,Governance has not approved usage.

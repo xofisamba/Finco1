@@ -23,12 +23,20 @@ WARN = "WARN"
 FAIL = "FAIL"
 ACCEPTED_CONVENTION = "ACCEPTED_CONVENTION"
 MISSING_EVIDENCE = "MISSING_EVIDENCE"
+MISSING_EXCEL_EVIDENCE = "MISSING_EXCEL_EVIDENCE"
+MISSING_REVIEW_SCALAR = "MISSING_REVIEW_SCALAR"
+SOURCE_NOT_AVAILABLE = "SOURCE_NOT_AVAILABLE"
 RUNTIME_BINDING_PENDING = "RUNTIME_BINDING_PENDING"
 GOVERNANCE_BLOCKER = "GOVERNANCE_BLOCKER"
 GOVERNANCE_REVIEW = "GOVERNANCE_REVIEW"
 MATERIAL_DELTA = "MATERIAL_DELTA"
 EVIDENCE_LIMITATION = "EVIDENCE_LIMITATION"
 GROUPED_SOURCE_ONLY = "GROUPED_SOURCE_ONLY"
+ENGINEERING_FOLLOWUP = "ENGINEERING_FOLLOWUP"
+STAKEHOLDER_DECISION = "STAKEHOLDER_DECISION"
+RESOLVED = "RESOLVED"
+BLOCKED = "BLOCKED"
+NOT_APPROVED = "NOT_APPROVED"
 
 VALID_CLASSIFICATIONS = {
     PASS,
@@ -36,10 +44,39 @@ VALID_CLASSIFICATIONS = {
     FAIL,
     ACCEPTED_CONVENTION,
     MISSING_EVIDENCE,
+    MISSING_EXCEL_EVIDENCE,
+    MISSING_REVIEW_SCALAR,
+    SOURCE_NOT_AVAILABLE,
     RUNTIME_BINDING_PENDING,
     GOVERNANCE_BLOCKER,
     GOVERNANCE_REVIEW,
     MATERIAL_DELTA,
+    EVIDENCE_LIMITATION,
+    GROUPED_SOURCE_ONLY,
+}
+
+DISPLAY_CLASSIFICATIONS = [
+    PASS,
+    WARN,
+    FAIL,
+    ACCEPTED_CONVENTION,
+    MISSING_EXCEL_EVIDENCE,
+    MISSING_REVIEW_SCALAR,
+    SOURCE_NOT_AVAILABLE,
+    EVIDENCE_LIMITATION,
+    GROUPED_SOURCE_ONLY,
+    RUNTIME_BINDING_PENDING,
+    GOVERNANCE_BLOCKER,
+]
+
+MISSING_CLASSIFICATIONS = {
+    MISSING_EVIDENCE,
+    MISSING_EXCEL_EVIDENCE,
+    MISSING_REVIEW_SCALAR,
+    SOURCE_NOT_AVAILABLE,
+}
+
+EVIDENCE_GAP_CLASSIFICATIONS = MISSING_CLASSIFICATIONS | {
     EVIDENCE_LIMITATION,
     GROUPED_SOURCE_ONLY,
 }
@@ -99,6 +136,10 @@ DEFAULT_PHASE11_CARRY_FORWARD_ITEMS = REPORTS_DIR / "phase10_phase11_carry_forwa
 DEFAULT_PHASE11_EXPORT_POLISH_CHECKLIST = REPORTS_DIR / "phase11_export_polish_checklist.csv"
 DEFAULT_PHASE11_WORKBOOK_FORMATTING_MATRIX = REPORTS_DIR / "phase11_workbook_formatting_matrix.csv"
 DEFAULT_PHASE11_REVIEWER_NAVIGATION_PATHS = REPORTS_DIR / "phase11_reviewer_navigation_paths.csv"
+DEFAULT_PHASE12_GOVERNANCE_SEMANTICS_DICTIONARY = REPORTS_DIR / "phase12_governance_semantics_dictionary.csv"
+DEFAULT_PHASE12_GOVERNANCE_LABEL_USAGE_MATRIX = REPORTS_DIR / "phase12_governance_label_usage_matrix.csv"
+DEFAULT_PHASE12_GOVERNANCE_ESCALATION_HIERARCHY = REPORTS_DIR / "phase12_governance_escalation_hierarchy.csv"
+DEFAULT_PHASE12_MISSING_EVIDENCE_SPLIT_MATRIX = REPORTS_DIR / "phase12_missing_evidence_split_matrix.csv"
 
 
 @dataclass(frozen=True)
@@ -147,6 +188,10 @@ class ReconciliationArtifacts:
     export_polish_checklist_path: Path
     workbook_formatting_matrix_path: Path
     reviewer_navigation_paths_path: Path
+    governance_semantics_dictionary_path: Path
+    governance_label_usage_matrix_path: Path
+    governance_escalation_hierarchy_path: Path
+    missing_evidence_split_matrix_path: Path
 
 
 def _num(value) -> float | None:
@@ -157,7 +202,7 @@ def _num(value) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     text = str(value).strip()
-    if not text or text.upper().startswith("MISSING_EVIDENCE"):
+    if not text or _is_missing_marker(text):
         return None
     if text in {"N/A", "None"}:
         return None
@@ -165,6 +210,20 @@ def _num(value) -> float | None:
         return float(text.replace(",", ""))
     except ValueError:
         return None
+
+
+def _is_missing_marker(text: str) -> bool:
+    normalized = text.strip().upper()
+    return (
+        normalized.startswith("MISSING_EVIDENCE")
+        or normalized.startswith(MISSING_EXCEL_EVIDENCE)
+        or normalized.startswith(MISSING_REVIEW_SCALAR)
+        or normalized.startswith(SOURCE_NOT_AVAILABLE)
+    )
+
+
+def _missing_series(label: str, reason: str, count: int) -> list[str]:
+    return [f"{label}: {reason}"] * count
 
 
 def _load_csv_rows(path: Path) -> list[dict[str, str]]:
@@ -209,7 +268,7 @@ def _classify(
     excel_nums = [_num(v) for v in excel_values]
     model_nums = [_num(v) for v in model_values]
     if all(v is None for v in excel_nums) or all(v is None for v in model_nums):
-        return MISSING_EVIDENCE, "REVIEW", "N/A"
+        return SOURCE_NOT_AVAILABLE, "REVIEW", "N/A"
 
     deltas = [
         abs((m or 0.0) - (e or 0.0))
@@ -217,7 +276,7 @@ def _classify(
         if e is not None and m is not None
     ]
     if not deltas:
-        return MISSING_EVIDENCE, "REVIEW", "N/A"
+        return SOURCE_NOT_AVAILABLE, "REVIEW", "N/A"
 
     max_delta = max(deltas)
     total_excel = abs(_sum_numeric(excel_values) or 0.0)
@@ -244,6 +303,9 @@ def _fill_for_classification(classification: str) -> PatternFill:
         FAIL: FAIL_FILL,
         ACCEPTED_CONVENTION: CONVENTION_FILL,
         MISSING_EVIDENCE: MISS_FILL,
+        MISSING_EXCEL_EVIDENCE: MISS_FILL,
+        MISSING_REVIEW_SCALAR: MISS_FILL,
+        SOURCE_NOT_AVAILABLE: MISS_FILL,
         RUNTIME_BINDING_PENDING: PENDING_FILL,
         GOVERNANCE_BLOCKER: GOVERNANCE_FILL,
         GOVERNANCE_REVIEW: CONVENTION_FILL,
@@ -442,9 +504,9 @@ def _co2_balancing_report_rows(runtime: dict, per_bridge: list[dict[str, str]]) 
             "runtime_available": "no",
             "excel_available": "no",
             "workbook_bound": "yes",
-            "classification": MISSING_EVIDENCE,
-            "runtime_value_available": "MISSING_EVIDENCE",
-            "excel_value_available": "MISSING_EVIDENCE",
+            "classification": SOURCE_NOT_AVAILABLE,
+            "runtime_value_available": SOURCE_NOT_AVAILABLE,
+            "excel_value_available": SOURCE_NOT_AVAILABLE,
             "unresolved_reason": "Neither the committed Excel evidence set nor runtime period exports expose a standalone CO2 revenue row.",
             "governance_sensitive": "yes",
             "notes": "Do not synthesize a CO2 split from total revenue.",
@@ -458,9 +520,9 @@ def _co2_balancing_report_rows(runtime: dict, per_bridge: list[dict[str, str]]) 
             "runtime_available": "no",
             "excel_available": "no",
             "workbook_bound": "yes",
-            "classification": MISSING_EVIDENCE,
-            "runtime_value_available": "MISSING_EVIDENCE",
-            "excel_value_available": "MISSING_EVIDENCE",
+            "classification": SOURCE_NOT_AVAILABLE,
+            "runtime_value_available": SOURCE_NOT_AVAILABLE,
+            "excel_value_available": SOURCE_NOT_AVAILABLE,
             "unresolved_reason": "Standalone balancing revenue is not committed in the current Excel extracts or runtime export fields.",
             "governance_sensitive": "yes",
             "notes": "Missing balancing evidence should stay explicit rather than being netted into a guessed split.",
@@ -621,7 +683,7 @@ def _final_closeout_rows(summary_rows: list[dict[str, str]], conventions: list[d
             "runtime_impact": "None",
             "governance_impact": "Stakeholder signoff choice",
             "current_status": "not implemented",
-            "classification": "MISSING_EVIDENCE",
+            "classification": MISSING_REVIEW_SCALAR,
             "owner": "Finance / Governance",
             "recommended_action": "Waive or open a later reporting-only implementation if reviewers require it.",
             "roadmap_phase": "Phase 11",
@@ -752,15 +814,15 @@ def _irr_report_rows(runtime: dict, conventions: list[dict[str, str]]) -> list[d
         },
         {
             "metric": "Reconciliation IRR",
-            "runtime_value": "MISSING_EVIDENCE",
-            "excel_value": "MISSING_EVIDENCE",
+            "runtime_value": MISSING_REVIEW_SCALAR,
+            "excel_value": MISSING_REVIEW_SCALAR,
             "delta": "N/A",
-            "classification": MISSING_EVIDENCE,
+            "classification": MISSING_REVIEW_SCALAR,
             "root_cause": "A dedicated reconciliation IRR reporting view has not existed in the committed workbook layer until this branch, and there is still no separate approved scalar target to compute against automatically.",
             "governance_sensitive": "yes",
             "stakeholder_decision_required": "yes",
             "governance_impact": "Stakeholders can waive this view or request a later reporting-only implementation with more explicit timing assumptions.",
-            "notes": "Missing evidence is preserved honestly; no proxy IRR is fabricated here.",
+            "notes": "Missing reviewer scalar is preserved honestly; no proxy IRR is fabricated here.",
         },
         {
             "metric": "XIRR Date Convention",
@@ -857,7 +919,10 @@ def _irr_governance_item_rows(irr_rows: list[dict[str, str]]) -> list[dict[str, 
 
 def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: list[dict[str, str]]) -> dict[str, list[MetricSpec]]:
     n = int(runtime["count"])
-    missing = lambda reason: [f"MISSING_EVIDENCE: {reason}"] * n
+    missing_excel = lambda reason: _missing_series(MISSING_EXCEL_EVIDENCE, reason, n)
+    missing_scalar = lambda reason: _missing_series(MISSING_REVIEW_SCALAR, reason, n)
+    source_missing = lambda reason: _missing_series(SOURCE_NOT_AVAILABLE, reason, n)
+    runtime_pending = lambda reason: _missing_series(RUNTIME_BINDING_PENDING, reason, n)
     blank = [""] * n
 
     revenue_specs = [
@@ -872,11 +937,11 @@ def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: li
         MetricSpec(
             "Revenue",
             "CO2 Revenue",
-            missing("no committed Excel CO2 row"),
-            missing("no runtime CO2 period field"),
+            source_missing("no committed Excel CO2 row"),
+            source_missing("no runtime CO2 period field"),
             "none",
             "none",
-            classification=MISSING_EVIDENCE,
+            classification=SOURCE_NOT_AVAILABLE,
             root_cause="Committed Excel extracts and runtime period fields do not expose CO2 separately.",
             recommended_action="Keep as explicit evidence gap or add a dedicated CO2 source map branch.",
             governance_impact="Stakeholder review only",
@@ -885,11 +950,11 @@ def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: li
         MetricSpec(
             "Revenue",
             "Balancing Revenue",
-            missing("no committed Excel balancing row"),
-            missing("no runtime balancing period field"),
+            source_missing("no committed Excel balancing row"),
+            source_missing("no runtime balancing period field"),
             "none",
             "none",
-            classification=MISSING_EVIDENCE,
+            classification=SOURCE_NOT_AVAILABLE,
             root_cause="Balancing remains outside the committed extraction set and runtime summary exports.",
             recommended_action="Treat as sub-line follow-up only if stakeholders require separate mapping.",
             governance_impact="None",
@@ -922,8 +987,8 @@ def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: li
         MetricSpec(
             "OPEX",
             "Contingency",
-            missing("no committed Excel contingency sub-line"),
-            missing("contingency not exposed as standalone runtime period field"),
+            runtime_pending("no committed Excel contingency sub-line"),
+            runtime_pending("contingency not exposed as standalone runtime period field"),
             "none",
             "none",
             classification=RUNTIME_BINDING_PENDING,
@@ -952,49 +1017,49 @@ def _build_specs(runtime: dict, per_bridge: list[dict[str, str]], shl_bridge: li
     ]
 
     shl_specs = [
-        MetricSpec("SHL", "Opening Balance", _col(shl_bridge, "excel_shl_opening_keur", n, None), runtime["shl_opening_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_opening_keur", "derived from runtime shl closing/principal/pik", classification=MISSING_EVIDENCE, root_cause="The committed SHL bridge does not provide a full-horizon opening-balance series that can be lined up one-for-one with runtime periods.", recommended_action="Treat this as an evidence limitation and anchor review attention on principal, interest, and closing balance rows.", governance_impact="Review only", notes="Missing evidence is not a zero opening balance."),
+        MetricSpec("SHL", "Opening Balance", _col(shl_bridge, "excel_shl_opening_keur", n, None), runtime["shl_opening_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_opening_keur", "derived from runtime shl closing/principal/pik", classification=MISSING_EXCEL_EVIDENCE, root_cause="The committed SHL bridge does not provide a full-horizon opening-balance series that can be lined up one-for-one with runtime periods.", recommended_action="Treat this as an Excel-side evidence limitation and anchor review attention on principal, interest, and closing balance rows.", governance_impact="Review only", notes="Missing evidence is not a zero opening balance."),
         MetricSpec("SHL", "Gross Accrued Interest", _col(shl_bridge, "excel_shl_interest_keur", n, None), runtime["shl_gross_accrued_interest_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_interest_keur", "runtime.shl_gross_accrued_interest_keur", classification=WARN, root_cause="The remaining SHL gross-interest delta reflects timing and presentation differences between the committed bridge and the runtime accrued-interest schedule.", recommended_action="Keep the row visible for reviewer scrutiny, but do not redesign SHL mechanics in this branch.", governance_impact="Review only", notes="Gross accrued interest is the authoritative model-side SHL P&L bridge."),
-        MetricSpec("SHL", "Cash Interest Paid", missing("no committed Excel cash-interest split"), runtime["shl_interest_keur"], "none", "runtime.shl_interest_keur", classification=MISSING_EVIDENCE, root_cause="Committed Excel bridge evidences gross accrued SHL interest, not a separate cash-interest split.", recommended_action="Keep separate from gross accrued interest and document as presentation gap.", governance_impact="None", notes="Runtime field is real; Excel side is the missing piece."),
-        MetricSpec("SHL", "PIK Capitalized", missing("no committed Excel PIK split"), runtime["shl_pik_keur"], "none", "runtime.shl_pik_keur", classification=MISSING_EVIDENCE, root_cause="PIK is not separately extractable from the committed Excel evidence set.", recommended_action="Map Excel PIK rows only if stakeholders require the split.", governance_impact="None", notes="Do not net PIK into cash interest."),
+        MetricSpec("SHL", "Cash Interest Paid", missing_excel("no committed Excel cash-interest split"), runtime["shl_interest_keur"], "none", "runtime.shl_interest_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Committed Excel bridge evidences gross accrued SHL interest, not a separate cash-interest split.", recommended_action="Keep separate from gross accrued interest and document as an Excel-side presentation gap.", governance_impact="None", notes="Runtime field is real; Excel side is the missing piece."),
+        MetricSpec("SHL", "PIK Capitalized", missing_excel("no committed Excel PIK split"), runtime["shl_pik_keur"], "none", "runtime.shl_pik_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="PIK is not separately extractable from the committed Excel evidence set.", recommended_action="Map Excel PIK rows only if stakeholders require the split.", governance_impact="None", notes="Do not net PIK into cash interest."),
         MetricSpec("SHL", "Principal Repaid", _col(shl_bridge, "excel_shl_principal_keur", n, None), runtime["shl_principal_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_principal_keur", "runtime.shl_principal_keur", classification=WARN, root_cause="SHL principal timing moved closer to Excel after the controlled alignment work, but committed bridge totals still reflect a slightly different period framing.", recommended_action="Document as a timing reconciliation item and keep the runtime-alignment branch as the authoritative history.", governance_impact="Stakeholder review only", notes="No new SHL timing change is made here."),
-        MetricSpec("SHL", "Closing Balance", _col(shl_bridge, "excel_shl_closing_keur", n, None), runtime["shl_closing_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_closing_keur", "runtime.shl_balance_keur", classification=MISSING_EVIDENCE, root_cause="The committed SHL bridge does not provide a clean full-horizon closing-balance series that matches runtime period boundaries exactly.", recommended_action="Keep as an evidence limitation and rely on the runtime balance schedule plus prior Phase 9 review workbook for detail.", governance_impact="Review only", notes="Explicit evidence gap, not a silent zero."),
-        MetricSpec("SHL", "Total SHL Service", missing("no committed Excel total SHL-service row"), runtime["shl_service_keur"], "none", "runtime.shl_service_keur", classification=MISSING_EVIDENCE, root_cause="The runtime SHL service field exists, but the committed Excel evidence pack does not expose a separate total-service bridge row.", recommended_action="Use the runtime service row for lender review and only add Excel-side extraction if stakeholders require a service split.", governance_impact="Review only", notes="Expands runtime-side SHL visibility without changing mechanics."),
+        MetricSpec("SHL", "Closing Balance", _col(shl_bridge, "excel_shl_closing_keur", n, None), runtime["shl_closing_keur"], "phase9_tuho_shl_period_bridge.csv / excel_shl_closing_keur", "runtime.shl_balance_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="The committed SHL bridge does not provide a clean full-horizon closing-balance series that matches runtime period boundaries exactly.", recommended_action="Keep as an Excel-side evidence limitation and rely on the runtime balance schedule plus prior Phase 9 review workbook for detail.", governance_impact="Review only", notes="Explicit evidence gap, not a silent zero."),
+        MetricSpec("SHL", "Total SHL Service", missing_excel("no committed Excel total SHL-service row"), runtime["shl_service_keur"], "none", "runtime.shl_service_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="The runtime SHL service field exists, but the committed Excel evidence pack does not expose a separate total-service bridge row.", recommended_action="Use the runtime service row for lender review and only add Excel-side extraction if stakeholders require a service split.", governance_impact="Review only", notes="Expands runtime-side SHL visibility without changing mechanics."),
     ]
 
     tax_specs = [
-        MetricSpec("Tax", "Book Depreciation", missing("book depreciation not in committed Excel extract"), runtime["depreciation_keur"], "none", "runtime.depreciation_keur", classification=MISSING_EVIDENCE, root_cause="Book depreciation is available runtime-side but not committed Excel-side at full-horizon row granularity.", recommended_action="Use the Phase 6/9 depreciation evidence branches for any future ledger-level parity work.", governance_impact="Review only", notes="Explicitly kept separate from tax depreciation."),
-        MetricSpec("Tax", "Tax Depreciation", missing("tax depreciation not in committed Excel extract"), runtime["tax_depreciation_audit_keur"], "none", "runtime.tax_depreciation_audit_keur", classification=MISSING_EVIDENCE, root_cause="Tax depreciation evidence exists in prior diagnostics but not as a committed period-level Excel bridge row here.", recommended_action="Leave as evidence gap unless a tax-specific parity branch is opened.", governance_impact="Review only", notes="No silent zero-fill."),
-        MetricSpec("Tax", "R35 Taxable Income Before Losses", missing("R35 not in committed Excel extract"), runtime["taxable_income_before_losses_audit_keur"], "none", "runtime.taxable_income_before_losses_audit_keur", classification=WARN, root_cause="Known governed Phase 6 residual; Excel-side R35 row ownership remains partially unmapped in committed extracts.", recommended_action="Keep governed residual explicit; do not hardcode a parity plug.", governance_impact="G20 support evidence", notes="Residual is documented, not runtime-fixed."),
-        MetricSpec("Tax", "R67 CIT Cash", missing("R67 not in committed Excel extract"), runtime["corporate_tax_cash_keur"], "none", "runtime.corporate_tax_cash_keur", classification=MISSING_EVIDENCE, root_cause="Committed Excel extracts do not include a period-level R67 bridge in this pack.", recommended_action="Carry forward as missing evidence rather than zero.", governance_impact="Review only", notes="Runtime tax cash remains visible."),
-        MetricSpec("Tax", "Losses Opening", missing("loss opening not in committed Excel extract"), runtime["tax_loss_opening_audit_keur"], "none", "runtime.tax_loss_opening_audit_keur", classification=MISSING_EVIDENCE, root_cause="Loss bucket evidence is runtime-side only in this branch.", recommended_action="Reference the dedicated Phase 6 loss-engine evidence if a reviewer asks for lineage.", governance_impact="None", notes="Audit field available runtime-side."),
-        MetricSpec("Tax", "Losses Used", missing("loss usage not in committed Excel extract"), runtime["tax_loss_used_audit_keur"], "none", "runtime.tax_loss_used_audit_keur", classification=MISSING_EVIDENCE, root_cause="Committed Excel bridge does not expose period-level loss usage in this pack.", recommended_action="Keep visible as runtime-only audit detail.", governance_impact="None", notes="Do not synthesize Excel values."),
-        MetricSpec("Tax", "Losses Closing", missing("loss closing not in committed Excel extract"), runtime["tax_loss_closing_audit_keur"], "none", "runtime.tax_loss_closing_audit_keur", classification=MISSING_EVIDENCE, root_cause="Closing loss carryforward is visible in runtime audit fields but not committed Excel-side in this pack.", recommended_action="Preserve as a runtime-backed evidence row and add Excel extraction only if deeper tax review is requested.", governance_impact="Review only", notes="Improves tax loss visibility without fabricating Excel values."),
-        MetricSpec("Tax", "Taxable Profit After Losses", missing("taxable profit after losses not in committed Excel extract"), runtime["taxable_profit_after_losses_audit_keur"], "none", "runtime.taxable_profit_after_losses_audit_keur", classification=MISSING_EVIDENCE, root_cause="Taxable profit after losses is already exposed runtime-side but not committed on the Excel side of this pack.", recommended_action="Keep the runtime row visible and document the Excel-side evidence gap explicitly.", governance_impact="Review only", notes="Useful for lender and tax reviewers even where Excel parity remains incomplete."),
-        MetricSpec("Tax", "CIT Accrual", missing("CIT accrual not in committed Excel extract"), runtime["cit_accrual_audit_keur"], "none", "runtime.cit_accrual_audit_keur", classification=MISSING_EVIDENCE, root_cause="The runtime audit field exists for CIT accrual, but the committed Excel evidence pack does not include a matching row.", recommended_action="Expose the runtime accrual row and preserve the missing Excel side explicitly.", governance_impact="Review only", notes="Improves tax bridge completeness without changing formulas."),
-        MetricSpec("Tax", "Cash Tax Current Period", missing("cash tax current period not in committed Excel extract"), runtime["cash_tax_current_period_audit_keur"], "none", "runtime.cash_tax_current_period_audit_keur", classification=MISSING_EVIDENCE, root_cause="Current-period cash tax is already exposed through runtime audit fields, but the committed Excel evidence pack has no matching line.", recommended_action="Show the runtime value and keep the Excel-side gap documented.", governance_impact="Review only", notes="Avoids treating runtime-available tax evidence as missing on both sides."),
+        MetricSpec("Tax", "Book Depreciation", missing_excel("book depreciation not in committed Excel extract"), runtime["depreciation_keur"], "none", "runtime.depreciation_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Book depreciation is available runtime-side but not committed Excel-side at full-horizon row granularity.", recommended_action="Use the Phase 6/9 depreciation evidence branches for any future ledger-level parity work.", governance_impact="Review only", notes="Explicitly kept separate from tax depreciation."),
+        MetricSpec("Tax", "Tax Depreciation", missing_excel("tax depreciation not in committed Excel extract"), runtime["tax_depreciation_audit_keur"], "none", "runtime.tax_depreciation_audit_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Tax depreciation evidence exists in prior diagnostics but not as a committed period-level Excel bridge row here.", recommended_action="Leave as evidence gap unless a tax-specific parity branch is opened.", governance_impact="Review only", notes="No silent zero-fill."),
+        MetricSpec("Tax", "R35 Taxable Income Before Losses", missing_excel("R35 not in committed Excel extract"), runtime["taxable_income_before_losses_audit_keur"], "none", "runtime.taxable_income_before_losses_audit_keur", classification=WARN, root_cause="Known governed Phase 6 residual; Excel-side R35 row ownership remains partially unmapped in committed extracts.", recommended_action="Keep governed residual explicit; do not hardcode a parity plug.", governance_impact="G20 support evidence", notes="Residual is documented, not runtime-fixed."),
+        MetricSpec("Tax", "R67 CIT Cash", missing_excel("R67 not in committed Excel extract"), runtime["corporate_tax_cash_keur"], "none", "runtime.corporate_tax_cash_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Committed Excel extracts do not include a period-level R67 bridge in this pack.", recommended_action="Carry forward as missing Excel-side evidence rather than zero.", governance_impact="Review only", notes="Runtime tax cash remains visible."),
+        MetricSpec("Tax", "Losses Opening", missing_excel("loss opening not in committed Excel extract"), runtime["tax_loss_opening_audit_keur"], "none", "runtime.tax_loss_opening_audit_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Loss bucket evidence is runtime-side only in this branch.", recommended_action="Reference the dedicated Phase 6 loss-engine evidence if a reviewer asks for lineage.", governance_impact="None", notes="Audit field available runtime-side."),
+        MetricSpec("Tax", "Losses Used", missing_excel("loss usage not in committed Excel extract"), runtime["tax_loss_used_audit_keur"], "none", "runtime.tax_loss_used_audit_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Committed Excel bridge does not expose period-level loss usage in this pack.", recommended_action="Keep visible as runtime-only audit detail.", governance_impact="None", notes="Do not synthesize Excel values."),
+        MetricSpec("Tax", "Losses Closing", missing_excel("loss closing not in committed Excel extract"), runtime["tax_loss_closing_audit_keur"], "none", "runtime.tax_loss_closing_audit_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Closing loss carryforward is visible in runtime audit fields but not committed Excel-side in this pack.", recommended_action="Preserve as a runtime-backed evidence row and add Excel extraction only if deeper tax review is requested.", governance_impact="Review only", notes="Improves tax loss visibility without fabricating Excel values."),
+        MetricSpec("Tax", "Taxable Profit After Losses", missing_excel("taxable profit after losses not in committed Excel extract"), runtime["taxable_profit_after_losses_audit_keur"], "none", "runtime.taxable_profit_after_losses_audit_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Taxable profit after losses is already exposed runtime-side but not committed on the Excel side of this pack.", recommended_action="Keep the runtime row visible and document the Excel-side evidence gap explicitly.", governance_impact="Review only", notes="Useful for lender and tax reviewers even where Excel parity remains incomplete."),
+        MetricSpec("Tax", "CIT Accrual", missing_excel("CIT accrual not in committed Excel extract"), runtime["cit_accrual_audit_keur"], "none", "runtime.cit_accrual_audit_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="The runtime audit field exists for CIT accrual, but the committed Excel evidence pack does not include a matching row.", recommended_action="Expose the runtime accrual row and preserve the missing Excel side explicitly.", governance_impact="Review only", notes="Improves tax bridge completeness without changing formulas."),
+        MetricSpec("Tax", "Cash Tax Current Period", missing_excel("cash tax current period not in committed Excel extract"), runtime["cash_tax_current_period_audit_keur"], "none", "runtime.cash_tax_current_period_audit_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Current-period cash tax is already exposed through runtime audit fields, but the committed Excel evidence pack has no matching line.", recommended_action="Show the runtime value and keep the Excel-side gap documented.", governance_impact="Review only", notes="Avoids treating runtime-available tax evidence as missing on both sides."),
     ]
 
     cfads_specs = [
         MetricSpec("CFADS", "EBITDA Cash Proxy", _col(per_bridge, "excel_ebitda_keur", n, None), runtime["ebitda_keur"], "phase9_tuho_full_line_item_period_bridge.csv / excel_ebitda_keur", "runtime.ebitda_keur"),
-        MetricSpec("CFADS", "Tax Cash", missing("no committed Excel tax-cash row"), runtime["corporate_tax_cash_keur"], "none", "runtime.corporate_tax_cash_keur", classification=MISSING_EVIDENCE, root_cause="Excel tax cash row is not committed in the current evidence pack.", recommended_action="Keep as runtime evidence only.", governance_impact="Review only", notes="Missing evidence is explicit."),
-        MetricSpec("CFADS", "CFADS / R69", missing("R69 not in committed Excel extract"), runtime["r69_fcf_banks_keur"], "none", "runtime.r69_fcf_banks_keur", classification=MISSING_EVIDENCE, root_cause="Period-level Excel R69 remains outside the committed evidence set.", recommended_action="Future tax/waterfall review can map this if required.", governance_impact="Review only", notes="Runtime value is available."),
+        MetricSpec("CFADS", "Tax Cash", missing_excel("no committed Excel tax-cash row"), runtime["corporate_tax_cash_keur"], "none", "runtime.corporate_tax_cash_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Excel tax cash row is not committed in the current evidence pack.", recommended_action="Keep as runtime evidence only.", governance_impact="Review only", notes="Missing evidence is explicit."),
+        MetricSpec("CFADS", "CFADS / R69", missing_excel("R69 not in committed Excel extract"), runtime["r69_fcf_banks_keur"], "none", "runtime.r69_fcf_banks_keur", classification=MISSING_EXCEL_EVIDENCE, root_cause="Period-level Excel R69 remains outside the committed evidence set.", recommended_action="Future tax/waterfall review can map this if required.", governance_impact="Review only", notes="Runtime value is available."),
         MetricSpec("CFADS", "FCF for Distribution / R99", blank, runtime["r99_fcf_for_distribution_keur"], "governance gate only", "runtime.r99_fcf_for_distribution_keur", classification=GOVERNANCE_BLOCKER, root_cause="R99 runtime promotion remains not approved by governance.", recommended_action="Do not promote or rely on R99 as authoritative runtime source.", governance_impact="R99/R102 not approved", notes="Shown for audit visibility only."),
         MetricSpec("CFADS", "FCF for SHL / R102", blank, runtime["r102_fcf_for_shl_keur"], "governance gate only", "runtime.r102_fcf_for_shl_keur", classification=GOVERNANCE_BLOCKER, root_cause="R102 runtime promotion remains not approved by governance.", recommended_action="Keep audit-only until explicit approval.", governance_impact="R99/R102 not approved", notes="No runtime promotion implied."),
     ]
 
     distributions_specs = [
         MetricSpec("Distributions", "Excel Dividends / Distribution", _col(per_bridge, "excel_distribution_keur", n, None), runtime["distribution_keur"], "phase9_tuho_full_line_item_period_bridge.csv / excel_distribution_keur", "runtime.distribution_keur", classification=ACCEPTED_CONVENTION, root_cause="Excel dividend labeling and runtime distribution wiring are documented as definitionally different.", recommended_action="Use runtime distribution as authoritative and keep DA staging separate.", governance_impact="Stakeholder presentation choice", notes="No mixed flag-state values."),
-        MetricSpec("Distributions", "DA-Wired / Pre-G20 Staging", missing("no committed Excel DA staging row"), runtime["da_paid_distribution_keur"], "none", "runtime.da_paid_distribution_keur", classification=GOVERNANCE_BLOCKER, root_cause="DA-wired distribution remains audit-only pending governance approval.", recommended_action="Keep clearly separated from the default runtime path.", governance_impact="G20 / R99 review", notes="Not authoritative for parity closeout."),
+        MetricSpec("Distributions", "DA-Wired / Pre-G20 Staging", missing_excel("no committed Excel DA staging row"), runtime["da_paid_distribution_keur"], "none", "runtime.da_paid_distribution_keur", classification=GOVERNANCE_BLOCKER, root_cause="DA-wired distribution remains audit-only pending governance approval.", recommended_action="Keep clearly separated from the default runtime path.", governance_impact="G20 / R99 review", notes="Not authoritative for parity closeout."),
         MetricSpec("Distributions", "Legacy Runtime Distribution", blank, runtime["legacy_distribution_keur"], "not applicable", "runtime.legacy_distribution_keur", classification=ACCEPTED_CONVENTION, root_cause="Legacy distribution remains a reporting lens, not the reviewer-facing primary distribution stream.", recommended_action="Retain for traceability only.", governance_impact="None", notes="Separate from default runtime distribution row."),
     ]
 
     returns_specs = [
         MetricSpec("Returns", "Project IRR", [""] * n, [""] * n, "phase9 calibration reference", "runtime.project_irr", number_format=PCT_FORMAT, classification=PASS, root_cause="Within documented tolerance versus Excel.", recommended_action="None", governance_impact="None", notes="See Total column for scalar value.", total_label="scalar"),
         MetricSpec("Returns", "Equity IRR", [""] * n, [""] * n, "phase9 calibration reference", "runtime.equity_irr", number_format=PCT_FORMAT, classification=WARN, root_cause="Residual is governed by accepted conventions and remaining reporting-view decisions.", recommended_action="Stakeholder can accept residual or request a reconciliation IRR reporting view.", governance_impact="G20 stakeholder acceptance", notes="See Total column for scalar value.", total_label="scalar"),
-        MetricSpec("Returns", "Reconciliation IRR", [""] * n, [""] * n, "not implemented", "not implemented", number_format=PCT_FORMAT, classification=MISSING_EVIDENCE, root_cause="Reconciliation IRR view has not been implemented as a reporting-only layer.", recommended_action="Open a dedicated reporting-view branch if stakeholders require it.", governance_impact="Stakeholder decision pending", notes="Missing evidence is explicit.", total_label="scalar"),
+        MetricSpec("Returns", "Reconciliation IRR", missing_scalar("reconciliation IRR view not implemented"), missing_scalar("reconciliation IRR view not implemented"), "not implemented", "not implemented", number_format=PCT_FORMAT, classification=MISSING_REVIEW_SCALAR, root_cause="Reconciliation IRR view has not been implemented as a reporting-only layer.", recommended_action="Open a dedicated reporting-view branch if stakeholders require it.", governance_impact="Stakeholder decision pending", notes="Missing reviewer scalar is explicit.", total_label="scalar"),
         MetricSpec("Returns", "MOIC", [""] * n, [""] * n, "not in committed Excel extract", "not exposed in runtime summary", number_format=X_FORMAT, classification=RUNTIME_BINDING_PENDING, root_cause="MOIC is not yet exported as a first-class runtime/reporting metric in the current workbook foundations.", recommended_action="Add a reporting-only MOIC view if the review committee asks for it.", governance_impact="None", notes="Do not invent a proxy here.", total_label="scalar"),
         MetricSpec("Returns", "Average DSCR", [""] * n, [""] * n, "phase9 calibration reference", "runtime.actual_avg_dscr", number_format=X_FORMAT, classification=WARN, root_cause="Residual remains documented in prior calibration evidence and is not a new runtime issue in this branch.", recommended_action="Keep as review evidence only.", governance_impact="G20 support evidence", notes="See Total column for scalar value.", total_label="scalar"),
-        MetricSpec("Returns", "Minimum DSCR", [""] * n, [""] * n, "not in committed Excel extract", "runtime.actual_min_dscr", number_format=X_FORMAT, classification=MISSING_EVIDENCE, root_cause="Committed Excel evidence does not include a reliable minimum DSCR row for this pack.", recommended_action="Document as missing evidence rather than a failed model row.", governance_impact="Review only", notes="See Total column for scalar value.", total_label="scalar"),
+        MetricSpec("Returns", "Minimum DSCR", missing_excel("minimum DSCR not in committed Excel extract"), [""] * n, "not in committed Excel extract", "runtime.actual_min_dscr", number_format=X_FORMAT, classification=MISSING_EXCEL_EVIDENCE, root_cause="Committed Excel evidence does not include a reliable minimum DSCR row for this pack.", recommended_action="Document as missing Excel-side evidence rather than a failed model row.", governance_impact="Review only", notes="See Total column for scalar value.", total_label="scalar"),
     ]
 
     return {
@@ -1064,7 +1129,7 @@ def _write_triplet(sheet, start_row: int, spec: MetricSpec, period_labels: list[
         requires_runtime_change = "yes"
 
     if spec.total_label == "scalar":
-        total_excel, total_model = scalar_totals.get(spec.label, ("MISSING_EVIDENCE", "MISSING_EVIDENCE"))
+        total_excel, total_model = scalar_totals.get(spec.label, (MISSING_REVIEW_SCALAR, MISSING_REVIEW_SCALAR))
         delta_total = (
             total_model - total_excel
             if isinstance(total_excel, (int, float)) and isinstance(total_model, (int, float))
@@ -1088,7 +1153,7 @@ def _write_triplet(sheet, start_row: int, spec: MetricSpec, period_labels: list[
             cell.font = BODY_FONT
             if isinstance(value, (int, float)):
                 cell.number_format = spec.number_format
-            elif isinstance(value, str) and value.startswith("MISSING_EVIDENCE"):
+            elif isinstance(value, str) and _is_missing_marker(value):
                 cell.fill = MISS_FILL
             elif offset == 2 and value == "N/A":
                 cell.fill = CONVENTION_FILL
@@ -1098,7 +1163,7 @@ def _write_triplet(sheet, start_row: int, spec: MetricSpec, period_labels: list[
         total_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         if isinstance(total, (int, float)):
             total_cell.number_format = spec.number_format
-        elif isinstance(total, str) and total.startswith("MISSING_EVIDENCE"):
+        elif isinstance(total, str) and _is_missing_marker(total):
             total_cell.fill = MISS_FILL
         if offset == 2:
             total_cell.fill = fill
@@ -1158,6 +1223,9 @@ def _severity_order(classification: str) -> int:
         EVIDENCE_LIMITATION: 4,
         GROUPED_SOURCE_ONLY: 4,
         MISSING_EVIDENCE: 5,
+        MISSING_EXCEL_EVIDENCE: 5,
+        MISSING_REVIEW_SCALAR: 5,
+        SOURCE_NOT_AVAILABLE: 5,
         ACCEPTED_CONVENTION: 6,
         PASS: 7,
     }
@@ -1322,7 +1390,13 @@ def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows
     summary_rows_out = [
         ("PASS", counts.get(PASS, 0)),
         ("Accepted conventions", counts.get(ACCEPTED_CONVENTION, 0)),
-        ("Evidence limitations", counts.get(EVIDENCE_LIMITATION, 0) + counts.get(MISSING_EVIDENCE, 0)),
+        (
+            "Evidence limitations",
+            counts.get(EVIDENCE_LIMITATION, 0)
+            + counts.get(MISSING_EXCEL_EVIDENCE, 0)
+            + counts.get(MISSING_REVIEW_SCALAR, 0)
+            + counts.get(SOURCE_NOT_AVAILABLE, 0),
+        ),
         ("Governance blockers", counts.get(GOVERNANCE_BLOCKER, 0)),
         ("Engineering follow-up", engineering_items),
     ]
@@ -1407,7 +1481,9 @@ def _write_navigation(sheet, runtime_summary_rows: list[dict[str, str]]) -> None
         "PASS means the currently committed Excel evidence and runtime output align within tolerance.",
         "WARN means the row is materially explainable but still worth reviewer attention.",
         "ACCEPTED_CONVENTION means the difference is understood and documented as a presentation or definition choice.",
-        "MISSING_EVIDENCE means the evidence is not available; it is not a hidden zero.",
+        "MISSING_EXCEL_EVIDENCE means the runtime-side value exists, but the committed Excel-side row is not available at the needed level.",
+        "MISSING_REVIEW_SCALAR means the pack does not yet have a dedicated reviewer-facing scalar or bridge for that item.",
+        "SOURCE_NOT_AVAILABLE means neither the runtime export surface nor the committed evidence set provides a defensible standalone source.",
         "EVIDENCE_LIMITATION means the runtime or Excel side exists only at a broader level than the reviewer wants.",
         "GROUPED_SOURCE_ONLY means the available evidence supports only a grouped revenue row, not a defensible sub-line split.",
         "RUNTIME_BINDING_PENDING means the runtime logic exists but the reporting breakout is not yet first-class.",
@@ -1426,7 +1502,9 @@ def _write_navigation(sheet, runtime_summary_rows: list[dict[str, str]]) -> None
         (WARN, WARN_FILL),
         (FAIL, FAIL_FILL),
         (ACCEPTED_CONVENTION, CONVENTION_FILL),
-        (MISSING_EVIDENCE, MISS_FILL),
+        (MISSING_EXCEL_EVIDENCE, MISS_FILL),
+        (MISSING_REVIEW_SCALAR, MISS_FILL),
+        (SOURCE_NOT_AVAILABLE, MISS_FILL),
         (EVIDENCE_LIMITATION, WARN_FILL),
         (GROUPED_SOURCE_ONLY, PENDING_FILL),
         (RUNTIME_BINDING_PENDING, PENDING_FILL),
@@ -1498,7 +1576,7 @@ def _write_exec_summary(sheet, summary_rows: list[dict[str, str]], runtime_summa
     for row in summary_rows:
         counts[row["classification"]] = counts.get(row["classification"], 0) + 1
     r = 8
-    for key in [PASS, WARN, FAIL, ACCEPTED_CONVENTION, MISSING_EVIDENCE, EVIDENCE_LIMITATION, GROUPED_SOURCE_ONLY, RUNTIME_BINDING_PENDING, GOVERNANCE_BLOCKER]:
+    for key in DISPLAY_CLASSIFICATIONS:
         sheet.cell(row=r, column=1, value=key)
         sheet.cell(row=r, column=2, value=counts.get(key, 0))
         sheet.cell(row=r, column=1).fill = _fill_for_classification(key)
@@ -1555,7 +1633,7 @@ def _write_exec_summary(sheet, summary_rows: list[dict[str, str]], runtime_summa
     sheet["G27"] = "No - governance blockers, accepted conventions, and evidence gaps remain explicit."
     sheet["F28"] = "Evidence confidence summary"
     sheet["G28"] = "High for runtime-backed totals, medium for timing-sensitive debt/SHL bridges, lower where source evidence is still missing."
-    runtime_ready = len([row for row in summary_rows if row["classification"] not in {MISSING_EVIDENCE, RUNTIME_BINDING_PENDING}])
+    runtime_ready = len([row for row in summary_rows if row["classification"] not in (MISSING_CLASSIFICATIONS | {RUNTIME_BINDING_PENDING})])
     total_items = max(len(summary_rows), 1)
     sheet["F29"] = "Runtime coverage summary"
     sheet["G29"] = f"{round(runtime_ready / total_items * 100, 1)}% of tracked rows have runtime-backed or convention-classified coverage."
@@ -1574,7 +1652,7 @@ def _signoff_status(rows: list[dict[str, str]]) -> str:
         return "GOVERNANCE_PENDING"
     if FAIL in classes or MATERIAL_DELTA in classes:
         return "BLOCKED"
-    if MISSING_EVIDENCE in classes or RUNTIME_BINDING_PENDING in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes:
+    if classes & (EVIDENCE_GAP_CLASSIFICATIONS | {RUNTIME_BINDING_PENDING}):
         return "IN_REVIEW"
     if WARN in classes:
         return "READY_FOR_SIGNOFF"
@@ -1610,15 +1688,15 @@ def _review_signoff_rows(summary_rows: list[dict[str, str]]) -> list[dict[str, s
                 "reviewer": reviewer_map.get(area, "Review"),
                 "review_status": _signoff_status(area_rows) if area_rows else "NOT_STARTED",
                 "current_status": _signoff_status(area_rows) if area_rows else "NOT_STARTED",
-                "evidence_complete": "no" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "yes",
+                "evidence_complete": "no" if classes & EVIDENCE_GAP_CLASSIFICATIONS else "yes",
                 "runtime_verified": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
                 "governance_reviewed": "pending" if GOVERNANCE_BLOCKER in classes else "yes",
                 "governance_owner": "Governance" if GOVERNANCE_BLOCKER in classes or any(row["requires_stakeholder_decision"] == "yes" for row in area_rows) else "Area owner",
                 "stakeholder_decision_required": "yes" if any(row["requires_stakeholder_decision"] == "yes" for row in area_rows) else "no",
                 "runtime_ready": "no" if RUNTIME_BINDING_PENDING in classes else "yes",
-                "evidence_ready": "no" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "yes",
+                "evidence_ready": "no" if classes & EVIDENCE_GAP_CLASSIFICATIONS else "yes",
                 "governance_ready": "no" if GOVERNANCE_BLOCKER in classes else "yes",
-                "blocker_type": "governance" if GOVERNANCE_BLOCKER in classes else "evidence" if MISSING_EVIDENCE in classes or EVIDENCE_LIMITATION in classes or GROUPED_SOURCE_ONLY in classes else "runtime_binding" if RUNTIME_BINDING_PENDING in classes else "none",
+                "blocker_type": "governance" if GOVERNANCE_BLOCKER in classes else "evidence" if classes & EVIDENCE_GAP_CLASSIFICATIONS else "runtime_binding" if RUNTIME_BINDING_PENDING in classes else "none",
                 "recommended_action": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
                 "recommended_next_step": area_rows[0]["recommended_action"] if area_rows else "Complete review coverage.",
                 "roadmap_owner": "Phase 11 / Reporting" if any(row["expected_roadmap_phase"] == "Phase 11" for row in area_rows) else "Phase 10 / Review",
@@ -1643,8 +1721,8 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
     blockers = [row for row in summary_rows if row["classification"] == GOVERNANCE_BLOCKER][:5]
     stakeholder_items = [row for row in summary_rows if row["requires_stakeholder_decision"] == "yes"]
     engineering_items = [row for row in summary_rows if row["requires_runtime_change"] == "yes"]
-    runtime_ready = len([row for row in summary_rows if row["classification"] not in {MISSING_EVIDENCE, RUNTIME_BINDING_PENDING}])
-    evidence_ready = len([row for row in summary_rows if row["classification"] != MISSING_EVIDENCE])
+    runtime_ready = len([row for row in summary_rows if row["classification"] not in (MISSING_CLASSIFICATIONS | {RUNTIME_BINDING_PENDING})])
+    evidence_ready = len([row for row in summary_rows if row["classification"] not in MISSING_CLASSIFICATIONS])
     total_items = max(len(summary_rows), 1)
     unresolved = len([row for row in summary_rows if row["classification"] != PASS])
 
@@ -1654,7 +1732,7 @@ def _write_executive_dashboard(sheet, summary_rows: list[dict[str, str]], runtim
     sheet["A7"] = "Classification Counts"
     sheet["A7"].font = BOLD_FONT
     row = 8
-    for key in [PASS, WARN, FAIL, ACCEPTED_CONVENTION, MISSING_EVIDENCE, EVIDENCE_LIMITATION, GROUPED_SOURCE_ONLY, RUNTIME_BINDING_PENDING, GOVERNANCE_BLOCKER]:
+    for key in DISPLAY_CLASSIFICATIONS:
         sheet.cell(row=row, column=1, value=key).fill = _fill_for_classification(key)
         sheet.cell(row=row, column=2, value=counts.get(key, 0))
         row += 1
@@ -1862,6 +1940,9 @@ def _write_governance(sheet) -> None:
         "G20 remains BLOCKED until stakeholder gate sign-off, even where technical evidence is sufficient.",
         "R99/R102 remain NOT APPROVED and are shown only as audit / staging context.",
         "Accepted conventions document presentation and scope decisions; they do not change runtime authority.",
+        "MISSING_EXCEL_EVIDENCE means the runtime-side row exists but the committed Excel-side row does not.",
+        "MISSING_REVIEW_SCALAR means a reviewer-facing scalar or bridge has not been approved or implemented yet.",
+        "SOURCE_NOT_AVAILABLE means neither side provides a defensible standalone source for the requested sub-line.",
     ]
     row = 16
     for note in notes:
@@ -1918,7 +1999,7 @@ def _write_notes(sheet) -> None:
         ("Audit reviewer focus", "Focus on Source Inventory, Accepted Conventions, missing evidence discipline, and whether every non-PASS row has a defensible explanation."),
         ("Engineer focus", "Focus only on rows still marked runtime binding pending or areas that would need a dedicated follow-up branch."),
         ("How to interpret grouped revenue evidence", "Grouped revenue evidence means the current sources only support a total or combined view. It does not mean the runtime engine is mixing rows incorrectly."),
-        ("CO2 / balancing reviewer caution", "If a row is labeled GROUPED_SOURCE_ONLY or MISSING_EVIDENCE, do not infer a synthetic CO2 or balancing split. Reviewers should treat that as a source-map limitation."),
+        ("CO2 / balancing reviewer caution", "If a row is labeled GROUPED_SOURCE_ONLY or SOURCE_NOT_AVAILABLE, do not infer a synthetic CO2 or balancing split. Reviewers should treat that as a source-map limitation."),
         ("How to interpret IRR drift", "Start with the IRR Reconciliation sheet. Small project or equity IRR deltas can come from date anchors, distribution framing, or other documented conventions before they imply a runtime defect."),
         ("When IRR drift is acceptable", "Treat convention-backed drift as reviewable if the root cause is explicit, runtime values are stable, and the remaining gap is a governance or presentation issue rather than an unexplained economics change."),
         ("How to interpret remaining residuals", "Use the Calibration Residual Closeout sheet first. Items tagged as accepted conventions, evidence limitations, or stakeholder decisions should not be escalated as runtime defects by default."),
@@ -1928,7 +2009,7 @@ def _write_notes(sheet) -> None:
         ("Stakeholder decisions", "Equity IRR residual, reconciliation IRR reporting view, and R99/R102 governance promotion remain outside this branch."),
         ("Likely acceptable convention drift", "XIRR date convention, SHL presentation splits, and grouped OPEX minor rows are documented as conventions rather than runtime defects."),
         ("Still requires engineering work", "Any future reconciliation IRR view, deeper tax row extraction, sub-line CO2/balancing mapping, or export/product polish should happen in dedicated follow-up branches."),
-        ("Evidence limitation only", "Rows marked MISSING_EVIDENCE are not zero and should not be interpreted as model failures."),
+        ("Evidence limitation only", "Rows marked MISSING_EXCEL_EVIDENCE, MISSING_REVIEW_SCALAR, or SOURCE_NOT_AVAILABLE are not zero and should not be interpreted as model failures."),
         ("Presentation only", "Runtime vs preview labels and governance badges are included to help reviewers avoid treating audit-only staging rows as runtime authority."),
         ("Already runtime-verified", "Revenue, core OPEX totals, runtime summary KPIs, and the current institutional workbook binding are already sourced from existing runtime outputs."),
         ("Governance-only blockers", "R99 and R102 remain audit-visible but governance-blocked; this pack does not change their status."),
@@ -2175,7 +2256,7 @@ def _co2_balancing_summary_row(entry: dict[str, str]) -> dict[str, str]:
             "Keep grouped until stronger source evidence exists."
             if entry["classification"] == GROUPED_SOURCE_ONLY
             else "Preserve explicit evidence gap; do not synthesize a split."
-            if entry["classification"] in {MISSING_EVIDENCE, EVIDENCE_LIMITATION}
+            if entry["classification"] in (MISSING_CLASSIFICATIONS | {EVIDENCE_LIMITATION})
             else "None"
         ),
         "governance_impact": "Revenue-source interpretation only" if entry["governance_sensitive"] == "yes" else "None",
@@ -2240,7 +2321,7 @@ def _write_irr_reconciliation_sheet(sheet, irr_rows: list[dict[str, str]], runti
     sheet["A18"].font = BOLD_FONT
     sheet["A19"] = "XIRR construction-date anchors, distribution-definition framing, and SHL IDC investment-base treatment are documented interpretation layers."
     sheet["A20"] = "Remaining unresolved IRR gaps"
-    sheet["A21"] = "A dedicated reconciliation IRR scalar is still MISSING_EVIDENCE, so governance review should focus on explanation quality rather than a forced numeric tie-out."
+    sheet["A21"] = "A dedicated reconciliation IRR scalar is still MISSING_REVIEW_SCALAR, so governance review should focus on explanation quality rather than a forced numeric tie-out."
     sheet["A22"] = "Runtime vs Excel timing note"
     sheet["A23"] = "A small equity IRR delta can remain acceptable when runtime economics are stable and the residual is traceable to timing or presentation conventions."
 
@@ -2387,7 +2468,9 @@ def _write_calibration_residual_closeout_sheet(sheet, rows: list[dict[str, str]]
                     "GOVERNANCE_BLOCKER": GOVERNANCE_FILL,
                     "ENGINEERING_FOLLOWUP": PENDING_FILL,
                     "STAKEHOLDER_DECISION": SECTION_FILL,
-                    "MISSING_EVIDENCE": MISS_FILL,
+                    MISSING_EXCEL_EVIDENCE: MISS_FILL,
+                    MISSING_REVIEW_SCALAR: MISS_FILL,
+                    SOURCE_NOT_AVAILABLE: MISS_FILL,
                 }.get(str(entry[key]), META_FILL)
                 cell.fill = color
             elif row % 2 == 0:
@@ -2416,10 +2499,10 @@ def _scalar_totals(runtime: dict) -> dict[str, tuple[str | float, str | float]]:
     return {
         "Project IRR": (0.0947, runtime["project_irr"]),
         "Equity IRR": (0.1161, runtime["equity_irr"]),
-        "Reconciliation IRR": ("MISSING_EVIDENCE", "MISSING_EVIDENCE"),
-        "MOIC": ("MISSING_EVIDENCE", "MISSING_EVIDENCE"),
+        "Reconciliation IRR": (MISSING_REVIEW_SCALAR, MISSING_REVIEW_SCALAR),
+        "MOIC": (MISSING_REVIEW_SCALAR, MISSING_REVIEW_SCALAR),
         "Average DSCR": (1.451, runtime["avg_dscr"]),
-        "Minimum DSCR": ("MISSING_EVIDENCE", runtime["min_dscr"]),
+        "Minimum DSCR": (MISSING_EXCEL_EVIDENCE, runtime["min_dscr"]),
     }
 
 
@@ -2468,6 +2551,10 @@ def write_calibration_reconciliation_pack(
     export_polish_checklist_path: Path | str = DEFAULT_PHASE11_EXPORT_POLISH_CHECKLIST,
     workbook_formatting_matrix_path: Path | str = DEFAULT_PHASE11_WORKBOOK_FORMATTING_MATRIX,
     reviewer_navigation_paths_path: Path | str = DEFAULT_PHASE11_REVIEWER_NAVIGATION_PATHS,
+    governance_semantics_dictionary_path: Path | str = DEFAULT_PHASE12_GOVERNANCE_SEMANTICS_DICTIONARY,
+    governance_label_usage_matrix_path: Path | str = DEFAULT_PHASE12_GOVERNANCE_LABEL_USAGE_MATRIX,
+    governance_escalation_hierarchy_path: Path | str = DEFAULT_PHASE12_GOVERNANCE_ESCALATION_HIERARCHY,
+    missing_evidence_split_matrix_path: Path | str = DEFAULT_PHASE12_MISSING_EVIDENCE_SPLIT_MATRIX,
 ) -> ReconciliationArtifacts:
     workbook_path = Path(workbook_path)
     gap_register_path = Path(gap_register_path)
@@ -2491,6 +2578,10 @@ def write_calibration_reconciliation_pack(
     export_polish_checklist_path = Path(export_polish_checklist_path)
     workbook_formatting_matrix_path = Path(workbook_formatting_matrix_path)
     reviewer_navigation_paths_path = Path(reviewer_navigation_paths_path)
+    governance_semantics_dictionary_path = Path(governance_semantics_dictionary_path)
+    governance_label_usage_matrix_path = Path(governance_label_usage_matrix_path)
+    governance_escalation_hierarchy_path = Path(governance_escalation_hierarchy_path)
+    missing_evidence_split_matrix_path = Path(missing_evidence_split_matrix_path)
 
     for path in (
         workbook_path,
@@ -2515,6 +2606,10 @@ def write_calibration_reconciliation_pack(
         export_polish_checklist_path,
         workbook_formatting_matrix_path,
         reviewer_navigation_paths_path,
+        governance_semantics_dictionary_path,
+        governance_label_usage_matrix_path,
+        governance_escalation_hierarchy_path,
+        missing_evidence_split_matrix_path,
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -2639,6 +2734,10 @@ def write_calibration_reconciliation_pack(
     _write_csv(export_polish_checklist_path, _export_polish_checklist_rows())
     _write_csv(workbook_formatting_matrix_path, _workbook_formatting_matrix_rows())
     _write_csv(reviewer_navigation_paths_path, _reviewer_navigation_paths_rows())
+    _write_csv(governance_semantics_dictionary_path, _governance_semantics_dictionary_rows())
+    _write_csv(governance_label_usage_matrix_path, _governance_label_usage_matrix_rows())
+    _write_csv(governance_escalation_hierarchy_path, _governance_escalation_hierarchy_rows())
+    _write_csv(missing_evidence_split_matrix_path, _missing_evidence_split_rows())
 
     return ReconciliationArtifacts(
         workbook_path=workbook_path,
@@ -2663,6 +2762,10 @@ def write_calibration_reconciliation_pack(
         export_polish_checklist_path=export_polish_checklist_path,
         workbook_formatting_matrix_path=workbook_formatting_matrix_path,
         reviewer_navigation_paths_path=reviewer_navigation_paths_path,
+        governance_semantics_dictionary_path=governance_semantics_dictionary_path,
+        governance_label_usage_matrix_path=governance_label_usage_matrix_path,
+        governance_escalation_hierarchy_path=governance_escalation_hierarchy_path,
+        missing_evidence_split_matrix_path=missing_evidence_split_matrix_path,
     )
 
 
@@ -2693,7 +2796,7 @@ def _has_runtime_bound_value(model_total: str, notes: str) -> bool:
     text = (model_total or "").strip()
     if not text or text == "N/A":
         return False
-    if text.startswith("MISSING_EVIDENCE"):
+    if _is_missing_marker(text):
         return False
     return True
 
@@ -2718,7 +2821,7 @@ def _runtime_binding_inventory_rows(summary_rows: list[dict[str, str]]) -> list[
         currently_missing = "yes" if not runtime_available else "no"
         if runtime_available:
             reason = ""
-            confidence = "high" if entry["classification"] not in {MISSING_EVIDENCE, RUNTIME_BINDING_PENDING} else "medium"
+            confidence = "high" if entry["classification"] not in (MISSING_CLASSIFICATIONS | {RUNTIME_BINDING_PENDING}) else "medium"
         else:
             reason = entry["root_cause"] or "Runtime/export field is not currently surfaced for this workbook row."
             confidence = "low"
@@ -2752,7 +2855,7 @@ def _evidence_coverage_summary_rows(summary_rows: list[dict[str, str]], inventor
         },
         {
             "metric": "evidence_coverage_pct",
-            "value": f"{round(sum(1 for row in summary_rows if row['classification'] != MISSING_EVIDENCE) / total * 100, 1)}",
+            "value": f"{round(sum(1 for row in summary_rows if row['classification'] not in MISSING_CLASSIFICATIONS) / total * 100, 1)}",
             "unit": "percent",
             "notes": "Rows not blocked solely by missing evidence.",
         },
@@ -2790,7 +2893,7 @@ def _runtime_binding_gap_register_rows(summary_rows: list[dict[str, str]]) -> li
                 "classification": entry["classification"],
                 "why_unresolved": entry["root_cause"] or "Needs reviewer follow-up.",
                 "engineering_work_exists": entry["requires_runtime_change"],
-                "evidence_missing": "yes" if entry["classification"] == MISSING_EVIDENCE else "no",
+                "evidence_missing": "yes" if entry["classification"] in MISSING_CLASSIFICATIONS else "no",
                 "governance_decision_required": entry["requires_stakeholder_decision"],
                 "expected_roadmap_phase": entry["expected_roadmap_phase"],
                 "recommended_action": entry["recommended_action"],
@@ -2898,6 +3001,309 @@ def _reviewer_navigation_paths_rows() -> list[dict[str, str]]:
             "notes": "Helps avoid reopening runtime logic unnecessarily.",
         },
     ]
+
+
+def _governance_semantics_dictionary_rows() -> list[dict[str, str]]:
+    return [
+        {
+            "label": PASS,
+            "meaning": "Evidence and runtime output align within the pack tolerance.",
+            "reviewer_interpretation": "No follow-up needed beyond normal review.",
+            "runtime_implication": "No runtime concern.",
+            "governance_implication": "None.",
+            "escalation_level": "informational",
+            "when_to_use": "Committed evidence and runtime row are aligned and explained.",
+            "when_not_to_use": "Any row still needing reviewer explanation or governance caution.",
+            "notes": "This does not by itself approve G20.",
+        },
+        {
+            "label": WARN,
+            "meaning": "The row has a real but explainable residual that still deserves reviewer attention.",
+            "reviewer_interpretation": "Review the explanation before relying on the row.",
+            "runtime_implication": "Usually no runtime rewrite implied.",
+            "governance_implication": "May still matter in signoff discussion.",
+            "escalation_level": "review",
+            "when_to_use": "Timing, rounding, or bridge-cut differences are visible but understood.",
+            "when_not_to_use": "Pure evidence gaps or blocked governance items.",
+            "notes": "A WARN is not a hidden blocker.",
+        },
+        {
+            "label": FAIL,
+            "meaning": "The row shows an unexplained or material divergence that needs action.",
+            "reviewer_interpretation": "Do not rely on the row without further engineering review.",
+            "runtime_implication": "Potential runtime or extraction defect.",
+            "governance_implication": "Can block reliance until resolved.",
+            "escalation_level": "blocking",
+            "when_to_use": "Residual is not explained within accepted tolerance.",
+            "when_not_to_use": "Governance-only or evidence-only issues.",
+            "notes": "This branch does not introduce any new FAIL rows intentionally.",
+        },
+        {
+            "label": ACCEPTED_CONVENTION,
+            "meaning": "Difference is documented as a presentation, timing, or definition convention.",
+            "reviewer_interpretation": "Treat as non-runtime-authoritative explanation, not approval.",
+            "runtime_implication": "No runtime formula change implied.",
+            "governance_implication": "Still requires reviewers to agree on the reporting lens.",
+            "escalation_level": "informational",
+            "when_to_use": "XIRR anchors, distribution labeling, or similar convention-driven differences.",
+            "when_not_to_use": "Real runtime defects or blocked governance items.",
+            "notes": "Accepted convention does not mean approved runtime behavior.",
+        },
+        {
+            "label": MISSING_EXCEL_EVIDENCE,
+            "meaning": "Runtime-side value exists, but the committed Excel-side row is not available at the needed grain.",
+            "reviewer_interpretation": "Do not infer zero; evidence is missing only on the Excel side.",
+            "runtime_implication": "Runtime field may still be authoritative.",
+            "governance_implication": "Evidence completeness remains open.",
+            "escalation_level": "review",
+            "when_to_use": "Runtime audit fields or rows exist but committed Excel extracts do not.",
+            "when_not_to_use": "Both sides are missing or only a scalar is missing.",
+            "notes": "This is the main replacement for overloaded legacy MISSING_EVIDENCE usage.",
+        },
+        {
+            "label": MISSING_REVIEW_SCALAR,
+            "meaning": "A reviewer-facing scalar, bridge, or dedicated reporting view is not yet implemented or approved.",
+            "reviewer_interpretation": "Interpretation gap, not a forced runtime bug.",
+            "runtime_implication": "Runtime outputs may still exist separately.",
+            "governance_implication": "Stakeholders may waive or request a later reporting-only enhancement.",
+            "escalation_level": "review",
+            "when_to_use": "Reconciliation IRR or similar scalar is still absent from the reporting layer.",
+            "when_not_to_use": "Period rows with missing committed Excel evidence.",
+            "notes": "Useful for reviewer workflow and future signoff logic.",
+        },
+        {
+            "label": SOURCE_NOT_AVAILABLE,
+            "meaning": "Neither side provides a defensible standalone source for the requested row.",
+            "reviewer_interpretation": "Do not fabricate a split or placeholder value.",
+            "runtime_implication": "Runtime total may exist, but not the requested sub-line source.",
+            "governance_implication": "Evidence limitation remains explicit.",
+            "escalation_level": "review",
+            "when_to_use": "CO2 or balancing sub-lines are requested but unavailable as separate sources.",
+            "when_not_to_use": "Grouped evidence exists or runtime breakout merely needs binding.",
+            "notes": "This is stronger than grouped-only and should stay explicit.",
+        },
+        {
+            "label": EVIDENCE_LIMITATION,
+            "meaning": "Evidence exists, but only at a broader level than the reviewer wants.",
+            "reviewer_interpretation": "Review at the available aggregation level.",
+            "runtime_implication": "No runtime defect implied.",
+            "governance_implication": "May still matter for closeout comfort.",
+            "escalation_level": "review",
+            "when_to_use": "Only aggregate revenue or tax evidence is available.",
+            "when_not_to_use": "No source exists at all.",
+            "notes": "Distinct from missing evidence because something usable still exists.",
+        },
+        {
+            "label": GROUPED_SOURCE_ONLY,
+            "meaning": "Committed evidence supports only a grouped source row, not a defensible sub-line split.",
+            "reviewer_interpretation": "Use the grouped row and avoid inferred allocations.",
+            "runtime_implication": "No runtime revenue defect implied.",
+            "governance_implication": "Interpretation caution for reviewers.",
+            "escalation_level": "review",
+            "when_to_use": "Grouped revenue totals are available but CO2/balancing split is not.",
+            "when_not_to_use": "Neither grouped nor separate source exists.",
+            "notes": "Often paired with revenue source-map caution.",
+        },
+        {
+            "label": RUNTIME_BINDING_PENDING,
+            "meaning": "Runtime logic or data exists, but the reporting breakout is not yet first-class in the pack.",
+            "reviewer_interpretation": "Treat as reporting-surface follow-up, not a formula gap.",
+            "runtime_implication": "Runtime authority remains elsewhere.",
+            "governance_implication": "Usually presentation-only.",
+            "escalation_level": "review",
+            "when_to_use": "Contingency or similar detail exists conceptually but is not exported as a dedicated row.",
+            "when_not_to_use": "Excel-side evidence is the only missing piece.",
+            "notes": "Preferred label instead of overloading missing evidence for runtime export gaps.",
+        },
+        {
+            "label": GOVERNANCE_BLOCKER,
+            "meaning": "Item is visible for review but cannot be treated as approved runtime authority.",
+            "reviewer_interpretation": "Do not rely on the row as approved output.",
+            "runtime_implication": "No runtime promotion or authority change allowed.",
+            "governance_implication": "Blocks approval or signoff.",
+            "escalation_level": "blocking",
+            "when_to_use": "R99/R102 or similar governed outputs are audit-only.",
+            "when_not_to_use": "Evidence or convention issues that do not block approval directly.",
+            "notes": "This must remain visibly strong; do not soften it in UI or exports.",
+        },
+        {
+            "label": GOVERNANCE_REVIEW,
+            "meaning": "Reviewer interpretation or stakeholder acceptance is still needed, but the item is not itself a hard blocker.",
+            "reviewer_interpretation": "Escalate for governance discussion before closeout comfort.",
+            "runtime_implication": "Usually no runtime defect implied.",
+            "governance_implication": "Pending governance interpretation.",
+            "escalation_level": "review",
+            "when_to_use": "Equity IRR interpretation or similar governance-facing questions.",
+            "when_not_to_use": "Hard approval blockers.",
+            "notes": "Useful bridge between convention and blocker states.",
+        },
+        {
+            "label": ENGINEERING_FOLLOWUP,
+            "meaning": "Future enhancement remains useful, but current runtime stability is not in question.",
+            "reviewer_interpretation": "Carry forward to roadmap rather than escalate as a defect.",
+            "runtime_implication": "Future reporting/product work only.",
+            "governance_implication": "None unless a future gate depends on it.",
+            "escalation_level": "informational",
+            "when_to_use": "Phase 11 carry-forward formatting or extraction improvements.",
+            "when_not_to_use": "Current blockers or evidence gaps.",
+            "notes": "Separates enhancement work from defects.",
+        },
+        {
+            "label": STAKEHOLDER_DECISION,
+            "meaning": "A reviewer or governance decision is still needed to close interpretation or acceptance.",
+            "reviewer_interpretation": "Queue for signoff ownership rather than engineering triage.",
+            "runtime_implication": "None.",
+            "governance_implication": "Decision pending.",
+            "escalation_level": "blocking",
+            "when_to_use": "Equity IRR acceptance or grouped revenue evidence acceptance.",
+            "when_not_to_use": "Purely technical implementation gaps.",
+            "notes": "Important for future signoff workflows.",
+        },
+        {
+            "label": BLOCKED,
+            "meaning": "High-level workflow or gate state is blocked.",
+            "reviewer_interpretation": "The process cannot be treated as approved.",
+            "runtime_implication": "None by itself.",
+            "governance_implication": "Gate or status remains blocked.",
+            "escalation_level": "blocking",
+            "when_to_use": "G20 state and similar workflow states.",
+            "when_not_to_use": "Row-level evidence classifications.",
+            "notes": "Status label, not a row-level reconciliation classification.",
+        },
+        {
+            "label": NOT_APPROVED,
+            "meaning": "Governance has not approved the referenced runtime authority or feature.",
+            "reviewer_interpretation": "Audit-only visibility; not approved for authoritative reliance.",
+            "runtime_implication": "No promotion allowed.",
+            "governance_implication": "Approval remains outstanding.",
+            "escalation_level": "blocking",
+            "when_to_use": "R99/R102 posture and similar governed states.",
+            "when_not_to_use": "Generic evidence or reconciliation rows.",
+            "notes": "Status label, not a row-level reconciliation classification.",
+        },
+        {
+            "label": MISSING_EVIDENCE,
+            "meaning": "Legacy umbrella label from earlier phases.",
+            "reviewer_interpretation": "Do not use this label in new outputs; look for the split semantics instead.",
+            "runtime_implication": "Ambiguous if left unsplit.",
+            "governance_implication": "Ambiguous if left unsplit.",
+            "escalation_level": "legacy",
+            "when_to_use": "Historical references only.",
+            "when_not_to_use": "Any new workbook, report, or UI output.",
+            "notes": "Superseded in Phase 12 governance semantics cleanup.",
+        },
+    ]
+
+
+def _governance_escalation_hierarchy_rows() -> list[dict[str, str]]:
+    return [
+        {"label": PASS, "hierarchy_tier": "1", "review_signal": "informational", "blocks_approval": "no", "runtime_risk": "none", "notes": "Aligned within tolerance."},
+        {"label": ACCEPTED_CONVENTION, "hierarchy_tier": "2", "review_signal": "informational", "blocks_approval": "no", "runtime_risk": "none", "notes": "Documented interpretation choice only."},
+        {"label": WARN, "hierarchy_tier": "3", "review_signal": "review", "blocks_approval": "no", "runtime_risk": "low", "notes": "Explainable residual."},
+        {"label": EVIDENCE_LIMITATION, "hierarchy_tier": "4", "review_signal": "review", "blocks_approval": "no", "runtime_risk": "none", "notes": "Evidence exists but only at broader level."},
+        {"label": GROUPED_SOURCE_ONLY, "hierarchy_tier": "4", "review_signal": "review", "blocks_approval": "no", "runtime_risk": "none", "notes": "Grouped evidence only."},
+        {"label": MISSING_EXCEL_EVIDENCE, "hierarchy_tier": "5", "review_signal": "review", "blocks_approval": "no", "runtime_risk": "none", "notes": "Excel-side evidence gap."},
+        {"label": MISSING_REVIEW_SCALAR, "hierarchy_tier": "5", "review_signal": "review", "blocks_approval": "no", "runtime_risk": "none", "notes": "Reviewer-facing scalar gap."},
+        {"label": SOURCE_NOT_AVAILABLE, "hierarchy_tier": "5", "review_signal": "review", "blocks_approval": "no", "runtime_risk": "none", "notes": "No defensible standalone source."},
+        {"label": RUNTIME_BINDING_PENDING, "hierarchy_tier": "5", "review_signal": "review", "blocks_approval": "no", "runtime_risk": "low", "notes": "Reporting breakout pending."},
+        {"label": GOVERNANCE_REVIEW, "hierarchy_tier": "6", "review_signal": "governance_review", "blocks_approval": "contextual", "runtime_risk": "low", "notes": "Needs governance interpretation."},
+        {"label": STAKEHOLDER_DECISION, "hierarchy_tier": "7", "review_signal": "decision_required", "blocks_approval": "contextual", "runtime_risk": "none", "notes": "Owner decision required."},
+        {"label": GOVERNANCE_BLOCKER, "hierarchy_tier": "8", "review_signal": "blocking", "blocks_approval": "yes", "runtime_risk": "governance_only", "notes": "Visible but not approved runtime authority."},
+        {"label": FAIL, "hierarchy_tier": "9", "review_signal": "blocking", "blocks_approval": "yes", "runtime_risk": "high", "notes": "Material unexplained divergence."},
+        {"label": BLOCKED, "hierarchy_tier": "10", "review_signal": "workflow_blocked", "blocks_approval": "yes", "runtime_risk": "none", "notes": "Workflow or gate state blocked."},
+        {"label": NOT_APPROVED, "hierarchy_tier": "10", "review_signal": "workflow_blocked", "blocks_approval": "yes", "runtime_risk": "none", "notes": "Governance has not approved usage."},
+    ]
+
+
+def _missing_evidence_split_rows() -> list[dict[str, str]]:
+    return [
+        {
+            "legacy_label": MISSING_EVIDENCE,
+            "legacy_meaning": "Missing committed support of some kind.",
+            "replacement_label": MISSING_EXCEL_EVIDENCE,
+            "use_when": "Runtime-side value exists but the committed Excel-side row is absent or unusable at the required level.",
+            "example_metric": "SHL cash interest paid; R67 CIT cash; minimum DSCR Excel scalar.",
+            "reviewer_message": "Runtime evidence exists; Excel-side evidence does not.",
+            "notes": "Most common split from the overloaded bucket.",
+        },
+        {
+            "legacy_label": MISSING_EVIDENCE,
+            "legacy_meaning": "Reviewer scalar or reporting view missing.",
+            "replacement_label": MISSING_REVIEW_SCALAR,
+            "use_when": "Dedicated reconciliation scalar or bridge is not approved or implemented.",
+            "example_metric": "Reconciliation IRR.",
+            "reviewer_message": "Do not force a synthetic scalar; escalate as reporting-view limitation.",
+            "notes": "Prevents scalar gaps being confused with raw evidence gaps.",
+        },
+        {
+            "legacy_label": MISSING_EVIDENCE,
+            "legacy_meaning": "Requested sub-line does not exist separately on either side.",
+            "replacement_label": SOURCE_NOT_AVAILABLE,
+            "use_when": "Neither committed evidence nor runtime export surface provides a defensible standalone source.",
+            "example_metric": "Standalone CO2 revenue; standalone balancing revenue.",
+            "reviewer_message": "No synthetic split should be inferred.",
+            "notes": "More precise than calling the row generically missing evidence.",
+        },
+        {
+            "legacy_label": MISSING_EVIDENCE,
+            "legacy_meaning": "Runtime breakout still not exported.",
+            "replacement_label": RUNTIME_BINDING_PENDING,
+            "use_when": "Underlying runtime logic exists, but the reporting breakout is not yet first-class.",
+            "example_metric": "Contingency breakout in the OPEX section.",
+            "reviewer_message": "Reporting-surface follow-up only.",
+            "notes": "Already existed and remains the right label for runtime export gaps.",
+        },
+    ]
+
+
+def _governance_label_usage_matrix_rows() -> list[dict[str, str]]:
+    labels = [
+        PASS,
+        WARN,
+        FAIL,
+        ACCEPTED_CONVENTION,
+        MISSING_EVIDENCE,
+        MISSING_EXCEL_EVIDENCE,
+        MISSING_REVIEW_SCALAR,
+        SOURCE_NOT_AVAILABLE,
+        EVIDENCE_LIMITATION,
+        GROUPED_SOURCE_ONLY,
+        GOVERNANCE_BLOCKER,
+        GOVERNANCE_REVIEW,
+        ENGINEERING_FOLLOWUP,
+        STAKEHOLDER_DECISION,
+        RUNTIME_BINDING_PENDING,
+        BLOCKED,
+        NOT_APPROVED,
+    ]
+    rows: list[dict[str, str]] = []
+    scan_paths = [ROOT / "app", ROOT / "docs", ROOT / "reports", ROOT / "tests", ROOT / "main_web.py"]
+    allowed_suffixes = {".py", ".md", ".csv", ".html", ".txt"}
+    for base in scan_paths:
+        files = [base] if base.is_file() else [path for path in base.rglob("*") if path.is_file() and path.suffix.lower() in allowed_suffixes]
+        for path in files:
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            rel = path.relative_to(ROOT).as_posix()
+            surface = rel.split("/", 1)[0]
+            for label in labels:
+                count = content.count(label)
+                if count:
+                    rows.append(
+                        {
+                            "label": label,
+                            "used_in": rel,
+                            "surface_type": surface,
+                            "occurrence_count": str(count),
+                            "authoritative_meaning": "legacy umbrella" if label == MISSING_EVIDENCE else "current semantics",
+                            "notes": "Historical references are expected in prior-phase docs and generated reports."
+                            if label == MISSING_EVIDENCE
+                            else "",
+                        }
+                    )
+    return sorted(rows, key=lambda row: (row["label"], row["used_in"]))
 
 
 def _write_csv(path: Path, rows: list[dict[str, str]]) -> None:
