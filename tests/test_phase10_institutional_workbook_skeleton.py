@@ -92,7 +92,7 @@ def test_tuho_and_oborovo_exports_both_work_and_differ():
 
     assert _contains(tuho["Inputs"], "TUHO")
     assert _contains(oborovo["Inputs"], "OBOROVO")
-    assert tuho["Cover"]["B3"].value != oborovo["Cover"]["B3"].value
+    assert tuho["Cover"]["B5"].value != oborovo["Cover"]["B5"].value
     assert _value_for_label(tuho["Runtime Summary"], "Project IRR") != _value_for_label(
         oborovo["Runtime Summary"], "Project IRR"
     )

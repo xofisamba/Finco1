@@ -118,9 +118,9 @@ def default_export_registry() -> ExportRegistry:
                 runtime_or_preview="runtime",
                 governance_sensitive=True,
                 current_status="runtime_binding_in_progress",
-                description="Institutional runtime workbook for lender and audit review, with populated runtime sections and explicit placeholders where evidence is still pending.",
+                description="Runtime workbook foundation for institutional lender, IC, and audit review, with populated runtime sections and explicit placeholders where evidence is still pending.",
                 path="/exports/institutional-workbook.xlsx",
-                notes="Inputs, OPEX, CAPEX, Revenue, Senior Debt, SHL, Tax, P&L, Cash Flow, Balance Sheet, Audit, and Gap Register now carry structured runtime/export content.",
+                notes="Runtime workbook / lender pack foundation with standardized metadata, reviewer navigation, and explicit runtime-versus-review boundaries.",
             ),
             ExportArtifact(
                 artifact_name="Phase 10 calibration reconciliation pack",
@@ -130,9 +130,9 @@ def default_export_registry() -> ExportRegistry:
                 runtime_or_preview="review",
                 governance_sensitive=True,
                 current_status="review_evidence_pack",
-                description="Executive, lender, and audit review workbook with dashboard, signoff flow, classifications, IRR reconciliation guidance, governance impacts, and next actions.",
+                description="Executive review pack with dashboard, signoff flow, classifications, IRR reconciliation guidance, governance impacts, and next actions.",
                 path="reports/phase10_calibration_reconciliation_pack.xlsx",
-                notes="Executive review and governance evidence pack with explicit IRR interpretation layer; G20 remains blocked and R99/R102 remain not approved.",
+                notes="Executive / lender / audit review workbook with institutional navigation, print-ready formatting, and explicit governance framing; G20 remains blocked and R99/R102 remain not approved.",
             ),
             ExportArtifact(
                 artifact_name="Phase 10 runtime binding inventory",
