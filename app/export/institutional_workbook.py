@@ -666,9 +666,9 @@ def _write_audit_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 def _write_gap_register_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "review")
     rows = [
-        ("GAP-01", "Detailed construction schedule", "MISSING_EVIDENCE", "Construction", "Detailed runtime binding pending; summary only in this branch."),
+        ("GAP-01", "Detailed construction schedule", "RUNTIME_BINDING_PENDING", "Construction", "Detailed runtime binding pending; summary only in this branch."),
         ("GAP-02", "Detailed OPEX escalation schedule", "WARN", "OPEX", "Workbook shows line items and total OPEX, not a full escalator roll-forward."),
-        ("GAP-03", "Detailed CAPEX spend curve", "MISSING_EVIDENCE", "CAPEX", "CAPEX items are bound; full period spend curve is not exported here."),
+        ("GAP-03", "Detailed CAPEX spend curve", "RUNTIME_BINDING_PENDING", "CAPEX", "CAPEX items are bound; full period spend curve is not exported here."),
         ("GAP-04", "R99/R102 runtime authority", "BLOCKER", "Tax / Cash Flow", "R99/R102 remains governance-only and not approved as runtime source."),
         ("GAP-05", "G20 sign-off", "BLOCKER", "Governance", "Workbook does not change governance status."),
         ("GAP-06", "Construction date and XIRR conventions", "ACCEPTED_CONVENTION", "Returns / governance", "Handled as documented convention, not a workbook formula change."),
@@ -831,7 +831,7 @@ def _fill_classification_row(sheet, row_idx: int, classification: str) -> None:
     fill = REVIEW_FILL
     if normalized == "BLOCKER":
         fill = STATUS_BLOCKED_FILL
-    elif normalized in {"WARN", "MISSING_EVIDENCE"}:
+    elif normalized in {"WARN", "MISSING_EVIDENCE", "MISSING_EXCEL_EVIDENCE", "MISSING_REVIEW_SCALAR", "SOURCE_NOT_AVAILABLE", "RUNTIME_BINDING_PENDING"}:
         fill = WARN_FILL
     elif normalized == "ACCEPTED_CONVENTION":
         fill = TEMPLATE_FILL
