@@ -21,12 +21,14 @@ GAP_REGISTER = REPORTS / "phase10_calibration_gap_register.csv"
 SOURCE_INVENTORY = REPORTS / "phase10_calibration_source_inventory.csv"
 SUMMARY = REPORTS / "phase10_calibration_reconciliation_summary.csv"
 NAVIGATION_MAP = REPORTS / "phase10_review_pack_navigation_map.csv"
+SIGNOFF_MATRIX = REPORTS / "phase10_review_signoff_matrix.csv"
 DOC = DOCS / "phase10_calibration_gap_reconciliation_pack.md"
 NAV_DOC = DOCS / "phase10_review_pack_polish_and_lender_navigation.md"
+EXEC_DOC = DOCS / "phase10_executive_dashboard_and_signoff_flow.md"
 
 
 def _generate_if_missing() -> None:
-    if all(path.exists() for path in (WORKBOOK, GAP_REGISTER, SOURCE_INVENTORY, SUMMARY, NAVIGATION_MAP)):
+    if all(path.exists() for path in (WORKBOOK, GAP_REGISTER, SOURCE_INVENTORY, SUMMARY, NAVIGATION_MAP, SIGNOFF_MATRIX)):
         return
     write_calibration_reconciliation_pack()
 
@@ -56,8 +58,12 @@ def test_required_sheets_exist():
     wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
     expected = [
         "Navigation",
+        "Executive Dashboard",
         "Executive Summary",
+        "Review Signoff",
         "Governance",
+        "Governance Timeline",
+        "Readiness Matrix",
         "Runtime Summary",
         "Revenue Reconciliation",
         "OPEX Reconciliation",
@@ -79,8 +85,13 @@ def test_navigation_sheet_exists_and_has_hyperlinks():
     _generate_if_missing()
     wb = openpyxl.load_workbook(WORKBOOK)
     ws = wb["Navigation"]
-    assert ws["E20"].hyperlink is not None
-    assert ws["A37"].hyperlink is not None
+    hyperlinks = []
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.hyperlink is not None:
+                hyperlinks.append(str(cell.hyperlink.target))
+    assert any("Executive Dashboard" in link for link in hyperlinks)
+    assert any("Gap Register" in link for link in hyperlinks)
 
 
 def test_horizontal_periods_exist():
@@ -163,6 +174,16 @@ def test_executive_summary_contains_classification_counts():
     assert "What Is Engineering vs Governance" in text
 
 
+def test_executive_dashboard_exists_and_contains_counts():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    text = _sheet_text(wb, "Executive Dashboard")
+    assert "Classification Counts" in text
+    assert "Top 5 Material Gaps" in text
+    assert "Top Governance Blockers" in text
+    assert "Review recommendation summary" in text
+
+
 def test_missing_evidence_rows_are_not_zero_filled():
     _generate_if_missing()
     wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
@@ -197,15 +218,43 @@ def test_reviewer_notes_expanded():
     assert "Already runtime-verified" in text
     assert "Governance-only blockers" in text
     assert "Roadmap view" in text
+    assert "IC reviewer focus" in text
+    assert "Lender reviewer focus" in text
+    assert "Audit reviewer focus" in text
+
+
+def test_review_signoff_contains_workflow_statuses():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    text = _sheet_text(wb, "Review Signoff")
+    assert "review_status" in text
+    assert "GOVERNANCE_PENDING" in text or "READY_FOR_SIGNOFF" in text or "IN_REVIEW" in text
+    rows = _csv_rows(SIGNOFF_MATRIX)
+    statuses = {row["current_status"] for row in rows}
+    assert "GOVERNANCE_PENDING" in statuses or "IN_REVIEW" in statuses
+
+
+def test_governance_timeline_and_readiness_matrix_exist():
+    _generate_if_missing()
+    wb = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    timeline_text = _sheet_text(wb, "Governance Timeline")
+    readiness_text = _sheet_text(wb, "Readiness Matrix")
+    assert "Phase 10 export foundation" in timeline_text
+    assert "review_area" in readiness_text
+    assert "runtime_complete" in readiness_text
+    assert "governance_status" in readiness_text
 
 
 def test_doc_states_governance_limits():
     content = DOC.read_text(encoding="utf-8")
     nav_content = NAV_DOC.read_text(encoding="utf-8")
+    exec_content = EXEC_DOC.read_text(encoding="utf-8")
     assert "G20 remains `BLOCKED`" in content
     assert "R99/R102 remain `NOT APPROVED`" in content
     assert "no runtime formula changes" in content
     assert "navigation philosophy" in nav_content.lower()
+    assert "governance workflow philosophy" in exec_content.lower()
+    assert "no runtime changes statement" in exec_content.lower()
 
 
 def test_navigation_map_report_exists_and_has_required_columns():
@@ -219,6 +268,23 @@ def test_navigation_map_report_exists_and_has_required_columns():
         "navigation_priority",
         "governance_sensitive",
         "notes",
+    }
+    assert required.issubset(rows[0].keys())
+
+
+def test_signoff_matrix_report_exists_and_has_required_columns():
+    _generate_if_missing()
+    rows = _csv_rows(SIGNOFF_MATRIX)
+    assert rows
+    required = {
+        "review_area",
+        "reviewer_type",
+        "current_status",
+        "runtime_ready",
+        "evidence_ready",
+        "governance_ready",
+        "blocker_type",
+        "recommended_next_step",
     }
     assert required.issubset(rows[0].keys())
 
