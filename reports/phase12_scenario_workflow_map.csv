@@ -1,0 +1,7 @@
+entity,persisted?,source,governance_sensitive,export_related,future_migration_notes,notes
+save scenario,yes,POST /scenarios/save,yes,indirect,Can later support explicit naming UI,Creates a reusable snapshot from current form state
+load scenario,yes,GET /scenarios/{id}/load,yes,indirect,Can later restore richer derived views,Repopulates the form with saved values
+duplicate scenario,yes,POST /scenarios/{id}/duplicate,yes,indirect,Can later support branch-style lineage views,Creates a copied snapshot with lineage
+rename scenario,route ready,POST /scenarios/{id}/rename,yes,indirect,UI can be expanded later,Foundation exists without heavy workflow chrome
+archive scenario,yes,POST /scenarios/{id}/archive,yes,indirect,Can later add archive filters,Soft archive only
+scenario history,yes,sidebar scenario workspace,yes,yes,Can later add richer filtering,Shows recent scenarios for the active project

@@ -1,54 +1,39 @@
-/* Finco One — Workspace Tabs Functional Fix — phase9_5_workspace_tabs_functional_fix */
+/* Finco One workspace interactions */
 
-/* ── Tab Switching (workspace tabs) ───────────────────────────────────── */
 var activeTab = 'overview';
 
 function switchTab(tabId) {
   if (!tabId) return;
   activeTab = tabId;
 
-  // Update tab button states
   document.querySelectorAll('.ws-tab').forEach(function(btn) {
     btn.classList.remove('active');
   });
   var activeBtn = document.getElementById('tab-' + tabId);
   if (activeBtn) activeBtn.classList.add('active');
 
-  // Show/hide panels
   document.querySelectorAll('.tab-panel').forEach(function(panel) {
     panel.classList.remove('active');
   });
   var activePanel = document.getElementById('panel-' + tabId);
   if (activePanel) activePanel.classList.add('active');
 
-  // Update URL hash for bookmarkability
   if (history.pushState) {
     history.pushState(null, '', '#' + tabId);
   }
 
-  // Scroll workspace top into view
   var workspace = document.getElementById('workspace-content');
-  if (workspace) {
-    workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  if (workspace) workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 
-  // Scroll active tab into view in ribbon
-  if (activeBtn) {
-    activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-  }
-
-  // Dispatch custom event
   document.dispatchEvent(new CustomEvent('tabChanged', { detail: { tab: tabId } }));
 }
 
-/* Activate a tab by its data-tab attribute value */
 function activateTab(tabId) {
   switchTab(tabId);
 }
 
-/* ── Project Switching (sidebar project cards) ────────────────────────── */
 function switchProject(projectId) {
-  // Deactivate all cards
   document.querySelectorAll('.ps-card').forEach(function(card) {
     card.classList.remove('active');
     var statusDot = card.querySelector('.ps-card-status');
@@ -58,7 +43,6 @@ function switchProject(projectId) {
     }
   });
 
-  // Activate selected card
   var activeCard = document.getElementById('ps-' + projectId);
   if (activeCard) {
     activeCard.classList.add('active');
@@ -69,14 +53,20 @@ function switchProject(projectId) {
     }
   }
 
-  // Dispatch custom event for workspace tabs to listen to
   document.dispatchEvent(new CustomEvent('projectChanged', { detail: { project: projectId } }));
 }
 
-/* ── DOM Initialisation ───────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', function () {
+window.applyScenarioSnapshot = function(snapshot, scenarioId) {
+  if (!snapshot) return;
+  Object.keys(snapshot).forEach(function(key) {
+    var field = document.getElementById(key) || document.querySelector('[name="' + key + '"]');
+    if (field) field.value = snapshot[key];
+  });
+  var currentId = document.getElementById('current_saved_scenario_id');
+  if (currentId) currentId.value = scenarioId || '';
+};
 
-  /* ── Tab click handlers (data-tab based, CSP-safe) ── */
+document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.ws-tab[data-tab]').forEach(function(tabBtn) {
     tabBtn.addEventListener('click', function() {
       var tabId = tabBtn.getAttribute('data-tab');
@@ -84,108 +74,84 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  /* ── Restore tab from URL hash ── */
   var hash = window.location.hash.replace('#', '');
   if (hash) {
     var hashTab = document.querySelector('.ws-tab[data-tab="' + hash + '"]');
-    if (hashTab) {
-      /* Defer so panels are already in DOM */
-      setTimeout(function() { switchTab(hash); }, 0);
-    }
+    if (hashTab) setTimeout(function() { switchTab(hash); }, 0);
   } else {
-    /* Ensure overview is active by default */
     var defaultTab = document.querySelector('.ws-tab[data-tab="overview"]');
     var defaultPanel = document.getElementById('panel-overview');
-    if (defaultTab && !defaultTab.classList.contains('active')) {
-      defaultTab.classList.add('active');
-    }
-    if (defaultPanel && !defaultPanel.classList.contains('active')) {
-      defaultPanel.classList.add('active');
-    }
-    /* Hide all other panels */
-    document.querySelectorAll('.tab-panel').forEach(function(p) {
-      if (p.id !== 'panel-overview') p.classList.remove('active');
+    if (defaultTab) defaultTab.classList.add('active');
+    if (defaultPanel) defaultPanel.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(function(panel) {
+      if (panel.id !== 'panel-overview') panel.classList.remove('active');
     });
   }
 
-  /* ── Hash change listener ── */
   window.addEventListener('hashchange', function() {
-    var h = window.location.hash.replace('#', '');
-    if (h && h !== activeTab) switchTab(h);
+    var currentHash = window.location.hash.replace('#', '');
+    if (currentHash && currentHash !== activeTab) switchTab(currentHash);
   });
 
-  /* ── Sidebar nav links ── */
-  document.querySelectorAll('.sidebar-nav-link').forEach(function (link) {
-    link.addEventListener('click', function (e) {
+  document.querySelectorAll('.sidebar-nav-link').forEach(function(link) {
+    link.addEventListener('click', function() {
       var href = link.getAttribute('href');
       if (!href || !href.startsWith('#')) return;
-
       var id = href.substring(1);
       if (!id || id === 'dashboard' || id === 'audit') return;
 
-      /* Update active nav state */
-      document.querySelectorAll('.sidebar-nav-link').forEach(function (l) {
-        l.classList.remove('active');
+      document.querySelectorAll('.sidebar-nav-link').forEach(function(other) {
+        other.classList.remove('active');
       });
       link.classList.add('active');
 
-      /* Open target <details> if it's closed */
       var target = document.getElementById(id);
       if (target && target.tagName === 'DETAILS' && !target.hasAttribute('open')) {
         target.setAttribute('open', '');
       }
-
-      /* Scroll target into view */
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 
-  /* ── New Project button ── */
-  var addBtn = document.getElementById('ps-add-btn');
-  if (addBtn) {
-    addBtn.addEventListener('click', function () {
-      alert('New Project — coming in a future phase.');
-    });
-  }
-
-  /* ── Run Model button ── */
   var runBtn = document.getElementById('btn-run-model');
   if (runBtn) {
-    runBtn.addEventListener('click', function () {
+    runBtn.addEventListener('click', function() {
       var form = document.getElementById('main-form');
-      if (form) {
-        var runEvent = new CustomEvent('runModelRequested', { bubbles: true });
-        form.dispatchEvent(runEvent);
-      }
+      if (form) form.dispatchEvent(new CustomEvent('runModelRequested', { bubbles: true }));
     });
   }
 
-  /* ── Save / Load buttons ── */
   var saveBtn = document.getElementById('btn-save');
   if (saveBtn) {
-    saveBtn.addEventListener('click', function () {
+    saveBtn.addEventListener('click', function() {
       var form = document.getElementById('main-form');
-      if (form) {
-        var saveEvent = new CustomEvent('saveRequested', { bubbles: true });
-        form.dispatchEvent(saveEvent);
+      if (form) form.dispatchEvent(new CustomEvent('saveRequested', { bubbles: true }));
+    });
+  }
+
+  var duplicateBtn = document.getElementById('btn-duplicate-scenario');
+  if (duplicateBtn) {
+    duplicateBtn.addEventListener('click', function() {
+      var currentId = document.getElementById('current_saved_scenario_id');
+      if (!currentId || !currentId.value || !window.htmx) {
+        alert('Select a saved scenario first by loading it from the saved list.');
+        return;
+      }
+      window.htmx.ajax('POST', '/scenarios/' + currentId.value + '/duplicate', {
+        target: '#saved-scenario-panel',
+        swap: 'outerHTML'
+      });
+    });
+  }
+
+  document.querySelectorAll('.input-group-summary').forEach(function(summary) {
+    summary.addEventListener('click', function() {
+      var group = summary.parentElement;
+      if (group.hasAttribute('open')) {
+        group.removeAttribute('open');
+      } else {
+        group.setAttribute('open', '');
       }
     });
-  }
-
-  var loadBtn = document.getElementById('btn-load');
-  if (loadBtn) {
-    loadBtn.addEventListener('click', function () {
-      alert('Load — coming in a future phase.');
-    });
-  }
-
-  /* ── Duplicate scenario button ── */
-  var dupBtn = document.querySelector('.ps-action-btn:nth-child(2)');
-  if (dupBtn) {
-    dupBtn.addEventListener('click', function () {
-      alert('Duplicate Scenario — coming in a future phase.');
-    });
-  }
+  });
 });

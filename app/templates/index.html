@@ -269,6 +269,7 @@
 
   <!-- Actions -->
   <input type="hidden" name="active_project" id="active_project" value="{{ project_ctx.id }}" />
+  <input type="hidden" name="current_saved_scenario_id" id="current_saved_scenario_id" value="" />
   <div class="form-actions">
     <button type="button" name="run" class="btn btn-primary"
             hx-post="/run"

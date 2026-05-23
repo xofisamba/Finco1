@@ -1,0 +1,6 @@
+entity,persisted?,source,governance_sensitive,export_related,future_migration_notes,notes
+project,yes,sqlite projects table,yes,yes,Can grow into richer project settings lifecycle,Stores source template and governance snapshot
+scenario,yes,sqlite scenarios table,yes,yes,Can later add richer rename/archive states,Stores form snapshot and lineage
+run metadata,yes,sqlite runs table,no,indirect,Can later associate more deeply with saved scenarios,Existing persistence reused
+export metadata,yes,sqlite scenario_exports table,yes,yes,Can later expand into full audit trail,Tracks artifact type and governance state
+governance snapshot,yes,JSON payload on project/scenario/export,yes,yes,Can later normalize if needed,Preserves G20 and R99/R102 posture

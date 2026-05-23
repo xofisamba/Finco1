@@ -1,0 +1,6 @@
+entity,persisted?,source,governance_sensitive,export_related,future_migration_notes,notes
+runtime summary export,yes,/exports/runtime-summary.csv,yes,yes,Can later link directly to saved scenario snapshots,Tracks timestamp and governance posture
+institutional workbook export,yes,/exports/institutional-workbook.xlsx,yes,yes,Can later add richer artifact retention,Tracked in scenario_exports
+excel model export,yes,/download,yes,yes,Can later attach richer runtime snapshot ids,Tracks workbook-style exports from current workflow
+scenario association,partial,scenario_exports.scenario_id,yes,yes,Can deepen as more exports become scenario-native,Available where a saved scenario is active
+project lineage,yes,project_code + project_id,yes,yes,Can later support explicit copied-from project trees,Supports TUHO and Oborovo origins

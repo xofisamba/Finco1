@@ -1,44 +1,55 @@
-"""Repository for project run persistence."""
+"""Repository helpers for lightweight project, scenario, run, and export persistence."""
+
+from __future__ import annotations
 
 import json
-import os
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Any, Optional
 
-from app.persistence.db import get_cursor, get_connection
+from app.persistence.db import get_cursor
 
 
-# ── Run record ────────────────────────────────────────────────────────────────
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
 
+
+def _to_json(value: Any) -> str:
+    return json.dumps(value if value is not None else {}, default=str, sort_keys=True)
+
+
+def _from_json(value: Optional[str], default: Any) -> Any:
+    if not value:
+        return default
+    return json.loads(value)
+
+
+def _from_iso(value: str | datetime) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value)
+
+
+@dataclass(slots=True)
 class RunRecord:
-    """Represents a saved project run."""
-    __slots__ = (
-        "run_id", "user_id", "project_type", "scenario", "created_at",
-        "inputs", "kpis", "excel_path", "notes",
-    )
+    run_id: str
+    user_id: str
+    project_type: str
+    scenario: str
+    created_at: datetime
+    inputs: dict[str, Any]
+    kpis: dict[str, Any]
+    excel_path: Optional[str] = None
+    notes: Optional[str] = None
 
-    def __init__(
-        self, run_id, user_id, project_type, scenario, created_at,
-        inputs, kpis, excel_path=None, notes=None,
-    ):
-        self.run_id = run_id
-        self.user_id = user_id
-        self.project_type = project_type
-        self.scenario = scenario
-        self.created_at = created_at
-        self.inputs = inputs  # dict
-        self.kpis = kpis      # dict
-        self.excel_path = excel_path
-        self.notes = notes
-
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
             "user_id": self.user_id,
             "project_type": self.project_type,
             "scenario": self.scenario,
-            "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
+            "created_at": self.created_at.isoformat(),
             "inputs": self.inputs,
             "kpis": self.kpis,
             "excel_path": self.excel_path,
@@ -47,23 +58,111 @@ class RunRecord:
 
     @classmethod
     def from_row(cls, row) -> "RunRecord":
-        created = row["created_at"]
-        if isinstance(created, str):
-            created = datetime.fromisoformat(created)
         return cls(
             run_id=row["run_id"],
             user_id=row["user_id"],
             project_type=row["project_type"],
             scenario=row["scenario"],
-            created_at=created,
-            inputs=json.loads(row["inputs_json"]),
-            kpis=json.loads(row["kpis_json"]),
+            created_at=_from_iso(row["created_at"]),
+            inputs=_from_json(row["inputs_json"], {}),
+            kpis=_from_json(row["kpis_json"], {}),
             excel_path=row["excel_path"],
             notes=row["notes"],
         )
 
 
-# ── Repository functions ───────────────────────────────────────────────────────
+@dataclass(slots=True)
+class ProjectRecord:
+    project_id: str
+    user_id: str
+    project_code: str
+    project_name: str
+    source_project_template: str
+    governance_state: dict[str, Any]
+    last_run_summary: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_row(cls, row) -> "ProjectRecord":
+        return cls(
+            project_id=row["project_id"],
+            user_id=row["user_id"],
+            project_code=row["project_code"],
+            project_name=row["project_name"],
+            source_project_template=row["source_project_template"],
+            governance_state=_from_json(row["governance_state_json"], {}),
+            last_run_summary=_from_json(row["last_run_summary_json"], {}),
+            created_at=_from_iso(row["created_at"]),
+            updated_at=_from_iso(row["updated_at"]),
+        )
+
+
+@dataclass(slots=True)
+class ScenarioRecord:
+    scenario_id: str
+    project_id: str
+    user_id: str
+    scenario_name: str
+    project_code: str
+    source_project_template: str
+    copied_from_scenario_id: Optional[str]
+    archived: bool
+    snapshot: dict[str, Any]
+    governance_state: dict[str, Any]
+    last_run_summary: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_row(cls, row) -> "ScenarioRecord":
+        return cls(
+            scenario_id=row["scenario_id"],
+            project_id=row["project_id"],
+            user_id=row["user_id"],
+            scenario_name=row["scenario_name"],
+            project_code=row["project_code"],
+            source_project_template=row["source_project_template"],
+            copied_from_scenario_id=row["copied_from_scenario_id"],
+            archived=bool(row["archived"]),
+            snapshot=_from_json(row["snapshot_json"], {}),
+            governance_state=_from_json(row["governance_state_json"], {}),
+            last_run_summary=_from_json(row["last_run_summary_json"], {}),
+            created_at=_from_iso(row["created_at"]),
+            updated_at=_from_iso(row["updated_at"]),
+        )
+
+
+@dataclass(slots=True)
+class ScenarioExportRecord:
+    export_id: str
+    scenario_id: Optional[str]
+    project_id: Optional[str]
+    user_id: str
+    export_type: str
+    artifact_name: str
+    artifact_path: Optional[str]
+    project_code: str
+    governance_state: dict[str, Any]
+    runtime_snapshot_id: Optional[str]
+    created_at: datetime
+
+    @classmethod
+    def from_row(cls, row) -> "ScenarioExportRecord":
+        return cls(
+            export_id=row["export_id"],
+            scenario_id=row["scenario_id"],
+            project_id=row["project_id"],
+            user_id=row["user_id"],
+            export_type=row["export_type"],
+            artifact_name=row["artifact_name"],
+            artifact_path=row["artifact_path"],
+            project_code=row["project_code"],
+            governance_state=_from_json(row["governance_state_json"], {}),
+            runtime_snapshot_id=row["runtime_snapshot_id"],
+            created_at=_from_iso(row["created_at"]),
+        )
+
 
 def save_run(
     user_id: str,
@@ -74,28 +173,27 @@ def save_run(
     excel_path: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> RunRecord:
-    """Save a new project run. Returns RunRecord.
-
-    user_id comes from the authenticated session — never from client input.
-    """
     run_id = uuid.uuid4().hex[:16]
-    created_at = datetime.now(timezone.utc)
+    created_at = _now_utc()
 
     with get_cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO runs (run_id, user_id, project_type, scenario, created_at, inputs_json, kpis_json, excel_path, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            run_id,
-            user_id,
-            project_type,
-            scenario,
-            created_at.isoformat(),
-            json.dumps(inputs, default=str),
-            json.dumps(kpis, default=str),
-            excel_path,
-            notes,
-        ))
+            """,
+            (
+                run_id,
+                user_id,
+                project_type,
+                scenario,
+                created_at.isoformat(),
+                _to_json(inputs),
+                _to_json(kpis),
+                excel_path,
+                notes,
+            ),
+        )
 
     return RunRecord(
         run_id=run_id,
@@ -111,40 +209,325 @@ def save_run(
 
 
 def get_run(run_id: str, user_id: str) -> Optional[RunRecord]:
-    """Get a run by ID, scoped to user (user isolation). Returns None if not found."""
     with get_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM runs WHERE run_id=? AND user_id=?",
-            (run_id, user_id)
-        )
+        cur.execute("SELECT * FROM runs WHERE run_id=? AND user_id=?", (run_id, user_id))
         row = cur.fetchone()
-    if row is None:
-        return None
-    return RunRecord.from_row(row)
+    return RunRecord.from_row(row) if row else None
 
 
-def list_runs(user_id: str, limit: int = 20) -> List[RunRecord]:
-    """List recent runs for a user (most recent first)."""
+def list_runs(user_id: str, limit: int = 20) -> list[RunRecord]:
     with get_cursor() as cur:
         cur.execute(
             "SELECT * FROM runs WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
-            (user_id, limit)
+            (user_id, limit),
         )
         return [RunRecord.from_row(row) for row in cur.fetchall()]
 
 
 def delete_run(run_id: str, user_id: str) -> bool:
-    """Delete a run. Returns True if deleted, False if not found."""
     with get_cursor() as cur:
-        cur.execute(
-            "DELETE FROM runs WHERE run_id=? AND user_id=?",
-            (run_id, user_id)
-        )
+        cur.execute("DELETE FROM runs WHERE run_id=? AND user_id=?", (run_id, user_id))
         return cur.rowcount > 0
 
 
 def count_runs(user_id: str) -> int:
-    """Count total runs for a user."""
     with get_cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM runs WHERE user_id=?", (user_id,))
         return cur.fetchone()[0]
+
+
+def save_project(
+    user_id: str,
+    project_code: str,
+    project_name: str,
+    source_project_template: str,
+    governance_state: Optional[dict[str, Any]] = None,
+    last_run_summary: Optional[dict[str, Any]] = None,
+) -> ProjectRecord:
+    now = _now_utc()
+    governance_state = governance_state or {}
+    last_run_summary = last_run_summary or {}
+
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT project_id, created_at FROM projects WHERE user_id=? AND project_code=?",
+            (user_id, project_code),
+        )
+        existing = cur.fetchone()
+        if existing:
+            project_id = existing["project_id"]
+            created_at = _from_iso(existing["created_at"])
+            cur.execute(
+                """
+                UPDATE projects
+                SET project_name=?, source_project_template=?, governance_state_json=?, last_run_summary_json=?, updated_at=?
+                WHERE project_id=? AND user_id=?
+                """,
+                (
+                    project_name,
+                    source_project_template,
+                    _to_json(governance_state),
+                    _to_json(last_run_summary),
+                    now.isoformat(),
+                    project_id,
+                    user_id,
+                ),
+            )
+        else:
+            project_id = uuid.uuid4().hex[:16]
+            created_at = now
+            cur.execute(
+                """
+                INSERT INTO projects (
+                    project_id, user_id, project_code, project_name, source_project_template,
+                    governance_state_json, last_run_summary_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    user_id,
+                    project_code,
+                    project_name,
+                    source_project_template,
+                    _to_json(governance_state),
+                    _to_json(last_run_summary),
+                    created_at.isoformat(),
+                    now.isoformat(),
+                ),
+            )
+
+    return ProjectRecord(
+        project_id=project_id,
+        user_id=user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=source_project_template,
+        governance_state=governance_state,
+        last_run_summary=last_run_summary,
+        created_at=created_at,
+        updated_at=now,
+    )
+
+
+def get_project(project_id: str, user_id: str) -> Optional[ProjectRecord]:
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM projects WHERE project_id=? AND user_id=?", (project_id, user_id))
+        row = cur.fetchone()
+    return ProjectRecord.from_row(row) if row else None
+
+
+def get_project_by_code(user_id: str, project_code: str) -> Optional[ProjectRecord]:
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM projects WHERE user_id=? AND project_code=?",
+            (user_id, project_code),
+        )
+        row = cur.fetchone()
+    return ProjectRecord.from_row(row) if row else None
+
+
+def list_projects(user_id: str) -> list[ProjectRecord]:
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM projects WHERE user_id=? ORDER BY updated_at DESC",
+            (user_id,),
+        )
+        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+
+def save_scenario(
+    user_id: str,
+    project_id: str,
+    scenario_name: str,
+    project_code: str,
+    source_project_template: str,
+    snapshot: dict[str, Any],
+    governance_state: Optional[dict[str, Any]] = None,
+    last_run_summary: Optional[dict[str, Any]] = None,
+    copied_from_scenario_id: Optional[str] = None,
+) -> ScenarioRecord:
+    scenario_id = uuid.uuid4().hex[:16]
+    now = _now_utc()
+    governance_state = governance_state or {}
+    last_run_summary = last_run_summary or {}
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scenarios (
+                scenario_id, project_id, user_id, scenario_name, project_code,
+                source_project_template, copied_from_scenario_id, archived,
+                snapshot_json, governance_state_json, last_run_summary_json,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+            """,
+            (
+                scenario_id,
+                project_id,
+                user_id,
+                scenario_name,
+                project_code,
+                source_project_template,
+                copied_from_scenario_id,
+                _to_json(snapshot),
+                _to_json(governance_state),
+                _to_json(last_run_summary),
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    return ScenarioRecord(
+        scenario_id=scenario_id,
+        project_id=project_id,
+        user_id=user_id,
+        scenario_name=scenario_name,
+        project_code=project_code,
+        source_project_template=source_project_template,
+        copied_from_scenario_id=copied_from_scenario_id,
+        archived=False,
+        snapshot=snapshot,
+        governance_state=governance_state,
+        last_run_summary=last_run_summary,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def get_scenario(scenario_id: str, user_id: str) -> Optional[ScenarioRecord]:
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM scenarios WHERE scenario_id=? AND user_id=?", (scenario_id, user_id))
+        row = cur.fetchone()
+    return ScenarioRecord.from_row(row) if row else None
+
+
+def list_scenarios(
+    user_id: str,
+    project_id: Optional[str] = None,
+    include_archived: bool = False,
+    limit: int = 25,
+) -> list[ScenarioRecord]:
+    query = "SELECT * FROM scenarios WHERE user_id=?"
+    params: list[Any] = [user_id]
+    if project_id:
+        query += " AND project_id=?"
+        params.append(project_id)
+    if not include_archived:
+        query += " AND archived=0"
+    query += " ORDER BY updated_at DESC LIMIT ?"
+    params.append(limit)
+
+    with get_cursor() as cur:
+        cur.execute(query, tuple(params))
+        return [ScenarioRecord.from_row(row) for row in cur.fetchall()]
+
+
+def rename_scenario(user_id: str, scenario_id: str, new_name: str) -> bool:
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE scenarios SET scenario_name=?, updated_at=? WHERE scenario_id=? AND user_id=?",
+            (new_name, _now_utc().isoformat(), scenario_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def archive_scenario(user_id: str, scenario_id: str) -> bool:
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE scenarios SET archived=1, updated_at=? WHERE scenario_id=? AND user_id=?",
+            (_now_utc().isoformat(), scenario_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] = None) -> Optional[ScenarioRecord]:
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return None
+    copy_name = new_name or f"{record.scenario_name} Copy"
+    return save_scenario(
+        user_id=user_id,
+        project_id=record.project_id,
+        scenario_name=copy_name,
+        project_code=record.project_code,
+        source_project_template=record.source_project_template,
+        snapshot=record.snapshot,
+        governance_state=record.governance_state,
+        last_run_summary=record.last_run_summary,
+        copied_from_scenario_id=record.scenario_id,
+    )
+
+
+def record_export(
+    user_id: str,
+    project_code: str,
+    export_type: str,
+    artifact_name: str,
+    artifact_path: Optional[str] = None,
+    project_id: Optional[str] = None,
+    scenario_id: Optional[str] = None,
+    governance_state: Optional[dict[str, Any]] = None,
+    runtime_snapshot_id: Optional[str] = None,
+) -> ScenarioExportRecord:
+    export_id = uuid.uuid4().hex[:16]
+    created_at = _now_utc()
+    governance_state = governance_state or {}
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scenario_exports (
+                export_id, scenario_id, project_id, user_id, export_type, artifact_name,
+                artifact_path, project_code, governance_state_json, runtime_snapshot_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                export_id,
+                scenario_id,
+                project_id,
+                user_id,
+                export_type,
+                artifact_name,
+                artifact_path,
+                project_code,
+                _to_json(governance_state),
+                runtime_snapshot_id,
+                created_at.isoformat(),
+            ),
+        )
+
+    return ScenarioExportRecord(
+        export_id=export_id,
+        scenario_id=scenario_id,
+        project_id=project_id,
+        user_id=user_id,
+        export_type=export_type,
+        artifact_name=artifact_name,
+        artifact_path=artifact_path,
+        project_code=project_code,
+        governance_state=governance_state,
+        runtime_snapshot_id=runtime_snapshot_id,
+        created_at=created_at,
+    )
+
+
+def list_exports(
+    user_id: str,
+    project_id: Optional[str] = None,
+    scenario_id: Optional[str] = None,
+    limit: int = 20,
+) -> list[ScenarioExportRecord]:
+    query = "SELECT * FROM scenario_exports WHERE user_id=?"
+    params: list[Any] = [user_id]
+    if project_id:
+        query += " AND project_id=?"
+        params.append(project_id)
+    if scenario_id:
+        query += " AND scenario_id=?"
+        params.append(scenario_id)
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+
+    with get_cursor() as cur:
+        cur.execute(query, tuple(params))
+        return [ScenarioExportRecord.from_row(row) for row in cur.fetchall()]

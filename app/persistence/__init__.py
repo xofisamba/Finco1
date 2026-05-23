@@ -1,5 +1,49 @@
-"""Persistence layer for project runs."""
+"""Public persistence helpers for the lightweight Finco pilot workflow."""
 
-from app.persistence.repository import save_run, get_run, list_runs, delete_run, count_runs
+from app.persistence.repository import (
+    ProjectRecord,
+    RunRecord,
+    ScenarioExportRecord,
+    ScenarioRecord,
+    archive_scenario,
+    count_runs,
+    delete_run,
+    duplicate_scenario,
+    get_project,
+    get_project_by_code,
+    get_run,
+    get_scenario,
+    list_exports,
+    list_projects,
+    list_runs,
+    list_scenarios,
+    record_export,
+    rename_scenario,
+    save_project,
+    save_run,
+    save_scenario,
+)
 
-__all__ = ["save_run", "get_run", "list_runs", "delete_run", "count_runs"]
+__all__ = [
+    "ProjectRecord",
+    "RunRecord",
+    "ScenarioExportRecord",
+    "ScenarioRecord",
+    "archive_scenario",
+    "count_runs",
+    "delete_run",
+    "duplicate_scenario",
+    "get_project",
+    "get_project_by_code",
+    "get_run",
+    "get_scenario",
+    "list_exports",
+    "list_projects",
+    "list_runs",
+    "list_scenarios",
+    "record_export",
+    "rename_scenario",
+    "save_project",
+    "save_run",
+    "save_scenario",
+]

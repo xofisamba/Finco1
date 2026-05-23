@@ -33,7 +33,23 @@ from app.auth import (
 )
 
 # Import persistence
-from app.persistence.repository import save_run, get_run, list_runs, delete_run, count_runs
+from app.persistence.repository import (
+    archive_scenario,
+    count_runs,
+    delete_run,
+    duplicate_scenario,
+    get_project_by_code,
+    get_run,
+    get_scenario,
+    list_exports,
+    list_runs,
+    list_scenarios,
+    record_export,
+    rename_scenario,
+    save_project,
+    save_run,
+    save_scenario,
+)
 from app.ui.project_context import get_project_context, all_project_ids
 from app.ui.runtime_summary import runtime_summary_to_dict, build_runtime_summary, NOT_AVAILABLE
 from app.export.runtime_summary import build_runtime_summary_csv
@@ -108,6 +124,78 @@ def require_auth(request: Request):
         # Return redirect URL for caller to use (avoiding async issues)
         raise HTTPException(status_code=302)
     return user
+
+
+def _governance_snapshot(project_code: str | None = None) -> dict:
+    project_label = (project_code or "").upper() or "GENERAL"
+    return {
+        "project_code": project_label,
+        "g20_status": "BLOCKED",
+        "r99_r102_status": "NOT APPROVED",
+        "accepted_conventions_state": "Phase 10 closeout baseline",
+        "evidence_posture_summary": "Runtime vs governance distinction preserved",
+    }
+
+
+def _collect_form_snapshot(form) -> dict:
+    fields = [
+        "active_project",
+        "project_type",
+        "scenario",
+        "capacity_mw",
+        "tariff_eur_mwh",
+        "p50_hours",
+        "total_capex_keur",
+        "opex_y1_keur",
+        "gearing_pct",
+        "target_dscr",
+        "interest_rate_pct",
+        "tenor_years",
+        "cod_date",
+        "construction_months",
+        "horizon_years",
+        "capacity_factor",
+        "ppa_term_years",
+    ]
+    return {field: form.get(field, "") for field in fields}
+
+
+def _project_persistence_metadata(project_ctx, form_snapshot: dict | None = None) -> tuple[str, str]:
+    if project_ctx is not None:
+        return project_ctx.id, project_ctx.name
+    active_project = (form_snapshot or {}).get("active_project", "").strip().lower()
+    if active_project == "oborovo":
+        return "oborovo", "Oborovo Solar PV"
+    return "tuho", "TUHO Wind 1"
+
+
+def _current_project_workspace(user, project_ctx):
+    project_code, project_name = _project_persistence_metadata(project_ctx)
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+    )
+    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
+    exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
+    return project_record, scenarios, exports
+
+
+def _render_scenario_workspace(request: Request, user, project_record, scenarios, exports, message: str | None = None):
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/scenario_workspace.html",
+        context={
+            "user": user,
+            "project_record": project_record,
+            "scenario_records": scenarios,
+            "export_records": exports,
+            "workspace_message": message,
+        },
+    )
 
 # -- Helpers ------------------------------------------------------------------
 
@@ -345,6 +433,7 @@ async def index(request: Request, project: str | None = None):
 
     ctx = get_project_context(project)
     available_projects = all_project_ids()
+    project_record, scenario_records, export_records = _current_project_workspace(user, ctx)
 
     return templates.TemplateResponse(
         request=request,
@@ -359,6 +448,10 @@ async def index(request: Request, project: str | None = None):
             "user": user,
             "project_ctx": ctx,
             "available_projects": available_projects,
+            "project_record": project_record,
+            "scenario_records": scenario_records,
+            "export_records": export_records,
+            "workspace_message": None,
         },
     )
 
@@ -372,6 +465,7 @@ async def validate(request: Request):
 
     # Parse form data
     form = await request.form()
+    active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
     capacity_mw = form.get("capacity_mw", "")
@@ -633,6 +727,7 @@ async def download_post(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
+    active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
     capacity_mw = form.get("capacity_mw", "")
@@ -666,6 +761,17 @@ async def download_post(request: Request):
             project_inputs=demo.project_inputs,
         )
         filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
+        project_code = active_project or project_type.lower() or "tuho"
+        project_record = get_project_by_code(user.user_id, project_code)
+        record_export(
+            user_id=user.user_id,
+            project_code=project_code,
+            export_type="excel_model_export",
+            artifact_name=filename,
+            artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
+            project_id=project_record.project_id if project_record else None,
+            governance_state=_governance_snapshot(project_code),
+        )
         return StreamingResponse(
             iter([excel_bytes]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -695,6 +801,17 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             project_inputs=demo.project_inputs,
         )
         filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
+        project_code = project_type.lower() if project_type else "tuho"
+        project_record = get_project_by_code(user.user_id, project_code)
+        record_export(
+            user_id=user.user_id,
+            project_code=project_code,
+            export_type="excel_model_export",
+            artifact_name=filename,
+            artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
+            project_id=project_record.project_id if project_record else None,
+            governance_state=_governance_snapshot(project_code),
+        )
         return StreamingResponse(
             iter([excel_bytes]),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -728,6 +845,16 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
     safe_project = project.strip().lower() if project else "tuho"
     filename = f"phase10_{safe_project}_runtime_summary.csv"
     data = csv_text.encode("utf-8")
+    project_record = get_project_by_code(user.user_id, safe_project)
+    record_export(
+        user_id=user.user_id,
+        project_code=safe_project,
+        export_type="runtime_summary_csv",
+        artifact_name=filename,
+        artifact_path=f"/exports/runtime-summary.csv?project={safe_project}",
+        project_id=project_record.project_id if project_record else None,
+        governance_state=_governance_snapshot(safe_project),
+    )
     return StreamingResponse(
         iter([data]),
         media_type="text/csv",
@@ -755,6 +882,16 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
 
     safe_project = project.strip().lower() if project else "tuho"
     filename = f"phase10_{safe_project}_institutional_workbook_skeleton.xlsx"
+    project_record = get_project_by_code(user.user_id, safe_project)
+    record_export(
+        user_id=user.user_id,
+        project_code=safe_project,
+        export_type="institutional_workbook",
+        artifact_name=filename,
+        artifact_path=f"/exports/institutional-workbook.xlsx?project={safe_project}",
+        project_id=project_record.project_id if project_record else None,
+        governance_state=_governance_snapshot(safe_project),
+    )
     return StreamingResponse(
         iter([workbook_bytes]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -762,6 +899,158 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Content-Length": str(len(workbook_bytes)),
         },
+    )
+
+
+@app.get("/scenarios")
+async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
+    """Render the saved scenario and export-history workspace for the active project."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_ctx = get_project_context(project)
+    project_record, scenarios, exports = _current_project_workspace(user, project_ctx)
+    return _render_scenario_workspace(request, user, project_record, scenarios, exports)
+
+
+@app.post("/scenarios/save")
+async def save_scenario_endpoint(request: Request):
+    """Persist the current form snapshot as a saved scenario."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    snapshot = _collect_form_snapshot(form)
+    project_code, project_name = _project_persistence_metadata(None, snapshot)
+    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+    )
+    save_scenario(
+        user_id=user.user_id,
+        project_id=project_record.project_id,
+        scenario_name=scenario_name,
+        project_code=project_code,
+        source_project_template=project_code,
+        snapshot=snapshot,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+    )
+    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
+    exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        scenarios,
+        exports,
+        message=f"Saved scenario snapshot for {project_name}.",
+    )
+
+
+@app.get("/scenarios/{scenario_id}/load")
+async def load_scenario_endpoint(request: Request, scenario_id: str):
+    """Load a saved scenario snapshot back into the form."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    record = get_scenario(scenario_id, user.user_id)
+    if record is None:
+        return JSONResponse({"error": "Scenario not found"}, status_code=404)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/scenario_load_result.html",
+        context={"record": record},
+        headers={"HX-Trigger": "scenarioLoaded"},
+    )
+
+
+@app.post("/scenarios/{scenario_id}/duplicate")
+async def duplicate_scenario_endpoint(request: Request, scenario_id: str):
+    """Duplicate a saved scenario snapshot."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    original = get_scenario(scenario_id, user.user_id)
+    if original is None:
+        return JSONResponse({"error": "Scenario not found"}, status_code=404)
+
+    duplicate_scenario(user.user_id, scenario_id)
+    project_record = get_project_by_code(user.user_id, original.project_code)
+    scenarios = list_scenarios(user.user_id, project_id=original.project_id, include_archived=False, limit=12)
+    exports = list_exports(user.user_id, project_id=original.project_id, limit=8)
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        scenarios,
+        exports,
+        message=f"Duplicated {original.scenario_name}.",
+    )
+
+
+@app.post("/scenarios/{scenario_id}/rename")
+async def rename_scenario_endpoint(request: Request, scenario_id: str):
+    """Rename a saved scenario."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    new_name = (form.get("scenario_name", "") or "").strip()
+    if not new_name:
+        return JSONResponse({"error": "Scenario name is required"}, status_code=400)
+
+    record = get_scenario(scenario_id, user.user_id)
+    if record is None:
+        return JSONResponse({"error": "Scenario not found"}, status_code=404)
+
+    rename_scenario(user.user_id, scenario_id, new_name)
+    project_record = get_project_by_code(user.user_id, record.project_code)
+    scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    exports = list_exports(user.user_id, project_id=record.project_id, limit=8)
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        scenarios,
+        exports,
+        message=f"Renamed scenario to {new_name}.",
+    )
+
+
+@app.post("/scenarios/{scenario_id}/archive")
+async def archive_scenario_endpoint(request: Request, scenario_id: str):
+    """Soft-archive a saved scenario."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    record = get_scenario(scenario_id, user.user_id)
+    if record is None:
+        return JSONResponse({"error": "Scenario not found"}, status_code=404)
+
+    archive_scenario(user.user_id, scenario_id)
+    project_record = get_project_by_code(user.user_id, record.project_code)
+    scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    exports = list_exports(user.user_id, project_id=record.project_id, limit=8)
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        scenarios,
+        exports,
+        message=f"Archived {record.scenario_name}.",
     )
 
 
@@ -857,6 +1146,16 @@ async def save_run_endpoint(request: Request):
             scenario=scenario,
             inputs=inputs,
             kpis=kpis,
+        )
+        project_code = active_project or project_type.lower() or "tuho"
+        project_name = "TUHO Wind 1" if project_code == "tuho" else "Oborovo Solar PV" if project_code == "oborovo" else project_type
+        save_project(
+            user_id=user_id,
+            project_code=project_code,
+            project_name=project_name,
+            source_project_template=project_code,
+            governance_state=_governance_snapshot(project_code),
+            last_run_summary=kpis,
         )
         return templates.TemplateResponse(
             request=request,
