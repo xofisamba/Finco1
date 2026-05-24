@@ -128,6 +128,16 @@ RUNTIME_SUMMARY_LABELS = {
     "r99_r102_status": ("R99/R102 status", ""),
 }
 
+REVIEWER_COVER_NOTES = (
+    "Runtime/backend output remains the financial source of truth; this workbook is descriptive and reviewer-facing only.",
+    "This export reflects a saved/exported snapshot context. Later draft edits do not mutate the artifact already exported.",
+    "If the active draft changed after the last clean run, treat the runtime snapshot as stale and rerun only after saving.",
+    "Accepted conventions explain governed residuals or timing choices; they do not imply approval or runtime promotion.",
+    "Unavailable/not_applicable markers are intentional metadata markers and must not be read as zero values.",
+    "G20 remains BLOCKED and R99/R102 remain NOT APPROVED in this export branch.",
+    "Not lender-ready without external model review, not audit-certified, not multi-user governance-ready, and not a replay engine.",
+)
+
 
 def export_institutional_workbook_skeleton(project: str) -> bytes:
     bundle = _build_export_bundle(project)
@@ -318,12 +328,10 @@ def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         sheet.cell(row=row_idx, column=2).alignment = Alignment(wrap_text=True)
     sheet["D5"] = "Reviewer readiness"
     sheet["D5"].font = HEADER_FONT
-    sheet["D6"] = "Use this workbook as the runtime-facing base export."
-    sheet["D7"] = "Detailed gaps and governance overlays live in the calibration reconciliation pack."
-    sheet["D8"] = "Runtime formulas remain authoritative and unchanged."
-    sheet["D9"] = "Export metadata, provenance, and labels are standardized for lender/audit review."
-    sheet["D10"] = bundle.replay_limitations
-    for row_idx in range(6, 11):
+    for row_idx, note in enumerate(REVIEWER_COVER_NOTES, start=6):
+        sheet.cell(row=row_idx, column=4, value=note)
+    sheet["D13"] = bundle.replay_limitations
+    for row_idx in range(6, 14):
         sheet.cell(row=row_idx, column=4).alignment = Alignment(wrap_text=True)
     sheet.column_dimensions["A"].width = 24
     sheet.column_dimensions["B"].width = 44
@@ -356,7 +364,40 @@ def _write_governance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Data provenance", "Project context + runtime result + offline financial statements", "review", "No workbook-only formulas."),
         ("Replay limitations", bundle.replay_limitations, "review", "Traceability improved without implying a full replay engine."),
     ]
-    _write_key_value_section(sheet, 6, "Governance and provenance", rows)
+    next_row = _write_key_value_section(sheet, 6, "Governance and provenance", rows)
+    reviewer_rows = [
+        (
+            "Runtime authority",
+            "Runtime/backend output remains the financial source of truth.",
+            "review",
+            "This workbook is descriptive only and is not the calculation engine.",
+        ),
+        (
+            "Snapshot vs live draft",
+            "The workbook reflects the exported runtime/saved snapshot context.",
+            "review",
+            "Later draft edits do not mutate the exported artifact already in the reviewer's hands.",
+        ),
+        (
+            "Stale runtime rule",
+            "If current draft differs from the last clean run, rerun only after saving.",
+            "review",
+            "A stale runtime snapshot is a workflow signal, not a silent recalculation.",
+        ),
+        (
+            "Governed residuals",
+            "Documented residuals and accepted conventions are explanatory, not hidden parity fabrication.",
+            "review",
+            "Pending or unavailable metrics should be read as pending/not available, never as zero.",
+        ),
+        (
+            "No-claims",
+            "Not lender-ready without external model review; not audit-certified; not a replay engine.",
+            "review",
+            "Governance blockers remain explicit: G20 BLOCKED and R99/R102 NOT APPROVED.",
+        ),
+    ]
+    _write_key_value_section(sheet, next_row, "Reviewer interpretation notes", reviewer_rows)
 
 
 def _write_runtime_summary_sheet(sheet, bundle: WorkbookExportBundle) -> None:

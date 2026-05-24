@@ -1,0 +1,8 @@
+claim_area,current_statement,status,notes
+lender_readiness,Not lender-ready without external model review,active,Prevents overclaim from reviewer-facing exports
+audit_certification,Not audit-certified,active,Reviewer notes make this explicit
+multi_user_governance,Not multi-user governance-ready,active,No role or approval workflow implied
+replay_engine,No replay engine,active,Provenance remains descriptive only
+g20_approval,G20 remains BLOCKED,active,No approval implied by cover notes
+r99_r102_promotion,R99/R102 remain NOT APPROVED,active,No runtime promotion implied by cover notes
+editable_surface_scope,Selected editable surfaces only,active,No spreadsheet-style formula editor implied

@@ -1,0 +1,11 @@
+artifact,location,note_category,required_message,current_status,notes
+institutional_workbook,Cover reviewer panel,runtime_authority,"Runtime/backend output remains the financial source of truth; workbook is descriptive only",present,Reviewer sees authority note on first sheet
+institutional_workbook,Cover reviewer panel,snapshot_semantics,"Later draft edits do not mutate the exported artifact",present,Explains snapshot-vs-live distinction
+institutional_workbook,Governance sheet,governance_boundaries,"G20 remains BLOCKED; R99/R102 remain NOT APPROVED",present,Explicit blocker wording retained
+institutional_workbook,Governance sheet,metadata_markers,"unavailable/not_applicable markers are intentional and not zero",present,Prevents reviewer misread of missing provenance
+institutional_workbook,Governance sheet,no_claims,"Not lender-ready without external model review; not audit-certified; not a replay engine",present,No-claims remain descriptive only
+excel_model_export,Notes sheet reviewer block,runtime_authority,"Runtime/backend output remains the financial source of truth; workbook is descriptive only",present,Generic export now self-explanatory
+excel_model_export,Notes sheet reviewer block,snapshot_semantics,"This export reflects saved/exported snapshot context; later draft edits do not mutate it",present,Aligns generic export with workspace state model
+excel_model_export,Notes sheet reviewer block,governance_boundaries,"G20 remains BLOCKED; R99/R102 remain NOT APPROVED",present,No approval drift
+excel_model_export,Notes sheet reviewer block,metadata_markers,"unavailable/not_applicable are intentional markers and not zero",present,Clarifies provenance fields
+excel_model_export,Notes sheet reviewer block,no_claims,"Not lender-ready without external model review; not audit-certified; not a replay engine",present,No lender/audit overclaim

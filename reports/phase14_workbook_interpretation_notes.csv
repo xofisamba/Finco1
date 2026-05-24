@@ -1,0 +1,8 @@
+topic,reviewer_interpretation,applies_to,source_of_note
+runtime_authority,Financial truth remains in backend runtime outputs and not in workbook-only formulas,"institutional workbook; excel_model_export",cover notes
+snapshot_vs_live_draft,Exported artifact reflects an exported snapshot boundary and does not update when later drafts change,"institutional workbook; excel_model_export",cover notes
+stale_runtime,If draft changed after last clean run the reviewer should request save-plus-rerun rather than infer live recalc,"institutional workbook; excel_model_export",cover notes
+accepted_conventions,Accepted conventions explain governed residuals or timing conventions and do not imply approval,"institutional workbook; excel_model_export",cover notes
+governed_residuals,Documented residuals and pending metrics are governed notes rather than silent parity fabrication,"institutional workbook; excel_model_export",cover notes
+metadata_markers,unavailable and not_applicable markers mean metadata was not available or not relevant and are never zero,"institutional workbook; excel_model_export",cover notes
+governance_boundaries,G20 stays BLOCKED and R99/R102 stay NOT APPROVED until separate approved governance work exists,"institutional workbook; excel_model_export",cover notes
