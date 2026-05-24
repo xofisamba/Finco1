@@ -1,0 +1,11 @@
+question,why_it_matters,expected_focus_area
+"Did any Phase 14 branch weaken runtime authority?","Runtime authority is the core product safety boundary.","runtime vs UI/export behavior"
+"Did workbook/export become calculation authority anywhere?","Reviewer-facing artifacts must stay descriptive only.","export and workbook semantics"
+"Did provenance or export lineage become replay behavior?","Traceability must not turn into hidden replay execution.","provenance/export lineage"
+"Did scenario compare become hidden runtime authority?","Compare must not be mistaken for live model truth.","scenario compare semantics"
+"Did reviewer notes soften governance blockers or approval language?","Clarity work must not mutate governance posture.","reviewer notes and cover notes"
+"Are pending, unavailable, and not_applicable values handled honestly?","Missing-data honesty is critical for reviewer trust.","compare/export/report surfaces"
+"Are the Phase 14 tests meaningful or mostly marker/text tests?","Closeout confidence depends on whether tests protect real contract boundaries.","test quality and coverage"
+"Is project ready to move to Phase 15 pilot operations work?","Closeout should tee up the right next phase, not just declare success.","roadmap readiness"
+"What are the remaining top 10 risks?","Closeout should surface residual risk clearly before next expansion.","overall forensic review"
+
