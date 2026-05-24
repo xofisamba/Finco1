@@ -1,0 +1,7 @@
+surface,guidance_focus,reviewer_message,authority_boundary,notes
+workspace_state_strip,draft_vs_saved_vs_runtime,"Draft may differ from saved scenario; saved scenario may differ from last runtime snapshot",Runtime cards reflect last clean backend run,State summary remains explanatory only
+unsaved_changes_banner,dirty_state,"Unsaved edits block runtime-like actions until save or revert",Dirty draft is preview-only,No auto-run behavior introduced
+scenario_workspace_panel,save_and_revert,"Save creates a persisted scenario snapshot; revert restores the saved boundary",Neither save nor revert runs the model,Revision metadata remains descriptive
+action_help_panel,disabled_actions,"Run, compare, and save-run are disabled while unsaved draft edits exist",Backend binds only to clean scenario boundaries,Updated dynamically from workspace state metadata
+export_help_note,export_boundary,"Workbook export is backend-authored and not browser-calculated",Export remains descriptive not calculation authority,No frontend workbook calculations added
+

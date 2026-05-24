@@ -23,7 +23,7 @@
         <thead>
           <tr>
             <th>Assumption</th>
-            <th>Draft value</th>
+            <th>Draft value (unsaved workspace)</th>
             <th>Boundary note</th>
           </tr>
         </thead>
@@ -32,7 +32,8 @@
             <td>OPEX Y1 (kEUR)</td>
             <td>
               <input class="editable-grid-input" type="number" step="any" min="0"
-                     data-grid-source="opex_y1_keur" inputmode="decimal" />
+                     data-grid-source="opex_y1_keur" inputmode="decimal"
+                     aria-label="Draft year one operating expense in thousands of euros" />
             </td>
             <td>Saved snapshot required before runtime can bind to this change.</td>
           </tr>
@@ -40,7 +41,8 @@
             <td>Construction months</td>
             <td>
               <input class="editable-grid-input" type="number" step="1" min="0"
-                     data-grid-source="construction_months" inputmode="numeric" />
+                     data-grid-source="construction_months" inputmode="numeric"
+                     aria-label="Draft construction duration in months" />
             </td>
             <td>Editable here for workflow convenience; still preview-only until saved.</td>
           </tr>

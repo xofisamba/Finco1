@@ -10,6 +10,26 @@ function setButtonDisabledState(id, disabled) {
   btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
 }
 
+function setActionReason(id, reason) {
+  var btn = document.getElementById(id);
+  if (!btn) return;
+  if (reason) {
+    btn.setAttribute('title', reason);
+    btn.setAttribute('data-disabled-reason', reason);
+  } else {
+    btn.removeAttribute('title');
+    btn.removeAttribute('data-disabled-reason');
+  }
+}
+
+function updateReviewerActionHelp(meta) {
+  var helper = document.getElementById('reviewer-action-help');
+  if (!helper) return;
+  var dirtyMessage = helper.getAttribute('data-dirty-message') || '';
+  var cleanMessage = helper.getAttribute('data-clean-message') || '';
+  helper.textContent = meta && meta.dirty ? dirtyMessage : cleanMessage;
+}
+
 function switchTab(tabId) {
   if (!tabId) return;
   activeTab = tabId;
@@ -123,9 +143,12 @@ window.applyWorkspaceStateMeta = function(meta) {
   var bannerOrigin = document.getElementById('workspace-banner-runtime-origin');
   if (bannerOrigin && meta.last_runtime_origin_label) bannerOrigin.textContent = meta.last_runtime_origin_label;
 
+  var dirtyReason = 'Disabled because unsaved draft edits exist. Save or revert first.';
   ['btn-run-model', 'btn-compare-draft', 'btn-save-run'].forEach(function(id) {
     setButtonDisabledState(id, !!meta.dirty);
+    setActionReason(id, meta.dirty ? dirtyReason : '');
   });
+  updateReviewerActionHelp(meta);
 };
 
 window.refreshScenarioWorkspace = function(projectId) {

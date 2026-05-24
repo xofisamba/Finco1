@@ -1,0 +1,7 @@
+action,blocked_when,reviewer_explanation,authority_reason,applicable
+Run Model,Unsaved draft exists,"Run model is disabled because unsaved draft edits exist. Save or revert first.",Backend must bind to a clean saved scenario boundary,YES
+Compare,Unsaved draft exists,"Compare is disabled because unsaved draft edits exist. Save or revert first.",Backend comparison must use a clean saved scenario boundary,YES
+Save Run,Unsaved draft exists,"Save-run is disabled because unsaved draft edits exist. Save or revert first.",Run records should not attach to partial unsaved draft state,YES
+Download Excel,Not disabled in current flow,"Workbook export remains backend-authored and does not use browser-side calculations.",Current product flow does not disable export pre-runtime in this branch,NOT_APPLICABLE
+Revert Draft,Always available when draft editing is active,"Revert restores the saved boundary and does not run the model.",Revert is a state reset not a runtime action,YES
+
