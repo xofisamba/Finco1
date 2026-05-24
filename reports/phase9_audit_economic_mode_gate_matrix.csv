@@ -1,0 +1,9 @@
+control_or_gate,current_state,default_value,allowed_when,runtime_authority_effect,governance_status,notes
+audit_economic_mode,available,false,audit_or_dualrun_comparison_only,none,comparison_only,May evaluate gates but must never route runtime outputs.
+runtime_economic_mode,available,false,explicit_distributionaccount_runtime_staging_only,staged_only_when_runtime_wiring_enabled,pre_g20_staging,Not G20 promotion and not R99/R102 approval.
+use_dualrun_validation,available,false,review_or_validation_runs_only,none,informational,Produces audit traces only.
+use_distributionaccount_runtime_wiring,available,false,explicit_tuho_runtime_staging_choice,staged_distribution_route_only,blocked_from_g20_promotion,Does not approve R99/R102 or G20.
+G20 gate,blocked,n_a,not_approved,none,BLOCKED,Final governance gate remains blocked.
+R99 promotion,blocked,n_a,not_approved,none,NOT_APPROVED,May be evaluated in audit or staging paths but not promoted.
+R102 promotion,blocked,n_a,not_approved,none,NOT_APPROVED,May be evaluated in audit or staging paths but not promoted.
+Oborovo runtime staging,guarded,n_a,never_under_current_contract,none,guarded,Oborovo remains excluded by explicit guard.

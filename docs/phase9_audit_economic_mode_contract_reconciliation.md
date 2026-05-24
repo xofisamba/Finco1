@@ -1,174 +1,177 @@
-# Phase 9: Audit/Economic Mode Contract Reconciliation
+# Phase 9 Audit Economic Mode Contract Reconciliation
 
-**PR:** `phase9-audit-economic-mode-contract-reconciliation`
-**Type:** GOVERNANCE / SEMANTIC FIX
-**Base:** `dc03e50` (PR #152 — Phase C post-runtime validation)
+## Outcome
 
----
+Conclusion reached: **A — no current runtime contradiction exists**.
 
-## Problem: Architectural Contradiction
+There was a historical contradiction: `audit_economic_mode` was once described as
+comparison-only while a runtime wiring path used it as if it were routable. The
+current codebase no longer does that. The contract is now split explicitly:
 
-`domain/distribution_account/gates.py` documents `audit_economic_mode` as:
-- "comparison/audit only"
-- "output cannot be routed to runtime"
-- "must never flow to runtime"
+- `audit_economic_mode`: audit / reconciliation visibility only, never runtime-authoritative
+- `runtime_economic_mode`: explicit pre-G20 runtime staging for DistributionAccount wiring only
 
-But `app/waterfall_core.py` `_apply_distributionaccount_runtime_wiring` used:
-```python
-DistributionAccountPeriodInput(
-    ...
-    audit_economic_mode=True,  # Economic mode: gates evaluated for distribution
-)
-# then:
-# wp.distribution_keur = da_paid
-```
+This branch does not change financial formulas. It documents the current contract
+and adds tests that prove the authority boundary remains intact.
 
-This routes an **audit-only** result into **runtime** `distribution_keur` — contradicting the gate contract.
+## What `audit_economic_mode` Means
 
----
+`audit_economic_mode` enables economic gate evaluation for audit and comparison
+purposes. It is intended for:
 
-## Solution: Two Distinct Modes
+- dual-run validation
+- reconciliation traces
+- audit visibility
 
-Introduce a second mode, `runtime_economic_mode`, to explicitly distinguish:
+It is not intended for:
 
-### `audit_economic_mode` (existing)
-- **Purpose:** Audit / dual-run comparison only
-- **Routing:** Must **never** flow to runtime `distribution_keur`
-- **Used by:** Dual-run validation (`economic_periods.append(...)`)
-- **Default:** `False`
-- **Governance:** Comparison-only; never promotion
+- direct runtime distribution routing
+- sponsor runtime promotion
+- SHL runtime promotion
+- G20 approval
+- R99 / R102 approval
 
-### `runtime_economic_mode` (new)
-- **Purpose:** Explicit runtime staging for DA wiring
-- **Routing:** **Allowed** behind `use_distributionaccount_runtime_wiring=True`
-- **Used by:** `_apply_distributionaccount_runtime_wiring` only
-- **Default:** `False`
-- **Governance:** Pre-G20 staging mode; **still NOT G20 promotion**
+When `audit_economic_mode=True`, the result may be inspected, compared, exported,
+or documented. It must not silently become runtime authority.
 
-### Gate activation logic (updated)
-```python
-gate_active = audit_economic_mode or runtime_economic_mode
-if not gate_active:
-    # Governed mode: R99/R102 always BLOCKED
-    return DistributionGateResult(passed=False, blocked_reason=BLOCKED_REASONS["R99_BLOCKED"])
-```
+## What Is Audit-Only
 
-Dual-run uses `audit_economic_mode=True` → comparison only, never routed.
-DA wiring uses `runtime_economic_mode=True` → explicit staging, allowed by contract.
+The following outputs remain audit-only when driven by `audit_economic_mode`:
 
----
+- DistributionAccount gate pass/fail comparisons
+- economic-mode dual-run traces
+- audit candidate distribution values
+- blocked-reason and warning outputs
 
-## Why `runtime_economic_mode` Is NOT G20 Promotion
+These help reviewers understand what would happen under economic gate evaluation,
+but they do not replace runtime-authoritative cashflow outputs.
 
-| Property | G20 Promotion | `runtime_economic_mode` |
-|----------|--------------|------------------------|
-| Governance | Unconditional approval | Pre-G20 staging |
-| R99/R102 | Full promotion to runtime | Economic evaluation only |
-| Scope | Whole model | DA wiring only (flag=True) |
-| Default | N/A | `False` (default-off) |
-| TUHO-only | N/A | ✅ Yes |
-| Oborovo guard | N/A | ✅ Still fires |
+## What Is Runtime-Authoritative
 
-`runtime_economic_mode` evaluates gates using cash logic — same evaluation as `audit_economic_mode`. The distinction is only in **who is allowed to route the result**:
+Runtime-authoritative values remain backend runtime results from the governed
+waterfall path, unless an explicit staging flag is enabled where documented.
 
-- `audit_economic_mode` → comparison output, **never routed**
-- `runtime_economic_mode` → staging output, **explicitly allowed** by DA wiring contract
+In the current contract:
 
----
+- default governed runtime remains authoritative
+- workbook/export layers remain descriptive, not calculation authority
+- persistence remains metadata/snapshot storage, not calculation authority
+- dual-run validation remains observational, not routable
 
-## Changes Made
+## Runtime-Safe Staging
 
-### 1. `domain/distribution_account/inputs.py`
-Added `runtime_economic_mode: bool = False` to `DistributionAccountPeriodInput`:
-```python
-audit_economic_mode: bool = False  # audit-only: bypass R99/R102 governance for economic comparison
-runtime_economic_mode: bool = False  # Phase 9C-fix: runtime staging (DA wiring), not G20 promotion
-```
+`runtime_economic_mode` exists for one narrow case:
 
-### 2. `domain/distribution_account/gates.py`
-Added `runtime_economic_mode: bool = False` parameter to `evaluate_r99_gate` and `evaluate_r102_gate`. Updated docstrings to clarify both modes and that `runtime_economic_mode` is pre-G20 staging.
+- explicit DistributionAccount runtime staging behind `use_distributionaccount_runtime_wiring=True`
 
-### 3. `domain/distribution_account/engine.py`
-Passes `runtime_economic_mode=inp.runtime_economic_mode` to gate evaluations (alongside `audit_economic_mode`).
+That staging mode is still:
 
-### 4. `app/waterfall_core.py`
-- `_apply_distributionaccount_runtime_wiring`: changed `audit_economic_mode=True` → `runtime_economic_mode=True`
-- Dual-run `economic_periods`: unchanged — still uses `audit_economic_mode=True`
-- `governed_periods`: unchanged — still uses `audit_economic_mode=False`
+- default-off
+- pre-G20
+- TUHO-only
+- Oborovo-guarded
+- not a promotion of R99 or R102
 
----
+The distinction is important:
 
-## Oborovo Guard
+- `audit_economic_mode` may evaluate gates, but may not route runtime outputs
+- `runtime_economic_mode` may evaluate the same gates for explicitly staged routing
 
-Unchanged. Oborovo project detection happens before any mode selection:
-```python
-if not is_tuho:
-    result.distribution_source = "oborovo_guard_blocked"
-    # distribution_keur unchanged
-    return
-```
+## Current Code Contract
 
----
+### DistributionAccount gate layer
 
-## Default-Off Behavior
+`domain/distribution_account/gates.py` treats gate activation as:
 
-| Flag combination | Result |
-|-----------------|--------|
-| `use_distributionaccount_runtime_wiring=False` | Legacy `distribution_keur`, unchanged ✅ |
-| `use_distributionaccount_runtime_wiring=True` + TUHO | DA wiring via `runtime_economic_mode=True` |
-| `use_distributionaccount_runtime_wiring=True` + Oborovo | Guard fires, unchanged ✅ |
+`audit_economic_mode or runtime_economic_mode`
 
----
+That means both modes can evaluate gates. The authority distinction is not in the
+gate math; it is in the routing contract.
 
-## Test Results
+### Runtime wiring layer
 
-**Tests:** `tests/test_phase9_audit_economic_mode_contract_reconciliation.py`
-**Result:** 25 passed ✅
+`app/waterfall_core.py` uses:
 
-| Category | Tests | Status |
-|----------|-------|--------|
-| Audit mode not routed | 4 | ✅ |
-| Runtime mode explicit | 3 | ✅ |
-| Dual-run uses audit mode | 1 | ✅ |
-| Default behavior unchanged | 3 | ✅ |
-| TUHO flag=True unchanged | 3 | ✅ |
-| Oborovo guard unchanged | 3 | ✅ |
-| R99/R102 BLOCKED | 3 | ✅ |
-| SHL/Sponsor unchanged | 2 | ✅ |
-| Contract docs | 3 | ✅ |
+- `runtime_economic_mode=True` in `_apply_distributionaccount_runtime_wiring`
+- `audit_economic_mode=True` in dual-run comparison construction
 
----
+That is the key protection. Runtime wiring no longer uses audit mode.
 
-## TUHO DA Wiring Validation
+### Dual-run validation layer
 
-| Metric | Value |
-|--------|-------|
-| TUHO baseline (`flag=False`) | 326,165 kEUR |
-| TUHO DA wiring (`flag=True`) | 284,552 kEUR |
-| Delta | -41,613 kEUR |
-| R99/R102 status | BLOCKED |
+Dual-run validation remains comparison-only. Enabling dual-run adds audit traces
+without mutating the authoritative runtime distribution path.
 
----
+## Governance Interaction
 
-## Next Branch
+This branch does not relax any governance boundary.
 
-`phase9-r99-r102-runtime-flag-design-review`
+- `G20` remains `BLOCKED`
+- `R99` remains `NOT APPROVED`
+- `R102` remains `NOT APPROVED`
 
-R99/R102 governance still needs explicit runtime flag design before any promotion can be considered.
+Accepted conventions and audit traces remain explanatory only. They are not
+approval semantics and not runtime promotion semantics.
 
----
+## Answers to the Branch Questions
 
-## Forbidden Scope (Respected)
+### 1. What is `audit_economic_mode` supposed to mean?
 
-- ❌ No R99/R102 promotion
-- ❌ No G20 approval
-- ❌ No default-on behavior
-- ❌ No Oborovo runtime promotion
-- ❌ No SHL R102 changes
-- ❌ No SponsorEngine changes
-- ❌ No SeniorDebtSizing changes
-- ❌ No TaxBridge rewrite
-- ❌ No depreciation CIT source change
-- ❌ No UI changes
-- ❌ No Excel export expansion
-- ❌ No scalar plugs
+Audit-only gate evaluation for reconciliation and comparison.
+
+### 2. Which outputs are audit-only?
+
+Economic-mode DistributionAccount comparison outputs, warnings, gate traces, and
+dual-run review surfaces.
+
+### 3. Which outputs, if any, are runtime-authoritative?
+
+Only the normal runtime waterfall outputs, plus the explicitly staged
+DistributionAccount path when `use_distributionaccount_runtime_wiring=True`
+activates `runtime_economic_mode`.
+
+### 4. Are any audit-only outputs currently being consumed by runtime paths?
+
+No current contradiction was found. The runtime wiring path uses
+`runtime_economic_mode`, not `audit_economic_mode`.
+
+### 5. If yes, what should happen?
+
+Not applicable in the current codebase. The historical contradiction was already
+resolved by splitting the modes.
+
+### 6. How do G20, R99, and R102 gates interact with `audit_economic_mode`?
+
+`audit_economic_mode` may expose how R99/R102 gates would evaluate under economic
+logic, but that does not approve them or promote them into the governed runtime.
+G20 remains blocked, and R99/R102 remain not approved.
+
+## Why This Is Not Documentation-Only
+
+This branch adds tests that prove:
+
+- audit-only values do not silently route into runtime-authoritative outputs
+- dual-run audit visibility does not mutate runtime results
+- runtime-sensitive flags remain explicit and default-off
+- default runtime outputs remain unchanged when audit mode is not active
+
+## Scope Guardrails
+
+Confirmed unchanged in this branch:
+
+- no runtime/model formulas changed
+- no workbook calculations changed
+- no replay engine behavior added
+- no persistence authority promotion occurred
+- no workbook/export layer became calculation authority
+
+## Follow-Up Risk
+
+The authority boundary is currently explicit but still relies on naming discipline
+and routing discipline around DistributionAccount wiring. Any future work that
+adds new runtime staging flags should preserve the same split:
+
+- evaluation mode
+- routing permission
+
+That remains the clean pattern going forward.

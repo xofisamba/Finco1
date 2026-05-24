@@ -1,0 +1,9 @@
+artifact_or_path,classification,audit_visibility_only,runtime_authoritative,explicit_gate_or_flag,notes
+domain/distribution_account/gates.py,gate_evaluation_logic,no,no,audit_economic_mode OR runtime_economic_mode,Same evaluation path; authority comes from routing layer not gate math.
+domain/distribution_account/engine.py,audit_candidate_engine,yes,no,none,Engine computes candidate outputs but does not itself promote them to runtime authority.
+app/waterfall_core.py dual-run path,comparison_trace,yes,no,use_dualrun_validation,Adds audit comparison visibility only.
+app/waterfall_core.py runtime wiring path,explicit_staging_route,no,yes,use_distributionaccount_runtime_wiring + runtime_economic_mode,Only explicit staging path may route staged DA output.
+workbook exports,review_surface,yes,no,none,Workbook layers remain descriptive and non-authoritative.
+CSV reports,review_surface,yes,no,none,Reports may expose audit values but do not become calculation authority.
+app/persistence/*,snapshot_or_metadata,no,no,none,Persistence stores metadata and snapshots only; not runtime authority.
+frontend HTMX/Jinja,interaction_layer,no,no,none,Frontend never computes financial outputs and never becomes authority.
