@@ -1,0 +1,7 @@
+issue_or_source,source_type,category,severity,blocker_yes_no,reproducible_yes_no,affected_workflow_step,verified_pilot_finding,notes
+PILOT-001,feedback_issue_template,export_readability,MEDIUM,no,yes,export_workbook,no,"Template example row only; not treated as real defect evidence"
+SESSION-001,pilot_session_log,documentation_only,LOW,no,no,session_logging,no,"Template example row only; not treated as real pilot session evidence"
+phase15_deployment_risk_register,risk_register,mixed,n/a,no,n/a,operations_review,known_existing_gap,"Known environment and guardrail risks already documented before this cleanup"
+phase15_browser_workflow_remaining_gaps.csv,gap_register,browser_or_htmx,n/a,no,n/a,browser_workflow,known_existing_gap,"Future automation gaps remain documented and non-blocking"
+phase15_e2e_remaining_gaps.csv,gap_register,documentation_only,n/a,no,n/a,e2e_workflow,known_existing_gap,"Existing strategic gaps remain documented and non-blocking for guided internal pilot"
+phase15_numeric_workbook_gap_register.csv,gap_register,workbook_numeric,n/a,no,n/a,workbook_validation,known_existing_gap,"Representative numeric validation exists; workbook-wide validation remains future work"
