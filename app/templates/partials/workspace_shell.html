@@ -1,6 +1,6 @@
 <!-- Workspace Shell — Tab Panels — Phase 9.5 -->
 <div class="workspace-content" id="workspace-content">
-  <div class="workspace-state-banner{% if not workspace_state or not workspace_state.dirty %} is-hidden{% endif %}" id="workspace-unsaved-banner" role="status" aria-live="polite">
+  <div class="workspace-state-banner{% if not workspace_state or not workspace_state.dirty %} is-hidden{% endif %}" id="workspace-unsaved-banner" role="status" aria-live="polite" aria-atomic="true">
     <div class="workspace-state-banner__main">
       <span class="badge badge-warn">Unsaved changes</span>
       <div class="workspace-state-banner__text">
@@ -17,7 +17,7 @@
     </div>
   </div>
 
-  <div class="workspace-state-strip" aria-label="Editable workspace state summary">
+  <div class="workspace-state-strip" aria-label="Editable workspace state summary" aria-describedby="workspace-state-guidance">
     <div class="workspace-state-strip__item">
       <span class="workspace-state-strip__label">Active Scenario</span>
       <span class="workspace-state-strip__value" id="workspace-strip-active-scenario">
@@ -42,6 +42,10 @@
         {{ workspace_state.last_runtime_snapshot_id if workspace_state and workspace_state.last_runtime_snapshot_id else "Not yet run" }}
       </span>
     </div>
+  </div>
+
+  <div class="workspace-reviewer-note" id="workspace-state-guidance" role="note" aria-label="Reviewer guidance for draft, saved, and runtime boundaries">
+    Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
   </div>
 
   <!-- ═══════════════════════════════════════════════ OVERVIEW ══ -->

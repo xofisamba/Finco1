@@ -49,29 +49,29 @@
         <thead>
           <tr>
             <th>Assumption</th>
-            <th>Draft value</th>
+            <th>Draft value (unsaved workspace)</th>
             <th>Saved/runtime note</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>Gearing (%)</td>
-            <td><input class="editable-grid-input" type="number" step="any" min="0" max="100" data-grid-source="gearing_pct" inputmode="decimal" /></td>
+            <td><input class="editable-grid-input" type="number" step="any" min="0" max="100" data-grid-source="gearing_pct" inputmode="decimal" aria-label="Draft gearing percentage" /></td>
             <td>Runtime remains blocked while edits are unsaved.</td>
           </tr>
           <tr>
             <td>Target DSCR</td>
-            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="target_dscr" inputmode="decimal" /></td>
+            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="target_dscr" inputmode="decimal" aria-label="Draft target debt service coverage ratio" /></td>
             <td>Saved scenario snapshot required for runtime execution.</td>
           </tr>
           <tr>
             <td>Interest Rate (%)</td>
-            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" /></td>
+            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" aria-label="Draft interest rate percentage" /></td>
             <td>Browser does not calculate debt service.</td>
           </tr>
           <tr>
             <td>Tenor (years)</td>
-            <td><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" /></td>
+            <td><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" aria-label="Draft senior debt tenor in years" /></td>
             <td>Preview-only until saved and re-run.</td>
           </tr>
         </tbody>

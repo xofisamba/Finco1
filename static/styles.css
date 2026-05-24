@@ -421,6 +421,15 @@ body {
 
 .btn:active:not(:disabled) { transform: scale(0.98); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:focus-visible,
+.ps-mini-btn:focus-visible,
+.editable-grid-input:focus-visible,
+.ps-compare-label select:focus-visible,
+.input-group-summary:focus-visible,
+.sidebar-nav-link:focus-visible {
+  outline: 3px solid rgba(26, 86, 219, 0.22);
+  outline-offset: 2px;
+}
 
 .btn-primary   { background: var(--primary); color: white; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
@@ -1824,6 +1833,17 @@ body {
   font-weight: 600;
 }
 
+.workspace-reviewer-note {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 1rem;
+}
+
 .editable-grid-shell {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1897,6 +1917,23 @@ body {
   border-color: #205db0;
 }
 
+.reviewer-action-help {
+  margin-top: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 0.7rem 0.8rem;
+}
+
+.reviewer-action-help--subtle {
+  margin-top: 0.45rem;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
 @media (max-width: 900px) {
   .workspace-state-banner,
   .workspace-state-banner__main {
@@ -1924,5 +1961,9 @@ body {
 
   .editable-grid-shell__header {
     flex-direction: column;
+  }
+
+  .reviewer-action-help {
+    font-size: 0.73rem;
   }
 }

@@ -1,0 +1,8 @@
+surface,marker_or_pattern,status,purpose,notes
+run_compare_save_run_buttons,aria-label plus aria-describedby,ADDED,Give reviewer actions clear accessible names,All key blocked actions point at reviewer guidance
+disabled_runtime_actions,aria-disabled,PRESERVED,Expose blocked state without changing authority semantics,State still enforced by backend and existing guardrails
+unsaved_changes_banner,"role=status, aria-live, aria-atomic",HARDENED,Make dirty-state changes programmatically identifiable,Supports reviewer assistive technology
+workspace_state_guidance,role=note,ADDED,Expose draft/saved/runtime explanation in a stable text region,No new workflow behavior
+focus_visible_styles,focus-visible outline,ADDED,Improve keyboard navigation clarity,No custom keyboard shortcuts added
+editable_grid_inputs,aria-label,ADDED,Clarify existing assumption fields only,No new editable surfaces added
+

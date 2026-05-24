@@ -23,7 +23,7 @@
         <thead>
           <tr>
             <th>Assumption</th>
-            <th>Draft value</th>
+            <th>Draft value (unsaved workspace)</th>
             <th>Saved/runtime note</th>
           </tr>
         </thead>
@@ -32,7 +32,8 @@
             <td>PPA Tariff (EUR/MWh)</td>
             <td>
               <input class="editable-grid-input" type="number" step="any" min="0"
-                     data-grid-source="tariff_eur_mwh" inputmode="decimal" />
+                     data-grid-source="tariff_eur_mwh" inputmode="decimal"
+                     aria-label="Draft PPA tariff in euros per megawatt hour" />
             </td>
             <td>Used only after explicit save and clean runtime execution.</td>
           </tr>
@@ -40,7 +41,8 @@
             <td>PPA Term (years)</td>
             <td>
               <input class="editable-grid-input" type="number" step="1" min="0"
-                     data-grid-source="ppa_term_years" inputmode="numeric" />
+                     data-grid-source="ppa_term_years" inputmode="numeric"
+                     aria-label="Draft PPA term in years" />
             </td>
             <td>Preview convenience value until saved.</td>
           </tr>
@@ -48,7 +50,8 @@
             <td>P50 Hours / year</td>
             <td>
               <input class="editable-grid-input" type="number" step="any" min="0"
-                     data-grid-source="p50_hours" inputmode="decimal" />
+                     data-grid-source="p50_hours" inputmode="decimal"
+                     aria-label="Draft P50 hours per year" />
             </td>
             <td>Runtime authority stays in the model layer.</td>
           </tr>
