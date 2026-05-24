@@ -1,0 +1,10 @@
+file,occurrence/context,current_status,active_vs_legacy_frozen,recommended_action,blocker
+app/export/calibration_reconciliation.py,"Canonical label definition and reviewer legend for reporting breakout gaps",ACTIVE_CURRENT_SEMANTIC,active,Retain as current source-of-truth semantics for runtime/reporting breakout gaps,no
+app/export/institutional_workbook.py,"Gap Register rows for detailed construction/CAPEX export gaps",ACTIVE_REVIEW_SURFACE,active,Retain until those detailed workbook breakouts are actually implemented,no
+reports/phase10_runtime_binding_inventory.csv,"Contingency and MOIC rows marked pending in runtime binding inventory",ACTIVE_REPORT_OUTPUT,active,Retain; these are legitimate reporting-breakout gaps rather than stale labels,no
+reports/phase10_runtime_binding_gap_register.csv,"Gap register rows for contingency and MOIC runtime breakout status",ACTIVE_REPORT_OUTPUT,active,Retain and continue treating as explicit reporting backlog items,no
+reports/phase10_calibration_reconciliation_summary.csv,"Reviewer-facing summary rows using RUNTIME_BINDING_PENDING for contingency and MOIC",ACTIVE_REPORT_OUTPUT,active,Retain as current review-pack semantics until those metrics become first-class exports,no
+reports/phase10_calibration_gap_register.csv,"Calibration gap register rows carry forward the same pending breakout semantics",ACTIVE_REPORT_OUTPUT,active,Retain; still accurate for current review artifacts,no
+reports/phase12_governance_semantics_dictionary.csv,"Hierarchy entry documents RUNTIME_BINDING_PENDING as reporting breakout pending",ACTIVE_SOURCE_OF_TRUTH,active,Retain as current semantics reference,no
+reports/phase12_missing_evidence_split_matrix.csv,"Replacement matrix points legacy umbrella usage toward precise current labels including RUNTIME_BINDING_PENDING",ACTIVE_SOURCE_OF_TRUTH,active,Retain; this is the migration guide,no
+docs/targeted_cleanup_test_pack.md,"Cleanup-pack explanation of active versus legacy-frozen pending labels",CURRENT_DOCUMENTATION,active,Retain as pilot-readiness guidance,no

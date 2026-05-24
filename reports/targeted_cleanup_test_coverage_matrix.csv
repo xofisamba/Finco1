@@ -1,0 +1,7 @@
+test_or_artifact,coverage_area,asserts_backend_authority,asserts_governance_posture,notes
+tests/test_targeted_cleanup_e2e_workflow.py,project_select_edit_save_run_export,yes,yes,Covers dirty-state block, explicit save boundary, runtime snapshot recording, and workbook export readability
+tests/test_targeted_cleanup_workbook_content.py,numeric_workbook_content,yes,no,Checks stable runtime-backed numeric cells against backend runtime summary rows
+tests/test_targeted_cleanup_dependency_isolation.py,dependency_isolation,no,no,Verifies non-auth test collection works without real bcrypt and production auth code remains unchanged
+reports/targeted_cleanup_runtime_binding_pending_audit.csv,runtime_binding_pending_reaudit,no,yes,Separates active current semantics from frozen artifacts
+reports/targeted_cleanup_legacy_governance_artifacts.csv,legacy_governance_boundary,no,yes,Documents frozen historical MISSING_EVIDENCE surfaces versus current source-of-truth semantics
+docs/targeted_cleanup_test_pack.md,closeout_guidance,no,yes,Summarizes confidence gains and remaining pilot-readiness limitations

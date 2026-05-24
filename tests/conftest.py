@@ -1,12 +1,33 @@
 """Pytest configuration and fixtures for Oborovo model tests."""
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import pytest
 
 # Add domain to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+def _install_test_bcrypt_stub() -> None:
+    """Provide a tiny test-only bcrypt shim when the optional dependency is absent.
+
+    Some non-auth test modules import app.auth indirectly through fixtures or route
+    modules. In local environments without bcrypt installed, we still want those
+    tests to collect as long as they are not validating bcrypt itself.
+    """
+    if "bcrypt" in sys.modules or importlib.util.find_spec("bcrypt") is not None:
+        return
+    fake_bcrypt = types.SimpleNamespace(
+        gensalt=lambda rounds=12: b"salt",
+        hashpw=lambda password, salt: b"stub-hash",
+        checkpw=lambda password, hashed: True,
+    )
+    sys.modules["bcrypt"] = fake_bcrypt
+
+
+_install_test_bcrypt_stub()
 
 
 CORE_LEGACY_TEST_FILES = {
@@ -24,10 +45,7 @@ CORE_LEGACY_TEST_FILES = {
     "test_wind_engine.py",
 }
 
-SQLALCHEMY_TEST_FILES = {
-    "test_persistence.py",
-    "test_repository.py",
-}
+SQLALCHEMY_TEST_FILES = set()
 
 OPENPYXL_TEST_FILES = {
     "test_fid_deck_excel.py",
