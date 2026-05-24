@@ -1,0 +1,6 @@
+test_area,remaining_marker_style,why_remaining_marker_is_acceptable,recommended_future_upgrade
+phase14_closeout_forensic_pack,"closeout doc/report guardrail wording","branch deliverable is a forensic closeout pack rather than interactive behavior","none unless closeout format becomes machine-readable"
+phase15_reviewer_handoff_pack,"quickstart and faq wording","reviewer handoff pack is intentionally documentation-first","optional markdown section parser if format stabilizes further"
+phase15_deployment_runbook,"operator guidance prose","runbook is an operational document rather than executable logic","optional doc linting or checklist schema tool"
+phase15_pilot_feedback_instrumentation,"feedback guide prose semantics","feedback process is intentionally lightweight and non-runtime","optional local csv validator utility if pilot volume increases"
+phase15_browser_workflow_verification,"no real live-browser automation","heavy browser stack was intentionally avoided","future Playwright or Selenium pass when dependency posture allows"

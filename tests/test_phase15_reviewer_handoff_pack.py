@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 import os
+from io import StringIO
 
 
 def _read(*parts: str) -> str:
@@ -52,36 +54,41 @@ def test_reviewer_handoff_reports_and_issue_template_exist():
     ):
         assert os.path.exists(os.path.join(base, "reports", report_name))
 
-    checklist = _read("reports", "phase15_reviewer_workflow_checklist.csv")
-    statuses = _read("reports", "phase15_governance_status_interpretation.csv")
-    issue_template = _read("reports", "phase15_reviewer_issue_template.csv")
-    no_claims = _read("reports", "phase15_reviewer_handoff_no_claims.csv")
+    checklist = list(csv.DictReader(StringIO(_read("reports", "phase15_reviewer_workflow_checklist.csv"))))
+    statuses = list(csv.DictReader(StringIO(_read("reports", "phase15_governance_status_interpretation.csv"))))
+    issue_template = list(csv.DictReader(StringIO(_read("reports", "phase15_reviewer_issue_template.csv"))))
+    no_claims = list(csv.DictReader(StringIO(_read("reports", "phase15_reviewer_handoff_no_claims.csv"))))
 
-    assert "select_project" in checklist
-    assert "observe_dirty_state" in checklist
-    assert "export_workbook" in checklist
-    assert "compare_scenarios" in checklist
-    assert "backup_after_session" in checklist
+    assert [row["step_id"] for row in checklist[:5]] == [
+        "select_project",
+        "load_or_create_scenario",
+        "edit_assumption",
+        "observe_dirty_state",
+        "save_scenario",
+    ]
+    assert any(row["step_id"] == "compare_scenarios" for row in checklist)
+    assert any(row["step_id"] == "backup_after_session" for row in checklist)
 
-    assert "BLOCKED," in statuses
-    assert "NOT APPROVED," in statuses
-    assert "ACCEPTED_CONVENTION," in statuses
-    assert "SOURCE_NOT_AVAILABLE," in statuses
-    assert "MISSING_EVIDENCE," in statuses
-    assert "G20 remains BLOCKED" in statuses
-    assert "R99/R102 remain NOT APPROVED" in statuses
+    status_labels = {row["status_label"] for row in statuses}
+    assert {"BLOCKED", "NOT APPROVED", "ACCEPTED_CONVENTION", "SOURCE_NOT_AVAILABLE", "MISSING_EVIDENCE"} <= status_labels
+    blocked_row = next(row for row in statuses if row["status_label"] == "BLOCKED")
+    assert blocked_row["current_phase15_posture"] == "G20 remains BLOCKED"
+    not_approved_row = next(row for row in statuses if row["status_label"] == "NOT APPROVED")
+    assert not_approved_row["current_phase15_posture"] == "R99/R102 remain NOT APPROVED"
 
-    assert "project,yes" in issue_template
-    assert "scenario,yes" in issue_template
-    assert "expected_behavior,yes" in issue_template
-    assert "actual_behavior,yes" in issue_template
-    assert "blocker_yes_no,yes" in issue_template
-    assert "impact_area,yes" in issue_template
+    issue_fields = {row["field_name"]: row for row in issue_template}
+    assert issue_fields["project"]["required"] == "yes"
+    assert issue_fields["scenario"]["required"] == "yes"
+    assert issue_fields["expected_behavior"]["required"] == "yes"
+    assert issue_fields["actual_behavior"]["required"] == "yes"
+    assert issue_fields["blocker_yes_no"]["required"] == "yes"
+    assert issue_fields["impact_area"]["required"] == "yes"
 
-    assert "single-user guided internal pilot only" in no_claims
-    assert "No lender-ready claim is made." in no_claims
-    assert "No audit-certified claim is made." in no_claims
-    assert "Workbook/export remains descriptive only." in no_claims
-    assert "Scenario compare remains descriptive only." in no_claims
-    assert "G20 remains BLOCKED and R99/R102 remain NOT APPROVED." in no_claims
-    assert "SOURCE_NOT_AVAILABLE, unavailable, and not_applicable are not zero." in no_claims
+    no_claim_areas = {row["claim_area"]: row for row in no_claims}
+    assert no_claim_areas["pilot_scope"]["current_statement"] == "single-user guided internal pilot only"
+    assert no_claim_areas["lender_ready"]["current_statement"] == "No lender-ready claim is made."
+    assert no_claim_areas["audit_certified"]["current_statement"] == "No audit-certified claim is made."
+    assert no_claim_areas["workbook_authority"]["current_statement"] == "Workbook/export remains descriptive only."
+    assert no_claim_areas["scenario_compare_authority"]["current_statement"] == "Scenario compare remains descriptive only."
+    assert no_claim_areas["governance_blockers"]["current_statement"] == "G20 remains BLOCKED and R99/R102 remain NOT APPROVED."
+    assert no_claim_areas["availability_markers"]["current_statement"] == "SOURCE_NOT_AVAILABLE, unavailable, and not_applicable are not zero."

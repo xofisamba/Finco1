@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 import os
+from io import StringIO
 
 
 def _read(*parts: str) -> str:
@@ -65,21 +67,61 @@ def test_feedback_templates_and_triage_reports_exist_with_required_fields():
     ):
         assert os.path.exists(os.path.join(base, "reports", report_name))
 
-    issue_template = _read("reports", "phase15_pilot_feedback_issue_template.csv")
-    session_log = _read("reports", "phase15_pilot_session_log_template.csv")
-    categories = _read("reports", "phase15_pilot_feedback_category_matrix.csv")
-    triage = _read("reports", "phase15_pilot_feedback_triage_workflow.csv")
+    issue_template = list(csv.DictReader(StringIO(_read("reports", "phase15_pilot_feedback_issue_template.csv"))))
+    session_log = list(csv.DictReader(StringIO(_read("reports", "phase15_pilot_session_log_template.csv"))))
+    categories = list(csv.DictReader(StringIO(_read("reports", "phase15_pilot_feedback_category_matrix.csv"))))
+    triage = list(csv.DictReader(StringIO(_read("reports", "phase15_pilot_feedback_triage_workflow.csv"))))
 
-    assert "issue_id,date_reported,reporter_role,project,scenario_name,scenario_id,runtime_snapshot_id,export_filename,workflow_step,category,severity,blocker_yes_no,expected_behavior,actual_behavior,governance_label_involved,screenshot_or_artifact_reference,reproducible_yes_no,suggested_follow_up,triage_status,owner,resolution_notes" in issue_template
-    assert "session_id,date,operator,reviewer_role,project_used,scenarios_touched,exports_created,compares_run,smoke_test_passed,issues_logged,backup_completed,notes" in session_log
+    issue_headers = set(issue_template[0].keys())
+    assert issue_headers == {
+        "issue_id",
+        "date_reported",
+        "reporter_role",
+        "project",
+        "scenario_name",
+        "scenario_id",
+        "runtime_snapshot_id",
+        "export_filename",
+        "workflow_step",
+        "category",
+        "severity",
+        "blocker_yes_no",
+        "expected_behavior",
+        "actual_behavior",
+        "governance_label_involved",
+        "screenshot_or_artifact_reference",
+        "reproducible_yes_no",
+        "suggested_follow_up",
+        "triage_status",
+        "owner",
+        "resolution_notes",
+    }
+    assert set(session_log[0].keys()) == {
+        "session_id",
+        "date",
+        "operator",
+        "reviewer_role",
+        "project_used",
+        "scenarios_touched",
+        "exports_created",
+        "compares_run",
+        "smoke_test_passed",
+        "issues_logged",
+        "backup_completed",
+        "notes",
+    }
 
-    assert "runtime_trust," in categories
-    assert "export_readability," in categories
-    assert "workbook_numeric," in categories
-    assert "scenario_compare," in categories
-    assert "governance_label_confusion," in categories
-    assert "documentation_only," in categories
+    category_names = {row["category"] for row in categories}
+    assert {
+        "runtime_trust",
+        "export_readability",
+        "workbook_numeric",
+        "scenario_compare",
+        "governance_label_confusion",
+        "documentation_only",
+    } <= category_names
 
-    assert "severity is not governance approval" in triage
-    assert "feedback does not approve G20 or promote R99/R102" in triage
-    assert "feedback records remain non-authoritative" in triage
+    triage_steps = {row["triage_step"]: row for row in triage}
+    assert "severity is not governance approval" in triage_steps["classify_category_and_severity"]["guardrail"]
+    assert "feedback does not approve G20 or promote R99/R102" in triage_steps["preserve_governance_blockers"]["guardrail"]
+    assert "feedback records remain non-authoritative" in triage_steps["collect_after_session"]["guardrail"]

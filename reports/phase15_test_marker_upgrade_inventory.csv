@@ -1,0 +1,9 @@
+test_file,prior_style,upgraded_focus,status,notes
+tests/test_phase14_export_lineage_ui.py,"template/doc phrase checks","helper-driven export lineage context structure and dirty/clean behavior",upgraded,"High-value because export lineage is reviewer-visible state"
+tests/test_phase14_scenario_compare_honesty.py,"template/doc phrase checks","rendered compare structure and missing-vs-zero distinction",upgraded,"High-value because compare honesty is easy to misread"
+tests/test_phase15_browser_workflow_verification.py,"template/js/css marker checks","js hook to dom target consistency and selector-level structure",upgraded,"Strongest available without heavy browser automation"
+tests/test_phase15_reviewer_handoff_pack.py,"doc/report phrase checks","csv header and workflow structure checks",upgraded,"Artifact is docs-first, so structural upgrade is appropriate"
+tests/test_phase15_deployment_runbook.py,"doc/report phrase checks","csv header and smoke sequence checks",upgraded,"Operational artifact remains document-centric"
+tests/test_phase15_pilot_feedback_instrumentation.py,"doc/report phrase checks","csv schema and triage/category structure checks",upgraded,"Feedback pack is intentionally non-runtime"
+tests/test_phase14_reviewer_cover_notes.py,"already workbook-artifact driven","left largely as-is",acceptable_existing_behavior,"Already opens generated workbook artifacts"
+tests/test_phase15_numeric_workbook_validation.py,"already workbook numeric validation","left largely as-is",acceptable_existing_behavior,"Already validates representative numeric parity"
