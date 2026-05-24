@@ -1,0 +1,12 @@
+question_id,review_question,why_it_matters
+Q1,"Did Phase 15 preserve runtime authority?","Runtime authority is the core safety boundary."
+Q2,"Did Phase 15 accidentally introduce any production behavior changes?","Phase 15 was intended to be pilot-entry and closeout work, not product redesign."
+Q3,"Are the Phase 15 end-to-end tests meaningful enough for guided internal pilot use?","Guided pilot readiness depends on the workflow test signal being real."
+Q4,"Is browser workflow verification sufficient for guided internal pilot scope?","The current browser pass is smoke-level rather than full live-browser automation."
+Q5,"Is representative numeric workbook validation sufficient for pilot trust?","Workbook trust matters, but overclaiming workbook-wide parity would be risky."
+Q6,"Is reviewer handoff adequate for use without chat history?","Reviewer independence is part of the guided pilot promise."
+Q7,"Is feedback instrumentation clearly non-authoritative?","Feedback records must not become runtime authority or governance approval."
+Q8,"Was the no-defect cleanup conclusion justified by the available evidence?","The cleanup branch depended on distinguishing template rows from real pilot findings."
+Q9,"Are remaining gaps classified honestly and proportionately?","Closeout quality depends on honest limitations rather than optimistic labeling."
+Q10,"Is the product ready for actual guided internal pilot use?","This is the core Phase 15 readiness question."
+Q11,"What should come next after Phase 15?","The roadmap should be evidence-driven rather than assumption-driven."

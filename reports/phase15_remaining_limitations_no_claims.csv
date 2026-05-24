@@ -1,0 +1,12 @@
+limitation_or_no_claim,current_status,why_it_remains,next_step
+not_lender_ready,active_no_claim,"External model review and broader validation remain outstanding","preserve no-claim until outside review is complete"
+not_audit_certified,active_no_claim,"Internal testing cannot create audit certification","preserve no-claim until formal external process exists"
+not_saas_multi_tenant_ready,active_no_claim,"Current product remains guided single-user oriented","avoid SaaS claims unless architecture and ops change materially"
+no_multi_user_role_permission_model,active_limitation,"Roles and permissions remain out of scope","future architecture work only if product scope expands"
+no_governance_approval_workflow,active_limitation,"Governance automation remains out of scope","future governance-workflow phase if needed"
+no_r99_r102_promotion,active_guardrail,"R99/R102 remain NOT APPROVED","preserve blocker until explicit future approval work"
+no_g20_approval,active_guardrail,"G20 remains BLOCKED","preserve blocker until explicit future approval work"
+live_browser_automation_future_work,known_gap,"Current browser verification is smoke-level rather than live-browser automation","future Playwright/Selenium decision after Claude review"
+workbook_wide_numeric_audit_future_work,known_gap,"Current validation is representative rather than workbook-wide","expand only where evidence justifies it"
+external_model_review_future_work,known_gap,"Internal readiness does not replace external review","future external review phase"
+real_pilot_evidence_needed_beyond_template_rows,known_gap,"Current feedback/session rows are still template examples","replace with real pilot evidence during execution phase"
