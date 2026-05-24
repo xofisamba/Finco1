@@ -116,6 +116,29 @@ The cleanup is applied first to the active institutional review pack surfaces:
 
 Historical phase artifacts may still contain legacy wording, but the active Phase 10/11/12 review pack surfaces now use the clarified semantics model.
 
+## Migration-status table for remaining `MISSING_EVIDENCE` usage
+
+Not every historical artifact is being mass-rewritten in this cleanup. The boundary is:
+
+- new or regenerated active reviewer-facing outputs should use the precise labels
+- frozen historical artifacts may retain `MISSING_EVIDENCE`
+- legacy references should be documented rather than silently rewritten
+
+| Surface | Status | Why |
+| --- | --- | --- |
+| Active calibration workbook surfaces (`Navigation`, `Executive Dashboard`, `Reviewer Notes`, active reconciliation rows) | `REPLACED_BY_PRECISE_LABEL` | These are current reviewer-facing surfaces and now use `SOURCE_NOT_AVAILABLE`, `MISSING_EXCEL_EVIDENCE`, and `MISSING_REVIEW_SCALAR` where appropriate. |
+| Newly generated Phase 12 governance semantics reports | `REPLACED_BY_PRECISE_LABEL` | The semantics cleanup branch treats these as authoritative for future reviewer interpretation. |
+| Older Phase 10 CSV artifacts that are kept as historical evidence snapshots | `LEGACY_FROZEN_REFERENCE` | They record prior review state and are not automatically re-authored unless a later branch intentionally regenerates them. |
+| Any remaining active output that still needs a narrower label split but is not blocking tests today | `ACTIVE_TO_MIGRATE_LATER` | These should be migrated only where the surface is still actively consumed and the meaning can be split safely. |
+| Legacy references explaining the old umbrella term itself | `INTENTIONALLY_RETAINED` | The old label remains documented as a historical umbrella so reviewers can interpret prior artifacts. |
+
+Going forward:
+
+- use `MISSING_EXCEL_EVIDENCE` when runtime-side data exists but committed Excel-side support is missing
+- use `MISSING_REVIEW_SCALAR` when the reporting layer lacks a reviewer scalar or bridge
+- use `SOURCE_NOT_AVAILABLE` when neither side provides a defensible standalone source
+- keep `RUNTIME_BINDING_PENDING` for reporting breakout gaps rather than evidence gaps
+
 ## Known limitations
 
 - legacy historical documents may still contain `MISSING_EVIDENCE`

@@ -202,7 +202,7 @@ def test_missing_evidence_rows_are_not_zero_filled():
     assert target_row is not None
     first_period_value = ws.cell(row=target_row, column=3).value
     assert isinstance(first_period_value, str)
-    assert first_period_value.startswith("MISSING_EVIDENCE")
+    assert first_period_value.startswith("SOURCE_NOT_AVAILABLE")
 
 
 def test_gap_register_contains_reviewer_columns():
