@@ -24,7 +24,7 @@
         <div class="ps-saved-meta">
           Revision boundary: {{ workspace_state.updated_at.strftime("%Y-%m-%d %H:%M") if workspace_state else "not yet captured" }}
           {% if workspace_state and workspace_state.last_runtime_at %}
-          Â· last runtime {{ workspace_state.last_runtime_at.strftime("%Y-%m-%d %H:%M") }}
+          · last runtime {{ workspace_state.last_runtime_at.strftime("%Y-%m-%d %H:%M") }}
           {% endif %}
         </div>
       </div>
@@ -180,20 +180,35 @@
 
   <div class="ps-section">
     <div class="ps-section-label">Export Lineage</div>
-    {% if not export_lineage %}
+    <div class="ps-mini-empty">
+      Export lineage is descriptive only. It shows which saved scenario boundary, runtime snapshot, and governance posture produced each tracked artifact.
+    </div>
+    {% if not export_lineage_ui.recent_exports %}
     <div class="ps-mini-empty">
       No exports tracked yet for this project workspace.
     </div>
     {% else %}
     <div class="ps-export-list">
-      {% for item in export_lineage %}
+      {% for item in export_lineage_ui.recent_exports %}
       <div class="ps-export-item">
         <div class="ps-export-title">{{ item.artifact_name }}</div>
         <div class="ps-export-meta">
-          {{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at.strftime("%Y-%m-%d %H:%M") }}
+          {{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at }}
         </div>
         <div class="ps-export-meta">
-          Governance: {{ item.governance_state.get("g20_status", "BLOCKED") }} / {{ item.governance_state.get("r99_r102_status", "NOT APPROVED") }}
+          Scenario ID {{ item.scenario_id }} · Revision {{ item.scenario_revision }}
+        </div>
+        <div class="ps-export-meta">
+          Runtime snapshot {{ item.runtime_snapshot_id }} · Origin {{ item.runtime_origin }}
+        </div>
+        <div class="ps-export-meta">
+          Runtime at {{ item.runtime_generated_at }} · Export at {{ item.export_generated_at }}
+        </div>
+        <div class="ps-export-meta">
+          Branch {{ item.branch_name }} · Template {{ item.template_origin }} · Flags {{ item.runtime_flag_count }}
+        </div>
+        <div class="ps-export-meta">
+          Governance: {{ item.governance_summary }}
         </div>
       </div>
       {% endfor %}
