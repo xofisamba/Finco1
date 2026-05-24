@@ -1,0 +1,12 @@
+guardrail,status,evidence,notes
+no_runtime_model_formula_changes,confirmed,"UI/templates/main_web metadata plumbing only","No economic logic changed."
+no_workbook_calculation_changes,confirmed,"No formula-sheet edits; descriptive UI only","Workbook/export remains non-authoritative."
+no_export_calculation_authority_promotion,confirmed,"UI copy explicitly says backend-authored/descriptive only","Export lineage is explanatory only."
+no_persistence_authority_promotion,confirmed,"Existing persistence lineage reused","No persistence semantics redesign."
+no_replay_engine_behavior,confirmed,"Lineage display only","No replay execution path added."
+no_new_editable_surfaces,confirmed,"No new editable-grid templates added","Existing editable areas unchanged."
+no_javascript_financial_calculations,confirmed,"static/app.js only updates guidance text","No frontend math added."
+contracts_unchanged,confirmed,"audit_economic_mode/runtime_economic_mode statements retained","No contract changes."
+g20_blocked,confirmed,"UI notes and docs","Still BLOCKED."
+r99_r102_not_approved,confirmed,"UI notes and docs","Still NOT APPROVED."
+

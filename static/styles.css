@@ -1844,6 +1844,76 @@ body {
   margin-bottom: 1rem;
 }
 
+.export-lineage-panel,
+.export-lineage-history {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.export-lineage-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.export-lineage-panel__title,
+.export-lineage-history__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.export-lineage-panel__desc,
+.export-lineage-history__desc,
+.export-lineage-note,
+.download-lineage-meta {
+  margin-top: 0.18rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.export-lineage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.65rem;
+}
+
+.export-lineage-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 0.7rem 0.75rem;
+}
+
+.export-lineage-card__label {
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.export-lineage-card__value {
+  margin-top: 0.18rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.export-lineage-card__meta {
+  margin-top: 0.14rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .editable-grid-shell {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1932,6 +2002,15 @@ body {
   margin-top: 0.45rem;
   background: var(--surface-2);
   color: var(--muted);
+}
+
+.downloads-grid--lineage {
+  align-items: stretch;
+}
+
+.download-item--lineage,
+.download-item {
+  align-items: flex-start;
 }
 
 @media (max-width: 900px) {

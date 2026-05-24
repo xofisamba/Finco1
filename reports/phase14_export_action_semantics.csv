@@ -1,0 +1,5 @@
+artifact,represents,authority_note,dirty_state_interpretation,governance_note
+values_only_excel_export,"Submitted workbook values with descriptive provenance and notes","Descriptive only; does not become runtime authority","Dirty draft allowed but must not be mistaken for clean runtime truth","G20 BLOCKED; R99/R102 NOT APPROVED"
+runtime_summary_csv,"Backend runtime metrics and provenance for the active project","Descriptive record of backend runtime output","If draft is dirty, reviewer should save and run again before sharing if the latest draft must be reflected","G20 BLOCKED; R99/R102 NOT APPROVED"
+institutional_workbook,"Reviewer-facing workbook with runtime summary, provenance, cover notes, and governance context","Descriptive only; numeric sheets remain tied to backend runtime/export behavior","If draft is dirty, reviewer should save and run again before sharing if the latest draft must be reflected","G20 BLOCKED; R99/R102 NOT APPROVED"
+

@@ -245,6 +245,111 @@ def _workspace_state_meta(workspace_state) -> dict:
     }
 
 
+def _format_ui_timestamp(value) -> str:
+    if value is None:
+        return "unavailable"
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d %H:%M")
+    text = str(value).strip()
+    return text or "unavailable"
+
+
+def _build_export_lineage_ui_context(project_record, workspace_state, export_lineage: list[dict[str, object]]) -> dict[str, object]:
+    workspace_meta = _workspace_state_meta(workspace_state)
+    project_label = project_record.project_name if project_record else "Workspace Project"
+    project_code = project_record.project_code.upper() if project_record else "GENERAL"
+    runtime_snapshot_id = workspace_state.last_runtime_snapshot_id if workspace_state else ""
+    runtime_generated_at = _format_ui_timestamp(workspace_state.last_runtime_at if workspace_state else None)
+    scenario_revision = _format_ui_timestamp(workspace_state.updated_at if workspace_state else None)
+    action_note = (
+        "Unsaved draft edits are active. Exports remain descriptive only, and runtime-backed artifacts stay tied to the last clean backend snapshot until you save and run again."
+        if workspace_meta["dirty"]
+        else "Draft and saved state are aligned. Runtime-backed exports reflect the last clean backend snapshot shown in the runtime summary."
+    )
+    current_context = {
+        "project_label": project_label,
+        "project_code": project_code,
+        "active_scenario_name": workspace_state.active_scenario_name if workspace_state and workspace_state.active_scenario_name else "Workspace Base",
+        "active_scenario_id": workspace_state.active_scenario_id if workspace_state and workspace_state.active_scenario_id else "not_applicable",
+        "scenario_revision": scenario_revision,
+        "runtime_snapshot_id": runtime_snapshot_id or "unavailable",
+        "runtime_generated_at": runtime_generated_at,
+        "runtime_origin_label": workspace_meta["last_runtime_origin_label"],
+        "dirty": workspace_meta["dirty"],
+        "dirty_label": workspace_meta["dirty_label"],
+        "governance_summary": "G20 remains BLOCKED; R99/R102 remain NOT APPROVED.",
+        "action_note": action_note,
+    }
+    action_cards = [
+        {
+            "artifact_name": "Values-only Excel export",
+            "artifact_type": "excel_model_export",
+            "href": "/download",
+            "represents": "Submitted form values plus descriptive provenance and reviewer notes.",
+            "authority_note": "Descriptive only. This workbook is backend-authored and does not become the calculation engine.",
+            "availability_note": (
+                "Dirty draft is allowed here because the export reflects submitted workbook values, not a hidden runtime promotion."
+                if workspace_meta["dirty"]
+                else "Available from the current submitted form state."
+            ),
+        },
+        {
+            "artifact_name": "Runtime summary CSV",
+            "artifact_type": "runtime_summary_csv",
+            "href": f"/exports/runtime-summary.csv?project={project_record.project_code if project_record else 'tuho'}",
+            "represents": "Backend runtime metrics and provenance for the active project.",
+            "authority_note": "Descriptive only. Reviewer should treat it as a record of backend runtime output, not as a live browser calculation.",
+            "availability_note": (
+                "Current draft is newer than the last runtime snapshot. Save and run again if you need export lineage to match the current draft."
+                if workspace_meta["dirty"]
+                else "Uses the last clean backend runtime context for the active project."
+            ),
+        },
+        {
+            "artifact_name": "Institutional workbook",
+            "artifact_type": "institutional_workbook",
+            "href": f"/exports/institutional-workbook.xlsx?project={project_record.project_code if project_record else 'tuho'}",
+            "represents": "Reviewer-facing workbook with runtime summary, provenance, cover notes, and governance context.",
+            "authority_note": "Descriptive only. Numeric sheets remain tied to backend runtime/export behavior and do not override runtime authority.",
+            "availability_note": (
+                "Current draft is newer than the last runtime snapshot. Save and run again before sharing if the reviewer needs the latest draft reflected in runtime-backed sections."
+                if workspace_meta["dirty"]
+                else "Uses the last clean backend runtime context for the active project."
+            ),
+        },
+    ]
+    recent_exports = []
+    for item in export_lineage:
+        replay_metadata = item.get("replay_metadata", {}) if isinstance(item, dict) else {}
+        recent_exports.append(
+            {
+                "artifact_name": item.get("artifact_name", "Export artifact"),
+                "export_type": item.get("export_type", "unknown"),
+                "scenario_name": item.get("scenario_name", "Workspace export"),
+                "created_at": _format_ui_timestamp(item.get("created_at")),
+                "scenario_id": replay_metadata.get("scenario_id") or "not_applicable",
+                "scenario_revision": replay_metadata.get("scenario_revision") or "unavailable",
+                "runtime_snapshot_id": replay_metadata.get("runtime_snapshot_id") or "unavailable",
+                "runtime_origin": replay_metadata.get("runtime_origin") or "unavailable",
+                "runtime_generated_at": replay_metadata.get("runtime_timestamp") or "unavailable",
+                "export_generated_at": replay_metadata.get("export_timestamp") or _format_ui_timestamp(item.get("created_at")),
+                "branch_name": replay_metadata.get("branch_name") or "unavailable",
+                "commit_sha": replay_metadata.get("commit_sha") or "unavailable",
+                "template_origin": replay_metadata.get("template_origin") or "unavailable",
+                "runtime_flag_count": replay_metadata.get("runtime_flag_count") or "unavailable",
+                "governance_summary": (
+                    f"{item.get('governance_state', {}).get('g20_status', 'BLOCKED')} / "
+                    f"{item.get('governance_state', {}).get('r99_r102_status', 'NOT APPROVED')}"
+                ),
+            }
+        )
+    return {
+        "current_context": current_context,
+        "action_cards": action_cards,
+        "recent_exports": recent_exports,
+    }
+
+
 def _replay_metadata_for_project(
     project_code: str,
     *,
@@ -365,6 +470,7 @@ def _render_scenario_workspace(
             "scenario_history": history,
             "export_records": exports,
             "export_lineage": export_lineage,
+            "export_lineage_ui": _build_export_lineage_ui_context(project_record, workspace_state, export_lineage),
             "scenario_summary_cards": scenario_summary_cards,
             "workspace_message": message,
             "compare_result": compare_result,
@@ -665,6 +771,7 @@ async def index(request: Request, project: str | None = None):
             "scenario_history": scenario_history,
             "export_records": export_records,
             "export_lineage": export_lineage,
+            "export_lineage_ui": _build_export_lineage_ui_context(project_record, workspace_state, export_lineage),
             "scenario_summary_cards": scenario_summary_cards,
             "compare_result": None,
             "workspace_message": None,

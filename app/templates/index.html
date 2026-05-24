@@ -342,6 +342,15 @@
   <div class="reviewer-action-help reviewer-action-help--subtle" id="reviewer-export-help" role="note">
     Workbook export remains backend-authored. It reflects backend runtime and export behavior, not browser-side draft calculations.
   </div>
+  <div class="reviewer-action-help reviewer-action-help--subtle" id="reviewer-export-lineage-help" role="note"
+       data-clean-message="Export lineage remains descriptive only. Values-only export uses submitted workbook values, while runtime summary and institutional workbook exports stay tied to the last clean backend runtime boundary."
+       data-dirty-message="Current draft is newer than the last clean runtime snapshot. Save and run again before sharing runtime-backed exports if the reviewer needs lineage that matches the latest draft.">
+    {% if workspace_state and workspace_state.dirty %}
+    Current draft is newer than the last clean runtime snapshot. Save and run again before sharing runtime-backed exports if the reviewer needs lineage that matches the latest draft.
+    {% else %}
+    Export lineage remains descriptive only. Values-only export uses submitted workbook values, while runtime summary and institutional workbook exports stay tied to the last clean backend runtime boundary.
+    {% endif %}
+  </div>
   <div class="reviewer-action-help reviewer-action-help--subtle" id="reviewer-revert-help" role="note">
     Revert restores the last saved scenario boundary and clears draft-only edits. It does not run the model.
   </div>

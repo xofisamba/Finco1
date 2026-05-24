@@ -1,0 +1,6 @@
+surface,metadata_visible,dirty_or_stale_guidance,descriptive_only_note,notes
+workspace_shell export lineage panel,"active project; saved scenario; scenario revision; runtime snapshot; runtime generated at; governance posture",yes,yes,"Primary reviewer-facing pre-download lineage summary."
+workspace_shell downloads panel,"artifact semantics; runtime-backed vs values-only distinction",yes,yes,"Explains what each export represents before download."
+scenario_workspace export lineage history,"scenario id; scenario revision; runtime snapshot id; runtime origin; export timestamp; branch; template provenance; flag count",yes,yes,"Richer lineage list for saved-scenario workflows."
+index export helper,"export lineage helper text only",yes,yes,"Small guidance block beside existing reviewer action notes."
+

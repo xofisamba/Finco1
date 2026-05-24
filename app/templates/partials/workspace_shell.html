@@ -15,6 +15,33 @@
         {{ workspace_state_meta.last_runtime_origin_label if workspace_state_meta else "No runtime bound yet" }}
       </span>
     </div>
+
+    <div class="export-lineage-history">
+      <div class="export-lineage-history__title">Recent Export Records</div>
+      <div class="export-lineage-history__desc">
+        Recorded export lineage is descriptive only. Unavailable or not_applicable markers are intentional and must not be read as zero.
+      </div>
+      {% if not export_lineage_ui.recent_exports %}
+      <div class="ps-mini-empty">
+        No active export records yet for this workspace.
+      </div>
+      {% else %}
+      <div class="ps-export-list">
+        {% for item in export_lineage_ui.recent_exports %}
+        <div class="ps-export-item">
+          <div class="ps-export-title">{{ item.artifact_name }}</div>
+          <div class="ps-export-meta">{{ item.export_type }} · {{ item.created_at }} · {{ item.scenario_name }}</div>
+          <div class="ps-export-meta">Scenario ID {{ item.scenario_id }} · Revision {{ item.scenario_revision }}</div>
+          <div class="ps-export-meta">Runtime snapshot {{ item.runtime_snapshot_id }} · Origin {{ item.runtime_origin }}</div>
+          <div class="ps-export-meta">Runtime at {{ item.runtime_generated_at }} · Export at {{ item.export_generated_at }}</div>
+          <div class="ps-export-meta">Branch {{ item.branch_name }} · Commit {{ item.commit_sha }}</div>
+          <div class="ps-export-meta">Template {{ item.template_origin }} · Flags {{ item.runtime_flag_count }}</div>
+          <div class="ps-export-meta">Governance {{ item.governance_summary }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="workspace-state-strip" aria-label="Editable workspace state summary" aria-describedby="workspace-state-guidance">
@@ -46,6 +73,55 @@
 
   <div class="workspace-reviewer-note" id="workspace-state-guidance" role="note" aria-label="Reviewer guidance for draft, saved, and runtime boundaries">
     Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
+  </div>
+
+  <div class="export-lineage-panel" id="export-lineage-panel" aria-label="Export lineage summary">
+    <div class="export-lineage-panel__header">
+      <div>
+        <div class="export-lineage-panel__title">Export Lineage</div>
+        <div class="export-lineage-panel__desc">
+          Reviewer-facing lineage only. Exports remain descriptive and do not become the calculation authority.
+        </div>
+      </div>
+      <span class="workspace-state-meta-chip" id="export-lineage-dirty-chip">
+        {{ export_lineage_ui.current_context.dirty_label if export_lineage_ui else "Clean saved state" }}
+      </span>
+    </div>
+    <div class="export-lineage-grid">
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Active project</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.project_label }}</div>
+        <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.project_code }}</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Saved scenario boundary</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.active_scenario_name }}</div>
+        <div class="export-lineage-card__meta">Scenario ID {{ export_lineage_ui.current_context.active_scenario_id }}</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Scenario revision</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.scenario_revision }}</div>
+        <div class="export-lineage-card__meta">Saved boundary timestamp</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Last runtime snapshot</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_snapshot_id }}</div>
+        <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.runtime_origin_label }}</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Runtime generated at</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_generated_at }}</div>
+        <div class="export-lineage-card__meta">Last clean backend run</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Governance posture</div>
+        <div class="export-lineage-card__value">G20 BLOCKED</div>
+        <div class="export-lineage-card__meta">R99/R102 NOT APPROVED</div>
+      </div>
+    </div>
+    <div class="export-lineage-note" id="export-lineage-guidance" role="note">
+      {{ export_lineage_ui.current_context.action_note }}
+    </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════ OVERVIEW ══ -->
@@ -316,15 +392,71 @@
   <div class="tab-panel" id="panel-downloads">
     <div class="panel-header">
       <div class="panel-title">Downloads &amp; Audit Artefacts</div>
-      <div class="panel-desc">Export model outputs, parity workbooks, gap registers, and source maps.</div>
+      <div class="panel-desc">Export model outputs, parity workbooks, gap registers, and source maps with reviewer-readable lineage before download.</div>
+    </div>
+
+    <div class="export-lineage-history">
+      <div class="export-lineage-history__title">Current Export Context</div>
+      <div class="export-lineage-history__desc" id="export-lineage-guidance">
+        {{ export_lineage_ui.current_context.action_note }}
+      </div>
+      <div class="export-lineage-grid">
+        <div class="export-lineage-card">
+          <div class="export-lineage-card__label">Active project</div>
+          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.project_label }}</div>
+          <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.project_code }}</div>
+        </div>
+        <div class="export-lineage-card">
+          <div class="export-lineage-card__label">Saved scenario</div>
+          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.active_scenario_name }}</div>
+          <div class="export-lineage-card__meta">Scenario ID {{ export_lineage_ui.current_context.active_scenario_id }}</div>
+        </div>
+        <div class="export-lineage-card">
+          <div class="export-lineage-card__label">Scenario revision</div>
+          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.scenario_revision }}</div>
+          <div class="export-lineage-card__meta">Saved boundary timestamp</div>
+        </div>
+        <div class="export-lineage-card">
+          <div class="export-lineage-card__label">Last runtime snapshot</div>
+          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_snapshot_id }}</div>
+          <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.runtime_origin_label }}</div>
+        </div>
+        <div class="export-lineage-card">
+          <div class="export-lineage-card__label">Runtime generated at</div>
+          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_generated_at }}</div>
+          <div class="export-lineage-card__meta">Last clean backend run</div>
+        </div>
+        <div class="export-lineage-card">
+          <div class="export-lineage-card__label">Governance posture</div>
+          <div class="export-lineage-card__value">G20 BLOCKED</div>
+          <div class="export-lineage-card__meta">R99/R102 NOT APPROVED</div>
+        </div>
+      </div>
     </div>
 
     <div class="downloads-grid">
       <a href="/download" class="download-item">
         <div class="download-icon">📥</div>
         <div class="download-info">
-          <div class="download-name">Model Export (.xlsx)</div>
-          <div class="download-desc">Full model output workbook</div>
+          <div class="download-name">Values-only Excel Export (.xlsx)</div>
+          <div class="download-desc">Submitted workbook values with descriptive provenance and notes.</div>
+          <div class="download-lineage-meta">Backend-authored and descriptive only. This does not promote dirty draft values into runtime truth.</div>
+        </div>
+      </a>
+      <a href="/exports/runtime-summary.csv?project={{ project_record.project_code }}" class="download-item">
+        <div class="download-icon">CSV</div>
+        <div class="download-info">
+          <div class="download-name">Runtime Summary CSV</div>
+          <div class="download-desc">Backend runtime metrics, provenance, and governance posture for the active project.</div>
+          <div class="download-lineage-meta">Uses the last clean backend runtime context. Save and run again before sharing if the current draft should be reflected.</div>
+        </div>
+      </a>
+      <a href="/exports/institutional-workbook.xlsx?project={{ project_record.project_code }}" class="download-item">
+        <div class="download-icon">Workbook</div>
+        <div class="download-info">
+          <div class="download-name">Institutional Workbook</div>
+          <div class="download-desc">Reviewer-facing workbook with runtime summary, provenance, cover notes, and governance context.</div>
+          <div class="download-lineage-meta">Descriptive only. Numeric sheets remain tied to backend runtime/export behavior, not browser-side calculations.</div>
         </div>
       </a>
       <a href="#download-parity" class="download-item">

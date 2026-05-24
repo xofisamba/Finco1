@@ -30,6 +30,27 @@ function updateReviewerActionHelp(meta) {
   helper.textContent = meta && meta.dirty ? dirtyMessage : cleanMessage;
 }
 
+function updateExportLineageGuidance(meta) {
+  var helper = document.getElementById('reviewer-export-lineage-help');
+  if (helper) {
+    var dirtyMessage = helper.getAttribute('data-dirty-message') || '';
+    var cleanMessage = helper.getAttribute('data-clean-message') || '';
+    helper.textContent = meta && meta.dirty ? dirtyMessage : cleanMessage;
+  }
+
+  var lineageNote = document.getElementById('export-lineage-guidance');
+  if (lineageNote) {
+    lineageNote.textContent = meta && meta.dirty
+      ? 'Unsaved draft edits are active. Runtime-backed exports remain tied to the last clean backend snapshot until you save and run again.'
+      : 'Draft and saved state are aligned. Runtime-backed exports reflect the last clean backend runtime boundary shown in the workspace.';
+  }
+
+  var lineageChip = document.getElementById('export-lineage-dirty-chip');
+  if (lineageChip && meta && meta.dirty_label) {
+    lineageChip.textContent = meta.dirty_label;
+  }
+}
+
 function switchTab(tabId) {
   if (!tabId) return;
   activeTab = tabId;
@@ -149,6 +170,7 @@ window.applyWorkspaceStateMeta = function(meta) {
     setActionReason(id, meta.dirty ? dirtyReason : '');
   });
   updateReviewerActionHelp(meta);
+  updateExportLineageGuidance(meta);
 };
 
 window.refreshScenarioWorkspace = function(projectId) {
