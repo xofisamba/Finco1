@@ -1,0 +1,7 @@
+case,display_value,zero_interpretation_allowed,notes
+missing_metric,"pending / unavailable",no,"Used when a saved runtime summary does not expose a metric."
+missing_delta,"not_applicable",no,"Used when left or right metric is unavailable so a numeric delta would be misleading."
+actual_zero,"0 or 0.0 when provided by source",yes,"Only real zero values may render as zero."
+runtime_timestamp_missing,"unavailable",no,"Explicitly shown instead of blank."
+runtime_origin_missing,"not_applicable",no,"Explicitly shown instead of implied authority."
+

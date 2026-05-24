@@ -1,9 +1,38 @@
-<div class="ps-compare-results">
+<div class="ps-compare-results" data-testid="scenario-compare-results">
   <div class="ps-compare-heading">
     {{ compare_result.left.scenario_name }} vs {{ compare_result.right.scenario_name }}
   </div>
+  <div class="ps-compare-banner" role="note" aria-label="Scenario compare source clarity">
+    Scenario compare is descriptive only. It compares saved scenario snapshots and saved runtime summaries, not unsaved browser draft values.
+  </div>
   <div class="ps-compare-note">
-    Runtime metrics and governance posture are shown together so reviewers can see numeric drift and review-state differences in one place.
+    Compare generated at {{ compare_result.compare_generated_at }}. {{ compare_result.dirty_note }}
+  </div>
+  <div class="ps-compare-note">
+    {{ compare_result.missing_metric_note }} Runtime metrics and governance posture are shown together so reviewers can see numeric drift and review-state differences without confusing pending values for zero.
+  </div>
+
+  <div class="ps-compare-context-grid">
+    <div class="ps-compare-context-card">
+      <div class="ps-compare-context-title">Left Source</div>
+      <div class="ps-compare-context-meta">{{ compare_result.left_context.source_label }}</div>
+      <div class="ps-compare-context-meta">Saved snapshot timestamp: {{ compare_result.left_context.scenario_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime timestamp: {{ compare_result.left_context.runtime_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime snapshot ID: {{ compare_result.left_context.runtime_snapshot_id }}</div>
+      <div class="ps-compare-context-meta">Runtime origin: {{ compare_result.left_context.runtime_origin }}</div>
+    </div>
+    <div class="ps-compare-context-card">
+      <div class="ps-compare-context-title">Right Source</div>
+      <div class="ps-compare-context-meta">{{ compare_result.right_context.source_label }}</div>
+      <div class="ps-compare-context-meta">Saved snapshot timestamp: {{ compare_result.right_context.scenario_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime timestamp: {{ compare_result.right_context.runtime_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime snapshot ID: {{ compare_result.right_context.runtime_snapshot_id }}</div>
+      <div class="ps-compare-context-meta">Runtime origin: {{ compare_result.right_context.runtime_origin }}</div>
+    </div>
+  </div>
+
+  <div class="ps-compare-banner ps-compare-banner--subtle">
+    Workspace runtime boundary: {{ compare_result.workspace_runtime_origin_label }}. Compare does not auto-save and does not auto-run.
   </div>
 
   <div class="ps-compare-table">
@@ -16,11 +45,15 @@
     {% for row in compare_result.metrics %}
     <div class="ps-compare-row">
       <span>{{ row.metric }}</span>
-      <span>{{ row.left_value if row.left_value is not none else "pending" }}</span>
-      <span>{{ row.right_value if row.right_value is not none else "pending" }}</span>
-      <span>{{ row.delta if row.delta is not none else "n/a" }}</span>
+      <span>{{ row.left_value }}</span>
+      <span>{{ row.right_value }}</span>
+      <span>{{ row.delta }}</span>
     </div>
     {% endfor %}
+  </div>
+
+  <div class="ps-compare-banner ps-compare-banner--subtle">
+    {{ compare_result.governance_summary }}
   </div>
 
   <div class="ps-compare-governance">

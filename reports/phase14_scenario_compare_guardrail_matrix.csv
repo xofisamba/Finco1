@@ -1,0 +1,12 @@
+guardrail,status,evidence,notes
+scenario_compare_descriptive_only,confirmed,"compare banner and docs","Does not become financial authority."
+compare_uses_saved_snapshots_only,confirmed,"scenario_workspace and scenario_compare copy","Unsaved browser drafts excluded."
+compare_does_not_auto_save,confirmed,"route wiring only calls compare_scenarios","No save path invoked."
+compare_does_not_auto_run,confirmed,"route wiring only calls compare_scenarios","No runtime execution path invoked."
+missing_values_not_shown_as_zero,confirmed,"pending / unavailable and not_applicable markers","Avoids false certainty."
+no_runtime_model_formula_changes,confirmed,"UI/context only","No economic logic changed."
+no_javascript_financial_calculations,confirmed,"static styles only; no JS math added","No frontend authority drift."
+contracts_unchanged,confirmed,"docs statements retained","audit/runtime mode contracts unchanged."
+g20_blocked,confirmed,"UI and docs","Still BLOCKED."
+r99_r102_not_approved,confirmed,"UI and docs","Still NOT APPROVED."
+

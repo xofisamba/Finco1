@@ -350,6 +350,68 @@ def _build_export_lineage_ui_context(project_record, workspace_state, export_lin
     }
 
 
+def _format_compare_value(value) -> str:
+    if value in (None, "", "NOT_AVAILABLE"):
+        return "pending / unavailable"
+    return str(value)
+
+
+def _format_compare_delta(value) -> str:
+    if value is None:
+        return "not_applicable"
+    return str(value)
+
+
+def _build_compare_ui_context(compare_result: dict, workspace_state) -> dict:
+    workspace_meta = _workspace_state_meta(workspace_state)
+    left = compare_result["left"]
+    right = compare_result["right"]
+    compare_metrics = []
+    for row in compare_result["metrics"]:
+        compare_metrics.append(
+            {
+                "metric": row["metric"],
+                "left_value": _format_compare_value(row["left_value"]),
+                "right_value": _format_compare_value(row["right_value"]),
+                "delta": _format_compare_delta(row["delta"]),
+            }
+        )
+
+    left_replay = dict(left.replay_metadata or {})
+    right_replay = dict(right.replay_metadata or {})
+    dirty_note = (
+        "Current workspace draft has unsaved edits. Those browser-side edits are not part of this comparison; the compare panel only reflects saved scenario snapshots and saved runtime summaries."
+        if workspace_meta["dirty"]
+        else "Current workspace draft is aligned to the saved boundary, so this comparison is reading saved scenario snapshots without hidden draft drift."
+    )
+    return {
+        "left": left,
+        "right": right,
+        "metrics": compare_metrics,
+        "governance_rows": compare_result["governance_rows"],
+        "compare_generated_at": utc_now_iso(),
+        "dirty_note": dirty_note,
+        "left_context": {
+            "scenario_timestamp": _format_ui_timestamp(left.updated_at),
+            "runtime_timestamp": left_replay.get("runtime_timestamp") or "unavailable",
+            "runtime_snapshot_id": left_replay.get("runtime_snapshot_id") or "unavailable",
+            "runtime_origin": left_replay.get("runtime_origin") or "not_applicable",
+            "source_label": "saved scenario snapshot with saved runtime summary",
+        },
+        "right_context": {
+            "scenario_timestamp": _format_ui_timestamp(right.updated_at),
+            "runtime_timestamp": right_replay.get("runtime_timestamp") or "unavailable",
+            "runtime_snapshot_id": right_replay.get("runtime_snapshot_id") or "unavailable",
+            "runtime_origin": right_replay.get("runtime_origin") or "not_applicable",
+            "source_label": "saved scenario snapshot with saved runtime summary",
+        },
+        "workspace_dirty": workspace_meta["dirty"],
+        "workspace_runtime_origin_label": workspace_meta["last_runtime_origin_label"],
+        "governance_summary": "G20 remains BLOCKED. R99/R102 remain NOT APPROVED. Accepted conventions remain explanatory only.",
+        "missing_metric_note": "Pending, unavailable, and not_applicable markers are intentional. They do not mean zero unless the source value is actually zero.",
+    }
+
+
 def _replay_metadata_for_project(
     project_code: str,
     *,
@@ -1607,6 +1669,7 @@ async def scenario_compare_endpoint(
         if compare_result is None:
             message = "Could not compare those scenarios."
         else:
+            compare_result = _build_compare_ui_context(compare_result, workspace_state)
             message = "Scenario compare ready. Review numeric deltas together with governance posture."
 
     return _render_scenario_workspace(
