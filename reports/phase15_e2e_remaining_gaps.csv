@@ -1,0 +1,8 @@
+gap,why_not_solved_here,impact,notes
+browser_automation,"This branch is repository-driven integration coverage only","medium","Browser-level flows remain future work."
+external_model_review,"Requires outside review, not internal test wiring","high","Still required for lender-ready claims."
+audit_certification,"Cannot be solved by internal integration tests","high","No audit-certified claim."
+deployment_hardening,"Out of scope for test-first entry checklist","medium","Still future Phase 15 operations work."
+multi_user_workflows,"Current product remains single-user oriented","medium","Roles/permissions not implemented."
+approval_workflow,"Governance workflow automation remains out of scope","medium","G20 and R99/R102 posture unchanged."
+

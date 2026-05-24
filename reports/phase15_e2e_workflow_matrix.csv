@@ -1,0 +1,10 @@
+workflow_step,covered_by_suite,assertion_focus,authority_boundary_checked,notes
+project_select,yes,"supported project code and project record created","project selection is descriptive setup only","Uses TUHO baseline."
+editable_grid_edit,yes,"supported assumption changes draft snapshot","draft edits are not runtime truth","Uses existing supported Revenue/OPEX/Senior Debt style fields."
+dirty_state,yes,"workspace dirty flag and runtime guard block","runtime cannot run from dirty draft","No hidden auto-run."
+save_scenario,yes,"new saved scenario boundary created and rebound","save does not auto-run runtime","Explicit persisted snapshot."
+run_model,yes,"runtime snapshot and summary recorded","runtime remains backend-authoritative","Uses clean saved state only."
+export_workbook,yes,"workbook file readable and linked to runtime/export context","workbook remains descriptive only","No export authority drift."
+compare_scenarios,yes,"saved snapshots and saved runtime summaries compared","compare remains descriptive only","Pending/unavailable values stay explicit."
+governance_posture,yes,"G20 and R99/R102 statuses remain unchanged","governance state not softened","Still BLOCKED / NOT APPROVED."
+
