@@ -1,0 +1,12 @@
+risk,current_status,impact,mitigation,residual_risk
+single_user_only,known,medium,"keep runbook explicitly scoped to single-user guided pilot","multi-user operations remain out of scope"
+default_secret_or_password_misuse,known,high,"require explicit FINCO_SECRET_KEY and admin credential setup before pilot","operator error still possible"
+local_http_cookie_secure_mismatch,known,medium,"set FINCO_COOKIE_SECURE=false for localhost pilot runs","login confusion if operator misses the setting"
+sqlite_path_not_writable,known,high,"verify FINCO_DB_PATH and filesystem permissions before start","pilot may fail to save scenarios or exports if storage is unwritable"
+missing_fastapi_or_core_python_deps,known,high,"install requirements.txt before startup","environment drift remains possible"
+missing_openpyxl_for_workbook_tests,known,low,"use bundled spreadsheet package path or install openpyxl for validation","test-only friction remains"
+bcrypt_dependency_absent_in_local_tests,known,low,"use test-only shim in tests/conftest.py for collection, not production","production still needs real bcrypt if hashed-password path is used"
+git_ref_lock_publish_issue,known,low,"use ZIP publish fallback and validator-backed file verification","local git publication may remain unreliable"
+pytest_cache_permission_warning,known,low,"treat as non-blocking unless it masks a real failure","noisy test output remains"
+backup_confused_with_audit_replay,guardrail,medium,"state plainly that backup restore is operational recovery only","operator misunderstanding still possible without checklist discipline"
+overclaiming_pilot_readiness,guardrail,medium,"state no lender-ready audit-certified or SaaS claim in runbook","future readers may still need reminder"
