@@ -1,0 +1,13 @@
+dimension,score_1_to_10,current_posture,notes
+runtime_authority,9,High,Backend runtime remains authoritative and unchanged through recent closeout work
+persistence_authority,8,Improved,app/persistence is canonical and persistence remains non-authoritative
+editable_grid_workflow,8,Delivered,Draft saved runtime boundaries are explicit on supported surfaces
+stale_state_prevention,8,Delivered,Dirty-state and last-clean-runtime boundaries are explicit and tested
+governance_discipline,8,Strong,G20 remains BLOCKED and R99/R102 remain NOT APPROVED
+workbook_export_discipline,8,Strong,Workbook/export layers are descriptive and numeric spot-check coverage exists
+reviewer_ux,8,Improved,Reviewer productivity polish and clearer disabled-state explanations are in place
+publish_package_workflow,8,Improved,ZIP fallback is now documented and validator-backed
+test_coverage,8,Improved,Targeted e2e, workbook-content, contract, and UX guard tests exist
+pilot_readiness,7,Guided pilot-safe,Suitable for guided pilot workflows with explicit no-claims boundary
+r99_r102_readiness,3,Low,Still NOT APPROVED and explicitly outside pilot-safe promotion posture
+

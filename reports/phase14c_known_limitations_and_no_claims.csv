@@ -1,0 +1,11 @@
+area,current_status,no_claim_or_limitation,reason
+Lender readiness,Limited,Not lender-ready without external model review,Current product has not been externally validated for lender signoff
+Audit posture,Limited,Not audit-certified,Audit evidence and workflow are improved but not certified
+Governance workflow,Limited,Not multi-user governance-ready,No role or approval workflow implementation
+Promotion posture,Blocked,R99/R102 are NOT APPROVED,Runtime promotion remains explicitly blocked
+Gate posture,Blocked,G20 remains BLOCKED,No approval change has been made
+Editable grid scope,Limited,Selected editable surfaces only,No expansion into tax SHL or complex schedules
+Formula editing,Excluded,No spreadsheet-style formula editor,Current UX is controlled assumption editing only
+Replay capabilities,Excluded,No full replay engine,Provenance exists but deterministic replay is not implemented
+Operations scope,Excluded,No billing multi-tenancy or SaaS operations,Outside current product maturity scope
+

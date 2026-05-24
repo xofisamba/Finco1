@@ -1,0 +1,16 @@
+workflow,category,status,guardrail,notes
+Select project template,pilot_safe,SUPPORTED,Supported templates only,Works within current single-user workflow
+Edit supported assumptions,pilot_safe,SUPPORTED,Draft-only state on selected surfaces only,No new editable surfaces implied
+Save scenario,pilot_safe,SUPPORTED,Explicit persisted boundary only,Save does not auto-run the model
+Run model,pilot_safe,SUPPORTED,Clean saved boundary required,Runtime remains backend-authoritative
+Inspect runtime summary,pilot_safe,SUPPORTED,Last clean runtime snapshot is authoritative,Not browser-side computed
+Compare saved scenarios,pilot_safe,SUPPORTED,Saved scenarios only,Dirty draft state remains guarded
+Export workbook,pilot_safe,SUPPORTED,Backend-authored export only,Workbook remains descriptive not authoritative
+Review governance labels,pilot_safe,SUPPORTED,Use current semantics docs not legacy-frozen artifacts,G20 and R99/R102 remain blocked/not approved
+ZIP publish fallback,pilot_safe,SUPPORTED,Validate exact package contents first,Use when local git publishing is blocked
+Audit_economic_mode comparison,internal_only,SUPPORTED,Audit/reconciliation-only,Not runtime-authoritative
+R99/R102 runtime promotion,excluded,NOT_SUPPORTED,NOT APPROVED,Not part of current pilot-safe workflow
+G20 approval workflow,excluded,NOT_SUPPORTED,BLOCKED,Not part of current pilot-safe workflow
+Replay-driven rerun,future,NOT_YET,No replay engine present,Future roadmap only
+Multi-user governance flow,future,NOT_YET,No role or approval workflow implementation,Future roadmap only
+

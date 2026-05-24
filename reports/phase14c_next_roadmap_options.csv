@@ -1,0 +1,6 @@
+option,priority,description,why_next,explicitly_not_included
+Phase 15 pilot operations and reviewer handoff,RECOMMENDED,Improve package/publish reliability reviewer onboarding and optional browser-level pilot verification,Builds directly on current pilot-safe workflows without changing runtime authority,No runtime formula work no governance promotion
+Phase 15B non-authoritative validation ergonomics,MEDIUM,Add more reviewer-oriented validation messages and diagnostics around supported workflows,Improves confidence without changing economics,No new editable surfaces
+Phase 16 governance workflow planning,LOW,Design future role approval and signoff architecture without implementation,Needed eventually but premature before pilot operations closeout,No approval workflow implementation
+R99/R102 promotion preparation,DEFERRED,Investigate future evidence and runtime promotion readiness,Explicitly blocked today and not appropriate for current pilot-safe scope,No promotion no gate change
+
