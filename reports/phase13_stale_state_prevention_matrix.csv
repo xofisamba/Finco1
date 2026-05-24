@@ -1,0 +1,6 @@
+control_area,mechanism,stale_state_prevented,notes
+dirty_tracking,workspace draft snapshot vs saved snapshot comparison,yes,Unsaved edits are flagged before runtime execution.
+runtime_binding,last_runtime_snapshot_id,yes,Each runtime result keeps its own snapshot boundary reference.
+scenario_clarity,active scenario id and name,yes,Users can distinguish active saved scenario from unsaved form edits.
+discard_flow,restore saved snapshot into draft state,yes,Discard removes stale draft divergence.
+governance_safety,governance labels remain explanatory only,yes,Editable state does not imply approval or promotion.

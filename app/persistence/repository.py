@@ -178,6 +178,53 @@ class ScenarioExportRecord:
         )
 
 
+@dataclass(slots=True)
+class WorkspaceStateRecord:
+    workspace_id: str
+    project_id: str
+    user_id: str
+    project_code: str
+    active_scenario_id: Optional[str]
+    active_scenario_name: Optional[str]
+    draft_snapshot: dict[str, Any]
+    saved_snapshot: dict[str, Any]
+    last_runtime_snapshot: dict[str, Any]
+    last_runtime_summary: dict[str, Any]
+    last_runtime_snapshot_id: Optional[str]
+    last_runtime_origin: Optional[str]
+    last_runtime_scenario_id: Optional[str]
+    dirty: bool
+    governance_state: dict[str, Any]
+    replay_metadata: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+    last_runtime_at: Optional[datetime]
+
+    @classmethod
+    def from_row(cls, row) -> "WorkspaceStateRecord":
+        return cls(
+            workspace_id=row["workspace_id"],
+            project_id=row["project_id"],
+            user_id=row["user_id"],
+            project_code=row["project_code"],
+            active_scenario_id=row["active_scenario_id"],
+            active_scenario_name=row["active_scenario_name"],
+            draft_snapshot=_from_json(row["draft_snapshot_json"], {}),
+            saved_snapshot=_from_json(row["saved_snapshot_json"], {}),
+            last_runtime_snapshot=_from_json(row["last_runtime_snapshot_json"], {}),
+            last_runtime_summary=_from_json(row["last_runtime_summary_json"], {}),
+            last_runtime_snapshot_id=row["last_runtime_snapshot_id"],
+            last_runtime_origin=row["last_runtime_origin"],
+            last_runtime_scenario_id=row["last_runtime_scenario_id"],
+            dirty=bool(row["dirty"]),
+            governance_state=_from_json(row["governance_state_json"], {}),
+            replay_metadata=_from_json(row["replay_metadata_json"], {}),
+            created_at=_from_iso(row["created_at"]),
+            updated_at=_from_iso(row["updated_at"]),
+            last_runtime_at=_from_iso(row["last_runtime_at"]) if row["last_runtime_at"] else None,
+        )
+
+
 def _safe_number(value: Any) -> Optional[float]:
     if value in (None, "", "NOT_AVAILABLE", "MISSING"):
         return None
@@ -203,6 +250,26 @@ def _metric_value(record: ScenarioRecord, key: str) -> Any:
         "Distributions": summary.get("distribution_keur"),
     }
     return metric_map.get(key)
+
+
+def snapshots_equal(left: Optional[dict[str, Any]], right: Optional[dict[str, Any]]) -> bool:
+    return _to_json(left or {}) == _to_json(right or {})
+
+
+def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], current_snapshot: dict[str, Any]) -> tuple[bool, str, str]:
+    if workspace_state is None:
+        return True, "workspace_base", ""
+    if snapshots_equal(workspace_state.saved_snapshot, current_snapshot):
+        if workspace_state.active_scenario_id:
+            return True, "saved_state", ""
+        return True, "workspace_base", ""
+    if workspace_state.dirty:
+        return False, "preview_only", (
+            "Unsaved edits are active. Save the scenario or discard edits before running so runtime results stay bound to an immutable snapshot."
+        )
+    return False, "preview_only", (
+        "Current form state no longer matches the last saved runtime boundary. Refresh or discard edits before running."
+    )
 
 
 def save_run(
@@ -516,6 +583,263 @@ def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] =
         last_run_summary=record.last_run_summary,
         copied_from_scenario_id=record.scenario_id,
         replay_metadata=record.replay_metadata,
+    )
+
+
+def update_scenario_last_run_summary(
+    user_id: str,
+    scenario_id: str,
+    last_run_summary: dict[str, Any],
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> bool:
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return False
+    merged_replay_metadata = dict(record.replay_metadata or {})
+    if replay_metadata:
+        merged_replay_metadata.update(replay_metadata)
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET last_run_summary_json=?, replay_metadata_json=?, updated_at=?
+            WHERE scenario_id=? AND user_id=?
+            """,
+            (
+                _to_json(last_run_summary or {}),
+                _to_json(merged_replay_metadata),
+                _now_utc().isoformat(),
+                scenario_id,
+                user_id,
+            ),
+        )
+        return cur.rowcount > 0
+
+
+def get_workspace_state(user_id: str, project_id: str) -> Optional[WorkspaceStateRecord]:
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+    return WorkspaceStateRecord.from_row(row) if row else None
+
+
+def save_workspace_state(
+    *,
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    draft_snapshot: dict[str, Any],
+    saved_snapshot: dict[str, Any],
+    governance_state: Optional[dict[str, Any]] = None,
+    active_scenario_id: Optional[str] = None,
+    active_scenario_name: Optional[str] = None,
+    last_runtime_snapshot: Optional[dict[str, Any]] = None,
+    last_runtime_summary: Optional[dict[str, Any]] = None,
+    last_runtime_snapshot_id: Optional[str] = None,
+    last_runtime_origin: Optional[str] = None,
+    last_runtime_scenario_id: Optional[str] = None,
+    dirty: bool = False,
+    replay_metadata: Optional[dict[str, Any]] = None,
+    last_runtime_at: Optional[datetime] = None,
+) -> WorkspaceStateRecord:
+    now = _now_utc()
+    governance_state = governance_state or {}
+    replay_metadata = dict(replay_metadata or {})
+    existing = get_workspace_state(user_id, project_id)
+    if existing is not None:
+        workspace_id = existing.workspace_id
+        created_at = existing.created_at
+        if last_runtime_snapshot is None:
+            last_runtime_snapshot = existing.last_runtime_snapshot
+        if last_runtime_summary is None:
+            last_runtime_summary = existing.last_runtime_summary
+        if last_runtime_snapshot_id is None:
+            last_runtime_snapshot_id = existing.last_runtime_snapshot_id
+        if last_runtime_origin is None:
+            last_runtime_origin = existing.last_runtime_origin
+        if last_runtime_scenario_id is None:
+            last_runtime_scenario_id = existing.last_runtime_scenario_id
+        if last_runtime_at is None:
+            last_runtime_at = existing.last_runtime_at
+        if not governance_state:
+            governance_state = existing.governance_state
+        merged_replay_metadata = dict(existing.replay_metadata or {})
+        merged_replay_metadata.update(replay_metadata)
+        replay_metadata = merged_replay_metadata
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                UPDATE workspace_states
+                SET project_code=?, active_scenario_id=?, active_scenario_name=?, draft_snapshot_json=?,
+                    saved_snapshot_json=?, last_runtime_snapshot_json=?, last_runtime_summary_json=?,
+                    last_runtime_snapshot_id=?, last_runtime_origin=?, last_runtime_scenario_id=?,
+                    dirty=?, governance_state_json=?, replay_metadata_json=?, updated_at=?, last_runtime_at=?
+                WHERE workspace_id=? AND user_id=?
+                """,
+                (
+                    project_code,
+                    active_scenario_id,
+                    active_scenario_name,
+                    _to_json(draft_snapshot or {}),
+                    _to_json(saved_snapshot or {}),
+                    _to_json(last_runtime_snapshot or {}),
+                    _to_json(last_runtime_summary or {}),
+                    last_runtime_snapshot_id,
+                    last_runtime_origin,
+                    last_runtime_scenario_id,
+                    int(dirty),
+                    _to_json(governance_state),
+                    _to_json(replay_metadata),
+                    now.isoformat(),
+                    last_runtime_at.isoformat() if last_runtime_at else None,
+                    workspace_id,
+                    user_id,
+                ),
+            )
+    else:
+        workspace_id = uuid.uuid4().hex[:16]
+        created_at = now
+        replay_metadata.setdefault("workspace_id", workspace_id)
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO workspace_states (
+                    workspace_id, project_id, user_id, project_code, active_scenario_id, active_scenario_name,
+                    draft_snapshot_json, saved_snapshot_json, last_runtime_snapshot_json, last_runtime_summary_json,
+                    last_runtime_snapshot_id, last_runtime_origin, last_runtime_scenario_id, dirty,
+                    governance_state_json, replay_metadata_json, created_at, updated_at, last_runtime_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    workspace_id,
+                    project_id,
+                    user_id,
+                    project_code,
+                    active_scenario_id,
+                    active_scenario_name,
+                    _to_json(draft_snapshot or {}),
+                    _to_json(saved_snapshot or {}),
+                    _to_json(last_runtime_snapshot or {}),
+                    _to_json(last_runtime_summary or {}),
+                    last_runtime_snapshot_id,
+                    last_runtime_origin,
+                    last_runtime_scenario_id,
+                    int(dirty),
+                    _to_json(governance_state),
+                    _to_json(replay_metadata),
+                    created_at.isoformat(),
+                    now.isoformat(),
+                    last_runtime_at.isoformat() if last_runtime_at else None,
+                ),
+            )
+
+    return WorkspaceStateRecord(
+        workspace_id=workspace_id,
+        project_id=project_id,
+        user_id=user_id,
+        project_code=project_code,
+        active_scenario_id=active_scenario_id,
+        active_scenario_name=active_scenario_name,
+        draft_snapshot=draft_snapshot or {},
+        saved_snapshot=saved_snapshot or {},
+        last_runtime_snapshot=last_runtime_snapshot or {},
+        last_runtime_summary=last_runtime_summary or {},
+        last_runtime_snapshot_id=last_runtime_snapshot_id,
+        last_runtime_origin=last_runtime_origin,
+        last_runtime_scenario_id=last_runtime_scenario_id,
+        dirty=dirty,
+        governance_state=governance_state,
+        replay_metadata=replay_metadata,
+        created_at=created_at,
+        updated_at=now,
+        last_runtime_at=last_runtime_at,
+    )
+
+
+def bind_workspace_to_scenario(
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    record: ScenarioRecord,
+    governance_state: Optional[dict[str, Any]] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> WorkspaceStateRecord:
+    return save_workspace_state(
+        user_id=user_id,
+        project_id=project_id,
+        project_code=project_code,
+        active_scenario_id=record.scenario_id,
+        active_scenario_name=record.scenario_name,
+        draft_snapshot=record.snapshot,
+        saved_snapshot=record.snapshot,
+        dirty=False,
+        governance_state=governance_state or record.governance_state,
+        replay_metadata=replay_metadata,
+    )
+
+
+def discard_workspace_draft(user_id: str, project_id: str) -> Optional[WorkspaceStateRecord]:
+    record = get_workspace_state(user_id, project_id)
+    if record is None:
+        return None
+    return save_workspace_state(
+        user_id=user_id,
+        project_id=project_id,
+        project_code=record.project_code,
+        active_scenario_id=record.active_scenario_id,
+        active_scenario_name=record.active_scenario_name,
+        draft_snapshot=record.saved_snapshot,
+        saved_snapshot=record.saved_snapshot,
+        last_runtime_snapshot=record.last_runtime_snapshot,
+        last_runtime_summary=record.last_runtime_summary,
+        last_runtime_snapshot_id=record.last_runtime_snapshot_id,
+        last_runtime_origin=record.last_runtime_origin,
+        last_runtime_scenario_id=record.last_runtime_scenario_id,
+        dirty=False,
+        governance_state=record.governance_state,
+        replay_metadata=record.replay_metadata,
+        last_runtime_at=record.last_runtime_at,
+    )
+
+
+def record_workspace_runtime(
+    *,
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    runtime_snapshot: dict[str, Any],
+    runtime_summary: dict[str, Any],
+    runtime_snapshot_id: str,
+    runtime_origin: str,
+    governance_state: Optional[dict[str, Any]] = None,
+    active_scenario_id: Optional[str] = None,
+    active_scenario_name: Optional[str] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> WorkspaceStateRecord:
+    existing = get_workspace_state(user_id, project_id)
+    saved_snapshot = existing.saved_snapshot if existing else runtime_snapshot
+    draft_snapshot = existing.draft_snapshot if existing else runtime_snapshot
+    dirty = existing.dirty if existing else False
+    return save_workspace_state(
+        user_id=user_id,
+        project_id=project_id,
+        project_code=project_code,
+        active_scenario_id=active_scenario_id if active_scenario_id is not None else (existing.active_scenario_id if existing else None),
+        active_scenario_name=active_scenario_name if active_scenario_name is not None else (existing.active_scenario_name if existing else None),
+        draft_snapshot=draft_snapshot,
+        saved_snapshot=saved_snapshot,
+        last_runtime_snapshot=runtime_snapshot,
+        last_runtime_summary=runtime_summary,
+        last_runtime_snapshot_id=runtime_snapshot_id,
+        last_runtime_origin=runtime_origin,
+        last_runtime_scenario_id=active_scenario_id if runtime_origin == "saved_state" else None,
+        dirty=dirty,
+        governance_state=governance_state or (existing.governance_state if existing else {}),
+        replay_metadata=replay_metadata,
+        last_runtime_at=_now_utc(),
     )
 
 

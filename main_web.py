@@ -35,28 +35,36 @@ from app.auth import (
 
 # Import persistence
 from app.persistence.repository import (
+    bind_workspace_to_scenario,
     archive_scenario,
     build_export_lineage,
     compare_scenarios,
     count_runs,
     delete_run,
+    discard_workspace_draft,
     duplicate_scenario,
     get_project_by_code,
     get_run,
     get_scenario,
     get_scenario_history,
+    get_workspace_state,
     list_exports,
     list_runs,
     list_scenarios,
+    record_workspace_runtime,
     record_export,
     rename_scenario,
+    runtime_guard_for_snapshot,
     save_project,
     save_run,
     save_scenario,
+    save_workspace_state,
+    snapshots_equal,
+    update_scenario_last_run_summary,
 )
 from app.persistence.provenance import build_replay_metadata, utc_now_iso
 from app.ui.project_context import get_project_context, all_project_ids
-from app.ui.runtime_summary import runtime_summary_to_dict, build_runtime_summary, NOT_AVAILABLE
+from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 
@@ -181,6 +189,60 @@ def _project_inputs_for_code(project_code: str):
     return create_default_tuho_wind1()
 
 
+def _default_workspace_snapshot(project_code: str) -> dict:
+    code = (project_code or "tuho").strip().lower()
+    return {
+        "active_project": code,
+        "project_type": "Solar" if code == "oborovo" else "Wind",
+        "scenario": "Base",
+        "capacity_mw": "",
+        "tariff_eur_mwh": "",
+        "p50_hours": "",
+        "total_capex_keur": "",
+        "opex_y1_keur": "",
+        "gearing_pct": "",
+        "target_dscr": "",
+        "interest_rate_pct": "",
+        "tenor_years": "",
+        "cod_date": "",
+        "construction_months": "",
+        "horizon_years": "",
+        "capacity_factor": "",
+        "ppa_term_years": "",
+    }
+
+
+def _workspace_state_meta(workspace_state) -> dict:
+    if workspace_state is None:
+        return {
+            "dirty": False,
+            "dirty_label": "Clean saved state",
+            "active_scenario_id": "",
+            "active_scenario_name": "",
+            "last_runtime_origin": "",
+            "last_runtime_origin_label": "No runtime bound yet",
+            "last_runtime_snapshot_id": "",
+        }
+    runtime_origin = workspace_state.last_runtime_origin or ""
+    if runtime_origin == "saved_state":
+        runtime_label = "Runtime bound to saved scenario snapshot"
+    elif runtime_origin == "workspace_base":
+        runtime_label = "Runtime bound to clean workspace base"
+    elif runtime_origin == "preview_only":
+        runtime_label = "Preview only; runtime not executed"
+    else:
+        runtime_label = "No runtime bound yet"
+    return {
+        "dirty": bool(workspace_state.dirty),
+        "dirty_label": "Unsaved edits" if workspace_state.dirty else "Clean saved state",
+        "active_scenario_id": workspace_state.active_scenario_id or "",
+        "active_scenario_name": workspace_state.active_scenario_name or "",
+        "last_runtime_origin": runtime_origin,
+        "last_runtime_origin_label": runtime_label,
+        "last_runtime_snapshot_id": workspace_state.last_runtime_snapshot_id or "",
+    }
+
+
 def _replay_metadata_for_project(
     project_code: str,
     *,
@@ -225,6 +287,23 @@ def _current_project_workspace(user, project_ctx):
             export_type="workspace_project_state",
         ),
     )
+    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    if workspace_state is None:
+        base_snapshot = _default_workspace_snapshot(project_code)
+        workspace_state = save_workspace_state(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_code,
+            draft_snapshot=base_snapshot,
+            saved_snapshot=base_snapshot,
+            dirty=False,
+            governance_state=_governance_snapshot(project_code),
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                project_id=project_record.project_id,
+                export_type="workspace_draft_state",
+            ),
+        )
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
     history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
@@ -249,13 +328,14 @@ def _current_project_workspace(user, project_ctx):
                 "governance_state": item.governance_state,
             }
         )
-    return project_record, scenarios, history, exports, export_lineage, scenario_summary_cards
+    return project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards
 
 
 def _render_scenario_workspace(
     request: Request,
     user,
     project_record,
+    workspace_state,
     scenarios,
     history,
     exports,
@@ -270,6 +350,8 @@ def _render_scenario_workspace(
         context={
             "user": user,
             "project_record": project_record,
+            "workspace_state": workspace_state,
+            "workspace_state_meta": _workspace_state_meta(workspace_state),
             "scenario_records": scenarios,
             "scenario_history": history,
             "export_records": exports,
@@ -546,6 +628,7 @@ async def index(request: Request, project: str | None = None):
     available_projects = all_project_ids()
     (
         project_record,
+        workspace_state,
         scenario_records,
         scenario_history,
         export_records,
@@ -560,11 +643,13 @@ async def index(request: Request, project: str | None = None):
             "project_types": PROJECT_TYPES,
             "scenarios": SCENARIOS,
             "caveats": CAVEATS,
-            "form_data": {},
+            "form_data": workspace_state.draft_snapshot if workspace_state else _default_workspace_snapshot(ctx.id),
             "validation_errors": [],
             "success_message": None,
             "user": user,
             "project_ctx": ctx,
+            "workspace_state": workspace_state,
+            "workspace_state_meta": _workspace_state_meta(workspace_state),
             "available_projects": available_projects,
             "project_record": project_record,
             "scenario_records": scenario_records,
@@ -587,6 +672,7 @@ async def validate(request: Request):
 
     # Parse form data
     form = await request.form()
+    snapshot = _collect_form_snapshot(form)
     active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
@@ -599,6 +685,43 @@ async def validate(request: Request):
     target_dscr = form.get("target_dscr", "")
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
+    project_code, project_name = _project_persistence_metadata(None, snapshot)
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="workspace_project_state",
+        ),
+    )
+    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    if workspace_state is None:
+        workspace_state = save_workspace_state(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_code,
+            draft_snapshot=_default_workspace_snapshot(project_code),
+            saved_snapshot=_default_workspace_snapshot(project_code),
+            dirty=False,
+            governance_state=_governance_snapshot(project_code),
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                project_id=project_record.project_id,
+                export_type="workspace_draft_state",
+            ),
+        )
+    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    if not allow_run:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/errors.html",
+            context={"errors": [guard_message]},
+        )
 
     errors = []
 
@@ -679,9 +802,53 @@ async def run(request: Request):
         project_name = ctx.name
         try:
             project_key = "TUHO" if active_project == "tuho" else "Oborovo"
-            result = run_project(project_key, "Base")
+            scenario_name = snapshot.get("scenario", "") or "Base"
+            schema = _build_schema_from_form(
+                project_type or _default_workspace_snapshot(active_project)["project_type"],
+                scenario_name,
+                capacity_mw, tariff_eur_mwh, p50_hours,
+                total_capex_keur, opex_y1_keur,
+                gearing_pct, target_dscr, interest_rate_pct, tenor_years,
+            )
+            override = build_projectinputs(schema)
+            result = run_project(project_key, scenario_name, project_inputs_override=override)
             kpis = _format_kpis(result["kpis"])
             runtime_summary = runtime_summary_to_dict(result, active_project, project_name)
+            runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
+            record_workspace_runtime(
+                user_id=user.user_id,
+                project_id=project_record.project_id,
+                project_code=project_code,
+                runtime_snapshot=snapshot,
+                runtime_summary=result["kpis"],
+                runtime_snapshot_id=runtime_snapshot_id,
+                runtime_origin=runtime_origin,
+                governance_state=_governance_snapshot(project_code),
+                active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
+                replay_metadata=_replay_metadata_for_project(
+                    project_code,
+                    project_id=project_record.project_id,
+                    scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                    runtime_timestamp=utc_now_iso(),
+                    runtime_snapshot_id=runtime_snapshot_id,
+                    export_type="workspace_runtime_state",
+                ),
+            )
+            if runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+                update_scenario_last_run_summary(
+                    user.user_id,
+                    workspace_state.active_scenario_id,
+                    result["kpis"],
+                    replay_metadata=_replay_metadata_for_project(
+                        project_code,
+                        project_id=project_record.project_id,
+                        scenario_id=workspace_state.active_scenario_id,
+                        runtime_timestamp=utc_now_iso(),
+                        runtime_snapshot_id=runtime_snapshot_id,
+                        export_type="scenario_runtime_summary",
+                    ),
+                )
             # Persist to sessionStorage so output tabs can read it on next page load
             runtime_html = templates.TemplateResponse(
                 request=request,
@@ -701,6 +868,15 @@ async def run(request: Request):
             save_tag = (
                 '<script>'
                 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(runtime_summary) + ');'
+                'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
+                    "dirty": False if runtime_origin in ("saved_state", "workspace_base") else True,
+                    "dirty_label": "Clean saved state" if runtime_origin == "saved_state" else ("Clean workspace base" if runtime_origin == "workspace_base" else "Unsaved edits"),
+                    "active_scenario_id": workspace_state.active_scenario_id or "",
+                    "active_scenario_name": workspace_state.active_scenario_name or "",
+                    "last_runtime_origin": runtime_origin,
+                    "last_runtime_origin_label": "Runtime bound to saved scenario snapshot" if runtime_origin == "saved_state" else "Runtime bound to clean workspace base",
+                    "last_runtime_snapshot_id": runtime_snapshot_id,
+                }) + ');'
                 'window._populateRuntimeBlock && window._populateRuntimeBlock();'
                 '</script>'
             )
@@ -747,6 +923,41 @@ async def run(request: Request):
         override = build_projectinputs(schema)
         result = run_project(project_type, scenario, project_inputs_override=override)
         kpis = _format_kpis(result["kpis"])
+        runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
+        record_workspace_runtime(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_code,
+            runtime_snapshot=snapshot,
+            runtime_summary=result["kpis"],
+            runtime_snapshot_id=runtime_snapshot_id,
+            runtime_origin=runtime_origin,
+            governance_state=_governance_snapshot(project_code),
+            active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+            active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                project_id=project_record.project_id,
+                scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                runtime_timestamp=utc_now_iso(),
+                runtime_snapshot_id=runtime_snapshot_id,
+                export_type="workspace_runtime_state",
+            ),
+        )
+        if runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+            update_scenario_last_run_summary(
+                user.user_id,
+                workspace_state.active_scenario_id,
+                result["kpis"],
+                replay_metadata=_replay_metadata_for_project(
+                    project_code,
+                    project_id=project_record.project_id,
+                    scenario_id=workspace_state.active_scenario_id,
+                    runtime_timestamp=utc_now_iso(),
+                    runtime_snapshot_id=runtime_snapshot_id,
+                    export_type="scenario_runtime_summary",
+                ),
+            )
         return templates.TemplateResponse(
             request=request,
             name="partials/kpis.html",
@@ -1081,17 +1292,112 @@ async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
         return RedirectResponse(url="/login", status_code=302)
 
     project_ctx = get_project_context(project)
-    project_record, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_ctx)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_ctx)
     return _render_scenario_workspace(
         request,
         user,
         project_record,
+        workspace_state,
         scenarios,
         history,
         exports,
         export_lineage,
         scenario_summary_cards,
     )
+
+
+@app.post("/scenarios/state/draft")
+async def save_workspace_draft_endpoint(request: Request):
+    """Persist unsaved workspace edits without promoting them to saved-scenario authority."""
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Login required"}, status_code=401)
+
+    form = await request.form()
+    snapshot = _collect_form_snapshot(form)
+    project_code, project_name = _project_persistence_metadata(None, snapshot)
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="workspace_project_state",
+        ),
+    )
+    existing = get_workspace_state(user.user_id, project_record.project_id)
+    saved_snapshot = existing.saved_snapshot if existing else _default_workspace_snapshot(project_code)
+    active_scenario_id = existing.active_scenario_id if existing else (form.get("current_saved_scenario_id", "") or None)
+    active_scenario_name = existing.active_scenario_name if existing else None
+    workspace_state = save_workspace_state(
+        user_id=user.user_id,
+        project_id=project_record.project_id,
+        project_code=project_code,
+        active_scenario_id=active_scenario_id,
+        active_scenario_name=active_scenario_name,
+        draft_snapshot=snapshot,
+        saved_snapshot=saved_snapshot,
+        dirty=not snapshots_equal(snapshot, saved_snapshot),
+        governance_state=_governance_snapshot(project_code),
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=project_record.project_id,
+            scenario_id=active_scenario_id,
+            export_type="workspace_draft_state",
+        ),
+    )
+    payload = _workspace_state_meta(workspace_state)
+    payload["message"] = "Workspace draft captured. Saved scenario authority is unchanged."
+    return JSONResponse(payload)
+
+
+@app.post("/scenarios/state/discard")
+async def discard_workspace_draft_endpoint(request: Request):
+    """Discard unsaved workspace edits and restore the last saved scenario boundary."""
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Login required"}, status_code=401)
+
+    form = await request.form()
+    snapshot = _collect_form_snapshot(form)
+    project_code, project_name = _project_persistence_metadata(None, snapshot)
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="workspace_project_state",
+        ),
+    )
+    workspace_state = discard_workspace_draft(user.user_id, project_record.project_id)
+    if workspace_state is None:
+        workspace_state = save_workspace_state(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_code,
+            draft_snapshot=_default_workspace_snapshot(project_code),
+            saved_snapshot=_default_workspace_snapshot(project_code),
+            dirty=False,
+            governance_state=_governance_snapshot(project_code),
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                project_id=project_record.project_id,
+                export_type="workspace_draft_state",
+            ),
+        )
+    payload = _workspace_state_meta(workspace_state)
+    payload["snapshot"] = workspace_state.draft_snapshot
+    payload["message"] = "Unsaved edits discarded. Workspace restored to the last saved runtime boundary."
+    return JSONResponse(payload)
 
 
 @app.get("/scenarios/history")
@@ -1102,12 +1408,13 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
         return RedirectResponse(url="/login", status_code=302)
 
     project_ctx = get_project_context(project)
-    project_record, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
+    project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
     scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
     return _render_scenario_workspace(
         request,
         user,
         project_record,
+        workspace_state,
         scenarios,
         history,
         exports,
@@ -1130,7 +1437,7 @@ async def scenario_compare_endpoint(
         return RedirectResponse(url="/login", status_code=302)
 
     project_ctx = get_project_context(project)
-    project_record, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
+    project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
     scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
 
     compare_result = None
@@ -1146,6 +1453,7 @@ async def scenario_compare_endpoint(
         request,
         user,
         project_record,
+        workspace_state,
         scenarios,
         history,
         exports,
@@ -1180,7 +1488,8 @@ async def save_scenario_endpoint(request: Request):
             export_type="saved_scenario_workspace",
         ),
     )
-    save_scenario(
+    existing_workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    saved_record = save_scenario(
         user_id=user.user_id,
         project_id=project_record.project_id,
         scenario_name=scenario_name,
@@ -1188,11 +1497,28 @@ async def save_scenario_endpoint(request: Request):
         source_project_template=project_code,
         snapshot=snapshot,
         governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
+        last_run_summary=(
+            existing_workspace_state.last_runtime_summary
+            if existing_workspace_state and snapshots_equal(existing_workspace_state.last_runtime_snapshot, snapshot)
+            else {}
+        ),
         replay_metadata=_replay_metadata_for_project(
             project_code,
             project_id=project_record.project_id,
             export_type="saved_scenario_snapshot",
+        ),
+    )
+    workspace_state = bind_workspace_to_scenario(
+        user.user_id,
+        project_record.project_id,
+        project_code,
+        saved_record,
+        governance_state=_governance_snapshot(project_code),
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=project_record.project_id,
+            scenario_id=saved_record.scenario_id,
+            export_type="workspace_saved_boundary",
         ),
     )
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
@@ -1223,6 +1549,7 @@ async def save_scenario_endpoint(request: Request):
         request,
         user,
         project_record,
+        workspace_state,
         scenarios,
         history,
         exports,
@@ -1242,11 +1569,29 @@ async def load_scenario_endpoint(request: Request, scenario_id: str):
     record = get_scenario(scenario_id, user.user_id)
     if record is None:
         return JSONResponse({"error": "Scenario not found"}, status_code=404)
+    bind_workspace_to_scenario(
+        user.user_id,
+        record.project_id,
+        record.project_code,
+        record,
+        governance_state=record.governance_state,
+        replay_metadata=_replay_metadata_for_project(
+            record.project_code,
+            project_id=record.project_id,
+            scenario_id=record.scenario_id,
+            export_type="workspace_loaded_scenario",
+        ),
+    )
 
     return templates.TemplateResponse(
         request=request,
         name="partials/scenario_load_result.html",
-        context={"record": record},
+        context={
+            "record": record,
+            "message": f"Loaded {record.scenario_name}. The form has been refreshed with the saved snapshot.",
+            "project_code": record.project_code,
+            "workspace_state_meta": _workspace_state_meta(get_workspace_state(user.user_id, record.project_id)),
+        },
         headers={"HX-Trigger": "scenarioLoaded"},
     )
 
@@ -1292,6 +1637,7 @@ async def duplicate_scenario_endpoint(request: Request, scenario_id: str):
         request,
         user,
         project_record,
+        get_workspace_state(user.user_id, original.project_id),
         scenarios,
         history,
         exports,
@@ -1347,6 +1693,7 @@ async def rename_scenario_endpoint(request: Request, scenario_id: str):
         request,
         user,
         project_record,
+        get_workspace_state(user.user_id, record.project_id),
         scenarios,
         history,
         exports,
@@ -1397,6 +1744,7 @@ async def archive_scenario_endpoint(request: Request, scenario_id: str):
         request,
         user,
         project_record,
+        get_workspace_state(user.user_id, record.project_id),
         scenarios,
         history,
         exports,
