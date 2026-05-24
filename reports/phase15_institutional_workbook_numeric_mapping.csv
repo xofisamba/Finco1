@@ -1,0 +1,11 @@
+sheet_name,workbook_label_or_lookup,backend_runtime_source,comparison_method,tolerance,reason_for_inclusion,status
+Runtime Summary,Project IRR,build_runtime_summary_rows metric project_irr,label_to_numeric_exact_compare,1e-9,"stable reviewer-facing returns metric",active
+Runtime Summary,Total revenue,build_runtime_summary_rows metric total_revenue_keur,label_to_numeric_exact_compare,1e-6,"stable reviewer-facing topline metric",active
+OPEX,Runtime total OPEX,build_runtime_summary_rows metric total_opex_keur,label_to_numeric_exact_compare,1e-6,"stable reviewer-facing cost metric",active
+Runtime Summary,Average DSCR,build_runtime_summary_rows metric avg_dscr,label_to_numeric_exact_compare,1e-9,"stable reviewer-facing debt coverage metric",active
+Governance,text contains G20 remains BLOCKED and R99/R102 remain NOT APPROVED,workbook governance posture summary,text_presence_check,not_applicable,"critical non-numeric governance marker",active
+Governance,Scenario ID value not_applicable,provenance metadata from active export path,label_to_explicit_marker_check,not_applicable,"proves missing metadata is explicit not zero-filled",active
+Governance,Runtime snapshot ID value unavailable,provenance metadata from active export path,label_to_explicit_marker_check,not_applicable,"proves unavailable marker is explicit not zero-filled",active
+P&L,full period-level row set,assembled statements runtime output,not_yet_added,not_applicable,"broader coverage candidate for future validation",future
+Cash Flow,full period-level row set,assembled statements runtime output,not_yet_added,not_applicable,"broader coverage candidate for future validation",future
+Balance Sheet,full period-level row set,assembled statements runtime output,not_yet_added,not_applicable,"broader coverage candidate for future validation",future
