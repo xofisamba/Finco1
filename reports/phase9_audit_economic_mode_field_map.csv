@@ -1,0 +1,11 @@
+field_name,producer,mode_scope,runtime_authoritative,runtime_route_allowed,default_state,notes
+audit_economic_mode,DistributionAccountPeriodInput,audit_or_reconciliation_only,no,no,false,Used for dual-run and comparison traces only.
+runtime_economic_mode,DistributionAccountPeriodInput,explicit_runtime_staging,no,yes_when_runtime_wiring_enabled,false,Pre-G20 staging only; distinct from audit mode.
+use_dualrun_validation,run_waterfall_v3_core,audit_visibility_switch,no,no,false,Enables governed versus economic comparison output only.
+use_distributionaccount_runtime_wiring,run_waterfall_v3_core,explicit_runtime_staging_switch,no,yes_when_true,false,Explicit flag that allows staged DistributionAccount routing.
+equity_distribution_candidate_keur,DistributionAccountEngine,audit_visibility,no,no,n_a,Candidate value for review; not authoritative by itself.
+equity_distribution_paid_keur,DistributionAccountEngine,audit_visibility_or_staging,no,conditional,n_a,May be observed in audit mode or staged into runtime only via explicit runtime wiring.
+distribution_keur,WaterfallResult,governed_runtime_or_explicit_staging,yes,yes,n_a,Authoritative runtime distribution output in governed mode unless explicit staging is enabled.
+_dualrun_validation,WaterfallResult,audit_visibility,no,no,n_a,Review trace only; must not mutate authoritative runtime outputs.
+r99_gate_result,DistributionAccountEngine,audit_visibility,no,no,n_a,Gate trace is explanatory and not an approval state.
+r102_gate_result,DistributionAccountEngine,audit_visibility,no,no,n_a,Gate trace is explanatory and not an approval state.
