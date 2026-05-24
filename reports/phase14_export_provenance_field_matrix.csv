@@ -1,0 +1,16 @@
+field_name,required_where_available,runtime_summary_csv,institutional_workbook,excel_model_export,default_marker_if_unavailable,source,notes
+export_generated_at,yes,present,present,present,unavailable,build_replay_metadata,Descriptive export artifact timestamp only
+runtime_generated_at,yes,present,present,present,unavailable,build_replay_metadata,Descriptive runtime timestamp only
+commit_sha,yes,present,present,present,unavailable,get_git_commit_sha,Code version provenance only
+branch_name,yes,present,present,present,unavailable,get_git_branch_name,Branch provenance only
+active_project,yes,present,present,present,unavailable,build_replay_metadata,Canonical active project label for current export
+scenario_id,yes,present,present,present,not_applicable,build_replay_metadata,Marked not_applicable when no saved scenario boundary exists
+scenario_name,yes,present,present,present,not_applicable,build_replay_metadata,Marked not_applicable when no saved scenario boundary exists
+scenario_revision,yes,present,present,present,not_applicable,build_replay_metadata,Saved snapshot or scenario boundary marker where available
+runtime_snapshot_id,yes,present,present,present,unavailable,build_replay_metadata,Explicitly unavailable for non-persisted runtime paths
+runtime_origin,yes,present,present,present,not_applicable,build_replay_metadata,Descriptive runtime boundary label only
+runtime_flag_snapshot,yes,present,present,present,unavailable,runtime_flag_snapshot helper,Represented as count/json in active exports
+template_origin,yes,present,present,present,unavailable,template_provenance,Factory/template provenance only
+template_revision,yes,present,present,present,unavailable,template_provenance,No semantic versioning exists today
+export_template_version,yes,present,present,present,not_applicable,build_replay_metadata,Descriptive export packaging version only
+governance_posture_summary,yes,present,present,present,unavailable,governance_posture_summary helper,"Must continue to state G20 BLOCKED and R99/R102 NOT APPROVED"
