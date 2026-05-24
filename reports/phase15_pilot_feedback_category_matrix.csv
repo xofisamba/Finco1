@@ -1,0 +1,13 @@
+category,meaning,typical_examples,authority_implication
+runtime_trust,"Concern that runtime output may be wrong, stale, or insufficiently trustworthy","runtime summary appears inconsistent or stale","highest triage priority; still does not change runtime authority by itself"
+export_readability,"Export can be opened but is hard to read or interpret","confusing cover note or provenance wording","descriptive export concern only"
+workbook_numeric,"Representative workbook number appears inconsistent with backend runtime","IRR or OPEX mismatch concern","numeric validation concern only; workbook stays non-authoritative"
+scenario_compare,"Compare output is confusing, incomplete, or misleading","saved snapshot context unclear","compare remains descriptive only"
+dirty_state_or_stale_runtime,"Draft/run boundaries are unclear to reviewer","dirty banner visible but stale runtime meaning unclear","boundary clarity concern only"
+governance_label_confusion,"Reviewer cannot interpret status labels safely","ACCEPTED_CONVENTION mistaken for approval","does not alter governance state"
+reviewer_handoff_gap,"Reviewer pack or onboarding material is missing or unclear","quickstart omitted a needed step","documentation concern only"
+deployment_or_environment,"Local run, dependency, or backup/restore issue affects session","environment variable or path issue","operational concern only"
+browser_or_htmx,"Browser refresh, swap, or interaction concern","dirty badge did not visually refresh","frontend honesty concern only"
+performance,"System is too slow for credible guided use","long wait after run or compare","does not change authority"
+UX_only,"Usability concern without authority or correctness implication","button label confusion","low authority impact"
+documentation_only,"Documentation wording or structure issue","FAQ missing explanation for unavailable marker","documentation concern only"
