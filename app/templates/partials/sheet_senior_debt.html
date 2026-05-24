@@ -36,6 +36,48 @@
 <!-- Debt Facility Summary -->
 <div class="sheet-card">
   <div class="section-header">Debt Facility Summary</div>
+  <div class="editable-grid-shell">
+    <div class="editable-grid-shell__header">
+      <div>
+        <div class="editable-grid-shell__title">Editable financing assumptions</div>
+        <div class="editable-grid-shell__note">These controls update draft workspace state only. The last runtime snapshot stays authoritative until you save or revert.</div>
+      </div>
+      <span class="badge badge-runtime">Draft only</span>
+    </div>
+    <div class="editable-grid-scroll">
+      <table class="editable-grid-table">
+        <thead>
+          <tr>
+            <th>Assumption</th>
+            <th>Draft value</th>
+            <th>Saved/runtime note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Gearing (%)</td>
+            <td><input class="editable-grid-input" type="number" step="any" min="0" max="100" data-grid-source="gearing_pct" inputmode="decimal" /></td>
+            <td>Runtime remains blocked while edits are unsaved.</td>
+          </tr>
+          <tr>
+            <td>Target DSCR</td>
+            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="target_dscr" inputmode="decimal" /></td>
+            <td>Saved scenario snapshot required for runtime execution.</td>
+          </tr>
+          <tr>
+            <td>Interest Rate (%)</td>
+            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" /></td>
+            <td>Browser does not calculate debt service.</td>
+          </tr>
+          <tr>
+            <td>Tenor (years)</td>
+            <td><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" /></td>
+            <td>Preview-only until saved and re-run.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Facility Amount</span>

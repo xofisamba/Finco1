@@ -274,7 +274,7 @@
   <input type="hidden" name="workspace_dirty_state" id="workspace_dirty_state" value="{{ '1' if workspace_state and workspace_state.dirty else '0' }}" />
   <input type="hidden" name="last_runtime_snapshot_id" id="last_runtime_snapshot_id" value="{{ workspace_state.last_runtime_snapshot_id if workspace_state else '' }}" />
   <div class="form-actions">
-    <button type="button" name="run" class="btn btn-primary"
+    <button type="button" name="run" class="btn btn-primary" id="btn-run-model"
             hx-post="/run"
             hx-form="#main-form"
             hx-target="#model-output-area"
@@ -284,7 +284,7 @@
     </button>
     <span id="run-indicator" class="htmx-indicator">Running model...</span>
 
-    <button type="button" name="compare" class="btn btn-accent"
+    <button type="button" name="compare" class="btn btn-accent" id="btn-compare-draft"
             hx-post="/compare"
             hx-form="#main-form"
             hx-target="#model-output-area"
@@ -316,7 +316,7 @@
       💾 Save Run
     </button>
     <button type="button" class="btn btn-ghost" id="btn-discard-edits">
-      Discard Edits
+      Revert Draft
     </button>
   </div>
 

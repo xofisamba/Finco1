@@ -1,0 +1,5 @@
+state_layer,authoritative_for_runtime,persisted,editable_in_grid,reviewer_meaning,notes
+Saved scenario,yes,yes,no,"Explicit persisted scenario boundary","Runtime may bind here after save."
+Workspace draft,no,workspace only,yes,"Unsaved edits / preview-only state","Dirty state blocks run, compare, and save-run execution."
+Last runtime snapshot,yes,yes,no,"Last executed clean runtime boundary","Later edits do not mutate prior runtime meaning."
+Template or preview values,no,implicit,no,"Convenience or factory preview values","Must not be confused with executed runtime output."
