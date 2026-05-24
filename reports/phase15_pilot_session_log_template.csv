@@ -1,0 +1,2 @@
+session_id,date,operator,reviewer_role,project_used,scenarios_touched,exports_created,compares_run,smoke_test_passed,issues_logged,backup_completed,notes
+SESSION-001,2026-05-24,internal_operator,internal_reviewer,TUHO,"TUHO Base Case; TUHO Variant A","institutional_workbook_tuho.xlsx",yes,yes,2,yes,"Template example row only"

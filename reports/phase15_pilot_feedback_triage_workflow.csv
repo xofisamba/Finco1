@@ -1,0 +1,10 @@
+triage_step,action,goal,guardrail
+collect_after_session,"Collect issue template rows and session log after each pilot session","Preserve session context before details are forgotten","feedback records remain non-authoritative"
+classify_category_and_severity,"Assign category and severity to each issue","Create a consistent triage queue","severity is not governance approval"
+identify_authority_impact_first,"Review runtime_trust, workbook_numeric, and scenario_compare concerns first","Surface issues that could affect pilot trust","feedback does not alter runtime authority by itself"
+separate_docs_ux_from_runtime,"Split documentation and UX friction from true runtime concerns","Avoid mixing wording issues with model-trust issues","workbook/export and compare remain descriptive only"
+confirm_reproducibility,"Mark whether the issue is reproducible and what context is needed","Improve cleanup branch quality","missing context is not zero or approval"
+assign_follow_up_owner,"Assign owner and suggested follow-up","Keep fixes intentional and traceable","issue assignment is not governance approval"
+open_cleanup_branch_for_verified_issue,"Open a branch only when follow-up is verified","Avoid reactive or speculative product changes","do not change authority boundaries casually"
+preserve_governance_blockers,"Keep G20 BLOCKED and R99/R102 NOT APPROVED during triage","Prevent issue triage from being misread as approval","feedback does not approve G20 or promote R99/R102"
+close_with_resolution_notes,"Record what was learned and what changed if any follow-up lands","Preserve pilot learning for later review","issue resolution is not governance approval"
