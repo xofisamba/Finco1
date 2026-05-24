@@ -1,0 +1,12 @@
+guardrail,required,reason
+No production application code changed unless explicitly intended,YES,Publish fallback should not broaden scope
+No runtime/model formula changes,YES,Operational cleanup must not alter economics
+No workbook calculation changes,YES,Workbook must remain descriptive not authoritative
+No persistence behavior changes,YES,Operational tooling should not alter persistence semantics
+No governance behavior changes,YES,Publish tooling is not a governance branch
+No new editable surfaces,YES,Scope must stay operational not product-expansion
+No JavaScript financial calculations,YES,Frontend authority boundaries must remain intact
+Audit and runtime economic mode contracts unchanged,YES,Publish workflow must not touch runtime routing contracts
+G20 remains BLOCKED,YES,Governance posture unchanged
+R99/R102 remain NOT APPROVED,YES,Promotion posture unchanged
+

@@ -1,0 +1,7 @@
+workflow_stage,normal_git_path,zip_fallback_path,required_check,notes
+Prepare scope,Create branch and stage scoped files,Create scoped ZIP with preserved relative paths,Scoped file list must be explicit,ZIP fallback is for operational failure not feature expansion
+Validate scope,Review git diff and staged paths,Run publish package validator on ZIP,No extra files and no missing files,Validator should be run before handoff
+Regression checks,Run branch-local tests,Run the same scoped tests before handoff,Validation summary must travel with the package,Keep results concise and reproducible
+Publish,Commit push open PR directly,Extract ZIP on clean main-derived branch then commit push open PR,OpenClaw must verify extracted file list,No unrelated dirty worktree files should enter the PR
+PR summary,Use standard branch summary,Include package summary and environment notes,Guardrail confirmations required,Both paths must confirm governance and authority boundaries
+

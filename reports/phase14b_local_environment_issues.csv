@@ -1,0 +1,7 @@
+issue,observed_effect,recommended_response,branch_blocker,notes
+Git ref lock permission failure,Branch creation fails,Use ZIP publish fallback and document intended branch,YES,Seen across multiple phase handoffs
+Git index lock write failure,Direct staging and commit fail,Do not trust local staging; package scoped files instead,YES,Prefer clean branch publish from extracted ZIP
+Pytest cache write warning,Warnings during test execution,Document as environment warning if tests still pass,NO,Does not change test assertions
+Optional dependency gaps in local test environment,Non-auth tests may fail to collect,Use documented test harness isolation and note it in validation summary,NO,Do not weaken production auth behavior
+Dirty local worktree,Unrelated files can leak into publish scope,Validate exact ZIP contents and verify extracted file list,YES,ZIP validator is meant to reduce this risk
+
