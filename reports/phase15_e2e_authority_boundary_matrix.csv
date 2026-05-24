@@ -1,0 +1,13 @@
+boundary,status,evidence,notes
+runtime_backend_authority,confirmed,"runtime_guard_for_snapshot plus record_workspace_runtime assertions","Runtime is the only financial source of truth."
+save_does_not_auto_run,confirmed,"saved scenario boundary created before explicit runtime record","Save stays non-executing."
+export_does_not_auto_run,confirmed,"workbook export recorded after explicit runtime state exists","Export stays descriptive."
+compare_does_not_auto_save_or_run,confirmed,"compare_scenarios reads saved snapshots only","No hidden compare authority."
+pending_values_not_zero_filled,confirmed,"pending / unavailable and not_applicable assertions","Missing values remain honest."
+workbook_export_descriptive_only,confirmed,"workbook readback plus export metadata assertions","Workbook does not become calculation authority."
+persistence_non_authoritative,confirmed,"repository snapshot and export metadata assertions","Persistence stores workflow state only."
+replay_engine_behavior_absent,confirmed,"no rerun or replay path asserted","Traceability remains descriptive."
+contracts_unchanged,confirmed,"Phase 9 contract docs still referenced","audit/runtime mode contracts unchanged."
+g20_blocked,confirmed,"governance assertions","Still BLOCKED."
+r99_r102_not_approved,confirmed,"governance assertions","Still NOT APPROVED."
+
