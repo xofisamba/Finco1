@@ -270,6 +270,9 @@
   <!-- Actions -->
   <input type="hidden" name="active_project" id="active_project" value="{{ project_ctx.id }}" />
   <input type="hidden" name="current_saved_scenario_id" id="current_saved_scenario_id" value="" />
+  <input type="hidden" name="workspace_project_id" id="workspace_project_id" value="{{ project_record.project_id if project_record else '' }}" />
+  <input type="hidden" name="workspace_dirty_state" id="workspace_dirty_state" value="{{ '1' if workspace_state and workspace_state.dirty else '0' }}" />
+  <input type="hidden" name="last_runtime_snapshot_id" id="last_runtime_snapshot_id" value="{{ workspace_state.last_runtime_snapshot_id if workspace_state else '' }}" />
   <div class="form-actions">
     <button type="button" name="run" class="btn btn-primary"
             hx-post="/run"
@@ -312,9 +315,22 @@
             hx-swap="innerHTML">
       💾 Save Run
     </button>
+    <button type="button" class="btn btn-ghost" id="btn-discard-edits">
+      Discard Edits
+    </button>
   </div>
 
   <div id="save-result"></div>
   <div id="validation-result"></div>
 </form>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window.applyScenarioSnapshot) {
+      window.applyScenarioSnapshot({{ form_data | tojson }}, "{{ workspace_state.active_scenario_id if workspace_state else '' }}");
+    }
+    if (window.applyWorkspaceStateMeta) {
+      window.applyWorkspaceStateMeta({{ workspace_state_meta | tojson }});
+    }
+  });
+</script>
 {% endblock %}

@@ -1,6 +1,7 @@
 /* Finco One workspace interactions */
 
 var activeTab = 'overview';
+var draftPersistTimer = null;
 
 function switchTab(tabId) {
   if (!tabId) return;
@@ -66,6 +67,59 @@ window.applyScenarioSnapshot = function(snapshot, scenarioId) {
   if (currentId) currentId.value = scenarioId || '';
 };
 
+window.applyWorkspaceStateMeta = function(meta) {
+  if (!meta) return;
+  var currentId = document.getElementById('current_saved_scenario_id');
+  if (currentId && typeof meta.active_scenario_id !== 'undefined') currentId.value = meta.active_scenario_id || '';
+  var dirty = document.getElementById('workspace_dirty_state');
+  if (dirty && typeof meta.dirty !== 'undefined') dirty.value = meta.dirty ? '1' : '0';
+  var runtimeId = document.getElementById('last_runtime_snapshot_id');
+  if (runtimeId && typeof meta.last_runtime_snapshot_id !== 'undefined') runtimeId.value = meta.last_runtime_snapshot_id || '';
+
+  var activeName = document.getElementById('workspace-active-scenario-name');
+  if (activeName && typeof meta.active_scenario_name !== 'undefined') {
+    activeName.textContent = meta.active_scenario_name || 'Workspace Base';
+  }
+  var dirtyLabel = document.getElementById('workspace-dirty-label');
+  if (dirtyLabel && meta.dirty_label) dirtyLabel.textContent = meta.dirty_label;
+  var runtimeLabel = document.getElementById('workspace-runtime-origin-label');
+  if (runtimeLabel && meta.last_runtime_origin_label) runtimeLabel.textContent = meta.last_runtime_origin_label;
+  var runtimeChip = document.getElementById('workspace-runtime-snapshot-id');
+  if (runtimeChip) runtimeChip.textContent = meta.last_runtime_snapshot_id || 'No runtime snapshot';
+};
+
+window.refreshScenarioWorkspace = function(projectId) {
+  if (!projectId || !window.htmx) return;
+  window.htmx.ajax('GET', '/scenarios?project=' + encodeURIComponent(projectId), {
+    target: '#saved-scenario-panel',
+    swap: 'outerHTML'
+  });
+};
+
+function queueWorkspaceDraftPersist() {
+  var form = document.getElementById('main-form');
+  if (!form) return;
+  if (draftPersistTimer) window.clearTimeout(draftPersistTimer);
+  draftPersistTimer = window.setTimeout(function() {
+    var payload = new URLSearchParams(new FormData(form));
+    fetch('/scenarios/state/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: payload.toString(),
+      credentials: 'same-origin'
+    })
+      .then(function(resp) { return resp.ok ? resp.json() : null; })
+      .then(function(data) {
+        if (data && window.applyWorkspaceStateMeta) {
+          window.applyWorkspaceStateMeta(data);
+        }
+      })
+      .catch(function() {
+        // Best-effort draft persistence only; keep the workspace usable if this fails.
+      });
+  }, 350);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.ws-tab[data-tab]').forEach(function(tabBtn) {
     tabBtn.addEventListener('click', function() {
@@ -129,6 +183,38 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  var discardBtn = document.getElementById('btn-discard-edits');
+  if (discardBtn) {
+    discardBtn.addEventListener('click', function() {
+      var form = document.getElementById('main-form');
+      if (!form) return;
+      var payload = new URLSearchParams(new FormData(form));
+      fetch('/scenarios/state/discard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        body: payload.toString(),
+        credentials: 'same-origin'
+      })
+        .then(function(resp) { return resp.ok ? resp.json() : null; })
+        .then(function(data) {
+          if (!data) return;
+          if (data.snapshot && window.applyScenarioSnapshot) {
+            window.applyScenarioSnapshot(data.snapshot, data.active_scenario_id || '');
+          }
+          if (window.applyWorkspaceStateMeta) {
+            window.applyWorkspaceStateMeta(data);
+          }
+          var activeProject = document.getElementById('active_project');
+          if (activeProject && window.refreshScenarioWorkspace) {
+            window.refreshScenarioWorkspace(activeProject.value);
+          }
+        })
+        .catch(function() {
+          alert('Could not discard edits right now.');
+        });
+    });
+  }
+
   var duplicateBtn = document.getElementById('btn-duplicate-scenario');
   if (duplicateBtn) {
     duplicateBtn.addEventListener('click', function() {
@@ -141,6 +227,15 @@ document.addEventListener('DOMContentLoaded', function() {
         target: '#saved-scenario-panel',
         swap: 'outerHTML'
       });
+    });
+  }
+
+  var mainForm = document.getElementById('main-form');
+  if (mainForm) {
+    mainForm.querySelectorAll('input, select, textarea').forEach(function(field) {
+      if (field.type === 'hidden') return;
+      field.addEventListener('input', queueWorkspaceDraftPersist);
+      field.addEventListener('change', queueWorkspaceDraftPersist);
     });
   }
 

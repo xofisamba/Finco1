@@ -1,0 +1,7 @@
+state_from,action,state_to,runtime_allowed,notes
+clean_workspace_base,edit_field,dirty_workspace_draft,no,Unsaved edits must be saved or discarded before runtime execution.
+dirty_workspace_draft,discard_edits,clean_saved_boundary,yes,Discard restores the last saved snapshot boundary.
+dirty_workspace_draft,save_scenario,clean_saved_boundary,yes,Explicit save creates the new persisted scenario boundary.
+clean_saved_boundary,run_model,runtime_bound_saved_state,yes,Runtime binds to immutable saved snapshot metadata.
+clean_workspace_base,run_model,runtime_bound_workspace_base,yes,Runtime binds to clean workspace base snapshot.
+runtime_bound_saved_state,edit_field,dirty_workspace_draft,no,Later edits do not mutate prior runtime meaning.

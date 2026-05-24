@@ -115,10 +115,42 @@ def _init_schema(conn):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_exports_user_project ON scenario_exports(user_id, project_id, created_at DESC)"
     )
-    _ensure_column(conn, "runs", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
-    _ensure_column(conn, "projects", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
-    _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
-    _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'" )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workspace_states (
+            workspace_id               TEXT PRIMARY KEY,
+            project_id                 TEXT NOT NULL,
+            user_id                    TEXT NOT NULL,
+            project_code               TEXT NOT NULL,
+            active_scenario_id         TEXT,
+            active_scenario_name       TEXT,
+            draft_snapshot_json        TEXT NOT NULL,
+            saved_snapshot_json        TEXT NOT NULL,
+            last_runtime_snapshot_json TEXT NOT NULL,
+            last_runtime_summary_json  TEXT NOT NULL,
+            last_runtime_snapshot_id   TEXT,
+            last_runtime_origin        TEXT,
+            last_runtime_scenario_id   TEXT,
+            dirty                      INTEGER NOT NULL DEFAULT 0,
+            governance_state_json      TEXT NOT NULL,
+            replay_metadata_json       TEXT NOT NULL DEFAULT '{}',
+            created_at                 TEXT NOT NULL,
+            updated_at                 TEXT NOT NULL,
+            last_runtime_at            TEXT,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id),
+            FOREIGN KEY(active_scenario_id) REFERENCES scenarios(scenario_id),
+            FOREIGN KEY(last_runtime_scenario_id) REFERENCES scenarios(scenario_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_states_user_project ON workspace_states(user_id, project_id)"
+    )
+    _ensure_column(conn, "runs", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "projects", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "workspace_states", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     conn.commit()
 
 

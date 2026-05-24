@@ -1,0 +1,4 @@
+runtime_origin,meaning,runtime_authoritative,editable_state_relation,notes
+saved_state,Runtime executed against the clean saved scenario snapshot,yes,Later draft edits may diverge but do not change prior runtime meaning,Preferred execution boundary for editable workflow.
+workspace_base,Runtime executed against the clean unsaved base workspace,yes,No saved scenario was active and no dirty draft edits were present,Used for safe base-state execution only.
+preview_only,Workspace draft exists but runtime execution is blocked,no,Unsaved edits remain preview-only until save or discard,This label is explanatory and non-authoritative.

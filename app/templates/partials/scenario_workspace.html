@@ -6,6 +6,37 @@
   </div>
 
   <div class="ps-section">
+    <div class="ps-section-label">Editable State</div>
+    <div class="ps-saved-item">
+      <div class="ps-saved-main">
+        <div class="ps-saved-title" id="workspace-active-scenario-name">
+          {{ workspace_state.active_scenario_name or "Workspace Base" }}
+        </div>
+        <div class="ps-saved-meta">
+          Active saved scenario boundary. Unsaved draft edits remain preview-only until you save or discard them.
+        </div>
+      </div>
+      <div class="ps-saved-stats">
+        <span class="ps-stat-chip" id="workspace-dirty-label">
+          {{ "Unsaved edits" if workspace_state.dirty else "Clean saved state" }}
+        </span>
+        <span class="ps-stat-chip" id="workspace-runtime-origin-label">
+          {% if workspace_state.last_runtime_origin == "saved_state" %}
+          Runtime bound to saved scenario
+          {% elif workspace_state.last_runtime_origin == "workspace_base" %}
+          Runtime bound to clean base
+          {% else %}
+          No runtime bound yet
+          {% endif %}
+        </span>
+        <span class="ps-stat-chip" id="workspace-runtime-snapshot-id">
+          {{ workspace_state.last_runtime_snapshot_id or "No runtime snapshot" }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="ps-section">
     <div class="ps-section-label">Scenario Cards</div>
     {% if not scenario_summary_cards %}
     <div class="ps-mini-empty">
@@ -158,3 +189,10 @@
     {% endif %}
   </div>
 </div>
+<script>
+  (function() {
+    if (window.applyWorkspaceStateMeta) {
+      window.applyWorkspaceStateMeta({{ workspace_state_meta | tojson }});
+    }
+  })();
+</script>
