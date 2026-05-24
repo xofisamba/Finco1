@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 import os
+from io import StringIO
 
 
 def _read(*parts: str) -> str:
@@ -38,30 +40,39 @@ def test_environment_inventory_backup_and_smoke_reports_exist():
     ):
         assert os.path.exists(os.path.join(base, "reports", report_name))
 
-    inventory = _read("reports", "phase15_environment_inventory.csv")
-    backup = _read("reports", "phase15_backup_restore_checklist.csv")
-    smoke = _read("reports", "phase15_pilot_smoke_test_checklist.csv")
-    risk = _read("reports", "phase15_deployment_risk_register.csv")
+    inventory = list(csv.DictReader(StringIO(_read("reports", "phase15_environment_inventory.csv"))))
+    backup = list(csv.DictReader(StringIO(_read("reports", "phase15_backup_restore_checklist.csv"))))
+    smoke = list(csv.DictReader(StringIO(_read("reports", "phase15_pilot_smoke_test_checklist.csv"))))
+    risk = list(csv.DictReader(StringIO(_read("reports", "phase15_deployment_risk_register.csv"))))
 
-    assert "FINCO_SECRET_KEY,required" in inventory
-    assert "FINCO_DB_PATH,optional" in inventory
-    assert "FINCO_COOKIE_SECURE,optional" in inventory
-    assert "git_ref_lock_permission_issue,known_environment_issue" in inventory
-    assert "pytest_cache_permission_warning,known_environment_issue" in inventory
-    assert "bundled_spreadsheet_package_path_issue,known_environment_issue" in inventory
-    assert "test_bcrypt_shim_status,known_test_harness_state" in inventory
+    inventory_map = {row["setting_or_issue"]: row for row in inventory}
+    assert inventory_map["FINCO_SECRET_KEY"]["required"] == "required"
+    assert inventory_map["FINCO_DB_PATH"]["required"] == "optional"
+    assert inventory_map["FINCO_COOKIE_SECURE"]["required"] == "optional"
+    assert inventory_map["git_ref_lock_permission_issue"]["required"] == "known_environment_issue"
+    assert inventory_map["pytest_cache_permission_warning"]["required"] == "known_environment_issue"
+    assert inventory_map["bundled_spreadsheet_package_path_issue"]["required"] == "known_environment_issue"
+    assert inventory_map["test_bcrypt_shim_status"]["required"] == "known_test_harness_state"
 
-    assert "backup restore is not audit replay and not replay-engine behavior" in backup
-    assert "verify export lineage and provenance remain readable" in backup
+    backup_steps = [row["step"] for row in backup]
+    assert backup_steps[:2] == ["1", "2"]
+    assert any(
+        "backup restore is not audit replay and not replay-engine behavior" in row["details"]
+        or "backup restore is not audit replay and not replay-engine behavior" in row["integrity_check"]
+        for row in backup
+    )
+    assert any("verify export lineage and provenance remain readable" in row["details"] or "verify export lineage and provenance remain readable" in row["integrity_check"] for row in backup)
 
-    assert "select_tuho" in smoke
-    assert "select_oborovo" in smoke
-    assert "verify_dirty_state" in smoke
-    assert "verify_no_auto_run_after_save" in smoke
-    assert "verify_governance_labels,\"G20 BLOCKED and R99/R102 NOT APPROVED remain visible\"" in smoke
+    smoke_steps = [row["step"] for row in smoke]
+    assert smoke_steps[:4] == ["start_app", "check_public_health", "open_login", "select_tuho"]
+    assert "select_oborovo" in smoke_steps
+    assert "verify_dirty_state" in smoke_steps
+    assert "verify_no_auto_run_after_save" in smoke_steps
+    assert any(row["step"] == "verify_governance_labels" and row["expected_result"] == "G20 BLOCKED and R99/R102 NOT APPROVED remain visible" for row in smoke)
 
-    assert "backup_confused_with_audit_replay,guardrail" in risk
-    assert "overclaiming_pilot_readiness,guardrail" in risk
+    risk_map = {row["risk"]: row for row in risk}
+    assert risk_map["backup_confused_with_audit_replay"]["current_status"] == "guardrail"
+    assert risk_map["overclaiming_pilot_readiness"]["current_status"] == "guardrail"
 
 
 def test_runbook_guardrails_confirm_no_behavior_or_authority_drift():

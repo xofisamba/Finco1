@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 
 def _read(*parts: str) -> str:
@@ -65,6 +66,39 @@ def test_browser_state_hooks_remain_idempotent_and_non_authoritative():
     lowered_js = app_js.lower()
     for marker in ("xirr(", "project_irr =", "equity_irr =", "avg_dscr =", "ebitda =", "debt service ="):
         assert marker not in lowered_js
+
+
+def test_browser_hook_targets_exist_in_templates_and_grid_partials():
+    app_js = _read("static", "app.js")
+    index_html = _read("app", "templates", "index.html")
+    workspace_shell = _read("app", "templates", "partials", "workspace_shell.html")
+    scenario_workspace = _read("app", "templates", "partials", "scenario_workspace.html")
+    revenue = _read("app", "templates", "partials", "sheet_revenue.html")
+    opex = _read("app", "templates", "partials", "sheet_opex.html")
+    debt = _read("app", "templates", "partials", "sheet_senior_debt.html")
+
+    for element_id in ("btn-run-model", "btn-compare-draft", "btn-save-run"):
+        assert element_id in app_js
+        assert f'id="{element_id}"' in index_html
+
+    for element_id in (
+        "workspace-unsaved-banner",
+        "workspace-strip-active-scenario",
+        "workspace-strip-dirty",
+        "workspace-strip-runtime-origin",
+        "workspace-strip-runtime-snapshot",
+        "workspace-active-scenario-name",
+        "workspace-dirty-label",
+        "workspace-runtime-origin-label",
+        "workspace-runtime-snapshot-id",
+        "export-lineage-panel",
+    ):
+        assert f'id="{element_id}"' in workspace_shell or f'id="{element_id}"' in scenario_workspace
+
+    for partial in (revenue, opex, debt):
+        assert partial.count("data-grid-source") >= 1
+        assert "editable-grid-scroll" in partial
+        assert "Draft only" in partial
 
 
 def test_mobile_browser_smoke_hooks_and_compare_labels_exist():

@@ -1,0 +1,10 @@
+area,stronger_check_added,artifact_or_state_used,why_it_is_stronger
+scenario_compare,"pending / unavailable, not_applicable, and zero remain distinct in rendered compare rows","_build_compare_ui_context plus rendered scenario_compare partial","Exercises actual compare formatting behavior instead of wording alone"
+scenario_compare,"compare metadata cards render saved timestamp, runtime timestamp, snapshot id, and origin","rendered scenario_compare partial","Validates reviewer-visible structure"
+export_lineage,"dirty and clean workspaces produce different lineage action notes","_build_export_lineage_ui_context","Exercises real state-to-UI mapping"
+export_lineage,"recent export lineage items normalize missing metadata to unavailable/not_applicable","_build_export_lineage_ui_context","Validates helper behavior instead of static text"
+browser_workflow,"run/compare/save-run action ids referenced in js also exist in rendered templates","static/app.js plus templates","Checks hook-to-dom consistency"
+browser_workflow,"editable grid partials expose draft-only data-grid-source and scroll wrappers consistently","grid partial templates","Checks actual selector-level structure"
+reviewer_handoff,"workflow checklist csv row order and issue template headers validated structurally","csv reader against handoff reports","Stronger than substring presence"
+deployment_runbook,"environment inventory and smoke checklist headers and steps validated structurally","csv reader against runbook reports","Checks artifact schema and sequence"
+pilot_feedback,"feedback issue template/session log headers and categories validated structurally","csv reader against feedback reports","Checks instrumentation shape directly"
