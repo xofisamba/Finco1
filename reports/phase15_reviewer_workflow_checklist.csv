@@ -1,0 +1,13 @@
+step_id,reviewer_step,expected_signal,authority_boundary,notes
+select_project,"Select TUHO or Oborovo","Active project label updates and workspace context remains visible","project selection does not compute runtime truth","Use only supported pilot projects"
+load_or_create_scenario,"Load existing scenario or create saved boundary","Scenario context is visible","saved boundary remains persistence metadata until explicit run","Do not infer runtime from draft"
+edit_assumption,"Edit one supported assumption","Dirty badge and unsaved changes banner appear","draft edit is not runtime truth","Use existing supported editable surfaces only"
+observe_dirty_state,"Confirm dirty-state guidance","Run and compare remain blocked or clearly unavailable while dirty","dirty browser state does not become authoritative","Stale runtime may still reflect last clean run"
+save_scenario,"Save scenario explicitly","Dirty state clears and scenario boundary persists","save does not run model","Saved boundary is now eligible for clean run"
+run_model,"Run from clean saved boundary","Runtime summary and runtime metadata appear","runtime remains backend-owned","Review runtime summary after explicit run"
+inspect_runtime_summary,"Inspect runtime cards and governance labels","Backend runtime output is visible","runtime summary is financial truth surface","Check G20 and R99/R102 posture"
+export_workbook,"Export workbook","Workbook is downloadable and readable","workbook/export remains descriptive only","Read export lineage and cover notes"
+verify_provenance,"Verify export lineage and provenance","Project, scenario, runtime, export context are readable","provenance is descriptive only","Unavailable markers are not zero"
+compare_scenarios,"Compare saved scenarios","Compare output references saved snapshots/runtime summaries","scenario compare remains descriptive only","Unsaved drafts are excluded"
+record_feedback,"Record confusion, defect, or ambiguity","Issue details captured consistently","reporting does not alter runtime or governance state","Use reviewer issue template"
+backup_after_session,"Back up session artifacts if operator role includes it","Backup checklist completed","backup/restore is operational recovery only, not audit replay","Operator-owned step"
