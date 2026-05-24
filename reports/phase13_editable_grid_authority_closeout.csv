@@ -1,0 +1,5 @@
+layer,authoritative_for_runtime,persisted,editable,closeout_status,evidence,notes
+Workspace draft,no,workspace only,yes,confirmed,"phase13_draft_vs_runtime_boundary.csv; tests/test_phase13_editable_grid_closeout.py","Draft remains preview-only and dirty state blocks runtime-like actions."
+Saved scenario,yes,yes,no,confirmed,"Phase 13A/13B docs; tests/test_phase13_editable_grid_state_controls.py","Save creates explicit persisted scenario boundary."
+Last runtime snapshot,yes,yes,no,confirmed,"phase13_runtime_snapshot_guard_matrix.csv; tests/test_phase13_editable_grid_hardening.py","Later edits do not mutate prior runtime meaning."
+Frontend JavaScript,no,no,mirror only,confirmed,"tests/test_phase13_editable_grid_ux.py; tests/test_phase13_editable_grid_closeout.py","No financial calculations executed in browser."
