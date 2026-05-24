@@ -1,0 +1,10 @@
+status_label,plain_language_meaning,reviewer_instruction,current_phase15_posture
+BLOCKED,"The item is still blocked and must not be treated as approved or promoted.","Stop short of approval claims and record blocker context if relevant.","G20 remains BLOCKED"
+NOT APPROVED,"The item is not approved and must not be treated as accepted runtime logic.","Do not present it as endorsed or promoted.","R99/R102 remain NOT APPROVED"
+PASS,"The checked item passed the stated check in its current context.","You may treat the check as passed within the documented scope only.","Used for bounded checks, not blanket approval"
+WARN,"Review attention is needed, but warning alone is not implicit approval.","Record the warning and review its scope before relying on the item.","Context dependent"
+ACCEPTED_CONVENTION,"An explanatory convention is in use.","Treat this as explanatory only; ACCEPTED_CONVENTION is not approval.","Explanatory only"
+SOURCE_NOT_AVAILABLE,"The source value or evidence is unavailable.","Do not treat it as zero; record it as unavailable.","Availability marker only"
+unavailable,"The field is intentionally unavailable in the present context.","Do not read unavailable as zero or approval.","Availability marker only"
+not_applicable,"The field does not apply in the present context.","Do not read not_applicable as zero.","Applicability marker only"
+MISSING_EVIDENCE,"A legacy-frozen historical artifact may still use this label.","Interpret through current documentation, not as an active approval state.","Legacy-frozen historical label only"

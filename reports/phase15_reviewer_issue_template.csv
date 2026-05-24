@@ -1,0 +1,13 @@
+field_name,required,description,example
+project,yes,"Active project involved in the issue","TUHO"
+scenario,yes,"Scenario name or identifier","TUHO Base Case"
+step,yes,"Workflow step where the issue occurred","export_workbook"
+expected_behavior,yes,"What the reviewer expected to happen","Workbook downloads with readable cover notes"
+actual_behavior,yes,"What actually happened","Workbook downloaded but provenance section showed unavailable unexpectedly"
+screenshot_or_reference,optional,"Screenshot path, note, or reference id if available","screenshot_2026_05_24_01.png"
+export_filename_if_relevant,optional,"Export artifact filename when issue involves export or compare outputs","institutional_workbook_tuho.xlsx"
+governance_label_involved,optional,"Relevant governance label if the issue touches governance messaging","BLOCKED"
+severity,yes,"Reviewer severity assessment","medium"
+blocker_yes_no,yes,"Whether the issue blocks safe pilot use of the current step","no"
+impact_area,yes,"Choose runtime trust, export readability, compare clarity, or UX only","compare clarity"
+notes,optional,"Any extra context that helps reproduce or interpret the issue","Occurred after reviewing a stale runtime snapshot"

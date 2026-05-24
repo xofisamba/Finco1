@@ -1,0 +1,11 @@
+claim_area,current_statement,reviewer_instruction,allowed_or_disallowed
+pilot_scope,"single-user guided internal pilot only","Do not describe current posture as broader than guided internal pilot use.","allowed_scope_statement"
+lender_ready,"No lender-ready claim is made.","Do not represent the product as lender-ready.","disallowed_claim"
+audit_certified,"No audit-certified claim is made.","Do not represent the product as audit-certified.","disallowed_claim"
+saas_readiness,"No SaaS or multi-tenant readiness claim is made.","Do not represent the product as SaaS-ready or multi-tenant-ready.","disallowed_claim"
+workbook_authority,"Workbook/export remains descriptive only.","Do not treat workbook/export as calculation authority.","guardrail_statement"
+scenario_compare_authority,"Scenario compare remains descriptive only.","Do not treat compare output as independent runtime authority.","guardrail_statement"
+governance_blockers,"G20 remains BLOCKED and R99/R102 remain NOT APPROVED.","Do not soften blockers or describe them as approved.","guardrail_statement"
+accepted_convention,"ACCEPTED_CONVENTION is explanatory, not approval.","Do not read convention labels as governance approval.","guardrail_statement"
+availability_markers,"SOURCE_NOT_AVAILABLE, unavailable, and not_applicable are not zero.","Do not substitute zero for missing or non-applicable values.","guardrail_statement"
+replay_engine,"No replay engine behavior is claimed or introduced.","Do not describe backup, provenance, or persistence as replay behavior.","guardrail_statement"
