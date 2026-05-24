@@ -1,0 +1,6 @@
+risk_or_gap,current_status,why_no_fix_in_this_branch,pilot_blocker,next_step
+template_rows_not_real_findings,open,"Current populated pilot issue/session rows are examples, not verified defects",no,"replace template rows with real pilot evidence when available"
+live_browser_automation_gap,known,"Documented future automation gap; not a verified blocker from current pilot artifacts",no,"future browser automation phase if scope justifies it"
+deployment_environment_friction,known,"Already documented in deployment risk register and not newly evidenced here",no,"continue using runbook and environment checklist"
+workbook_wide_numeric_audit_gap,known,"Representative workbook numeric validation already exists; workbook-wide audit remains future work",no,"expand numeric validation only if pilot evidence justifies it"
+external_model_review_and_audit_certification,known,"Out of scope for cleanup and not solvable by local stabilization work",no,"keep as explicit no-claims item for Phase 15 closeout"
