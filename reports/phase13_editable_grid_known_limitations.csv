@@ -1,0 +1,7 @@
+limitation,category,current_status,recommended_next_step,notes
+Selected editable surfaces only,scope,intentional,"consider narrow Phase 14 reviewer productivity pass","No new surfaces added in closeout."
+No spreadsheet-style formula editing,ux,out_of_scope,"do not pursue without fresh authority review","Would risk client-side authority drift."
+No replay engine,reproducibility,out_of_scope,"keep provenance separate from editable-grid work","Replay remains its own discipline."
+No multi-user coordination,state,out_of_scope,"separate future workflow branch","Current model remains single-user oriented."
+No cell-level transaction history,audit,out_of_scope,"consider lightweight audit notes before deep implementation","Current boundary is snapshot-based, not cell-history-based."
+No alternate mobile calculation path,architecture,intentional,"retain current approach","Mobile remains presentation-only."

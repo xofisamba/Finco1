@@ -1,0 +1,8 @@
+review_area,coverage_source,status,notes
+Dirty-state lifecycle,"tests/test_phase13_editable_grid_state_controls.py; tests/test_phase13_editable_grid_hardening.py",covered,"Includes dirty creation, deterministic revert, and repeated edit behavior."
+Save and revert boundaries,"tests/test_phase13_editable_grid_state_controls.py; tests/test_phase13_editable_grid_closeout.py",covered,"Save stays explicit; revert restores clean saved boundary."
+Runtime blocking while dirty,"tests/test_phase13_editable_grid_ux.py; tests/test_phase13_editable_grid_hardening.py",covered,"Run, compare, and save-run remain blocked while unsaved edits exist."
+HTMX listener rebinding,"tests/test_phase13_editable_grid_hardening.py; tests/test_phase13_editable_grid_closeout.py",covered,"Rebinding remains idempotent after swaps."
+Runtime snapshot immutability,"tests/test_phase13_editable_grid_state_controls.py; tests/test_phase13_editable_grid_ux.py",covered,"Last clean runtime snapshot remains authoritative."
+Governance posture,"tests/test_phase13_editable_grid_closeout.py",covered,"G20 stays BLOCKED; R99/R102 stay NOT APPROVED."
+No new editable surfaces,"tests/test_phase13_editable_grid_closeout.py",covered,"Phase 13D adds review artifacts only."
