@@ -1,0 +1,11 @@
+workflow_area,coverage_method,status,evidence,notes
+project_selection_visibility,template_and_static_smoke,covered,"workspace shell, index page, project selector references","TUHO and Oborovo remain visible reviewer choices"
+editable_grid_dirty_state,template_and_js_smoke,covered,"unsaved banner, dirty labels, action-help copy, disabled-action hooks","draft edits remain preview-only until save"
+htmx_partial_refresh_behavior,js_hook_smoke,covered,"htmx:afterSwap listener, bindDraftPersistenceFields, bindEditableGridInputs, syncEditableGridMirrors","idempotent rebinding remains explicit in client hooks"
+save_revert_browser_guidance,template_and_js_smoke,covered,"reviewer-action-help, reviewer-revert-help, discard handler","save and revert remain non-running actions"
+run_workflow_honesty,template_and_js_smoke,covered,"run button aria copy, dirty disable hook, runtime boundary guidance","browser edits do not become runtime truth"
+export_workflow_honesty,template_and_js_smoke,covered,"export lineage panel, reviewer export guidance, downloads copy","exports remain descriptive and backend-authored"
+scenario_compare_honesty,template_smoke,covered,"scenario workspace compare guidance, scenario_compare partial","compare excludes unsaved drafts and remains descriptive"
+mobile_narrow_viewport_safety,css_smoke,covered,"editable-grid-scroll, workspace-state-strip responsive rules, compare grid responsive rules","no alternate mobile calculation path exists"
+real_browser_download_event,live_browser_automation_gap,pending,"not implemented in this branch","future Playwright or equivalent candidate"
+cross_browser_interaction,live_browser_automation_gap,pending,"not implemented in this branch","documented remaining gap only"

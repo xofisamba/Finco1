@@ -1,0 +1,6 @@
+gap,current_status,recommended_follow_up,blocker
+playwright_or_selenium_stack,not_added,"add only when pilot operations justifies a real browser automation dependency","no"
+live_download_event_assertions,not_covered_by_current_pytest_smoke,"verify real browser download initiation and file handoff in a future browser automation phase","no"
+real_htmx_interaction_timing,partially_inferred_from_js_hooks,"add full browser interaction timing checks later","no"
+real_mobile_browser_device_validation,not_covered,"run future narrow-screen checks in a real browser/device harness","no"
+cross_browser_matrix,not_covered,"future Chromium/WebKit/Firefox verification if external pilot scope widens","no"
