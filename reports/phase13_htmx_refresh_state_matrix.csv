@@ -1,0 +1,6 @@
+surface,refresh_event,required_state_behavior,implemented,evidence,notes
+Saved scenario panel,Scenario load swap,Workspace metadata re-applies after swap,yes,"scenario_load_result.html + applyWorkspaceStateMeta","Active scenario and runtime labels refresh."
+Editable grids,HTMX afterSwap,Mirror inputs resync from canonical fields,yes,"static/app.js syncEditableGridMirrors + afterSwap hook","Prevents stale mirror values."
+Draft listeners,HTMX afterSwap,Draft persistence listeners remain attached without duplication,yes,"bindDraftPersistenceFields dataset guard","Repeated swaps stay deterministic."
+Grid listeners,HTMX afterSwap,Grid source listeners remain attached without duplication,yes,"bindEditableGridInputs dataset guard","No stacked event handlers."
+Runtime actions,Workspace metadata update,Buttons stay correctly disabled/enabled,yes,"setButtonDisabledState via applyWorkspaceStateMeta","Run/compare/save-run reflect dirty state."

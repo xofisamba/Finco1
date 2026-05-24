@@ -3,6 +3,13 @@
 var activeTab = 'overview';
 var draftPersistTimer = null;
 
+function setButtonDisabledState(id, disabled) {
+  var btn = document.getElementById(id);
+  if (!btn) return;
+  btn.disabled = !!disabled;
+  btn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+}
+
 function switchTab(tabId) {
   if (!tabId) return;
   activeTab = tabId;
@@ -116,9 +123,8 @@ window.applyWorkspaceStateMeta = function(meta) {
   var bannerOrigin = document.getElementById('workspace-banner-runtime-origin');
   if (bannerOrigin && meta.last_runtime_origin_label) bannerOrigin.textContent = meta.last_runtime_origin_label;
 
-  ['btn-run-model', 'btn-compare-draft'].forEach(function(id) {
-    var btn = document.getElementById(id);
-    if (btn) btn.disabled = !!meta.dirty;
+  ['btn-run-model', 'btn-compare-draft', 'btn-save-run'].forEach(function(id) {
+    setButtonDisabledState(id, !!meta.dirty);
   });
 };
 
@@ -155,6 +161,38 @@ function queueWorkspaceDraftPersist() {
         // Best-effort draft persistence only; keep the workspace usable if this fails.
       });
   }, 350);
+}
+
+function bindDraftPersistenceFields(root) {
+  var scope = root || document;
+  var mainForm = document.getElementById('main-form');
+  if (!mainForm || !mainForm.contains(scope) && scope !== document) return;
+  mainForm.querySelectorAll('input, select, textarea').forEach(function(field) {
+    if (field.type === 'hidden' || field.dataset.draftBound === '1') return;
+    field.dataset.draftBound = '1';
+    field.addEventListener('input', queueWorkspaceDraftPersist);
+    field.addEventListener('change', queueWorkspaceDraftPersist);
+  });
+}
+
+function bindEditableGridInputs(root) {
+  var scope = root || document;
+  scope.querySelectorAll('[data-grid-source]').forEach(function(input) {
+    if (input.dataset.gridBound === '1') return;
+    input.dataset.gridBound = '1';
+    input.addEventListener('input', function() {
+      var source = document.getElementById(input.getAttribute('data-grid-source'));
+      if (!source) return;
+      source.value = input.value;
+      source.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    input.addEventListener('change', function() {
+      var source = document.getElementById(input.getAttribute('data-grid-source'));
+      if (!source) return;
+      source.value = input.value;
+      source.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -271,29 +309,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  var mainForm = document.getElementById('main-form');
-  if (mainForm) {
-    mainForm.querySelectorAll('input, select, textarea').forEach(function(field) {
-      if (field.type === 'hidden') return;
-      field.addEventListener('input', queueWorkspaceDraftPersist);
-      field.addEventListener('change', queueWorkspaceDraftPersist);
-    });
-  }
-
-  document.querySelectorAll('[data-grid-source]').forEach(function(input) {
-    input.addEventListener('input', function() {
-      var source = document.getElementById(input.getAttribute('data-grid-source'));
-      if (!source) return;
-      source.value = input.value;
-      source.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    input.addEventListener('change', function() {
-      var source = document.getElementById(input.getAttribute('data-grid-source'));
-      if (!source) return;
-      source.value = input.value;
-      source.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-  });
+  bindDraftPersistenceFields(document);
+  bindEditableGridInputs(document);
 
   document.querySelectorAll('.input-group-summary').forEach(function(summary) {
     summary.addEventListener('click', function() {
@@ -305,4 +322,13 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   });
+});
+
+document.addEventListener('htmx:afterSwap', function(evt) {
+  var target = evt && evt.target ? evt.target : document;
+  bindDraftPersistenceFields(target);
+  bindEditableGridInputs(target);
+  if (window.syncEditableGridMirrors) {
+    window.syncEditableGridMirrors();
+  }
 });

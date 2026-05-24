@@ -232,6 +232,8 @@ def _workspace_state_meta(workspace_state) -> dict:
         runtime_label = "Preview only; runtime not executed"
     else:
         runtime_label = "No runtime bound yet"
+    if workspace_state.dirty and workspace_state.last_runtime_snapshot_id:
+        runtime_label = f"{runtime_label} (older than current draft)"
     return {
         "dirty": bool(workspace_state.dirty),
         "dirty_label": "Unsaved edits" if workspace_state.dirty else "Clean saved state",
