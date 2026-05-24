@@ -1,0 +1,7 @@
+hardening_area,scenario,expected_behavior,implemented,evidence,notes
+Dirty state,Clean saved scenario loads,Dirty badge absent and runtime actions available,yes,"workspace_state_meta dirty=false; tests/test_phase13_editable_grid_hardening.py","Baseline state remains explicit."
+Dirty state,Edit any editable grid field,Dirty badge and unsaved banner appear,yes,"static/app.js applyWorkspaceStateMeta; workspace_shell banner","Draft state remains preview-only."
+Dirty state,Multiple repeated edits,No duplicate listener drift or inconsistent state,yes,"bindDraftPersistenceFields / bindEditableGridInputs idempotent binding","HTMX-safe rebinding added."
+Runtime guard,Unsaved edits present,Run / compare / save-run disabled and backend-blocked,yes,"static/app.js + runtime_guard_for_snapshot","No partial-edit runtime execution."
+Save/revert,Revert draft,Restores saved boundary and clears dirty state,yes,"discard endpoint + repository discard flow","No automatic runtime execution."
+Runtime clarity,Dirty after last runtime,Runtime label marks prior runtime snapshot as older than draft,yes,"main_web.py _workspace_state_meta","Reviewer can distinguish stale runtime from current draft."

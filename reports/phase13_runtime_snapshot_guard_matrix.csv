@@ -1,0 +1,6 @@
+scenario,draft_state,runtime_allowed,runtime_label,authority_boundary,notes
+Clean saved scenario,Clean,yes,"Runtime bound to saved scenario snapshot","Backend runtime","Clean snapshot may run."
+Clean workspace base,Clean,yes,"Runtime bound to clean workspace base","Backend runtime","Base workspace case remains explicit."
+Unsaved draft before run,Dirty,no,"Preview only or prior runtime snapshot older than current draft","Draft only","Runtime must not execute."
+Dirty after prior runtime,Dirty,no,"Runtime bound to saved scenario snapshot (older than current draft)","Last clean runtime snapshot","Later edits do not mutate prior runtime meaning."
+Reverted draft,Clean again,yes,"Runtime label remains last clean boundary until next run","Backend runtime","Revert does not auto-run."

@@ -1,10 +1,10 @@
 <!-- Workspace Shell — Tab Panels — Phase 9.5 -->
 <div class="workspace-content" id="workspace-content">
-  <div class="workspace-state-banner{% if not workspace_state or not workspace_state.dirty %} is-hidden{% endif %}" id="workspace-unsaved-banner">
+  <div class="workspace-state-banner{% if not workspace_state or not workspace_state.dirty %} is-hidden{% endif %}" id="workspace-unsaved-banner" role="status" aria-live="polite">
     <div class="workspace-state-banner__main">
       <span class="badge badge-warn">Unsaved changes</span>
       <div class="workspace-state-banner__text">
-        Draft edits are active. Save to create a new scenario snapshot, or revert to restore the last saved boundary before running.
+        Draft edits are active. Save to create a new scenario snapshot, or revert to restore the last saved boundary before running. Runtime cards stay tied to the last clean snapshot until a new clean run is executed.
       </div>
     </div>
     <div class="workspace-state-banner__meta">
@@ -17,7 +17,7 @@
     </div>
   </div>
 
-  <div class="workspace-state-strip">
+  <div class="workspace-state-strip" aria-label="Editable workspace state summary">
     <div class="workspace-state-strip__item">
       <span class="workspace-state-strip__label">Active Scenario</span>
       <span class="workspace-state-strip__value" id="workspace-strip-active-scenario">

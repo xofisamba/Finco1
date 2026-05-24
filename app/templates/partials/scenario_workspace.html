@@ -16,6 +16,9 @@
           Active saved scenario boundary. Unsaved draft edits remain preview-only until you save or discard them.
         </div>
         <div class="ps-saved-meta">
+          Last runtime cards remain bound to the most recent clean snapshot, even while later draft edits are in progress.
+        </div>
+        <div class="ps-saved-meta">
           Revision boundary: {{ workspace_state.updated_at.strftime("%Y-%m-%d %H:%M") if workspace_state else "not yet captured" }}
           {% if workspace_state and workspace_state.last_runtime_at %}
           Â· last runtime {{ workspace_state.last_runtime_at.strftime("%Y-%m-%d %H:%M") }}
