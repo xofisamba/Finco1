@@ -1,0 +1,11 @@
+section_or_sheet,reason_not_validated,risk_level,recommended_future_validation,pilot_blocker
+Construction,full period-level construction schedule detail is not currently validated numerically,low,"add period-level construction row checks if construction sheet becomes a stronger reviewer dependency",no
+CAPEX,full spend-curve detail is not currently validated numerically,low,"add representative period and total capex curve checks later",no
+Revenue,period-level revenue table is not yet part of the numeric validation slice,medium,"add row-level runtime revenue table validation after stable label inventory is expanded",no
+Senior Debt,only aggregate debt coverage metric is validated today,medium,"add period-level debt service and balance checks once a stable reviewer lookup pattern is finalized",no
+SHL,review workbook exposes SHL data but not yet under numeric validation coverage,medium,"add representative SHL balance or service checks in a future phase",no
+Tax,full tax bridge and residual breakout are not yet numerically validated,medium,"add tax bridge row validation after residual-review scope is narrowed",no
+P&L,assembled statement line items are not yet numerically validated end to end,medium,"add sheet-level statement parity checks in a later validation phase",no
+Cash Flow,assembled cash-flow rows are not yet numerically validated end to end,medium,"add representative row and total checks in a later validation phase",no
+Balance Sheet,assembled balance-sheet rows are not yet numerically validated end to end,medium,"add representative assets liabilities equity checks in a later validation phase",no
+Workbook-wide_formula_inventory,this branch does not inventory every formula cell because the current validation target is representative numeric trust not full workbook audit,low,"add workbook-wide cell-classification inventory if pilot scope widens",no
