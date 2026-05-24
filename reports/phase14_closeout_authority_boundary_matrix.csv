@@ -1,0 +1,13 @@
+boundary,status,evidence,phase14_effect,notes
+runtime_backend_authority,intact,"phase14 provenance, lineage, compare, and reviewer docs/tests","clarified but not changed","Runtime remains the source of financial truth."
+persistence_non_authoritative,intact,"phase14c snapshot; phase14 provenance docs; targeted cleanup context","clarified but not changed","Persistence stores snapshots and workflow metadata only."
+workbook_export_descriptive_only,intact,"phase14 provenance coverage; reviewer cover notes; export lineage UI","clarified and made reviewer-visible","Workbook/export does not become calculation authority."
+scenario_compare_descriptive_only,intact,"phase14_scenario_compare_honesty.md and tests","clarified and made reviewer-visible","Compare reads saved snapshots and saved runtime summaries only."
+audit_economic_mode_contract,intact,"phase9 reconciliation docs/tests referenced by phase14 closeout","unchanged","audit_economic_mode remains audit/reconciliation-only."
+runtime_economic_mode_contract,intact,"phase9 reconciliation docs/tests referenced by phase14 closeout","unchanged","runtime_economic_mode remains explicit runtime staging path."
+governance_approval_semantics,intact,"Phase 14 docs/reports/tests","unchanged","Accepted conventions remain explanatory only."
+editable_grid_surface_area,intact,"Phase 14A, compare, and closeout docs/tests","unchanged","No new editable surfaces added."
+replay_engine_behavior,absent,"Phase 14 provenance/export/closeout docs/tests","unchanged","Provenance and lineage remain descriptive only."
+g20_blocker,intact,"all closeout docs and tests","unchanged","G20 remains BLOCKED."
+r99_r102_not_approved,intact,"all closeout docs and tests","unchanged","R99/R102 remain NOT APPROVED."
+

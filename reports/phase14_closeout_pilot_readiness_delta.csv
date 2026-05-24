@@ -1,0 +1,9 @@
+dimension,phase14_improvement,still_not_solved,impact_on_guided_pilot,notes
+reviewer_clarity,"state guidance, cover notes, lineage UI, compare honesty","does not create external approval workflow","high","Reviewers can interpret artifacts more safely without chat context."
+export_interpretability,"standard provenance plus cover notes and lineage UI","does not make exports authoritative","high","Exports are easier to read and trace."
+publish_workflow_reliability,"ZIP fallback documented and validator-backed","does not fix local .git permission issues","medium","Operational friction reduced even though root local issue may persist."
+pilot_safe_no_claims,"snapshot and limitation docs made explicit","does not create lender-ready or audit-certified status","high","Safer external framing for guided pilots."
+editable_grid_workflow,"reviewer productivity polish and compare honesty improved context","does not expand editable surface area or multi-user workflow","medium","Usability improved without widening product risk."
+governance_discipline,"blockers and non-approval posture kept explicit","does not implement approval orchestration","high","Prevents accidental softening of governance state."
+deployment_and_operations,"none beyond packaging workflow","deployment hardening still outstanding","low","Still future work."
+
