@@ -254,7 +254,10 @@ def _replay_metadata_for_project(
     runtime_timestamp: str | None = None,
     project_id: str | None = None,
     scenario_id: str | None = None,
+    scenario_name: str | None = None,
+    scenario_revision: str | None = None,
     runtime_snapshot_id: str | None = None,
+    runtime_origin: str | None = None,
     artifact_name: str | None = None,
 ) -> dict:
     project_inputs = _project_inputs_for_code(project_code)
@@ -265,12 +268,16 @@ def _replay_metadata_for_project(
         governance_state=governance_state,
         project_id=project_id,
         scenario_id=scenario_id,
+        scenario_name=scenario_name,
+        scenario_revision=scenario_revision,
         runtime_timestamp=runtime_timestamp,
         export_timestamp=export_timestamp,
         runtime_snapshot_id=runtime_snapshot_id,
+        runtime_origin=runtime_origin,
         artifact_name=artifact_name,
         export_type=export_type,
         workbook_type=workbook_type,
+        active_project=project_code,
     )
 
 
@@ -1129,13 +1136,29 @@ async def download_post(request: Request):
 
     try:
         demo = run_demo_project(project_type, scenario, project_inputs_override=override)
+        project_code = (
+            active_project
+            if active_project in {"tuho", "oborovo"}
+            else ("oborovo" if project_type.lower() == "solar" else "tuho")
+        )
+        project_record = get_project_by_code(user.user_id, project_code)
+        filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
+        replay_metadata = _replay_metadata_for_project(
+            project_code,
+            export_type="excel_model_export",
+            workbook_type="values_only_excel_export",
+            export_timestamp=utc_now_iso(),
+            runtime_timestamp=utc_now_iso(),
+            project_id=project_record.project_id if project_record else None,
+            scenario_name=scenario,
+            runtime_origin="factory_base_runtime",
+            artifact_name=filename,
+        )
         excel_bytes = build_excel_export(
             result=demo.result,
             project_inputs=demo.project_inputs,
+            provenance_metadata=replay_metadata,
         )
-        filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
-        project_code = active_project or project_type.lower() or "tuho"
-        project_record = get_project_by_code(user.user_id, project_code)
         record_export(
             user_id=user.user_id,
             project_code=project_code,
@@ -1144,14 +1167,7 @@ async def download_post(request: Request):
             artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
             project_id=project_record.project_id if project_record else None,
             governance_state=_governance_snapshot(project_code),
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                export_type="excel_model_export",
-                export_timestamp=utc_now_iso(),
-                runtime_timestamp=utc_now_iso(),
-                project_id=project_record.project_id if project_record else None,
-                artifact_name=filename,
-            ),
+            replay_metadata=replay_metadata,
         )
         return StreamingResponse(
             iter([excel_bytes]),
@@ -1177,13 +1193,25 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
 
     try:
         demo = run_demo_project(project_type, scenario)
+        project_code = "oborovo" if project_type.lower() == "solar" else "tuho"
+        project_record = get_project_by_code(user.user_id, project_code)
+        filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
+        replay_metadata = _replay_metadata_for_project(
+            project_code,
+            export_type="excel_model_export",
+            workbook_type="values_only_excel_export",
+            export_timestamp=utc_now_iso(),
+            runtime_timestamp=utc_now_iso(),
+            project_id=project_record.project_id if project_record else None,
+            scenario_name=scenario,
+            runtime_origin="factory_base_runtime",
+            artifact_name=filename,
+        )
         excel_bytes = build_excel_export(
             result=demo.result,
             project_inputs=demo.project_inputs,
+            provenance_metadata=replay_metadata,
         )
-        filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
-        project_code = project_type.lower() if project_type else "tuho"
-        project_record = get_project_by_code(user.user_id, project_code)
         record_export(
             user_id=user.user_id,
             project_code=project_code,
@@ -1192,14 +1220,7 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
             project_id=project_record.project_id if project_record else None,
             governance_state=_governance_snapshot(project_code),
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                export_type="excel_model_export",
-                export_timestamp=utc_now_iso(),
-                runtime_timestamp=utc_now_iso(),
-                project_id=project_record.project_id if project_record else None,
-                artifact_name=filename,
-            ),
+            replay_metadata=replay_metadata,
         )
         return StreamingResponse(
             iter([excel_bytes]),
@@ -1248,19 +1269,15 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
         artifact_path=f"/exports/runtime-summary.csv?project={safe_project}",
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
-        replay_metadata={
-            "commit_sha": runtime_rows[0]["commit_sha"],
-            "branch_name": runtime_rows[0]["source_branch"],
-            "runtime_timestamp": runtime_rows[0]["runtime_timestamp"],
-            "export_timestamp": runtime_rows[0]["generated_at"],
-            "template_origin": runtime_rows[0]["template_origin"],
-            "template_revision": runtime_rows[0]["template_revision"],
-            "runtime_flag_count": runtime_rows[0]["runtime_flag_count"],
-            "runtime_flags_json": runtime_rows[0]["runtime_flags_json"],
-            "replay_limitations_notice": runtime_rows[0]["replay_limitations"],
-            "artifact_name": filename,
-            "export_type": "runtime_summary_csv",
-        },
+        replay_metadata=_replay_metadata_for_project(
+            safe_project,
+            export_type="runtime_summary_csv",
+            export_timestamp=runtime_rows[0]["export_generated_at"],
+            runtime_timestamp=runtime_rows[0]["runtime_generated_at"],
+            project_id=project_record.project_id if project_record else None,
+            runtime_origin=runtime_rows[0]["runtime_origin"],
+            artifact_name=filename,
+        ),
     )
     return StreamingResponse(
         iter([data]),
@@ -1299,20 +1316,16 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
         artifact_path=f"/exports/institutional-workbook.xlsx?project={safe_project}",
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
-        replay_metadata={
-            "commit_sha": runtime_rows[0]["commit_sha"],
-            "branch_name": runtime_rows[0]["source_branch"],
-            "runtime_timestamp": runtime_rows[0]["runtime_timestamp"],
-            "export_timestamp": runtime_rows[0]["generated_at"],
-            "template_origin": runtime_rows[0]["template_origin"],
-            "template_revision": runtime_rows[0]["template_revision"],
-            "runtime_flag_count": runtime_rows[0]["runtime_flag_count"],
-            "runtime_flags_json": runtime_rows[0]["runtime_flags_json"],
-            "replay_limitations_notice": runtime_rows[0]["replay_limitations"],
-            "artifact_name": filename,
-            "export_type": "institutional_workbook",
-            "workbook_type": "institutional_workbook_runtime_binding",
-        },
+        replay_metadata=_replay_metadata_for_project(
+            safe_project,
+            export_type="institutional_workbook",
+            workbook_type="institutional_workbook_runtime_binding",
+            export_timestamp=runtime_rows[0]["export_generated_at"],
+            runtime_timestamp=runtime_rows[0]["runtime_generated_at"],
+            project_id=project_record.project_id if project_record else None,
+            runtime_origin=runtime_rows[0]["runtime_origin"],
+            artifact_name=filename,
+        ),
     )
     return StreamingResponse(
         iter([workbook_bytes]),

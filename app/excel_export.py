@@ -76,6 +76,7 @@ def build_excel_export(
     sponsor_waterfall_result=None,
     sponsor_preferred_return_result=None,
     tier_annotated_capital_accounts=None,
+    provenance_metadata: dict | None = None,
 ) -> bytes:
     """Build a values-only Excel workbook from waterfall results.
     
@@ -166,7 +167,8 @@ def build_excel_export(
         _write_notes_sheet(writer, integration_status, integration_note, scenario, project_type, period_view,
                           warnings=warnings if warnings else [], git_sha=git_sha, timestamp=ts,
                           advanced_opex_line_items=advanced_opex_line_items,
-                          advanced_capex_line_items=advanced_capex_line_items)
+                          advanced_capex_line_items=advanced_capex_line_items,
+                          provenance_metadata=provenance_metadata)
 
         # ── Inputs ────────────────────────────────────────────────────────
         _write_sheet(writer, "Inputs", build_inputs_summary_table(project_inputs))
@@ -604,7 +606,7 @@ def _write_validation_sheet(writer, validation_issues) -> None:
     ws.sheet_state = "visible"
 
 
-def _write_notes_sheet(writer, status, note, scenario, project_type, period_view, warnings=None, git_sha=None, timestamp=None, advanced_opex_line_items=None, advanced_capex_line_items=None) -> None:
+def _write_notes_sheet(writer, status, note, scenario, project_type, period_view, warnings=None, git_sha=None, timestamp=None, advanced_opex_line_items=None, advanced_capex_line_items=None, provenance_metadata=None) -> None:
     if warnings is None:
         warnings = []
     """Write a Notes sheet."""
@@ -624,6 +626,21 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
         ("Note", note if note else "n/a"),
         ("Values-only Export", "No formulas used in this workbook."),
         ("Economic LCOE", "Excludes debt service — see methodology document for details."),
+        ("Export Generated At", (provenance_metadata or {}).get("export_generated_at", timestamp)),
+        ("Runtime Timestamp", (provenance_metadata or {}).get("runtime_generated_at", timestamp)),
+        ("Branch Name", (provenance_metadata or {}).get("branch_name", "unavailable")),
+        ("Active Project", (provenance_metadata or {}).get("active_project", "unavailable")),
+        ("Scenario ID", (provenance_metadata or {}).get("scenario_id", "not_applicable")),
+        ("Scenario Name", (provenance_metadata or {}).get("scenario_name", scenario)),
+        ("Scenario Revision", (provenance_metadata or {}).get("scenario_revision", "not_applicable")),
+        ("Runtime Snapshot ID", (provenance_metadata or {}).get("runtime_snapshot_id", "unavailable")),
+        ("Runtime Origin", (provenance_metadata or {}).get("runtime_origin", "not_applicable")),
+        ("Template Origin", (provenance_metadata or {}).get("template_origin", "unavailable")),
+        ("Template Revision", (provenance_metadata or {}).get("template_revision", "unavailable")),
+        ("Export Template Version", (provenance_metadata or {}).get("export_template_version", "not separately versioned")),
+        ("Governance Posture", (provenance_metadata or {}).get("governance_posture_summary", "G20 remains BLOCKED; R99/R102 remain NOT APPROVED")),
+        ("Runtime Flag Snapshot", (provenance_metadata or {}).get("runtime_flags_json", "unavailable")),
+        ("Replay Limitations", (provenance_metadata or {}).get("replay_limitations_notice", "Replay metadata improves traceability but is descriptive only.")),
         ("", ""),
         ("Depreciation Disclosure", "—"),
         ("  Tax/Book Schedules", "Model outputs, not audited accounts"),

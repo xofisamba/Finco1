@@ -19,6 +19,10 @@ REPLAY_LIMITATIONS_NOTICE = (
     "guaranteed yet. Runtime trees, editable-state replay, and full environment "
     "capture are not persisted in this branch."
 )
+UNAVAILABLE = "unavailable"
+NOT_APPLICABLE = "not_applicable"
+LEGACY_FROZEN = "legacy_frozen"
+EXPORT_TEMPLATE_VERSION = "not separately versioned"
 
 _INFO_FLAG_NAMES = (
     "use_opex_line_item_engine",
@@ -92,6 +96,19 @@ def template_provenance(project_key: str, project_inputs: Any) -> dict[str, str]
     }
 
 
+def provenance_marker(value: Any, *, missing: str = UNAVAILABLE) -> Any:
+    if value in (None, "", [], {}, ()):
+        return missing
+    return value
+
+
+def governance_posture_summary(governance_state: dict[str, Any] | None) -> str:
+    state = governance_state or {}
+    g20_status = state.get("g20_status", "BLOCKED")
+    r99_status = state.get("r99_r102_status", "NOT APPROVED")
+    return f"G20 remains {g20_status}; R99/R102 remain {r99_status}"
+
+
 def build_replay_metadata(
     *,
     project_key: str,
@@ -107,23 +124,45 @@ def build_replay_metadata(
     artifact_name: str | None = None,
     export_type: str | None = None,
     workbook_type: str | None = None,
+    active_project: str | None = None,
+    scenario_name: str | None = None,
+    scenario_revision: str | None = None,
+    runtime_origin: str | None = None,
+    export_template_version: str | None = None,
 ) -> dict[str, Any]:
     flags = runtime_flag_snapshot(project_inputs)
     template_meta = template_provenance(project_key, project_inputs)
+    runtime_generated_at = runtime_timestamp or utc_now_iso()
+    export_generated_at = export_timestamp or utc_now_iso()
+    normalized_governance_state = governance_state or {}
     return {
         "commit_sha": get_git_commit_sha(),
         "branch_name": get_git_branch_name(),
-        "runtime_timestamp": runtime_timestamp or utc_now_iso(),
-        "export_timestamp": export_timestamp or utc_now_iso(),
+        "runtime_timestamp": runtime_generated_at,
+        "runtime_generated_at": runtime_generated_at,
+        "export_timestamp": export_generated_at,
+        "export_generated_at": export_generated_at,
+        "active_project": provenance_marker(active_project or project_key.lower()),
         "project_id": project_id,
-        "scenario_id": scenario_id,
+        "scenario_id": provenance_marker(scenario_id, missing=NOT_APPLICABLE),
+        "scenario_name": provenance_marker(scenario_name, missing=NOT_APPLICABLE),
+        "scenario_revision": provenance_marker(
+            scenario_revision or scenario_id,
+            missing=NOT_APPLICABLE,
+        ),
         "run_id": run_id,
         "export_id": export_id,
-        "runtime_snapshot_id": runtime_snapshot_id,
+        "runtime_snapshot_id": provenance_marker(runtime_snapshot_id),
+        "runtime_origin": provenance_marker(runtime_origin, missing=NOT_APPLICABLE),
         "artifact_name": artifact_name,
         "export_type": export_type,
-        "workbook_type": workbook_type,
-        "governance_state": governance_state or {},
+        "workbook_type": provenance_marker(workbook_type, missing=NOT_APPLICABLE),
+        "export_template_version": provenance_marker(
+            export_template_version or EXPORT_TEMPLATE_VERSION,
+            missing=NOT_APPLICABLE,
+        ),
+        "governance_state": normalized_governance_state,
+        "governance_posture_summary": governance_posture_summary(normalized_governance_state),
         "runtime_flag_snapshot": flags,
         "runtime_flag_count": len(flags),
         "runtime_flags_json": json.dumps(flags, sort_keys=True),

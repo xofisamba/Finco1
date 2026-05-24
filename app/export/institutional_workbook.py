@@ -45,10 +45,18 @@ class WorkbookExportBundle:
     branch: str
     commit_sha: str
     runtime_timestamp: str
+    active_project: str
+    scenario_id: str
+    scenario_name: str
+    scenario_revision: str
+    runtime_snapshot_id: str
+    runtime_origin: str
     template_origin: str
     template_revision: str
+    export_template_version: str
     runtime_flag_count: str
     runtime_flags_json: str
+    governance_posture_summary: str
     replay_limitations: str
     context: ProjectContext
     project_inputs: object
@@ -235,14 +243,22 @@ def _build_export_bundle(project: str) -> WorkbookExportBundle:
     return WorkbookExportBundle(
         project_key=project_key,
         project_name=runtime_rows[0]["project"],
-        generated_at=runtime_rows[0]["generated_at"],
-        branch=runtime_rows[0]["source_branch"],
+        generated_at=runtime_rows[0]["export_generated_at"],
+        branch=runtime_rows[0]["branch_name"],
         commit_sha=runtime_rows[0]["commit_sha"],
         runtime_timestamp=runtime_rows[0]["runtime_timestamp"],
+        active_project=runtime_rows[0]["active_project"],
+        scenario_id=runtime_rows[0]["scenario_id"],
+        scenario_name=runtime_rows[0]["scenario_name"],
+        scenario_revision=runtime_rows[0]["scenario_revision"],
+        runtime_snapshot_id=runtime_rows[0]["runtime_snapshot_id"],
+        runtime_origin=runtime_rows[0]["runtime_origin"],
         template_origin=runtime_rows[0]["template_origin"],
         template_revision=runtime_rows[0]["template_revision"],
+        export_template_version=runtime_rows[0]["export_template_version"],
         runtime_flag_count=runtime_rows[0]["runtime_flag_count"],
         runtime_flags_json=runtime_rows[0]["runtime_flags_json"],
+        governance_posture_summary=runtime_rows[0]["governance_posture_summary"],
         replay_limitations=runtime_rows[0]["replay_limitations"],
         context=context,
         project_inputs=project_inputs,
@@ -272,15 +288,22 @@ def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     rows = [
         ("Project", bundle.project_name),
         ("Workbook type", "institutional_workbook_runtime_binding"),
-        ("Generated at", bundle.generated_at),
+        ("Export generated at", bundle.generated_at),
         ("Runtime timestamp", bundle.runtime_timestamp),
         ("Source branch", bundle.branch or _source_branch()),
         ("Commit SHA", bundle.commit_sha),
+        ("Active project", bundle.active_project),
+        ("Scenario ID", bundle.scenario_id),
+        ("Scenario name", bundle.scenario_name),
+        ("Scenario revision", bundle.scenario_revision),
+        ("Runtime snapshot ID", bundle.runtime_snapshot_id),
+        ("Runtime origin", bundle.runtime_origin),
         ("Template origin", bundle.template_origin),
         ("Template revision", bundle.template_revision),
+        ("Export template version", bundle.export_template_version),
         ("Workbook version", "Phase 11 institutional export polish"),
         ("Runtime / preview", "runtime-bound workbook with explicit assumption sections"),
-        ("Governance status", f"G20 {bundle.runtime_rows[0]['g20_status']} / R99-R102 {bundle.runtime_rows[0]['r99_r102_status']}"),
+        ("Governance status", bundle.governance_posture_summary),
         ("Runtime flag snapshot", f"{bundle.runtime_flag_count} flags captured for replay provenance"),
         ("Purpose", "Institutional review workbook fed from existing runtime outputs and documented assumptions."),
         ("Status", "Phase 11 product polish layer - not final bankability"),
@@ -313,10 +336,20 @@ def _write_governance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Governance status", bundle.runtime_rows[0]["governance_status"], "review", "Export/workbook branch only."),
         ("G20 status", bundle.runtime_rows[0]["g20_status"], "review", "Remains blocked in this branch."),
         ("R99/R102 status", bundle.runtime_rows[0]["r99_r102_status"], "review", "Runtime promotion remains not approved."),
+        ("Governance posture summary", bundle.governance_posture_summary, "review", "Descriptive governance posture only; no approval implied."),
         ("Commit SHA", bundle.commit_sha, "review", "Code version that generated this workbook."),
+        ("Branch name", bundle.branch, "review", "Branch provenance for the generating code path."),
+        ("Export generated at", bundle.generated_at, "review", "Timestamp when this workbook artifact was generated."),
         ("Runtime timestamp", bundle.runtime_timestamp, "review", "Timestamp for the runtime execution behind this export."),
+        ("Active project", bundle.active_project, "review", "Canonical active project label for this export path."),
+        ("Scenario ID", bundle.scenario_id, "review", "Explicitly marked not_applicable when no saved scenario boundary exists."),
+        ("Scenario name", bundle.scenario_name, "review", "Explicitly marked not_applicable when no saved scenario boundary exists."),
+        ("Scenario revision", bundle.scenario_revision, "review", "Saved snapshot or scenario boundary marker where available."),
+        ("Runtime snapshot ID", bundle.runtime_snapshot_id, "review", "Explicitly marked unavailable when this export path has no persisted runtime snapshot record."),
+        ("Runtime origin", bundle.runtime_origin, "review", "Descriptive runtime boundary label only."),
         ("Template origin", bundle.template_origin, "template assumption", "Factory/template source for the project context."),
         ("Template revision", bundle.template_revision, "template assumption", "Lightweight template provenance; no separate semantic version exists."),
+        ("Export template version", bundle.export_template_version, "review", "Export packaging/version metadata only."),
         ("Runtime flags captured", bundle.runtime_flag_count, "review", "Replay provenance only; flags remain non-authoritative metadata."),
         ("Project code", bundle.context.code, "template assumption", "Read-only project context."),
         ("Scenario label", "Factory-bound base runtime", "runtime", "No scenario overrides introduced here."),
@@ -687,10 +720,10 @@ def _write_gap_register_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> None:
     metadata = (
         ("Project", bundle.project_name),
-        ("Generated at", bundle.generated_at),
+        ("Export generated at", bundle.generated_at),
         ("Runtime / preview", marker),
-        ("Runtime timestamp", bundle.runtime_timestamp),
-        ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {bundle.template_origin}"),
+        ("Runtime boundary", f"{bundle.runtime_timestamp} | {bundle.runtime_origin} | {bundle.runtime_snapshot_id}"),
+        ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {bundle.template_origin} | {bundle.scenario_name}"),
     )
     for row_idx, (label, value) in enumerate(metadata, start=1):
         sheet.cell(row=row_idx, column=1, value=label)

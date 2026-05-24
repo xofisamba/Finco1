@@ -1,0 +1,5 @@
+gap_id,export_type,field_or_area,current_status,severity,recommended_action,status,notes
+P14-PROV-01,excel_model_export,canonical reviewer-readable provenance block,closed,medium,Add descriptive Notes-sheet provenance rows,done,No numeric or formula sheets changed
+P14-PROV-02,runtime_summary_csv,explicit unavailable/not_applicable markers,closed,medium,Standardize canonical CSV columns,done,Active export now distinguishes unavailable vs not_applicable
+P14-PROV-03,institutional_workbook,scenario/runtime boundary clarity,closed,medium,Add reviewer-readable cover and governance rows,done,No calculation sheets changed
+P14-PROV-04,legacy historical artifacts,backfill older frozen exports,open,low,Leave legacy outputs frozen and document boundary,documented,Outside this branch by design
