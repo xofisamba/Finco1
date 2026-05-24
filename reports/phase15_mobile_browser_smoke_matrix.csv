@@ -1,0 +1,8 @@
+surface,smoke_signal,status,notes
+editable_grid_scroll,.editable-grid-scroll overflow-x auto,confirmed,"narrow viewport can scroll supported editable grids horizontally"
+workspace_state_banner,.workspace-state-banner responsive overrides,confirmed,"unsaved state messaging remains visible in compact layout"
+workspace_state_strip,.workspace-state-strip responsive rules,confirmed,"state strip stacks safely on narrow widths"
+compare_context_grid,.ps-compare-context-grid responsive rules,confirmed,"source cards remain readable on smaller screens"
+focus_visibility,.editable-grid-input:focus-visible and related controls,confirmed,"keyboard focus remains visible in browser workflow"
+mobile_calculation_path_absence,no_mobile_runtime_logic_in_js,confirmed,"no alternate mobile calculation path exists"
+live_mobile_device_check,not_implemented_in_branch,pending,"future real-device browser pass still recommended"

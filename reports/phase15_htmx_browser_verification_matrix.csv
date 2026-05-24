@@ -1,0 +1,10 @@
+surface,hook_or_signal,status,reason
+workspace_dirty_state,applyWorkspaceStateMeta,confirmed,"workspace dirty label, runtime-origin label, snapshot label, banner state, and disable states are updated together"
+editable_grid_mirrors,syncEditableGridMirrors,confirmed,"grid mirror inputs resync from canonical fields after load and after swap"
+editable_grid_rebinding,bindEditableGridInputs,confirmed,"grid listeners are marked with dataset flag to prevent duplicate binding"
+draft_persistence_rebinding,bindDraftPersistenceFields,confirmed,"draft persistence listeners are marked with dataset flag to prevent duplicate binding"
+htmx_swap_refresh,document.addEventListener('htmx:afterSwap'),confirmed,"swap hook rebinds draft/grid listeners and resyncs mirrors after partial refresh"
+dirty_action_blocking,setButtonDisabledState_and_setActionReason,confirmed,"run compare and save-run remain clearly blocked while dirty"
+export_guidance_refresh,updateExportLineageGuidance,confirmed,"dirty versus clean export guidance changes with workspace state"
+compare_honesty_persistence,scenario_compare_partial_copy,confirmed,"compare wording continues to state saved snapshots/runtime summaries only"
+listener_stacking_guard,data-draft-bound_and_data-grid-bound,confirmed,"idempotent browser rebinding remains explicit and testable"
