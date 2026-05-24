@@ -1,0 +1,4 @@
+surface,source_of_values,includes_unsaved_draft,visible_timestamps,visible_runtime_boundary,notes
+scenario_compare_panel,"saved scenario snapshots and saved runtime summaries only",no,"saved timestamp; runtime timestamp; compare generated timestamp","runtime snapshot id; runtime origin","Primary reviewer-facing honesty surface."
+scenario_workspace_compare_section,"saved scenario snapshot selection only",no,"saved scenario updated_at via selection cards","workspace dirty/runtime guidance","Explains compare inputs before compare executes."
+
