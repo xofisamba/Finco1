@@ -15,6 +15,12 @@
         <div class="ps-saved-meta">
           Active saved scenario boundary. Unsaved draft edits remain preview-only until you save or discard them.
         </div>
+        <div class="ps-saved-meta">
+          Revision boundary: {{ workspace_state.updated_at.strftime("%Y-%m-%d %H:%M") if workspace_state else "not yet captured" }}
+          {% if workspace_state and workspace_state.last_runtime_at %}
+          Â· last runtime {{ workspace_state.last_runtime_at.strftime("%Y-%m-%d %H:%M") }}
+          {% endif %}
+        </div>
       </div>
       <div class="ps-saved-stats">
         <span class="ps-stat-chip" id="workspace-dirty-label">

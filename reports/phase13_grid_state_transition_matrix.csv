@@ -1,0 +1,6 @@
+from_state,user_action,to_state,runtime_allowed,ui_signal,notes
+Clean saved state,edit grid field,Dirty draft,no,"Dirty badge + unsaved banner","Draft persists for workflow continuity only."
+Dirty draft,revert draft,Clean saved state,yes,"Dirty badge clears","Revert restores the saved scenario boundary."
+Dirty draft,save scenario,Clean saved state,yes,"Active scenario metadata refreshes","Save creates a new persisted scenario snapshot."
+Clean saved state,run model,Last runtime bound,yes,"Runtime origin metadata updates","Runtime summary stays tied to the clean snapshot that was executed."
+Last runtime bound,edit grid field,Dirty draft with older runtime snapshot,no,"Runtime snapshot metadata remains visible","Prevents stale interpretation of runtime cards."

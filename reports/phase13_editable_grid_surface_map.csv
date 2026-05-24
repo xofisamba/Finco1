@@ -1,0 +1,4 @@
+surface,tab,input_fields,draft_only,runtime_authoritative,notes
+Revenue assumptions,revenue,"tariff_eur_mwh|ppa_term_years|p50_hours",yes,no,"Mirror inputs edit workspace draft only; runtime requires explicit save or revert."
+OPEX assumptions,opex,"opex_y1_keur|construction_months",yes,no,"Schedule remains preview-oriented until a clean saved scenario is run."
+Financing assumptions,senior_debt,"gearing_pct|target_dscr|interest_rate_pct|tenor_years",yes,no,"Frontend never computes debt outputs; backend runtime remains authoritative."

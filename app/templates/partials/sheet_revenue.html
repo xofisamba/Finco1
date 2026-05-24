@@ -10,6 +10,52 @@
 <!-- PPA Assumptions -->
 <div class="sheet-card">
   <div class="section-header">PPA Assumptions</div>
+  <div class="editable-grid-shell">
+    <div class="editable-grid-shell__header">
+      <div>
+        <div class="editable-grid-shell__title">Editable draft assumptions</div>
+        <div class="editable-grid-shell__note">Edits update the workspace draft only. Runtime remains blocked until you save or revert.</div>
+      </div>
+      <span class="badge badge-runtime">Draft only</span>
+    </div>
+    <div class="editable-grid-scroll">
+      <table class="editable-grid-table">
+        <thead>
+          <tr>
+            <th>Assumption</th>
+            <th>Draft value</th>
+            <th>Saved/runtime note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PPA Tariff (EUR/MWh)</td>
+            <td>
+              <input class="editable-grid-input" type="number" step="any" min="0"
+                     data-grid-source="tariff_eur_mwh" inputmode="decimal" />
+            </td>
+            <td>Used only after explicit save and clean runtime execution.</td>
+          </tr>
+          <tr>
+            <td>PPA Term (years)</td>
+            <td>
+              <input class="editable-grid-input" type="number" step="1" min="0"
+                     data-grid-source="ppa_term_years" inputmode="numeric" />
+            </td>
+            <td>Preview convenience value until saved.</td>
+          </tr>
+          <tr>
+            <td>P50 Hours / year</td>
+            <td>
+              <input class="editable-grid-input" type="number" step="any" min="0"
+                     data-grid-source="p50_hours" inputmode="decimal" />
+            </td>
+            <td>Runtime authority stays in the model layer.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">PPA Tariff (Y1)</span>

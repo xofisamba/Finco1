@@ -65,6 +65,21 @@ window.applyScenarioSnapshot = function(snapshot, scenarioId) {
   });
   var currentId = document.getElementById('current_saved_scenario_id');
   if (currentId) currentId.value = scenarioId || '';
+  if (window.syncEditableGridMirrors) {
+    window.syncEditableGridMirrors();
+  }
+};
+
+window.syncEditableGridMirrors = function() {
+  document.querySelectorAll('[data-grid-source]').forEach(function(input) {
+    var sourceId = input.getAttribute('data-grid-source');
+    if (!sourceId) return;
+    var source = document.getElementById(sourceId);
+    if (!source) return;
+    if (document.activeElement !== input) {
+      input.value = source.value || '';
+    }
+  });
 };
 
 window.applyWorkspaceStateMeta = function(meta) {
@@ -86,6 +101,25 @@ window.applyWorkspaceStateMeta = function(meta) {
   if (runtimeLabel && meta.last_runtime_origin_label) runtimeLabel.textContent = meta.last_runtime_origin_label;
   var runtimeChip = document.getElementById('workspace-runtime-snapshot-id');
   if (runtimeChip) runtimeChip.textContent = meta.last_runtime_snapshot_id || 'No runtime snapshot';
+  var stripActive = document.getElementById('workspace-strip-active-scenario');
+  if (stripActive && typeof meta.active_scenario_name !== 'undefined') stripActive.textContent = meta.active_scenario_name || 'Workspace Base';
+  var stripDirty = document.getElementById('workspace-strip-dirty');
+  if (stripDirty && meta.dirty_label) stripDirty.textContent = meta.dirty_label;
+  var stripOrigin = document.getElementById('workspace-strip-runtime-origin');
+  if (stripOrigin && meta.last_runtime_origin_label) stripOrigin.textContent = meta.last_runtime_origin_label;
+  var stripSnap = document.getElementById('workspace-strip-runtime-snapshot');
+  if (stripSnap) stripSnap.textContent = meta.last_runtime_snapshot_id || 'Not yet run';
+  var banner = document.getElementById('workspace-unsaved-banner');
+  if (banner) banner.classList.toggle('is-hidden', !meta.dirty);
+  var bannerActive = document.getElementById('workspace-banner-active-scenario');
+  if (bannerActive && typeof meta.active_scenario_name !== 'undefined') bannerActive.textContent = meta.active_scenario_name || 'Workspace Base';
+  var bannerOrigin = document.getElementById('workspace-banner-runtime-origin');
+  if (bannerOrigin && meta.last_runtime_origin_label) bannerOrigin.textContent = meta.last_runtime_origin_label;
+
+  ['btn-run-model', 'btn-compare-draft'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (btn) btn.disabled = !!meta.dirty;
+  });
 };
 
 window.refreshScenarioWorkspace = function(projectId) {
@@ -112,6 +146,9 @@ function queueWorkspaceDraftPersist() {
       .then(function(data) {
         if (data && window.applyWorkspaceStateMeta) {
           window.applyWorkspaceStateMeta(data);
+        }
+        if (window.syncEditableGridMirrors) {
+          window.syncEditableGridMirrors();
         }
       })
       .catch(function() {
@@ -183,6 +220,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  if (window.syncEditableGridMirrors) {
+    window.syncEditableGridMirrors();
+  }
+
   var discardBtn = document.getElementById('btn-discard-edits');
   if (discardBtn) {
     discardBtn.addEventListener('click', function() {
@@ -238,6 +279,21 @@ document.addEventListener('DOMContentLoaded', function() {
       field.addEventListener('change', queueWorkspaceDraftPersist);
     });
   }
+
+  document.querySelectorAll('[data-grid-source]').forEach(function(input) {
+    input.addEventListener('input', function() {
+      var source = document.getElementById(input.getAttribute('data-grid-source'));
+      if (!source) return;
+      source.value = input.value;
+      source.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    input.addEventListener('change', function() {
+      var source = document.getElementById(input.getAttribute('data-grid-source'));
+      if (!source) return;
+      source.value = input.value;
+      source.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
 
   document.querySelectorAll('.input-group-summary').forEach(function(summary) {
     summary.addEventListener('click', function() {

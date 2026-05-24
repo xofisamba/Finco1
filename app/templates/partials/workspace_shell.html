@@ -1,5 +1,48 @@
 <!-- Workspace Shell — Tab Panels — Phase 9.5 -->
 <div class="workspace-content" id="workspace-content">
+  <div class="workspace-state-banner{% if not workspace_state or not workspace_state.dirty %} is-hidden{% endif %}" id="workspace-unsaved-banner">
+    <div class="workspace-state-banner__main">
+      <span class="badge badge-warn">Unsaved changes</span>
+      <div class="workspace-state-banner__text">
+        Draft edits are active. Save to create a new scenario snapshot, or revert to restore the last saved boundary before running.
+      </div>
+    </div>
+    <div class="workspace-state-banner__meta">
+      <span class="workspace-state-meta-chip" id="workspace-banner-active-scenario">
+        {{ workspace_state.active_scenario_name if workspace_state and workspace_state.active_scenario_name else "Workspace Base" }}
+      </span>
+      <span class="workspace-state-meta-chip" id="workspace-banner-runtime-origin">
+        {{ workspace_state_meta.last_runtime_origin_label if workspace_state_meta else "No runtime bound yet" }}
+      </span>
+    </div>
+  </div>
+
+  <div class="workspace-state-strip">
+    <div class="workspace-state-strip__item">
+      <span class="workspace-state-strip__label">Active Scenario</span>
+      <span class="workspace-state-strip__value" id="workspace-strip-active-scenario">
+        {{ workspace_state.active_scenario_name if workspace_state and workspace_state.active_scenario_name else "Workspace Base" }}
+      </span>
+    </div>
+    <div class="workspace-state-strip__item">
+      <span class="workspace-state-strip__label">Draft State</span>
+      <span class="workspace-state-strip__value" id="workspace-strip-dirty">
+        {{ workspace_state_meta.dirty_label if workspace_state_meta else "Clean saved state" }}
+      </span>
+    </div>
+    <div class="workspace-state-strip__item">
+      <span class="workspace-state-strip__label">Last Runtime Boundary</span>
+      <span class="workspace-state-strip__value" id="workspace-strip-runtime-origin">
+        {{ workspace_state_meta.last_runtime_origin_label if workspace_state_meta else "No runtime bound yet" }}
+      </span>
+    </div>
+    <div class="workspace-state-strip__item">
+      <span class="workspace-state-strip__label">Runtime Snapshot</span>
+      <span class="workspace-state-strip__value" id="workspace-strip-runtime-snapshot">
+        {{ workspace_state.last_runtime_snapshot_id if workspace_state and workspace_state.last_runtime_snapshot_id else "Not yet run" }}
+      </span>
+    </div>
+  </div>
 
   <!-- ═══════════════════════════════════════════════ OVERVIEW ══ -->
   <div class="tab-panel active" id="panel-overview">

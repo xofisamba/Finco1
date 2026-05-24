@@ -991,6 +991,7 @@ async def compare(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
+    snapshot = _collect_form_snapshot(form)
     project_type = form.get("project_type", "")
     capacity_mw = form.get("capacity_mw", "")
     tariff_eur_mwh = form.get("tariff_eur_mwh", "")
@@ -1001,6 +1002,43 @@ async def compare(request: Request):
     target_dscr = form.get("target_dscr", "")
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
+    project_code, project_name = _project_persistence_metadata(None, snapshot)
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="workspace_project_state",
+        ),
+    )
+    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    if workspace_state is None:
+        workspace_state = save_workspace_state(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_code,
+            draft_snapshot=_default_workspace_snapshot(project_code),
+            saved_snapshot=_default_workspace_snapshot(project_code),
+            dirty=False,
+            governance_state=_governance_snapshot(project_code),
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                project_id=project_record.project_id,
+                export_type="workspace_draft_state",
+            ),
+        )
+    allow_run, _, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    if not allow_run:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/errors.html",
+            context={"errors": [guard_message]},
+        )
 
     errors = []
     if project_type not in PROJECT_TYPES:
@@ -1788,11 +1826,49 @@ async def save_run_endpoint(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
+    snapshot = _collect_form_snapshot(form)
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
     active_project = (form.get("active_project", "") or "").strip().lower()
     project_code = active_project or project_type.lower() or "tuho"
     project_name = "TUHO Wind 1" if project_code == "tuho" else "Oborovo Solar PV" if project_code == "oborovo" else project_type
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="workspace_project_state",
+        ),
+    )
+    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    if workspace_state is None:
+        workspace_state = save_workspace_state(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_code,
+            draft_snapshot=_default_workspace_snapshot(project_code),
+            saved_snapshot=_default_workspace_snapshot(project_code),
+            dirty=False,
+            governance_state=_governance_snapshot(project_code),
+            replay_metadata=_replay_metadata_for_project(
+                project_code,
+                project_id=project_record.project_id,
+                export_type="workspace_draft_state",
+            ),
+        )
+    allow_run, _, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    if not allow_run:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/save_result.html",
+            context={"success": False, "error": guard_message},
+            headers={"HX-Trigger": "refreshHistory"},
+        )
 
     # Never trust user_id from client; always derive from session.
     user_id = user.user_id
