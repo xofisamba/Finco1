@@ -621,7 +621,297 @@ body {
 .badge-notapproved { background: var(--notapproved-bg); color: var(--notapproved-text); border-color: var(--notapproved-border); }
 .badge-runtime { background: #f0f4ff; color: #1a56db; border-color: #bfdbfe; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; padding: 0.2rem 0.55rem; border-radius: 100px; border: 1px solid; text-transform: uppercase; white-space: nowrap; }
 
-/* ── OPEX Contingency Method Badges ──────────────────────────────────────── */
+/* ── Phase 17 UI: Additional Status Badges ──────────────────────────────── */
+/* Used in runtime/preview/saved/dirty state clarity per Phase 17 spec */
+.badge-dirty               { background: var(--blocked-bg);   color: var(--blocked-text);   border-color: var(--blocked-border);   }
+.badge-saved               { background: var(--accent-light); color: var(--accent-hover); border-color: var(--accent);             }
+.badge-preview-only        { background: #fef3c7;            color: #92400e;            border-color: #fcd34d;             }
+.badge-template-seeded     { background: var(--primary-light); color: var(--primary);     border-color: var(--primary);        }
+.badge-user-created        { background: #f5f3ff;            color: #5b21b6;            border-color: #c4b5fd;             }
+.badge-factory-template    { background: var(--surface-2);    color: var(--muted);       border-color: var(--border-strong);  }
+.badge-runtime-binding-pending { background: var(--warn-bg);  color: var(--warn-text);   border-color: var(--warn-border);      }
+
+/* ── Phase 17 UI: State Strip Extensions ──────────────────────────────── */
+/* .workspace-state-strip already exists; add state-value variants */
+.workspace-state-strip__value--dirty   { color: var(--blocked-text); }
+.workspace-state-strip__value--saved   { color: var(--accent); }
+.workspace-state-strip__value--preview { color: #92400e; }
+.workspace-state-strip__value--runtime { color: var(--primary); }
+
+/* ── Phase 17 UI: Runtime Disclosure ─────────────────────────────────── */
+.runtime-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--primary-light);
+  border: 1px solid var(--convention-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  color: var(--convention-text);
+  line-height: 1.4;
+}
+.runtime-disclosure__icon { font-size: 0.85rem; flex-shrink: 0; }
+.runtime-disclosure__text { flex: 1; }
+.runtime-disclosure__badge { flex-shrink: 0; }
+
+/* ── Phase 17 UI: Dirty/Save/Run Action Hierarchy ─────────────────────── */
+/* Primary: Run Model */
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.action-bar--primary { justify-content: flex-start; }
+.action-bar--secondary { justify-content: flex-start; }
+
+/* Phase 17 button semantic variants — complement .btn-* */
+.btn-primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.2rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  letter-spacing: 0.01em;
+}
+.btn-primary-action:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-primary-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-secondary-action:hover:not(:disabled) { background: var(--border); }
+.btn-secondary-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-destructive-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  background: transparent;
+  color: var(--blocked-text);
+  border: 1px solid var(--blocked-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-destructive-action:hover:not(:disabled) { background: var(--blocked-bg); }
+.btn-destructive-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-neutral-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-neutral-action:hover:not(:disabled) { background: var(--bg); color: var(--text-2); }
+.btn-neutral-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Disabled button clear presentation */
+.btn:disabled,
+button:disabled,
+.ps-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Phase 17 UI: Dirty State Banner ─────────────────────────────────── */
+.dirty-state-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.85rem;
+  font-size: 0.78rem;
+  color: var(--warn-text);
+}
+.dirty-state-banner__icon { font-size: 0.9rem; flex-shrink: 0; }
+.dirty-state-banner__text { flex: 1; font-weight: 500; }
+.dirty-state-banner__action { flex-shrink: 0; }
+
+/* ── Phase 17 UI: New Project Form Groups ─────────────────────────────── */
+.np-form-group {
+  margin-bottom: 1.25rem;
+}
+.np-form-group--metadata { border-left: 3px solid var(--primary); padding-left: 0.75rem; }
+.np-form-group--location { border-left: 3px solid var(--teal);    padding-left: 0.75rem; }
+.np-form-group--revenue  { border-left: 3px solid var(--accent);  padding-left: 0.75rem; }
+.np-form-group--opex      { border-left: 3px solid #f59e0b;       padding-left: 0.75rem; }
+.np-form-group--capex      { border-left: 3px solid #7c3aed;      padding-left: 0.75rem; }
+.np-form-group--debt      { border-left: 3px solid #dc2626;       padding-left: 0.75rem; }
+
+.np-form-group__title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 0.65rem;
+}
+
+.np-form-group__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+/* ── Phase 17 UI: Typography Scale ───────────────────────────────────── */
+/* Modern system font stack (no external CDN) */
+:root {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography hierarchy */
+.text-page-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.text-section-heading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+.text-card-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.text-table-heading {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.text-form-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.text-helper {
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.text-status {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Phase 17 UI: Table Number Alignment ──────────────────────────────── */
+.num-table-cell {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.num-table-header {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-align: right;
+}
+
+/* Subtle zebra for tables */
+.table-zebra tbody tr:nth-child(even) td { background: var(--surface-2); }
+.table-hover tbody tr:hover td { background: var(--bg); }
+
+/* ── Phase 17 UI: KPI Card Variants ────────────────────────────────────── */
+.kpi-card--runtime {
+  border-left: 3px solid var(--primary);
+}
+.kpi-card--preview {
+  border-left: 3px solid #fcd34d;
+  background: #fffbeb;
+}
+.kpi-card--saved {
+  border-left: 3px solid var(--accent);
+}
+.kpi-card--dirty {
+  border-left: 3px solid var(--blocked-text);
+  background: var(--blocked-bg);
+}
+
+/* ── Phase 17 UI: Phase 17C Disclosure ───────────────────────────────── */
+.phase17c-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--primary-light);
+  border: 1px solid var(--convention-border);
+  border-radius: var(--radius-sm);
+  margin-top: 0.85rem;
+  font-size: 0.75rem;
+  color: var(--convention-text);
+  line-height: 1.5;
+}
+.phase17c-notice__icon { font-size: 0.95rem; flex-shrink: 0; margin-top: 0.05rem; }
+.phase17c-notice__label { font-weight: 700; margin-bottom: 0.15rem; font-size: 0.75rem; }
+.phase17c-notice__body { font-size: 0.73rem; opacity: 0.9; }
+
 .method-badge {
   display: inline-flex;
   align-items: center;
