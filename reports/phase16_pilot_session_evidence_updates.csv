@@ -1,0 +1,3 @@
+project,previous_status,updated_status,update_reason,real_evidence_available_yes_no,evidence_reference,notes
+TUHO,NOT_EXECUTED_IN_THIS_ENVIRONMENT,NOT_EXECUTED_IN_THIS_ENVIRONMENT,"No real operator or reviewer evidence exists yet in this environment",no,"reports/phase16_pilot_session_log_tuho.csv","Capture remains pending until a real guided pilot session occurs"
+Oborovo,NOT_EXECUTED_IN_THIS_ENVIRONMENT,NOT_EXECUTED_IN_THIS_ENVIRONMENT,"No real operator or reviewer evidence exists yet in this environment",no,"reports/phase16_pilot_session_log_oborovo.csv","Capture remains pending until a real guided pilot session occurs"
