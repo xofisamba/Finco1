@@ -46,7 +46,8 @@
     <div class="ps-section">
       <div class="ps-section-label">Actions</div>
       <div class="ps-actions">
-        <button class="ps-action-btn" id="btn-new-project" type="button">
+        <button class="ps-action-btn" id="btn-new-project" type="button"
+                onclick="alert('New Project is not yet wired.\n\nTo start fresh: save your current scenario first, then refresh the page.\n\nThis feature will be enabled in a future update.')">
           <span class="ps-action-icon">+</span> New Project
         </button>
         <button class="ps-action-btn" id="btn-duplicate-scenario" type="button">
@@ -60,10 +61,7 @@
                 hx-swap="outerHTML">
           <span class="ps-action-icon">Compare</span> Compare Scenarios
         </button>
-        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button"
-               aria-label="Run model from the last clean saved scenario boundary"
-               disabled
-               title="Run is disabled when the workspace has unsaved draft edits. Save or revert first.">
+        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model" type="button">
           <span class="ps-action-icon">Run</span> Run Model
         </button>
         <button class="ps-action-btn"
