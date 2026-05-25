@@ -1,0 +1,4 @@
+dependency,required_for_standard_suite_yes_no,required_for_optional_browser_suite_yes_no,behavior_if_missing,install_or_run_instruction,notes
+playwright,no,yes,Live browser smoke skips with a clear optional dependency reason,"pip install playwright pytest",Do not make this dependency mandatory for the normal repository suite.
+chromium_browser_binaries,no,yes,Live browser smoke skips with a clear browser-binaries reason,"python -m playwright install chromium",Browser binaries are separate from the Python package and should stay optional.
+uvicorn,no,yes,If unavailable the optional smoke cannot host the local app and should be skipped or treated as local setup incomplete,"pip install -r requirements.txt",The app already depends on uvicorn in normal project setup but the browser suite should still describe the expectation explicitly.
