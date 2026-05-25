@@ -1,0 +1,14 @@
+file_path,classification,current_role,production_imported_yes_no,recommended_action,action_taken,notes
+app/cache.py,ACTIVE_PRODUCTION_RISK,Production cache wrapper on FastAPI boot path,yes,Remove mandatory Streamlit dependency,Fixed with optional compatibility decorator,Production import no longer requires streamlit
+utils/cache.py,ACTIVE_PRODUCTION_RISK,Compatibility shim re-exported through utils package,yes,Keep shim but ensure canonical app.cache is headless-safe,Retained unchanged after app.cache fix,No direct streamlit import remains in shim
+streamlit_app.py,UNCLEAR_NEEDS_REVIEW,Legacy Streamlit shell retained for reference,no,Retain as legacy-only or archive in later pass,Retained,Not production entrypoint and not in systemd service
+src/app.py,DEAD_LEGACY_SAFE_TO_DELETE,Deprecated Streamlit launcher shim,no,Delete misleading shim,Deleted,Only pointed users back to streamlit_app.py
+src/startup.sh,DEAD_LEGACY_SAFE_TO_DELETE,Deprecated Streamlit startup script,no,Delete misleading startup shim,Deleted,Not used by current deployment
+ui/pages/1_Project_Inputs.py,UNCLEAR_NEEDS_REVIEW,Legacy Streamlit page retained for historical shell,no,Retain pending broader legacy shell decision,Retained,Not imported by main_web production path
+ui/pages/2_Waterfall.py,UNCLEAR_NEEDS_REVIEW,Legacy Streamlit page retained for historical shell,no,Retain pending broader legacy shell decision,Retained,Not imported by main_web production path
+docs/archive/legacy_ui/4_scenarios.py.txt,HISTORICAL_DOC_ONLY,Archived legacy Streamlit page text,no,Keep as archival reference,Retained,Already lives under docs/archive
+README.md,HISTORICAL_DOC_ONLY,Current operator quickstart and repo overview,no,Remove misleading Streamlit quickstart,Updated,Now points to main_web FastAPI runtime
+tests/test_entrypoints.py,TEST_ONLY,Entrypoint hygiene assertions,no,Update to production main_web entrypoint,Updated,No longer treats Streamlit as current entrypoint
+tests/test_runtime_import_guards.py,TEST_ONLY,Runtime import guard coverage,no,Update to FastAPI runtime guard semantics,Updated,Now checks optional app.cache decorator pattern
+tools/calibration_legacy/calibration_runner.py,HISTORICAL_DOC_ONLY,Headless calibration compatibility wrapper,no,Retain,Retained,Already headless-safe and does not import Streamlit
+tests/test_input_forms.py,TEST_ONLY,Form helper unit tests,no,Retain unchanged,Retained,Uses app.input_forms helpers and does not define production entrypoint
