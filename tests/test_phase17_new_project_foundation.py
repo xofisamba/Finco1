@@ -69,6 +69,30 @@ def _user_id(client) -> str:
     return session.user_id
 
 
+def _valid_new_project_payload(**overrides):
+    payload = {
+        "project_name": "North Wind",
+        "project_type": "Wind",
+        "template_source": "generic_wind",
+        "country_market": "Croatia",
+        "capacity_mw": "50",
+        "cod_date": "2030-06-30",
+        "construction_months": "18",
+        "horizon_years": "30",
+        "tariff_eur_mwh": "85",
+        "ppa_term_years": "12",
+        "p50_hours": "3200",
+        "opex_y1_keur": "2100",
+        "total_capex_keur": "65000",
+        "gearing_pct": "70",
+        "interest_rate_pct": "6.5",
+        "tenor_years": "15",
+        "target_dscr": "1.20",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_project_record_table_and_crud_exist(test_db):
     user_id = f"u{uuid.uuid4().hex[:8]}"
     record = create_project_record(
@@ -92,16 +116,25 @@ def test_project_record_table_and_crud_exist(test_db):
 
 
 def test_new_project_route_validates_required_fields(auth_client):
+    # Empty project_name triggers FastAPI Form validation → 422 + JSON error
     blank = auth_client.post(
         "/projects/create",
-        data={"project_name": "", "project_type": "Wind", "template_source": "generic_wind"},
+        data=_valid_new_project_payload(project_name=""),
     )
     assert blank.status_code == 422
-    assert "Project name is required." in blank.text or "field required" in blank.text.lower()
+    assert "Field required" in blank.text or "project_name" in blank.text
+
+    # Whitespace-only name triggers application validation → 400 + rendered form
+    blank_ws = auth_client.post(
+        "/projects/create",
+        data=_valid_new_project_payload(project_name="   "),
+    )
+    assert blank_ws.status_code == 400
+    assert "Project name is required." in blank_ws.text
 
     invalid = auth_client.post(
         "/projects/create",
-        data={"project_name": "Bad Project", "project_type": "Hydro", "template_source": "generic_wind"},
+        data=_valid_new_project_payload(project_name="Bad Project", project_type="Hydro"),
     )
     assert invalid.status_code == 400
     assert "Project type must be one of" in invalid.text
@@ -111,7 +144,7 @@ def test_new_project_route_creates_user_project_and_selector_entry(auth_client):
     user_id = _user_id(auth_client)
     response = auth_client.post(
         "/projects/create",
-        data={"project_name": "North Wind", "project_type": "Wind", "template_source": "generic_wind"},
+        data=_valid_new_project_payload(),
     )
     assert response.status_code == 200
     assert "Created project" in response.text
@@ -122,6 +155,10 @@ def test_new_project_route_creates_user_project_and_selector_entry(auth_client):
     assert project.project_origin == "user_created"
     assert project.project_type == "Wind"
     assert project.baseline_snapshot
+    assert project.baseline_snapshot["country_market"] == "Croatia"
+    assert project.baseline_snapshot["capacity_mw"] == "50"
+    assert project.baseline_snapshot["tariff_eur_mwh"] == "85"
+    assert project.baseline_snapshot["target_dscr"] == "1.20"
 
     index = auth_client.get("/?project=north-wind")
     assert index.status_code == 200
@@ -131,6 +168,10 @@ def test_new_project_route_creates_user_project_and_selector_entry(auth_client):
     assert "TUHO Wind 1" in index.text
     assert "Oborovo Solar PV" in index.text
     assert 'value="north-wind"' in index.text
+    assert 'name="country_market"' in index.text
+    assert 'value="Croatia"' in index.text
+    assert 'value="85"' in index.text
+    assert 'value="50"' in index.text
     assert "template-seeded defaults until Phase 17C" in index.text
 
 
@@ -138,7 +179,20 @@ def test_selecting_user_project_binds_workspace_and_preserves_save_run_boundarie
     user_id = _user_id(auth_client)
     auth_client.post(
         "/projects/create",
-        data={"project_name": "South Solar", "project_type": "Solar", "template_source": "generic_solar"},
+        data=_valid_new_project_payload(
+            project_name="South Solar",
+            project_type="Solar",
+            template_source="generic_solar",
+            capacity_mw="65",
+            tariff_eur_mwh="92",
+            p50_hours="1750",
+            opex_y1_keur="2400",
+            total_capex_keur="72000",
+            gearing_pct="68",
+            interest_rate_pct="5.9",
+            tenor_years="17",
+            target_dscr="1.25",
+        ),
     )
     project = get_project_by_code(user_id, "south-solar")
     assert project is not None
@@ -146,12 +200,18 @@ def test_selecting_user_project_binds_workspace_and_preserves_save_run_boundarie
     page = auth_client.get("/?project=south-solar")
     assert page.status_code == 200
     assert "South Solar" in page.text
+    assert 'value="65"' in page.text
+    assert 'value="92"' in page.text
+    assert 'value="Croatia"' in page.text
 
     workspace = get_workspace_state(user_id, project.project_id)
     assert workspace is not None
     assert workspace.project_code == "south-solar"
     assert workspace.draft_snapshot["active_project"] == "south-solar"
     assert workspace.draft_snapshot["project_type"] == "Solar"
+    assert workspace.draft_snapshot["capacity_mw"] == "65"
+    assert workspace.draft_snapshot["tariff_eur_mwh"] == "92"
+    assert workspace.draft_snapshot["country_market"] == "Croatia"
 
     save_response = auth_client.post(
         "/scenarios/save",

@@ -221,7 +221,10 @@ def _project_identity_from_template_source(template_source: str, fallback_projec
 def _collect_form_snapshot(form) -> dict:
     fields = [
         "active_project",
+        "project_name",
         "project_type",
+        "template_source",
+        "country_market",
         "scenario",
         "capacity_mw",
         "tariff_eur_mwh",
@@ -247,7 +250,11 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
     identity_code, _ = _project_identity_from_template_source(normalized_source, canonical_type)
     baseline = {
         "active_project": "",
+        "project_name": "",
         "project_type": canonical_type,
+        "project_origin": "factory_template",
+        "template_source": normalized_source,
+        "country_market": "",
         "scenario": "Base",
         "capacity_mw": "",
         "tariff_eur_mwh": "",
@@ -270,7 +277,11 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
         baseline.update(
             {
                 "active_project": "tuho",
+                "project_name": project_inputs.info.name,
                 "project_type": "Wind",
+                "project_origin": "factory_template",
+                "template_source": "tuho",
+                "country_market": project_inputs.info.country_iso,
                 "capacity_mw": str(project_inputs.technical.capacity_mw),
                 "tariff_eur_mwh": str(project_inputs.revenue.ppa_base_tariff),
                 "p50_hours": str(project_inputs.technical.operating_hours_p50),
@@ -293,7 +304,11 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
         baseline.update(
             {
                 "active_project": "oborovo",
+                "project_name": project_inputs.info.name,
                 "project_type": "Solar",
+                "project_origin": "factory_template",
+                "template_source": "oborovo",
+                "country_market": project_inputs.info.country_iso,
                 "capacity_mw": str(project_inputs.technical.capacity_mw),
                 "tariff_eur_mwh": str(project_inputs.revenue.ppa_base_tariff),
                 "p50_hours": str(project_inputs.technical.operating_hours_p50),
@@ -319,7 +334,11 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
     baseline.update(
         {
             "active_project": identity_code,
+            "project_name": project_inputs.info.name,
             "project_type": canonical_type,
+            "project_origin": "factory_template",
+            "template_source": normalized_source,
+            "country_market": project_inputs.info.country_iso,
             "capacity_mw": str(project_inputs.technical.capacity_mw),
             "tariff_eur_mwh": str(project_inputs.revenue.ppa_base_tariff),
             "p50_hours": str(project_inputs.technical.operating_hours_p50),
@@ -356,14 +375,200 @@ def _default_workspace_snapshot(project_code: str) -> dict:
     return _project_baseline_snapshot(project_type, code)
 
 
-def _project_record_to_context(project_record):
+def _project_record_to_context(project_record, baseline_snapshot: dict | None = None):
     return build_project_context_for_record(
         project_code=project_record.project_code,
         project_name=project_record.project_name,
         project_type=project_record.project_type,
         project_origin=project_record.project_origin,
         template_source=project_record.template_source or project_record.source_project_template,
+        baseline_snapshot=baseline_snapshot,
     )
+
+
+def _submitted_new_project_defaults() -> dict[str, str]:
+    return {
+        "project_name": "",
+        "project_type": "Wind",
+        "template_source": "generic_wind",
+        "country_market": "Croatia",
+        "capacity_mw": "",
+        "cod_date": "",
+        "construction_months": "",
+        "horizon_years": "",
+        "tariff_eur_mwh": "",
+        "ppa_term_years": "",
+        "p50_hours": "",
+        "opex_y1_keur": "",
+        "total_capex_keur": "",
+        "gearing_pct": "",
+        "interest_rate_pct": "",
+        "tenor_years": "",
+        "target_dscr": "1.20",
+    }
+
+
+def _coerce_form_text(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _coerce_form_float(value: str | None) -> float | None:
+    text = _coerce_form_text(value)
+    if not text:
+        return None
+    return float(text)
+
+
+def _coerce_form_int(value: str | None) -> int | None:
+    text = _coerce_form_text(value)
+    if not text:
+        return None
+    return int(float(text))
+
+
+def _format_snapshot_number(value: float | int | None, decimals: int | None = None) -> str:
+    if value is None:
+        return ""
+    if decimals is not None:
+        return f"{float(value):.{decimals}f}"
+    if isinstance(value, int) or float(value).is_integer():
+        return str(int(float(value)))
+    return str(float(value))
+
+
+def _new_project_validation_error_context(submitted: dict[str, str], validation_errors: list[str]) -> dict[str, object]:
+    return {
+        "project_types": PROJECT_TYPES,
+        "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
+        "validation_errors": validation_errors,
+        "submitted": submitted,
+    }
+
+
+def _validate_new_project_payload(submitted: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    project_name = _coerce_form_text(submitted.get("project_name"))
+    project_type = submitted.get("project_type", "")
+    country_market = _coerce_form_text(submitted.get("country_market"))
+
+    if not project_name:
+        errors.append("Project name is required.")
+    if project_type not in PROJECT_TYPES:
+        errors.append(f"Project type must be one of {PROJECT_TYPES}.")
+    if not country_market:
+        errors.append("Country or market is required.")
+
+    def require_float(
+        field_name: str,
+        label: str,
+        *,
+        min_value: float | None = None,
+        max_value: float | None = None,
+        strictly_positive: bool = False,
+    ) -> float | None:
+        text = _coerce_form_text(submitted.get(field_name))
+        if not text:
+            errors.append(f"{label} is required.")
+            return None
+        try:
+            value = float(text)
+        except ValueError:
+            errors.append(f"{label} must be a number.")
+            return None
+        if strictly_positive and value <= 0:
+            errors.append(f"{label} must be > 0.")
+        elif min_value is not None and value < min_value:
+            errors.append(f"{label} must be >= {min_value}.")
+        if max_value is not None and value > max_value:
+            errors.append(f"{label} must be <= {max_value}.")
+        return value
+
+    def require_int(
+        field_name: str,
+        label: str,
+        *,
+        min_value: int | None = None,
+        max_value: int | None = None,
+        strictly_positive: bool = False,
+    ) -> int | None:
+        text = _coerce_form_text(submitted.get(field_name))
+        if not text:
+            errors.append(f"{label} is required.")
+            return None
+        try:
+            value = int(float(text))
+        except ValueError:
+            errors.append(f"{label} must be a whole number.")
+            return None
+        if strictly_positive and value <= 0:
+            errors.append(f"{label} must be > 0.")
+        elif min_value is not None and value < min_value:
+            errors.append(f"{label} must be >= {min_value}.")
+        if max_value is not None and value > max_value:
+            errors.append(f"{label} must be <= {max_value}.")
+        return value
+
+    if not _coerce_form_text(submitted.get("cod_date")):
+        errors.append("COD date is required.")
+
+    capacity_mw = require_float("capacity_mw", "Capacity (MW)", strictly_positive=True)
+    tariff = require_float("tariff_eur_mwh", "Tariff (EUR/MWh)", min_value=0)
+    p50_hours = require_float("p50_hours", "P50 hours", strictly_positive=True)
+    opex_y1 = require_float("opex_y1_keur", "OPEX Y1 (kEUR)", min_value=0)
+    total_capex = require_float("total_capex_keur", "Total CAPEX (kEUR)", strictly_positive=True)
+    gearing_pct = require_float("gearing_pct", "Gearing (%)", min_value=0, max_value=100)
+    interest_rate_pct = require_float("interest_rate_pct", "Interest rate (%)", min_value=0)
+    tenor_years = require_int("tenor_years", "Tenor (years)", strictly_positive=True)
+    target_dscr = require_float("target_dscr", "Target DSCR", strictly_positive=True)
+    construction_months = require_int("construction_months", "Construction months", strictly_positive=True)
+    horizon_years = require_int("horizon_years", "Horizon years", strictly_positive=True)
+    ppa_term_years = require_int("ppa_term_years", "PPA term years", strictly_positive=True)
+
+    if (
+        ppa_term_years is not None
+        and horizon_years is not None
+        and ppa_term_years > horizon_years
+    ):
+        errors.append("PPA term years should be less than or equal to horizon years.")
+
+    return errors
+
+
+def _apply_new_project_required_inputs(
+    baseline_snapshot: dict[str, str],
+    *,
+    project_name: str,
+    project_code: str,
+    project_type: str,
+    project_origin: str,
+    template_source: str,
+    submitted: dict[str, str],
+) -> dict[str, str]:
+    snapshot = dict(baseline_snapshot)
+    snapshot.update(
+        {
+            "active_project": project_code,
+            "project_name": project_name,
+            "project_type": project_type,
+            "project_origin": project_origin,
+            "template_source": template_source,
+            "country_market": _coerce_form_text(submitted.get("country_market")),
+            "capacity_mw": _format_snapshot_number(_coerce_form_float(submitted.get("capacity_mw"))),
+            "cod_date": _coerce_form_text(submitted.get("cod_date")),
+            "construction_months": _format_snapshot_number(_coerce_form_int(submitted.get("construction_months"))),
+            "horizon_years": _format_snapshot_number(_coerce_form_int(submitted.get("horizon_years"))),
+            "tariff_eur_mwh": _format_snapshot_number(_coerce_form_float(submitted.get("tariff_eur_mwh"))),
+            "ppa_term_years": _format_snapshot_number(_coerce_form_int(submitted.get("ppa_term_years"))),
+            "p50_hours": _format_snapshot_number(_coerce_form_float(submitted.get("p50_hours"))),
+            "opex_y1_keur": _format_snapshot_number(_coerce_form_float(submitted.get("opex_y1_keur"))),
+            "total_capex_keur": _format_snapshot_number(_coerce_form_float(submitted.get("total_capex_keur"))),
+            "gearing_pct": _format_snapshot_number(_coerce_form_float(submitted.get("gearing_pct"))),
+            "interest_rate_pct": _format_snapshot_number(_coerce_form_float(submitted.get("interest_rate_pct"))),
+            "tenor_years": _format_snapshot_number(_coerce_form_int(submitted.get("tenor_years"))),
+            "target_dscr": _format_snapshot_number(_coerce_form_float(submitted.get("target_dscr")), decimals=2),
+        }
+    )
+    return snapshot
 
 
 def _project_persistence_metadata(project_ctx=None, form_snapshot: dict | None = None, project_record=None) -> tuple[str, str]:
@@ -1022,7 +1227,6 @@ async def index(request: Request, project: str | None = None):
         return RedirectResponse(url="/login", status_code=302)
 
     project_record = _resolve_project_record(user, project)
-    ctx = _project_record_to_context(project_record)
     (
         project_record,
         workspace_state,
@@ -1032,6 +1236,10 @@ async def index(request: Request, project: str | None = None):
         export_lineage,
         scenario_summary_cards,
     ) = _current_project_workspace(user, project_record)
+    ctx = _project_record_to_context(
+        project_record,
+        workspace_state.draft_snapshot if workspace_state else project_record.baseline_snapshot,
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -1715,6 +1923,7 @@ async def new_project_form(request: Request):
             "project_types": PROJECT_TYPES,
             "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
             "validation_errors": [],
+            "submitted": _submitted_new_project_defaults(),
         },
     )
 
@@ -1725,20 +1934,56 @@ async def create_project_route(
     project_name: str = Form(...),
     project_type: str = Form(...),
     template_source: str = Form(""),
+    country_market: str = Form("Croatia"),
+    capacity_mw: str = Form(""),
+    cod_date: str = Form(""),
+    construction_months: str = Form(""),
+    horizon_years: str = Form(""),
+    tariff_eur_mwh: str = Form(""),
+    ppa_term_years: str = Form(""),
+    p50_hours: str = Form(""),
+    opex_y1_keur: str = Form(""),
+    total_capex_keur: str = Form(""),
+    gearing_pct: str = Form(""),
+    interest_rate_pct: str = Form(""),
+    tenor_years: str = Form(""),
+    target_dscr: str = Form("1.20"),
 ):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    clean_name = (project_name or "").strip()
+    submitted = _submitted_new_project_defaults()
+    submitted.update(
+        {
+            "project_name": project_name,
+            "project_type": project_type,
+            "template_source": template_source,
+            "country_market": country_market,
+            "capacity_mw": capacity_mw,
+            "cod_date": cod_date,
+            "construction_months": construction_months,
+            "horizon_years": horizon_years,
+            "tariff_eur_mwh": tariff_eur_mwh,
+            "ppa_term_years": ppa_term_years,
+            "p50_hours": p50_hours,
+            "opex_y1_keur": opex_y1_keur,
+            "total_capex_keur": total_capex_keur,
+            "gearing_pct": gearing_pct,
+            "interest_rate_pct": interest_rate_pct,
+            "tenor_years": tenor_years,
+            "target_dscr": target_dscr,
+        }
+    )
+
+    clean_name = _coerce_form_text(project_name)
     canonical_type = _canonical_project_type(project_type)
     normalized_source = _normalize_template_source(template_source, canonical_type)
-    validation_errors = []
+    submitted["project_name"] = clean_name
+    submitted["project_type"] = project_type
+    submitted["template_source"] = normalized_source
+    validation_errors = _validate_new_project_payload(submitted)
 
-    if not clean_name:
-        validation_errors.append("Project name is required.")
-    if project_type not in PROJECT_TYPES:
-        validation_errors.append(f"Project type must be one of {PROJECT_TYPES}.")
     if normalized_source in {"tuho", "generic_wind"} and canonical_type != "Wind":
         validation_errors.append("Wind templates require project type Wind.")
     if normalized_source in {"oborovo", "generic_solar"} and canonical_type != "Solar":
@@ -1748,14 +1993,7 @@ async def create_project_route(
         return templates.TemplateResponse(
             request=request,
             name="partials/new_project_form.html",
-            context={
-                "project_types": PROJECT_TYPES,
-                "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
-                "validation_errors": validation_errors,
-                "submitted_name": clean_name,
-                "submitted_type": project_type,
-                "submitted_template_source": normalized_source,
-            },
+            context=_new_project_validation_error_context(submitted, validation_errors),
             status_code=400,
         )
 
@@ -1766,9 +2004,15 @@ async def create_project_route(
         project_code = f"{base_slug}-{suffix}"
         suffix += 1
 
-    baseline_snapshot = _project_baseline_snapshot(canonical_type, normalized_source)
-    baseline_snapshot["active_project"] = project_code
-    baseline_snapshot["project_type"] = canonical_type
+    baseline_snapshot = _apply_new_project_required_inputs(
+        _project_baseline_snapshot(canonical_type, normalized_source),
+        project_name=clean_name,
+        project_code=project_code,
+        project_type=canonical_type,
+        project_origin="user_created",
+        template_source=normalized_source,
+        submitted=submitted,
+    )
 
     project_record = create_project_record(
         user_id=user.user_id,

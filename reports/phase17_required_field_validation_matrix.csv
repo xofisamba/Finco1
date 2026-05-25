@@ -1,0 +1,17 @@
+field_name,validation_rule,error_surface,required_in_request,notes
+project_name,required,HTTP 400 template error,yes,Framework-missing field behavior may still be 422 in alternate route signatures
+project_type,must be Wind or Solar,HTTP 400 template error,yes,Factory template compatibility also checked
+country_market,required,HTTP 400 template error,yes,Default Croatia is visible but editable
+capacity_mw,required_positive,HTTP 400 template error,yes,Must be > 0
+cod_date,required,HTTP 400 template error,yes,Stored now; deeper timeline semantics remain Phase 17C
+construction_months,required_positive_integer,HTTP 400 template error,yes,Must be > 0
+horizon_years,required_positive_integer,HTTP 400 template error,yes,Must be > 0
+tariff_eur_mwh,required_non_negative_number,HTTP 400 template error,yes,Must be >= 0
+ppa_term_years,required_positive_integer_and_prefer_le_horizon,HTTP 400 template error,yes,Must be > 0 and should be <= horizon_years
+p50_hours,required_positive,HTTP 400 template error,yes,Must be > 0
+opex_y1_keur,required_non_negative_number,HTTP 400 template error,yes,Must be >= 0
+total_capex_keur,required_positive,HTTP 400 template error,yes,Must be > 0
+gearing_pct,required_between_0_and_100,HTTP 400 template error,yes,Current Phase 17B path uses gearing rather than senior_debt_keur
+interest_rate_pct,required_non_negative_number,HTTP 400 template error,yes,Must be >= 0
+tenor_years,required_positive_integer,HTTP 400 template error,yes,Must be > 0
+target_dscr,required_positive,HTTP 400 template error,yes,Shown explicitly because current runtime path depends on it

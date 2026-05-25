@@ -1,0 +1,7 @@
+gap_id,gap,reason,next_phase,severity
+P17B-01,True build_projectinputs_from_scratch not implemented yet,Phase 17B intentionally remains template-seeded,Phase 17C,high
+P17B-02,country_market saved but not fully runtime-authoritative,Current runtime path does not consume market-specific defaults from scratch,Phase 17C,medium
+P17B-03,cod_date construction_months and horizon_years saved but not fully runtime-authoritative,Current runtime path still starts from a template seed,Phase 17C,medium
+P17B-04,ppa_term_years saved and visible but not fully runtime-authoritative,Current override adapter does not yet build the full runtime object from scratch,Phase 17C,medium
+P17B-05,Runtime delta proof for every newly captured field is incomplete,Existing override path covers only the currently supported fields,Phase 17C,medium
+P17B-06,template-seeded runtime remains in place,This branch captures and reloads assumptions without claiming full from-scratch runtime,Phase 17C,high
