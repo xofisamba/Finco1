@@ -1,4 +1,5 @@
 import json
+import datetime
 """HTMX internal demo web interface for Finco1 model."""
 import os
 from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, status
@@ -959,6 +960,8 @@ async def run(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
+    # -- Phase 16 fix: establish all required variables before any branching --
+    snapshot = _collect_form_snapshot(form)
     active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
@@ -971,6 +974,30 @@ async def run(request: Request):
     target_dscr = form.get("target_dscr", "")
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
+    project_code, project_name = _project_persistence_metadata(None, snapshot)
+    project_record = save_project(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=project_name,
+        source_project_template=project_code,
+        governance_state=_governance_snapshot(project_code),
+        last_run_summary={},
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="workspace_project_state",
+        ),
+    )
+    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+
+    # Dirty guard — block run if dirty, do not auto-save
+    if not allow_run:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/errors.html",
+            context={"errors": [guard_message]},
+        )
 
     # -- Phase 9.5: Named project binding -------------------------------------
     # If active_project is set, run the named project factory directly.
