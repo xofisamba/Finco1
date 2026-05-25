@@ -21,6 +21,11 @@
         <div class="ps-saved-meta">
           Save records a new persisted scenario snapshot but does not run the model. Revert restores the saved boundary without triggering a run.
         </div>
+        {% if project_record.project_origin == "user_created" %}
+        <div class="ps-saved-meta">
+          Project record created. Runtime still uses template-seeded defaults until Phase 17C from-scratch runtime path.
+        </div>
+        {% endif %}
         <div class="ps-saved-meta">
           Revision boundary: {{ workspace_state.updated_at.strftime("%Y-%m-%d %H:%M") if workspace_state else "not yet captured" }}
           {% if workspace_state and workspace_state.last_runtime_at %}

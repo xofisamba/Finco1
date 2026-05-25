@@ -61,8 +61,8 @@ class TestRunNoNameError:
         assert record_use >= 0, "record_workspace_runtime not called in /run"
 
         # Find project_record definition
-        project_record_def = content.find("project_record = save_project(", run_idx)
-        assert project_record_def >= 0, "project_record = save_project not found in /run"
+        project_record_def = content.find("project_record, workspace_state = _project_workspace_from_snapshot(", run_idx)
+        assert project_record_def >= 0, "project_record, workspace_state = _project_workspace_from_snapshot not found in /run"
 
         assert project_record_def < record_use, (
             "project_record must be defined before record_workspace_runtime"
@@ -79,9 +79,9 @@ class TestRunNoNameError:
         ws_use = content.find("workspace_state.active_scenario_id", run_idx)
         assert ws_use >= 0, "workspace_state.active_scenario_id not found in /run"
 
-        # Find workspace_state definition
-        ws_def = content.find("workspace_state = get_workspace_state(", run_idx)
-        assert ws_def >= 0, "workspace_state = get_workspace_state not found in /run"
+        # Find workspace_state definition (via helper that creates both)
+        ws_def = content.find("project_record, workspace_state = _project_workspace_from_snapshot(", run_idx)
+        assert ws_def >= 0, "_project_workspace_from_snapshot not found in /run"
 
         assert ws_def < ws_use, "workspace_state must be defined before used"
 
@@ -117,9 +117,9 @@ class TestRunNoNameError:
         guard_check = content.find("if not allow_run:", guard_call)
         assert guard_check >= 0, "if not allow_run: not found after guard call"
 
-        # Check that the guard is before active_project branching
-        branch = content.find("if active_project in", run_idx)
-        assert guard_call < branch, "dirty guard must be before active_project branching"
+        # Check that the guard is before runtime_seed branching
+        branch = content.find("if runtime_seed in {", run_idx)
+        assert guard_call < branch, "dirty guard must be before runtime_seed branching"
 
 
 class TestRunButtonWiring:

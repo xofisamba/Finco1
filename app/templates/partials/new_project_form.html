@@ -1,0 +1,39 @@
+<div class="scenario-message">
+  <strong>New Project</strong><br />
+  Create a project record and bind it to the workspace. Phase 17A keeps runtime template-seeded; true from-scratch runtime arrives in Phase 17C.
+</div>
+
+{% if validation_errors %}
+<div class="scenario-message">
+  {% for error in validation_errors %}
+  <div>{{ error }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<form hx-post="/projects/create"
+      hx-target="#scenario-action-result"
+      hx-swap="innerHTML"
+      class="ps-compare-form">
+  <label class="ps-compare-label">
+    Project name
+    <input type="text" name="project_name" value="{{ submitted_name or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Project type
+    <select name="project_type" required>
+      {% for item in project_types %}
+      <option value="{{ item }}" {% if submitted_type == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ps-compare-label">
+    Template source
+    <select name="template_source">
+      {% for option in template_options %}
+      <option value="{{ option.value }}" {% if submitted_template_source == option.value %}selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="ps-mini-btn" type="submit">Create Project</button>
+</form>

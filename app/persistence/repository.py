@@ -85,7 +85,12 @@ class ProjectRecord:
     user_id: str
     project_code: str
     project_name: str
+    project_type: Optional[str]
+    project_origin: str
     source_project_template: str
+    template_source: Optional[str]
+    baseline_snapshot: dict[str, Any]
+    archived: bool
     governance_state: dict[str, Any]
     last_run_summary: dict[str, Any]
     replay_metadata: dict[str, Any]
@@ -99,7 +104,12 @@ class ProjectRecord:
             user_id=row["user_id"],
             project_code=row["project_code"],
             project_name=row["project_name"],
+            project_type=row["project_type"],
+            project_origin=row["project_origin"] or "factory_template",
             source_project_template=row["source_project_template"],
+            template_source=row["template_source"],
+            baseline_snapshot=_from_json(row["baseline_snapshot_json"], {}),
+            archived=bool(row["archived"]),
             governance_state=_from_json(row["governance_state_json"], {}),
             last_run_summary=_from_json(row["last_run_summary_json"], {}),
             replay_metadata=_from_json(row["replay_metadata_json"], {}),
@@ -259,25 +269,16 @@ def snapshots_equal(left: Optional[dict[str, Any]], right: Optional[dict[str, An
 def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], current_snapshot: dict[str, Any]) -> tuple[bool, str, str]:
     if workspace_state is None:
         return True, "workspace_base", ""
-
-    # -- Phase 16 fresh workspace fix --
-    # If there is no prior saved_snapshot (brand new workspace with no saves yet),
-    # treat the current form state as the initial clean boundary.
-    # This allows first-ever Run without requiring a manual Save Scenario first.
-    # Dirty flag still blocks runs when user has made unsaved edits.
     saved = workspace_state.saved_snapshot
-    has_prior_save = saved and snapshots_equal(saved, {}) is False  # something was actually saved
+    has_prior_save = saved and snapshots_equal(saved, {}) is False
 
     if not has_prior_save:
-        # No prior save exists — fresh workspace
         if workspace_state.dirty:
             return False, "preview_only", (
                 "Unsaved edits are active. Save the scenario or discard edits before running so runtime results stay bound to an immutable snapshot."
             )
-        # Fresh workspace with no dirty edits — allow first run
         return True, "workspace_base", ""
 
-    # Prior save exists — use original logic
     if snapshots_equal(saved, current_snapshot):
         if workspace_state.active_scenario_id:
             return True, "saved_state", ""
@@ -374,6 +375,11 @@ def save_project(
     project_code: str,
     project_name: str,
     source_project_template: str,
+    project_type: Optional[str] = None,
+    project_origin: str = "factory_template",
+    template_source: Optional[str] = None,
+    baseline_snapshot: Optional[dict[str, Any]] = None,
+    archived: bool = False,
     governance_state: Optional[dict[str, Any]] = None,
     last_run_summary: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
@@ -381,27 +387,46 @@ def save_project(
     now = _now_utc()
     governance_state = governance_state or {}
     last_run_summary = last_run_summary or {}
+    baseline_snapshot = baseline_snapshot or {}
     replay_metadata = dict(replay_metadata or {})
+    effective_template_source = template_source or source_project_template
 
     with get_cursor() as cur:
         cur.execute(
-            "SELECT project_id, created_at FROM projects WHERE user_id=? AND project_code=?",
+            """
+            SELECT project_id, created_at, project_type, project_origin, template_source, baseline_snapshot_json, archived
+            FROM projects
+            WHERE user_id=? AND project_code=?
+            """,
             (user_id, project_code),
         )
         existing = cur.fetchone()
         if existing:
             project_id = existing["project_id"]
             created_at = _from_iso(existing["created_at"])
+            project_type = project_type or existing["project_type"]
+            project_origin = project_origin or existing["project_origin"] or "factory_template"
+            effective_template_source = effective_template_source or existing["template_source"] or source_project_template
+            if not baseline_snapshot:
+                baseline_snapshot = _from_json(existing["baseline_snapshot_json"], {})
+            archived = bool(existing["archived"]) if archived is None else archived
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
                 UPDATE projects
-                SET project_name=?, source_project_template=?, governance_state_json=?, last_run_summary_json=?, replay_metadata_json=?, updated_at=?
+                SET project_name=?, project_type=?, project_origin=?, source_project_template=?, template_source=?,
+                    baseline_snapshot_json=?, archived=?, governance_state_json=?, last_run_summary_json=?,
+                    replay_metadata_json=?, updated_at=?
                 WHERE project_id=? AND user_id=?
                 """,
                 (
                     project_name,
+                    project_type,
+                    project_origin,
                     source_project_template,
+                    effective_template_source,
+                    _to_json(baseline_snapshot),
+                    int(bool(archived)),
                     _to_json(governance_state),
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
@@ -417,16 +442,22 @@ def save_project(
             cur.execute(
                 """
                 INSERT INTO projects (
-                    project_id, user_id, project_code, project_name, source_project_template,
+                    project_id, user_id, project_code, project_name, project_type, project_origin,
+                    source_project_template, template_source, baseline_snapshot_json, archived,
                     governance_state_json, last_run_summary_json, replay_metadata_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
                     user_id,
                     project_code,
                     project_name,
+                    project_type,
+                    project_origin,
                     source_project_template,
+                    effective_template_source,
+                    _to_json(baseline_snapshot),
+                    int(bool(archived)),
                     _to_json(governance_state),
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
@@ -440,7 +471,12 @@ def save_project(
         user_id=user_id,
         project_code=project_code,
         project_name=project_name,
+        project_type=project_type,
+        project_origin=project_origin,
         source_project_template=source_project_template,
+        template_source=effective_template_source,
+        baseline_snapshot=baseline_snapshot,
+        archived=bool(archived),
         governance_state=governance_state,
         last_run_summary=last_run_summary,
         replay_metadata=replay_metadata,
@@ -469,10 +505,98 @@ def get_project_by_code(user_id: str, project_code: str) -> Optional[ProjectReco
 def list_projects(user_id: str) -> list[ProjectRecord]:
     with get_cursor() as cur:
         cur.execute(
-            "SELECT * FROM projects WHERE user_id=? ORDER BY updated_at DESC",
+            "SELECT * FROM projects WHERE user_id=? AND archived=0 ORDER BY updated_at DESC",
             (user_id,),
         )
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+
+def create_project_record(
+    *,
+    user_id: str,
+    project_code: str,
+    project_name: str,
+    project_type: str,
+    project_origin: str,
+    template_source: str,
+    baseline_snapshot: dict[str, Any],
+    governance_state: Optional[dict[str, Any]] = None,
+    last_run_summary: Optional[dict[str, Any]] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> ProjectRecord:
+    return save_project(
+        user_id=user_id,
+        project_code=project_code,
+        project_name=project_name,
+        project_type=project_type,
+        project_origin=project_origin,
+        source_project_template=template_source,
+        template_source=template_source,
+        baseline_snapshot=baseline_snapshot,
+        governance_state=governance_state,
+        last_run_summary=last_run_summary,
+        replay_metadata=replay_metadata,
+    )
+
+
+def get_project_record(
+    *,
+    user_id: str,
+    project_id: Optional[str] = None,
+    project_code: Optional[str] = None,
+) -> Optional[ProjectRecord]:
+    if project_id:
+        return get_project(project_id, user_id)
+    if project_code:
+        return get_project_by_code(user_id, project_code)
+    return None
+
+
+def list_project_records(
+    *,
+    user_id: str,
+    include_archived: bool = False,
+) -> list[ProjectRecord]:
+    query = "SELECT * FROM projects WHERE user_id=?"
+    params: list[Any] = [user_id]
+    if not include_archived:
+        query += " AND archived=0"
+    query += " ORDER BY updated_at DESC"
+    with get_cursor() as cur:
+        cur.execute(query, tuple(params))
+        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+
+def update_project_record(
+    *,
+    user_id: str,
+    project_code: str,
+    project_name: Optional[str] = None,
+    project_type: Optional[str] = None,
+    template_source: Optional[str] = None,
+    baseline_snapshot: Optional[dict[str, Any]] = None,
+    archived: Optional[bool] = None,
+    governance_state: Optional[dict[str, Any]] = None,
+    last_run_summary: Optional[dict[str, Any]] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> Optional[ProjectRecord]:
+    existing = get_project_by_code(user_id, project_code)
+    if existing is None:
+        return None
+    return save_project(
+        user_id=user_id,
+        project_code=existing.project_code,
+        project_name=project_name or existing.project_name,
+        project_type=project_type or existing.project_type,
+        project_origin=existing.project_origin,
+        source_project_template=template_source or existing.source_project_template,
+        template_source=template_source or existing.template_source or existing.source_project_template,
+        baseline_snapshot=baseline_snapshot if baseline_snapshot is not None else existing.baseline_snapshot,
+        archived=existing.archived if archived is None else archived,
+        governance_state=governance_state or existing.governance_state,
+        last_run_summary=last_run_summary or existing.last_run_summary,
+        replay_metadata=replay_metadata or existing.replay_metadata,
+    )
 
 
 def save_scenario(

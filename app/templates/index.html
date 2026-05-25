@@ -268,7 +268,7 @@
   </details>
 
   <!-- Actions -->
-  <input type="hidden" name="active_project" id="active_project" value="{{ project_ctx.id }}" />
+  <input type="hidden" name="active_project" id="active_project" value="{{ project_record.project_code if project_record else project_ctx.id }}" />
   <input type="hidden" name="current_saved_scenario_id" id="current_saved_scenario_id" value="" />
   <input type="hidden" name="workspace_project_id" id="workspace_project_id" value="{{ project_record.project_id if project_record else '' }}" />
   <input type="hidden" name="workspace_dirty_state" id="workspace_dirty_state" value="{{ '1' if workspace_state and workspace_state.dirty else '0' }}" />
