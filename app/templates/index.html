@@ -328,7 +328,8 @@
             aria-describedby="reviewer-revert-help"
             hx-post="/scenarios/state/discard"
             hx-form="#main-form"
-            hx-swap="none">
+            hx-swap="none"
+            onclick="var f=document.getElementById('main-form');if(f){var d=new FormData(f);fetch('/scenarios/state/discard',{method:'POST',body:d,credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&window.applyWorkspaceStateMeta)window.applyWorkspaceStateMeta(j);if(j&&j.snapshot&&window.applyScenarioSnapshot)window.applyScenarioSnapshot(j.snapshot,'');}).catch(function(){alert('Revert failed. Try refreshing the page.')});}">
       Revert Draft
     </button>
   </div>
@@ -361,37 +362,13 @@
   <div id="save-result"></div>
   <div id="validation-result"></div>
 </form>
-<script type="application/json" id="workspace-state-meta-json">
-  {{ workspace_state_meta | tojson }}
-</script>
-<script type="application/json" id="workspace-form-data-json">
-  {{ form_data | tojson }}
-</script>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
-    var metaEl = document.getElementById('workspace-state-meta-json');
-    var formEl = document.getElementById('workspace-form-data-json');
-    if (metaEl && window.applyWorkspaceStateMeta) {
-      try {
-        var meta = JSON.parse(metaEl.textContent || metaEl.innerText || '{}');
-        window.applyWorkspaceStateMeta(meta);
-      } catch (e) { /* non-fatal */ }
+    if (window.applyScenarioSnapshot) {
+      window.applyScenarioSnapshot({{ form_data | tojson }}, "{{ workspace_state.active_scenario_id if workspace_state else '' }}");
     }
-    if (formEl && window.applyScenarioSnapshot) {
-      try {
-        var formData = JSON.parse(formEl.textContent || formEl.innerText || '{}');
-        var scenarioId = '{{ workspace_state.active_scenario_id if workspace_state else "" }}';
-        window.applyScenarioSnapshot(formData, scenarioId);
-      } catch (e) { /* non-fatal */ }
-    }
-    // btn-new-project external handler
-    var newProjBtn = document.getElementById('btn-new-project');
-    if (newProjBtn) {
-      newProjBtn.addEventListener('click', function() {
-        alert('New Project is not yet wired.\n\n'
-          + 'To start fresh: save your current scenario first, then refresh the page.\n'
-          + 'This feature will be enabled in a future update.');
-      });
+    if (window.applyWorkspaceStateMeta) {
+      window.applyWorkspaceStateMeta({{ workspace_state_meta | tojson }});
     }
   });
 </script>

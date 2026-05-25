@@ -259,7 +259,26 @@ def snapshots_equal(left: Optional[dict[str, Any]], right: Optional[dict[str, An
 def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], current_snapshot: dict[str, Any]) -> tuple[bool, str, str]:
     if workspace_state is None:
         return True, "workspace_base", ""
-    if snapshots_equal(workspace_state.saved_snapshot, current_snapshot):
+
+    # -- Phase 16 fresh workspace fix --
+    # If there is no prior saved_snapshot (brand new workspace with no saves yet),
+    # treat the current form state as the initial clean boundary.
+    # This allows first-ever Run without requiring a manual Save Scenario first.
+    # Dirty flag still blocks runs when user has made unsaved edits.
+    saved = workspace_state.saved_snapshot
+    has_prior_save = saved and snapshots_equal(saved, {}) is False  # something was actually saved
+
+    if not has_prior_save:
+        # No prior save exists — fresh workspace
+        if workspace_state.dirty:
+            return False, "preview_only", (
+                "Unsaved edits are active. Save the scenario or discard edits before running so runtime results stay bound to an immutable snapshot."
+            )
+        # Fresh workspace with no dirty edits — allow first run
+        return True, "workspace_base", ""
+
+    # Prior save exists — use original logic
+    if snapshots_equal(saved, current_snapshot):
         if workspace_state.active_scenario_id:
             return True, "saved_state", ""
         return True, "workspace_base", ""

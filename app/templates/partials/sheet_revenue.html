@@ -59,20 +59,20 @@
       </table>
     </div>
   </div>
-  <div class="assumption-grid assumption-grid--reference">
-    <div class="assumption-item assumption-item--reference">
-      <span class="metric-label">PPA Tariff (Y1) <span class="badge badge-preview" style="font-size:0.6rem;">factory reference</span></span>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">PPA Tariff (Y1)</span>
       <span class="metric-value">{{ "%.2f"|format(project_ctx.ppa_tariff_eur_mwh) }} EUR/MWh</span>
     </div>
-    <div class="assumption-item assumption-item--reference">
-      <span class="metric-label">PPA Term <span class="badge badge-preview" style="font-size:0.6rem;">factory reference</span></span>
+    <div class="assumption-item">
+      <span class="metric-label">PPA Term</span>
       <span class="metric-value">{{ project_ctx.ppa_term_years }} years</span>
     </div>
-    <div class="assumption-item assumption-item--reference">
-      <span class="metric-label">Tariff Index <span class="badge badge-preview" style="font-size:0.6rem;">factory reference</span></span>
+    <div class="assumption-item">
+      <span class="metric-label">Tariff Index</span>
       <span class="metric-value">{{ "%.0f"|format(project_ctx.ppa_index_pct * 100) }}% annually</span>
     </div>
-    <div class="assumption-item assumption-item--reference">
+    <div class="assumption-item">
       <span class="metric-label">Production Share</span>
       <span class="metric-value">100% PPA</span>
     </div>
