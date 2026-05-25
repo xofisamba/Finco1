@@ -1,0 +1,13 @@
+field_name,sheet,input_name,schema_key,model_input,is_runtime_bound,is_saved,is_dirty_propagated,notes
+tariff_eur_mwh,sidebar,input,revenue.tariff_eur_mwh,ppa_base_tariff,Yes,Yes,Yes,Full end-to-end path: _build_schema_from_form → build_projectinputs → run_project → KPI
+opex_y1_keur,sidebar,input,opex.opex_y1_keur,scales base OPEX,Yes,Yes,Yes,Scales Y1 OPEX in model
+p50_hours,sidebar,input,production.p50_hours,operating_hours_p50,Yes,Yes,Yes,Changes energy yield → revenue
+gearing_pct,sidebar,input,financing.gearing_pct,gearing_ratio,Yes,Yes,Yes,Used in senior debt sizing
+target_dscr,sidebar,input,financing.target_dscr,target_dscr,Yes,Yes,Yes,Used in senior debt sizing
+interest_rate_pct,sidebar,input,financing.interest_rate_pct,base_rate override,Yes,Yes,Yes,Overrides base_rate in financing inputs
+tenor_years,sidebar,input,financing.tenor_years,senior_tenor_years,Yes,Yes,Yes,Used in debt repayment schedule
+ppa_term_years,sheet_revenue,input,None,None,No,Yes,Yes,Preview only — not runtime-bound yet. Not used in RevenueInput schema.
+construction_months,sheet_opex,input,None,None,No,Yes,Yes,Preview only — not runtime-bound yet. No model handler exists.
+capacity_mw,sidebar,input,None,None,No,Yes,Yes,Not in _build_schema_from_form. Saved to snapshot but cannot affect runtime.
+cod_date,sidebar,input,None,None,No,Yes,Yes,Used for display only, not in schema.
+horizon_years,sidebar,input,None,None,No,Yes,Yes,Not in _build_schema_from_form.
