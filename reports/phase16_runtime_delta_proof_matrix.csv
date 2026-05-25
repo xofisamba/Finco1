@@ -1,0 +1,9 @@
+test_type,description,status,evidence,notes
+Backend unit: tariff 60 vs 100 affects revenue,Direct Python test of build_projectinputs + run_project with tariff=60 vs tariff=100,PENDING,"assert total_revenue_100 > total_revenue_60",Not yet executed — requires integration test setup
+HTTP POST /run with tariff=60 baseline,Playwright/API test POST /run with TUHO form tariff_eur_mwh=60,FAILED IN LIVE TEST,NameError in /run before Phase 16 fix,After fix should return 200 with runtime summary
+HTTP POST /run with tariff=100 changed,Playwright/API test POST /run with TUHO form tariff_eur_mwh=100,PENDING,assert revenue_100 > revenue_60 in expected direction
+Dirty state blocks run,Playwright test: edit tariff → dirty → click run → error visible,PARTIAL,Dirty guard returns error template, no auto-save
+Save does not auto-run,Manual test: save → observe no run triggered,PASS,"save POST returns scenario workspace, no /run triggered",Guardrail test
+Run does not auto-save,Manual test: run → observe no save triggered,PASS,"run POST returns runtime_summary, no /scenarios/save triggered",Guardrail test
+Frontend has no JS financial calculations,Code review of static/app.js,CONFIRMED,"No Math.*, irr, npv, pmt in app.js",Guardrail
+Frontend state does not become runtime authority,Design review,CONFIRMED,"Dirty flag blocks run, runtime comes from backend",Guardrail

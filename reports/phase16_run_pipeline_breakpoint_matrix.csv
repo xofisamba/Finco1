@@ -1,0 +1,8 @@
+issue,location,before,after,fix_type,notes
+run() uses undefined snapshot variable,main_web.py line ~984,"scenario_name = snapshot.get('scenario', '') or 'Base'",snapshot defined at line ~960 via _collect_form_snapshot(form),variable setup,Phase 16 fix: snapshot = _collect_form_snapshot(form) added before branching
+run() uses undefined project_record,main_web.py line ~985,"project_id=project_record.project_id","project_record defined via save_project() before branching",variable setup,Phase 16 fix: project_record = save_project(...) added
+run() uses undefined project_code,main_web.py line ~986,"project_code=project_code","project_code defined via _project_persistence_metadata(None, snapshot) before branching",variable setup,Phase 16 fix
+run() uses undefined workspace_state,main_web.py line ~987,"workspace_state.active_scenario_id","workspace_state defined via get_workspace_state() before branching",variable setup,Phase 16 fix
+run() uses undefined runtime_origin,main_web.py line ~988,"runtime_origin=runtime_origin","runtime_origin defined via runtime_guard_for_snapshot() before branching",variable setup,Phase 16 fix
+run() has no dirty guard,main_web.py,no check for dirty state,"allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(...); if not allow_run: return error",guard added,Phase 16 fix: dirty guard blocks run if unsaved edits exist, no auto-save
+run() standard form branch also has undefined variables in original,main_web.py lines 1100+,same issue in standard form-based run branch,fixed via variable setup at top of function,variable setup applies to both branches since setup is before if/else

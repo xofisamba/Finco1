@@ -1,0 +1,6 @@
+gap,severity,action,status
+btn-new-project handler still in inline script (alert only, no financial calc),low,move to static/app.js as follow-up,documented
+Discard has dual wiring (HTMX + JS event listener),low,simplify to pure HTMX response partial as follow-up,acceptable_incremental
+No live Playwright browser test for dirty-state cycle in this branch,medium,run Playwright smoke test after deploy to confirm,pending_deploy_verification
+New Project alert doesn't persist after page refresh,low,implement New Project as proper page/modal in future phase,future_phase
+No CSP nonce-based implementation,low,consider nonce-based CSP if security hardening needed beyond pilot scope,future_phase

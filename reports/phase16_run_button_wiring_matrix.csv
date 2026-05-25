@@ -1,0 +1,7 @@
+location,element_id,before,after,wiring_status,notes
+base.html sidebar,btn-run-model,id="btn-run-model" no hx-post inert button,renamed to btn-run-model-sidebar,disabled,Inert duplicate — was not wired to /run, Phase 16 fix
+index.html main form,btn-run-model,id="btn-run-model" hx-post="/run" hx-target="#model-output-area",id="btn-run-model" hx-post="/run" hx-target="#model-output-area",ACTIVE,Wired correctly via HTMX, unchanged
+base.html sidebar btn-save,btn-save,id="btn-save" hx-post="/scenarios/save" hx-include="#main-form",id="btn-save" hx-post="/scenarios/save" hx-include="#main-form",ACTIVE,Wired correctly, unchanged
+base.html sidebar btn-load,btn-load,hx-get="/scenarios?project={{ project_ctx.id }}" hx-target="#saved-scenario-panel",hx-get="/scenarios?project={{ project_ctx.id }}" hx-target="#saved-scenario-panel",ACTIVE,Wired correctly, unchanged
+Duplicate btn-run-model IDs,base.html + index.html,both had id="btn-run-model",base.html renamed to btn-run-model-sidebar,RESOLVED,Duplicate ID confusion resolved, Phase 16 fix
+Dirty blocking: Run Model button is disabled when dirty,base.html sidebar btn,"no disabled state","disabled title='Run is disabled when workspace has unsaved draft edits. Save or revert first.'",PARTIAL,Sidebar button is now disabled. HTMX button in index.html relies on hx-post which returns error when dirty via dirty guard in /run

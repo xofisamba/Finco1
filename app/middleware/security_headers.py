@@ -5,10 +5,24 @@ import typing
 class SecurityHeadersMiddleware:
     """Adds security headers to every HTTP response."""
 
-    # CSP allows: self, inline styles (needed for Jinja2), no external scripts
+    # PILOT_HOTFIX: 'unsafe-inline' needed for workspace init scripts.
+    # Root cause: index.html inline scripts (workspace_state_meta init, applyScenarioSnapshot)
+    # are blocked by CSP with script-src 'self' + no hash allowlist.
+    # This is a confirmed production browser blocker for the pilot.
+    #
+    # The inline scripts call applyWorkspaceStateMeta / applyScenarioSnapshot from
+    # static/app.js — they do NOT contain financial calculations.
+    #
+    # Follow-up: move these initializations to static/app.js reading from DOM
+    # data attributes (no inline script needed). Target: phase16-csp-clean-apply.
+    #
+    # References:
+    #   docs/phase16_csp_inline_script_fix.md
+    #   reports/phase16_csp_security_tradeoff_register.csv
     CSP = (
         "default-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "font-src 'self'; "
         "connect-src 'self'; "
