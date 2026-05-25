@@ -1,0 +1,2 @@
+session_id,project,status,executed_by,reviewer_role,date_started,date_completed,environment,branch_or_commit,scenario_name,scenario_id,runtime_snapshot_id,workbook_export_filename,compare_target,issues_logged_count,blocker_found_yes_no,result,notes
+PH16-TUHO-001,TUHO,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,unavailable,NOT_EXECUTED_IN_THIS_ENVIRONMENT,"Execution-ready placeholder only; no real pilot session was executed in this environment"

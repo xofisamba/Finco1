@@ -1,0 +1,7 @@
+evidence_id,project,workflow_step,artifact_type,artifact_reference,status,recorded_at,notes
+PH16-EVID-001,TUHO,health_check,session_log,phase16_pilot_session_log_tuho.csv,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,"No real pilot session executed in this environment"
+PH16-EVID-002,TUHO,project_select,session_log,phase16_pilot_session_log_tuho.csv,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,"Execution-ready placeholder only"
+PH16-EVID-003,TUHO,workbook_export,evidence_register,not_applicable,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,"No workbook export was generated during a real Phase 16 session here"
+PH16-EVID-004,Oborovo,health_check,session_log,phase16_pilot_session_log_oborovo.csv,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,"No real pilot session executed in this environment"
+PH16-EVID-005,Oborovo,project_select,session_log,phase16_pilot_session_log_oborovo.csv,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,"Execution-ready placeholder only"
+PH16-EVID-006,Oborovo,scenario_compare,evidence_register,not_applicable,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,"No real compare action was performed in this environment"
