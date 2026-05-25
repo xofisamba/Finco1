@@ -229,6 +229,42 @@ def get_project_context(project_id: str | None) -> ProjectContext:
     return _CONTEXTS["tuho"]
 
 
+def _snapshot_float(snapshot: dict[str, Any], key: str, default: float) -> float:
+    value = snapshot.get(key)
+    if value in (None, "", NOT_AVAILABLE, MISSING):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _snapshot_int(snapshot: dict[str, Any], key: str, default: int) -> int:
+    value = snapshot.get(key)
+    if value in (None, "", NOT_AVAILABLE, MISSING):
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _scaled_opex_items(base_items: tuple[dict[str, Any], ...], target_total: float) -> tuple[dict[str, Any], ...]:
+    if not base_items:
+        return base_items
+    current_total = sum(float(item.get("y1_keur", 0.0) or 0.0) for item in base_items)
+    if current_total <= 0:
+        return base_items
+    ratio = target_total / current_total
+    return tuple(
+        {
+            **item,
+            "y1_keur": float(item.get("y1_keur", 0.0) or 0.0) * ratio,
+        }
+        for item in base_items
+    )
+
+
 def build_project_context_for_record(
     *,
     project_code: str,
@@ -236,6 +272,7 @@ def build_project_context_for_record(
     project_type: str | None,
     project_origin: str,
     template_source: str | None,
+    baseline_snapshot: dict[str, Any] | None = None,
 ) -> ProjectContext:
     seed_key = (template_source or "").strip().lower()
     if seed_key == "tuho":
@@ -251,14 +288,53 @@ def build_project_context_for_record(
     if project_origin == "factory_template":
         return base
 
+    snapshot = dict(baseline_snapshot or {})
+    resolved_project_type = (snapshot.get("project_type") or project_type or "").strip().lower()
+    technology = "Solar PV" if resolved_project_type == "solar" else "Wind"
+    capacity_mw = _snapshot_float(snapshot, "capacity_mw", base.capacity_mw)
+    operating_hours_p50 = _snapshot_float(snapshot, "p50_hours", base.operating_hours_p50)
+    opex_y1_total_keur = _snapshot_float(snapshot, "opex_y1_keur", base.opex_y1_total_keur)
+    total_capex_keur = _snapshot_float(snapshot, "total_capex_keur", base.total_capex_keur)
+    target_dscr = _snapshot_float(snapshot, "target_dscr", base.target_dscr)
+    interest_rate_fraction = _snapshot_float(snapshot, "interest_rate_pct", base.interest_rate_pct * 100.0) / 100.0
+    senior_tenor_years = _snapshot_int(snapshot, "tenor_years", base.senior_tenor_years)
+    gearing_ratio = _snapshot_float(
+        snapshot,
+        "gearing_pct",
+        (base.gearing_pct * 100.0) if base.gearing_pct is not None else 0.0,
+    ) / 100.0
+    country_market = (snapshot.get("country_market") or base.country_iso or "").strip() or base.country_iso
+    ppa_term_years = _snapshot_int(snapshot, "ppa_term_years", base.ppa_term_years)
+    ppa_tariff_eur_mwh = _snapshot_float(snapshot, "tariff_eur_mwh", base.ppa_tariff_eur_mwh)
+    construction_months = _snapshot_int(snapshot, "construction_months", base.construction_months)
+    horizon_years = _snapshot_int(snapshot, "horizon_years", base.horizon_years)
+    cod_date = (snapshot.get("cod_date") or base.cod_date or "").strip() or base.cod_date
+    opex_items = _scaled_opex_items(base.opex_items, opex_y1_total_keur)
+
     return replace(
         base,
         code=project_code.upper(),
-        name=project_name,
+        name=(snapshot.get("project_name") or project_name),
         company="User-created project record",
+        country_iso=country_market,
+        technology=technology,
+        capacity_mw=capacity_mw,
+        cod_date=cod_date,
+        construction_months=construction_months,
+        horizon_years=horizon_years,
+        operating_hours_p50=operating_hours_p50,
+        ppa_tariff_eur_mwh=ppa_tariff_eur_mwh,
+        ppa_term_years=ppa_term_years,
+        opex_items=opex_items,
+        opex_y1_total_keur=opex_y1_total_keur,
+        total_capex_keur=total_capex_keur,
+        interest_rate_pct=interest_rate_fraction,
+        senior_tenor_years=senior_tenor_years,
+        target_dscr=target_dscr,
+        gearing_pct=gearing_ratio,
         data_source=(
-            f"User-created project record - Phase 17A template-seeded runtime defaults from {seed_label}. "
-            "True from-scratch runtime path arrives in Phase 17C."
+            f"User-created project record - Phase 17B required assumptions captured in baseline snapshot. "
+            f"Runtime remains template-seeded from {seed_label} until Phase 17C true from-scratch runtime path."
         ),
     )
 

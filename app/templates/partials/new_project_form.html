@@ -1,6 +1,6 @@
 <div class="scenario-message">
   <strong>New Project</strong><br />
-  Create a project record and bind it to the workspace. Phase 17A keeps runtime template-seeded; true from-scratch runtime arrives in Phase 17C.
+  Create a project record, capture the required assumptions, and bind it to the workspace. Phase 17B still keeps runtime template-seeded; true from-scratch runtime arrives in Phase 17C.
 </div>
 
 {% if validation_errors %}
@@ -17,13 +17,13 @@
       class="ps-compare-form">
   <label class="ps-compare-label">
     Project name
-    <input type="text" name="project_name" value="{{ submitted_name or '' }}" required />
+    <input type="text" name="project_name" value="{{ submitted.project_name or '' }}" required />
   </label>
   <label class="ps-compare-label">
     Project type
     <select name="project_type" required>
       {% for item in project_types %}
-      <option value="{{ item }}" {% if submitted_type == item %}selected{% endif %}>{{ item }}</option>
+      <option value="{{ item }}" {% if submitted.project_type == item %}selected{% endif %}>{{ item }}</option>
       {% endfor %}
     </select>
   </label>
@@ -31,9 +31,65 @@
     Template source
     <select name="template_source">
       {% for option in template_options %}
-      <option value="{{ option.value }}" {% if submitted_template_source == option.value %}selected{% endif %}>{{ option.label }}</option>
+      <option value="{{ option.value }}" {% if submitted.template_source == option.value %}selected{% endif %}>{{ option.label }}</option>
       {% endfor %}
     </select>
+  </label>
+  <label class="ps-compare-label">
+    Country or market
+    <input type="text" name="country_market" value="{{ submitted.country_market or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Capacity (MW)
+    <input type="number" name="capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    COD date
+    <input type="date" name="cod_date" value="{{ submitted.cod_date or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Construction months
+    <input type="number" name="construction_months" step="1" min="1" value="{{ submitted.construction_months or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Horizon years
+    <input type="number" name="horizon_years" step="1" min="1" value="{{ submitted.horizon_years or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Tariff (EUR/MWh)
+    <input type="number" name="tariff_eur_mwh" step="any" min="0" value="{{ submitted.tariff_eur_mwh or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    PPA term years
+    <input type="number" name="ppa_term_years" step="1" min="1" value="{{ submitted.ppa_term_years or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    P50 hours
+    <input type="number" name="p50_hours" step="any" min="0" value="{{ submitted.p50_hours or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    OPEX Y1 (kEUR)
+    <input type="number" name="opex_y1_keur" step="any" min="0" value="{{ submitted.opex_y1_keur or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Total CAPEX (kEUR)
+    <input type="number" name="total_capex_keur" step="any" min="0" value="{{ submitted.total_capex_keur or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Gearing (%)
+    <input type="number" name="gearing_pct" step="any" min="0" max="100" value="{{ submitted.gearing_pct or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Interest rate (%)
+    <input type="number" name="interest_rate_pct" step="any" min="0" value="{{ submitted.interest_rate_pct or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Tenor years
+    <input type="number" name="tenor_years" step="1" min="1" value="{{ submitted.tenor_years or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Target DSCR
+    <input type="number" name="target_dscr" step="any" min="0" value="{{ submitted.target_dscr or '' }}" required />
   </label>
   <button class="ps-mini-btn" type="submit">Create Project</button>
 </form>

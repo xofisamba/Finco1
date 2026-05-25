@@ -1,0 +1,15 @@
+field_name,phase17b_status,binding_path,authority_posture,notes
+country_market,saved_visible_only,baseline_snapshot -> UI context,descriptive_only,Not yet a true runtime driver
+capacity_mw,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+cod_date,saved_visible_only,baseline_snapshot -> UI context,descriptive_only,True from-scratch runtime timing path deferred
+construction_months,saved_visible_only,baseline_snapshot -> UI context and draft form,descriptive_only,Not fully authoritative in runtime yet
+horizon_years,saved_visible_only,baseline_snapshot -> UI context and draft form,descriptive_only,Not fully authoritative in runtime yet
+tariff_eur_mwh,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+ppa_term_years,saved_visible_only,baseline_snapshot -> UI context and draft form,descriptive_only,Not fully authoritative in runtime yet
+p50_hours,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+opex_y1_keur,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+total_capex_keur,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+gearing_pct,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+interest_rate_pct,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+tenor_years,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Feeds existing override path
+target_dscr,runtime_bound,baseline_snapshot -> main form -> override adapter,template_seeded_override,Explicit runtime helper in Phase 17B

@@ -50,7 +50,11 @@
       </div>
       <div class="field">
         <label for="capacity_mw">Capacity (MW)</label>
-        <input type="number" name="capacity_mw" id="capacity_mw" placeholder="e.g. 50" step="any" min="0" />
+        <input type="number" name="capacity_mw" id="capacity_mw" placeholder="e.g. 50" step="any" min="0" value="{{ form_data.get('capacity_mw', '') }}" />
+      </div>
+      <div class="field">
+        <label for="country_market">Country / Market</label>
+        <input type="text" name="country_market" id="country_market" placeholder="e.g. Croatia" value="{{ form_data.get('country_market', '') }}" />
       </div>
     </div>
   </details>
@@ -67,15 +71,15 @@
     <div class="input-group-body">
       <div class="field">
         <label for="cod_date">COD Date</label>
-        <input type="text" name="cod_date" id="cod_date" placeholder="2030-06-30" />
+        <input type="text" name="cod_date" id="cod_date" placeholder="2030-06-30" value="{{ form_data.get('cod_date', '') }}" />
       </div>
       <div class="field">
         <label for="construction_months">Construction (months)</label>
-        <input type="number" name="construction_months" id="construction_months" placeholder="18" step="any" min="0" />
+        <input type="number" name="construction_months" id="construction_months" placeholder="18" step="any" min="0" value="{{ form_data.get('construction_months', '') }}" />
       </div>
       <div class="field">
         <label for="horizon_years">Horizon (years)</label>
-        <input type="number" name="horizon_years" id="horizon_years" placeholder="30" step="any" min="0" />
+        <input type="number" name="horizon_years" id="horizon_years" placeholder="30" step="any" min="0" value="{{ form_data.get('horizon_years', '') }}" />
       </div>
     </div>
   </details>
@@ -92,11 +96,11 @@
     <div class="input-group-body">
       <div class="field">
         <label for="p50_hours">P50 Hours / year</label>
-        <input type="number" name="p50_hours" id="p50_hours" placeholder="e.g. 1600" step="any" min="0" />
+        <input type="number" name="p50_hours" id="p50_hours" placeholder="e.g. 1600" step="any" min="0" value="{{ form_data.get('p50_hours', '') }}" />
       </div>
       <div class="field">
         <label for="capacity_factor">Capacity Factor (%)</label>
-        <input type="number" name="capacity_factor" id="capacity_factor" placeholder="e.g. 35" step="any" min="0" max="100" />
+        <input type="number" name="capacity_factor" id="capacity_factor" placeholder="e.g. 35" step="any" min="0" max="100" value="{{ form_data.get('capacity_factor', '') }}" />
       </div>
     </div>
   </details>
@@ -113,11 +117,11 @@
     <div class="input-group-body">
       <div class="field">
         <label for="tariff_eur_mwh">Tariff (EUR/MWh)</label>
-        <input type="number" name="tariff_eur_mwh" id="tariff_eur_mwh" placeholder="e.g. 85" step="any" min="0" />
+        <input type="number" name="tariff_eur_mwh" id="tariff_eur_mwh" placeholder="e.g. 85" step="any" min="0" value="{{ form_data.get('tariff_eur_mwh', '') }}" />
       </div>
       <div class="field">
         <label for="ppa_term_years">PPA Term (years)</label>
-        <input type="number" name="ppa_term_years" id="ppa_term_years" placeholder="10" step="any" min="0" />
+        <input type="number" name="ppa_term_years" id="ppa_term_years" placeholder="10" step="any" min="0" value="{{ form_data.get('ppa_term_years', '') }}" />
       </div>
     </div>
   </details>
@@ -134,7 +138,7 @@
     <div class="input-group-body">
       <div class="field">
         <label for="opex_y1_keur">OPEX Y1 (kEUR)</label>
-        <input type="number" name="opex_y1_keur" id="opex_y1_keur" placeholder="factory default" step="any" min="0" />
+        <input type="number" name="opex_y1_keur" id="opex_y1_keur" placeholder="factory default" step="any" min="0" value="{{ form_data.get('opex_y1_keur', '') }}" />
         <span class="field-hint">Leave blank for factory default</span>
       </div>
     </div>
@@ -152,7 +156,7 @@
     <div class="input-group-body">
       <div class="field">
         <label for="total_capex_keur">Total CAPEX (kEUR)</label>
-        <input type="number" name="total_capex_keur" id="total_capex_keur" placeholder="factory default" step="any" min="0" />
+        <input type="number" name="total_capex_keur" id="total_capex_keur" placeholder="factory default" step="any" min="0" value="{{ form_data.get('total_capex_keur', '') }}" />
         <span class="field-hint">Leave blank for factory default</span>
       </div>
     </div>
@@ -170,19 +174,19 @@
     <div class="input-group-body">
       <div class="field">
         <label for="gearing_pct">Gearing (%)</label>
-        <input type="number" name="gearing_pct" id="gearing_pct" placeholder="e.g. 75" step="any" min="0" max="100" />
+        <input type="number" name="gearing_pct" id="gearing_pct" placeholder="e.g. 75" step="any" min="0" max="100" value="{{ form_data.get('gearing_pct', '') }}" />
       </div>
       <div class="field">
         <label for="target_dscr">Target DSCR</label>
-        <input type="number" name="target_dscr" id="target_dscr" placeholder="e.g. 1.30" step="any" min="0" />
+        <input type="number" name="target_dscr" id="target_dscr" placeholder="e.g. 1.30" step="any" min="0" value="{{ form_data.get('target_dscr', '') }}" />
       </div>
       <div class="field">
         <label for="interest_rate_pct">Interest Rate (%)</label>
-        <input type="number" name="interest_rate_pct" id="interest_rate_pct" placeholder="e.g. 6.5" step="any" min="0" />
+        <input type="number" name="interest_rate_pct" id="interest_rate_pct" placeholder="e.g. 6.5" step="any" min="0" value="{{ form_data.get('interest_rate_pct', '') }}" />
       </div>
       <div class="field">
         <label for="tenor_years">Tenor (years)</label>
-        <input type="number" name="tenor_years" id="tenor_years" placeholder="e.g. 20" step="any" min="0" />
+        <input type="number" name="tenor_years" id="tenor_years" placeholder="e.g. 20" step="any" min="0" value="{{ form_data.get('tenor_years', '') }}" />
       </div>
     </div>
   </details>
@@ -269,6 +273,8 @@
 
   <!-- Actions -->
   <input type="hidden" name="active_project" id="active_project" value="{{ project_record.project_code if project_record else project_ctx.id }}" />
+  <input type="hidden" name="project_name" id="project_name" value="{{ project_record.project_name if project_record else project_ctx.name }}" />
+  <input type="hidden" name="template_source" id="template_source" value="{{ project_record.template_source if project_record else project_ctx.id }}" />
   <input type="hidden" name="current_saved_scenario_id" id="current_saved_scenario_id" value="" />
   <input type="hidden" name="workspace_project_id" id="workspace_project_id" value="{{ project_record.project_id if project_record else '' }}" />
   <input type="hidden" name="workspace_dirty_state" id="workspace_dirty_state" value="{{ '1' if workspace_state and workspace_state.dirty else '0' }}" />
@@ -325,11 +331,7 @@
     </button>
     <button type="button" class="btn btn-ghost" id="btn-discard-edits"
             aria-label="Revert unsaved draft edits back to the saved scenario boundary"
-            aria-describedby="reviewer-revert-help"
-            hx-post="/scenarios/state/discard"
-            hx-include="#main-form"
-            hx-swap="none"
-            onclick="var f=document.getElementById('main-form');if(f){var d=new FormData(f);fetch('/scenarios/state/discard',{method:'POST',body:d,credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&window.applyWorkspaceStateMeta)window.applyWorkspaceStateMeta(j);if(j&&j.snapshot&&window.applyScenarioSnapshot)window.applyScenarioSnapshot(j.snapshot,'');}).catch(function(){alert('Revert failed. Try refreshing the page.')});}">
+            aria-describedby="reviewer-revert-help">
       Revert Draft
     </button>
   </div>

@@ -1,0 +1,19 @@
+field_name,category,required_in_phase17b,stored_in_baseline_snapshot,runtime_bound_now,notes
+project_name,metadata,yes,yes,no,Project identity metadata
+project_type,metadata,yes,yes,indirectly,Controls template seed and override adapter selection
+template_source,metadata,yes,yes,indirectly,Tracks factory seed used for the user-created project
+project_origin,metadata,yes,yes,no,Remains user_created for these records
+country_market,required_input,yes,yes,no,Saved and visible in UI but not yet fully runtime-authoritative
+capacity_mw,required_input,yes,yes,yes,Feeds existing override adapter
+cod_date,required_input,yes,yes,no,Saved and visible now; true from-scratch runtime binding deferred to Phase 17C
+construction_months,required_input,yes,yes,no,Saved and visible now; true from-scratch runtime binding deferred to Phase 17C
+horizon_years,required_input,yes,yes,no,Saved and visible now; true from-scratch runtime binding deferred to Phase 17C
+tariff_eur_mwh,required_input,yes,yes,yes,Feeds existing override adapter
+ppa_term_years,required_input,yes,yes,no,Saved and visible now; true from-scratch runtime binding deferred to Phase 17C
+p50_hours,required_input,yes,yes,yes,Feeds existing override adapter
+opex_y1_keur,required_input,yes,yes,yes,Feeds existing override adapter
+total_capex_keur,required_input,yes,yes,yes,Feeds existing override adapter
+gearing_pct,required_input,yes,yes,yes,Feeds existing override adapter
+interest_rate_pct,required_input,yes,yes,yes,Feeds existing override adapter
+tenor_years,required_input,yes,yes,yes,Feeds existing override adapter
+target_dscr,runtime_helper,yes,yes,yes,Explicitly captured in Phase 17B because current runtime path already depends on it
