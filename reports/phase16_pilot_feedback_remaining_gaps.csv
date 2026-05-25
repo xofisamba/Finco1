@@ -1,0 +1,6 @@
+gap_id,gap,reason,severity,pilot_blocker_yes_no,recommended_follow_up,owner
+PH16-FEEDBACK-GAP-001,real_feedback_capture_pending,"No real guided pilot operator/reviewer evidence is available in this environment",high,no,"Run the actual guided pilot and replace pending markers with real evidence","pilot_operator"
+PH16-FEEDBACK-GAP-002,template_issue_rows_still_not_real_findings,"Current available issue artifact is still a template/example row",medium,no,"Replace template/example rows only when real findings are observed","pilot_operator"
+PH16-FEEDBACK-GAP-003,tuho_session_not_executed,"TUHO session remains NOT_EXECUTED_IN_THIS_ENVIRONMENT",medium,no,"Execute TUHO guided pilot and record real evidence","pilot_operator"
+PH16-FEEDBACK-GAP-004,oborovo_session_not_executed,"Oborovo session remains NOT_EXECUTED_IN_THIS_ENVIRONMENT",medium,no,"Execute Oborovo guided pilot and record real evidence","pilot_operator"
+PH16-FEEDBACK-GAP-005,live_browser_automation_future_work,"Current browser verification remains smoke-level rather than fully automated live-browser evidence",low,no,"Consider future browser automation only if actual pilot evidence justifies it","engineering"

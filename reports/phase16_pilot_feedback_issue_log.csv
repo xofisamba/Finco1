@@ -1,0 +1,2 @@
+issue_id,project,session_id,workflow_step,category,severity,blocker_yes_no,expected_behavior,actual_behavior,governance_label_involved,artifact_reference,reproducible_yes_no,triage_status,owner,notes
+TEMPLATE_EXAMPLE_ONLY,TUHO,PH16-TUHO-001,export_workbook,export_readability,MEDIUM,no,"Workbook should open with readable provenance and cover notes","Template example only; no real pilot issue captured in this environment",BLOCKED,"reports/phase15_pilot_feedback_issue_template.csv",unavailable,template_only,unassigned,"Do not treat this row as a real finding"

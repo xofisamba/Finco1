@@ -1,0 +1,3 @@
+capture_id,project,session_id,capture_status,session_status,issue_count,blocker_found_yes_no,real_evidence_available_yes_no,source_artifact,notes
+PH16-FEEDBACK-TUHO-001,TUHO,PH16-TUHO-001,PENDING_REAL_PILOT_EXECUTION,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,unavailable,no,"reports/phase16_pilot_session_log_tuho.csv","No real operator or reviewer pilot evidence available in this environment"
+PH16-FEEDBACK-OBOROVO-001,Oborovo,PH16-OBOROVO-001,PENDING_REAL_PILOT_EXECUTION,NOT_EXECUTED_IN_THIS_ENVIRONMENT,unavailable,unavailable,no,"reports/phase16_pilot_session_log_oborovo.csv","No real operator or reviewer pilot evidence available in this environment"
