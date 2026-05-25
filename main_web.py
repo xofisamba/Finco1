@@ -1724,7 +1724,7 @@ async def save_scenario_endpoint(request: Request):
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
     project_code, project_name = _project_persistence_metadata(None, snapshot)
-    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {utc_now_iso()}"
     project_record = save_project(
         user_id=user.user_id,
         project_code=project_code,
