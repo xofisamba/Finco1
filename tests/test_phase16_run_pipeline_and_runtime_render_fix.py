@@ -159,28 +159,36 @@ class TestRunButtonWiring:
         assert 'hx-post="/run"' in btn_html, (
             "btn-run-model must have hx-post='/run'"
         )
-        assert 'hx-form="#main-form"' in btn_html, (
-            "btn-run-model must have hx-form='#main-form'"
+        assert 'hx-include="#main-form"' in btn_html, (
+            "btn-run-model must have hx-include='#main-form', not hx-form"
         )
         assert 'hx-target="#model-output-area"' in btn_html, (
             "btn-run-model must target #model-output-area"
         )
 
-    def test_base_html_sidebar_run_button_is_disabled(self):
-        """Sidebar run button (btn-run-model-sidebar) should be disabled."""
+    def test_base_html_sidebar_run_button_exists_without_static_disabled(self):
+        """Sidebar run button (btn-run-model-sidebar) must exist without static disabled.
+
+        Design: sidebar button uses click delegation to real btn-run-model.
+        Dirty-disable is handled dynamically via setButtonDisabledState (JS), not static HTML disabled.
+        """
         base_html = os.path.join(BASE_DIR, "app/templates/base.html")
         content = open(base_html).read()
 
         idx = content.find('id="btn-run-model-sidebar"')
-        if idx < 0:
-            pytest.skip("btn-run-model-sidebar not present (may use different approach)")
+        assert idx >= 0, (
+            "base.html must have sidebar run button with id='btn-run-model-sidebar'"
+        )
 
         start = content.rfind("<button", 0, idx)
         end = content.find(">", idx) + 1
         btn_html = content[start:end]
 
-        assert "disabled" in btn_html, (
-            "sidebar run button should be disabled (active run button is in index.html)"
+        # Sidebar button should NOT have static 'disabled' because:
+        # 1. It uses click delegation to real btn-run-model
+        # 2. Dirty-disable is handled via JS setButtonDisabledState
+        assert "disabled" not in btn_html, (
+            "sidebar run button must NOT have static disabled (JS dirty-disable handles it dynamically)"
         )
 
 

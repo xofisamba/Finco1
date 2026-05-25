@@ -165,7 +165,7 @@ window.applyWorkspaceStateMeta = function(meta) {
   if (bannerOrigin && meta.last_runtime_origin_label) bannerOrigin.textContent = meta.last_runtime_origin_label;
 
   var dirtyReason = 'Disabled because unsaved draft edits exist. Save or revert first.';
-  ['btn-run-model', 'btn-compare-draft', 'btn-save-run'].forEach(function(id) {
+  ['btn-run-model-sidebar', 'btn-compare-draft', 'btn-save-run'].forEach(function(id) {
     setButtonDisabledState(id, !!meta.dirty);
     setActionReason(id, meta.dirty ? dirtyReason : '');
   });
@@ -287,11 +287,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  var runBtn = document.getElementById('btn-run-model');
-  if (runBtn) {
-    runBtn.addEventListener('click', function() {
-      var form = document.getElementById('main-form');
-      if (form) form.dispatchEvent(new CustomEvent('runModelRequested', { bubbles: true }));
+  var sidebarRunBtn = document.getElementById('btn-run-model-sidebar');
+  if (sidebarRunBtn) {
+    sidebarRunBtn.addEventListener('click', function() {
+      var realRunBtn = document.getElementById('btn-run-model');
+      if (realRunBtn) realRunBtn.click();
     });
   }
 
