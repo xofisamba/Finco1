@@ -160,7 +160,7 @@ def _build_tuho_context() -> ProjectContext:
         g20_status="BLOCKED",
         r99_r102_status="NOT APPROVED",
         parity_status="AUDIT",
-        data_source="Factory context — read-only template data",
+        data_source="Project workspace",
         missing_fields=(),
     )
 
@@ -211,7 +211,7 @@ def _build_oborovo_context() -> ProjectContext:
         g20_status="BLOCKED",
         r99_r102_status="NOT APPROVED",
         parity_status="CONVENTION",
-        data_source="Factory context — read-only template data",
+        data_source="Project workspace",
         missing_fields=(),
     )
 
