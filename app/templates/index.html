@@ -325,7 +325,11 @@
     </button>
     <button type="button" class="btn btn-ghost" id="btn-discard-edits"
             aria-label="Revert unsaved draft edits back to the saved scenario boundary"
-            aria-describedby="reviewer-revert-help">
+            aria-describedby="reviewer-revert-help"
+            hx-post="/scenarios/state/discard"
+            hx-form="#main-form"
+            hx-swap="none"
+            onclick="var f=document.getElementById('main-form');if(f){var d=new FormData(f);fetch('/scenarios/state/discard',{method:'POST',body:d,credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&window.applyWorkspaceStateMeta)window.applyWorkspaceStateMeta(j);if(j&&j.snapshot&&window.applyScenarioSnapshot)window.applyScenarioSnapshot(j.snapshot,'');}).catch(function(){alert('Revert failed. Try refreshing the page.')});}">
       Revert Draft
     </button>
   </div>
