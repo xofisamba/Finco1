@@ -53,29 +53,48 @@
                      data-grid-source="p50_hours" inputmode="decimal"
                      aria-label="Draft P50 hours per year" />
             </td>
-            <td>Runtime authority stays in the model layer.</td>
+            <td>Runtime-bound — used by model to calculate revenue.</td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
+  <div class="section-header">Saved Scenario / Factory Reference Values</div>
+  <div class="assumption-grid assumption-grid--reference">
+    <div class="assumption-item assumption-item--reference">
       <span class="metric-label">PPA Tariff (Y1)</span>
+      {% if form_data.get('tariff_eur_mwh') %}
+      <span class="metric-value">{{ form_data.get('tariff_eur_mwh') }} EUR/MWh</span>
+      <span class="metric-note">saved scenario</span>
+      {% else %}
       <span class="metric-value">{{ "%.2f"|format(project_ctx.ppa_tariff_eur_mwh) }} EUR/MWh</span>
+      <span class="metric-note">factory reference</span>
+      {% endif %}
     </div>
-    <div class="assumption-item">
+    <div class="assumption-item assumption-item--reference">
       <span class="metric-label">PPA Term</span>
+      {% if form_data.get('ppa_term_years') %}
+      <span class="metric-value">{{ form_data.get('ppa_term_years') }} years</span>
+      <span class="metric-note">saved — preview only</span>
+      {% else %}
       <span class="metric-value">{{ project_ctx.ppa_term_years }} years</span>
+      <span class="metric-note">factory reference</span>
+      {% endif %}
     </div>
-    <div class="assumption-item">
+    <div class="assumption-item assumption-item--reference">
       <span class="metric-label">Tariff Index</span>
       <span class="metric-value">{{ "%.0f"|format(project_ctx.ppa_index_pct * 100) }}% annually</span>
+      <span class="metric-note">factory reference</span>
     </div>
-    <div class="assumption-item">
+    <div class="assumption-item assumption-item--reference">
       <span class="metric-label">Production Share</span>
       <span class="metric-value">100% PPA</span>
+      <span class="metric-note">factory reference</span>
     </div>
+  </div>
+  <div class="factory-ref-note">
+    <span class="badge badge-preview">scenario + factory</span>
+    <span>Saved scenario values are shown when available. Factory reference values are shown only when no saved scenario value exists. Runtime output appears in the Runtime Summary after Run.</span>
   </div>
 </div>
 
@@ -104,7 +123,7 @@
 <div class="sheet-card">
   <div class="section-header">Output Preview</div>
   <div class="placeholder-panel" style="padding:1.5rem;">
-    <div class="placeholder-desc">Live revenue schedule preview is not yet bound to this project. Run the model to generate revenue output.</div>
+    <div class="placeholder-desc">Live revenue schedule preview is not yet bound to this project. Run the model to generate revenue output. After running, scroll to the <strong>⚡ Runtime Summary</strong> below the workspace tabs to see KPI cards including Total Revenue.</div>
   </div>
 </div>
 
