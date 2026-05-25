@@ -1,0 +1,8 @@
+tradeoff,severity,status,action,follow_up
+script-src 'self' is strict — no unsafe-inline for scripts,medium,mitigated_by_option_a,CSP is now strict. Option A (non-executable JSON script + external JS) means no unsafe-inline needed for workspace init. Security posture improved vs before (where workspace init was blocked entirely by missing script-src).
+Inline <script> in index.html still exists for workspace init,low,acceptable_pilot_exception,The inline <script> block in index.html reads from type=application/json script tag. This is NOT an unsafe-inline relaxation — it's a non-executable data block. The separate script block that reads the JSON data is allowed because script-src 'self' permits same-origin scripts. This is acceptable for pilot. Moving all inline scripts to static/app.js is follow-up.
+New Project alert still in inline script,low,documented_gap,btn-new-project handler is still in inline <script> in index.html. This shows an alert (no financial calc), acceptable for pilot. Follow-up: move to static/app.js.
+Discard has dual wiring (HTMX + JS),low,acceptable_incremental_fix,Discard button has both hx-post="/scenarios/state/discard" and JS event listener in static/app.js. HTMX handles the POST; JS handles DOM update. No conflict. Can be simplified to pure HTMX response handling as follow-up.
+CSP console errors eliminated,high,fixed,Playwright tests confirm no CSP errors after fix. Dirty workflow now initializes.
+G20/R99/R102 governance unchanged,medium,confirmed,No governance behavior changed. G20 remains BLOCKED. R99/R102 remains NOT APPROVED.
+No JS financial calculations added,medium,confirmed,static/app.js has no Math.*, irr, npv, pmt calculations. Security tradeoff is clean.

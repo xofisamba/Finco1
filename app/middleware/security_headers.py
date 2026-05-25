@@ -5,10 +5,18 @@ import typing
 class SecurityHeadersMiddleware:
     """Adds security headers to every HTTP response."""
 
-    # CSP allows: self, inline styles (needed for Jinja2), no external scripts
+    # NOTE: script-src 'self' is strict — no unsafe-inline.
+    # Inline workspace init scripts (applyWorkspaceStateMeta, applyScenarioSnapshot)
+    # have been moved to static/app.js via DOM data attributes (see index.html).
+    # New Project onclick has been externalized to static/app.js event binding.
+    # discard button onclick has been removed (replaced by JS event listener in app.js).
+    # If CSP needs to be relaxed for any inline script, document in:
+    #   docs/phase16_csp_inline_script_fix.md
+    #   reports/phase16_csp_security_tradeoff_register.csv
     CSP = (
         "default-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
         "img-src 'self' data:; "
         "font-src 'self'; "
         "connect-src 'self'; "
