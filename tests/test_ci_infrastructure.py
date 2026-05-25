@@ -14,7 +14,7 @@ def test_model_status_doc_exists():
 
 def test_model_status_contains_sections():
     """model_status.md must contain required sections."""
-    with open("docs/model_status.md") as f:
+    with open("docs/model_status.md", encoding="utf-8") as f:
         content = f.read().lower()
     required = ["supported features", "partial features", "not implemented",
                 "known limitations", "warning"]
@@ -58,43 +58,43 @@ def test_bess_design_doc_exists():
 
 def test_model_status_contains_supported_features():
     """model_status.md must list Solar and Wind as fully supported."""
-    with open("docs/model_status.md") as f:
+    with open("docs/model_status.md", encoding="utf-8") as f:
         content = f.read().lower()
     assert "solar" in content and "wind" in content, "Solar and Wind must be mentioned"
 
 
 def test_model_status_contains_partial_features():
     """model_status.md must list BESS and Hybrid as partial."""
-    with open("docs/model_status.md") as f:
+    with open("docs/model_status.md", encoding="utf-8") as f:
         content = f.read().lower()
     assert "bess" in content and "hybrid" in content, "BESS and Hybrid must be mentioned"
 
 
 def test_model_status_contains_not_implemented():
     """model_status.md must list Sponsor IRR and Portfolio scenarios as not implemented."""
-    with open("docs/model_status.md") as f:
+    with open("docs/model_status.md", encoding="utf-8") as f:
         content = f.read().lower()
     assert "sponsor irr" in content or "sponsor" in content, "Sponsor IRR must be mentioned"
 
 
 def test_model_status_contains_bankable_warning():
     """model_status.md must contain an explicit warning about bankable validation."""
-    with open("docs/model_status.md") as f:
+    with open("docs/model_status.md", encoding="utf-8") as f:
         content = f.read().lower()
     assert "bankable" in content, "Bankable warning must be present"
 
 
-def test_streamlit_app_wires_warnings_to_excel(monkeypatch):
-    """streamlit_app.py must call build_excel_export with warnings=model_warnings."""
-    with open("streamlit_app.py") as f:
+def test_main_web_is_current_runtime_entrypoint():
+    """Current runtime entrypoint should be main_web:app, not Streamlit."""
+    with open("deploy/systemd/finco-web.service", encoding="utf-8") as f:
         src = f.read()
-    assert "warn_model_unrealistic" in src, "streamlit_app must call warn_model_unrealistic"
-    assert "warnings=model_warnings" in src, "build_excel_export must be called with warnings=model_warnings"
+    assert "main_web:app" in src
+    assert "streamlit run" not in src
 
 
 def test_model_status_declares_scenario_v2_parameters():
     """model_status.md must explicitly list Scenario v2 parameters."""
-    with open("docs/model_status.md") as f:
+    with open("docs/model_status.md", encoding="utf-8") as f:
         content = f.read()
     lower = content.lower()
     checks = {
@@ -116,7 +116,7 @@ def test_release1_readiness_doc_exists():
     import os
     path = "docs/release1_readiness.md"
     assert os.path.exists(path), f"{path} must exist"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         content = f.read()
     required = ["Release 1", "Out of Scope", "Known Limitations", "Claude Re-check"]
     missing = [s for s in required if s not in content]

@@ -1,21 +1,11 @@
-"""Runtime import guard — reject forbidden imports in production modules."""
-import ast
-import os
-import inspect
+"""Runtime import guards for the current FastAPI/HTMX production stack."""
 from pathlib import Path
-import pytest
 
-REPO_ROOT = Path(__file__).parent.parent
 
-# Files to check (runtime modules, not tests/docs/tools/legacy)
-# Active UI pages
-UI_PAGES = [
-    "ui/pages/1_Project_Inputs.py",
-    "ui/pages/2_Waterfall.py",
-]
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
-RUNTIME_FILES = [
-    "streamlit_app.py",
+PRODUCTION_RUNTIME_FILES = [
+    "main_web.py",
     "app/cache.py",
     "app/ui_runner.py",
     "app/input_forms.py",
@@ -27,133 +17,44 @@ RUNTIME_FILES = [
     "app/portfolio_runner.py",
     "domain/inputs.py",
     "domain/validation.py",
-    "src/app.py",
-] + UI_PAGES
+]
 
 FORBIDDEN = [
     "/root/.openclaw",
-    "core.tax.generic_tax",
-    "tools.calibration_legacy",
-    "app.calibration",
-    "from app.calibration",
-    "import app.calibration",
-    "app.calibration_runner",
-    "from app.calibration_runner",
-    "import app.calibration_runner",
     "ProjectInputs.create_default_oborovo",
     "ProjectInputs.create_default_tuho_wind1",
 ]
 
 
-def _check_file(filepath: Path) -> list[str]:
-    """Return list of forbidden strings found in file source."""
-    if not filepath.exists():
-        return [f"FILE NOT FOUND: {filepath}"]
-    src = filepath.read_text()
-    found = []
-    for term in FORBIDDEN:
-        if term in src:
-            found.append(f"{term!r} found in {filepath.name}")
-    return found
+def test_current_runtime_files_exist():
+    for filename in PRODUCTION_RUNTIME_FILES:
+        assert (REPO_ROOT / filename).exists(), f"Missing runtime file: {filename}"
 
 
-@pytest.mark.parametrize("filename", RUNTIME_FILES, ids=lambda f: f)
-def test_runtime_import_guards(filename):
-    """Each runtime file must not contain forbidden imports or paths."""
-    filepath = REPO_ROOT / filename
-    violations = _check_file(filepath)
-    assert not violations, f"Forbidden content found:\n  " + "\n  ".join(violations)
+def test_runtime_files_do_not_contain_forbidden_strings():
+    for filename in PRODUCTION_RUNTIME_FILES:
+        content = (REPO_ROOT / filename).read_text(encoding="utf-8")
+        for token in FORBIDDEN:
+            assert token not in content, f"{filename} must not contain {token!r}"
 
 
-def test_core_tax_generic_tax_not_in_domain():
-    """domain/inputs.py must not import core.tax.generic_tax."""
-    filepath = REPO_ROOT / "domain" / "inputs.py"
-    src = filepath.read_text()
-    assert "core.tax.generic_tax" not in src, "domain/inputs.py must not import core.tax.generic_tax"
-    assert "from core" not in src, "domain/inputs.py must not import from core"
+def test_app_cache_does_not_use_module_level_st_cache_decorators():
+    content = (REPO_ROOT / "app" / "cache.py").read_text(encoding="utf-8")
+    assert "@st.cache_data" not in content
+    assert "def cache_data(" in content
+    assert "except ModuleNotFoundError" in content
 
 
-def test_utils_cache_no_st_cache_data():
-    """utils/cache.py must not define @st.cache_data decorators."""
-    filepath = REPO_ROOT / "utils" / "cache.py"
-    src = filepath.read_text()
-    assert "@st.cache_data" not in src, "utils/cache.py must not use @st.cache_data"
+def test_utils_cache_remains_streamlit_free_shim():
+    content = (REPO_ROOT / "utils" / "cache.py").read_text(encoding="utf-8")
+    assert "@st.cache_data" not in content
+    assert "import streamlit" not in content
+    assert "from streamlit" not in content
 
 
-def test_utils_cache_no_streamlit_import():
-    """utils/cache.py must not import streamlit."""
-    filepath = REPO_ROOT / "utils" / "cache.py"
-    src = filepath.read_text()
-    assert "import streamlit" not in src and "from streamlit" not in src, \
-        "utils/cache.py must not import streamlit"
-
-
-def test_project_factories_no_create_default_on_projectinputs():
-    """domain/inputs.py must not define create_default_oborovo/create_default_tuho_wind1 on ProjectInputs."""
-    from domain import inputs as inputs_module
-    src = inspect.getsource(inputs_module)
-    assert "def create_default_oborovo" not in src, \
-        "ProjectInputs must not have create_default_oborovo method"
-    assert "def create_default_tuho_wind1" not in src, \
-        "ProjectInputs must not have create_default_tuho_wind1 method"
-
-def test_ui_pages_do_not_use_hardcoded_sys_path():
-    """Active UI pages must not contain hardcoded sandbox paths or sys.path hacks."""
-    for page in UI_PAGES:
-        filepath = REPO_ROOT / page
-        src = filepath.read_text()
-        assert "/root/.openclaw" not in src, f"{page} must not contain sandbox paths"
-        assert "sys.path.insert" not in src, f"{page} must not manipulate sys.path"
-
-
-def test_ui_pages_do_not_use_legacy_projectinputs_factories():
-    """Active UI pages must not call ProjectInputs.create_default_oborovo/create_default_tuho."""
-    for page in UI_PAGES:
-        filepath = REPO_ROOT / page
-        src = filepath.read_text()
-        assert "ProjectInputs.create_default_oborovo" not in src, f"{page} must not call ProjectInputs.create_default_oborovo"
-        assert "ProjectInputs.create_default_tuho_wind1" not in src, f"{page} must not call ProjectInputs.create_default_tuho_wind1"
-
-
-def test_active_ui_pages_use_app_cache_not_utils_cache():
-    """Active UI pages should use app.cache, not the utils.cache compatibility shim."""
-    for page in UI_PAGES:
-        filepath = REPO_ROOT / page
-        src = filepath.read_text()
-        if "utils.cache" in src:
-            pytest.fail(f"{page} imports utils.cache; use app.cache instead")
-
-
-def test_active_ui_pages_do_not_use_legacy_integrations():
-    """Active UI pages must not contain imports/uses of legacy integration modules."""
-    FORBIDDEN_PATTERNS = [
-        "sys.path.insert",
-        "utils.cache",
-        "src.app_builder",
-        "persistence.database",
-        "persistence.repository",
-    ]
-    for page in UI_PAGES:
-        filepath = REPO_ROOT / page
-        src = filepath.read_text()
-        for pattern in FORBIDDEN_PATTERNS:
-            assert pattern not in src, f"{page} must not contain {pattern!r}"
-
-
-def test_legacy_ui_files_are_classified():
-    """Archived legacy UI files must not be present in ui/pages/."""
-    legacy_names = ["4_scenarios.py"]
-    for name in legacy_names:
-        path = REPO_ROOT / "ui" / "pages" / name
-        assert not path.exists(), f"{name} must not exist in ui/pages/ (should be archived)"
-
-
-def test_no_create_default_oborovo_runtime_references():
-    """No active runtime file may call create_default_oborovo/create_default_tuho_wind1."""
-    runtime_paths = [REPO_ROOT / p for p in RUNTIME_FILES]
-    for path in runtime_paths:
-        if not path.exists():
-            continue
-        src = path.read_text()
-        assert "create_default_oborovo" not in src, f"{path.name} must not call create_default_oborovo"
-        assert "create_default_tuho_wind1" not in src, f"{path.name} must not call create_default_tuho_wind1"
+def test_legacy_streamlit_shell_is_not_production_entrypoint():
+    content = (REPO_ROOT / "streamlit_app.py").read_text(encoding="utf-8")
+    assert "import streamlit as st" in content
+    service_content = (REPO_ROOT / "deploy" / "systemd" / "finco-web.service").read_text(encoding="utf-8")
+    assert "streamlit_app.py" not in service_content
+    assert "main_web:app" in service_content

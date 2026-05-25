@@ -1,0 +1,5 @@
+gap_id,gap,severity,recommended_follow_up,notes
+S16-SD-001,Historical docs outside README still reference Streamlit,medium,Update only when those docs are next touched,Current branch avoids rewriting all archive material
+S16-SD-002,streamlit_app.py remains in repo as legacy shell,low,Decide later whether to archive or delete after broader doc/test cleanup,Retained intentionally to avoid over-pruning without wider historical review
+S16-SD-003,Legacy ui/pages Streamlit pages remain in repo,low,Review together with streamlit_app.py in a follow-up legacy archive pass,Not in current production import path
+S16-SD-004,Unsafe-inline CSP may still remain as temporary pilot exception if configured elsewhere,medium,Review separately in security hardening work,Out of scope for Streamlit decouple branch

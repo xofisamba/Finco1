@@ -1,62 +1,91 @@
-"""App-level caching — @st.cache_data ONLY lives here.
+"""App-level caching with optional Streamlit compatibility.
 
-S2-1: Moved from utils/cache.py and domain/model_state.py
-This is the ONLY place where @st.cache_data lives.
-Domain layer must NEVER import Streamlit.
-
-FincoGPT: cached_run_waterfall_v3 now delegates to app.waterfall_core so
-Streamlit UI and headless calibration can share the same calculation path.
+Production FincoGPT is served by ``main_web:app`` and must import without
+Streamlit installed. This module preserves the historical cache API shape for
+legacy shells, but falls back to a headless-safe decorator when Streamlit is
+unavailable.
 """
 from __future__ import annotations
 
+from functools import lru_cache, wraps
 from typing import TYPE_CHECKING
 
-import streamlit as st
+try:
+    import streamlit as st
+except ModuleNotFoundError:  # pragma: no cover - exercised via import-guard tests
+    st = None
 
 if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
     from domain.period_engine import PeriodEngine
 
 
-# =============================================================================
-# HASH FUNCTIONS FOR CACHE KEYING
-# =============================================================================
+def cache_data(*decorator_args, **decorator_kwargs):
+    """Return Streamlit's cache decorator when available, else a safe fallback.
+
+    The fallback keeps the decorated function callable shape and a ``clear()``
+    method so the rest of the runtime can invalidate caches without caring
+    whether Streamlit is installed.
+    """
+    if st is not None:
+        return st.cache_data(*decorator_args, **decorator_kwargs)
+
+    def decorator(func):
+        cached_func = lru_cache(maxsize=None)(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return cached_func(*args, **kwargs)
+            except TypeError:
+                return func(*args, **kwargs)
+
+        def clear() -> None:
+            cached_func.cache_clear()
+
+        wrapper.clear = clear
+        return wrapper
+
+    return decorator
+
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> int:
-    """Deterministic hash for ProjectInputs — for @st.cache_data hash_funcs."""
-    return hash((
-        inputs.info.name,
-        inputs.info.country_iso,
-        inputs.capex.total_capex,
-        inputs.financing.gearing_ratio,
-        inputs.financing.senior_tenor_years,
-        inputs.financing.use_senior_sweep_cash_cap_for_shl,
-        inputs.revenue.ppa_base_tariff,
-        inputs.revenue.ppa_term_years,
-        inputs.info.cod_date.toordinal() if hasattr(inputs.info.cod_date, "toordinal") else 0,
-    ))
+    """Deterministic hash for ProjectInputs for cache keying."""
+    return hash(
+        (
+            inputs.info.name,
+            inputs.info.country_iso,
+            inputs.capex.total_capex,
+            inputs.financing.gearing_ratio,
+            inputs.financing.senior_tenor_years,
+            inputs.financing.use_senior_sweep_cash_cap_for_shl,
+            inputs.revenue.ppa_base_tariff,
+            inputs.revenue.ppa_term_years,
+            inputs.info.cod_date.toordinal() if hasattr(inputs.info.cod_date, "toordinal") else 0,
+        )
+    )
 
 
 def hash_engine_for_cache(engine: "PeriodEngine") -> int:
-    """Deterministic hash for PeriodEngine — for @st.cache_data hash_funcs."""
-    # Support both older engine attributes and the current PeriodEngine API.
-    return hash((
-        getattr(engine, "fc", getattr(engine, "anchor_date", None)),
-        getattr(engine, "construction_months", None),
-        getattr(engine, "horizon_years", getattr(engine, "num_periods", None)),
-        getattr(engine, "ppa_years", None),
-        getattr(engine, "freq", getattr(engine, "periods_per_year", None)),
-    ))
+    """Deterministic hash for PeriodEngine for cache keying."""
+    return hash(
+        (
+            getattr(engine, "fc", getattr(engine, "anchor_date", None)),
+            getattr(engine, "construction_months", None),
+            getattr(engine, "horizon_years", getattr(engine, "num_periods", None)),
+            getattr(engine, "ppa_years", None),
+            getattr(engine, "freq", getattr(engine, "periods_per_year", None)),
+        )
+    )
 
 
-# =============================================================================
-# CACHED SCHEDULES (S2-1: moved from utils/cache.py)
-# =============================================================================
-
-@st.cache_data(show_spinner=False, hash_funcs={
-    "ProjectInputs": hash_inputs_for_cache,
-    "PeriodEngine": hash_engine_for_cache,
-})
+@cache_data(
+    show_spinner=False,
+    hash_funcs={
+        "ProjectInputs": hash_inputs_for_cache,
+        "PeriodEngine": hash_engine_for_cache,
+    },
+)
 def cached_generation_schedule(
     inputs: "ProjectInputs",
     engine: "PeriodEngine",
@@ -64,57 +93,66 @@ def cached_generation_schedule(
 ) -> dict[int, float]:
     """Cached generation schedule."""
     from domain.revenue.generation import full_generation_schedule
+
     return full_generation_schedule(inputs, engine, yield_scenario)
 
 
-@st.cache_data(show_spinner=False, hash_funcs={
-    "ProjectInputs": hash_inputs_for_cache,
-    "PeriodEngine": hash_engine_for_cache,
-})
+@cache_data(
+    show_spinner=False,
+    hash_funcs={
+        "ProjectInputs": hash_inputs_for_cache,
+        "PeriodEngine": hash_engine_for_cache,
+    },
+)
 def cached_revenue_schedule(
     inputs: "ProjectInputs",
     engine: "PeriodEngine",
 ) -> dict[int, float]:
     """Cached revenue schedule."""
     from domain.revenue.generation import full_revenue_schedule
+
     return full_revenue_schedule(inputs, engine)
 
 
-@st.cache_data(show_spinner=False, hash_funcs={
-    "ProjectInputs": hash_inputs_for_cache,
-})
+@cache_data(
+    show_spinner=False,
+    hash_funcs={
+        "ProjectInputs": hash_inputs_for_cache,
+    },
+)
 def cached_opex_schedule_annual(
     inputs: "ProjectInputs",
     horizon_years: int = 30,
 ) -> dict[int, float]:
     """Cached annual OPEX schedule."""
     from domain.opex.projections import opex_schedule_annual
+
     return opex_schedule_annual(inputs, horizon_years)
 
 
-@st.cache_data(show_spinner=False, hash_funcs={
-    "ProjectInputs": hash_inputs_for_cache,
-    "PeriodEngine": hash_engine_for_cache,
-})
+@cache_data(
+    show_spinner=False,
+    hash_funcs={
+        "ProjectInputs": hash_inputs_for_cache,
+        "PeriodEngine": hash_engine_for_cache,
+    },
+)
 def cached_model_state(
     inputs: "ProjectInputs",
     engine: "PeriodEngine",
 ):
     """Cached model state with all precomputed schedules."""
     from domain.model_state import build_model_state
+
     return build_model_state(inputs, engine)
 
 
-# =============================================================================
-# CACHED WATERFALL (S2-1: moved from utils/cache.py)
-# =============================================================================
-
-@st.cache_data(
-    show_spinner="⚙️ Računam waterfall...",
+@cache_data(
+    show_spinner="Calculating waterfall...",
     hash_funcs={
         "ProjectInputs": hash_inputs_for_cache,
         "PeriodEngine": hash_engine_for_cache,
-    }
+    },
 )
 def cached_run_waterfall_v3(
     inputs: "ProjectInputs",
@@ -142,11 +180,7 @@ def cached_run_waterfall_v3(
     debt_sizing_method: str = "dscr_sculpt",
     dscr_schedule: list[float] | None = None,
 ):
-    """Cached waterfall computation.
-
-    The calculation body lives in app.waterfall_core.run_waterfall_v3_core.
-    This wrapper should remain the only place that applies @st.cache_data.
-    """
+    """Cached waterfall computation."""
     from app.waterfall_core import run_waterfall_v3_core
 
     return run_waterfall_v3_core(
@@ -178,7 +212,7 @@ def cached_run_waterfall_v3(
 
 
 def clear_all_caches() -> None:
-    """Invalidate all caches — call when inputs change."""
+    """Invalidate all caches."""
     cached_generation_schedule.clear()
     cached_revenue_schedule.clear()
     cached_opex_schedule_annual.clear()

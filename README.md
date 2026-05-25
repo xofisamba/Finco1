@@ -43,13 +43,23 @@ FincoGPT is an investor-grade screening tool for renewable energy project financ
 
 ```bash
 # Install dependencies
-pip install -e .
+pip install -r requirements.txt
 
-# Run the Streamlit UI
-streamlit run streamlit_app.py
+# Run the current web app locally
+uvicorn main_web:app --reload
 ```
 
-Navigate to `http://localhost:8501`, select a project type, choose a scenario, and click **Run Model**.
+For a production-style process manager, the deployed service runs:
+
+```bash
+gunicorn main_web:app
+```
+
+Navigate to `http://localhost:8000`, sign in, select a project, save a scenario, and click **Run Model**.
+
+## Legacy Streamlit Note
+
+FincoGPT production is no longer a Streamlit app. Any retained Streamlit files are legacy or archive-only and are not required for the current FastAPI/HTMX runtime.
 
 ---
 
@@ -71,7 +81,8 @@ Scenarios automatically adjust yield, CapEx, OpEx, degradation, and tariff.
 
 ```
 finco1_new/
-├── streamlit_app.py        # UI entrypoint
+├── main_web.py             # Current FastAPI / HTMX entrypoint
+├── streamlit_app.py        # Legacy Streamlit shell retained for archive/reference only
 ├── app/
 │   ├── ui_runner.py       # Project factory & run orchestrator
 │   ├── excel_export.py    # Excel workbook export (values-only)

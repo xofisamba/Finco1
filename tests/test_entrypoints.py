@@ -1,30 +1,23 @@
-"""Tests for entrypoint hygiene."""
-import inspect
-import sys
+"""Tests for current production entrypoint hygiene."""
 from pathlib import Path
 
-# Add project root so streamlit_app (top-level) can be imported
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import streamlit_app as streamlit_app_module  # top-level entrypoint
-from src import app as src_app_module
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_src_app_contains_no_sandbox_path():
-    src = inspect.getsource(src_app_module)
-    assert "/root/.openclaw" not in src, "src/app.py must not contain sandbox paths"
-    assert "sys.path.insert" not in src, "src/app.py must not manipulate sys.path"
+def test_systemd_service_targets_main_web_app():
+    service_file = REPO_ROOT / "deploy" / "systemd" / "finco-web.service"
+    content = service_file.read_text(encoding="utf-8")
+    assert "gunicorn" in content
+    assert "main_web:app" in content
 
 
-def test_src_app_does_not_call_projectinputs_legacy_factories():
-    src = inspect.getsource(src_app_module)
-    assert "ProjectInputs.create_default_oborovo" not in src
-    assert "ProjectInputs.create_default_tuho_wind1" not in src
-    assert "create_default_oborovo" not in src
-    assert "create_default_tuho_wind1" not in src
+def test_readme_quickstart_targets_fastapi_runtime():
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "uvicorn main_web:app --reload" in readme
+    assert "streamlit run streamlit_app.py" not in readme
 
 
-def test_streamlit_app_is_current_entrypoint():
-    # streamlit_app should be importable and have st.set_page_config
-    src = inspect.getsource(streamlit_app_module)
-    assert "set_page_config" in src, "streamlit_app.py should be the current entrypoint"
+def test_legacy_src_entrypoint_removed():
+    assert not (REPO_ROOT / "src" / "app.py").exists()
+    assert not (REPO_ROOT / "src" / "startup.sh").exists()
