@@ -1,0 +1,6 @@
+gap_id,gap,reason,severity,pilot_blocker_yes_no,recommended_follow_up,owner
+PH16-GAP-001,real_guided_pilot_not_executed_in_this_environment,"No credible evidence of actual TUHO or Oborovo guided pilot execution was produced here",high,no,"Run the real guided pilot and replace placeholder statuses with honest evidence","pilot_operator"
+PH16-GAP-002,live_browser_automation_future_work,"Current browser verification remains smoke-level from Phase 15",medium,no,"Consider real browser automation only if future evidence justifies it","engineering"
+PH16-GAP-003,workbook_wide_numeric_audit_future_work,"Representative numeric validation exists, but workbook-wide validation remains future work",medium,no,"Expand workbook validation only if pilot evidence reveals need","engineering"
+PH16-GAP-004,external_model_review_future_work,"Internal pilot execution does not replace external model review",high,no,"Preserve no-claims until external review occurs","product_owner"
+PH16-GAP-005,template_feedback_rows_still_need_replacement,"Phase 15 template/example feedback and session rows still need real operator evidence",medium,no,"Populate issue and session artifacts during actual pilot execution","pilot_operator"
