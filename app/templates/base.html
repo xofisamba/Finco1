@@ -46,8 +46,12 @@
     <div class="ps-section">
       <div class="ps-section-label">Actions</div>
       <div class="ps-actions">
-        <button class="ps-action-btn" id="btn-new-project" type="button"
-                onclick="alert('New Project is not yet wired.\n\nTo start fresh: save your current scenario first, then refresh the page.\n\nThis feature will be enabled in a future update.')">
+        <button class="ps-action-btn"
+                id="btn-new-project"
+                type="button"
+                hx-get="/projects/new"
+                hx-target="#scenario-action-result"
+                hx-swap="innerHTML">
           <span class="ps-action-icon">+</span> New Project
         </button>
         <button class="ps-action-btn" id="btn-duplicate-scenario" type="button">
@@ -56,7 +60,7 @@
         <button class="ps-action-btn"
                 id="btn-compare-scenarios"
                 type="button"
-                hx-get="/scenarios/compare?project={{ project_ctx.id }}"
+                hx-get="/scenarios/compare?project={{ project_record.project_code if project_record else project_ctx.id }}"
                 hx-target="#saved-scenario-panel"
                 hx-swap="outerHTML">
           <span class="ps-action-icon">Compare</span> Compare Scenarios
@@ -76,7 +80,7 @@
         <button class="ps-action-btn"
                 id="btn-load"
                 type="button"
-                hx-get="/scenarios?project={{ project_ctx.id }}"
+                hx-get="/scenarios?project={{ project_record.project_code if project_record else project_ctx.id }}"
                 hx-target="#saved-scenario-panel"
                 hx-swap="outerHTML">
           <span class="ps-action-icon">Load</span> Refresh Saved
@@ -118,10 +122,10 @@
         <a href="/download" class="ps-download-item">
           <span>Export</span> Model Export
         </a>
-        <a href="/exports/runtime-summary.csv?project={{ project_ctx.id }}" class="ps-download-item">
+        <a href="/exports/runtime-summary.csv?project={{ project_record.project_code if project_record else project_ctx.id }}" class="ps-download-item">
           <span>CSV</span> Runtime Summary
         </a>
-        <a href="/exports/institutional-workbook.xlsx?project={{ project_ctx.id }}" class="ps-download-item">
+        <a href="/exports/institutional-workbook.xlsx?project={{ project_record.project_code if project_record else project_ctx.id }}" class="ps-download-item">
           <span>XLSX</span> Workbook
         </a>
       </div>

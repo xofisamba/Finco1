@@ -1,0 +1,11 @@
+workflow_step,status,phase17a_behavior,notes
+new_project_button,implemented,Loads real project creation form,No dead alert remains
+project_record_create,implemented,Creates DB-backed project record with origin and baseline snapshot,Persistence and selector now separate project from scenario
+factory_templates_visible,implemented,TUHO and Oborovo remain visible as factory templates,Existing template workflow preserved
+user_created_project_visible_in_selector,implemented,Created project appears in user-created selector section,Selector separates templates from user-created projects
+workspace_binding,implemented,Selecting created project binds workspace to project record,Hidden active_project and workspace project id follow selected project
+baseline_snapshot_seed,implemented,Created project gets seeded baseline snapshot,Used for save and load foundation
+save_load_foundation,implemented,User-created project can be saved and loaded through current scenario workflow,No save auto-run
+template_seeded_runtime_disclosure,implemented,UI states runtime remains template-seeded until Phase 17C,No false from-scratch claim
+run_path_from_scratch,no,Runtime still uses template-seeded defaults for user-created projects,Phase 17C scope
+required_13_field_form,no,Minimal creation form only,Phase 17B scope

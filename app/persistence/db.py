@@ -54,7 +54,12 @@ def _init_schema(conn):
             user_id                  TEXT NOT NULL,
             project_code             TEXT NOT NULL,
             project_name             TEXT NOT NULL,
+            project_type             TEXT,
+            project_origin           TEXT NOT NULL DEFAULT 'factory_template',
             source_project_template  TEXT NOT NULL,
+            template_source          TEXT,
+            baseline_snapshot_json   TEXT NOT NULL DEFAULT '{}',
+            archived                 INTEGER NOT NULL DEFAULT 0,
             governance_state_json    TEXT NOT NULL,
             last_run_summary_json    TEXT NOT NULL,
             replay_metadata_json     TEXT NOT NULL DEFAULT '{}',
@@ -147,7 +152,12 @@ def _init_schema(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_states_user_project ON workspace_states(user_id, project_id)"
     )
     _ensure_column(conn, "runs", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "projects", "project_type", "TEXT")
+    _ensure_column(conn, "projects", "project_origin", "TEXT NOT NULL DEFAULT 'factory_template'")
     _ensure_column(conn, "projects", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "projects", "template_source", "TEXT")
+    _ensure_column(conn, "projects", "baseline_snapshot_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "projects", "archived", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "workspace_states", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")

@@ -1,7 +1,8 @@
 import json
-import datetime
 """HTMX internal demo web interface for Finco1 model."""
 import os
+import re
+from datetime import datetime as dt
 from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +15,7 @@ from app.excel_export import build_excel_export
 from app.ui_runner import run_demo_project
 from app.capex_engine import build_capex_line_items_from_defaults
 from app.project_factories import create_default_oborovo, create_default_tuho_wind1
+from app.project_factories import create_default_solar_project, create_default_wind_project
 
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
@@ -40,16 +42,19 @@ from app.persistence.repository import (
     archive_scenario,
     build_export_lineage,
     compare_scenarios,
+    create_project_record,
     count_runs,
     delete_run,
     discard_workspace_draft,
     duplicate_scenario,
     get_project_by_code,
+    get_project_record,
     get_run,
     get_scenario,
     get_scenario_history,
     get_workspace_state,
     list_exports,
+    list_project_records,
     list_runs,
     list_scenarios,
     record_workspace_runtime,
@@ -61,10 +66,11 @@ from app.persistence.repository import (
     save_scenario,
     save_workspace_state,
     snapshots_equal,
+    update_project_record,
     update_scenario_last_run_summary,
 )
 from app.persistence.provenance import build_replay_metadata, utc_now_iso
-from app.ui.project_context import get_project_context, all_project_ids
+from app.ui.project_context import build_project_context_for_record, get_project_context
 from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
@@ -120,6 +126,29 @@ KPI_LABELS = {
 
 SCENARIOS = ["Base", "Downside", "Upside"]
 PROJECT_TYPES = ["Solar", "Wind"]
+FACTORY_TEMPLATE_OPTIONS = [
+    {
+        "project_code": "tuho",
+        "label": "TUHO Wind 1",
+        "meta": "35 MW · Croatia",
+        "project_type": "Wind",
+        "template_source": "TUHO",
+    },
+    {
+        "project_code": "oborovo",
+        "label": "Oborovo Solar PV",
+        "meta": "75.26 MW · Croatia",
+        "project_type": "Solar",
+        "template_source": "Oborovo",
+    },
+]
+NEW_PROJECT_TEMPLATE_OPTIONS = [
+    {"value": "generic_wind", "label": "Blank / Generic Wind", "project_type": "Wind"},
+    {"value": "generic_solar", "label": "Blank / Generic Solar", "project_type": "Solar"},
+    {"value": "tuho", "label": "TUHO template", "project_type": "Wind"},
+    {"value": "oborovo", "label": "Oborovo template", "project_type": "Solar"},
+]
+
 
 # -- Auth dependency ----------------------------------------------------------
 
@@ -151,6 +180,44 @@ def _governance_snapshot(project_code: str | None = None) -> dict:
     }
 
 
+def _slugify_project_code(project_name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (project_name or "").strip().lower()).strip("-")
+    return base or "project"
+
+
+def _canonical_project_type(project_type: str | None) -> str:
+    return "Solar" if (project_type or "").strip().lower() == "solar" else "Wind"
+
+
+def _normalize_template_source(template_source: str | None, project_type: str | None) -> str:
+    source = (template_source or "").strip().lower()
+    if source in {"tuho", "oborovo", "generic_wind", "generic_solar"}:
+        return source
+    return "generic_solar" if _canonical_project_type(project_type) == "Solar" else "generic_wind"
+
+
+def _template_source_label(template_source: str | None) -> str:
+    mapping = {
+        "tuho": "TUHO",
+        "oborovo": "Oborovo",
+        "generic_wind": "Generic Wind",
+        "generic_solar": "Generic Solar",
+        "none": "none",
+    }
+    return mapping.get((template_source or "").strip().lower(), "none")
+
+
+def _project_identity_from_template_source(template_source: str, fallback_project_type: str | None = None) -> tuple[str, str]:
+    source = _normalize_template_source(template_source, fallback_project_type)
+    if source == "oborovo":
+        return "oborovo", "Oborovo Solar PV"
+    if source == "tuho":
+        return "tuho", "TUHO Wind 1"
+    if source == "generic_solar":
+        return "generic_solar", "Generic Solar Project"
+    return "generic_wind", "Generic Wind Project"
+
+
 def _collect_form_snapshot(form) -> dict:
     fields = [
         "active_project",
@@ -174,27 +241,13 @@ def _collect_form_snapshot(form) -> dict:
     return {field: form.get(field, "") for field in fields}
 
 
-def _project_persistence_metadata(project_ctx, form_snapshot: dict | None = None) -> tuple[str, str]:
-    if project_ctx is not None:
-        return project_ctx.id, project_ctx.name
-    active_project = (form_snapshot or {}).get("active_project", "").strip().lower()
-    if active_project == "oborovo":
-        return "oborovo", "Oborovo Solar PV"
-    return "tuho", "TUHO Wind 1"
-
-
-def _project_inputs_for_code(project_code: str):
-    code = (project_code or "tuho").strip().lower()
-    if code == "oborovo":
-        return create_default_oborovo()
-    return create_default_tuho_wind1()
-
-
-def _default_workspace_snapshot(project_code: str) -> dict:
-    code = (project_code or "tuho").strip().lower()
-    return {
-        "active_project": code,
-        "project_type": "Solar" if code == "oborovo" else "Wind",
+def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
+    canonical_type = _canonical_project_type(project_type)
+    normalized_source = _normalize_template_source(template_source, canonical_type)
+    identity_code, _ = _project_identity_from_template_source(normalized_source, canonical_type)
+    baseline = {
+        "active_project": "",
+        "project_type": canonical_type,
         "scenario": "Base",
         "capacity_mw": "",
         "tariff_eur_mwh": "",
@@ -211,6 +264,121 @@ def _default_workspace_snapshot(project_code: str) -> dict:
         "capacity_factor": "",
         "ppa_term_years": "",
     }
+
+    if normalized_source == "tuho":
+        project_inputs = create_default_tuho_wind1()
+        baseline.update(
+            {
+                "active_project": "tuho",
+                "project_type": "Wind",
+                "capacity_mw": str(project_inputs.technical.capacity_mw),
+                "tariff_eur_mwh": str(project_inputs.revenue.ppa_base_tariff),
+                "p50_hours": str(project_inputs.technical.operating_hours_p50),
+                "total_capex_keur": str(project_inputs.capex.total_capex),
+                "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
+                "target_dscr": str(project_inputs.financing.target_dscr),
+                "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+                "tenor_years": str(project_inputs.financing.senior_tenor_years),
+                "cod_date": str(project_inputs.info.cod_date),
+                "construction_months": str(project_inputs.info.construction_months),
+                "horizon_years": str(project_inputs.info.horizon_years),
+                "capacity_factor": f"{(project_inputs.technical.operating_hours_p50 / 8760) * 100:.2f}",
+                "ppa_term_years": str(int(project_inputs.revenue.ppa_term_years)),
+            }
+        )
+        return baseline
+
+    if normalized_source == "oborovo":
+        project_inputs = create_default_oborovo()
+        baseline.update(
+            {
+                "active_project": "oborovo",
+                "project_type": "Solar",
+                "capacity_mw": str(project_inputs.technical.capacity_mw),
+                "tariff_eur_mwh": str(project_inputs.revenue.ppa_base_tariff),
+                "p50_hours": str(project_inputs.technical.operating_hours_p50),
+                "total_capex_keur": str(project_inputs.capex.total_capex),
+                "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
+                "gearing_pct": str((getattr(project_inputs.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+                "target_dscr": str(project_inputs.financing.target_dscr),
+                "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+                "tenor_years": str(project_inputs.financing.senior_tenor_years),
+                "cod_date": str(project_inputs.info.cod_date),
+                "construction_months": str(project_inputs.info.construction_months),
+                "horizon_years": str(project_inputs.info.horizon_years),
+                "capacity_factor": f"{(project_inputs.technical.operating_hours_p50 / 8760) * 100:.2f}",
+                "ppa_term_years": str(int(project_inputs.revenue.ppa_term_years)),
+            }
+        )
+        return baseline
+
+    if normalized_source == "generic_solar":
+        project_inputs = create_default_solar_project()
+    else:
+        project_inputs = create_default_wind_project()
+    baseline.update(
+        {
+            "active_project": identity_code,
+            "project_type": canonical_type,
+            "capacity_mw": str(project_inputs.technical.capacity_mw),
+            "tariff_eur_mwh": str(project_inputs.revenue.ppa_base_tariff),
+            "p50_hours": str(project_inputs.technical.operating_hours_p50),
+            "total_capex_keur": str(project_inputs.capex.total_capex),
+            "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
+            "gearing_pct": str((getattr(project_inputs.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+            "target_dscr": str(project_inputs.financing.target_dscr),
+            "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+            "tenor_years": str(project_inputs.financing.senior_tenor_years),
+            "cod_date": str(project_inputs.info.cod_date),
+            "construction_months": str(project_inputs.info.construction_months),
+            "horizon_years": str(project_inputs.info.horizon_years),
+            "capacity_factor": f"{(project_inputs.technical.operating_hours_p50 / 8760) * 100:.2f}",
+            "ppa_term_years": str(int(project_inputs.revenue.ppa_term_years)),
+        }
+    )
+    return baseline
+
+
+def _project_inputs_for_code(project_code: str):
+    code = (project_code or "tuho").strip().lower()
+    if code == "generic_solar":
+        return create_default_solar_project()
+    if code == "generic_wind":
+        return create_default_wind_project()
+    if code == "oborovo":
+        return create_default_oborovo()
+    return create_default_tuho_wind1()
+
+
+def _default_workspace_snapshot(project_code: str) -> dict:
+    code = (project_code or "tuho").strip().lower()
+    project_type = "Solar" if code in {"oborovo", "generic_solar"} else "Wind"
+    return _project_baseline_snapshot(project_type, code)
+
+
+def _project_record_to_context(project_record):
+    return build_project_context_for_record(
+        project_code=project_record.project_code,
+        project_name=project_record.project_name,
+        project_type=project_record.project_type,
+        project_origin=project_record.project_origin,
+        template_source=project_record.template_source or project_record.source_project_template,
+    )
+
+
+def _project_persistence_metadata(project_ctx=None, form_snapshot: dict | None = None, project_record=None) -> tuple[str, str]:
+    if project_record is not None:
+        return project_record.project_code, project_record.project_name
+    if project_ctx is not None:
+        return project_ctx.id, project_ctx.name
+    active_project = (form_snapshot or {}).get("active_project", "").strip().lower()
+    if active_project:
+        project_code, project_name = _project_identity_from_template_source(active_project, (form_snapshot or {}).get("project_type"))
+        return project_code, project_name
+    project_type = _canonical_project_type((form_snapshot or {}).get("project_type"))
+    default_source = _normalize_template_source((form_snapshot or {}).get("template_source"), project_type)
+    project_code, project_name = _project_identity_from_template_source(default_source, project_type)
+    return project_code, project_name
 
 
 def _workspace_state_meta(workspace_state) -> dict:
@@ -449,13 +617,47 @@ def _replay_metadata_for_project(
     )
 
 
-def _current_project_workspace(user, project_ctx):
-    project_code, project_name = _project_persistence_metadata(project_ctx)
-    project_record = save_project(
+def _user_project_selector_items(user) -> list[dict[str, str]]:
+    items = []
+    for record in list_project_records(user_id=user.user_id):
+        if record.project_origin != "user_created":
+            continue
+        items.append(
+            {
+                "project_code": record.project_code,
+                "label": record.project_name,
+                "meta": f"{record.project_type or 'Unknown'} · {_template_source_label(record.template_source)} seed",
+            }
+        )
+    return items
+
+
+def _resolve_project_record(user, project_selection: str | None, form_snapshot: dict | None = None):
+    selection = (project_selection or "").strip().lower()
+    if selection:
+        user_project = get_project_record(user_id=user.user_id, project_code=selection)
+        if user_project is not None:
+            return user_project
+
+    if selection in {"tuho", "oborovo", "generic_wind", "generic_solar"}:
+        project_code = selection
+        project_name = _project_identity_from_template_source(selection)[1]
+        project_type = "Solar" if selection in {"oborovo", "generic_solar"} else "Wind"
+        template_source = selection
+    else:
+        project_code, project_name = _project_persistence_metadata(None, form_snapshot)
+        project_type = _canonical_project_type((form_snapshot or {}).get("project_type"))
+        template_source = _normalize_template_source(project_code, project_type)
+
+    return save_project(
         user_id=user.user_id,
         project_code=project_code,
         project_name=project_name,
-        source_project_template=project_code,
+        project_type=project_type,
+        project_origin="factory_template",
+        source_project_template=template_source,
+        template_source=template_source,
+        baseline_snapshot=_default_workspace_snapshot(project_code),
         governance_state=_governance_snapshot(project_code),
         last_run_summary={},
         replay_metadata=_replay_metadata_for_project(
@@ -464,23 +666,40 @@ def _current_project_workspace(user, project_ctx):
             export_type="workspace_project_state",
         ),
     )
+
+
+def _ensure_workspace_for_project(user, project_record):
     workspace_state = get_workspace_state(user.user_id, project_record.project_id)
     if workspace_state is None:
-        base_snapshot = _default_workspace_snapshot(project_code)
+        base_snapshot = project_record.baseline_snapshot or _default_workspace_snapshot(project_record.project_code)
+        base_snapshot = dict(base_snapshot)
+        base_snapshot["active_project"] = project_record.project_code
+        base_snapshot["project_type"] = project_record.project_type or base_snapshot.get("project_type") or "Wind"
         workspace_state = save_workspace_state(
             user_id=user.user_id,
             project_id=project_record.project_id,
-            project_code=project_code,
+            project_code=project_record.project_code,
             draft_snapshot=base_snapshot,
             saved_snapshot=base_snapshot,
             dirty=False,
-            governance_state=_governance_snapshot(project_code),
+            governance_state=_governance_snapshot(project_record.project_code),
             replay_metadata=_replay_metadata_for_project(
-                project_code,
+                project_record.project_code,
                 project_id=project_record.project_id,
                 export_type="workspace_draft_state",
             ),
         )
+    return workspace_state
+
+
+def _project_workspace_from_snapshot(user, snapshot: dict):
+    project_record = _resolve_project_record(user, snapshot.get("active_project"), snapshot)
+    workspace_state = _ensure_workspace_for_project(user, project_record)
+    return project_record, workspace_state
+
+
+def _current_project_workspace(user, project_record):
+    workspace_state = _ensure_workspace_for_project(user, project_record)
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
     history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
@@ -802,8 +1021,8 @@ async def index(request: Request, project: str | None = None):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    ctx = get_project_context(project)
-    available_projects = all_project_ids()
+    project_record = _resolve_project_record(user, project)
+    ctx = _project_record_to_context(project_record)
     (
         project_record,
         workspace_state,
@@ -812,7 +1031,7 @@ async def index(request: Request, project: str | None = None):
         export_records,
         export_lineage,
         scenario_summary_cards,
-    ) = _current_project_workspace(user, ctx)
+    ) = _current_project_workspace(user, project_record)
 
     return templates.TemplateResponse(
         request=request,
@@ -821,14 +1040,17 @@ async def index(request: Request, project: str | None = None):
             "project_types": PROJECT_TYPES,
             "scenarios": SCENARIOS,
             "caveats": CAVEATS,
-            "form_data": workspace_state.draft_snapshot if workspace_state else _default_workspace_snapshot(ctx.id),
+            "form_data": workspace_state.draft_snapshot if workspace_state else _default_workspace_snapshot(project_record.project_code),
             "validation_errors": [],
             "success_message": None,
             "user": user,
             "project_ctx": ctx,
             "workspace_state": workspace_state,
             "workspace_state_meta": _workspace_state_meta(workspace_state),
-            "available_projects": available_projects,
+            "active_project_code": project_record.project_code,
+            "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
+            "user_project_records": _user_project_selector_items(user),
+            "new_project_template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
             "project_record": project_record,
             "scenario_records": scenario_records,
             "scenario_history": scenario_history,
@@ -852,7 +1074,6 @@ async def validate(request: Request):
     # Parse form data
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
-    active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
     capacity_mw = form.get("capacity_mw", "")
@@ -864,36 +1085,8 @@ async def validate(request: Request):
     target_dscr = form.get("target_dscr", "")
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
-    project_code, project_name = _project_persistence_metadata(None, snapshot)
-    project_record = save_project(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=project_name,
-        source_project_template=project_code,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="workspace_project_state",
-        ),
-    )
-    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
-    if workspace_state is None:
-        workspace_state = save_workspace_state(
-            user_id=user.user_id,
-            project_id=project_record.project_id,
-            project_code=project_code,
-            draft_snapshot=_default_workspace_snapshot(project_code),
-            saved_snapshot=_default_workspace_snapshot(project_code),
-            dirty=False,
-            governance_state=_governance_snapshot(project_code),
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                project_id=project_record.project_id,
-                export_type="workspace_draft_state",
-            ),
-        )
+    project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
+    project_code = project_record.project_code
     allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
@@ -960,8 +1153,6 @@ async def run(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
-    # -- Phase 16 fix: establish all required variables before any branching --
-    snapshot = _collect_form_snapshot(form)
     active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
@@ -974,42 +1165,27 @@ async def run(request: Request):
     target_dscr = form.get("target_dscr", "")
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
-    project_code, project_name = _project_persistence_metadata(None, snapshot)
-    project_record = save_project(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=project_name,
-        source_project_template=project_code,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="workspace_project_state",
-        ),
-    )
-    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    snapshot = _collect_form_snapshot(form)
+    project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
+    project_code = project_record.project_code
+    project_name = project_record.project_name
     allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
-
-    # Dirty guard — block run if dirty, do not auto-save
     if not allow_run:
         return templates.TemplateResponse(
             request=request,
             name="partials/errors.html",
             context={"errors": [guard_message]},
         )
+    runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
-    # -- Phase 9.5: Named project binding -------------------------------------
-    # If active_project is set, run the named project factory directly.
-    # This bypasses arbitrary form inputs and uses factory defaults.
-    if active_project in ("tuho", "oborovo"):
-        ctx = get_project_context(active_project)
-        project_name = ctx.name
+    # -- Template-seeded runtime binding --------------------------------------
+    # Phase 17A keeps runtime template-seeded for user-created projects.
+    if runtime_seed in {"tuho", "oborovo"}:
         try:
-            project_key = "TUHO" if active_project == "tuho" else "Oborovo"
+            project_key = "TUHO" if runtime_seed == "tuho" else "Oborovo"
             scenario_name = snapshot.get("scenario", "") or "Base"
             schema = _build_schema_from_form(
-                project_type or _default_workspace_snapshot(active_project)["project_type"],
+                project_record.project_type or _default_workspace_snapshot(runtime_seed)["project_type"],
                 scenario_name,
                 capacity_mw, tariff_eur_mwh, p50_hours,
                 total_capex_keur, opex_y1_keur,
@@ -1018,7 +1194,7 @@ async def run(request: Request):
             override = build_projectinputs(schema)
             result = run_project(project_key, scenario_name, project_inputs_override=override)
             kpis = _format_kpis(result["kpis"])
-            runtime_summary = runtime_summary_to_dict(result, active_project, project_name)
+            runtime_summary = runtime_summary_to_dict(result, project_code, project_name)
             runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
             record_workspace_runtime(
                 user_id=user.user_id,
@@ -1061,7 +1237,7 @@ async def run(request: Request):
                 context={
                     "kpis": kpis,
                     "runtime_summary": runtime_summary,
-                    "run_data": {"project_type": active_project, "scenario": "Base"},
+                    "run_data": {"project_type": project_record.project_type or runtime_seed.title(), "scenario": scenario_name},
                     "messages": result.get("messages", []),
                     "integration_status": result.get("integration_status", "full"),
                 },
@@ -1098,12 +1274,13 @@ async def run(request: Request):
             return templates.TemplateResponse(
                 request=request,
                 name="partials/errors.html",
-                context={"errors": [f"Model error ({active_project}): {str(e)}"]},
+                context={"errors": [f"Model error ({project_code}): {str(e)}"]},
             )
-    # -- Standard form-based run (no active_project) --------------------------
+    # -- Generic template-seeded run path ------------------------------------
 
     errors = []
-    if not _validate_form(project_type, scenario, errors):
+    effective_project_type = project_record.project_type or project_type
+    if not _validate_form(effective_project_type, scenario, errors):
         return templates.TemplateResponse(
             request=request,
             name="partials/errors.html",
@@ -1112,7 +1289,7 @@ async def run(request: Request):
 
     try:
         schema = _build_schema_from_form(
-            project_type, scenario,
+            effective_project_type, scenario,
             capacity_mw, tariff_eur_mwh, p50_hours,
             total_capex_keur, opex_y1_keur,
             gearing_pct, target_dscr, interest_rate_pct, tenor_years,
@@ -1126,7 +1303,8 @@ async def run(request: Request):
 
     try:
         override = build_projectinputs(schema)
-        result = run_project(project_type, scenario, project_inputs_override=override)
+        runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
+        result = run_project(runtime_project_key, scenario, project_inputs_override=override)
         kpis = _format_kpis(result["kpis"])
         runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
         record_workspace_runtime(
@@ -1169,7 +1347,7 @@ async def run(request: Request):
             context={
                 "kpis": kpis,
                 "run_data": {
-                    "project_type": project_type,
+                    "project_type": effective_project_type,
                     "scenario": scenario,
                     "capacity_mw": capacity_mw,
                     "tariff_eur_mwh": tariff_eur_mwh,
@@ -1207,36 +1385,8 @@ async def compare(request: Request):
     target_dscr = form.get("target_dscr", "")
     interest_rate_pct = form.get("interest_rate_pct", "")
     tenor_years = form.get("tenor_years", "")
-    project_code, project_name = _project_persistence_metadata(None, snapshot)
-    project_record = save_project(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=project_name,
-        source_project_template=project_code,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="workspace_project_state",
-        ),
-    )
-    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
-    if workspace_state is None:
-        workspace_state = save_workspace_state(
-            user_id=user.user_id,
-            project_id=project_record.project_id,
-            project_code=project_code,
-            draft_snapshot=_default_workspace_snapshot(project_code),
-            saved_snapshot=_default_workspace_snapshot(project_code),
-            dirty=False,
-            governance_state=_governance_snapshot(project_code),
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                project_id=project_record.project_id,
-                export_type="workspace_draft_state",
-            ),
-        )
+    project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
+    project_code = project_record.project_code
     allow_run, _, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
@@ -1246,7 +1396,8 @@ async def compare(request: Request):
         )
 
     errors = []
-    if project_type not in PROJECT_TYPES:
+    effective_project_type = project_record.project_type or project_type
+    if effective_project_type not in PROJECT_TYPES:
         errors.append(f"project_type must be one of {PROJECT_TYPES}")
         return templates.TemplateResponse(
             request=request,
@@ -1256,7 +1407,7 @@ async def compare(request: Request):
 
     try:
         schema = _build_schema_from_form(
-            project_type, "Base",
+            effective_project_type, "Base",
             capacity_mw, tariff_eur_mwh, p50_hours,
             total_capex_keur, opex_y1_keur,
             gearing_pct, target_dscr, interest_rate_pct, tenor_years,
@@ -1270,9 +1421,16 @@ async def compare(request: Request):
         )
 
     results = {}
+    runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
+    if runtime_seed == "tuho":
+        runtime_project_key = "TUHO"
+    elif runtime_seed == "oborovo":
+        runtime_project_key = "Oborovo"
+    else:
+        runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
     for sc in SCENARIOS:
         try:
-            r = run_project(project_type, sc, project_inputs_override=override)
+            r = run_project(runtime_project_key, sc, project_inputs_override=override)
             results[sc] = {
                 "project_irr": r["kpis"].get("project_irr"),
                 "equity_irr": r["kpis"].get("equity_irr"),
@@ -1288,7 +1446,7 @@ async def compare(request: Request):
         request=request,
         name="partials/comparison.html",
         context={
-            "project_type": project_type,
+            "project_type": effective_project_type,
             "scenarios": SCENARIOS,
             "results": results,
         },
@@ -1303,7 +1461,6 @@ async def download_post(request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
-    active_project = form.get("active_project", "").strip().lower()
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
     capacity_mw = form.get("capacity_mw", "")
@@ -1331,13 +1488,18 @@ async def download_post(request: Request):
         )
 
     try:
-        demo = run_demo_project(project_type, scenario, project_inputs_override=override)
-        project_code = (
-            active_project
-            if active_project in {"tuho", "oborovo"}
-            else ("oborovo" if project_type.lower() == "solar" else "tuho")
-        )
-        project_record = get_project_by_code(user.user_id, project_code)
+        snapshot = _collect_form_snapshot(form)
+        project_record, _ = _project_workspace_from_snapshot(user, snapshot)
+        project_code = project_record.project_code
+        effective_project_type = project_record.project_type or project_type
+        runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
+        if runtime_seed == "tuho":
+            runtime_project_key = "TUHO"
+        elif runtime_seed == "oborovo":
+            runtime_project_key = "Oborovo"
+        else:
+            runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
+        demo = run_demo_project(runtime_project_key, scenario, project_inputs_override=override)
         filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
         replay_metadata = _replay_metadata_for_project(
             project_code,
@@ -1440,10 +1602,16 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    safe_project = project.strip().lower() if project else "tuho"
+    project_record = get_project_by_code(user.user_id, safe_project)
+    runtime_project_code = safe_project
+    if project_record is not None:
+        runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
+
     try:
-        runtime_rows = build_runtime_summary_rows(project)
+        runtime_rows = build_runtime_summary_rows(runtime_project_code)
         csv_text = build_runtime_summary_csv(
-            project,
+            runtime_project_code,
             generated_at=runtime_rows[0]["generated_at"],
             source_branch=runtime_rows[0]["source_branch"],
         )
@@ -1453,10 +1621,8 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
             status_code=400,
         )
 
-    safe_project = project.strip().lower() if project else "tuho"
     filename = f"phase10_{safe_project}_runtime_summary.csv"
     data = csv_text.encode("utf-8")
-    project_record = get_project_by_code(user.user_id, safe_project)
     record_export(
         user_id=user.user_id,
         project_code=safe_project,
@@ -1492,18 +1658,22 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    safe_project = project.strip().lower() if project else "tuho"
+    project_record = get_project_by_code(user.user_id, safe_project)
+    runtime_project_code = safe_project
+    if project_record is not None:
+        runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
+
     try:
-        runtime_rows = build_runtime_summary_rows(project)
-        workbook_bytes = export_institutional_workbook_skeleton(project)
+        runtime_rows = build_runtime_summary_rows(runtime_project_code)
+        workbook_bytes = export_institutional_workbook_skeleton(runtime_project_code)
     except ValueError as exc:
         return HTMLResponse(
             content=f"<html><body><h2>Institutional workbook export failed</h2><p>{str(exc)}</p><a href='/'>Back</a></body></html>",
             status_code=400,
         )
 
-    safe_project = project.strip().lower() if project else "tuho"
     filename = f"phase10_{safe_project}_institutional_workbook_skeleton.xlsx"
-    project_record = get_project_by_code(user.user_id, safe_project)
     record_export(
         user_id=user.user_id,
         project_code=safe_project,
@@ -1533,6 +1703,114 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
     )
 
 
+@app.get("/projects/new")
+async def new_project_form(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/new_project_form.html",
+        context={
+            "project_types": PROJECT_TYPES,
+            "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
+            "validation_errors": [],
+        },
+    )
+
+
+@app.post("/projects/create")
+async def create_project_route(
+    request: Request,
+    project_name: str = Form(...),
+    project_type: str = Form(...),
+    template_source: str = Form(""),
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    clean_name = (project_name or "").strip()
+    canonical_type = _canonical_project_type(project_type)
+    normalized_source = _normalize_template_source(template_source, canonical_type)
+    validation_errors = []
+
+    if not clean_name:
+        validation_errors.append("Project name is required.")
+    if project_type not in PROJECT_TYPES:
+        validation_errors.append(f"Project type must be one of {PROJECT_TYPES}.")
+    if normalized_source in {"tuho", "generic_wind"} and canonical_type != "Wind":
+        validation_errors.append("Wind templates require project type Wind.")
+    if normalized_source in {"oborovo", "generic_solar"} and canonical_type != "Solar":
+        validation_errors.append("Solar templates require project type Solar.")
+
+    if validation_errors:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/new_project_form.html",
+            context={
+                "project_types": PROJECT_TYPES,
+                "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
+                "validation_errors": validation_errors,
+                "submitted_name": clean_name,
+                "submitted_type": project_type,
+                "submitted_template_source": normalized_source,
+            },
+            status_code=400,
+        )
+
+    base_slug = _slugify_project_code(clean_name)
+    project_code = base_slug
+    suffix = 2
+    while get_project_by_code(user.user_id, project_code) is not None:
+        project_code = f"{base_slug}-{suffix}"
+        suffix += 1
+
+    baseline_snapshot = _project_baseline_snapshot(canonical_type, normalized_source)
+    baseline_snapshot["active_project"] = project_code
+    baseline_snapshot["project_type"] = canonical_type
+
+    project_record = create_project_record(
+        user_id=user.user_id,
+        project_code=project_code,
+        project_name=clean_name,
+        project_type=canonical_type,
+        project_origin="user_created",
+        template_source=normalized_source,
+        baseline_snapshot=baseline_snapshot,
+        governance_state=_governance_snapshot(project_code),
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=None,
+            export_type="project_record_created",
+        ),
+    )
+    save_workspace_state(
+        user_id=user.user_id,
+        project_id=project_record.project_id,
+        project_code=project_record.project_code,
+        draft_snapshot=baseline_snapshot,
+        saved_snapshot=baseline_snapshot,
+        dirty=False,
+        governance_state=_governance_snapshot(project_code),
+        replay_metadata=_replay_metadata_for_project(
+            project_code,
+            project_id=project_record.project_id,
+            export_type="workspace_project_created",
+        ),
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/new_project_result.html",
+        context={
+            "project_record": project_record,
+            "template_source_label": _template_source_label(normalized_source),
+        },
+        headers={"HX-Redirect": f"/?project={project_record.project_code}"},
+    )
+
+
 @app.get("/scenarios")
 async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
     """Render the saved scenario and export-history workspace for the active project."""
@@ -1540,8 +1818,8 @@ async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    project_ctx = get_project_context(project)
-    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_ctx)
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_record)
     return _render_scenario_workspace(
         request,
         user,
@@ -1564,22 +1842,9 @@ async def save_workspace_draft_endpoint(request: Request):
 
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
-    project_code, project_name = _project_persistence_metadata(None, snapshot)
-    project_record = save_project(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=project_name,
-        source_project_template=project_code,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="workspace_project_state",
-        ),
-    )
-    existing = get_workspace_state(user.user_id, project_record.project_id)
-    saved_snapshot = existing.saved_snapshot if existing else _default_workspace_snapshot(project_code)
+    project_record, existing = _project_workspace_from_snapshot(user, snapshot)
+    project_code = project_record.project_code
+    saved_snapshot = existing.saved_snapshot if existing else (project_record.baseline_snapshot or _default_workspace_snapshot(project_code))
     active_scenario_id = existing.active_scenario_id if existing else (form.get("current_saved_scenario_id", "") or None)
     active_scenario_name = existing.active_scenario_name if existing else None
     workspace_state = save_workspace_state(
@@ -1613,28 +1878,17 @@ async def discard_workspace_draft_endpoint(request: Request):
 
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
-    project_code, project_name = _project_persistence_metadata(None, snapshot)
-    project_record = save_project(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=project_name,
-        source_project_template=project_code,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="workspace_project_state",
-        ),
-    )
+    project_record, _ = _project_workspace_from_snapshot(user, snapshot)
+    project_code = project_record.project_code
     workspace_state = discard_workspace_draft(user.user_id, project_record.project_id)
     if workspace_state is None:
+        baseline_snapshot = project_record.baseline_snapshot or _default_workspace_snapshot(project_code)
         workspace_state = save_workspace_state(
             user_id=user.user_id,
             project_id=project_record.project_id,
             project_code=project_code,
-            draft_snapshot=_default_workspace_snapshot(project_code),
-            saved_snapshot=_default_workspace_snapshot(project_code),
+            draft_snapshot=baseline_snapshot,
+            saved_snapshot=baseline_snapshot,
             dirty=False,
             governance_state=_governance_snapshot(project_code),
             replay_metadata=_replay_metadata_for_project(
@@ -1656,8 +1910,8 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    project_ctx = get_project_context(project)
-    project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
     scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
     return _render_scenario_workspace(
         request,
@@ -1685,8 +1939,8 @@ async def scenario_compare_endpoint(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    project_ctx = get_project_context(project)
-    project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_ctx)
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
     scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
 
     compare_result = None
@@ -1723,28 +1977,16 @@ async def save_scenario_endpoint(request: Request):
 
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
-    project_code, project_name = _project_persistence_metadata(None, snapshot)
-    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {utc_now_iso()}"
-    project_record = save_project(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=project_name,
-        source_project_template=project_code,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="saved_scenario_workspace",
-        ),
-    )
-    existing_workspace_state = get_workspace_state(user.user_id, project_record.project_id)
+    project_record, existing_workspace_state = _project_workspace_from_snapshot(user, snapshot)
+    project_code = project_record.project_code
+    project_name = project_record.project_name
+    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {dt.now().strftime('%Y-%m-%d %H:%M')}"
     saved_record = save_scenario(
         user_id=user.user_id,
         project_id=project_record.project_id,
         scenario_name=scenario_name,
         project_code=project_code,
-        source_project_template=project_code,
+        source_project_template=project_record.template_source or project_record.source_project_template,
         snapshot=snapshot,
         governance_state=_governance_snapshot(project_code),
         last_run_summary=(
@@ -2041,38 +2283,9 @@ async def save_run_endpoint(request: Request):
     snapshot = _collect_form_snapshot(form)
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
-    active_project = (form.get("active_project", "") or "").strip().lower()
-    project_code = active_project or project_type.lower() or "tuho"
-    project_name = "TUHO Wind 1" if project_code == "tuho" else "Oborovo Solar PV" if project_code == "oborovo" else project_type
-    project_record = save_project(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=project_name,
-        source_project_template=project_code,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary={},
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="workspace_project_state",
-        ),
-    )
-    workspace_state = get_workspace_state(user.user_id, project_record.project_id)
-    if workspace_state is None:
-        workspace_state = save_workspace_state(
-            user_id=user.user_id,
-            project_id=project_record.project_id,
-            project_code=project_code,
-            draft_snapshot=_default_workspace_snapshot(project_code),
-            saved_snapshot=_default_workspace_snapshot(project_code),
-            dirty=False,
-            governance_state=_governance_snapshot(project_code),
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                project_id=project_record.project_id,
-                export_type="workspace_draft_state",
-            ),
-        )
+    project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
+    project_code = project_record.project_code
+    project_name = project_record.project_name
     allow_run, _, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
@@ -2100,7 +2313,8 @@ async def save_run_endpoint(request: Request):
 
     # Validate form
     errors = []
-    if not _validate_form(project_type, scenario, errors):
+    effective_project_type = project_record.project_type or project_type
+    if not _validate_form(effective_project_type, scenario, errors):
         return templates.TemplateResponse(
             request=request,
             name="partials/save_result.html",
@@ -2111,7 +2325,7 @@ async def save_run_endpoint(request: Request):
     # Re-run model to get fresh KPIs (matches current form state)
     try:
         schema = _build_schema_from_form(
-            project_type, scenario,
+            effective_project_type, scenario,
             inputs.get("capacity_mw"), inputs.get("tariff_eur_mwh"),
             inputs.get("p50_hours"), inputs.get("total_capex_keur"),
             inputs.get("opex_y1_keur"), inputs.get("gearing_pct"),
@@ -2119,7 +2333,14 @@ async def save_run_endpoint(request: Request):
             inputs.get("tenor_years"),
         )
         override = build_projectinputs(schema)
-        result = run_project(project_type, scenario, project_inputs_override=override)
+        runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
+        if runtime_seed == "tuho":
+            runtime_project_key = "TUHO"
+        elif runtime_seed == "oborovo":
+            runtime_project_key = "Oborovo"
+        else:
+            runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
+        result = run_project(runtime_project_key, scenario, project_inputs_override=override)
         kpis = result["kpis"]
     except Exception as e:
         return templates.TemplateResponse(
@@ -2133,7 +2354,7 @@ async def save_run_endpoint(request: Request):
     try:
         run_record = save_run(
             user_id=user_id,
-            project_type=project_type,
+            project_type=effective_project_type,
             scenario=scenario,
             inputs=inputs,
             kpis=kpis,
@@ -2163,7 +2384,7 @@ async def save_run_endpoint(request: Request):
             context={
                 "success": True,
                 "run_id": run_record.run_id,
-                "project_type": project_type,
+                "project_type": effective_project_type,
                 "scenario": scenario,
                 "created_at": run_record.created_at.isoformat(),
             },

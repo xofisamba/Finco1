@@ -1,0 +1,18 @@
+file_path,action,description
+app/persistence/db.py,modified,Adds project record schema fields for project type origin template source baseline snapshot and archived state
+app/persistence/repository.py,modified,Adds project record CRUD helpers and user-created project metadata support
+app/ui/project_context.py,modified,Builds honest factory and generic project contexts plus user-project context mapping
+main_web.py,modified,Adds New Project routes user-project workspace binding selector integration and template-seeded runtime disclosure
+app/templates/base.html,modified,Wires New Project button and project-specific action links to real project records
+app/templates/index.html,modified,Binds hidden active_project to selected project record code
+app/templates/partials/project_selector.html,modified,Separates factory templates from user-created projects and shows Phase 17A disclosure
+app/templates/partials/scenario_workspace.html,modified,Shows template-seeded runtime disclosure for user-created projects
+app/templates/partials/new_project_form.html,added,HTMX New Project creation form
+app/templates/partials/new_project_result.html,added,Creation confirmation partial for user-created projects
+docs/phase17_new_project_foundation.md,added,Phase 17A scope behavior and remaining-gap documentation
+reports/phase17_project_record_schema.csv,added,Project record schema inventory
+reports/phase17_new_project_workflow_matrix.csv,added,Workflow coverage summary for Phase 17A
+reports/phase17_new_project_remaining_gaps.csv,added,Phase 17B and 17C remaining gaps
+reports/phase17_new_project_foundation_zip_manifest.csv,added,Publish ZIP contents manifest
+reports/phase17_new_project_foundation_zip_readme.md,added,Short package readme describing Phase 17A scope and later phases
+tests/test_phase17_new_project_foundation.py,added,Phase 17A persistence route and guardrail tests

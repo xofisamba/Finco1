@@ -1,0 +1,12 @@
+field_name,type,required,description
+project_id,text,yes,Primary project record identifier
+project_code,text,yes,Stable slug used by selector and workspace binding
+project_name,text,yes,User-visible project name
+project_type,text,yes,Solar or Wind
+project_origin,text,yes,user_created or factory_template
+source_project_template,text,yes,Legacy-compatible template source field retained for current persistence flow
+template_source,text,yes,TUHO or Oborovo or Generic Wind or Generic Solar seed source
+created_at,text,yes,UTC creation timestamp
+updated_at,text,yes,UTC update timestamp
+baseline_snapshot,json,yes,Initial workspace snapshot bound to the project record
+archived,integer,no,0 active 1 archived

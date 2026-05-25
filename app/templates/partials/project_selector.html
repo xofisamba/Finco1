@@ -1,67 +1,74 @@
-<!-- Project Selector — Excel-like workspace sidebar — Phase 9.5 -->
 <div class="project-selector" id="project-selector">
   <div class="ps-header">
     <div class="ps-label">Projects</div>
   </div>
 
-  <div class="ps-list" id="ps-list">
-    <!-- TUHO Wind -->
-    <a href="/?project=tuho"
-       class="ps-card {% if project_ctx.code == 'TUHO' %}active{% endif %}"
-       id="ps-tuho"
-       data-project="tuho"
-       onclick="setActiveProject('tuho'); return true;">
-      <div class="ps-card-icon">💨 Wind</div>
-      <div class="ps-card-info">
-        <div class="ps-card-name">TUHO Wind 1</div>
-        <div class="ps-card-meta">35 MW · Croatia</div>
-      </div>
-      {% if project_ctx.code == 'TUHO' %}
-      <div class="ps-card-status ps-card-status--active">●</div>
-      {% else %}
-      <div class="ps-card-status"></div>
-      {% endif %}
-    </a>
-
-    <!-- Oborovo Solar -->
-    <a href="/?project=oborovo"
-       class="ps-card {% if project_ctx.code == 'OBOROVO' %}active{% endif %}"
-       id="ps-oborovo"
-       data-project="oborovo"
-       onclick="setActiveProject('oborovo'); return true;">
-      <div class="ps-card-icon">☀ Solar</div>
-      <div class="ps-card-info">
-        <div class="ps-card-name">Oborovo Solar PV</div>
-        <div class="ps-card-meta">75.26 MW · Croatia</div>
-      </div>
-      {% if project_ctx.code == 'OBOROVO' %}
-      <div class="ps-card-status ps-card-status--active">●</div>
-      {% else %}
-      <div class="ps-card-status"></div>
-      {% endif %}
-    </a>
+  <div class="ps-section">
+    <div class="ps-section-label">Factory Templates</div>
+    <div class="ps-list" id="ps-list">
+      {% for item in factory_template_projects %}
+      <a href="/?project={{ item.project_code }}"
+         class="ps-card {% if active_project_code == item.project_code %}active{% endif %}"
+         id="ps-{{ item.project_code }}"
+         data-project="{{ item.project_code }}"
+         onclick="setActiveProject('{{ item.project_code }}'); return true;">
+        <div class="ps-card-icon">{% if item.project_type == 'Wind' %}Wind{% else %}Solar{% endif %}</div>
+        <div class="ps-card-info">
+          <div class="ps-card-name">{{ item.label }}</div>
+          <div class="ps-card-meta">{{ item.meta }}</div>
+        </div>
+        <div class="ps-card-status {% if active_project_code == item.project_code %}ps-card-status--active{% endif %}">
+          {% if active_project_code == item.project_code %}●{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
   </div>
+
+  <div class="ps-section">
+    <div class="ps-section-label">User-Created Projects</div>
+    {% if not user_project_records %}
+    <div class="ps-mini-empty">
+      No user-created projects yet. Use New Project to create a project record and bind a workspace.
+    </div>
+    {% else %}
+    <div class="ps-list">
+      {% for item in user_project_records %}
+      <a href="/?project={{ item.project_code }}"
+         class="ps-card {% if active_project_code == item.project_code %}active{% endif %}"
+         id="ps-{{ item.project_code }}"
+         data-project="{{ item.project_code }}"
+         onclick="setActiveProject('{{ item.project_code }}'); return true;">
+        <div class="ps-card-icon">Project</div>
+        <div class="ps-card-info">
+          <div class="ps-card-name">{{ item.label }}</div>
+          <div class="ps-card-meta">{{ item.meta }}</div>
+        </div>
+        <div class="ps-card-status {% if active_project_code == item.project_code %}ps-card-status--active{% endif %}">
+          {% if active_project_code == item.project_code %}●{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if project_record and project_record.project_origin == "user_created" %}
+  <div class="ps-mini-empty">
+    Project record created. Runtime still uses template-seeded defaults until Phase 17C from-scratch runtime path.
+  </div>
+  {% endif %}
 </div>
 
 <script>
-  /**
-   * setActiveProject — Phase 9.5
-   * Sets the hidden active_project input so the next "Run Model" submits
-   * with the correct project identifier.
-   */
   function setActiveProject(projectId) {
     var input = document.getElementById('active_project');
     if (input) {
       input.value = projectId;
     }
-    // Also persist in sessionStorage so switching back/forward preserves context
     try { sessionStorage.setItem('active_project', projectId); } catch(e) {}
   }
 
-  /**
-   * On page load, restore active project from sessionStorage if set.
-   * This handles back/forward browser navigation.
-   */
   (function() {
     try {
       var stored = sessionStorage.getItem('active_project');

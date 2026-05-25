@@ -1,0 +1,6 @@
+gap_id,gap,reason,next_phase,severity
+P17A-01,Full from-scratch runtime path not implemented,Runtime remains template-seeded for user-created projects,Phase 17C,medium
+P17A-02,Required 13-field project creation form not implemented,Foundation branch intentionally keeps minimal creation form,Phase 17B,medium
+P17A-03,Generic project context still uses starter defaults,This branch focuses on honest selector and persistence foundation not full product modeling parity,Phase 17C,low
+P17A-04,Exports remain runtime-template-bound for created projects,No export redesign in this branch,Future follow-up,low
+P17A-05,phase17c_from_scratch_runtime_path,True user-authored ProjectInputs build path is not implemented in Phase 17A,Phase 17C,medium
