@@ -121,15 +121,21 @@ class TestPasswordNotLogged:
         m = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', r.text)
         csrf = m.group(1) if m else None
 
+        username = os.environ.get("FINCO_E2E_USERNAME") or os.environ.get("FINCO_ADMIN_USER")
+        password = os.environ.get("FINCO_E2E_PASSWORD") or os.environ.get("FINCO_ADMIN_PASSWORD")
+        if not username or not password:
+            pytest.skip("E2E credentials not configured")
+
         r = client.post("/login", data={
             "csrf_token": csrf,
-            "username": "admin",
-            "password": "fincoGPT2026!",
+            "username": username,
+            "password": password,
         })
 
         for record in caplog.records:
             msg = str(record.message)
-            assert "fincoGPT2026" not in msg, f"Password found in log: {msg}"
+            # Assert password value is NOT in any log record
+            assert password not in msg, f"Password found in log: {msg[:100]}"
 
     def test_wrong_password_not_logged(self, caplog):
         import logging

@@ -16,19 +16,19 @@ from main_web import app
 from app.auth import (
     verify_login, create_session_token, decode_session_token,
     make_session_cookie, clear_session_cookie,
-    SessionData, ADMIN_USERNAME, COOKIE_NAME,
+    SessionData, ADMIN_USERNAME, ADMIN_PASSWORD_PLAIN, COOKIE_NAME,
 )
 
 
 class TestPasswordHashing:
     def test_verify_login_correct_credentials(self):
-        assert verify_login(ADMIN_USERNAME, "fincoGPT2026!") is True
+        assert verify_login(ADMIN_USERNAME, ADMIN_PASSWORD_PLAIN) is True
 
     def test_verify_login_wrong_password(self):
         assert verify_login(ADMIN_USERNAME, "wrong") is False
 
     def test_verify_login_wrong_username(self):
-        assert verify_login("wronguser", "fincoGPT2026!") is False
+        assert verify_login("wronguser", ADMIN_PASSWORD_PLAIN) is False
 
 
 class TestSessionToken:
@@ -118,7 +118,7 @@ class TestAuthRoutes:
 
     def test_login_success_sets_cookie(self, tc):
         csrf = self._get_csrf(tc)
-        r = tc.post("/login", data={"csrf_token": csrf, "username": "admin", "password": "fincoGPT2026!"}, follow_redirects=False)
+        r = tc.post("/login", data={"csrf_token": csrf, "username": "admin", "password": ADMIN_PASSWORD_PLAIN}, follow_redirects=False)
         assert r.status_code == 302, f"Expected 302, got {r.status_code}"
         assert r.headers.get("location") == "/"
         # Cookie should be set
@@ -126,7 +126,7 @@ class TestAuthRoutes:
 
     def test_login_success_redirects_to_dashboard(self, tc):
         csrf = self._get_csrf(tc)
-        r = tc.post("/login", data={"csrf_token": csrf, "username": "admin", "password": "fincoGPT2026!"}, follow_redirects=False)
+        r = tc.post("/login", data={"csrf_token": csrf, "username": "admin", "password": ADMIN_PASSWORD_PLAIN}, follow_redirects=False)
         assert r.status_code == 302
         assert r.headers.get("location") == "/"
 
@@ -140,7 +140,7 @@ class TestAuthRoutes:
 
     def test_login_wrong_username_shows_error(self, tc):
         csrf = self._get_csrf(tc)
-        r = tc.post("/login", data={"csrf_token": csrf, "username": "wrong", "password": "fincoGPT2026!"})
+        r = tc.post("/login", data={"csrf_token": csrf, "username": "wrong", "password": ADMIN_PASSWORD_PLAIN})
         assert r.status_code == 401
         assert "Invalid username or password" in r.text
 
@@ -201,7 +201,7 @@ class TestCSRFProtection:
 
     def test_post_login_without_csrf_token_returns_422(self, tc):
         """POST /login without csrf_token field returns 422 Unprocessable Entity (FastAPI Form validation)."""
-        r = tc.post("/login", data={"username": "admin", "password": "fincoGPT2026!"})
+        r = tc.post("/login", data={"username": "admin", "password": ADMIN_PASSWORD_PLAIN})
         assert r.status_code == 422
 
     def test_post_login_with_invalid_csrf_token_returns_403(self, tc):
@@ -209,7 +209,7 @@ class TestCSRFProtection:
         r = tc.post("/login", data={
             "csrf_token": "not.a.valid.token",
             "username": "admin",
-            "password": "fincoGPT2026!",
+            "password": ADMIN_PASSWORD_PLAIN,
         })
         assert r.status_code == 403
 
@@ -238,7 +238,7 @@ class TestCSRFProtection:
         r = tc.post("/login", data={
             "csrf_token": parser.csrf_token,
             "username": "admin",
-            "password": "fincoGPT2026!",
+            "password": ADMIN_PASSWORD_PLAIN,
         })
         # May return 302 (redirect) or 200 (rate limited); both indicate auth machinery works
         assert r.status_code in (302, 200), f"Expected 302/200, got {r.status_code}: {r.text[:200]}"
@@ -326,7 +326,7 @@ class TestRateLimiting:
         # At this point the IP has 1 failure recorded
 
         # Successful login from THIS same client clears the failure counter
-        r = tc.post("/login", data={"csrf_token": csrf, "username": "admin", "password": "fincoGPT2026!"})
+        r = tc.post("/login", data={"csrf_token": csrf, "username": "admin", "password": ADMIN_PASSWORD_PLAIN})
         # The response may be 302 (redirect) or 200 (TestClient auto-follows redirect).
         # The important thing is the session was created — verify by GET / succeeding.
         assert r.status_code in (200, 302), f"Expected 200 or 302, got {r.status_code}"

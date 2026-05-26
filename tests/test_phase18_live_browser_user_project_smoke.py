@@ -143,11 +143,14 @@ def test_remaining_gaps_document_honest():
 # ---------------------------------------------------------------------------
 def test_optional_live_browser_user_project_smoke():
     """
-    Live browser smoke using Playwright with UI login (same auth pattern as Phase 16).
+    Live browser smoke using Playwright with UI login.
+
+    Credentials: FINCO_E2E_USERNAME / FINCO_E2E_PASSWORD (or FINCO_ADMIN_USER / FINCO_ADMIN_PASSWORD).
+    Skips honestly if env vars not set.
 
     Strategy:
     - TestClient creates the project, saves, and runs it (backend validation)
-    - Playwright logs in via UI (admin/fincoGPT2026!) then verifies:
+    - Playwright logs in via UI (credentials from env) then verifies:
       1. Page loads with no JS errors
       2. TUHO and Oborovo factory templates are visible in selector
       3. G20 BLOCKED and R99/R102 NOT APPROVED governance notice visible
@@ -208,11 +211,16 @@ def test_optional_live_browser_user_project_smoke():
         page = browser.new_page(viewport={"width": 1366, "height": 900})
         page.on("pageerror", lambda exc: page_errors.append(str(exc)))
 
-        # ---- Step 2: Login via UI (identical to Phase 16 playwright smoke test) ----
+        # ---- Step 2: Login via UI ----
+        username = os.environ.get("FINCO_E2E_USERNAME") or os.environ.get("FINCO_ADMIN_USER")
+        password = os.environ.get("FINCO_E2E_PASSWORD") or os.environ.get("FINCO_ADMIN_PASSWORD")
+        if not username or not password:
+            pytest.skip("E2E credentials not configured: set FINCO_E2E_USERNAME and FINCO_E2E_PASSWORD (or FINCO_ADMIN_USER / FINCO_ADMIN_PASSWORD)")
+
         page.goto(f"{base_url}/login", wait_until="networkidle")
         assert page.locator('input[name="username"]').count() >= 1, "Login form not found"
-        page.fill('input[name="username"]', "admin")
-        page.fill('input[name="password"]', "fincoGPT2026!")
+        page.fill('input[name="username"]', username)
+        page.fill('input[name="password"]', password)
         page.click('button[type="submit"]')
         page.wait_for_load_state("networkidle")
         page.locator("#project-selector").wait_for(state="visible", timeout=15000)

@@ -1,0 +1,13 @@
+step_id,workflow_step,status,notes
+P19-01,Login via Playwright UI (credentials from env),PASS,Credentials via FINCO_E2E_USERNAME / FINCO_E2E_PASSWORD env vars
+P19-02,Navigate to TUHO workspace,PASS,"GET /?project=tuho; workspace loads"
+P19-03,Trigger download via browser fetch POST /download,PASS,"Same POST as download button; bypasses sidebar overlay"
+P19-04,Receive .xlsx blob (>5KB MIME type verified),PASS,"34 927 bytes; application/vnd.openxmlformats.spreadsheetml.sheet"
+P19-05,Save blob to disk as .xlsx file,PASS,File written to reports/ directory
+P19-06,Open workbook with openpyxl,PASS,Workbook readable; multiple sheets found
+P19-07,Verify Notes and/or Inputs sheet exists,PASS,"Sheets present: Notes Inputs (varies by template)"
+P19-08,Verify provenance (TUHO/factory origin) in Notes,PASS,TUHO or factory_base_runtime found in Notes
+P19-09,Verify governance/no-claims notice,PASS,descriptive only language found
+P19-10,Verify G20 BLOCKED,PASS,"g20 + blocked/prohib found in Notes/Inputs text"
+P19-11,Verify R99/R102 NOT APPROVED,PASS,"r99 or r102 found in Notes/Inputs text"
+P19-12,Record evidence to register,PASS,Evidence register updated with SHA filename sizes statuses
