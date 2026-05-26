@@ -1,0 +1,6 @@
+gap_id,gap,reason,severity,pilot_blocker_yes_no,recommended_follow_up
+P18A-01,Workbook artifact could not be opened in this environment,openpyxl is unavailable,medium,no,Run the prepared workbook artifact test in an environment with openpyxl installed.
+P18A-02,Live browser E2E was not executed,Playwright/browser/auth harness unavailable,medium,no,Run optional browser validation when a supported local browser harness is available.
+P18A-03,COD date is not surfaced as a distinct exported Inputs row,Current Inputs sheet shows Financial Close and construction timing but not a dedicated COD row,low,no,Add a descriptive COD row later if reviewers need it.
+P18A-04,Debt-output visibility still leans on DSCR more than a dedicated senior debt KPI,Route-level KPI surface is limited,low,no,Add reporting-only senior-debt card or workbook label later without changing formulas.
+P18A-05,No lender-ready or audit-certified posture,This branch is validation and provenance hardening only,high,no,Keep no-claims language until external review and audit work occur.

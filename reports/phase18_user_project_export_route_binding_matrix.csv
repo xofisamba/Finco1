@@ -1,0 +1,7 @@
+check_id,question,status,evidence,binding_source,notes
+EXP18-01,Does user-created export use clean saved scenario snapshot when available,validated,main_web.py download route plus runtime guard assertions,clean saved scenario snapshot,The user-created branch resolves runtime snapshot through _clean_user_project_runtime_snapshot.
+EXP18-02,Does user-created export fall back to project baseline_snapshot when no saved scenario exists,validated,main_web.py helper behavior,project baseline_snapshot,No browser draft authority is introduced.
+EXP18-03,Does dirty draft block export,validated,runtime_guard_for_snapshot and download route,guard block before export generation,Export returns an error response when the draft is dirty.
+EXP18-04,Does user-created export avoid TUHO/Oborovo fallback,validated,source assertion in tests,test branch executes before runtime_seed fallback,User-created route path calls build_projectinputs_from_snapshot.
+EXP18-05,Do TUHO and Oborovo exports keep factory paths,validated,download route else branch and existing factory GET route,factory template path unchanged,No template removal or export formula redesign.
+EXP18-06,Does workbook provenance identify saved project assumptions,validated,Phase 18A metadata hardening,saved_project_assumptions,Fix is descriptive metadata only.

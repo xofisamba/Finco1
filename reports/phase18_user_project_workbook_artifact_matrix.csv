@@ -1,0 +1,6 @@
+check_id,validation_target,status,evidence,sheets_or_fields,notes
+WB-01,Workbook bytes generated for user-created project,optional_skip_in_this_environment,tests/test_phase18_user_project_workbook_artifact_validation.py,Dashboard Notes Inputs,Requires openpyxl to import the workbook writer and inspect the artifact.
+WB-02,Workbook opens with openpyxl,optional_skip_in_this_environment,tests/test_phase18_user_project_workbook_artifact_validation.py,Workbook load_workbook,Skipped honestly because openpyxl is unavailable.
+WB-03,Notes sheet includes user-created provenance,source_validated_and_test_ready,Notes sheet field map,Active Project Runtime Origin Template Origin,Phase 18A hardens template origin to saved_project_assumptions for user-created exports.
+WB-04,Inputs sheet exposes key assumptions,source_validated_and_test_ready,Inputs summary table,Capacity Tariff P50 Year 1 OPEX Total CapEx Gearing All-in Rate Senior Tenor Target DSCR,Phase 18A adds missing descriptive assumption rows without changing calculations.
+WB-05,Missing exported assumptions are documented,validated,this report plus remaining gaps,COD date not separately labeled on Inputs sheet,Missing artifact visibility is documented rather than hidden.
