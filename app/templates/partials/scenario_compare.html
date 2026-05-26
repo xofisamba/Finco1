@@ -1,4 +1,81 @@
 <div class="ps-compare-results" data-testid="scenario-compare-results">
+{# ─── BASE vs ACTIVE MODE (Compare workspace tab) ─────────────────────────────── #}
+{% set is_base_vs_active = compare_panel and compare_result and compare_result.base %}
+
+{% if is_base_vs_active and not compare_result.get("active") and compare_result.get("empty_state") %}
+{# ── Partial state: Base exists, no Active selected ── #}
+  <div class="ps-compare-heading">
+    {{ compare_result.base.scenario_name }} — Base Case
+  </div>
+  <div class="ps-mini-empty" data-testid="compare-empty-state">
+    <div class="ps-history-item">
+      <div class="ps-history-title">No Active Scenario</div>
+      <div class="ps-history-meta">Select a saved scenario to compare against Base Case.</div>
+    </div>
+    {% if compare_result.base.last_run_summary %}
+    <div class="ps-compare-provenance-card">
+      <div class="ps-compare-provenance-label">Base Case Runtime Summary</div>
+      <div class="ps-compare-provenance-grid">
+        <span class="ps-compare-provenance-label">Project IRR</span><span>{{ "%.2f"|format(compare_result.base.last_run_summary.project_irr) if compare_result.base.last_run_summary.project_irr is not none else "—" }}</span>
+        <span class="ps-compare-provenance-label">Equity IRR</span><span>{{ "%.2f"|format(compare_result.base.last_run_summary.equity_irr) if compare_result.base.last_run_summary.equity_irr is not none else "—" }}</span>
+        <span class="ps-compare-provenance-label">Avg DSCR</span><span>{{ "%.3f"|format(compare_result.base.last_run_summary.avg_dscr) if compare_result.base.last_run_summary.avg_dscr is not none else "—" }}</span>
+        <span class="ps-compare-provenance-label">Min DSCR</span><span>{{ "%.3f"|format(compare_result.base.last_run_summary.min_dscr) if compare_result.base.last_run_summary.min_dscr is not none else "—" }}</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+{% elif is_base_vs_active and compare_result.base and compare_result.get("active") %}
+{# ── Full compare: Base vs Active ── #}
+  {% set base = compare_result.base %}
+  {% set active = compare_result.get("active") %}
+  {% set base_replay = base.replay_metadata or {} %}
+  {% set active_replay = active.replay_metadata or {} %}
+
+  <div class="ps-compare-heading">
+    {{ base.scenario_name }} — Base vs — {{ active.scenario_name }}
+  </div>
+
+  {# Provenance cards #}
+  <div class="ps-compare-provenance-card">
+    <div class="ps-compare-provenance-label">Base Case</div>
+    <div class="ps-compare-provenance-grid">
+      <span class="ps-compare-provenance-label">Scenario</span><span>{{ base.scenario_name }}</span>
+      <span class="ps-compare-provenance-label">Runtime origin</span><span>{{ base_replay.get("runtime_origin", "—") }}</span>
+      <span class="ps-compare-provenance-label">Runtime at</span><span>{{ base_replay.get("runtime_timestamp", "—") }}</span>
+      <span class="ps-compare-provenance-label">Run ID</span><span>{{ base_replay.get("run_id", "—") }}</span>
+    </div>
+  </div>
+  <div class="ps-compare-provenance-card">
+    <div class="ps-compare-provenance-label">Active Scenario</div>
+    <div class="ps-compare-provenance-grid">
+      <span class="ps-compare-provenance-label">Scenario</span><span>{{ active.scenario_name }}</span>
+      <span class="ps-compare-provenance-label">Runtime origin</span><span>{{ active_replay.get("runtime_origin", "—") }}</span>
+      <span class="ps-compare-provenance-label">Runtime at</span><span>{{ active_replay.get("runtime_timestamp", "—") }}</span>
+      <span class="ps-compare-provenance-label">Run ID</span><span>{{ active_replay.get("run_id", "—") }}</span>
+    </div>
+  </div>
+
+  {# Metrics table with delta column #}
+  <div class="ps-compare-table">
+    <div class="ps-compare-row ps-compare-row--head">
+      <span>Metric</span>
+      <span>Base</span>
+      <span>Active</span>
+      <span>Delta</span>
+    </div>
+    {% for row in compare_result.metrics %}
+    <div class="ps-compare-row">
+      <span>{{ row.key }}</span>
+      <span>{{ "%.2f"|format(row.base_value) if row.base_value is not none else "—" }}</span>
+      <span>{{ "%.2f"|format(row.active_value) if row.active_value is not none else "—" }}</span>
+      <span class="{{ row.sign_class }}">{{ "%+.3f"|format(row.delta) if row.delta is not none else "—" }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+{% elif compare_result and compare_result.left and compare_result.right %}
+{# ── Legacy pair-compare mode (left vs right) ── #}
   <div class="ps-compare-heading">
     {{ compare_result.left.scenario_name }} vs {{ compare_result.right.scenario_name }}
   </div>
@@ -64,4 +141,14 @@
     </div>
     {% endfor %}
   </div>
+
+{% else %}
+{# ── Truly empty state ── #}
+  <div class="ps-mini-empty" data-testid="compare-empty-state">
+    <div class="ps-history-item">
+      <div class="ps-history-title">No scenarios to compare</div>
+      <div class="ps-history-meta">Run at least one scenario to enable comparison.</div>
+    </div>
+  </div>
+{% endif %}
 </div>
