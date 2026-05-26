@@ -55,7 +55,9 @@ from app.persistence.repository import (
     get_scenario_history,
     get_workspace_state,
     list_exports,
+    list_baseline_records,
     list_project_records,
+    seed_baseline_projects_if_needed,
     list_runs,
     list_scenarios,
     record_workspace_runtime,
@@ -803,6 +805,7 @@ def _replay_metadata_for_project(
     artifact_name: str | None = None,
     project_inputs_override=None,
     template_origin_override: str | None = None,
+    baseline_source: bool | None = None,
 ) -> dict:
     project_inputs = project_inputs_override or _project_inputs_for_code(project_code)
     governance_state = _governance_snapshot(project_code)
@@ -825,6 +828,8 @@ def _replay_metadata_for_project(
     )
     if template_origin_override:
         replay_metadata["template_origin"] = template_origin_override
+    if baseline_source is not None:
+        replay_metadata["baseline_source"] = baseline_source
     return replay_metadata
 
 
@@ -1262,6 +1267,18 @@ async def index(request: Request, project: str | None = None):
         workspace_state.draft_snapshot if workspace_state else project_record.baseline_snapshot,
     )
 
+    # Seed baseline records if not yet present for this user
+    baseline_records = seed_baseline_projects_if_needed(user.user_id)
+    baseline_project_items = [
+        {
+            "project_code": r.project_code,
+            "label": r.project_name,
+            "meta": f"{r.project_type or 'Unknown'} · baseline",
+            "is_readonly": r.is_readonly,
+        }
+        for r in list_baseline_records(user.user_id)
+    ]
+
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -1269,7 +1286,7 @@ async def index(request: Request, project: str | None = None):
             "project_types": PROJECT_TYPES,
             "scenarios": SCENARIOS,
             "caveats": CAVEATS,
-            "form_data": workspace_state.draft_snapshot if workspace_state else _default_workspace_snapshot(project_record.project_code),
+            "form_data": workspace_state.draft_snapshot if workspace_state else project_record.baseline_snapshot or _default_workspace_snapshot(project_record.project_code),
             "validation_errors": [],
             "success_message": None,
             "user": user,
@@ -1279,6 +1296,7 @@ async def index(request: Request, project: str | None = None):
             "active_project_code": project_record.project_code,
             "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
             "user_project_records": _user_project_selector_items(user),
+            "baseline_project_records": baseline_project_items,
             "new_project_template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
             "project_record": project_record,
             "scenario_records": scenario_records,
@@ -1870,6 +1888,8 @@ async def download_post(request: Request):
             project_inputs=demo.project_inputs,
             provenance_metadata=replay_metadata,
         )
+        if project_record and project_record.project_origin == "saved_baseline":
+            replay_metadata["baseline_source"] = True
         record_export(
             user_id=user.user_id,
             project_code=project_code,
@@ -1923,6 +1943,8 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             project_inputs=demo.project_inputs,
             provenance_metadata=replay_metadata,
         )
+        if project_record and project_record.project_origin == "saved_baseline":
+            replay_metadata["baseline_source"] = True
         record_export(
             user_id=user.user_id,
             project_code=project_code,
@@ -1992,6 +2014,7 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
             project_id=project_record.project_id if project_record else None,
             runtime_origin=runtime_rows[0]["runtime_origin"],
             artifact_name=filename,
+            baseline_source=(project_record.project_origin == "saved_baseline") if project_record else None,
         ),
     )
     return StreamingResponse(
@@ -2044,6 +2067,7 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
             project_id=project_record.project_id if project_record else None,
             runtime_origin=runtime_rows[0]["runtime_origin"],
             artifact_name=filename,
+            baseline_source=(project_record.project_origin == "saved_baseline") if project_record else None,
         ),
     )
     return StreamingResponse(
@@ -2367,6 +2391,16 @@ async def save_scenario_endpoint(request: Request):
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
     project_record, existing_workspace_state = _project_workspace_from_snapshot(user, snapshot)
+
+    # Block save for factory templates and saved baselines
+    if project_record.project_origin in ("factory_template", "saved_baseline"):
+        return _render_scenario_workspace(
+            request, user, project_record, existing_workspace_state,
+            [], [], [], [], [],
+            message=f"Save is not available for {project_record.project_origin.replace('_', ' ')} "
+                    f"'{project_record.project_code}'. Use 'Save As' to create a user project.",
+        )
+
     project_code = project_record.project_code
     project_name = project_record.project_name
     scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {dt.now().strftime('%Y-%m-%d %H:%M')}"
@@ -2526,6 +2560,57 @@ async def duplicate_scenario_endpoint(request: Request, scenario_id: str):
         scenario_summary_cards,
         message=f"Duplicated {original.scenario_name}.",
     )
+
+
+@app.post("/projects/{project_code}/save-as")
+async def save_project_as_endpoint(request: Request, project_code: str):
+    """Duplicate a factory template or saved baseline into a user-editable project."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    from app.persistence.repository import get_project_record as gpr
+    source = gpr(user_id=user.user_id, project_code=project_code)
+    if source is None:
+        return JSONResponse({"error": f"Project '{project_code}' not found"}, status_code=404)
+    if source.project_origin == "user_created":
+        return JSONResponse({"error": "Already a user project"}, status_code=400)
+    now = _now_utc()
+    new_code = f"{project_code}-copy-{now.strftime('%Y%m%d%H%M%S')}"
+    new_name = f"{source.project_name} (Copy)"
+    new_record = save_project(
+        user_id=user.user_id,
+        project_code=new_code,
+        project_name=new_name,
+        project_type=source.project_type,
+        project_origin="user_created",
+        source_project_template=source.source_project_template,
+        template_source=source.template_source,
+        baseline_snapshot=source.baseline_snapshot,
+        is_readonly=False,
+        governance_state={"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False},
+        last_run_summary={},
+        replay_metadata={
+            "export_type": "project_duplicated",
+            "source_project_code": project_code,
+            "source_project_origin": source.project_origin,
+            "baseline_source": source.project_origin == "saved_baseline",
+        },
+    )
+    save_workspace_state(
+        user_id=user.user_id,
+        project_id=new_record.project_id,
+        project_code=new_record.project_code,
+        draft_snapshot=source.baseline_snapshot,
+        saved_snapshot=source.baseline_snapshot,
+        dirty=False,
+        governance_state={"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False},
+        replay_metadata={
+            "export_type": "workspace_duplicated",
+            "source_project_code": project_code,
+            "baseline_source": source.project_origin == "saved_baseline",
+        },
+    )
+    return RedirectResponse(url=f"/?project={new_code}", status_code=302)
 
 
 @app.post("/scenarios/{scenario_id}/rename")
