@@ -2,7 +2,8 @@
 <div class="workspace-content" id="workspace-content">
 
   <!-- New Project Setup — main workspace entry point -->
-  <div class="tab-panel" id="panel-new-project" style="display:none;">
+  <div class="tab-panel" id="panel-new-project" style="display:none;"
+       hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p){ p.style.display='block'; p.classList.add('active'); }">
     <div class="panel-header">
       <div class="panel-title">New Project Setup</div>
       <div class="panel-desc">Fill in the basics. Full inputs will be available in the sidebar after creation.</div>

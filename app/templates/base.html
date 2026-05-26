@@ -51,8 +51,7 @@
                 type="button"
                 hx-get="/projects/new"
                 hx-target="#panel-new-project"
-                hx-swap="innerHTML"
-                hx-on:after-request="if(event.detail.successful){var p=document.getElementById('panel-new-project');if(p){p.style.display='block';p.classList.add('active');}}">
+                hx-swap="innerHTML">
           <span class="ps-action-icon">+</span> New Project
         </button>
         <button class="ps-action-btn"
