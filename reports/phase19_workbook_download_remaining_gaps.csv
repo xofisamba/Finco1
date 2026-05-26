@@ -1,0 +1,5 @@
+gap_id,gap,reason,severity,pilot_blocker_yes_no,recommended_follow_up
+P19-01,Download button locator still times out in headless Playwright due to sidebar overlay,The sidebar (.ps-section/.ps-header) intercepts pointer events over the workspace; synthetic clicks are blocked. Browser-context fetch() is used as workaround (same POST request, same endpoint). This is a headless test limitation, not an app bug.,low,no,Investigate sidebar CSS pointer-events: the sidebar should not intercept clicks over workspace action buttons. Alternatively, ensure the download form is outside the sidebar's stacking context.
+P19-02,COD date is not a distinct exported Inputs row,Current Inputs sheet does not surface COD as a separate row.,low,no,Add descriptive COD row if reviewers need it.
+P19-03,Docs/reports do not constitute production evidence,This branch is evidence hardening only; no app code or formula changes.,low,no,External review and audit work are separate.
+P19-04,No lender-ready or audit-certified posture,Phase 19 is validation only; no external review has occurred.,high,no,Maintain no-claims posture; external audit work is separate.
