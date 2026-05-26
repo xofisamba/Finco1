@@ -51,14 +51,15 @@
                 type="button"
                 hx-get="/projects/new"
                 hx-target="#panel-new-project"
-                hx-swap="innerHTML">
+                hx-swap="innerHTML"
+                hx-on:after-request="if(event.detail.successful){var p=document.getElementById('panel-new-project');if(p){p.style.display='block';p.classList.add('active');}}">
           <span class="ps-action-icon">+</span> New Project
         </button>
         <button class="ps-action-btn"
                 id="btn-duplicate-scenario"
                 type="button"
                 onclick="duplicateCurrentScenario()">
-          <span class="ps-action-icon">Copy</span> Duplicate
+          <span class="ps-action-icon">⊕</span> Duplicate
         </button>
         <button class="ps-action-btn"
                 id="btn-compare-scenarios"
@@ -66,7 +67,7 @@
                 hx-get="/scenarios/compare?project={{ project_record.project_code if project_record else project_ctx.id }}"
                 hx-target="#saved-scenario-panel"
                 hx-swap="outerHTML">
-          <span class="ps-action-icon">Compare</span> Compare
+          <span class="ps-action-icon">⟷</span> Compare
         </button>
         <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button">
           <span class="ps-action-icon">Run</span> Run Model
