@@ -227,6 +227,72 @@ def get_scenario_provenance(
     }
 
 
+def get_base_case_scenario(user_id: str, project_id: str) -> Optional["ScenarioRecord"]:
+    """Return the non-archived Base Case scenario for a project, if present."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM scenarios
+            WHERE user_id=? AND project_id=? AND is_base_case=1 AND archived=0
+            LIMIT 1
+            """,
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+    return ScenarioRecord.from_row(row) if row else None
+
+
+def resolve_active_scenario_runtime_snapshot(
+    user_id: str,
+    project_id: str,
+    active_scenario_id: Optional[str],
+) -> tuple[Optional["ScenarioRecord"], Optional[dict[str, Any]], Optional[str]]:
+    """Resolve the clean saved runtime snapshot for the active scenario.
+
+    Returns a tuple of:
+      (scenario_record, resolved_snapshot, warning_message)
+
+    Rules:
+    - Base Case => full base_input_set / snapshot
+    - Non-base => resolve_scenario_snapshot(base_case.base_input_set, overrides_json)
+    - Missing / invalid scenario => (None, None, warning)
+    """
+    if not active_scenario_id:
+        return None, None, None
+
+    scenario_record = get_scenario(active_scenario_id, user_id)
+    if scenario_record is None or scenario_record.archived or scenario_record.project_id != project_id:
+        return None, None, (
+            "Selected saved scenario was unavailable, so runtime fell back to the last clean saved boundary."
+        )
+
+    if scenario_record.is_base_case:
+        snapshot = dict(scenario_record.base_input_set or scenario_record.snapshot or {})
+        return scenario_record, snapshot, None
+
+    base_case = None
+    if scenario_record.parent_scenario_id:
+        parent = get_scenario(scenario_record.parent_scenario_id, user_id)
+        if parent is not None and parent.project_id == project_id and parent.is_base_case and not parent.archived:
+            base_case = parent
+    if base_case is None:
+        base_case = get_base_case_scenario(user_id, project_id)
+
+    base_input_set = {}
+    if base_case is not None:
+        base_input_set = dict(base_case.base_input_set or base_case.snapshot or {})
+    elif scenario_record.base_input_set:
+        base_input_set = dict(scenario_record.base_input_set)
+
+    snapshot = resolve_scenario_snapshot(base_input_set, scenario_record.overrides or {})
+    warning = None
+    if base_case is None:
+        warning = (
+            "Selected scenario did not have a resolvable Base Case record, so runtime used the scenario's saved base input set."
+        )
+    return scenario_record, snapshot, warning
+
+
 @dataclass(slots=True)
 class RunRecord:
     run_id: str
