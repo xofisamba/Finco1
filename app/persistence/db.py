@@ -153,8 +153,7 @@ def _init_schema(conn):
             updated_at                 TEXT NOT NULL,
             last_runtime_at            TEXT,
             FOREIGN KEY(project_id) REFERENCES projects(project_id),
-            FOREIGN KEY(active_scenario_id) REFERENCES scenarios(scenario_id),
-            FOREIGN KEY(last_runtime_scenario_id) REFERENCES scenarios(scenario_id)
+            FOREIGN KEY(last_runtime_scenario_id) REFERENCES scenarios(scenario_id) ON DELETE SET NULL
         )
         """
     )

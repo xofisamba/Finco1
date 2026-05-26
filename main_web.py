@@ -54,6 +54,7 @@ from app.persistence.repository import (
     get_project_record,
     get_run,
     get_scenario,
+    get_scenario_provenance,
     get_scenario_history,
     get_workspace_state,
     list_exports,
@@ -66,6 +67,7 @@ from app.persistence.repository import (
     record_export,
     record_workspace_runtime,
     rename_scenario,
+    resolve_active_scenario_runtime_snapshot,
     runtime_guard_for_snapshot,
     save_project,
     save_run,
@@ -264,6 +266,7 @@ def _collect_form_snapshot(form) -> dict:
         "active_project",
         "project_name",
         "project_type",
+        "project_origin",
         "template_source",
         "country_market",
         "scenario",
@@ -844,6 +847,10 @@ def _replay_metadata_for_project(
     project_inputs_override=None,
     template_origin_override: str | None = None,
     baseline_source: bool | None = None,
+    active_scenario_id: str | None = None,
+    active_scenario_name: str | None = None,
+    scenario_provenance: dict | None = None,
+    warning_note: str | None = None,
 ) -> dict:
     project_inputs = project_inputs_override or _project_inputs_for_code(project_code)
     governance_state = _governance_snapshot(project_code)
@@ -868,6 +875,14 @@ def _replay_metadata_for_project(
         replay_metadata["template_origin"] = template_origin_override
     if baseline_source is not None:
         replay_metadata["baseline_source"] = baseline_source
+    replay_metadata["active_scenario_id"] = active_scenario_id or replay_metadata.get("scenario_id") or "not_applicable"
+    replay_metadata["active_scenario_name"] = active_scenario_name or replay_metadata.get("scenario_name") or "not_applicable"
+    if scenario_provenance:
+        replay_metadata.update(scenario_provenance)
+        replay_metadata["active_scenario_id"] = scenario_provenance.get("scenario_id") or replay_metadata["active_scenario_id"]
+        replay_metadata["active_scenario_name"] = scenario_provenance.get("scenario_name") or replay_metadata["active_scenario_name"]
+    if warning_note:
+        replay_metadata["warning_note"] = warning_note
     return replay_metadata
 
 
@@ -952,19 +967,66 @@ def _project_workspace_from_snapshot(user, snapshot: dict):
     return project_record, workspace_state
 
 
-def _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin: str) -> dict:
-    """Return the clean saved source used for user-created project runtime."""
-    if runtime_origin == "saved_state" and workspace_state.saved_snapshot:
-        source = dict(workspace_state.saved_snapshot)
-    else:
-        source = dict(project_record.baseline_snapshot or workspace_state.saved_snapshot or {})
+def _template_origin_for_record(project_record) -> str:
+    template_seed = _normalize_template_source(
+        project_record.template_source or project_record.source_project_template,
+        project_record.project_type,
+    )
+    return f"project_factory:{(template_seed or project_record.project_code or 'unknown').lower()}"
 
+
+def _scenario_provenance_for_record(project_record, scenario_record):
+    if scenario_record is None:
+        return None
+    return get_scenario_provenance(
+        scenario_record,
+        project_record,
+        _template_origin_for_record(project_record),
+    )
+
+
+def _resolve_runtime_snapshot_source(user, project_record, workspace_state, runtime_origin: str) -> tuple[dict, object | None, str | None, str]:
+    """Resolve the clean backend-authored snapshot used for runtime/export binding.
+
+    Priority:
+    1. Saved active scenario snapshot (resolved from Base Case + overrides)
+    2. Saved workspace snapshot / project baseline
+    3. Factory flow continues to use existing form-driven behavior outside this helper
+    """
+    scenario_record = None
+    warning = None
+    effective_origin = runtime_origin
+    if runtime_origin == "saved_state" and workspace_state and workspace_state.active_scenario_id:
+        scenario_record, resolved_snapshot, warning = resolve_active_scenario_runtime_snapshot(
+            user.user_id,
+            project_record.project_id,
+            workspace_state.active_scenario_id,
+        )
+        # If scenario is invalid/missing, fall back to workspace_base and don't bind
+        if scenario_record is None:
+            effective_origin = "workspace_base"
+            scenario_record = None
+            warning = warning or (
+                "Selected saved scenario was unavailable, so runtime fell back to the last clean saved boundary."
+            )
+            source = dict(workspace_state.saved_snapshot or project_record.baseline_snapshot or {})
+        elif resolved_snapshot:
+            source = dict(resolved_snapshot)
+        else:
+            source = dict(workspace_state.saved_snapshot or project_record.baseline_snapshot or {})
+    elif project_record.project_origin == "user_created":
+        if runtime_origin == "saved_state" and workspace_state.saved_snapshot:
+            source = dict(workspace_state.saved_snapshot)
+        else:
+            source = dict(project_record.baseline_snapshot or workspace_state.saved_snapshot or {})
+    else:
+        source = dict(workspace_state.saved_snapshot or {})
     source.setdefault("project_name", project_record.project_name)
     source.setdefault("project_type", project_record.project_type)
     source.setdefault("project_origin", project_record.project_origin)
     source.setdefault("template_source", project_record.template_source or project_record.source_project_template)
     source.setdefault("active_project", project_record.project_code.lower())
-    return source
+    return source, scenario_record, warning, effective_origin
 
 
 def _current_project_workspace(user, project_record):
@@ -1385,6 +1447,14 @@ async def validate(request: Request):
             name="partials/errors.html",
             context={"errors": [guard_message]},
         )
+    runtime_snapshot = None
+    if (runtime_origin == "saved_state" and workspace_state.active_scenario_id) or project_record.project_origin == "user_created":
+        runtime_snapshot, _, _, _ = _resolve_runtime_snapshot_source(
+            user,
+            project_record,
+            workspace_state,
+            runtime_origin,
+        )
 
     errors = []
 
@@ -1468,13 +1538,23 @@ async def run(request: Request):
             context={"errors": [guard_message]},
         )
     runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
+    runtime_snapshot = None
+    active_scenario_record = None
+    runtime_warning = None
+    effective_runtime_origin = runtime_origin
+    if (runtime_origin == "saved_state" and workspace_state.active_scenario_id) or project_record.project_origin == "user_created":
+        runtime_snapshot, active_scenario_record, runtime_warning, effective_runtime_origin = _resolve_runtime_snapshot_source(
+            user,
+            project_record,
+            workspace_state,
+            runtime_origin,
+        )
 
     # -- Snapshot-built runtime binding for user-created projects ------------
     # Phase 17C moves user-created projects off template-seeded primary runtime
     # inputs. The dirty guard above still protects runtime from browser drafts.
     if project_record.project_origin == "user_created":
         try:
-            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
             override = build_projectinputs_from_snapshot(runtime_snapshot)
             scenario_name = runtime_snapshot.get("scenario") or snapshot.get("scenario", "") or "Base"
             runtime_project_key = (
@@ -1486,6 +1566,9 @@ async def run(request: Request):
             kpis = _format_kpis(result["kpis"])
             runtime_summary = runtime_summary_to_dict(result, project_code, project_name)
             runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
+            scenario_provenance = _scenario_provenance_for_record(project_record, active_scenario_record)
+            bound_scenario_id = active_scenario_record.scenario_id if active_scenario_record else None
+            bound_scenario_name = active_scenario_record.scenario_name if active_scenario_record else None
             record_workspace_runtime(
                 user_id=user.user_id,
                 project_id=project_record.project_id,
@@ -1493,33 +1576,46 @@ async def run(request: Request):
                 runtime_snapshot=runtime_snapshot,
                 runtime_summary=result["kpis"],
                 runtime_snapshot_id=runtime_snapshot_id,
-                runtime_origin=runtime_origin,
+                runtime_origin=effective_runtime_origin,
                 governance_state=_governance_snapshot(project_code),
-                active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
-                active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
+                active_scenario_id=bound_scenario_id if effective_runtime_origin == "saved_state" else None,
+                active_scenario_name=bound_scenario_name if effective_runtime_origin == "saved_state" else None,
                 replay_metadata=_replay_metadata_for_project(
                     project_code,
                     project_id=project_record.project_id,
-                    scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                    scenario_id=bound_scenario_id if effective_runtime_origin == "saved_state" else None,
+                    scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
                     runtime_timestamp=utc_now_iso(),
                     runtime_snapshot_id=runtime_snapshot_id,
                     export_type="workspace_runtime_state",
+                    active_scenario_id=bound_scenario_id if effective_runtime_origin == "saved_state" else None,
+                    active_scenario_name=bound_scenario_name if effective_runtime_origin == "saved_state" else None,
+                    scenario_provenance=scenario_provenance,
+                    warning_note=runtime_warning,
                 ),
             )
-            if runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+            if effective_runtime_origin == "saved_state" and bound_scenario_id:
                 update_scenario_last_run_summary(
                     user.user_id,
-                    workspace_state.active_scenario_id,
+                    bound_scenario_id,
                     result["kpis"],
                     replay_metadata=_replay_metadata_for_project(
                         project_code,
                         project_id=project_record.project_id,
                         scenario_id=workspace_state.active_scenario_id,
+                        scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
                         runtime_timestamp=utc_now_iso(),
                         runtime_snapshot_id=runtime_snapshot_id,
                         export_type="scenario_runtime_summary",
+                        active_scenario_id=bound_scenario_id,
+                        active_scenario_name=bound_scenario_name,
+                        scenario_provenance=scenario_provenance,
+                        warning_note=runtime_warning,
                     ),
                 )
+            result_messages = list(result.get("messages", []))
+            if runtime_warning:
+                result_messages.append(runtime_warning)
             runtime_html = templates.TemplateResponse(
                 request=request,
                 name="partials/runtime_summary.html",
@@ -1527,7 +1623,7 @@ async def run(request: Request):
                     "kpis": kpis,
                     "runtime_summary": runtime_summary,
                     "run_data": {"project_type": project_record.project_type, "scenario": scenario_name},
-                    "messages": result.get("messages", []),
+                    "messages": result_messages,
                     "integration_status": result.get("integration_status", "full"),
                 },
             )
@@ -1568,53 +1664,72 @@ async def run(request: Request):
         try:
             project_key = "TUHO" if runtime_seed == "tuho" else "Oborovo"
             scenario_name = snapshot.get("scenario", "") or "Base"
-            schema = _build_schema_from_form(
-                project_record.project_type or _default_workspace_snapshot(runtime_seed)["project_type"],
-                scenario_name,
-                capacity_mw, tariff_eur_mwh, p50_hours,
-                total_capex_keur, opex_y1_keur,
-                gearing_pct, target_dscr, interest_rate_pct, tenor_years,
-            )
-            override = build_projectinputs(schema)
+            if runtime_snapshot and runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+                override = build_projectinputs_from_snapshot(runtime_snapshot)
+            else:
+                schema = _build_schema_from_form(
+                    project_record.project_type or _default_workspace_snapshot(runtime_seed)["project_type"],
+                    scenario_name,
+                    capacity_mw, tariff_eur_mwh, p50_hours,
+                    total_capex_keur, opex_y1_keur,
+                    gearing_pct, target_dscr, interest_rate_pct, tenor_years,
+                )
+                override = build_projectinputs(schema)
             result = run_project(project_key, scenario_name, project_inputs_override=override)
             kpis = _format_kpis(result["kpis"])
             runtime_summary = runtime_summary_to_dict(result, project_code, project_name)
             runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
+            scenario_provenance = _scenario_provenance_for_record(project_record, active_scenario_record)
+            bound_scenario_id = active_scenario_record.scenario_id if active_scenario_record else None
+            bound_scenario_name = active_scenario_record.scenario_name if active_scenario_record else None
             record_workspace_runtime(
                 user_id=user.user_id,
                 project_id=project_record.project_id,
                 project_code=project_code,
-                runtime_snapshot=snapshot,
+                runtime_snapshot=runtime_snapshot if runtime_snapshot and runtime_origin == "saved_state" else snapshot,
                 runtime_summary=result["kpis"],
                 runtime_snapshot_id=runtime_snapshot_id,
                 runtime_origin=runtime_origin,
                 governance_state=_governance_snapshot(project_code),
-                active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
-                active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
+                active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+                active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
                 replay_metadata=_replay_metadata_for_project(
                     project_code,
                     project_id=project_record.project_id,
-                    scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                    scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+                    scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
                     runtime_timestamp=utc_now_iso(),
                     runtime_snapshot_id=runtime_snapshot_id,
                     export_type="workspace_runtime_state",
+                    active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+                    active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
+                    scenario_provenance=scenario_provenance,
+                    warning_note=runtime_warning,
                 ),
             )
-            if runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+            if runtime_origin == "saved_state" and bound_scenario_id:
                 update_scenario_last_run_summary(
                     user.user_id,
-                    workspace_state.active_scenario_id,
+                    bound_scenario_id,
                     result["kpis"],
                     replay_metadata=_replay_metadata_for_project(
                         project_code,
                         project_id=project_record.project_id,
                         scenario_id=workspace_state.active_scenario_id,
+                        scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
                         runtime_timestamp=utc_now_iso(),
                         runtime_snapshot_id=runtime_snapshot_id,
                         export_type="scenario_runtime_summary",
+                        active_scenario_id=bound_scenario_id,
+                        active_scenario_name=bound_scenario_name,
+                        scenario_provenance=scenario_provenance,
+                        warning_note=runtime_warning,
                     ),
                 )
             # Persist to sessionStorage so output tabs can read it on next page load
+            result_messages = list(result.get("messages", []))
+            if runtime_warning:
+                result_messages.append(runtime_warning)
             runtime_html = templates.TemplateResponse(
                 request=request,
                 name="partials/runtime_summary.html",
@@ -1622,7 +1737,7 @@ async def run(request: Request):
                     "kpis": kpis,
                     "runtime_summary": runtime_summary,
                     "run_data": {"project_type": project_record.project_type or runtime_seed.title(), "scenario": scenario_name},
-                    "messages": result.get("messages", []),
+                    "messages": result_messages,
                     "integration_status": result.get("integration_status", "full"),
                 },
             )
@@ -1672,59 +1787,79 @@ async def run(request: Request):
         )
 
     try:
-        schema = _build_schema_from_form(
-            effective_project_type, scenario,
-            capacity_mw, tariff_eur_mwh, p50_hours,
-            total_capex_keur, opex_y1_keur,
-            gearing_pct, target_dscr, interest_rate_pct, tenor_years,
-        )
-    except ValueError as ve:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/errors.html",
-            context={"errors": [str(ve)]},
-        )
-
-    try:
-        override = build_projectinputs(schema)
+        if runtime_snapshot and runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+            override = build_projectinputs_from_snapshot(runtime_snapshot)
+            scenario_name = scenario
+        else:
+            try:
+                schema = _build_schema_from_form(
+                    effective_project_type, scenario,
+                    capacity_mw, tariff_eur_mwh, p50_hours,
+                    total_capex_keur, opex_y1_keur,
+                    gearing_pct, target_dscr, interest_rate_pct, tenor_years,
+                )
+            except ValueError as ve:
+                return templates.TemplateResponse(
+                    request=request,
+                    name="partials/errors.html",
+                    context={"errors": [str(ve)]},
+                )
+            override = build_projectinputs(schema)
+            scenario_name = scenario
         runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
-        result = run_project(runtime_project_key, scenario, project_inputs_override=override)
+        result = run_project(runtime_project_key, scenario_name, project_inputs_override=override)
         kpis = _format_kpis(result["kpis"])
         runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
+        scenario_provenance = _scenario_provenance_for_record(project_record, active_scenario_record)
+        bound_scenario_id = active_scenario_record.scenario_id if active_scenario_record else None
+        bound_scenario_name = active_scenario_record.scenario_name if active_scenario_record else None
         record_workspace_runtime(
             user_id=user.user_id,
             project_id=project_record.project_id,
             project_code=project_code,
-            runtime_snapshot=snapshot,
+            runtime_snapshot=runtime_snapshot if runtime_snapshot and runtime_origin == "saved_state" else snapshot,
             runtime_summary=result["kpis"],
             runtime_snapshot_id=runtime_snapshot_id,
             runtime_origin=runtime_origin,
             governance_state=_governance_snapshot(project_code),
-            active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
-            active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
+            active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+            active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
             replay_metadata=_replay_metadata_for_project(
                 project_code,
                 project_id=project_record.project_id,
-                scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+                scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
                 runtime_timestamp=utc_now_iso(),
                 runtime_snapshot_id=runtime_snapshot_id,
                 export_type="workspace_runtime_state",
+                active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
+                active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
+                scenario_provenance=scenario_provenance,
+                warning_note=runtime_warning,
             ),
         )
-        if runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+        if runtime_origin == "saved_state" and bound_scenario_id:
             update_scenario_last_run_summary(
                 user.user_id,
-                workspace_state.active_scenario_id,
+                bound_scenario_id,
                 result["kpis"],
                 replay_metadata=_replay_metadata_for_project(
                     project_code,
                     project_id=project_record.project_id,
                     scenario_id=workspace_state.active_scenario_id,
+                    scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario_name,
                     runtime_timestamp=utc_now_iso(),
                     runtime_snapshot_id=runtime_snapshot_id,
                     export_type="scenario_runtime_summary",
+                    active_scenario_id=bound_scenario_id,
+                    active_scenario_name=bound_scenario_name,
+                    scenario_provenance=scenario_provenance,
+                    warning_note=runtime_warning,
                 ),
             )
+        result_messages = list(result.get("messages", []))
+        if runtime_warning:
+            result_messages.append(runtime_warning)
         return templates.TemplateResponse(
             request=request,
             name="partials/kpis.html",
@@ -1732,13 +1867,13 @@ async def run(request: Request):
                 "kpis": kpis,
                 "run_data": {
                     "project_type": effective_project_type,
-                    "scenario": scenario,
+                    "scenario": scenario_name,
                     "capacity_mw": capacity_mw,
                     "tariff_eur_mwh": tariff_eur_mwh,
                     "total_capex_keur": total_capex_keur,
                     "gearing_pct": gearing_pct,
                 },
-                "messages": result.get("messages", []),
+                "messages": result_messages,
                 "integration_status": result.get("integration_status", "full"),
             },
         )
@@ -1791,7 +1926,6 @@ async def compare(request: Request):
 
     if project_record.project_origin == "user_created":
         try:
-            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
             override = build_projectinputs_from_snapshot(runtime_snapshot)
         except SnapshotInputError as e:
             return templates.TemplateResponse(
@@ -1802,13 +1936,16 @@ async def compare(request: Request):
         runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
     else:
         try:
-            schema = _build_schema_from_form(
-                effective_project_type, "Base",
-                capacity_mw, tariff_eur_mwh, p50_hours,
-                total_capex_keur, opex_y1_keur,
-                gearing_pct, target_dscr, interest_rate_pct, tenor_years,
-            )
-            override = build_projectinputs(schema)
+            if runtime_snapshot and runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+                override = build_projectinputs_from_snapshot(runtime_snapshot)
+            else:
+                schema = _build_schema_from_form(
+                    effective_project_type, "Base",
+                    capacity_mw, tariff_eur_mwh, p50_hours,
+                    total_capex_keur, opex_y1_keur,
+                    gearing_pct, target_dscr, interest_rate_pct, tenor_years,
+                )
+                override = build_projectinputs(schema)
         except (ValueError, Exception) as e:
             return templates.TemplateResponse(
                 request=request,
@@ -1889,6 +2026,9 @@ async def download_post(request: Request):
         project_code = project_record.project_code
         effective_project_type = project_record.project_type or project_type
         runtime_origin = "factory_base_runtime"
+        runtime_snapshot = None
+        active_scenario_record = None
+        runtime_warning = None
         if project_record.project_origin == "user_created":
             allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
             if not allow_run:
@@ -1896,10 +2036,24 @@ async def download_post(request: Request):
                     content=f"<html><body><h2>Excel generation failed</h2><p>{guard_message}</p><a href='/'>Back</a></body></html>",
                     status_code=400,
                 )
-            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
+            runtime_snapshot, active_scenario_record, runtime_warning, effective_runtime_origin = _resolve_runtime_snapshot_source(
+                user,
+                project_record,
+                workspace_state,
+                runtime_origin,
+            )
             override = build_projectinputs_from_snapshot(runtime_snapshot)
             runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
         else:
+            if runtime_guard_for_snapshot(workspace_state, snapshot)[1] == "saved_state" and workspace_state.active_scenario_id:
+                runtime_origin = "saved_state"
+                runtime_snapshot, active_scenario_record, runtime_warning, effective_runtime_origin = _resolve_runtime_snapshot_source(
+                    user,
+                    project_record,
+                    workspace_state,
+                    runtime_origin,
+                )
+                override = build_projectinputs_from_snapshot(runtime_snapshot)
             runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
             if runtime_seed == "tuho":
                 runtime_project_key = "TUHO"
@@ -1909,6 +2063,7 @@ async def download_post(request: Request):
                 runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
         demo = run_demo_project(runtime_project_key, scenario, project_inputs_override=override)
         filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
+        scenario_provenance = _scenario_provenance_for_record(project_record, active_scenario_record)
         replay_metadata = _replay_metadata_for_project(
             project_code,
             export_type="excel_model_export",
@@ -1917,7 +2072,7 @@ async def download_post(request: Request):
             runtime_timestamp=utc_now_iso(),
             project_id=project_record.project_id if project_record else None,
             scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
-            scenario_name=scenario,
+            scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario,
             runtime_origin=runtime_origin,
             artifact_name=filename,
             project_inputs_override=demo.project_inputs,
@@ -1926,6 +2081,10 @@ async def download_post(request: Request):
                 if project_record.project_origin == "user_created"
                 else None
             ),
+            active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+            active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
+            scenario_provenance=scenario_provenance,
+            warning_note=runtime_warning,
         )
         excel_bytes = build_excel_export(
             result=demo.result,
@@ -1941,6 +2100,7 @@ async def download_post(request: Request):
             artifact_name=filename,
             artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
             project_id=project_record.project_id if project_record else None,
+            scenario_id=active_scenario_record.scenario_id if active_scenario_record else None,
             governance_state=_governance_snapshot(project_code),
             replay_metadata=replay_metadata,
         )
