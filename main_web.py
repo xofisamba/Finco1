@@ -42,6 +42,7 @@ from app.persistence.repository import (
     _now_utc,
     add_scenario,
     archive_scenario,
+    base_vs_active_compare,
     bind_workspace_to_scenario,
     build_export_lineage,
     compare_scenarios,
@@ -2437,6 +2438,7 @@ async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = _current_project_workspace(user, project_record)
+    compare_result = base_vs_active_compare(user.user_id, project_record.project_id) if workspace_state else None
     return _render_scenario_workspace(
         request,
         user,
@@ -2447,6 +2449,7 @@ async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
         exports,
         export_lineage,
         scenario_summary_cards,
+        compare_result=compare_result,
     )
 
 
