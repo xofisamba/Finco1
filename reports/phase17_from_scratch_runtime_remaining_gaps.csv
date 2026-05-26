@@ -1,0 +1,7 @@
+gap_id,gap,reason,severity,pilot_blocker_yes_no,recommended_follow_up
+P17C-01,Secondary assumptions still use system_default values,Phase 17B required form does not yet collect every domain-level input,medium,no,Expand future input schema only after product review confirms required scope.
+P17C-02,Capex composition is simplified to one user-provided total CAPEX line,Phase 17C preserves formulas and avoids a broad CAPEX form redesign,medium,no,Add optional capex breakdown in a later dedicated phase.
+P17C-03,OPEX composition is simplified to one user-provided year-one line,Phase 17C maps total OPEX without adding a full OPEX schedule editor,medium,no,Add OPEX line-item capture only if needed for pilot decisions.
+P17C-04,Country/market mapping remains lightweight,The form captures market text but does not yet load country-specific tax or market curves,medium,no,Define market assumptions catalog before making country selection model-authoritative.
+P17C-05,Factory template compare/export parity for user projects needs continued regression coverage,Runtime source was changed for user-created projects only,low,no,Keep Phase 17C tests in the regression slice.
+P17C-06,External lender/audit readiness is unchanged,From-scratch runtime source does not create audit certification,high,no,Retain no-claims posture until external model review.

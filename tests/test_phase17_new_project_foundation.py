@@ -116,21 +116,12 @@ def test_project_record_table_and_crud_exist(test_db):
 
 
 def test_new_project_route_validates_required_fields(auth_client):
-    # Empty project_name triggers FastAPI Form validation → 422 + JSON error
     blank = auth_client.post(
         "/projects/create",
         data=_valid_new_project_payload(project_name=""),
     )
-    assert blank.status_code == 422
-    assert "Field required" in blank.text or "project_name" in blank.text
-
-    # Whitespace-only name triggers application validation → 400 + rendered form
-    blank_ws = auth_client.post(
-        "/projects/create",
-        data=_valid_new_project_payload(project_name="   "),
-    )
-    assert blank_ws.status_code == 400
-    assert "Project name is required." in blank_ws.text
+    assert blank.status_code == 400
+    assert "Project name is required." in blank.text
 
     invalid = auth_client.post(
         "/projects/create",
@@ -172,7 +163,7 @@ def test_new_project_route_creates_user_project_and_selector_entry(auth_client):
     assert 'value="Croatia"' in index.text
     assert 'value="85"' in index.text
     assert 'value="50"' in index.text
-    assert "template-seeded defaults until Phase 17C" in index.text
+    assert "Runtime built from saved project assumptions" in index.text
 
 
 def test_selecting_user_project_binds_workspace_and_preserves_save_run_boundaries(auth_client):

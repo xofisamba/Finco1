@@ -1,0 +1,6 @@
+proof_id,input_changed,baseline_value,changed_value,expected_runtime_effect,test_coverage,status,notes
+tariff_delta,tariff_eur_mwh,60,100,total_revenue_keur increases,tests/test_phase17_from_scratch_runtime_path.py,active,Proves revenue uses saved snapshot tariff.
+p50_delta,p50_hours,1200,1600,total_revenue_keur increases,tests/test_phase17_from_scratch_runtime_path.py,active,Proves revenue uses saved snapshot production hours.
+opex_delta,opex_y1_keur,1000,5000,total_ebitda_keur decreases,tests/test_phase17_from_scratch_runtime_path.py,active,Proves operating expense uses saved snapshot OPEX.
+gearing_delta,gearing_pct,40,70,min_dscr decreases,tests/test_phase17_from_scratch_runtime_path.py,active,Proves debt stress changes with saved snapshot gearing.
+factory_preservation,TUHO/Oborovo factory path,n/a,n/a,factory templates still run,tests/test_phase17_from_scratch_runtime_path.py,active,Confirms no removal of existing factory templates.

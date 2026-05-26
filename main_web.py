@@ -2,7 +2,6 @@ import json
 """HTMX internal demo web interface for Finco1 model."""
 import os
 import re
-from datetime import datetime as dt
 from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,7 +18,7 @@ from app.project_factories import create_default_solar_project, create_default_w
 
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
-from app.input_adapter import build_projectinputs
+from app.input_adapter import SnapshotInputError, build_projectinputs, build_projectinputs_from_snapshot
 
 # Import auth
 from app.auth import (
@@ -903,6 +902,21 @@ def _project_workspace_from_snapshot(user, snapshot: dict):
     return project_record, workspace_state
 
 
+def _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin: str) -> dict:
+    """Return the clean saved source used for user-created project runtime."""
+    if runtime_origin == "saved_state" and workspace_state.saved_snapshot:
+        source = dict(workspace_state.saved_snapshot)
+    else:
+        source = dict(project_record.baseline_snapshot or workspace_state.saved_snapshot or {})
+
+    source.setdefault("project_name", project_record.project_name)
+    source.setdefault("project_type", project_record.project_type)
+    source.setdefault("project_origin", project_record.project_origin)
+    source.setdefault("template_source", project_record.template_source or project_record.source_project_template)
+    source.setdefault("active_project", project_record.project_code.lower())
+    return source
+
+
 def _current_project_workspace(user, project_record):
     workspace_state = _ensure_workspace_for_project(user, project_record)
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
@@ -1386,8 +1400,101 @@ async def run(request: Request):
         )
     runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
+    # -- Snapshot-built runtime binding for user-created projects ------------
+    # Phase 17C moves user-created projects off template-seeded primary runtime
+    # inputs. The dirty guard above still protects runtime from browser drafts.
+    if project_record.project_origin == "user_created":
+        try:
+            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
+            override = build_projectinputs_from_snapshot(runtime_snapshot)
+            scenario_name = runtime_snapshot.get("scenario") or snapshot.get("scenario", "") or "Base"
+            runtime_project_key = (
+                "Solar"
+                if (runtime_snapshot.get("project_type") or project_record.project_type or "").strip().lower() == "solar"
+                else "Wind"
+            )
+            result = run_project(runtime_project_key, scenario_name, project_inputs_override=override)
+            kpis = _format_kpis(result["kpis"])
+            runtime_summary = runtime_summary_to_dict(result, project_code, project_name)
+            runtime_snapshot_id = utc_now_iso().replace(":", "").replace("-", "")
+            record_workspace_runtime(
+                user_id=user.user_id,
+                project_id=project_record.project_id,
+                project_code=project_code,
+                runtime_snapshot=runtime_snapshot,
+                runtime_summary=result["kpis"],
+                runtime_snapshot_id=runtime_snapshot_id,
+                runtime_origin=runtime_origin,
+                governance_state=_governance_snapshot(project_code),
+                active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
+                replay_metadata=_replay_metadata_for_project(
+                    project_code,
+                    project_id=project_record.project_id,
+                    scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
+                    runtime_timestamp=utc_now_iso(),
+                    runtime_snapshot_id=runtime_snapshot_id,
+                    export_type="workspace_runtime_state",
+                ),
+            )
+            if runtime_origin == "saved_state" and workspace_state.active_scenario_id:
+                update_scenario_last_run_summary(
+                    user.user_id,
+                    workspace_state.active_scenario_id,
+                    result["kpis"],
+                    replay_metadata=_replay_metadata_for_project(
+                        project_code,
+                        project_id=project_record.project_id,
+                        scenario_id=workspace_state.active_scenario_id,
+                        runtime_timestamp=utc_now_iso(),
+                        runtime_snapshot_id=runtime_snapshot_id,
+                        export_type="scenario_runtime_summary",
+                    ),
+                )
+            runtime_html = templates.TemplateResponse(
+                request=request,
+                name="partials/runtime_summary.html",
+                context={
+                    "kpis": kpis,
+                    "runtime_summary": runtime_summary,
+                    "run_data": {"project_type": project_record.project_type, "scenario": scenario_name},
+                    "messages": result.get("messages", []),
+                    "integration_status": result.get("integration_status", "full"),
+                },
+            )
+            from fastapi.responses import HTMLResponse
+            body_str = runtime_html.body.decode("utf-8")
+            save_tag = (
+                '<script>'
+                'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(runtime_summary) + ');'
+                'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
+                    "dirty": False,
+                    "dirty_label": "Clean saved state" if runtime_origin == "saved_state" else "Clean workspace base",
+                    "active_scenario_id": workspace_state.active_scenario_id or "",
+                    "active_scenario_name": workspace_state.active_scenario_name or "",
+                    "last_runtime_origin": runtime_origin,
+                    "last_runtime_origin_label": "Runtime built from saved project assumptions" if runtime_origin == "workspace_base" else "Runtime bound to saved scenario snapshot",
+                    "last_runtime_snapshot_id": runtime_snapshot_id,
+                }) + ');'
+                'window._populateRuntimeBlock && window._populateRuntimeBlock();'
+                '</script>'
+            )
+            return HTMLResponse(content=save_tag + body_str, status_code=runtime_html.status_code)
+        except SnapshotInputError as e:
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/errors.html",
+                context={"errors": [str(e)]},
+            )
+        except Exception as e:
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/errors.html",
+                context={"errors": [f"Model error ({project_code}): {str(e)}"]},
+            )
+
     # -- Template-seeded runtime binding --------------------------------------
-    # Phase 17A keeps runtime template-seeded for user-created projects.
+    # Factory templates keep their established TUHO/Oborovo path.
     if runtime_seed in {"tuho", "oborovo"}:
         try:
             project_key = "TUHO" if runtime_seed == "tuho" else "Oborovo"
@@ -1595,7 +1702,7 @@ async def compare(request: Request):
     tenor_years = form.get("tenor_years", "")
     project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
-    allow_run, _, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
             request=request,
@@ -1613,29 +1720,41 @@ async def compare(request: Request):
             context={"errors": errors},
         )
 
-    try:
-        schema = _build_schema_from_form(
-            effective_project_type, "Base",
-            capacity_mw, tariff_eur_mwh, p50_hours,
-            total_capex_keur, opex_y1_keur,
-            gearing_pct, target_dscr, interest_rate_pct, tenor_years,
-        )
-        override = build_projectinputs(schema)
-    except (ValueError, Exception) as e:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/errors.html",
-            context={"errors": [f"Invalid input: {str(e)}"]},
-        )
-
-    results = {}
-    runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
-    if runtime_seed == "tuho":
-        runtime_project_key = "TUHO"
-    elif runtime_seed == "oborovo":
-        runtime_project_key = "Oborovo"
-    else:
+    if project_record.project_origin == "user_created":
+        try:
+            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
+            override = build_projectinputs_from_snapshot(runtime_snapshot)
+        except SnapshotInputError as e:
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/errors.html",
+                context={"errors": [str(e)]},
+            )
         runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
+    else:
+        try:
+            schema = _build_schema_from_form(
+                effective_project_type, "Base",
+                capacity_mw, tariff_eur_mwh, p50_hours,
+                total_capex_keur, opex_y1_keur,
+                gearing_pct, target_dscr, interest_rate_pct, tenor_years,
+            )
+            override = build_projectinputs(schema)
+        except (ValueError, Exception) as e:
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/errors.html",
+                context={"errors": [f"Invalid input: {str(e)}"]},
+            )
+
+        runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
+        if runtime_seed == "tuho":
+            runtime_project_key = "TUHO"
+        elif runtime_seed == "oborovo":
+            runtime_project_key = "Oborovo"
+        else:
+            runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
+    results = {}
     for sc in SCENARIOS:
         try:
             r = run_project(runtime_project_key, sc, project_inputs_override=override)
@@ -1697,16 +1816,28 @@ async def download_post(request: Request):
 
     try:
         snapshot = _collect_form_snapshot(form)
-        project_record, _ = _project_workspace_from_snapshot(user, snapshot)
+        project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
         project_code = project_record.project_code
         effective_project_type = project_record.project_type or project_type
-        runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
-        if runtime_seed == "tuho":
-            runtime_project_key = "TUHO"
-        elif runtime_seed == "oborovo":
-            runtime_project_key = "Oborovo"
-        else:
+        runtime_origin = "factory_base_runtime"
+        if project_record.project_origin == "user_created":
+            allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+            if not allow_run:
+                return HTMLResponse(
+                    content=f"<html><body><h2>Excel generation failed</h2><p>{guard_message}</p><a href='/'>Back</a></body></html>",
+                    status_code=400,
+                )
+            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
+            override = build_projectinputs_from_snapshot(runtime_snapshot)
             runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
+        else:
+            runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
+            if runtime_seed == "tuho":
+                runtime_project_key = "TUHO"
+            elif runtime_seed == "oborovo":
+                runtime_project_key = "Oborovo"
+            else:
+                runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
         demo = run_demo_project(runtime_project_key, scenario, project_inputs_override=override)
         filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
         replay_metadata = _replay_metadata_for_project(
@@ -1717,7 +1848,7 @@ async def download_post(request: Request):
             runtime_timestamp=utc_now_iso(),
             project_id=project_record.project_id if project_record else None,
             scenario_name=scenario,
-            runtime_origin="factory_base_runtime",
+            runtime_origin=runtime_origin,
             artifact_name=filename,
         )
         excel_bytes = build_excel_export(
@@ -2224,7 +2355,7 @@ async def save_scenario_endpoint(request: Request):
     project_record, existing_workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
     project_name = project_record.project_name
-    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {dt.now().strftime('%Y-%m-%d %H:%M')}"
+    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     saved_record = save_scenario(
         user_id=user.user_id,
         project_id=project_record.project_id,
@@ -2530,7 +2661,7 @@ async def save_run_endpoint(request: Request):
     project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
     project_name = project_record.project_name
-    allow_run, _, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
             request=request,
@@ -2566,24 +2697,29 @@ async def save_run_endpoint(request: Request):
             headers={"HX-Trigger": "refreshHistory"},
         )
 
-    # Re-run model to get fresh KPIs (matches current form state)
+    # Re-run model to get fresh KPIs from the clean saved runtime source.
     try:
-        schema = _build_schema_from_form(
-            effective_project_type, scenario,
-            inputs.get("capacity_mw"), inputs.get("tariff_eur_mwh"),
-            inputs.get("p50_hours"), inputs.get("total_capex_keur"),
-            inputs.get("opex_y1_keur"), inputs.get("gearing_pct"),
-            inputs.get("target_dscr"), inputs.get("interest_rate_pct"),
-            inputs.get("tenor_years"),
-        )
-        override = build_projectinputs(schema)
-        runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
-        if runtime_seed == "tuho":
-            runtime_project_key = "TUHO"
-        elif runtime_seed == "oborovo":
-            runtime_project_key = "Oborovo"
-        else:
+        if project_record.project_origin == "user_created":
+            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
+            override = build_projectinputs_from_snapshot(runtime_snapshot)
             runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
+        else:
+            schema = _build_schema_from_form(
+                effective_project_type, scenario,
+                inputs.get("capacity_mw"), inputs.get("tariff_eur_mwh"),
+                inputs.get("p50_hours"), inputs.get("total_capex_keur"),
+                inputs.get("opex_y1_keur"), inputs.get("gearing_pct"),
+                inputs.get("target_dscr"), inputs.get("interest_rate_pct"),
+                inputs.get("tenor_years"),
+            )
+            override = build_projectinputs(schema)
+            runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
+            if runtime_seed == "tuho":
+                runtime_project_key = "TUHO"
+            elif runtime_seed == "oborovo":
+                runtime_project_key = "Oborovo"
+            else:
+                runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
         result = run_project(runtime_project_key, scenario, project_inputs_override=override)
         kpis = result["kpis"]
     except Exception as e:
