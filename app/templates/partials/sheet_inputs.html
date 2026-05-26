@@ -1,151 +1,36 @@
 <!-- Sheet: Inputs — {{ project_ctx.name }} -->
+<!-- Primary input surface — mirrors Excel Inputs sheet top-to-bottom -->
 
 <div class="sheet-banner">
   <span class="sheet-banner-tag">📋 Inputs</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+    <span class="badge {% if is_user_project %}badge-pass{% else %}badge-muted{% endif %}">
+      {% if is_user_project %}User Project — editable{% else %}Factory Reference — read-only{% endif %}
+    </span>
   </span>
 </div>
 
-<!-- Project Metadata -->
-<div class="sheet-card">
-  <div class="section-header">Project Metadata</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Project Name</span>
-      <span class="metric-value">{{ project_ctx.name }}</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Company</span>
-      <span class="metric-value">{{ project_ctx.company }}</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Project Code</span>
-      <span class="metric-value">{{ project_ctx.code }}</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Country</span>
-      <span class="metric-value">{% if project_ctx.country_iso == 'HR' %}🇭🇷 Croatia (HR){% elif project_ctx.country_iso == 'EE' %}🇪🇪 Estonia (EE){% else %}{{ project_ctx.country_iso }}{% endif %}</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Technology</span>
-      <span class="metric-value">{{ project_ctx.technology }}{% if project_ctx.technology == 'Wind' %} Onshore{% endif %}</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Capacity</span>
-      <span class="metric-value">{{ "%.2f"|format(project_ctx.capacity_mw) }} MW</span>
-    </div>
+{# ── Phase 20D: 8-section Inputs surface ─────────────────────────────── #}
+{% if is_user_project %}
+<div class="inp-sheet-wrapper">
+  {% include "partials/inputs_section.html" %}
+</div>
+{% else %}
+{# ── Read-only baseline: still show 8 sections with clear guidance ─────── #}
+<div class="inp-readonly-shell">
+  <div class="inp-readonly-banner">
+    <span class="badge badge-muted">Read-only</span>
+    <span>This is a factory reference baseline. Use <strong>Duplicate</strong> in the sidebar to create an editable copy before modifying any values.</span>
+  </div>
+  <div class="inp-sheet-wrapper">
+    {% include "partials/inputs_section.html" %}
   </div>
 </div>
+{% endif %}
 
-<div class="section-divider"></div>
-
-<!-- Key Dates -->
-<div class="sheet-card">
-  <div class="section-header">Key Dates</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Financial Close</span>
-      <span class="metric-value">{{ project_ctx.financial_close }}</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">COD</span>
-      <span class="metric-value">{{ project_ctx.cod_date }}</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Construction Period</span>
-      <span class="metric-value">{{ project_ctx.construction_months }} months</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Horizon</span>
-      <span class="metric-value">{{ project_ctx.horizon_years }} years</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Period Frequency</span>
-      <span class="metric-value">{{ project_ctx.period_frequency }}</span>
-    </div>
-  </div>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- Capacity & Production -->
-<div class="sheet-card">
-  <div class="section-header">Capacity &amp; Production</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Installed Capacity</span>
-      <span class="metric-value">{{ "%.2f"|format(project_ctx.capacity_mw) }} MW</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">P50 Hours</span>
-      <span class="metric-value">{{ "{:,d}".format(project_ctx.operating_hours_p50|int) }} hrs/yr</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">P90 10Y Hours</span>
-      <span class="metric-value">{{ "{:,d}".format(project_ctx.operating_hours_p50|int) }} hrs/yr</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Availability</span>
-      <span class="metric-value">{{ "%.0f"|format(project_ctx.plant_availability * 100) }}% plant / {{ "%.0f"|format(project_ctx.grid_availability * 100) }}% grid</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Capacity Factor</span>
-      <span class="metric-value">~{{ "%.1f"|format(project_ctx.operating_hours_p50 / 8760 * 100) }}%</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Degradation</span>
-      <span class="metric-value">{% if project_ctx.pv_degradation is none %}0% (wind){% else %}{{ "%.1f"|format(project_ctx.pv_degradation * 100) }}%/yr (solar){% endif %}</span>
-    </div>
-  </div>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- Revenue Assumptions -->
-<div class="sheet-card">
-  <div class="section-header">Revenue Assumptions</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">PPA Tariff</span>
-      <span class="metric-value">{{ "%.2f"|format(project_ctx.ppa_tariff_eur_mwh) }} EUR/MWh</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">PPA Term</span>
-      <span class="metric-value">{{ project_ctx.ppa_term_years }} years</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">PPA Index</span>
-      <span class="metric-value">{{ "%.0f"|format(project_ctx.ppa_index_pct * 100) }}% annually</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">CO2 Revenue</span>
-      <span class="metric-value">{% if project_ctx.co2_enabled %}Enabled — {{ "%.3f"|format(project_ctx.co2_price_eur_mwh) }} EUR/MWh{% else %}Disabled{% endif %}</span>
-    </div>
-  </div>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- OPEX &amp; CAPEX Anchors -->
-<div class="sheet-card">
-  <div class="section-header">OPEX &amp; CAPEX Anchors</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Y1 OPEX Total</span>
-      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.opex_y1_total_keur) }} kEUR</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Total CAPEX</span>
-      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.total_capex_keur) }} kEUR</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Senior Debt</span>
-      <span class="metric-value">{% if project_ctx.senior_debt_keur is not none %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR</span>
-    </div>
-  </div>
-</div>
-
-<div class="table-note">
-  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
-</div>
+<script>
+function markInputDirty(el) {
+  var indicator = document.getElementById('dirty-indicator');
+  if (indicator) indicator.style.display = 'flex';
+}
+</script>

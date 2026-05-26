@@ -988,6 +988,7 @@ def _render_scenario_workspace(
             "scenario_summary_cards": scenario_summary_cards,
             "workspace_message": message,
             "compare_result": compare_result,
+            "is_user_project": project_record.project_origin == "user_created",
         },
     )
 
@@ -1308,6 +1309,7 @@ async def index(request: Request, project: str | None = None):
             "scenario_summary_cards": scenario_summary_cards,
             "compare_result": None,
             "workspace_message": None,
+            "is_user_project": project_record.project_origin == "user_created",
         },
     )
 

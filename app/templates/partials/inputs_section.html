@@ -1,0 +1,145 @@
+<!-- Inputs Section Fragment — 8-section primary input surface -->
+<!-- Used by sheet_inputs.html (main inputs tab) -->
+
+{# ── Helper: field row ─────────────────────────────────────────────────── #}
+{%- macro field_row(label, value, badge=None, badge_class="badge-muted", editable=False, field_name="") -%}
+<div class="inp-row">
+  <span class="inp-label">{{ label }}</span>
+  <span class="inp-cell">
+    {% if editable %}
+    <input type="text"
+           name="{{ field_name }}"
+           value="{{ value }}"
+           class="inp-input"
+           data-original-value="{{ value }}"
+           onchange="markInputDirty(this)"
+           hx-on="input: document.getElementById('dirty-indicator').style.display='flex';" />
+    {% else %}
+    <span class="inp-value">{{ value }}</span>
+    {% endif %}
+  </span>
+  <span class="inp-badge">
+    {% if badge %}
+    <span class="badge {{ badge_class }}">{{ badge }}</span>
+    {% endif %}
+  </span>
+</div>
+{%- endmacro -%}
+
+{# ── Helper: section card ──────────────────────────────────────────────── #}
+{%- macro section_card(title, rows, section_note=None) -%}
+<div class="inp-card">
+  <div class="inp-section-header">{{ title }}</div>
+  <div class="inp-rows">
+    {{ rows }}
+  </div>
+  {% if section_note %}
+  <div class="inp-section-note">{{ section_note }}</div>
+  {% endif %}
+</div>
+{%- endmacro -%}
+
+{# ══════════════════════════════════════════════════════════════════════
+   IDENTITY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set identity_rows %}
+  {{ field_row("Project Name", project_ctx.name, badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="project_name") }}
+  {{ field_row("Type", project_ctx.technology, badge="Template" if project_ctx.data_source == "Factory Reference" else "Saved", badge_class="badge-muted") }}
+  {{ field_row("Country", project_ctx.country_iso, badge="Saved", badge_class="badge-pass") }}
+  {{ field_row("Capacity", "~{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", badge="Calculated", badge_class="badge-info") }}
+  {{ field_row("Template Origin", project_ctx.template_source or "TUHO" if "tuho" in project_ctx.code|lower else "Oborovo" if "oborovo" in project_ctx.code|lower else "Unknown", badge="Factory Reference", badge_class="badge-muted") }}
+{% endset %}
+{{ section_card("Identity", identity_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   SCHEDULE
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set schedule_rows %}
+  {{ field_row("Financial Close", project_ctx.financial_close or "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="financial_close") }}
+  {{ field_row("COD Date", project_ctx.cod_date or "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="cod_date") }}
+  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="construction_months") }}
+  {{ field_row("Project Horizon", "{} years".format(project_ctx.horizon_years) if project_ctx.horizon_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="horizon_years") }}
+  {{ field_row("Period Frequency", project_ctx.period_frequency or "Quarterly", badge="Model default", badge_class="badge-muted") }}
+{% endset %}
+{{ section_card("Schedule", schedule_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   TECHNICAL
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set technical_rows %}
+  {{ field_row("Installed Capacity", "{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", badge="Calculated", badge_class="badge-info") }}
+  {{ field_row("P50 Hours", "{:,d} hrs/yr".format(project_ctx.operating_hours_p50|int) if project_ctx.operating_hours_p50 else "—", badge="Template", badge_class="badge-muted", editable=is_user_project, field_name="p50_hours") }}
+  {{ field_row("P90/P10 Hours", "{:,d} hrs/yr".format(project_ctx.operating_hours_p50|int) if project_ctx.operating_hours_p50 else "—", badge="Template", badge_class="badge-muted") }}
+  {{ field_row("Availability", "{:.0f}% plant / {:.0f}% grid".format(project_ctx.plant_availability * 100, project_ctx.grid_availability * 100) if project_ctx.plant_availability else "—", badge="Template", badge_class="badge-muted") }}
+  {{ field_row("Capacity Factor", "~{:.1f}%".format(project_ctx.operating_hours_p50 / 8760 * 100) if project_ctx.operating_hours_p50 else "—", badge="Calculated", badge_class="badge-info") }}
+  {{ field_row("Degradation", "{:.1f}%/yr".format(project_ctx.pv_degradation * 100) if project_ctx.pv_degradation else "0% (wind)", badge="Template", badge_class="badge-muted") }}
+{% endset %}
+{{ section_card("Technical", technical_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   REVENUE / PPA SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set revenue_rows %}
+  {{ field_row("Base Tariff", "{:.2f} EUR/MWh".format(project_ctx.ppa_tariff_eur_mwh) if project_ctx.ppa_tariff_eur_mwh else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="tariff_eur_mwh") }}
+  {{ field_row("PPA Term", "{} years".format(project_ctx.ppa_term_years) if project_ctx.ppa_term_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="ppa_term_years") }}
+  {{ field_row("PPA Index", "{:.1f}% annually".format(project_ctx.ppa_index_pct * 100) if project_ctx.ppa_index_pct else "—", badge="Template", badge_class="badge-muted") }}
+  {{ field_row("CO2 Revenue", "Enabled — {:.3f} EUR/MWh".format(project_ctx.co2_price_eur_mwh) if project_ctx.co2_enabled else "Disabled", badge="Saved" if project_ctx.co2_enabled else "Template", badge_class="badge-info" if project_ctx.co2_enabled else "badge-muted", editable=is_user_project, field_name="co2_enabled") }}
+{% endset %}
+{{ section_card("Revenue / PPA Summary", revenue_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   CAPEX SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set capex_rows %}
+  {{ field_row("Total CAPEX", "{:,.0f} kEUR".format(project_ctx.total_capex_keur) if project_ctx.total_capex_keur else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="total_capex_keur") }}
+  {{ field_row("Senior Debt", "{:,.0f} kEUR".format(project_ctx.senior_debt_keur) if project_ctx.senior_debt_keur else "N/A", badge="Calculated", badge_class="badge-info") }}
+  {{ field_row("IDC", "{:,.0f} kEUR".format(project_ctx.idc_keur) if project_ctx.idc_keur else "—", badge="Calculated", badge_class="badge-info") }}
+  {{ field_row("Bank Fees", "{:,.0f} kEUR".format(project_ctx.bank_fees_keur) if project_ctx.bank_fees_keur else "—", badge="Calculated", badge_class="badge-info") }}
+{% endset %}
+{{ section_card("CAPEX Summary", capex_rows, section_note="CAPEX detail breakdown available in CAPEX tab.") }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   OPEX SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set opex_rows %}
+  {{ field_row("Y1 OPEX Total", "{:,.0f} kEUR".format(project_ctx.opex_y1_total_keur) if project_ctx.opex_y1_total_keur else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="opex_y1_keur") }}
+  {{ field_row("Contingency", "{:.1f}%".format(project_ctx.opex_contingency_pct * 100) if project_ctx.opex_contingency_pct else "—", badge="Template", badge_class="badge-muted") }}
+{% endset %}
+{{ section_card("OPEX Summary", opex_rows, section_note="OPEX detail breakdown available in OPEX tab.") }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   FINANCING SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set financing_rows %}
+  {{ field_row("Gearing", "{:.1f}%".format(project_ctx.gearing_pct * 100) if project_ctx.gearing_pct else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="gearing_pct") }}
+  {{ field_row("Target DSCR", "{:.2f}x".format(project_ctx.target_dscr) if project_ctx.target_dscr else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="target_dscr") }}
+  {{ field_row("Interest Rate", "{:.2f}%".format(project_ctx.interest_rate_pct * 100) if project_ctx.interest_rate_pct else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="interest_rate_pct") }}
+  {{ field_row("Senior Tenor", "{} years".format(project_ctx.senior_tenor_years) if project_ctx.senior_tenor_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="tenor_years") }}
+  {{ field_row("SHL Amount", "{:,.0f} kEUR".format(project_ctx.shl_amount_keur) if project_ctx.shl_amount_keur else "—", badge="Calculated", badge_class="badge-info") }}
+{% endset %}
+{{ section_card("Financing Summary", financing_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   TAX SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set tax_rows %}
+  {{ field_row("CIT Rate", "{:.1f}%".format(project_ctx.cit_rate_pct * 100) if project_ctx.cit_rate_pct else "—", badge="Template", badge_class="badge-muted") }}
+  {{ field_row("Loss Carryforward", "{} years".format(project_ctx.loss_carryforward_years) if project_ctx.loss_carryforward_years else "—", badge="Template", badge_class="badge-muted") }}
+  {{ field_row("G20 Status", project_ctx.g20_status or "BLOCKED", badge=project_ctx.g20_status or "BLOCKED", badge_class="badge-warn") }}
+  {{ field_row("R99/R102", project_ctx.r99_r102_status or "NOT_APPROVED", badge=project_ctx.r99_r102_status or "NOT_APPROVED", badge_class="badge-warn") }}
+{% endset %}
+{{ section_card("Tax Summary", tax_rows, section_note="Tax template override not yet configured. Country-specific defaults apply.") }}
+
+{# ── Dirty-state indicator ─────────────────────────────────────────────── #}
+<div id="dirty-indicator" class="inp-dirty-indicator" style="display:none;">
+  <span class="badge badge-warn">⚠ Unsaved edits</span>
+  <span style="font-size:0.75rem;color:var(--muted);">Save to persist · Run does not auto-save</span>
+</div>
+
+{# ── Read-only baseline notice ────────────────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice">
+  <span class="badge badge-muted">Read-only</span>
+  <span>Factory baseline — use <strong>Duplicate</strong> or <strong>Save As</strong> to create an editable copy before modifying.</span>
+</div>
+{% endif %}

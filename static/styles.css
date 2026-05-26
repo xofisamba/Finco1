@@ -2490,3 +2490,165 @@ body {
   border-radius: 4px;
   font-size: 0.75rem;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PHASE 20D — Inputs Tab Primary Surface
+   Excel-like structured rows: label | value | badge
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Sheet wrapper ───────────────────────────────────────────────────── */
+.inp-sheet-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+/* ── Section card ────────────────────────────────────────────────────── */
+.inp-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.inp-section-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Field rows ───────────────────────────────────────────────────────── */
+.inp-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.inp-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.inp-row:last-child {
+  border-bottom: none;
+}
+
+.inp-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.inp-cell {
+  min-width: 0;
+}
+
+.inp-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.inp-input {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.inp-input:focus {
+  outline: none;
+  border-color: var(--primary, #1a56db);
+  background: var(--surface-hover, #f9fafb);
+}
+.inp-input.changed {
+  background: var(--warn-bg, #fef9ec);
+  border-color: var(--warn-border, #f6c343);
+}
+
+.inp-badge {
+  min-width: 80px;
+  text-align: right;
+}
+
+/* ── Dirty indicator ─────────────────────────────────────────────────── */
+.inp-dirty-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--warn-bg, #fef9ec);
+  border: 1px solid var(--warn-border, #f6c343);
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+
+/* ── Read-only baseline banner ────────────────────────────────────────── */
+.inp-readonly-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.inp-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.inp-readonly-banner .badge {
+  flex-shrink: 0;
+}
+
+.inp-readonly-banner strong {
+  color: var(--text);
+}
+
+/* ── Section note (CAPEX/OPEX detail placeholders) ───────────────────── */
+.inp-section-note {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ── Sheet banner override for Inputs ────────────────────────────────── */
+.sheet-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0 0.5rem;
+}
+.sheet-banner-tag {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.sheet-banner-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
