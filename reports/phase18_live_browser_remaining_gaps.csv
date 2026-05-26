@@ -1,0 +1,7 @@
+gap_id,gap,reason,severity,pilot_blocker_yes_no,recommended_follow_up
+P18B-01,Live browser E2E may not have executed in all target environments,Playwright + Chromium binaries required; tested only in this local environment,medium,no,Run this test suite in each target deployment environment.
+P18B-02,Workbook download depends on UI flow that may vary across deployments,Download button navigation relies on specific element selectors that may shift with template changes,low,no,Maintain selector stability in workspace_shell.html and index.html templates.
+P18B-03,COD date is not a distinct exported Inputs row,Current Inputs sheet does not surface COD date as a separate row,low,no,Add descriptive COD row to Inputs sheet export if reviewers need it.
+P18B-04,Debt-output visibility still leans on DSCR more than senior debt amount as a KPI,Route-level KPI surface does not expose a distinct senior debt amount card,low,no,Consider adding reporting-only senior debt card in workbook metadata without changing formulas.
+P18B-05,No lender-ready or audit-certified posture,This phase is smoke validation only; no external review has occurred,high,no,Maintain no-claims posture; external audit work is separate.
+P18B-06,Real download-and-open with openpyxl requires openpyxl in the test environment,Downloaded workbook is only inspected when openpyxl is available in the same environment,low,no,Document as a CI/CD requirement for artifact validation environments.
