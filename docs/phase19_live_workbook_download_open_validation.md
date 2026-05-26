@@ -43,7 +43,7 @@ This is still a real browser workflow — the same POST request, same auth cooki
 
 | Step | Description | Method |
 |------|-------------|--------|
-| 1 | Login via UI (Playwright chromium) | `admin / fincoGPT2026!` |
+| 1 | Login via UI (Playwright chromium) | Credentials via `FINCO_E2E_USERNAME` / `FINCO_E2E_PASSWORD` env vars |
 | 2 | Navigate to TUHO workspace | `GET /?project=tuho` |
 | 3 | Trigger download | Browser `fetch()` POST `/download` |
 | 4 | Receive `.xlsx` blob | Blob captured in page context |

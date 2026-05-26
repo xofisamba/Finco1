@@ -6,7 +6,7 @@ Prove the real browser workflow for a user-created project end-to-end using Play
 
 **Primary browser workflow:**
 1. Open app
-2. Login (admin / fincoGPT2026!)
+2. Login (credentials from environment variables)
 3. Open New Project
 4. Fill required fields with test project data
 5. Submit project

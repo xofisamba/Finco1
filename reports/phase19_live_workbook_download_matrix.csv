@@ -1,5 +1,5 @@
 step_id,workflow_step,status,notes
-P19-01,Login via Playwright UI (admin/fincoGPT2026!),PASS,Live browser session
+P19-01,Login via Playwright UI (credentials from env),PASS,Credentials via FINCO_E2E_USERNAME / FINCO_E2E_PASSWORD env vars
 P19-02,Navigate to TUHO workspace,PASS,"GET /?project=tuho; workspace loads"
 P19-03,Trigger download via browser fetch POST /download,PASS,"Same POST as download button; bypasses sidebar overlay"
 P19-04,Receive .xlsx blob (>5KB MIME type verified),PASS,"34 927 bytes; application/vnd.openxmlformats.spreadsheetml.sheet"

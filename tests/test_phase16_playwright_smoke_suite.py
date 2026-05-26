@@ -154,8 +154,12 @@ def test_optional_playwright_live_browser_smoke():
         assert page.locator('input[name="username"]').count() == 1
         assert page.locator('input[name="password"]').count() == 1
 
-        page.fill('input[name="username"]', "admin")
-        page.fill('input[name="password"]', "fincoGPT2026!")
+        username = os.environ.get("FINCO_E2E_USERNAME") or os.environ.get("FINCO_ADMIN_USER")
+        password = os.environ.get("FINCO_E2E_PASSWORD") or os.environ.get("FINCO_ADMIN_PASSWORD")
+        if not username or not password:
+            pytest.skip("E2E credentials not configured: set FINCO_E2E_USERNAME and FINCO_E2E_PASSWORD")
+        page.fill('input[name="username"]', username)
+        page.fill('input[name="password"]', password)
         page.click('button[type="submit"]')
         page.wait_for_load_state("networkidle")
         page.locator("#project-selector").wait_for(state="visible", timeout=10000)

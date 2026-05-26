@@ -13,12 +13,15 @@ This phase proves:
 6. G20 BLOCKED and R99/R102 NOT APPROVED are confirmed
 
 Approach:
-- Playwright UI login (same pattern as Phase 16/18B)
+- Playwright UI login (credentials from environment variables)
 - Navigate to TUHO workspace
 - Trigger download via browser-context fetch() POST to /download
   (bypasses sidebar pointer-events overlay that blocks synthetic clicks)
 - Save blob to disk
 - openpyxl inspection
+
+Credentials: FINCO_E2E_USERNAME / FINCO_E2E_PASSWORD (or FINCO_ADMIN_USER / FINCO_ADMIN_PASSWORD).
+Never hardcoded as literals.
 
 Out of scope:
 - Lender-ready, audit-certified, SaaS-ready
@@ -189,9 +192,15 @@ def test_live_workbook_download_and_open():
         page = browser.new_page(viewport={"width": 1366, "height": 900})
 
         # ---- Step 1: Login ----
+        # Credentials MUST come from environment variables — never hardcoded
+        username = os.environ.get("FINCO_E2E_USERNAME") or os.environ.get("FINCO_ADMIN_USER")
+        password = os.environ.get("FINCO_E2E_PASSWORD") or os.environ.get("FINCO_ADMIN_PASSWORD")
+        if not username or not password:
+            pytest.skip("E2E credentials not configured: set FINCO_E2E_USERNAME and FINCO_E2E_PASSWORD (or FINCO_ADMIN_USER / FINCO_ADMIN_PASSWORD)")
+
         page.goto(f"{base_url}/login", wait_until="networkidle")
-        page.fill('input[name="username"]', "admin")
-        page.fill('input[name="password"]', "fincoGPT2026!")
+        page.fill('input[name="username"]', username)
+        page.fill('input[name="password"]', password)
         page.click('button[type="submit"]')
         page.wait_for_load_state("networkidle")
         page.locator("#project-selector").wait_for(state="visible", timeout=15000)
