@@ -40,12 +40,13 @@ from app.auth import (
 # Import persistence
 from app.persistence.repository import (
     _now_utc,
-    bind_workspace_to_scenario,
+    add_scenario,
     archive_scenario,
+    bind_workspace_to_scenario,
     build_export_lineage,
     compare_scenarios,
-    create_project_record,
     count_runs,
+    create_project_record,
     delete_run,
     discard_workspace_draft,
     duplicate_scenario,
@@ -58,17 +59,20 @@ from app.persistence.repository import (
     list_exports,
     list_baseline_records,
     list_project_records,
-    seed_baseline_projects_if_needed,
     list_runs,
     list_scenarios,
-    record_workspace_runtime,
+    promote_scenario_to_base_case,
+    _get_least_created_scenario_for_project,
     record_export,
+    record_workspace_runtime,
     rename_scenario,
     runtime_guard_for_snapshot,
     save_project,
     save_run,
     save_scenario,
     save_workspace_state,
+    seed_baseline_projects_if_needed,
+    select_scenario,
     snapshots_equal,
     update_project_record,
     update_scenario_last_run_summary,
@@ -2644,7 +2648,7 @@ async def add_scenario_endpoint(request: Request):
     if not scenario_name:
         return JSONResponse({"error": "scenario_name is required"}, status_code=400)
 
-    project_record = get_project_record(user.user_id, project_code)
+    project_record = get_project_record(user_id=user.user_id, project_code=project_code)
     if project_record is None:
         return JSONResponse({"error": "Project not found"}, status_code=404)
     if project_record.project_origin != "user_created":
@@ -2658,8 +2662,15 @@ async def add_scenario_endpoint(request: Request):
             base_case = s
             break
 
-    if base_case is None:
-        return JSONResponse({"error": "No Base Case found for this project"}, status_code=404)
+    # If no base case exists but other scenarios do, promote the oldest one to base case.
+    # This handles projects where scenarios were imported/copied without a designated base case.
+    # We pick the one with the earliest created_at so we promote the original scenario, not a later derivative.
+    if base_case is None and scenarios:
+        oldest = _get_least_created_scenario_for_project(user.user_id, project_record.project_id)
+        if oldest:
+            base_case = promote_scenario_to_base_case(user.user_id, oldest.scenario_id)
+        else:
+            base_case = None
 
     new_scenario = add_scenario(
         user_id=user.user_id,
@@ -2707,7 +2718,7 @@ async def select_scenario_endpoint(request: Request, scenario_id: str):
         return JSONResponse({"error": "Failed to select scenario"}, status_code=500)
 
     ws = get_workspace_state(user.user_id, record.project_id)
-    project_record = get_project_record(user.user_id, record.project_code)
+    project_record = get_project_record(user_id=user.user_id, project_code=record.project_code)
     scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
     return templates.TemplateResponse(
         request=request,
@@ -2737,7 +2748,7 @@ async def update_overrides_endpoint(request: Request, scenario_id: str):
     if updated is None:
         return JSONResponse({"error": "Failed to update overrides"}, status_code=500)
 
-    project_record = get_project_record(user.user_id, record.project_code)
+    project_record = get_project_record(user_id=user.user_id, project_code=record.project_code)
     ws = get_workspace_state(user.user_id, record.project_id)
     scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
     return templates.TemplateResponse(

@@ -1143,6 +1143,59 @@ def archive_scenario(user_id: str, scenario_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def promote_scenario_to_base_case(user_id: str, scenario_id: str) -> Optional["ScenarioRecord"]:
+    """Promote an existing scenario to be the project's Base Case.
+
+    Clears is_base_case flag from all other scenarios for this project first,
+    then sets it on the target scenario.
+    Idempotent: safe to call on a scenario that is already the base case.
+    """
+    with get_cursor() as cur:
+        # Clear any existing base case — scoped via subquery so it only clears
+        # one of the user's scenarios (not a different user's scenario accidentally)
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET is_base_case=0, updated_at=?
+            WHERE scenario_id=(
+                SELECT scenario_id FROM scenarios
+                WHERE user_id=? AND is_base_case=1
+                LIMIT 1
+            )
+            """,
+            (_now_utc().isoformat(), user_id),
+        )
+        # Promote the target scenario
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET is_base_case=1, updated_at=?
+            WHERE scenario_id=? AND user_id=?
+            """,
+            (_now_utc().isoformat(), scenario_id, user_id),
+        )
+        if cur.rowcount == 0:
+            return None
+    return get_scenario(scenario_id, user_id)
+
+
+def _get_least_created_scenario_for_project(user_id: str, project_id: str) -> Optional["ScenarioRecord"]:
+    """Return the oldest (earliest created_at) non-archived scenario for a project,
+    used as the default base case when backfilling for legacy projects."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM scenarios
+            WHERE user_id=? AND project_id=? AND archived=0
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+    return ScenarioRecord.from_row(row) if row else None
+
+
 def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] = None) -> Optional[ScenarioRecord]:
     record = get_scenario(scenario_id, user_id)
     if record is None:
@@ -1342,6 +1395,7 @@ def select_scenario(
         active_scenario_id=scenario_id,
         active_scenario_name=record.scenario_name,
         draft_snapshot=ws.draft_snapshot,
+        saved_snapshot=ws.saved_snapshot if ws.saved_snapshot else ws.draft_snapshot,
         governance_state=ws.governance_state,
         replay_metadata={"action": "select_scenario", "scenario_id": scenario_id},
     )
