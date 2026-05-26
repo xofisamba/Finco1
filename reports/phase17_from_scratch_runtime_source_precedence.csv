@@ -1,0 +1,6 @@
+precedence_rank,source_name,used_when,authority_boundary,notes
+1,clean_saved_scenario_snapshot,Workspace is bound to a saved scenario and browser draft matches that saved snapshot,Runtime authority remains backend clean saved state,Unsaved browser edits are blocked by runtime_guard_for_snapshot.
+2,project_baseline_snapshot,No saved scenario is active and workspace draft matches project baseline,Runtime authority remains DB-backed project record,This is the default source immediately after project creation.
+3,documented_system_defaults,Phase 17B has not captured a secondary domain assumption,Not user authority and not governance approval,Defaults are explicit and documented in remaining gaps.
+not_used,dirty_browser_draft,Current form differs from clean saved source,Not runtime authority,Run/compare/export/save-run are blocked until save or discard.
+not_used,TUHO_or_Oborovo_factory_defaults_for_user_project,User-created project runtime after Phase 17C,Not primary runtime source,Factory templates remain available only for factory-template projects.

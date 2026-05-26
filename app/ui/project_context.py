@@ -102,7 +102,6 @@ def _build_context_from_project_inputs(
     opex_contingency_pct: float,
     parity_status: str,
     data_source: str,
-    senior_debt_keur_override: float | None = None,
 ) -> ProjectContext:
     opex_items = _build_opex_items(project_inputs)
     financing = project_inputs.financing
@@ -143,11 +142,7 @@ def _build_context_from_project_inputs(
         epc_contract_keur=capex.epc_contract.amount_keur,
         idc_keur=capex.idc_keur,
         bank_fees_keur=capex.bank_fees_keur,
-        senior_debt_keur=(
-            senior_debt_keur_override
-            if senior_debt_keur_override is not None
-            else financing.fixed_debt_keur
-        ),
+        senior_debt_keur=financing.fixed_debt_keur,
         interest_rate_pct=financing.base_rate + financing.margin_bps / 10_000,
         senior_tenor_years=financing.senior_tenor_years,
         target_dscr=financing.target_dscr,
@@ -198,7 +193,6 @@ def _build_generic_wind_context() -> ProjectContext:
         opex_contingency_pct=0.0,
         parity_status="ACCEPTED_CONVENTION",
         data_source="Generic wind template - user-project starter defaults",
-        senior_debt_keur_override=0.0,
     )
 
 
@@ -211,7 +205,6 @@ def _build_generic_solar_context() -> ProjectContext:
         opex_contingency_pct=0.0,
         parity_status="ACCEPTED_CONVENTION",
         data_source="Generic solar template - user-project starter defaults",
-        senior_debt_keur_override=0.0,
     )
 
 
@@ -284,7 +277,6 @@ def build_project_context_for_record(
     else:
         base = _CONTEXTS["generic_wind"]
 
-    seed_label = template_source or ("Generic Solar" if base.technology == "Solar PV" else "Generic Wind")
     if project_origin == "factory_template":
         return base
 
@@ -333,8 +325,8 @@ def build_project_context_for_record(
         target_dscr=target_dscr,
         gearing_pct=gearing_ratio,
         data_source=(
-            f"User-created project record - Phase 17B required assumptions captured in baseline snapshot. "
-            f"Runtime remains template-seeded from {seed_label} until Phase 17C true from-scratch runtime path."
+            "User-created project record - runtime built from saved project assumptions. "
+            "Some secondary assumptions still use system defaults until later phases."
         ),
     )
 

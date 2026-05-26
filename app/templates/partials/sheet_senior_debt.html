@@ -81,7 +81,7 @@
   <div class="assumption-grid">
     <div class="assumption-item">
       <span class="metric-label">Facility Amount</span>
-      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }} kEUR</span>
+      <span class="metric-value">{% if project_ctx.senior_debt_keur is not none %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">Tenor</span>
@@ -153,7 +153,7 @@
     }
 
     var sdEl = document.getElementById("sd-senior-debt");
-    if (sdEl) sdEl.textContent = data.senior_debt_keur || "NOT_AVAILABLE";
+    if (sdEl) sdEl.textContent = (data.senior_debt_keur != null && data.senior_debt_keur !== 'N/A') ? data.senior_debt_keur : "N/A";
     var avgEl = document.getElementById("sd-avg-dscr");
     if (avgEl) avgEl.textContent = data.avg_dscr || "NOT_AVAILABLE";
     var minEl = document.getElementById("sd-min-dscr");

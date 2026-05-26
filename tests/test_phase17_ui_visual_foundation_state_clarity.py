@@ -216,7 +216,11 @@ class TestTemplateSeededDisclosure:
         if not os.path.exists(result_html):
             pytest.skip("new_project_result.html not found")
         content = open(result_html).read()
-        assert "template-seeded" in content.lower() or "phase17" in content.lower()
+        # Phase 17C: user-created projects disclose "runtime is built from saved project assumptions"
+        # (not template-seeded, since they use snapshot-built runtime from saved assumptions)
+        # Factory templates may still carry template-seeded; user-created projects must not claim from-scratch
+        assert "saved project assumptions" in content.lower() or "template-seeded" in content.lower() or "phase17" in content.lower(), \
+            "Expected user-created project runtime disclosure (saved assumptions / snapshot-built) or factory template-seeded notice"
 
 
 class TestGovernanceNotChanged:

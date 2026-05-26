@@ -1,0 +1,18 @@
+snapshot_field,runtime_target,conversion,source_type,notes
+project_name,ProjectInfo.name,string,user_saved_assumption,User project name becomes runtime project name.
+active_project,ProjectInfo.code,string upper/user_saved_assumption,User project code is carried into runtime metadata.
+project_type,runtime factory shell selector,string Solar/Wind,user_saved_assumption,Chooses Solar or Wind runner shell while primary inputs come from snapshot.
+country_market,ProjectInfo.country_iso,string country mapping,user_saved_assumption,Croatia/HR maps to HR; other values are uppercased to a two-character code.
+capacity_mw,TechnicalParams.capacity_mw,float positive,user_saved_assumption,Direct runtime capacity mapping.
+cod_date,ProjectInfo.cod_date,ISO date,user_saved_assumption,Direct COD date mapping.
+construction_months,ProjectInfo.construction_months,int positive,user_saved_assumption,Also derives financial close from COD minus construction months.
+horizon_years,ProjectInfo.horizon_years,int positive,user_saved_assumption,Direct model horizon mapping.
+tariff_eur_mwh,RevenueParams.ppa_base_tariff,float non-negative,user_saved_assumption,Direct PPA tariff mapping.
+ppa_term_years,RevenueParams.ppa_term_years,int positive,user_saved_assumption,Direct PPA term mapping.
+p50_hours,TechnicalParams.operating_hours_p50,float positive,user_saved_assumption,Direct production-hours mapping.
+opex_y1_keur,OpexItem.y1_amount_keur,float non-negative,user_saved_assumption,Single user-provided year-one OPEX item.
+total_capex_keur,CapexStructure.epc_contract.amount_keur,float positive,user_saved_assumption,Allocated to one user-provided total CAPEX line.
+gearing_pct,FinancingParams.gearing_ratio/fixed_debt_keur,float 0-100,user_saved_assumption,Converted to ratio and fixed senior debt amount.
+interest_rate_pct,FinancingParams.margin_bps,float non-negative,user_saved_assumption,Stored as all-in margin over zero base rate.
+tenor_years,FinancingParams.senior_tenor_years,int positive,user_saved_assumption,Direct senior tenor mapping.
+target_dscr,FinancingParams.target_dscr,float positive,user_saved_assumption,Direct target DSCR mapping.
