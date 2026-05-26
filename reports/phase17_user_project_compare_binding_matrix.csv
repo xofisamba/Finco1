@@ -1,0 +1,5 @@
+check_id,question,status,evidence,authority_boundary,notes
+CMP-01,Does compare block dirty browser draft state,validated,compare route calls runtime_guard_for_snapshot before running scenarios,Dirty browser draft is not runtime authority,Dirty state returns guard error.
+CMP-02,Does compare use clean saved user-project assumptions,source_validated,user_created branch calls _clean_user_project_runtime_snapshot and build_projectinputs_from_snapshot,Backend clean saved state remains authority,No arbitrary draft compare.
+CMP-03,Does compare avoid silent TUHO fallback for user-created projects,source_validated,user_created branch is evaluated before factory seed fallback,Factory templates remain separate,TUHO fallback remains only for factory template projects.
+CMP-04,Does compare redesign scenario semantics,no_change,Phase 17D does not change compare layout or formulas,Scenario compare remains descriptive,Only binding checks were added.

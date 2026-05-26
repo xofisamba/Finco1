@@ -1,0 +1,6 @@
+gap_id,gap,reason,severity,pilot_blocker_yes_no,recommended_follow_up
+P17D-01,Full FastAPI route E2E could not execute in this environment,FastAPI is unavailable locally,medium,no,Run TestClient/browser E2E in deployed or dependency-complete environment.
+P17D-02,Workbook artifact inspection could not execute in this environment,openpyxl is unavailable locally,medium,no,Add workbook provenance/value assertions in export hardening environment.
+P17D-03,Senior debt amount is not consistently exposed as a route-level KPI,Existing runtime card set exposes DSCR more reliably than senior debt amount,low,no,Add reporting-only senior-debt extraction if product review needs it.
+P17D-04,Compare remains descriptive and not redesigned,Phase 17D validates binding only,low,no,Consider richer compare evidence after user-created pilot runs.
+P17D-05,No lender-ready/audit-certified claim introduced,Phase 17D is validation and binding hardening only,high,no,Keep no-claims posture until external model review.

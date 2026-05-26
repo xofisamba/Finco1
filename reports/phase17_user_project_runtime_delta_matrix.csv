@@ -1,0 +1,5 @@
+delta_id,input_changed,project_a_value,project_b_value,expected_effect,evidence,status,notes
+tariff_route_delta,tariff_eur_mwh,60,100,total_revenue_keur increases,direct runtime using saved snapshots,validated,Route binding is also source-asserted in main_web.py.
+p50_route_delta,p50_hours,1200,1600,total_revenue_keur increases,direct runtime using saved snapshots,validated,Confirms production hours are mapped into runtime.
+opex_route_delta,opex_y1_keur,1000,3000,total_opex_keur increases and total_ebitda_keur decreases,direct runtime using saved snapshots,validated,Confirms OPEX is mapped into runtime.
+gearing_route_delta,gearing_pct,70,80,min_dscr decreases,direct runtime using saved snapshots,validated,Senior-debt KPI is not always exposed; DSCR proves gearing-dependent debt stress changes.
