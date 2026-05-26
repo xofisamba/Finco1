@@ -1,0 +1,12 @@
+gap,reason,deferred_to,notes
+Tailwind production build setup,No build pipeline in scope; CSP policy needs review,Tailwind prototype branch,postcss/tailwind.config.js not added per policy
+Tailwind CDN,Policy forbids CDN additions,Not applicable,external CSS frameworks not permitted
+Google Fonts CDN,Policy forbids CDN additions,Not applicable,system font stack used instead
+Full utility-class migration,Large rewrite risk; requires design system audit,Tailwind prototype branch,only semantic CSS classes added in this branch
+Interactive component library,Needs design system audit and user research,Future sprint,static components only in this branch
+Responsive nav rebuild,Risk of Phase 16 regressions; sidebar structure unchanged,Future sprint,current sidebar selector structure preserved
+Real-time collaboration indicators,Backend WebSocket not implemented,Future sprint,out of scope for UI-only sprint
+Advanced chart animations,Out of scope for visual foundation sprint,Future sprint,basic Chart.js unchanged
+Print/export stylesheet,Low priority for internal lender/reviewer tool,Future sprint,not in scope
+Dark mode,Needs design decision and color system audit,Future sprint,not started
+Full Tailwind migration,Large multi-sprint effort,Multiple future sprints,Phase 17 UI is CSS-only foundation for eventual migration

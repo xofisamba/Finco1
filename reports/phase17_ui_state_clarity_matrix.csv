@@ -1,0 +1,8 @@
+state,visual_treatment,source_of_truth,allowed_action,guardrail
+DIRTY,.badge-dirty + .dirty-state-banner,Browser draft (session),Save or Revert Draft,"backend persists; dirty blocks run; save/revert only"
+SAVED,.badge-saved + .badge-factory-template,Backend DB (workspace_state),Run,Compare,Export,"saved snapshot is immutable; runtime binds to saved snapshot only"
+PREVIEW_ONLY,.badge-preview-only + .kpi-card--preview,Form/session state,None (read-only),Cannot export; cannot compare; informational only
+RUNTIME,.badge-runtime + .kpi-card--runtime,Backend runtime result (DB record),Display,Export,backend is authority; frontend displays only
+TEMPLATE_SEEDED,.badge-template-seeded,Factory defaults (code),Run with overrides,user-created projects still template-seeded until Phase 17C
+FACTORY_TEMPLATE,.badge-factory-template,Factory templates (TUHO/Oborovo),Run as-is,unchanged from Phase 16; not user-modifiable
+USER_CREATED,.badge-user-created,User-created project record,Run (template-seeded),no from-scratch runtime in Phase 17B

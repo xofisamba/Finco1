@@ -1,0 +1,12 @@
+area,before,after,files_changed,risk_level,notes
+CSS Variables,partially defined,consolidated with Tailwind-compatible naming,static/styles.css,LOW,"Added --font-sans, --font-mono system font stacks; no external CDN"
+Status Badges,few defined,9 new badge classes added,static/styles.css,LOW,"DIRTY, SAVED, PREVIEW_ONLY, TEMPLATE_SEEDED, USER_CREATED, FACTORY_TEMPLATE, RUNTIME_BINDING_PENDING added"
+Typography,basic system font,improved hierarchy with 8 semantic text classes,static/styles.css,LOW,"text-page-title, text-section-heading, text-card-heading, text-table-heading, text-form-label, text-helper, text-status, text-mono"
+Button Variants,only basic btn classes,5 semantic button classes added,static/styles.css,LOW,"btn-primary-action, btn-secondary-action, btn-neutral-action, btn-destructive-action added"
+Runtime Disclosure,not distinct,new .runtime-disclosure class,static/styles.css,LOW,"Used for template-seeded runtime disclosure in UI"
+Dirty State Banner,generic,new .dirty-state-banner class,static/styles.css,LOW,"For unsaved edits warning with Revert action"
+State Strip Variants,basic,added --value--dirty/--saved/--preview/--runtime,static/styles.css,LOW,"Value text color variants for workspace-state-strip"
+KPI Card Variants,basic,added --runtime/--preview/--saved/--dirty,static/styles.css,LOW,"Left border color + background tint variants"
+New Project Form Groups,flat list,grouped with colored left borders,static/styles.css,LOW,"metadata(blue), location(teal), revenue(green), opex(amber), capex(purple), debt(red)"
+Table Styles,basic,added num-table-cell, num-table-header, table-zebra, table-hover,static/styles.css,LOW,"Number alignment and subtle zebra/hover for lender readability"
+Button Width,btn forces 100% width,compact btn-sm/btn-compact variants added,static/styles.css,LOW,"Phase 16 buttons use compact classes; base .btn unchanged for forms"

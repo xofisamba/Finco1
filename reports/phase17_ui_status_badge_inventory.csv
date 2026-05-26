@@ -1,0 +1,15 @@
+badge,meaning,css_class,used_in,authority_boundary
+PASS,Passed validation or sanity check,.badge-pass,template governance,no approval change
+WARN,Warning or advisory notice,.badge-warn,template/runtime warnings,no blocking
+BLOCKED,Blocked / not permitted,.badge-blocked,governance blocks,G20 blocks R35/R69 etc.
+NOT_APPROVED,Governance flag not yet approved,.badge-notapproved,runtime governance,R99/R102 not promoted
+ACCEPTED_CONVENTION,Accepted modeling convention,.badge-convention,template parity,informational only
+SOURCE_NOT_AVAILABLE,Evidence or source data unavailable,.badge-missing,template assumptions,informational
+RUNTIME_BINDING_PENDING,Waiting for runtime to bind,.badge-runtime-binding-pending,workspace state,informational
+DIRTY,Unsaved draft edits active,.badge-dirty,workspace state banner,disables run; save/revert available
+SAVED,Saved scenario state,.badge-saved,workspace state,allows run/compare
+PREVIEW_ONLY,Not yet runtime-backed,.badge-preview-only,form values,cannot export or compare
+RUNTIME,Runtime-backed result value,.badge-runtime,kpi cards,backend is authority
+TEMPLATE_SEEDED,Template default value,.badge-template-seeded,form inputs,informational
+USER_CREATED,User-created project indicator,.badge-user-created,project selector,informational
+FACTORY_TEMPLATE,Factory template project,.badge-factory-template,project selector,informational
