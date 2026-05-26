@@ -403,4 +403,10 @@ document.addEventListener('htmx:afterSwap', function(evt) {
   if (window.syncEditableGridMirrors) {
     window.syncEditableGridMirrors();
   }
+  // Show panel-new-project after HTMX swaps content into it
+  var panel = document.getElementById('panel-new-project');
+  if (panel && panel.style.display === 'none' && panel.querySelector('form')) {
+    panel.style.display = 'block';
+    panel.classList.add('active');
+  }
 });
