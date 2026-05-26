@@ -2,6 +2,8 @@ import json
 """HTMX internal demo web interface for Finco1 model."""
 import os
 import re
+from datetime import datetime as dt
+
 from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -2355,7 +2357,7 @@ async def save_scenario_endpoint(request: Request):
     project_record, existing_workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
     project_name = project_record.project_name
-    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {dt.now().strftime('%Y-%m-%d %H:%M')}"
     saved_record = save_scenario(
         user_id=user.user_id,
         project_id=project_record.project_id,
