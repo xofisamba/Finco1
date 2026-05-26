@@ -12,8 +12,7 @@
            value="{{ value }}"
            class="inp-input"
            data-original-value="{{ value }}"
-           onchange="markInputDirty(this)"
-           hx-on="input: document.getElementById('dirty-indicator').style.display='flex';" />
+           onchange="markInputDirty(this); document.getElementById('dirty-indicator').style.display='flex';" />
     {% else %}
     <span class="inp-value">{{ value }}</span>
     {% endif %}
