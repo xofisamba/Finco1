@@ -319,3 +319,53 @@ class TestNoJSFinancialLogic:
         for rel_path in engine_files:
             full_path = os.path.join(workspace, rel_path)
             assert rel_path not in changed_files, f"Engine file modified: {rel_path}"
+
+class TestInpInputPersistsToMainForm:
+    """inp-input fields write to main-form on change."""
+
+    def test_inp_input_onchange_writes_to_main_form_element(self):
+        """inp-input onchange handler references main-form elements dict."""
+        import os
+        path = os.path.join(os.path.dirname(__file__), "..", "app", "templates", "partials", "inputs_section.html")
+        with open(path) as f:
+            content = f.read()
+        assert "main-form" in content, "inputs_section.html onchange must write to #main-form"
+        assert "elements['" in content or 'elements["' in content, "onchange must use form.elements[field] pattern"
+
+    def test_dirty_indicator_is_shown_on_input_change(self):
+        """dirty-indicator display is toggled in onchange handler."""
+        import os
+        path = os.path.join(os.path.dirname(__file__), "..", "app", "templates", "partials", "inputs_section.html")
+        with open(path) as f:
+            content = f.read()
+        assert "dirty-indicator" in content, "dirty-indicator element must exist in template"
+        assert "style.display='flex'" in content or 'style.display="flex"' in content, "dirty-indicator must be shown on change"
+
+    def test_inp_input_field_names_match_collect_form_snapshot_fields(self):
+        """Editable inp-input field names must match _collect_form_snapshot field list."""
+        import os
+        import re
+        path = os.path.join(os.path.dirname(__file__), "..", "app", "templates", "partials", "inputs_section.html")
+        with open(path) as f:
+            content = f.read()
+        field_names = re.findall(r'field_name="(\w+)"', content)
+        editable_fields = set(field_names)
+        # Fields that ARE in _collect_form_snapshot (only these may be editable)
+        form_snapshot_fields = {
+            "active_project", "project_name", "project_type", "template_source",
+            "country_market", "scenario", "capacity_mw", "tariff_eur_mwh", "p50_hours",
+            "total_capex_keur", "opex_y1_keur", "gearing_pct", "target_dscr",
+            "interest_rate_pct", "tenor_years", "cod_date", "construction_months",
+            "horizon_years", "capacity_factor", "ppa_term_years",
+        }
+        extra = editable_fields - form_snapshot_fields
+        assert not extra, f"Editable fields {extra} not in _collect_form_snapshot (remove editable= or add to backend)"
+
+    def test_sheet_inputs_includes_inputs_section(self):
+        """sheet_inputs.html must include inputs_section.html."""
+        import os
+        path = os.path.join(os.path.dirname(__file__), "..", "app", "templates", "partials", "sheet_inputs.html")
+        with open(path) as f:
+            content = f.read()
+        assert 'include "partials/inputs_section.html"' in content, \
+            "sheet_inputs.html must include inputs_section.html"

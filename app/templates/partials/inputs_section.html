@@ -12,7 +12,7 @@
            value="{{ value }}"
            class="inp-input"
            data-original-value="{{ value }}"
-           onchange="markInputDirty(this); document.getElementById('dirty-indicator').style.display='flex';" />
+           onchange="var v=this.value; var f=document.getElementById('main-form'); if(f&&f.elements['{{ field_name }}']){ f.elements['{{ field_name }}'].value=v; } var ind=document.getElementById('dirty-indicator'); if(ind) ind.style.display='flex'; markInputDirty&&markInputDirty(this);" />
     {% else %}
     <span class="inp-value">{{ value }}</span>
     {% endif %}
@@ -54,7 +54,7 @@
    SCHEDULE
    ══════════════════════════════════════════════════════════════════════ #}
 {% set schedule_rows %}
-  {{ field_row("Financial Close", project_ctx.financial_close or "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="financial_close") }}
+  {{ field_row("Financial Close", project_ctx.financial_close or "—", badge="Saved", badge_class="badge-pass") }}
   {{ field_row("COD Date", project_ctx.cod_date or "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="cod_date") }}
   {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="construction_months") }}
   {{ field_row("Project Horizon", "{} years".format(project_ctx.horizon_years) if project_ctx.horizon_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="horizon_years") }}
@@ -66,7 +66,7 @@
    TECHNICAL
    ══════════════════════════════════════════════════════════════════════ #}
 {% set technical_rows %}
-  {{ field_row("Installed Capacity", "{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", badge="Calculated", badge_class="badge-info") }}
+  {{ field_row("Installed Capacity", "{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", badge="Calculated", badge_class="badge-info", editable=is_user_project, field_name="capacity_mw") }}
   {{ field_row("P50 Hours", "{:,d} hrs/yr".format(project_ctx.operating_hours_p50|int) if project_ctx.operating_hours_p50 else "—", badge="Template", badge_class="badge-muted", editable=is_user_project, field_name="p50_hours") }}
   {{ field_row("P90/P10 Hours", "{:,d} hrs/yr".format(project_ctx.operating_hours_p50|int) if project_ctx.operating_hours_p50 else "—", badge="Template", badge_class="badge-muted") }}
   {{ field_row("Availability", "{:.0f}% plant / {:.0f}% grid".format(project_ctx.plant_availability * 100, project_ctx.grid_availability * 100) if project_ctx.plant_availability else "—", badge="Template", badge_class="badge-muted") }}
@@ -82,7 +82,7 @@
   {{ field_row("Base Tariff", "{:.2f} EUR/MWh".format(project_ctx.ppa_tariff_eur_mwh) if project_ctx.ppa_tariff_eur_mwh else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="tariff_eur_mwh") }}
   {{ field_row("PPA Term", "{} years".format(project_ctx.ppa_term_years) if project_ctx.ppa_term_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="ppa_term_years") }}
   {{ field_row("PPA Index", "{:.1f}% annually".format(project_ctx.ppa_index_pct * 100) if project_ctx.ppa_index_pct else "—", badge="Template", badge_class="badge-muted") }}
-  {{ field_row("CO2 Revenue", "Enabled — {:.3f} EUR/MWh".format(project_ctx.co2_price_eur_mwh) if project_ctx.co2_enabled else "Disabled", badge="Saved" if project_ctx.co2_enabled else "Template", badge_class="badge-info" if project_ctx.co2_enabled else "badge-muted", editable=is_user_project, field_name="co2_enabled") }}
+  {{ field_row("CO2 Revenue", "Enabled — {:.3f} EUR/MWh".format(project_ctx.co2_price_eur_mwh) if project_ctx.co2_enabled else "Disabled", badge="Saved" if project_ctx.co2_enabled else "Template", badge_class="badge-info" if project_ctx.co2_enabled else "badge-muted") }}
 {% endset %}
 {{ section_card("Revenue / PPA Summary", revenue_rows) }}
 
