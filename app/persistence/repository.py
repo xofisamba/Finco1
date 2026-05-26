@@ -36,6 +36,197 @@ def _from_iso(value: str | datetime) -> datetime:
     return datetime.fromisoformat(value)
 
 
+
+
+# ---------------------------------------------------------------------------
+# Known input-field names for override validation.
+# ---------------------------------------------------------------------------
+SCENARIO_INPUT_FIELDS: set[str] = {
+    "active_project",
+    "project_name",
+    "project_type",
+    "project_origin",
+    "template_source",
+    "country_market",
+    "scenario",
+    "capacity_mw",
+    "tariff_eur_mwh",
+    "p50_hours",
+    "total_capex_keur",
+    "opex_y1_keur",
+    "gearing_pct",
+    "target_dscr",
+    "interest_rate_pct",
+    "tenor_years",
+    "cod_date",
+    "construction_months",
+    "horizon_years",
+    "capacity_factor",
+    "ppa_term_years",
+}
+
+
+def resolve_scenario_snapshot(
+    base_input_set: dict[str, Any],
+    overrides: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve effective snapshot: base + overrides.
+
+    Missing override keys inherit from base_input_set.
+    Unknown keys in overrides are silently dropped.
+    Empty overrides returns a copy of base_input_set.
+    """
+    base = dict(base_input_set)
+    for key, value in overrides.items():
+        if key in SCENARIO_INPUT_FIELDS:
+            base[key] = value
+    return base
+
+
+def get_or_create_base_case_scenario(
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    project_name: str,
+    project_type: str,
+    source_project_template: str,
+    base_input_set: dict[str, Any],
+    governance_state: dict[str, Any],
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> "ScenarioRecord":
+    """Return the existing Base Case scenario for a project, or create one."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM scenarios
+            WHERE user_id=? AND project_id=? AND is_base_case=1 AND archived=0
+            LIMIT 1
+            """,
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+
+    if row:
+        return ScenarioRecord.from_row(row)
+
+    scenario_id = uuid.uuid4().hex[:16]
+    now = _now_utc()
+    governance_state = dict(governance_state or {})
+    rm = dict(replay_metadata or {})
+    rm.setdefault("project_id", project_id)
+    rm.setdefault("scenario_id", scenario_id)
+    rm["is_base_case"] = True
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scenarios (
+                scenario_id, project_id, user_id, scenario_name, project_code,
+                source_project_template, copied_from_scenario_id, archived,
+                is_base_case, parent_scenario_id,
+                base_input_set_json, overrides_json, schema_version,
+                snapshot_json, governance_state_json, last_run_summary_json,
+                replay_metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 1, NULL, ?, ?, '1.0', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scenario_id,
+                project_id,
+                user_id,
+                project_name or "Base Case",
+                project_code,
+                source_project_template,
+                _to_json(base_input_set),
+                _to_json({}),  # overrides_json
+                _to_json(governance_state),
+                _to_json(base_input_set),  # snapshot_json = full input (effective = base + empty overrides)
+                _to_json({}),  # last_run_summary_json
+                _to_json(rm),
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    return ScenarioRecord(
+        scenario_id=scenario_id,
+        project_id=project_id,
+        user_id=user_id,
+        scenario_name=project_name or "Base Case",
+        project_code=project_code,
+        source_project_template=source_project_template,
+        copied_from_scenario_id=None,
+        archived=False,
+        is_base_case=True,
+        parent_scenario_id=None,
+        base_input_set=base_input_set,
+        overrides={},
+        schema_version="1.0",
+        snapshot=base_input_set,
+        governance_state=governance_state,
+        last_run_summary={},
+        replay_metadata=rm,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def seed_scenarios_if_needed(
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    project_type: str,
+    source_project_template: str,
+    baseline_snapshot: dict[str, Any],
+    governance_state: dict[str, Any],
+    template_origin: str,
+) -> "ScenarioRecord":
+    """Seed (or return existing) Base Case scenario for a project."""
+    rm = {
+        "baseline_source": True,
+        "template_origin": template_origin,
+    }
+    return get_or_create_base_case_scenario(
+        user_id=user_id,
+        project_id=project_id,
+        project_code=project_code,
+        project_name=baseline_snapshot.get("project_name", project_code),
+        project_type=project_type,
+        source_project_template=source_project_template,
+        base_input_set=baseline_snapshot,
+        governance_state=governance_state,
+        replay_metadata=rm,
+    )
+
+
+def get_scenario_provenance(
+    scenario_record: "ScenarioRecord",
+    project_record: Optional["ProjectRecord"],
+    template_origin: str,
+) -> dict[str, Any]:
+    """Build scenario provenance dict for export replay_metadata."""
+    return {
+        "project_id": scenario_record.project_id,
+        "project_name": (
+            project_record.project_name if project_record else scenario_record.project_code
+        ),
+        "scenario_id": scenario_record.scenario_id,
+        "scenario_name": scenario_record.scenario_name,
+        "is_base_case": scenario_record.is_base_case,
+        "parent_scenario_id": scenario_record.parent_scenario_id,
+        "override_field_list": (
+            sorted(scenario_record.overrides.keys())
+            if not scenario_record.is_base_case
+            else []
+        ),
+        "baseline_source": (
+            (project_record.project_origin == "saved_baseline")
+            if project_record
+            else False
+        ),
+        "template_origin": template_origin,
+    }
+
+
 @dataclass(slots=True)
 class RunRecord:
     run_id: str
@@ -120,22 +311,56 @@ class ProjectRecord:
         )
 
 
-@dataclass(slots=True)
 class ScenarioRecord:
-    scenario_id: str
-    project_id: str
-    user_id: str
-    scenario_name: str
-    project_code: str
-    source_project_template: str
-    copied_from_scenario_id: Optional[str]
-    archived: bool
-    snapshot: dict[str, Any]
-    governance_state: dict[str, Any]
-    last_run_summary: dict[str, Any]
-    replay_metadata: dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
+    __slots__ = (
+        "scenario_id", "project_id", "user_id", "scenario_name", "project_code",
+        "source_project_template", "copied_from_scenario_id", "archived",
+        "is_base_case", "parent_scenario_id", "base_input_set", "overrides",
+        "schema_version", "snapshot", "governance_state", "last_run_summary",
+        "replay_metadata", "created_at", "updated_at",
+    )
+
+    def __init__(
+        self,
+        scenario_id: str,
+        project_id: str,
+        user_id: str,
+        scenario_name: str,
+        project_code: str,
+        source_project_template: str,
+        copied_from_scenario_id: Optional[str],
+        archived: bool,
+        is_base_case: bool = False,
+        parent_scenario_id: Optional[str] = None,
+        base_input_set: Optional[dict] = None,
+        overrides: Optional[dict] = None,
+        schema_version: str = "1.0",
+        snapshot: Optional[dict] = None,
+        governance_state: Optional[dict] = None,
+        last_run_summary: Optional[dict] = None,
+        replay_metadata: Optional[dict] = None,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None,
+    ):
+        self.scenario_id = scenario_id
+        self.project_id = project_id
+        self.user_id = user_id
+        self.scenario_name = scenario_name
+        self.project_code = project_code
+        self.source_project_template = source_project_template
+        self.copied_from_scenario_id = copied_from_scenario_id
+        self.archived = archived
+        self.is_base_case = is_base_case
+        self.parent_scenario_id = parent_scenario_id
+        self.base_input_set = base_input_set or {}
+        self.overrides = overrides or {}
+        self.schema_version = schema_version
+        self.snapshot = snapshot or {}
+        self.governance_state = governance_state or {}
+        self.last_run_summary = last_run_summary or {}
+        self.replay_metadata = replay_metadata or {}
+        self.created_at = created_at
+        self.updated_at = updated_at
 
     @classmethod
     def from_row(cls, row) -> "ScenarioRecord":
@@ -148,6 +373,11 @@ class ScenarioRecord:
             source_project_template=row["source_project_template"],
             copied_from_scenario_id=row["copied_from_scenario_id"],
             archived=bool(row["archived"]),
+            is_base_case=bool(row["is_base_case"]) if "is_base_case" in row.keys() else False,
+            parent_scenario_id=row["parent_scenario_id"] if "parent_scenario_id" in row.keys() else None,
+            base_input_set=_from_json(row["base_input_set_json"] if "base_input_set_json" in row.keys() else "{}", {}),
+            overrides=_from_json(row["overrides_json"] if "overrides_json" in row.keys() else "{}", {}),
+            schema_version=row["schema_version"] if "schema_version" in row.keys() else "1.0",
             snapshot=_from_json(row["snapshot_json"], {}),
             governance_state=_from_json(row["governance_state_json"], {}),
             last_run_summary=_from_json(row["last_run_summary_json"], {}),
