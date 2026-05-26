@@ -158,7 +158,9 @@ def test_compare_templates_routes_and_reports_exist():
     assert '/scenarios/compare' in main_web
     assert 'compare_scenarios(' in main_web
     assert 'build_export_lineage(' in main_web
-    assert 'Compare Scenarios' in base_template
+    # base.html has the compare button (id=btn-compare-scenarios, hx-get=/scenarios/compare)
+    # The section label "Compare Scenarios" lives in scenario_workspace.html (Phase 20C cleanup)
+    assert 'btn-compare-scenarios' in base_template
     assert 'Scenario Cards' in workspace
     assert 'Scenario History' in workspace
     assert 'Export Lineage' in workspace
