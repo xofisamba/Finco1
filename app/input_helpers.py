@@ -55,6 +55,8 @@ def build_inputs_summary_table(project_inputs) -> pd.DataFrame:
     technical = getattr(project_inputs, 'technical', None)
     revenue = getattr(project_inputs, 'revenue', None)
     financing = getattr(project_inputs, 'financing', None)
+    capex = getattr(project_inputs, 'capex', None)
+    opex = getattr(project_inputs, 'opex', None)
     rows = []
     if info:
         rows.extend([
@@ -80,11 +82,19 @@ def build_inputs_summary_table(project_inputs) -> pd.DataFrame:
             ("PPA Index", getattr(revenue, 'ppa_index', 'n/a')),
         ])
     if financing:
+        all_in_rate = (
+            getattr(financing, 'base_rate', 0.0) + getattr(financing, 'margin_bps', 0) / 10_000
+        )
         rows.extend([
             ("Target DSCR", getattr(financing, 'target_dscr', 'n/a')),
+            ("Gearing (%)", getattr(financing, 'gearing_ratio', 'n/a') * 100 if getattr(financing, 'gearing_ratio', None) is not None else 'n/a'),
             ("Senior Tenor (years)", getattr(financing, 'senior_tenor_years', 'n/a')),
-            ("All-in Rate", getattr(financing, 'all_in_rate', 'n/a') if hasattr(financing, 'all_in_rate') else 'n/a'),
+            ("All-in Rate", all_in_rate),
         ])
+    if capex:
+        rows.append(("Total CapEx (kEUR)", getattr(capex, 'total_capex', getattr(capex, 'total_capex_keur', 'n/a'))))
+    if opex:
+        rows.append(("Year 1 OPEX (kEUR)", sum(getattr(item, 'y1_amount_keur', 0.0) for item in opex)))
     if not rows:
         return pd.DataFrame(columns=["Field", "Value"])
     return pd.DataFrame(rows, columns=["Field", "Value"])

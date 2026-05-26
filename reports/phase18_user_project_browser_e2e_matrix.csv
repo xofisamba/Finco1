@@ -1,0 +1,6 @@
+check_id,browser_step,status,evidence,skip_reason_if_any,notes
+BR-01,Open workspace and create user project,optional_not_run_in_this_environment,no Playwright test executed,Playwright/browser/auth harness unavailable,No fake browser pass recorded.
+BR-02,Confirm project appears in selector,covered_indirectly_by_nonbrowser_tests,tests/test_phase17_user_project_e2e_runtime_export_validation.py,not_applicable,Selector visibility is validated without a live browser.
+BR-03,Save scenario and run model,covered_indirectly_by_nonbrowser_tests,tests/test_phase17_user_project_e2e_runtime_export_validation.py,not_applicable,Persistence and runtime guard behavior are validated directly.
+BR-04,Dirty edit blocks run and revert restores clean state,covered_indirectly_by_nonbrowser_tests,tests/test_phase17_user_project_e2e_runtime_export_validation.py,not_applicable,Authority boundary is validated without browser automation.
+BR-05,Export/download button visible and usable,optional_not_run_in_this_environment,no browser harness executed,Playwright/browser/auth harness unavailable,Route and workbook-source binding are validated separately.

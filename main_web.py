@@ -801,10 +801,12 @@ def _replay_metadata_for_project(
     runtime_snapshot_id: str | None = None,
     runtime_origin: str | None = None,
     artifact_name: str | None = None,
+    project_inputs_override=None,
+    template_origin_override: str | None = None,
 ) -> dict:
-    project_inputs = _project_inputs_for_code(project_code)
+    project_inputs = project_inputs_override or _project_inputs_for_code(project_code)
     governance_state = _governance_snapshot(project_code)
-    return build_replay_metadata(
+    replay_metadata = build_replay_metadata(
         project_key=project_code,
         project_inputs=project_inputs,
         governance_state=governance_state,
@@ -821,6 +823,9 @@ def _replay_metadata_for_project(
         workbook_type=workbook_type,
         active_project=project_code,
     )
+    if template_origin_override:
+        replay_metadata["template_origin"] = template_origin_override
+    return replay_metadata
 
 
 def _user_project_selector_items(user) -> list[dict[str, str]]:
@@ -1849,9 +1854,16 @@ async def download_post(request: Request):
             export_timestamp=utc_now_iso(),
             runtime_timestamp=utc_now_iso(),
             project_id=project_record.project_id if project_record else None,
+            scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
             scenario_name=scenario,
             runtime_origin=runtime_origin,
             artifact_name=filename,
+            project_inputs_override=demo.project_inputs,
+            template_origin_override=(
+                "saved_project_assumptions"
+                if project_record.project_origin == "user_created"
+                else None
+            ),
         )
         excel_bytes = build_excel_export(
             result=demo.result,
