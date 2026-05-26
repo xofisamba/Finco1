@@ -1,5 +1,67 @@
 <!-- Workspace Shell — Tab Panels — Phase 9.5 -->
 <div class="workspace-content" id="workspace-content">
+
+  <!-- New Project Setup — main workspace entry point -->
+  <div class="tab-panel" id="panel-new-project" style="display:none;">
+    <div class="panel-header">
+      <div class="panel-title">New Project Setup</div>
+      <div class="panel-desc">Fill in the basics. Full inputs will be available in the sidebar after creation.</div>
+      <button class="btn btn-ghost" onclick="closeNewProjectPanel()" style="margin-left:auto;">✕ Close</button>
+    </div>
+    <div class="new-project-main-card">
+      {% if validation_errors %}
+      <div class="scenario-message" style="margin-bottom:1rem;">
+        {% for error in validation_errors %}<div>{{ error }}</div>{% endfor %}
+      </div>
+      {% endif %}
+      <form hx-post="/projects/create"
+            hx-target="#new-project-result"
+            hx-swap="innerHTML"
+            hx-on:after-request="if(event.detail.successful) location.reload()"
+            class="new-project-main-form">
+        <div class="new-project-fields">
+          <div class="field">
+            <label for="np-project_name">Project Name</label>
+            <input type="text" id="np-project_name" name="project_name" required placeholder="e.g. Oborovo Solar" />
+          </div>
+          <div class="field">
+            <label for="np-project_type">Project Type</label>
+            <select id="np-project_type" name="project_type" required>
+              {% for item in project_types %}
+              <option value="{{ item }}">{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="np-template_source">Template</label>
+            <select id="np-template_source" name="template_source">
+              {% for option in new_project_template_options %}
+              <option value="{{ option.value }}">{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="np-country_market">Country / Market</label>
+            <input type="text" id="np-country_market" name="country_market" required placeholder="e.g. Croatia" />
+          </div>
+          <div class="field">
+            <label for="np-capacity_mw">Capacity (MW)</label>
+            <input type="number" id="np-capacity_mw" name="capacity_mw" step="any" min="0" required placeholder="e.g. 50" />
+          </div>
+          <div class="field">
+            <label for="np-cod_date">COD Date</label>
+            <input type="date" id="np-cod_date" name="cod_date" required />
+          </div>
+        </div>
+        <div class="new-project-actions">
+          <button type="submit" class="btn btn-primary">Create Project</button>
+          <span style="color:var(--muted);font-size:0.8rem;">Full inputs available in sidebar after creation.</span>
+        </div>
+        <div id="new-project-result"></div>
+      </form>
+    </div>
+  </div>
+
   <div class="workspace-state-banner{% if not workspace_state or not workspace_state.dirty %} is-hidden{% endif %}" id="workspace-unsaved-banner" role="status" aria-live="polite" aria-atomic="true">
     <div class="workspace-state-banner__main">
       <span class="badge badge-warn">Unsaved changes</span>
@@ -16,27 +78,16 @@
       </span>
     </div>
 
-    <div class="export-lineage-history">
-      <div class="export-lineage-history__title">Recent Export Records</div>
-      <div class="export-lineage-history__desc">
-        Recorded export lineage is descriptive only. Unavailable or not_applicable markers are intentional and must not be read as zero.
-      </div>
+    <div class="export-lineage-history export-lineage-history--compact">
+      <div class="export-lineage-history__title">Recent Export Records <span style="font-weight:400;color:var(--muted);font-size:0.75rem;">(full history in Downloads tab)</span></div>
       {% if not export_lineage_ui.recent_exports %}
-      <div class="ps-mini-empty">
-        No active export records yet for this workspace.
-      </div>
+      <div class="ps-mini-empty">No exports yet.</div>
       {% else %}
-      <div class="ps-export-list">
-        {% for item in export_lineage_ui.recent_exports %}
-        <div class="ps-export-item">
+      <div class="ps-export-list ps-export-list--compact">
+        {% for item in export_lineage_ui.recent_exports[:3] %}
+        <div class="ps-export-item ps-export-item--compact">
           <div class="ps-export-title">{{ item.artifact_name }}</div>
-          <div class="ps-export-meta">{{ item.export_type }} · {{ item.created_at }} · {{ item.scenario_name }}</div>
-          <div class="ps-export-meta">Scenario ID {{ item.scenario_id }} · Revision {{ item.scenario_revision }}</div>
-          <div class="ps-export-meta">Runtime snapshot {{ item.runtime_snapshot_id }} · Origin {{ item.runtime_origin }}</div>
-          <div class="ps-export-meta">Runtime at {{ item.runtime_generated_at }} · Export at {{ item.export_generated_at }}</div>
-          <div class="ps-export-meta">Branch {{ item.branch_name }} · Commit {{ item.commit_sha }}</div>
-          <div class="ps-export-meta">Template {{ item.template_origin }} · Flags {{ item.runtime_flag_count }}</div>
-          <div class="ps-export-meta">Governance {{ item.governance_summary }}</div>
+          <div class="ps-export-meta">{{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at }}</div>
         </div>
         {% endfor %}
       </div>
@@ -46,27 +97,21 @@
 
   <div class="workspace-state-strip" aria-label="Editable workspace state summary" aria-describedby="workspace-state-guidance">
     <div class="workspace-state-strip__item">
-      <span class="workspace-state-strip__label">Active Scenario</span>
-      <span class="workspace-state-strip__value" id="workspace-strip-active-scenario">
-        {{ workspace_state.active_scenario_name if workspace_state and workspace_state.active_scenario_name else "Workspace Base" }}
+      <span class="workspace-state-strip__label">Scenario</span>
+      <span class="workspace-state-strip__value badge badge-info" id="workspace-strip-active-scenario">
+        {{ workspace_state.active_scenario_name if workspace_state and workspace_state.active_scenario_name else "Base" }}
       </span>
     </div>
     <div class="workspace-state-strip__item">
-      <span class="workspace-state-strip__label">Draft State</span>
-      <span class="workspace-state-strip__value" id="workspace-strip-dirty">
-        {{ workspace_state_meta.dirty_label if workspace_state_meta else "Clean saved state" }}
+      <span class="workspace-state-strip__label">State</span>
+      <span class="workspace-state-strip__value badge {% if workspace_state and workspace_state.dirty %}badge-warn{% else %}badge-pass{% endif %}" id="workspace-strip-dirty">
+        {{ workspace_state_meta.dirty_label if workspace_state_meta else "Saved" }}
       </span>
     </div>
     <div class="workspace-state-strip__item">
-      <span class="workspace-state-strip__label">Last Runtime Boundary</span>
-      <span class="workspace-state-strip__value" id="workspace-strip-runtime-origin">
-        {{ workspace_state_meta.last_runtime_origin_label if workspace_state_meta else "No runtime bound yet" }}
-      </span>
-    </div>
-    <div class="workspace-state-strip__item">
-      <span class="workspace-state-strip__label">Runtime Snapshot</span>
-      <span class="workspace-state-strip__value" id="workspace-strip-runtime-snapshot">
-        {{ workspace_state.last_runtime_snapshot_id if workspace_state and workspace_state.last_runtime_snapshot_id else "Not yet run" }}
+      <span class="workspace-state-strip__label">Runtime</span>
+      <span class="workspace-state-strip__value badge badge-muted" id="workspace-strip-runtime-origin">
+        {{ workspace_state.last_runtime_snapshot_id[:12] if workspace_state and workspace_state.last_runtime_snapshot_id else "No runtime" }}
       </span>
     </div>
   </div>

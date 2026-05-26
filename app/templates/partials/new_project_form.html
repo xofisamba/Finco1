@@ -1,6 +1,5 @@
 <div class="scenario-message">
-  <strong>New Project</strong><br />
-  Create a project record, capture the required assumptions, and bind it to the workspace. Runtime is built from saved project assumptions after the project is saved.
+  <strong>New Project</strong> — fill in the basics. Full inputs will be available in the sidebar after creation.
 </div>
 
 {% if validation_errors %}
@@ -11,9 +10,14 @@
 </div>
 {% endif %}
 
+<div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem;">
+  <button type="button" class="btn btn-ghost" onclick="closeNewProjectPanel()">✕ Close</button>
+</div>
+
 <form hx-post="/projects/create"
-      hx-target="#scenario-action-result"
+      hx-target="#new-project-result"
       hx-swap="innerHTML"
+      hx-on:after-request="if(event.detail.successful) location.reload()"
       class="ps-compare-form">
   <label class="ps-compare-label">
     Project name
@@ -91,5 +95,6 @@
     Target DSCR
     <input type="number" name="target_dscr" step="any" min="0" value="{{ submitted.target_dscr or '' }}" required />
   </label>
+  <div id="new-project-result"></div>
   <button class="ps-mini-btn" type="submit">Create Project</button>
 </form>

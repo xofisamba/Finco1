@@ -3,6 +3,46 @@
 var activeTab = 'overview';
 var draftPersistTimer = null;
 
+function showNewProjectPanel() {
+  // Hide all panels, show the new project panel in main workspace
+  document.querySelectorAll('.tab-panel').forEach(function(p) {
+    p.classList.remove('active');
+    if (p.id !== 'panel-new-project') p.style.display = 'none';
+  });
+  var np = document.getElementById('panel-new-project');
+  if (np) {
+    np.style.display = 'block';
+    np.classList.add('active');
+  }
+  document.querySelectorAll('.ws-tab').forEach(function(t) { t.classList.remove('active'); });
+  var workspace = document.getElementById('workspace-content');
+  if (workspace) workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeNewProjectPanel() {
+  var np = document.getElementById('panel-new-project');
+  if (np) {
+    np.style.display = 'none';
+    np.classList.remove('active');
+  }
+  // Restore overview tab
+  switchTab('overview');
+}
+
+function duplicateCurrentScenario() {
+  var currentId = document.getElementById('current_saved_scenario_id');
+  if (!currentId || !currentId.value) {
+    alert('Load a saved scenario first.');
+    return;
+  }
+  if (window.htmx) {
+    window.htmx.ajax('POST', '/scenarios/' + currentId.value + '/duplicate', {
+      target: '#saved-scenario-panel',
+      swap: 'outerHTML'
+    });
+  }
+}
+
 function setButtonDisabledState(id, disabled) {
   var btn = document.getElementById(id);
   if (!btn) return;
@@ -339,20 +379,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  var duplicateBtn = document.getElementById('btn-duplicate-scenario');
-  if (duplicateBtn) {
-    duplicateBtn.addEventListener('click', function() {
-      var currentId = document.getElementById('current_saved_scenario_id');
-      if (!currentId || !currentId.value || !window.htmx) {
-        alert('Select a saved scenario first by loading it from the saved list.');
-        return;
-      }
-      window.htmx.ajax('POST', '/scenarios/' + currentId.value + '/duplicate', {
-        target: '#saved-scenario-panel',
-        swap: 'outerHTML'
-      });
-    });
-  }
+  // duplicateCurrentScenario() is called via onclick on the button (defined at top of file)
 
   bindDraftPersistenceFields(document);
   bindEditableGridInputs(document);
