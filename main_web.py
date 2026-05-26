@@ -39,6 +39,7 @@ from app.auth import (
 
 # Import persistence
 from app.persistence.repository import (
+    _now_utc,
     bind_workspace_to_scenario,
     archive_scenario,
     build_export_lineage,

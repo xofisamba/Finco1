@@ -83,6 +83,11 @@ def _init_schema(conn):
             source_project_template   TEXT NOT NULL,
             copied_from_scenario_id   TEXT,
             archived                  INTEGER NOT NULL DEFAULT 0,
+            is_base_case              INTEGER NOT NULL DEFAULT 0,
+            parent_scenario_id        TEXT,
+            base_input_set_json       TEXT NOT NULL DEFAULT '{}',
+            overrides_json            TEXT NOT NULL DEFAULT '{}',
+            schema_version            TEXT NOT NULL DEFAULT '1.0',
             snapshot_json             TEXT NOT NULL,
             governance_state_json     TEXT NOT NULL,
             last_run_summary_json     TEXT NOT NULL,
@@ -93,6 +98,11 @@ def _init_schema(conn):
         )
         """
     )
+    _ensure_column(conn, "scenarios", "is_base_case", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "scenarios", "parent_scenario_id", "TEXT")
+    _ensure_column(conn, "scenarios", "base_input_set_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "scenarios", "overrides_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "scenarios", "schema_version", "TEXT NOT NULL DEFAULT '1.0'")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_scenarios_user_project ON scenarios(user_id, project_id, archived, updated_at DESC)"
     )
