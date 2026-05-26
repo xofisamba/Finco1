@@ -91,6 +91,7 @@ class ProjectRecord:
     template_source: Optional[str]
     baseline_snapshot: dict[str, Any]
     archived: bool
+    is_readonly: bool
     governance_state: dict[str, Any]
     last_run_summary: dict[str, Any]
     replay_metadata: dict[str, Any]
@@ -110,6 +111,7 @@ class ProjectRecord:
             template_source=row["template_source"],
             baseline_snapshot=_from_json(row["baseline_snapshot_json"], {}),
             archived=bool(row["archived"]),
+            is_readonly=bool(row["is_readonly"]) if "is_readonly" in row.keys() else False,
             governance_state=_from_json(row["governance_state_json"], {}),
             last_run_summary=_from_json(row["last_run_summary_json"], {}),
             replay_metadata=_from_json(row["replay_metadata_json"], {}),
@@ -380,6 +382,7 @@ def save_project(
     template_source: Optional[str] = None,
     baseline_snapshot: Optional[dict[str, Any]] = None,
     archived: bool = False,
+    is_readonly: bool = False,
     governance_state: Optional[dict[str, Any]] = None,
     last_run_summary: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
@@ -415,7 +418,7 @@ def save_project(
                 """
                 UPDATE projects
                 SET project_name=?, project_type=?, project_origin=?, source_project_template=?, template_source=?,
-                    baseline_snapshot_json=?, archived=?, governance_state_json=?, last_run_summary_json=?,
+                    baseline_snapshot_json=?, archived=?, is_readonly=?, governance_state_json=?, last_run_summary_json=?,
                     replay_metadata_json=?, updated_at=?
                 WHERE project_id=? AND user_id=?
                 """,
@@ -427,6 +430,7 @@ def save_project(
                     effective_template_source,
                     _to_json(baseline_snapshot),
                     int(bool(archived)),
+                    int(bool(is_readonly)),
                     _to_json(governance_state),
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
@@ -443,9 +447,9 @@ def save_project(
                 """
                 INSERT INTO projects (
                     project_id, user_id, project_code, project_name, project_type, project_origin,
-                    source_project_template, template_source, baseline_snapshot_json, archived,
+                    source_project_template, template_source, baseline_snapshot_json, archived, is_readonly,
                     governance_state_json, last_run_summary_json, replay_metadata_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
@@ -458,6 +462,7 @@ def save_project(
                     effective_template_source,
                     _to_json(baseline_snapshot),
                     int(bool(archived)),
+                    int(bool(is_readonly)),
                     _to_json(governance_state),
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
@@ -477,6 +482,7 @@ def save_project(
         template_source=effective_template_source,
         baseline_snapshot=baseline_snapshot,
         archived=bool(archived),
+        is_readonly=bool(is_readonly),
         governance_state=governance_state,
         last_run_summary=last_run_summary,
         replay_metadata=replay_metadata,
@@ -511,6 +517,201 @@ def list_projects(user_id: str) -> list[ProjectRecord]:
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
+def list_baseline_records(user_id: str) -> list[ProjectRecord]:
+    """Return saved-baseline records (project_origin='saved_baseline') for a user."""
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM projects WHERE user_id=? AND project_origin='saved_baseline' AND archived=0 ORDER BY project_name",
+            (user_id,),
+        )
+        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+
+def seed_baseline_projects_if_needed(user_id: str) -> list[ProjectRecord]:
+    """
+    Ensure TUHO Baseline and Oborovo Baseline exist for user.
+    Idempotent — does not overwrite existing baseline records.
+    """
+    seeded = []
+    for code, name, project_type, template_source in [
+        ("tuho-baseline", "TUHO — Baseline", "Wind", "tuho"),
+        ("oborovo-baseline", "Oborovo — Baseline", "Solar", "oborovo"),
+    ]:
+        existing = get_project_by_code(user_id, code)
+        if existing is not None:
+            continue  # already exists
+        snapshot = _compute_baseline_snapshot(project_type, template_source)
+        record = save_project(
+            user_id=user_id,
+            project_code=code,
+            project_name=name,
+            project_type=project_type,
+            project_origin="saved_baseline",
+            source_project_template=template_source,
+            template_source=template_source,
+            baseline_snapshot=snapshot,
+            is_readonly=True,
+            governance_state={"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False},
+        )
+        seeded.append(record)
+    return seeded
+
+
+def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[str, Any]:
+    """
+    Build a workspace-ready snapshot dict for a saved baseline project.
+    Mirrors the logic in main_web._project_baseline_snapshot.
+    """
+    from app.project_factories import (
+        create_default_tuho_wind1,
+        create_default_oborovo,
+        create_default_wind_project,
+        create_default_solar_project,
+    )
+    from app.persistence.db import get_cursor
+
+    canonical_type = project_type
+    normalized_source = template_source
+
+    baseline = {
+        "active_project": "",
+        "project_name": "",
+        "project_type": canonical_type,
+        "project_origin": "saved_baseline",
+        "template_source": normalized_source,
+        "country_market": "",
+        "scenario": "Base",
+        "capacity_mw": "",
+        "tariff_eur_mwh": "",
+        "p50_hours": "",
+        "total_capex_keur": "",
+        "opex_y1_keur": "",
+        "gearing_pct": "",
+        "target_dscr": "",
+        "interest_rate_pct": "",
+        "tenor_years": "",
+        "cod_date": "",
+        "construction_months": "",
+        "horizon_years": "",
+        "capacity_factor": "",
+        "ppa_term_years": "",
+    }
+
+    def _sum_opex(items):
+        """Sum y1_amount_keur from an opex iterable."""
+        total = 0.0
+        for item in items:
+            total += float(getattr(item, "y1_amount_keur", 0) or 0)
+        return total
+
+    if normalized_source == "tuho":
+        pi = create_default_tuho_wind1()
+        baseline.update({
+            "active_project": "tuho-baseline",
+            "project_name": pi.info.name,
+            "project_type": "Wind",
+            "template_source": "tuho",
+            "country_market": pi.info.country_iso,
+            "capacity_mw": str(pi.technical.capacity_mw),
+            "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+            "p50_hours": str(pi.technical.operating_hours_p50),
+            "total_capex_keur": str(pi.capex.total_capex),
+            "opex_y1_keur": str(_sum_opex(pi.opex)),
+            "target_dscr": str(pi.financing.target_dscr),
+            "interest_rate_pct": str(pi.financing.base_rate + pi.financing.margin_bps / 10_000),
+            "tenor_years": str(pi.financing.senior_tenor_years),
+            "cod_date": str(pi.info.cod_date),
+            "construction_months": str(pi.info.construction_months),
+            "horizon_years": str(pi.info.horizon_years),
+            "capacity_factor": f"{(pi.technical.operating_hours_p50 / 8760) * 100:.2f}",
+            "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+        })
+        return baseline
+
+    if normalized_source == "oborovo":
+        pi = create_default_oborovo()
+        baseline.update({
+            "active_project": "oborovo-baseline",
+            "project_name": pi.info.name,
+            "project_type": "Solar",
+            "template_source": "oborovo",
+            "country_market": pi.info.country_iso,
+            "capacity_mw": str(pi.technical.capacity_mw),
+            "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+            "p50_hours": str(pi.technical.operating_hours_p50),
+            "total_capex_keur": str(pi.capex.total_capex),
+            "opex_y1_keur": str(_sum_opex(pi.opex)),
+            "gearing_pct": str(float(getattr(pi.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+            "target_dscr": str(pi.financing.target_dscr),
+            "interest_rate_pct": str(pi.financing.base_rate + pi.financing.margin_bps / 10_000),
+            "tenor_years": str(pi.financing.senior_tenor_years),
+            "cod_date": str(pi.info.cod_date),
+            "construction_months": str(pi.info.construction_months),
+            "horizon_years": str(pi.info.horizon_years),
+            "capacity_factor": f"{(pi.technical.operating_hours_p50 / 8760) * 100:.2f}",
+            "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+        })
+        return baseline
+
+    # generic_wind / generic_solar fallback
+    if canonical_type == "Solar":
+        pi = create_default_solar_project()
+    else:
+        pi = create_default_wind_project()
+    baseline.update({
+        "active_project": normalized_source,
+        "project_name": pi.info.name,
+        "template_source": normalized_source,
+        "country_market": pi.info.country_iso,
+        "capacity_mw": str(pi.technical.capacity_mw),
+        "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+        "p50_hours": str(pi.technical.operating_hours_p50),
+        "total_capex_keur": str(pi.capex.total_capex),
+        "opex_y1_keur": str(_sum_opex(pi.opex)),
+        "gearing_pct": str(float(getattr(pi.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+        "target_dscr": str(pi.financing.target_dscr),
+        "interest_rate_pct": str(pi.financing.base_rate + pi.financing.margin_bps / 10_000),
+        "tenor_years": str(pi.financing.senior_tenor_years),
+        "cod_date": str(pi.info.cod_date),
+        "construction_months": str(pi.info.construction_months),
+        "horizon_years": str(pi.info.horizon_years),
+        "capacity_factor": f"{(pi.technical.operating_hours_p50 / 8760) * 100:.2f}",
+        "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+    })
+    return baseline
+
+
+def _build_default_snapshot(project_code: str, defaults: dict[str, Any]) -> dict[str, Any]:
+    """Build a workspace-ready snapshot from factory defaults."""
+    from app.input_adapter import build_projectinputs_from_snapshot
+    snapshot = dict(defaults)
+    snapshot["active_project"] = project_code
+    snapshot["project_origin"] = "saved_baseline"
+    # Ensure runtime-usable fields are present
+    _fill_missing_defaults(snapshot)
+    return snapshot
+
+
+def _fill_missing_defaults(snapshot: dict[str, Any]) -> None:
+    """Ensure required snapshot fields exist with safe defaults."""
+    defaults = {
+        "scenario": "Base",
+        "project_type": "Wind",
+        "capacity_mw": 50.0,
+        "p50_hours": 2500.0,
+        "tariff_eur_mwh": 80.0,
+        "total_capex_keur": 50000.0,
+        "opex_y1_keur": 5000.0,
+        "gearing_pct": 75.0,
+        "target_dscr": 1.4,
+        "interest_rate_pct": 7.0,
+        "tenor_years": 20,
+    }
+    for k, v in defaults.items():
+        if k not in snapshot:
+            snapshot[k] = v
+
+
 def create_project_record(
     *,
     user_id: str,
@@ -523,6 +724,7 @@ def create_project_record(
     governance_state: Optional[dict[str, Any]] = None,
     last_run_summary: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
+    is_readonly: bool = False,
 ) -> ProjectRecord:
     return save_project(
         user_id=user_id,
@@ -536,6 +738,7 @@ def create_project_record(
         governance_state=governance_state,
         last_run_summary=last_run_summary,
         replay_metadata=replay_metadata,
+        is_readonly=is_readonly,
     )
 
 
