@@ -1162,6 +1162,88 @@ def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] =
     )
 
 
+def add_scenario(
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    scenario_name: str,
+    parent_scenario_id: str,
+    base_input_set: dict[str, Any],
+    overrides: Optional[dict[str, Any]] = None,
+    governance_state: Optional[dict[str, Any]] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> Optional[ScenarioRecord]:
+    """Add a non-base scenario inheriting from a parent (typically the Base Case).
+
+    The new scenario starts with empty overrides, so its effective snapshot
+    is identical to the parent's base_input_set.
+    """
+    # Resolve effective snapshot = base_input_set merged with overrides
+    resolved = resolve_scenario_snapshot(base_input_set, overrides or {})
+
+    scenario_id = uuid.uuid4().hex[:16]
+    now = _now_utc()
+    governance_state = dict(governance_state or {})
+    replay_metadata = dict(replay_metadata or {})
+    replay_metadata.setdefault("scenario_id", scenario_id)
+    replay_metadata["parent_scenario_id"] = parent_scenario_id
+    replay_metadata["action"] = "add_scenario"
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scenarios (
+                scenario_id, project_id, user_id, scenario_name, project_code,
+                source_project_template, copied_from_scenario_id, archived,
+                is_base_case, parent_scenario_id,
+                base_input_set_json, overrides_json,
+                snapshot_json, governance_state_json,
+                last_run_summary_json, replay_metadata_json,
+                schema_version, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?, '1.0', ?, ?)
+            """,
+            (
+                scenario_id,
+                project_id,
+                user_id,
+                scenario_name,
+                project_code,
+                "",
+                parent_scenario_id,
+                _to_json(dict(base_input_set)),
+                _to_json(dict(overrides or {})),
+                _to_json(resolved),
+                _to_json(governance_state),
+                _to_json({}),
+                _to_json(replay_metadata),
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    return ScenarioRecord(
+        scenario_id=scenario_id,
+        project_id=project_id,
+        user_id=user_id,
+        scenario_name=scenario_name,
+        project_code=project_code,
+        source_project_template="",
+        copied_from_scenario_id=None,
+        archived=False,
+        is_base_case=False,
+        parent_scenario_id=parent_scenario_id,
+        base_input_set=dict(base_input_set),
+        overrides=dict(overrides or {}),
+        schema_version="1.0",
+        snapshot=resolved,
+        governance_state=governance_state,
+        last_run_summary={},
+        replay_metadata=replay_metadata,
+        created_at=now,
+        updated_at=now,
+    )
+
+
 def update_scenario_last_run_summary(
     user_id: str,
     scenario_id: str,
@@ -1190,6 +1272,80 @@ def update_scenario_last_run_summary(
             ),
         )
         return cur.rowcount > 0
+
+
+def update_scenario_overrides(
+    user_id: str,
+    scenario_id: str,
+    overrides: dict[str, Any],
+) -> Optional[ScenarioRecord]:
+    """Patch the overrides_json of a non-base scenario.
+
+    Only keys in SCENARIO_INPUT_FIELDS are accepted; everything else is dropped.
+    Returns the updated ScenarioRecord or None if the scenario doesn't exist.
+    """
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return None
+    if record.is_base_case:
+        return None  # base-case overrides are stored in base_input_set; use Inputs tab
+
+    # Merge: existing overrides + new ones (new ones win)
+    merged = dict(record.overrides)
+    for key, value in overrides.items():
+        if key in SCENARIO_INPUT_FIELDS:
+            merged[key] = value
+        # else: silently drop unknown keys per Phase 20B rules
+
+    # Re-resolve effective snapshot
+    resolved = resolve_scenario_snapshot(record.base_input_set, merged)
+    now = _now_utc()
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET overrides_json=?, snapshot_json=?, updated_at=?
+            WHERE scenario_id=? AND user_id=?
+            """,
+            (
+                _to_json(merged),
+                _to_json(resolved),
+                now.isoformat(),
+                scenario_id,
+                user_id,
+            ),
+        )
+
+    record.overrides = merged
+    record.snapshot = resolved
+    record.updated_at = now
+    return record
+
+
+def select_scenario(
+    user_id: str,
+    project_id: str,
+    scenario_id: str,
+) -> bool:
+    """Set the active scenario for the given project in workspace_state."""
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return False
+    ws = get_workspace_state(user_id, project_id)
+    if ws is None:
+        return False
+    save_workspace_state(
+        user_id=user_id,
+        project_id=project_id,
+        project_code=ws.project_code,
+        active_scenario_id=scenario_id,
+        active_scenario_name=record.scenario_name,
+        draft_snapshot=ws.draft_snapshot,
+        governance_state=ws.governance_state,
+        replay_metadata={"action": "select_scenario", "scenario_id": scenario_id},
+    )
+    return True
 
 
 def get_workspace_state(user_id: str, project_id: str) -> Optional[WorkspaceStateRecord]:

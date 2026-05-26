@@ -1,0 +1,571 @@
+<!-- Scenario Tab — Excel-like input comparison matrix — Phase 20E -->
+
+{% macro effectiveValue(scenarioRecord, fieldName) -%}
+  {% if scenarioRecord.is_base_case %}
+    {{ (scenarioRecord.base_input_set or {}).get(fieldName, "") or (scenarioRecord.snapshot or {}).get(fieldName, "") or "" }}
+  {% else %}
+    {{ (scenarioRecord.snapshot or {}).get(fieldName, "") or (scenarioRecord.overrides or {}).get(fieldName, "") or (scenarioRecord.base_input_set or {}).get(fieldName, "") or "" }}
+  {% endif %}
+{%- endmacro %}
+
+{% macro isOverride(scenarioRecord, fieldName) -%}
+  {% if scenarioRecord.is_base_case %}
+    {# Base Case: any value shown is from base_input_set, not an override #}
+    {# But we show base_input_set as the "value" #}
+    {# A field is "override" in base case only if it was explicitly changed in base case - #}
+    {# for now, treat base case all as base values (no override badge) #}
+    false
+  {% else %}
+    {{ fieldName in scenarioRecord.overrides }}
+  {% endif %}
+{%- endmacro %}
+
+{% macro cellClass(scenarioRecord, fieldName) -%}
+  {% if scenarioRecord.is_base_case %}sc-matrix-cell sc-matrix-cell--base{%
+  elif isOverride(scenarioRecord, fieldName) %}sc-matrix-cell sc-matrix-cell--override{%
+  else %}sc-matrix-cell sc-matrix-cell--inherited{% endif %}
+{%- endmacro %}
+
+<div id="scenario-tab" class="sc-container"
+     data-project-code="{{ project_record.project_code }}"
+     data-base-case-id="{{ base_case_record.scenario_id if base_case_record else '' }}"
+     data-active-scenario-id="{{ workspace_state.active_scenario_id if workspace_state else '' }}">
+
+  <!-- Sticky header bar -->
+  <div class="sc-header">
+    <div class="sc-header-title">Scenario Inputs</div>
+    <div class="sc-header-subtitle">
+      {% if not is_user_project %}
+        <span class="badge badge-muted">Read-only</span>
+        &nbsp;Baselines cannot add scenarios — use Save As to create an editable copy.
+      {% else %}
+        <span class="badge badge-pass">Editing</span>
+        &nbsp;Base Case is the reference. Override cells are highlighted.
+      {% endif %}
+    </div>
+  </div>
+
+  {% if is_user_project %}
+  <!-- Add Scenario form — only for user_created projects -->
+  <div class="sc-add-form" id="sc-add-form">
+    <form hx-post="/scenarios/add"
+          hx-target="#scenario-tab"
+          hx-swap="innerHTML"
+          hx-include="#sc-add-form"
+          onsubmit="return false;">
+      <input type="hidden" name="project_code" value="{{ project_record.project_code }}" />
+      <input type="text"
+             name="scenario_name"
+             id="sc-add-name"
+             class="inp-input sc-add-input"
+             placeholder="New scenario name…"
+             maxlength="60"
+             autocomplete="off" />
+      <button type="submit"
+              class="btn btn--primary btn--sm"
+              id="sc-add-btn"
+              onclick="this.disabled=true; this.textContent='Adding…'; this.form.requestSubmit();">
+        + Add Scenario
+      </button>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- Scenario matrix -->
+  <div class="sc-matrix-wrapper" id="sc-matrix-wrapper">
+    <table class="sc-matrix" id="sc-matrix">
+
+      <!-- Column header row (sticky) -->
+      <thead>
+        <tr>
+          <th class="sc-th sc-th--label">Assumption</th>
+
+          <!-- Base Case column -->
+          {% if base_case_record %}
+          <th class="sc-th sc-th--base" id="col-base">
+            <div class="sc-col-header">
+              <div class="sc-col-name">
+                {% if base_case_record.scenario_name %}
+                  {{ base_case_record.scenario_name }}
+                {% else %}
+                  Base Case
+                {% endif %}
+              </div>
+              <div class="sc-col-meta">
+                <span class="badge badge-info">Base</span>
+                {% if workspace_state and workspace_state.active_scenario_id == base_case_record.scenario_id %}
+                  <span class="badge badge-pass">Active</span>
+                {% endif %}
+              </div>
+            </div>
+          </th>
+          {% endif %}
+
+          <!-- Non-base scenario columns -->
+          {% for scen in non_base_scenarios %}
+          <th class="sc-th{% if scen.scenario_id == workspace_state.active_scenario_id %} sc-th--active{% endif %}"
+              id="col-{{ scen.scenario_id }}">
+            <div class="sc-col-header">
+              <div class="sc-col-name" title="{{ scen.scenario_name }}">{{ scen.scenario_name }}</div>
+              <div class="sc-col-meta">
+                {% if scen.scenario_id == workspace_state.active_scenario_id %}
+                  <span class="badge badge-pass">Active</span>
+                {% else %}
+                  <button class="sc-select-btn"
+                          title="Make active"
+                          hx-post="/scenarios/{{ scen.scenario_id }}/select"
+                          hx-target="#scenario-tab"
+                          hx-swap="innerHTML">Use</button>
+                {% endif %}
+              </div>
+            </div>
+          </th>
+          {% endfor %}
+
+        </tr>
+      </thead>
+
+      <!-- Section-grouped data rows -->
+      <tbody>
+        {% for sectionLabel, fields in scenario_editable_fields %}
+        <tr class="sc-section-header">
+          <td colspan="{{ 1 + (1 if base_case_record else 0) + non_base_scenarios|length }}"
+              class="sc-section-label">{{ sectionLabel }}</td>
+        </tr>
+
+        {% for fieldName, fieldLabel in fields %}
+        <tr class="sc-row" data-field="{{ fieldName }}">
+
+          <!-- Label cell (frozen first column) -->
+          <td class="sc-td sc-td--label">{{ fieldLabel }}</td>
+
+          <!-- Base Case value cell -->
+          {% if base_case_record %}
+          <td class="{{ cellClass(base_case_record, fieldName) }}" data-scenario="{{ base_case_record.scenario_id }}" data-field="{{ fieldName }}">
+            {% if is_user_project %}
+              {# Base Case fields are read-only in Scenario tab for now (edit via Inputs tab) #}
+              <span class="sc-value sc-value--base">{{ effectiveValue(base_case_record, fieldName) }}</span>
+            {% else %}
+              <span class="sc-value">{{ effectiveValue(base_case_record, fieldName) }}</span>
+            {% endif %}
+          </td>
+          {% endif %}
+
+          <!-- Non-base scenario value cells -->
+          {% for scen in non_base_scenarios %}
+          <td class="{{ cellClass(scen, fieldName) }} sc-editable-td"
+              data-scenario="{{ scen.scenario_id }}"
+              data-field="{{ fieldName }}"
+              {% if is_user_project %}ondblclick="window.startScenarioEdit(this)"{% endif %}>
+            <span class="sc-value">{{ effectiveValue(scen, fieldName) }}</span>
+            {% if not scen.is_base_case and fieldName in scen.overrides %}
+              <span class="sc-override-badge" title="Override">✎</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+
+        </tr>
+        {% endfor %}
+
+        {% endfor %}
+      </tbody>
+
+    </table>
+  </div>
+
+  <!-- Inline edit popover (hidden by default) -->
+  <div id="sc-edit-popover" class="sc-popover" style="display:none;" role="dialog" aria-label="Edit scenario value">
+    <div class="sc-popover-header">
+      <span id="sc-popover-title">Edit</span>
+      <button type="button" class="sc-popover-close" onclick="window.cancelScenarioEdit()">✕</button>
+    </div>
+    <div class="sc-popover-body">
+      <input type="hidden" id="sc-edit-scenario-id" value="" />
+      <input type="hidden" id="sc-edit-field-name" value="" />
+      <input type="number"
+             id="sc-edit-input"
+             class="inp-input sc-popover-input"
+             step="any"
+             placeholder="Enter value…" />
+    </div>
+    <div class="sc-popover-footer">
+      <button type="button" class="btn btn--ghost btn--sm" onclick="window.cancelScenarioEdit()">Cancel</button>
+      <button type="button" class="btn btn--primary btn--sm" id="sc-edit-apply-btn" onclick="window.applyScenarioEdit()">Apply</button>
+    </div>
+  </div>
+
+</div>
+
+<style>
+  /* ================================================================
+     Scenario Tab Matrix — Phase 20E
+     Excel-like input comparison matrix styles
+  ================================================================ */
+
+  .sc-container {
+    padding: 1rem 1.25rem;
+    font-size: 0.82rem;
+  }
+
+  .sc-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .sc-header-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .sc-header-subtitle {
+    font-size: 0.78rem;
+    color: var(--text-2);
+  }
+
+  /* Add Scenario form */
+  .sc-add-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    max-width: 520px;
+  }
+
+  .sc-add-input {
+    flex: 1;
+    font-size: 0.82rem;
+    padding: 0.3rem 0.5rem;
+    min-width: 0;
+  }
+
+  /* Matrix wrapper — horizontal scroll */
+  .sc-matrix-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .sc-matrix {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 600px;
+    table-layout: fixed;
+  }
+
+  /* First column (labels) width */
+  .sc-matrix th.sc-th--label,
+  .sc-matrix td.sc-td--label {
+    width: 180px;
+    min-width: 160px;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface);
+  }
+
+  /* Base Case column */
+  .sc-matrix th.sc-th--base,
+  .sc-matrix td.sc-td--base {
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--surface));
+  }
+
+  /* Active scenario column */
+  .sc-matrix th.sc-th--active {
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--surface));
+  }
+
+  /* Header cells */
+  .sc-th {
+    padding: 0.5rem 0.6rem;
+    text-align: left;
+    font-size: 0.78rem;
+    border-bottom: 2px solid var(--border);
+    background: var(--surface-2);
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .sc-col-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .sc-col-name {
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+  }
+
+  .sc-col-meta {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+
+  /* Scenario section header row */
+  .sc-section-header td {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    left: 0;
+    z-index: 1;
+  }
+
+  /* Data rows */
+  .sc-row {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .sc-row:hover {
+    background: var(--surface-2);
+  }
+
+  .sc-row:last-child {
+    border-bottom: none;
+  }
+
+  /* Data cells */
+  .sc-td {
+    padding: 0.4rem 0.6rem;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sc-td--label {
+    font-weight: 500;
+    color: var(--text);
+    background: var(--surface);
+    border-right: 1px solid var(--border-subtle);
+    position: sticky;
+    left: 0;
+    z-index: 2;
+  }
+
+  /* Value rendering */
+  .sc-value {
+    font-size: 0.82rem;
+    color: var(--text);
+  }
+
+  .sc-value--base {
+    color: var(--text-2);
+    font-style: italic;
+  }
+
+  /* Cell type colours */
+  .sc-matrix-cell--inherited {
+    background: color-mix(in srgb, var(--color-accent) 4%, var(--surface));
+    color: var(--text-2);
+  }
+
+  .sc-matrix-cell--override {
+    background: color-mix(in srgb, var(--color-accent) 15%, var(--surface));
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .sc-matrix-cell--base {
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--surface));
+    color: var(--text-2);
+  }
+
+  /* Override badge */
+  .sc-override-badge {
+    display: inline-block;
+    margin-left: 0.3rem;
+    font-size: 0.7rem;
+    color: var(--color-accent);
+    cursor: default;
+  }
+
+  /* Editable TD on double-click */
+  .sc-editable-td {
+    cursor: pointer;
+  }
+
+  .sc-editable-td:hover {
+    outline: 1px dashed var(--color-accent);
+    outline-offset: -1px;
+  }
+
+  /* Scenario select button */
+  .sc-select-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 0.7rem;
+    color: var(--text-2);
+    cursor: pointer;
+    padding: 0.1rem 0.35rem;
+    transition: all 0.15s;
+  }
+
+  .sc-select-btn:hover {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
+  }
+
+  /* Inline edit popover */
+  .sc-popover {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 1000;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    min-width: 240px;
+    max-width: 320px;
+  }
+
+  .sc-popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .sc-popover-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-2);
+    font-size: 0.9rem;
+    padding: 0;
+  }
+
+  .sc-popover-body {
+    padding: 0.75rem;
+  }
+
+  .sc-popover-input {
+    width: 100%;
+    font-size: 0.9rem;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .sc-popover-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+</style>
+
+<script>
+  (function() {
+    /* ── Start inline scenario edit ── */
+    window.startScenarioEdit = function(tdCell) {
+      var popover = document.getElementById('sc-edit-popover');
+      var title   = document.getElementById('sc-popover-title');
+      var input   = document.getElementById('sc-edit-input');
+      var scenId  = document.getElementById('sc-edit-scenario-id');
+      var fieldEl = document.getElementById('sc-edit-field-name');
+
+      var scenarioId = tdCell.dataset.scenario;
+      var fieldName  = tdCell.dataset.field;
+      var currentVal = tdCell.querySelector('.sc-value') ? tdCell.querySelector('.sc-value').textContent.trim() : '';
+
+      scenId.value  = scenarioId;
+      fieldEl.value = fieldName;
+      input.value   = currentVal;
+
+      // Label: field name + scenario name
+      var scenName = tdCell.closest('table').querySelector('#col-' + scenarioId + ' .sc-col-name');
+      title.textContent = (fieldName || 'Edit') + ' — ' + (scenName ? scenName.textContent.trim() : '');
+
+      // Position near the cell
+      var rect = tdCell.getBoundingClientRect();
+      popover.style.top  = Math.min(rect.bottom + 4, window.innerHeight - popover.offsetHeight - 20) + 'px';
+      popover.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+      popover.style.display = 'block';
+      input.focus();
+      input.select();
+
+      // Enter key submits
+      input.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('sc-edit-apply-btn').click();
+        } else if (e.key === 'Escape') {
+          window.cancelScenarioEdit();
+        }
+      };
+    };
+
+    /* ── Apply scenario edit ── */
+    window.applyScenarioEdit = function() {
+      var scenarioId = document.getElementById('sc-edit-scenario-id').value;
+      var fieldName  = document.getElementById('sc-edit-field-name').value;
+      var inputVal   = document.getElementById('sc-edit-input').value;
+
+      if (!scenarioId || !fieldName) return;
+
+      var overrides = {};
+      overrides[fieldName] = inputVal;
+
+      var popover = document.getElementById('sc-edit-popover');
+      popover.style.display = 'none';
+
+      // HTMX: POST updated overrides and re-render the tab
+      htmx.ajax('POST',
+        '/scenarios/' + scenarioId + '/update-overrides',
+        {
+          target: '#scenario-tab',
+          swap: 'innerHTML',
+          body: JSON.stringify(overrides),
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    };
+
+    /* ── Cancel inline edit ── */
+    window.cancelScenarioEdit = function() {
+      document.getElementById('sc-edit-popover').style.display = 'none';
+    };
+
+    /* ── Close popover on outside click ── */
+    document.addEventListener('click', function(e) {
+      var popover = document.getElementById('sc-edit-popover');
+      if (popover.style.display === 'none') return;
+      if (!popover.contains(e.target) && !e.target.closest('.sc-editable-td')) {
+        window.cancelScenarioEdit();
+      }
+    });
+
+    /* ── Re-enable Add Scenario button after swap ── */
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      if (evt.detail.target && evt.detail.target.id === 'scenario-tab') {
+        var btn = document.getElementById('sc-add-btn');
+        if (btn) { btn.disabled = false; btn.textContent = '+ Add Scenario'; }
+      }
+    });
+  })();
+</script>

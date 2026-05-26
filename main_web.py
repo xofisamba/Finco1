@@ -130,6 +130,39 @@ KPI_LABELS = {
 
 SCENARIOS = ["Base", "Downside", "Upside"]
 PROJECT_TYPES = ["Solar", "Wind"]
+
+# Phase 20E: Scenario tab editable fields (section groups)
+SCENARIO_EDITABLE_FIELDS = [
+    ("Identity", [
+        ("project_name", "Project Name"),
+        ("country_market", "Country / Market"),
+    ]),
+    ("Schedule", [
+        ("cod_date", "COD Date"),
+        ("construction_months", "Construction (months)"),
+        ("horizon_years", "Horizon (years)"),
+    ]),
+    ("Technical", [
+        ("capacity_mw", "Capacity (MW)"),
+        ("p50_hours", "P50 Hours"),
+        ("ppa_term_years", "PPA Term (years)"),
+    ]),
+    ("Revenue / PPA", [
+        ("tariff_eur_mwh", "Tariff (EUR/MWh)"),
+    ]),
+    ("CAPEX Summary", [
+        ("total_capex_keur", "Total CAPEX (kEUR)"),
+    ]),
+    ("OPEX Summary", [
+        ("opex_y1_keur", "Y1 OPEX (kEUR)"),
+    ]),
+    ("Financing", [
+        ("gearing_pct", "Gearing (%)"),
+        ("target_dscr", "Target DSCR"),
+        ("interest_rate_pct", "Interest Rate (%)"),
+        ("tenor_years", "Tenor (years)"),
+    ]),
+]
 FACTORY_TEMPLATE_OPTIONS = [
     {
         "project_code": "tuho",
@@ -1310,6 +1343,10 @@ async def index(request: Request, project: str | None = None):
             "compare_result": None,
             "workspace_message": None,
             "is_user_project": project_record.project_origin == "user_created",
+            # Phase 20E: scenario tab context
+            "base_case_record": next((s for s in scenario_records if s.is_base_case), None),
+            "non_base_scenarios": [s for s in scenario_records if not s.is_base_case],
+            "scenario_editable_fields": SCENARIO_EDITABLE_FIELDS,
         },
     )
 
@@ -2562,6 +2599,152 @@ async def duplicate_scenario_endpoint(request: Request, scenario_id: str):
         export_lineage,
         scenario_summary_cards,
         message=f"Duplicated {original.scenario_name}.",
+    )
+
+
+def _build_scenario_tab_context(user, project_record, scenarios, workspace_state):
+    """Build context dict for scenario_tab.html.
+
+    Splits scenario_records into base_case_record and non_base_scenarios.
+    """
+    base_case_record = None
+    non_base_scenarios = []
+    for s in scenarios:
+        if s.is_base_case:
+            base_case_record = s
+        else:
+            non_base_scenarios.append(s)
+    return {
+        "user": user,
+        "project_record": project_record,
+        "workspace_state": workspace_state,
+        "scenario_records": scenarios,
+        "base_case_record": base_case_record,
+        "non_base_scenarios": non_base_scenarios,
+        "is_user_project": project_record.project_origin == "user_created",
+    }
+
+
+@app.post("/scenarios/add")
+async def add_scenario_endpoint(request: Request):
+    """Add a new non-base scenario inheriting from the project's Base Case.
+
+    Only available for user_created projects.
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    form = await request.form()
+    project_code = form.get("project_code", "").strip()
+    scenario_name = form.get("scenario_name", "").strip()
+
+    if not project_code:
+        return JSONResponse({"error": "project_code is required"}, status_code=400)
+    if not scenario_name:
+        return JSONResponse({"error": "scenario_name is required"}, status_code=400)
+
+    project_record = get_project_record(user.user_id, project_code)
+    if project_record is None:
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    if project_record.project_origin != "user_created":
+        return JSONResponse({"error": "Add Scenario is only available for user-created projects"}, status_code=403)
+
+    # Find the Base Case scenario for this project
+    base_case = None
+    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False)
+    for s in scenarios:
+        if s.is_base_case:
+            base_case = s
+            break
+
+    if base_case is None:
+        return JSONResponse({"error": "No Base Case found for this project"}, status_code=404)
+
+    new_scenario = add_scenario(
+        user_id=user.user_id,
+        project_id=project_record.project_id,
+        project_code=project_record.project_code,
+        scenario_name=scenario_name,
+        parent_scenario_id=base_case.scenario_id,
+        base_input_set=base_case.snapshot or base_case.base_input_set or {},
+        overrides={},
+        governance_state={},
+        replay_metadata={
+            "action": "add_scenario",
+            "parent_scenario_id": base_case.scenario_id,
+            "project_code": project_code,
+        },
+    )
+
+    if new_scenario is None:
+        return JSONResponse({"error": "Failed to create scenario"}, status_code=500)
+
+    # Return the updated Scenario tab HTML fragment
+    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
+    ws = get_workspace_state(user.user_id, project_record.project_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/scenario_tab.html",
+        context=_build_scenario_tab_context(user, project_record, scenarios, ws),
+        headers={"HX-Trigger": "scenarioAdded"},
+    )
+
+
+@app.post("/scenarios/{scenario_id}/select")
+async def select_scenario_endpoint(request: Request, scenario_id: str):
+    """Set the active scenario for the current workspace."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    record = get_scenario(scenario_id, user.user_id)
+    if record is None:
+        return JSONResponse({"error": "Scenario not found"}, status_code=404)
+
+    ok = select_scenario(user.user_id, record.project_id, scenario_id)
+    if not ok:
+        return JSONResponse({"error": "Failed to select scenario"}, status_code=500)
+
+    ws = get_workspace_state(user.user_id, record.project_id)
+    project_record = get_project_record(user.user_id, record.project_code)
+    scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/scenario_tab.html",
+        context=_build_scenario_tab_context(user, project_record, scenarios, ws),
+        headers={"HX-Trigger": f"scenarioSelected:{{\"scenario_id\": \"{scenario_id}\"}}"},
+    )
+
+
+@app.post("/scenarios/{scenario_id}/update-overrides")
+async def update_overrides_endpoint(request: Request, scenario_id: str):
+    """Patch overrides for a non-base scenario. Expects JSON body with field overrides."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    record = get_scenario(scenario_id, user.user_id)
+    if record is None:
+        return JSONResponse({"error": "Scenario not found"}, status_code=404)
+    if record.is_base_case:
+        return JSONResponse({"error": "Cannot override Base Case via this endpoint"}, status_code=400)
+
+    body = await request.json()
+    overrides = body if isinstance(body, dict) else {}
+
+    updated = update_scenario_overrides(user.user_id, scenario_id, overrides)
+    if updated is None:
+        return JSONResponse({"error": "Failed to update overrides"}, status_code=500)
+
+    project_record = get_project_record(user.user_id, record.project_code)
+    ws = get_workspace_state(user.user_id, record.project_id)
+    scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/scenario_tab.html",
+        context=_build_scenario_tab_context(user, project_record, scenarios, ws),
+        headers={"HX-Trigger": "overridesUpdated"},
     )
 
 
