@@ -1,0 +1,21 @@
+step_id,workflow_step,status,notes
+P18B-01,Open app,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-02,Login with admin credentials,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-03,Open New Project form,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-04,Fill required fields (Browser Smoke Wind / Wind / Croatia / 50MW / tariff 100 / P50 1600h),SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-05,Submit project creation form,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-06,Confirm project appears in User-Created Projects selector,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-07,Select/load project; confirm form values restored,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-08,Save scenario,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-09,Confirm saved/clean state,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-10,Run model,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-11,Confirm runtime summary appears,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-12,Confirm dirty edit blocks run,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-13,Revert dirty edit,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-14,Confirm run works again after revert,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-15,Export/download workbook,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-16,Confirm workbook file downloads (>1KB),SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-17,If openpyxl available — open workbook inspect Notes/Inputs/provenance,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-18,Confirm TUHO and Oborovo appear as Factory Templates,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-19,Confirm G20 BLOCKED and R99/R102 NOT APPROVED,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result
+P18B-20,No browser page errors,SKIP,Live browser smoke — see test_optional_live_browser_user_project_smoke for actual run result

@@ -1,0 +1,139 @@
+run_id,timestamp,environment,deployed_sha,test_project_name,project_code,scenario_id,runtime_snapshot_id,workbook_filename,screenshots_path,status,blocker_notes,download_succeeded,page_errors
+025f5dc1,2026-05-26T07:25:34.080493+00:00,local,4d670a05e9721feb90cfeec9c356661e6de9e88c,TUHO Wind (factory) + browser smoke,,,,,,PASS,"Download attempt failed: Locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator(""button[formaction=\""/download\""][formmethod=\""POST\""]"").first
+    - locator resolved to <button type=""submit"" form=""main-form"" formmethod=""POST"" formaction=""/download"" class=""btn btn-secondary"" aria-describedby=""reviewer-export-help"" aria-label=""Download workbook export from backend export flow"">↵      📥 Download Excel↵    </button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  2 × retrying click action
+      - waiting 100ms
+      - waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  13 × retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  2 × retrying click action
+      - waiting 500ms
+      - waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  - retrying click action
+    - waiting 500ms
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  - retrying click action
+    - waiting 500ms
+",False,
+3e1ca898,2026-05-26T07:26:38.518634+00:00,local,4d670a05e9721feb90cfeec9c356661e6de9e88c,TUHO Wind (factory) + browser smoke,,,,,,PASS,"Download attempt failed: Locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator(""button[formaction=\""/download\""][formmethod=\""POST\""]"").first
+    - locator resolved to <button type=""submit"" form=""main-form"" formmethod=""POST"" formaction=""/download"" class=""btn btn-secondary"" aria-describedby=""reviewer-export-help"" aria-label=""Download workbook export from backend export flow"">↵      📥 Download Excel↵    </button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  2 × retrying click action
+      - waiting 100ms
+      - waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  13 × retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  2 × retrying click action
+      - waiting 500ms
+      - waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class=""ps-section"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  - retrying click action
+    - waiting 500ms
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
+    - <div class=""ps-header"">…</div> from <nav id=""project-sidebar"" class=""project-sidebar"">…</nav> subtree intercepts pointer events
+  - retrying click action
+    - waiting 500ms
+",False,
