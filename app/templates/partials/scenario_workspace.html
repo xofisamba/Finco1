@@ -13,41 +13,25 @@
           {{ workspace_state.active_scenario_name or "Workspace Base" }}
         </div>
         <div class="ps-saved-meta">
-          Active saved scenario boundary. Unsaved draft edits remain preview-only until you save or discard them.
+          {% if workspace_state.dirty %}
+          <span class="badge badge-warn">Unsaved edits</span> — save or revert before running.
+          {% else %}
+          <span class="badge badge-pass">Saved</span> — clean state, safe to run or export.
+          {% endif %}
         </div>
         <div class="ps-saved-meta">
-          Last runtime cards remain bound to the most recent clean snapshot, even while later draft edits are in progress.
-        </div>
-        <div class="ps-saved-meta">
-          Save records a new persisted scenario snapshot but does not run the model. Revert restores the saved boundary without triggering a run.
-        </div>
-        {% if project_record.project_origin == "user_created" %}
-        <div class="ps-saved-meta">
-          Project record created. Runtime built from saved project assumptions. Some secondary assumptions still use system defaults until later phases.
-        </div>
-        {% endif %}
-        <div class="ps-saved-meta">
-          Revision boundary: {{ workspace_state.updated_at.strftime("%Y-%m-%d %H:%M") if workspace_state else "not yet captured" }}
+          Revision {{ workspace_state.updated_at.strftime("%Y-%m-%d %H:%M") if workspace_state else "not yet saved" }}
           {% if workspace_state and workspace_state.last_runtime_at %}
-          · last runtime {{ workspace_state.last_runtime_at.strftime("%Y-%m-%d %H:%M") }}
+          · runtime {{ workspace_state.last_runtime_at.strftime("%Y-%m-%d %H:%M") }}
           {% endif %}
         </div>
       </div>
       <div class="ps-saved-stats">
-        <span class="ps-stat-chip" id="workspace-dirty-label">
-          {{ "Unsaved edits" if workspace_state.dirty else "Clean saved state" }}
+        <span class="badge {% if workspace_state.dirty %}badge-warn{% else %}badge-pass{% endif %}" id="workspace-dirty-label">
+          {{ "Unsaved edits" if workspace_state.dirty else "Saved" }}
         </span>
-        <span class="ps-stat-chip" id="workspace-runtime-origin-label">
-          {% if workspace_state.last_runtime_origin == "saved_state" %}
-          Runtime bound to saved scenario
-          {% elif workspace_state.last_runtime_origin == "workspace_base" %}
-          Runtime bound to clean base
-          {% else %}
-          No runtime bound yet
-          {% endif %}
-        </span>
-        <span class="ps-stat-chip" id="workspace-runtime-snapshot-id">
-          {{ workspace_state.last_runtime_snapshot_id or "No runtime snapshot" }}
+        <span class="badge badge-muted" id="workspace-runtime-origin-label">
+          {% if workspace_state.last_runtime_origin == "saved_state" %}Runtime OK{% elif workspace_state.last_runtime_origin == "workspace_base" %}Base runtime{% else %}No runtime{% endif %}
         </span>
       </div>
     </div>
@@ -57,24 +41,18 @@
     <div class="ps-section-label">Scenario Cards</div>
     {% if not scenario_summary_cards %}
     <div class="ps-mini-empty">
-      No saved scenarios yet. Save the current setup to start building history and compare views.
+      No scenario cards yet. Save scenarios to build history.
     </div>
     {% else %}
     <div class="ps-saved-list">
       {% for item in scenario_summary_cards %}
-      <div class="ps-saved-item">
-        <div class="ps-saved-main">
-          <div class="ps-saved-title">{{ item.scenario_name }}</div>
-          <div class="ps-saved-meta">
-            {{ item.project_code|upper }} · updated {{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}
-            {% if item.copied_from_scenario_id %}· copied lineage{% endif %}
-          </div>
-        </div>
+      <div class="ps-saved-item ps-saved-item--compact">
+        <div class="ps-saved-title">{{ item.scenario_name }}</div>
+        <div class="ps-saved-meta">{{ item.updated_at.strftime("%m-%d %H:%M") }}</div>
         <div class="ps-saved-stats">
-          <span class="ps-stat-chip">Exports {{ item.export_count }}</span>
-          <span class="ps-stat-chip">Proj IRR {{ item.project_irr if item.project_irr is not none else "pending" }}</span>
-          <span class="ps-stat-chip">Eq IRR {{ item.equity_irr if item.equity_irr is not none else "pending" }}</span>
-          <span class="ps-stat-chip">DSCR {{ item.avg_dscr if item.avg_dscr is not none else "pending" }}</span>
+          {% if item.project_irr is not none %}<span class="ps-stat-chip">{{ (item.project_irr * 100) | round(1) }}% IRR</span>{% endif %}
+          {% if item.equity_irr is not none %}<span class="ps-stat-chip">{{ (item.equity_irr * 100) | round(1) }}% Eq</span>{% endif %}
+          {% if item.avg_dscr is not none %}<span class="ps-stat-chip">DSCR {{ item.avg_dscr | round(2) }}</span>{% endif %}
         </div>
       </div>
       {% endfor %}
@@ -188,36 +166,17 @@
 
   <div class="ps-section">
     <div class="ps-section-label">Export Lineage</div>
-    <div class="ps-mini-empty">
-      Export lineage is descriptive only. It shows which saved scenario boundary, runtime snapshot, and governance posture produced each tracked artifact.
+    <div class="ps-mini-empty" style="font-size:0.75rem;">
+      Descriptive only. Full history → Downloads tab.
     </div>
     {% if not export_lineage_ui.recent_exports %}
-    <div class="ps-mini-empty">
-      No exports tracked yet for this project workspace.
-    </div>
+    <div class="ps-mini-empty">No exports tracked.</div>
     {% else %}
     <div class="ps-export-list">
-      {% for item in export_lineage_ui.recent_exports %}
+      {% for item in export_lineage_ui.recent_exports[:5] %}
       <div class="ps-export-item">
         <div class="ps-export-title">{{ item.artifact_name }}</div>
-        <div class="ps-export-meta">
-          {{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at }}
-        </div>
-        <div class="ps-export-meta">
-          Scenario ID {{ item.scenario_id }} · Revision {{ item.scenario_revision }}
-        </div>
-        <div class="ps-export-meta">
-          Runtime snapshot {{ item.runtime_snapshot_id }} · Origin {{ item.runtime_origin }}
-        </div>
-        <div class="ps-export-meta">
-          Runtime at {{ item.runtime_generated_at }} · Export at {{ item.export_generated_at }}
-        </div>
-        <div class="ps-export-meta">
-          Branch {{ item.branch_name }} · Template {{ item.template_origin }} · Flags {{ item.runtime_flag_count }}
-        </div>
-        <div class="ps-export-meta">
-          Governance: {{ item.governance_summary }}
-        </div>
+        <div class="ps-export-meta">{{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at }}</div>
       </div>
       {% endfor %}
     </div>

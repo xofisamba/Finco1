@@ -50,12 +50,15 @@
                 id="btn-new-project"
                 type="button"
                 hx-get="/projects/new"
-                hx-target="#scenario-action-result"
+                hx-target="#panel-new-project"
                 hx-swap="innerHTML">
           <span class="ps-action-icon">+</span> New Project
         </button>
-        <button class="ps-action-btn" id="btn-duplicate-scenario" type="button">
-          <span class="ps-action-icon">Copy</span> Duplicate Scenario
+        <button class="ps-action-btn"
+                id="btn-duplicate-scenario"
+                type="button"
+                onclick="duplicateCurrentScenario()">
+          <span class="ps-action-icon">Copy</span> Duplicate
         </button>
         <button class="ps-action-btn"
                 id="btn-compare-scenarios"
@@ -63,7 +66,7 @@
                 hx-get="/scenarios/compare?project={{ project_record.project_code if project_record else project_ctx.id }}"
                 hx-target="#saved-scenario-panel"
                 hx-swap="outerHTML">
-          <span class="ps-action-icon">Compare</span> Compare Scenarios
+          <span class="ps-action-icon">Compare</span> Compare
         </button>
         <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button">
           <span class="ps-action-icon">Run</span> Run Model
