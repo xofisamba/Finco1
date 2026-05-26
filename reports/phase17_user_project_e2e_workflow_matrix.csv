@@ -1,0 +1,11 @@
+workflow_step,status,evidence,authority_boundary,notes
+create_user_project,validated,tests/test_phase17_user_project_e2e_runtime_export_validation.py,DB-backed project record,Required fields are represented in baseline_snapshot.
+project_selector_visibility,validated,tests/test_phase17_user_project_e2e_runtime_export_validation.py,Selector is descriptive UI only,User-created project appears separately from factory templates.
+load_project_restores_values,validated,tests/test_phase17_user_project_e2e_runtime_export_validation.py,baseline_snapshot remains source,Project context reflects saved capacity/tariff/OPEX/debt inputs.
+save_scenario_persists_snapshot,validated,repository save_scenario + bind_workspace_to_scenario,Scenario snapshot is clean saved state,Save does not auto-run.
+run_from_clean_saved_state,validated,run_project with build_projectinputs_from_snapshot,Backend runtime authority,Runtime uses saved assumptions for user-created projects.
+dirty_draft_blocks_run,validated,runtime_guard_for_snapshot,Dirty browser state is not runtime authority,Dirty snapshot returns preview_only block.
+discard_reverts_clean_state,validated,discard_workspace_draft,Workspace saved snapshot authority,Reverted draft can run again.
+reload_preserves_assumptions,validated,get_project_by_code baseline_snapshot,Project DB record authority,Assumptions survive reload.
+runtime_summary_appears,validated,route/source and direct runtime KPI checks,Backend runtime output,FastAPI route execution skipped when FastAPI is unavailable.
+factory_templates_preserved,validated,TUHO and Oborovo direct runtime tests,Factory template authority unchanged,No removal of TUHO/Oborovo path.

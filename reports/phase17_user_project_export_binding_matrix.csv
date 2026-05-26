@@ -1,0 +1,6 @@
+check_id,question,status,evidence,limitation,follow_up
+EXP-01,Does export use selected user-created project context,source_validated,download route resolves project_record from active_project and checks project_origin,Full route execution skipped without FastAPI/openpyxl,Run workbook artifact inspection where openpyxl is available.
+EXP-02,Does export use clean saved runtime source,source_validated,download route calls runtime_guard_for_snapshot and _clean_user_project_runtime_snapshot,Artifact contents not inspected in this environment,Add workbook-level user-project provenance assertion in Phase 18 export hardening.
+EXP-03,Does export avoid TUHO/Oborovo fallback for user-created projects,source_validated,user_created branch calls build_projectinputs_from_snapshot before factory-template fallback,None identified,Keep regression assertion.
+EXP-04,Does export route crash for user-created project,environment_limited,Direct workbook generation skipped because openpyxl is unavailable,openpyxl missing,Run full export smoke in dependency-complete environment.
+EXP-05,Are workbook calculations redesigned,no_change,No workbook formula/calculation edits in Phase 17D,Not applicable,None.
