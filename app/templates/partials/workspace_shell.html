@@ -2,6 +2,74 @@
 <!-- Project Browser — rendered here by /projects/browse (htmx) -->
 <div id="project-browser-container"></div>
 
+<!-- Hidden persistence form — mirrors legacy sidebar_input block -->
+<!-- Used by app.js for save/run/discard and inputs draft persistence -->
+<form id="main-form" style="display:none;" aria-hidden="true">
+  <input type="hidden" name="active_project" value="{{ form_data.get('active_project', '') }}" />
+  <input type="hidden" name="project_name" value="{{ form_data.get('project_name', '') }}" />
+  <input type="hidden" name="project_type" value="{{ form_data.get('project_type', '') }}" />
+  <input type="hidden" name="project_origin" value="{{ form_data.get('project_origin', '') }}" />
+  <input type="hidden" name="template_source" value="{{ form_data.get('template_source', '') }}" />
+  <input type="hidden" name="country_market" value="{{ form_data.get('country_market', '') }}" />
+  <input type="hidden" name="scenario" value="{{ form_data.get('scenario', '') }}" />
+  <input type="hidden" name="capacity_mw" value="{{ form_data.get('capacity_mw', '') }}" />
+  <input type="hidden" name="tariff_eur_mwh" value="{{ form_data.get('tariff_eur_mwh', '') }}" />
+  <input type="hidden" name="p50_hours" value="{{ form_data.get('p50_hours', '') }}" />
+  <input type="hidden" name="total_capex_keur" value="{{ form_data.get('total_capex_keur', '') }}" />
+  <input type="hidden" name="opex_y1_keur" value="{{ form_data.get('opex_y1_keur', '') }}" />
+  <input type="hidden" name="gearing_pct" value="{{ form_data.get('gearing_pct', '') }}" />
+  <input type="hidden" name="target_dscr" value="{{ form_data.get('target_dscr', '') }}" />
+  <input type="hidden" name="interest_rate_pct" value="{{ form_data.get('interest_rate_pct', '') }}" />
+  <input type="hidden" name="tenor_years" value="{{ form_data.get('tenor_years', '') }}" />
+  <input type="hidden" name="cod_date" value="{{ form_data.get('cod_date', '') }}" />
+  <input type="hidden" name="construction_months" value="{{ form_data.get('construction_months', '') }}" />
+  <input type="hidden" name="horizon_years" value="{{ form_data.get('horizon_years', '') }}" />
+  <input type="hidden" name="capacity_factor" value="{{ form_data.get('capacity_factor', '') }}" />
+  <input type="hidden" name="ppa_term_years" value="{{ form_data.get('ppa_term_years', '') }}" />
+  <input type="hidden" name="capex_epc_contract_keur" value="{{ form_data.get('capex_epc_contract_keur', '') }}" />
+  <input type="hidden" name="capex_production_units_keur" value="{{ form_data.get('capex_production_units_keur', '') }}" />
+  <input type="hidden" name="capex_epc_other_keur" value="{{ form_data.get('capex_epc_other_keur', '') }}" />
+  <input type="hidden" name="capex_grid_connection_keur" value="{{ form_data.get('capex_grid_connection_keur', '') }}" />
+  <input type="hidden" name="capex_ops_prep_keur" value="{{ form_data.get('capex_ops_prep_keur', '') }}" />
+  <input type="hidden" name="capex_insurances_keur" value="{{ form_data.get('capex_insurances_keur', '') }}" />
+  <input type="hidden" name="capex_lease_tax_keur" value="{{ form_data.get('capex_lease_tax_keur', '') }}" />
+  <input type="hidden" name="capex_construction_mgmt_a_keur" value="{{ form_data.get('capex_construction_mgmt_a_keur', '') }}" />
+  <input type="hidden" name="capex_commissioning_keur" value="{{ form_data.get('capex_commissioning_keur', '') }}" />
+  <input type="hidden" name="capex_audit_legal_keur" value="{{ form_data.get('capex_audit_legal_keur', '') }}" />
+  <input type="hidden" name="capex_construction_mgmt_b_keur" value="{{ form_data.get('capex_construction_mgmt_b_keur', '') }}" />
+  <input type="hidden" name="capex_contingencies_keur" value="{{ form_data.get('capex_contingencies_keur', '') }}" />
+  <input type="hidden" name="capex_taxes_keur" value="{{ form_data.get('capex_taxes_keur', '') }}" />
+  <input type="hidden" name="capex_project_acquisition_keur" value="{{ form_data.get('capex_project_acquisition_keur', '') }}" />
+  <input type="hidden" name="capex_project_rights_keur" value="{{ form_data.get('capex_project_rights_keur', '') }}" />
+  <input type="hidden" name="capex_idc_keur" value="{{ form_data.get('capex_idc_keur', '') }}" />
+  <input type="hidden" name="capex_bank_fees_keur" value="{{ form_data.get('capex_bank_fees_keur', '') }}" />
+  <input type="hidden" name="capex_commitment_fees_keur" value="{{ form_data.get('capex_commitment_fees_keur', '') }}" />
+  <input type="hidden" name="capex_other_financial_keur" value="{{ form_data.get('capex_other_financial_keur', '') }}" />
+  <input type="hidden" name="capex_vat_costs_keur" value="{{ form_data.get('capex_vat_costs_keur', '') }}" />
+  <input type="hidden" name="capex_reserve_accounts_keur" value="{{ form_data.get('capex_reserve_accounts_keur', '') }}" />
+  <input type="hidden" name="opex_technical_management_y1_keur" value="{{ form_data.get('opex_technical_management_y1_keur', '') }}" />
+  <input type="hidden" name="opex_o_and_m_preventive_and_corrective_y1_keur" value="{{ form_data.get('opex_o_and_m_preventive_and_corrective_y1_keur', '') }}" />
+  <input type="hidden" name="opex_maintain_site_y1_keur" value="{{ form_data.get('opex_maintain_site_y1_keur', '') }}" />
+  <input type="hidden" name="opex_clean_material_y1_keur" value="{{ form_data.get('opex_clean_material_y1_keur', '') }}" />
+  <input type="hidden" name="opex_security_y1_keur" value="{{ form_data.get('opex_security_y1_keur', '') }}" />
+  <input type="hidden" name="opex_insurance_y1_keur" value="{{ form_data.get('opex_insurance_y1_keur', '') }}" />
+  <input type="hidden" name="opex_lease_and_property_tax_y1_keur" value="{{ form_data.get('opex_lease_and_property_tax_y1_keur', '') }}" />
+  <input type="hidden" name="opex_power_expenses_y1_keur" value="{{ form_data.get('opex_power_expenses_y1_keur', '') }}" />
+  <input type="hidden" name="opex_audit_and_accounting_and_legal_y1_keur" value="{{ form_data.get('opex_audit_and_accounting_and_legal_y1_keur', '') }}" />
+  <input type="hidden" name="opex_bank_fees_opex_y1_keur" value="{{ form_data.get('opex_bank_fees_opex_y1_keur', '') }}" />
+  <input type="hidden" name="opex_environmental_and_social_management_y1_keur" value="{{ form_data.get('opex_environmental_and_social_management_y1_keur', '') }}" />
+  <input type="hidden" name="opex_contingencies_y1_keur" value="{{ form_data.get('opex_contingencies_y1_keur', '') }}" />
+  <input type="hidden" name="rev_ppa_base_tariff" value="{{ form_data.get('rev_ppa_base_tariff', '') }}" />
+  <input type="hidden" name="rev_ppa_index" value="{{ form_data.get('rev_ppa_index', '') }}" />
+  <input type="hidden" name="rev_ppa_term_years" value="{{ form_data.get('rev_ppa_term_years', '') }}" />
+  <input type="hidden" name="rev_ppa_production_share" value="{{ form_data.get('rev_ppa_production_share', '') }}" />
+  <input type="hidden" name="rev_balancing_cost" value="{{ form_data.get('rev_balancing_cost', '') }}" />
+  <input type="hidden" name="rev_co2_enabled" value="{{ form_data.get('rev_co2_enabled', '') }}" />
+  <input type="hidden" name="rev_co2_price" value="{{ form_data.get('rev_co2_price', '') }}" />
+  <input type="hidden" name="construction_months" value="{{ form_data.get('construction_months', '') }}" />
+  <input type="hidden" name="idc_keur" value="{{ form_data.get('idc_keur', '') }}" />
+</form>
+
 <div class="workspace-content" id="workspace-content"
      hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p && p.style.display==='none' && p.querySelector('form')){ p.style.display='block'; p.classList.add('active'); }">
 
