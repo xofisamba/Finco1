@@ -4015,3 +4015,311 @@ body {
   vertical-align: middle;
   margin-left: 0.5rem;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Phase 20M — Financial Statements + Runtime Polish
+   Runtime summary provenance, financial statement grids, fc-grid polish
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Runtime Summary provenance banner ────────────────────────────── */
+.rs-provenance-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface-2, #f8fafc);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.rs-provenance-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rs-provenance-icon {
+  font-size: 1.1rem;
+}
+
+.rs-provenance-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.rs-provenance-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2, #6b7280);
+}
+
+.rs-provenance-project {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-1, #1a1a1a);
+}
+
+.rs-provenance-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rs-provenance-time {
+  font-size: 0.75rem;
+  color: var(--muted, #6b7280);
+}
+
+/* ── KPI grid ────────────────────────────────────────────────────── */
+.rs-kpi-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.rs-kpi-card {
+  background: var(--surface-2, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+  min-width: 110px;
+  flex: 1 1 110px;
+  max-width: 160px;
+}
+
+.rs-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2, #6b7280);
+  margin-bottom: 0.25rem;
+}
+
+.rs-kpi-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1, #1a1a1a);
+}
+
+.rs-kpi-missing {
+  color: var(--muted, #9ca3af);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+/* ── Runtime notice ─────────────────────────────────────────────── */
+.rs-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  margin-bottom: 0.5rem;
+}
+
+.rs-notice-text {
+  font-size: 0.75rem;
+  color: var(--muted, #6b7280);
+}
+
+/* ── Runtime messages / errors ─────────────────────────────────── */
+.rs-messages {
+  margin-top: 0.5rem;
+}
+
+.rs-message {
+  padding: 0.35rem 0.6rem;
+  background: var(--warn-bg, #fef3c7);
+  border: 1px solid var(--warn-border, #fcd34d);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  margin-bottom: 0.3rem;
+}
+
+.rs-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--blocked-bg, #fee2e2);
+  border: 1px solid var(--blocked-border, #fecaca);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Financial Statements ─────────────────────────────────────── */
+.fs-statement-card {
+  margin-bottom: 0;
+}
+
+.fs-statement-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.fs-statement-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-1, #1a1a1a);
+}
+
+/* Financial statements grid */
+.fs-grid {
+  width: 100%;
+  min-width: 600px;
+}
+
+.fs-grid .fc-grid-col-label {
+  min-width: 160px;
+  width: 160px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: inherit;
+}
+
+/* Negative values in financial tables */
+.fc-cell--negative {
+  color: var(--text-negative, #dc2626);
+}
+
+/* ── Financial statement runtime block ─────────────────────────── */
+.fs-runtime-block {
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-2, #f8fafc);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.fs-runtime-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fs-runtime-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fs-runtime-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-1, #1a1a1a);
+}
+
+.fs-runtime-project {
+  font-size: 0.78rem;
+  color: var(--text-2, #6b7280);
+}
+
+.fs-runtime-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fs-runtime-time {
+  font-size: 0.72rem;
+  color: var(--muted, #6b7280);
+}
+
+.fs-runtime-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fs-secondary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border, #e5e7eb);
+  margin-top: 0.4rem;
+}
+
+.fs-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.fs-metric-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2, #6b7280);
+}
+
+.fs-metric-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1, #1a1a1a);
+}
+
+/* ── Scenario Compare improvements ─────────────────────────────── */
+.ps-compare-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.ps-compare-heading-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-1, #1a1a1a);
+}
+
+.ps-compare-heading-vs {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ps-compare-provenance-header {
+  margin-bottom: 0.4rem;
+}
+
+.ps-compare-provenance-grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.25rem 1rem;
+  font-size: 0.75rem;
+}
+
+.ps-compare-provenance-key {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, #6b7280);
+}
+
+.ps-compare-provenance-grid > span:last-child {
+  font-weight: 500;
+  color: var(--text-1, #1a1a1a);
+}
