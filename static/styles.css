@@ -3787,3 +3787,116 @@ body {
 .delta-warning-icon {
   margin-right: 0.3rem;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Phase 20K — Revenue Detail Grid Foundation
+   Workbook-style revenue assumptions grid
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Revenue grid sticky positioning — mirrors CAPEX/OPEX grid */
+.fc-revenue-grid-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+/* Dirty indicator for revenue edits */
+.inp-dirty-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--badge-preview-bg, #fff8e1);
+  border: 1px solid var(--warning, #f59e0b);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--warning-text, #92400e);
+  margin-bottom: 0.6rem;
+}
+
+.inp-dirty-indicator .dirty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning, #f59e0b);
+  flex-shrink: 0;
+}
+
+/* Readonly notice for revenue baseline */
+.inp-readonly-notice--revenue {
+  margin-bottom: 0.75rem;
+}
+
+/* Revenue section header */
+.fc-revenue-grid-wrapper .section-header {
+  margin-bottom: 0.5rem;
+}
+
+/* Revenue grid numeric alignment — amounts right-aligned */
+.fc-grid .fc-cell--amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Revenue editable input — native number, full-width */
+.fc-input-native {
+  width: 100%;
+  min-width: 80px;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: var(--bg-input, #fff);
+  color: var(--text-1, #1a1a1a);
+  box-sizing: border-box;
+}
+
+.fc-input-native:focus {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 1px;
+}
+
+/* Revenue subtotal rows */
+.fc-subtotal-row {
+  background: var(--row-subtotal-bg, #f0f4f8);
+}
+
+.fc-subtotal-label {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-2, #374151);
+}
+
+/* Revenue grand total row */
+.fc-grand-total {
+  background: var(--row-grandtotal-bg, #dbeafe);
+  border-top: 2px solid var(--accent, #3b82f6);
+}
+
+.fc-grand-total__label {
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.fc-grand-total__value {
+  font-weight: 700;
+  color: var(--accent, #1d4ed8);
+}
+
+/* Revenue cell notes / hint column */
+.fc-cell--notes {
+  font-size: 0.72rem;
+  color: var(--muted, #6b7280);
+  font-style: italic;
+}
+
+/* CO2 flag display */
+.fc-cell-runtime--flag {
+  font-size: 0.75rem;
+}
+
+/* Revenue grid footer note */
+.fc-revenue-grid-wrapper .table-note {
+  margin-top: 0.6rem;
+}
