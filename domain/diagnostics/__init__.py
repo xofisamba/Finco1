@@ -1,1 +1,1 @@
-"""Domain diagnostics — Revenue / OPEX / CFADS diagnostic bridge."""
+"""Diagnostic helpers for all phases."""
