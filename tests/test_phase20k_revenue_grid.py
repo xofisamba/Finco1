@@ -15,6 +15,7 @@ import os
 import pytest
 
 
+import sys
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -201,7 +202,7 @@ class TestPhase20KNoRegression:
         """Phase 20J OPEX grid tests still pass."""
         import subprocess
         result = subprocess.run(
-            [".venv/bin/python", "-m", "pytest",
+            [sys.executable, "-m", "pytest",
              "tests/test_phase20j_opex_grid.py", "-q", "--tb=no"],
             cwd=PROJECT_ROOT,
             capture_output=True, text=True
@@ -212,7 +213,7 @@ class TestPhase20KNoRegression:
         """Phase 20I CAPEX grid tests still pass."""
         import subprocess
         result = subprocess.run(
-            [".venv/bin/python", "-m", "pytest",
+            [sys.executable, "-m", "pytest",
              "tests/test_phase20i_capex_grid.py", "-q", "--tb=no"],
             cwd=PROJECT_ROOT,
             capture_output=True, text=True
@@ -223,7 +224,7 @@ class TestPhase20KNoRegression:
         """Phase 20H design system tests still pass."""
         import subprocess
         result = subprocess.run(
-            [".venv/bin/python", "-m", "pytest",
+            [sys.executable, "-m", "pytest",
              "tests/test_phase20h_design_system_rendering.py", "-q", "--tb=no"],
             cwd=PROJECT_ROOT,
             capture_output=True, text=True
