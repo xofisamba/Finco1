@@ -241,7 +241,10 @@ def compute_shl_period(
         cf_after_senior_ds: CF available after senior debt service (cf_after_tax)
         method: "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
         wht_rate: Withholding tax rate on SHL interest (e.g., 0.18)
-        pik_switch_triggered: True once senior debt is paid off (for pik_then_sweep)
+        pik_switch_triggered: True when available CF exceeds the annual SHL interest
+            threshold, switching from PIK phase (partial cash interest + PIK capitalization)
+            to SWEEP phase (cash interest capped at available CF + principal sweep).
+            The trigger is cash-based, not senior-balance-based.
 
     Returns:
         (shl_interest_paid, shl_principal, shl_pik_addition, new_shl_balance)
@@ -776,10 +779,6 @@ def run_waterfall(
         # CF after tax
         cf_after_tax = ebitda - tax_this_period
 
-        # SHL service - use compute_shl_period() with shl_repayment_method
-        # Pik switch triggers when senior debt is fully repaid (for pik_then_sweep)
-        pik_switch_triggered = (remaining_senior_balance <= 0)
-
         # Determine cash available for SHL service.
         # For pik_then_sweep, use post-tax cash after senior debt service and reserves.
         # Other methods use post-tax cash before senior debt service.
@@ -789,10 +788,15 @@ def run_waterfall(
             # Available SHL cash is reduced by senior debt service and DSRA funding.
             # Negative DSRA contribution represents reserve release.
             _cf_for_shl = max(0.0, cf_after_tax - senior_ds - dsra_contrib)
-            _pik_trigger = (_cf_for_shl > shl_balance * shl_rate)  # Compare FCF vs full annual interest (not /2)
         else:
             _cf_for_shl = cf_after_tax
-            _pik_trigger = pik_switch_triggered
+
+        # Pik switch triggers when available CF exceeds annual SHL interest threshold.
+        # This is cash-based (not senior-balance-based) — transitions from PIK phase
+        # (partial cash + capitalization) to SWEEP phase (cash interest capped at CF
+        # + principal sweep). The per-method override (_pik_trigger) is set below.
+        pik_switch_triggered = (_cf_for_shl > shl_balance * shl_rate)
+        _pik_trigger = pik_switch_triggered  # per-period working copy, can be overridden
 
         # Y1-H1 is disbursement period: SHL just disbursed, no operating DS yet
         # No SHL interest, no SHL payment - just opening balance (already includes IDC)

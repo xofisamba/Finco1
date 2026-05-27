@@ -198,17 +198,19 @@ def compute_shl_period_v3(
                 new_balance_keur=shl_balance + pik,
             )
         else:
-            # SWEEP phase: pay full interest + principal from surplus
-            interest_paid = net_interest
-            remaining = max(0.0, cf_available - net_interest)
+            # SWEEP phase: pay full interest + principal from surplus.
+            # Cap interest at available CF — shortfall is PIKed, not overpaid.
+            interest_paid = min(net_interest, cf_available)
+            pik = gross_interest - interest_paid  # shortfall beyond CF gets PIKed
+            remaining = max(0.0, cf_available - interest_paid)
             principal = min(remaining, shl_balance)
-            interest_wht = gross_interest * wht_rate if wht_rate > 0 else 0.0
-            new_balance = max(0.0, shl_balance - principal)
+            interest_wht = interest_paid * (wht_rate / (1 - wht_rate)) if wht_rate > 0 and interest_paid > 0 else 0.0
+            new_balance = max(0.0, shl_balance - principal + pik)
             return SHLPeriodResult(
                 interest_paid_keur=interest_paid,
                 interest_wht_keur=interest_wht,
                 principal_keur=principal,
-                pik_addition_keur=0.0,
+                pik_addition_keur=pik,
                 new_balance_keur=new_balance,
             )
 
