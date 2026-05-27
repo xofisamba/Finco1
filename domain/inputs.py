@@ -36,6 +36,60 @@ class DebtSizingMethod(Enum):
     GEARING_CAP = "gearing_cap"
     FIXED = "fixed"
 
+class DebtSizingMode(Enum):
+    """Senior debt sizing calibration modes.
+
+    Mode C (FROZEN_EXCEL_SCHEDULE) is the default — it preserves current runtime
+    behavior by treating the Excel-derived debt amount and per-period service
+    schedule as frozen inputs. DSCR is an outcome.
+
+    Mode A (MINIMUM_DSCR_SCULPTED) and Mode B (FLAT_DSCR_SCULPTED) are future
+    modes that require new solvers and are not yet implemented.
+    Selecting them raises NotImplementedError unless explicitly marked
+    as implemented in the codebase.
+
+    Attributes:
+        FROZEN_EXCEL_SCHEDULE: Debt amount and/or per-period service schedule
+            are treated as frozen inputs (from Excel calibration). DSCR is a
+            backward-computed outcome. This is the default mode and preserves
+            current runtime behavior.
+        MINIMUM_DSCR_SCULPTED: TUHO-style solver that finds the debt amount
+            so that the minimum DSCR across all periods meets a target
+            (e.g. ~1.45). Per-period service uses the DSCR divisor schedule
+            (1.20 during PPA, ~1.41 during merchant). NOT YET IMPLEMENTED.
+        FLAT_DSCR_SCULPTED: Oborovo-style solver with a flat target DSCR
+            (e.g. 1.15). NOT YET IMPLEMENTED.
+    """
+
+    FROZEN_EXCEL_SCHEDULE = "frozen_excel_schedule"
+    MINIMUM_DSCR_SCULPTED = "minimum_dscr_sculpted"
+    FLAT_DSCR_SCULPTED = "flat_dscr_sculpted"
+
+    def validate_and_resolve(self) -> "DebtSizingMode":
+        """Return resolved mode, raising for unimplemented future modes.
+
+        Currently only FROZEN_EXCEL_SCHEDULE is fully implemented.
+        Future modes are allowed as config values for documentation purposes
+        but raise NotImplementedError at resolve time unless their
+        corresponding implementation flag is set.
+        """
+        if self == DebtSizingMode.FROZEN_EXCEL_SCHEDULE:
+            return self
+        if self == DebtSizingMode.MINIMUM_DSCR_SCULPTED:
+            raise NotImplementedError(
+                "DebtSizingMode.MINIMUM_DSCR_SCULPTED is not yet implemented. "
+                "This mode requires a new iterative minimum-DSCR solver. "
+                "Use FROZEN_EXCEL_SCHEDULE (default) for now."
+            )
+        if self == DebtSizingMode.FLAT_DSCR_SCULPTED:
+            raise NotImplementedError(
+                "DebtSizingMode.FLAT_DSCR_SCULPTED is not yet implemented. "
+                "This mode requires a flat-DSCR sculpting solver. "
+                "Use FROZEN_EXCEL_SCHEDULE (default) for now."
+            )
+        raise ValueError(f"Unknown DebtSizingMode: {self}")
+
+
 
 class SHLRepaymentMethod(Enum):
     """Supported shareholder-loan repayment conventions."""
@@ -369,6 +423,20 @@ class FinancingParams:
     equity_irr_method: str = "equity_only"
 
     debt_sizing_method: str = "dscr_sculpt"
+    # Phase 20O: explicit calibration mode for senior debt sizing.
+    # Default None = resolve from debt_sizing_method string (backward-compatible).
+    # Non-None values are validated at config resolution time; future modes raise
+    # NotImplementedError so users get explicit errors, not silent wrong results.
+    debt_sizing_mode: "DebtSizingMode | None" = None
+    # Target minimum DSCR for MINIMUM_DSCR_SCULPTED mode (e.g. 1.45 for TUHO).
+    # For documentation / future use only; not used in FROZEN_EXCEL_SCHEDULE.
+    target_min_dscr: float | None = None
+    # Flat target DSCR for FLAT_DSCR_SCULPTED mode (e.g. 1.15 for Oborovo).
+    # For documentation / future use only; not used in FROZEN_EXCEL_SCHEDULE.
+    flat_dscr_target: float | None = None
+    # Human-readable note identifying the source of a frozen Excel schedule.
+    # e.g. "Excel Inputs!C45 anchor" or "Macro!R50 frozen per-period schedule".
+    frozen_schedule_note: str | None = None
     fixed_debt_keur: float | None = None
     dscr_schedule: list[float] | None = None
     senior_debt_interest_config: SeniorDebtInterestConfig = field(default_factory=SeniorDebtInterestConfig)
@@ -406,6 +474,27 @@ class FinancingParams:
     def total_equity_shl_keur(self) -> float:
         """Total sponsor equity and shareholder-loan funding."""
         return self.share_capital_keur + self.share_premium_keur + self.shl_amount_keur + self.shl_idc_keur
+
+    def resolved_debt_sizing_mode(self) -> "DebtSizingMode":
+        """Resolve the effective debt sizing mode.
+
+        If debt_sizing_mode is explicitly set, validate and return it.
+        Otherwise map the legacy debt_sizing_method string to the equivalent
+        FROZEN_EXCEL_SCHEDULE mode (since all legacy paths use frozen/sized schedules).
+        Future mode values raise NotImplementedError per their enum definition.
+        """
+        if self.debt_sizing_mode is not None:
+            return self.debt_sizing_mode.validate_and_resolve()
+        return DebtSizingMode.FROZEN_EXCEL_SCHEDULE
+
+    @property
+    def sizing_mode_description(self) -> str:
+        """Return human-readable description of current sizing mode."""
+        mode = self.resolved_debt_sizing_mode()
+        if mode == DebtSizingMode.FROZEN_EXCEL_SCHEDULE:
+            note = f" ({self.frozen_schedule_note})" if self.frozen_schedule_note else ""
+            return f"FROZEN_EXCEL_SCHEDULE{note} — DSCR is computed from fixed service schedule"
+        return f"{mode.value} — future mode (not yet implemented)"
 
 
 @dataclass(frozen=True)
