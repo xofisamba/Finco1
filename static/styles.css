@@ -314,6 +314,11 @@ body {
 .sidebar-input::-webkit-scrollbar-track { background: transparent; }
 .sidebar-input::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+/* Phase 21: hide legacy sidebar-input on desktop — inputs tab is primary surface */
+@media (min-width: 901px) {
+  .sidebar-input { display: none !important; }
+}
+
 /* ── Main Content ────────────────────────────────────────────────────────── */
 .content {
   flex: 1;
