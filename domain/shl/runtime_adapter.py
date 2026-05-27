@@ -133,7 +133,7 @@ class ShlRuntimeAdapter:
 
             # Determine if PIK is allowed this period
             # For pik_then_sweep: PIK allowed until senior debt repaid
-            pik_allowed = (shl_repayment_method in ("pik", "pik_then_sweep", "accrued"))
+            pik_allowed = (shl_repayment_method in ("pik", "pik_then_sweep", "accrued", "partial_pay_sweep"))
 
             # Minimum cash reserve: not used in TUHO (reserve = 0)
             maintain_minimum_reserve = False

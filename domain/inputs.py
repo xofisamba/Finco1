@@ -98,6 +98,7 @@ class SHLRepaymentMethod(Enum):
     PIK = "pik"
     ACCRUED = "accrued"
     PIK_THEN_SWEEP = "pik_then_sweep"
+    PARTIAL_PAY_SWEEP = "partial_pay_sweep"
     FCF_WATERFALL = "fcf_waterfall"
 
 
