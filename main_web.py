@@ -2351,6 +2351,36 @@ async def new_project_form(request: Request):
     )
 
 
+@app.get("/projects/browse")
+async def project_browser(request: Request):
+    """Render project browser partial — factory templates, baselines, user projects."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    baseline_records = seed_baseline_projects_if_needed(user.user_id)
+    baseline_project_items = [
+        {
+            "project_code": r.project_code,
+            "label": r.project_name,
+            "meta": f"{r.project_type or 'Unknown'} · baseline",
+            "is_readonly": r.is_readonly,
+        }
+        for r in list_baseline_records(user.user_id)
+    ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/project_browser.html",
+        context={
+            "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
+            "baseline_project_records": baseline_project_items,
+            "user_project_records": _user_project_selector_items(user),
+            "active_project_code": request.query_params.get("active") or "",
+        },
+    )
+
+
 @app.post("/projects/create")
 async def create_project_route(
     request: Request,

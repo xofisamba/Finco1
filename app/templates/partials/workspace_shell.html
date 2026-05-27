@@ -1,4 +1,7 @@
 <!-- Workspace Shell — Tab Panels — Phase 9.5 -->
+<!-- Project Browser — rendered here by /projects/browse (htmx) -->
+<div id="project-browser-container"></div>
+
 <div class="workspace-content" id="workspace-content"
      hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p && p.style.display==='none' && p.querySelector('form')){ p.style.display='block'; p.classList.add('active'); }">
 

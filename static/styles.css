@@ -108,7 +108,7 @@ body {
 
 .header-inner {
   width: 100%;
-  padding: 0 1.5rem 0 calc(var(--sidebar-w) + 1.5rem);
+  padding: 0 1.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -192,8 +192,8 @@ body {
 /* ── App Layout ──────────────────────────────────────────────────────────── */
 .app-layout {
   display: flex;
-  /* offset for fixed header + sticky tabs bar */
-  padding-top: calc(var(--header-h) + var(--tabs-h));
+  /* offset for fixed header only — tabs bar scrolls with content */
+  padding-top: var(--header-h);
   padding-left: var(--sidebar-w);  /* sidebar width */
   min-height: 100vh;
 }
@@ -1301,13 +1301,13 @@ body {
 }
 
 @media (max-width: 900px) {
-  :root { --sidebar-w: 0px; --tabs-h: 44px; }
+  :root { --sidebar-w: 0px; }
 
   .sidebar-nav { display: none; }
   .sidebar-input { display: none; }
   .project-sidebar { display: none; }
-  .app-layout { padding-left: 0; padding-top: calc(var(--header-h) + var(--tabs-h)); }
-  .top-tabs-bar { position: sticky; }
+  .app-layout { padding-left: 0; padding-top: var(--header-h); }
+  .top-tabs-bar { position: sticky; top: var(--header-h); z-index: 150; height: var(--tabs-h); }
   .content,
   .workspace-content { max-width: 100%; padding: var(--content-py) 1rem; }
   .charts-grid { grid-template-columns: 1fr; }
@@ -1326,15 +1326,12 @@ body {
    New styles: project sidebar, top tabs bar, tab panels, sheet cards
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Top Tabs Bar (sticky ribbon below header) ──────────────────────────── */
+/* ── Top Tabs Bar (scrolls with content, aligns with main workspace) ─────── */
 .top-tabs-bar {
-  position: sticky;
-  top: var(--header-h);
-  z-index: 150;
+  /* static — no sticky; scrolls with page so it aligns with content area */
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-  height: var(--tabs-h);
   display: flex;
   align-items: center;
 }
@@ -1383,13 +1380,13 @@ body {
   background: var(--surface);
 }
 
-/* ── Project Sidebar (workspace left panel) ─────────────────────────────── */
+/* ── Project Sidebar (workspace left panel — sticky, below header) ───────── */
 .project-sidebar {
-  position: fixed;
+  position: sticky;
   left: 0;
-  top: calc(var(--header-h) + var(--tabs-h));
+  top: var(--header-h);           /* sits below fixed header */
   width: var(--sidebar-w);
-  height: calc(100vh - var(--header-h) - var(--tabs-h));
+  height: calc(100vh - var(--header-h));
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   box-shadow: var(--shadow-sidebar);
@@ -1398,6 +1395,7 @@ body {
   flex-direction: column;
   padding: 0;
   z-index: 100;
+  flex-shrink: 0;                 /* don't shrink when content is wide */
 }
 
 .project-sidebar::-webkit-scrollbar { width: 3px; }
