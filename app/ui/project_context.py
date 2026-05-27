@@ -7,7 +7,7 @@ Does NOT persist anything.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from app.project_factories import (
@@ -47,29 +47,30 @@ class ProjectContext:
     ppa_index_pct: float
     co2_enabled: bool
     co2_price_eur_mwh: float | None
-    opex_items: tuple[dict[str, Any], ...]
-    opex_y1_total_keur: float
-    opex_contingency_method: str
-    opex_contingency_pct: float
-    total_capex_keur: float
-    epc_contract_keur: float
-    idc_keur: float
-    bank_fees_keur: float
-    senior_debt_keur: float
-    interest_rate_pct: float
-    senior_tenor_years: int
-    target_dscr: float
-    gearing_pct: float | None
-    shl_amount_keur: float
-    shl_rate_pct: float
-    shl_idc_keur: float
-    cit_rate_pct: float
-    loss_carryforward_years: int
-    g20_status: str
-    r99_r102_status: str
-    parity_status: str
-    data_source: str
-    missing_fields: tuple[str, ...]
+    opex_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
+    opex_y1_total_keur: float = 0.0
+    opex_contingency_method: str = ""
+    opex_contingency_pct: float = 0.0
+    total_capex_keur: float = 0.0
+    epc_contract_keur: float = 0.0
+    idc_keur: float = 0.0
+    bank_fees_keur: float = 0.0
+    capex_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
+    senior_debt_keur: float = 0.0
+    interest_rate_pct: float = 0.0
+    senior_tenor_years: int = 0
+    target_dscr: float = 0.0
+    gearing_pct: float | None = None
+    shl_amount_keur: float = 0.0
+    shl_rate_pct: float = 0.0
+    shl_idc_keur: float = 0.0
+    cit_rate_pct: float = 0.0
+    loss_carryforward_years: int = 0
+    g20_status: str = ""
+    r99_r102_status: str = ""
+    parity_status: str = ""
+    data_source: str = ""
+    missing_fields: tuple[str, ...] = ()
 
     @property
     def id(self) -> str:
@@ -86,6 +87,29 @@ def _build_opex_items(project_inputs) -> tuple[dict[str, Any], ...]:
                 "inflation_pct": item.annual_inflation,
             }
         )
+    return tuple(items)
+
+
+def _build_capex_items(capex) -> tuple[dict[str, Any], ...]:
+    """"Build serialisable CAPEX item list from CapexStructure."""
+    items = []
+    for field in capex._CAPEX_ITEM_FIELDS:
+        item = getattr(capex, field)
+        items.append(
+            {
+                "code": field,
+                "name": item.name,
+                "amount_keur": item.amount_keur,
+                "y0_share": item.y0_share,
+            }
+        )
+    # Financing/legal
+    items.append({"code": "idc", "name": "IDC", "amount_keur": capex.idc_keur, "y0_share": 0.0})
+    items.append({"code": "bank_fees", "name": "Bank Fees", "amount_keur": capex.bank_fees_keur, "y0_share": 0.0})
+    items.append({"code": "commitment_fees", "name": "Commitment Fees", "amount_keur": capex.commitment_fees_keur, "y0_share": 0.0})
+    items.append({"code": "other_financial", "name": "Other Financial", "amount_keur": capex.other_financial_keur, "y0_share": 0.0})
+    items.append({"code": "vat_costs", "name": "VAT Costs", "amount_keur": capex.vat_costs_keur, "y0_share": 0.0})
+    items.append({"code": "reserve_accounts", "name": "Reserve Accounts", "amount_keur": capex.reserve_accounts_keur, "y0_share": 0.0})
     return tuple(items)
 
 
@@ -138,6 +162,7 @@ def _build_context_from_project_inputs(
         opex_y1_total_keur=_opex_y1_total(project_inputs),
         opex_contingency_method=opex_contingency_method,
         opex_contingency_pct=opex_contingency_pct,
+        capex_items=_build_capex_items(capex),
         total_capex_keur=capex.total_capex,
         epc_contract_keur=capex.epc_contract.amount_keur,
         idc_keur=capex.idc_keur,
@@ -319,6 +344,7 @@ def build_project_context_for_record(
         ppa_term_years=ppa_term_years,
         opex_items=opex_items,
         opex_y1_total_keur=opex_y1_total_keur,
+        capex_items=base.capex_items,
         total_capex_keur=total_capex_keur,
         interest_rate_pct=interest_rate_fraction,
         senior_tenor_years=senior_tenor_years,

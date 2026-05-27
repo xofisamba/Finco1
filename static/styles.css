@@ -3554,3 +3554,151 @@ body {
   border-radius: 4px; font-size: 0.75rem; color: var(--text-2);
 }
 .runtime-notice-text { color: var(--text-2); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Phase 20I — CAPEX Detail Grid Extensions
+   Workbook-style line-item grid with fc-* design system
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Section band tweaks for CAPEX grid */
+.fc-section-band {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.fc-section-band__label {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+}
+
+/* Column widths for CAPEX grid (wider label, narrow code, wide amount) */
+.fc-grid-col-label {
+  width: 220px;
+  min-width: 220px;
+}
+.fc-cell--code {
+  font-size: 0.72rem;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-align: left;
+  width: 110px;
+  min-width: 110px;
+}
+.fc-cell--amount {
+  text-align: right;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  width: 130px;
+  min-width: 130px;
+}
+.fc-th--code {
+  width: 110px;
+  min-width: 110px;
+  text-align: left;
+}
+.fc-th--amount {
+  text-align: right;
+}
+
+/* Subtotal and total rows */
+.fc-subtotal-row {
+  background: var(--surface-2);
+}
+.fc-total-cell {
+  text-align: right;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.fc-total-value {
+  font-variant-numeric: tabular-nums;
+}
+.fc-hard-capex-total {
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--surface-2));
+  border-top: 2px solid var(--border);
+}
+.fc-hard-capex-total td {
+  font-weight: 700;
+}
+.fc-grand-total {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-2));
+  border-top: 2px solid var(--accent);
+}
+.fc-grand-total__label {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+.fc-grand-total__value {
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+/* Delta warning row */
+.fc-delta-row {
+  border-top: 1px dashed var(--border);
+}
+.fc-delta-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
+.fc-delta-warning {
+  font-size: 0.72rem;
+  color: var(--warning-text);
+  font-weight: 500;
+}
+
+/* Native number inputs inside cells (not .fc-cell-input which is bare styled) */
+.fc-input-native {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.3rem 0.4rem;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.12s, box-shadow 0.12s;
+  box-sizing: border-box;
+}
+.fc-input-native:hover {
+  border-color: var(--color-accent);
+}
+.fc-input-native:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+.fc-input-native:read-only,
+.fc-input-native:disabled {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* CAPEX grid wrapper override (slightly different from default fc-grid-wrapper) */
+.fc-capex-grid-wrapper {
+  margin-bottom: 1rem;
+}
+
+/* Readonly notice tweak for CAPEX */
+.inp-readonly-notice--capex {
+  margin-bottom: 0.75rem;
+}
+
+/* Dirty indicator (shared with inputs) */
+.inp-dirty-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.5rem;
+}

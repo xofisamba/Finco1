@@ -1,52 +1,235 @@
-<!-- Sheet: CAPEX — {{ project_ctx.name }} -->
+<!-- CAPEX Detail Grid — {{ project_ctx.name }} -->
+<!-- Phase 20I — fc-grid design system, workbook-style line-item surface -->
 
 <div class="sheet-banner">
-  <span class="sheet-banner-tag">🔧 CAPEX</span>
+  <span class="sheet-banner-tag">🏗️ CAPEX Detail</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+    {% if not is_user_project %}
+    <span class="badge badge-muted">Factory Reference — read-only</span>
+    {% else %}
+    <span class="badge badge-pass">User Project — editable</span>
+    {% endif %}
   </span>
 </div>
 
-<!-- CAPEX Summary -->
-<div class="sheet-card">
-  <div class="section-header">CAPEX Summary (kEUR)</div>
-  <table class="sheet-table">
+{# ── Helper: section band ─────────────────────────────────────────────── #}
+{%- macro section_band(label, colspan=3) -%}
+<tr class="fc-section-band">
+  <td colspan="{{ colspan }}" class="fc-section-band__label">{{ label }}</td>
+</tr>
+{%- endmacro -%}
+
+{# ── Helper: capex data row ──────────────────────────────────────────── #}
+{%- macro capex_row(item, editable=False) -%}
+<tr data-capex-code="{{ item.code }}">
+  <td class="fc-grid-col-label fc-cell">{{ item.name }}</td>
+  <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+  <td class="fc-cell fc-cell--amount {% if editable %}fc-cell-input{% else %}fc-cell-runtime{% endif %}"
+      {% if not editable %}aria-readonly="true"{% endif %}>
+    {% if editable %}
+    <input type="number" step="any" min="0"
+           name="capex_{{ item.code }}_keur"
+           value="{{ "{:.2f}".format(item.amount_keur) }}"
+           class="fc-input-native"
+           data-capex-code="{{ item.code }}"
+           aria-label="CAPEX amount for {{ item.name }}" />
+    {% else %}
+    {{ "{:,.2f}".format(item.amount_keur) }}
+    {% endif %}
+  </td>
+</tr>
+{%- endmacro -%}
+
+{# ── Helper: subtotal row ────────────────────────────────────────────── #}
+{%- macro subtotal_row(label, amount) -%}
+<tr class="fc-total-row fc-subtotal-row">
+  <td class="fc-grid-col-label fc-cell" colspan="2">{{ label }}</td>
+  <td class="fc-cell fc-total-cell">
+    <span class="fc-total-value">{{ "{:,.2f}".format(amount) }}</span>
+  </td>
+</tr>
+{%- endmacro -%}
+
+{# ── Build resolved capex_items with section/group info ──────────────── #}
+{# Map code → section for workbook hierarchy #}
+{% set capex_by_section = {
+  "Construction": ["epc_contract", "production_units", "epc_other"],
+  "Development": ["project_acquisition", "project_rights", "ops_prep"],
+  "Construction Management": ["construction_mgmt_a", "construction_mgmt_b", "commissioning", "audit_legal"],
+  "Civil & Land": ["lease_tax"],
+  "Insurances & Risk": ["insurances", "contingencies", "taxes"],
+} %}
+{% set financing_rows = ["idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs", "reserve_accounts"] %}
+
+{% set capex_by_code = {} %}
+{% for item in project_ctx.capex_items %}
+  {% set _ = capex_by_code.update({item.code: item}) %}
+{% endfor %}
+
+{# Compute subtotals #}
+{% set hard_items = [] %}
+{% for section, codes in capex_by_section.items() %}
+  {% for code in codes %}
+    {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
+      {% set _ = hard_items.append(capex_by_code[code]) %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+{% set hard_capex_total = namespace(total=0.0) %}
+{% for item in hard_items %}
+  {% set hard_capex_total.total = hard_capex_total.total + item.amount_keur %}
+{% endfor %}
+
+{% set financing_total = namespace(total=0.0) %}
+{% for code in financing_rows %}
+  {% if code in capex_by_code %}
+    {% set item = capex_by_code[code] %}
+    {% if item.amount_keur > 0 %}
+      {% set financing_total.total = financing_total.total + item.amount_keur %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+
+<!-- Workbook grid -->
+<div class="fc-grid-wrapper fc-capex-grid-wrapper">
+  <table class="fc-grid" aria-label="CAPEX detail grid for {{ project_ctx.name }}">
     <thead>
-      <tr>
-        <th>Item</th>
-        <th class="num-col">Amount (kEUR)</th>
+      <tr class="fc-grid-header">
+        <th class="fc-grid-col-label fc-th">Line Item</th>
+        <th class="fc-th fc-th--code">Code</th>
+        <th class="fc-th fc-th--amount">Amount (kEUR)</th>
       </tr>
     </thead>
     <tbody>
-      <tr><td>EPC Contract</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.epc_contract_keur) }}</td></tr>
-      <tr><td>IDC (Interest During Construction)</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.idc_keur) }}</td></tr>
-      <tr><td>Bank Fees</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.bank_fees_keur) }}</td></tr>
-      <tr class="total-row"><td>Total CAPEX</td><td class="num-col">{{ "{:,.0f}".format(project_ctx.total_capex_keur) }}</td></tr>
+      {# ── Construction ─────────────────────────────────────────────── #}
+      {{ section_band("Construction", 3) }}
+      {% set construction_total = namespace(total=0.0) %}
+      {% for code in ["epc_contract", "production_units", "epc_other"] %}
+        {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
+          {% set item = capex_by_code[code] %}
+          {{ capex_row(item, editable=is_user_project) }}
+          {% set construction_total.total = construction_total.total + item.amount_keur %}
+        {% endif %}
+      {% endfor %}
+      {{ subtotal_row("Construction Subtotal", construction_total.total) }}
+
+      {# ── Development ────────────────────────────────────────────────── #}
+      {{ section_band("Development", 3) }}
+      {% set dev_total = namespace(total=0.0) %}
+      {% for code in ["project_acquisition", "project_rights", "ops_prep"] %}
+        {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
+          {% set item = capex_by_code[code] %}
+          {{ capex_row(item, editable=is_user_project) }}
+          {% set dev_total.total = dev_total.total + item.amount_keur %}
+        {% endif %}
+      {% endfor %}
+      {{ subtotal_row("Development Subtotal", dev_total.total) }}
+
+      {# ── Construction Management ────────────────────────────────────── #}
+      {{ section_band("Construction Management", 3) }}
+      {% set cm_total = namespace(total=0.0) %}
+      {% for code in ["construction_mgmt_a", "construction_mgmt_b", "commissioning", "audit_legal"] %}
+        {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
+          {% set item = capex_by_code[code] %}
+          {{ capex_row(item, editable=is_user_project) }}
+          {% set cm_total.total = cm_total.total + item.amount_keur %}
+        {% endif %}
+      {% endfor %}
+      {{ subtotal_row("Construction Mgmt Subtotal", cm_total.total) }}
+
+      {# ── Civil & Land ──────────────────────────────────────────────── #}
+      {{ section_band("Civil & Land", 3) }}
+      {% set civil_total = namespace(total=0.0) %}
+      {% for code in ["lease_tax"] %}
+        {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
+          {% set item = capex_by_code[code] %}
+          {{ capex_row(item, editable=is_user_project) }}
+          {% set civil_total.total = civil_total.total + item.amount_keur %}
+        {% endif %}
+      {% endfor %}
+      {{ subtotal_row("Civil & Land Subtotal", civil_total.total) }}
+
+      {# ── Insurances & Risk ──────────────────────────────────────────── #}
+      {{ section_band("Insurances & Risk", 3) }}
+      {% set risk_total = namespace(total=0.0) %}
+      {% for code in ["insurances", "contingencies", "taxes"] %}
+        {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
+          {% set item = capex_by_code[code] %}
+          {{ capex_row(item, editable=is_user_project) }}
+          {% set risk_total.total = risk_total.total + item.amount_keur %}
+        {% endif %}
+      {% endfor %}
+      {{ subtotal_row("Insurances & Risk Subtotal", risk_total.total) }}
+
+      {# ── Hard CAPEX Total ────────────────────────────────────────────── #}
+      <tr class="fc-total-row fc-hard-capex-total">
+        <td class="fc-grid-col-label fc-cell" colspan="2">Hard CAPEX Total</td>
+        <td class="fc-cell fc-total-cell">
+          <span class="fc-total-value">{{ "{:,.2f}".format(construction_total.total + dev_total.total + cm_total.total + civil_total.total + risk_total.total) }}</span>
+        </td>
+      </tr>
+
+      {# ── Financing Costs ────────────────────────────────────────────── #}
+      {{ section_band("Financing Costs", 3) }}
+      {% set financing_total_v = namespace(total=0.0) %}
+      {% for code in financing_rows %}
+        {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
+          {% set item = capex_by_code[code] %}
+          <tr data-capex-code="{{ code }}">
+            <td class="fc-grid-col-label fc-cell">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount fc-cell-runtime" aria-readonly="true">
+              {{ "{:,.2f}".format(item.amount_keur) }}
+            </td>
+          </tr>
+          {% set financing_total_v.total = financing_total_v.total + item.amount_keur %}
+        {% endif %}
+      {% endfor %}
+      {{ subtotal_row("Financing Costs Total", financing_total_v.total) }}
+
+      {# ── Grand Total CAPEX ─────────────────────────────────────────── #}
+      {% set grand_total = construction_total.total + dev_total.total + cm_total.total + civil_total.total + risk_total.total + financing_total_v.total %}
+      <tr class="fc-total-row fc-grand-total">
+        <td class="fc-grid-col-label fc-cell fc-grand-total__label" colspan="2">
+          <strong>Total CAPEX</strong>
+        </td>
+        <td class="fc-cell fc-total-cell fc-grand-total__value">
+          <strong>{{ "{:,.2f}".format(grand_total) }}</strong>
+        </td>
+      </tr>
+
+      {# ── Delta vs Summary ───────────────────────────────────────────── #}
+      {% if grand_total != project_ctx.total_capex_keur %}
+      <tr class="fc-delta-row">
+        <td class="fc-grid-col-label fc-cell" colspan="2">
+          <span class="fc-delta-label">vs. Summary Total</span>
+        </td>
+        <td class="fc-cell fc-cell--amount fc-cell-warning">
+          <span class="fc-delta-warning">
+            ⚠ {{ "{:,.2f}".format(grand_total - project_ctx.total_capex_keur) }} kEUR delta — backend authoritative
+          </span>
+        </td>
+      </tr>
+      {% endif %}
     </tbody>
   </table>
 </div>
 
-<div class="section-divider"></div>
+{# ── Read-only notice for baselines ──────────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--capex">
+  <span class="badge badge-muted">Factory Reference</span>
+  &nbsp;CAPEX values are template defaults — edit is disabled.
+  Use <strong>Duplicate / Save As</strong> to create an editable user project.
+</div>
+{% endif %}
 
-<!-- Financing Structure -->
-<div class="sheet-card">
-  <div class="section-header">Financing Structure</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Total CAPEX</span>
-      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.total_capex_keur) }} kEUR</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Senior Debt</span>
-      <span class="metric-value">{% if project_ctx.senior_debt_keur is not none %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">SHL</span>
-      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_amount_keur) }} kEUR</span>
-    </div>
-  </div>
+{# ── Dirty indicator ─────────────────────────────────────────────────── #}
+<div id="dirty-indicator" class="inp-dirty-indicator" style="display:none;">
+  <span class="badge badge-warning">● Unsaved draft</span>
 </div>
 
+{# ── Footer note ─────────────────────────────────────────────────────── #}
 <div class="table-note">
   <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
 </div>

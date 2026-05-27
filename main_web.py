@@ -285,6 +285,28 @@ def _collect_form_snapshot(form) -> dict:
         "horizon_years",
         "capacity_factor",
         "ppa_term_years",
+        # ── Individual CAPEX line items ──────────────────────────────────
+        "capex_epc_contract_keur",
+        "capex_production_units_keur",
+        "capex_epc_other_keur",
+        "capex_grid_connection_keur",
+        "capex_ops_prep_keur",
+        "capex_insurances_keur",
+        "capex_lease_tax_keur",
+        "capex_construction_mgmt_a_keur",
+        "capex_commissioning_keur",
+        "capex_audit_legal_keur",
+        "capex_construction_mgmt_b_keur",
+        "capex_contingencies_keur",
+        "capex_taxes_keur",
+        "capex_project_acquisition_keur",
+        "capex_project_rights_keur",
+        "capex_idc_keur",
+        "capex_bank_fees_keur",
+        "capex_commitment_fees_keur",
+        "capex_other_financial_keur",
+        "capex_vat_costs_keur",
+        "capex_reserve_accounts_keur",
     ]
     return {field: form.get(field, "") for field in fields}
 

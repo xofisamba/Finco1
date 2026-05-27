@@ -564,6 +564,16 @@ def snapshots_equal(left: Optional[dict[str, Any]], right: Optional[dict[str, An
     return _to_json(left or {}) == _to_json(right or {})
 
 
+def _strip_empty_fields(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Remove keys whose values are empty strings.
+
+    Used to normalize snapshots before comparison so that form submissions
+    (which may contain new empty-string fields added by _collect_form_snapshot)
+    can still match workspace saved snapshots that predate those fields.
+    """
+    return {k: v for k, v in (snapshot or {}).items() if v != ""}
+
+
 def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], current_snapshot: dict[str, Any]) -> tuple[bool, str, str]:
     if workspace_state is None:
         return True, "workspace_base", ""
@@ -577,7 +587,12 @@ def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], 
             )
         return True, "workspace_base", ""
 
-    if snapshots_equal(saved, current_snapshot):
+    # Normalize empty-string fields before comparing so that new form fields
+    # (e.g. capex_* fields added by _collect_form_snapshot) don't cause a
+    # false mismatch with workspace snapshots saved before those fields existed.
+    saved_norm = _strip_empty_fields(saved)
+    current_norm = _strip_empty_fields(current_snapshot)
+    if snapshots_equal(saved_norm, current_norm):
         if workspace_state.active_scenario_id:
             return True, "saved_state", ""
         return True, "workspace_base", ""
