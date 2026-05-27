@@ -191,11 +191,37 @@ body {
 
 /* ── App Layout ──────────────────────────────────────────────────────────── */
 .app-layout {
-  display: flex;
-  /* offset for fixed header only — tabs bar scrolls with content */
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);  /* col1=sidebar (240px), col2=workspace */
+  /* offset for fixed header only */
   padding-top: var(--header-h);
-  padding-left: var(--sidebar-w);  /* sidebar width */
   min-height: 100vh;
+}
+
+/* .top-tabs-bar spans full width (both columns) */
+.app-layout > .top-tabs-bar {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: var(--header-h);
+  z-index: 150;
+  height: var(--tabs-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  display: flex;
+  align-items: center;
+}
+
+/* .sidebar-input (hidden) stays in col1 (no change needed) */
+
+/* .project-sidebar goes in col1 of the grid */
+.app-layout > .project-sidebar {
+  grid-column: 1;
+}
+
+/* .content goes in col2 (main workspace area) */
+.app-layout > .content {
+  grid-column: 2;
 }
 
 /* ── Sidebar Navigation (dark navy) ─────────────────────────────────────── */
