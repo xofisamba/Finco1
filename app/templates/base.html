@@ -32,9 +32,11 @@
   </div>
 </header>
 
-{% include "partials/workspace_tabs.html" %}
+</header>
 
 <div class="app-layout">
+  {% include "partials/workspace_tabs.html" %}
+
   <nav class="project-sidebar" id="project-sidebar">
     <div class="ps-brand">
       <div class="ps-brand-name">Finco One</div>
@@ -47,29 +49,13 @@
       <div class="ps-section-label">Actions</div>
       <div class="ps-actions">
         <button class="ps-action-btn"
-                id="btn-new-project"
-                type="button"
-                hx-get="/projects/new"
-                hx-target="#panel-new-project"
-                hx-swap="innerHTML">
-          <span class="ps-action-icon">+</span> New Project
-        </button>
-        <button class="ps-action-btn"
                 id="btn-duplicate-scenario"
                 type="button"
                 onclick="duplicateCurrentScenario()">
           <span class="ps-action-icon">⊕</span> Duplicate
         </button>
-        <button class="ps-action-btn"
-                id="btn-compare-scenarios"
-                type="button"
-                hx-get="/scenarios/compare?project={{ project_record.project_code if project_record else project_ctx.id }}"
-                hx-target="#saved-scenario-panel"
-                hx-swap="outerHTML">
-          <span class="ps-action-icon">⟷</span> Compare
-        </button>
         <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button">
-          <span class="ps-action-icon">Run</span> Run Model
+          <span class="ps-action-icon">▶</span> Run
         </button>
         <button class="ps-action-btn"
                 id="btn-save"
@@ -78,7 +64,15 @@
                 hx-include="#main-form"
                 hx-target="#saved-scenario-panel"
                 hx-swap="outerHTML">
-          <span class="ps-action-icon">Save</span> Save Scenario
+          <span class="ps-action-icon">💾</span> Save
+        </button>
+        <button class="ps-action-btn"
+                id="btn-compare-scenarios"
+                type="button"
+                hx-get="/scenarios/compare?project={{ project_record.project_code if project_record else project_ctx.id }}"
+                hx-target="#saved-scenario-panel"
+                hx-swap="outerHTML">
+          <span class="ps-action-icon">⟷</span> Compare
         </button>
       </div>
     </div>

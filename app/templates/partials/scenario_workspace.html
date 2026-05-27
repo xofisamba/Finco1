@@ -1,3 +1,4 @@
+<!-- Scenario Workspace — Phase 21 compact sidebar -->
 <div id="saved-scenario-panel" class="scenario-workspace" data-project-code="{{ project_record.project_code }}">
   <div id="scenario-action-result">
     {% if workspace_message %}
@@ -5,8 +6,9 @@
     {% endif %}
   </div>
 
+  <!-- Editable State (always shown) -->
   <div class="ps-section">
-    <div class="ps-section-label">Editable State</div>
+    <div class="ps-section-label">State</div>
     <div class="ps-saved-item">
       <div class="ps-saved-main">
         <div class="ps-saved-title" id="workspace-active-scenario-name">
@@ -14,175 +16,99 @@
         </div>
         <div class="ps-saved-meta">
           {% if workspace_state.dirty %}
-          <span class="badge badge-warn">Unsaved edits</span> — save or revert before running.
+          <span class="badge badge-warn">Unsaved</span>
           {% else %}
-          <span class="badge badge-pass">Saved</span> — clean state, safe to run or export.
+          <span class="badge badge-pass">Saved</span>
           {% endif %}
-        </div>
-        <div class="ps-saved-meta">
-          Revision {{ workspace_state.updated_at.strftime("%Y-%m-%d %H:%M") if workspace_state else "not yet saved" }}
-          {% if workspace_state and workspace_state.last_runtime_at %}
-          · runtime {{ workspace_state.last_runtime_at.strftime("%Y-%m-%d %H:%M") }}
-          {% endif %}
+          · {{ workspace_state.updated_at.strftime("%H:%M") if workspace_state else "—" }}
         </div>
       </div>
       <div class="ps-saved-stats">
-        <span class="badge {% if workspace_state.dirty %}badge-warn{% else %}badge-pass{% endif %}" id="workspace-dirty-label">
-          {{ "Unsaved edits" if workspace_state.dirty else "Saved" }}
-        </span>
-        <span class="badge badge-muted" id="workspace-runtime-origin-label">
-          {% if workspace_state.last_runtime_origin == "saved_state" %}Runtime OK{% elif workspace_state.last_runtime_origin == "workspace_base" %}Base runtime{% else %}No runtime{% endif %}
+        <span class="badge {% if workspace_state.dirty %}badge-warn{% else %}badge-pass{% endif %}">
+          {{ "Unsaved" if workspace_state.dirty else "Saved" }}
         </span>
       </div>
     </div>
   </div>
 
+  <!-- Saved Scenarios (compact) -->
+  {% if scenario_records %}
   <div class="ps-section">
-    <div class="ps-section-label">Scenario Cards</div>
-    {% if not scenario_summary_cards %}
-    <div class="ps-mini-empty">
-      No scenario cards yet. Save scenarios to build history.
-    </div>
-    {% else %}
+    <div class="ps-section-label">Scenarios</div>
     <div class="ps-saved-list">
-      {% for item in scenario_summary_cards %}
+      {% for item in scenario_records[:5] %}
       <div class="ps-saved-item ps-saved-item--compact">
         <div class="ps-saved-title">{{ item.scenario_name }}</div>
         <div class="ps-saved-meta">{{ item.updated_at.strftime("%m-%d %H:%M") }}</div>
-        <div class="ps-saved-stats">
-          {% if item.project_irr is not none %}<span class="ps-stat-chip">{{ (item.project_irr * 100) | round(1) }}% IRR</span>{% endif %}
-          {% if item.equity_irr is not none %}<span class="ps-stat-chip">{{ (item.equity_irr * 100) | round(1) }}% Eq</span>{% endif %}
-          {% if item.avg_dscr is not none %}<span class="ps-stat-chip">DSCR {{ item.avg_dscr | round(2) }}</span>{% endif %}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </div>
-
-  <div class="ps-section">
-    <div class="ps-section-label">Saved Scenarios</div>
-    {% if not scenario_records %}
-    <div class="ps-mini-empty">
-      No saved scenarios yet. Save the current setup to create a reusable snapshot.
-    </div>
-    {% else %}
-    <div class="ps-saved-list">
-      {% for item in scenario_records %}
-      <div class="ps-saved-item">
-        <div class="ps-saved-main">
-          <div class="ps-saved-title">{{ item.scenario_name }}</div>
-          <div class="ps-saved-meta">
-            {{ item.project_code|upper }} · {{ item.snapshot.get("scenario", "Base") }} ·
-            {{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}
-            {% if item.copied_from_scenario_id %}· copied from {{ item.copied_from_scenario_id[:8] }}{% endif %}
-          </div>
-        </div>
         <div class="ps-saved-actions">
           <button class="ps-mini-btn"
                   hx-get="/scenarios/{{ item.scenario_id }}/load"
                   hx-target="#scenario-action-result"
-                  hx-swap="innerHTML">
-            Load
-          </button>
-          <button class="ps-mini-btn"
-                  hx-post="/scenarios/{{ item.scenario_id }}/duplicate"
-                  hx-target="#saved-scenario-panel"
-                  hx-swap="outerHTML">
-            Duplicate
-          </button>
-          <button class="ps-mini-btn"
-                  hx-post="/scenarios/{{ item.scenario_id }}/archive"
-                  hx-target="#saved-scenario-panel"
-                  hx-swap="outerHTML">
-            Archive
-          </button>
+                  hx-swap="innerHTML">Load</button>
         </div>
       </div>
       {% endfor %}
     </div>
+    {% if scenario_records|length > 5 %}
+    <div class="ps-mini-empty">{{ scenario_records|length - 5 }} more — see Scenarios tab</div>
     {% endif %}
   </div>
+  {% endif %}
 
+  <!-- Compare (if 2+ scenarios) -->
+  {% if scenario_records|length >= 2 %}
   <div class="ps-section">
-    <div class="ps-section-label">Compare Scenarios</div>
-    <div class="ps-mini-empty">
-      Compare reads saved scenario snapshots and saved runtime summaries only. Unsaved browser draft edits are not part of the comparison unless you save them first.
-    </div>
-    {% if scenario_records|length < 2 %}
-    <div class="ps-mini-empty">
-      Save at least two scenarios to unlock side-by-side compare.
-    </div>
-    {% else %}
+    <div class="ps-section-label">Compare</div>
     <form class="ps-compare-form"
           hx-get="/scenarios/compare"
           hx-target="#saved-scenario-panel"
           hx-swap="outerHTML">
       <input type="hidden" name="project" value="{{ project_record.project_code }}" />
       <label class="ps-compare-label">
-        Left
         <select name="left_scenario_id">
           {% for item in scenario_records %}
-          <option value="{{ item.scenario_id }}" {% if compare_result and compare_result.left.scenario_id == item.scenario_id %}selected{% endif %}>{{ item.scenario_name }}</option>
+          <option value="{{ item.scenario_id }}">{{ item.scenario_name }}</option>
           {% endfor %}
         </select>
       </label>
       <label class="ps-compare-label">
-        Right
         <select name="right_scenario_id">
           {% for item in scenario_records %}
-          <option value="{{ item.scenario_id }}" {% if compare_result and compare_result.right.scenario_id == item.scenario_id %}selected{% endif %}>{{ item.scenario_name }}</option>
+          <option value="{{ item.scenario_id }}">{{ item.scenario_name }}</option>
           {% endfor %}
         </select>
       </label>
       <button class="ps-mini-btn" type="submit">Compare</button>
     </form>
-    {% endif %}
-
     {% if compare_result %}
     {% include "partials/scenario_compare.html" %}
     {% endif %}
   </div>
+  {% endif %}
 
-  <div class="ps-section">
-    <div class="ps-section-label">Scenario History</div>
-    {% if not scenario_history %}
-    <div class="ps-mini-empty">No scenario history yet.</div>
-    {% else %}
-    <div class="ps-history-list">
-      {% for item in scenario_history %}
-      <div class="ps-history-item">
-        <div class="ps-history-title">{{ item.scenario_name }}</div>
-        <div class="ps-history-meta">
-          {{ item.created_at.strftime("%Y-%m-%d %H:%M") }} → {{ item.updated_at.strftime("%Y-%m-%d %H:%M") }}
-          {% if item.archived %}· archived{% endif %}
-          {% if item.copied_from_scenario_id %}· duplicated lineage{% endif %}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </div>
-
-  <div class="ps-section">
-    <div class="ps-section-label">Export Lineage</div>
-    <div class="ps-mini-empty" style="font-size:0.75rem;">
-      Descriptive only. Full history → Downloads tab.
-    </div>
-    {% if not export_lineage_ui.recent_exports %}
-    <div class="ps-mini-empty">No exports tracked.</div>
-    {% else %}
-    <div class="ps-export-list">
-      {% for item in export_lineage_ui.recent_exports[:5] %}
-      <div class="ps-export-item">
-        <div class="ps-export-title">{{ item.artifact_name }}</div>
-        <div class="ps-export-meta">{{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at }}</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </div>
 </div>
+
+<style>
+.ps-saved-item--compact {
+  padding: 0.35rem 0.5rem;
+  gap: 0.3rem;
+}
+.ps-saved-item--compact .ps-saved-title {
+  font-size: 0.75rem;
+}
+.ps-saved-item--compact .ps-saved-meta {
+  font-size: 0.65rem;
+}
+.ps-saved-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+.ps-mini-btn {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+}
+</style>
+
 <script>
   (function() {
     if (window.applyWorkspaceStateMeta) {
