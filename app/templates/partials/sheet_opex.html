@@ -7,130 +7,422 @@
   </span>
 </div>
 
-<!-- OPEX Schedule Y1 -->
-<div class="sheet-card">
-  <div class="section-header">OPEX Schedule — Y1 (kEUR)</div>
-  <div class="editable-grid-shell">
-    <div class="editable-grid-shell__header">
-      <div>
-        <div class="editable-grid-shell__title">Editable draft assumptions</div>
-        <div class="editable-grid-shell__note">This grid edits draft workspace state only. The schedule below remains a preview until a clean saved scenario is run.</div>
-      </div>
-      <span class="badge badge-runtime">Draft only</span>
-    </div>
-    <div class="editable-grid-scroll">
-      <table class="editable-grid-table">
-        <thead>
-          <tr>
-            <th>Assumption</th>
-            <th>Draft value (unsaved workspace)</th>
-            <th>Boundary note</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>OPEX Y1 (kEUR)</td>
-            <td>
-              <input class="editable-grid-input" type="number" step="any" min="0"
-                     data-grid-source="opex_y1_keur" inputmode="decimal"
-                     aria-label="Draft year one operating expense in thousands of euros" />
+{# ── Readonly notice for baselines ─────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--opex">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Baseline template — read only</strong>
+    <p>Edit is disabled for factory templates. Use <strong>Duplicate / Save As</strong> to create your own project copy, then edit OPEX assumptions there.</p>
+  </div>
+</div>
+{% endif %}
+
+{# ── OPEX Detail Grid ──────────────────────────────────────────── #}
+<div class="fc-opex-grid-wrapper sheet-card">
+
+  {# Header #}
+  <div class="section-header">OPEX Schedule — Year 1 (kEUR)</div>
+
+  {# Dirty indicator placeholder #}
+  {% if is_user_project %}
+  <div class="inp-dirty-indicator" id="opex-dirty-indicator" style="display:none;">
+    <span class="dirty-dot"></span>
+    <span>Unsaved OPEX edits</span>
+  </div>
+  {% endif %}
+
+  {# ── Grid ──────────────────────────────────────────────────────── #}
+  <div class="fc-grid-wrapper">
+    <table class="fc-grid" id="opex-grid">
+
+      {# ── Sticky Header ───────────────────────────────────────────── #}
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Line Item</th>
+          <th class="fc-th fc-th--code">Code</th>
+          <th class="fc-th fc-th--amount">Y1 (kEUR)</th>
+          <th class="fc-th">Unit</th>
+          <th class="fc-th">Fixed / Variable</th>
+          <th class="fc-th">Recurring / One-off</th>
+          <th class="fc-th fc-th--amount">Escal. %</th>
+          <th class="fc-th fc-th--num">Start</th>
+          <th class="fc-th fc-th--num">End</th>
+          <th class="fc-th">Notes</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        {# ═══════════════════════════════════════════════════════════════
+           GROUP: Operations & Maintenance
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="10">Operations &amp; Maintenance</td>
+        </tr>
+
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Operations & Maintenance" %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur) }}"
+                     data-opex-item="{{ item.code }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "%.2f"|format(item.y1_keur) }}</span>
+              {% endif %}
             </td>
-            <td>Saved snapshot required before runtime can bind to this change.</td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
           </tr>
-          <tr>
-            <td>Construction months</td>
-            <td>
-              <input class="editable-grid-input" type="number" step="1" min="0"
-                     data-grid-source="construction_months" inputmode="numeric"
-                     aria-label="Draft construction duration in months" />
+          {% endif %}
+        {% endfor %}
+
+        {# O&M Subtotal #}
+        {% set opex_om_total = namespace(total=0.0) %}
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Operations & Maintenance" %}
+            {% set opex_om_total.total = opex_om_total.total + item.y1_keur %}
+          {% endif %}
+        {% endfor %}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">O&amp;M Subtotal</td>
+          <td class="fc-total-cell">{{ "%.2f"|format(opex_om_total.total) }}</td>
+          <td colspan="7"></td>
+        </tr>
+
+        {# ═══════════════════════════════════════════════════════════════
+           GROUP: Insurance
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="10">Insurance</td>
+        </tr>
+
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Insurance" %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur) }}"
+                     data-opex-item="{{ item.code }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "%.2f"|format(item.y1_keur) }}</span>
+              {% endif %}
             </td>
-            <td>Preview only — not runtime-bound yet.</td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
           </tr>
-        </tbody>
-      </table>
-    </div>
+          {% endif %}
+        {% endfor %}
+
+        {# Insurance Subtotal #}
+        {% set opex_insurance_total = namespace(total=0.0) %}
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Insurance" %}
+            {% set opex_insurance_total.total = opex_insurance_total.total + item.y1_keur %}
+          {% endif %}
+        {% endfor %}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Insurance Subtotal</td>
+          <td class="fc-total-cell">{{ "%.2f"|format(opex_insurance_total.total) }}</td>
+          <td colspan="7"></td>
+        </tr>
+
+        {# ═══════════════════════════════════════════════════════════════
+           GROUP: Land & Lease
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="10">Land &amp; Lease</td>
+        </tr>
+
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Land & Lease" %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur) }}"
+                     data-opex-item="{{ item.code }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "%.2f"|format(item.y1_keur) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# Land & Lease Subtotal #}
+        {% set opex_land_total = namespace(total=0.0) %}
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Land & Lease" %}
+            {% set opex_land_total.total = opex_land_total.total + item.y1_keur %}
+          {% endif %}
+        {% endfor %}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Land &amp; Lease Subtotal</td>
+          <td class="fc-total-cell">{{ "%.2f"|format(opex_land_total.total) }}</td>
+          <td colspan="7"></td>
+        </tr>
+
+        {# ═══════════════════════════════════════════════════════════════
+           GROUP: Grid & Balancing
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="10">Grid &amp; Balancing</td>
+        </tr>
+
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Grid & Balancing" %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur) }}"
+                     data-opex-item="{{ item.code }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "%.2f"|format(item.y1_keur) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# Grid Subtotal #}
+        {% set opex_grid_total = namespace(total=0.0) %}
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Grid & Balancing" %}
+            {% set opex_grid_total.total = opex_grid_total.total + item.y1_keur %}
+          {% endif %}
+        {% endfor %}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Grid &amp; Balancing Subtotal</td>
+          <td class="fc-total-cell">{{ "%.2f"|format(opex_grid_total.total) }}</td>
+          <td colspan="7"></td>
+        </tr>
+
+        {# ═══════════════════════════════════════════════════════════════
+           GROUP: Administration
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="10">Administration</td>
+        </tr>
+
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Administration" %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur) }}"
+                     data-opex-item="{{ item.code }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "%.2f"|format(item.y1_keur) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# Admin Subtotal #}
+        {% set opex_admin_total = namespace(total=0.0) %}
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Administration" %}
+            {% set opex_admin_total.total = opex_admin_total.total + item.y1_keur %}
+          {% endif %}
+        {% endfor %}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Administration Subtotal</td>
+          <td class="fc-total-cell">{{ "%.2f"|format(opex_admin_total.total) }}</td>
+          <td colspan="7"></td>
+        </tr>
+
+        {# ═══════════════════════════════════════════════════════════════
+           GROUP: Environmental & Social
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="10">Environmental &amp; Social</td>
+        </tr>
+
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Environmental & Social" %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur) }}"
+                     data-opex-item="{{ item.code }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "%.2f"|format(item.y1_keur) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# E&S Subtotal #}
+        {% set opex_esg_total = namespace(total=0.0) %}
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Environmental & Social" %}
+            {% set opex_esg_total.total = opex_esg_total.total + item.y1_keur %}
+          {% endif %}
+        {% endfor %}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Environmental &amp; Social Subtotal</td>
+          <td class="fc-total-cell">{{ "%.2f"|format(opex_esg_total.total) }}</td>
+          <td colspan="7"></td>
+        </tr>
+
+        {# ═══════════════════════════════════════════════════════════════
+           GROUP: Contingency
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="10">Contingency</td>
+        </tr>
+
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == "Contingency" %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur) }}"
+                     data-opex-item="{{ item.code }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "%.2f"|format(item.y1_keur) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# ═══════════════════════════════════════════════════════════════
+           GRAND TOTAL ROW
+           ═══════════════════════════════════════════════════════════════ #}
+        <tr class="fc-grand-total">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="2">Total OPEX (Y1)</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">
+            {{ "%.2f"|format(project_ctx.opex_y1_total_keur) }}
+          </td>
+          <td colspan="7"></td>
+        </tr>
+
+        {# Delta warning row #}
+        {% set grid_sum = namespace(total=0.0) %}
+        {% for item in project_ctx.opex_items %}
+          {% set grid_sum.total = grid_sum.total + item.y1_keur %}
+        {% endfor %}
+        {% set delta = (grid_sum.total - project_ctx.opex_y1_total_keur) | abs %}
+        {% if delta > 0.5 %}
+        <tr class="fc-delta-row">
+          <td class="fc-cell fc-delta-label" colspan="2">
+            <span class="delta-warning-icon">⚠️</span>
+            Delta vs model summary
+          </td>
+          <td class="fc-delta-warning">
+            {{ "%.2f"|format(delta) }} kEUR
+          </td>
+          <td class="fc-cell" colspan="8">
+            <span class="fc-delta-warning">
+              Model OPEX summary is authoritative. This grid is a preview.
+            </span>
+          </td>
+        </tr>
+        {% endif %}
+
+      </tbody>
+    </table>
+  </div>{# /fc-grid-wrapper #}
+
+  {# Footer note #}
+  <div class="table-note">
+    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+    <span class="table-note__text">
+      {% set default_esc = 2.0 if not project_ctx.opex_items else (project_ctx.opex_items[0].escalation_pct or 2.0) %}
+      OPEX escalates at {{ "%.1f"|format(default_esc) }}% annually
+      {% if project_ctx.opex_contingency_method %} · Contingency method: {{ project_ctx.opex_contingency_method }}{% endif %}
+    </span>
   </div>
-  <table class="sheet-table">
-    <thead>
-      <tr>
-        <th>Item</th>
-        <th class="num-col">Y1 (kEUR)</th>
-        <th class="num-col">Inflation</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in project_ctx.opex_items %}
-      <tr>
-        <td>{{ item.name }}</td>
-        <td class="num-col">{{ "%.2f"|format(item.y1_keur) }}</td>
-        <td class="num-col">{% if item.inflation_pct > 0 %}{{ "%.0f"|format(item.inflation_pct * 100) }}%{% else %}Flat{% endif %}</td>
-      </tr>
-      {% endfor %}
-      <tr class="total-row">
-        <td>Total Y1 OPEX</td>
-        <td class="num-col">{{ "{:,.0f}".format(project_ctx.opex_y1_total_keur) }}</td>
-        <td class="num-col">—</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
 
-<div class="section-divider"></div>
-
-<!-- OPEX Assumptions -->
-<div class="sheet-card">
-  <div class="section-header">OPEX Assumptions</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Y1 OPEX Total</span>
-      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.opex_y1_total_keur) }} kEUR</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">Inflation (standard)</span>
-      <span class="metric-value">2% annually</span>
-    </div>
-    <div class="assumption-item">
-      <span class="metric-label">OPEX/MW (Y1)</span>
-      <span class="metric-value">~{{ "%.0f"|format(project_ctx.opex_y1_total_keur / project_ctx.capacity_mw) }} kEUR/MW</span>
-    </div>
-  </div>
-</div>
-
-<div class="section-divider"></div>
-
-<!-- Contingency Method -->
-<div class="sheet-card">
-  <div class="section-header">Contingency Method</div>
-  <div class="assumption-grid">
-    <div class="assumption-item">
-      <span class="metric-label">Method</span>
-      <span class="method-badge {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}method-pct{% else %}method-fixed{% endif %}">
-        {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}% of other OPEX{% else %}Fixed amount + inflation{% endif %}
-      </span>
-    </div>
-    {% if project_ctx.opex_contingency_pct %}
-    <div class="assumption-item">
-      <span class="metric-label">Percentage</span>
-      <span class="metric-value">{{ "%.0f"|format(project_ctx.opex_contingency_pct) }}% of sum(non-contingency OPEX)</span>
-    </div>
-    {% endif %}
-    <div class="assumption-item">
-      <span class="metric-label">Inflation on contingency</span>
-      <span class="metric-value no-inflation">{% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}None — indirect via underlying OPEX{% else %}Applies group inflation{% endif %}</span>
-    </div>
-  </div>
-  <div class="method-note {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}method-pct-note{% else %}method-fixed-note{% endif %}">
-    {% if project_ctx.opex_contingency_method == 'percentage_of_opex' %}
-    <span class="method-badge method-pct">% of OPEX</span>
-    No separate inflation is applied to the contingency itself.
-    The contingency grows because the underlying OPEX items inflate (2%/yr on most lines).
-    {% else %}
-    <span class="method-badge method-fixed">Fixed amount + inflation</span>
-    Contingency is entered as a fixed kEUR amount and escalates by its own inflation rate.
-    {% endif %}
-  </div>
-</div>
-
-<div class="table-note">
-  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
-</div>
+</div>{# /sheet-card #}

@@ -307,6 +307,22 @@ def _collect_form_snapshot(form) -> dict:
         "capex_other_financial_keur",
         "capex_vat_costs_keur",
         "capex_reserve_accounts_keur",
+        # ── Individual OPEX line items (added by Phase 20J) ──────────────
+        # These use the slugified item code from _slugify_code() in project_context
+        # Snapshot persistence is backward-compatible: absence of opex_<code>_y1_keur
+        # means "use factory defaults" — backend remains authoritative.
+        "opex_technical_management_y1_keur",
+        "opex_o_and_m_preventive_and_corrective_y1_keur",
+        "opex_maintain_site_y1_keur",
+        "opex_clean_material_y1_keur",
+        "opex_security_y1_keur",
+        "opex_insurance_y1_keur",
+        "opex_lease_and_property_tax_y1_keur",
+        "opex_power_expenses_y1_keur",
+        "opex_audit_and_accounting_and_legal_y1_keur",
+        "opex_bank_fees_opex_y1_keur",
+        "opex_environmental_and_social_management_y1_keur",
+        "opex_contingencies_y1_keur",
     ]
     return {field: form.get(field, "") for field in fields}
 
