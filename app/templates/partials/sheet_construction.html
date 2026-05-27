@@ -38,16 +38,16 @@
     </div>
     <div class="assumption-item">
       <span class="metric-label">Total CAPEX</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.total_capex_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}"|format(project_ctx.total_capex_keur) }} kEUR</span>
     </div>
 
     <div class="assumption-item">
       <span class="metric-label">Senior Debt</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.senior_debt_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}"|format(project_ctx.senior_debt_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">SHL Amount</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.shl_amount_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}"|format(project_ctx.shl_amount_keur) }} kEUR</span>
     </div>
     <div class="assumption-item">
       <span class="metric-label">SHL Rate</span>
@@ -55,7 +55,7 @@
     </div>
     <div class="assumption-item">
       <span class="metric-label">IDC (Total)</span>
-      <span class="metric-value">{{ "%,.0f"|format(project_ctx.idc_keur) }} kEUR</span>
+      <span class="metric-value">{{ "{:,.0f}"|format(project_ctx.idc_keur) }} kEUR</span>
     </div>
 
   </div>
@@ -105,12 +105,12 @@
         <tr class="fc-data-row">
           <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.label }}</td>
           <td class="fc-cell">{{ item.unit }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "%,.1f"|format(item.equity_draw_keur) }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "%,.1f"|format(item.shl_draw_keur) }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "%,.1f"|format(item.junior_draw_keur) }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "%,.1f"|format(item.senior_draw_keur) }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "%,.1f"|format(item.total_draw_keur) }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "%,.1f"|format(item.cumulative_uses_keur) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ "{:,.1f}"|format(item.equity_draw_keur) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ "{:,.1f}"|format(item.shl_draw_keur) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ "{:,.1f}"|format(item.junior_draw_keur) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ "{:,.1f}"|format(item.senior_draw_keur) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ "{:,.1f}"|format(item.total_draw_keur) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ "{:,.1f}"|format(item.cumulative_uses_keur) }}</td>
         </tr>
         {% endfor %}
 
@@ -123,25 +123,25 @@
         <tr class="fc-subtotal-row">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">{{ item.label }}</td>
           {% if item.label == 'Total Equity Draw' %}
-            <td class="fc-total-cell">{{ "%,.1f"|format(item.value) }}</td>
+            <td class="fc-total-cell">{{ "{:,.1f}"|format(item.value) }}</td>
             <td colspan="6"></td>
           {% elif item.label == 'Total SHL Principal Draw' %}
             <td colspan="2"></td>
-            <td class="fc-total-cell">{{ "%,.1f"|format(item.value) }}</td>
+            <td class="fc-total-cell">{{ "{:,.1f}"|format(item.value) }}</td>
             <td colspan="5"></td>
           {% elif item.label == 'Total Senior Principal Draw' %}
             <td colspan="3"></td>
-            <td class="fc-total-cell">{{ "%,.1f"|format(item.value) }}</td>
+            <td class="fc-total-cell">{{ "{:,.1f}"|format(item.value) }}</td>
             <td colspan="4"></td>
           {% elif item.label == 'Total Junior Draw' %}
             <td colspan="4"></td>
-            <td class="fc-total-cell">{{ "%,.1f"|format(item.value) }}</td>
+            <td class="fc-total-cell">{{ "{:,.1f}"|format(item.value) }}</td>
             <td colspan="3"></td>
           {% elif item.label == 'Total Uses (CAPEX)' %}
             <td colspan="6"></td>
-            <td class="fc-total-cell fc-grand-total__value">{{ "%,.1f"|format(item.value) }}</td>
+            <td class="fc-total-cell fc-grand-total__value">{{ "{:,.1f}"|format(item.value) }}</td>
           {% else %}
-            <td class="fc-total-cell">{{ "%,.1f"|format(item.value) }}</td>
+            <td class="fc-total-cell">{{ "{:,.1f}"|format(item.value) }}</td>
             <td colspan="6"></td>
           {% endif %}
         </tr>
@@ -157,7 +157,7 @@
 <div class="table-note">
   <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
   <span class="table-note__text">
-    IDC: {{ "%,.0f"|format(project_ctx.idc_keur) }} kEUR
+    IDC: {{ "{:,.0f}"|format(project_ctx.idc_keur) }} kEUR
     · SHL Rate: {{ "%.2f"|format(project_ctx.shl_rate_pct * 100) }}%
     · Target DSCR: {{ "%.2f"|format(project_ctx.target_dscr) }}x
   </span>

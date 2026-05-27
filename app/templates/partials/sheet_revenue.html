@@ -196,21 +196,21 @@
 
         <tr class="fc-subtotal-row">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Y1 PPA Revenue (kEUR)</td>
-          <td class="fc-total-cell">{{ "%,.1f"|format(ppa_y1) }}</td>
+          <td class="fc-total-cell">{{ "{:,.1f}"|format(ppa_y1) }}</td>
           <td colspan="3"><span class="fc-cell--notes">Informational — backend computes actual</span></td>
         </tr>
 
         {% if merchant_y1 > 0 %}
         <tr class="fc-subtotal-row">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Y1 CO2 Revenue (kEUR)</td>
-          <td class="fc-total-cell">{{ "%,.1f"|format(merchant_y1) }}</td>
+          <td class="fc-total-cell">{{ "{:,.1f}"|format(merchant_y1) }}</td>
           <td colspan="3"><span class="fc-cell--notes">Informational — backend computes actual</span></td>
         </tr>
         {% endif %}
 
         <tr class="fc-grand-total">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="2">Est. Total Y1 Revenue</td>
-          <td class="fc-total-cell fc-total-value fc-grand-total__value">{{ "%,.1f"|format(ppa_y1 + merchant_y1) }}</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">{{ "{:,.1f}"|format(ppa_y1 + merchant_y1) }}</td>
           <td colspan="3"><span class="fc-cell--notes">kEUR — runtime model is authoritative</span></td>
         </tr>
 
