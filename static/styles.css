@@ -3900,3 +3900,118 @@ body {
 .fc-revenue-grid-wrapper .table-note {
   margin-top: 0.6rem;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Phase 20L — Construction / IDC Workbook UX Foundation
+   Monthly drawdown grid and IDC summary grid
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Construction / IDC grid wrappers */
+.fc-construction-grid-wrapper,
+.fc-idc-grid-wrapper,
+.fc-idc-monthly-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+/* Horizontal scroll container for wide grids */
+.fc-grid-wrapper--scroll-x {
+  overflow-x: auto;
+  overflow-x: scroll; /* fallback */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Readonly notice for construction/IDC tabs */
+.inp-readonly-notice--construction,
+.inp-readonly-notice--idc {
+  margin-bottom: 0.75rem;
+}
+
+/* Construction/IDC cards row layout */
+.fc-const-idc-cards .assumption-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.fc-const-idc-cards .assumption-item {
+  min-width: 140px;
+  flex: 1 1 140px;
+}
+
+/* Construction grid — wider column for row labels */
+.fc-construction-grid-wrapper .fc-grid-col-label {
+  min-width: 120px;
+  width: 120px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: inherit;
+}
+
+/* IDC grid — numeric amount cells right-aligned */
+.fc-idc-grid-wrapper .fc-cell--amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monthly IDC grid */
+.fc-idc-monthly-wrapper {
+  margin-top: 0.75rem;
+}
+
+/* Section band for construction grid (spans all columns) */
+.fc-construction-grid-wrapper .fc-section-band {
+  background: var(--row-section-band-bg, #e8edf2);
+}
+
+.fc-construction-grid-wrapper .fc-section-band__label {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--text-2, #374151);
+  padding: 0.25rem 0.5rem;
+}
+
+/* Subtotal rows in construction grid */
+.fc-construction-grid-wrapper .fc-subtotal-row {
+  background: var(--row-subtotal-bg, #f0f4f8);
+}
+
+.fc-construction-grid-wrapper .fc-subtotal-label {
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+/* Grand total in construction grid */
+.fc-construction-grid-wrapper .fc-grand-total__value {
+  font-weight: 700;
+  color: var(--accent, #1d4ed8);
+}
+
+/* IDC grand total */
+.fc-idc-grid-wrapper .fc-grand-total {
+  background: var(--row-grandtotal-bg, #dbeafe);
+  border-top: 2px solid var(--accent, #3b82f6);
+}
+
+.fc-idc-grid-wrapper .fc-grand-total__label {
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.fc-idc-grid-wrapper .fc-grand-total__value {
+  font-weight: 700;
+  color: var(--accent, #1d4ed8);
+}
+
+/* Runtime/audit badge */
+.badge-audit {
+  background: var(--badge-preview-bg, #fff8e1);
+  color: var(--warning-text, #92400e);
+  border: 1px solid var(--warning, #f59e0b);
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}

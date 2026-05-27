@@ -331,6 +331,9 @@ def _collect_form_snapshot(form) -> dict:
         "rev_balancing_cost",
         "rev_co2_enabled",
         "rev_co2_price",
+        # Phase 20L — Construction / IDC snapshot fields
+        "construction_months",
+        "idc_keur",
     ]
     return {field: form.get(field, "") for field in fields}
 

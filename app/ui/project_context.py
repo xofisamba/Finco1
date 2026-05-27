@@ -65,6 +65,8 @@ class ProjectContext:
     shl_amount_keur: float = 0.0
     shl_rate_pct: float = 0.0
     shl_idc_keur: float = 0.0
+    construction_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
+    idc_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
     cit_rate_pct: float = 0.0
     loss_carryforward_years: int = 0
     g20_status: str = ""
@@ -105,6 +107,188 @@ def _infer_opex_group(name: str) -> str:
     if "contingen" in n:
         return "Contingency"
     return "Other Operating Costs"
+
+
+
+def _build_construction_items(project_inputs) -> tuple[dict[str, Any], ...]:
+    """Build serialisable construction schedule items from runtime construction engine.
+
+    Uses build_runtime_construction_schedule() for TUHO/Oborovo.
+    Returns monthly drawdown rows + funding source summary rows.
+    Marked audit_only=True since monthly grid is not yet runtime-authoritative.
+    """
+    try:
+        from domain.construction.runtime_adapter import build_runtime_construction_schedule
+        result = build_runtime_construction_schedule(project_inputs)
+    except Exception:
+        return ()
+
+    rows = []
+
+    # ── Monthly Schedule Rows ────────────────────────────────────────────
+    for entry in result.monthly_entries:
+        rows.append({
+            "type": "monthly",
+            "month_index": entry.month_index,
+            "label": f"Month {entry.month_index}",
+            "unit": "kEUR",
+            "equity_draw_keur": entry.equity_draw_keur,
+            "shl_draw_keur": entry.shl_draw_keur,
+            "junior_draw_keur": entry.junior_draw_keur,
+            "senior_draw_keur": entry.senior_draw_keur,
+            "senior_idc_keur": entry.senior_idc_keur,
+            "cumulative_senior_idc_keur": entry.cumulative_senior_idc_keur,
+            "total_draw_keur": entry.equity_draw_keur + entry.shl_draw_keur
+                            + entry.junior_draw_keur + entry.senior_draw_keur,
+            "cumulative_uses_keur": entry.cumulative_uses_keur,
+            "audit_only": True,
+        })
+
+    # ── Funding Summary Rows ────────────────────────────────────────────
+    rows.append({
+        "type": "summary",
+        "label": "Total Equity Draw",
+        "unit": "kEUR",
+        "value": result.equity_draw_keur,
+        "audit_only": False,
+    })
+    rows.append({
+        "type": "summary",
+        "label": "Total SHL Principal Draw",
+        "unit": "kEUR",
+        "value": result.shl_principal_draw_keur,
+        "audit_only": False,
+    })
+    rows.append({
+        "type": "summary",
+        "label": "Total Senior Principal Draw",
+        "unit": "kEUR",
+        "value": result.senior_principal_draw_keur,
+        "audit_only": False,
+    })
+    rows.append({
+        "type": "summary",
+        "label": "Total Junior Draw",
+        "unit": "kEUR",
+        "value": result.junior_draw_keur,
+        "audit_only": False,
+    })
+    rows.append({
+        "type": "summary",
+        "label": "Total Uses (CAPEX)",
+        "unit": "kEUR",
+        "value": result.total_uses_keur,
+        "audit_only": False,
+    })
+
+    return tuple(rows)
+
+
+def _build_idc_items(project_inputs) -> tuple[dict[str, Any], ...]:
+    """Build serialisable IDC summary items from runtime construction engine.
+
+    Uses build_runtime_construction_schedule() for TUHO/Oborovo.
+    Returns IDC summary rows + COD opening balances.
+    """
+    try:
+        from domain.construction.runtime_adapter import build_runtime_construction_schedule
+        result = build_runtime_construction_schedule(project_inputs)
+    except Exception:
+        return ()
+
+    rows = []
+
+    # ── Senior Debt IDC ────────────────────────────────────────────────
+    rows.append({
+        "code": "senior_principal_draw",
+        "name": "Senior Debt Principal Draw",
+        "value": result.senior_principal_draw_keur,
+        "unit": "kEUR",
+        "group": "Senior Debt",
+        "editable": False,
+        "hint": "Runtime computed",
+    })
+    rows.append({
+        "code": "senior_idc",
+        "name": "Senior Debt IDC",
+        "value": result.senior_idc_keur,
+        "unit": "kEUR",
+        "group": "Senior Debt",
+        "editable": False,
+        "hint": "Runtime computed",
+    })
+    rows.append({
+        "code": "opening_senior_balance",
+        "name": "Opening Senior Balance (COD)",
+        "value": result.opening_senior_balance_keur,
+        "unit": "kEUR",
+        "group": "Senior Debt",
+        "editable": False,
+        "hint": "Runtime computed — senior_idc_capitalized applied",
+    })
+
+    # ── SHL IDC ────────────────────────────────────────────────────────
+    rows.append({
+        "code": "shl_principal_draw",
+        "name": "SHL Principal Draw",
+        "value": result.shl_principal_draw_keur,
+        "unit": "kEUR",
+        "group": "SHL",
+        "editable": False,
+        "hint": "Runtime computed",
+    })
+    rows.append({
+        "code": "shl_idc",
+        "name": "SHL IDC",
+        "value": result.shl_idc_keur,
+        "unit": "kEUR",
+        "group": "SHL",
+        "editable": False,
+        "hint": "Runtime computed",
+    })
+    rows.append({
+        "code": "opening_shl_balance",
+        "name": "Opening SHL Balance (COD)",
+        "value": result.opening_shl_balance_keur,
+        "unit": "kEUR",
+        "group": "SHL",
+        "editable": False,
+        "hint": "Runtime computed — shl_idc_capitalized applied",
+    })
+
+    # ── IDC Totals ─────────────────────────────────────────────────────
+    rows.append({
+        "code": "total_idc",
+        "name": "Total IDC",
+        "value": result.shl_idc_keur + result.senior_idc_keur,
+        "unit": "kEUR",
+        "group": "IDC Summary",
+        "editable": False,
+        "hint": "SHL IDC + Senior IDC",
+    })
+    rows.append({
+        "code": "opening_senior_excl_idc",
+        "name": "Opening Senior Excl. IDC",
+        "value": result.opening_senior_balance_keur - result.senior_idc_keur,
+        "unit": "kEUR",
+        "group": "IDC Summary",
+        "editable": False,
+        "hint": "Computed from runtime",
+    })
+
+    # ── Monthly IDC entries ────────────────────────────────────────────
+    for entry in result.monthly_entries:
+        rows.append({
+            "type": "monthly_idc",
+            "month_index": entry.month_index,
+            "label": f"Month {entry.month_index}",
+            "unit": "kEUR",
+            "senior_idc_keur": entry.senior_idc_keur,
+            "cumulative_senior_idc_keur": entry.cumulative_senior_idc_keur,
+            "audit_only": True,
+        })
+
+    return tuple(rows)
 
 
 def _build_opex_items(project_inputs, horizon_years: int = 25) -> tuple[dict[str, Any], ...]:
@@ -356,6 +540,8 @@ def _build_context_from_project_inputs(
         shl_amount_keur=financing.shl_amount_keur,
         shl_rate_pct=financing.shl_rate,
         shl_idc_keur=financing.shl_idc_keur,
+        construction_items=_build_construction_items(project_inputs),
+        idc_items=_build_idc_items(project_inputs),
         cit_rate_pct=tax.corporate_rate,
         loss_carryforward_years=tax.loss_carryforward_years,
         g20_status="BLOCKED",
