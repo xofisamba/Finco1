@@ -2652,3 +2652,905 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 20H — FINCO CELL DESIGN SYSTEM (fc-*)
+   Unified cell semantics for Inputs / Scenarios / Compare tabs.
+   Replaces inline <style> blocks in scenario_tab.html, runtime_summary.html.
+   Provides Excel-like workbook grammar without Tailwind/Alpine/React.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 20H.1: CSS Variable Extensions ─────────────────────────────────── */
+/* These supplement the Phase 17 variables; some were referenced inline
+   in scenario_tab.html but never declared — fix now. */
+:root {
+  /* Accent alias (inline styles referenced --color-accent) */
+  --color-accent: var(--accent, #059669);
+
+  /* Border subtlety scale */
+  --border-subtle: rgba(0, 0, 0, 0.07);
+  --border-muted:   rgba(0, 0, 0, 0.04);
+
+  /* Cell padding canonical */
+  --cell-pad-v:  0.4rem;   /* vertical cell padding */
+  --cell-pad-h:  0.6rem;   /* horizontal cell padding */
+
+  /* Cell height (for input cells) */
+  --cell-h:      2rem;      /* ~32px */
+
+  /* Font sizes */
+  --font-cell:   0.82rem;   /* cell value text */
+  --font-label:  0.78rem;   /* row label text */
+  --font-badge:  0.68rem;   /* badge text */
+
+  /* Color tints for cell variants (accent-based, Excel-like) */
+  --cell-inherited-bg:  color-mix(in srgb, var(--color-accent)  4%, var(--surface));
+  --cell-override-bg:    color-mix(in srgb, var(--color-accent) 15%, var(--surface));
+  --cell-base-bg:        color-mix(in srgb, var(--color-accent)  8%, var(--surface));
+  --cell-runtime-bg:     color-mix(in srgb, var(--primary)       8%, var(--surface));
+  --cell-factory-bg:     var(--surface-2);
+  --cell-warning-bg:     var(--warn-bg, #fffbeb);
+  --cell-error-bg:       var(--blocked-bg, #fef2f2);
+  --cell-dirty-bg:       #fef9ec;
+}
+
+/* ── 20H.2: Cell Base (.fc-cell) ────────────────────────────────────── */
+.fc-cell {
+  /* Base wrapper — pad, font, color, alignment */
+  padding: var(--cell-pad-v) var(--cell-pad-h);
+  font-size: var(--font-cell);
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+
+/* ── 20H.3: Cell Variants ────────────────────────────────────────────── */
+
+/* A. Editable input cell — white bg, visible border, hover/focus */
+.fc-cell-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: text;
+  font-size: var(--font-cell);
+  font-weight: 600;
+  color: var(--text);
+  padding: 0.3rem 0.5rem;
+  width: 100%;
+  min-height: var(--cell-h);
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.fc-cell-input:hover {
+  border-color: var(--border-strong);
+  background: #f9fafb;
+}
+.fc-cell-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.1);
+}
+.fc-cell-input::placeholder {
+  color: var(--muted-2);
+}
+/* Dirty/changed state */
+.fc-cell-input.fc-cell--changed,
+.fc-cell-input.changed {
+  background: var(--cell-dirty-bg);
+  border-color: #f6c343;
+}
+
+/* B. Calculated/runtime cell — muted gray bg, readonly */
+.fc-cell-runtime {
+  background: var(--cell-runtime-bg);
+  color: var(--text-2);
+  font-style: italic;
+  cursor: default;
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+}
+
+/* C. Factory/baseline value — muted text */
+.fc-cell-factory {
+  background: var(--cell-factory-bg);
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* D. Inherited scenario value — light accent tint */
+.fc-cell-inherited {
+  background: var(--cell-inherited-bg);
+  color: var(--text-2);
+}
+
+/* E. Override cell — highlighted, stronger than inherited */
+.fc-cell-override {
+  background: var(--cell-override-bg);
+  color: var(--text);
+  font-weight: 600;
+  position: relative;
+}
+
+/* F. Readonly cell — no border, no edit affordance */
+.fc-cell-readonly {
+  background: transparent;
+  color: var(--text);
+  cursor: default;
+}
+
+/* G. Dirty cell — unsaved indicator */
+.fc-cell-dirty {
+  background: var(--cell-dirty-bg);
+  border: 1px dashed #f6c343;
+  position: relative;
+}
+
+/* H. Warning/error cell */
+.fc-cell-warning {
+  background: var(--cell-warning-bg);
+  color: var(--warn-text);
+  border: 1px solid var(--warn-border);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+}
+.fc-cell-error {
+  background: var(--cell-error-bg);
+  color: var(--blocked-text);
+  border: 1px solid var(--blocked-border);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+}
+
+/* I. Empty/null value */
+.fc-cell-empty {
+  color: var(--muted-2);
+  font-style: italic;
+}
+
+/* ── 20H.4: Badges (State Indicators) ────────────────────────────────── */
+/* Unified badge system for runtime/scenario state */
+.fc-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--font-badge);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 100px;
+  border: 1px solid;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.fc-badge--active       { background: var(--accent-light); color: var(--accent-hover); border-color: var(--accent); }
+.fc-badge--inherited    { background: var(--cell-inherited-bg); color: var(--text-2); border-color: var(--border-strong); }
+.fc-badge--override     { background: var(--cell-override-bg); color: var(--accent-hover); border-color: var(--accent); }
+.fc-badge--runtime      { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+.fc-badge--dirty        { background: var(--cell-dirty-bg); color: var(--warn-text); border-color: #f6c343; }
+.fc-badge--blocked      { background: var(--blocked-bg); color: var(--blocked-text); border-color: var(--blocked-border); }
+.fc-badge--notapproved  { background: var(--notapproved-bg); color: var(--notapproved-text); border-color: var(--notapproved-border); }
+.fc-badge--factory      { background: var(--surface-2); color: var(--muted); border-color: var(--border-strong); }
+.fc-badge--base         { background: var(--cell-base-bg); color: var(--text-2); border-color: var(--border-strong); }
+
+/* ── 20H.5: Total / Subtotal Rows ────────────────────────────────────── */
+.fc-total-row {
+  font-weight: 700;
+  border-top: 2px solid var(--border-strong);
+  background: var(--surface-2);
+}
+.fc-total-row .fc-cell {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.fc-subtotal-row {
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,0.02);
+}
+.fc-subtotal-row .fc-cell {
+  font-weight: 600;
+}
+
+/* ── 20H.6: Section Bands / Headers ──────────────────────────────────── */
+/* Reusable section pattern: uppercase label, band fill, optional border */
+.fc-section-band {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.fc-section-header {
+  padding: var(--cell-pad-v) var(--cell-pad-h);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-2);
+}
+.fc-section-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+  padding: 0.4rem 0.75rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Sheet section card (used in Inputs) */
+.fc-sheet-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.fc-sheet-section-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── 20H.7: Grid System ──────────────────────────────────────────────── */
+/* Reusable grid wrappers for Inputs, Scenario matrix, Compare tables */
+
+/* Base grid wrapper with horizontal scroll */
+.fc-grid-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Base grid table */
+.fc-grid {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 600px;
+  table-layout: fixed;
+}
+
+/* Sticky first column (label column) */
+.fc-grid-col-label {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface);
+  min-width: 160px;
+  width: 180px;
+}
+
+/* Sticky header row */
+.fc-grid-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-2);
+}
+
+/* Header cell */
+.fc-th {
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Data row */
+.fc-row {
+  border-bottom: 1px solid var(--border-muted);
+  transition: background-color 0.12s;
+}
+.fc-row:hover {
+  background: var(--bg);
+}
+.fc-row:last-child {
+  border-bottom: none;
+}
+
+/* Label cell */
+.fc-td-label {
+  font-size: var(--font-label);
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  border-right: 1px solid var(--border-muted);
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+/* Column header inner layout */
+.fc-col-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.fc-col-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+.fc-col-meta {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+/* Base case column tinting */
+.fc-col--base {
+  background: var(--cell-base-bg) !important;
+}
+
+/* Active scenario column tinting */
+.fc-col--active {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--surface)) !important;
+}
+
+/* ── 20H.8: Numeric Formatting ───────────────────────────────────────── */
+/* Standard numeric cell formatting */
+.fc-num {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: var(--font-cell);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.fc-num--right  { text-align: right; }
+.fc-num--center { text-align: center; }
+.fc-num--left   { text-align: left; }
+
+/* Negative values — red */
+.fc-num--negative {
+  color: var(--blocked-text);
+}
+
+/* Empty/null — muted dash */
+.fc-num--empty {
+  color: var(--muted-2);
+  font-style: italic;
+}
+
+/* Positive delta — green */
+.fc-delta--positive { color: var(--accent-hover); font-weight: 600; }
+/* Negative delta — red */
+.fc-delta--negative { color: var(--blocked-text); font-weight: 600; }
+/* Neutral delta */
+.fc-delta--neutral   { color: var(--muted); }
+
+/* ── 20H.9: Compare Tab Cells ─────────────────────────────────────────── */
+.fc-compare-base {
+  background: var(--cell-base-bg);
+  color: var(--text-2);
+  font-style: italic;
+}
+.fc-compare-active {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--surface));
+  color: var(--text);
+  font-weight: 600;
+}
+.fc-compare-delta {
+  font-weight: 600;
+  text-align: right;
+}
+
+/* ── 20H.10: Dirty Indicator (unsaved state) ──────────────────────────── */
+.fc-dirty-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--cell-dirty-bg);
+  border: 1px solid #f6c343;
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* ── 20H.11: Editable Cell Interaction ───────────────────────────────── */
+/* Hover affordance for editable cells (inline edit trigger) */
+.fc-editable {
+  cursor: pointer;
+}
+.fc-editable:hover {
+  outline: 1px dashed var(--color-accent);
+  outline-offset: -1px;
+  border-radius: 4px;
+}
+
+/* Scenario select button */
+.fc-select-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  transition: all 0.15s;
+}
+.fc-select-btn:hover {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+/* ── 20H.12: Inputs Sheet Compatibility ───────────────────────────────── */
+/* Keep inp-* classes working but layer fc-* on top */
+.inp-input {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.inp-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--surface);
+}
+.inp-input.changed {
+  background: var(--cell-dirty-bg);
+  border-color: #f6c343;
+}
+
+/* Inputs sheet grid row */
+.inp-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border-muted);
+}
+.inp-row:last-child {
+  border-bottom: none;
+}
+
+/* Inputs cell */
+.inp-cell {
+  min-width: 0;
+}
+
+/* Inputs label */
+.inp-label {
+  font-size: var(--font-label);
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* Inputs value */
+.inp-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Override badge inline */
+.fc-override-badge {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--color-accent);
+  cursor: default;
+}
+
+/* ── 20H.13: KPI Grid (runtime summary) ───────────────────────────────── */
+.fc-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+.fc-kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  box-shadow: var(--shadow-sm);
+}
+.fc-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+.fc-kpi-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.fc-kpi-value--missing {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+.fc-kpi-card--runtime {
+  border-left: 3px solid var(--primary);
+}
+.fc-kpi-card--preview {
+  border-left: 3px solid #fcd34d;
+  background: #fffbeb;
+}
+.fc-kpi-card--saved {
+  border-left: 3px solid var(--accent);
+}
+.fc-kpi-card--dirty {
+  border-left: 3px solid var(--blocked-text);
+  background: var(--blocked-bg);
+}
+
+/* ── 20H.14: Run Banner (runtime summary) ─────────────────────────────── */
+.fc-run-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+.fc-run-banner-left {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.fc-run-banner-right {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.fc-run-banner-label {
+  color: var(--text-2);
+  font-weight: 500;
+}
+.fc-run-banner-project {
+  font-weight: 700;
+  color: var(--accent);
+}
+.fc-run-banner-icon {
+  font-size: 1rem;
+}
+.fc-run-banner-time {
+  color: var(--text-2);
+  font-size: 0.78rem;
+}
+
+/* ── 20H.15: Compare Table ────────────────────────────────────────────── */
+.fc-compare-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.fc-compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 100px;
+  align-items: center;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border-muted);
+  font-size: var(--font-cell);
+}
+.fc-compare-row:last-child {
+  border-bottom: none;
+}
+.fc-compare-row--head {
+  background: var(--surface-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.fc-compare-row--base {
+  background: var(--cell-base-bg);
+}
+.fc-compare-row--active {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--surface));
+}
+
+/* Provenance cards */
+.fc-provenance-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.fc-provenance-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.fc-provenance-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+}
+.fc-provenance-grid-label {
+  color: var(--muted);
+}
+.fc-provenance-grid-value {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Compare heading */
+.fc-compare-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Compare provenance card (used in compare tab) */
+.ps-compare-provenance-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 20H LEGACY ALIASES (sc-* → fc-* mapping)
+   These allow incremental migration from sc-* to fc-* class names.
+   Remove these once all sc-* references are updated to fc-*.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Scenario matrix aliases */
+.sc-container    { padding: 1rem 1.25rem; font-size: 0.82rem; }
+.sc-header       { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; }
+.sc-header-title { font-size: 1rem; font-weight: 600; color: var(--text); }
+.sc-header-subtitle { font-size: 0.78rem; color: var(--text-2); }
+
+.sc-add-form {
+  display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 6px; max-width: 520px;
+}
+.sc-add-input  { flex: 1; font-size: 0.82rem; padding: 0.3rem 0.5rem; min-width: 0; }
+
+.sc-matrix-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+.sc-matrix {
+  border-collapse: collapse; width: 100%; min-width: 600px;
+  table-layout: fixed;
+}
+
+.sc-th {
+  padding: 0.5rem 0.6rem; text-align: left; font-size: 0.78rem;
+  border-bottom: 2px solid var(--border); background: var(--surface-2);
+  position: sticky; top: 0; z-index: 3; white-space: nowrap; overflow: hidden;
+}
+.sc-th--label { /* inherits sc-th */ }
+.sc-th--base  { background: var(--cell-base-bg); }
+.sc-th--active { background: color-mix(in srgb, var(--color-accent) 12%, var(--surface)); }
+
+.sc-matrix th.sc-th--label,
+.sc-matrix td.sc-td--label {
+  width: 180px; min-width: 160px; position: sticky; left: 0; z-index: 2; background: var(--surface);
+}
+
+.sc-col-header { display: flex; flex-direction: column; gap: 0.2rem; }
+.sc-col-name   { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+.sc-col-meta   { display: flex; gap: 0.3rem; align-items: center; }
+
+.sc-section-header td {
+  padding: 0.4rem 0.75rem; font-size: 0.75rem; font-weight: 600; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-2);
+  border-bottom: 1px solid var(--border); position: sticky; left: 0; z-index: 1;
+}
+
+.sc-row {
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sc-row:hover    { background: var(--surface-2); }
+.sc-row:last-child { border-bottom: none; }
+
+.sc-td {
+  padding: 0.4rem 0.6rem; vertical-align: middle;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sc-td--label {
+  font-weight: 500; color: var(--text); background: var(--surface);
+  border-right: 1px solid var(--border-subtle); position: sticky; left: 0; z-index: 2;
+}
+.sc-td--base { background: var(--cell-base-bg); }
+
+.sc-value { font-size: 0.82rem; color: var(--text); }
+.sc-value--base { color: var(--text-2); font-style: italic; }
+
+/* Cell type colours — map to fc-cell-* */
+.sc-matrix-cell--inherited { background: var(--cell-inherited-bg); color: var(--text-2); }
+.sc-matrix-cell--override   { background: var(--cell-override-bg); color: var(--text); font-weight: 600; }
+.sc-matrix-cell--base       { background: var(--cell-base-bg); color: var(--text-2); }
+
+/* Aliases for inline sc-* styles */
+.sc-override-badge { display: inline-block; margin-left: 0.3rem; font-size: 0.7rem; color: var(--color-accent); cursor: default; }
+.sc-editable-td   { cursor: pointer; }
+.sc-editable-td:hover { outline: 1px dashed var(--color-accent); outline-offset: -1px; }
+
+.sc-select-btn {
+  background: none; border: 1px solid var(--border); border-radius: 3px;
+  font-size: 0.7rem; color: var(--text-2); cursor: pointer;
+  padding: 0.1rem 0.35rem; transition: all 0.15s;
+}
+.sc-select-btn:hover { background: var(--color-accent); color: white; border-color: var(--color-accent); }
+
+/* Inline edit popover */
+.sc-popover {
+  position: fixed; bottom: 2rem; right: 2rem; z-index: 1000;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18); min-width: 240px; max-width: 320px;
+}
+.sc-popover-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border);
+  font-weight: 600; font-size: 0.85rem;
+}
+.sc-popover-close {
+  background: none; border: none; cursor: pointer; color: var(--text-2);
+  font-size: 0.9rem; padding: 0;
+}
+.sc-popover-body   { padding: 0.75rem; }
+.sc-popover-input  { width: 100%; font-size: 0.9rem; padding: 0.4rem 0.6rem; }
+.sc-popover-footer {
+  display: flex; justify-content: flex-end; gap: 0.5rem;
+  padding: 0.5rem 0.75rem; border-top: 1px solid var(--border);
+}
+
+/* ps-compare aliases (compare tab) */
+.ps-compare-heading {
+  font-size: 1rem; font-weight: 700; color: var(--text);
+  margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+}
+.ps-compare-banner {
+  padding: 0.65rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.78rem;
+  background: var(--primary-light, #eff6ff); border: 1px solid var(--border);
+  color: var(--text-2); margin-bottom: 0.75rem;
+}
+.ps-compare-banner--subtle { background: var(--surface-2); }
+.ps-compare-note { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.5rem; }
+.ps-compare-context-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-bottom: var(--sp-6); }
+.ps-compare-context-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+.ps-compare-context-title { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 0.5rem; }
+.ps-compare-context-meta { font-size: 0.75rem; color: var(--text-2); margin-bottom: 0.25rem; }
+.ps-compare-table { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 1rem; }
+.ps-compare-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr 80px;
+  padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--border-muted); font-size: 0.82rem;
+}
+.ps-compare-row:last-child { border-bottom: none; }
+.ps-compare-row--head {
+  background: var(--surface-2); font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+}
+.ps-compare-governance { display: flex; flex-direction: column; gap: 0.4rem; }
+.ps-compare-label {
+  font-size: 0.75rem; color: var(--text-2); margin-bottom: 0.25rem;
+}
+.ps-compare-label select {
+  font-size: 0.78rem; padding: 0.25rem 0.4rem; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface); color: var(--text);
+}
+.ps-compare-form { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+.ps-compare-results { padding: 0.5rem 0; }
+.ps-mini-empty { padding: 1.5rem; text-align: center; color: var(--muted); font-size: 0.82rem; }
+.ps-history-item { padding: 0.5rem 0; border-bottom: 1px solid var(--border-muted); }
+.ps-history-title { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+.ps-history-meta { font-size: 0.75rem; color: var(--muted); margin-top: 0.15rem; }
+.ps-export-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.ps-export-item { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
+.ps-export-title { font-weight: 600; color: var(--text); }
+.ps-export-meta { color: var(--muted); font-size: 0.72rem; }
+.ps-export-list--compact .ps-export-item { padding: 0.25rem 0.35rem; }
+.ps-export-item--compact .ps-export-title { font-size: 0.78rem; }
+.ps-export-item--compact .ps-export-meta { font-size: 0.7rem; }
+
+/* ── Runtime Summary Legacy Aliases (.run-*) ────────────────────────── */
+/* Used in runtime_summary.html — these map to fc-* design system */
+.runtime-summary { padding: 0.5rem 0; }
+
+.run-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.6rem 1rem; margin-bottom: 1rem; font-size: 0.85rem;
+}
+.run-banner-left  { display: flex; gap: 0.5rem; align-items: center; }
+.run-banner-right { display: flex; gap: 0.75rem; align-items: center; }
+.run-banner-label { color: var(--text-2); font-weight: 500; }
+.run-banner-project { font-weight: 700; color: var(--accent); }
+.run-banner-icon { font-size: 1rem; }
+.run-banner-time { color: var(--text-2); font-size: 0.78rem; }
+
+.badge-runtime {
+  background: #dbeafe; color: #1d4ed8; font-size: 0.72rem;
+  padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600;
+}
+
+.runtime-notice {
+  display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
+  padding: 0.4rem 0.75rem; background: #f8fafc; border: 1px solid var(--border);
+  border-radius: 4px; font-size: 0.75rem; color: var(--text-2);
+}
+.runtime-notice-text { color: var(--text-2); }
+
+.kpi-missing { color: var(--muted) !important; font-style: italic; }
+
+.run-messages { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.run-message {
+  font-size: 0.78rem; padding: 0.35rem 0.6rem; background: #fefce8;
+  border-left: 3px solid #eab308; border-radius: 3px; color: #854d0e;
+}
+
+.run-error {
+  margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: #fef2f2;
+  border: 1px solid #fca5a5; border-radius: 4px; color: #991b1b; font-size: 0.82rem;
+}
+
+/* kpi-grid alias (runtime summary) */
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.75rem; margin-bottom: 0.75rem;
+}
+.kpi-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0.85rem 1rem; box-shadow: var(--shadow-sm);
+}
+.kpi-label {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.35rem;
+}
+.kpi-value {
+  font-size: 1.05rem; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.kpi-value.positive { color: var(--accent); }
+
+/* Runtime notice alias (runtime summary) */
+.runtime-notice {
+  display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
+  padding: 0.4rem 0.75rem; background: #f8fafc; border: 1px solid var(--border);
+  border-radius: 4px; font-size: 0.75rem; color: var(--text-2);
+}
+.runtime-notice-text { color: var(--text-2); }
