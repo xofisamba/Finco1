@@ -323,6 +323,14 @@ def _collect_form_snapshot(form) -> dict:
         "opex_bank_fees_opex_y1_keur",
         "opex_environmental_and_social_management_y1_keur",
         "opex_contingencies_y1_keur",
+        # Phase 20K — Revenue snapshot fields
+        "rev_ppa_base_tariff",
+        "rev_ppa_index",
+        "rev_ppa_term_years",
+        "rev_ppa_production_share",
+        "rev_balancing_cost",
+        "rev_co2_enabled",
+        "rev_co2_price",
     ]
     return {field: form.get(field, "") for field in fields}
 

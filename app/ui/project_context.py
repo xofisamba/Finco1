@@ -47,6 +47,7 @@ class ProjectContext:
     ppa_index_pct: float
     co2_enabled: bool
     co2_price_eur_mwh: float | None
+    revenue_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
     opex_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
     opex_y1_total_keur: float = 0.0
     opex_contingency_method: str = ""
@@ -129,6 +130,146 @@ def _build_opex_items(project_inputs, horizon_years: int = 25) -> tuple[dict[str
     return tuple(items)
 
 
+def _build_revenue_items(revenue, technical, technology: str) -> tuple[dict[str, Any], ...]:
+    """Build serialisable revenue item list from RevenueParams + TechnicalParams."""
+    items = []
+
+    # ── Production ────────────────────────────────────────────────────────
+    items.append({
+        "code": "capacity_mw",
+        "name": "Installed Capacity",
+        "value": technical.capacity_mw,
+        "unit": "MW",
+        "group": "Production",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    items.append({
+        "code": "operating_hours_p50",
+        "name": "P50 Hours / Year",
+        "value": technical.operating_hours_p50,
+        "unit": "h/yr",
+        "group": "Production",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    items.append({
+        "code": "plant_availability",
+        "name": "Plant Availability",
+        "value": technical.plant_availability,
+        "unit": "%",
+        "group": "Production",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    items.append({
+        "code": "grid_availability",
+        "name": "Grid Availability",
+        "value": technical.grid_availability,
+        "unit": "%",
+        "group": "Production",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    if technology != "Wind":
+        items.append({
+            "code": "pv_degradation",
+            "name": "PV Degradation",
+            "value": technical.pv_degradation,
+            "unit": "%/yr",
+            "group": "Production",
+            "editable": False,
+            "hint": "Set via inputs tab",
+        })
+
+    # ── PPA / Tariff ────────────────────────────────────────────────────
+    items.append({
+        "code": "ppa_base_tariff",
+        "name": "Base Tariff (PPA)",
+        "value": revenue.ppa_base_tariff,
+        "unit": "EUR/MWh",
+        "group": "PPA / Tariff",
+        "editable": True,
+        "hint": "",
+    })
+    items.append({
+        "code": "ppa_index",
+        "name": "Tariff Escalation",
+        "value": revenue.ppa_index,
+        "unit": "%/yr",
+        "group": "PPA / Tariff",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    items.append({
+        "code": "ppa_term_years",
+        "name": "PPA Term",
+        "value": int(revenue.ppa_term_years),
+        "unit": "years",
+        "group": "PPA / Tariff",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    items.append({
+        "code": "ppa_production_share",
+        "name": "PPA Production Share",
+        "value": getattr(revenue, "ppa_production_share", 1.0),
+        "unit": "%",
+        "group": "PPA / Tariff",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+
+    # ── Market / Merchant ───────────────────────────────────────────────
+    balancing = getattr(revenue, "balancing_cost_eur_per_mwh", 0.0) or 0.0
+    items.append({
+        "code": "balancing_cost",
+        "name": "Balancing Cost",
+        "value": balancing,
+        "unit": "EUR/MWh",
+        "group": "Market / Merchant",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    first_merchant = getattr(revenue, "first_merchant_operating_period_index", None)
+    items.append({
+        "code": "first_merchant_period",
+        "name": "First Merchant Period",
+        "value": first_merchant if first_merchant is not None else -1,
+        "unit": "period index",
+        "group": "Market / Merchant",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+
+    # ── CO2 / Certificates ─────────────────────────────────────────────
+    items.append({
+        "code": "co2_enabled",
+        "name": "CO2 Certificates Enabled",
+        "value": 1.0 if revenue.co2_enabled else 0.0,
+        "unit": "flag",
+        "group": "CO2 / Certificates",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+    co2_price = (
+        getattr(revenue, "co2_certificate_price_eur_per_mwh", None)
+        or getattr(revenue, "co2_price_eur", None)
+        or 0.0
+    )
+    items.append({
+        "code": "co2_price",
+        "name": "CO2 Price (Y1)",
+        "value": co2_price,
+        "unit": "EUR/MWh",
+        "group": "CO2 / Certificates",
+        "editable": False,
+        "hint": "Set via inputs tab",
+    })
+
+    return tuple(items)
+
+
 def _build_capex_items(capex) -> tuple[dict[str, Any], ...]:
     """"Build serialisable CAPEX item list from CapexStructure."""
     items = []
@@ -197,6 +338,7 @@ def _build_context_from_project_inputs(
             getattr(revenue, "co2_certificate_price_eur_per_mwh", None)
             or getattr(revenue, "co2_price_eur", None)
         ),
+        revenue_items=_build_revenue_items(revenue, technical, technology),
         opex_items=opex_items,
         opex_y1_total_keur=_opex_y1_total(project_inputs),
         opex_contingency_method=opex_contingency_method,
