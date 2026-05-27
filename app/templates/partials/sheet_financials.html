@@ -22,7 +22,7 @@
       </div>
       <div class="fs-runtime-header-right">
         <span class="fs-runtime-time" id="runtime-block-time"></span>
-        {% if runtime_summary.active_scenario_name %}
+        {% if runtime_summary is defined and runtime_summary.active_scenario_name %}
         <span class="badge badge-runtime">{{ runtime_summary.active_scenario_name }}</span>
         {% endif %}
       </div>
