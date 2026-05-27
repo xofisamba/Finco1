@@ -1,0 +1,280 @@
+<!-- Project Browser — Phase 21
+     Full project browser opened in main workspace area.
+     Lists: Factory Templates, Saved Baselines, User Projects.
+     Triggered by "Load / Switch" in sidebar. -->
+
+<div class="project-browser" id="project-browser">
+
+  <div class="pb-header">
+    <div class="pb-title">Project Browser</div>
+    <div class="pb-desc">Select a project to open in the workspace. Scenarios tab remains scoped to the active project.</div>
+    <button type="button" class="btn btn-ghost pb-close" onclick="closeProjectBrowser()">✕ Close</button>
+  </div>
+
+  <div class="pb-tabs">
+    <button class="pb-tab active" data-tab="factory" onclick="switchPbTab('factory')">Factory Templates</button>
+    <button class="pb-tab" data-tab="baselines" onclick="switchPbTab('baselines')">Saved Baselines</button>
+    <button class="pb-tab" data-tab="user" onclick="switchPbTab('user')">My Projects</button>
+  </div>
+
+  <!-- Factory Templates -->
+  <div class="pb-section active" id="pb-factory">
+    <div class="pb-grid">
+      {% for item in factory_template_projects %}
+      <div class="pb-card {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
+           onclick="switchToProject('{{ item.project_code }}')"
+           role="button"
+           tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
+        <div class="pb-card-icon pb-card-icon--{% if item.project_type == 'Wind' %}wind{% else %}solar{% endif %}">
+          {% if item.project_type == 'Wind' %}Wind{% else %}Solar{% endif %}
+        </div>
+        <div class="pb-card-info">
+          <div class="pb-card-name">{{ item.label }}</div>
+          <div class="pb-card-meta">{{ item.meta }}</div>
+        </div>
+        {% if active_project_code == item.project_code %}
+        <div class="pb-card-active-badge">● Active</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="pb-card-note">Factory templates are read-only reference models. Duplicate a baseline to create an editable copy.</div>
+  </div>
+
+  <!-- Saved Baselines -->
+  <div class="pb-section" id="pb-baselines">
+    {% if baseline_project_records %}
+    <div class="pb-grid">
+      {% for item in baseline_project_records %}
+      <div class="pb-card pb-card--baseline {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
+           onclick="switchToProject('{{ item.project_code }}')"
+           role="button"
+           tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
+        <div class="pb-card-icon pb-card-icon--baseline">
+          {% if 'tuho' in item.project_code %}Wind{% else %}Solar{% endif %}
+        </div>
+        <div class="pb-card-info">
+          <div class="pb-card-name">{{ item.label }}</div>
+          <div class="pb-card-meta">{{ item.meta }}</div>
+        </div>
+        {% if item.is_readonly %}
+        <div class="pb-card-lock" title="Read-only — duplicate to edit">🔒</div>
+        {% endif %}
+        {% if active_project_code == item.project_code %}
+        <div class="pb-card-active-badge">● Active</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pb-empty">No saved baselines found. Create a new project to get started.</div>
+    {% endif %}
+    <div class="pb-card-note">Saved baselines are read-only reference projects. Use "Save As" to create an editable copy.</div>
+  </div>
+
+  <!-- User Projects -->
+  <div class="pb-section" id="pb-user">
+    {% if user_project_records %}
+    <div class="pb-grid">
+      {% for item in user_project_records %}
+      <div class="pb-card pb-card--user {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
+           onclick="switchToProject('{{ item.project_code }}')"
+           role="button"
+           tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
+        <div class="pb-card-icon pb-card-icon--user">Project</div>
+        <div class="pb-card-info">
+          <div class="pb-card-name">{{ item.label }}</div>
+          <div class="pb-card-meta">{{ item.meta }}</div>
+        </div>
+        {% if active_project_code == item.project_code %}
+        <div class="pb-card-active-badge">● Active</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pb-empty">No user projects yet. Use New Project to create one.</div>
+    {% endif %}
+    <div class="pb-card-note">Your projects are fully editable. All scenarios and inputs are saved to your account.</div>
+  </div>
+
+</div>
+
+<style>
+/* ── Project Browser container (shown/hidden via JS) ───────────────────── */
+#project-browser-container {
+  width: 100%;
+}
+
+/* ── Main browser panel ─────────────────────────────────────────────────── */
+.project-browser {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.pb-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.pb-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+.pb-desc {
+  font-size: 0.78rem;
+  color: var(--muted);
+  flex: 1;
+}
+.pb-close {
+  margin-left: auto;
+}
+
+/* ── Tab switcher ───────────────────────────────────────────────────────── */
+.pb-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.pb-tab {
+  padding: 0.5rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.pb-tab:hover { color: var(--text); }
+.pb-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* ── Sections ───────────────────────────────────────────────────────────── */
+.pb-section { display: none; }
+.pb-section.active { display: block; }
+
+/* ── Project grid ───────────────────────────────────────────────────────── */
+.pb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* ── Project card ───────────────────────────────────────────────────────── */
+.pb-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  position: relative;
+}
+.pb-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.08);
+  background: var(--surface-3);
+}
+.pb-card--active {
+  border-color: var(--primary);
+  background: rgba(26,86,219,0.06);
+}
+.pb-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.pb-card-icon--wind  { background: rgba(0,112,200,0.15); color: #5fa8ff; }
+.pb-card-icon--solar { background: rgba(255,183,0,0.15); color: #ffd060; }
+.pb-card-icon--baseline { background: rgba(100,100,200,0.12); color: #aaaaff; }
+.pb-card-icon--user { background: rgba(0,180,120,0.12); color: #40cc88; }
+
+.pb-card-info { flex: 1; min-width: 0; }
+.pb-card-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pb-card-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+.pb-card-active-badge {
+  font-size: 0.68rem;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.pb-card-lock {
+  font-size: 0.8rem;
+  opacity: 0.5;
+}
+
+.pb-card-note {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.pb-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.75rem;
+}
+</style>
+
+<script>
+  function switchPbTab(tab) {
+    document.querySelectorAll('.pb-tab').forEach(function(t) {
+      t.classList.toggle('active', t.dataset.tab === tab);
+    });
+    document.querySelectorAll('.pb-section').forEach(function(s) {
+      s.classList.toggle('active', s.id === 'pb-' + tab);
+    });
+  }
+
+  function closeProjectBrowser() {
+    var el = document.getElementById('project-browser-container');
+    if (el) el.innerHTML = '';
+  }
+
+  function switchToProject(projectCode) {
+    window.location.href = '/?project=' + projectCode;
+  }
+</script>

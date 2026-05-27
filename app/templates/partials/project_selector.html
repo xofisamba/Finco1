@@ -1,141 +1,186 @@
+<!-- Project Selector — Phase 21: sidebar shows active project only -->
 <div class="project-selector" id="project-selector">
-  <div class="ps-header">
-    <div class="ps-label">Projects</div>
-  </div>
 
-  <div class="ps-section">
-    <div class="ps-section-label">Factory Templates</div>
-    <div class="ps-list" id="ps-list">
-      {% for item in factory_template_projects %}
-      <a href="/?project={{ item.project_code }}"
-         class="ps-card {% if active_project_code == item.project_code %}active{% endif %}"
-         id="ps-{{ item.project_code }}"
-         data-project="{{ item.project_code }}"
-         onclick="setActiveProject('{{ item.project_code }}'); return true;">
-        <div class="ps-card-icon">{% if item.project_type == 'Wind' %}Wind{% else %}Solar{% endif %}</div>
-        <div class="ps-card-info">
-          <div class="ps-card-name">{{ item.label }}</div>
-          <div class="ps-card-meta">{{ item.meta }}</div>
-        </div>
-        <div class="ps-card-status {% if active_project_code == item.project_code %}ps-card-status--active{% endif %}">
-          {% if active_project_code == item.project_code %}●{% endif %}
-        </div>
-      </a>
-      {% endfor %}
+  <!-- Active project (always shown) -->
+  {% if project_record %}
+  <div class="ps-active-project">
+    <div class="ps-ap-type">
+      <span class="ps-ap-badge {% if project_record.project_type == 'Wind' %}ps-badge--wind{% else %}ps-badge--solar{% endif %}">
+        {{ project_record.project_type }}
+      </span>
     </div>
+    <div class="ps-ap-name">{{ project_record.project_name }}</div>
+    {% if workspace_state and workspace_state.active_scenario_name %}
+    <div class="ps-ap-scenario">
+      <span class="ps-ap-scenario-dot"></span>
+      {{ workspace_state.active_scenario_name }}
+    </div>
+    {% endif %}
+    <div class="ps-ap-meta">{{ project_record.project_code }}</div>
   </div>
-
-  {% if baseline_project_records %}
-  <div class="ps-section">
-    <div class="ps-section-label">Saved Baselines</div>
-    <div class="ps-list">
-      {% for item in baseline_project_records %}
-      <div class="ps-card-group">
-        <a href="/?project={{ item.project_code }}"
-           class="ps-card {% if active_project_code == item.project_code %}active{% endif %}"
-           id="ps-{{ item.project_code }}"
-           data-project="{{ item.project_code }}"
-           onclick="setActiveProject('{{ item.project_code }}'); return true;">
-          <div class="ps-card-icon">{% if 'tuho' in item.project_code %}Wind{% else %}Solar{% endif %}</div>
-          <div class="ps-card-info">
-            <div class="ps-card-name">{{ item.label }}</div>
-            <div class="ps-card-meta">{{ item.meta }}</div>
-          </div>
-          <div class="ps-card-status {% if active_project_code == item.project_code %}ps-card-status--active{% endif %}">
-            {% if active_project_code == item.project_code %}●{% endif %}
-          </div>
-        </a>
-        {% if item.is_readonly %}
-        <form action="/projects/{{ item.project_code }}/save-as" method="post" class="ps-save-as-form">
-          <button type="submit" class="ps-save-as-btn" title="Duplicate as user project">↗</button>
-        </form>
-        {% endif %}
-      </div>
-      {% endfor %}
-    </div>
+  {% elif project_ctx %}
+  <div class="ps-active-project">
+    <div class="ps-ap-name">{{ project_ctx.name }}</div>
+    <div class="ps-ap-meta">{{ project_ctx.id }}</div>
+  </div>
+  {% else %}
+  <div class="ps-active-project ps-active-project--empty">
+    <div class="ps-ap-name">No project selected</div>
+    <div class="ps-ap-meta">Use Load to open a project</div>
   </div>
   {% endif %}
 
-  <div class="ps-section">
-    <div class="ps-section-label">User Projects / Scenarios</div>
-    {% if not user_project_records %}
-    <div class="ps-mini-empty">
-      No user projects yet. Use New Project or duplicate a Saved Baseline to create one.
-    </div>
-    {% else %}
-    <div class="ps-list">
-      {% for item in user_project_records %}
-      <a href="/?project={{ item.project_code }}"
-         class="ps-card {% if active_project_code == item.project_code %}active{% endif %}"
-         id="ps-{{ item.project_code }}"
-         data-project="{{ item.project_code }}"
-         onclick="setActiveProject('{{ item.project_code }}'); return true;">
-        <div class="ps-card-icon">Project</div>
-        <div class="ps-card-info">
-          <div class="ps-card-name">{{ item.label }}</div>
-          <div class="ps-card-meta">{{ item.meta }}</div>
-        </div>
-        <div class="ps-card-status {% if active_project_code == item.project_code %}ps-card-status--active{% endif %}">
-          {% if active_project_code == item.project_code %}●{% endif %}
-        </div>
-      </a>
-      {% endfor %}
-    </div>
+  <!-- State badges -->
+  <div class="ps-state-badges">
+    {% if workspace_state %}
+      {% if workspace_state.dirty %}
+      <span class="badge badge-warn">Unsaved changes</span>
+      {% else %}
+      <span class="badge badge-pass">Saved</span>
+      {% endif %}
+    {% endif %}
+    {% if runtime_summary and runtime_summary.active_scenario_name %}
+      <span class="badge badge-runtime">{{ runtime_summary.active_scenario_name }}</span>
     {% endif %}
   </div>
 
-  {% if project_record and project_record.project_origin == "user_created" %}
-  <div class="ps-mini-empty">
-    Project record created. Runtime built from saved project assumptions. Some secondary assumptions still use system defaults until later phases.
+  <!-- Quick actions -->
+  <div class="ps-quick-actions">
+    <button class="ps-action-btn"
+            id="btn-load-project"
+            type="button"
+            hx-get="/projects/browse"
+            hx-target="#project-browser-container"
+            hx-swap="innerHTML"
+            onclick="openProjectBrowser()">
+      <span class="ps-action-icon">⎘</span> Load / Switch
+    </button>
+    <button class="ps-action-btn"
+            id="btn-new-project"
+            type="button"
+            hx-get="/projects/new"
+            hx-target="#panel-new-project"
+            hx-swap="innerHTML">
+      <span class="ps-action-icon">+</span> New Project
+    </button>
   </div>
-  {% endif %}
+
 </div>
 
+<!-- Project Browser — rendered in main area, triggered by Load / Switch -->
+<div id="project-browser-container"></div>
+
 <style>
-.ps-card-group {
-  position: relative;
+/* ── Active project card ─────────────────────────────────────────────────── */
+.ps-active-project {
+  padding: 0.75rem 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--sidebar-border);
 }
-.ps-save-as-form {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  margin: 0;
+.ps-ap-type { margin-bottom: 0.25rem; }
+.ps-ap-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 100px;
+  text-transform: uppercase;
 }
-.ps-save-as-btn {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 4px;
-  color: rgba(255,255,255,0.5);
+.ps-badge--wind { background: rgba(0,112,200,0.25); color: #5fa8ff; }
+.ps-badge--solar { background: rgba(255,183,0,0.2); color: #ffd060; }
+
+.ps-ap-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.3;
+  margin-bottom: 0.2rem;
+}
+
+.ps-ap-scenario {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--sidebar-muted);
+  margin-bottom: 0.15rem;
+}
+.ps-ap-scenario-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sidebar-active);
+  flex-shrink: 0;
+}
+
+.ps-ap-meta {
+  font-size: 0.62rem;
+  color: var(--sidebar-muted);
+}
+
+.ps-active-project--empty .ps-ap-name {
+  color: var(--sidebar-muted);
+  font-weight: 500;
+}
+
+/* ── State badges row ────────────────────────────────────────────────────── */
+.ps-state-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+/* ── Quick action buttons ─────────────────────────────────────────────────── */
+.ps-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.ps-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--sidebar-text);
+  font-size: 0.75rem;
+  font-weight: 500;
   cursor: pointer;
-  font-size: 11px;
-  padding: 1px 5px;
-  line-height: 1;
-  transition: all 0.15s;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: left;
 }
-.ps-save-as-btn:hover {
+.ps-action-btn:hover {
   background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.9);
-  border-color: rgba(255,255,255,0.4);
+  border-color: rgba(255,255,255,0.2);
+}
+.ps-action-btn:active {
+  background: rgba(255,255,255,0.05);
+}
+.ps-action-icon {
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
 }
 </style>
 
 <script>
-  function setActiveProject(projectId) {
-    var input = document.getElementById('active_project');
-    if (input) {
-      input.value = projectId;
-    }
-    try { sessionStorage.setItem('active_project', projectId); } catch(e) {}
+  function openProjectBrowser() {
+    // htmx loads /projects/browse into #project-browser-container
+    // Container is shown/hidden via CSS class
   }
 
-  (function() {
-    try {
-      var stored = sessionStorage.getItem('active_project');
-      if (stored) {
-        var input = document.getElementById('active_project');
-        if (input && !input.value) input.value = stored;
-      }
-    } catch(e) {}
-  })();
+  function closeProjectBrowser() {
+    var el = document.getElementById('project-browser-container');
+    if (el) el.innerHTML = '';
+  }
+
+  function switchToProject(projectCode) {
+    window.location.href = '/?project=' + projectCode;
+  }
 </script>

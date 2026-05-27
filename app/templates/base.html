@@ -80,27 +80,10 @@
                 hx-swap="outerHTML">
           <span class="ps-action-icon">Save</span> Save Scenario
         </button>
-        <button class="ps-action-btn"
-                id="btn-load"
-                type="button"
-                hx-get="/scenarios?project={{ project_record.project_code if project_record else project_ctx.id }}"
-                hx-target="#saved-scenario-panel"
-                hx-swap="outerHTML">
-          <span class="ps-action-icon">Load</span> Refresh Saved
-        </button>
       </div>
     </div>
 
-    <div class="ps-section">
-      <div class="ps-section-label">Scenario</div>
-      <div class="ps-scenario-list">
-        <div class="ps-scenario-item active">
-          <span class="ps-scenario-dot ps-scenario-dot--active"></span>
-          {{ project_record.project_name if project_record else "Base" }}
-        </div>
-      </div>
-    </div>
-
+    {# Scenario and saved-scenario-panel moved into project_selector.html as part of Phase 21 cleanup #}
     <div id="saved-scenario-panel">
       {% include "partials/scenario_workspace.html" %}
     </div>
