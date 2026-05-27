@@ -49,7 +49,7 @@
           <tr class="fc-data-row">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
             <td class="fc-cell fc-cell--code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ "{:,.2f}"|format(item.value) }}</span></td>
+            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ (item.value if item.value is string else "{:,.2f}".format(item.value)) }}</span></td>
             <td class="fc-cell">{{ item.unit }}</td>
             <td class="fc-cell">{{ item.group }}</td>
             <td class="fc-cell fc-cell--notes">{{ item.hint }}</td>
@@ -67,7 +67,7 @@
           <tr class="fc-data-row">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
             <td class="fc-cell fc-cell--code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ "{:,.2f}"|format(item.value) }}</span></td>
+            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ (item.value if item.value is string else "{:,.2f}".format(item.value)) }}</span></td>
             <td class="fc-cell">{{ item.unit }}</td>
             <td class="fc-cell">{{ item.group }}</td>
             <td class="fc-cell fc-cell--notes">{{ item.hint }}</td>
@@ -85,7 +85,7 @@
           <tr class="fc-data-row">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
             <td class="fc-cell fc-cell--code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ "{:,.2f}"|format(item.value) }}</span></td>
+            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ (item.value if item.value is string else "{:,.2f}".format(item.value)) }}</span></td>
             <td class="fc-cell">{{ item.unit }}</td>
             <td class="fc-cell">{{ item.group }}</td>
             <td class="fc-cell fc-cell--notes">{{ item.hint }}</td>
@@ -102,7 +102,7 @@
         {% endfor %}
         <tr class="fc-grand-total">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="2">Total IDC (kEUR)</td>
-          <td class="fc-total-cell fc-total-value fc-grand-total__value">{{ "{:,.2f}"|format(total_idc) }}</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">{{ (total_idc if total_idc is string else "{:,.2f}".format(total_idc)) }}</td>
           <td colspan="3"></td>
         </tr>
 
@@ -148,8 +148,8 @@
         <tr class="fc-data-row">
           <td class="fc-cell fc-cell--label fc-grid-col-label">{{ entry.label }}</td>
           <td class="fc-cell">{{ entry.unit }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "{:,.2f}"|format(entry.senior_idc_keur) }}</td>
-          <td class="fc-cell fc-cell--amount">{{ "{:,.2f}"|format(entry.cumulative_senior_idc_keur) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (entry.senior_idc_keur if entry.senior_idc_keur is string else "{:,.2f}".format(entry.senior_idc_keur)) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (entry.cumulative_senior_idc_keur if entry.cumulative_senior_idc_keur is string else "{:,.2f}".format(entry.cumulative_senior_idc_keur)) }}</td>
         </tr>
         {% endfor %}
       </tbody>
