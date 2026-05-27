@@ -77,14 +77,53 @@ class ProjectContext:
         return self.code.lower()
 
 
-def _build_opex_items(project_inputs) -> tuple[dict[str, Any], ...]:
+def _slugify_code(name: str) -> str:
+    """Create a URL-safe code from an item name."""
+    import re
+    # Lowercase, replace spaces/slashes with underscores, keep alphanumerics
+    slug = re.sub(r'[^a-z0-9]+', '_', name.lower())
+    slug = slug.strip('_')
+    return slug or "item"
+
+
+def _infer_opex_group(name: str) -> str:
+    """Infer OPEX group from item name patterns (best-effort for display)."""
+    n = name.lower()
+    if any(k in n for k in ["technical", "o&m", "maintain", "clean", "security", "operational"]):
+        return "Operations & Maintenance"
+    if any(k in n for k in ["insurance", "insur"]):
+        return "Insurance"
+    if any(k in n for k in ["lease", "land", "property", "rent"]):
+        return "Land & Lease"
+    if any(k in n for k in ["power", "balancing", "grid", "transmission"]):
+        return "Grid & Balancing"
+    if any(k in n for k in ["audit", "accounting", "legal", "bank fee", "admin", "management fee"]):
+        return "Administration"
+    if any(k in n for k in ["environmental", "social", "e&s", "hse"]):
+        return "Environmental & Social"
+    if "contingen" in n:
+        return "Contingency"
+    return "Other Operating Costs"
+
+
+def _build_opex_items(project_inputs, horizon_years: int = 25) -> tuple[dict[str, Any], ...]:
     items = []
     for item in project_inputs.opex:
+        code = _slugify_code(item.name)
         items.append(
             {
+                "code": code,
                 "name": item.name,
                 "y1_keur": item.y1_amount_keur,
                 "inflation_pct": item.annual_inflation,
+                "group": _infer_opex_group(item.name),
+                "unit": "kEUR",
+                "fixed_variable": "Fixed",
+                "recurring_oneoff": "Recurring",
+                "escalation_pct": round(item.annual_inflation * 100, 1) if item.annual_inflation else 0.0,
+                "start_year": 1,
+                "end_year": horizon_years,
+                "notes": "",
             }
         )
     return tuple(items)
@@ -127,7 +166,7 @@ def _build_context_from_project_inputs(
     parity_status: str,
     data_source: str,
 ) -> ProjectContext:
-    opex_items = _build_opex_items(project_inputs)
+    opex_items = _build_opex_items(project_inputs, horizon_years=project_inputs.info.horizon_years)
     financing = project_inputs.financing
     revenue = project_inputs.revenue
     technical = project_inputs.technical

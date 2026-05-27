@@ -3702,3 +3702,88 @@ body {
   padding: 0.4rem 0.75rem;
   margin-bottom: 0.5rem;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Phase 20J — OPEX Detail Grid Extensions
+   Workbook-style line-item grid with fc-* design system
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* OPEX grid wrapper override */
+.fc-opex-grid-wrapper {
+  margin-bottom: 1rem;
+}
+
+/* Numeric column (start year, end year) */
+.fc-cell--num {
+  text-align: center;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  width: 60px;
+  min-width: 60px;
+}
+
+/* Notes column */
+.fc-cell--notes {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  max-width: 160px;
+}
+
+/* Subtotal label cell */
+.fc-subtotal-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* OPEX grid column widths (sticky first two) */
+.fc-opex-grid-wrapper .fc-grid {
+  table-layout: fixed;
+}
+
+/* Notes column max-width within grid */
+.fc-opex-grid-wrapper .fc-cell--notes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Readonly notice override for OPEX */
+.inp-readonly-notice--opex {
+  margin-bottom: 0.75rem;
+}
+
+/* OPEX dirty indicator (reuse inp-dirty-indicator) */
+#opex-dirty-indicator {
+  margin-bottom: 0.5rem;
+}
+
+/* OPEX sheet: extra padding for the grid container */
+.fc-opex-grid-wrapper .fc-grid-wrapper {
+  overflow-x: auto;
+}
+
+/* OPEX table note */
+.table-note {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.table-note__text {
+  color: var(--text-2);
+}
+
+/* Delta warning icon */
+.delta-warning-icon {
+  margin-right: 0.3rem;
+}
