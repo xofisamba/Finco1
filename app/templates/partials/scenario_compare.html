@@ -33,26 +33,29 @@
   {% set active_replay = active.replay_metadata or {} %}
 
   <div class="ps-compare-heading">
-    {{ base.scenario_name }} — Base vs — {{ active.scenario_name }}
+    <span class="badge badge-runtime">Base</span>
+    <span class="ps-compare-heading-label">{{ base.scenario_name }}</span>
+    <span class="ps-compare-heading-vs">vs</span>
+    <span class="badge badge-runtime">{{ active.scenario_name }}</span>
   </div>
 
   {# Provenance cards #}
   <div class="ps-compare-provenance-card">
-    <div class="ps-compare-provenance-label">Base Case</div>
+    <div class="ps-compare-provenance-header"><span class="badge badge-runtime">Base</span></div>
     <div class="ps-compare-provenance-grid">
-      <span class="ps-compare-provenance-label">Scenario</span><span>{{ base.scenario_name }}</span>
-      <span class="ps-compare-provenance-label">Runtime origin</span><span>{{ base_replay.get("runtime_origin", "—") }}</span>
-      <span class="ps-compare-provenance-label">Runtime at</span><span>{{ base_replay.get("runtime_timestamp", "—") }}</span>
-      <span class="ps-compare-provenance-label">Run ID</span><span>{{ base_replay.get("run_id", "—") }}</span>
+      <span class="ps-compare-provenance-key">Scenario</span><span>{{ base.scenario_name }}</span>
+      <span class="ps-compare-provenance-key">Runtime origin</span><span>{{ base_replay.get("runtime_origin", "—") }}</span>
+      <span class="ps-compare-provenance-key">Runtime at</span><span>{{ base_replay.get("runtime_timestamp", "—") }}</span>
+      <span class="ps-compare-provenance-key">Run ID</span><span>{{ base_replay.get("run_id", "—") }}</span>
     </div>
   </div>
   <div class="ps-compare-provenance-card">
-    <div class="ps-compare-provenance-label">Active Scenario</div>
+    <div class="ps-compare-provenance-header"><span class="badge badge-runtime">Active</span></div>
     <div class="ps-compare-provenance-grid">
-      <span class="ps-compare-provenance-label">Scenario</span><span>{{ active.scenario_name }}</span>
-      <span class="ps-compare-provenance-label">Runtime origin</span><span>{{ active_replay.get("runtime_origin", "—") }}</span>
-      <span class="ps-compare-provenance-label">Runtime at</span><span>{{ active_replay.get("runtime_timestamp", "—") }}</span>
-      <span class="ps-compare-provenance-label">Run ID</span><span>{{ active_replay.get("run_id", "—") }}</span>
+      <span class="ps-compare-provenance-key">Scenario</span><span>{{ active.scenario_name }}</span>
+      <span class="ps-compare-provenance-key">Runtime origin</span><span>{{ active_replay.get("runtime_origin", "—") }}</span>
+      <span class="ps-compare-provenance-key">Runtime at</span><span>{{ active_replay.get("runtime_timestamp", "—") }}</span>
+      <span class="ps-compare-provenance-key">Run ID</span><span>{{ active_replay.get("run_id", "—") }}</span>
     </div>
   </div>
 
@@ -77,7 +80,9 @@
 {% elif compare_result and compare_result.left and compare_result.right %}
 {# ── Legacy pair-compare mode (left vs right) ── #}
   <div class="ps-compare-heading">
-    {{ compare_result.left.scenario_name }} vs {{ compare_result.right.scenario_name }}
+    <span class="badge badge-runtime">{{ compare_result.left.scenario_name }}</span>
+    <span class="ps-compare-heading-vs">vs</span>
+    <span class="badge badge-runtime">{{ compare_result.right.scenario_name }}</span>
   </div>
   <div class="ps-compare-banner" role="note" aria-label="Scenario compare source clarity">
     Scenario compare is descriptive only. It compares saved scenario snapshots and saved runtime summaries, not unsaved browser draft values.
@@ -146,7 +151,7 @@
 {# ── Truly empty state ── #}
   <div class="ps-mini-empty" data-testid="compare-empty-state">
     <div class="ps-history-item">
-      <div class="ps-history-title">No scenarios to compare</div>
+      <div class="ps-history-title"><span class="badge badge-preview">Preview</span> No scenarios to compare</div>
       <div class="ps-history-meta">Run at least one scenario to enable comparison.</div>
     </div>
   </div>

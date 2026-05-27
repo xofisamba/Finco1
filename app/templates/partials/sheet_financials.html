@@ -1,158 +1,452 @@
 <!-- Sheet: Financial Statements (P&L / Cash Flow / Balance Sheet)
-     Phase 9.5 — Output Tabs Runtime Summary Binding
-     {{ project_ctx.name }}
-
-     Live runtime data (sessionStorage → shared JS) shown first.
-     Static preview tables labeled clearly below.
+     Phase 20M — Financial Statements Polish
+     fc-grid design system applied to statement tables
 -->
 <div class="sheet-banner">
   <span class="sheet-banner-tag">📈 Financial Statements</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">Template preview</span>
-    Static TUHO factory snapshot — not live run output
+    <span class="badge badge-preview">Preview</span>
   </span>
 </div>
 
-<!-- ── Live Runtime Summary (sessionStorage, no server round-trip) ─────────── -->
+{# ══════════════════════════════════════════════════════════════════════
+   LIVE RUNTIME BLOCK (sessionStorage — shown after model run)
+   ══════════════════════════════════════════════════════════════════════ #}
 <div id="fs-runtime-block">
-  <div class="runtime-block" id="shared-runtime-block" style="display:none;">
-    <div class="runtime-block-header">
-      <span class="badge badge-runtime">Runtime summary</span>
-      <span class="runtime-block-title">— last run</span>
-      <span class="runtime-block-project" id="runtime-block-project"></span>
+  <div class="fs-runtime-block" id="shared-runtime-block" style="display:none;">
+    <div class="fs-runtime-header">
+      <div class="fs-runtime-header-left">
+        <span class="badge badge-runtime">Runtime</span>
+        <span class="fs-runtime-title">Live Model Output</span>
+        <span class="fs-runtime-project" id="runtime-block-project"></span>
+      </div>
+      <div class="fs-runtime-header-right">
+        <span class="fs-runtime-time" id="runtime-block-time"></span>
+        {% if runtime_summary.active_scenario_name %}
+        <span class="badge badge-runtime">{{ runtime_summary.active_scenario_name }}</span>
+        {% endif %}
+      </div>
     </div>
-    <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+    <div class="fs-runtime-kpis" id="runtime-block-kpis"></div>
   </div>
 
-  <!-- Tab-specific secondary metrics for Financial Statements -->
-  <div class="runtime-block-secondary" id="fs-secondary-metrics" style="display:none;">
-    <div class="rb-metric">
-      <span class="rb-metric-label">Total Distributions</span>
-      <span class="rb-metric-value" id="fs-total-dist"></span>
+  {# Secondary runtime metrics for financial statements #}
+  <div class="fs-secondary-metrics" id="fs-secondary-metrics" style="display:none;">
+    <div class="fs-metric">
+      <span class="fs-metric-label">Total Distributions</span>
+      <span class="fs-metric-value" id="fs-total-dist"></span>
     </div>
-    <div class="rb-metric">
-      <span class="rb-metric-label">SHL Opening</span>
-      <span class="rb-metric-value" id="fs-shl-opening"></span>
+    <div class="fs-metric">
+      <span class="fs-metric-label">SHL Opening</span>
+      <span class="fs-metric-value" id="fs-shl-opening"></span>
+    </div>
+    <div class="fs-metric">
+      <span class="fs-metric-label">Total Revenue</span>
+      <span class="fs-metric-value" id="fs-total-rev"></span>
+    </div>
+    <div class="fs-metric">
+      <span class="fs-metric-label">EBITDA</span>
+      <span class="fs-metric-value" id="fs-ebitda"></span>
+    </div>
+    <div class="fs-metric">
+      <span class="fs-metric-label">Total OPEX</span>
+      <span class="fs-metric-value" id="fs-opex"></span>
     </div>
   </div>
 </div>
 
 <div class="section-divider"></div>
 
-<!-- ── P&L ───────────────────────────────────────────────────────── -->
-<div class="sheet-card">
-  <div class="section-header">Income Statement (P&amp;L)</div>
-  <div class="preview-notice">
-    <span>📋</span>
-    <span><strong>Preview schedule</strong> — static illustrative TUHO values, not live calculated output. Run the model to see actual results above.</span>
+{# ══════════════════════════════════════════════════════════════════════
+   P&L STATEMENT
+   ══════════════════════════════════════════════════════════════════════ #}
+<div class="fs-statement-card sheet-card">
+  <div class="fs-statement-header">
+    <span class="fs-statement-title">Income Statement (P&amp;L)</span>
+    <span class="badge badge-preview">Preview</span>
   </div>
-  <table class="sheet-table">
-    <thead>
-      <tr>
-        <th>Metric (kEUR)</th>
-        <th class="num-col">Y1-H1</th>
-        <th class="num-col">Y1-H2</th>
-        <th class="num-col">Y2-H1</th>
-        <th class="num-col">Y2-H2</th>
-        <th class="num-col">Y3-H1</th>
-        <th class="num-col">Y3-H2</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr><td>PPA Revenue</td><td class="num-col">4,372</td><td class="num-col">4,460</td><td class="num-col">4,549</td><td class="num-col">4,640</td><td class="num-col">4,639</td><td class="num-col">4,732</td></tr>
-      <tr><td>CO2 Revenue</td><td class="num-col">305</td><td class="num-col">305</td><td class="num-col">276</td><td class="num-col">276</td><td class="num-col">249</td><td class="num-col">249</td></tr>
-      <tr class="total-row"><td>Total Revenue</td><td class="num-col">4,677</td><td class="num-col">4,765</td><td class="num-col">4,825</td><td class="num-col">4,916</td><td class="num-col">4,888</td><td class="num-col">4,981</td></tr>
-      <tr><td>OPEX</td><td class="num-col">−999</td><td class="num-col">−999</td><td class="num-col">−1,019</td><td class="num-col">−1,019</td><td class="num-col">−1,039</td><td class="num-col">−1,039</td></tr>
-      <tr class="total-row"><td>EBITDA</td><td class="num-col">3,678</td><td class="num-col">3,766</td><td class="num-col">3,806</td><td class="num-col">3,897</td><td class="num-col">3,849</td><td class="num-col">3,942</td></tr>
-      <tr><td>Depreciation</td><td class="num-col">−1,825</td><td class="num-col">−1,825</td><td class="num-col">−1,825</td><td class="num-col">−1,825</td><td class="num-col">−1,825</td><td class="num-col">−1,825</td></tr>
-      <tr><td>EBIT</td><td class="num-col">1,853</td><td class="num-col">1,941</td><td class="num-col">1,981</td><td class="num-col">2,072</td><td class="num-col">2,024</td><td class="num-col">2,117</td></tr>
-      <tr><td>Interest (Senior)</td><td class="num-col">−1,734</td><td class="num-col">−1,734</td><td class="num-col">−1,719</td><td class="num-col">−1,703</td><td class="num-col">−1,687</td><td class="num-col">−1,671</td></tr>
-      <tr><td>Interest (SHL PIK)</td><td class="num-col">−1,297</td><td class="num-col">−1,347</td><td class="num-col">−1,401</td><td class="num-col">−1,457</td><td class="num-col">−1,515</td><td class="num-col">−1,575</td></tr>
-      <tr><td>Tax (CIT)</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td></tr>
-      <tr class="total-row"><td>Net Income</td><td class="num-col">−1,178</td><td class="num-col">−1,140</td><td class="num-col">−1,139</td><td class="num-col">−1,088</td><td class="num-col">−1,178</td><td class="num-col">−1,129</td></tr>
-    </tbody>
-  </table>
-  <p class="table-note">CIT=0 per Phase 9 convention. SHL PIK accrues to balance sheet (not cash interest). Revenue inflates 2%/yr. Preview only.</p>
+
+  <div class="fc-grid-wrapper fc-grid-wrapper--scroll-x">
+    <table class="fc-grid fs-grid" id="fs-pnl-grid">
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Metric (kEUR)</th>
+          <th class="fc-th fc-th--amount">Y1-H1</th>
+          <th class="fc-th fc-th--amount">Y1-H2</th>
+          <th class="fc-th fc-th--amount">Y2-H1</th>
+          <th class="fc-th fc-th--amount">Y2-H2</th>
+          <th class="fc-th fc-th--amount">Y3-H1</th>
+          <th class="fc-th fc-th--amount">Y3-H2</th>
+        </tr>
+      </thead>
+      <tbody>
+        {# Revenue #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Revenue</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">PPA Revenue</td>
+          <td class="fc-cell fc-cell--amount">4,372</td>
+          <td class="fc-cell fc-cell--amount">4,460</td>
+          <td class="fc-cell fc-cell--amount">4,549</td>
+          <td class="fc-cell fc-cell--amount">4,640</td>
+          <td class="fc-cell fc-cell--amount">4,639</td>
+          <td class="fc-cell fc-cell--amount">4,732</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">CO2 Revenue</td>
+          <td class="fc-cell fc-cell--amount">305</td>
+          <td class="fc-cell fc-cell--amount">305</td>
+          <td class="fc-cell fc-cell--amount">276</td>
+          <td class="fc-cell fc-cell--amount">276</td>
+          <td class="fc-cell fc-cell--amount">249</td>
+          <td class="fc-cell fc-cell--amount">249</td>
+        </tr>
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="1">Total Revenue</td>
+          <td class="fc-total-cell">4,677</td>
+          <td class="fc-total-cell">4,765</td>
+          <td class="fc-total-cell">4,825</td>
+          <td class="fc-total-cell">4,916</td>
+          <td class="fc-total-cell">4,888</td>
+          <td class="fc-total-cell">4,981</td>
+        </tr>
+
+        {# Expenses #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Operating Expenses</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">OPEX</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−999</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−999</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,019</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,019</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,039</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,039</td>
+        </tr>
+
+        {# EBITDA #}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="1">EBITDA</td>
+          <td class="fc-total-cell">3,678</td>
+          <td class="fc-total-cell">3,766</td>
+          <td class="fc-total-cell">3,806</td>
+          <td class="fc-total-cell">3,897</td>
+          <td class="fc-total-cell">3,849</td>
+          <td class="fc-total-cell">3,942</td>
+        </tr>
+
+        {# Deductions #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Deductions</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Depreciation</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,825</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,825</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,825</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,825</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,825</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,825</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">EBIT</td>
+          <td class="fc-cell fc-cell--amount">1,853</td>
+          <td class="fc-cell fc-cell--amount">1,941</td>
+          <td class="fc-cell fc-cell--amount">1,981</td>
+          <td class="fc-cell fc-cell--amount">2,072</td>
+          <td class="fc-cell fc-cell--amount">2,024</td>
+          <td class="fc-cell fc-cell--amount">2,117</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Interest (Senior)</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,734</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,734</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,719</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,703</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,687</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,671</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Interest (SHL PIK)</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,297</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,347</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,401</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,457</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,515</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,575</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Tax (CIT)</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+        </tr>
+
+        {# Net Income #}
+        <tr class="fc-grand-total">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="1">Net Income</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−1,178</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−1,140</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−1,139</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−1,088</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−1,178</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−1,129</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">
+    <span class="badge badge-preview">Preview</span>
+    CIT=0 per Phase 9 convention. SHL PIK accrues to balance sheet. Revenue inflates 2%/yr. Run model for live output.
+  </p>
 </div>
 
 <div class="section-divider"></div>
 
-<!-- ── Cash Flow ──────────────────────────────────────────────────── -->
-<div class="sheet-card">
-  <div class="section-header">Cash Flow</div>
-  <div class="preview-notice">
-    <span>📋</span>
-    <span><strong>Preview schedule</strong> — static illustrative TUHO values, not live calculated output. Run the model to see actual results above.</span>
+{# ══════════════════════════════════════════════════════════════════════
+   CASH FLOW STATEMENT
+   ══════════════════════════════════════════════════════════════════════ #}
+<div class="fs-statement-card sheet-card">
+  <div class="fs-statement-header">
+    <span class="fs-statement-title">Cash Flow</span>
+    <span class="badge badge-preview">Preview</span>
   </div>
-  <table class="sheet-table">
-    <thead>
-      <tr>
-        <th>Metric (kEUR)</th>
-        <th class="num-col">Y1-H1</th>
-        <th class="num-col">Y1-H2</th>
-        <th class="num-col">Y2-H1</th>
-        <th class="num-col">Y2-H2</th>
-        <th class="num-col">Y3-H1</th>
-        <th class="num-col">Y3-H2</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr><td>EBITDA</td><td class="num-col">3,678</td><td class="num-col">3,766</td><td class="num-col">3,806</td><td class="num-col">3,897</td><td class="num-col">3,849</td><td class="num-col">3,942</td></tr>
-      <tr><td>Interest Paid (Senior)</td><td class="num-col">−1,734</td><td class="num-col">−1,734</td><td class="num-col">−1,719</td><td class="num-col">−1,703</td><td class="num-col">−1,687</td><td class="num-col">−1,671</td></tr>
-      <tr><td>Tax Paid</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td></tr>
-      <tr class="total-row"><td>CFADS</td><td class="num-col">1,944</td><td class="num-col">2,032</td><td class="num-col">2,087</td><td class="num-col">2,194</td><td class="num-col">2,162</td><td class="num-col">2,271</td></tr>
-      <tr><td>Senior Debt Service</td><td class="num-col">−1,734</td><td class="num-col">−2,116</td><td class="num-col">−2,116</td><td class="num-col">−2,116</td><td class="num-col">−2,116</td><td class="num-col">−2,116</td></tr>
-      <tr><td>Distributions</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td><td class="num-col">0</td></tr>
-      <tr class="total-row"><td>Ending Cash</td><td class="num-col">210</td><td class="num-col">126</td><td class="num-col">97</td><td class="num-col">175</td><td class="num-col">156</td><td class="num-col">311</td></tr>
-    </tbody>
-  </table>
-  <p class="table-note">Cash sweep applies after senior debt service. Distributions begin when FCF &gt; accrued SHL. Preview only.</p>
+
+  <div class="fc-grid-wrapper fc-grid-wrapper--scroll-x">
+    <table class="fc-grid fs-grid" id="fs-cf-grid">
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Metric (kEUR)</th>
+          <th class="fc-th fc-th--amount">Y1-H1</th>
+          <th class="fc-th fc-th--amount">Y1-H2</th>
+          <th class="fc-th fc-th--amount">Y2-H1</th>
+          <th class="fc-th fc-th--amount">Y2-H2</th>
+          <th class="fc-th fc-th--amount">Y3-H1</th>
+          <th class="fc-th fc-th--amount">Y3-H2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Operating</td>
+        </tr>
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label">EBITDA</td>
+          <td class="fc-total-cell">3,678</td>
+          <td class="fc-total-cell">3,766</td>
+          <td class="fc-total-cell">3,806</td>
+          <td class="fc-total-cell">3,897</td>
+          <td class="fc-total-cell">3,849</td>
+          <td class="fc-total-cell">3,942</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Interest Paid (Senior)</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,734</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,734</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,719</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,703</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,687</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,671</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Tax Paid</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+        </tr>
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label">CFADS</td>
+          <td class="fc-total-cell">1,944</td>
+          <td class="fc-total-cell">2,032</td>
+          <td class="fc-total-cell">2,087</td>
+          <td class="fc-total-cell">2,194</td>
+          <td class="fc-total-cell">2,162</td>
+          <td class="fc-total-cell">2,271</td>
+        </tr>
+
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Financing</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Senior Debt Service</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−1,734</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−2,116</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−2,116</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−2,116</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−2,116</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−2,116</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Distributions</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+          <td class="fc-cell fc-cell--amount">0</td>
+        </tr>
+
+        <tr class="fc-grand-total">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label">Ending Cash</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">210</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">126</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">97</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">175</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">156</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">311</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">
+    <span class="badge badge-preview">Preview</span>
+    Cash sweep applies after senior debt service. Distributions begin when FCF &gt; accrued SHL. Run model for live output.
+  </p>
 </div>
 
 <div class="section-divider"></div>
 
-<!-- ── Balance Sheet ─────────────────────────────────────────────── -->
-<div class="sheet-card">
-  <div class="section-header">Balance Sheet</div>
-  <div class="preview-notice">
-    <span>📋</span>
-    <span><strong>Preview schedule</strong> — static illustrative TUHO values, not live calculated output. Run the model to see actual results above.</span>
+{# ══════════════════════════════════════════════════════════════════════
+   BALANCE SHEET
+   ══════════════════════════════════════════════════════════════════════ #}
+<div class="fs-statement-card sheet-card">
+  <div class="fs-statement-header">
+    <span class="fs-statement-title">Balance Sheet</span>
+    <span class="badge badge-preview">Preview</span>
   </div>
-  <table class="sheet-table">
-    <thead>
-      <tr>
-        <th>Metric (kEUR)</th>
-        <th class="num-col">Y1-H1</th>
-        <th class="num-col">Y1-H2</th>
-        <th class="num-col">Y2-H1</th>
-        <th class="num-col">Y2-H2</th>
-        <th class="num-col">Y3-H1</th>
-        <th class="num-col">Y3-H2</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr><td>Net PP&amp;E</td><td class="num-col">68,644</td><td class="num-col">66,819</td><td class="num-col">64,994</td><td class="num-col">63,169</td><td class="num-col">61,344</td><td class="num-col">59,519</td></tr>
-      <tr><td>Cash</td><td class="num-col">210</td><td class="num-col">126</td><td class="num-col">97</td><td class="num-col">175</td><td class="num-col">156</td><td class="num-col">311</td></tr>
-      <tr class="total-row"><td>Total Assets</td><td class="num-col">68,854</td><td class="num-col">66,945</td><td class="num-col">65,091</td><td class="num-col">63,344</td><td class="num-col">61,500</td><td class="num-col">59,830</td></tr>
-      <tr><td>Senior Debt</td><td class="num-col">43,359</td><td class="num-col">42,977</td><td class="num-col">42,580</td><td class="num-col">42,167</td><td class="num-col">41,740</td><td class="num-col">41,300</td></tr>
-      <tr><td>SHL</td><td class="num-col">34,001</td><td class="num-col">35,348</td><td class="num-col">36,749</td><td class="num-col">38,206</td><td class="num-col">39,721</td><td class="num-col">41,296</td></tr>
-      <tr class="total-row"><td>Total Debt</td><td class="num-col">77,360</td><td class="num-col">78,325</td><td class="num-col">79,329</td><td class="num-col">80,373</td><td class="num-col">81,461</td><td class="num-col">82,596</td></tr>
-      <tr><td>Equity</td><td class="num-col">29,635</td><td class="num-col">28,495</td><td class="num-col">27,355</td><td class="num-col">26,267</td><td class="num-col">25,089</td><td class="num-col">23,966</td></tr>
-      <tr><td>Retained Earnings</td><td class="num-col">−38,141</td><td class="num-col">−39,875</td><td class="num-col">−41,593</td><td class="num-col">−43,296</td><td class="num-col">−45,050</td><td class="num-col">−46,732</td></tr>
-      <tr class="total-row"><td>Total Equity</td><td class="num-col">−8,506</td><td class="num-col">−11,380</td><td class="num-col">−14,238</td><td class="num-col">−17,029</td><td class="num-col">−19,961</td><td class="num-col">−22,766</td></tr>
-    </tbody>
-  </table>
-  <p class="table-note">Retained earnings negative during construction/early operations (cumulative losses). Equity recovers as debt amortises. Preview only.</p>
+
+  <div class="fc-grid-wrapper fc-grid-wrapper--scroll-x">
+    <table class="fc-grid fs-grid" id="fs-bs-grid">
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Metric (kEUR)</th>
+          <th class="fc-th fc-th--amount">Y1-H1</th>
+          <th class="fc-th fc-th--amount">Y1-H2</th>
+          <th class="fc-th fc-th--amount">Y2-H1</th>
+          <th class="fc-th fc-th--amount">Y2-H2</th>
+          <th class="fc-th fc-th--amount">Y3-H1</th>
+          <th class="fc-th fc-th--amount">Y3-H2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Assets</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Net PP&amp;E</td>
+          <td class="fc-cell fc-cell--amount">68,644</td>
+          <td class="fc-cell fc-cell--amount">66,819</td>
+          <td class="fc-cell fc-cell--amount">64,994</td>
+          <td class="fc-cell fc-cell--amount">63,169</td>
+          <td class="fc-cell fc-cell--amount">61,344</td>
+          <td class="fc-cell fc-cell--amount">59,519</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Cash</td>
+          <td class="fc-cell fc-cell--amount">210</td>
+          <td class="fc-cell fc-cell--amount">126</td>
+          <td class="fc-cell fc-cell--amount">97</td>
+          <td class="fc-cell fc-cell--amount">175</td>
+          <td class="fc-cell fc-cell--amount">156</td>
+          <td class="fc-cell fc-cell--amount">311</td>
+        </tr>
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label">Total Assets</td>
+          <td class="fc-total-cell">68,854</td>
+          <td class="fc-total-cell">66,945</td>
+          <td class="fc-total-cell">65,091</td>
+          <td class="fc-total-cell">63,344</td>
+          <td class="fc-total-cell">61,500</td>
+          <td class="fc-total-cell">59,830</td>
+        </tr>
+
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Liabilities</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Senior Debt</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">43,359</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">42,977</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">42,580</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">42,167</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">41,740</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">41,300</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">SHL</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">34,001</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">35,348</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">36,749</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">38,206</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">39,721</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">41,296</td>
+        </tr>
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label">Total Debt</td>
+          <td class="fc-total-cell">77,360</td>
+          <td class="fc-total-cell">78,325</td>
+          <td class="fc-total-cell">79,329</td>
+          <td class="fc-total-cell">80,373</td>
+          <td class="fc-total-cell">81,461</td>
+          <td class="fc-total-cell">82,596</td>
+        </tr>
+
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="7">Equity</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Equity</td>
+          <td class="fc-cell fc-cell--amount">29,635</td>
+          <td class="fc-cell fc-cell--amount">28,495</td>
+          <td class="fc-cell fc-cell--amount">27,355</td>
+          <td class="fc-cell fc-cell--amount">26,267</td>
+          <td class="fc-cell fc-cell--amount">25,089</td>
+          <td class="fc-cell fc-cell--amount">23,966</td>
+        </tr>
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">Retained Earnings</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−38,141</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−39,875</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−41,593</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−43,296</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−45,050</td>
+          <td class="fc-cell fc-cell--amount fc-cell--negative">−46,732</td>
+        </tr>
+        <tr class="fc-grand-total">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label">Total Equity</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−8,506</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−11,380</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−14,238</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−17,029</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−19,961</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">−22,766</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="table-note">
+    <span class="badge badge-preview">Preview</span>
+    Retained earnings negative during construction/early operations. Equity recovers as debt amortises. Run model for live output.
+  </p>
 </div>
 
 <div class="table-note">
-  <span class="badge badge-preview">Template preview</span>
-  Values above are hardcoded UI seed data from TUHO factory assumptions.
-  Not yet dynamically bound to active project runtime outputs.
-  Live financial statements will be driven by the waterfall engine in a future branch.
+  <span class="badge badge-preview">Preview</span>
+  <span class="table-note__text">
+    Static TUHO factory values. Not bound to active project runtime. Run model to populate live financial statements.
+  </span>
 </div>
 
-<!-- Financial Statements JS: populate secondary metrics + primary KPIs from sessionStorage -->
+{# ══════════════════════════════════════════════════════════════════════
+   SESSION STORAGE RUNTIME BINDING
+   ══════════════════════════════════════════════════════════════════════ #}
 <script>
 (function() {
   "use strict";
@@ -164,12 +458,15 @@
     var data;
     try { data = JSON.parse(raw); } catch(e) { return; }
 
-    // Show primary runtime block
+    // Show runtime block
     var block = document.getElementById("shared-runtime-block");
     if (block) block.style.display = "";
 
     var proj = document.getElementById("runtime-block-project");
     if (proj) proj.textContent = data.project_name || "";
+
+    var time = document.getElementById("runtime-block-time");
+    if (time) time.textContent = data.ran_at || "";
 
     // Primary KPIs
     var kpiGrid = document.getElementById("runtime-block-kpis");
@@ -177,28 +474,34 @@
       var kpis = [
         { label: "Project IRR",    key: "project_irr" },
         { label: "Equity IRR",      key: "equity_irr" },
-        { label: "Avg DSCR",         key: "avg_dscr" },
+        { label: "Avg DSCR",        key: "avg_dscr" },
         { label: "Total Revenue",  key: "total_revenue_keur" },
-        { label: "EBITDA",          key: "total_ebitda_keur" },
-        { label: "Total OPEX",      key: "total_opex_keur" },
+        { label: "EBITDA",         key: "total_ebitda_keur" },
+        { label: "Total OPEX",     key: "total_opex_keur" },
       ];
       var html = "";
       for (var i = 0; i < kpis.length; i++) {
         var kv = kpis[i];
-        var val = data[kv.key] || "NOT_AVAILABLE";
-        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
-        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+        var val = data[kv.key] || "—";
+        var cls = (val === "NOT_AVAILABLE" || val === "—") ? "rs-kpi-missing" : "rs-kpi-value";
+        html += '<div class="rs-kpi-card"><div class="rs-kpi-label">' + kv.label + '</div><div class="' + cls + '">' + val + '</div></div>';
       }
       kpiGrid.innerHTML = html;
     }
 
-    // Secondary: distributions + SHL opening
+    // Secondary: distributions, SHL opening, revenue, EBITDA, opex
     var secBlock = document.getElementById("fs-secondary-metrics");
     if (secBlock) {
       var distEl = document.getElementById("fs-total-dist");
-      if (distEl) distEl.textContent = data.total_distributions_keur || "NOT_AVAILABLE";
+      if (distEl) distEl.textContent = data.total_distributions_keur || "—";
       var shlEl = document.getElementById("fs-shl-opening");
-      if (shlEl) shlEl.textContent = data.shl_opening_keur || "NOT_AVAILABLE";
+      if (shlEl) shlEl.textContent = data.shl_opening_keur || "—";
+      var revEl = document.getElementById("fs-total-rev");
+      if (revEl) revEl.textContent = data.total_revenue_keur || "—";
+      var ebitdaEl = document.getElementById("fs-ebitda");
+      if (ebitdaEl) ebitdaEl.textContent = data.total_ebitda_keur || "—";
+      var opexEl = document.getElementById("fs-opex");
+      if (opexEl) opexEl.textContent = data.total_opex_keur || "—";
       secBlock.style.display = "";
     }
   }
@@ -206,7 +509,12 @@
   window._populateFSRuntimeBlock = _populateFSRuntimeBlock;
 
   document.addEventListener("htmx:afterSwap", function(e) {
-    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-pl") || e.target.closest("#panel-cashflow") || e.target.closest("#panel-balance"))) {
+    if (e.target && (
+      e.target.id === "model-output-area" ||
+      e.target.closest("#panel-pl") ||
+      e.target.closest("#panel-cashflow") ||
+      e.target.closest("#panel-balance")
+    )) {
       _populateFSRuntimeBlock();
     }
   });
