@@ -5,9 +5,9 @@ Covers: scope wiring for EPC C.02, Grid C.03, Project Rights C.16,
 M1-M18 timing_only flag, and schedule_note.
 """
 
-import pytest
+from tests.test_helpers import REPO_ROOT, PYTHON
 import sys
-sys.path.insert(0, '/opt/finco1')
+sys.path.insert(0, str(REPO_ROOT))
 
 from app.ui.project_context import _build_capex_detail_items
 from app.domain.capex.source_model import CapexScope
@@ -268,10 +268,10 @@ class TestNoRegressions:
         """Phase 21D tests must still pass."""
         import subprocess
         result = subprocess.run(
-            ["python3", "-m", "pytest",
+            [PYTHON, "-m", "pytest",
              "tests/test_phase21d_capex_source_model_schema_design.py",
              "-v", "--tb=short"],
-            cwd="/opt/finco1",
+            cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
             timeout=60,

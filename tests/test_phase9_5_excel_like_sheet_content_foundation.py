@@ -2,7 +2,7 @@
 import os
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# /opt/finco1/tests/ → /opt/finco1 (repo root)
+# /tests/ →/repo root (resolved via __file__)
 PARTIALS = os.path.join(REPO_ROOT, "app/templates/partials")
 DOCS = os.path.join(REPO_ROOT, "docs")
 STATIC = os.path.join(REPO_ROOT, "static")

@@ -5,9 +5,9 @@ Design/schema-only tests — no runtime changes validated here.
 """
 
 import pytest
-from pathlib import Path
+from tests.test_helpers import REPO_ROOT
 
-DOCS_DIR = Path("/opt/finco1/docs")
+DOCS_DIR = REPO_ROOT / "docs"
 
 
 class TestDesignDocument:
@@ -85,11 +85,11 @@ class TestSchemaStubs:
     """Tests for the isolated schema stubs module."""
 
     def test_source_model_module_exists(self):
-        assert Path("/opt/finco1/app/domain/capex/source_model.py").exists()
+        assert (REPO_ROOT / "app/domain/capex/source_model.py").exists()
 
     def test_source_model_module_imports_cleanly(self):
         import sys
-        sys.path.insert(0, "/opt/finco1")
+        sys.path.insert(0, str(REPO_ROOT))
         import app.domain.capex.source_model as sm
         assert hasattr(sm, "CapexSourceType")
         assert hasattr(sm, "CapexScope")
@@ -216,7 +216,7 @@ class TestIsolatedModuleNotImportedByRuntime:
     def test_schema_module_not_in_runtime_imports(self):
         """main_web imports without error — schema module is isolated."""
         import sys
-        sys.path.insert(0, "/opt/finco1")
+        sys.path.insert(0, str(REPO_ROOT))
         import main_web  # noqa: F401
         assert True
 
@@ -225,32 +225,32 @@ class TestNoExistingRuntimeRegressions:
 
     def test_main_web_imports(self):
         import sys
-        sys.path.insert(0, "/opt/finco1")
+        sys.path.insert(0, str(REPO_ROOT))
         import main_web  # noqa: F401
         assert True
 
     def test_capex_breakdown_imports(self):
         import sys
-        sys.path.insert(0, "/opt/finco1")
+        sys.path.insert(0, str(REPO_ROOT))
         from domain.capex import capex_breakdown  # noqa: F401
         assert True
 
     def test_capex_schedule_imports(self):
         import sys
-        sys.path.insert(0, "/opt/finco1")
+        sys.path.insert(0, str(REPO_ROOT))
         from domain.capex import capex_schedule  # noqa: F401
         assert True
 
     def test_project_context_imports(self):
         import sys
-        sys.path.insert(0, "/opt/finco1")
+        sys.path.insert(0, str(REPO_ROOT))
         from app.ui import project_context  # noqa: F401
         assert True
 
     def test_capex_detail_items_structure_unchanged(self):
         """Verify _build_capex_detail_items returns dict with 'categories' key."""
         import sys
-        sys.path.insert(0, "/opt/finco1")
+        sys.path.insert(0, str(REPO_ROOT))
         from app.ui.project_context import _build_capex_detail_items
         from app.project_factories import create_default_tuho_wind1
 
