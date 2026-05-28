@@ -20,6 +20,8 @@ def opex_item_amount_at_year(item: OpexItem, year_index: int) -> float:
     override only. Excel model step-change rows usually represent a new base
     amount from that year onward. This helper implements that sustained-step
     behavior without changing the frozen input schema.
+
+    Note: percentage_of_opex items are NOT handled here — use opex_year() instead.
     """
     if year_index <= 0:
         return 0.0
@@ -42,8 +44,32 @@ def opex_year(
     items: Sequence[OpexItem],
     year_index: int,
 ) -> float:
-    """Calculate total OPEX for a given year."""
-    return sum(opex_item_amount_at_year(item, year_index) for item in items)
+    """Calculate total OPEX for a given year.
+
+    Handles both fixed-amount and percentage-of-opex contingency items.
+    For percentage_of_opex items: amount = pct * sum_of_fixed_items (excl. self).
+    This avoids circular dependency by computing fixed items first.
+    """
+    if year_index <= 0:
+        return 0.0
+
+    # First pass: compute fixed amounts for all items
+    fixed_amounts = {}
+    percentage_items = []
+
+    for item in items:
+        if item.percentage_of_opex > 0:
+            percentage_items.append(item)
+        else:
+            fixed_amounts[item.name] = opex_item_amount_at_year(item, year_index)
+
+    # Compute percentage-based items using fixed amounts as base (no self-reference)
+    for item in percentage_items:
+        # Base = sum of all fixed items (excluding other percentage-based items and self)
+        base = sum(fixed_amounts.values())
+        fixed_amounts[item.name] = item.percentage_of_opex * base
+
+    return sum(fixed_amounts.values())
 
 
 def opex_schedule_annual(
@@ -102,8 +128,29 @@ def opex_breakdown_year(
     inputs: ProjectInputs,
     year_index: int,
 ) -> dict[str, float]:
-    """Get breakdown of OPEX by category for a given year."""
-    return {item.name: opex_item_amount_at_year(item, year_index) for item in inputs.opex}
+    """Get breakdown of OPEX by category for a given year.
+
+    Handles both fixed-amount and percentage_of_opex items.
+    """
+    if year_index <= 0:
+        return {item.name: 0.0 for item in inputs.opex}
+
+    # First pass: compute fixed amounts
+    fixed_amounts = {}
+    percentage_items = []
+
+    for item in inputs.opex:
+        if item.percentage_of_opex > 0:
+            percentage_items.append(item)
+        else:
+            fixed_amounts[item.name] = opex_item_amount_at_year(item, year_index)
+
+    # Compute percentage-based items using fixed amounts as base
+    for item in percentage_items:
+        base = sum(fixed_amounts.values())
+        fixed_amounts[item.name] = item.percentage_of_opex * base
+
+    return fixed_amounts
 
 
 def total_opex_over_horizon(

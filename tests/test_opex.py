@@ -43,7 +43,7 @@ class TestOpexCalculation:
         assert 1 in schedule
         assert 30 in schedule
 
-        y1_manual = sum(opex_item_amount_at_year(item, 1) for item in inputs.opex)
+        y1_manual = opex_year(inputs.opex, 1)
         assert abs(schedule[1] - y1_manual) < 0.01
 
     def test_opex_escalation(self, inputs):

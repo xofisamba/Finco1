@@ -113,8 +113,9 @@ def create_default_oborovo() -> ProjectInputs:
         OpexItem(name="Audit&Accounting&Legal", y1_amount_keur=24.0, annual_inflation=0.02),
         OpexItem(name="Bank Fees", y1_amount_keur=20.0, annual_inflation=0.02),
         OpexItem(name="Environmental&Social", y1_amount_keur=32.0, annual_inflation=0.02,
-                step_changes=((3, 5.2),)),  # Step down in Y3
-        OpexItem(name="Contingencies", y1_amount_keur=51.0, annual_inflation=0.02),
+                step_changes=((3, 12.4848),)),  # B.12.3/B.12.5 inactive Y3+ → step to 12.4848 (annual, inflation resumes)
+        OpexItem(name="Contingencies", y1_amount_keur=51.0, annual_inflation=0.02,
+                percentage_of_opex=0.04),  # B.13: 4% of non-contingency OPEX
         OpexItem(name="Taxes", y1_amount_keur=0.0, annual_inflation=0.0),
         OpexItem(name="Salary&Payroll", y1_amount_keur=0.0, annual_inflation=0.0),
     )
