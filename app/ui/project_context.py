@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from app.domain.capex.source_model import CapexScope
+from app.domain.capex.source_model import CapexScope, C16_CHILD_TREATMENTS
 from app.project_factories import (
     create_default_oborovo,
     create_default_solar_project,
@@ -1952,6 +1952,49 @@ def _build_capex_detail_items(
             return "model_mismatch"
         return "mapped"
 
+    # ── Runtime Impact helper ───────────────────────────────────────────
+    def _derive_runtime_impact_label(
+        authority_status: str,
+        affects_runtime: bool,
+        scope: str | None,
+        timing_only: bool | None,
+        mapping_status: str,
+        cat_code: str = "",
+        excel_code: str = "",
+    ) -> str:
+        """Map internal status to user-facing Runtime Impact label."""
+        # Priority: project_rights (C.16) > aggregate_total > timing_only > authority-based
+        # Note: project_rights (C.16) children have timing_only=True but project_rights
+        # scope overrides — they are "Pending treatment", not "Timing only"
+        if scope == "project_rights":
+            if excel_code in C16_CHILD_TREATMENTS:
+                if C16_CHILD_TREATMENTS[excel_code].treatment_resolved:
+                    return "Drives model"
+            return "Pending treatment"
+        # Aggregate total scope (C.02 epc_contract, C.03 grid_connection) is a real CAPEX total
+        if scope == "aggregate_total":
+            return "Drives model"
+        if authority_status == "backend_authoritative":
+            return "Drives model"
+        # timing_only rows feed construction draw/IDC timing only — not a CAPEX total
+        if timing_only is True:
+            return "Timing only"
+        if authority_status == "app_mapped":
+            return "Drives model" if affects_runtime else "Display only"
+        if authority_status == "excel_reference_only":
+            return "Reference only"
+        if authority_status == "missing_runtime_source":
+            return "Pending runtime source"
+        if authority_status == "scope_mismatch" or mapping_status == "scope_mismatch":
+            return "Not comparable"
+        if authority_status == "mismatch" or mapping_status == "mismatch":
+            return "Needs review"
+        if authority_status == "not_applicable":
+            return "Not applicable"
+        if authority_status == "deferred":
+            return "Deferred"
+        return "Unknown"
+
     def _child_row(data: dict, is_backend: bool) -> dict:
         excel_amt = data.get("amount_keur", 0.0) or 0.0
         cat_code = data.get("parent_code", "")
@@ -2064,6 +2107,16 @@ def _build_capex_detail_items(
             "scope": scope,
             "timing_only": timing_only,
             "schedule_note": schedule_note,
+            # ── Phase 22B runtime impact ──────────────────────────────────
+            "runtime_impact": _derive_runtime_impact_label(
+                authority_status,
+                af_rt,
+                scope,
+                timing_only,
+                status,
+                cat_code=cat_code,
+                excel_code=data["code"],
+            ),
         }
 
     # ── Build categories ──────────────────────────────────────────────────

@@ -94,6 +94,23 @@
 </div>
 {% endif %}
 
+{# ── Phase 22B: Display-only audit banner ─────────────────────────────────── #}
+<div class="capex-display-only-banner">
+  <span class="banner-icon">⚠</span>
+  <strong>CAPEX detail grid is an audit/display view.</strong>
+  Rows marked <span class="badge badge-rt badge-rt-display-only">Display only</span>,
+  <span class="badge badge-rt badge-rt-reference-only">Reference only</span>,
+  <span class="badge badge-rt badge-rt-pending-treatment">Pending treatment</span>, or
+  <span class="badge badge-rt badge-rt-not-comparable">Not comparable</span>
+  do not affect runtime calculations today.
+  <br>
+  <span class="banner-sub">
+    C.16 Project Rights is not runtime-effective.
+    M1–M18 schedule is timing-only (not summed into CAPEX total, not wired to IDC).
+    Treatment options are design-only until explicitly wired.
+  </span>
+</div>
+
 {# ── Grid toolbar: monthly range + display mode + collapse controls ─────────────── #}
 {% set n_months = project_ctx.capex_construction_months|default(12) %}
 <div class="capex-grid-toolbar">
@@ -121,6 +138,11 @@
 </div>
 
 {# ── Detail Grid ─────────────────────────────────────────────────────────────── #}
+{# ── Phase 22B: Runtime Impact tooltip macro ────────────────────────────────── #}
+{%- macro _rt_tooltip(label) -%}
+{%- if label == 'Drives model' -%}This row is currently used by the backend model.{%- elif label == 'Display only' -%}Shown for audit/context only; does not affect model output.{%- elif label == 'Reference only' -%}Excel/reference row only.{%- elif label == 'Pending treatment' -%}Requires user/accounting/tax/funding treatment selection before runtime use.{%- elif label == 'Pending runtime source' -%}No runtime source mapped yet.{%- elif label == 'Not comparable' -%}App and Excel values represent different scopes.{%- elif label == 'Needs review' -%}Mismatch detected — review required.{%- elif label == 'Timing only' -%}Schedule used for construction draw/IDC timing only — not a CAPEX total.{%- elif label == 'Not applicable' -%}Not applicable for this project type.{%- elif label == 'Deferred' -%}Deferred for later phase.{%- else -%}{{ label }}{%- endif -%}
+{%- endmacro -%}
+
 <div class="fc-capex-grid-wrapper sheet-card">
 
   <div class="section-header">
@@ -312,61 +334,52 @@
           {% endif %}
         </td>
 
-        {# Status + Authority badges #}
         <td class="fc-cell fc-cell--status" data-col="10">
-          {% set status = child.mapping_status|default('unmapped') %}
-          {% if status == 'mapped' %}
-            <span class="badge badge-mapped">mapped</span>
-          {% elif status == 'partial' %}
-            <span class="badge badge-partial">partial</span>
-          {% elif status == 'model_mismatch' %}
-            <span class="badge badge-mismatch">≠ model</span>
-          {% elif status == 'backend_calculated' %}
-            <span class="badge badge-backend">backend</span>
-          {% else %}
-            <span class="badge badge-unmapped">unmapped</span>
-          {% endif %}
-          {# Phase 21B authority badge #}
-          {% set astatus = child.authority_status|default('missing') %}
-          {% if astatus == 'backend_authoritative' %}
-            <span class="badge badge-auth-backend" title="Backend authoritative: {{ child.runtime_source_field|default('') }}">auth✓</span>
-          {% elif astatus == 'app_mapped' %}
-            <span class="badge badge-auth-app" title="App-mapped field: {{ child.runtime_source_field|default('') }}">app</span>
-          {% elif astatus == 'excel_reference_only' %}
-            <span class="badge badge-auth-excel" title="Excel reference only — no app mapping">excel</span>
-          {% elif astatus == 'missing_runtime_source' %}
-            <span class="badge badge-auth-missing" title="Missing runtime source">?src</span>
-          {% elif astatus == 'mismatch' %}
-            <span class="badge badge-auth-mismatch" title="{{ child.mapping_note|default('') }}">≠</span>
-          {% elif astatus == 'scope_mismatch' %}
-            <span class="badge badge-auth-scope-mismatch" title="{{ child.mapping_note|default('') }}">≠scp</span>
-          {% elif astatus == 'deferred' %}
-            <span class="badge badge-auth-deferred" title="Deferred mapping">defer</span>
-          {% elif astatus == 'not_applicable' %}
-            <span class="badge badge-auth-na">N/A</span>
-          {% else %}
-            <span class="badge badge-auth-missing">?unk</span>
-          {% endif %}
-          {# Source type label #}
-          {% set stype = child.source_type|default('missing') %}
-          <span class="fc-auth-src" title="Source: {{ stype }}">{{ stype[:4] }}</span>
-          {# Runtime impact dot #}
-          {% if child.affects_runtime %}
-            <span class="fc-rt-dot" title="Affects runtime"></span>
-          {% endif %}
-          {# Phase 21E scope badge #}
-          {% set scopeval = child.scope|default('') %}
-          {% if scopeval == 'aggregate_total' %}
-            <span class="badge badge-scope-aggregate" title="Aggregate total scope">agg✓</span>
-          {% elif scopeval == 'payment_batch' %}
-            <span class="badge badge-scope-payment-batch" title="Payment batch reference scope">pymt</span>
-          {% elif scopeval == 'fee_only' %}
-            <span class="badge badge-scope-fee-only" title="Fee-only scope (prerequisite/administrative)">fee</span>
-          {% elif scopeval == 'project_rights' %}
-            <span class="badge badge-scope-project-rights" title="Project rights scope — deferred wiring">rights</span>
-          {% elif scopeval == 'timing_only' %}
-            <span class="badge badge-scope-timing-only" title="Timing-only row">tim</span>
-          {% endif %}
+        {# ── Phase 22B: Runtime Impact badge (primary, most visible) ────────── #}
+        {% set rt = child.runtime_impact|default('Unknown') %}
+        {% set rt_class = rt|replace(' ', '-')|lower() %}
+        <span class="badge badge-rt badge-rt-{{ rt_class }}" title="{{ _rt_tooltip(rt) }}">{{ rt }}</span>
+        {# Scope badge (secondary) #}
+        {% set scopeval = child.scope|default('') %}
+        {% if scopeval == 'aggregate_total' %}
+          <span class="badge badge-scope-aggregate" title="Aggregate total scope">agg✓</span>
+        {% elif scopeval == 'payment_batch' %}
+          <span class="badge badge-scope-payment-batch" title="Payment batch reference scope">pymt</span>
+        {% elif scopeval == 'fee_only' %}
+          <span class="badge badge-scope-fee-only" title="Fee-only scope (prerequisite/administrative)">fee</span>
+        {% elif scopeval == 'project_rights' %}
+          <span class="badge badge-scope-project-rights" title="Project rights scope — deferred wiring">rights</span>
+        {% elif scopeval == 'timing_only' %}
+          <span class="badge badge-scope-timing-only" title="Timing-only row">tim</span>
+        {% endif %}
+        {# Phase 21B authority badge (tertiary) #}
+        {% set astatus = child.authority_status|default('missing') %}
+        {% if astatus == 'backend_authoritative' %}
+          <span class="badge badge-auth-backend" title="Backend authoritative: {{ child.runtime_source_field|default('') }}">auth✓</span>
+        {% elif astatus == 'app_mapped' %}
+          <span class="badge badge-auth-app" title="App-mapped field: {{ child.runtime_source_field|default('') }}">app</span>
+        {% elif astatus == 'excel_reference_only' %}
+          <span class="badge badge-auth-excel" title="Excel reference only — no app mapping">excel</span>
+        {% elif astatus == 'missing_runtime_source' %}
+          <span class="badge badge-auth-missing" title="Missing runtime source">?src</span>
+        {% elif astatus == 'mismatch' %}
+          <span class="badge badge-auth-mismatch" title="{{ child.mapping_note|default('') }}">≠</span>
+        {% elif astatus == 'scope_mismatch' %}
+          <span class="badge badge-auth-scope-mismatch" title="{{ child.mapping_note|default('') }}">≠scp</span>
+        {% elif astatus == 'deferred' %}
+          <span class="badge badge-auth-deferred" title="Deferred mapping">defer</span>
+        {% elif astatus == 'not_applicable' %}
+          <span class="badge badge-auth-na">N/A</span>
+        {% else %}
+          <span class="badge badge-auth-missing">?unk</span>
+        {% endif %}
+        {# Source type label #}
+        {% set stype = child.source_type|default('missing') %}
+        <span class="fc-auth-src" title="Source: {{ stype }}">{{ stype[:4] }}</span>
+        {# Runtime impact dot #}
+        {% if child.affects_runtime %}
+          <span class="fc-rt-dot" title="Affects runtime"></span>
+        {% endif %}
         </td>
 
         {# Monthly payment columns M1–M18 #}
@@ -434,6 +447,17 @@
     <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> child row
     | <strong>Note:</strong> Monthly amount = Excel kEUR × payment fraction per month.
     | <strong>Click category</strong> row to collapse/expand children.
+    <br>
+    <strong>Runtime Impact (Phase 22B):</strong>
+    <span class="badge badge-rt badge-rt-drives-model">Drives model</span> drives model
+    <span class="badge badge-rt badge-rt-display-only">Display only</span> display only
+    <span class="badge badge-rt badge-rt-reference-only">Reference only</span> reference only
+    <span class="badge badge-rt badge-rt-pending-treatment">Pending treatment</span> pending treatment
+    <span class="badge badge-rt badge-rt-pending-runtime-source">Pending runtime source</span> pending runtime source
+    <span class="badge badge-rt badge-rt-not-comparable">Not comparable</span> not comparable
+    <span class="badge badge-rt badge-rt-needs-review">Needs review</span> needs review
+    <span class="badge badge-rt badge-rt-timing-only">Timing only</span> timing only
+    <span class="badge badge-rt badge-rt-not-applicable">Not applicable</span> not applicable
     <br>
     <strong>Authority (Phase 21B):</strong>
     <span class="badge badge-auth-backend">auth✓</span> backend_authoritative
@@ -656,6 +680,34 @@
   .badge-scope-fee-only       { background: #6b7280; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; }
   .badge-scope-project-rights { background: #c2410c; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: 600; }
   .badge-scope-timing-only   { background: #0f766e; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; }
+
+  /* ── Phase 22B: Display-only audit banner ─────────────────────────────────── */
+  .capex-display-only-banner {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 0.75rem;
+    color: #92400e;
+    line-height: 1.5;
+  }
+  .capex-display-only-banner .banner-icon { font-size: 1rem; margin-right: 4px; }
+  .capex-display-only-banner .banner-sub { font-size: 0.7rem; color: #b45309; margin-top: 2px; }
+
+  /* ── Phase 22B: Runtime Impact badges ───────────────────────────────────── */
+  .badge-rt { font-size: 0.65rem; font-weight: 700; border-radius: 10px; padding: 2px 6px; display: inline-block; margin: 1px; }
+  .badge-rt-drives-model         { background: #15803d; color: #fff; }
+  .badge-rt-display-only        { background: #6b7280; color: #fff; }
+  .badge-rt-reference-only      { background: #7c3aed; color: #fff; }
+  .badge-rt-pending-treatment   { background: #c2410c; color: #fff; }
+  .badge-rt-pending-runtime-source { background: #b45309; color: #fff; }
+  .badge-rt-not-comparable      { background: #ca8a04; color: #fff; }
+  .badge-rt-needs-review        { background: #dc2626; color: #fff; }
+  .badge-rt-not-applicable      { background: #e5e7eb; color: #6b7280; }
+  .badge-rt-deferred            { background: #475569; color: #fff; }
+  .badge-rt-timing-only         { background: #0f766e; color: #fff; }
+  .badge-rt-unknown             { background: #9ca3af; color: #fff; }
 
   /* Source type label */
   .fc-auth-src { display: block; font-size: 0.6rem; color: #9ca3af; margin-top: 1px; }
