@@ -1,0 +1,638 @@
+<!-- Sheet: CAPEX Detail — {{ project_ctx.name }} -->
+<!-- Phase 21 v3: CAPEX detail grid — mirrors OPEX detail UX with monthly payment schedule columns -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🏗️ CAPEX Detail</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+  </span>
+</div>
+
+{# ── Readonly notice ───────────────────────────────────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--capex">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Factory template — read only</strong>
+    <p>This is a factory template. Use <strong>Duplicate / Save As</strong> to create
+    your own copy, then edit CAPEX assumptions.</p>
+    <p class="inp-readonly-notice__hint">
+      <strong>Note:</strong> Monthly payment schedules and app amounts are for display reference only.
+      Line editing deferred to a future phase.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{# ── Summary strip ───────────────────────────────────────────────────────────── #}
+{% set cats = project_ctx.capex_detail_items if project_ctx.capex_detail_items else () %}
+<div class="capex-summary-strip" id="capex-summary-strip">
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Hard CAPEX</div>
+    <div class="capex-summary-card__value">{{ "%.1f"|format(project_ctx.capex_y1_total_keur|default(0)) }}</div>
+    <div class="capex-summary-card__unit">kEUR</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Financing Costs</div>
+    <div class="capex-summary-card__value">{{ "%.1f"|format((project_ctx.idc_keur + project_ctx.bank_fees_keur)|default(0)) }}</div>
+    <div class="capex-summary-card__unit">kEUR (IDC + bank fees)</div>
+  </div>
+  <div class="capex-summary-card capex-summary-card--total">
+    <div class="capex-summary-card__label">Grand Total</div>
+    <div class="capex-summary-card__value">{{ "%.1f"|format(project_ctx.total_capex_keur|default(0)) }}</div>
+    <div class="capex-summary-card__unit">kEUR</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Construction</div>
+    <div class="capex-summary-card__value">{{ project_ctx.capex_construction_months|default(12) }}</div>
+    <div class="capex-summary-card__unit">months</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Categories</div>
+    <div class="capex-summary-card__value">{{ cats|length }}</div>
+    <div class="capex-summary-card__unit">C.01–C.18</div>
+  </div>
+</div>
+
+{# ── Grid toolbar: monthly range + display mode + collapse controls ─────────────── #}
+{% set n_months = project_ctx.capex_construction_months|default(12) %}
+<div class="capex-grid-toolbar">
+  <div class="capex-month-range" role="group" aria-label="Month range">
+    <span class="capex-toolbar-label">Months:</span>
+    <button class="capex-m-btn" data-mrange="1-6"   onclick="capexSetMonthRange('1-6')">M1–M6</button>
+    <button class="capex-m-btn" data-mrange="7-12A" onclick="capexSetMonthRange('7-12A')">M7–M12</button>
+    {% if n_months > 12 %}
+    <button class="capex-m-btn" data-mrange="13-18" onclick="capexSetMonthRange('13-18')">M13–M18</button>
+    {% endif %}
+    <button class="capex-m-btn active" data-mrange="all" onclick="capexSetMonthRange('all')">All</button>
+  </div>
+
+  <div class="capex-display-mode" role="group" aria-label="Display mode">
+    <span class="capex-toolbar-label">Show:</span>
+    <button class="capex-mode-btn active" data-mode="values"   onclick="capexSetDisplayMode('values')">Values</button>
+    <button class="capex-mode-btn" data-mode="schedule" onclick="capexSetDisplayMode('schedule')">Schedule</button>
+    <button class="capex-mode-btn" data-mode="flags"    onclick="capexSetDisplayMode('flags')">Flags</button>
+  </div>
+
+  <div class="capex-collapse-controls">
+    <button class="capex-collapse-btn" onclick="capexCollapseAll()">Collapse all</button>
+    <button class="capex-collapse-btn" onclick="capexExpandAll()">Expand all</button>
+  </div>
+</div>
+
+{# ── Detail Grid ─────────────────────────────────────────────────────────────── #}
+<div class="fc-capex-grid-wrapper sheet-card">
+
+  <div class="section-header">
+    CAPEX Detail — kEUR — Display Reference
+  </div>
+
+  {# ── Grid ──────────────────────────────────────────────────────────────────── #}
+  <div class="fc-grid-scroll-wrapper" id="capex-grid-scroll">
+    <table class="fc-grid fc-capex-detail-grid" id="capex-detail-grid"
+           data-mrange="all" data-display="values">
+
+      {# ── Sticky Header ────────────────────────────────────────────────────── #}
+      <thead>
+        {# Row 1: top-level column headers #}
+        <tr class="fc-grid-header">
+          <th class="fc-th fc-grid-col-label fc-th--sticky" data-col="1" rowspan="2">Line Item</th>
+          <th class="fc-th fc-th--code fc-th--sticky" data-col="2" rowspan="2">Code</th>
+          <th class="fc-th fc-th--amount fc-th--sticky" data-col="3" rowspan="2">Excel<br/>kEUR</th>
+          <th class="fc-th fc-th--amount fc-th--sticky" data-col="4" rowspan="2">App<br/>kEUR</th>
+          <th class="fc-th fc-th--amount fc-th--sticky" data-col="5" rowspan="2">Delta<br/>kEUR</th>
+          <th class="fc-th fc-th--pct" data-col="6" rowspan="2">Cont.<br/>%</th>
+          <th class="fc-th fc-th--pct" data-col="7" rowspan="2">VAT<br/>%</th>
+          <th class="fc-th fc-th--pct" data-col="8" rowspan="2">WHT<br/>%</th>
+          <th class="fc-th fc-th--num" data-col="9" rowspan="2">Per<br/>MW</th>
+          <th class="fc-th fc-th--status" data-col="10" rowspan="2">Status</th>
+          {# Monthly payment columns M1–M18 #}
+          {% for m in range(1, 19) %}
+            {% if m <= 6 %} {% set m_class = "m-early" %}
+            {% elif m <= 12 %} {% set m_class = "m-mid" %}
+            {% else %} {% set m_class = "m-late" %}
+            {% endif %}
+            <th class="fc-th fc-th--month fc-th--sticky {{ m_class }}"
+                data-col="{{ 10 + m }}"
+                data-m="{{ m }}"
+                data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+                data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+                data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+                data-mrange-all="true">M{{ m }}</th>
+          {% endfor %}
+          <th class="fc-th fc-th--notes" data-col="29" rowspan="2">Notes</th>
+        </tr>
+        {# Row 2: month number sub-headers #}
+        <tr class="fc-grid-header fc-grid-header--sub">
+          {% for m in range(1, 19) %}
+            {% if m <= 6 %} {% set m_class = "m-early" %}
+            {% elif m <= 12 %} {% set m_class = "m-mid" %}
+            {% else %} {% set m_class = "m-late" %}
+            {% endif %}
+            <th class="fc-th fc-th--month-num {{ m_class }}"
+                data-m="{{ m }}"
+                data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+                data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+                data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+                data-mrange-all="true">#{{ m }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody>
+
+{# ═══════════════════════════════════════════════════════════════════════════════
+   CATEGORY + CHILD ROWS
+   ═══════════════════════════════════════════════════════════════════════════════ #}
+
+{% for cat in cats %}
+  <tbody class="fc-cat-tbody"
+         id="fc-capex-cat-{{ loop.index0 }}"
+         data-cat-index="{{ loop.index0 }}">
+
+    {# ── Category total row (clickable to collapse/expand children) ─────────── #}
+    <tr class="fc-section-band fc-capex-cat-row"
+        data-cat="{{ loop.index0 }}"
+        onclick="capexToggleCategory({{ loop.index0 }})"
+        title="Click to collapse/expand">
+      <td class="fc-section-band__label" colspan="10">
+        <span class="fc-cat-toggle-icon" id="fc-capex-cat-icon-{{ loop.index0 }}">
+          {% if cat.is_backend_calculated %}▶{% else %}▼{% endif %}
+        </span>
+        <span class="fc-section-band__code">{{ cat.code }}</span>
+        {{ cat.name }}
+        {% if cat.is_backend_calculated %}
+          <span class="badge badge-backend">backend calc</span>
+        {% endif %}
+      </td>
+      {# Monthly column totals (summed across children) — always visible, filtered by range #}
+      {% for m in range(1, 19) %}
+        {% if m <= 6 %} {% set m_class = "m-early" %}
+        {% elif m <= 12 %} {% set m_class = "m-mid" %}
+        {% else %} {% set m_class = "m-late" %}
+        {% endif %}
+        {% set m_val = 0 %}
+        {% for child in cat.children %}
+          {% if child.monthly_schedule and m <= child.monthly_schedule|length %}
+            {% set frac = child.monthly_schedule[m-1] %}
+            {% set m_val = m_val + (child.amount_keur * frac) %}
+          {% endif %}
+        {% endfor %}
+        <td class="fc-cell fc-cell--amount fc-cell--cat-total {{ m_class }}
+                   {% if cat.is_backend_calculated %}fc-cell--backend{% endif %}
+                   {% if m <= 6 %}m-show{% else %}m-hide{% endif %}"
+            data-m="{{ m }}"
+            data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+            data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+            data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+            data-mrange-all="true">
+          {{ "%.2f"|format(m_val) }}
+        </td>
+      {% endfor %}
+      <td class="fc-cell fc-cell--notes">
+        <span class="fc-cell--muted">sum of child lines</span>
+      </td>
+    </tr>
+
+    {# ── Child rows (only visible when category is expanded) ────────────────── #}
+    {% set cat_index = loop.index0 %}
+    {% for child in cat.children %}
+      <tr class="fc-data-row fc-data-row--child fc-capex-child"
+          data-cat="{{ cat_index }}"
+          data-child-index="{{ loop.index }}">
+
+        {# Line Item name #}
+        <td class="fc-cell fc-cell--label fc-grid-col-label fc-cell--col-label fc-th--sticky" data-col="1">
+          <span class="fc-child-indicator"></span>
+          {{ child.name }}
+        </td>
+
+        {# Code #}
+        <td class="fc-cell fc-cell--code fc-th--sticky" data-col="2">{{ child.code }}</td>
+
+        {# Excel kEUR #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="3">
+          {{ "%.2f"|format(child.amount_keur|default(0)) }}
+        </td>
+
+        {# App kEUR #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="4">
+          {% if child.app_amount_keur is not none %}
+            {{ "%.2f"|format(child.app_amount_keur) }}
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        {# Delta kEUR #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="5">
+          {% if child.delta_keur is not none and child.delta_keur != 0 %}
+            {% set d = child.delta_keur %}
+            <span class="fc-cell-runtime {% if d > 0 %}fc-cell--positive{% elif d < 0 %}fc-cell--negative{% endif %}">
+              {{ "+%.2f"|format(d) if d > 0 else "%.2f"|format(d) }}
+            </span>
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        {# Contingency % #}
+        <td class="fc-cell fc-cell--pct" data-col="6">
+          {% if child.contingency_pct and child.contingency_pct > 0 %}
+            {{ "%.1f"|format(child.contingency_pct) }}%
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        {# VAT % #}
+        <td class="fc-cell fc-cell--pct" data-col="7">
+          {% if child.vat_rate_pct and child.vat_rate_pct > 0 %}
+            {{ "%.1f"|format(child.vat_rate_pct) }}%
+          {% else %}
+            <span class="fc-cell--muted">0%</span>
+          {% endif %}
+        </td>
+
+        {# WHT % #}
+        <td class="fc-cell fc-cell--pct" data-col="8">
+          {% if child.wth_rate_pct and child.wth_rate_pct > 0 %}
+            {{ "%.1f"|format(child.wth_rate_pct) }}%
+          {% else %}
+            <span class="fc-cell--muted">0%</span>
+          {% endif %}
+        </td>
+
+        {# Per MW #}
+        <td class="fc-cell fc-cell--num" data-col="9">
+          {% if child.per_mw is not none and child.per_mw > 0 %}
+            {{ "%.2f"|format(child.per_mw) }}
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        {# Status badge #}
+        <td class="fc-cell fc-cell--status" data-col="10">
+          {% set status = child.mapping_status|default('unmapped') %}
+          {% if status == 'mapped' %}
+            <span class="badge badge-mapped">mapped</span>
+          {% elif status == 'partial' %}
+            <span class="badge badge-partial">partial</span>
+          {% elif status == 'model_mismatch' %}
+            <span class="badge badge-mismatch">≠ model</span>
+          {% elif status == 'backend_calculated' %}
+            <span class="badge badge-backend">backend</span>
+          {% else %}
+            <span class="badge badge-unmapped">unmapped</span>
+          {% endif %}
+        </td>
+
+        {# Monthly payment columns M1–M18 #}
+        {% for m in range(1, 19) %}
+          {% if m <= 6 %} {% set m_class = "m-early" %}
+          {% elif m <= 12 %} {% set m_class = "m-mid" %}
+          {% else %} {% set m_class = "m-late" %}
+          {% endif %}
+          {% set sched = child.monthly_schedule %}
+          {% set has_sched = sched is not none and sched|length >= m %}
+          {% set frac = sched[m-1] if has_sched else 0 %}
+          {% set cell_val = (child.amount_keur|default(0) * frac) if has_sched else 0 %}
+          <td class="fc-cell fc-cell--month {{ m_class }}
+                     fc-cell--val {% if m <= 6 %}m-show{% else %}m-hide{% endif %}"
+              data-m="{{ m }}"
+              data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+              data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+              data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+              data-mrange-all="true"
+              data-sched="{{ '%.4f'|format(frac) if has_sched else '0' }}"
+              data-cat="{{ cat_index }}"
+              title="{% if has_sched %}{{ '%.1f'|format(frac * 100) }}% of {{ '%.2f'|format(child.amount_keur|default(0)) }} kEUR{% endif %}">
+            <span class="fc-val">{{ "%.2f"|format(cell_val) }}</span>
+            <span class="fc-sched" style="display:none">{{ "%.4f"|format(frac) }}</span>
+            <span class="fc-flag" style="display:none">{{ 1 if has_sched and frac > 0 else 0 }}</span>
+          </td>
+        {% endfor %}
+
+        {# Notes #}
+        <td class="fc-cell fc-cell--notes" data-col="29">
+          {% if child.comments %}
+            <span class="fc-cell--muted">{{ child.comments }}</span>
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+{% endfor %}
+
+{# ── No detail items ────────────────────────────────────────────────────────── #}
+{% if not cats %}
+  <tbody>
+    <tr>
+      <td colspan="29" class="fc-cell fc-cell--notes">
+        <span class="fc-cell--muted">No detailed CAPEX items available for this project.</span>
+      </td>
+    </tr>
+  </tbody>
+{% endif %}
+
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Legend ──────────────────────────────────────────────────────────────── #}
+  <div class="fc-capex-legend">
+    <span class="badge badge-mapped">mapped</span> matches app CapexStructure field
+    <span class="badge badge-partial">partial</span> app value exists but is partial
+    <span class="badge badge-mismatch">≠ model</span> app/model mismatch (>5% diff)
+    <span class="badge badge-backend">backend</span> backend-calculated (not editable)
+    <span class="badge badge-unmapped">unmapped</span> no app mapping found
+    <span class="badge badge-factory">factory</span> factory default value
+    <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> child row
+    | <strong>Note:</strong> Monthly amount = Excel kEUR × payment fraction per month.
+    | <strong>Click category</strong> row to collapse/expand children.
+  </div>
+
+</div>
+
+<style>
+  /* ── Summary strip ─────────────────────────────────────────────────────── */
+  .capex-summary-strip {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .capex-summary-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1rem;
+    min-width: 110px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .capex-summary-card--total {
+    border-color: var(--primary);
+    background: rgba(26,86,219,0.04);
+  }
+  .capex-summary-card__label {
+    font-size: 0.68rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .capex-summary-card__value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .capex-summary-card__unit {
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  /* ── Toolbar ────────────────────────────────────────────────────────────── */
+  .capex-grid-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .capex-toolbar-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .capex-month-range,
+  .capex-display-mode,
+  .capex-collapse-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .capex-m-btn,
+  .capex-mode-btn,
+  .capex-collapse-btn {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .capex-m-btn:hover,
+  .capex-mode-btn:hover,
+  .capex-collapse-btn:hover {
+    background: var(--surface-3);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .capex-m-btn.active,
+  .capex-mode-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  /* ── Grid wrapper ───────────────────────────────────────────────────────── */
+  .fc-capex-grid-wrapper { margin-bottom: 1rem; }
+  .fc-grid-scroll-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+    position: relative;
+  }
+
+  /* ── Table dimensions ───────────────────────────────────────────────────── */
+  .fc-capex-detail-grid {
+    table-layout: fixed;
+    min-width: calc(200px + 72px + 80px + 80px + 80px + 50px + 50px + 50px + 55px + 82px
+                     + 18 * 54px + 160px);
+  }
+  .fc-capex-detail-grid .fc-grid-col-label   { width: 200px; min-width: 200px; }
+  .fc-capex-detail-grid .fc-th--code        { width: 72px;  min-width: 72px; }
+  .fc-capex-detail-grid .fc-th--amount      { width: 80px;  min-width: 80px; }
+  .fc-capex-detail-grid .fc-th--pct         { width: 50px;  min-width: 50px; }
+  .fc-capex-detail-grid .fc-th--num         { width: 55px;  min-width: 55px; }
+  .fc-capex-detail-grid .fc-th--status      { width: 82px;  min-width: 82px; }
+  .fc-capex-detail-grid .fc-th--month       { width: 54px;  min-width: 54px; font-size: 0.72rem; }
+  .fc-capex-detail-grid .fc-th--month-num   { font-size: 0.65rem; color: #888; }
+  .fc-capex-detail-grid .fc-th--notes       { min-width: 160px; }
+  .fc-capex-detail-grid .fc-th             { text-align: center; }
+
+  /* ── Sticky columns ─────────────────────────────────────────────────────── */
+  .fc-th--sticky {
+    position: sticky;
+    z-index: 20;
+    background: var(--surface);
+  }
+  .fc-th--sticky[data-col="1"]  { left: 0;     z-index: 22; }
+  .fc-th--sticky[data-col="2"]  { left: 200px; z-index: 21; }
+  .fc-th--sticky[data-col="3"]  { left: 272px; z-index: 21; }
+  .fc-th--sticky[data-col="4"]  { left: 352px; z-index: 21; }
+  .fc-th--sticky[data-col="5"]  { left: 432px; z-index: 21; }
+
+  /* ── Category rows ──────────────────────────────────────────────────────── */
+  .fc-capex-cat-row    { cursor: pointer; user-select: none; }
+  .fc-capex-cat-row:hover { background: rgba(26,86,219,0.04); }
+  .fc-cat-toggle-icon { margin-right: 0.4rem; font-size: 0.75rem; color: var(--primary); }
+  .fc-section-band__code { margin-right: 0.5rem; color: var(--muted); font-size: 0.8em; }
+
+  /* ── Category collapse ──────────────────────────────────────────────────── */
+  .fc-cat-tbody--collapsed .fc-capex-child  { display: none; }
+  .fc-cat-tbody--collapsed .fc-capex-cat-row { opacity: 0.8; }
+
+  /* ── Month range filter ──────────────────────────────────────────────────── */
+  .m-hide { display: none; }
+  .m-show { display: table-cell; }
+
+  /* ── Display mode toggle ────────────────────────────────────────────────── */
+  .fc-capex-detail-grid[data-display="schedule"] .fc-cell--val   { display: none; }
+  .fc-capex-detail-grid[data-display="schedule"] .fc-sched      { display: inline; }
+  .fc-capex-detail-grid[data-display="schedule"] .fc-cell--month { text-align: center; }
+  .fc-capex-detail-grid[data-display="flags"] .fc-cell--val     { display: none; }
+  .fc-capex-detail-grid[data-display="flags"] .fc-flag         { display: inline; }
+  .fc-capex-detail-grid[data-display="flags"] .fc-sched       { display: none; }
+  .fc-capex-detail-grid[data-display="values"] .fc-cell--val    { display: inline; }
+  .fc-capex-detail-grid[data-display="values"] .fc-sched      { display: none; }
+  .fc-capex-detail-grid[data-display="values"] .fc-flag       { display: none; }
+
+  /* ── Cell styles ─────────────────────────────────────────────────────────── */
+  .m-early { color: #333; }
+  .m-mid   { color: #555; }
+  .m-late  { color: #777; }
+  .fc-cell--cat-total {
+    text-align: right;
+    font-weight: 600;
+    background: #f0f2f5;
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .fc-cell--backend   { color: #888; font-style: italic; }
+  .fc-cell--positive  { color: #166534; }
+  .fc-cell--negative  { color: #dc2626; }
+  .fc-cell--month {
+    text-align: right;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .fc-data-row--child .fc-grid-col-label { padding-left: 2.2rem; }
+  .fc-child-indicator::before { content: "└ "; color: #bbb; font-size: 0.85em; }
+  .fc-cell--col-label { padding-left: 2.2rem; }
+  .fc-cell--muted { color: #999; font-style: italic; }
+  .fc-cell--status { text-align: center; }
+
+  /* ── Status badges ──────────────────────────────────────────────────────── */
+  .badge-mapped    { background: #d1e7dd; color: #0f5132; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-partial   { background: #cfe2ff; color: #084298; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-mismatch { background: #f8d7da; color: #842029; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-backend   { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-unmapped  { background: #fff3cd; color: #856404; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-factory   { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+
+  /* ── Legend ────────────────────────────────────────────────────────────── */
+  .fc-capex-legend {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: #666;
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-top: 1px solid #eee;
+  }
+  .inp-readonly-notice__hint { margin-top: 0.5rem; font-size: 0.8rem; color: #666; }
+</style>
+
+<script>
+  /* ── Month range selector ───────────────────────────────────────────────── */
+  function capexSetMonthRange(range) {
+    var grid = document.getElementById('capex-detail-grid');
+    if (!grid) return;
+    grid.setAttribute('data-mrange', range);
+    var allCells = grid.querySelectorAll('[data-m]');
+    allCells.forEach(function(cell) {
+      var show = cell.getAttribute('data-mrange-' + range) === 'true';
+      if (show) {
+        cell.classList.remove('m-hide');
+        cell.classList.add('m-show');
+      } else {
+        cell.classList.add('m-hide');
+        cell.classList.remove('m-show');
+      }
+    });
+    document.querySelectorAll('.capex-m-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-mrange') === range);
+    });
+  }
+
+  /* ── Display mode toggle ───────────────────────────────────────────────── */
+  function capexSetDisplayMode(mode) {
+    var grid = document.getElementById('capex-detail-grid');
+    if (!grid) return;
+    grid.setAttribute('data-display', mode);
+    document.querySelectorAll('.capex-mode-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+    });
+  }
+
+  /* ── Category collapse/expand ──────────────────────────────────────────── */
+  function capexToggleCategory(catIndex) {
+    var tbody = document.getElementById('fc-capex-cat-' + catIndex);
+    if (!tbody) return;
+    var icon = document.getElementById('fc-capex-cat-icon-' + catIndex);
+    var isCollapsed = tbody.classList.contains('fc-cat-tbody--collapsed');
+    if (isCollapsed) {
+      tbody.classList.remove('fc-cat-tbody--collapsed');
+      if (icon) icon.textContent = '▼';
+    } else {
+      tbody.classList.add('fc-cat-tbody--collapsed');
+      if (icon) icon.textContent = '▶';
+    }
+  }
+
+  function capexExpandAll() {
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      tb.classList.remove('fc-cat-tbody--collapsed');
+    });
+    document.querySelectorAll('.fc-cat-toggle-icon').forEach(function(ic) {
+      ic.textContent = '▼';
+    });
+  }
+
+  function capexCollapseAll() {
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      tb.classList.add('fc-cat-tbody--collapsed');
+    });
+    document.querySelectorAll('.fc-cat-toggle-icon').forEach(function(ic) {
+      ic.textContent = '▶';
+    });
+  }
+
+  /* ── Init: default range = all ──────────────────────────────────────────── */
+  document.addEventListener('DOMContentLoaded', function() {
+    capexSetMonthRange('all');
+    // Backend-calculated categories start collapsed
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      var catRow = tb.querySelector('.fc-capex-cat-row');
+      if (catRow && catRow.classList.contains('fc-capex-cat-row')) {
+        var icon = tb.querySelector('.fc-cat-toggle-icon');
+        if (icon && icon.textContent === '▶') {
+          tb.classList.add('fc-cat-tbody--collapsed');
+        }
+      }
+    });
+  });
+</script>
