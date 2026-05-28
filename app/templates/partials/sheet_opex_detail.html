@@ -1,0 +1,230 @@
+<!-- Sheet: OPEX Detail — {{ project_ctx.name }} -->
+<!-- Phase 21: Excel-like hierarchical OPEX grid (category + child rows) -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">📊 OPEX Detail</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+  </span>
+</div>
+
+{# ── Readonly notice ───────────────────────────────────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--opex">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Factory template — read only</strong>
+    <p>This is a factory template. Use <strong>Duplicate / Save As</strong> to create
+    your own copy, then edit OPEX assumptions.</p>
+  </div>
+</div>
+{% endif %}
+
+{# ── Detail Grid ─────────────────────────────────────────────────────────────── #}
+<div class="fc-opex-grid-wrapper sheet-card">
+
+  <div class="section-header">OPEX Schedule — Budget kEUR (Y1)</div>
+
+  {% if is_user_project %}
+  <div class="inp-dirty-indicator" id="opex-detail-dirty-indicator" style="display:none;">
+    <span class="dirty-dot"></span>
+    <span>Unsaved OPEX edits</span>
+  </div>
+  {% endif %}
+
+  <div class="fc-grid-wrapper">
+    <table class="fc-grid" id="opex-detail-grid">
+
+      {# ── Sticky Header ────────────────────────────────────────────────── #}
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Line Item</th>
+          <th class="fc-th fc-th--code">Code</th>
+          <th class="fc-th fc-th--amount">Budget kEUR</th>
+          <th class="fc-th">Inflation %</th>
+          <th class="fc-th">WHT %</th>
+          <th class="fc-th">Source</th>
+          <th class="fc-th">Notes</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+{# ═══════════════════════════════════════════════════════════════════════════════
+   CATEGORY + CHILD ROWS
+   For each category: category total row (read-only, strong band)
+   followed by indented child rows (editable for user projects)
+   ═══════════════════════════════════════════════════════════════════════════════ #}
+
+{% for cat in project_ctx.opex_detail_items %}
+  {# ── Category total row ─────────────────────────────────────────────────── #}
+  <tr class="fc-section-band">
+    <td class="fc-section-band__label" colspan="7">
+      <span class="fc-section-band__code">{{ cat.code }}</span>
+      {{ cat.name }}
+      {% if cat.is_contingency %}
+        <span class="badge badge-contingency">derived: 4% x non-contingency OPEX</span>
+      {% endif %}
+    </td>
+  </tr>
+
+  {# ── Child rows ─────────────────────────────────────────────────────────── #}
+  {% for child in cat.children %}
+    <tr class="fc-data-row fc-data-row--child">
+      <td class="fc-cell fc-cell--label fc-grid-col-label fc-cell--indented">
+        <span class="fc-child-indicator"></span>
+        {{ child.name }}
+      </td>
+      <td class="fc-cell fc-cell--code">{{ child.code }}</td>
+
+      {# Budget amount #}
+      <td class="fc-cell fc-cell--amount">
+        {% if is_user_project %}
+          <input type="number" step="any" min="0"
+                 class="fc-input-native"
+                 name="opex_detail_{{ child.code }}_budget"
+                 value="{{ "%.2f"|format(child.budget_y1_keur or 0) }}"
+                 data-opex-item="{{ child.code }}"
+                 {% if cat.is_contingency %}readonly{% endif %}
+                 aria-label="{{ child.name }} Y1 budget" />
+        {% else %}
+          {% if cat.is_contingency %}
+            <span class="fc-cell-runtime fc-cell--contingency"
+                  title="Contingency is derived: 4% x non-contingency OPEX"
+                  >{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
+          {% else %}
+            <span class="fc-cell-runtime">{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
+          {% endif %}
+        {% endif %}
+      </td>
+
+      {# Inflation % #}
+      <td class="fc-cell fc-cell--amount">
+        {% if child.inflation_pct == 0 %}
+          <span class="fc-cell--muted">flat</span>
+        {% else %}
+          <span class="fc-cell-runtime">{{ "%.1f"|format(child.inflation_pct) }}%</span>
+        {% endif %}
+      </td>
+
+      {# WHT % #}
+      <td class="fc-cell fc-cell--amount">
+        {% if child.wth_rate and child.wth_rate > 0 %}
+          <span class="fc-cell-runtime">{{ "%.1f"|format(child.wth_rate) }}%</span>
+        {% else %}
+          <span class="fc-cell--muted">0%</span>
+        {% endif %}
+      </td>
+
+      {# Source badge #}
+      <td class="fc-cell">
+        <span class="badge badge-factory">factory</span>
+      </td>
+
+      {# Notes #}
+      <td class="fc-cell fc-cell--notes">
+        {% if child.notes %}
+          <span class="fc-cell--muted">{{ child.notes }}</span>
+        {% else %}
+          <span class="fc-cell--muted">—</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+
+{# ── No detail items ──────────────────────────────────────────────────────────── #}
+{% else %}
+  <tr>
+    <td colspan="7" class="fc-cell fc-cell--notes">
+      <span class="fc-cell--muted">No detailed OPEX items available for this project.</span>
+    </td>
+  </tr>
+{% endfor %}
+
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Legend ─────────────────────────────────────────────────────────────────── #}
+  <div class="fc-opex-legend">
+    <span class="badge badge-factory">factory</span> factory/default value
+    <span class="badge badge-contingency">contingency</span> contingency is derived (4% x non-contingency OPEX) — not editable
+    <span class="fc-child-indicator"></span> child row — indented under category
+    <span class="badge badge-preview">user</span> user-editable (your copy)
+  </div>
+
+</div>
+
+<style>
+  .fc-section-band .fc-section-band__code {
+    font-weight: 700;
+    margin-right: 0.5em;
+    font-family: monospace;
+  }
+  .fc-data-row--child .fc-grid-col-label {
+    padding-left: 2rem;
+  }
+  .fc-child-indicator::before {
+    content: "└ ";
+    color: #999;
+    font-size: 0.85em;
+  }
+  .fc-cell--indented {
+    padding-left: 2rem;
+  }
+  .fc-cell--muted {
+    color: #999;
+    font-style: italic;
+  }
+  .fc-cell--contingency {
+    color: #b85c00;
+    font-style: italic;
+  }
+  .fc-cell--contingency::before {
+    content: "(derived) ";
+  }
+  .fc-opex-legend {
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: #666;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .badge-factory {
+    background: #e9ecef;
+    color: #495057;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.75rem;
+  }
+  .badge-contingency {
+    background: #fff3cd;
+    color: #856404;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+  }
+  .badge-preview {
+    background: #d1e7dd;
+    color: #0f5132;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.75rem;
+  }
+  .badge-user {
+    background: #cfe2ff;
+    color: #084298;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.75rem;
+  }
+  .fc-grid-wrapper {
+    overflow-x: auto;
+  }
+  .fc-opex-grid-wrapper {
+    overflow: visible;
+  }
+</style>
