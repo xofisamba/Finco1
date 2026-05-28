@@ -226,3 +226,224 @@ class CapexInputSchemaDesign:
 
     notes: str = ""
     # Overall schema notes, open questions, deferred items
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 21F: CAPEX Line Item Treatment Options
+# ─────────────────────────────────────────────────────────────────────────────
+# Design: user-selectable treatment for each CAPEX line item.
+# These enums are inert — not imported by runtime calculation modules.
+# Future Phase (21G): wire treatment choices to depreciation/tax/funding/IDC.
+
+from enum import StrEnum, auto
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+class AccountingTreatment(StrEnum):
+    """How this CAPEX line is treated on the accounting balance sheet."""
+    DEPRECIABLE_CAPEX      = auto()  # standard PP&E depreciation
+    INTANGIBLE_ASSET       = auto()  # amortizable intangible (rights, licenses)
+    DEVELOPMENT_COST        = auto()  # capitalised development expenditure
+    ACQUISITION_PREMIUM     = auto()  # premium over fair value — often not depreciable
+    LAND_OR_NON_DEPRECIABLE = auto() # land — not depreciable
+    FINANCING_COST          = auto()  # capitalised financing charges (IDC)
+    RESERVE_ACCOUNT        = auto()  # reserve / sinking fund account
+    EXCLUDED_FROM_CAPEX    = auto()  # out of scope for capitalisation
+    CUSTOM                 = auto()  # user-defined treatment
+
+
+class DepreciationTreatment(StrEnum):
+    """How this CAPEX line is depreciated / amortised on the income statement."""
+    DEPRECIABLE            = auto()  # straight-line or reducing balance on PP&E
+    AMORTIZABLE            = auto()  # amortisation of intangible / right-of-use
+    NON_DEPRECIABLE        = auto()  # no depreciation — e.g. land
+    EXPENSED               = auto()  # immediately expensed (often development costs)
+    EXCLUDED               = auto()  # excluded from depreciation schedule
+    CUSTOM                 = auto()  # user-defined depreciation profile
+
+
+class DepreciationLifeYears(StrEnum):
+    """Predefined depreciation / amortisation lives."""
+    USE_TEMPLATE_DEFAULT   = auto()
+    YEARS_5                 = auto()
+    YEARS_10                = auto()
+    YEARS_15                = auto()
+    YEARS_20                = auto()
+    YEARS_30                = auto()
+    CUSTOM_YEARS            = auto()  # user specifies custom life in CapexLineTreatment
+
+
+class TaxTreatment(StrEnum):
+    """How this CAPEX line is treated for tax depreciation / deduction purposes."""
+    TAX_DEPRECIABLE        = auto()  # tax depreciation (e.g. 5-year MACRS in US)
+    TAX_AMORTIZABLE        = auto()  # tax amortisation of intangibles
+    NON_DEDUCTIBLE         = auto()  # no tax deduction ever
+    IMMEDIATELY_DEDUCTIBLE = auto()  # expensed in year 1 (e.g. certain development costs)
+    EXCLUDED_FROM_TAX_BASIS = auto() # excluded from taxable income calculation
+    JURISDICTION_SPECIFIC   = auto()  # jurisdiction-dependent (EU, BIH, HR, etc.)
+    CUSTOM                 = auto()  # user-defined tax treatment
+
+
+class FundingTreatment(StrEnum):
+    """How this CAPEX line contributes to the project's funding structure."""
+    SENIOR_DEBT_ELIGIBLE   = auto()  # eligible for senior debt (lenders)
+    EQUITY_ONLY            = auto()  # equity-funded only (no debt)
+    SHL_ELIGIBLE           = auto()  # subordinated hybrid loan eligible
+    INCLUDED_IN_TOTAL_FUNDING = auto()  # included in total funding need
+    EXCLUDED_FROM_FUNDING  = auto()  # excluded from funding model
+    CUSTOM                 = auto()  # user-defined funding treatment
+
+
+class ConstructionTimingTreatment(StrEnum):
+    """When / how this CAPEX line is paid during the construction phase."""
+    INCLUDED_IN_CONSTRUCTION_DRAW = auto()  # drawn monthly via construction draw schedule
+    EXCLUDED_FROM_IDC     = auto()  # no interest during construction (already paid)
+    PAID_AT_FINANCIAL_CLOSE = auto()  # paid in full at financial close
+    PAID_AT_COD           = auto()  # paid in full at commercial operational date
+    PAID_ON_CUSTOM_SCHEDULE = auto()  # user-defined payment schedule
+    TIMING_ONLY           = auto()  # schedule used for IDC timing only, not a CAPEX total
+
+
+class ScheduleType(StrEnum):
+    """Payment distribution type for this CAPEX line."""
+    M1_M18_IMPORTED       = auto()  # imported monthly schedule (M1–M18)
+    LINEAR                = auto()  # equal monthly instalments
+    S_CURVE               = auto()  # S-curve (front-loaded or back-loaded)
+    ONE_OFF               = auto()  # single payment
+    CUSTOM                = auto()  # user-defined schedule
+
+
+@dataclass
+class CapexLineTreatment:
+    """
+    Per-line-item treatment specification.
+    Inert design schema — not wired to runtime calculations.
+    Future Phase (21G): wire instances to depreciation / tax / funding / IDC engine.
+    """
+    excel_code: str                    # e.g. "C.16.01"
+    excel_name: str                    # e.g. "Akuro Development Rights"
+
+    accounting: AccountingTreatment | None = None
+    depreciation: DepreciationTreatment | None = None
+    depreciation_life: DepreciationLifeYears | None = None
+    depreciation_custom_years: int | None = None  # used when depreciation_life == CUSTOM_YEARS
+
+    tax: TaxTreatment | None = None
+    tax_jurisdiction: str | None = None  # e.g. "BIH", "HR", "EU"
+
+    funding: FundingTreatment | None = None
+
+    construction_timing: ConstructionTimingTreatment | None = None
+
+    schedule_type: ScheduleType | None = None
+
+    # Metadata
+    user_selectable: bool = True         # False = locked by system
+    treatment_resolved: bool = False    # False = awaiting user decision
+    treatment_note: str = ""             # Human-readable note
+
+    @property
+    def is_unresolved(self) -> bool:
+        return self.user_selectable and not self.treatment_resolved
+
+    def summarise(self) -> str:
+        parts = [f"accounting={self.accounting.value if self.accounting else '?'}"]
+        if self.depreciation:
+            parts.append(f"depreciation={self.depreciation.value}")
+        if self.depreciation_life:
+            parts.append(f"life={self.depreciation_life.value}")
+        if self.tax:
+            parts.append(f"tax={self.tax.value}")
+        if self.funding:
+            parts.append(f"funding={self.funding.value}")
+        if self.construction_timing:
+            parts.append(f"construction={self.construction_timing.value}")
+        if self.is_unresolved:
+            parts.append("⚠ unresolved")
+        return ", ".join(parts)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 21F: C.16 Project Rights — Example Unresolved Treatment
+# ─────────────────────────────────────────────────────────────────────────────
+# C.16 Project Rights (Excel total = 14,739 kEUR):
+#   C.16.01 Akuro Development Rights       = 2,739 kEUR
+#   C.16.02 Other Development Costs         = 2,000 kEUR
+#   C.16.03 Land / Purchase                = 10,000 kEUR
+#
+# Treatment is UNRESOLVED because:
+#   1. Jurisdiction (BIH vs HR) affects whether development costs are
+#      intangible assets (amortised) or deductible immediately.
+#   2. Acquisition premium (10,000) may or may not be depreciable
+#      depending on accounting policy (IFRS vs local GAAP).
+#   3. Funding treatment (senior debt eligible vs equity only) depends
+#      on lender's interpretation of project rights as collateral.
+#
+# User must decide before C.16 can be wired to runtime.
+
+C16_TREATMENT_EXAMPLE = CapexLineTreatment(
+    excel_code="C.16",
+    excel_name="Project Rights",
+    accounting=None,           # unresolved — user must choose
+    depreciation=None,        # unresolved
+    depreciation_life=None,   # unresolved
+    tax=None,                 # unresolved — jurisdiction_specific likely
+    funding=None,             # unresolved — equity_only or senior_debt_eligible TBD
+    construction_timing=ConstructionTimingTreatment.EXCLUDED_FROM_IDC,
+    schedule_type=ScheduleType.ONE_OFF,
+    user_selectable=True,
+    treatment_resolved=False,
+    treatment_note=(
+        "Excel C.16 Project Rights (14,739 kEUR) is NOT wired to runtime. "
+        "Treatment pending: accounting policy (IFRS/local GAAP), jurisdiction (BIH/HR), "
+        "depreciation life, and funding eligibility must be confirmed by user. "
+        "Do NOT hard-code — await user decision."
+    ),
+)
+
+C16_CHILD_TREATMENTS = {
+    "C.16.01": CapexLineTreatment(
+        excel_code="C.16.01",
+        excel_name="Akuro Development Rights (2,739 kEUR)",
+        accounting=AccountingTreatment.DEVELOPMENT_COST,
+        depreciation=DepreciationTreatment.AMORTIZABLE,
+        depreciation_life=DepreciationLifeYears.YEARS_10,
+        tax=TaxTreatment.JURISDICTION_SPECIFIC,
+        tax_jurisdiction=None,  # BIH or HR TBD
+        funding=FundingTreatment.EQUITY_ONLY,
+        construction_timing=ConstructionTimingTreatment.PAID_AT_FINANCIAL_CLOSE,
+        schedule_type=ScheduleType.ONE_OFF,
+        user_selectable=True,
+        treatment_resolved=False,
+        treatment_note="Akuro development rights: amortisation life and tax jurisdiction pending.",
+    ),
+    "C.16.02": CapexLineTreatment(
+        excel_code="C.16.02",
+        excel_name="Other Development Costs (2,000 kEUR)",
+        accounting=AccountingTreatment.DEVELOPMENT_COST,
+        depreciation=DepreciationTreatment.EXPENSED,
+        depreciation_life=None,
+        tax=TaxTreatment.IMMEDIATELY_DEDUCTIBLE,
+        funding=FundingTreatment.EQUITY_ONLY,
+        construction_timing=ConstructionTimingTreatment.PAID_AT_FINANCIAL_CLOSE,
+        schedule_type=ScheduleType.ONE_OFF,
+        user_selectable=True,
+        treatment_resolved=False,
+        treatment_note="Other development costs: check BIH tax treatment (immediately deductible vs amortisation).",
+    ),
+    "C.16.03": CapexLineTreatment(
+        excel_code="C.16.03",
+        excel_name="Land / Purchase (10,000 kEUR)",
+        accounting=AccountingTreatment.LAND_OR_NON_DEPRECIABLE,
+        depreciation=DepreciationTreatment.NON_DEPRECIABLE,
+        depreciation_life=None,
+        tax=TaxTreatment.NON_DEDUCTIBLE,
+        funding=FundingTreatment.SENIOR_DEBT_ELIGIBLE,
+        construction_timing=ConstructionTimingTreatment.PAID_AT_FINANCIAL_CLOSE,
+        schedule_type=ScheduleType.ONE_OFF,
+        user_selectable=True,
+        treatment_resolved=False,
+        treatment_note="Land purchase: non-depreciable for accounting, non-deductible for tax, but senior-debt eligible (collateral). User must confirm.",
+    ),
+}
