@@ -48,12 +48,6 @@
     <div class="ps-section">
       <div class="ps-section-label">Actions</div>
       <div class="ps-actions">
-        <button class="ps-action-btn"
-                id="btn-duplicate-scenario"
-                type="button"
-                onclick="duplicateCurrentScenario()">
-          <span class="ps-action-icon">⊕</span> Duplicate
-        </button>
         <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button">
           <span class="ps-action-icon">▶</span> Run
         </button>
@@ -66,18 +60,10 @@
                 hx-swap="outerHTML">
           <span class="ps-action-icon">💾</span> Save
         </button>
-        <button class="ps-action-btn"
-                id="btn-compare-scenarios"
-                type="button"
-                hx-get="/scenarios/compare?project={{ project_record.project_code if project_record else project_ctx.id }}"
-                hx-target="#saved-scenario-panel"
-                hx-swap="outerHTML">
-          <span class="ps-action-icon">⟷</span> Compare
-        </button>
       </div>
     </div>
 
-    {# Scenario and saved-scenario-panel moved into project_selector.html as part of Phase 21 cleanup #}
+    {# ── Compact active-scenario status (project-level, no scenario management) ── #}
     <div id="saved-scenario-panel">
       {% include "partials/scenario_workspace.html" %}
     </div>

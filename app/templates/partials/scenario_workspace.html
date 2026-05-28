@@ -1,18 +1,15 @@
-<!-- Scenario Workspace — Phase 21 compact sidebar -->
-<div id="saved-scenario-panel" class="scenario-workspace" data-project-code="{{ project_record.project_code }}">
-  <div id="scenario-action-result">
-    {% if workspace_message %}
-    <div class="scenario-message">{{ workspace_message }}</div>
-    {% endif %}
-  </div>
+<!-- Scenario Workspace — Phase 21 v2: project-level status only, no scenario management UI
+     Scenario management moved to Scenarios tab.
+     This partial is included inside the outer #saved-scenario-panel div in base.html. -->
+<div class="scenario-workspace" data-project-code="{{ project_record.project_code if project_record else '' }}">
 
-  <!-- Editable State (always shown) -->
+  <!-- Active scenario / workspace state (sidebar-level, compact) -->
   <div class="ps-section">
-    <div class="ps-section-label">State</div>
+    <div class="ps-section-label">Active Scenario</div>
     <div class="ps-saved-item">
       <div class="ps-saved-main">
         <div class="ps-saved-title" id="workspace-active-scenario-name">
-          {{ workspace_state.active_scenario_name or "Workspace Base" }}
+          {{ workspace_state.active_scenario_name or "Base" }}
         </div>
         <div class="ps-saved-meta">
           {% if workspace_state.dirty %}
@@ -20,99 +17,18 @@
           {% else %}
           <span class="badge badge-pass">Saved</span>
           {% endif %}
-          · {{ workspace_state.updated_at.strftime("%H:%M") if workspace_state else "—" }}
+          {% if workspace_state.updated_at %}
+            · {{ workspace_state.updated_at.strftime("%H:%M") }}
+          {% endif %}
         </div>
-      </div>
-      <div class="ps-saved-stats">
-        <span class="badge {% if workspace_state.dirty %}badge-warn{% else %}badge-pass{% endif %}">
-          {{ "Unsaved" if workspace_state.dirty else "Saved" }}
-        </span>
       </div>
     </div>
   </div>
 
-  <!-- Saved Scenarios (compact) -->
-  {% if scenario_records %}
-  <div class="ps-section">
-    <div class="ps-section-label">Scenarios</div>
-    <div class="ps-saved-list">
-      {% for item in scenario_records[:5] %}
-      <div class="ps-saved-item ps-saved-item--compact">
-        <div class="ps-saved-title">{{ item.scenario_name }}</div>
-        <div class="ps-saved-meta">{{ item.updated_at.strftime("%m-%d %H:%M") }}</div>
-        <div class="ps-saved-actions">
-          <button class="ps-mini-btn"
-                  hx-get="/scenarios/{{ item.scenario_id }}/load"
-                  hx-target="#scenario-action-result"
-                  hx-swap="innerHTML">Load</button>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    {% if scenario_records|length > 5 %}
-    <div class="ps-mini-empty">{{ scenario_records|length - 5 }} more — see Scenarios tab</div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  <!-- Compare (if 2+ scenarios) -->
-  {% if scenario_records|length >= 2 %}
-  <div class="ps-section">
-    <div class="ps-section-label">Compare</div>
-    <form class="ps-compare-form"
-          hx-get="/scenarios/compare"
-          hx-target="#saved-scenario-panel"
-          hx-swap="outerHTML">
-      <input type="hidden" name="project" value="{{ project_record.project_code }}" />
-      <label class="ps-compare-label">
-        <select name="left_scenario_id">
-          {% for item in scenario_records %}
-          <option value="{{ item.scenario_id }}">{{ item.scenario_name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="ps-compare-label">
-        <select name="right_scenario_id">
-          {% for item in scenario_records %}
-          <option value="{{ item.scenario_id }}">{{ item.scenario_name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <button class="ps-mini-btn" type="submit">Compare</button>
-    </form>
-    {% if compare_result %}
-    {% include "partials/scenario_compare.html" %}
-    {% endif %}
+  {% if workspace_message %}
+  <div class="scenario-message" style="padding:0.5rem;font-size:0.72rem;color:var(--sidebar-muted);">
+    {{ workspace_message }}
   </div>
   {% endif %}
 
 </div>
-
-<style>
-.ps-saved-item--compact {
-  padding: 0.35rem 0.5rem;
-  gap: 0.3rem;
-}
-.ps-saved-item--compact .ps-saved-title {
-  font-size: 0.75rem;
-}
-.ps-saved-item--compact .ps-saved-meta {
-  font-size: 0.65rem;
-}
-.ps-saved-actions {
-  display: flex;
-  gap: 0.25rem;
-}
-.ps-mini-btn {
-  font-size: 0.65rem;
-  padding: 0.1rem 0.4rem;
-}
-</style>
-
-<script>
-  (function() {
-    if (window.applyWorkspaceStateMeta) {
-      window.applyWorkspaceStateMeta({{ workspace_state_meta | tojson }});
-    }
-  })();
-</script>
