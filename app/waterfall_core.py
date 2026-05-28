@@ -58,6 +58,11 @@ def run_waterfall_v3_core(
     use_shl_canonical_engine: bool = False,
     use_depreciation_canonical_engine: bool = False,
     use_senior_debt_sizing_engine: bool = False,
+    # Phase 23A: wire frozen Excel senior debt service schedule into runtime.
+    # When True and use_senior_debt_sizing_engine=True, per-period senior debt
+    # service is taken from the frozen schedule (canonical sizing capacity) and
+    # DSCR becomes a backward-computed output. Default False preserves behavior.
+    use_frozen_excel_senior_debt_schedule: bool = False,
     # Phase 9: CO2 revenue bridge — wire CO2 certificate revenue into period.revenue_keur.
     # TUHO-only; default=False preserves legacy baseline.
     # R99/R102: BLOCKED — CO2 bridge affects revenue/EBITDA only, no CIT or distribution change.
@@ -411,6 +416,69 @@ def run_waterfall_v3_core(
             use_explicit_sizing_cfads=False,  # Until Macro!R50 values are wired
         )
         result._canonical_senior_debt_sizing = sizing_result
+
+    # Phase 23A: Frozen Excel senior debt service schedule runtime wiring.
+    # When use_frozen_excel_senior_debt_schedule=True and use_senior_debt_sizing_engine=True,
+    # per-period senior debt service is taken directly from the frozen schedule
+    # (canonical sizing capacity = sizing_cfads / target_dscr) instead of the
+    # waterfall-computed sculpted service. DSCR becomes a backward-computed output.
+    #
+    # Guardrails:
+    #   - use_senior_debt_sizing_engine must be True (canonical result required)
+    #   - _canonical_senior_debt_sizing must be present (sizing result attached)
+    #   - TUHO/Oborovo only, after frozen data validation
+    #
+    # R99/R102: BLOCKED — frozen schedule wiring does not touch distribution gates.
+    # G20: BLOCKED — no governance promotion in this phase.
+    if use_frozen_excel_senior_debt_schedule and use_senior_debt_sizing_engine:
+        canon = getattr(result, '_canonical_senior_debt_sizing', None)
+        if canon is not None:
+            frozen_ds = getattr(canon, 'debt_service_capacity_keur_by_period', None)
+            if frozen_ds:
+                op_periods = [
+                    (i, p) for i, p in enumerate(result.periods)
+                    if getattr(p, 'is_operation', False)
+                ]
+                for op_idx, (period_idx, period) in enumerate(op_periods):
+                    if op_idx < len(frozen_ds):
+                        frozen_value = frozen_ds[op_idx]
+                        legacy_ds = period.senior_ds_keur
+                        period.senior_ds_keur = frozen_value
+                        # Attach audit metadata
+                        period._frozen_senior_ds_override = True
+                        period._frozen_senior_ds_source = getattr(
+                            inputs.financing, 'frozen_schedule_note',
+                            'canonical_sizing_capacity'
+                        )
+                        period._legacy_senior_ds_keur = legacy_ds
+                        # Recompute DSCR using frozen service
+                        cfads = getattr(period, 'cfads_keur', None)
+                        if cfads is None:
+                            cfads = getattr(period, 'revenue_keur', 0.0) - getattr(period, 'opex_keur', 0.0)
+                        if frozen_value > 0:
+                            period.dscr = cfads / frozen_value
+                        else:
+                            period.dscr = float('inf') if cfads > 0 else 0.0
+                # Attach result-level audit flag
+                result._frozen_senior_ds_wired = True
+                result._frozen_senior_ds_note = (
+                    f"Frozen Excel senior DS wired for {getattr(inputs.info, 'code', '?')}. "
+                    f"DSCR is now a backward-computed output."
+                )
+            else:
+                import warnings
+                warnings.warn(
+                    "[Phase 23A] use_frozen_excel_senior_debt_schedule=True but "
+                    "canonical result has no debt_service_capacity_keur_by_period. "
+                    "Falling back to existing behavior."
+                )
+        else:
+            import warnings
+            warnings.warn(
+                "[Phase 23A] use_frozen_excel_senior_debt_schedule=True but "
+                "_canonical_senior_debt_sizing not found. "
+                "Ensure use_senior_debt_sizing_engine=True."
+            )
 
     # Phase 9B: Dual-run validation — side-by-side DA vs WE comparison.
     # NO runtime routing — waterfall result is not modified.

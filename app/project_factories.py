@@ -415,6 +415,12 @@ def create_default_tuho_wind1() -> ProjectInputs:
         shl_repayment_method="pik_then_sweep",  # TUHO: PIK phase Y1-Y14, sweep phase Y15+
         shl_idc_keur=3568.69,  # Construction IDC from Excel — opening SHL balance = 29,135 + 3,569 = 32,704
         use_senior_sweep_cash_cap_for_shl=False,  # TUHO: SHL cap DISABLED — PR B2 uses fcf_waterfall approach
+        # Phase 23A: frozen Excel senior debt service schedule opt-in.
+        # TUHO has frozen schedule data from Excel calibration (Macro!R50 / DS!R19).
+        # Set use_frozen_excel_senior_debt_schedule=True ONLY after confirming
+        # frozen schedule data is loaded and parity vs Excel is validated.
+        # Default False preserves existing runtime behavior.
+        frozen_schedule_note="Macro!R50 / DS!R19 frozen per-period debt service (Excel calibration)",
     )
 
     tax = TaxParams(

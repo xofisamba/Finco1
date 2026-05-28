@@ -442,6 +442,20 @@ class FinancingParams:
     # Human-readable note identifying the source of a frozen Excel schedule.
     # e.g. "Excel Inputs!C45 anchor" or "Macro!R50 frozen per-period schedule".
     frozen_schedule_note: str | None = None
+    # Phase 23A: opt-in to use the pre-loaded frozen Excel senior debt service
+    # schedule (from Macro!R50 / DS!R19 calibration data) as the active runtime
+    # senior debt service, bypassing sculpted/recomputed debt service.
+    #
+    # When True AND use_senior_debt_sizing_engine=True:
+    #   - Senior debt service per period is taken directly from the frozen schedule.
+    #   - DSCR becomes a backward-computed output: CFADS / frozen_senior_service.
+    #   - Requires frozen schedule data to be loaded (Macro!R50 / DS!R19).
+    #
+    # When False (default): existing runtime behavior unchanged.
+    #
+    # IMPORTANT: Only TUHO and Oborovo should set this to True, and only after
+    # confirming frozen schedule data is present and parity is validated.
+    use_frozen_excel_senior_debt_schedule: bool = False
     fixed_debt_keur: float | None = None
     dscr_schedule: list[float] | None = None
     senior_debt_interest_config: SeniorDebtInterestConfig = field(default_factory=SeniorDebtInterestConfig)

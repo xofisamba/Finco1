@@ -73,6 +73,14 @@ class WaterfallRunConfig:
     # _canonical_senior_debt_sizing audit attribute.
     # R99/R102: BLOCKED — sizing wiring does not touch distribution gates.
     use_senior_debt_sizing_engine: bool = False
+    # Phase 23A: frozen Excel senior debt service schedule runtime wiring.
+    # When True AND use_senior_debt_sizing_engine=True:
+    #   - Senior debt service per period is taken from the frozen schedule
+    #     (Macro!R50 / DS!R19 canonical capacity) instead of waterfall-computed DS.
+    #   - DSCR becomes a backward-computed output: CFADS / frozen_senior_service.
+    # Default False preserves existing runtime behavior.
+    # Only TUHO and Oborovo should enable this, after frozen data validation.
+    use_frozen_excel_senior_debt_schedule: bool = False
     # TUHO Excel-compatible CIT cash tax start period (0-based operating index).
     # When set, R67 diagnostic and corporate_tax_cash are suppressed for
     # operating_index < value. TUHO Excel: value=25 (first non-zero R67 at P25).
@@ -138,6 +146,7 @@ class WaterfallRunConfig:
             f"canon_{int(self.use_shl_canonical_engine)}_"
             f"depcanon_{int(self.use_depreciation_canonical_engine)}_"
             f"sds_{int(self.use_senior_debt_sizing_engine)}"
+            f"frozensds_{int(self.use_frozen_excel_senior_debt_schedule)}"
         )
 
     @classmethod
@@ -305,6 +314,9 @@ class WaterfallRunConfig:
             use_depreciation_canonical_engine=use_depreciation_canonical_engine,
             use_senior_debt_sizing_engine=getattr(
                 inputs.info, "use_senior_debt_sizing_engine", False
+            ),
+            use_frozen_excel_senior_debt_schedule=getattr(
+                fin, "use_frozen_excel_senior_debt_schedule", False
             ),
             tuho_cit_cash_tax_start_operating_index=tuho_cit_cash_tax_start_operating_index,
             shl_fcf_waterfall_cash_schedule_keur=shl_fcf_cash_schedule,
