@@ -1,5 +1,5 @@
 <!-- Sheet: OPEX Detail — {{ project_ctx.name }} -->
-<!-- Phase 21: Excel-like hierarchical OPEX grid (category + child rows) -->
+<!-- Phase 21 v2: Excel-like hierarchical OPEX grid with Y1-Y25 yearly columns -->
 
 <div class="sheet-banner">
   <span class="sheet-banner-tag">📊 OPEX Detail</span>
@@ -16,6 +16,10 @@
     <strong>Factory template — read only</strong>
     <p>This is a factory template. Use <strong>Duplicate / Save As</strong> to create
     your own copy, then edit OPEX assumptions.</p>
+    <p class="inp-readonly-notice__hint">
+      <strong>Note:</strong> Yearly OPEX values shown are for display reference only.
+      Line editing / add-line deferred to a future phase.
+    </p>
   </div>
 </div>
 {% endif %}
@@ -23,28 +27,32 @@
 {# ── Detail Grid ─────────────────────────────────────────────────────────────── #}
 <div class="fc-opex-grid-wrapper sheet-card">
 
-  <div class="section-header">OPEX Schedule — Budget kEUR (Y1)</div>
-
-  {% if is_user_project %}
-  <div class="inp-dirty-indicator" id="opex-detail-dirty-indicator" style="display:none;">
-    <span class="dirty-dot"></span>
-    <span>Unsaved OPEX edits</span>
+  <div class="section-header">
+    OPEX Schedule — kEUR (Y1–Y{{ project_ctx.horizon_years|default(25) }}) — Display Reference
   </div>
-  {% endif %}
 
-  <div class="fc-grid-wrapper">
-    <table class="fc-grid" id="opex-detail-grid">
+  {# ── Grid ──────────────────────────────────────────────────────────────────── #}
+  <div class="fc-grid-scroll-wrapper">
+    <table class="fc-grid fc-opex-detail-grid" id="opex-detail-grid">
 
-      {# ── Sticky Header ────────────────────────────────────────────────── #}
+      {# ── Sticky Header ────────────────────────────────────────────────────── #}
       <thead>
         <tr class="fc-grid-header">
-          <th class="fc-grid-col-label fc-th">Line Item</th>
-          <th class="fc-th fc-th--code">Code</th>
-          <th class="fc-th fc-th--amount">Budget kEUR</th>
-          <th class="fc-th">Inflation %</th>
-          <th class="fc-th">WHT %</th>
-          <th class="fc-th">Source</th>
-          <th class="fc-th">Notes</th>
+          <th class="fc-grid-col-label fc-th" rowspan="2">Line Item</th>
+          <th class="fc-th fc-th--code" rowspan="2">Code</th>
+          <th class="fc-th fc-th--amount" rowspan="2">Budget<br/>kEUR</th>
+          <th class="fc-th fc-th--pct" rowspan="2">Infl.<br/>%</th>
+          <th class="fc-th fc-th--pct" rowspan="2">WHT<br/>%</th>
+          {# Year columns #}
+          {% for y in range(1, project_ctx.horizon_years|default(25) + 1) %}
+          <th class="fc-th fc-th--year">Y{{ y }}</th>
+          {% endfor %}
+          <th class="fc-th fc-th--notes" rowspan="2">Notes</th>
+        </tr>
+        <tr class="fc-grid-header fc-grid-header--sub">
+          {% for y in range(1, project_ctx.horizon_years|default(25) + 1) %}
+          <th class="fc-th fc-th--year-num">#{{ y }}</th>
+          {% endfor %}
         </tr>
       </thead>
 
@@ -52,23 +60,43 @@
 
 {# ═══════════════════════════════════════════════════════════════════════════════
    CATEGORY + CHILD ROWS
-   For each category: category total row (read-only, strong band)
-   followed by indented child rows (editable for user projects)
    ═══════════════════════════════════════════════════════════════════════════════ #}
 
 {% for cat in project_ctx.opex_detail_items %}
-  {# ── Category total row ─────────────────────────────────────────────────── #}
-  <tr class="fc-section-band">
-    <td class="fc-section-band__label" colspan="7">
+  {#
+    Category total row — read-only, bold, spans year columns with computed totals.
+    For contingency categories: shows formula note and derived values.
+  #}
+  <tr class="fc-section-band fc-cat-row">
+    <td class="fc-section-band__label" colspan="5">
       <span class="fc-section-band__code">{{ cat.code }}</span>
       {{ cat.name }}
       {% if cat.is_contingency %}
-        <span class="badge badge-contingency">derived: 4% x non-contingency OPEX</span>
+        <span class="badge badge-contingency">derived: {{ (cat.contingency_pct or 0)|int }}% × non-contingency OPEX</span>
+      {% endif %}
+    </td>
+    {# Year totals #}
+    {% for y in range(project_ctx.horizon_years|default(25)) %}
+      {% set y_val = cat.yearly_totals[y] if cat.yearly_totals else 0 %}
+      <td class="fc-cell fc-cell--amount fc-cell--cat-total{% if cat.is_contingency %} fc-cell--contingency{% endif %}">
+        {{ "%.2f"|format(y_val) }}
+      </td>
+    {% endfor %}
+    <td class="fc-cell fc-cell--notes">
+      {% if cat.is_contingency %}
+        <span class="fc-cell--muted">formula: {{ (cat.contingency_pct or 0)|int }}% × sum(non-contingency Y1)</span>
+      {% else %}
+        <span class="fc-cell--muted">sum of child lines</span>
       {% endif %}
     </td>
   </tr>
 
-  {# ── Child rows ─────────────────────────────────────────────────────────── #}
+  {#
+    Child rows — indented, show budget/inflation/WHT + per-year effective values.
+    Active flags shown as 1/0; inactive years show "—".
+    For user projects (non-contingency): Budget field is editable.
+    For factory projects or contingency children: read-only.
+  #}
   {% for child in cat.children %}
     <tr class="fc-data-row fc-data-row--child">
       <td class="fc-cell fc-cell--label fc-grid-col-label fc-cell--indented">
@@ -77,29 +105,18 @@
       </td>
       <td class="fc-cell fc-cell--code">{{ child.code }}</td>
 
-      {# Budget amount #}
+      {# Budget #}
       <td class="fc-cell fc-cell--amount">
-        {% if is_user_project %}
-          <input type="number" step="any" min="0"
-                 class="fc-input-native"
-                 name="opex_detail_{{ child.code }}_budget"
-                 value="{{ "%.2f"|format(child.budget_y1_keur or 0) }}"
-                 data-opex-item="{{ child.code }}"
-                 {% if cat.is_contingency %}readonly{% endif %}
-                 aria-label="{{ child.name }} Y1 budget" />
+        {% if is_user_project and not cat.is_contingency %}
+          {# Editable budget — deferred implementation: show as read-only for now #}
+          <span class="fc-cell-runtime" title="Line editing deferred">{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
         {% else %}
-          {% if cat.is_contingency %}
-            <span class="fc-cell-runtime fc-cell--contingency"
-                  title="Contingency is derived: 4% x non-contingency OPEX"
-                  >{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
-          {% else %}
-            <span class="fc-cell-runtime">{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
-          {% endif %}
+          <span class="fc-cell-runtime">{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
         {% endif %}
       </td>
 
       {# Inflation % #}
-      <td class="fc-cell fc-cell--amount">
+      <td class="fc-cell fc-cell--pct">
         {% if child.inflation_pct == 0 %}
           <span class="fc-cell--muted">flat</span>
         {% else %}
@@ -108,7 +125,7 @@
       </td>
 
       {# WHT % #}
-      <td class="fc-cell fc-cell--amount">
+      <td class="fc-cell fc-cell--pct">
         {% if child.wth_rate and child.wth_rate > 0 %}
           <span class="fc-cell-runtime">{{ "%.1f"|format(child.wth_rate) }}%</span>
         {% else %}
@@ -116,10 +133,21 @@
         {% endif %}
       </td>
 
-      {# Source badge #}
-      <td class="fc-cell">
-        <span class="badge badge-factory">factory</span>
-      </td>
+      {# Year columns #}
+      {% for y in range(project_ctx.horizon_years|default(25)) %}
+        {% set active = child.active_flags[y] if child.active_flags else 1 %}
+        {% set y_val = child.yearly_values[y] if child.yearly_values else 0 %}
+        <td class="fc-cell fc-cell--year{% if not active %} fc-cell--inactive-year{% endif %}"
+            title="{{ 'Active' if active else 'Inactive' }}{% if active and y_val > 0 %} — {{ "%.2f"|format(y_val) }} kEUR{% endif %}">
+          {% if not active %}
+            <span class="fc-cell--muted">—</span>
+          {% elif y_val == 0 %}
+            <span class="fc-cell--muted">0</span>
+          {% else %}
+            {{ "%.2f"|format(y_val) }}
+          {% endif %}
+        </td>
+      {% endfor %}
 
       {# Notes #}
       <td class="fc-cell fc-cell--notes">
@@ -135,7 +163,7 @@
 {# ── No detail items ──────────────────────────────────────────────────────────── #}
 {% else %}
   <tr>
-    <td colspan="7" class="fc-cell fc-cell--notes">
+    <td colspan="{{ 7 + (project_ctx.horizon_years|default(25))|default(25) }}" class="fc-cell fc-cell--notes">
       <span class="fc-cell--muted">No detailed OPEX items available for this project.</span>
     </td>
   </tr>
@@ -148,83 +176,102 @@
   {# ── Legend ─────────────────────────────────────────────────────────────────── #}
   <div class="fc-opex-legend">
     <span class="badge badge-factory">factory</span> factory/default value
-    <span class="badge badge-contingency">contingency</span> contingency is derived (4% x non-contingency OPEX) — not editable
-    <span class="fc-child-indicator"></span> child row — indented under category
-    <span class="badge badge-preview">user</span> user-editable (your copy)
+    <span class="badge badge-contingency">contingency</span> derived (formula, not editable)
+    <span class="badge badge-preview">user</span> user-editable (your copy) — line editing deferred
+    <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> child row
+    <span class="fc-cell--inactive-year" style="color:#999;font-style:italic;">—</span> inactive year
+    | <strong>Note:</strong> Yearly values include step-changes and inflation. Display reference only.
   </div>
+
+  {# ── OPEX Summary (from flat view — for reference) ──────────────────────────────── #}
+  {% if project_ctx.opex_items|default(None) %}
+  {% with %}
+  {% set opex_summary_items = project_ctx.opex_items %}
+  <details class="opex-legacy-summary">
+    <summary class="opex-legacy-summary__toggle">
+      📋 OPEX Summary (legacy flat view — {{ opex_summary_items|length }} lines)
+    </summary>
+    <div class="fc-grid-wrapper" style="margin-top:1rem;">
+      <table class="fc-grid">
+        <thead>
+          <tr class="fc-grid-header">
+            <th class="fc-th">Line Item</th>
+            <th class="fc-th fc-th--code">Code</th>
+            <th class="fc-th fc-th--amount">Y1 (kEUR)</th>
+            <th class="fc-th">Unit</th>
+            <th class="fc-th">Fixed / Variable</th>
+            <th class="fc-th">Recurring / One-off</th>
+            <th class="fc-th fc-th--amount">Escal. %</th>
+            <th class="fc-th fc-th--num">Start</th>
+            <th class="fc-th fc-th--num">End</th>
+            <th class="fc-th">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in opex_summary_items %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.2f"|format(item.y1_keur or 0) }}</td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="fc-grand-total">
+            <td class="fc-cell fc-cell--label fc-grand-total__label" colspan="2">Total OPEX (Y1)</td>
+            <td class="fc-total-cell fc-total-value">{{ "%.2f"|format(project_ctx.opex_y1_total_keur) }}</td>
+            <td colspan="8"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endwith %}
+  {% endif %}
 
 </div>
 
 <style>
-  .fc-section-band .fc-section-band__code {
-    font-weight: 700;
-    margin-right: 0.5em;
-    font-family: monospace;
+  .fc-opex-detail-grid {
+    table-layout: fixed;
+    min-width: calc(120px + {{ project_ctx.horizon_years|default(25) }} * 64px);
   }
-  .fc-data-row--child .fc-grid-col-label {
-    padding-left: 2rem;
+  .fc-opex-detail-grid .fc-grid-col-label { width: 180px; min-width: 180px; }
+  .fc-opex-detail-grid .fc-th--code { width: 70px; min-width: 70px; }
+  .fc-opex-detail-grid .fc-th--amount { width: 90px; min-width: 90px; }
+  .fc-opex-detail-grid .fc-th--pct { width: 55px; min-width: 55px; }
+  .fc-opex-detail-grid .fc-th--year { width: 64px; min-width: 64px; font-size: 0.75rem; }
+  .fc-opex-detail-grid .fc-th--year-num { font-size: 0.7rem; color: #888; }
+  .fc-opex-detail-grid .fc-th--notes { min-width: 150px; }
+  .fc-opex-detail-grid .fc-th { text-align: center; }
+
+  .fc-cat-row .fc-section-band__label { font-weight: 700; }
+  .fc-cell--cat-total {
+    text-align: right;
+    font-weight: 600;
+    background: #f8f9fa;
+    font-size: 0.85rem;
   }
-  .fc-child-indicator::before {
-    content: "└ ";
-    color: #999;
-    font-size: 0.85em;
-  }
-  .fc-cell--indented {
-    padding-left: 2rem;
-  }
-  .fc-cell--muted {
-    color: #999;
-    font-style: italic;
-  }
-  .fc-cell--contingency {
-    color: #b85c00;
-    font-style: italic;
-  }
-  .fc-cell--contingency::before {
-    content: "(derived) ";
-  }
-  .fc-opex-legend {
-    margin-top: 0.75rem;
-    font-size: 0.8rem;
-    color: #666;
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  .badge-factory {
-    background: #e9ecef;
-    color: #495057;
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 0.75rem;
-  }
-  .badge-contingency {
-    background: #fff3cd;
-    color: #856404;
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 0.75rem;
-    margin-left: 0.5rem;
-  }
-  .badge-preview {
-    background: #d1e7dd;
-    color: #0f5132;
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 0.75rem;
-  }
-  .badge-user {
-    background: #cfe2ff;
-    color: #084298;
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 0.75rem;
-  }
-  .fc-grid-wrapper {
-    overflow-x: auto;
-  }
-  .fc-opex-grid-wrapper {
-    overflow: visible;
-  }
+  .fc-cell--contingency { color: #b85c00; font-style: italic; }
+  .fc-cell--inactive-year { color: #ccc; }
+  .fc-cell--year { text-align: right; font-size: 0.82rem; }
+  .fc-data-row--child .fc-grid-col-label { padding-left: 2.2rem; }
+  .fc-child-indicator::before { content: "└ "; color: #bbb; font-size: 0.85em; }
+  .fc-cell--indented { padding-left: 2.2rem; }
+  .fc-cell--muted { color: #999; font-style: italic; }
+  .fc-opex-grid-wrapper { overflow: visible; }
+  .fc-grid-scroll-wrapper { overflow-x: auto; overflow-y: visible; }
+  .inp-readonly-notice__hint { margin-top: 0.5rem; font-size: 0.8rem; color: #666; }
+  .opex-legacy-summary { margin-top: 1rem; border-top: 1px dashed #ccc; padding-top: 0.5rem; }
+  .opex-legacy-summary__toggle { cursor: pointer; font-size: 0.85rem; color: #666; padding: 0.25rem 0; }
+  .opex-legacy-summary__toggle:hover { color: #333; }
+  .badge-factory { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.75rem; }
+  .badge-contingency { background: #fff3cd; color: #856404; border-radius: 3px; padding: 1px 5px; font-size: 0.75rem; margin-left: 0.5rem; }
+  .badge-preview { background: #d1e7dd; color: #0f5132; border-radius: 3px; padding: 1px 5px; font-size: 0.75rem; }
+  .fc-opex-legend { margin-top: 0.75rem; font-size: 0.78rem; color: #666; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; padding: 0.5rem 0; border-top: 1px solid #eee; }
 </style>

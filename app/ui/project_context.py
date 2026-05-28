@@ -347,6 +347,9 @@ def _build_opex_detail_items(
     For Oborovo and TUHO: uses the detailed domain.opex.templates structures.
     For other projects: falls back to flat aggregated items from project_inputs.opex.
 
+    Adds computed yearly display values for each child and category total.
+    The contingency (B.13) yearly total = contingency_pct × sum(non-contingency totals).
+
     Returns:
         {
           "categories": [
@@ -357,6 +360,8 @@ def _build_opex_detail_items(
               "wth_rate": 0.0,
               "source": "factory",
               "is_contingency": False,
+              "contingency_pct": 0.0,
+              "yearly_totals": [198.0, 198.0, 201.96, ...],
               "children": [
                 {
                   "code": "B.01.01",
@@ -366,6 +371,8 @@ def _build_opex_detail_items(
                   "wth_rate": 0.0,
                   "source": "factory",
                   "notes": "",
+                  "yearly_values": [60.0, 61.2, 62.424, ...],
+                  "active_flags": [1, 1, 1, ...],
                 },
               ],
             },
@@ -383,8 +390,10 @@ def _build_opex_detail_items(
     if template_groups is not None:
         categories = []
         for group in template_groups:
-            # Determine contingency flag
-            is_contingency = group.contingency_pct > 0 and group.contingency_method.name == "PERCENTAGE_OF_OPEX"
+            is_contingency = (
+                group.contingency_pct > 0
+                and group.contingency_method.name == "PERCENTAGE_OF_OPEX"
+            )
 
             cat = {
                 "code": group.code,
@@ -393,36 +402,84 @@ def _build_opex_detail_items(
                 "wth_rate": group.wth_rate or 0.0,
                 "source": "factory",
                 "is_contingency": is_contingency,
+                "contingency_pct": group.contingency_pct,
                 "children": [],
+                "yearly_totals": [],
             }
 
             for item in group.items:
-                # Determine if this item is a contingency (B.13 style)
                 is_item_contingency = (
                     item.selected_group_codes
-                    and all(g.startswith("B.") and g != group.code for g in item.selected_group_codes)
+                    and all(
+                        g.startswith("B.") and g != group.code
+                        for g in item.selected_group_codes
+                    )
                 )
 
                 if is_item_contingency:
-                    # contingency_pct is already a percentage value (e.g. 4.0 for 4%)
                     formula_note = f"{group.contingency_pct}% x non-contingency OPEX"
                     budget_display = 0.0
                 else:
                     formula_note = ""
                     budget_display = item.budget_keur
 
+                # Compute yearly values: effective_budget × inflation^(y-1) × active_flag
+                inflation_rate = item.inflation_rate or 0.0
+                yearly_values = []
+                active_flags = []
+                for y in range(1, horizon_years + 1):
+                    active = item.is_active(y)
+                    active_flags.append(1 if active else 0)
+                    if not active:
+                        yearly_values.append(0.0)
+                    else:
+                        eff = item.effective_budget(y)
+                        inflated = eff * ((1 + inflation_rate) ** (y - 1))
+                        yearly_values.append(round(inflated, 4))
+
                 child = {
                     "code": item.code,
                     "name": item.name,
                     "budget_y1_keur": budget_display,
-                    "inflation_pct": item.inflation_rate * 100 if item.inflation_rate else 0.0,
+                    "inflation_pct": inflation_rate * 100 if inflation_rate else 0.0,
                     "wth_rate": item.wth_rate or 0.0,
                     "source": "factory",
                     "notes": formula_note,
+                    "yearly_values": yearly_values,
+                    "active_flags": active_flags,
                 }
                 cat["children"].append(child)
 
             categories.append(cat)
+
+        # ── Second pass: compute category yearly_totals ─────────────────────
+        # Non-contingency categories: sum of children
+        for cat in categories:
+            if cat["is_contingency"]:
+                continue
+            totals = [0.0] * horizon_years
+            for child in cat["children"]:
+                for y_idx, y_val in enumerate(child["yearly_values"]):
+                    totals[y_idx] += y_val
+            cat["yearly_totals"] = [round(t, 4) for t in totals]
+
+        # Contingency categories: contingency_pct × sum(non-contingency totals)
+        for cat in categories:
+            if not cat["is_contingency"]:
+                continue
+            contingency_pct = cat.get("contingency_pct", 0.0) / 100.0
+            non_contingency_totals = [
+                sum(
+                    c["yearly_totals"][y_idx]
+                    for c in categories
+                    if not c["is_contingency"]
+                )
+                for y_idx in range(horizon_years)
+            ]
+            cat["yearly_totals"] = [
+                round(contingency_pct * nc_total, 4)
+                for nc_total in non_contingency_totals
+            ]
 
         return {"categories": tuple(categories)}
 
@@ -440,6 +497,14 @@ def _build_opex_detail_items(
             budget_display = item.y1_amount_keur
             formula_note = ""
 
+        inflation_rate = item.annual_inflation or 0.0
+        yearly_values = []
+        active_flags = []
+        for y in range(1, horizon_years + 1):
+            active_flags.append(1)
+            inflated = budget_display * ((1 + inflation_rate) ** (y - 1))
+            yearly_values.append(round(inflated, 4))
+
         child_item = {
             "code": code_slug,
             "name": item.name,
@@ -448,6 +513,8 @@ def _build_opex_detail_items(
             "wth_rate": 0.0,
             "source": "factory",
             "notes": formula_note,
+            "yearly_values": yearly_values,
+            "active_flags": active_flags,
         }
 
         cat_code = _OPEX_GROUP_META.get(group_name, ("", 99))[0]
@@ -460,7 +527,9 @@ def _build_opex_detail_items(
                 "wth_rate": 0.0,
                 "source": "factory",
                 "is_contingency": is_contingency,
+                "contingency_pct": 0.0,
                 "children": [],
+                "yearly_totals": [],
             }
             categories.append(cat_meta)
 
@@ -471,7 +540,36 @@ def _build_opex_detail_items(
 
     categories.sort(key=_sort_key)
 
+    # Compute yearly_totals for fallback categories
+    for cat in categories:
+        if cat["is_contingency"]:
+            continue
+        totals = [0.0] * horizon_years
+        for child in cat["children"]:
+            for y_idx, y_val in enumerate(child["yearly_values"]):
+                totals[y_idx] += y_val
+        cat["yearly_totals"] = [round(t, 4) for t in totals]
+
+    # Handle contingency for fallback (if any)
+    for cat in categories:
+        if not cat["is_contingency"]:
+            continue
+        contingency_pct = cat.get("contingency_pct", 0.0) / 100.0
+        non_contingency_totals = [
+            sum(
+                c["yearly_totals"][y_idx]
+                for c in categories
+                if not c["is_contingency"]
+            )
+            for y_idx in range(horizon_years)
+        ]
+        cat["yearly_totals"] = [
+            round(contingency_pct * nc_total, 4)
+            for nc_total in non_contingency_totals
+        ]
+
     return {"categories": tuple(categories)}
+
 
 
 def _build_revenue_items(revenue, technical, technology: str) -> tuple[dict[str, Any], ...]:
@@ -652,7 +750,7 @@ def _build_context_from_project_inputs(
     data_source: str,
 ) -> ProjectContext:
     opex_items = _build_opex_items(project_inputs, horizon_years=project_inputs.info.horizon_years)
-    opex_detail = _build_opex_detail_items(project_inputs, code=code)
+    opex_detail = _build_opex_detail_items(project_inputs, code=code, horizon_years=project_inputs.info.horizon_years)
     financing = project_inputs.financing
     revenue = project_inputs.revenue
     technical = project_inputs.technical

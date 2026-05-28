@@ -243,12 +243,15 @@ class TestTemplateRender:
         ctx = {
             "project_ctx": {
                 "name": "Oborovo Solar PV",
+                "horizon_years": 25,
                 "data_source": "factory",
                 "opex_detail_items": [
                     {
                         "code": "B.01",
                         "name": "Technical Management",
                         "is_contingency": False,
+                        "contingency_pct": 0.0,
+                        "yearly_totals": [60.0] * 25,
                         "children": [
                             {
                                 "code": "B.01.01",
@@ -257,6 +260,8 @@ class TestTemplateRender:
                                 "inflation_pct": 2.0,
                                 "wth_rate": 0.0,
                                 "notes": "placeholder",
+                                "yearly_values": [60.0] * 25,
+                                "active_flags": [1] * 25,
                             },
                         ],
                     },
@@ -264,6 +269,8 @@ class TestTemplateRender:
                         "code": "B.13",
                         "name": "Contingency",
                         "is_contingency": True,
+                        "contingency_pct": 4.0,
+                        "yearly_totals": [51.48] * 25,
                         "children": [
                             {
                                 "code": "B.13.1",
@@ -272,6 +279,8 @@ class TestTemplateRender:
                                 "inflation_pct": 0.0,
                                 "wth_rate": 0.0,
                                 "notes": "4% x non-contingency OPEX",
+                                "yearly_values": [0.0] * 25,
+                                "active_flags": [1] * 25,
                             },
                         ],
                     },
@@ -303,12 +312,15 @@ class TestTemplateRender:
         ctx = {
             "project_ctx": {
                 "name": "Test",
+                    "horizon_years": 25,
                 "data_source": "factory",
                 "opex_detail_items": [
                     {
                         "code": "B.01",
                         "name": "Operations",
                         "is_contingency": False,
+                        "contingency_pct": 0.0,
+                        "yearly_totals": [100.0] * 25,
                         "children": [
                             {
                                 "code": "B.01.01",
@@ -317,6 +329,8 @@ class TestTemplateRender:
                                 "inflation_pct": 2.0,
                                 "wth_rate": 0.0,
                                 "notes": "test",
+                                "yearly_values": [100.0] * 25,
+                                "active_flags": [1] * 25,
                             },
                         ],
                     },
