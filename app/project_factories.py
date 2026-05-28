@@ -101,7 +101,8 @@ def create_default_oborovo() -> ProjectInputs:
     # Infrastructure Maintenance = 427 kEUR (aggregated B.02 + sub-items)
     opex_items = (
         OpexItem(name="Technical Management", y1_amount_keur=198.0, annual_inflation=0.02),
-        OpexItem(name="Infrastructure Maintenance", y1_amount_keur=244.0, annual_inflation=0.02),
+        OpexItem(name="Infrastructure Maintenance", y1_amount_keur=244.0, annual_inflation=0.02,
+                 step_changes=((2, 185.64),)),  # B.02.1 active Y1-2→B.02.2 active Y3+; Y2→185.64
         OpexItem(name="Maintain Site", y1_amount_keur=45.0, annual_inflation=0.02),
         OpexItem(name="Clean Material", y1_amount_keur=40.0, annual_inflation=0.02),
         OpexItem(name="Security", y1_amount_keur=30.0, annual_inflation=0.02),
