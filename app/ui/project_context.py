@@ -59,6 +59,9 @@ class ProjectContext:
     idc_keur: float = 0.0
     bank_fees_keur: float = 0.0
     capex_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
+    capex_detail_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())  # hierarchical for detail CAPEX tab
+    capex_construction_months: int = 0
+    capex_y1_total_keur: float = 0.0
     senior_debt_keur: float = 0.0
     interest_rate_pct: float = 0.0
     senior_tenor_years: int = 0
@@ -712,6 +715,208 @@ def _build_revenue_items(revenue, technical, technology: str) -> tuple[dict[str,
     return tuple(items)
 
 
+def _capex_y1_total(capex) -> float:
+    """Sum of all non-zero hard-capex items (excludes financing rows)."""
+    total = 0.0
+    for field in capex._CAPEX_ITEM_FIELDS:
+        item = getattr(capex, field)
+        total += item.amount_keur
+    return total
+
+
+def _build_capex_detail_items(
+    capex,
+    construction_months: int = 12,
+) -> dict[str, Any]:
+    """Build hierarchical CAPEX detail structure for the Excel-like CAPEX grid.
+
+    Categories group CAPEX items by section (Construction, Development,
+    Construction Management, Civil & Land, Insurances & Risk, Financing).
+
+    Each child has monthly_amounts derived from y0_share + spending_profile:
+      - month 0 = y0_share × total
+      - month m (1-indexed) = spending_profile[m-1] × total  (if available)
+
+    Monthly amounts are None for financing rows (IDC, bank fees, etc.) since
+    those are backend-calculated and not tied to the construction timeline.
+
+    Returns:
+        {
+          "categories": [
+            {
+              "code": "construction",
+              "name": "Construction",
+              "timing_label": "M1–M12",
+              "total_budget_keur": 40542.70,
+              "source": "factory",
+              "children": [
+                {
+                  "code": "epc_contract",
+                  "name": "EPC Contract",
+                  "budget_y1_keur": 26430.0,
+                  "source": "factory",
+                  "timing_profile": "linear (M1–M12)",
+                  "monthly_amounts": [2202.5, 2202.5, ...],  # 12 entries, or None
+                  "notes": "",
+                },
+              ],
+            },
+            ...
+          ],
+          "grand_total_keur": 57973.05,
+          "construction_months": 12,
+        }
+    """
+    # Section definitions — order drives display order
+    # grid_connection grouped with EPC (construction-period payment)
+    SECTION_MAP = [
+        (
+            "epc",
+            "EPC & Construction",
+            ["epc_contract", "production_units", "epc_other", "grid_connection"],
+        ),
+        (
+            "development",
+            "Development",
+            ["project_acquisition", "project_rights", "ops_prep"],
+        ),
+        (
+            "construction_mgmt",
+            "Construction Management",
+            [
+                "construction_mgmt_a",
+                "construction_mgmt_b",
+                "commissioning",
+                "audit_legal",
+            ],
+        ),
+        ("civil_land", "Civil & Land", ["lease_tax"]),
+        (
+            "insurances_risk",
+            "Insurances & Risk",
+            ["insurances", "contingencies", "taxes"],
+        ),
+        (
+            "financing",
+            "Financing Costs",
+            ["idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs"],
+        ),
+    ]
+
+    # Financing rows don't have monthly spending profiles in the same sense
+    FINANCING_CODES = {"idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs"}
+
+    def _timing_label(y0_share: float, spending_profile: tuple, n_months: int) -> str:
+        """Human-readable timing description."""
+        if y0_share == 1.0:
+            return "100% at FC"
+        if not spending_profile:
+            if y0_share > 0:
+                return f"{int(y0_share*100)}% at FC"
+            return "at COD"
+        if len(spending_profile) == 1:
+            remainder = 1.0 - y0_share
+            return f"{int(y0_share*100)}% FC, {int(remainder*100)}% COD"
+        # Multiple periods
+        return f"{n_months}-month construction"
+
+    def _build_monthly(item_dict: dict, n_months: int) -> list[float] | None:
+        """Build monthly amount list from y0_share + spending_profile.
+
+        Returns a list of n_months values (index 0 = FC/Y0).
+        Returns None if spending cannot be distributed monthly (e.g., 0 items).
+        """
+        if item_dict["amount_keur"] == 0:
+            return None
+        y0 = item_dict.get("y0_share", 0.0)
+        # spending_profile is a tuple of floats; derive from the capex item
+        # We get it directly from the CapexItem
+        return None  # will be filled below using actual CapexItem
+
+    categories = []
+    grand_total = 0.0
+    capex_by_code = {item["code"]: item for item in _build_capex_items(capex)}
+
+    for sec_code, sec_name, codes in SECTION_MAP:
+        children = []
+        cat_total = 0.0
+        any_with_monthly = False
+
+        for code in codes:
+            if code not in capex_by_code:
+                continue
+            item = capex_by_code[code]
+            amount = item["amount_keur"]
+            if amount == 0:
+                continue
+
+            y0_share = item.get("y0_share", 0.0)
+
+            # Get spending_profile from the actual CapexItem
+            if hasattr(capex, code):
+                capex_item = getattr(capex, code)
+                spending_profile = capex_item.spending_profile
+            else:
+                spending_profile = ()
+
+            # Build monthly amounts (list of n_months floats, index 0 = FC)
+            monthly = [0.0] * construction_months
+            if code not in FINANCING_CODES:
+                # Period 0 = FC
+                monthly[0] = round(amount * y0_share, 2)
+                # Profile periods 1..N
+                for i, share in enumerate(spending_profile):
+                    if i + 1 < construction_months:
+                        monthly[i + 1] = round(amount * share, 2)
+                any_with_monthly = True
+            # else: monthly stays all-zero (financing rows are backend-calculated)
+
+            timing = _timing_label(y0_share, spending_profile, construction_months)
+            child = {
+                "code": code,
+                "name": item["name"],
+                "budget_y1_keur": amount,
+                "source": "factory",
+                "timing_profile": timing,
+                "monthly_amounts": monthly if any_with_monthly else None,
+                "notes": "",
+            }
+            children.append(child)
+            cat_total += amount
+
+        if not children:
+            continue
+
+        grand_total += cat_total
+
+        # Timing label for the category: based on first child with monthly data
+        cat_timing = ""
+        for ch in children:
+            if ch["monthly_amounts"] is not None:
+                active_months = sum(1 for v in ch["monthly_amounts"] if v > 0)
+                if active_months > 0:
+                    cat_timing = f"M1–M{active_months}"
+                    break
+        if not cat_timing and construction_months > 0:
+            cat_timing = f"M1–M{construction_months}"
+
+        cat = {
+            "code": sec_code,
+            "name": sec_name,
+            "timing_label": cat_timing,
+            "total_budget_keur": round(cat_total, 2),
+            "source": "factory",
+            "children": children,
+        }
+        categories.append(cat)
+
+    return {
+        "categories": tuple(categories),
+        "grand_total_keur": round(grand_total, 2),
+        "construction_months": construction_months,
+    }
+
+
 def _build_capex_items(capex) -> tuple[dict[str, Any], ...]:
     """"Build serialisable CAPEX item list from CapexStructure."""
     items = []
@@ -788,6 +993,11 @@ def _build_context_from_project_inputs(
         opex_contingency_method=opex_contingency_method,
         opex_contingency_pct=opex_contingency_pct,
         capex_items=_build_capex_items(capex),
+        capex_detail_items=_build_capex_detail_items(
+            capex, construction_months=project_inputs.info.construction_months
+        )["categories"],
+        capex_construction_months=project_inputs.info.construction_months,
+        capex_y1_total_keur=_capex_y1_total(capex),
         total_capex_keur=capex.total_capex,
         epc_contract_keur=capex.epc_contract.amount_keur,
         idc_keur=capex.idc_keur,
