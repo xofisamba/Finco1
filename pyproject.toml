@@ -7,12 +7,12 @@ name = "finco1"
 version = "0.1.0"
 description = "Finco1 financial modelling application"
 requires-python = ">=3.10"
-dependencies = [
-    "streamlit",
-    "pandas",
-    "openpyxl",
-    "pytest",
-]
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "domain*"]
+exclude = ["ui", "static", "deploy", "reports", "reporting", "validation", "tests*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
