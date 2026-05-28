@@ -268,7 +268,7 @@ class TestNoRegressions:
         """Phase 21D tests must still pass."""
         import subprocess
         result = subprocess.run(
-            ["python", "-m", "pytest",
+            ["python3", "-m", "pytest",
              "tests/test_phase21d_capex_source_model_schema_design.py",
              "-v", "--tb=short"],
             cwd="/opt/finco1",
