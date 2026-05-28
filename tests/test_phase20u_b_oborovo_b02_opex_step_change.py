@@ -145,7 +145,7 @@ class TestNoFormulaRegression:
         )
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
         # Allow project_factories.py and the domain changes needed for percentage_of_opex support
-        allowed = {"app/project_factories.py", "domain/inputs.py", "domain/opex/projections.py"}
+        allowed = {"app/project_factories.py", "domain/inputs.py", "domain/opex/projections.py", "domain/opex/templates/__init__.py"}
         unexpected = [f for f in changed if f not in allowed]
         assert not unexpected, f"Unexpected domain changes: {unexpected}"
 

@@ -16,6 +16,7 @@ from app.project_factories import (
     create_default_tuho_wind1,
     create_default_wind_project,
 )
+from domain.opex.templates import build_oborovo_opex_template, build_tuho_opex_template
 
 
 MISSING = "MISSING"
@@ -49,6 +50,7 @@ class ProjectContext:
     co2_price_eur_mwh: float | None
     revenue_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
     opex_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())
+    opex_detail_items: tuple[dict[str, Any], ...] = field(default_factory=lambda: ())  # hierarchical for detail OPEX tab
     opex_y1_total_keur: float = 0.0
     opex_contingency_method: str = ""
     opex_contingency_pct: float = 0.0
@@ -93,19 +95,21 @@ def _infer_opex_group(name: str) -> str:
     """Infer OPEX group from item name patterns (best-effort for display)."""
     n = name.lower()
     if any(k in n for k in ["technical", "o&m", "maintain", "clean", "security", "operational"]):
-        return "Operations & Maintenance"
+        return "Technical Management"
     if any(k in n for k in ["insurance", "insur"]):
         return "Insurance"
     if any(k in n for k in ["lease", "land", "property", "rent"]):
-        return "Land & Lease"
+        return "Lease & Property Tax"
     if any(k in n for k in ["power", "balancing", "grid", "transmission"]):
-        return "Grid & Balancing"
+        return "Power Expenses"
     if any(k in n for k in ["audit", "accounting", "legal", "bank fee", "admin", "management fee"]):
-        return "Administration"
+        return "Audit&Accounting&Legal"
     if any(k in n for k in ["environmental", "social", "e&s", "hse"]):
-        return "Environmental & Social"
+        return "Environmental&Social"
     if "contingen" in n:
-        return "Contingency"
+        return "Contingencies"
+    if any(k in n for k in ["infrastructure", "maintenance"]):
+        return "Infrastructure Maintenance"
     return "Other Operating Costs"
 
 
@@ -314,6 +318,162 @@ def _build_opex_items(project_inputs, horizon_years: int = 25) -> tuple[dict[str
     return tuple(items)
 
 
+# ── Group metadata for OPEX detail mapping ──────────────────────────────────────
+_OPEX_GROUP_META = {
+    # Maps group name → (code, display_order)
+    "Technical Management":       ("B.01", 1),
+    "Infrastructure Maintenance": ("B.02", 2),
+    "Maintain Site":              ("B.03", 3),
+    "Clean Material":             ("B.04", 4),
+    "Security":                   ("B.05", 5),
+    "Insurance":                  ("B.06", 6),
+    "Lease & Property Tax":       ("B.07", 7),
+    "Power Expenses":             ("B.08", 8),
+    "Fees":                       ("B.09", 9),
+    "Audit&Accounting&Legal":      ("B.10", 10),
+    "Bank Fees":                  ("B.11", 11),
+    "Environmental&Social":       ("B.12", 12),
+    "Contingencies":              ("B.13", 13),
+}
+
+
+def _build_opex_detail_items(
+    project_inputs,
+    code: str,
+    horizon_years: int = 25,
+) -> dict[str, Any]:
+    """Build hierarchical OPEX detail structure for the Excel-like OPEX grid.
+
+    For Oborovo and TUHO: uses the detailed domain.opex.templates structures.
+    For other projects: falls back to flat aggregated items from project_inputs.opex.
+
+    Returns:
+        {
+          "categories": [
+            {
+              "code": "B.01",
+              "name": "Technical Management",
+              "inflation_pct": 2.0,
+              "wth_rate": 0.0,
+              "source": "factory",
+              "is_contingency": False,
+              "children": [
+                {
+                  "code": "B.01.01",
+                  "name": "Asset Management Contract",
+                  "budget_y1_keur": 60.0,
+                  "inflation_pct": 2.0,
+                  "wth_rate": 0.0,
+                  "source": "factory",
+                  "notes": "",
+                },
+              ],
+            },
+          ],
+        }
+    """
+    # Try to use detailed templates for known projects
+    if code.upper() in ("OBOROVO",):
+        template_groups = build_oborovo_opex_template()
+    elif code.upper() in ("TUHO", "TUHO-WIND-1"):
+        template_groups = build_tuho_opex_template()
+    else:
+        template_groups = None
+
+    if template_groups is not None:
+        categories = []
+        for group in template_groups:
+            # Determine contingency flag
+            is_contingency = group.contingency_pct > 0 and group.contingency_method.name == "PERCENTAGE_OF_OPEX"
+
+            cat = {
+                "code": group.code,
+                "name": group.name,
+                "inflation_pct": group.inflation_rate * 100 if group.inflation_rate else 0.0,
+                "wth_rate": group.wth_rate or 0.0,
+                "source": "factory",
+                "is_contingency": is_contingency,
+                "children": [],
+            }
+
+            for item in group.items:
+                # Determine if this item is a contingency (B.13 style)
+                is_item_contingency = (
+                    item.selected_group_codes
+                    and all(g.startswith("B.") and g != group.code for g in item.selected_group_codes)
+                )
+
+                if is_item_contingency:
+                    # contingency_pct is already a percentage value (e.g. 4.0 for 4%)
+                    formula_note = f"{group.contingency_pct}% x non-contingency OPEX"
+                    budget_display = 0.0
+                else:
+                    formula_note = ""
+                    budget_display = item.budget_keur
+
+                child = {
+                    "code": item.code,
+                    "name": item.name,
+                    "budget_y1_keur": budget_display,
+                    "inflation_pct": item.inflation_rate * 100 if item.inflation_rate else 0.0,
+                    "wth_rate": item.wth_rate or 0.0,
+                    "source": "factory",
+                    "notes": formula_note,
+                }
+                cat["children"].append(child)
+
+            categories.append(cat)
+
+        return {"categories": tuple(categories)}
+
+    # Fallback: build flat structure from project_inputs.opex
+    categories = []
+    for item in project_inputs.opex:
+        group_name = _infer_opex_group(item.name)
+        code_slug = _slugify_code(item.name)
+        is_contingency = item.percentage_of_opex > 0
+
+        if is_contingency:
+            budget_display = 0.0
+            formula_note = f"{int(item.percentage_of_opex * 100)}% x non-contingency OPEX"
+        else:
+            budget_display = item.y1_amount_keur
+            formula_note = ""
+
+        child_item = {
+            "code": code_slug,
+            "name": item.name,
+            "budget_y1_keur": budget_display,
+            "inflation_pct": item.annual_inflation * 100 if item.annual_inflation else 0.0,
+            "wth_rate": 0.0,
+            "source": "factory",
+            "notes": formula_note,
+        }
+
+        cat_code = _OPEX_GROUP_META.get(group_name, ("", 99))[0]
+        cat_meta = next((c for c in categories if c["code"] == cat_code), None)
+        if cat_meta is None:
+            cat_meta = {
+                "code": cat_code,
+                "name": group_name,
+                "inflation_pct": item.annual_inflation * 100 if item.annual_inflation else 0.0,
+                "wth_rate": 0.0,
+                "source": "factory",
+                "is_contingency": is_contingency,
+                "children": [],
+            }
+            categories.append(cat_meta)
+
+        cat_meta["children"].append(child_item)
+
+    def _sort_key(c):
+        return _OPEX_GROUP_META.get(c["name"], ("", 99))[1]
+
+    categories.sort(key=_sort_key)
+
+    return {"categories": tuple(categories)}
+
+
 def _build_revenue_items(revenue, technical, technology: str) -> tuple[dict[str, Any], ...]:
     """Build serialisable revenue item list from RevenueParams + TechnicalParams."""
     items = []
@@ -492,6 +652,7 @@ def _build_context_from_project_inputs(
     data_source: str,
 ) -> ProjectContext:
     opex_items = _build_opex_items(project_inputs, horizon_years=project_inputs.info.horizon_years)
+    opex_detail = _build_opex_detail_items(project_inputs, code=code)
     financing = project_inputs.financing
     revenue = project_inputs.revenue
     technical = project_inputs.technical
@@ -524,6 +685,7 @@ def _build_context_from_project_inputs(
         ),
         revenue_items=_build_revenue_items(revenue, technical, technology),
         opex_items=opex_items,
+        opex_detail_items=opex_detail["categories"],
         opex_y1_total_keur=_opex_y1_total(project_inputs),
         opex_contingency_method=opex_contingency_method,
         opex_contingency_pct=opex_contingency_pct,
