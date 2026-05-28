@@ -54,6 +54,42 @@
   </div>
 </div>
 
+{# ── Phase 21B: Authority summary strip ─────────────────────────────────────── #}
+{% set auth = project_ctx.capex_detail_items[0].authority_summary if cats and cats[0].authority_summary else {} %}
+{% if auth %}
+<div class="capex-auth-strip" id="capex-auth-strip">
+  <div class="capex-auth-label">Authority:</div>
+  <div class="capex-auth-card capex-auth-card--backend">
+    <span class="capex-auth-count">{{ auth.get('backend_authoritative', 0) }}</span>
+    <span class="capex-auth-name">Backend auth.</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--app">
+    <span class="capex-auth-count">{{ auth.get('app_mapped', 0) }}</span>
+    <span class="capex-auth-name">App mapped</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--excel">
+    <span class="capex-auth-count">{{ auth.get('excel_reference_only', 0) }}</span>
+    <span class="capex-auth-name">Excel ref only</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--missing">
+    <span class="capex-auth-count">{{ auth.get('missing_runtime_source', 0) }}</span>
+    <span class="capex-auth-name">Missing src</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--mismatch">
+    <span class="capex-auth-count">{{ auth.get('mismatch', 0) }}</span>
+    <span class="capex-auth-name">Mismatch</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--deferred">
+    <span class="capex-auth-count">{{ auth.get('deferred', 0) }}</span>
+    <span class="capex-auth-name">Deferred</span>
+  </div>
+  <div class="capex-auth-total">
+    <span class="capex-auth-total__label">Total C rows:</span>
+    <span class="capex-auth-total__count">{{ auth.get('_total_child_rows', 0) }}</span>
+  </div>
+</div>
+{% endif %}
+
 {# ── Grid toolbar: monthly range + display mode + collapse controls ─────────────── #}
 {% set n_months = project_ctx.capex_construction_months|default(12) %}
 <div class="capex-grid-toolbar">
@@ -272,7 +308,7 @@
           {% endif %}
         </td>
 
-        {# Status badge #}
+        {# Status + Authority badges #}
         <td class="fc-cell fc-cell--status" data-col="10">
           {% set status = child.mapping_status|default('unmapped') %}
           {% if status == 'mapped' %}
@@ -285,6 +321,32 @@
             <span class="badge badge-backend">backend</span>
           {% else %}
             <span class="badge badge-unmapped">unmapped</span>
+          {% endif %}
+          {# Phase 21B authority badge #}
+          {% set astatus = child.authority_status|default('missing') %}
+          {% if astatus == 'backend_authoritative' %}
+            <span class="badge badge-auth-backend" title="Backend authoritative: {{ child.runtime_source_field|default('') }}">auth✓</span>
+          {% elif astatus == 'app_mapped' %}
+            <span class="badge badge-auth-app" title="App-mapped field: {{ child.runtime_source_field|default('') }}">app</span>
+          {% elif astatus == 'excel_reference_only' %}
+            <span class="badge badge-auth-excel" title="Excel reference only — no app mapping">excel</span>
+          {% elif astatus == 'missing_runtime_source' %}
+            <span class="badge badge-auth-missing" title="Missing runtime source">?src</span>
+          {% elif astatus == 'mismatch' %}
+            <span class="badge badge-auth-mismatch" title="{{ child.mapping_note|default('') }}">≠</span>
+          {% elif astatus == 'deferred' %}
+            <span class="badge badge-auth-deferred" title="Deferred mapping">defer</span>
+          {% elif astatus == 'not_applicable' %}
+            <span class="badge badge-auth-na">N/A</span>
+          {% else %}
+            <span class="badge badge-auth-missing">?unk</span>
+          {% endif %}
+          {# Source type label #}
+          {% set stype = child.source_type|default('missing') %}
+          <span class="fc-auth-src" title="Source: {{ stype }}">{{ stype[:4] }}</span>
+          {# Runtime impact dot #}
+          {% if child.affects_runtime %}
+            <span class="fc-rt-dot" title="Affects runtime"></span>
           {% endif %}
         </td>
 
@@ -353,6 +415,16 @@
     <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> child row
     | <strong>Note:</strong> Monthly amount = Excel kEUR × payment fraction per month.
     | <strong>Click category</strong> row to collapse/expand children.
+    <br>
+    <strong>Authority (Phase 21B):</strong>
+    <span class="badge badge-auth-backend">auth✓</span> backend_authoritative
+    <span class="badge badge-auth-app">app</span> app_mapped
+    <span class="badge badge-auth-excel">excel</span> excel_reference_only
+    <span class="badge badge-auth-missing">?src</span> missing_runtime_source
+    <span class="badge badge-auth-mismatch">≠</span> mismatch
+    <span class="badge badge-auth-deferred">defer</span> deferred
+    <span class="fc-rt-dot" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#16a34a;vertical-align:middle;"></span>
+    = affects runtime (CFADS / debt sizing)
   </div>
 
 </div>
@@ -465,7 +537,7 @@
   .fc-capex-detail-grid .fc-th--amount      { width: 80px;  min-width: 80px; }
   .fc-capex-detail-grid .fc-th--pct         { width: 50px;  min-width: 50px; }
   .fc-capex-detail-grid .fc-th--num         { width: 55px;  min-width: 55px; }
-  .fc-capex-detail-grid .fc-th--status      { width: 82px;  min-width: 82px; }
+  .fc-capex-detail-grid .fc-th--status      { width: 96px;  min-width: 96px; }
   .fc-capex-detail-grid .fc-th--month       { width: 54px;  min-width: 54px; font-size: 0.72rem; }
   .fc-capex-detail-grid .fc-th--month-num   { font-size: 0.65rem; color: #888; }
   .fc-capex-detail-grid .fc-th--notes       { min-width: 160px; }
@@ -540,6 +612,92 @@
   .badge-backend   { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
   .badge-unmapped  { background: #fff3cd; color: #856404; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
   .badge-factory   { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+
+  /* ── Phase 21B: Authority badges ────────────────────────────────────────── */
+  .badge-auth-backend  { background: #166534; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 700; }
+  .badge-auth-app      { background: #1d4ed8; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
+  .badge-auth-excel    { background: #6b7280; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+  .badge-auth-missing  { background: #dc2626; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
+  .badge-auth-mismatch { background: #d97706; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
+  .badge-auth-deferred { background: #9ca3af; color: #374151; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+  .badge-auth-na       { background: #e5e7eb; color: #6b7280; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+
+  /* Source type label */
+  .fc-auth-src { display: block; font-size: 0.6rem; color: #9ca3af; margin-top: 1px; }
+
+  /* Runtime impact dot */
+  .fc-rt-dot {
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #16a34a;
+    margin-left: 2px;
+    vertical-align: middle;
+  }
+
+  /* ── Phase 21B: Authority summary strip ─────────────────────────────────── */
+  .capex-auth-strip {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .capex-auth-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 0.25rem;
+  }
+  .capex-auth-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 52px;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    gap: 0.1rem;
+  }
+  .capex-auth-card--backend  { background: rgba(22,101,52,0.12); border: 1px solid #166534; }
+  .capex-auth-card--app      { background: rgba(29,78,216,0.12); border: 1px solid #1d4ed8; }
+  .capex-auth-card--excel    { background: rgba(107,114,128,0.12); border: 1px solid #6b7280; }
+  .capex-auth-card--missing  { background: rgba(220,38,38,0.12); border: 1px solid #dc2626; }
+  .capex-auth-card--mismatch { background: rgba(217,119,6,0.12); border: 1px solid #d97706; }
+  .capex-auth-card--deferred { background: rgba(156,163,175,0.2); border: 1px solid #9ca3af; }
+  .capex-auth-count {
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .capex-auth-card--backend  .capex-auth-count { color: #166534; }
+  .capex-auth-card--app      .capex-auth-count { color: #1d4ed8; }
+  .capex-auth-card--excel    .capex-auth-count { color: #6b7280; }
+  .capex-auth-card--missing  .capex-auth-count { color: #dc2626; }
+  .capex-auth-card--mismatch .capex-auth-count { color: #d97706; }
+  .capex-auth-card--deferred .capex-auth-count { color: #6b7280; }
+  .capex-auth-name {
+    font-size: 0.6rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .capex-auth-total {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: var(--muted);
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .capex-auth-total__count {
+    font-weight: 800;
+    color: var(--text);
+  }
 
   /* ── Legend ────────────────────────────────────────────────────────────── */
   .fc-capex-legend {

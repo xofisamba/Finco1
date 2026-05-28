@@ -739,6 +739,7 @@ def _build_capex_detail_items(
             "code": str,          # "C.01" etc.
             "name": str,          # "Production Unit" etc.
             "is_backend_calculated": bool,
+            "authority_summary": dict,  # counts per authority_status
             "children": tuple of {
               "code": str,          # "C.01.01" etc.
               "name": str,
@@ -756,12 +757,22 @@ def _build_capex_detail_items(
               "comments": str,
               "monthly_schedule": tuple[float, ...] | None,  # M1–M18 fractions
               "is_backend_calculated": bool,
+              # ── Phase 21B authority metadata ──────────────────────────────
+              "authority_status": str,   # excel_reference_only | app_mapped | backend_authoritative | mismatch | missing_runtime_source | deferred | not_applicable
+              "source_type": str,       # excel_reference | app_input | computed_runtime | static_reference | missing
+              "runtime_source_field": str | None,  # e.g. "capex.idc_keur"
+              "affects_runtime": bool,  # True if value feeds CFADS / debt sizing today
+              "mapping_note": str,      # human-readable note
+              "mismatch_amount_keur": float | None,
+              "mismatch_pct": float | None,
+              "monthly_schedule_source": str,  # excel_m1_m18 | app_profile | static_reference | missing
             },
           },
           "grand_total_keur": float,
           "hard_capex_total_keur": float,
           "financing_total_keur": float,
           "construction_months": int,
+          "authority_summary": dict,  # top-level counts across all categories
         }
     """
     # ── Excel payment schedule constants ─────────────────────────────────
@@ -1445,9 +1456,9 @@ def _build_capex_detail_items(
         # C.13 Contingencies
         {
             "code": "C.13", "name": "Contingencies",
-            "amount_keur": 3036.94, "per_mw": 86.77,
+            "amount_keur": 2991.54, "per_mw": 85.47,
             "cont_pct": 0.0, "cont_cost": None,
-            "vat_rate_pct": 13.0, "vat_cost": 394.80,
+            "vat_rate_pct": 13.0, "vat_cost": 388.90,
             "wth_pct": 0.0, "depreciable": True,
             "schedule": _AT_FC,
             "comments": "Excel reference: 20260330_TUHO_BP CapEx",
@@ -1701,6 +1712,148 @@ def _build_capex_detail_items(
         if cat_code == "C.18" and fname == "reserve_accounts_keur":
             _app_field_for_code["C.18.01"] = fname
 
+    # ── Phase 21B: Runtime authority ──────────────────────────────────────
+    # Which app fields are READ by runtime calculations (CFADS, debt sizing).
+    # Only fields in this set may be marked backend_authoritative.
+    _RUNTIME_SOURCE_FIELDS: set[str] = {
+        "idc_keur",           # used in debt sizing (senior draw schedule)
+        "bank_fees_keur",     # used in financing total → debt sizing
+        "commitment_fees_keur", # used in financing total → debt sizing
+        "shl_idc_keur",       # used in SHL tranche opening balance
+        "reserve_accounts_keur", # DSRA / MMRA / working capital in cash model
+        # contingencies is NOT directly read from capex in runtime;
+        # it is embedded in the capex total which is used.
+        # So we list it as runtime-affecting via the capex total.
+    }
+
+    # Which CapexStructure fields map to which Excel sub-code.
+    # Key: Excel code like "C.02.01", Value: (app_field_name, affects_runtime)
+    _EXCEL_CODE_TO_APP_FIELD: dict[str, tuple[str, bool]] = {
+        # C.01 — Production Unit (no app field maps to sub-items)
+        # C.02 — EPC Contract
+        "C.02.01": ("epc_other",     False),  # Electrical BOP — part of epc_other
+        "C.02.02": ("epc_other",     False),  # Connection to existing grid
+        "C.02.03": ("epc_other",     False),  # Civil BOP
+        "C.02.04": ("grid_connection", False), # Grid connection
+        # C.03 — Grid Connection
+        "C.03.01": ("grid_connection", False),
+        "C.03.02": ("grid_connection", False),
+        # C.04 — Monitoring (no app field)
+        # C.05 — Operation Investments (no app field)
+        # C.06 — Insurances
+        "C.06.01": ("insurances",    False),
+        # C.07 — Land Securing
+        "C.07.01": ("lease_tax",     False),
+        "C.07.02": ("lease_tax",     False),
+        # C.08 — Bank Due Diligence
+        "C.08.02": ("audit_legal",   False),  # bank due diligence mapped to audit_legal
+        "C.08.08": ("audit_legal",   False),  # Legal Advisor
+        # C.09 — Construction Management (Lender)
+        "C.09.01": ("ops_prep",             False),
+        "C.09.02": ("construction_mgmt_a",  False),
+        # C.10 — Commissioning
+        "C.10.01": ("commissioning",  False),
+        # C.11 — Audit & Accounting & Legal
+        "C.11.01": ("audit_legal",   False),
+        "C.11.02": ("audit_legal",   False),
+        "C.11.03": ("audit_legal",   False),
+        # C.12 — Construction Mgmt (Akuo)
+        "C.12.01": ("construction_mgmt_b", False),
+        # C.13 — Contingencies
+        "C.13":     ("contingencies", True),  # used in capex total → affects debt sizing
+        # C.15 — Project Acquisition
+        "C.15":     ("project_acquisition", False),
+        # C.16 — Project Rights
+        "C.16":     ("project_rights", False),
+        # C.17 — Financing Costs (backend_calculated fields)
+        "C.17.01": ("bank_fees_keur",         True),  # affects runtime (financing total)
+        "C.17.02": ("idc_keur",               True),  # affects runtime (debt draw)
+        "C.17.03": ("commitment_fees_keur",    True),  # affects runtime (financing total)
+        # C.18 — Reserve Accounts (backend_calculated)
+        "C.18.01": ("reserve_accounts_keur",  True),
+        "C.18.02": ("reserve_accounts_keur",  True),
+        "C.18.03": ("reserve_accounts_keur",  True),
+    }
+
+    def _get_field_value(field_name: str) -> float | None:
+        """Resolve an app field value (handles CapexItem vs float types)."""
+        if not hasattr(capex, field_name):
+            return None
+        actual = getattr(capex, field_name)
+        if hasattr(actual, "amount_keur"):
+            return actual.amount_keur
+        elif isinstance(actual, (int, float)):
+            return float(actual)
+        return None
+
+    def _classify_authority(
+        excel_code: str,
+        excel_amt: float,
+        app_amt: float | None,
+        runtime_field: str | None,
+        affects_runtime: bool,
+        is_backend_calculated: bool,
+    ) -> tuple[str, str, str, bool, str, float | None, float | None]:
+        """Classify authority status for a single child row.
+
+        Returns: (authority_status, source_type, runtime_source_field,
+                   affects_runtime, mapping_note,
+                   mismatch_amount_keur, mismatch_pct)
+        """
+        if is_backend_calculated:
+            # C.17 / C.18 — backend-calculated financing items
+            src = runtime_field or ""
+            note = f"Backend-calculated financing: {src}" if src else "Backend-calculated financing"
+            if runtime_field and runtime_field in _RUNTIME_SOURCE_FIELDS:
+                return ("backend_authoritative", "computed_runtime",
+                        f"capex.{runtime_field}", True, note, None, None)
+            else:
+                return ("backend_authoritative", "computed_runtime",
+                        f"capex.{runtime_field}" if runtime_field else None,
+                        affects_runtime, note, None, None)
+
+        if runtime_field and runtime_field in _RUNTIME_SOURCE_FIELDS:
+            # App field that affects runtime — but this is a child row
+            # and the category itself (C.13 contingencies) is the runtime source
+            pass  # fall through to app_mapped
+
+        if app_amt is None:
+            # No app mapping at all
+            if excel_amt > 0:
+                return ("excel_reference_only", "excel_reference", None, False,
+                        f"Excel reference only — no app field maps to {excel_code}",
+                        None, None)
+            else:
+                return ("not_applicable", "excel_reference", None, False,
+                        f"Zero or N/A in Excel and no app mapping", None, None)
+
+        # App value exists
+        if excel_amt == 0.0 and app_amt > 0:
+            return ("mismatch", "app_input",
+                    f"capex.{runtime_field}" if runtime_field else None, False,
+                    f"App has {app_amt:,.2f} kEUR but Excel = 0 for {excel_code}",
+                    app_amt, None)
+
+        if excel_amt > 0:
+            diff = abs(app_amt - excel_amt)
+            diff_pct = diff / excel_amt * 100.0
+            threshold = max(0.01 * excel_amt, 10.0)  # 1% or 10kEUR
+            if diff > threshold:
+                return ("mismatch", "app_input",
+                        f"capex.{runtime_field}" if runtime_field else None, False,
+                        f"App {app_amt:,.2f} vs Excel {excel_amt:,.2f} for {excel_code} — diff {diff:,.2f} kEUR ({diff_pct:.1f}%)",
+                        diff, round(diff_pct, 2))
+            else:
+                return ("app_mapped", "app_input",
+                        f"capex.{runtime_field}" if runtime_field else None, False,
+                        f"App {app_amt:,.2f} vs Excel {excel_amt:,.2f} — within tolerance",
+                        None, None)
+
+        # excel_amt == 0 and app_amt == 0
+        return ("not_applicable", "app_input",
+                f"capex.{runtime_field}" if runtime_field else None, False,
+                "Both Excel and app are zero", None, None)
+
     def _resolve_status(excel_amt: float, app_amt: float | None,
                         is_backend: bool) -> str:
         if is_backend:
@@ -1722,11 +1875,14 @@ def _build_capex_detail_items(
 
         # Per-sub-row app amount resolution:
         # 1. Direct field mapping (financing C.17/C.18): use individual app field value
-        # 2. Single-field categories (C.13, C.15): use category total for the single child
+        # 2. Single-field categories (C.13, C.15, C.16): use category total for the single child
         # 3. Multi-field categories (C.01, C.02, etc.): leave unmapped —
         #    app lump-sums don't map to Excel sub-item detail
         # 4. Unmapped categories: app_amount=None, status=unmapped
-        app_amt = None
+        app_amt: float | None = None
+        runtime_field: str | None = None
+        affects_runtime = False
+
         if excel_code in _app_field_for_code:
             # Direct individual field mapping (financing sub-items)
             fname = _app_field_for_code[excel_code]
@@ -1735,17 +1891,47 @@ def _build_capex_detail_items(
                 app_amt = actual.amount_keur
             elif isinstance(actual, (int, float)):
                 app_amt = float(actual)
+            runtime_field = fname
+            affects_runtime = fname in _RUNTIME_SOURCE_FIELDS
+        elif excel_code in _EXCEL_CODE_TO_APP_FIELD:
+            fname, afrt = _EXCEL_CODE_TO_APP_FIELD[excel_code]
+            app_amt = _get_field_value(fname)
+            runtime_field = fname
+            affects_runtime = afrt
         elif cat_code in _app_amount_by_cat:
-            # Single-field categories: C.13, C.15 (categories with no children
-            # or where the category row IS the child)
+            # Single-field categories: C.13, C.15, C.16
+            # (categories with no children or where the category row IS the child)
             if cat_code in ("C.13", "C.15", "C.16"):
                 app_amt = _app_amount_by_cat.get(cat_code)
+                if cat_code in _EXCEL_CODE_TO_APP_FIELD:
+                    fname, afrt = _EXCEL_CODE_TO_APP_FIELD[cat_code]
+                    runtime_field = fname
+                    affects_runtime = afrt
             # C.09 maps two app fields (ops_prep + construction_mgmt_a) →
             # category total would be misleading per sub-item; skip
 
-
         status = _resolve_status(excel_amt, app_amt, is_backend)
         delta = (round(app_amt - excel_amt, 2)) if (app_amt is not None and excel_amt != 0) else None
+
+        # ── Phase 21B authority classification ──────────────────────────
+        (authority_status, source_type, rs_field,
+         af_rt, mapping_note, mismatch_amt, mismatch_pct) = _classify_authority(
+            excel_code, excel_amt, app_amt,
+            runtime_field, affects_runtime, is_backend)
+
+        # monthly_schedule_source
+        sched = data.get("schedule")
+        if sched is _NO_SCHEDULE or sched is None:
+            sched_src = "missing" if not is_backend else "static_reference"
+        elif sched == _EVEN18:
+            sched_src = "excel_m1_m18"
+        elif sched == _AT_FC:
+            sched_src = "excel_m1_m18"  # FC = M1 in 18-month model
+        elif isinstance(sched, tuple) and len(sched) == 18:
+            sched_src = "excel_m1_m18"
+        else:
+            sched_src = "static_reference"
+
         return {
             "code": data["code"],
             "name": data["name"],
@@ -1761,8 +1947,17 @@ def _build_capex_detail_items(
             "wth_rate_pct": data.get("wth_pct"),
             "depreciable": data.get("depreciable", False),
             "comments": data.get("comments", ""),
-            "monthly_schedule": data.get("schedule"),
+            "monthly_schedule": sched,
             "is_backend_calculated": is_backend,
+            # ── Phase 21B authority metadata ──────────────────────────────
+            "authority_status": authority_status,
+            "source_type": source_type,
+            "runtime_source_field": rs_field,
+            "affects_runtime": af_rt,
+            "mapping_note": mapping_note,
+            "mismatch_amount_keur": mismatch_amt,
+            "mismatch_pct": mismatch_pct,
+            "monthly_schedule_source": sched_src,
         }
 
     # ── Build categories ──────────────────────────────────────────────────
@@ -1805,14 +2000,37 @@ def _build_capex_detail_items(
             }
             children.append(_child_row(child_data, is_backend))
 
+        # ── Phase 21B: authority_summary per category ──────────────────
+        _STATUS_COUNTS = {"backend_authoritative": 0, "app_mapped": 0,
+                           "excel_reference_only": 0, "missing_runtime_source": 0,
+                           "mismatch": 0, "deferred": 0, "not_applicable": 0}
+        for ch in children:
+            s = ch.get("authority_status", "")
+            if s in _STATUS_COUNTS:
+                _STATUS_COUNTS[s] += 1
+
         cat = {
             "code": cat_data["code"],
             "name": cat_data["name"],
             "is_backend_calculated": is_backend,
             "comments": cat_data.get("comments", ""),
             "children": tuple(children),
+            "authority_summary": dict(_STATUS_COUNTS),
         }
         categories.append(cat)
+
+    # ── Phase 21B: top-level authority_summary ─────────────────────────────
+    _TOP_COUNTS = {"backend_authoritative": 0, "app_mapped": 0,
+                   "excel_reference_only": 0, "missing_runtime_source": 0,
+                   "mismatch": 0, "deferred": 0, "not_applicable": 0}
+    _total_rows = 0
+    for cat in categories:
+        for k, v in cat["authority_summary"].items():
+            if k in _TOP_COUNTS:
+                _TOP_COUNTS[k] += v
+        _total_rows += len(cat["children"])
+    top_authority_summary = dict(_TOP_COUNTS)
+    top_authority_summary["_total_child_rows"] = _total_rows
 
     return {
         "categories": tuple(categories),
@@ -1820,6 +2038,7 @@ def _build_capex_detail_items(
         "hard_capex_total_keur": round(hard_total, 2),
         "financing_total_keur": round(financing_total, 2),
         "construction_months": construction_months,
+        "authority_summary": top_authority_summary,
     }
 
 
