@@ -728,191 +728,1097 @@ def _build_capex_detail_items(
     capex,
     construction_months: int = 12,
 ) -> dict[str, Any]:
-    """Build hierarchical CAPEX detail structure for the Excel-like CAPEX grid.
+    """Build full Excel-like CAPEX detail structure (C.01–C.18).
 
-    Categories group CAPEX items by section (Construction, Development,
-    Construction Management, Civil & Land, Insurances & Risk, Financing).
-
-    Each child has monthly_amounts derived from y0_share + spending_profile:
-      - month 0 = y0_share × total
-      - month m (1-indexed) = spending_profile[m-1] × total  (if available)
-
-    Monthly amounts are None for financing rows (IDC, bank fees, etc.) since
-    those are backend-calculated and not tied to the construction timeline.
+    Source: 20260330_TUHO_BP.xlsm CapEx sheet.
+    Maps each Excel row to current app CapexStructure where feasible.
 
     Returns:
         {
-          "categories": [
-            {
-              "code": "construction",
-              "name": "Construction",
-              "timing_label": "M1–M12",
-              "total_budget_keur": 40542.70,
-              "source": "factory",
-              "children": [
-                {
-                  "code": "epc_contract",
-                  "name": "EPC Contract",
-                  "budget_y1_keur": 26430.0,
-                  "source": "factory",
-                  "timing_profile": "linear (M1–M12)",
-                  "monthly_amounts": [2202.5, 2202.5, ...],  # 12 entries, or None
-                  "notes": "",
-                },
-              ],
+          "categories": tuple of {
+            "code": str,          # "C.01" etc.
+            "name": str,          # "Production Unit" etc.
+            "is_backend_calculated": bool,
+            "children": tuple of {
+              "code": str,          # "C.01.01" etc.
+              "name": str,
+              "amount_keur": float, # Excel reference amount
+              "app_amount_keur": float | None,
+              "per_mw": float | None,
+              "mapping_status": str, # "mapped" | "unmapped" | "partial" | "model_mismatch" | "backend_calculated"
+              "delta_keur": float | None,
+              "contingency_pct": float | None,
+              "contingency_cost_keur": float | None,
+              "vat_rate_pct": float | None,
+              "vat_cost_keur": float | None,
+              "wth_rate_pct": float | None,
+              "depreciable": bool,
+              "comments": str,
+              "monthly_schedule": tuple[float, ...] | None,  # M1–M18 fractions
+              "is_backend_calculated": bool,
             },
-            ...
-          ],
-          "grand_total_keur": 57973.05,
-          "construction_months": 12,
+          },
+          "grand_total_keur": float,
+          "hard_capex_total_keur": float,
+          "financing_total_keur": float,
+          "construction_months": int,
         }
     """
-    # Section definitions — order drives display order
-    # grid_connection grouped with EPC (construction-period payment)
-    SECTION_MAP = [
-        (
-            "epc",
-            "EPC & Construction",
-            ["epc_contract", "production_units", "epc_other", "grid_connection"],
-        ),
-        (
-            "development",
-            "Development",
-            ["project_acquisition", "project_rights", "ops_prep"],
-        ),
-        (
-            "construction_mgmt",
-            "Construction Management",
-            [
-                "construction_mgmt_a",
-                "construction_mgmt_b",
-                "commissioning",
-                "audit_legal",
+    # ── Excel payment schedule constants ─────────────────────────────────
+    # C.01–C.05, C.11: even spread over 18 months
+    _EVEN18 = (1 / 18,) * 18
+    # C.06–C.10, C.12–C.16: 100% at M1 (FC)
+    _AT_FC = (1.0,) + (0.0,) * 17
+    # C.17: backend-calculated, no payment schedule
+    _NO_SCHEDULE = None
+
+    # ── Excel reference data (C.01–C.18) ─────────────────────────────────
+    # Format: (code, name, amount_keur, per_mw, cont_pct, cont_cost,
+    #           vat_rate_pct, vat_cost, wth, depreciable, schedule, comments)
+    _EXCEL_ROWS = [
+        # C.01 Production Unit
+        {
+            "code": "C.01", "name": "Production Unit",
+            "amount_keur": 35000.0, "per_mw": 1000.0,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _EVEN18,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.01.01", "name": "Wind Turbines",
+                    "amount_keur": 35000.0, "per_mw": 1000.0,
+                    "cont_pct": 6.0, "cont_cost": 2100.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.01.02", "name": "TSA optionals",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.01.03", "name": "Flow Parts",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.01.04", "name": "Procurement fees",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.01.05", "name": "Logistics & Transport & others",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
             ],
-        ),
-        ("civil_land", "Civil & Land", ["lease_tax"]),
-        (
-            "insurances_risk",
-            "Insurances & Risk",
-            ["insurances", "contingencies", "taxes"],
-        ),
-        (
-            "financing",
-            "Financing Costs",
-            ["idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs"],
-        ),
+        },
+        # C.02 EPC Contract
+        {
+            "code": "C.02", "name": "EPC Contract",
+            "amount_keur": 13560.0, "per_mw": 387.43,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _EVEN18,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.02.01", "name": "Electrical BOP",
+                    "amount_keur": 720.0, "per_mw": 20.57,
+                    "cont_pct": 6.0, "cont_cost": 43.2,
+                    "vat_rate_pct": 13.0, "vat_cost": 93.6,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.02.02", "name": "Connection to existing grid",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.02.03", "name": "Civil BOP",
+                    "amount_keur": 2040.0, "per_mw": 58.29,
+                    "cont_pct": 6.0, "cont_cost": 122.4,
+                    "vat_rate_pct": 13.0, "vat_cost": 265.2,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.02.04", "name": "Grid connection",
+                    "amount_keur": 10800.0, "per_mw": 308.57,
+                    "cont_pct": 6.0, "cont_cost": 648.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 1404.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.03 Grid Connection
+        {
+            "code": "C.03", "name": "Grid Connection",
+            "amount_keur": 30.0, "per_mw": 0.86,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _EVEN18,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.03.01", "name": "Grid Connection Agreement",
+                    "amount_keur": 30.0, "per_mw": 0.86,
+                    "cont_pct": 6.0, "cont_cost": 1.8,
+                    "vat_rate_pct": 13.0, "vat_cost": 3.9,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.03.02", "name": "Grid Usage Fees",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.04 Monitoring & Telecom
+        {
+            "code": "C.04", "name": "Monitoring & Telecom",
+            "amount_keur": 100.0, "per_mw": 2.86,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _EVEN18,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.04.01", "name": "Telecom connection",
+                    "amount_keur": 50.0, "per_mw": 1.43,
+                    "cont_pct": 6.0, "cont_cost": 3.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 6.5,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.04.02", "name": "SCADA",
+                    "amount_keur": 50.0, "per_mw": 1.43,
+                    "cont_pct": 6.0, "cont_cost": 3.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 6.5,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.04.03", "name": "Energy Management System",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.05 Operation Investments
+        {
+            "code": "C.05", "name": "Operation Investments",
+            "amount_keur": 1000.0, "per_mw": 28.57,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _EVEN18,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.05.01", "name": "O&M Building",
+                    "amount_keur": 100.0, "per_mw": 2.86,
+                    "cont_pct": 6.0, "cont_cost": 6.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 13.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.05.02", "name": "Weather Station",
+                    "amount_keur": 300.0, "per_mw": 8.57,
+                    "cont_pct": 6.0, "cont_cost": 18.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 39.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.05.03", "name": "Temporary Access Roads",
+                    "amount_keur": 100.0, "per_mw": 2.86,
+                    "cont_pct": 6.0, "cont_cost": 6.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 13.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.05.04", "name": "Special vehicles and Operation equipment",
+                    "amount_keur": 500.0, "per_mw": 14.29,
+                    "cont_pct": 6.0, "cont_cost": 30.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 65.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.05.05", "name": "E&S/Mitigation measures",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.05.06", "name": "Local Involvement",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.06 Insurances
+        {
+            "code": "C.06", "name": "Insurances",
+            "amount_keur": 468.75, "per_mw": 13.39,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.06.01", "name": "All Construction Risk: Damage & Losses (TRC)",
+                    "amount_keur": 468.75, "per_mw": 13.39,
+                    "cont_pct": 6.0, "cont_cost": 28.13,
+                    "vat_rate_pct": 13.0, "vat_cost": 60.94,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.06.02", "name": "Civil Liability (RC)",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.06.03", "name": "Property damages insurance (DO)",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.06.04", "name": "Delay in start-up / ALOP",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.06.05", "name": "Marine Cargo DSU",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.06.06", "name": "Others",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.07 Land Securing Costs
+        {
+            "code": "C.07", "name": "Land Securing Costs",
+            "amount_keur": 512.44, "per_mw": 14.64,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.07.01", "name": "Land lease reservation / acquisition / Expropriation",
+                    "amount_keur": 500.0, "per_mw": 14.29,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 65.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.07.02", "name": "Easement",
+                    "amount_keur": 12.44, "per_mw": 0.36,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.07.03", "name": "Expropriation",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.08 Bank Due Diligence
+        {
+            "code": "C.08", "name": "Bank Due Diligence",
+            "amount_keur": 420.0, "per_mw": 12.0,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.08.01", "name": "Owners' and Lenders' Advisors",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.02", "name": "Bank due diligence",
+                    "amount_keur": 100.0, "per_mw": 2.86,
+                    "cont_pct": 6.0, "cont_cost": 6.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 13.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.03", "name": "Technical Advisor / Appraisal",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.04", "name": "E&S Advisor",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.05", "name": "Energy Yield Assessment",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.06", "name": "Market Advisor",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.07", "name": "Insurance Advisor",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.08", "name": "Legal Advisor",
+                    "amount_keur": 100.0, "per_mw": 2.86,
+                    "cont_pct": 6.0, "cont_cost": 6.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 13.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.09", "name": "Model & Tax Auditor",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.08.10", "name": "Travel Expenses & Others",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.09 Construction Management
+        {
+            "code": "C.09", "name": "Construction Management",
+            "amount_keur": 40.0, "per_mw": 1.14,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.09.01", "name": "Lender's E&S Monitoring",
+                    "amount_keur": 20.0, "per_mw": 0.57,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.09.02", "name": "Lender's Technical Monitoring",
+                    "amount_keur": 20.0, "per_mw": 0.57,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.09.03", "name": "Environmental and Social Monitoring",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.10 Commissioning
+        {
+            "code": "C.10", "name": "Commissioning",
+            "amount_keur": 0.0, "per_mw": 0.0,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": (0.0,) * 17 + (1.0,),  # M18 only
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.10.01", "name": "Commissioning and Inspections advisors",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": (0.0,) * 17 + (1.0,),
+                    "comments": "",
+                },
+                {
+                    "code": "C.10.02", "name": "Power Curve Testing",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": (0.0,) * 17 + (1.0,),
+                    "comments": "",
+                },
+                {
+                    "code": "C.10.03", "name": "Commissioning costs and potential revenues",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 6.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": (0.0,) * 17 + (1.0,),
+                    "comments": "",
+                },
+            ],
+        },
+        # C.11 Audit & Accounting & Legal
+        {
+            "code": "C.11", "name": "Audit & Accounting & Legal",
+            "amount_keur": 42.0, "per_mw": 1.2,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _EVEN18,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.11.01", "name": "Auditors closing during construction",
+                    "amount_keur": 25.0, "per_mw": 0.71,
+                    "cont_pct": 6.0, "cont_cost": 1.5,
+                    "vat_rate_pct": 13.0, "vat_cost": 3.25,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.11.02", "name": "Accounting closing during construction",
+                    "amount_keur": 11.0, "per_mw": 0.31,
+                    "cont_pct": 6.0, "cont_cost": 0.66,
+                    "vat_rate_pct": 13.0, "vat_cost": 1.43,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.11.03", "name": "Legal closing during construction",
+                    "amount_keur": 1.0, "per_mw": 0.03,
+                    "cont_pct": 6.0, "cont_cost": 0.06,
+                    "vat_rate_pct": 13.0, "vat_cost": 0.13,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.11.04", "name": "Accounting book-keeping during construction",
+                    "amount_keur": 5.0, "per_mw": 0.14,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 0.65,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.11.05", "name": "Bank book-keeping during construction",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+                {
+                    "code": "C.11.06", "name": "Legal Formalities during construction",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _EVEN18,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.12 Construction Management (Akuo)
+        {
+            "code": "C.12", "name": "Construction Mgmt (Akuo)",
+            "amount_keur": 1742.25, "per_mw": 49.78,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.12.01", "name": "Akuo Construction Services",
+                    "amount_keur": 1742.25, "per_mw": 49.78,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 13.0, "vat_cost": 226.49,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.12.02", "name": "External Construction Supervision",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.12.03", "name": "Geotechnical engineer",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.12.04", "name": "HSE (health and safety)",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.12.05", "name": "Quality & Quantities Control",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.12.06", "name": "Communication (inauguration etc.)",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.12.07", "name": "Others",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.13 Contingencies
+        {
+            "code": "C.13", "name": "Contingencies",
+            "amount_keur": 3036.94, "per_mw": 86.77,
+            "cont_pct": 0.0, "cont_cost": None,
+            "vat_rate_pct": 13.0, "vat_cost": 394.80,
+            "wth_pct": 0.0, "depreciable": True,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [],
+        },
+        # C.14 Import Taxes
+        {
+            "code": "C.14", "name": "Import Taxes",
+            "amount_keur": 0.0, "per_mw": 0.0,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.14.01", "name": "Import taxes, Customs clearance & Others",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.14.02", "name": "Taxes during construction",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.15 Project Acquisition / Development
+        {
+            "code": "C.15", "name": "Project Acquisition / Development",
+            "amount_keur": 0.0, "per_mw": 0.0,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [],
+        },
+        # C.16 Project Rights
+        {
+            "code": "C.16", "name": "Project Rights",
+            "amount_keur": 14739.15, "per_mw": 421.12,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _AT_FC,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx",
+            "children": [
+                {
+                    "code": "C.16.01", "name": "Akuo Development Services",
+                    "amount_keur": 2739.15, "per_mw": 78.26,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.16.02", "name": "Development costs",
+                    "amount_keur": 2000.0, "per_mw": 57.14,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+                {
+                    "code": "C.16.03", "name": "Project Purchase Cost",
+                    "amount_keur": 10000.0, "per_mw": 285.71,
+                    "cont_pct": 0.0, "cont_cost": 0.0,
+                    "vat_rate_pct": 0.0, "vat_cost": 0.0,
+                    "wth_pct": 0.0, "depreciable": True,
+                    "schedule": _AT_FC,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.17 Financing Costs — backend-calculated
+        {
+            "code": "C.17", "name": "Financing Costs",
+            "amount_keur": 2302.17, "per_mw": None,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _NO_SCHEDULE,
+            "is_backend_calculated": True,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx — backend-calculated",
+            "children": [
+                {
+                    "code": "C.17.01", "name": "Bank Fees",
+                    "amount_keur": 0.0, "per_mw": 0.0,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+                {
+                    "code": "C.17.02", "name": "IDCs LT debt",
+                    "amount_keur": 1519.56, "per_mw": None,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+                {
+                    "code": "C.17.03", "name": "Commitment Fees LT debt",
+                    "amount_keur": 166.72, "per_mw": None,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+                {
+                    "code": "C.17.04", "name": "Equity Arrangement Fees",
+                    "amount_keur": 0.0, "per_mw": None,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+                {
+                    "code": "C.17.05", "name": "Transaction Management Costs",
+                    "amount_keur": 0.0, "per_mw": None,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+            ],
+        },
+        # C.18 Reserve Accounts — backend-calculated
+        {
+            "code": "C.18", "name": "Reserve Accounts",
+            "amount_keur": 0.0, "per_mw": None,
+            "cont_pct": None, "cont_cost": None,
+            "vat_rate_pct": None, "vat_cost": None,
+            "wth_pct": None, "depreciable": False,
+            "schedule": _NO_SCHEDULE,
+            "is_backend_calculated": True,
+            "comments": "Excel reference: 20260330_TUHO_BP CapEx — backend-calculated",
+            "children": [
+                {
+                    "code": "C.18.01", "name": "DSRA",
+                    "amount_keur": 0.0, "per_mw": None,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+                {
+                    "code": "C.18.02", "name": "MMRA",
+                    "amount_keur": 0.0, "per_mw": None,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+                {
+                    "code": "C.18.03", "name": "Working Capital + Cash equivalents",
+                    "amount_keur": 0.0, "per_mw": None,
+                    "cont_pct": None, "cont_cost": None,
+                    "vat_rate_pct": None, "vat_cost": None,
+                    "wth_pct": None, "depreciable": False,
+                    "schedule": _NO_SCHEDULE,
+                    "is_backend_calculated": True,
+                    "comments": "",
+                },
+            ],
+        },
     ]
 
-    # Financing rows don't have monthly spending profiles in the same sense
-    FINANCING_CODES = {"idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs"}
+    # ── App CapexStructure mapping ────────────────────────────────────────
+    # Maps app CapexStructure field names → Excel category for app amount
+    _APP_MAP = {
+        "production_units":   ("C.01", 0.0),     # app=0, excel=35000 → unmapped
+        "epc_contract":       ("C.02", 52800.0), # app=52800, excel=13560 → model_mismatch
+        "epc_other":          ("C.02", 2100.0),  # app=2100, excel=0 → partial (dev&perm)
+        "grid_connection":    ("C.03", 6200.0),   # app=6200, excel=30 → model_mismatch
+        "ops_prep":           ("C.09", 1200.0),  # maps to C.09
+        "insurances":         ("C.06", 0.0),      # app=0, excel=469 → unmapped
+        "lease_tax":          ("C.07", 0.0),     # app=0, excel=512 → unmapped
+        "construction_mgmt_a":("C.09", 5400.0),  # app=5400, excel=40 → model_mismatch
+        "commissioning":      ("C.10", 0.0),      # app=0, excel=0 → unmapped
+        "audit_legal":        ("C.11", 200.0),   # app=200, excel=42 → partial
+        "construction_mgmt_b":("C.12", 0.0),     # app=0, excel=1742 → unmapped
+        "contingencies":      ("C.13", 2991.54),  # app=2991, excel=3037 → partial
+        "taxes":              ("C.14", 0.0),      # app=0, excel=0 → unmapped
+        "project_acquisition":("C.15", 1000.0),  # app=1000, excel=0 → model_mismatch
+        "project_rights":     ("C.16", 0.0),     # app=0, excel=14739 → unmapped
+        "idc_keur":           ("C.17", 1519.56), # backend
+        "bank_fees_keur":     ("C.17", 782.61),  # backend
+        "commitment_fees_keur":("C.17", 188.60), # backend
+        "other_financial_keur":("C.17", 0.0),   # backend
+        "vat_costs_keur":     ("C.17", 33.49),   # backend (part of financing)
+        "reserve_accounts_keur":("C.18", 0.0),  # backend
+    }
 
-    def _timing_label(y0_share: float, spending_profile: tuple, n_months: int) -> str:
-        """Human-readable timing description."""
-        if y0_share == 1.0:
-            return "100% at FC"
-        if not spending_profile:
-            if y0_share > 0:
-                return f"{int(y0_share*100)}% at FC"
-            return "at COD"
-        if len(spending_profile) == 1:
-            remainder = 1.0 - y0_share
-            return f"{int(y0_share*100)}% FC, {int(remainder*100)}% COD"
-        # Multiple periods
-        return f"{n_months}-month construction"
+    # Build app amount lookups
+    # _app_amount_by_cat: Excel category code → total app amount (sum of mapped fields)
+    _app_amount_by_cat: dict[str, float] = {}
+    # _app_amount_by_code: Excel sub-code → app field name → amount (for sub-row display)
+    _app_field_for_code: dict[str, str] = {}  # excel_code like "C.17.02" → app field name
 
-    def _build_monthly(item_dict: dict, n_months: int) -> list[float] | None:
-        """Build monthly amount list from y0_share + spending_profile.
+    for fname, (cat_code, _app_val) in _APP_MAP.items():
+        if not hasattr(capex, fname):
+            continue
+        actual = getattr(capex, fname)
+        # CapexItem fields have .amount_keur; financing fields are floats
+        if hasattr(actual, "amount_keur"):
+            amount = actual.amount_keur
+        elif isinstance(actual, (int, float)):
+            amount = float(actual)
+        else:
+            continue
+        _app_amount_by_cat[cat_code] = _app_amount_by_cat.get(cat_code, 0.0) + amount
+        # Also store field name for per-sub-row lookup
+        # C.17.xx → individual financing fields
+        if cat_code == "C.17" and fname.endswith("_keur"):
+            if fname == "idc_keur":
+                _app_field_for_code["C.17.02"] = fname
+            elif fname == "bank_fees_keur":
+                _app_field_for_code["C.17.01"] = fname
+            elif fname == "commitment_fees_keur":
+                _app_field_for_code["C.17.03"] = fname
+            elif fname == "vat_costs_keur":
+                pass  # part of IDC in some models
+            elif fname == "other_financial_keur":
+                pass
+        if cat_code == "C.18" and fname == "reserve_accounts_keur":
+            _app_field_for_code["C.18.01"] = fname
 
-        Returns a list of n_months values (index 0 = FC/Y0).
-        Returns None if spending cannot be distributed monthly (e.g., 0 items).
-        """
-        if item_dict["amount_keur"] == 0:
-            return None
-        y0 = item_dict.get("y0_share", 0.0)
-        # spending_profile is a tuple of floats; derive from the capex item
-        # We get it directly from the CapexItem
-        return None  # will be filled below using actual CapexItem
+    def _resolve_status(excel_amt: float, app_amt: float | None,
+                        is_backend: bool) -> str:
+        if is_backend:
+            return "backend_calculated"
+        if app_amt is None:
+            return "unmapped"
+        if app_amt == 0.0:
+            return "unmapped" if excel_amt == 0.0 else "model_mismatch"
+        if excel_amt == 0.0:
+            return "model_mismatch"
+        if abs(excel_amt - app_amt) / max(excel_amt, 1.0) > 0.05:
+            return "model_mismatch"
+        return "mapped"
 
+    def _child_row(data: dict, is_backend: bool) -> dict:
+        excel_amt = data.get("amount_keur", 0.0) or 0.0
+        cat_code = data.get("parent_code", "")
+        excel_code = data.get("code", "")
+
+        # Per-sub-row app amount resolution:
+        # 1. Direct field mapping (financing C.17/C.18): use individual app field value
+        # 2. Single-field categories (C.13, C.15): use category total for the single child
+        # 3. Multi-field categories (C.01, C.02, etc.): leave unmapped —
+        #    app lump-sums don't map to Excel sub-item detail
+        # 4. Unmapped categories: app_amount=None, status=unmapped
+        app_amt = None
+        if excel_code in _app_field_for_code:
+            # Direct individual field mapping (financing sub-items)
+            fname = _app_field_for_code[excel_code]
+            actual = getattr(capex, fname)
+            if hasattr(actual, "amount_keur"):
+                app_amt = actual.amount_keur
+            elif isinstance(actual, (int, float)):
+                app_amt = float(actual)
+        elif cat_code in _app_amount_by_cat:
+            # Single-field categories: C.13, C.15 (categories with no children
+            # or where the category row IS the child)
+            if cat_code in ("C.13", "C.15", "C.16"):
+                app_amt = _app_amount_by_cat.get(cat_code)
+            # C.09 maps two app fields (ops_prep + construction_mgmt_a) →
+            # category total would be misleading per sub-item; skip
+
+
+        status = _resolve_status(excel_amt, app_amt, is_backend)
+        delta = (round(app_amt - excel_amt, 2)) if (app_amt is not None and excel_amt != 0) else None
+        return {
+            "code": data["code"],
+            "name": data["name"],
+            "amount_keur": excel_amt,
+            "app_amount_keur": app_amt,
+            "per_mw": data.get("per_mw"),
+            "mapping_status": status,
+            "delta_keur": delta,
+            "contingency_pct": data.get("cont_pct"),
+            "contingency_cost_keur": data.get("cont_cost"),
+            "vat_rate_pct": data.get("vat_rate_pct"),
+            "vat_cost_keur": data.get("vat_cost"),
+            "wth_rate_pct": data.get("wth_pct"),
+            "depreciable": data.get("depreciable", False),
+            "comments": data.get("comments", ""),
+            "monthly_schedule": data.get("schedule"),
+            "is_backend_calculated": is_backend,
+        }
+
+    # ── Build categories ──────────────────────────────────────────────────
     categories = []
     grand_total = 0.0
-    capex_by_code = {item["code"]: item for item in _build_capex_items(capex)}
+    hard_total = 0.0
+    financing_total = 0.0
 
-    for sec_code, sec_name, codes in SECTION_MAP:
+    for cat_data in _EXCEL_ROWS:
+        is_backend = cat_data.get("is_backend_calculated", False)
+        cat_amount = cat_data.get("amount_keur", 0.0) or 0.0
+
+        if is_backend:
+            financing_total += cat_amount
+        else:
+            hard_total += cat_amount
+        grand_total += cat_amount
+
         children = []
-        cat_total = 0.0
-        any_with_monthly = False
+        for child_data in cat_data.get("children", []):
+            child_data["parent_code"] = cat_data["code"]
+            children.append(_child_row(child_data, is_backend))
 
-        for code in codes:
-            if code not in capex_by_code:
-                continue
-            item = capex_by_code[code]
-            amount = item["amount_keur"]
-            if amount == 0:
-                continue
-
-            y0_share = item.get("y0_share", 0.0)
-
-            # Get spending_profile from the actual CapexItem
-            if hasattr(capex, code):
-                capex_item = getattr(capex, code)
-                spending_profile = capex_item.spending_profile
-            else:
-                spending_profile = ()
-
-            # Build monthly amounts (list of n_months floats, index 0 = FC)
-            monthly = [0.0] * construction_months
-            if code not in FINANCING_CODES:
-                # Period 0 = FC
-                monthly[0] = round(amount * y0_share, 2)
-                # Profile periods 1..N
-                for i, share in enumerate(spending_profile):
-                    if i + 1 < construction_months:
-                        monthly[i + 1] = round(amount * share, 2)
-                any_with_monthly = True
-            # else: monthly stays all-zero (financing rows are backend-calculated)
-
-            timing = _timing_label(y0_share, spending_profile, construction_months)
-            child = {
-                "code": code,
-                "name": item["name"],
-                "budget_y1_keur": amount,
-                "source": "factory",
-                "timing_profile": timing,
-                "monthly_amounts": monthly if any_with_monthly else None,
-                "notes": "",
-            }
-            children.append(child)
-            cat_total += amount
-
+        # If no children, add the category as its own child (for C.13, C.15 with no sub-lines)
         if not children:
-            continue
-
-        grand_total += cat_total
-
-        # Timing label for the category: based on first child with monthly data
-        cat_timing = ""
-        for ch in children:
-            if ch["monthly_amounts"] is not None:
-                active_months = sum(1 for v in ch["monthly_amounts"] if v > 0)
-                if active_months > 0:
-                    cat_timing = f"M1–M{active_months}"
-                    break
-        if not cat_timing and construction_months > 0:
-            cat_timing = f"M1–M{construction_months}"
+            child_data = {
+                "code": cat_data["code"],
+                "name": cat_data["name"],
+                "amount_keur": cat_amount,
+                "per_mw": cat_data.get("per_mw"),
+                "parent_code": cat_data["code"],
+                "cont_pct": cat_data.get("cont_pct"),
+                "cont_cost": cat_data.get("cont_cost"),
+                "vat_rate_pct": cat_data.get("vat_rate_pct"),
+                "vat_cost": cat_data.get("vat_cost"),
+                "wth_pct": cat_data.get("wth_pct"),
+                "depreciable": cat_data.get("depreciable", False),
+                "schedule": cat_data.get("schedule"),
+                "comments": cat_data.get("comments", ""),
+            }
+            children.append(_child_row(child_data, is_backend))
 
         cat = {
-            "code": sec_code,
-            "name": sec_name,
-            "timing_label": cat_timing,
-            "total_budget_keur": round(cat_total, 2),
-            "source": "factory",
-            "children": children,
+            "code": cat_data["code"],
+            "name": cat_data["name"],
+            "is_backend_calculated": is_backend,
+            "comments": cat_data.get("comments", ""),
+            "children": tuple(children),
         }
         categories.append(cat)
 
     return {
         "categories": tuple(categories),
         "grand_total_keur": round(grand_total, 2),
+        "hard_capex_total_keur": round(hard_total, 2),
+        "financing_total_keur": round(financing_total, 2),
         "construction_months": construction_months,
     }
 
