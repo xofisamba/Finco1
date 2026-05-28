@@ -932,6 +932,14 @@ def build_project_context_for_record(
     if project_origin == "factory_template":
         return base
 
+    # ── For user-created projects: preserve full OPEX detail from template origin ──
+    # If seeded from tuho/oborovo, use the full detailed opex_detail_items from
+    # that base (B.01–B.13 with children) rather than falling back to flat generic.
+    # For generic_wind/generic_solar without specific origin, keep existing behavior.
+    opex_detail_items_for_user_project: tuple[dict[str, Any], ...] | None = None
+    if seed_key in ("tuho", "oborovo"):
+        opex_detail_items_for_user_project = base.opex_detail_items
+
     snapshot = dict(baseline_snapshot or {})
     resolved_project_type = (snapshot.get("project_type") or project_type or "").strip().lower()
     technology = "Solar PV" if resolved_project_type == "solar" else "Wind"

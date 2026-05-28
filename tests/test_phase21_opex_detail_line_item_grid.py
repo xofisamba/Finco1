@@ -8,6 +8,7 @@ import pytest
 from domain.opex.templates.oborovo import build_oborovo_opex_template
 from domain.opex.templates.tuho import build_tuho_opex_template
 from domain.opex.engine import compute_annual_opex
+from app.ui.project_context import build_project_context_for_record
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -472,3 +473,76 @@ class TestGuardrailRegression:
             cwd=__import__("pathlib").Path(__file__).parent.parent,
         )
         assert result.returncode == 0, f"test_opex_line_item_engine.py failed:\n{result.stdout}\n{result.stderr}"
+
+
+class TestUserCreatedProjectTemplatePreservation:
+    """User-created projects that originated from Oborovo/TUHO baseline
+    must preserve the full B.01-B.13 detail grid, not fall back to flat OPEX."""
+
+    def test_user_project_from_oborovo_shows_full_b01_b13(self):
+        """A user project seeded from 'oborovo' template_source gets 13 categories."""
+        ctx = build_project_context_for_record(
+            project_code="grubisno_test",
+            project_name="Grubišno Solar",
+            project_type="Solar",
+            project_origin="user_created",
+            template_source="oborovo",
+            baseline_snapshot={
+                "project_name": "Grubišno Solar",
+                "project_type": "Solar",
+                "horizon_years": 25,
+            },
+        )
+        codes = [c["code"] for c in ctx.opex_detail_items]
+        assert "B.01" in codes, "B.01 missing"
+        assert "B.02" in codes, "B.02 missing"
+        assert "B.12" in codes, "B.12 missing"
+        assert "B.13" in codes, "B.13 missing"
+        assert len(codes) == 13, f"Expected 13 categories, got {len(codes)}: {codes}"
+
+    def test_user_project_from_tuho_shows_full_b01_b13(self):
+        """A user project seeded from 'tuho' template_source gets 13 categories."""
+        ctx = build_project_context_for_record(
+            project_code="my_tuho_copy",
+            project_name="My TUHO Copy",
+            project_type="Wind",
+            project_origin="user_created",
+            template_source="tuho",
+            baseline_snapshot={
+                "project_name": "My TUHO Copy",
+                "project_type": "Wind",
+            },
+        )
+        codes = [c["code"] for c in ctx.opex_detail_items]
+        assert "B.01" in codes
+        assert "B.13" in codes
+        assert len(codes) == 13, f"Expected 13 categories, got {len(codes)}"
+
+    def test_generic_wind_user_project_falls_back_to_flat(self):
+        """A generic_wind project without specific origin gets fallback (4 categories)."""
+        ctx = build_project_context_for_record(
+            project_code="my_generic_wind",
+            project_name="My Generic Wind",
+            project_type="Wind",
+            project_origin="user_created",
+            template_source="generic_wind",
+            baseline_snapshot={
+                "project_name": "My Generic Wind",
+                "project_type": "Wind",
+            },
+        )
+        # generic_wind has 4 fallback categories (flat)
+        assert len(ctx.opex_detail_items) == 4
+
+    def test_factory_template_returns_full_context(self):
+        """Oborovo factory template returns full 13-category detail."""
+        ctx = build_project_context_for_record(
+            project_code="oborovo",
+            project_name="Oborovo Solar PV",
+            project_type="Solar",
+            project_origin="factory_template",
+            template_source="oborovo",
+            baseline_snapshot=None,
+        )
+        assert len(ctx.opex_detail_items) == 13
+        assert ctx.opex_y1_total_keur == 1338.08
