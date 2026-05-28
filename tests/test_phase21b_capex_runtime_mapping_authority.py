@@ -12,6 +12,7 @@ Run:
 
 import pytest
 from dataclasses import dataclass, field
+from tests.test_helpers import REPO_ROOT
 from app.ui.project_context import _build_capex_detail_items
 
 
@@ -424,7 +425,7 @@ class TestNoRuntimeModuleChanges:
         result = subprocess.run(
             ["git", "diff", "--name-only", "HEAD",
              "origin/main", "--"] + self.RUNTIME_MODULES,
-            capture_output=True, text=True, cwd="/opt/finco1"
+            capture_output=True, text=True, cwd=str(REPO_ROOT)
         )
         # Allow if no changes or if diff is empty
         changed = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]

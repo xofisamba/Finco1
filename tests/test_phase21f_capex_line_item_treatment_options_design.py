@@ -3,9 +3,9 @@ Phase 21F: CAPEX Line Item Treatment Options Design — tests.
 Design: user-selectable treatment enums + C.16 unresolved example.
 """
 
-import pytest
+from tests.test_helpers import REPO_ROOT
 import sys
-sys.path.insert(0, '/opt/finco1')
+sys.path.insert(0, str(REPO_ROOT))
 
 from app.domain.capex.source_model import (
     AccountingTreatment,
