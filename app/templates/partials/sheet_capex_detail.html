@@ -354,6 +354,19 @@
           {% if child.affects_runtime %}
             <span class="fc-rt-dot" title="Affects runtime"></span>
           {% endif %}
+          {# Phase 21E scope badge #}
+          {% set scopeval = child.scope|default('') %}
+          {% if scopeval == 'aggregate_total' %}
+            <span class="badge badge-scope-aggregate" title="Aggregate total scope">agg✓</span>
+          {% elif scopeval == 'payment_batch' %}
+            <span class="badge badge-scope-payment-batch" title="Payment batch reference scope">pymt</span>
+          {% elif scopeval == 'fee_only' %}
+            <span class="badge badge-scope-fee-only" title="Fee-only scope (prerequisite/administrative)">fee</span>
+          {% elif scopeval == 'project_rights' %}
+            <span class="badge badge-scope-project-rights" title="Project rights scope — deferred wiring">rights</span>
+          {% elif scopeval == 'timing_only' %}
+            <span class="badge badge-scope-timing-only" title="Timing-only row">tim</span>
+          {% endif %}
         </td>
 
         {# Monthly payment columns M1–M18 #}
@@ -432,6 +445,13 @@
     <span class="badge badge-auth-deferred">defer</span> deferred
     <span class="fc-rt-dot" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#16a34a;vertical-align:middle;"></span>
     = affects runtime (CFADS / debt sizing)
+    <br>
+    <strong>Scope (Phase 21E):</strong>
+    <span class="badge badge-scope-aggregate">agg✓</span> aggregate_total (full-period total)
+    <span class="badge badge-scope-payment-batch">pymt</span> payment_batch (per-batch reference)
+    <span class="badge badge-scope-fee-only">fee</span> fee_only (prerequisite/administrative)
+    <span class="badge badge-scope-project-rights">rights</span> project_rights (deferred wiring)
+    <span class="badge badge-scope-timing-only">tim</span> timing_only (M1-M18 draw schedule)
   </div>
 
 </div>
@@ -629,6 +649,13 @@
   .badge-auth-deferred { background: #9ca3af; color: #374151; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
   .badge-auth-scope-mismatch { background: #ca8a04; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
   .badge-auth-na       { background: #e5e7eb; color: #6b7280; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+
+  /* ── Phase 21E: Scope badges ───────────────────────────────────────────── */
+  .badge-scope-aggregate      { background: #1d4ed8; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: 700; }
+  .badge-scope-payment-batch  { background: #7c3aed; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: 700; }
+  .badge-scope-fee-only       { background: #6b7280; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; }
+  .badge-scope-project-rights { background: #c2410c; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: 600; }
+  .badge-scope-timing-only   { background: #0f766e; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; }
 
   /* Source type label */
   .fc-auth-src { display: block; font-size: 0.6rem; color: #9ca3af; margin-top: 1px; }

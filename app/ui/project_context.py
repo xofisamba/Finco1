@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from app.domain.capex.source_model import CapexScope
 from app.project_factories import (
     create_default_oborovo,
     create_default_solar_project,
@@ -1798,6 +1799,56 @@ def _build_capex_detail_items(
         }
         return _SCOPE_DESCS.get(code, "aggregate app value")
 
+    def _derive_scope(
+        excel_code: str,
+        cat_code: str,
+        authority_status: str,
+        runtime_field: str | None,
+        affects_runtime: bool,
+    ) -> str:
+        """Derive Phase 21E CapexScope value for a CAPEX child row.
+
+
+        Returns one of CapexScope constants or the string itself.
+        """
+        # C.02 EPC Contract
+        # App epc_contract field (52,800 kEUR 4-semester total): aggregate_total scope
+        # Excel C.02.01–04 payment-batch sub-items: payment_batch scope
+        if cat_code == "C.02":
+            if runtime_field == "epc_contract":
+                return CapexScope.AGGREGATE_TOTAL
+            return CapexScope.PAYMENT_BATCH
+
+        # C.03 Grid Connection
+        # App grid_connection field (6,200 kEUR full interconnection): aggregate_total
+        # Excel C.03.01 GPA fee (30 kEUR): fee_only scope
+        # Excel C.03.02 Grid Usage Fees (0 kEUR): generic (zero row)
+        if cat_code == "C.03":
+            if runtime_field == "grid_connection":
+                return CapexScope.AGGREGATE_TOTAL
+            if excel_code == "C.03.01":
+                return CapexScope.FEE_ONLY
+            return CapexScope.GENERIC
+
+        # C.16 Project Rights — all children: project_rights scope
+        if cat_code == "C.16":
+            return CapexScope.PROJECT_RIGHTS
+
+        # Backend-calculated financing: financing_cost scope
+        if authority_status == "backend_authoritative":
+            return CapexScope.FINANCING_COST
+
+        # Reserve accounts: reserve_account scope
+        if cat_code == "C.18":
+            return CapexScope.RESERVE_ACCOUNT
+
+        # C.07 Land: land scope
+        if cat_code == "C.07":
+            return CapexScope.LAND
+
+        # Default: generic
+        return CapexScope.GENERIC
+
     def _classify_authority(
         excel_code: str,
         excel_amt: float,
@@ -1956,6 +2007,9 @@ def _build_capex_detail_items(
             excel_code, excel_amt, app_amt,
             runtime_field, affects_runtime, is_backend)
 
+        # ── Phase 21E: scope field wiring ────────────────────────────────
+        scope = _derive_scope(excel_code, cat_code, authority_status, rs_field, af_rt)
+
         # monthly_schedule_source
         sched = data.get("schedule")
         if sched is _NO_SCHEDULE or sched is None:
@@ -1968,6 +2022,17 @@ def _build_capex_detail_items(
             sched_src = "excel_m1_m18"
         else:
             sched_src = "static_reference"
+
+
+        # ── Phase 21E: timing-only / schedule_note for M1-M18 rows ─────────
+        timing_only = None
+        schedule_note = ""
+        if sched_src in ("excel_m1_m18", "app_profile"):
+            timing_only = True
+            schedule_note = (
+                "M1-M18 schedule is timing-only — used for construction draw/IDC timing, "
+                "not a duplicate CAPEX total."
+            )
 
         return {
             "code": data["code"],
@@ -1995,6 +2060,10 @@ def _build_capex_detail_items(
             "mismatch_amount_keur": mismatch_amt,
             "mismatch_pct": mismatch_pct,
             "monthly_schedule_source": sched_src,
+            # ── Phase 21E scope wiring ───────────────────────────────────
+            "scope": scope,
+            "timing_only": timing_only,
+            "schedule_note": schedule_note,
         }
 
     # ── Build categories ──────────────────────────────────────────────────
