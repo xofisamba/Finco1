@@ -440,18 +440,20 @@
   /* ── Table ──────────────────────────────────────────────────────────────── */
   .fc-opex-detail-grid {
     table-layout: fixed;
-    min-width: calc(180px + 70px + 90px + 55px + 55px + {{ project_ctx.horizon_years|default(25) }} * 52px + 150px);
+    /* Year columns bumped to 72px for spreadsheet readability */
+    min-width: calc(180px + 70px + 90px + 55px + 55px + {{ project_ctx.horizon_years|default(25) }} * 72px + 150px);
   }
   .fc-opex-detail-grid .fc-grid-col-label { width: 180px; min-width: 180px; }
   .fc-opex-detail-grid .fc-th--code { width: 70px; min-width: 70px; }
   .fc-opex-detail-grid .fc-th--amount { width: 90px; min-width: 90px; }
   .fc-opex-detail-grid .fc-th--pct { width: 55px; min-width: 55px; }
-  .fc-opex-detail-grid .fc-th--year { width: 52px; min-width: 52px; font-size: 0.72rem; }
+  /* Year columns: 72px — enough for 5-digit kEUR values + decimals */
+  .fc-opex-detail-grid .fc-th--year { width: 72px; min-width: 72px; font-size: 0.72rem; }
   .fc-opex-detail-grid .fc-th--year-num { font-size: 0.65rem; color: #888; }
   .fc-opex-detail-grid .fc-th--notes { min-width: 150px; }
   .fc-opex-detail-grid .fc-th { text-align: center; }
 
-  /* ── Sticky columns ─────────────────────────────────────────────────────── */
+  /* ── Sticky columns (header cells) ──────────────────────────────────────── */
   .fc-th--sticky {
     position: sticky;
     z-index: 20;
@@ -460,6 +462,29 @@
   .fc-th--sticky[data-col="1"] { left: 0; z-index: 22; }
   .fc-th--sticky[data-col="2"] { left: 180px; z-index: 21; }
   .fc-th--sticky[data-col="3"] { left: 250px; z-index: 21; }
+
+  /* ── Sticky body cells (data-col on td) — explicit left required ─────────── */
+  .fc-opex-detail-grid td.fc-th--sticky[data-col="1"] {
+    position: sticky;
+    left: 0;
+    z-index: 12;
+    background: var(--surface);
+  }
+  .fc-opex-detail-grid td.fc-th--sticky[data-col="2"] {
+    position: sticky;
+    left: 180px;
+    z-index: 11;
+    background: var(--surface);
+  }
+  .fc-opex-detail-grid td.fc-th--sticky[data-col="3"] {
+    position: sticky;
+    left: 250px;
+    z-index: 11;
+    background: var(--surface);
+  }
+
+  /* ── Sticky category header row (td in tbody) must not overlap year cells ─── */
+
 
   /* ── Category rows ──────────────────────────────────────────────────────── */
   .fc-cat-row { cursor: pointer; user-select: none; }
@@ -483,19 +508,43 @@
   .fc-opex-detail-grid[data-display="values"] .fc-flag { display: none; }
 
   /* ── Cell styles ─────────────────────────────────────────────────────────── */
+  /* Base numeric cell — right-aligned, tabular, no overflow */
+  .fc-cell--amount,
+  .fc-cell--year,
+  .fc-cell--num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding-right: 6px;
+  }
+  /* Category total row — same numeric treatment */
   .fc-cell--cat-total {
     text-align: right;
     font-weight: 600;
     background: #f8f9fa;
     font-size: 0.82rem;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding-right: 6px;
   }
   .fc-cell--contingency { color: #b85c00; font-style: italic; }
   .fc-cell--inactive-year { color: #ccc; }
   .fc-cell--year {
-    text-align: right;
     font-size: 0.78rem;
+    /* inherits .fc-cell--year from base numeric above */
+  }
+  /* Percentage cells — center-aligned, tabular, compact */
+  .fc-cell--pct {
+    text-align: right;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding-right: 4px;
   }
   .fc-data-row--child .fc-grid-col-label { padding-left: 2.2rem; }
   .fc-child-indicator::before { content: "└ "; color: #bbb; font-size: 0.85em; }
