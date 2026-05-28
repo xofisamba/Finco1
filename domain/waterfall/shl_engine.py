@@ -94,7 +94,7 @@ def compute_shl_period_v3(
         shl_balance: Current SHL balance (kEUR)
         shl_rate_per_period: SHL rate per period (e.g., 0.03965 for 7.93% annual)
         cf_available: CF available for SHL after senior debt service (kEUR)
-        method: "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
+        method: "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep" | "partial_pay_sweep"
         wht_rate: WHT rate on cash interest (e.g., 0.18)
         pik_switch_triggered: True when PIK → sweep switch is triggered
         is_final_period: True for final SHL period (bullet principal due)
@@ -213,6 +213,32 @@ def compute_shl_period_v3(
                 pik_addition_keur=pik,
                 new_balance_keur=new_balance,
             )
+
+    elif method == "partial_pay_sweep":
+        # Every period: pay interest from available cash, PIK remainder, sweep residual.
+        # No annual-interest threshold trigger. No PIK/SWITCH phase split.
+        # Core partial-pay behavior: interest first, then sweep principal from remaining.
+        available = max(0.0, cf_available)
+        interest_paid = min(available, net_interest)
+        remaining_after_interest = available - interest_paid
+        # PIK = gross interest minus cash paid (unpaid interest capitalized)
+        pik = gross_interest - interest_paid
+        # Principal sweep = min(residual after interest, SHL balance + capitalized PIK)
+        # Capped so closing balance never goes negative
+        principal = min(remaining_after_interest, shl_balance + pik)
+        new_balance = max(0.0, shl_balance + pik - principal)
+        interest_wht = (
+            interest_paid * (wht_rate / (1 - wht_rate))
+            if wht_rate > 0 and interest_paid > 0
+            else 0.0
+        )
+        return SHLPeriodResult(
+            interest_paid_keur=interest_paid,
+            interest_wht_keur=interest_wht,
+            principal_keur=principal,
+            pik_addition_keur=pik,
+            new_balance_keur=new_balance,
+        )
 
     else:
         raise ValueError(f"Unknown SHL method: {method}")

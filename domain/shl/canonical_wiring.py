@@ -159,7 +159,7 @@ def wire_canonical_shl_into_waterfall(
             drawdown = 0.0
 
         # PIK allowed for pik_then_sweep, pik, accrued methods
-        pik_allowed = shl_repayment_method in ("pik", "pik_then_sweep", "accrued")
+        pik_allowed = shl_repayment_method in ("pik", "pik_then_sweep", "accrued", "partial_pay_sweep")  # partial_pay also allows PIK
 
         # PIK trigger: for pik_then_sweep, PIK triggers when cash available > interest
         # (senior debt repayment tracked separately via remaining_senior_balance)

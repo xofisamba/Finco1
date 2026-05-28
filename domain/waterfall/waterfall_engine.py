@@ -239,7 +239,7 @@ def compute_shl_period(
         shl_balance: Current SHL balance
         shl_rate_per_period: SHL interest rate per period (e.g., 0.04 for semi-annual 8%)
         cf_after_senior_ds: CF available after senior debt service (cf_after_tax)
-        method: "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
+        method: "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep" | "partial_pay_sweep"
         wht_rate: Withholding tax rate on SHL interest (e.g., 0.18)
         pik_switch_triggered: True when available CF exceeds the annual SHL interest
             threshold, switching from PIK phase (partial cash interest + PIK capitalization)
@@ -286,7 +286,7 @@ def run_waterfall(
     shl_amount: float = 0,
     shl_rate: float = 0,
     shl_idc_keur: float = 0.0,  # SHL IDC - added to opening balance
-    shl_repayment_method: str = "bullet",  # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep"
+    shl_repayment_method: str = "bullet",  # "bullet" | "cash_sweep" | "pik" | "accrued" | "pik_then_sweep" | "partial_pay_sweep"
     shl_tenor_years: int = 0,  # 0 = bullet at end of senior tenor; >0 = bullet in specific year
     shl_wht_rate: float = 0.0,  # Withholding tax rate on SHL interest
     use_shl_fcf_waterfall_engine: bool = False,
@@ -949,6 +949,22 @@ def run_waterfall(
                 sweep_amount = 0.0
             else:
                 # Both senior and SHL repaid: dividends to equity
+                dist = max(0, cf_after_reserves)
+                sweep_amount = 0.0
+        elif shl_repayment_method == "partial_pay_sweep":
+            # 3-tier waterfall: senior → SHL interest/PIK/sweep → dividends
+            # No annual-interest threshold trigger. Every period the waterfall runs.
+            if lockup:
+                dist = 0
+                sweep_amount = 0.0
+            elif shl_balance > 0:
+                # SHL outstanding: all CF after reserves goes to SHL Service.
+                # Distribution only after SHL is fully repaid.
+                # SHL interest + PIK + principal sweep are computed in the SHL block above.
+                dist = 0
+                sweep_amount = 0.0
+            else:
+                # SHL repaid: dividends to equity
                 dist = max(0, cf_after_reserves)
                 sweep_amount = 0.0
         else:
