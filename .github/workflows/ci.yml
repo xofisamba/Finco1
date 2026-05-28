@@ -17,6 +17,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e .
-          pip install pytest
+          pip install pytest python-dateutil
       - name: Run tests
         run: pytest --tb=short -q
