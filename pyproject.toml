@@ -30,4 +30,4 @@ exclude = ["ui", "static", "deploy", "reports", "reporting", "validation", "test
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_"]
-addopts = "-q --tb=short --ignore=tests/test_persistence.py --ignore=tests/test_repository.py"
+addopts = "-q --tb=short"
