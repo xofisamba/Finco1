@@ -291,6 +291,10 @@ class OpexItem:
     y1_amount_keur: float
     annual_inflation: float = 0.02
     step_changes: tuple[tuple[int, float], ...] = field(default_factory=lambda: ())
+    # If > 0, this item is a contingency calculated as a percentage of other OPEX.
+    # percentage_of_opex = X means: amount = X * sum_of_other_fixed_opex_items (excl. self)
+    # This is mutually exclusive with step_changes — do not use both on same item.
+    percentage_of_opex: float = 0.0
 
     def amount_at_year(self, year: int) -> float:
         """Return operating cost for a 1-based operating year."""

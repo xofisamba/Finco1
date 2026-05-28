@@ -135,7 +135,7 @@ class TestNoFormulaRegression:
     """Confirm no other formula changes were made."""
 
     def test_no_domain_file_changes(self):
-        """domain/ files must not have been modified (except project_factories.py)."""
+        """domain/ files must not have been modified (except project_factories.py, inputs.py, and opex/projections.py in Phase 20U-C)."""
         import subprocess
         result = subprocess.run(
             ["git", "diff", "--name-only", "domain/", "app/ui_runner.py"],
@@ -144,10 +144,10 @@ class TestNoFormulaRegression:
             text=True,
         )
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
-        # Allow project_factories.py change
-        assert all(f == "app/project_factories.py" for f in changed), (
-            f"Unexpected domain changes: {changed}"
-        )
+        # Allow project_factories.py and the domain changes needed for percentage_of_opex support
+        allowed = {"app/project_factories.py", "domain/inputs.py", "domain/opex/projections.py"}
+        unexpected = [f for f in changed if f not in allowed]
+        assert not unexpected, f"Unexpected domain changes: {unexpected}"
 
     def test_no_revenue_formula_changes(self):
         """domain/revenue/ files must not have been modified."""
