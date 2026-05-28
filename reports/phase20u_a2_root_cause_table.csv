@@ -1,0 +1,7 @@
+Project,Section,Line,Code,Period,Excel_kEUR,Python_kEUR,Delta_kEUR,Likely_Cause,Evidence,Recommended_Fix
+Oborovo,OPEX,Infrastructure Maintenance,B.02,P4 (Y2H2),185.64,244.00,+29.18,B.02.1 active Y1-2→inactive Y3+; Python has no step,"Excel OpEx sheet row 8 B.02.1 shows P1=179, P2=0; B.02.2 shows P1=0, P2=117","Add step_changes=((2, 185.64)) to Oborovo B.02 OpexItem in project_factories.py"
+Oborovo,OPEX,Environmental & Social,B.12,P4 (Y2H2),12.31,16.32,+4.01,B.12 sub-items active Y1-2→inactive Y3+; Python only has top-level step at Y3,"Excel OpEx sheet row 70 B.12.3 and B.12.5 show P1=10, P3=0",Verify B.12 step at Y3=5.2 matches Excel aggregate; currently matches
+Oborovo,OPEX,Contingencies,B.13,P4 (Y2H2),25.05,25.75,+0.70,Minor inflation/detail difference,Excel CF row 68 vs Python annual/2,Minor — not urgent
+Oborovo,OPEX,TOTAL,TOTAL,P4 (Y2H2),644.34,676.79,+32.45,Sum of B.02 + B.12 + B.13 differences,Excel CF row 49 vs Python runtime period 5,Fix B.02 step will resolve bulk of delta
+Oborovo,Revenue,CO2 Certificates,CO2,All periods,1.5 EUR/MWh,1.5 EUR/MWh,0,FLAT — confirmed from CF row 47; Python matches,Excel CF row 47 CO2 price = 1.5 flat,No fix needed — already correct
+TUHO,OPEX,Infrastructure Maintenance,B.02,P3 (Y2H1),211.95,211.95,0.00,TUHO B.02 Python matches Excel at Y2,Excel CF row 46 vs Python runtime,No fix needed for TUHO B.02
