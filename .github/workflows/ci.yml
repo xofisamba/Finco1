@@ -17,6 +17,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e .
-          pip install pytest python-dateutil
+          pip install pytest python-dateutil fastapi
       - name: Run tests
         run: pytest --tb=short -q
