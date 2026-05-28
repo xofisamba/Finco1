@@ -16,7 +16,7 @@ Constraint:
   - No distribution while SHL outstanding: the lock-up rule must be validated.
 """
 import sys
-sys.path.insert(0, '/opt/finco1')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.project_factories import create_default_tuho_wind1 as create_default_tuho, create_default_oborovo
 from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig

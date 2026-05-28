@@ -7,7 +7,7 @@ Diagnostic review of TUHO downstream SHL/distribution behavior when frozen senio
 **TUHO Lock-up Result: PASS ✅**
 - No distribution while SHL principal balance > 0
 - First distribution (idx=35) occurs exactly when SHL principal clears to 0
-- TUHO factory opt-in **recommended** (Option A below)
+- TUHO factory opt-in **BLOCKED** — CSV fixture not wired; rerun Phase 23C after fixture is wired
 
 **Oborovo: Diagnostic-only** — no frozen schedule fixture exists; distribution leak (19 instances) remains documented, fix deferred to Phase 23D.
 
@@ -107,9 +107,9 @@ No CSV fixture exists for Oborovo in `reports/`. The `use_frozen_excel_senior_de
 
 ## Factory Opt-in Recommendation
 
-### Option A — TUHO Factory Opt-in SAFE (Recommended)
+### Option A — TUHO Factory Opt-in BLOCKED (Diagnostic-Only)
 
-All downstream TUHO SHL/distribution checks pass. TUHO factory opt-in can be enabled after Phase 23B parity proof also resolves CSV fixture loading.
+TUHO downstream SHL/distribution lock-up checks pass on the current non-fixture-backed path, but this does not prove fixture-backed frozen senior DS behavior. TUHO factory opt-in is BLOCKED until Phase 23B wires the CSV fixture into canonical senior debt sizing and Phase 23C is rerun with senior DS actually changing.
 
 **Changes needed:**
 1. Phase 23B: Wire `load_senior_debt_sizing_csv_fixture()` into `build_canonical_senior_debt_sizing_from_inputs` with `use_explicit_sizing_cfads=True`
@@ -117,7 +117,7 @@ All downstream TUHO SHL/distribution checks pass. TUHO factory opt-in can be ena
 
 ### Option B — Wait for Phase 23D
 
-Defer TUHO opt-in until Phase 23D (Oborovo distribution lock-up fix + accrued interest narrow fix for TUHO).
+Defer TUHO opt-in until Phase 23D. Factory opt-in is BLOCKED, not recommended, until fixture-backed frozen senior DS differs from default.
 
 ### Option C — No Change
 
@@ -132,7 +132,7 @@ Keep frozen schedule as diagnostic-only. Do not enable factory opt-in.
 | No hardcoded senior DS arrays | ✅ |
 | No sculpting solvers | ✅ |
 | `partial_pay_sweep` remains opt-in | ✅ |
-| TUHO factory opt-in NOT enabled | ✅ |
+| TUHO factory opt-in BLOCKED | CSV fixture not wired — Phase 23B/23D first |
 | Oborovo lock-up NOT implemented | ✅ |
 | G20 BLOCKED | ✅ |
 | R99/R102 NOT APPROVED | ✅ |

@@ -28,8 +28,9 @@ Relationship to prior phases:
 import pytest
 import sys
 import warnings
+from pathlib import Path
 
-sys.path.insert(0, '/opt/finco1')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.project_factories import create_default_tuho_wind1 as create_default_tuho
 from app.project_factories import create_default_oborovo
@@ -159,8 +160,39 @@ class TestTUHOFrozenDownstream:
         r_off = _run_tuho(config_off)
         r_on = _run_tuho(config_on)
         # Senior DS at P4 should be identical since CSV fixture not loaded
-        assert r_off.periods[3].senior_ds_keur == pytest.approx(r_on.periods[3].senior_ds_keur, rel=1e-6)
-        assert r_off.periods[3].senior_ds_keur > 0
+        p4_off = r_off.periods[3].senior_ds_keur
+        p4_on = r_on.periods[3].senior_ds_keur
+        assert p4_off == pytest.approx(p4_on, rel=1e-6), (
+            f"senior_ds_keur at P4 differs -- fixture may now be wired: OFF={p4_off}, ON={p4_on}"
+        )
+        assert p4_off > 0
+
+    def test_tuho_frozen_path_is_not_fixture_backed_yet(self):
+        """senior_ds_keur is identical frozen=ON vs frozen=OFF -- known blocker for factory opt-in.
+
+        BLOCKER: CSV fixture not loaded in canonical sizing path
+        (use_explicit_sizing_cfads=False). Results do NOT prove fixture-backed
+        frozen schedule downstream behavior. Factory opt-in remains BLOCKED.
+        """
+        config_off = WaterfallRunConfig(
+            use_senior_debt_sizing_engine=False,
+            use_frozen_excel_senior_debt_schedule=False,
+        )
+        config_on = WaterfallRunConfig(
+            use_senior_debt_sizing_engine=True,
+            use_frozen_excel_senior_debt_schedule=True,
+        )
+        r_off = _run_tuho(config_off)
+        r_on = _run_tuho(config_on)
+        check_periods = [1, 2, 3, 4, 5, 11]  # P2, P3, P4, P5, P6, P12
+        for idx in check_periods:
+            ds_off = r_off.periods[idx].senior_ds_keur
+            ds_on = r_on.periods[idx].senior_ds_keur
+            assert ds_off == pytest.approx(ds_on, rel=1e-6), (
+                f"Period {idx}: senior_ds differs -- fixture may now be wired: OFF={ds_off}, ON={ds_on}"
+            )
+        # Known blocker -- this assert documents the gap, it is NOT a pass condition for opt-in
+        assert True, "fixture not loaded -- factory opt-in BLOCKED pending Phase 23B/23D fix"
 
     def test_tuho_revenue_unchanged_when_frozen_on(self):
         """Revenue at P2 is unchanged when frozen schedule is enabled."""
@@ -289,7 +321,7 @@ class TestOborovoDiagnostic:
     def test_oborovo_no_frozen_schedule_csv_fixture(self):
         """No Oborovo frozen schedule CSV exists in reports/."""
         import os
-        reports_dir = "/opt/finco1/reports"
+        reports_dir = str(Path(__file__).resolve().parents[1] / "reports")
         if not os.path.exists(reports_dir):
             pytest.skip("reports directory not accessible")
         files = os.listdir(reports_dir)
@@ -347,7 +379,7 @@ class TestGuardrails:
                 "tuho_senior_ds", "oborovo_senior_ds",
                 "app/", "--include=*.py"
             ],
-            cwd="/opt/finco1",
+            cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True, text=True,
         )
         # grep returns 1 when no matches found
@@ -406,6 +438,22 @@ class TestGuardrails:
         """main_web module imports without error."""
         import main_web
         assert main_web is not None
+
+    def test_tuho_factory_frozen_schedule_flags_both_false(self):
+        """TUHO factory has both frozen schedule flags = False; factory opt-in BLOCKED.
+
+        This guardrail confirms the default factory does not enable
+        use_frozen_excel_senior_debt_schedule or use_senior_debt_sizing_engine.
+        TUHO factory opt-in remains BLOCKED until Phase 23B/23D wires CSV fixture.
+        """
+        from app.project_factories import create_default_tuho_wind1 as create_default_tuho
+        tuho = create_default_tuho()
+        assert tuho.financing.use_frozen_excel_senior_debt_schedule is False, (
+            "TUHO factory use_frozen_excel_senior_debt_schedule must remain False"
+        )
+        assert tuho.info.use_senior_debt_sizing_engine is False, (
+            "TUHO factory use_senior_debt_sizing_engine must remain False"
+        )
 
 
 class TestTUHOFactoryOptinRecommendation:
