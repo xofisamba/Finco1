@@ -7,7 +7,19 @@ name = "finco1"
 version = "0.1.0"
 description = "Finco1 financial modelling application"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "numpy",
+    "pandas",
+    "openpyxl",
+    "streamlit",
+    "python-dateutil",
+    "fastapi",
+    "sqlalchemy",
+    "jinja2",
+    "scipy",
+    "httpx",
+    "click",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
