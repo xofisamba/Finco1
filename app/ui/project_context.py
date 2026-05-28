@@ -1786,6 +1786,18 @@ def _build_capex_detail_items(
             return float(actual)
         return None
 
+    def _scope_desc(code: str) -> str:
+        """Return a short description of the app scope for scope_mismatch notes."""
+        _SCOPE_DESCS = {
+            "C.01.01": "no app production-unit field (Wind Turbines)",
+            "C.02": "52,800 kEUR = 4-semester total EPC contract value",
+            "C.03.01": "6,200 kEUR = full interconnection cost",
+            "C.16.01": "no app field for Akuo development services",
+            "C.16.02": "no app field for development costs",
+            "C.16.03": "no app field for project purchase cost",
+        }
+        return _SCOPE_DESCS.get(code, "aggregate app value")
+
     def _classify_authority(
         excel_code: str,
         excel_amt: float,
@@ -1838,6 +1850,27 @@ def _build_capex_detail_items(
             diff = abs(app_amt - excel_amt)
             diff_pct = diff / excel_amt * 100.0
             threshold = max(0.01 * excel_amt, 10.0)  # 1% or 10kEUR
+
+            # Stage 1: detect scope-mismatch vs plain mismatch
+            # EPC (C.02) app 52,800 = 4-semester total; Excel 13,560 = one-shot reference
+            # C.03 Grid Connection app 6,200 = full interconnection; Excel 30 = GPA fee only
+            # C.16 Project Rights app 0 ≠ Excel 14,739 — different model scope not comparable
+            _SCM_CODES = {
+                "C.01.01",  # Production Unit: app 0 (no field) vs Excel 35,000
+                "C.02",     # EPC Contract: app 52,800 = 4-semester total; Excel 13,560 = per-batch reference
+                "C.03.01",  # Grid Connection Agreement: app 6,200 vs Excel 30 (GPA fee only)
+                "C.16.01",  # Akuo Development: app 0 vs Excel 2,739
+                "C.16.02",  # Development costs: app 0 vs Excel 2,000
+                "C.16.03",  # Project Purchase Cost: app 0 vs Excel 10,000
+            }
+            if excel_code in _SCM_CODES:
+                return ("scope_mismatch", "app_input",
+                        f"capex.{runtime_field}" if runtime_field else None, False,
+                        f"App {app_amt:,.2f} vs Excel {excel_amt:,.2f} kEUR — "
+                        f"scopes differ: app is aggregate ({_scope_desc(excel_code)}, "
+                        f"Excel is one-shot reference; diff {diff:,.2f} kEUR ({diff_pct:.1f}%)",
+                        diff, round(diff_pct, 2))
+
             if diff > threshold:
                 return ("mismatch", "app_input",
                         f"capex.{runtime_field}" if runtime_field else None, False,
@@ -1873,12 +1906,16 @@ def _build_capex_detail_items(
         cat_code = data.get("parent_code", "")
         excel_code = data.get("code", "")
 
-        # Per-sub-row app amount resolution:
+
+        # Phase 21C: Per-sub-row app amount resolution:
         # 1. Direct field mapping (financing C.17/C.18): use individual app field value
-        # 2. Single-field categories (C.13, C.15, C.16): use category total for the single child
-        # 3. Multi-field categories (C.01, C.02, etc.): leave unmapped —
-        #    app lump-sums don't map to Excel sub-item detail
-        # 4. Unmapped categories: app_amount=None, status=unmapped
+        # 2. C.02.04 (Grid connection) and C.03.01/02 (Grid usage): use grid_connection
+        #    which holds app total 6,200 kEUR (full interconnection scope)
+        # 3. C.16.01/02/03 (Project Rights): resolve against project_rights (app=0)
+        #    but pass excel=2739/2000/10000 so classify_authority can emit scope_mismatch
+        # 4. C.02 category row: use epc_contract (52,800) for 4-semester totals
+        # 5. Single-field categories (C.13, C.15): use category total
+        # 6. Unmapped categories: app_amount=None, status=unmapped
         app_amt: float | None = None
         runtime_field: str | None = None
         affects_runtime = False
@@ -1900,7 +1937,7 @@ def _build_capex_detail_items(
             affects_runtime = afrt
         elif cat_code in _app_amount_by_cat:
             # Single-field categories: C.13, C.15, C.16
-            # (categories with no children or where the category row IS the child)
+            # (categories where the category row IS the child)
             if cat_code in ("C.13", "C.15", "C.16"):
                 app_amt = _app_amount_by_cat.get(cat_code)
                 if cat_code in _EXCEL_CODE_TO_APP_FIELD:
@@ -2003,7 +2040,8 @@ def _build_capex_detail_items(
         # ── Phase 21B: authority_summary per category ──────────────────
         _STATUS_COUNTS = {"backend_authoritative": 0, "app_mapped": 0,
                            "excel_reference_only": 0, "missing_runtime_source": 0,
-                           "mismatch": 0, "deferred": 0, "not_applicable": 0}
+                           "mismatch": 0, "deferred": 0, "not_applicable": 0,
+                           "scope_mismatch": 0}
         for ch in children:
             s = ch.get("authority_status", "")
             if s in _STATUS_COUNTS:
@@ -2022,7 +2060,8 @@ def _build_capex_detail_items(
     # ── Phase 21B: top-level authority_summary ─────────────────────────────
     _TOP_COUNTS = {"backend_authoritative": 0, "app_mapped": 0,
                    "excel_reference_only": 0, "missing_runtime_source": 0,
-                   "mismatch": 0, "deferred": 0, "not_applicable": 0}
+                   "mismatch": 0, "deferred": 0, "not_applicable": 0,
+                   "scope_mismatch": 0}
     _total_rows = 0
     for cat in categories:
         for k, v in cat["authority_summary"].items():

@@ -159,6 +159,7 @@ class TestAuthorityStatusPresent:
     VALID_STATUSES = {
         "backend_authoritative", "app_mapped", "excel_reference_only",
         "missing_runtime_source", "mismatch", "deferred", "not_applicable",
+            "scope_mismatch",
     }
 
     def test_every_child_has_authority_status(self, detail_result):

@@ -79,6 +79,10 @@
     <span class="capex-auth-count">{{ auth.get('mismatch', 0) }}</span>
     <span class="capex-auth-name">Mismatch</span>
   </div>
+  <div class="capex-auth-card capex-auth-card--scope-mismatch">
+    <span class="capex-auth-count">{{ auth.get('scope_mismatch', 0) }}</span>
+    <span class="capex-auth-name">Scope diff</span>
+  </div>
   <div class="capex-auth-card capex-auth-card--deferred">
     <span class="capex-auth-count">{{ auth.get('deferred', 0) }}</span>
     <span class="capex-auth-name">Deferred</span>
@@ -334,6 +338,8 @@
             <span class="badge badge-auth-missing" title="Missing runtime source">?src</span>
           {% elif astatus == 'mismatch' %}
             <span class="badge badge-auth-mismatch" title="{{ child.mapping_note|default('') }}">≠</span>
+          {% elif astatus == 'scope_mismatch' %}
+            <span class="badge badge-auth-scope-mismatch" title="{{ child.mapping_note|default('') }}">≠scp</span>
           {% elif astatus == 'deferred' %}
             <span class="badge badge-auth-deferred" title="Deferred mapping">defer</span>
           {% elif astatus == 'not_applicable' %}
@@ -422,6 +428,7 @@
     <span class="badge badge-auth-excel">excel</span> excel_reference_only
     <span class="badge badge-auth-missing">?src</span> missing_runtime_source
     <span class="badge badge-auth-mismatch">≠</span> mismatch
+    <span class="badge badge-auth-scope-mismatch">≠scp</span> scope_mismatch
     <span class="badge badge-auth-deferred">defer</span> deferred
     <span class="fc-rt-dot" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#16a34a;vertical-align:middle;"></span>
     = affects runtime (CFADS / debt sizing)
@@ -620,6 +627,7 @@
   .badge-auth-missing  { background: #dc2626; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
   .badge-auth-mismatch { background: #d97706; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
   .badge-auth-deferred { background: #9ca3af; color: #374151; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+  .badge-auth-scope-mismatch { background: #ca8a04; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
   .badge-auth-na       { background: #e5e7eb; color: #6b7280; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
 
   /* Source type label */
@@ -669,6 +677,7 @@
   .capex-auth-card--excel    { background: rgba(107,114,128,0.12); border: 1px solid #6b7280; }
   .capex-auth-card--missing  { background: rgba(220,38,38,0.12); border: 1px solid #dc2626; }
   .capex-auth-card--mismatch { background: rgba(217,119,6,0.12); border: 1px solid #d97706; }
+  .capex-auth-card--scope-mismatch { background: rgba(202,138,4,0.12); border: 1px solid #ca8a04; }
   .capex-auth-card--deferred { background: rgba(156,163,175,0.2); border: 1px solid #9ca3af; }
   .capex-auth-count {
     font-size: 1rem;
@@ -680,6 +689,8 @@
   .capex-auth-card--excel    .capex-auth-count { color: #6b7280; }
   .capex-auth-card--missing  .capex-auth-count { color: #dc2626; }
   .capex-auth-card--mismatch .capex-auth-count { color: #d97706; }
+  .capex-auth-card--scope-mismatch .capex-auth-count { color: #ca8a04; }
+  .capex-auth-card--scope-mismatch .capex-auth-name { color: #ca8a04; }
   .capex-auth-card--deferred .capex-auth-count { color: #6b7280; }
   .capex-auth-name {
     font-size: 0.6rem;
