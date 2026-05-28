@@ -47,12 +47,38 @@ class TestOpexCalculation:
         assert abs(schedule[1] - y1_manual) < 0.01
 
     def test_opex_escalation(self, inputs):
-        """OPEX should escalate for most items."""
+        """OPEX escalation is driven by Excel-backed B.02 step-down at Y2.
+
+        B.02 Infrastructure Maintenance steps from 244→185.64 at Y2
+        (B.02.1 active Y1-2, B.02.2 active Y3+ per Excel schedule).
+
+        This causes total Oborovo OPEX to be slightly below Y1 at Y5
+        because B.02 at Y5 (197.00) < B.02 at Y1 (244.00).
+
+        Y1 total OPEX: 1,338.08 kEUR (Excel anchor)
+        Y5 total OPEX: ~1,336.30 kEUR (reflects B.02 step-down)
+        Y5/Y1 ratio: ~0.9987 (not > 1.03)
+        """
         y1 = opex_year(inputs.opex, 1)
         y5 = opex_year(inputs.opex, 5)
 
-        assert y5 > y1
-        assert y5 / y1 > 1.03
+        # Y1 anchor: 1,338.08 kEUR (confirmed from Excel)
+        assert abs(y1 - 1338.08) < 1.0, (
+            f"Y1 OPEX {y1:.2f} deviates from Excel anchor 1,338.08"
+        )
+
+        # Y5 may be slightly below Y1 due to B.02 step-down at Y2
+        # Y5/Y1 ratio ≈ 0.9987 (B.02 Y5=197 < B.02 Y1=244)
+        ratio = y5 / y1
+        assert 0.98 < ratio < 1.05, (
+            f"Y5/Y1 ratio {ratio:.4f} outside expected range [0.98, 1.05]. "
+            f"Y1={y1:.2f} Y5={y5:.2f}"
+        )
+
+        # Y5 is within 2% of Y1 (B.02 step-down offsets inflation)
+        assert abs(y5 - y1) / y1 < 0.02, (
+            f"Y5 ({y5:.2f}) deviates from Y1 ({y1:.2f}) by more than 2%"
+        )
 
     def test_opex_per_mw(self, inputs):
         """OPEX per MW should be in a reasonable PV-project range."""
@@ -89,9 +115,17 @@ class TestOpexCalculation:
         assert abs(opex_item_amount_at_year(item, 5) - 83.232) < 0.01
 
     def test_opex_growth_rate(self, inputs):
-        """Average OPEX growth rate should remain positive."""
+        """Average OPEX growth rate reflects Excel-backed B.02 step-down.
+
+        B.02 steps from 244→185.64 at Y2, reducing growth rate below 1%.
+        Excel-derived average growth rate over Y1-Y10 ≈ 0.0094 (0.94%).
+        This is below the pre-fix threshold of 1%, but is Excel-correct.
+        """
         rate = opex_growth_rate(inputs, start_year=1, end_year=10)
-        assert 0.01 < rate < 0.025
+        assert 0.005 < rate < 0.015, (
+            f"OPEX growth rate {rate:.4f} outside expected range [0.005, 0.015]. "
+            f"Rate reflects B.02 step-down at Y2."
+        )
 
 
 class TestOpexPeriodSchedule:
