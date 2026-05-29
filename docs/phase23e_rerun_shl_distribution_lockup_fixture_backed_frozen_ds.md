@@ -41,7 +41,7 @@ opt-in is considered.
 
 | Guardrail | Status |
 |-----------|--------|
-| G20 BLOCKED | No SHL/distribution runtime logic changes |
+| G20 BLOCKED | No SHL/distribution runtime logic changes; runtime change limited to senior DS fixture indexing offset in waterfall_core.py |
 | R99/R102 NOT APPROVED | No Revenue/OPEX/CAPEX/Tax changes |
 | partial_pay_sweep opt-in only | No promotion |
 | TUHO factory opt-in BLOCKED | `use_senior_debt_sizing_engine=False` and `use_frozen_excel_senior_debt_schedule=False` in factory |
@@ -213,7 +213,7 @@ Any existing SHL/distribution leakage for Oborovo is documented as Phase 23F/23G
 
 | Test file | Result |
 |-----------|--------|
-| `tests/test_phase23e_shl_distribution_lockup_fixture_backed_frozen_ds.py` | **8 passed** |
+| `tests/test_phase23e_shl_distribution_lockup_fixture_backed_frozen_ds.py` | **9 passed** |
 | `tests/test_phase23d_prep_tuho_fixture_backed_frozen_senior_ds.py` | **14 passed** |
 | `tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py` | **16 passed** |
 | `tests/test_phase23a_frozen_excel_senior_debt_schedule_runtime_wiring.py` | **11 passed** |
@@ -221,7 +221,7 @@ Any existing SHL/distribution leakage for Oborovo is documented as Phase 23F/23G
 | `tests/test_tuho_shl_calibration.py` | **14 passed** |
 | `tests/test_revenue.py` | **14 passed** |
 | `tests/test_opex.py` | **10 passed** |
-| **Total** | **117 passed, 2 xfailed, 1 xpassed** |
+| **Total** | **118 passed, 2 xfailed, 1 xpassed** |
 
 ---
 
@@ -231,5 +231,5 @@ Any existing SHL/distribution leakage for Oborovo is documented as Phase 23F/23G
 |------|--------|
 | `app/waterfall_core.py` | +2 lines: `op_idx + 1` offset fix in fixture CFADS/DSCR tuple construction |
 | `tests/test_phase23d_prep_tuho_fixture_backed_frozen_senior_ds.py` | helper fixture helper updated to waterfall 0-based indexing + test param `op_idx=14`→`op_idx=13` |
-| `tests/test_phase23e_shl_distribution_lockup_fixture_backed_frozen_ds.py` | new: 8 diagnostic tests |
+| `tests/test_phase23e_shl_distribution_lockup_fixture_backed_frozen_ds.py` | new: 9 diagnostic tests, including offset mapping regression guard |
 | `docs/phase23e_...md` | new: this document |
