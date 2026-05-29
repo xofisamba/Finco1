@@ -7,7 +7,7 @@ Diagnostic review of TUHO downstream SHL/distribution behavior when frozen senio
 **TUHO Lock-up Result: PASS ✅**
 - No distribution while SHL principal balance > 0
 - First distribution (idx=35) occurs exactly when SHL principal clears to 0
-- TUHO factory opt-in **BLOCKED** — CSV fixture not wired; rerun Phase 23C after fixture is wired
+- TUHO factory opt-in **BLOCKED** — CSV fixture not wired; Phase 23C validates downstream behavior only on the current non-fixture-backed path
 
 **Oborovo: Diagnostic-only** — no frozen schedule fixture exists; distribution leak (19 instances) remains documented, fix deferred to Phase 23D.
 
@@ -19,7 +19,7 @@ Diagnostic review of TUHO downstream SHL/distribution behavior when frozen senio
 |---|---|
 | Phase 23A | Wired frozen schedule behind `use_frozen_excel_senior_debt_schedule` + `use_senior_debt_sizing_engine` flags; **CSV fixture NOT loaded** |
 | Phase 23B | Proved TUHO frozen schedule parity (DRAFT PR #299) — must also address CSV fixture loading |
-| Phase 23C (this) | Validates downstream SHL/distribution behavior; **recommends TUHO factory opt-in** |
+| Phase 23C (this) | Validates downstream SHL/distribution behavior only on the current non-fixture-backed path; TUHO factory opt-in remains BLOCKED |
 
 ---
 
@@ -42,7 +42,7 @@ Phase 23B parity proof (PR #299) must address CSV fixture loading to make the fr
 
 ## TUHO Downstream Diagnostic Results
 
-### Test Summary (23 tests — all PASS)
+### Test Summary (25 tests — all PASS)
 
 | Check | Result |
 |---|---|
@@ -105,23 +105,15 @@ No CSV fixture exists for Oborovo in `reports/`. The `use_frozen_excel_senior_de
 
 ---
 
-## Factory Opt-in Recommendation
+## Factory Opt-in Status
 
-### Option A — TUHO Factory Opt-in BLOCKED (Diagnostic-Only)
+### TUHO Factory Opt-in BLOCKED
 
 TUHO downstream SHL/distribution lock-up checks pass on the current non-fixture-backed path, but this does not prove fixture-backed frozen senior DS behavior. TUHO factory opt-in is BLOCKED until Phase 23B wires the CSV fixture into canonical senior debt sizing and Phase 23C is rerun with senior DS actually changing.
 
 **Changes needed:**
 1. Phase 23B: Wire `load_senior_debt_sizing_csv_fixture()` into `build_canonical_senior_debt_sizing_from_inputs` with `use_explicit_sizing_cfads=True`
 2. Then: Set `use_senior_debt_sizing_engine=True` and `use_frozen_excel_senior_debt_schedule=True` in `create_default_tuho_wind1()`
-
-### Option B — Wait for Phase 23D
-
-Defer TUHO opt-in until Phase 23D. Factory opt-in is BLOCKED, not recommended, until fixture-backed frozen senior DS differs from default.
-
-### Option C — No Change
-
-Keep frozen schedule as diagnostic-only. Do not enable factory opt-in.
 
 ---
 
@@ -143,9 +135,17 @@ Keep frozen schedule as diagnostic-only. Do not enable factory opt-in.
 
 **No runtime changes — diagnostic only.**
 
-- `scripts/phase23c_tuho_frozen_downstream_diagnostic.py` — diagnostic helper (not committed)
-- `tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py` — 23 tests, all pass
+- `scripts/phase23c_tuho_frozen_downstream_diagnostic.py` — diagnostic helper (committed)
+- `tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py` — 25 tests, all pass
 - `docs/phase23c_shl_distribution_lockup_review_frozen_schedule.md` — this document
+
+---
+
+## CI / Packaging Note
+
+This PR adds `pyproject.toml` so that `pip install -e .` works correctly in GitHub Actions. CI runs only targeted Phase 23C-related test suites because the full pytest suite has pre-existing collection/import issues (missing optional packages like bcrypt) that are outside Phase 23C scope.
+
+Full-suite pytest cleanup should be a separate effort, not part of Phase 23C.
 
 ---
 
@@ -167,12 +167,12 @@ no distribution while shl_gross_accrued_interest_keur > 0  # narrow fix
 ## Test Results
 
 ```
-tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py  23 passed
+tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py  25 passed
 tests/test_phase23a_frozen_excel_senior_debt_schedule_runtime_wiring.py  28 passed
-tests/test_shl_waterfall_priority.py                                     6 passed
-tests/test_tuho_shl_calibration.py                                      8 passed (2 xfail, 1 xpass)
-tests/test_revenue.py                                                   17 passed
-tests/test_opex.py                                                     14 passed
+tests/test_shl_waterfall_priority.py                                      6 passed
+tests/test_tuho_shl_calibration.py                                       8 passed (2 xfail, 1 xpass)
+tests/test_revenue.py                                                    16 passed
+tests/test_opex.py                                                      15 passed
 ```
 
-**Total: 96 passed, 2 xfailed, 1 xpassed** (xpass in `test_tuho_first_distribution_period_is_p36` — pre-existing calibration target)
+**Total: 98 passed, 2 xfailed, 1 xpassed** (xpass in `test_tuho_first_distribution_period_is_p36` — pre-existing calibration target)
