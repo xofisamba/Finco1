@@ -1,23 +1,28 @@
 """Phase 23K: Oborovo SHL Opening Balance Bridge — diagnostic tests.
 
-Diagnostic-only: documents the SHL opening balance gap between Python and Excel.
-No runtime logic changes. No factory changes.
+Historical context (pre-Phase 23L):
+  Pre-23L Python: shl_amount_keur=13,547.2 + shl_idc_keur=1,169.0 = 14,716.2 kEUR opening
+  Excel target:   shl_amount_keur=14,621.0 + shl_idc_keur=1,170.0 = 15,791 kEUR opening
+  Gap (pre-23L):  1,074.8 kEUR in the draw/principal component
 
-SHL Bridge (current state):
-  Python: shl_amount_keur=13,547.2 + shl_idc_keur=1,169.0 = 14,716.2 kEUR opening
-  Excel:   shl_amount_keur=14,621.0 + shl_idc_keur=1,170.0 = 15,791 kEUR opening
-  Gap:     1,074.8 kEUR in the draw amount
+Post-Phase 23L correction:
+  shl_amount_keur corrected from 13,547.2 → 14,621.0 kEUR
+  Opening SHL now: 14,621 + 1,169 = 15,790 kEUR ≈ Excel 15,791 kEUR ✓
+  Gap CLOSED.
 
 Source of Excel target:
   - Oborovo construction template (domain/construction/templates/oborovo.py):
       shl_keur=14,620.774  (funding cap, rounded to 14,621)
   - project_factories.py comment: "opening SHL balance = 14,621 + 1,169 = 15,790"
-  - IDC (1,169/1,170) matches between Python and Excel; no gap there
+  - IDC (1,169/1,170) matched between Python and Excel; no gap there
 
 PR context:
   #303: TUHO factory frozen senior DS opt-in (merged)
   #304: Oborovo SHL/distribution lock-up guard — Python bug fixed (merged)
   #306: Oborovo shl_tenor_years 0→20 (Excel 20-year bullet alignment) (merged)
+  #308/23K: Diagnostic — documented the SHL opening balance gap
+  #309/23L: Factory correction — shl_amount_keur 13,547.2 → 14,621.0 (gap closed)
+  #310/23M: Test update — Phase 23K tests now pass after Phase 23L correction
 """
 
 import pytest
@@ -32,49 +37,48 @@ from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 # ---------------------------------------------------------------------------
 
 def test_oborovo_current_shl_opening_balance_documents_gap():
-    """Document Python opening SHL balance vs Excel target.
+    """Document Python opening SHL balance vs Excel target (POST Phase 23L).
 
-    Current Python: shl_amount=13,547.2 + shl_idc=1,169.0 = 14,716.2 kEUR
-    Excel target:   shl_amount=14,621.0 + shl_idc=1,170.0 = 15,791 kEUR
-    Gap:            1,074.8 kEUR (in the draw/principal component)
+    Pre-Phase 23L (historical): shl_amount=13,547.2 + shl_idc=1,169.0 = 14,716.2 kEUR
+    Post-Phase 23L (current):   shl_amount=14,621.0 + shl_idc=1,169.0 = 15,790.0 kEUR
+    Excel target:               shl_amount=14,621.0 + shl_idc=1,170.0 = 15,791 kEUR
+
+    After Phase 23L correction, the gap is CLOSED.
+    This test validates that shl_amount=14,621.0 (Excel draw) and opening≈15,790 kEUR.
     """
     oborovo = create_default_oborovo()
     fin = oborovo.financing
 
-    shl_amount = fin.shl_amount_keur          # 13,547.2
-    shl_idc    = fin.shl_idc_keur              # 1,169.0
-    python_opening = shl_amount + shl_idc      # 14,716.2
+    shl_amount = fin.shl_amount_keur          # 14,621.0 (post-23L)
+    shl_idc    = fin.shl_idc_keur              # 1,169.0 (unchanged)
+    python_opening = shl_amount + shl_idc      # 15,790.0
 
     excel_draw = 14_621.0
     excel_idc  = 1_170.0
     excel_opening = excel_draw + excel_idc     # 15,791
 
-    gap = excel_opening - python_opening       # ~1,074.8
-
-    # Document the values
-    assert shl_amount == pytest.approx(13_547.2, abs=0.1), (
-        f"Factory shl_amount_keur = {shl_amount} — expected 13,547.2"
+    # Post-23L: shl_amount should now match Excel draw
+    assert shl_amount == pytest.approx(14_621.0, abs=0.1), (
+        f"Factory shl_amount_keur = {shl_amount} — expected 14,621.0 (Excel draw, corrected in Phase 23L)"
     )
     assert shl_idc == pytest.approx(1_169.0, abs=1.0), (
-        f"Factory shl_idc_keur = {shl_idc} — expected 1,169.0"
+        f"Factory shl_idc_keur = {shl_idc} — expected 1,169.0 (unchanged)"
     )
-    assert python_opening == pytest.approx(14_716.2, abs=0.2), (
-        f"Python opening SHL balance = {python_opening} — expected 14,716.2"
-    )
-
-    # The gap is the key finding
-    assert gap > 1_000, (
-        f"SHL opening gap is {gap:.1f} kEUR — Excel target ({excel_opening:.0f}) "
-        f"> Python ({python_opening:.1f}); gap must exceed 1,000 kEUR to be confirmed"
-    )
-    assert gap < 1_200, (
-        f"SHL opening gap is {gap:.1f} kEUR — sanity check: gap should be ~1,074 kEUR"
+    assert python_opening == pytest.approx(15_790.0, abs=1.0), (
+        f"Python opening SHL balance = {python_opening} — expected 15,790.0 (≈ Excel 15,791)"
     )
 
-    print(f"\nSHL Opening Balance Gap Confirmed:")
+    # Gap is now closed: python ≈ excel within tolerance
+    gap = excel_opening - python_opening
+    assert abs(gap) <= 2.0, (
+        f"SHL opening gap = {gap:.1f} kEUR — should be ~0 after Phase 23L correction; "
+        f"Python ({python_opening:.0f}) ≈ Excel ({excel_opening:.0f})"
+    )
+
+    print(f"\nSHL Opening Balance Gap CLOSED:")
     print(f"  Python opening: {python_opening:.1f} kEUR")
     print(f"  Excel target:   {excel_opening:.0f} kEUR")
-    print(f"  Gap:             {gap:.1f} kEUR")
+    print(f"  Gap:            {gap:.1f} kEUR (abs ≤ 2 kEUR) ✓")
 
 
 # ---------------------------------------------------------------------------
@@ -82,44 +86,43 @@ def test_oborovo_current_shl_opening_balance_documents_gap():
 # ---------------------------------------------------------------------------
 
 def test_oborovo_shl_component_bridge():
-    """Compare current factory components to Excel-known components.
+    """Compare current factory components to Excel-known components (POST Phase 23L).
 
-    SHL draw (principal): Python=13,547.2 vs Excel≈14,621 → delta ≈ −1,074 kEUR
-    SHL IDC:             Python=1,169.0 vs Excel≈1,170   → delta ≈    −1 kEUR (≈0)
+    Pre-Phase 23L (historical): SHL draw=13,547.2 vs Excel=14,621 → delta ≈ −1,074 kEUR
+    Post-Phase 23L (current):   SHL draw=14,621.0 vs Excel=14,621 → delta ≈ 0 kEUR ✓
+    SHL IDC:                    Python=1,169.0 vs Excel=1,170   → delta ≈ −1 kEUR (≈0)
 
-    The gap is entirely in the draw/principal component, not the IDC.
-    This supports a narrow factory correction (shl_amount_keur only).
+    After Phase 23L correction, both draw and IDC are aligned with Excel.
     """
     oborovo = create_default_oborovo()
     fin = oborovo.financing
 
-    shl_amount = fin.shl_amount_keur    # 13,547.2
-    shl_idc    = fin.shl_idc_keur       # 1,169.0
+    shl_amount = fin.shl_amount_keur    # 14,621.0 (post-23L)
+    shl_idc    = fin.shl_idc_keur       # 1,169.0 (unchanged)
 
     # Excel-known values
     excel_draw_amount = 14_621.0
     excel_idc         = 1_170.0
 
-    draw_delta  = shl_amount - excel_draw_amount   # negative: Python below Excel
-    idc_delta   = shl_idc - excel_idc              # near zero
+    draw_delta  = shl_amount - excel_draw_amount   # ~0 after Phase 23L
+    idc_delta   = shl_idc - excel_idc              # near zero (unchanged)
 
-    # IDC is matched — no gap there
+    # IDC: no gap (unchanged from Phase 23K)
     assert abs(idc_delta) < 5.0, (
         f"IDC gap = {idc_delta:.1f} kEUR — should be near zero; "
         f"Python={shl_idc:.1f}, Excel={excel_idc:.0f}"
     )
 
-    # Draw is the problem — Python ~1,074 kEUR below Excel
-    assert draw_delta < -1_000, (
-        f"SHL draw delta = {draw_delta:.1f} kEUR — Python draw is {abs(draw_delta):.0f} kEUR "
-        f"below Excel ({shl_amount:.1f} vs {excel_draw_amount:.0f}); "
-        f"this is the confirmed gap"
+    # Draw: now aligned with Excel (Phase 23L corrected the gap)
+    assert abs(draw_delta) <= 1.0, (
+        f"SHL draw delta = {draw_delta:.1f} kEUR — after Phase 23L, draw should be "
+        f"aligned with Excel ({shl_amount:.1f} vs {excel_draw_amount:.0f})"
     )
 
-    print(f"\nSHL Component Bridge:")
-    print(f"  Draw:  Python={shl_amount:.1f} Excel={excel_draw_amount:.0f}  delta={draw_delta:.1f}")
-    print(f"  IDC:   Python={shl_idc:.1f}  Excel={excel_idc:.0f}  delta={idc_delta:.1f}")
-    print(f"  Total: Python={shl_amount+shl_idc:.1f} Excel={excel_draw_amount+excel_idc:.0f}  gap={abs(draw_delta+idc_delta):.1f}")
+    print(f"\nSHL Component Bridge (POST Phase 23L):")
+    print(f"  Draw:  Python={shl_amount:.1f} Excel={excel_draw_amount:.0f}  delta={draw_delta:.1f} kEUR ✓")
+    print(f"  IDC:   Python={shl_idc:.1f}  Excel={excel_idc:.0f}  delta={idc_delta:.1f} kEUR ✓")
+    print(f"  Gap CLOSED: opening = {shl_amount+shl_idc:.1f} ≈ {excel_draw_amount+excel_idc:.0f}")
 
 
 # ---------------------------------------------------------------------------
