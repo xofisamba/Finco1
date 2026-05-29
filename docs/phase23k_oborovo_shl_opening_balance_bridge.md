@@ -7,6 +7,22 @@
 
 ---
 
+## ⚠️ Superseded by Phase 23L
+
+> **Phase 23K was a diagnostic PR.** Phase 23L (PR #309) implemented the recommended factory correction.
+> The diagnostic gap documented here was **CLOSED by Phase 23L**.
+>
+> - Phase 23K diagnosed the gap (pre-23L: 14,716.2 vs Excel 15,791 kEUR)
+> - Phase 23L corrected `shl_amount_keur` from `13,547.2` → `14,621.0`
+> - Post-23L opening SHL = 15,790 kEUR ≈ Excel 15,791 kEUR ✓
+
+| Phase | SHL Draw | Opening SHL | vs Excel |
+|---|---|---|---|
+| **Pre-23L (this doc)** | 13,547.2 kEUR | 14,716.2 kEUR | −1,074.8 kEUR |
+| **Post-23L (corrected)** | 14,621.0 kEUR | 15,790.0 kEUR | −1 kEUR ≈ 0 ✓ |
+
+---
+
 ## Context
 
 | PR | Title | Status |
@@ -18,7 +34,7 @@
 After PR #304 + #306:
 - Oborovo distribution now starts ~2050 (period 39+), matching Excel directionally
 - SHL clearing: Python at period 38 (2048-12-31), Excel appears to target period 40 (2050-06-30)
-- **Remaining gap: SHL opening balance ~1,074 kEUR**
+- **Remaining gap: SHL opening balance ~1,074 kEUR** ← *Documented in this PR*
 
 ---
 
@@ -31,9 +47,12 @@ From cofi19 manual inspection of Oborovo Excel CF tab:
 
 ---
 
-## SHL Opening Balance Bridge
+## SHL Opening Balance Bridge (Pre-Phase 23L — Historical)
 
-| Component | Python (current) | Excel (target) | Delta |
+> ⚠️ **HISTORICAL TABLE** — This documents the state *before* Phase 23L correction.
+> See the "Superseded by Phase 23L" section above for the current (corrected) state.
+
+| Component | Pre-23L Python | Excel (target) | Delta |
 |---|---|---|---|
 | SHL draw/principal | **13,547.2 kEUR** | **14,621 kEUR** | **−1,073.8 kEUR** |
 | SHL IDC | 1,169.0 kEUR | 1,170 kEUR | −0.97 kEUR ≈ 0 |
@@ -48,7 +67,7 @@ shl_keur=14620.774,  # Excel construction funding cap for SHL
 
 ---
 
-## Runtime Behavior on Current Main
+## Runtime Behavior on Pre-23L Main (Historical)
 
 ```
 Op[0]  date=2030-12-31  dist=51.73  shl_bal=14716.20  shl_svc=593.49   ← FIRST DISTRIBUTION (Python)
@@ -57,7 +76,7 @@ Op[38] date=2049-12-31  dist=0.00    shl_bal=0.00       shl_svc=15309.69 ← SHL
 Op[39] date=2050-06-30  dist=2994.41 shl_bal=0.00       shl_svc=0.00     ← LARGE DISTRIBUTION STARTS
 ```
 
-**Observations:**
+**Observations (pre-23L):**
 1. Python SHL opening balance = 14,716.2 kEUR (13,547.2 + 1,169.0)
 2. SHL principal repaid in full at period 38 (2049-12-31) — all in one period
 3. Distributions occur alongside SHL interest (small amounts 2030–2049)
@@ -66,14 +85,14 @@ Op[39] date=2050-06-30  dist=2994.41 shl_bal=0.00       shl_svc=0.00     ← LAR
 
 ---
 
-## Root Cause Hypothesis
+## Root Cause Hypothesis (Pre-23L — Historical)
 
-Current factory:
+Pre-23L factory:
 - `shl_amount_keur = 13,547.2` in `app/project_factories.py:create_default_oborovo()`
-- This appears to be the SHL draw amount used in the waterfall engine
+- This appeared to be the SHL draw amount used in the waterfall engine
 - The construction template uses `shl_keur=14,620.774` as the funding cap
 
-**If the Excel SHL draw is 14,621 kEUR**, the factory understates it by:
+**If the Excel SHL draw is 14,621 kEUR**, the factory understated it by:
 ```
 14,621 - 13,547.2 = 1,073.8 kEUR
 ```
@@ -82,28 +101,29 @@ This single change would raise Python opening SHL from 14,716.2 to 15,785.2 kEUR
 
 ---
 
-## Conclusion
+## Resolution: Phase 23L Factory Correction (PR #309)
 
-| Question | Answer |
-|---|---|
-| Is this a factory config bug? | **Likely yes** — `shl_amount_keur = 13,547.2` appears to be ~1,074 kEUR below Excel's 14,621 kEUR draw |
-| Is IDC the problem? | **No** — IDC is 1,169 kEUR in both Python and Excel |
-| Is construction IDC engine needed? | **No** — narrow factory correction would fix the gap without runtime IDC engine |
-| Is runtime SHL/waterfall logic correct? | **Yes** — SHL interest and repayment mechanics are working; the opening balance is what needs correction |
+Phase 23L implemented Option A from this document:
+
+**Change:** `shl_amount_keur` in `app/project_factories.py:create_default_oborovo()`
+```
+Before (pre-23L): shl_amount_keur = 13,547.2 kEUR
+After  (post-23L): shl_amount_keur = 14,621.0 kEUR
+```
+`shl_idc_keur` unchanged at `1,169.0 kEUR`.
+
+**Result:** Opening SHL = 14,621.0 + 1,169.0 = **15,790.0 kEUR** ≈ Excel 15,791 kEUR ✓
 
 ---
 
-## Recommendation for Phase 23L
+## Conclusion (Historical — Pre-23L Resolution)
 
-**Option A (narrow):** Change Oborovo factory `shl_amount_keur` from `13,547.2` to `14,621.0 kEUR`
-- Minimal diff, directly addresses the identified gap
-- SHL opening: 14,621 + 1,169 = 15,790 kEUR ≈ Excel 15,791 kEUR
-- Requires review and approval before merge
-
-**Option B (broader):** Oborovo construction funding / IDC extraction
-- Extract actual SHL draw timing from construction schedule
-- Wire into runtime waterfall SHL draw
-- Deferred — not enough evidence to proceed
+| Question | Answer (pre-23L) | Post-23L Status |
+|---|---|---|
+| Factory config bug? | **Yes** — `shl_amount_keur = 13,547.2` was ~1,074 kEUR below Excel's 14,621 kEUR draw | ✓ FIXED |
+| IDC the problem? | **No** — IDC is 1,169 kEUR in both Python and Excel | ✓ Confirmed |
+| Construction IDC engine needed? | **No** — narrow factory correction | ✓ Confirmed |
+| Runtime SHL/waterfall logic correct? | **Yes** — SHL interest/repayment mechanics work; opening balance was the issue | ✓ Confirmed |
 
 ---
 
