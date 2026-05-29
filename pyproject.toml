@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finco1"
+version = "0.1.0"
+description = "Finco1 financial modelling application"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "openpyxl",
+    "streamlit",
+    "python-dateutil",
+    "fastapi",
+    "sqlalchemy",
+    "jinja2",
+    "scipy",
+    "httpx",
+    "click",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "domain*"]
+exclude = ["ui", "static", "deploy", "reports", "reporting", "validation", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_"]
+addopts = "-q --tb=short"

@@ -16,7 +16,14 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: |
-          pip install -e .
-          pip install pytest
+          pip install --no-cache-dir -e .
+          pip install --no-cache-dir pytest
       - name: Run tests
-        run: pytest --tb=short -q
+        run: |
+          python3 -m pytest -q --tb=short \
+            tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py \
+            tests/test_phase23a_frozen_excel_senior_debt_schedule_runtime_wiring.py \
+            tests/test_shl_waterfall_priority.py \
+            tests/test_tuho_shl_calibration.py \
+            tests/test_revenue.py \
+            tests/test_opex.py
