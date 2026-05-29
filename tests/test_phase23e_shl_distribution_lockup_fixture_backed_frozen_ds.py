@@ -135,7 +135,7 @@ def test_tuho_fixture_backed_frozen_path_active():
     op_periods = [p for p in result.periods if p.is_operation]
     mismatches = []
     for i, op_period in enumerate(op_periods[:14]):
-        op_idx = i + 1  # 1-based, matching on_waterfall operating period index
+        op_idx = i + 1  # 1-based, matching CSV operating_period_index
         expected = fixture.get(op_idx, {}).get("capacity", None)
         if expected is None:
             mismatches.append(f"op_idx={op_idx}: no fixture entry")
@@ -293,8 +293,45 @@ def test_tuho_default_path_still_works():
         "Default TUHO distribution should be 0"
     assert all(p.shl_balance_keur > 0 for p in op_periods), \
         "Default TUHO SHL balance should be > 0"
+    # All 14 operating periods have non-zero senior_ds_keur (ebitda-derived)
+    assert all(p.senior_ds_keur > 0.0 for p in op_periods[:14]), \
+        "Default senior_ds_keur should be positive for all operating periods"
 
-    # Default senior_ds_keur is NOT from fixture (it's ebitda-derived)
-    assert all(p.senior_ds_keur != 0.0 for p in op_periods[:13]) or any(
-        p.senior_ds_keur != 0.0 for p in op_periods[:13]
-    ), "Default senior_ds_keur should be non-zero"
+
+# ---------------------------------------------------------------------------
+# Test 9: fixture offset mapping — waterfall op_idx N → CSV op_idx N+1
+# ---------------------------------------------------------------------------
+
+def test_fixture_op_idx_offset_mapping():
+    """Waterfall op_idx 0 → CSV operating_period_index 1; op_idx 13 → CSV 14.
+
+    Regression guard against accidentally reverting to by_op.get(op_idx) instead
+    of by_op.get(op_idx + 1).
+
+    The CSV operating_period_index is 1-based (op_idx 1-14 map to the 14 operating
+    years). The waterfall operating_period_index is 0-based (op_idx 0-13). The fix in
+    waterfall_core.py uses by_op.get(op_idx + 1) so waterfall op_idx 0 maps to CSV 1,
+    and waterfall op_idx 13 maps to CSV 14.
+    """
+    result_fb = _run_tuho_fixture_backed()
+    fixture = _load_fixture()
+    op_periods = [p for p in result_fb.periods if p.is_operation][:14]
+
+    # All 14 operating periods: verify frozen senior_ds matches fixture capacity
+    mismatches = []
+    for wf_op_idx in range(14):
+        csv_op_idx = wf_op_idx + 1
+        actual_ds = op_periods[wf_op_idx].senior_ds_keur
+        expected_cap = fixture.get(csv_op_idx, {}).get("capacity", None)
+        if expected_cap is None:
+            mismatches.append(f"wf_op_idx={wf_op_idx} (CSV op_idx={csv_op_idx}): no fixture entry")
+        elif abs(actual_ds - expected_cap) > 0.5:
+            mismatches.append(
+                f"wf_op_idx={wf_op_idx} (CSV op_idx={csv_op_idx}): "
+                f"actual={actual_ds:.4f}, expected={expected_cap:.4f}"
+            )
+
+    assert not mismatches, (
+        "Offset mapping broken — fixture should match waterfall op_idx+1:\n"
+        + "\n".join(mismatches)
+    )
