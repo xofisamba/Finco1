@@ -1,31 +1,14 @@
 """Phase 23N: Oborovo Post-Correction Parity Snapshot.
 
-Diagnostic-only: captures current corrected Oborovo state after Phase 23H/23J/23K/23L/23M.
-No runtime changes.
+Diagnostic-only snapshot of Oborovo state after Phase 23H/23J/23K/23L/23M.
+No runtime changes in this file. Phase 23O runtime fix applied separately.
 
-Corrected anchors (Phase 23L):
-  shl_amount_keur = 14,621.0 kEUR (corrected from 13,547.2)
-  shl_idc_keur = 1,169.0 kEUR (unchanged)
-  opening SHL = 15,790.0 kEUR ≈ Excel 15,791 kEUR
-  shl_tenor_years = 20 (corrected from 0, PR #306)
+Phase 23N blocker: PRE-CORRECTION — resolved by Phase 23O.
+Phase 23N test was updated after Phase 23O merge to assert len(mismatch) == 0.
+See: test_oborovo_pre_2050_distribution_lockup_mismatch_detected.
 
-Key observations from snapshot:
-  - Senior debt active periods 0-27, repaid at period 28 (2045-12-31)
-  - DSCR ~1.26 during active period
-  - SHL cleared at period 38 (2049-12-31) — bullet 16,426.8 kEUR
-  - Distributions resume at period 39 (2050-06-30) — first after SHL clear
-
-IMPORTANT — BLOCKER IDENTIFIED (Phase 23N correction):
-  Python distributes pre-2050 (2046-2049) while SHL principal remains outstanding.
-  Per manual Excel CF tab inspection, dividends are zero until 2050.
-  Phase 23O must resolve distribution lock-up policy parity before frozen DS fixture work.
-
-PR context:
-  #304/23H: SHL/distribution guard (2-tier bug)
-  #306/23J: shl_tenor_years 0→20
-  #308/23K: diagnostic gap
-  #309/23L: factory correction
-  #310/23M: test/doc update
+Note: This file is now part of the merged Phase 23N PR (#313).
+Phase 23O runtime fix is on branch phase23o-oborovo-distribution-lockup-policy-parity.
 """
 
 import pytest
@@ -159,20 +142,18 @@ def test_oborovo_distribution_timing_post_correction():
 
 
 # ---------------------------------------------------------------------------
-# Test 3b: Distribution lock-up mismatch detector
+# Test 3b: Phase 23N blocker — RESOLVED by Phase 23O
 # ---------------------------------------------------------------------------
 
 def test_oborovo_pre_2050_distribution_lockup_mismatch_detected():
-    """Pre-2050 distributions with SHL outstanding: diagnostic detection test.
+    """Phase 23N blocker is now resolved by Phase 23O.
 
-    PASSES by confirming the mismatch exists. After Phase 23O fixes the
-    distribution lock-up policy, update this test to assert len(mismatch)==0.
+    This test previously PASSED by detecting the mismatch (asserting len > 0).
+    Phase 23O fixed the distribution lock-up policy for bullet SHL:
+    distributions are now blocked while shl_balance > tolerance.
 
-    Currently Python distributes 2,000-2,600 kEUR per period throughout
-    2046-2049 while SHL principal of 15,790 kEUR remains outstanding.
-    Per Excel CF tab: dividends are zero until around 2050.
-
-    Phase 23O must resolve this blocker before frozen senior DS fixture work.
+    Now updated to assert len(mismatch) == 0 — Phase 23N blocker is resolved.
+    Historical note preserved: this was the Phase 23N diagnostic detection test.
     """
     oborovo = create_default_oborovo()
     engine = _build_period_engine(oborovo)
@@ -189,22 +170,20 @@ def test_oborovo_pre_2050_distribution_lockup_mismatch_detected():
         and p.shl_balance_keur > 1.0    # tolerance for zero-balance
     ]
 
-    print(f"\n[detected] Pre-2050 distributions with SHL balance outstanding: {len(mismatch)}")
+    print(f"\n[resolved] Pre-2050 distributions with SHL balance outstanding: {len(mismatch)}")
     for p in mismatch:
         print(f"  {p.date}: dist={p.distribution_keur:8.2f}  shl_bal={p.shl_balance_keur:8.1f}  "
               f"shl_svc={p.shl_service_keur:.2f}")
 
-    # PASS: this test proves the blocker exists
-    assert len(mismatch) > 0, (
-        "Pre-2050 distribution list must be non-empty — "
-        "if empty, the distribution lock-up mismatch may have resolved unexpectedly"
+    # Phase 23O fix: distributions blocked while shl_balance > 0 for bullet SHL
+    assert len(mismatch) == 0, (
+        f"Phase 23N blocker NOT resolved — {len(mismatch)} pre-2050 period(s) still distributing "
+        f"while SHL balance outstanding. Phase 23O fix may not have applied correctly."
     )
-    # Confirm at least one period in the 2046-2049 range is in the list
-    kpi_periods = [p for p in mismatch if str(p.date) >= "2046-01-01"]
-    assert len(kpi_periods) > 0, (
-        "At least one 2046-2049 period expected in the mismatch list; "
-        "got none — check period indexing or date ranges"
-    )
+
+    # Confirm post-SHL distributions resume correctly
+    post_shl = [p for p in op_periods if p.shl_balance_keur < 1.0 and p.distribution_keur > 1.0]
+    assert len(post_shl) > 0, "Post-SHL distributions should be present after Phase 23O fix"
 
 
 # ---------------------------------------------------------------------------

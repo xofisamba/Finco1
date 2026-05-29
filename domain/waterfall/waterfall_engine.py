@@ -1004,6 +1004,32 @@ def run_waterfall(
                 TOLERANCE = 0.01
                 if shl_svc > _cf_for_shl + TOLERANCE:
                     dist = 0.0
+                elif shl_balance > TOLERANCE and shl_repayment_method == "bullet":
+                    # Phase 23O: Oborovo bullet SHL distribution lock-up policy parity
+                    #
+                    # Python previously allowed distributions while shl_balance > 0 and
+                    # shl_service was covered (shl_svc <= _cf_for_shl). Per manual Excel
+                    # CF tab inspection, dividends are blank/zero until SHL principal
+                    # is fully repaid (~2050). The correct lock-up gate is:
+                    #
+                    #   No distributions while SHL principal remains outstanding.
+                    #
+                    # This is strictly tighter than the Phase 23H cash-shortfall gate
+                    # (shl_svc > _cf_for_shl). For Oborovo bullet SHL, we add:
+                    #
+                    #   shl_balance > tolerance → dist = 0
+                    #
+                    # Notes:
+                    # - shl_repayment_method check ensures this is scoped to Oborovo
+                    #   (bullet SHL); pik_then_sweep/partial_pay_sweep/fcf_waterfall use
+                    #   their own 3-tier branches above and are unaffected
+                    # - shl_gross_accrued_interest is NOT a standalone blocker
+                    #   (accrues every period, cleared in same SHL service step)
+                    # - shl_balance alone does NOT block for PIK methods (PIK methods
+                    #   have balance while in PIK phase — they use 3-tier branches)
+                    # - Phase 23H guard (shl_svc > _cf_for_shl) remains active for all
+                    #   methods as the cash-shortfall backstop
+                    dist = 0.0
                 else:
                     dist = max(0, cf_after_reserves)
                 sweep_amount = 0.0
