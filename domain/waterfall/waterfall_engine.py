@@ -981,7 +981,31 @@ def run_waterfall(
                     sweep_pct=1.0,
                 )
             else:
-                dist = max(0, cf_after_reserves)
+                # Guard (Phase 23H): block equity distribution when SHL service obligations
+                # exceed available cash for the SHL/distribution step.
+                #
+                # shl_svc = shi + shp = cash outflow for SHL (interest + principal)
+                # _cf_for_shl = cash available for SHL step (= cf_after_tax for non-pik_then_sweep)
+                #
+                # If shl_svc > _cf_for_shl there is a CASH SHORTFALL — SHL obligations
+                # cannot be fully paid from available cash. All cash must be retained;
+                # distributing would pay equity before SHL is made whole.
+                #
+                # This fixes a Python waterfall bug: Excel CF tab confirms no dividends
+                # in 2046 periods — cash flows to SHL/Net SHL column instead.
+                #
+                # Notes:
+                # - shl_gross_accrued_interest is NOT a standalone blocker (it accrues
+                #   every period even when cleared in the same SHL service step)
+                # - shl_balance > 0 alone does NOT block (PIK methods may have balance
+                #   while in PIK phase — the cash shortfall check covers that case)
+                # - pik_then_sweep, partial_pay_sweep, fcf_waterfall: already guarded
+                #   in their own 3-tier branches above
+                TOLERANCE = 0.01
+                if shl_svc > _cf_for_shl + TOLERANCE:
+                    dist = 0.0
+                else:
+                    dist = max(0, cf_after_reserves)
                 sweep_amount = 0.0
 
         cum_distribution += dist  # jednom, na kraju svih logika
