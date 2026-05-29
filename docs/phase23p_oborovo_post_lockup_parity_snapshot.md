@@ -92,11 +92,11 @@ elif shl_balance > TOLERANCE and shl_repayment_method == "bullet":
 
 After Phase 23P snapshot confirms lock-up parity:
 1. Extract senior debt schedule from Oborovo Excel
-2. Enable `use_frozen_excel_senior_debt_schedule=True` for Oborovo (fixture-backed)
+2. Enable `use_frozen_excel_senior_debt_schedule=True` only in explicit test/control runs — do not enable Oborovo factory opt-in yet
 3. Compare DSCR trajectory and senior debt amounts
 4. Only then consider factory-level opt-in (separate PR)
 
-**Factory opt-in remains BLOCKED until Phase 23Q fixture/extract proves correct.**
+**Explicit test/control runs only**: `use_frozen_excel_senior_debt_schedule=True` in fixture extraction parity runs — not promoted as the default Oborovo factory path. Factory opt-in is a **separate later PR** after parity proof.
 
 ---
 
