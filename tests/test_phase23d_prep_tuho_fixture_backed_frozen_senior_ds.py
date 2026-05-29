@@ -307,20 +307,36 @@ def test_oborovo_frozen_fixture_still_unavailable_and_off():
 
 # ─── Test 6: No factory opt-in yet ───────────────────────────────────────────
 
-def test_no_factory_opt_in_yet():
-    """TUHO factory defaults remain with frozen flags = False.
+def test_tuho_factory_opt_in_enabled():
+    """Phase 23F: TUHO factory now opts into frozen senior DS schedule.
 
-    This PR wires the capability behind the flags, but does NOT change
-    the factory default to set them True. TUHO factory opt-in remains BLOCKED.
+    Phase 23D wired the capability behind explicit flags.
+    Phase 23E confirmed no lock-up breach with fixture-backed frozen DS.
+    Phase 23F enables the factory default for production use.
     """
     tuho = create_default_tuho_wind1()
 
-    assert not tuho.financing.use_frozen_excel_senior_debt_schedule, (
-        "TUHO factory: use_frozen_excel_senior_debt_schedule should remain False"
+    assert tuho.financing.use_frozen_excel_senior_debt_schedule is True, (
+        "Phase 23F: TUHO factory must have use_frozen_excel_senior_debt_schedule=True"
     )
-    assert not tuho.info.use_senior_debt_sizing_engine, (
-        "TUHO factory: use_senior_debt_sizing_engine should remain False"
+    assert tuho.info.use_senior_debt_sizing_engine is True, (
+        "Phase 23F: TUHO factory must have use_senior_debt_sizing_engine=True"
     )
+    # Historical control: explicit disable still works (control run path)
+    import dataclasses
+    tuho_ctrl = dataclasses.replace(
+        tuho,
+        financing=dataclasses.replace(tuho.financing, use_frozen_excel_senior_debt_schedule=False),
+        info=dataclasses.replace(tuho.info, use_senior_debt_sizing_engine=False),
+    )
+    assert tuho_ctrl.financing.use_frozen_excel_senior_debt_schedule is False, (
+        "Explicit disable must still work for control runs"
+    )
+    assert tuho_ctrl.info.use_senior_debt_sizing_engine is False, (
+        "Explicit disable must still work for control runs"
+    )
+    # Verify control run flags are properly False
+    assert tuho_ctrl.info.use_senior_debt_sizing_engine is False
 
 
 # ─── Test 7: Phase 23C blocker resolved for TUHO ──────────────────────────────

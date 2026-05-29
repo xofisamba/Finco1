@@ -252,23 +252,41 @@ def test_tuho_factory_golden_fixture_selected_values():
 # ---------------------------------------------------------------------------
 
 def test_no_unintended_runtime_flags_promoted():
-    """Verify no guardrail violations: partial_pay_sweep, flat/min DSCR sculpted, G20."""
+    """Verify no guardrail violations: partial_pay_sweep, flat/min DSCR sculpted, G20.
+
+    Uses actual field names from ProjectInfo and FinancingParams.
+    """
     tuho = create_default_tuho_wind1()
+    oborovo = create_default_solar_project()
 
-    # TUHO factory does not change partial_pay_sweep (opt-in only)
-    # The partial_pay_sweep field is in the FinancingParams; verify it's not forced True
-    # We check that the factory does not set partial_pay_sweep=True
-    assert tuho.financing.use_frozen_excel_senior_debt_schedule is True  # only the intended flag
+    # G20 BLOCKED — use_senior_sculpting_basis_engine must remain False in TUHO
+    assert tuho.info.use_senior_sculpting_basis_engine is False, \
+        "G20 BLOCKED: use_senior_sculpting_basis_engine must remain False"
 
-    # Verify G20-related fields are not modified by this phase
-    # TUHO already has lockup_dscr=1.10 and target_dscr=1.20, unchanged by Phase 23F
-    assert tuho.financing.lockup_dscr == 1.10, "lockup_dscr should remain 1.10"
-    assert tuho.financing.target_dscr == 1.20, "target_dscr should remain 1.20"
+    # R99/R102 NOT APPROVED — use_tuho_r99_input_engine must remain False
+    assert tuho.financing.use_tuho_r99_input_engine is False, \
+        "R99 NOT APPROVED: use_tuho_r99_input_engine must remain False"
 
-    # flat_dscr_sculpted and minimum_dscr_sculpted are not set in TUHO factory
-    # They would be fields on FinancingParams if present; verify nothing was auto-promoted
-    # We document that Phase 23F does not touch amortization_type or debt_sizing_method
-    assert tuho.financing.amortization_type == "sculpted", \
-        "amortization_type should remain sculpted (not changed by Phase 23F)"
+    # partial_pay_sweep opt-in only — shl_repayment_method must remain pik_then_sweep
+    assert tuho.financing.shl_repayment_method == "pik_then_sweep", \
+        "partial_pay_sweep opt-in only: shl_repayment_method must remain pik_then_sweep"
+
+    # flat_dscr_sculpted NOT promoted — debt_sizing_method remains "fixed"
     assert tuho.financing.debt_sizing_method == "fixed", \
-        "debt_sizing_method should remain fixed (not changed by Phase 23F)"
+        "flat_dscr_sculpted NOT promoted: debt_sizing_method must remain fixed"
+
+    # minimum_dscr_sculpted NOT promoted — amortization_type remains "sculpted"
+    assert tuho.financing.amortization_type == "sculpted", \
+        "minimum_dscr_sculpted NOT promoted: amortization_type must remain sculpted"
+
+    # Oborovo frozen flags remain False
+    assert oborovo.financing.use_frozen_excel_senior_debt_schedule is False, \
+        "Oborovo use_frozen_excel_senior_debt_schedule must remain False"
+    assert oborovo.info.use_senior_debt_sizing_engine is False, \
+        "Oborovo use_senior_debt_sizing_engine must remain False"
+
+    # Phase 23F intentionally changed: these two flags are the only deliberate changes
+    assert tuho.info.use_senior_debt_sizing_engine is True, \
+        "Phase 23F: TUHO use_senior_debt_sizing_engine = True (intended)"
+    assert tuho.financing.use_frozen_excel_senior_debt_schedule is True, \
+        "Phase 23F: TUHO use_frozen_excel_senior_debt_schedule = True (intended)"

@@ -75,8 +75,8 @@ class TestWaterfallRunConfigPropagatesFlag:
     def test_config_flag_from_financing_params(self):
         """from_inputs reads use_frozen_excel_senior_debt_schedule from FinancingParams."""
         tuho = create_default_tuho_wind1()
-        # TUHO factory has frozen_schedule_note set; flag is False by default
-        assert tuho.financing.use_frozen_excel_senior_debt_schedule is False
+        # Phase 23F: TUHO factory now sets use_frozen_excel_senior_debt_schedule=True (opt-in)
+        assert tuho.financing.use_frozen_excel_senior_debt_schedule is True, "Phase 23F: TUHO factory opt-in enables frozen schedule by default"
 
     def test_config_cache_key_includes_frozen_flag(self):
         """cache_key() includes frozen_senior_debt_schedule flag for correct caching."""
@@ -99,9 +99,10 @@ class TestTUHOFrozenSchedule:
         assert "Macro!R50" in tuho.financing.frozen_schedule_note or "DS!R19" in tuho.financing.frozen_schedule_note
 
     def test_tuho_flag_default_is_false(self):
-        """TUHO use_frozen_excel_senior_debt_schedule is False by default."""
+        """TUHO use_frozen_excel_senior_debt_schedule is True by factory opt-in (Phase 23F)."""
         tuho = create_default_tuho_wind1()
-        assert tuho.financing.use_frozen_excel_senior_debt_schedule is False
+        assert tuho.financing.use_frozen_excel_senior_debt_schedule is True, "Phase 23F: TUHO factory opt-in sets frozen schedule flag True"
+        assert tuho.info.use_senior_debt_sizing_engine is True, "Phase 23F: TUHO factory opt-in sets SeniorDebtSizing engine flag True"
 
     def test_tuho_can_enable_frozen_schedule(self):
         """TUHO FinancingParams can have flag explicitly set to True."""

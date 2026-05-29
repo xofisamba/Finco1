@@ -101,11 +101,10 @@ follow-up cleanup PR to update their assertions:
 ### Full Suite
 
 ```
-118 passed (all non-factory-assertion tests)
-6 xfailed (expected: legacy factory-flag assertions need follow-up cleanup)
-2 xfailed (other reasons)
-1 xpassed (pre-existing)
+126 passed, 2 xfailed, 1 xpassed
 ```
+
+All legacy tests now green. No expected xfails from Phase 23F changes.
 
 ---
 
@@ -160,9 +159,19 @@ confirms the frozen schedule path is self-consistent with the revenue/OPEX path.
 2. **No Oborovo fixture** — Oborovo frozen schedule deferred to later PR (Phase 23G or later).
 3. **No sculpting solver promotion** — deferred.
 4. **No SHL/distribution runtime logic change** — only the factory defaults and the existing fixture wiring path.
-5. **Legacy tests require follow-up cleanup** — Phase 23A/23C/23D/23E tests that assert `assert False` for factory defaults need to be updated to accept the new opt-in state.
+5. **Legacy tests cleaned up in this PR** — Phase 23A/23C/23D/23E `assert False` tests updated to accept Phase 23F opt-in state; control-run paths verified.
 
 ---
+
+## Tests Changed (5 legacy test files updated by Phase 23F)
+
+| File | Test(s) Changed | Change |
+|------|-----------------|--------|
+| `test_phase23a_...py` | `test_config_flag_from_financing_params`, `test_tuho_flag_default_is_false` | Updated: Phase 23F opt-in state ✓ |
+| `test_phase23c_...py` | `test_tuho_factory_frozen_schedule_flags_both_false` → renamed `test_tuho_factory_frozen_schedule_flags_both_true` | Added Oborovo OFF guardrail ✓ |
+| `test_phase23d_...py` | `test_no_factory_opt_in_yet` → renamed `test_tuho_factory_opt_in_enabled` | Added control-run explicit disable verification ✓ |
+| `test_phase23e_...py` | `test_tuho_factory_opt_in_still_blocked` → renamed `test_tuho_factory_opt_in_now_enabled` | Updated assertions ✓ |
+| `test_tuho_shl_calibration.py` | `_run_tuho()` helper | Explicitly disables frozen flags to preserve legacy 28-period ebitda-derivation path ✓ |
 
 ## Changed Files
 

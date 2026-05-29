@@ -38,8 +38,20 @@ def _load_json(name: str) -> dict:
 
 
 def _run_tuho():
-    """Run TUHO waterfall. Returns (result, dict by fixture-style index)."""
+    """Run TUHO waterfall with frozen flags explicitly DISABLED.
+
+    Frozen flags disabled to preserve the legacy 28-period ebitda-derivation
+    path for calibration comparison. Phase 23F factory opt-in uses frozen=True
+    by default; this helper is used specifically for pre-opt-in legacy tests.
+    """
     proj = create_default_tuho_wind1()
+    # Phase 23F: disable frozen flags to preserve legacy ebitda-derivation path
+    import dataclasses
+    proj = dataclasses.replace(
+        proj,
+        info=dataclasses.replace(proj.info, use_senior_debt_sizing_engine=False),
+        financing=dataclasses.replace(proj.financing, use_frozen_excel_senior_debt_schedule=False),
+    )
     engine = _build_period_engine(proj)
     config = WaterfallRunConfig.from_inputs(proj, engine)
     runner = WaterfallRunner(inputs=proj, engine=engine)

@@ -447,20 +447,28 @@ class TestGuardrails:
         import main_web
         assert main_web is not None
 
-    def test_tuho_factory_frozen_schedule_flags_both_false(self):
-        """TUHO factory has both frozen schedule flags = False; factory opt-in BLOCKED.
+    def test_tuho_factory_frozen_schedule_flags_both_true(self):
+        """Phase 23F: TUHO factory has both frozen schedule flags = True (opt-in ENABLED).
 
-        This guardrail confirms the default factory does not enable
-        use_frozen_excel_senior_debt_schedule or use_senior_debt_sizing_engine.
-        TUHO factory opt-in remains BLOCKED until Phase 23B/23D wires CSV fixture.
+        Phase 23E confirmed no lock-up breach with fixture-backed frozen senior DS.
+        Phase 23F enables factory opt-in for TUHO. Oborovo remains OFF.
         """
         from app.project_factories import create_default_tuho_wind1 as create_default_tuho
         tuho = create_default_tuho()
-        assert tuho.financing.use_frozen_excel_senior_debt_schedule is False, (
-            "TUHO factory use_frozen_excel_senior_debt_schedule must remain False"
+        assert tuho.financing.use_frozen_excel_senior_debt_schedule is True, (
+            "Phase 23F: TUHO factory use_frozen_excel_senior_debt_schedule is True"
         )
-        assert tuho.info.use_senior_debt_sizing_engine is False, (
-            "TUHO factory use_senior_debt_sizing_engine must remain False"
+        assert tuho.info.use_senior_debt_sizing_engine is True, (
+            "Phase 23F: TUHO factory use_senior_debt_sizing_engine is True"
+        )
+        # Guardrail: Oborovo must remain OFF
+        from app.project_factories import create_default_solar_project
+        oborovo = create_default_solar_project()
+        assert oborovo.financing.use_frozen_excel_senior_debt_schedule is False, (
+            "Oborovo factory use_frozen_excel_senior_debt_schedule must remain False"
+        )
+        assert oborovo.info.use_senior_debt_sizing_engine is False, (
+            "Oborovo factory use_senior_debt_sizing_engine must remain False"
         )
 
 

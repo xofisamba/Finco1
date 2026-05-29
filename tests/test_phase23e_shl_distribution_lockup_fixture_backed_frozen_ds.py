@@ -218,13 +218,17 @@ def test_tuho_no_distribution_while_shl_outstanding_fixture_backed():
 # Test 4: TUHO factory opt-in still blocked
 # ---------------------------------------------------------------------------
 
-def test_tuho_factory_opt_in_still_blocked():
-    """TUHO factory flags remain False (factory opt-in BLOCKED pending downstream diagnostic)."""
+def test_tuho_factory_opt_in_now_enabled():
+    """Phase 23F: TUHO factory flags are now True (opt-in ENABLED by Phase 23F).
+
+    Phase 23E confirmed no lock-up breach with fixture-backed frozen DS.
+    Phase 23F enables the factory defaults for production. Guardrails preserved.
+    """
     tuho = create_default_tuho_wind1()
-    assert tuho.info.use_senior_debt_sizing_engine is False, \
-        "TUHO use_senior_debt_sizing_engine factory default must remain False"
-    assert tuho.financing.use_frozen_excel_senior_debt_schedule is False, \
-        "TUHO use_frozen_excel_senior_debt_schedule factory default must remain False"
+    assert tuho.info.use_senior_debt_sizing_engine is True, \
+        "Phase 23F: TUHO use_senior_debt_sizing_engine must be True"
+    assert tuho.financing.use_frozen_excel_senior_debt_schedule is True, \
+        "Phase 23F: TUHO use_frozen_excel_senior_debt_schedule must be True"
 
 
 # ---------------------------------------------------------------------------
