@@ -147,8 +147,14 @@ class TestTUHOFrozenDownstream:
         assert result is not None
         assert len(result.periods) > 0
 
-    def test_tuho_senior_ds_unchanged_when_frozen_on(self):
-        """Frozen schedule flag does not change senior DS (CSV fixture not wired in)."""
+    def test_tuho_senior_ds_differs_when_frozen_on(self):
+        """Frozen schedule flag now produces DIFFERENT senior DS (Phase 23D fixture wired).
+
+        Phase 23D: The TUHO CSV fixture is now loaded and used as explicit sizing CFADS
+        when frozen=ON. This makes frozen=ON differ from frozen=OFF (ebitda-derived).
+        The previous test `test_tuho_senior_ds_unchanged_when_frozen_on` documented
+        the BLOCKER state; this test confirms the fix.
+        """
         config_off = WaterfallRunConfig(
             use_senior_debt_sizing_engine=False,
             use_frozen_excel_senior_debt_schedule=False,
@@ -159,20 +165,22 @@ class TestTUHOFrozenDownstream:
         )
         r_off = _run_tuho(config_off)
         r_on = _run_tuho(config_on)
-        # Senior DS at P4 should be identical since CSV fixture not loaded
+        # Phase 23D: fixture is now wired, so frozen ON differs from OFF
         p4_off = r_off.periods[3].senior_ds_keur
         p4_on = r_on.periods[3].senior_ds_keur
-        assert p4_off == pytest.approx(p4_on, rel=1e-6), (
-            f"senior_ds_keur at P4 differs -- fixture may now be wired: OFF={p4_off}, ON={p4_on}"
+        assert abs(p4_off - p4_on) > 1.0, (
+            f"senior_ds_keur at P4 should differ: OFF={p4_off:.4f}, ON={p4_on:.4f}. "
+            f"Phase 23D fixture wiring confirmed."
         )
-        assert p4_off > 0
 
-    def test_tuho_frozen_path_is_not_fixture_backed_yet(self):
-        """senior_ds_keur is identical frozen=ON vs frozen=OFF -- known blocker for factory opt-in.
+    def test_tuho_frozen_path_is_fixture_backed(self):
+        """Phase 23D RESOLVES BLOCKER: frozen=ON now differs from frozen=OFF (fixture wired).
 
-        BLOCKER: CSV fixture not loaded in canonical sizing path
-        (use_explicit_sizing_cfads=False). Results do NOT prove fixture-backed
-        frozen schedule downstream behavior. Factory opt-in remains BLOCKED.
+        PR #300 documented: frozen=ON produced IDENTICAL senior_ds_keur to frozen=OFF
+        because the CSV fixture was not wired into canonical sizing.
+
+        Phase 23D (this branch): fixture is now loaded and used as explicit sizing CFADS.
+        Factory opt-in remains BLOCKED (flags still default False in factory).
         """
         config_off = WaterfallRunConfig(
             use_senior_debt_sizing_engine=False,
@@ -188,11 +196,11 @@ class TestTUHOFrozenDownstream:
         for idx in check_periods:
             ds_off = r_off.periods[idx].senior_ds_keur
             ds_on = r_on.periods[idx].senior_ds_keur
-            assert ds_off == pytest.approx(ds_on, rel=1e-6), (
-                f"Period {idx}: senior_ds differs -- fixture may now be wired: OFF={ds_off}, ON={ds_on}"
+            diff = abs(ds_off - ds_on)
+            assert diff > 1.0, (
+                f"Period {idx}: senior_ds should differ (Phase 23D fixture wired): "
+                f"OFF={ds_off:.4f}, ON={ds_on:.4f}, diff={diff:.4f}"
             )
-        # Known blocker -- this assert documents the gap, it is NOT a pass condition for opt-in
-        assert True, "fixture not loaded -- factory opt-in BLOCKED pending Phase 23B/23D fix"
 
     def test_tuho_revenue_unchanged_when_frozen_on(self):
         """Revenue at P2 is unchanged when frozen schedule is enabled."""

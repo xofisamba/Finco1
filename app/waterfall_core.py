@@ -5,6 +5,7 @@ that CLI scripts, tests, and app/cache.py can all call.
 """
 from __future__ import annotations
 
+import csv
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -391,6 +392,7 @@ def run_waterfall_v3_core(
     if use_senior_debt_sizing_engine:
         from domain.senior_debt_sizing.canonical_wiring import (
             build_canonical_senior_debt_sizing_from_inputs,
+            load_senior_debt_sizing_csv_fixture,
         )
         # Extract EBITDA schedule and DSCR schedule from project inputs
         op_periods = [p for p in result.periods if getattr(p, 'is_operation', False)]
@@ -407,13 +409,74 @@ def run_waterfall_v3_core(
             if inputs.financing.dscr_schedule
             else [1.15] * (horizon_years * 2)
         )
+
+        # Phase 23D: When frozen schedule is enabled for TUHO,
+        # load the fixture-backed sizing CFADS and DSCR from the Phase 7 extraction CSV.
+        # This makes frozen=ON differ from frozen=OFF (which uses ebitda-derivation).
+        # Oborovo has no fixture — it uses the ebitda-derivation path unconditionally.
+        #
+        # Key mapping: CSV row's operating_period_index = op_idx (0-based within operating periods).
+        # We load the FIRST (lowest period_index) row per op_idx, which carries the correct
+        # sizing CFADS (Macro!R50) and DSCR (DS!R19) for that semi-annual period.
+        use_fixture = (
+            use_frozen_excel_senior_debt_schedule
+            and getattr(inputs.info, 'code', '') == 'TUHO-WIND-1'
+        )
+        explicit_sizing_cfads = None
+        explicit_dscr_schedule = None  # Only used when fixture is loaded
+        if use_fixture:
+            try:
+                csv_path = "reports/phase7_tuho_senior_debt_sizing_extraction.csv"
+                by_op = {}  # op_idx (from CSV operating_period_index) → {sizing_cfads, dscr}
+                with open(csv_path, newline="") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        op_str = row.get("operating_period_index", "").strip()
+                        cap_str = row.get("ds_r20_debt_service_capacity_keur", "").strip()
+                        if op_str and cap_str:
+                            op_i = int(op_str)
+                            cap_f = float(cap_str)
+                            # Keep first (lowest period_index) entry per op_idx with capacity > 0
+                            if cap_f > 0 and op_i not in by_op:
+                                by_op[op_i] = {
+                                    "sizing_cfads": float(row.get("macro_r50_sizing_cfads_keur", "0") or "0"),
+                                    "dscr": float(row.get("ds_r19_target_dscr", "1.2") or "1.2"),
+                                }
+                # Build sizing CFADS tuple: index = op_idx within operating periods
+                explicit_sizing_cfads = tuple(
+                    by_op.get(op_idx, {}).get("sizing_cfads", 0.0)
+                    for op_idx in range(len(op_periods))
+                )
+                # Build DSCR schedule from fixture (from DS!R19)
+                explicit_dscr_schedule = tuple(
+                    by_op.get(op_idx, {}).get("dscr", 1.0)
+                    for op_idx in range(len(op_periods))
+                )
+                # Attach audit markers (only set when fixture was actually loaded)
+                result._frozen_fixture_loaded = True
+                result._frozen_fixture_note = (
+                    "Phase 23D: TUHO fixture-backed sizing CFADS from "
+                    "phase7_tuho_senior_debt_sizing_extraction.csv (Macro!R50/DS!R19)"
+                )
+            except Exception:
+                # Fixture not available — fall through to ebitda-derivation
+                explicit_sizing_cfads = None
+                explicit_dscr_schedule = None
+
+        # Use fixture DSCR schedule when available, otherwise fall back to inputs
+        if explicit_dscr_schedule is not None:
+            dscr_for_sizing = explicit_dscr_schedule
+        else:
+            dscr_for_sizing = tuple(dscr_schedule[:len(ebitda_schedule)])
+
         sizing_result = build_canonical_senior_debt_sizing_from_inputs(
             project_name=getattr(inputs.info, 'name', 'Project'),
             project_code=getattr(inputs.info, 'code', ''),
             ebitda_schedule=tuple(ebitda_schedule),
             tax_rate=inputs.tax.corporate_rate,
-            dscr_schedule=tuple(dscr_schedule[:len(ebitda_schedule)]),
-            use_explicit_sizing_cfads=False,  # Until Macro!R50 values are wired
+            dscr_schedule=dscr_for_sizing,
+            use_explicit_sizing_cfads=(explicit_sizing_cfads is not None),
+            explicit_sizing_cfads=explicit_sizing_cfads,
         )
         result._canonical_senior_debt_sizing = sizing_result
 

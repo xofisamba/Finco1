@@ -422,6 +422,7 @@ class WaterfallRunner:
             use_shl_canonical_engine=config.use_shl_canonical_engine,
             use_depreciation_canonical_engine=config.use_depreciation_canonical_engine,
             use_senior_debt_sizing_engine=config.use_senior_debt_sizing_engine,
+            use_frozen_excel_senior_debt_schedule=config.use_frozen_excel_senior_debt_schedule,
             tuho_cit_cash_tax_start_operating_index=config.tuho_cit_cash_tax_start_operating_index,
             use_dualrun_validation=config.use_dualrun_validation,
             shl_fcf_waterfall_cash_schedule_keur=config.shl_fcf_waterfall_cash_schedule_keur,
