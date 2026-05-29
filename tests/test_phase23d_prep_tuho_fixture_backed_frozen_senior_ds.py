@@ -75,17 +75,19 @@ FIXTURE_CAPACITY_BY_OP = None  # lazy-loaded
 
 
 def _fixture_capacity_by_op():
-    """Load fixture capacity (ds_r20_debt_service_capacity_keur) by operating_period_index.
+    """Load fixture capacity (ds_r20_debt_service_capacity_keur) by waterfall op_idx.
 
     Loads from reports/phase7_tuho_senior_debt_sizing_extraction.csv.
-    Returns dict: op_idx (int, from CSV operating_period_index) → capacity_kEUR (float).
-    Only entries with capacity > 0 are included.
+    Returns dict: waterfall_op_idx (int, 0-based) → capacity_kEUR (float).
+    Waterfall operating period index 0 maps to CSV operating_period_index=1,
+    index 1 → CSV 2, ..., index 13 → CSV 14.
+    Only the first entry per operating_period_index with capacity > 0 is kept.
     """
     global FIXTURE_CAPACITY_BY_OP
     if FIXTURE_CAPACITY_BY_OP is None:
         repo_root = Path(__file__).resolve().parents[1]
         csv_path = repo_root / "reports" / "phase7_tuho_senior_debt_sizing_extraction.csv"
-        by_op = {}
+        by_csv_op = {}  # CSV op_idx 1-14 -> capacity
         with open(csv_path, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -94,9 +96,12 @@ def _fixture_capacity_by_op():
                 if op_str and cap_str:
                     op_i = int(op_str)
                     cap_f = float(cap_str)
-                    if cap_f > 0 and op_i not in by_op:
-                        by_op[op_i] = cap_f
-        FIXTURE_CAPACITY_BY_OP = by_op
+                    if cap_f > 0 and op_i not in by_csv_op:
+                        by_csv_op[op_i] = cap_f
+        # Convert to waterfall 0-based indexing
+        FIXTURE_CAPACITY_BY_OP = {wf_op: by_csv_op[csv_op]
+                                  for wf_op, csv_op in enumerate(range(1, 15), start=0)
+                                  if csv_op in by_csv_op}
     return FIXTURE_CAPACITY_BY_OP
 
 
@@ -192,7 +197,7 @@ def test_tuho_frozen_on_uses_fixture_backed_senior_ds():
         (1,  0.5),   # P2:  2116.36
         (2,  0.5),   # P4:  2144.69
         (3,  0.5),   # P6:  2144.91
-        (14, 0.5),   # P28: 2829.33
+        (13, 0.5),   # P28 (waterfall op_idx=13, CSV op_idx=14): 2829.33
     ],
 )
 def test_tuho_frozen_selected_periods_match_fixture(op_idx, tolerance):

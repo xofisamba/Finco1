@@ -450,14 +450,15 @@ def run_waterfall_v3_core(
                                     "sizing_cfads": float(row.get("macro_r50_sizing_cfads_keur", "0") or "0"),
                                     "dscr": float(row.get("ds_r19_target_dscr", "1.2") or "1.2"),
                                 }
-                # Build sizing CFADS tuple: index = op_idx within operating periods
+                # Build sizing CFADS tuple: index = waterfall operating_period_index (0-based)
+                # CSV operating_period_index is 1-based; waterfall op_idx 0 maps to CSV op_idx 1
                 explicit_sizing_cfads = tuple(
-                    by_op.get(op_idx, {}).get("sizing_cfads", 0.0)
+                    by_op.get(op_idx + 1, {}).get("sizing_cfads", 0.0)
                     for op_idx in range(len(op_periods))
                 )
                 # Build DSCR schedule from fixture (from DS!R19)
                 explicit_dscr_schedule = tuple(
-                    by_op.get(op_idx, {}).get("dscr", 1.0)
+                    by_op.get(op_idx + 1, {}).get("dscr", 1.0)
                     for op_idx in range(len(op_periods))
                 )
                 # Audit markers — only set when fixture was actually loaded
