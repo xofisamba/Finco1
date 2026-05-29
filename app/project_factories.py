@@ -326,6 +326,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
         cod_date=date(2030, 1, 1),
         horizon_years=30,
         period_frequency=PeriodFrequency.SEMESTRIAL,
+        use_senior_debt_sizing_engine=True,  # Phase 23F: canonical SeniorDebtSizing path enabled
     )
 
     technical = TechnicalParams(
@@ -415,11 +416,11 @@ def create_default_tuho_wind1() -> ProjectInputs:
         shl_repayment_method="pik_then_sweep",  # TUHO: PIK phase Y1-Y14, sweep phase Y15+
         shl_idc_keur=3568.69,  # Construction IDC from Excel — opening SHL balance = 29,135 + 3,569 = 32,704
         use_senior_sweep_cash_cap_for_shl=False,  # TUHO: SHL cap DISABLED — PR B2 uses fcf_waterfall approach
-        # Phase 23A: frozen Excel senior debt service schedule opt-in.
+        use_frozen_excel_senior_debt_schedule=True,  # Phase 23F: frozen senior DS schedule from fixture (CSV)
+        # Phase 23F: frozen Excel senior debt service schedule opt-in.
         # TUHO has frozen schedule data from Excel calibration (Macro!R50 / DS!R19).
-        # Set use_frozen_excel_senior_debt_schedule=True ONLY after confirming
-        # frozen schedule data is loaded and parity vs Excel is validated.
-        # Default False preserves existing runtime behavior.
+        # Phase 23D/23E confirmed: no lock-up breach with fixture-backed frozen senior DS.
+        # Phase 23F: enabling in factory — parity vs Excel validated by Phase 23E diagnostic.
         frozen_schedule_note="Macro!R50 / DS!R19 frozen per-period debt service (Excel calibration)",
     )
 
