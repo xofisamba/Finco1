@@ -28,7 +28,15 @@ IDENTICAL senior_ds_keur to frozen=OFF (both paths used ebitda-derivation).
 
 ## Implementation Summary
 
-### Changes (3 files, +89 lines, -17 lines)
+### Fixture Path
+
+**Anchor:** `Path(__file__).resolve().parents[1] / "reports" / "phase7_tuho_senior_debt_sizing_extraction.csv"`
+
+The fixture path is anchored to the repository root (parent of `app/`), not the current
+working directory. This means fixture loading works regardless of what directory the
+process is running from.
+
+### Changes (5 files, +597 lines, -17 lines)
 
 **`app/waterfall_runner.py`** (+1 line):
 ```python
@@ -38,25 +46,49 @@ Added to the `run_waterfall_v3_core(...)` call. This was the missing link.
 
 **`app/waterfall_core.py`** (+67 lines):
 
-Phase 8 block now checks:
-```python
-use_fixture = (
-    use_frozen_excel_senior_debt_schedule
-    and getattr(inputs.info, 'code', '') == 'TUHO-WIND-1'
-)
-if use_fixture:
-    # Load phase7_tuho_senior_debt_sizing_extraction.csv by operating_period_index
-    # Build explicit sizing CFADS tuple from macro_r50_sizing_cfads_keur
-    # Build DSCR schedule from ds_r19_target_dscr
-    # Pass use_explicit_sizing_cfads=True → capacity = fixture values
-    result._frozen_fixture_loaded = True
-    result._frozen_fixture_note = "Phase 23D: TUHO fixture-backed..."
-```
+Phase 8 block now checks `use_fixture = use_frozen_excel_senior_debt_schedule and code=='TUHO-WIND-1'`.
+If True, loads CSV by `operating_period_index`, builds explicit sizing CFADS from `macro_r50_sizing_cfads_keur`
+and DSCR schedule from `ds_r19_target_dscr`, then passes `use_explicit_sizing_cfads=True`.
+
+**`tests/test_phase23d_prep_tuho_fixture_backed_frozen_senior_ds.py`** (new):
+11 tests covering fixture wiring, path robustness, fallback behavior, and audit marker semantics.
 
 **`tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py`** (+38/-17):
-- `test_tuho_senior_ds_unchanged_when_frozen_on` → replaced with `test_tuho_senior_ds_differs_when_frozen_on`
-- `test_tuho_frozen_path_is_not_fixture_backed_yet` → replaced with `test_tuho_frozen_path_is_fixture_backed`
-- Both now confirm frozen=ON differs from frozen=OFF (fixture wired)
+Updated 2 blocker tests (`test_tuho_senior_ds_unchanged_when_frozen_on` → `test_tuho_senior_ds_differs_when_frozen_on`,
+`test_tuho_frozen_path_is_not_fixture_backed_yet` → `test_tuho_frozen_path_is_fixture_backed`)
+to confirm Phase 23D resolves the PR #300 blocker.
+
+---
+
+## Fallback and Warning Behavior
+
+When the fixture CSV cannot be loaded (file missing, parse error, etc.):
+
+1. `result._frozen_fixture_loaded = False`
+2. `result._frozen_fixture_error = str(exc) or type(exc).__name__`
+3. `result._frozen_fixture_note` is set to a descriptive warning message
+4. A `warnings.warn(...)` is emitted with full context including the resolved CSV path
+5. `explicit_sizing_cfads = None` → falls back to EBITDA-derived sizing
+6. `result._frozen_senior_ds_wired = False` (fixture path was not fully used)
+
+**Important:** Flags ON alone is NOT sufficient to set `_frozen_fixture_loaded=True`.
+The CSV must actually be opened and parsed successfully.
+
+---
+
+## Audit Marker Semantics
+
+| Marker | Set when | Not set when |
+|--------|----------|--------------|
+| `result._frozen_fixture_loaded` | CSV was actually loaded and parsed | Fixture missing/parse error, or flags OFF |
+| `result._frozen_fixture_error` | CSV load failed (error string) | CSV loaded successfully |
+| `result._frozen_fixture_note` | Always set (success or failure description) | Never |
+| `result._frozen_senior_ds_wired` | `True` only when frozen schedule is wired AND fixture was loaded | Frozen OFF, or fixture load failed |
+| `result._frozen_senior_ds_note` | Always set when frozen schedule wired | Frozen OFF |
+
+**Key invariant:** `_frozen_senior_ds_wired=True` implies `_frozen_fixture_loaded=True`.
+The converse is not required — if the fixture path was requested but loading failed,
+`_frozen_senior_ds_wired` is `False` (fallback ebitda-derivation was used).
 
 ---
 

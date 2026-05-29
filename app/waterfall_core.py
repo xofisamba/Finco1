@@ -6,6 +6,8 @@ that CLI scripts, tests, and app/cache.py can all call.
 from __future__ import annotations
 
 import csv
+import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -392,7 +394,6 @@ def run_waterfall_v3_core(
     if use_senior_debt_sizing_engine:
         from domain.senior_debt_sizing.canonical_wiring import (
             build_canonical_senior_debt_sizing_from_inputs,
-            load_senior_debt_sizing_csv_fixture,
         )
         # Extract EBITDA schedule and DSCR schedule from project inputs
         op_periods = [p for p in result.periods if getattr(p, 'is_operation', False)]
@@ -415,18 +416,25 @@ def run_waterfall_v3_core(
         # This makes frozen=ON differ from frozen=OFF (which uses ebitda-derivation).
         # Oborovo has no fixture — it uses the ebitda-derivation path unconditionally.
         #
-        # Key mapping: CSV row's operating_period_index = op_idx (0-based within operating periods).
-        # We load the FIRST (lowest period_index) row per op_idx, which carries the correct
-        # sizing CFADS (Macro!R50) and DSCR (DS!R19) for that semi-annual period.
+        # Path: anchored to this module's location (app/), not cwd-dependent.
+        # Columns used:
+        #   operating_period_index → op_idx (0-based) as dict key
+        #   macro_r50_sizing_cfads_keur → sizing CFADS
+        #   ds_r19_target_dscr     → per-period DSCR target
+        #   ds_r20_debt_service_capacity_keur → canonical capacity (= sizing_cfads / dscr)
         use_fixture = (
             use_frozen_excel_senior_debt_schedule
             and getattr(inputs.info, 'code', '') == 'TUHO-WIND-1'
         )
         explicit_sizing_cfads = None
-        explicit_dscr_schedule = None  # Only used when fixture is loaded
+        explicit_dscr_schedule = None
         if use_fixture:
             try:
-                csv_path = "reports/phase7_tuho_senior_debt_sizing_extraction.csv"
+                csv_path = (
+                    Path(__file__).resolve().parents[1]
+                    / "reports"
+                    / "phase7_tuho_senior_debt_sizing_extraction.csv"
+                )
                 by_op = {}  # op_idx (from CSV operating_period_index) → {sizing_cfads, dscr}
                 with open(csv_path, newline="") as f:
                     reader = csv.DictReader(f)
@@ -452,16 +460,37 @@ def run_waterfall_v3_core(
                     by_op.get(op_idx, {}).get("dscr", 1.0)
                     for op_idx in range(len(op_periods))
                 )
-                # Attach audit markers (only set when fixture was actually loaded)
+                # Audit markers — only set when fixture was actually loaded
                 result._frozen_fixture_loaded = True
+                result._frozen_fixture_error = None
                 result._frozen_fixture_note = (
                     "Phase 23D: TUHO fixture-backed sizing CFADS from "
                     "phase7_tuho_senior_debt_sizing_extraction.csv (Macro!R50/DS!R19)"
                 )
-            except Exception:
-                # Fixture not available — fall through to ebitda-derivation
-                explicit_sizing_cfads = None
-                explicit_dscr_schedule = None
+            except (FileNotFoundError, KeyError, ValueError) as exc:
+                # Specific failure — record marker and warn, then fall back safely
+                result._frozen_fixture_loaded = False
+                result._frozen_fixture_error = str(exc) or type(exc).__name__
+                result._frozen_fixture_note = (
+                    "[Phase 23D] TUHO frozen fixture requested but fixture could not be loaded; "
+                    "falling back to EBITDA-derived sizing"
+                )
+                warnings.warn(
+                    f"[Phase 23D] TUHO frozen fixture requested but fixture could not be loaded "
+                    f"at {csv_path}: {exc}. Falling back to EBITDA-derived sizing."
+                )
+            except Exception as exc:
+                # Unknown failure — same safe fallback
+                result._frozen_fixture_loaded = False
+                result._frozen_fixture_error = str(exc) or type(exc).__name__
+                result._frozen_fixture_note = (
+                    "[Phase 23D] TUHO frozen fixture requested but fixture could not be loaded; "
+                    "falling back to EBITDA-derived sizing"
+                )
+                warnings.warn(
+                    f"[Phase 23D] TUHO frozen fixture requested but fixture could not be loaded "
+                    f"at {csv_path}: {exc}. Falling back to EBITDA-derived sizing."
+                )
 
         # Use fixture DSCR schedule when available, otherwise fall back to inputs
         if explicit_dscr_schedule is not None:
@@ -522,21 +551,35 @@ def run_waterfall_v3_core(
                             period.dscr = cfads / frozen_value
                         else:
                             period.dscr = float('inf') if cfads > 0 else 0.0
-                # Attach result-level audit flag
-                result._frozen_senior_ds_wired = True
-                result._frozen_senior_ds_note = (
-                    f"Frozen Excel senior DS wired for {getattr(inputs.info, 'code', '?')}. "
-                    f"DSCR is now a backward-computed output."
-                )
+                # Attach result-level audit flag.
+                # _frozen_senior_ds_wired is set ONLY when actual frozen schedule was used.
+                # If fixture loading failed, _frozen_senior_ds_wired stays False so downstream
+                # knows the frozen path was NOT fully fixture-backed.
+                if getattr(result, '_frozen_fixture_loaded', False):
+                    result._frozen_senior_ds_wired = True
+                    result._frozen_senior_ds_note = (
+                        f"Frozen Excel senior DS wired for {getattr(inputs.info, 'code', '?')}. "
+                        f"DSCR is now a backward-computed output. "
+                        f"Fixture-backed sizing CFADS from phase7_tuho_senior_debt_sizing_extraction.csv."
+                    )
+                else:
+                    # Fixture not loaded (Oborovo or TUHO with missing fixture) —
+                    # fall back to ebitda-derived canonical capacity.
+                    # Do NOT set _frozen_senior_ds_wired=True to avoid false implication
+                    # of fixture-backed schedule.
+                    result._frozen_senior_ds_wired = False
+                    result._frozen_senior_ds_note = (
+                        f"Frozen Excel senior DS wired (fallback: ebitda-derived capacity) "
+                        f"for {getattr(inputs.info, 'code', '?')}. "
+                        f"No fixture CSV was loaded."
+                    )
             else:
-                import warnings
                 warnings.warn(
                     "[Phase 23A] use_frozen_excel_senior_debt_schedule=True but "
                     "canonical result has no debt_service_capacity_keur_by_period. "
                     "Falling back to existing behavior."
                 )
         else:
-            import warnings
             warnings.warn(
                 "[Phase 23A] use_frozen_excel_senior_debt_schedule=True but "
                 "_canonical_senior_debt_sizing not found. "

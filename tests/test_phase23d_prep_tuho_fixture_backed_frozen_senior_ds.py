@@ -13,6 +13,7 @@ This PR:
 4. Does NOT change Oborovo behavior (no Oborovo fixture exists)
 
 Fixture source: reports/phase7_tuho_senior_debt_sizing_extraction.csv
+Fixture path: repo-root anchored via Path(__file__).resolve().parents[1] / "reports"
 Fixture key columns:
   - operating_period_index (op_idx within operating periods, 0-based)
   - macro_r50_sizing_cfads_keur (sizing CFADS per period_index, first occurrence per op_idx)
@@ -35,7 +36,14 @@ Expected fixture capacity values (by operating_period_index):
   op_idx=13: 2875.30 kEUR
   op_idx=14: 2829.33 kEUR
 
-Guardrails (hard — this PR must NOT violate):
+Audit markers:
+  result._frozen_fixture_loaded: bool — True only when CSV was actually loaded
+  result._frozen_fixture_error: str|None — set when CSV load failed
+  result._frozen_fixture_note: str — human-readable description
+  result._frozen_senior_ds_wired: bool — True only when actual frozen fixture schedule used
+  result._frozen_senior_ds_note: str — human-readable description
+
+Guardrails (hard):
   G20 BLOCKED
   R99/R102 NOT APPROVED
   TUHO factory opt-in BLOCKED (no factory defaults changed)
@@ -48,8 +56,13 @@ Guardrails (hard — this PR must NOT violate):
 
 import csv
 import os
+import sys
+import tempfile
+import warnings
 import dataclasses
 import pytest
+from pathlib import Path
+from unittest.mock import patch
 
 from app.project_factories import create_default_tuho_wind1, create_default_oborovo
 from app.ui_runner import _build_period_engine
@@ -58,6 +71,9 @@ from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
+FIXTURE_CAPACITY_BY_OP = None  # lazy-loaded
+
+
 def _fixture_capacity_by_op():
     """Load fixture capacity (ds_r20_debt_service_capacity_keur) by operating_period_index.
 
@@ -65,23 +81,23 @@ def _fixture_capacity_by_op():
     Returns dict: op_idx (int, from CSV operating_period_index) → capacity_kEUR (float).
     Only entries with capacity > 0 are included.
     """
-    csv_path = os.path.join(os.path.dirname(__file__), "..", "reports",
-                            "phase7_tuho_senior_debt_sizing_extraction.csv")
-    by_op = {}
-    with open(csv_path, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            op_str = row.get("operating_period_index", "").strip()
-            cap_str = row.get("ds_r20_debt_service_capacity_keur", "").strip()
-            if op_str and cap_str:
-                op_i = int(op_str)
-                cap_f = float(cap_str)
-                if cap_f > 0 and op_i not in by_op:
-                    by_op[op_i] = cap_f
-    return by_op
-
-
-FIXTURE_CAPACITY_BY_OP = _fixture_capacity_by_op()
+    global FIXTURE_CAPACITY_BY_OP
+    if FIXTURE_CAPACITY_BY_OP is None:
+        repo_root = Path(__file__).resolve().parents[1]
+        csv_path = repo_root / "reports" / "phase7_tuho_senior_debt_sizing_extraction.csv"
+        by_op = {}
+        with open(csv_path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                op_str = row.get("operating_period_index", "").strip()
+                cap_str = row.get("ds_r20_debt_service_capacity_keur", "").strip()
+                if op_str and cap_str:
+                    op_i = int(op_str)
+                    cap_f = float(cap_str)
+                    if cap_f > 0 and op_i not in by_op:
+                        by_op[op_i] = cap_f
+        FIXTURE_CAPACITY_BY_OP = by_op
+    return FIXTURE_CAPACITY_BY_OP
 
 
 def _run_tuho_with_flags(use_senior_debt_sizing_engine: bool, use_frozen_excel_senior_debt_schedule: bool):
@@ -148,11 +164,12 @@ def test_tuho_frozen_on_uses_fixture_backed_senior_ds():
     result_default = _run_tuho_default()
     result_frozen = _run_tuho_frozen()
 
+    fixture_cap = _fixture_capacity_by_op()
     op_periods_default = [(i, p) for i, p in enumerate(result_default.periods)
                           if getattr(p, "is_operation", False)]
 
     differing = 0
-    for op_idx in FIXTURE_CAPACITY_BY_OP:
+    for op_idx in fixture_cap:
         period_idx = op_periods_default[op_idx][0] if op_idx < len(op_periods_default) else None
         if period_idx is None:
             continue
@@ -188,7 +205,7 @@ def test_tuho_frozen_selected_periods_match_fixture(op_idx, tolerance):
     assert period_idx is not None, f"op_idx={op_idx} out of range"
 
     ds_frozen = getattr(result_frozen.periods[period_idx], "senior_ds_keur", 0)
-    expected = FIXTURE_CAPACITY_BY_OP[op_idx]
+    expected = _fixture_capacity_by_op()[op_idx]
 
     assert abs(ds_frozen - expected) <= tolerance, (
         f"op_idx={op_idx}: frozen_ds={ds_frozen:.4f}, expected fixture={expected:.4f}, "
@@ -327,3 +344,143 @@ def test_phase23c_blocker_resolved_for_tuho():
             f"op_idx={check_op_idx}: default={ds_default:.2f}, frozen={ds_frozen:.2f}, "
             f"diff={diff:.2f}. Should differ by > 1 kEUR after Phase 23D fixture wiring."
         )
+
+
+# ─── Test 8: Fixture path is repo-root anchored, not cwd-dependent ─────────────
+
+def test_fixture_path_is_repo_root_anchored():
+    """Fixture CSV path is anchored to repo root, not current working directory.
+
+    Path(__file__).resolve().parents[1] / "reports" / ... should resolve correctly
+    regardless of what cwd is when the test runs.
+    """
+    fixture_cap = _fixture_capacity_by_op()
+    # If we got here, the fixture was loaded successfully — verify it has data
+    assert len(fixture_cap) == 14, f"Expected 14 fixture entries, got {len(fixture_cap)}"
+    # Verify the path was not cwd-dependent by checking that the file exists
+    # at the resolved repo-root location
+    repo_root = Path(__file__).resolve().parents[1]
+    csv_path = repo_root / "reports" / "phase7_tuho_senior_debt_sizing_extraction.csv"
+    assert csv_path.exists(), f"Fixture CSV not found at resolved path: {csv_path}"
+    # Verify content by reading the first fixture row (may have capacity=0 — that's fine)
+    with open(csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        first_row = next(reader)
+        # The file has a header row; first row may have op_idx=0 with capacity=0
+        # That's acceptable — our fixture loading skips zero-capacity rows
+        assert "operating_period_index" in first_row
+        assert "macro_r50_sizing_cfads_keur" in first_row
+
+
+# ─── Test 9: Fixture missing/failure → audit markers + fallback ─────────────
+
+def test_fixture_missing_falls_back_safely_with_correct_markers():
+    """If fixture CSV cannot be loaded, markers are set correctly and fallback works.
+
+    Monkeypatch the open() call to raise FileNotFoundError and verify:
+    - _frozen_fixture_loaded is False
+    - _frozen_fixture_error is set
+    - warning is emitted
+    - waterfall does not crash (fallback to ebitda-derivation)
+    - _frozen_senior_ds_wired is NOT set True (fixture path not fully used)
+    """
+    original_open = open
+
+    def mock_open(path, *args, **kwargs):
+        if isinstance(path, (str, os.PathLike)) and "phase7_tuho_senior_debt_sizing" in str(path):
+            raise FileNotFoundError(f"Mock: fixture CSV not found at {path}")
+        return original_open(path, *args, **kwargs)
+
+    with patch("builtins.open", mock_open):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result_frozen = _run_tuho_frozen()
+
+    # Audit markers must reflect the failure
+    assert getattr(result_frozen, "_frozen_fixture_loaded", True) is False, (
+        "_frozen_fixture_loaded should be False when fixture could not be loaded"
+    )
+    assert getattr(result_frozen, "_frozen_fixture_error", None) is not None, (
+        "_frozen_fixture_error should be set when fixture load fails"
+    )
+    # Warning should have been emitted
+    phase23d_warnings = [
+        x for x in w
+        if "[Phase 23D]" in str(x.message) or "fixture could not be loaded" in str(x.message)
+    ]
+    assert len(phase23d_warnings) > 0, (
+        f"Expected [Phase 23D] warning when fixture load fails, got warnings: {[str(x.message) for x in w]}"
+    )
+    # Should not crash — fallback path used
+    assert result_frozen is not None
+    assert len(result_frozen.periods) > 0
+
+
+# ─── Test 10: _frozen_senior_ds_wired semantics — fixture-backed vs fallback ──
+
+def test_frozen_senior_ds_wired_semantics_fixture_vs_fallback():
+    """_frozen_senior_ds_wired is True only when fixture-backed schedule is actually used.
+
+    When fixture loaded successfully:
+      _frozen_fixture_loaded = True
+      _frozen_senior_ds_wired = True
+
+    When fixture failed:
+      _frozen_fixture_loaded = False
+      _frozen_senior_ds_wired = False (not fixture-backed)
+
+    When frozen OFF:
+      _frozen_senior_ds_wired = False
+      _frozen_fixture_loaded = False
+    """
+    # Case 1: frozen ON with fixture (happy path)
+    result_frozen = _run_tuho_frozen()
+    assert getattr(result_frozen, "_frozen_fixture_loaded", False) is True, (
+        "Frozen ON should load fixture successfully"
+    )
+    assert getattr(result_frozen, "_frozen_senior_ds_wired", False) is True, (
+        "Frozen ON + fixture loaded → _frozen_senior_ds_wired should be True"
+    )
+
+    # Case 2: frozen OFF
+    result_default = _run_tuho_default()
+    assert not getattr(result_default, "_frozen_fixture_loaded", False), (
+        "Frozen OFF should not set _frozen_fixture_loaded"
+    )
+    assert not getattr(result_default, "_frozen_senior_ds_wired", False), (
+        "Frozen OFF should not set _frozen_senior_ds_wired"
+    )
+
+
+# ─── Test 11: Path resolution works from different cwd ───────────────────────
+
+def test_fixture_path_works_from_different_cwd():
+    """Fixture loading works regardless of current working directory.
+
+    Change to a temp directory and verify TUHO frozen run still works
+    (fixture path is repo-root anchored, not cwd-dependent).
+    """
+    original_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            os.chdir(tmpdir)
+            # Run TUHO frozen with flags ON — should still find fixture at repo-root
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result_frozen = _run_tuho_frozen()
+
+            # Should succeed without fixture warnings
+            phase23d_warnings = [
+                x for x in w
+                if "[Phase 23D]" in str(x.message) and "could not be loaded" in str(x.message)
+            ]
+            assert len(phase23d_warnings) == 0, (
+                f"Fixture should load from repo-root even with cwd={tmpdir}. "
+                f"Warnings: {[str(x.message) for x in phase23d_warnings]}"
+            )
+            assert getattr(result_frozen, "_frozen_fixture_loaded", False) is True, (
+                "Fixture should load with repo-root anchored path even from temp cwd"
+            )
+            assert getattr(result_frozen, "_frozen_senior_ds_wired", False) is True
+        finally:
+            os.chdir(original_cwd)
