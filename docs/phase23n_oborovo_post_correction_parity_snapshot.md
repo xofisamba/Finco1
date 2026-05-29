@@ -2,7 +2,7 @@
 
 **Type:** Diagnostic — no runtime changes
 
-**Base SHA:** `5fd8b63339328fc341db4d4856d055216dfa388a` (after PR #310 merge)
+**Base SHA:** `da0852795984317394f9f8d0b1db40bd33d05323` (after PR #312 merge)
 **Branch:** `phase23n-oborovo-post-correction-parity-snapshot`
 
 ---
@@ -11,9 +11,9 @@
 
 The previous version (c3d8682) incorrectly described pre-2050 Oborovo distributions as "normal" or "correct behavior."
 
-**Corrected:** Pre-2050 distributions with SHL principal outstanding are now identified as a **diagnostic blocker** — not confirmed correct. The Phase 23L correction closed the SHL draw gap, but the distribution lock-up policy remains visibly different from Excel.
+**Corrected:** Pre-2050 distributions with SHL principal outstanding are now identified as a **detected blocker** — not confirmed correct. See Section "Distribution Lock-Up Policy Mismatch" below. Diagnostic test passes by proving the mismatch exists; not a CI failure.
 
-This diagnostic PR remains open until Phase 23O resolves the distribution policy question.
+This diagnostic PR remains draft until Phase 23O resolves the distribution policy question.
 
 ---
 
@@ -48,21 +48,21 @@ This diagnostic PR remains open until Phase 23O resolves the distribution policy
 
 ## Period-Level Distribution Timing (2044–2051)
 
-| Op# | Date | SHL Balance | SHL Service | Distribution | Guard Active? |
+| Op# | Date | SHL Balance | SHL Service | Distribution | Status |
 |---|---|---|---|---|---|
-| 28 | 2044-12-31 | 15,790.0 | 635.1 | 2,615.92 | No — fcf>svc |
-| 29 | 2045-06-30 | 15,790.0 | 626.4 | 2,352.21 | No — fcf>svc |
-| **30** | **2045-12-31** | **0.00** | **16,416.8** | **0.00** | **YES — PR #304 guard blocks** |
-| 31 | 2046-06-30 | 0.00 | 0.00 | 2,335.13 | No SHL balance |
-| 32 | 2046-12-31 | 0.00 | 0.00 | 2,472.70 | No SHL balance |
-| 33 | 2047-06-30 | 0.00 | 0.00 | 2,219.07 | No SHL balance |
-| 38 | 2049-12-31 | 0.00 | 16,426.8 | **0.00** | YES — SHL final period (bullet) |
-| 39 | 2050-06-30 | 0.00 | 0.00 | **2,994.41** | First distribution after SHL cleared ✓ |
+| 28 | 2044-12-31 | 15,790.0 | 635.1 | 2,615.92 | ⚠️ Requires Excel verification |
+| 29 | 2045-06-30 | 15,790.0 | 626.4 | 2,352.21 | ⚠️ Requires Excel verification |
+| **30** | **2045-12-31** | **0.00** | **16,416.8** | **0.00** | **Guard ✓ (PR #304)** |
+| 31 | 2046-06-30 | 0.00 | 0.00 | 2,335.13 | ⚠️ Requires Excel verification |
+| 32 | 2046-12-31 | 0.00 | 0.00 | 2,472.70 | ⚠️ Requires Excel verification |
+| 33 | 2047-06-30 | 0.00 | 0.00 | 2,219.07 | ⚠️ Requires Excel verification |
+| 38 | 2049-12-31 | 0.00 | 16,426.8 | **0.00** | Guard ✓ — SHL bullet |
+| **39** | **2050-06-30** | **0.00** | **0.00** | **2,994.41** | **First distribution after SHL cleared ✓** |
 | 40 | 2050-12-31 | 0.00 | 0.00 | 3,332.78 | |
 | 41 | 2051-06-30 | 0.00 | 0.00 | 3,043.16 | |
 | 42 | 2051-12-31 | 0.00 | 0.00 | 3,387.41 | |
 
-**Note:** SHL is a 20-year bullet (shl_tenor_years=20, Periods 0-39 active). Repaid in full at period 38 (2049-12-31) with principal=15,790 + interest=636.8 = 16,426.8 kEUR. The PR #304 guard correctly blocks distribution at period 38.
+**Note:** Periods 31-37 show shl_balance=0.00 but distributions ARE shown — this means senior debt was repaid at period 28 (2045-12-31). SHL remains at 15,790 kEUR for the 20-year bullet but current-period service (~626-636 kEUR) is far below fcf, so distributions unlock. Per Excel CF tab, dividends in this window should be zero — this is the detected blocker.
 
 ---
 
@@ -79,17 +79,28 @@ This diagnostic PR remains open until Phase 23O resolves the distribution policy
 | 29+ | 2046+ | 0.00 | 0.00 | inf |
 
 **Senior debt:** 42,852 kEUR, 14-year tenor (periods 0-27), fully repaid at period 28 (2045-12-31).
-DSCR ~1.26 during active period — close to target_dscr=1.15 but slightly above, suggesting sculpted DSCR may be active.
+DSCR ~1.26 during active period — close to target_dscr=1.15 but slightly above.
 
 ---
 
-## Revenue / OpEx / EBITDA (First Operating Year)
+## ⚠️ Detected Blocker: Oborovo Distribution Lock-Up Policy Mismatch
 
-| Period | Date | Revenue | OpEx | EBITDA |
-|---|---|---|---|---|
-| Op[0] | 2030-12-31 | ~4,050 kEUR | ~799 kEUR | ~2,575 kEUR |
+**Severity: BLOCKER for Phase 23O frozen senior DS fixture extraction**
 
-**Y1 EBITDA ≈ 2,575 kEUR** — no Excel calibration target confirmed in this snapshot.
+**The Problem:**
+
+Python uses a per-period cash-flow guard: distribute if `fcf_for_shl_keur > shl_service_keur` (current-period interest only). For Oborovo's 20-year bullet SHL (principal 15,790 kEUR), current-period interest is only ~626-636 kEUR — easily covered throughout the loan life. Python distributes 2,000-2,600 kEUR per period throughout 2046-2049 while the SHL principal of 15,790 kEUR remains outstanding.
+
+**Per manual Excel CF tab inspection:** dividends are blank/zero until around 2050; distributions begin only after SHL is cleared at 2049-12-31.
+
+| Policy | Gating rule |
+|---|---|
+| **Python** | `fcf_for_shl > shl_service` per period (current-period interest only) |
+| **Excel (observed)** | No SHL principal outstanding (SHL fully cleared at 2049-12-31) |
+
+This is a **distribution lock-up policy mismatch**. Phase 23H/PR #304 addressed the SHL final period guard. This is a separate, earlier-stage mismatch that exists throughout the entire loan life (15+ years before the bullet).
+
+**Impact:** Oborovo is **NOT ready** for frozen senior DS fixture extraction until the distribution policy is reconciled with Excel.
 
 ---
 
@@ -97,61 +108,12 @@ DSCR ~1.26 during active period — close to target_dscr=1.15 but slightly above
 
 | Gap | Severity | Notes |
 |---|---|---|
-| **Oborovo distribution lock-up policy vs Excel** | **BLOCKER** | **NEW — see below** |
+| **Oborovo distribution lock-up policy vs Excel** | **BLOCKER** | See above — Phase 23O must resolve first |
 | **Oborovo frozen senior DS fixture not implemented** | **HIGH** | Deferred until distribution policy resolved |
 | Senior debt amount vs Excel | **MEDIUM** | Python = 42,852 kEUR; need Excel anchor |
 | Senior DSCR trajectory vs Excel | **MEDIUM** | DSCR ~1.26 during active period |
 | Revenue/OpEx calibration vs Excel | **LOW** | Y1 EBITDA ~2,575 kEUR; need Excel anchors |
 | Construction funding / IDC | **DEFERRED** | Phase 23L confirmed sufficient |
-
-
----
-
-## ⚠️ Remaining Unresolved Issue: Oborovo Distribution Lock-Up Policy Mismatch
-
-**Severity: BLOCKER for Phase 23O frozen senior DS fixture extraction**
-
-
-**The Problem:**
-
-Python currently allows Oborovo distributions in any operating period where:
-> `fcf_for_shl_keur > shl_service_keur`
-
-This condition is checked **per period**, based only on **current-period SHL interest** (no principal repayment for bullet SHL). As a result, Python distributes in nearly every period while SHL principal balance remains outstanding at 15,790 kEUR.
-
-**Observed Python distributions while SHL balance is outstanding (sample):**
-
-| Op# | Date | Distribution | SHL Balance | SHL Service | SHL Final? |
-|---|---|---|---|---|---|
-| 0 | 2030-12-31 | 95.03 | 15,790.0 | 636.79 | No |
-| 5 | 2033-06-30 | 132.58 | 15,790.0 | 626.41 | No |
-| 10 | 2035-12-31 | 43.23 | 15,790.0 | 636.79 | No |
-| **28** | **2044-12-31** | **2,615.92** | **15,790.0** | **635.05** | **No** |
-| **29** | **2045-06-30** | **2,352.21** | **15,790.0** | **626.41** | **No** |
-| **31** | **2046-06-30** | **2,335.13** | **15,790.0** | **626.41** | **No** |
-| **32** | **2046-12-31** | **2,472.70** | **15,790.0** | **636.79** | **No** |
-| **33** | **2047-06-30** | **2,219.07** | **15,790.0** | **626.41** | **No** |
-| 34–37 | 2047–2049 | 2,200–2,600 | 15,790.0 | ~626-636 | No |
-| **38** | **2049-12-31** | **0.00** | **0.00** | **16,426.8** | **YES** |
-| **39** | **2050-06-30** | **2,994.41** | **0.00** | **0.00** | No |
-
-**Note:** All distributions above occur while SHL balance = 15,790 kEUR (principal not repaid). SHL is a 20-year bullet — principal is due at period 38.
-
-**Excel state is different (per manual inspection of CF tab):**
-- Dividends appear to be **blank/zero** until around 2050
-- Distributions begin only after SHL is cleared at 2049-12-31 (period 38)
-- This matches the behavior where distributions require no outstanding SHL balance (not just current-period service coverage)
-
-**Implication:** The distribution policy gating in Python is **more permissive** than Excel:
-- Python gates on: current-period SHL service covered (fcf > shl_service)
-- Excel gates on: no SHL principal outstanding (SHL fully cleared)
-
-This is NOT a bug that Phase 23H/PR #304 identified — that fix addresses the SHL final period guard. This is a **separate, earlier-stage distribution lock-up** that exists throughout the entire loan life.
-
-**Therefore:**
-- Oborovo is **NOT ready** for frozen senior DS fixture extraction in its current state
-- The distribution policy must first be reconciled with Excel
-- Factory opt-in for Oborovo frozen schedule remains **BLOCKED**
 
 ---
 
@@ -159,13 +121,12 @@ This is NOT a bug that Phase 23H/PR #304 identified — that fix addresses the S
 
 **Phase 23O: Oborovo distribution lock-up policy parity vs Excel**
 
-Before any fixture or factory work:
 1. Confirm exact Excel distribution lock-up rule (no dividends until SHL cleared? or different threshold?)
 2. Implement matching rule in Python waterfall
 3. Re-run parity snapshot to confirm no distributions while SHL balance > 0
 4. Only then proceed to frozen senior DS fixture extraction
 
-**Factory opt-in for Oborovo frozen senior schedule is a later separate PR** — blocked until distribution policy is proven correct against Excel.
+**Factory opt-in for Oborovo frozen senior schedule remains BLOCKED — a separate later PR after distribution policy proven correct against Excel.**
 
 ---
 
