@@ -197,6 +197,7 @@ def create_default_oborovo() -> ProjectInputs:
         debt_sizing_method="gearing_cap",  # Oborovo: gearing-based sizing (not DSCR-sculpted)
         fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11
         shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790
+        shl_tenor_years=20,  # Oborovo Excel: SHL is a 20-year bullet (Excel BS clears at 2050-06-30); previously fell back to senior_tenor_years=14, firing 6 years early
     )
 
     tax = TaxParams(
