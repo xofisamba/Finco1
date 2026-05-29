@@ -343,12 +343,20 @@ class TestOborovoDiagnostic:
         )
 
     def test_oborovo_distribution_leak_exists(self):
-        """Oborovo has pre-existing distribution leak (dist > 0 while SHL bal > 0)."""
+        """Phase 23C: Document pre-existing Oborovo distribution leak.
+
+
+        Phase 23O FIX: This test was asserting len(leaks) > 0 (pre-fix state).
+        Phase 23O resolved the leak by blocking distributions while SHL balance > 0.
+        Now updated to assert len(leaks) == 0 — Phase 23O fix confirmed working.
+
+        """
         r = _run_oborovo_default()
         leaks = _dist_leak_issues(r)
-        # Pre-existing leak: confirmed by Phase 20O tests
-        assert len(leaks) > 0, (
-            "Oborovo distribution leak is documented but not found in this run"
+        # Phase 23O fix: distributions now blocked while shl_balance > 0 for bullet SHL
+        assert len(leaks) == 0, (
+            f"Oborovo: {len(leaks)} distribution leak(s) still found while SHL balance outstanding. "
+            f"Phase 23O fix may not have applied."
         )
 
     def test_oborovo_shl_closing_balance_non_negative(self):
@@ -358,19 +366,26 @@ class TestOborovoDiagnostic:
         assert len(issues) == 0, f"Oborovo negative SHL balance at: {issues}"
 
     def test_oborovo_first_dist_while_shl_outstanding(self):
-        """Oborovo first distribution occurs while SHL principal is still outstanding."""
+        """Phase 23C: Oborovo first distribution while SHL outstanding.
+
+
+        Phase 23O FIX: Previously asserted first_dist_bal > 0 (pre-fix state).
+        Phase 23O resolves this: distributions now resume only after SHL cleared.
+        Now updated to assert first_dist_bal == 0 — first distribution after SHL clear.
+
+        """
         r = _run_oborovo_default()
         first_dist_idx = None
         for i, p in enumerate(r.periods):
             if getattr(p, 'distribution_keur', 0) > 0:
                 first_dist_idx = i
                 break
-        assert first_dist_idx is not None
-        # At first distribution, Oborovo SHL balance should be > 0
-        # (confirmed pre-existing leak)
+        assert first_dist_idx is not None, "No distributions found in Oborovo run"
+        # Phase 23O fix: first distribution now occurs after SHL balance == 0
         first_dist_bal = r.periods[first_dist_idx].shl_balance_keur
-        assert first_dist_bal > 0, (
-            f"Oborovo first distribution at idx={first_dist_idx} has shl_bal={first_dist_bal:.1f}"
+        assert first_dist_bal == 0.0, (
+            f"Oborovo first distribution at idx={first_dist_idx} "
+            f"has shl_bal={first_dist_bal:.1f} (expected 0.0 after Phase 23O fix)"
         )
 
 
