@@ -7,6 +7,16 @@
 
 ---
 
+## ⚠️ Issue Corrected in this Version
+
+The previous version (c3d8682) incorrectly described pre-2050 Oborovo distributions as "normal" or "correct behavior."
+
+**Corrected:** Pre-2050 distributions with SHL principal outstanding are now identified as a **diagnostic blocker** — not confirmed correct. The Phase 23L correction closed the SHL draw gap, but the distribution lock-up policy remains visibly different from Excel.
+
+This diagnostic PR remains open until Phase 23O resolves the distribution policy question.
+
+---
+
 ## Phase History (23H–23M)
 
 | Phase | PR | Change | Status |
@@ -87,29 +97,75 @@ DSCR ~1.26 during active period — close to target_dscr=1.15 but slightly above
 
 | Gap | Severity | Notes |
 |---|---|---|
-| **Oborovo frozen senior DS fixture not implemented** | **HIGH** | TUHO has fixture-backed frozen senior DS (PR #303); Oborovo does not. Without it, DSCR is backward-computed from waterfall, not driven by Excel schedule. |
-| **Senior debt amount vs Excel** | **MEDIUM** | Python = 42,852 kEUR (fixed_debt_keur); need Excel anchor to confirm or correct |
-| Senior DSCR trajectory vs Excel | **MEDIUM** | DSCR ~1.26 during active period; Excel may show different peak/trough pattern |
-| SHL balance trajectory post-2050 | **LOW** | After SHL cleared at 2050-06-30, distributions large and consistent |
-| Revenue/OpEx calibration vs Excel | **LOW** | Y1 EBITDA ~2,575 kEUR; Y1 revenue ~4,050 kEUR — need Excel Y1 anchors |
-| Construction funding / IDC | **DEFERRED** | Phase 23L confirmed: narrow factory correction sufficient; no runtime IDC engine needed |
+| **Oborovo distribution lock-up policy vs Excel** | **BLOCKER** | **NEW — see below** |
+| **Oborovo frozen senior DS fixture not implemented** | **HIGH** | Deferred until distribution policy resolved |
+| Senior debt amount vs Excel | **MEDIUM** | Python = 42,852 kEUR; need Excel anchor |
+| Senior DSCR trajectory vs Excel | **MEDIUM** | DSCR ~1.26 during active period |
+| Revenue/OpEx calibration vs Excel | **LOW** | Y1 EBITDA ~2,575 kEUR; need Excel anchors |
+| Construction funding / IDC | **DEFERRED** | Phase 23L confirmed sufficient |
+
+
+---
+
+## ⚠️ Remaining Unresolved Issue: Oborovo Distribution Lock-Up Policy Mismatch
+
+**Severity: BLOCKER for Phase 23O frozen senior DS fixture extraction**
+
+
+**The Problem:**
+
+Python currently allows Oborovo distributions in any operating period where:
+> `fcf_for_shl_keur > shl_service_keur`
+
+This condition is checked **per period**, based only on **current-period SHL interest** (no principal repayment for bullet SHL). As a result, Python distributes in nearly every period while SHL principal balance remains outstanding at 15,790 kEUR.
+
+**Observed Python distributions while SHL balance is outstanding (sample):**
+
+| Op# | Date | Distribution | SHL Balance | SHL Service | SHL Final? |
+|---|---|---|---|---|---|
+| 0 | 2030-12-31 | 95.03 | 15,790.0 | 636.79 | No |
+| 5 | 2033-06-30 | 132.58 | 15,790.0 | 626.41 | No |
+| 10 | 2035-12-31 | 43.23 | 15,790.0 | 636.79 | No |
+| **28** | **2044-12-31** | **2,615.92** | **15,790.0** | **635.05** | **No** |
+| **29** | **2045-06-30** | **2,352.21** | **15,790.0** | **626.41** | **No** |
+| **31** | **2046-06-30** | **2,335.13** | **15,790.0** | **626.41** | **No** |
+| **32** | **2046-12-31** | **2,472.70** | **15,790.0** | **636.79** | **No** |
+| **33** | **2047-06-30** | **2,219.07** | **15,790.0** | **626.41** | **No** |
+| 34–37 | 2047–2049 | 2,200–2,600 | 15,790.0 | ~626-636 | No |
+| **38** | **2049-12-31** | **0.00** | **0.00** | **16,426.8** | **YES** |
+| **39** | **2050-06-30** | **2,994.41** | **0.00** | **0.00** | No |
+
+**Note:** All distributions above occur while SHL balance = 15,790 kEUR (principal not repaid). SHL is a 20-year bullet — principal is due at period 38.
+
+**Excel state is different (per manual inspection of CF tab):**
+- Dividends appear to be **blank/zero** until around 2050
+- Distributions begin only after SHL is cleared at 2049-12-31 (period 38)
+- This matches the behavior where distributions require no outstanding SHL balance (not just current-period service coverage)
+
+**Implication:** The distribution policy gating in Python is **more permissive** than Excel:
+- Python gates on: current-period SHL service covered (fcf > shl_service)
+- Excel gates on: no SHL principal outstanding (SHL fully cleared)
+
+This is NOT a bug that Phase 23H/PR #304 identified — that fix addresses the SHL final period guard. This is a **separate, earlier-stage distribution lock-up** that exists throughout the entire loan life.
+
+**Therefore:**
+- Oborovo is **NOT ready** for frozen senior DS fixture extraction in its current state
+- The distribution policy must first be reconciled with Excel
+- Factory opt-in for Oborovo frozen schedule remains **BLOCKED**
 
 ---
 
 ## Recommendation for Next Phase
 
-**Option A (primary):** Oborovo frozen senior DS fixture extraction
-- Extract senior debt schedule from Oborovo Excel (DS size, period-by-period principal/interest)
-- Wire into `use_frozen_excel_senior_debt_schedule=True` for Oborovo
-- This enables DSCR-driven distributions (forward-computed DSCR, not backward)
-- Similar approach to PR #303 for TUHO
+**Phase 23O: Oborovo distribution lock-up policy parity vs Excel**
 
-**Option B (if Option A proves complex):** Broader Oborovo parity pack
-- Validate senior debt amount, DSCR schedule, and distribution amounts together
-- May reveal additional calibration gaps in revenue/OpEx
-- Higher effort, deferred if Option A is feasible
+Before any fixture or factory work:
+1. Confirm exact Excel distribution lock-up rule (no dividends until SHL cleared? or different threshold?)
+2. Implement matching rule in Python waterfall
+3. Re-run parity snapshot to confirm no distributions while SHL balance > 0
+4. Only then proceed to frozen senior DS fixture extraction
 
-**Decision criteria:** If Oborovo Excel senior debt schedule is extractable within ~1 day of manual inspection, proceed with Option A. If Excel structure is complex, consider Option B.
+**Factory opt-in for Oborovo frozen senior schedule is a later separate PR** — blocked until distribution policy is proven correct against Excel.
 
 ---
 

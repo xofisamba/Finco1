@@ -157,17 +157,78 @@ def test_oborovo_distribution_timing_post_correction():
     )
     assert p39.shl_balance_keur == 0.0, "Period 39 SHL balance should be 0"
 
-    # Confirm 2046 periods: some have distributions (pre-SHL clear, fcf>svc)
-    # This is correct behavior — the PR #304 guard only blocks at period 38
+    # Confirm 2046 periods have distributions (pre-SHL-clear, fcf>svc)
+    # This is CORRECT per the PR #304 guard only — but Excel shows no dividends pre-2050.
+    # Mark this as a KNOWN BLOCKER for Phase 23O.
     p2046 = [p for p in op_periods if str(p.date).startswith("2046")]
-    for p in p2046:
-        # 2046 periods should have distributions except if guard is triggered
-        # Period 30 (2045-12-31) is in 2045, not 2046
-        pass  # Just document: all 2046 periods have fcf_for_shl > shl_service
+    pre_2050_with_shl = [p for p in p2046 if p.distribution_keur > 0 and p.shl_balance_keur > 0]
+    print(f"\nPre-2050 distributions with SHL outstanding (requires Excel verification):")
+    for p in pre_2050_with_shl:
+        print(f"  {p.date}: dist={p.distribution_keur:.2f}  shl_bal={p.shl_balance_keur:.1f}  shl_svc={p.shl_service_keur:.2f}")
+
+    # This is the known Phase 23N mismatch: Python distributes pre-2050 while Excel does not.
+    # Do NOT mark this as passing; it is an open diagnostic blocker.
+    assert len(pre_2050_with_shl) > 0, (
+        "Pre-2050 distributions list should be non-empty (diagnostic capture); "
+        "if empty, something changed significantly"
+    )
 
     print(f"\nDistribution timing confirmed:")
     print(f"  Period 38 (2049-12-31): dist={p38.distribution_keur:.2f} shl_svc={p38.shl_service_keur:.2f} (SHL final period) ✓")
     print(f"  Period 39 (2050-06-30): dist={p39.distribution_keur:.2f} shl_bal={p39.shl_balance_keur:.2f} (SHL cleared) ✓")
+
+
+# ---------------------------------------------------------------------------
+# Test 3b: Distribution lock-up mismatch blocker
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(reason=(
+    "Known Phase 23N Oborovo distribution lock-up policy mismatch: Python distributes "
+    "before Excel-observed dividend start around 2050. Python gates on current-period "
+    "SHL service covered (fcf > shl_service); Excel appears to gate on no SHL principal "
+    "outstanding (SHL fully cleared at 2049-12-31). Blocked until Phase 23O resolves "
+    "the distribution policy parity question."
+), strict=True)
+def test_oborovo_distribution_lockup_mismatch_blocker():
+    """Pre-2050 distributions with SHL outstanding are a known Phase 23N diagnostic blocker.
+
+    Python distributes in every period where fcf_for_shl > shl_service (current-period
+    interest only). For Oborovo bullet SHL (20-year tenor, principal 15,790 kEUR),
+    current-period interest is ~626-636 kEUR per period — easily covered by CFADS.
+    Result: Python distributes 2,000-2,600 kEUR per period throughout 2046-2049
+    while SHL principal of 15,790 kEUR remains outstanding.
+
+
+    Per manual Excel CF tab inspection, dividends in the same periods are zero.
+    This gap must be resolved in Phase 23O before frozen senior DS fixture extraction.
+    """
+    oborovo = create_default_oborovo()
+    engine = _build_period_engine(oborovo)
+    config = WaterfallRunConfig.from_inputs(oborovo, engine)
+    result = WaterfallRunner(oborovo, engine).run(config)
+
+    op_periods = [p for p in result.periods if p.is_operation]
+
+    # Collect all periods before 2050-01-01 where distribution > 0 AND SHL balance > 0
+    pre2050_mismatch = [
+        p for p in op_periods
+        if str(p.date) < "2050-01-01"
+        and p.distribution_keur > 0
+        and p.shl_balance_keur > 0
+    ]
+
+    # Diagnostic display
+    print("\n[xfail] Pre-2050 distributions with SHL balance outstanding:")
+    for p in pre2050_mismatch:
+        print(f"  {p.date}: dist={p.distribution_keur:.2f}  shl_bal={p.shl_balance_keur:.1f}  "
+              f"shl_svc={p.shl_service_keur:.2f}  is_final_shl={getattr(p,'is_final_shl_period',False)}")
+
+    # This xfails because Python SHOULD be blocking these distributions per Excel behavior.
+    # After Phase 23O fix, update this to assert len(pre2050_mismatch) == 0.
+    assert len(pre2050_mismatch) > 0, (
+        "Pre-2050 distribution list must be non-empty to trigger xfail; "
+        "if somehow empty, the mismatch may have resolved unexpectedly"
+    )
 
 
 # ---------------------------------------------------------------------------
