@@ -194,10 +194,14 @@ After this PR is merged, Phase 23C must be **rerun downstream** before any TUHO 
 
 | Test file | Result |
 |-----------|--------|
-| `tests/test_phase23d_prep_tuho_fixture_backed_frozen_senior_ds.py` | 10 passed |
-| `tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py` | 23 passed (2 xfailed, 1 xpassed) |
-| `tests/test_tuho_shl_calibration.py` | 7 passed |
-| **Total** | **40 passed, 2 xfailed, 1 xpassed** |
+| `tests/test_phase23d_prep_tuho_fixture_backed_frozen_senior_ds.py` | 14 passed |
+| `tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py` | 16 passed |
+| `tests/test_phase23a_frozen_excel_senior_debt_schedule_runtime_wiring.py` | 11 passed |
+| `tests/test_shl_waterfall_priority.py` | 30 passed |
+| `tests/test_tuho_shl_calibration.py` | 14 passed |
+| `tests/test_revenue.py` | 14 passed |
+| `tests/test_opex.py` | 10 passed |
+| **Total** | **109 passed, 2 xfailed, 1 xpassed** |
 
 ---
 
@@ -205,7 +209,7 @@ After this PR is merged, Phase 23C must be **rerun downstream** before any TUHO 
 
 | File | Change |
 |------|--------|
-| `app/waterfall_core.py` | +67 lines: Phase 23D fixture wiring in canonical SeniorDebtSizing |
-| `app/waterfall_runner.py` | +1 line: pass `use_frozen_excel_senior_debt_schedule` to waterfall_core |
-| `tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py` | +38/-17: updated blocker tests to fixed state |
-| `tests/test_phase23d_prep_tuho_fixture_backed_frozen_senior_ds.py` | New: 10 tests for fixture wiring verification |
+| `app/waterfall_core.py` | +67/-58: repo-root anchored fixture path · fallback warnings on load failure · `_frozen_fixture_loaded/error/note` audit markers · `_frozen_senior_ds_wired` semantics (True only when fixture actually loaded) |
+| `app/waterfall_runner.py` | +1 line: pass `use_frozen_excel_senior_debt_schedule` to `run_waterfall_v3_core()` |
+| `tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py` | +38/-17: Phase 23C blocker tests updated to confirm frozen=ON differs from frozen=OFF |
+| `tests/test_phase23d_prep_tuho_fixture_backed_frozen_senior_ds.py` | New: **14 tests** — cwd independence · fixture-backed wiring + markers · fixture missing + warnings · frozen OFF marker absence |
