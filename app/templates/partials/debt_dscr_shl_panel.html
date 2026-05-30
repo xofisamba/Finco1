@@ -26,6 +26,18 @@
   </div>
 
   {# ══════════════════════════════════════════════════════════════════════
+     FROZEN VS DERIVED WARNING
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="dss-warning-banner">
+    <span class="badge badge-warn">⚠️ Frozen schedule warning</span>
+    <span class="dss-warning-text">
+      This panel shows a fixture-backed frozen Excel schedule. Editing or duplicating
+      this project will not re-sculpt senior debt. To use derived sizing, switch to
+      a non-fixture project type (generic wind/solar).
+    </span>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
      SENIOR DEBT ANCHOR
  ══════════════════════════════════════════════════════════════════════ #}
   {% if runtime_summary %}
