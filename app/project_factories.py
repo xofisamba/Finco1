@@ -130,6 +130,7 @@ def create_default_oborovo() -> ProjectInputs:
         cod_date=date(2030, 6, 29),
         horizon_years=30,
         period_frequency=PeriodFrequency.SEMESTRIAL,
+        use_senior_debt_sizing_engine=True,  # Phase 23R: fixture-backed frozen senior DS opt-in after Phase 23Q parity proof
     )
 
     technical = TechnicalParams(
@@ -198,6 +199,7 @@ def create_default_oborovo() -> ProjectInputs:
         fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11
         shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790
         shl_tenor_years=20,  # Oborovo Excel: SHL is a 20-year bullet (Excel BS clears at 2050-06-30); previously fell back to senior_tenor_years=14, firing 6 years early
+        use_frozen_excel_senior_debt_schedule=True,  # Phase 23R: fixture-backed frozen senior DS opt-in after Phase 23Q parity proof
     )
 
     tax = TaxParams(

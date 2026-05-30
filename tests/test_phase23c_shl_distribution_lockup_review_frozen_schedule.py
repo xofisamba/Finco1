@@ -315,16 +315,18 @@ class TestTUHOFrozenDownstream:
 class TestOborovoDiagnostic:
     """Oborovo diagnostic — frozen schedule OFF by default, distribution leak documented."""
 
-    def test_oborovo_factory_frozen_schedule_off_by_default(self):
-        """Oborovo factory does not enable frozen schedule flags."""
+    def test_oborovo_factory_frozen_schedule_now_enabled(self):
+        """Oborovo factory now has frozen schedule flags enabled (Phase 23R).
+
+        Before Phase 23R: blocked (False). Phase 23R enables after Phase 23Q parity proof.
+        """
         from app.project_factories import create_default_oborovo
         oborovo = create_default_oborovo()
-        # Confirm flags are not set to True in factory
         fin = oborovo.financing
         has_frozen = getattr(fin, 'use_frozen_excel_senior_debt_schedule', False)
         has_sizing = getattr(oborovo.info, 'use_senior_debt_sizing_engine', False)
-        assert has_frozen is False, "Oborovo should not enable frozen schedule by default"
-        assert has_sizing is False, "Oborovo should not enable sizing engine by default"
+        assert has_frozen is True, "Oborovo should have frozen schedule enabled after Phase 23R"
+        assert has_sizing is True, "Oborovo should have sizing engine enabled after Phase 23R"
 
     def test_oborovo_no_frozen_schedule_csv_fixture(self):
         """No Oborovo frozen schedule CSV exists in reports/."""
@@ -477,14 +479,14 @@ class TestGuardrails:
         assert tuho.info.use_senior_debt_sizing_engine is True, (
             "Phase 23F: TUHO factory use_senior_debt_sizing_engine is True"
         )
-        # Guardrail: Oborovo must remain OFF
-        from app.project_factories import create_default_solar_project
-        oborovo = create_default_solar_project()
-        assert oborovo.financing.use_frozen_excel_senior_debt_schedule is False, (
-            "Oborovo factory use_frozen_excel_senior_debt_schedule must remain False"
+        # Guardrail: Oborovo now enabled (Phase 23R)
+        from app.project_factories import create_default_oborovo
+        oborovo = create_default_oborovo()
+        assert oborovo.financing.use_frozen_excel_senior_debt_schedule is True, (
+            "Oborovo factory use_frozen_excel_senior_debt_schedule must be True after Phase 23R"
         )
-        assert oborovo.info.use_senior_debt_sizing_engine is False, (
-            "Oborovo factory use_senior_debt_sizing_engine must remain False"
+        assert oborovo.info.use_senior_debt_sizing_engine is True, (
+            "Oborovo factory use_senior_debt_sizing_engine must be True after Phase 23R"
         )
 
 

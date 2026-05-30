@@ -121,10 +121,13 @@ class TestTUHOFrozenSchedule:
 class TestOborovoFrozenSchedule:
     """Oborovo frozen schedule configuration."""
 
-    def test_oborovo_flag_default_is_false(self):
-        """Oborovo use_frozen_excel_senior_debt_schedule is False by default."""
+    def test_oborovo_flag_default_is_now_true(self):
+        """Oborovo use_frozen_excel_senior_debt_schedule is True after Phase 23R.
+
+        Before Phase 23R: blocked (False). Phase 23R enables after Phase 23Q parity proof.
+        """
         oborovo = create_default_oborovo()
-        assert oborovo.financing.use_frozen_excel_senior_debt_schedule is False
+        assert oborovo.financing.use_frozen_excel_senior_debt_schedule is True
 
     def test_oborovo_can_enable_frozen_schedule(self):
         """Oborovo FinancingParams can have flag explicitly set to True."""

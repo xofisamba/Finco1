@@ -23,20 +23,22 @@ import pytest
 # =============================================================================
 
 
-def test_oborovo_factory_frozen_schedule_still_off():
-    """Oborovo factory must NOT have use_frozen_excel_senior_debt_schedule=True."""
+def test_oborovo_factory_frozen_schedule_now_enabled():
+    """Oborovo factory now has frozen senior DS flags enabled (Phase 23R).
+
+    Phase 23Q: factory opt-in was blocked pending parity proof.
+    Phase 23R: enables after Phase 23Q parity proof accepted.
+    """
     from app.project_factories import create_default_oborovo
 
     oborovo = create_default_oborovo()
     fin = oborovo.financing
     info = oborovo.info
-    assert not fin.use_frozen_excel_senior_debt_schedule, (
-        "Oborovo factory has use_frozen_excel_senior_debt_schedule=True — "
-        "factory opt-in must remain OFF in Phase 23Q"
+    assert fin.use_frozen_excel_senior_debt_schedule is True, (
+        "Oborovo factory use_frozen_excel_senior_debt_schedule must be True after Phase 23R"
     )
-    assert not info.use_senior_debt_sizing_engine, (
-        "Oborovo factory has use_senior_debt_sizing_engine=True on info — "
-        "factory opt-in must remain OFF"
+    assert info.use_senior_debt_sizing_engine is True, (
+        "Oborovo factory use_senior_debt_sizing_engine must be True after Phase 23R"
     )
 
 
