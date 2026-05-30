@@ -14,10 +14,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install dependencies
+      - name: Install dependencies (reproducible via constraints.txt)
         run: |
-          pip install --no-cache-dir -e .
-          pip install --no-cache-dir pytest
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
       - name: Run tests
         run: |
           python3 -m pytest -q --tb=short \
