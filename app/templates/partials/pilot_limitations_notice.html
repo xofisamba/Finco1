@@ -1,0 +1,74 @@
+<!-- Phase 25A: Pilot Limitations Notice -->
+<!-- Shared limitations language for inclusion in key views -->
+<!-- NOT a lender approval, bank approval, external audit, or SaaS certification. -->
+
+<div class="pilot-limitations-notice" id="pilot-limitations-notice">
+  <div class="pln-header">
+    <span class="badge badge-warn">⚠️ Pilot limitations</span>
+  </div>
+  <div class="pln-body">
+
+    <div class="pln-section">
+      <div class="pln-section-title">Validated path</div>
+      <div class="pln-item">✅ <strong>TUHO / Oborovo frozen-template</strong> — parity-validated against Excel (senior debt, SHL opening, distributions, CO2 revenue)</div>
+      <div class="pln-item">⚠️ <strong>Generic projects</strong> — not yet validated against Excel; assumptions should be reviewed independently</div>
+    </div>
+
+    <div class="pln-section">
+      <div class="pln-section-title">Not included</div>
+      <div class="pln-item">❌ <strong>Bank / lender approval</strong> — this app does not provide lender credit analysis or approval</div>
+      <div class="pln-item">❌ <strong>External audit / certification</strong> — the Audit / Parity tab is internal review tooling, not a certified audit</div>
+      <div class="pln-item">❌ <strong>Sculpting solver</strong> — the frozen senior debt schedule is fixture-backed from Excel; it is not a live sculpting calculation</div>
+      <div class="pln-item">❌ <strong>Enterprise SaaS</strong> — this app is single-user / internal pilot mode; no multi-tenant isolation or RBAC</div>
+    </div>
+
+    <div class="pln-section">
+      <div class="pln-section-title">Runtime authority</div>
+      <div class="pln-item">📌 All model outputs are produced by the backend Python engine. Browser-side JS is display-only and does not calculate financial outputs.</div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.pilot-limitations-notice {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+  font-size: 0.8rem;
+}
+
+.pln-header {
+  padding: 0.6rem 1rem;
+  background: var(--warn-bg, #fef9c3);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.pln-body {
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pln-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pln-section-title {
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, #6b7280);
+  margin-bottom: 0.1rem;
+}
+
+.pln-item {
+  color: var(--text, #111827);
+  line-height: 1.5;
+}
+</style>
