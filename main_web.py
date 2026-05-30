@@ -187,8 +187,8 @@ FACTORY_TEMPLATE_OPTIONS = [
     },
 ]
 NEW_PROJECT_TEMPLATE_OPTIONS = [
-    {"value": "generic_wind", "label": "Blank / Generic Wind", "project_type": "Wind"},
-    {"value": "generic_solar", "label": "Blank / Generic Solar", "project_type": "Solar"},
+    {"value": "generic_wind", "label": "Blank / Generic Wind ⚠️ Unvalidated · Derived path", "project_type": "Wind"},
+    {"value": "generic_solar", "label": "Blank / Generic Solar ⚠️ Unvalidated · Derived path", "project_type": "Solar"},
     {"value": "tuho", "label": "TUHO template", "project_type": "Wind"},
     {"value": "oborovo", "label": "Oborovo template", "project_type": "Solar"},
 ]
