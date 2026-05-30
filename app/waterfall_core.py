@@ -493,6 +493,93 @@ def run_waterfall_v3_core(
                     f"at {csv_path}: {exc}. Falling back to EBITDA-derived sizing."
                 )
 
+        # ------------------------------------------------------------------
+        # Phase 23Q: Oborovo frozen senior DS fixture (use_frozen_excel_senior_debt_schedule)
+        #
+        # Path: anchored to this module's location (app/), not cwd-dependent.
+        # Columns used:
+        #   operating_period_index → op_idx (0-based, matches waterfall op_idx)
+        #   fcf_for_banks_keur         → sizing CFADS (DS!R20 = FCF for banks = CFADS)
+        #   target_dscr                → per-period DSCR target (DS!R22)
+        #   ds_r57_debt_service_keur   → DS!R57 = FCF / DSCR = debt service capacity
+        #
+        # Canonical sizing computes: debt_service_capacity = sizing_cfads / dscr
+        #   = fcf / dscr = ds_r57  (exact match to DS!R57, the source of truth)
+        #
+        # Project code: OBR-001 (Oborovo Solar)
+        use_oborovo_fixture = (
+            use_frozen_excel_senior_debt_schedule
+            and getattr(inputs.info, 'code', '') == 'OBR-001'
+        )
+        if use_oborovo_fixture:
+            try:
+                csv_path = (
+                    Path(__file__).resolve().parents[1]
+                    / "reports"
+                    / "phase23q_oborovo_senior_debt_sizing_extraction.csv"
+                )
+                by_op = {}  # op_idx (0-based from CSV) → {sizing_cfads, dscr}
+                with open(csv_path, newline="") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        op_str = row.get("operating_period_index", "").strip()
+                        fcf_str = row.get("fcf_for_banks_keur", "").strip()
+                        if op_str and fcf_str:
+                            op_i = int(op_str)
+                            fcf_f = float(fcf_str)
+                            dscr_f = float(row.get("target_dscr", "1.15") or "1.15")
+                            # Keep first (lowest period_index) entry per op_idx with capacity > 0
+                            if fcf_f > 0 and op_i not in by_op:
+                                by_op[op_i] = {
+                                    "sizing_cfads": fcf_f,
+                                    "dscr": dscr_f,
+                                }
+                # Build sizing CFADS tuple: index = waterfall operating_period_index (0-based)
+                # CSV operating_period_index is 0-based (op_idx 0 = first operating period)
+                # No +1 offset needed for Oborovo (unlike TUHO which uses 1-based CSV indices)
+                explicit_sizing_cfads = tuple(
+                    by_op.get(op_idx, {}).get("sizing_cfads", 0.0)
+                    for op_idx in range(len(op_periods))
+                )
+                # Build DSCR schedule from fixture (from DS!R22)
+                explicit_dscr_schedule = tuple(
+                    by_op.get(op_idx, {}).get("dscr", 1.0)
+                    for op_idx in range(len(op_periods))
+                )
+                # Audit markers — only set when fixture was actually loaded
+                result._frozen_fixture_loaded = True
+                result._oborovo_frozen_fixture_loaded = True
+                result._frozen_fixture_error = None
+                result._frozen_fixture_note = (
+                    "Phase 23Q: Oborovo fixture-backed sizing CFADS from "
+                    "phase23q_oborovo_senior_debt_sizing_extraction.csv "
+                    "(DS!R20 FCF / DS!R22 DSCR = DS!R57 debt service)"
+                )
+            except (FileNotFoundError, KeyError, ValueError) as exc:
+                result._frozen_fixture_loaded = False
+                result._oborovo_frozen_fixture_loaded = False
+                result._frozen_fixture_error = str(exc) or type(exc).__name__
+                result._frozen_fixture_note = (
+                    "[Phase 23Q] Oborovo frozen fixture requested but fixture could not be loaded; "
+                    "falling back to EBITDA-derived sizing"
+                )
+                warnings.warn(
+                    f"[Phase 23Q] Oborovo frozen fixture requested but fixture could not be loaded "
+                    f"at {csv_path}: {exc}. Falling back to EBITDA-derived sizing."
+                )
+            except Exception as exc:
+                result._frozen_fixture_loaded = False
+                result._oborovo_frozen_fixture_loaded = False
+                result._frozen_fixture_error = str(exc) or type(exc).__name__
+                result._frozen_fixture_note = (
+                    "[Phase 23Q] Oborovo frozen fixture requested but fixture could not be loaded; "
+                    "falling back to EBITDA-derived sizing"
+                )
+                warnings.warn(
+                    f"[Phase 23Q] Oborovo frozen fixture requested but fixture could not be loaded "
+                    f"at {csv_path}: {exc}. Falling back to EBITDA-derived sizing."
+                )
+
         # Use fixture DSCR schedule when available, otherwise fall back to inputs
         if explicit_dscr_schedule is not None:
             dscr_for_sizing = explicit_dscr_schedule
