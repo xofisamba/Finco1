@@ -1,0 +1,253 @@
+<!-- Phase 24E: Audit / Reconciliation Tab -->
+<!-- UI surface for parity and validation status across main model areas -->
+<!-- No JS financial calculations. Backend remains source of truth. -->
+<!-- NOT an external model audit, bank approval, or lender approval. -->
+
+<div class="audit-reconciliation-tab" id="audit-reconciliation-tab">
+
+  {# ══════════════════════════════════════════════════════════════════════
+     DISCLAIMER
+ ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-disclaimer">
+    <span class="badge badge-warn">⚠️ Scope notice</span>
+    <span class="audit-disclaimer-text">
+      This tab summarizes current parity evidence. It is not an external model audit,
+      bank approval, lender approval, or certified audit. Frozen-template parity is
+      validated for TUHO and Oborovo; generic projects remain unvalidated unless
+      separately reviewed.
+    </span>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     REVENUE PARITY
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">Revenue</span>
+      <span class="badge badge-pass">PASS</span>
+    </div>
+    <div class="audit-section-body">
+      <div class="audit-row">
+        <span class="audit-row-label">TUHO Revenue</span>
+        <span class="audit-row-status">✅ PASS — PPA + CO2 + balancing parity confirmed</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Oborovo Revenue</span>
+        <span class="audit-row-status">✅ PASS — PPA + CO2 + balancing parity confirmed</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Generic projects</span>
+        <span class="audit-row-status">⚠️ NEEDS REVIEW — not validated against Excel</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Runtime Impact</span>
+        <span class="audit-row-status">Drives model</span>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     OPEX PARITY
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">OPEX</span>
+      <span class="badge badge-pass">PASS</span>
+    </div>
+    <div class="audit-section-body">
+      <div class="audit-row">
+        <span class="audit-row-label">TUHO OPEX</span>
+        <span class="audit-row-status">✅ PASS — 12 items, Y1=1,998 kEUR calibrated</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Oborovo OPEX</span>
+        <span class="audit-row-status">✅ PASS — 15 items, Y1=1,338 kEUR calibrated</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Generic projects</span>
+        <span class="audit-row-status">⚠️ NEEDS REVIEW — per-line runtime not exposed</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Runtime Impact</span>
+        <span class="audit-row-status">Drives model</span>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     CAPEX SOURCE MAPPING
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">CAPEX</span>
+      <span class="badge badge-warn">PENDING</span>
+    </div>
+    <div class="audit-section-body">
+      <div class="audit-row">
+        <span class="audit-row-label">CAPEX display/schema</span>
+        <span class="audit-row-status">⚠️ PENDING — Phase 21 display/schema only</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">C.16 Project Rights</span>
+        <span class="audit-row-status">⚠️ PENDING — not runtime-effective</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">M1–M18 schedule</span>
+        <span class="audit-row-status">⚠️ TIMING ONLY — not IDC runtime</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">EPC/Grid totals</span>
+        <span class="audit-row-status">✅ Drives model — aggregate CAPEX total</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Runtime Impact</span>
+        <span class="audit-row-status">Display only / Pending</span>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     DEBT / DSCR PARITY
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">Debt / DSCR</span>
+      <span class="badge badge-pass">PASS</span>
+    </div>
+    <div class="audit-section-body">
+      <div class="audit-row">
+        <span class="audit-row-label">TUHO Senior DS</span>
+        <span class="audit-row-status">✅ PASS — fixture-backed frozen Excel, op_idx 0–13 exact</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Oborovo Senior DS</span>
+        <span class="audit-row-status">✅ PASS — fixture-backed frozen Excel, op_idx 0–26 exact</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Senior debt amount</span>
+        <span class="audit-row-status">✅ PASS — TUHO 43,359 kEUR / Oborovo 42,852 kEUR</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">DSCR trajectory</span>
+        <span class="audit-row-status">⚠️ EXPECTED — above target under frozen DS path, not a defect</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Generic projects</span>
+        <span class="audit-row-status">⚠️ NEEDS REVIEW — not validated against Excel</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Runtime Impact</span>
+        <span class="audit-row-status">Drives model — Fixture-backed frozen schedule</span>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     SHL / DISTRIBUTION PARITY
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">SHL / Distribution</span>
+      <span class="badge badge-pass">PASS</span>
+    </div>
+    <div class="audit-section-body">
+      <div class="audit-row">
+        <span class="audit-row-label">TUHO SHL</span>
+        <span class="audit-row-status">✅ PASS — PIK+Sweep, no distributions while SHL outstanding</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Oborovo SHL</span>
+        <span class="audit-row-status">✅ PASS — lock-up clean, first dist op_idx 39 / 2050-06-30</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Distribution lock-up</span>
+        <span class="audit-row-status">✅ PASS — no distributions while SHL outstanding</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Generic projects</span>
+        <span class="audit-row-status">⚠️ NEEDS REVIEW — SHL/distribution not validated</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Runtime Impact</span>
+        <span class="audit-row-status">Drives model</span>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     UNRESOLVED ISSUES
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">Unresolved Issues</span>
+      <span class="badge badge-info">INFO</span>
+    </div>
+    <div class="audit-section-body">
+      <div class="audit-row">
+        <span class="audit-row-label">Oborovo op_idx 27 DS residual</span>
+        <span class="audit-row-status">🟢 WITHIN TOLERANCE — +16.84 kEUR within 20 kEUR tolerance</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">TUHO DSCR above target</span>
+        <span class="audit-row-status">🟡 EXPECTED — frozen DS path, FCF > DS, not a defect</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Oborovo late DSCR inflation</span>
+        <span class="audit-row-status">🟡 EXPECTED — declining frozen DS, FCF stable, not a defect</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Generic project path</span>
+        <span class="audit-row-status">🟡 NEEDS REVIEW — not validated against Excel</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">CAPEX per-line runtime</span>
+        <span class="audit-row-status">🟡 PENDING — Phase 21 display/schema only</span>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     VALIDATION CHECKS
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">Validation Checks</span>
+      <span class="badge badge-pass">PASS</span>
+    </div>
+    <div class="audit-section-body">
+      <div class="audit-row">
+        <span class="audit-row-label">Input validation</span>
+        <span class="audit-row-status">✅ PASS — validation.html PASS/FAIL states wired</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Runtime Impact taxonomy</span>
+        <span class="audit-row-status">✅ PASS — Phase 24A canonical labels applied</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Frozen-vs-derived warning</span>
+        <span class="audit-row-status">✅ PASS — debt panel warns about fixture-backed vs derived</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">Generic project labeling</span>
+        <span class="audit-row-status">✅ PASS — generic wind/solar labeled ⚠️ Unvalidated</span>
+      </div>
+      <div class="audit-row">
+        <span class="audit-row-label">SQLite backup/restore</span>
+        <span class="audit-row-status">✅ PASS — Phase 24F backup_restore module added</span>
+      </div>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     SCOPE WARNING
+     ══════════════════════════════════════════════════════════════════════ #}
+  <div class="audit-scope-warning">
+    <span class="badge badge-warn">⚠️ Scope</span>
+    <span class="audit-scope-text">
+      Validated parity applies to TUHO and Oborovo frozen-template paths only.
+      Generic wind/solar projects are unvalidated. Do not use this tab as a substitute
+      for an external model audit, lender review, or bank approval.
+    </span>
+  </div>
+
+</div>
