@@ -9,14 +9,109 @@ Architecture:
 - CSRF protection on login form via signed token
 
 Env vars:
-- FINCO_SECRET_KEY: signing key (required in production)
+- FINCO_APP_MODE: development | internal | pilot (default: development)
+  - development/internal: placeholder secrets allowed with WARNING
+  - pilot: fails fast on placeholder/insecure secrets
+- FINCO_SECRET_KEY: signing key (required in pilot/production)
 - FINCO_ADMIN_USER: username (default: admin)
 - FINCO_ADMIN_PASSWORD: plain password (default: fincoGPT2026!)
 - FINCO_ADMIN_PASSWORD_HASH: bcrypt hash (overrides FINCO_ADMIN_PASSWORD)
 - FINCO_SESSION_HOURS: session TTL in hours (default: 24)
 - FINCO_COOKIE_SECURE: cookie security (default: true)
 - FINCO_CSRF_SECRET: CSRF signing key (default: same as FINCO_SECRET_KEY)
+
+Single-user mode: this app is single-user/internal or pilot-controlled only.
+No multi-user roles, no tenant isolation, no enterprise permissions yet.
 """
+
+import os
+import re
+import secrets
+import time as time_module
+from datetime import datetime, timezone, timedelta
+from threading import Lock
+from typing import Optional
+
+import bcrypt
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
+# ── App mode ──────────────────────────────────────────────────────────────────
+
+# Allowed FINCO_APP_MODE values
+_VALID_APP_MODES = frozenset({"development", "internal", "pilot"})
+
+
+def get_app_mode() -> str:
+    """Return the current app mode, defaulting to 'development'."""
+    raw = os.getenv("FINCO_APP_MODE", "").strip().lower()
+    if raw in _VALID_APP_MODES:
+        return raw
+    if raw == "":
+        return "development"
+    # Unknown mode — warn and fall back to development
+    print(f"WARNING: FINCO_APP_MODE={raw!r} is not recognized. "
+          f"Valid values are: {', '.join(sorted(_VALID_APP_MODES))}. "
+          f"Defaulting to 'development'.")
+    return "development"
+
+
+# ── Placeholder detection ──────────────────────────────────────────────────────
+
+_INSECURE_KEYWORD_PATTERN = re.compile(
+    # Standalone placeholder keywords preceded by non-word/non-hyphen
+    r"(?<![A-Za-z0-9-])(?:changeme|example|password|admin|root|test|xxx|abc123|default|empty)(?!-[A-Za-z])"
+    # Hyphen-prefixed keywords: dev-only, secret, password123, qwerty, openssh, placeholder
+    r"|(?:^|[-_\s])(?:dev-only|secret|password123|qwerty|openssh|placeholder)\b"
+    # Compound keywords: secret-key, secret-password, api-key (not preceded/followed by word/hyphen)
+    r"|(?<!\w)(?:secret-key|secret-password|api-key)(?!\w)"
+    # Not-for-* labeled placeholders
+    r"|not-for-(?:production|pilot)"
+    # fincoGPT variants
+    r"|fincoGPT(?:2026|$|!|\s)",
+    re.IGNORECASE
+)
+
+
+def is_placeholder_secret(value: str) -> bool:
+    """
+    Return True if ``value`` looks like an insecure placeholder.
+
+    This is intentionally narrow: it catches common dev defaults and
+    obviously-insecure strings. It does NOT guarantee a value is strong.
+    """
+    if not value:
+        return True  # empty = placeholder
+    return bool(_INSECURE_KEYWORD_PATTERN.search(value.strip()))
+
+
+def _is_pilot_mode() -> bool:
+    """Return True if app mode is 'pilot'."""
+    return get_app_mode() == "pilot"
+
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+FINCO_APP_MODE = get_app_mode()  # expose for debugging/logging if needed
+
+SECRET_KEY = os.getenv("FINCO_SECRET_KEY")
+if not SECRET_KEY:
+    SECRET_KEY = "dev-secret-please-change-in-production"
+    print("WARNING: FINCO_SECRET_KEY not set. Using insecure default.")
+elif is_placeholder_secret(SECRET_KEY) and _is_pilot_mode():
+    raise RuntimeError(
+        "FINCO_SECRET_KEY is a placeholder value in pilot mode. "
+        "Set a real secret: FINCO_SECRET_KEY=<long-random-string>"
+    )
+
+ADMIN_USERNAME = os.getenv("FINCO_ADMIN_USER", "admin")
+ADMIN_PASSWORD_HASH_ENV = os.getenv("FINCO_ADMIN_PASSWORD_HASH")
+ADMIN_PASSWORD_PLAIN = os.getenv("FINCO_ADMIN_PASSWORD", "fincoGPT2026!")
+
+if is_placeholder_secret(ADMIN_PASSWORD_PLAIN) and _is_pilot_mode():
+    raise RuntimeError(
+        "FINCO_ADMIN_PASSWORD is a placeholder value in pilot mode. "
+        "Set a real password: FINCO_ADMIN_PASSWORD=<secure-password>"
+    )
 
 import os
 import re
