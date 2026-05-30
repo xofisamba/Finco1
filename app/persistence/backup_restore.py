@@ -276,3 +276,205 @@ def restore_sqlite_backup(backup_filename: str) -> tuple[bool, str]:
         return True, f"Restore successful from {backup_filename}"
     except Exception as e:
         return False, f"Restore failed: {e}"
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase 24F.1: Auto-Backup Scheduling
+# ═════════════════════════════════════════════════════════════════════════════
+
+"""Phase 24F.1: Auto-Backup Scheduling
+
+Automatic SQLite backup scheduling on top of the Phase 24F module.
+
+Functions:
+- get_auto_backup_config(): return auto-backup configuration
+- should_create_auto_backup(): check if an auto-backup is due
+- create_auto_backup_if_due(): create an auto-backup if due
+- prune_auto_backups(): remove oldest auto backups beyond max count
+
+Design decisions:
+- Auto backups named with auto_ prefix: auto_finco_runs_{ts}.db
+  This separates them from manual backups so pruning only touches auto backups.
+- Pre-restore safety backups (pre_restore_safety_*) are never pruned by auto-prune.
+- Configuration via environment variables with safe defaults.
+- Helper-only: does not auto-wire to app startup; call create_auto_backup_if_due() from app startup if desired.
+"""
+
+from typing import NamedTuple
+
+# Auto-backup configuration env vars and defaults
+_AUTO_BACKUP_ENABLED = os.getenv("FINCO_AUTO_BACKUP_ENABLED", "true").lower() in ("true", "1", "yes")
+_AUTO_BACKUP_INTERVAL_HOURS = int(os.getenv("FINCO_AUTO_BACKUP_INTERVAL_HOURS", "24"))
+_AUTO_BACKUP_MAX_FILES = int(os.getenv("FINCO_AUTO_BACKUP_MAX_FILES", "10"))
+
+# Auto-backup filename prefix — distinguishes auto from manual backups
+_AUTO_BACKUP_PREFIX = "auto_finco_runs_"
+
+
+class AutoBackupConfig(NamedTuple):
+    """Auto-backup configuration."""
+    enabled: bool
+    interval_hours: int
+    max_files: int
+
+
+def get_auto_backup_config() -> AutoBackupConfig:
+    """Return current auto-backup configuration."""
+    return AutoBackupConfig(
+        enabled=_AUTO_BACKUP_ENABLED,
+        interval_hours=_AUTO_BACKUP_INTERVAL_HOURS,
+        max_files=_AUTO_BACKUP_MAX_FILES,
+    )
+
+
+def _list_auto_backups() -> list["BackupListEntry"]:
+    """List auto-backup files (newest-first)."""
+    backup_dir = get_backup_dir()
+    if not os.path.isdir(backup_dir):
+        return []
+    entries = []
+    for fname in os.listdir(backup_dir):
+        if not fname.startswith(_AUTO_BACKUP_PREFIX) or not fname.endswith(".db"):
+            continue
+        fpath = os.path.join(backup_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        st = os.stat(fpath)
+        entries.append(BackupListEntry(
+            backup_path=fpath,
+            filename=fname,
+            mtime=st.st_mtime,
+            size_bytes=st.st_size,
+        ))
+    entries.sort(key=lambda e: e.mtime, reverse=True)
+    return entries
+
+
+def should_create_auto_backup(*, now: "datetime | None" = None) -> bool:
+    """Return True if an auto-backup should be created now.
+
+    A backup is due if:
+    - Auto-backup is enabled
+    - DB file exists
+    - No prior auto-backup exists  OR  latest auto-backup is older than interval
+
+    Args:
+        now: timezone-aware datetime (UTC). Defaults to utcnow().
+    """
+    if not _AUTO_BACKUP_ENABLED:
+        return False
+
+    db_path = get_sqlite_db_path()
+    if not os.path.exists(db_path):
+        return False
+
+    auto_backups = _list_auto_backups()
+    if not auto_backups:
+        return True  # No prior auto-backup — first one is due
+
+    # Check age of the most recent auto backup
+    if now is None:
+        now_aware = datetime.now(timezone.utc)
+    else:
+        now_aware = now
+
+    latest = auto_backups[0]
+    from datetime import timedelta
+    age = timedelta(seconds=(now_aware.timestamp() - latest.mtime))
+    return age.total_seconds() >= (_AUTO_BACKUP_INTERVAL_HOURS * 3600)
+
+
+def create_auto_backup_if_due(*, now: "datetime | None" = None) -> "BackupMetadata | None":
+    """Create an auto-backup if one is due, then prune old auto backups.
+
+    Reuses create_sqlite_backup() but with auto_ prefix naming.
+    Prunes old auto backups after creation.
+
+    Returns BackupMetadata if a backup was created, or None if not due / skipped.
+    Raises exceptions from create_sqlite_backup on actual failure.
+    """
+    if not should_create_auto_backup(now=now):
+        return None
+
+    # Create a backup using the standard function, then rename to auto_ prefix
+    import app.persistence.backup_restore as br_module
+
+    # Monkey-patch the filename generation for this call
+    original_create = br_module.create_sqlite_backup
+
+    def _auto_backup_create():
+        # Call original but capture the path, then rename
+        meta = original_create()
+        auto_name = meta.filename.replace("finco_runs_", _AUTO_BACKUP_PREFIX, 1)
+        auto_path = os.path.join(os.path.dirname(meta.backup_path), auto_name)
+        os.rename(meta.backup_path, auto_path)
+        # Also rename sidecars if present
+        for sidecar in ("-wal", "-shm", "-journal"):
+            old_sidecar = meta.backup_path + sidecar
+            new_sidecar = auto_path + sidecar
+            if os.path.exists(old_sidecar):
+                os.rename(old_sidecar, new_sidecar)
+        import hashlib
+        h = hashlib.md5()
+        with open(auto_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return br_module.BackupMetadata(
+            backup_path=auto_path,
+            filename=auto_name,
+            timestamp=meta.timestamp,
+            size_bytes=os.path.getsize(auto_path),
+            checksum=h.hexdigest(),
+            source_db_path=meta.source_db_path,
+        )
+
+    try:
+        meta = _auto_backup_create()
+    except FileNotFoundError:
+        return None  # DB didn't exist when we tried
+
+    # Prune old auto backups
+    prune_auto_backups()
+
+    return meta
+
+
+def prune_auto_backups(max_backups: "int | None" = None) -> int:
+    """Remove oldest auto backups beyond max_files.
+
+    Only removes files with the auto_ prefix.
+    Never removes manual backups (finco_runs_*) or pre_restore_safety_* files.
+
+    Args:
+        max_backups: Maximum auto backups to retain. Defaults to FINCO_AUTO_BACKUP_MAX_FILES.
+
+    Returns:
+        Number of auto backups deleted.
+    """
+    if max_backups is None:
+        max_backups = _AUTO_BACKUP_MAX_FILES
+
+    if max_backups <= 0:
+        return 0
+
+    auto_backups = _list_auto_backups()
+    if len(auto_backups) <= max_backups:
+        return 0
+
+    to_delete = auto_backups[max_backups:]
+    deleted = 0
+    for entry in to_delete:
+        try:
+            os.remove(entry.backup_path)
+            deleted += 1
+        except OSError:
+            pass
+        # Also remove sidecars
+        for sidecar in ("-wal", "-shm", "-journal"):
+            sidecar_path = entry.backup_path + sidecar
+            try:
+                os.remove(sidecar_path)
+            except OSError:
+                pass
+
+    return deleted
