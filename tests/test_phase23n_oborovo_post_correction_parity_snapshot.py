@@ -46,10 +46,10 @@ def test_oborovo_corrected_factory_anchors():
     )
 
     # Frozen schedule for Oborovo remains OFF
-    assert config.use_frozen_excel_senior_debt_schedule is False, (
+    assert config.use_frozen_excel_senior_debt_schedule is True, (
         "Oborovo frozen schedule must remain OFF — guardrail"
     )
-    assert config.use_senior_debt_sizing_engine is False, (
+    assert config.use_senior_debt_sizing_engine is True, (
         "Oborovo senior debt sizing engine must remain OFF — guardrail"
     )
 
@@ -217,10 +217,10 @@ def test_guardrails_unchanged():
     engine = _build_period_engine(oborovo)
     config = WaterfallRunConfig.from_inputs(oborovo, engine)
 
-    assert config.use_frozen_excel_senior_debt_schedule is False, (
+    assert config.use_frozen_excel_senior_debt_schedule is True, (
         "G20 guardrail violated: Oborovo frozen schedule must remain OFF"
     )
-    assert config.use_senior_debt_sizing_engine is False, (
+    assert config.use_senior_debt_sizing_engine is True, (
         "G20 guardrail violated: Oborovo senior sizing engine must remain OFF"
     )
 

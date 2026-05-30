@@ -115,7 +115,7 @@ class TestOborovoShlTenorFix:
         assert fin.shl_rate == 0.08
         assert fin.senior_tenor_years == 14
         assert fin.debt_sizing_method == "gearing_cap"
-        assert fin.use_frozen_excel_senior_debt_schedule == False
+        assert fin.use_frozen_excel_senior_debt_schedule is True, "Phase 23R: Oborovo factory opt-in enabled"
 
     def test_revenue_opex_unchanged(self):
         """Verify revenue and OPEX are not affected by shl_tenor_years change."""

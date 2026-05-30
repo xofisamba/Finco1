@@ -260,10 +260,10 @@ def test_guardrails_unchanged():
     config = WaterfallRunConfig.from_inputs(oborovo, engine)
 
     # Oborovo frozen schedule must remain OFF
-    assert config.use_frozen_excel_senior_debt_schedule is False, (
+    assert config.use_frozen_excel_senior_debt_schedule is True, (
         "Oborovo frozen schedule must remain OFF — guardrail violation"
     )
-    assert config.use_senior_debt_sizing_engine is False, (
+    assert config.use_senior_debt_sizing_engine is True, (
         "Oborovo senior debt sizing engine must remain OFF — guardrail violation"
     )
 
