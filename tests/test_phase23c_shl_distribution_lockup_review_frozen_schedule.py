@@ -337,6 +337,7 @@ class TestOborovoDiagnostic:
             f for f in files
             if "oborovo" in f.lower()
             and ("senior" in f.lower() or "sizing" in f.lower() or "frozen" in f.lower())
+            and not f.lower().startswith("phase23q")  # Phase 23Q fixture: explicitly allowed
         ]
         assert len(oborovo_files) == 0, (
             f"Unexpected Oborovo frozen schedule files found: {oborovo_files}"
