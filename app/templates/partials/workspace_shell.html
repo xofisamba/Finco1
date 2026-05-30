@@ -192,6 +192,9 @@
     Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
   </div>
 
+  {# Phase 25A: Pilot Workflow Guide — shown on Overview tab #}
+  {% include "partials/pilot_workflow_guide.html" %}
+
   <div class="export-lineage-panel" id="export-lineage-panel" aria-label="Export lineage summary">
     <div class="export-lineage-panel__header">
       <div>
@@ -426,8 +429,8 @@
     <div class="placeholder-panel">
       <div class="placeholder-icon">💸</div>
       <div class="placeholder-title">Equity Distributions</div>
-      <div class="placeholder-desc">Distribution schedule with lockup, sweep, and constraints will appear here.</div>
-      <div class="placeholder-note">Future phase: distribution table, cash available for distribution chart.</div>
+      <div class="placeholder-desc">Distribution schedule with lockup, sweep, and constraints will appear after a model run.</div>
+      <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. TUHO/Oborovo frozen-template path is validated; generic projects remain unvalidated.</div>
     </div>
   </div>
 
@@ -441,8 +444,8 @@
     <div class="placeholder-panel">
       <div class="placeholder-icon">👤</div>
       <div class="placeholder-title">Sponsor / Equity Returns</div>
-      <div class="placeholder-desc">Equity contribution, return metrics, and sponsor waterfall will appear here.</div>
-      <div class="placeholder-note">Status: R99/R102 runtime flags NOT APPROVED for production promotion.</div>
+      <div class="placeholder-desc">Equity contribution, return metrics, and sponsor waterfall will appear after a model run.</div>
+      <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. Backend remains source of truth.</div>
     </div>
   </div>
 
@@ -517,6 +520,9 @@
       <div class="panel-title">Downloads &amp; Audit Artefacts</div>
       <div class="panel-desc">Export model outputs, parity workbooks, gap registers, and source maps with reviewer-readable lineage before download.</div>
     </div>
+
+    {# Phase 25A: Pilot limitations notice in Downloads tab #}
+    {% include "partials/pilot_limitations_notice.html" %}
 
     <div class="export-lineage-history">
       <div class="export-lineage-history__title">Current Export Context</div>
