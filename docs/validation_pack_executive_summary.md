@@ -95,9 +95,10 @@ FincoGPT and this validation pack are explicitly **NOT**:
 
 1. **Read this executive summary** (you are here)
 2. **Review the Validation Pack Index** to understand the document structure
-3. **Use the External Reviewer Checklist** to work through TUHO and Oborovo checks
-4. **Cross-reference with the Evidence Matrix** for source-document links
-5. **Sign off** using the reviewer sign-off section (informal, non-certification)
+3. **Use the Phase 39 reviewer package** for scope, workflow, and issue logging
+4. **Use the External Reviewer Checklist** to work through TUHO and Oborovo checks
+5. **Cross-reference with the Evidence Matrix** for source-document links
+6. **Sign off** using the reviewer sign-off section (informal, non-certification)
 
 ---
 

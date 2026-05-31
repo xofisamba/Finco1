@@ -11,6 +11,8 @@ This index helps reviewers navigate the complete validation evidence package for
 | Document | Purpose |
 |----------|---------|
 | `validation_pack_executive_summary.md` | **Start here** - one-page overview of validated scope, anchors, residuals, non-claims |
+| `phase39_external_model_review_package.md` | Structured reviewer-run protocol for scoped independent review |
+| `model_reviewer_package_manifest.md` | Reviewer package reading order, artifact map, and exclusions |
 
 ### Core Validation Documents
 
@@ -47,6 +49,8 @@ This index helps reviewers navigate the complete validation evidence package for
 | `deployment_runbook.md` | Operational runbook - install, env vars, health, backup | Phase 26D |
 | `phase24_closeout_pilot_readiness_review.md` | Pilot readiness review closeout | Phase 24 |
 | `phase25b_onboarding_help_demo_mode.md` | Onboarding/help implementation doc | Phase 25B |
+| `model_reviewer_run_checklist.md` | Reviewer-run execution checklist | Phase 39 |
+| `model_reviewer_issue_log_template.md` | Reviewer question and exception log template | Phase 39 |
 
 ### Tests Supporting Validation
 
