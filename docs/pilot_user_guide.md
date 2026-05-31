@@ -73,12 +73,12 @@ Exports are based on the **last clean backend run**, not unsaved draft edits. If
 3. Then export
 
 Available exports:
-- **Values-only Excel** - model outputs with provenance notes
-- **Runtime Summary CSV** - KPIs and governance posture
-- **Institutional Workbook** - reviewer-facing workbook with cover notes
-- **Parity Workbook** - TUHO horizontal review vs Excel
-- **Gap Register** - all parity gaps and statuses
-- **Source Map** - column-by-column provenance
+- **Values-only Excel** - spreadsheet copy of submitted values with provenance notes for reviewer handoff
+- **Runtime Summary CSV** - compact backend-run KPI snapshot with provenance and governance posture
+- **Institutional Workbook** - reviewer-facing workbook with runtime summary, cover notes, and trust-surface context
+- **Parity Workbook** - validated frozen-template parity evidence for TUHO/Oborovo review
+- **Gap Register** - pending items, open gaps, and out-of-scope rows that still require judgement
+- **Source Map** - column-by-column provenance showing where reviewed figures came from
 
 ---
 

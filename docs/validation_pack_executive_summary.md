@@ -1,4 +1,4 @@
-# FincoGPT Validation Pack — Executive Summary
+# FincoGPT Validation Pack - Executive Summary
 
 > **How to read this pack:** This document is the entry point for any reviewer.  
 > Start here, then use the **Validation Pack Index** (`validation_pack_index.md`) to navigate supporting evidence.  
@@ -18,9 +18,9 @@ All calculations are performed by a Python backend engine. Browser-side JS is di
 
 | Project | Type | Capacity | Status |
 |---------|------|----------|--------|
-| **TUHO Wind** | Frozen-template | 72 MW (Croatia) | ✅ Parity-validated against Excel |
-| **Oborovo Solar** | Frozen-template | 53.63 MW (Croatia) | ✅ Parity-validated against Excel |
-| Generic / new projects | Any | Any | ⚠️ **Not validated** — review independently |
+| **TUHO Wind** | Frozen-template | 72 MW (Croatia) | [Validated] Parity-validated against Excel |
+| **Oborovo Solar** | Frozen-template | 53.63 MW (Croatia) | [Validated] Parity-validated against Excel |
+| Generic / new projects | Any | Any | [Warning] **Not validated** - review independently |
 
 TUHO and Oborovo are frozen-template paths where the senior debt service schedule is fixture-backed from validated Excel workbooks. Their outputs are considered reliable within documented tolerances.
 
@@ -32,22 +32,22 @@ TUHO and Oborovo are frozen-template paths where the senior debt service schedul
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Senior debt amount | 43,359.0 kEUR | ✅ Exact match vs Excel |
-| Senior DS fixture parity | op_idx 0–13, diff < 0.5 kEUR | ✅ Validated |
-| DSCR trajectory | 1.16–1.46x (target 1.20x) | ℹ️ Expected inflation — frozen DS path |
-| Equity IRR (with CO2) | 11.81% vs Excel 11.61% | ✅ Within ±1.0 pp |
-| CO2 revenue (Y1) | ~611 kEUR | ✅ Calibrated |
+| Senior debt amount | 43,359.0 kEUR | [Validated] Exact match vs Excel |
+| Senior DS fixture parity | op_idx 0-13, diff < 0.5 kEUR | [Validated] Validated |
+| DSCR trajectory | 1.16-1.46x (target 1.20x) | [Info] Expected inflation - frozen DS path |
+| Equity IRR (with CO2) | 11.81% vs Excel 11.61% | [Validated] Within +/-1.0 pp |
+| CO2 revenue (Y1) | ~611 kEUR | [Validated] Calibrated |
 
 ### Oborovo Solar
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Senior debt amount | 42,852.27 kEUR | ✅ (+0.27 kEUR rounding) |
-| Senior DS fixture parity | op_idx 0–26, diff ~0 | ✅ Validated |
-| op_idx 27 residual | +16.84 kEUR | ✅ Within 20 kEUR tolerance |
-| SHL opening balance | ~15,790 kEUR (14,621 + 1,169 IDC) | ✅ Validated |
-| First valid distribution | op_idx 39 / 2050-06-30 | ✅ After SHL cleared at op_idx 38 |
-| DSCR trajectory | 1.15–2.37x (target 1.15/1.35x) | ℹ️ Expected inflation — frozen DS path |
+| Senior debt amount | 42,852.27 kEUR | [Validated] (+0.27 kEUR rounding) |
+| Senior DS fixture parity | op_idx 0-26, diff ~0 | [Validated] Validated |
+| op_idx 27 residual | +16.84 kEUR | [Validated] Within 20 kEUR tolerance |
+| SHL opening balance | ~15,790 kEUR (14,621 + 1,169 IDC) | [Validated] Validated |
+| First valid distribution | op_idx 39 / 2050-06-30 | [Validated] After SHL cleared at op_idx 38 |
+| DSCR trajectory | 1.15-2.37x (target 1.15/1.35x) | [Info] Expected inflation - frozen DS path |
 
 ---
 
@@ -55,10 +55,10 @@ TUHO and Oborovo are frozen-template paths where the senior debt service schedul
 
 | Item | Value | Classification |
 |------|-------|---------------|
-| TUHO op_idx 12 DS residual | +0.07 kEUR | 🟢 Negligible — fixture 4dp rounding |
-| Oborovo op_idx 27 DS residual | +16.84 kEUR | 🟢 Low — within 20 kEUR tolerance |
-| TUHO DSCR above target | 1.16–1.46x vs 1.20x | ℹ️ Expected — frozen DS path |
-| Oborovo DSCR above target (late) | 1.9–2.4x vs 1.35x | ℹ️ Expected — frozen DS path |
+| TUHO op_idx 12 DS residual | +0.07 kEUR | Low - fixture 4dp rounding |
+| Oborovo op_idx 27 DS residual | +16.84 kEUR | Low - within 20 kEUR tolerance |
+| TUHO DSCR above target | 1.16-1.46x vs 1.20x | Expected - frozen DS path |
+| Oborovo DSCR above target (late) | 1.9-2.4x vs 1.35x | Expected - frozen DS path |
 
 All residuals are classified as **expected under the frozen senior debt service path**, not as runtime defects.
 
@@ -69,8 +69,8 @@ All residuals are classified as **expected under the frozen senior debt service 
 The following are explicitly **not validated** by this pack:
 
 - Generic or new-project paths (no Excel reference)
-- Construction IDC runtime (M1–M18, C.16 Project Rights) — not wired
-- Live sculpting solver — not promoted (partial_pay_sweep not approved; flat/min DSCR not approved)
+- Construction IDC runtime (M1-M18, C.16 Project Rights) - not wired
+- Live sculpting solver - not promoted (partial_pay_sweep not approved; flat/min DSCR not approved)
 - Multi-user, RBAC, SSO, OAuth/SAML
 - SaaS-ready or multi-tenant deployment
 
@@ -82,12 +82,12 @@ FincoGPT and this validation pack are explicitly **NOT**:
 
 | Claim | Status |
 |-------|--------|
-| Bank / lender approval | ❌ Not provided |
-| Credit analysis | ❌ Not provided |
-| Certified external audit | ❌ Not provided |
-| SaaS-ready / multi-tenant | ❌ Not implemented |
-| Live sculpting solver | ❌ Frozen fixture-backed schedule |
-| Multi-user with RBAC | ❌ Single-user internal pilot mode |
+| Bank / lender approval | [Not included] Not provided |
+| Credit analysis | [Not included] Not provided |
+| Certified external audit | [Not included] Not provided |
+| SaaS-ready / multi-tenant | [Not included] Not implemented |
+| Live sculpting solver | [Not included] Frozen fixture-backed schedule |
+| Multi-user with RBAC | [Not included] Single-user internal pilot mode |
 
 ---
 
@@ -105,8 +105,8 @@ FincoGPT and this validation pack are explicitly **NOT**:
 
 1. Confirm TUHO senior debt fixture = 43,359.0 kEUR vs Excel
 2. Confirm Oborovo senior debt fixture = 42,852.27 kEUR vs Excel
-3. Verify DS fixture parity (TUHO: 0–13, Oborovo: 0–27)
-4. Review Oborovo op_idx 27 residual (+16.84 kEUR) — within tolerance
+3. Verify DS fixture parity (TUHO: 0-13, Oborovo: 0-27)
+4. Review Oborovo op_idx 27 residual (+16.84 kEUR) - within tolerance
 5. Verify Oborovo SHL opening = ~15,790 kEUR
 6. Verify distribution lock-up policy (no distributions while SHL outstanding)
 7. Verify first valid distribution at op_idx 39 (2050-06-30)
@@ -116,4 +116,4 @@ FincoGPT and this validation pack are explicitly **NOT**:
 
 ---
 
-*Generated: Phase 27B. For internal pilot review only — not for external distribution or certification claim.*
+*Generated: Phase 27B. For internal pilot review only - not for external distribution or certification claim.*

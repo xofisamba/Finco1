@@ -1,6 +1,6 @@
 {% if not valid %}
 <div class="alert alert-error" style="margin-bottom:1rem;">
-  <strong>Validation failed</strong> — please fix the following:
+  <strong>Validation failed</strong> - please fix the following:
 </div>
 {% endif %}
 {% for err in errors %}
@@ -8,6 +8,6 @@
 {% endfor %}
 {% if valid %}
 <div class="alert alert-info" style="margin-bottom:1rem;">
-  ✓ All inputs look good — click <strong>Run Model</strong> when ready
+  Input checks passed. Click <strong>Run Model</strong> when ready.
 </div>
 {% endif %}
