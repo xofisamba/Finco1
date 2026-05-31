@@ -31,4 +31,11 @@
   </div>
   {% endif %}
 
+  <!-- Phase 33: Scenario Version History — lightweight version list + draft/saved/runtime explainer -->
+  {% if is_user_project %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_version_history.html" %}
+  </div>
+  {% endif %}
+
 </div>
