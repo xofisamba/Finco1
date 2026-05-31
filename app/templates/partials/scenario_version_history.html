@@ -1,14 +1,14 @@
-<!-- Scenario Version History — Phase 33
+<!-- Scenario Version History - Phase 33
      Lightweight UI to expose existing versioning capabilities.
      Draft/saved/runtime semantics and stale-runtime warning included.
-     No financial logic — purely informational.
+     No financial logic - purely informational.
 -->
 <div class="svh-container">
 
   <!-- Heading -->
   <div class="svh-header">
     <span class="svh-title">Saved Versions</span>
-    <span class="svh-subtitle">— preserve input snapshots</span>
+    <span class="svh-subtitle">- preserve input snapshots</span>
   </div>
 
   <!-- Version list -->
@@ -37,7 +37,7 @@
           <span class="svh-meta-item">{{ card.project_code }}</span>
         {% endif %}
         {% if card.equity_irr is not none %}
-          <span class="svh-meta-item">IRR {{ "%.1f"|format(card.equity_irr * 100) if card.equity_irr else "—" }}%</span>
+          <span class="svh-meta-item">IRR {{ "%.1f"|format(card.equity_irr * 100) if card.equity_irr else "-" }}%</span>
         {% endif %}
       </div>
 
@@ -89,7 +89,7 @@
   <!-- Stale runtime warning -->
   {% if workspace_state and workspace_state.dirty %}
   <div class="svh-warning">
-    ⚠️ Unsaved draft — runtime output may be stale. Save and re-run to update.
+    [Warning] Unsaved draft - runtime output may be stale. Save and re-run to update.
   </div>
   {% endif %}
 
