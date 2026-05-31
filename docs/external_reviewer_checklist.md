@@ -3,6 +3,10 @@
 > **Important:** This checklist is for internal pilot review only.  
 > Signing this checklist does **not** constitute a bank approval, lender approval, certified audit, or any form of external certification.  
 > It is an informal internal review sign-off.
+> For a structured reviewer run, use this checklist together with
+> `phase39_external_model_review_package.md`,
+> `model_reviewer_run_checklist.md`, and
+> `model_reviewer_issue_log_template.md`.
 
 ---
 

@@ -1,0 +1,38 @@
+{
+  "main_sha": "ae08938e80b3b16055c842cb86689e7e70cbfaec",
+  "package_version": "phase39",
+  "validated_projects": [
+    "TUHO",
+    "Oborovo"
+  ],
+  "excluded_scopes": [
+    "generic solar/wind validation",
+    "generic wind CO2",
+    "construction IDC",
+    "C.16 Project Rights",
+    "M1-M18 IDC",
+    "live sculpting / debt re-sizing promotion",
+    "multi-user/RBAC/SSO",
+    "SaaS/enterprise readiness",
+    "bank/lender/external audit/certification approval"
+  ],
+  "core_docs": [
+    "docs/validation_pack_executive_summary.md",
+    "docs/validation_pack_index.md",
+    "docs/phase39_external_model_review_package.md",
+    "docs/model_reviewer_run_checklist.md",
+    "docs/model_reviewer_package_manifest.md",
+    "docs/external_reviewer_checklist.md",
+    "docs/pilot_rc_scope_matrix.md",
+    "docs/phase38_audit_output_trust_surface_polish.md"
+  ],
+  "non_claims": [
+    "not a bank approval",
+    "not a lender approval",
+    "not a certified audit",
+    "not a certification",
+    "not SaaS-ready",
+    "not enterprise-ready",
+    "not multi-tenant ready"
+  ]
+}
