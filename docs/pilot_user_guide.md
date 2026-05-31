@@ -4,7 +4,7 @@
 
 ---
 
-## What is FincoGPTv
+## What is FincoGPT
 
 FincoGPT is an internal pilot tool for structured financial modelling of renewable energy projects (wind and solar). It computes:
 
@@ -56,9 +56,9 @@ This tab summarises how closely the model matches the Excel reference. It is **i
 
 | Colour | Meaning |
 |--------|---------|
-| Green Green | Within tolerance |
-| Yellow Yellow | Accepted convention difference |
-| Red Red | Gap - review |
+| Green | Within tolerance |
+| Yellow | Accepted convention difference |
+| Red | Gap - review |
 
 The primary anchors are Senior Debt, SHL Opening, and Distributions.
 
