@@ -1,0 +1,222 @@
+<!-- Phase 25B: Pilot Help / Onboarding -->
+<!-- Shared help language for trusted pilot onboarding -->
+<!-- No JS financial calculations. Backend remains source of truth. -->
+<!-- NOT a lender approval, bank approval, external audit, or SaaS certification. -->
+
+<div class="pilot-help-onboarding" id="pilot-help-onboarding" role="complementary" aria-label="Pilot help and onboarding">
+  <div class="pho-header">
+    <span class="badge badge-info">📖 Help</span>
+    <button class="pho-toggle" onclick="document.getElementById('pilot-help-onboarding').classList.toggle('is-collapsed')" aria-expanded="true" aria-label="Toggle help panel">
+      <span class="pho-toggle-icon">▾</span>
+    </button>
+  </div>
+
+  <div class="pho-body">
+
+    <!-- What is FincoGPT -->
+    <div class="pho-section">
+      <div class="pho-section-title">What is FincoGPT?</div>
+      <div class="pho-item">
+        FincoGPT is an internal pilot tool for structured financial modelling of renewable energy projects (wind/solar).
+        It computes debt sizing, equity returns, DSCR, and distributions using a Python backend engine.
+      </div>
+    </div>
+
+    <!-- Validated templates -->
+    <div class="pho-section">
+      <div class="pho-section-title">Validated templates</div>
+      <div class="pho-item">
+        ✅ <strong>TUHO Wind (72 MW, Croatia)</strong> — frozen-template, parity-validated against Excel (senior debt, SHL opening, distributions, CO2 revenue)
+      </div>
+      <div class="pho-item">
+        ✅ <strong>Oborovo Solar (53.63 MW, Croatia)</strong> — frozen-template, parity-validated against Excel
+      </div>
+      <div class="pho-item pho-item--warn">
+        ⚠️ <strong>Generic / new projects</strong> — unvalidated; assumptions and outputs should be reviewed independently before drawing conclusions
+      </div>
+    </div>
+
+    <!-- Demo / Pilot mode -->
+    <div class="pho-section">
+      <div class="pho-section-title">Demo / Pilot mode</div>
+      <div class="pho-item">
+        Pilot mode uses selected validated template projects (TUHO / Oborovo) for trusted internal review.
+        Generic projects are for exploration only unless separately validated.
+      </div>
+      <div class="pho-item">
+        App is single-user / internal pilot mode — no multi-tenant isolation or RBAC.
+      </div>
+    </div>
+
+    <!-- How to run a pilot workflow -->
+    <div class="pho-section">
+      <div class="pho-section-title">How to run a pilot workflow</div>
+      <div class="pho-item">
+        <strong>1. Select project</strong> — Choose TUHO or Oborovo template for validated results, or generic for exploration
+      </div>
+      <div class="pho-item">
+        <strong>2. Review assumptions</strong> — Check inputs in the sidebar before running
+      </div>
+      <div class="pho-item">
+        <strong>3. Save scenario</strong> — Create a named snapshot before making changes
+      </div>
+      <div class="pho-item">
+        <strong>4. Run model</strong> — Backend calculates outputs; JS is display-only
+      </div>
+      <div class="pho-item">
+        <strong>5. Review results</strong> — KPIs (IRR, DSCR) and debt/equity panels appear after run
+      </div>
+      <div class="pho-item">
+        <strong>6. Review audit</strong> — Audit / Parity tab shows parity evidence against Excel
+      </div>
+      <div class="pho-item">
+        <strong>7. Export</strong> — Downloads tab provides XLSX, CSV, and parity workbooks
+      </div>
+    </div>
+
+    <!-- How to read audit / reconciliation -->
+    <div class="pho-section">
+      <div class="pho-section-title">How to read Audit / Parity</div>
+      <div class="pho-item">
+        The Audit / Parity tab summarises parity evidence for TUHO and Oborovo.
+        It is <em>internal review tooling</em>, not a certified external audit.
+        Green = within tolerance. Yellow = accepted convention difference. Red = gap.
+      </div>
+      <div class="pho-item">
+        Senior Debt, SHL Opening, and Distributions are the primary parity anchors.
+        Equity IRR has a ±1.0pp tolerance; Project IRR has a ±0.5pp tolerance.
+      </div>
+    </div>
+
+    <!-- Export / Download -->
+    <div class="pho-section">
+      <div class="pho-section-title">Export / Download</div>
+      <div class="pho-item">
+        Exports are based on the <strong>last clean backend run</strong>, not unsaved draft edits.
+        If you changed inputs after the last run, save the scenario and run again before exporting.
+      </div>
+      <div class="pho-item">
+        Available exports: Values-only Excel, Runtime Summary CSV, Institutional Workbook, Parity Workbook, Gap Register, Source Map.
+      </div>
+    </div>
+
+    <!-- Backup and restore -->
+    <div class="pho-section">
+      <div class="pho-section-title">Backup and Restore</div>
+      <div class="pho-item">
+        Auto-backup creates a dated copy of the SQLite database every 24 hours (configurable via FINCO_AUTO_BACKUP_INTERVAL_HOURS).
+        Up to 10 auto-backups are retained; manual backups and pre-restore safety backups are not pruned.
+      </div>
+      <div class="pho-item">
+        To restore: go to Downloads or settings, find a backup file, and use the restore function.
+        This is for single-user internal recovery — no enterprise DR or cloud/offsite backup is implemented.
+      </div>
+    </div>
+
+    <!-- Limitations and non-claims -->
+    <div class="pho-section">
+      <div class="pho-section-title">Limitations and non-claims</div>
+      <div class="pho-item pho-item--err">
+        ❌ <strong>Not a lender or bank approval</strong> — this app does not provide credit analysis or lender approval
+      </div>
+      <div class="pho-item pho-item--err">
+        ❌ <strong>Not an external audit or certification</strong> — the Audit / Parity tab is internal review tooling
+      </div>
+      <div class="pho-item pho-item--err">
+        ❌ <strong>Not SaaS-ready</strong> — single-user internal pilot mode; no multi-tenant isolation or RBAC
+      </div>
+      <div class="pho-item pho-item--err">
+        ❌ <strong>Not a live sculpting solver</strong> — the frozen senior debt schedule is fixture-backed from Excel; it is not a dynamic sculpting calculation
+      </div>
+      <div class="pho-item">
+        All model outputs are produced by the backend Python engine. Browser-side JS is display-only and does not calculate financial outputs.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.pilot-help-onboarding {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+  font-size: 0.82rem;
+  background: var(--surface-secondary, #f9fafb);
+}
+
+.pho-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: var(--muted-bg, #f3f4f6);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.pho-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--text-2, #6b7280);
+  padding: 0.2rem;
+}
+
+.pho-toggle-icon {
+  display: inline-block;
+  transition: transform 0.2s;
+}
+
+.pilot-help-onboarding.is-collapsed .pho-body {
+  display: none;
+}
+
+.pilot-help-onboarding.is-collapsed .pho-toggle-icon {
+  transform: rotate(-90deg);
+}
+
+.pho-body {
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pho-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pho-section-title {
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, #6b7280);
+  margin-bottom: 0.15rem;
+}
+
+.pho-item {
+  color: var(--text, #111827);
+  line-height: 1.55;
+}
+
+.pho-item--warn {
+  color: var(--warn-color, #92400e);
+  background: var(--warn-bg, #fef9c3);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border-left: 3px solid var(--warn-border, #fde047);
+}
+
+.pho-item--err {
+  color: var(--err-color, #991b1b);
+  background: var(--err-bg, #fef2f2);
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  border-left: 3px solid var(--err-border, #fecaca);
+}
+</style>
