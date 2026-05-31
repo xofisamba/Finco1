@@ -78,7 +78,7 @@
     <div class="panel-header">
       <div class="panel-title">New Project Setup</div>
       <div class="panel-desc">Fill in the basics. Full inputs will be available in the sidebar after creation.</div>
-      <button class="btn btn-ghost" onclick="closeNewProjectPanel()" style="margin-left:auto;">Close Close</button>
+      <button class="btn btn-ghost" onclick="closeNewProjectPanel()" style="margin-left:auto;">Close</button>
     </div>
     <div class="new-project-main-card">
       {% if validation_errors %}
@@ -512,7 +512,7 @@
 
     <div style="margin-top:1rem;">
       <a href="#download-parity" class="btn btn-outline" style="width:auto; display:inline-flex;">
-        Parity Open Parity Workbook
+        Open Parity Workbook
       </a>
     </div>
   </div>
@@ -575,7 +575,7 @@
           <div class="download-lineage-meta">Backend-authored and descriptive only. This does not promote dirty draft values into runtime truth.</div>
         </div>
       </a>
-      <a href="/exports/runtime-summary.csvvproject={{ project_record.project_code }}" class="download-item">
+      <a href="/exports/runtime-summary.csv?project={{ project_record.project_code }}" class="download-item">
         <div class="download-icon">CSV</div>
         <div class="download-info">
           <div class="download-name">Runtime Summary CSV</div>
@@ -583,7 +583,7 @@
           <div class="download-lineage-meta">Uses the last clean backend runtime context. Save and run again before sharing if the current draft should be reflected.</div>
         </div>
       </a>
-      <a href="/exports/institutional-workbook.xlsxvproject={{ project_record.project_code }}" class="download-item">
+      <a href="/exports/institutional-workbook.xlsx?project={{ project_record.project_code }}" class="download-item">
         <div class="download-icon">Workbook</div>
         <div class="download-info">
           <div class="download-name">Institutional Workbook</div>
