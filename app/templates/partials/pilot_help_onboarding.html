@@ -5,9 +5,9 @@
 
 <div class="pilot-help-onboarding" id="pilot-help-onboarding" role="complementary" aria-label="Pilot help and onboarding">
   <div class="pho-header">
-    <span class="badge badge-info">📖 Help</span>
+    <span class="badge badge-info">Help</span>
     <button class="pho-toggle" onclick="document.getElementById('pilot-help-onboarding').classList.toggle('is-collapsed')" aria-expanded="true" aria-label="Toggle help panel">
-      <span class="pho-toggle-icon">▾</span>
+      <span class="pho-toggle-icon">v</span>
     </button>
   </div>
 
@@ -15,7 +15,7 @@
 
     <!-- What is FincoGPT -->
     <div class="pho-section">
-      <div class="pho-section-title">What is FincoGPT?</div>
+      <div class="pho-section-title">What is FincoGPT</div>
       <div class="pho-item">
         FincoGPT is an internal pilot tool for structured financial modelling of renewable energy projects (wind/solar).
         It computes debt sizing, equity returns, DSCR, and distributions using a Python backend engine.
@@ -26,13 +26,13 @@
     <div class="pho-section">
       <div class="pho-section-title">Validated templates</div>
       <div class="pho-item">
-        ✅ <strong>TUHO Wind (72 MW, Croatia)</strong> — frozen-template, parity-validated against Excel (senior debt, SHL opening, distributions, CO2 revenue)
+        [Validated] <strong>TUHO Wind (72 MW, Croatia)</strong> - frozen-template, parity-validated against Excel (senior debt, SHL opening, distributions, CO2 revenue)
       </div>
       <div class="pho-item">
-        ✅ <strong>Oborovo Solar (53.63 MW, Croatia)</strong> — frozen-template, parity-validated against Excel
+        [Validated] <strong>Oborovo Solar (53.63 MW, Croatia)</strong> - frozen-template, parity-validated against Excel
       </div>
       <div class="pho-item pho-item--warn">
-        ⚠️ <strong>Generic / new projects</strong> — unvalidated; assumptions and outputs should be reviewed independently before drawing conclusions
+        [Warning] <strong>Generic / new projects</strong> - unvalidated; assumptions and outputs should be reviewed independently before drawing conclusions
       </div>
     </div>
 
@@ -44,7 +44,7 @@
         Generic projects are for exploration only unless separately validated.
       </div>
       <div class="pho-item">
-        App is single-user / internal pilot mode — no multi-tenant isolation or RBAC.
+        App is single-user / internal pilot mode - no multi-tenant isolation or RBAC.
       </div>
     </div>
 
@@ -52,25 +52,25 @@
     <div class="pho-section">
       <div class="pho-section-title">How to run a pilot workflow</div>
       <div class="pho-item">
-        <strong>1. Select project</strong> — Choose TUHO or Oborovo template for validated results, or generic for exploration
+        <strong>1. Select project</strong> - Choose TUHO or Oborovo template for validated results, or generic for exploration only
       </div>
       <div class="pho-item">
-        <strong>2. Review assumptions</strong> — Check inputs in the sidebar before running
+        <strong>2. Review assumptions</strong> - Check inputs in the sidebar before running
       </div>
       <div class="pho-item">
-        <strong>3. Save scenario</strong> — Create a named snapshot before making changes
+        <strong>3. Save scenario</strong> - Create a named snapshot before making changes
       </div>
       <div class="pho-item">
-        <strong>4. Run model</strong> — Backend calculates outputs; JS is display-only
+        <strong>4. Run model</strong> - Backend calculates outputs; JS is display-only
       </div>
       <div class="pho-item">
-        <strong>5. Review results</strong> — KPIs (IRR, DSCR) and debt/equity panels appear after run
+        <strong>5. Review results</strong> - KPIs (IRR, DSCR) and debt/equity panels appear after run
       </div>
       <div class="pho-item">
-        <strong>6. Review audit</strong> — Audit / Parity tab shows parity evidence against Excel
+        <strong>6. Review audit</strong> - Audit / Parity tab shows parity evidence against Excel
       </div>
       <div class="pho-item">
-        <strong>7. Export</strong> — Downloads tab provides XLSX, CSV, and parity workbooks
+        <strong>7. Export</strong> - Downloads tab provides XLSX, CSV, and parity workbooks
       </div>
     </div>
 
@@ -84,7 +84,7 @@
       </div>
       <div class="pho-item">
         Senior Debt, SHL Opening, and Distributions are the primary parity anchors.
-        Equity IRR has a ±1.0pp tolerance; Project IRR has a ±0.5pp tolerance.
+        Equity IRR has a +/-1.0pp tolerance; Project IRR has a +/-0.5pp tolerance.
       </div>
     </div>
 
@@ -108,8 +108,8 @@
         Up to 10 auto-backups are retained; manual backups and pre-restore safety backups are not pruned.
       </div>
       <div class="pho-item">
-        To restore: go to Downloads or settings, find a backup file, and use the restore function.
-        This is for single-user internal recovery — no enterprise DR or cloud/offsite backup is implemented.
+        To restore: use the documented backup/restore flow and create a safety backup first.
+        This is for single-user internal recovery - no enterprise DR or cloud/offsite backup is implemented.
       </div>
     </div>
 
@@ -117,16 +117,16 @@
     <div class="pho-section">
       <div class="pho-section-title">Limitations and non-claims</div>
       <div class="pho-item pho-item--err">
-        ❌ <strong>Not a lender or bank approval</strong> — this app does not provide credit analysis or lender approval
+        [Not included] <strong>Not a lender or bank approval</strong> - this app does not provide credit analysis or lender approval
       </div>
       <div class="pho-item pho-item--err">
-        ❌ <strong>Not an external audit or certification</strong> — the Audit / Parity tab is internal review tooling
+        [Not included] <strong>Not an external audit or certification</strong> - the Audit / Parity tab is internal review tooling
       </div>
       <div class="pho-item pho-item--err">
-        ❌ <strong>Not SaaS-ready</strong> — single-user internal pilot mode; no multi-tenant isolation or RBAC
+        [Not included] <strong>Not SaaS-ready</strong> - single-user internal pilot mode; no multi-tenant isolation or RBAC
       </div>
       <div class="pho-item pho-item--err">
-        ❌ <strong>Not a live sculpting solver</strong> — the frozen senior debt schedule is fixture-backed from Excel; it is not a dynamic sculpting calculation
+        [Not included] <strong>Not a live sculpting solver</strong> - the frozen senior debt schedule is fixture-backed from Excel; it is not a dynamic sculpting calculation
       </div>
       <div class="pho-item">
         All model outputs are produced by the backend Python engine. Browser-side JS is display-only and does not calculate financial outputs.

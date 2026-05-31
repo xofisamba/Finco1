@@ -1,8 +1,8 @@
-<!-- Workspace Shell — Tab Panels — Phase 9.5 -->
-<!-- Project Browser — rendered here by /projects/browse (htmx) -->
+<!-- Workspace Shell - Tab Panels - Phase 9.5 -->
+<!-- Project Browser - rendered here by /projects/browse (htmx) -->
 <div id="project-browser-container"></div>
 
-<!-- Hidden persistence form — mirrors legacy sidebar_input block -->
+<!-- Hidden persistence form - mirrors legacy sidebar_input block -->
 <!-- Used by app.js for save/run/discard and inputs draft persistence -->
 <form id="main-form" style="display:none;" aria-hidden="true">
   <input type="hidden" name="active_project" value="{{ form_data.get('active_project', '') }}" />
@@ -73,12 +73,12 @@
 <div class="workspace-content" id="workspace-content"
      hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p && p.style.display==='none' && p.querySelector('form')){ p.style.display='block'; p.classList.add('active'); }">
 
-  <!-- New Project Setup — main workspace entry point -->
+  <!-- New Project Setup - main workspace entry point -->
   <div class="tab-panel" id="panel-new-project" style="display:none;">
     <div class="panel-header">
       <div class="panel-title">New Project Setup</div>
       <div class="panel-desc">Fill in the basics. Full inputs will be available in the sidebar after creation.</div>
-      <button class="btn btn-ghost" onclick="closeNewProjectPanel()" style="margin-left:auto;">✕ Close</button>
+      <button class="btn btn-ghost" onclick="closeNewProjectPanel()" style="margin-left:auto;">Close</button>
     </div>
     <div class="new-project-main-card">
       {% if validation_errors %}
@@ -159,7 +159,7 @@
         {% for item in export_lineage_ui.recent_exports[:3] %}
         <div class="ps-export-item ps-export-item--compact">
           <div class="ps-export-title">{{ item.artifact_name }}</div>
-          <div class="ps-export-meta">{{ item.export_type }} · {{ item.scenario_name }} · {{ item.created_at }}</div>
+          <div class="ps-export-meta">{{ item.export_type }} - {{ item.scenario_name }} - {{ item.created_at }}</div>
         </div>
         {% endfor %}
       </div>
@@ -192,10 +192,10 @@
     Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
   </div>
 
-  {# Phase 25A: Pilot Workflow Guide — shown on Overview tab #}
+  {# Phase 25A: Pilot Workflow Guide - shown on Overview tab #}
   {% include "partials/pilot_workflow_guide.html" %}
 
-  {# Phase 25B: Pilot Help / Onboarding — collapsible panel on Overview tab #}
+  {# Phase 25B: Pilot Help / Onboarding - collapsible panel on Overview tab #}
   {% include "partials/pilot_help_onboarding.html" %}
 
   <div class="export-lineage-panel" id="export-lineage-panel" aria-label="Export lineage summary">
@@ -247,7 +247,7 @@
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════ OVERVIEW ══ -->
+  <!-- ----------------------------------------------- OVERVIEW -- -->
   <div class="tab-panel active" id="panel-overview">
     <div class="panel-header">
       <div class="panel-title">Overview</div>
@@ -257,35 +257,35 @@
     <div class="kpi-grid" id="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-label">Project IRR</div>
-        <div class="kpi-value" id="kpi-project-irr">—</div>
+        <div class="kpi-value" id="kpi-project-irr">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Equity IRR</div>
-        <div class="kpi-value" id="kpi-equity-irr">—</div>
+        <div class="kpi-value" id="kpi-equity-irr">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Avg DSCR</div>
-        <div class="kpi-value" id="kpi-avg-dscr">—</div>
+        <div class="kpi-value" id="kpi-avg-dscr">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Senior Debt</div>
-        <div class="kpi-value" id="kpi-senior-debt">—</div>
+        <div class="kpi-value" id="kpi-senior-debt">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Total Revenue</div>
-        <div class="kpi-value" id="kpi-revenue">—</div>
+        <div class="kpi-value" id="kpi-revenue">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">EBITDA</div>
-        <div class="kpi-value" id="kpi-ebitda">—</div>
+        <div class="kpi-value" id="kpi-ebitda">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Distributions</div>
-        <div class="kpi-value" id="kpi-distributions">—</div>
+        <div class="kpi-value" id="kpi-distributions">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Warnings</div>
-        <div class="kpi-value warning" id="kpi-warnings">—</div>
+        <div class="kpi-value warning" id="kpi-warnings">-</div>
       </div>
     </div>
 
@@ -321,7 +321,7 @@
 
       <div class="card">
         <div class="card-header">
-          <div class="card-title">TUHO Parity — Phase 9</div>
+          <div class="card-title">TUHO Parity - Phase 9</div>
           <span class="badge badge-convention">DA-Wired Audit</span>
         </div>
         <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
@@ -350,79 +350,79 @@
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════ INPUTS ══ -->
+  <!-- ----------------------------------------------- INPUTS -- -->
   <div class="tab-panel" id="panel-inputs">
     {% include "partials/sheet_inputs.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ SCENARIO ══ -->
+  <!-- ----------------------------------------------- SCENARIO -- -->
   <div class="tab-panel" id="panel-scenario">
     {% include "partials/scenario_tab.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ CONSTRUCTION ══ -->
+  <!-- ----------------------------------------------- CONSTRUCTION -- -->
   <div class="tab-panel" id="panel-construction">
     {% include "partials/sheet_construction.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ PRODUCTION ══ -->
+  <!-- ----------------------------------------------- PRODUCTION -- -->
   <div class="tab-panel" id="panel-production">
     {% include "partials/sheet_production.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ REVENUE ══ -->
+  <!-- ----------------------------------------------- REVENUE -- -->
   <div class="tab-panel" id="panel-revenue">
     {% include "partials/sheet_revenue.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ OPEX ══ -->
+  <!-- ----------------------------------------------- OPEX -- -->
   <div class="tab-panel" id="panel-opex">
     {% include "partials/sheet_opex_detail.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ CAPEX ══ -->
+  <!-- ----------------------------------------------- CAPEX -- -->
   <div class="tab-panel" id="panel-capex">
     {% include "partials/sheet_capex.html" %}
     {% include "partials/sheet_capex_detail.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ SENIOR DEBT ══ -->
+  <!-- ----------------------------------------------- SENIOR DEBT -- -->
   <div class="tab-panel" id="panel-senior-debt">
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/sheet_senior_debt.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ SHL ══ -->
+  <!-- ----------------------------------------------- SHL -- -->
   <div class="tab-panel" id="panel-shl">
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/sheet_shl.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ TAX ══ -->
+  <!-- ----------------------------------------------- TAX -- -->
   <div class="tab-panel" id="panel-tax">
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/sheet_tax.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ P&L ══ -->
+  <!-- ----------------------------------------------- P&L -- -->
   <div class="tab-panel" id="panel-pl">
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/sheet_financials.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ CASH FLOW ══ -->
+  <!-- ----------------------------------------------- CASH FLOW -- -->
   <div class="tab-panel" id="panel-cashflow">
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/sheet_financials.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ BALANCE SHEET ══ -->
+  <!-- ----------------------------------------------- BALANCE SHEET -- -->
   <div class="tab-panel" id="panel-balance">
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/sheet_financials.html" %}
   </div>
 
-  <!-- ═══════════════════════════════════════════════ DISTRIBUTIONS ══ -->
+  <!-- ----------------------------------------------- DISTRIBUTIONS -- -->
   <div class="tab-panel" id="panel-distributions">
     {% include "partials/shared_runtime_block.html" %}
     <div class="panel-header">
@@ -430,14 +430,14 @@
       <div class="panel-desc">Equity distribution schedule, lockup periods, and distribution constraints.</div>
     </div>
     <div class="placeholder-panel">
-      <div class="placeholder-icon">💸</div>
+      <div class="placeholder-icon">Cash</div>
       <div class="placeholder-title">Equity Distributions</div>
       <div class="placeholder-desc">Distribution schedule with lockup, sweep, and constraints will appear after a model run.</div>
       <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. TUHO/Oborovo frozen-template path is validated; generic projects remain unvalidated.</div>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════ SPONSOR / EQUITY ══ -->
+  <!-- ----------------------------------------------- SPONSOR / EQUITY -- -->
   <div class="tab-panel" id="panel-sponsor">
     {% include "partials/shared_runtime_block.html" %}
     <div class="panel-header">
@@ -445,14 +445,14 @@
       <div class="panel-desc">Equity contribution schedule, return metrics (IRR, MoM), and sponsor waterfall.</div>
     </div>
     <div class="placeholder-panel">
-      <div class="placeholder-icon">👤</div>
+      <div class="placeholder-icon">User</div>
       <div class="placeholder-title">Sponsor / Equity Returns</div>
       <div class="placeholder-desc">Equity contribution, return metrics, and sponsor waterfall will appear after a model run.</div>
       <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. Backend remains source of truth.</div>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════ AUDIT / PARITY ══ -->
+  <!-- ----------------------------------------------- AUDIT / PARITY -- -->
   <div class="tab-panel" id="panel-audit">
     <div class="panel-header">
       <div class="panel-title">Audit / Parity</div>
@@ -461,7 +461,7 @@
 
     <div class="sheet-card">
       <div class="card-header">
-        <div class="card-title">TUHO Parity — Audit-Only Status</div>
+        <div class="card-title">TUHO Parity - Audit-Only Status</div>
         <span class="badge badge-convention">Audit-Only</span>
       </div>
       <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
@@ -496,7 +496,7 @@
           <span class="badge badge-blocked">BLOCKED</span>
         </div>
         <div style="font-size:0.8rem; color:var(--muted); line-height:1.5;">
-          Equity IRR residual is within ±1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.
+          Equity IRR residual is within +/-1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.
         </div>
       </div>
       <div class="card">
@@ -512,12 +512,12 @@
 
     <div style="margin-top:1rem;">
       <a href="#download-parity" class="btn btn-outline" style="width:auto; display:inline-flex;">
-        📊 Open Parity Workbook
+        Open Parity Workbook
       </a>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════ DOWNLOADS ══ -->
+  <!-- ----------------------------------------------- DOWNLOADS -- -->
   <div class="tab-panel" id="panel-downloads">
     <div class="panel-header">
       <div class="panel-title">Downloads &amp; Audit Artefacts</div>
@@ -568,7 +568,7 @@
 
     <div class="downloads-grid">
       <a href="/download" class="download-item">
-        <div class="download-icon">📥</div>
+        <div class="download-icon">Download</div>
         <div class="download-info">
           <div class="download-name">Values-only Excel Export (.xlsx)</div>
           <div class="download-desc">Submitted workbook values with descriptive provenance and notes.</div>
@@ -592,21 +592,21 @@
         </div>
       </a>
       <a href="#download-parity" class="download-item">
-        <div class="download-icon">📊</div>
+        <div class="download-icon">Parity</div>
         <div class="download-info">
           <div class="download-name">Parity Workbook</div>
           <div class="download-desc">TUHO horizontal review (XLSX)</div>
         </div>
       </a>
       <a href="#download-gap" class="download-item">
-        <div class="download-icon">🔍</div>
+        <div class="download-icon">Review</div>
         <div class="download-info">
           <div class="download-name">Gap Register</div>
           <div class="download-desc">All parity gaps and statuses</div>
         </div>
       </a>
       <a href="#download-source" class="download-item">
-        <div class="download-icon">🗂️</div>
+        <div class="download-icon">Source</div>
         <div class="download-info">
           <div class="download-name">Source Map</div>
           <div class="download-desc">Column-by-column provenance</div>
@@ -615,7 +615,7 @@
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════ COMPARE ══ -->
+  <!-- ----------------------------------------------- COMPARE -- -->
   <div class="tab-panel" id="panel-compare">
     {% set compare_panel = True %}
     {% include "partials/scenario_compare.html" %}
