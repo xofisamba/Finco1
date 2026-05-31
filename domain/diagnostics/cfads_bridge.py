@@ -144,7 +144,7 @@ OBOROVO_P4_ANCHORS: dict[str, float] = {
     "ppa_revenue_keur":      3_255.16,
     "co2_revenue_keur":         82.0,    # approximate from Phase 20N
     "balancing_cost_keur":        0.0,
-    "opex_keur":              -644.34,
+    "opex_keur":               644.34,    # positive — half-year P4 value; sign corrected from Phase 31B
     "ebitda_keur":           2_610.82,
     "cfads_keur":            2_610.82,
     "senior_service_keur":  2_270.28,
