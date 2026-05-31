@@ -4,42 +4,33 @@
 
 <div class="debt-dscr-shl-panel" id="debt-dscr-shl-panel">
 
-  {# ══════════════════════════════════════════════════════════════════════
-     PROVENANCE / RUNTIME IMPACT BANNER
-     ══════════════════════════════════════════════════════════════════════ #}
   <div class="dss-provenance-banner">
     <div class="dss-provenance-left">
-      <span class="dss-provenance-icon">🏦</span>
+      <span class="dss-provenance-icon">Debt</span>
       <div class="dss-provenance-info">
         <span class="dss-provenance-label">Debt / DSCR / SHL</span>
         <span class="dss-provenance-sublabel">Frozen Senior DS Path</span>
       </div>
     </div>
     <div class="dss-provenance-right">
-<span class="badge badge-runtime" title="Runtime Impact: Drives model — value from fixture-backed frozen Excel schedule">
+      <span class="badge badge-runtime" title="Runtime Impact: Drives model - value from fixture-backed frozen Excel schedule">
         Drives model
       </span>
-      <span class="badge badge-info" title="Fixture-backed frozen schedule — no sculpting solver active">
-        Fixture-backed · No sculpting
+      <span class="badge badge-info" title="Fixture-backed frozen schedule - no sculpting solver active">
+        Fixture-backed - No sculpting
       </span>
     </div>
   </div>
 
-  {# ══════════════════════════════════════════════════════════════════════
-     FROZEN VS DERIVED WARNING
-     ══════════════════════════════════════════════════════════════════════ #}
   <div class="dss-warning-banner">
-    <span class="badge badge-warn">⚠️ Frozen schedule warning</span>
+    <span class="badge badge-warn">Frozen schedule warning</span>
     <span class="dss-warning-text">
       This panel shows a fixture-backed frozen Excel schedule. Editing or duplicating
       this project will not re-sculpt senior debt. To use derived sizing, switch to
-      a non-fixture project type (generic wind/solar).
+      a non-fixture project type. Generic wind and solar remain exploratory and unvalidated.
     </span>
   </div>
 
-  {# ══════════════════════════════════════════════════════════════════════
-     SENIOR DEBT ANCHOR
- ══════════════════════════════════════════════════════════════════════ #}
   {% if runtime_summary %}
   <div class="dss-anchor-grid">
     <div class="dss-anchor-card">
@@ -61,15 +52,12 @@
   </div>
   {% endif %}
 
-  {# ══════════════════════════════════════════════════════════════════════
-     DEBT SCHEDULE TABLE
- ══════════════════════════════════════════════════════════════════════ #}
   {% if debt_table and debt_table.rows %}
-<div class="dss-table-section">
+  <div class="dss-table-section">
     <div class="dss-table-header">Senior Debt Schedule</div>
     <div class="dss-table-wrap">
       <table class="dss-table">
-<thead>
+        <thead>
           <tr>
             <th>Line Item</th>
             {% for col in debt_table.headers %}
@@ -82,11 +70,11 @@
           <tr>
             <td class="dss-row-label">{{ row_label }}</td>
             {% for cell in row_data %}
-<td class="dss-cell {% if cell.status == 'inf' %}dss-cell-inf{% elif cell.status == 'zero' %}dss-cell-zero{% endif %}">
+            <td class="dss-cell {% if cell.status == 'inf' %}dss-cell-inf{% elif cell.status == 'zero' %}dss-cell-zero{% endif %}">
               {% if cell.status == 'inf' %}
-              <span class="dss-inf-label" title="Debt repaid">n/a — debt repaid</span>
+              <span class="dss-inf-label" title="Debt repaid">n/a - debt repaid</span>
               {% elif cell.status == 'zero' %}
-<span class="dss-zero-label">—</span>
+              <span class="dss-zero-label">-</span>
               {% else %}
               {{ cell.value }}
               {% endif %}
@@ -100,9 +88,6 @@
   </div>
   {% endif %}
 
-  {# ══════════════════════════════════════════════════════════════════════
-     SHL STATUS
- ══════════════════════════════════════════════════════════════════════ #}
   {% if shl_status %}
   <div class="dss-shl-section">
     <div class="dss-table-header">SHL Status</div>
@@ -123,7 +108,7 @@
         <div class="dss-shl-label">Lock-up Status</div>
         <div class="dss-shl-value">
           {% if shl_status.locked %}
-<span class="badge badge-warn">Distribution blocked</span>
+          <span class="badge badge-warn">Distribution blocked</span>
           {% else %}
           <span class="badge badge-pass">SHL cleared</span>
           {% endif %}
@@ -133,9 +118,6 @@
   </div>
   {% endif %}
 
-  {# ══════════════════════════════════════════════════════════════════════
-     DISTRIBUTION LOCK-UP STATUS
-     ══════════════════════════════════════════════════════════════════════ #}
   {% if distribution_status %}
   <div class="dss-dist-section">
     <div class="dss-table-header">Distribution Status</div>
@@ -144,7 +126,7 @@
         <div class="dss-dist-label">Lock-up State</div>
         <div class="dss-dist-value">
           {% if distribution_status.blocked %}
-          <span class="badge badge-warn">Distribution blocked — SHL outstanding</span>
+          <span class="badge badge-warn">Distribution blocked - SHL outstanding</span>
           {% else %}
           <span class="badge badge-pass">Distributions active</span>
           {% endif %}
@@ -153,7 +135,7 @@
       {% if distribution_status.first_distribution %}
       <div class="dss-dist-card">
         <div class="dss-dist-label">First Valid Distribution</div>
-        <div class="dss-dist-value">{{ distribution_status.first_distribution.date }} · {{ distribution_status.first_distribution.amount_keur }}</div>
+        <div class="dss-dist-value">{{ distribution_status.first_distribution.date }} - {{ distribution_status.first_distribution.amount_keur }}</div>
       </div>
       {% endif %}
       {% if distribution_status.total_distributions_keur %}
@@ -166,13 +148,10 @@
   </div>
   {% endif %}
 
-  {# ══════════════════════════════════════════════════════════════════════
-     RUNTIME NOTICE
-     ══════════════════════════════════════════════════════════════════════ #}
   <div class="dss-notice">
     <span class="badge badge-runtime">Runtime</span>
     <span class="dss-notice-text">
-      Live model outputs — authoritative. Not a static factory preview.
+      Live model outputs - authoritative. Not a static factory preview.
       DSCR is backward-computed from frozen senior debt service.
     </span>
   </div>

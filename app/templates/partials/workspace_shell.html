@@ -532,6 +532,9 @@
       <div class="export-lineage-history__desc" id="export-lineage-guidance">
         {{ export_lineage_ui.current_context.action_note }}
       </div>
+      <div class="export-lineage-history__desc">
+        Trusted pilot evidence is limited to TUHO and Oborovo frozen-template paths. Generic projects remain exploratory and unvalidated.
+      </div>
       <div class="export-lineage-grid">
         <div class="export-lineage-card">
           <div class="export-lineage-card__label">Active project</div>
@@ -571,7 +574,7 @@
         <div class="download-icon">Download</div>
         <div class="download-info">
           <div class="download-name">Values-only Excel Export (.xlsx)</div>
-          <div class="download-desc">Submitted workbook values with descriptive provenance and notes.</div>
+          <div class="download-desc">Spreadsheet copy of submitted values with provenance notes for reviewer handoff.</div>
           <div class="download-lineage-meta">Backend-authored and descriptive only. This does not promote dirty draft values into runtime truth.</div>
         </div>
       </a>
@@ -579,7 +582,7 @@
         <div class="download-icon">CSV</div>
         <div class="download-info">
           <div class="download-name">Runtime Summary CSV</div>
-          <div class="download-desc">Backend runtime metrics, provenance, and governance posture for the active project.</div>
+          <div class="download-desc">Compact machine-readable snapshot of the last clean backend run, including provenance and governance posture.</div>
           <div class="download-lineage-meta">Uses the last clean backend runtime context. Save and run again before sharing if the current draft should be reflected.</div>
         </div>
       </a>
@@ -595,21 +598,21 @@
         <div class="download-icon">Parity</div>
         <div class="download-info">
           <div class="download-name">Parity Workbook</div>
-          <div class="download-desc">TUHO horizontal review (XLSX)</div>
+          <div class="download-desc">Validated frozen-template parity evidence workbook for TUHO and Oborovo review context.</div>
         </div>
       </a>
       <a href="#download-gap" class="download-item">
         <div class="download-icon">Review</div>
         <div class="download-info">
           <div class="download-name">Gap Register</div>
-          <div class="download-desc">All parity gaps and statuses</div>
+          <div class="download-desc">Open gaps, pending items, and out-of-scope rows that still need reviewer judgement.</div>
         </div>
       </a>
       <a href="#download-source" class="download-item">
         <div class="download-icon">Source</div>
         <div class="download-info">
           <div class="download-name">Source Map</div>
-          <div class="download-desc">Column-by-column provenance</div>
+          <div class="download-desc">Column-by-column provenance map showing where reviewed figures came from.</div>
         </div>
       </a>
     </div>
