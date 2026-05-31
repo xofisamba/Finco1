@@ -79,6 +79,21 @@ def test_app_ui_components_imports_without_streamlit():
     module = _import_without_streamlit("app.ui.components")
     assert hasattr(module, "format_metric_value")
     assert module.format_metric_value(1234, "currency") == "1k"
+    assert module.STATUS_LABELS["ok"] == "✅ Full model"
+    assert module.STATUS_LABELS["warning"] == "⚠️ Warning"
+    assert module.STATUS_LABELS["error"] == "❌ Error"
+
+
+def test_app_ui_components_contains_no_mojibake_markers():
+    content = (REPO_ROOT / "app" / "ui" / "components.py").read_text(encoding="utf-8")
+    markers = tuple(bytes.fromhex(hex_bytes).decode("utf-8", errors="ignore") for hex_bytes in (
+        "c3a2c593",
+        "c3a2c5a1",
+        "c3b0c5b8",
+        "c3a2c29d",
+    ))
+    for marker in markers:
+        assert marker not in content
 
 
 def test_pytest_collect_only_succeeds_without_streamlit():
