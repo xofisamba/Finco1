@@ -1,6 +1,7 @@
 """Shared UI components for FincoGPT."""
-import streamlit as st
 from typing import Any
+
+from app.streamlit_compat import require_streamlit
 
 STATUS_LABELS = {
     "ok": "✅ Full model",
@@ -14,6 +15,7 @@ STATUS_LABELS = {
 
 def status_badge(label: str, status: str) -> None:
     """Render a status badge with label and colored text."""
+    st = require_streamlit("app.ui.components")
     emoji_label = STATUS_LABELS.get(status, status)
     if status in ("ok", "full"):
         color = "green"
@@ -27,6 +29,7 @@ def status_badge(label: str, status: str) -> None:
 
 def kpi_card(label: str, value: Any, help_text: str | None = None, status: str | None = None) -> None:
     """Render a single KPI metric card."""
+    st = require_streamlit("app.ui.components")
     if value is None:
         value = "n/a"
     if status:
@@ -45,6 +48,7 @@ def kpi_card(label: str, value: Any, help_text: str | None = None, status: str |
 
 def render_warning_list(messages: list[str]) -> None:
     """Display a list of warning/info messages."""
+    st = require_streamlit("app.ui.components")
     for msg in messages:
         if msg.startswith("⚠️"):
             st.warning(msg)
@@ -91,6 +95,7 @@ def format_metric_value(value: Any, kind: str | None = None) -> str:
 
 def render_dataframe_with_download(df, label: str, filename: str) -> None:
     """Render a dataframe with a CSV download button."""
+    st = require_streamlit("app.ui.components")
     st.dataframe(df, use_container_width=True)
     csv = df.to_csv().encode("utf-8")
     st.download_button(

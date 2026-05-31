@@ -9,11 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache, wraps
 from typing import TYPE_CHECKING
-
-try:
-    import streamlit as st
-except ModuleNotFoundError:  # pragma: no cover - exercised via import-guard tests
-    st = None
+from app.streamlit_compat import get_streamlit
 
 if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
@@ -27,6 +23,7 @@ def cache_data(*decorator_args, **decorator_kwargs):
     method so the rest of the runtime can invalidate caches without caring
     whether Streamlit is installed.
     """
+    st = get_streamlit()
     if st is not None:
         return st.cache_data(*decorator_args, **decorator_kwargs)
 

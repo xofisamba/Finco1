@@ -42,7 +42,7 @@ def test_app_cache_does_not_use_module_level_st_cache_decorators():
     content = (REPO_ROOT / "app" / "cache.py").read_text(encoding="utf-8")
     assert "@st.cache_data" not in content
     assert "def cache_data(" in content
-    assert "except ModuleNotFoundError" in content
+    assert "get_streamlit" in content
 
 
 def test_utils_cache_remains_streamlit_free_shim():

@@ -38,6 +38,12 @@ def test_status_labels_include_full_partial_experimental():
     assert STATUS_LABELS["experimental"] == "🧪 Experimental"
 
 
+def test_status_labels_restore_warning_and_error_emojis():
+    from app.ui.components import STATUS_LABELS
+    assert STATUS_LABELS["warning"] == "⚠️ Warning"
+    assert STATUS_LABELS["error"] == "❌ Error"
+
+
 def test_format_metric_value_handles_none():
     from app.ui.components import format_metric_value
     assert format_metric_value(None) == "n/a"

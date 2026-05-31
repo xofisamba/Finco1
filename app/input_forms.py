@@ -2,9 +2,9 @@
 from __future__ import annotations
 from dataclasses import replace, fields, is_dataclass
 from typing import Any
-import streamlit as st
 
 from app.capex_overrides import scale_capex_items
+from app.streamlit_compat import require_streamlit
 
 
 def _safe_replace(obj, updates: dict[str, Any]) -> Any:
@@ -58,7 +58,8 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
     
     Returns (modified_project_inputs, was_modified).
     """
-    st.subheader("☀️ Solar Project Inputs")
+    st = require_streamlit("app.input_forms")
+    st.subheader("Solar Project Inputs")
     
     # Technical
     st.markdown("**Technical**")
@@ -140,7 +141,7 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
     modified = st.button("Apply Solar inputs and rerun", key="apply_solar")
     
     if modified:
-        # Solar overrides — use first-existing field semantics
+        # Solar overrides - use first-existing field semantics
         solar_technical_overrides = {
             'capacity_mw': capacity,
         }
@@ -188,7 +189,8 @@ def render_solar_input_form(project_inputs) -> tuple[Any, bool]:
 
 def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
     """Render editable form for Wind project."""
-    st.subheader("🌬️ Wind Project Inputs")
+    st = require_streamlit("app.input_forms")
+    st.subheader("Wind Project Inputs")
     
     tech_cols = st.columns(2)
     with tech_cols[0]:
@@ -264,7 +266,7 @@ def render_wind_input_form(project_inputs) -> tuple[Any, bool]:
     modified = st.button("Apply Wind inputs and rerun", key="apply_wind")
     
     if modified:
-        # Wind overrides — use first-existing field semantics
+        # Wind overrides - use first-existing field semantics
         wind_technical_overrides = {
             'capacity_mw': capacity,
         }
