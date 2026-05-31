@@ -1377,12 +1377,26 @@ async def logout():
 
 @app.get("/public-health")
 async def public_health():
-    """Public health check - no auth required."""
+    """Public health check - no auth required. Lightweight, no auth needed."""
     return {
         "status": "ok",
         "app": "fincogpt",
         "mode": "internal-demo",
     }
+
+
+@app.get("/readyz")
+async def readyz():
+    """Readiness check — no auth required. Lightweight diagnostics.
+
+    Checks: app import OK, config resolved, DB path accessible, backup dir accessible.
+    Does NOT trigger model run. Does NOT access scenario data.
+    """
+    from app.observability import get_app_health_status
+    health = get_app_health_status()
+    if health["status"] == "error":
+        return JSONResponse(health, status_code=503)
+    return JSONResponse(health)
 
 
 @app.get("/health")
