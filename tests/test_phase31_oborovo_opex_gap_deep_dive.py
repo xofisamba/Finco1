@@ -348,26 +348,29 @@ def test_oborovo_equity_irr_documented_as_separate_issue():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test 17 (bonus): CFADS bridge anchor has sign error (-644.34 should be +644.34)
+# Test 17 (bonus): CFADS bridge anchor sign FIXED (was -644.34, now +644.34)
 # ─────────────────────────────────────────────────────────────────────────────
-def test_cfads_bridge_anchor_sign_error_documented():
-    """OBOROVO_P4_ANCHORS['opex_keur'] = -644.34 is a sign error (dash-typo)."""
+def test_cfads_bridge_anchor_sign_fixed():
+    """OBOROVO_P4_ANCHORS['opex_keur'] = +644.34 — Phase 31B fixed the sign error."""
     from domain.diagnostics.cfads_bridge import OBOROVO_P4_ANCHORS
 
     anchor = OBOROVO_P4_ANCHORS["opex_keur"]
-    # Anchor is negative but should be positive (it's a dash-typo)
-    # This is documented in Phase 31 doc as a data quality issue only
-    assert anchor < 0, (
-        f"OBOROVO_P4_ANCHORS['opex_keur'] = {anchor} — expected negative (sign error)"
+    # After Phase 31B fix: anchor is positive 644.34 (was -644.34)
+    assert anchor == 644.34, (
+        f"OBOROVO_P4_ANCHORS['opex_keur'] = {anchor} — expected +644.34"
+    )
+    assert anchor > 0, (
+        f"Anchor must be positive after Phase 31B fix"
     )
 
     doc = PHASE31_DOC.read_text()
-    assert "644.34" in doc or "-644.34" in doc, "Anchor sign issue not documented"
+    assert "644.34" in doc, "Anchor value not documented"
     assert (
         "sign error" in doc.lower()
         or "dash-typo" in doc.lower()
         or "data quality" in doc.lower()
-    ), "Sign error classification not found"
+        or "fixed" in doc.lower()
+    ), "Sign error resolution not documented"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
