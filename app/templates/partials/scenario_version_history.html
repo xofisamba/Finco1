@@ -1,0 +1,96 @@
+<!-- Scenario Version History — Phase 33
+     Lightweight UI to expose existing versioning capabilities.
+     Draft/saved/runtime semantics and stale-runtime warning included.
+     No financial logic — purely informational.
+-->
+<div class="svh-container">
+
+  <!-- Heading -->
+  <div class="svh-header">
+    <span class="svh-title">Saved Versions</span>
+    <span class="svh-subtitle">— preserve input snapshots</span>
+  </div>
+
+  <!-- Version list -->
+  {% if scenario_summary_cards and scenario_summary_cards|length > 0 %}
+  <div class="svh-list">
+
+    {% for card in scenario_summary_cards %}
+    <div class="svh-card{% if card.scenario_id == workspace_state.active_scenario_id %} svh-card--active{% endif %}">
+
+      <!-- Scenario name + active badge -->
+      <div class="svh-card-title">
+        {{ card.scenario_name }}
+        {% if card.scenario_id == workspace_state.active_scenario_id %}
+          <span class="badge badge-pass svh-badge">Active</span>
+        {% endif %}
+      </div>
+
+      <!-- Metadata row -->
+      <div class="svh-card-meta">
+        {% if card.updated_at %}
+          <span class="svh-meta-item">
+            Updated {{ card.updated_at.strftime("%d %b %H:%M") }}
+          </span>
+        {% endif %}
+        {% if card.project_code %}
+          <span class="svh-meta-item">{{ card.project_code }}</span>
+        {% endif %}
+        {% if card.equity_irr is not none %}
+          <span class="svh-meta-item">IRR {{ "%.1f"|format(card.equity_irr * 100) if card.equity_irr else "—" }}%</span>
+        {% endif %}
+      </div>
+
+      <!-- Governance badges (G20/R99/R102) -->
+      {% if card.governance_state %}
+        <div class="svh-card-gov">
+          {% if card.governance_state.get('g20_status') %}
+            <span class="badge badge-{{ 'pass' if card.governance_state.g20_status == 'APPROVED' else 'warn' }}">
+              G20 {{ card.governance_state.g20_status }}
+            </span>
+          {% endif %}
+          {% if card.governance_state.get('r99_r102_status') %}
+            <span class="badge badge-{{ 'pass' if card.governance_state.r99_r102_status == 'APPROVED' else 'warn' }}">
+              R99/R102 {{ card.governance_state.r99_r102_status }}
+            </span>
+          {% endif %}
+        </div>
+      {% endif %}
+
+    </div>
+    {% endfor %}
+
+  </div>
+  {% else %}
+  <div class="svh-empty">
+    No saved versions yet. Use Save to create a version.
+  </div>
+  {% endif %}
+
+  <!-- Draft / Saved / Runtime explanation -->
+  <div class="svh-explainer">
+    <div class="svh-explainer-title">How versions work</div>
+    <ul class="svh-explainer-list">
+      <li>
+        <strong>Draft edits</strong> are separate from saved versions.
+        Unsaved changes do not affect Run output.
+      </li>
+      <li>
+        <strong>Saved versions</strong> preserve your input snapshot at a point in time.
+        Each Save creates a new immutable version.
+      </li>
+      <li>
+        <strong>Runtime output</strong> reflects the last run, not necessarily the latest draft.
+        Run again after edits before relying on exports.
+      </li>
+    </ul>
+  </div>
+
+  <!-- Stale runtime warning -->
+  {% if workspace_state and workspace_state.dirty %}
+  <div class="svh-warning">
+    ⚠️ Unsaved draft — runtime output may be stale. Save and re-run to update.
+  </div>
+  {% endif %}
+
+</div>
