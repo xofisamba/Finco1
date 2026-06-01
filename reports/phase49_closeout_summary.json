@@ -1,0 +1,78 @@
+{
+  "phase": "49-closeout",
+  "title": "Phase 49 Closeout: Export service and audit extraction summary",
+  "type": "documentation and reporting",
+  "base_sha": "01edb03957716caee55cfa794c693d08b2d1acfb",
+  "production_code_changed": false,
+  "export_service_complete": true,
+  "export_audit_service_complete": true,
+  "main_web_record_export_calls": 0,
+  "main_web_imports_record_export": false,
+  "prs_merged": [361, 362, 363, 364, 365, 366, 367, 368, 369],
+  "subphases_summary": {
+    "49A": "God module mapping and safe extraction plan",
+    "49B": "Extract export service from main_web.py (3 routes)",
+    "49C": "Inspect remaining leaf export routes",
+    "49D-1": "Characterize POST /download before extraction",
+    "49D-2": "Extract POST /download Excel construction into export_service",
+    "49D-3A": "Characterize export audit recording (4 routes)",
+    "49D-3B": "Extract runtime/institutional audit service",
+    "49D-3C": "Wire GET /download audit service",
+    "49D-3D": "Wire POST /download audit service — FINAL"
+  },
+  "remaining_main_web_hotspots": [
+    "/run route — runtime orchestration (HIGH priority)",
+    "/compare route — multi-scenario execution (MEDIUM priority)",
+    "scenario state management helpers (MEDIUM priority)",
+    "project/form parsing helpers (MEDIUM priority)",
+    "record_workspace_runtime calls (HIGH priority for Phase 50)"
+  ],
+  "recommended_next_phase": "Phase 50A — Scenario state service extraction (scenario state helpers, runtime binding)",
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20_blocked": true,
+    "r99_r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "test_coverage": {
+    "phase49d1": 40,
+    "phase49d2": 42,
+    "phase49d3a": 35,
+    "phase49d3b": 28,
+    "phase49d3c": 20,
+    "phase49d3d": 26,
+    "total": 191
+  },
+  "export_route_service_map": {
+    "GET /download": {
+      "bytes_service": "build_values_only_export_for_project",
+      "audit_service": "record_download_export",
+      "phase": "49D-3C"
+    },
+    "POST /download": {
+      "bytes_service": "build_excel_export_for_post_request",
+      "audit_service": "record_download_export",
+      "phase": "49D-2 + 49D-3D"
+    },
+    "GET /exports/runtime-summary.csv": {
+      "bytes_service": "build_runtime_summary_csv_export",
+      "audit_service": "record_runtime_summary_export",
+      "phase": "49B + 49D-3B"
+    },
+    "GET /exports/institutional-workbook.xlsx": {
+      "bytes_service": "build_institutional_workbook_export",
+      "audit_service": "record_institutional_workbook_export",
+      "phase": "49B + 49D-3B"
+    }
+  },
+  "services_created": [
+    "app/services/export_service.py",
+    "app/services/export_audit_service.py"
+  ]
+}
