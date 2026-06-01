@@ -2,7 +2,7 @@
   "phase": "49D-1",
   "title": "Characterize POST /download before extraction",
   "base_sha": "f6e53d5633858f0bd0aace8df77e34d28620f61d",
-  "head_sha": null,
+  "head_sha": "ae57b66275b979d7ce111c4c2a624a9987894ffc",
   "characterization_status": "complete",
   "production_code_changed": false,
   "route_characterized": "POST /download (main_web.py:2054)",
