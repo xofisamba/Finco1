@@ -1,0 +1,61 @@
+{
+  "phase": "49D-1",
+  "title": "Characterize POST /download before extraction",
+  "base_sha": "f6e53d5633858f0bd0aace8df77e34d28620f61d",
+  "head_sha": null,
+  "characterization_status": "complete",
+  "production_code_changed": false,
+  "route_characterized": "POST /download (main_web.py:2054)",
+  "paths_characterized": [
+    "A: user_created",
+    "B: saved_state",
+    "C: saved_baseline",
+    "D: factory_base_runtime",
+    "E: validation_error",
+    "F: runtime_guard_blocked",
+    "G: unauthenticated_redirect",
+    "H: unsupported_scenario",
+    "I: generic_project_warning",
+    "J: unexpected_exception"
+  ],
+  "xfail_paths": [
+    "H: unsupported_scenario — no explicit validation in code path, scenario flows through unchecked",
+    "I: generic_project_warning — only triggers when effective_project_type not Solar/Wind, hard to trigger in test",
+    "J: unexpected_exception — generic catch-all, cannot realistically simulate"
+  ],
+  "ready_for_extraction": true,
+  "required_before_49d2": [
+    "Provenance metadata contract documented",
+    "Conditional fields per runtime_origin documented",
+    "record_export call conditions documented",
+    "baseline_source post-generation side-effect documented",
+    "runtime_guard_for_snapshot blocking behavior documented",
+    "run_demo_project override contract documented"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "test_results": {
+    "test_phase49d1_post_download_characterization": "40 passed",
+    "test_phase49b_export_service_extraction": "17 passed",
+    "test_phase49c_remaining_leaf_export_routes": "15 passed",
+    "main_web_import": "OK"
+  },
+  "guardrails_confirmed": {
+    "g20_blocked": true,
+    "r99_not_approved": true,
+    "r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "phase_49_series_status": {
+    "49A": "merged PR #361 — God module mapping",
+    "49B": "merged PR #362 — export_service extraction",
+    "49C": "merged PR #363 — remaining route inspection",
+    "49D-1": "pending PR — characterization only, no extraction"
+  },
+  "recommended_next_phase": "49D-2: Extract POST /download into export_service using documented contract"
+}
