@@ -19,6 +19,11 @@ from app.export.runtime_summary import build_runtime_summary_rows, _run_project
 
 from app.export_metadata import build_export_metadata, metadata_rows
 
+from app.export.workbook_index import (
+    CALIBRATION_SHEET_INVENTORY,
+    write_workbook_index_sheet_full,
+)
+
 
 PASS = "PASS"
 WARN = "WARN"
@@ -2706,6 +2711,17 @@ def write_calibration_reconciliation_pack(
     export_meta = workbook.active
     export_meta.title = "Export_Metadata"
     _write_export_metadata_sheet(export_meta)
+
+    # Workbook_Index sheet — second sheet, sheet inventory and guide (Phase 48)
+    index_sheet = workbook.create_sheet("Workbook_Index")
+    write_workbook_index_sheet_full(
+        index_sheet,
+        workbook_name="Calibration Reconciliation Workbook",
+        project_name=runtime_rows[0]["project"] if runtime_rows else "",
+        export_type="calibration_reconciliation_workbook",
+        inventory=CALIBRATION_SHEET_INVENTORY,
+        is_generic=False,
+    )
 
     cover = workbook.create_sheet("Cover")
     navigation = workbook.create_sheet("Navigation")

@@ -17,6 +17,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from app.export_metadata import build_export_metadata, metadata_rows
+from app.export.workbook_index import (
+    INSTITUTIONAL_SHEET_INVENTORY,
+    write_workbook_index_sheet_full,
+)
 from app.export.runtime_summary import _run_project, build_runtime_summary_rows
 from app.input_helpers import (
     build_capex_items_table,
@@ -73,7 +77,8 @@ class WorkbookExportBundle:
 
 INSTITUTIONAL_SHEET_DEFINITIONS = (
     WorkbookSheetDefinition(0, "Export_Metadata", "implemented", "review", True, "Export provenance, trust hygiene, and non-claims. Added Phase 47."),
-    WorkbookSheetDefinition(1, "Cover", "implemented", "review", True, "Institutional cover sheet with provenance."),
+    WorkbookSheetDefinition(1, "Workbook_Index", "implemented", "review", True, "Sheet inventory and workbook guide. Added Phase 48."),
+    WorkbookSheetDefinition(2, "Cover", "implemented", "review", True, "Institutional cover sheet with provenance."),
     WorkbookSheetDefinition(2, "Governance", "implemented", "review", True, "Governance metadata and approval status."),
     WorkbookSheetDefinition(3, "Runtime Summary", "implemented", "runtime", True, "Existing runtime summary values only."),
     WorkbookSheetDefinition(4, "Inputs", "runtime_bound", "runtime + template", True, "Project metadata and assumption binding from existing context."),
@@ -149,6 +154,17 @@ def export_institutional_workbook_skeleton(project: str) -> bytes:
     export_meta = workbook.active
     export_meta.title = "Export_Metadata"
     _write_export_metadata_sheet(export_meta, bundle)
+
+    # Workbook_Index sheet — second sheet, sheet inventory and guide (Phase 48)
+    index_sheet = workbook.create_sheet("Workbook_Index")
+    write_workbook_index_sheet_full(
+        index_sheet,
+        workbook_name="Institutional Runtime Workbook",
+        project_name=bundle.project_name,
+        export_type="institutional_workbook",
+        inventory=INSTITUTIONAL_SHEET_INVENTORY,
+        is_generic=bundle.active_project not in {"tuho", "oborovo"},
+    )
 
     cover = workbook.create_sheet("Cover")
     _write_cover_sheet(cover, bundle)
