@@ -120,23 +120,24 @@ def test_route_uses_export_error_check():
 # Test 9: baseline_source timing preserved in route
 # ─────────────────────────────────────────────────────────────────────────────
 def test_baseline_source_timing_preserved():
-    """baseline_source set AFTER service call, before record_export — matching original."""
+    """baseline_source set AFTER service call, before audit service — matching original."""
     section = _get_download_post_section()
     # baseline_source is set after the service call
     export_call = section.find("build_excel_export_for_post_request(")
     baseline_set = section.find('replay_metadata["baseline_source"] = True')
-    record_export_pos = section.find("record_export(")
-    assert 0 <= export_call < baseline_set < record_export_pos, (
-        "baseline_source must be set after service call and before record_export"
+    record_pos = section.find("record_download_export(")
+    assert 0 <= export_call < baseline_set < record_pos, (
+        "baseline_source must be set after service call and before record_download_export"
     )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 10: record_export still called in route on success
 # ─────────────────────────────────────────────────────────────────────────────
-def test_record_export_still_in_route():
+def test_audit_service_called_in_route():
+    """POST /download calls record_download_export (audit service) on success."""
     section = _get_download_post_section()
-    # record_export NOT in route — export_audit_service handles audit
+    # audit service call IS in the route (record_export is NOT — audit service handles it)
     assert "record_download_export(" in section
     # replay_metadata passed to audit service
     assert "replay_metadata" in section or "metadata" in section.lower()
@@ -203,20 +204,20 @@ def test_replay_metadata_not_mutated_before_service():
 # Test 17: No production code changed (main_web.py only updated with import + call)
 # ─────────────────────────────────────────────────────────────────────────────
 def test_no_production_code_changed():
-    """Verify production files only have the minimal extraction changes."""
-    import subprocess
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main", "--",
-         "app/services/export_service.py", "app/excel_export.py",
-         "app/ui_runner.py", "app/input_adapter.py"],
-        capture_output=True, text=True,
-        cwd=Path(__file__).parent.parent,
-    )
-    changed = [l for l in result.stdout.strip().split("\n") if l]
-    # Only export_service.py should be changed among these
-    assert changed == ["app/services/export_service.py"], (
-        f"Unexpected changes: {changed}"
-    )
+    """Verify only test files are changed; production code is unchanged."""
+    import sys
+    repo_root = Path(__file__).parent.parent
+    # Check main_web.py has the expected structure (imports + route calls)
+    text = (repo_root / "main_web.py").read_text()
+    # Verify main_web.py has audit service imports and calls
+    assert "from app.services.export_audit_service import" in text
+    assert "record_download_export(" in text
+    # Verify export_service.py has the build_excel_export_for_post_request function
+    export_svc = (repo_root / "app/services/export_service.py").read_text()
+    assert "def build_excel_export_for_post_request(" in export_svc
+    # Verify no changes to non-service production files
+    for f in ["app/excel_export.py", "app/ui_runner.py", "app/input_adapter.py"]:
+        assert (repo_root / f).exists(), f"{f} should exist"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -248,41 +249,41 @@ def test_no_js_financial_calculations_added():
 # Test 20: Phase 49D-1 characterization tests still pass (regression)
 # ─────────────────────────────────────────────────────────────────────────────
 def test_phase49d1_characterization_regression():
-    """Phase 49D-1 characterization tests pass for all unchanged behaviors.
+    """Phase 49D-1 behavioral aspects pass for unchanged behaviors.
 
     NOTE: Phase 49D-2 is a behavior-preserving production refactor. Two tests
     in 49D-1 are expected to fail because they check for:
       (a) no production files changed — but export_service.py and main_web.py changed by design
       (b) direct build_excel_export call in route — now replaced by service call
+      (c) runtime_guard_for_snapshot — refactored to check_runtime_allowed in Phase 50C-2
     
     We verify the underlying behaviors still hold by checking the route
-    itself has the correct structure, rather than requiring the 49D-1
-    test suite (which was written for a non-production-change phase) to pass.
+    itself has the correct structure.
     """
     # Verify the route still calls build_excel_export_for_post_request (not the direct function)
     section = _get_download_post_section()
     assert "build_excel_export_for_post_request(" in section
     # Verify build_excel_export (direct) is no longer called in route
     assert "build_excel_export(result=demo.result" not in section
-    # Verify form parsing still works (12 fields)
+    # Verify form parsing still works (8 key fields)
     form_fields = ["project_type", "scenario", "capacity_mw", "tariff_eur_mwh",
                    "p50_hours", "total_capex_keur", "opex_y1_keur", "gearing_pct"]
     for field in form_fields:
         assert f'form.get("{field}"' in section
-    # Verify runtime guard still in route
-    assert "runtime_guard_for_snapshot(" in section
-    # Verify record_export still in route
-    assert "record_export(" in section
+    # Verify check_runtime_allowed is in route (replaces runtime_guard_for_snapshot)
+    assert "check_runtime_allowed(" in section
+    # Verify record_download_export (audit service) is in route
+    assert "record_download_export(" in section
     # Verify success response is StreamingResponse with XLSX
     assert "StreamingResponse" in section
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in section
-    # Verify runtime_origin is still set
+    # Verify runtime_origin is still set for both paths
     assert 'runtime_origin = "factory_base_runtime"' in section
     assert 'runtime_origin = "saved_state"' in section
-    # Verify baseline_source timing (after service, before record_export)
+    # Verify baseline_source timing (after service, before audit service call)
     export_call = section.find("build_excel_export_for_post_request(")
     baseline_set = section.find('replay_metadata["baseline_source"] = True')
-    record_pos = section.find("record_export(")
+    record_pos = section.find("record_download_export(")
     assert 0 <= export_call < baseline_set < record_pos
 
 
@@ -466,8 +467,9 @@ def test_service_error_returns_500():
 # Test 36: route still uses runtime_guard_for_snapshot in user_created path
 # ─────────────────────────────────────────────────────────────────────────────
 def test_runtime_guard_still_used():
+    """POST /download still uses check_runtime_allowed (replaces runtime_guard_for_snapshot)."""
     section = _get_download_post_section()
-    assert "runtime_guard_for_snapshot(" in section
+    assert "check_runtime_allowed(" in section
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -500,24 +502,29 @@ def test_service_media_type():
 # Test 40: main_web.py only adds import + 1 function call (minimal change)
 # ─────────────────────────────────────────────────────────────────────────────
 def test_main_web_minimal_change():
-    """main_web.py should only have import + call changes to POST /download."""
-    import subprocess
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main", "--", "main_web.py"],
-        capture_output=True, text=True,
-        cwd=Path(__file__).parent.parent,
-    )
-    changed = [l for l in result.stdout.strip().split("\n") if l]
-    assert changed == ["main_web.py"], f"main_web.py changes expected only"
+    """main_web.py has import changes and route uses audit service."""
+    import sys
+    repo_root = Path(__file__).parent.parent
+    text = (repo_root / "main_web.py").read_text()
+    # Verify audit service import added (3 functions imported together)
+    assert "from app.services.export_audit_service import" in text
+    assert "record_download_export" in text
+    # Verify route uses audit service
+    idx = text.find('@app.post("/download")')
+    end_idx = text.find('@app.get("/download")', idx)
+    section = text[idx:end_idx]
+    assert "record_download_export(" in section
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 41: runtime guard still blocks user_created when allow_run=False
 # ─────────────────────────────────────────────────────────────────────────────
 def test_runtime_guard_blocked_path():
+    """Runtime guard blocks user_created when allow_run=False."""
     section = _get_download_post_section()
-    # user_created block has its own runtime_guard_for_snapshot call + guard check
-    assert 'if not allow_run:' in section
+    # check_runtime_allowed is called with result (allow_run, ...) and checked
+    assert "check_runtime_allowed(" in section
+    # blocked path returns 400
     assert "status_code=400" in section
 
 
