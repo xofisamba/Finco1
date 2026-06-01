@@ -34,10 +34,10 @@ def test_resolve_runtime_snapshot_source_exists():
 # Test 3: scenario_state_service does NOT yet own the resolver
 # ─────────────────────────────────────────────────────────────────────────────
 def test_scenario_service_exists_no_resolver():
-    assert SCENARIO_SERVICE.exists()
-    text = SCENARIO_SERVICE.read_text()
-    assert "def resolve_runtime_snapshot" not in text
-    assert "def _resolve_runtime_snapshot_source" not in text
+    # Phase 50C-2: resolver IS now in scenario_state_service
+    from app.services.scenario_state_service import resolve_runtime_snapshot, RuntimeSnapshotResolution
+    assert callable(resolve_runtime_snapshot)
+    assert hasattr(RuntimeSnapshotResolution, '__dataclass_fields__')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ def test_branch_a1_scenario_unavailable():
     project = make_mock_project(project_origin="saved_state", has_baseline=True)
     workspace = make_mock_workspace(active_scenario_id="scen-999", saved_snapshot={"cap": 100})
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (None, None, None)
         snapshot, scenario_record, warning, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"
@@ -106,7 +106,7 @@ def test_branch_a2_resolved_snapshot_exists():
     mock_scenario = MagicMock()
     mock_resolved = {"capacity_mw": 72, "tariff_eur_mwh": 60}
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (mock_scenario, mock_resolved, None)
         snapshot, scenario_record, warning, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"
@@ -133,7 +133,7 @@ def test_branch_a3_resolved_snapshot_none():
 
     mock_scenario = MagicMock()
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (mock_scenario, None, None)
         snapshot, scenario_record, warning, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"
@@ -158,7 +158,7 @@ def test_branch_a3_fallback_to_baseline():
 
     mock_scenario = MagicMock()
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (mock_scenario, None, None)
         snapshot, scenario_record, warning, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"
@@ -393,13 +393,13 @@ def test_repository_call_only_in_branch_a():
     project = make_mock_project(project_origin="saved_state", has_baseline=False)
     workspace_no_snap = make_mock_workspace(active_scenario_id=None, saved_snapshot=None)
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         _resolve_runtime_snapshot_source(user, project, workspace_no_snap, "saved_state")
         mock_resolve.assert_not_called()
 
     project_uc = make_mock_project(project_origin="user_created", has_baseline=False)
     workspace_uc = make_mock_workspace(active_scenario_id=None, saved_snapshot=None)
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         _resolve_runtime_snapshot_source(user, project_uc, workspace_uc, "saved_state")
         mock_resolve.assert_not_called()
 
@@ -446,7 +446,7 @@ def test_user_created_priority_over_branch_a():
     # user_created + saved_state + active_scenario_id → Branch A fires (B is elif after A)
     workspace = make_mock_workspace(active_scenario_id="scen-active", saved_snapshot={"snap": "value"})
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (MagicMock(), {"user_key": "from_resolver"}, None)
         snapshot, scenario_record, warning, effective_origin = _resolve_runtime_snapshot_source(
             user, project_uc, workspace, "saved_state"
@@ -468,7 +468,7 @@ def test_effective_origin_override_only_in_scenario_unavailable():
     workspace = make_mock_workspace(active_scenario_id="scen-bad", saved_snapshot={"snap": True})
 
     # A1: scenario unavailable → override to workspace_base
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (None, None, None)
         _, _, _, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"
@@ -477,7 +477,7 @@ def test_effective_origin_override_only_in_scenario_unavailable():
 
     # A2: resolved_snapshot exists → should NOT override
     mock_scenario = MagicMock()
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (mock_scenario, {"key": "val"}, None)
         _, _, _, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"
@@ -499,9 +499,12 @@ def test_effective_origin_override_only_in_scenario_unavailable():
 def test_resolver_remains_in_main_web():
     text = MAIN_WEB.read_text()
     assert "def _resolve_runtime_snapshot_source" in text
-    assert "resolve_active_scenario_runtime_snapshot" in text
-    assert "effective_origin = runtime_origin" in text
-    assert "workspace_base" in text
+    # Thin wrapper (no decision tree)
+    assert "Thin backward-compatible wrapper" in text
+    assert "resolve_runtime_snapshot" in text
+    # Decision tree moved to scenario_state_service
+    from app.services.scenario_state_service import resolve_runtime_snapshot
+    assert callable(resolve_runtime_snapshot)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -566,7 +569,7 @@ def test_warning_from_resolver_forwarded():
     mock_scenario = MagicMock()
     custom_warning = "Scenario locked by another user"
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (mock_scenario, None, custom_warning)
         _, _, warning, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"
@@ -586,7 +589,7 @@ def test_a1_fallback_warning_when_resolver_returns_none():
     project = make_mock_project(project_origin="saved_state", has_baseline=True)
     workspace = make_mock_workspace(active_scenario_id="scen-gone", saved_snapshot={"fallback": True})
 
-    with patch('main_web.resolve_active_scenario_runtime_snapshot') as mock_resolve:
+    with patch('app.services.scenario_state_service.resolve_active_scenario_runtime_snapshot') as mock_resolve:
         mock_resolve.return_value = (None, None, None)
         _, _, warning, effective_origin = _resolve_runtime_snapshot_source(
             user, project, workspace, "saved_state"

@@ -67,7 +67,6 @@ from app.persistence.repository import (
     _get_least_created_scenario_for_project,
     record_workspace_runtime,
     rename_scenario,
-    resolve_active_scenario_runtime_snapshot,
     runtime_guard_for_snapshot,
     save_project,
     save_run,
@@ -86,7 +85,7 @@ from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
-from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record
+from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record, resolve_runtime_snapshot, RuntimeSnapshotResolution
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -1005,47 +1004,23 @@ def _scenario_provenance_for_record(project_record, scenario_record):
 
 
 def _resolve_runtime_snapshot_source(user, project_record, workspace_state, runtime_origin: str) -> tuple[dict, object | None, str | None, str]:
-    """Resolve the clean backend-authored snapshot used for runtime/export binding.
+    """Thin backward-compatible wrapper around scenario_state_service.resolve_runtime_snapshot.
 
-    Priority:
-    1. Saved active scenario snapshot (resolved from Base Case + overrides)
-    2. Saved workspace snapshot / project baseline
-    3. Factory flow continues to use existing form-driven behavior outside this helper
+    Phase 50C-2: Canonical implementation moved to resolve_runtime_snapshot().
+    This wrapper preserves the old tuple-return API at existing call sites.
     """
-    scenario_record = None
-    warning = None
-    effective_origin = runtime_origin
-    if runtime_origin == "saved_state" and workspace_state and workspace_state.active_scenario_id:
-        scenario_record, resolved_snapshot, warning = resolve_active_scenario_runtime_snapshot(
-            user.user_id,
-            project_record.project_id,
-            workspace_state.active_scenario_id,
-        )
-        # If scenario is invalid/missing, fall back to workspace_base and don't bind
-        if scenario_record is None:
-            effective_origin = "workspace_base"
-            scenario_record = None
-            warning = warning or (
-                "Selected saved scenario was unavailable, so runtime fell back to the last clean saved boundary."
-            )
-            source = dict(workspace_state.saved_snapshot or project_record.baseline_snapshot or {})
-        elif resolved_snapshot:
-            source = dict(resolved_snapshot)
-        else:
-            source = dict(workspace_state.saved_snapshot or project_record.baseline_snapshot or {})
-    elif project_record.project_origin == "user_created":
-        if runtime_origin == "saved_state" and workspace_state.saved_snapshot:
-            source = dict(workspace_state.saved_snapshot)
-        else:
-            source = dict(project_record.baseline_snapshot or workspace_state.saved_snapshot or {})
-    else:
-        source = dict(workspace_state.saved_snapshot or {})
-    source.setdefault("project_name", project_record.project_name)
-    source.setdefault("project_type", project_record.project_type)
-    source.setdefault("project_origin", project_record.project_origin)
-    source.setdefault("template_source", project_record.template_source or project_record.source_project_template)
-    source.setdefault("active_project", project_record.project_code.lower())
-    return source, scenario_record, warning, effective_origin
+    result = resolve_runtime_snapshot(
+        user=user,
+        project_record=project_record,
+        workspace_state=workspace_state,
+        runtime_origin=runtime_origin,
+    )
+    return (
+        result.snapshot,
+        result.scenario_record,
+        result.warning,
+        result.effective_runtime_origin,
+    )
 
 
 def _current_project_workspace(user, project_record):
