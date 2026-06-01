@@ -516,7 +516,7 @@ def test_routes_unchanged():
     run_end = text.find('\n@', run_start + 1)
     run_section = text[run_start:run_end]
     assert "_resolve_runtime_snapshot_source" in run_section
-    assert "runtime_guard_for_snapshot" in run_section
+    assert "check_runtime_allowed" in run_section
     dl_start = text.find('@app.post("/download")')
     dl_end = text.find('@app.get("/download")', dl_start)
     dl_section = text[dl_start:dl_end]

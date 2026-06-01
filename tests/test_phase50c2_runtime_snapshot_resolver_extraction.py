@@ -527,7 +527,7 @@ def test_run_route_still_uses_resolver_wrapper():
     run_end = text.find('\n@', run_start + 1)
     run_section = text[run_start:run_end]
     assert "_resolve_runtime_snapshot_source" in run_section
-    assert "runtime_guard_for_snapshot" in run_section
+    assert "check_runtime_allowed" in run_section
 
 
 def test_post_download_route_still_uses_resolver_wrapper():

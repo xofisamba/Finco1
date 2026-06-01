@@ -253,8 +253,8 @@ def test_run_route_unchanged():
     run_start = text.find('@app.post("/run")')
     run_end = text.find('\n@', run_start + 1)
     run_section = text[run_start:run_end]
-    # Still calls runtime_guard_for_snapshot
-    assert "runtime_guard_for_snapshot" in run_section
+    # Still calls check_runtime_allowed
+    assert "check_runtime_allowed" in run_section
     # Still calls _resolve_runtime_snapshot_source
     assert "_resolve_runtime_snapshot_source" in run_section
     # Still has dirty guard
@@ -280,7 +280,7 @@ def test_download_route_unchanged():
     post_dl_start = text.find('@app.post("/download")')
     post_dl_end = text.find('@app.get("/download")', post_dl_start)
     post_section = text[post_dl_start:post_dl_end]
-    assert "runtime_guard_for_snapshot" in post_section
+    assert "check_runtime_allowed" in post_section
     assert "_resolve_runtime_snapshot_source" in post_section
     assert "record_download_export" in post_section
 
@@ -356,10 +356,11 @@ def test_scenario_service_only_has_helpers():
     text = SCENARIO_SERVICE.read_text()
     assert "def build_workspace_state_metadata" in text
     assert "def scenario_provenance_for_record" in text
-    # check no resolver function defined (comment mentions are ok)
+    assert "def resolve_runtime_snapshot" in text
+    assert "def check_runtime_allowed" in text
+    # Repository functions not re-exported (only wrappers)
     assert "def resolve_active_scenario_runtime_snapshot" not in text
-    assert "def _resolve_runtime_snapshot_source" not in text
-    assert "def check_runtime_allowed" not in text
+    assert "def runtime_guard_for_snapshot" not in text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
