@@ -1,0 +1,213 @@
+{
+  "phase": "51A",
+  "title": "/run route golden characterization",
+  "type": "characterization-only",
+  "base_sha": "cfae719f6ac062d8c1ebda055bdc89f0bd5423c7",
+  "head_sha": "3ae8dd2bc8731d917e5e2ca1ecaea11d45e270a2",
+  "pr": 379,
+  "branch": "phase51a-run-route-golden-characterization",
+  "status": "complete",
+  "production_code_changed": false,
+  "run_route_characterized": true,
+  "run_service_created": false,
+  "golden_cases": [
+    {
+      "name": "tuho_base_run",
+      "input": {
+        "active_project": "tuho",
+        "project_type": "Wind",
+        "scenario": "Base"
+      },
+      "expected_status": 200,
+      "expected_project": "tuho",
+      "expected_runtime_origin": "workspace_base",
+      "expected_template": "partials/runtime_summary.html",
+      "expected_persistence": "record_workspace_runtime for tuho"
+    },
+    {
+      "name": "oborovo_base_run",
+      "input": {
+        "active_project": "oborovo",
+        "project_type": "Solar",
+        "scenario": "Base"
+      },
+      "expected_status": 200,
+      "expected_project": "oborovo",
+      "expected_runtime_origin": "workspace_base",
+      "expected_template": "partials/runtime_summary.html",
+      "expected_persistence": "record_workspace_runtime for oborovo"
+    },
+    {
+      "name": "generic_wind_run",
+      "input": {
+        "project_type": "Wind",
+        "scenario": "Base",
+        "capacity_mw": "50",
+        "tariff_eur_mwh": "60",
+        "p50_hours": "1200",
+        "total_capex_keur": "50000",
+        "opex_y1_keur": "1000",
+        "gearing_pct": "70"
+      },
+      "expected_status": 200,
+      "expected_template": "partials/kpis.html",
+      "expected_persistence": "record_workspace_runtime for derived project"
+    },
+    {
+      "name": "generic_solar_run",
+      "input": {
+        "project_type": "Solar",
+        "scenario": "Base",
+        "capacity_mw": "50",
+        "tariff_eur_mwh": "60",
+        "p50_hours": "1200",
+        "total_capex_keur": "50000",
+        "opex_y1_keur": "1000",
+        "gearing_pct": "70"
+      },
+      "expected_status": 200,
+      "expected_template": "partials/kpis.html",
+      "expected_persistence": "record_workspace_runtime for derived project"
+    },
+    {
+      "name": "invalid_project_type",
+      "input": {
+        "active_project": "tuho",
+        "project_type": "Nuclear",
+        "scenario": "Base"
+      },
+      "expected_status": 200,
+      "expected_template": "partials/errors.html",
+      "expected_persistence": "none"
+    },
+    {
+      "name": "no_auth",
+      "input": {
+        "project_type": "Wind",
+        "scenario": "Base"
+      },
+      "expected_status": 302,
+      "expected_redirect": "/login",
+      "expected_persistence": "none"
+    },
+    {
+      "name": "dirty_workspace",
+      "input": {
+        "project_type": "Wind",
+        "scenario": "Base",
+        "capacity_mw": "50",
+        "tariff_eur_mwh": "60"
+      },
+      "expected_status": 200,
+      "expected_template": "partials/errors.html",
+      "expected_error_marker": "alert-error OR Unsaved edits OR no longer matches",
+      "expected_persistence": "none (blocked before run_project)"
+    }
+  ],
+  "golden_metrics": {
+    "service_level_kpis": {
+      "kpis_keys_required": [
+        "total_revenue_keur",
+        "total_ebitda_keur",
+        "total_opex_keur",
+        "total_distributions_keur",
+        "project_irr",
+        "equity_irr",
+        "min_dscr",
+        "avg_dscr"
+      ],
+      "kpis_types": "numeric (int/float, never string)",
+      "irr_range": [
+        -0.5,
+        0.5
+      ],
+      "dscr_range": [
+        0,
+        5
+      ],
+      "revenue_must_be_positive": true
+    },
+    "service_level_tables": {
+      "required_tables": [
+        "waterfall",
+        "revenue",
+        "debt",
+        "returns"
+      ],
+      "each_is_list": true
+    },
+    "service_level_messages": {
+      "messages_is_list": true,
+      "integration_status_values": [
+        "full",
+        "partial",
+        "degraded"
+      ]
+    },
+    "scenario_sensitivity": {
+      "downside_must_differ_from_base": true,
+      "min_abs_diff": 0.01
+    },
+    "absolutely_pinned": [],
+    "structure_pinned": true,
+    "note": "Absolute IRR/DSCR values change with calibration; structural shape is pinned instead."
+  },
+  "dirty_guard_coverage": {
+    "covered": true,
+    "trigger": "second POST with non-baseline field after a previous run",
+    "expected_response": "200 with partials/errors.html + alert-error marker"
+  },
+  "saved_state_coverage": {
+    "covered": "via scenario_state_service.check_runtime_allowed API test",
+    "note": "Full saved_state HTTP path requires user_created project setup; covered structurally via API contract."
+  },
+  "user_created_coverage": {
+    "covered": "via run_route_docstring_describes_responsibilities + run_route_still_in_main_web",
+    "note": "user_created path is the largest of 3 execution paths; full integration test would require create_project_record setup, deferred to Phase 51B characterization if needed."
+  },
+  "ready_for_51b_extraction": true,
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_route_behavior_changes": true,
+  "no_export_behavior_changes": true,
+  "no_project_factory_changes": true,
+  "no_fixture_changes": true,
+  "no_schema_migration_changes": true,
+  "no_js_financial_calculations": true,
+  "no_generic_validation": true,
+  "g20_status": "BLOCKED",
+  "r99_r102_status": "NOT APPROVED",
+  "partial_pay_sweep_promoted": false,
+  "flat_or_min_dscr_promoted": false,
+  "backend_source_of_truth": true,
+  "pr_299_state": "draft, not merged",
+  "files_changed": [
+    "tests/test_phase51a_run_route_golden_characterization.py",
+    "docs/phase51a_run_route_golden_characterization.md",
+    "docs/phase51a_run_route_golden_matrix.md",
+    "reports/phase51a_run_route_golden_characterization_summary.json"
+  ],
+  "test_results": {
+    "phase51a_golden": "25 passed in 3.48s",
+    "phase51a_plus_closeouts": "75 passed in 3.82s",
+    "phase50d_current_state_after_refactor_cleanup": "passed",
+    "phase50c_closeout_scenario_state_service": "passed",
+    "main_web_import": "OK"
+  },
+  "final_state_confirmations": {
+    "main_web_zero_direct_record_export": true,
+    "main_web_no_record_export_import": true,
+    "main_web_no_runtime_guard_direct_import": true,
+    "scenario_state_service_check_runtime_allowed_exists": true,
+    "scenario_state_service_resolve_runtime_snapshot_exists": true,
+    "export_service_build_excel_export_for_post_request_exists": true,
+    "export_service_build_values_only_export_for_project_exists": true,
+    "export_audit_service_record_runtime_summary_export_exists": true,
+    "export_audit_service_record_institutional_workbook_export_exists": true,
+    "export_audit_service_record_download_export_exists": true,
+    "run_service_does_not_exist_yet": true,
+    "no_production_code_changes": true
+  },
+  "recommended_next_phase": "Phase 51B — vertical extraction of POST /run orchestration into app/services/run_service.py"
+}
