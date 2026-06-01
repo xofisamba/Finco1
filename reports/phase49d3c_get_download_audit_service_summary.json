@@ -1,0 +1,48 @@
+{
+  "phase": "49D-3C",
+  "title": "Wire GET download export audit service",
+  "base_sha": "bed4b7e554c473225d6c306ad479f07d3e6d3152",
+  "status": "complete_pending_pr",
+  "production_code_changed": true,
+  "changed_files": [
+    "main_web.py",
+    "tests/test_phase49d3c_get_download_audit_service_wiring.py",
+    "docs/phase49d3c_get_download_audit_service_wiring.md",
+    "docs/phase49d3c_get_download_audit_service_matrix.md",
+    "reports/phase49d3c_get_download_audit_service_summary.json"
+  ],
+  "new_files": [
+    "tests/test_phase49d3c_get_download_audit_service_wiring.py",
+    "docs/phase49d3c_get_download_audit_service_wiring.md",
+    "docs/phase49d3c_get_download_audit_service_matrix.md",
+    "reports/phase49d3c_get_download_audit_service_summary.json"
+  ],
+  "routes_extracted": ["GET /download"],
+  "routes_unchanged": ["POST /download"],
+  "service_function_used": "record_download_export",
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "record_export_payload_preserved": true,
+  "replay_metadata_preserved": true,
+  "governance_state_preserved": true,
+  "baseline_source_timing_preserved": true,
+  "exception_behavior_unchanged": true,
+  "direct_record_export_calls_remaining_in_main_web": 1,
+  "test_results": {
+    "49D-3C": "20 passed",
+    "49D-3B regression": "28 passed",
+    "49D-3A behavioral": "passed"
+  },
+  "guardrails_confirmed": {
+    "g20_blocked": true,
+    "r99_r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "branch": "phase49d3c-wire-get-download-export-audit-service",
+  "recommended_next_phase": "49D-3D — Wire record_download_export into POST /download (last remaining extraction)"
+}
