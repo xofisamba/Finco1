@@ -1,4 +1,7 @@
-"""Export service — Phase 49B extraction from main_web.py."""
+"""Export service — Phase 49B extraction from main_web.py.
+
+Phase 49D-3B also exports from export_audit_service (record_export wrappers).
+"""
 from app.services.export_service import (
     ExportResponse,
     build_values_only_export_for_project,
@@ -7,6 +10,11 @@ from app.services.export_service import (
     build_excel_export_for_post_request,
     serve_runtime_summary_csv,
     serve_institutional_workbook,
+)
+from app.services.export_audit_service import (
+    record_runtime_summary_export,
+    record_institutional_workbook_export,
+    record_download_export,
 )
 
 __all__ = [
@@ -17,4 +25,7 @@ __all__ = [
     "build_excel_export_for_post_request",
     "serve_runtime_summary_csv",
     "serve_institutional_workbook",
+    "record_export_for_runtime_summary",
+    "record_export_for_institutional_workbook",
+    "record_export_for_download",
 ]
