@@ -4,6 +4,7 @@ from app.services.export_service import (
     build_values_only_export_for_project,
     build_runtime_summary_csv_export,
     build_institutional_workbook_export,
+    build_excel_export_for_post_request,
     serve_runtime_summary_csv,
     serve_institutional_workbook,
 )
@@ -13,6 +14,7 @@ __all__ = [
     "build_values_only_export_for_project",
     "build_runtime_summary_csv_export",
     "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
     "serve_runtime_summary_csv",
     "serve_institutional_workbook",
 ]
