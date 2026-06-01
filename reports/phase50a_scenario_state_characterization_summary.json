@@ -1,0 +1,85 @@
+{
+  "phase": "50A",
+  "title": "Phase 50A: Scenario state service characterization",
+  "type": "characterization",
+  "base_sha": "c17208638b68240f3ea68c72e441eaee629409ac",
+  "characterization_status": "complete",
+  "production_code_changed": false,
+  "routes_inspected": [
+    "POST /run",
+    "POST /compare",
+    "GET /download",
+    "POST /download",
+    "POST /scenarios/{scenario_id}/select",
+    "POST /scenarios/save",
+    "POST /scenarios/state/draft",
+    "POST /scenarios/state/discard",
+    "GET /scenarios",
+    "GET /runs"
+  ],
+  "helpers_inspected": [
+    "_resolve_runtime_snapshot_source",
+    "_workspace_state_meta",
+    "_scenario_provenance_for_record",
+    "runtime_guard_for_snapshot (imported from repository)",
+    "resolve_active_scenario_runtime_snapshot (imported from repository)",
+    "_project_workspace_from_snapshot",
+    "_collect_form_snapshot"
+  ],
+  "scenario_sources": [
+    "saved_state (active scenario with resolved snapshot)",
+    "saved_baseline (workspace saved_snapshot or project baseline_snapshot)",
+    "user_created (user project, workspace_snapshot or baseline)",
+    "factory_base_runtime (form-driven, no saved state)",
+    "workspace_base (fallback when scenario unavailable)"
+  ],
+  "runtime_snapshot_sources": [
+    "resolved_snapshot from scenario DB (via resolve_active_scenario_runtime_snapshot)",
+    "workspace_state.saved_snapshot",
+    "project_record.baseline_snapshot",
+    "form snapshot (factory path)",
+    "None (factory path for exports)"
+  ],
+  "ready_for_extraction": true,
+  "proposed_service_module": "app/services/scenario_state_service.py",
+  "proposed_service_functions": [
+    "resolve_runtime_snapshot(user, project_record, workspace_state, runtime_origin) -> (snapshot, scenario_record, warning, effective_runtime_origin)",
+    "build_workspace_state_metadata(workspace_state) -> dict",
+    "check_runtime_allowed(workspace_state, snapshot) -> (allow_run, runtime_origin, guard_message)",
+    "scenario_provenance_for_record(project_record, scenario_record) -> dict"
+  ],
+  "extraction_risks": [
+    "user_created path has distinct logic in _resolve_runtime_snapshot_source (HIGH)",
+    "Snapshot format is implicit (no schema) — document before extraction (MEDIUM)",
+    "Circular dependency risk if repository functions are re-imported (LOW)",
+    "Guard/test coverage for runtime_guard behavioral branches (MEDIUM)"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20_blocked": true,
+    "r99_r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "behavior_matrix_rows": 13,
+  "behavior_matrix_coverage": [
+    "/run using saved_state",
+    "/run using saved_baseline",
+    "/run using user_created",
+    "/run using factory_base_runtime",
+    "GET /download using factory_base_runtime",
+    "POST /download using saved_state",
+    "POST /download using saved_baseline",
+    "POST /download using user_created",
+    "runtime_guard allowed",
+    "runtime_guard blocked",
+    "stale runtime warning / dirty state",
+    "active project switch",
+    "scenario load/list/save/discard endpoints"
+  ]
+}
