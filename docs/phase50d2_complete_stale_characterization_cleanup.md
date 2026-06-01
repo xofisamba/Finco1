@@ -4,6 +4,12 @@
 
 `eeb6e78586a28b805706e81489fc2e53323fcd38` (origin/main, immediately after PR #377 merge)
 
+## Pull request
+
+- **PR:** https://github.com/xofisamba/Finco1/pull/378 (draft)
+- **Branch:** `phase50d2-complete-stale-characterization-test-cleanup`
+- **Head SHA:** `a364f7f`
+
 ## Objective
 
 Complete the stale characterization test cleanup started in Phase 50D. The goal
