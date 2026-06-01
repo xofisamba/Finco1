@@ -85,6 +85,7 @@ from app.ui.project_context import build_project_context_for_record, get_project
 from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
+from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -2191,7 +2192,12 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         return RedirectResponse(url="/login", status_code=302)
 
     try:
-        demo = run_demo_project(project_type, scenario)
+        # Build result + replay_metadata BEFORE service call so both
+        # the Excel file and record_export use the same provenance dict.
+        demo = run_demo_project(
+            project_type if project_type else "Solar",
+            scenario if scenario else "Base",
+        )
         project_code = "oborovo" if project_type.lower() == "solar" else "tuho"
         project_record = get_project_by_code(user.user_id, project_code)
         filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
@@ -2206,13 +2212,19 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             runtime_origin="factory_base_runtime",
             artifact_name=filename,
         )
-        excel_bytes = build_excel_export(
-            result=demo.result,
-            project_inputs=demo.project_inputs,
-            provenance_metadata=replay_metadata,
-        )
         if project_record and project_record.project_origin == "saved_baseline":
             replay_metadata["baseline_source"] = True
+
+        export = build_values_only_export_for_project(
+            demo.result,
+            demo.project_inputs,
+            project_type,
+            scenario,
+            replay_metadata=replay_metadata,
+        )
+        if export.has_error():
+            return HTMLResponse(content=export.error_content, status_code=export.status_code)
+
         record_export(
             user_id=user.user_id,
             project_code=project_code,
@@ -2224,11 +2236,11 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             replay_metadata=replay_metadata,
         )
         return StreamingResponse(
-            iter([excel_bytes]),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            iter([export.bytes_data]),
+            media_type=export.media_type,
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Content-Length": str(len(excel_bytes)),
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "Content-Length": str(len(export.bytes_data)),
             },
         )
     except Exception as e:
@@ -2251,46 +2263,35 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
     if project_record is not None:
         runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
-    try:
-        runtime_rows = build_runtime_summary_rows(runtime_project_code)
-        csv_text = build_runtime_summary_csv(
-            runtime_project_code,
-            generated_at=runtime_rows[0]["generated_at"],
-            source_branch=runtime_rows[0]["source_branch"],
-        )
-    except ValueError as exc:
-        return HTMLResponse(
-            content=f"<html><body><h2>Runtime summary export failed</h2><p>{str(exc)}</p><a href='/'>Back</a></body></html>",
-            status_code=400,
-        )
+    export = build_runtime_summary_csv_export(runtime_project_code, safe_project=safe_project)
+    if export.has_error():
+        return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
-    filename = f"phase10_{safe_project}_runtime_summary.csv"
-    data = csv_text.encode("utf-8")
     record_export(
         user_id=user.user_id,
         project_code=safe_project,
         export_type="runtime_summary_csv",
-        artifact_name=filename,
+        artifact_name=export.filename,
         artifact_path=f"/exports/runtime-summary.csv?project={safe_project}",
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
         replay_metadata=_replay_metadata_for_project(
             safe_project,
             export_type="runtime_summary_csv",
-            export_timestamp=runtime_rows[0]["export_generated_at"],
-            runtime_timestamp=runtime_rows[0]["runtime_generated_at"],
+            export_timestamp=export.metadata["export_generated_at"],
+            runtime_timestamp=export.metadata["runtime_generated_at"],
             project_id=project_record.project_id if project_record else None,
-            runtime_origin=runtime_rows[0]["runtime_origin"],
-            artifact_name=filename,
+            runtime_origin=export.metadata["runtime_origin"],
+            artifact_name=export.filename,
             baseline_source=(project_record.project_origin == "saved_baseline") if project_record else None,
         ),
     )
     return StreamingResponse(
-        iter([data]),
-        media_type="text/csv",
+        iter([export.bytes_data]),
+        media_type=export.media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Length": str(len(data)),
+            "Content-Disposition": f'attachment; filename="{export.filename}"',
+            "Content-Length": str(len(export.bytes_data)),
         },
     )
 
@@ -2308,21 +2309,15 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
     if project_record is not None:
         runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
-    try:
-        runtime_rows = build_runtime_summary_rows(runtime_project_code)
-        workbook_bytes = export_institutional_workbook_skeleton(runtime_project_code)
-    except ValueError as exc:
-        return HTMLResponse(
-            content=f"<html><body><h2>Institutional workbook export failed</h2><p>{str(exc)}</p><a href='/'>Back</a></body></html>",
-            status_code=400,
-        )
+    export = build_institutional_workbook_export(runtime_project_code, safe_project=safe_project)
+    if export.has_error():
+        return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
-    filename = f"phase10_{safe_project}_institutional_workbook_skeleton.xlsx"
     record_export(
         user_id=user.user_id,
         project_code=safe_project,
         export_type="institutional_workbook",
-        artifact_name=filename,
+        artifact_name=export.filename,
         artifact_path=f"/exports/institutional-workbook.xlsx?project={safe_project}",
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
@@ -2330,20 +2325,20 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
             safe_project,
             export_type="institutional_workbook",
             workbook_type="institutional_workbook_runtime_binding",
-            export_timestamp=runtime_rows[0]["export_generated_at"],
-            runtime_timestamp=runtime_rows[0]["runtime_generated_at"],
+            export_timestamp=export.metadata["export_generated_at"],
+            runtime_timestamp=export.metadata["runtime_generated_at"],
             project_id=project_record.project_id if project_record else None,
-            runtime_origin=runtime_rows[0]["runtime_origin"],
-            artifact_name=filename,
+            runtime_origin=export.metadata["runtime_origin"],
+            artifact_name=export.filename,
             baseline_source=(project_record.project_origin == "saved_baseline") if project_record else None,
         ),
     )
     return StreamingResponse(
-        iter([workbook_bytes]),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        iter([export.bytes_data]),
+        media_type=export.media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Length": str(len(workbook_bytes)),
+            "Content-Disposition": f'attachment; filename="{export.filename}"',
+            "Content-Length": str(len(export.bytes_data)),
         },
     )
 
