@@ -131,4 +131,14 @@ For technical issues, contact the team maintaining the backend.
 
 ---
 
-*Last updated: Phase 25B. FincoGPT internal pilot - not for external distribution.*
+## Related Documents
+
+- [Phase 41 Pilot Launch Overview](phase41_pilot_launch_documentation_handoff.md) — trusted pilot GO, launch scope, operator/user responsibilities
+- [Pilot Launch Handoff Checklist](pilot_launch_handoff_checklist.md) — pre-launch sign-off checklist
+- [Pilot Scope Confirmation Note](pilot_scope_confirmation_note.md) — shareable scope note for pilot users
+- [Pilot Issue Intake Template](pilot_issue_intake_template.md) — issue reporting form
+- [Phase 41 Launch Readiness Matrix](phase41_pilot_launch_readiness_matrix.md) — readiness status for all launch areas
+
+---
+
+*Last updated: Phase 41. FincoGPT internal pilot - not for external distribution.*

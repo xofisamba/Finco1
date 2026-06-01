@@ -106,4 +106,14 @@ This index helps reviewers navigate the complete validation evidence package for
 
 ---
 
-*Generated: Phase 27B. For internal pilot review navigation.*
+---
+
+## Pilot Launch Documentation (Phase 41)
+
+- [Phase 41 Pilot Launch Overview](phase41_pilot_launch_documentation_handoff.md) — trusted pilot GO, launch scope, guardrails
+- [Pilot Launch Handoff Checklist](pilot_launch_handoff_checklist.md) — pre-launch operator sign-off
+- [Pilot Scope Confirmation Note](pilot_scope_confirmation_note.md) — shareable note for pilot users
+- [Pilot Issue Intake Template](pilot_issue_intake_template.md) — issue reporting form
+- [Phase 41 Launch Readiness Matrix](phase41_pilot_launch_readiness_matrix.md) — all launch areas status
+
+*Generated: Phase 41. For internal pilot review navigation.*
