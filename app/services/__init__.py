@@ -19,6 +19,8 @@ from app.services.export_audit_service import (
 from app.services.scenario_state_service import (
     build_workspace_state_metadata,
     scenario_provenance_for_record,
+    resolve_runtime_snapshot,
+    RuntimeSnapshotResolution,
 )
 
 __all__ = [
@@ -34,7 +36,9 @@ __all__ = [
     "record_export_for_runtime_summary",
     "record_export_for_institutional_workbook",
     "record_export_for_download",
-    # scenario_state_service (Phase 50B)
+    # scenario_state_service (Phase 50B / 50C-2)
     "build_workspace_state_metadata",
     "scenario_provenance_for_record",
+    "resolve_runtime_snapshot",
+    "RuntimeSnapshotResolution",
 ]

@@ -220,24 +220,29 @@ def test_main_web_uses_scenario_provenance_for_record():
 # Test 7: _resolve_runtime_snapshot_source remains in main_web.py
 # ─────────────────────────────────────────────────────────────────────────────
 def test_resolve_runtime_snapshot_source_remains_in_main_web():
+    # Phase 50C-2: wrapper exists in main_web, delegates to service
     text = MAIN_WEB.read_text()
     assert "def _resolve_runtime_snapshot_source" in text
-    # Full decision tree still in main_web.py
-    assert "resolve_active_scenario_runtime_snapshot" in text
-    assert "saved_state" in text
-    assert "workspace_base" in text
+    # Thin wrapper (no decision tree)
+    assert "Thin backward-compatible wrapper" in text
+    assert "resolve_runtime_snapshot" in text
+    # Decision tree moved to scenario_state_service
+    from app.services.scenario_state_service import resolve_runtime_snapshot
+    assert callable(resolve_runtime_snapshot)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 8: runtime snapshot decision tree remains in main_web.py
 # ─────────────────────────────────────────────────────────────────────────────
 def test_runtime_snapshot_decision_tree_remains():
-    text = MAIN_WEB.read_text()
-    # Key decision tree elements present
-    assert "effective_origin = runtime_origin" in text
-    assert "workspace_state.active_scenario_id" in text
-    assert "project_record.project_origin" in text
-    assert "source.setdefault" in text
+    # Phase 50C-2: decision tree is in scenario_state_service, not main_web.py wrapper
+    from app.services.scenario_state_service import resolve_runtime_snapshot
+    import inspect
+    source = inspect.getsource(resolve_runtime_snapshot)
+    assert "saved_state" in source
+    assert "workspace_state.active_scenario_id" in source
+    assert "project_record.project_origin" in source
+    assert "user_created" in source
 
 
 # ─────────────────────────────────────────────────────────────────────────────
