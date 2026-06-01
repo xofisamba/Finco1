@@ -1,0 +1,64 @@
+{
+  "phase": "43",
+  "title": "Pilot Ongoing Operations and Issue Triage Cadence",
+  "base_sha": "07506503e0602e6a8d4bd940be56001b6201906a",
+  "date": "2026-06-01",
+  "pilot_operating_status": "OPERATIONAL",
+  "cadence_established": true,
+  "validated_projects": [
+    "TUHO Wind (72 MW, Croatia)",
+    "Oborovo Solar (53.63 MW, Croatia)"
+  ],
+  "excluded_scopes": [
+    "generic solar/wind validation (exploratory only)",
+    "generic wind CO2 (not validated)",
+    "construction IDC (not wired)",
+    "C.16 Project Rights (not wired)",
+    "M1-M18 IDC (not wired)",
+    "live sculpting / debt re-sizing (not promoted)",
+    "multi-user / RBAC / SSO (single-user only)",
+    "SaaS / enterprise readiness (not claimed)",
+    "bank / lender / external audit / certification approval (not claimed)"
+  ],
+  "blockers_count": 0,
+  "issue_severity_levels": [
+    "blocker (immediate response)",
+    "major (within 4h)",
+    "minor (next business day)",
+    "clarification (3 business days)",
+    "out-of-scope (log and defer)",
+    "user-support (best effort)"
+  ],
+  "pause_triggers_count": 8,
+  "pause_triggers": [
+    "/readyz red",
+    "No backup in 24h",
+    "Generic solar/wind outputs used for financial decision",
+    "External claims (bank/lender/audit/SaaS)",
+    "TUHO/Oborovo outputs outside tolerance",
+    "Stale export used for decision",
+    "Config/environment change without review",
+    "SLA breach"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_file_changes": true,
+  "no_fixture_csv_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20_blocked": true,
+    "r99_not_approved": true,
+    "r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dsccr_sculpting_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "documents_created": [
+    "docs/phase43_pilot_ongoing_operations_issue_triage.md",
+    "docs/pilot_issue_triage_board_template.md",
+    "docs/pilot_operations_weekly_checklist.md",
+    "docs/pilot_pause_escalation_policy.md",
+    "docs/phase43_pilot_operations_decision_matrix.md"
+  ],
+  "recommended_next_phase": "Phase 44 — Pilot Audit Trail Polish and Export Hygiene Enforcement"
+}
