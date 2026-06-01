@@ -2,7 +2,7 @@
   "phase": "49D-2",
   "title": "Extract POST /download Excel construction into export_service",
   "base_sha": "37d3935ef4dc8e54cbd3113bf8a136cf16adde9e",
-  "head_sha": null,
+  "head_sha": "d219c4c15141e3e11fb8cd8e76f4f13e2c6c7892",
   "status": "extraction_complete",
   "production_code_changed": true,
   "extraction_summary": {
