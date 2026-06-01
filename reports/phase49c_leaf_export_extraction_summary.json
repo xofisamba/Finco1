@@ -1,0 +1,45 @@
+{
+  "phase": "49C",
+  "title": "Extract Remaining Leaf Export Routes from main_web.py",
+  "branch": "phase49c-extract-remaining-leaf-export-routes",
+  "base_sha": "811a71d3b8fef7a78a705b759c2882d7f0439cd6",
+  "head_sha": "ee0a9f963559b4250e13cb4c7e06f7eb4a248d75",
+  "status": "complete",
+  "inspection_result": "no_additional_leaf_exports_found",
+  "routes_inspected": 34,
+  "routes_extracted_this_phase": 0,
+  "routes_extracted_total": 3,
+  "routes_deferred": [
+    "POST /download"
+  ],
+  "deferred_reason": "complex_form_session_provenance_handling",
+  "export_routes_found": {
+    "GET /download": "already_extracted_49B",
+    "GET /exports/runtime-summary.csv": "already_extracted_49B",
+    "GET /exports/institutional-workbook.xlsx": "already_extracted_49B",
+    "POST /download": "deferred_to_49D"
+  },
+  "production_files_changed": [],
+  "main_web_lines": 3362,
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "test_count": 15,
+  "guardrails": {
+    "g20": "BLOCKED",
+    "r99": "NOT APPROVED",
+    "r102": "NOT APPROVED",
+    "partial_pay_sweep": "not promoted",
+    "flat_min_dscr_sculpting": "not promoted",
+    "backend_source_of_truth": true
+  },
+  "changed_files": [
+    "tests/test_phase49c_remaining_leaf_export_routes.py",
+    "docs/phase49c_extract_remaining_leaf_export_routes.md",
+    "docs/phase49c_leaf_export_extraction_matrix.md",
+    "reports/phase49c_leaf_export_extraction_summary.json"
+  ],
+  "next_phase": "49D_extract_post_download"
+}
