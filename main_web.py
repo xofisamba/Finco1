@@ -86,6 +86,7 @@ from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
+from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -2273,12 +2274,10 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
     if export.has_error():
         return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
-    record_export(
+    record_runtime_summary_export(
         user_id=user.user_id,
-        project_code=safe_project,
-        export_type="runtime_summary_csv",
-        artifact_name=export.filename,
-        artifact_path=f"/exports/runtime-summary.csv?project={safe_project}",
+        safe_project=safe_project,
+        export_filename=export.filename,
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
         replay_metadata=_replay_metadata_for_project(
@@ -2319,12 +2318,10 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
     if export.has_error():
         return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
-    record_export(
+    record_institutional_workbook_export(
         user_id=user.user_id,
-        project_code=safe_project,
-        export_type="institutional_workbook",
-        artifact_name=export.filename,
-        artifact_path=f"/exports/institutional-workbook.xlsx?project={safe_project}",
+        safe_project=safe_project,
+        export_filename=export.filename,
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
         replay_metadata=_replay_metadata_for_project(

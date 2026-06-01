@@ -1,0 +1,58 @@
+{
+  "phase": "49D-3B",
+  "title": "Extract runtime/institutional export audit service",
+  "base_sha": "aa92ef6a4fe181da6900cbaae9a2f31b720423c1",
+  "status": "complete_pending_pr",
+  "production_code_changed": true,
+  "changed_files": [
+    "main_web.py",
+    "app/services/export_audit_service.py",
+    "app/services/__init__.py",
+    "tests/test_phase49d3b_export_audit_service_extraction.py",
+    "docs/phase49d3b_export_audit_service_extraction.md",
+    "docs/phase49d3b_export_audit_service_matrix.md"
+  ],
+  "new_files": [
+    "app/services/export_audit_service.py",
+    "tests/test_phase49d3b_export_audit_service_extraction.py",
+    "docs/phase49d3b_export_audit_service_extraction.md",
+    "docs/phase49d3b_export_audit_service_matrix.md"
+  ],
+  "routes_extracted": [
+    "GET /exports/runtime-summary.csv",
+    "GET /exports/institutional-workbook.xlsx"
+  ],
+  "routes_unchanged": [
+    "GET /download",
+    "POST /download"
+  ],
+  "service_functions": [
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_download_export"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "record_export_payload_preserved": true,
+  "replay_metadata_preserved": true,
+  "governance_state_preserved": true,
+  "exception_behavior_unchanged": true,
+  "test_results": {
+    "49D-3B": "28 passed",
+    "49D-3A regression": "35 passed",
+    "49D-2 behavioral": "passed",
+    "49B behavioral": "passed (git-diff/line-count fail as expected in branch context)"
+  },
+  "guardrails_confirmed": {
+    "g20_blocked": true,
+    "r99_r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "branch": "phase49d3b-extract-runtime-institutional-export-audit-service",
+  "recommended_next_phase": "49D-3C — Extract GET /download record_export using record_download_export (already written, not yet wired)"
+}
