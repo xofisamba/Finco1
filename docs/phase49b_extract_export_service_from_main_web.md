@@ -94,7 +94,7 @@ def serve_institutional_workbook(runtime_project_code, safe_project=None, **kwar
 
 | Metric | Before | After | Delta |
 |--------|--------|-------|-------|
-| main_web.py lines | 3367 | 3349 | −18 |
+| main_web.py lines | 3367 | 3362 | −5 |
 | Export routes wrapped | — | 3 of 4 | — |
 
 Note: Only 3 of 4 export routes wrapped because `download_post` has complex POST form handling that is harder to extract without changing behavior. The service module is structured to make `download_post` extraction straightforward in a follow-up phase.

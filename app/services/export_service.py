@@ -224,21 +224,6 @@ def build_institutional_workbook_export(
 
 # ── Public API — compose and return FastAPI response ─────────────────────────
 
-def serve_values_only_export(
-    project_type: str,
-    scenario: str,
-    *,
-    replay_metadata: dict | None = None,
-) -> StreamingResponse | HTMLResponse:
-    """Thin wrapper for route handlers — returns FastAPI response."""
-    export = build_values_only_export_for_project(
-        project_type,
-        scenario,
-        replay_metadata=replay_metadata,
-    )
-    return _make_streaming_response(export)
-
-
 def serve_runtime_summary_csv(
     runtime_project_code: str,
     safe_project: str | None = None,
