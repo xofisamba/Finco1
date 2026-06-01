@@ -86,6 +86,7 @@ from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
+from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -682,36 +683,8 @@ def _project_persistence_metadata(project_ctx=None, form_snapshot: dict | None =
 
 
 def _workspace_state_meta(workspace_state) -> dict:
-    if workspace_state is None:
-        return {
-            "dirty": False,
-            "dirty_label": "Clean saved state",
-            "active_scenario_id": "",
-            "active_scenario_name": "",
-            "last_runtime_origin": "",
-            "last_runtime_origin_label": "No runtime bound yet",
-            "last_runtime_snapshot_id": "",
-        }
-    runtime_origin = workspace_state.last_runtime_origin or ""
-    if runtime_origin == "saved_state":
-        runtime_label = "Runtime bound to saved scenario snapshot"
-    elif runtime_origin == "workspace_base":
-        runtime_label = "Runtime bound to clean workspace base"
-    elif runtime_origin == "preview_only":
-        runtime_label = "Preview only; runtime not executed"
-    else:
-        runtime_label = "No runtime bound yet"
-    if workspace_state.dirty and workspace_state.last_runtime_snapshot_id:
-        runtime_label = f"{runtime_label} (older than current draft)"
-    return {
-        "dirty": bool(workspace_state.dirty),
-        "dirty_label": "Unsaved edits" if workspace_state.dirty else "Clean saved state",
-        "active_scenario_id": workspace_state.active_scenario_id or "",
-        "active_scenario_name": workspace_state.active_scenario_name or "",
-        "last_runtime_origin": runtime_origin,
-        "last_runtime_origin_label": runtime_label,
-        "last_runtime_snapshot_id": workspace_state.last_runtime_snapshot_id or "",
-    }
+    # Phase 50B: implementation moved to scenario_state_service.build_workspace_state_metadata
+    return build_workspace_state_metadata(workspace_state)
 
 
 def _format_ui_timestamp(value) -> str:
@@ -1027,13 +1000,8 @@ def _template_origin_for_record(project_record) -> str:
 
 
 def _scenario_provenance_for_record(project_record, scenario_record):
-    if scenario_record is None:
-        return None
-    return get_scenario_provenance(
-        scenario_record,
-        project_record,
-        _template_origin_for_record(project_record),
-    )
+    # Phase 50B: implementation moved to scenario_state_service.scenario_provenance_for_record
+    return scenario_provenance_for_record(project_record, scenario_record)
 
 
 def _resolve_runtime_snapshot_source(user, project_record, workspace_state, runtime_origin: str) -> tuple[dict, object | None, str | None, str]:
