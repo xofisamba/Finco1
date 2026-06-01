@@ -85,7 +85,7 @@ from app.ui.project_context import build_project_context_for_record, get_project
 from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
-from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export
+from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -2151,13 +2151,19 @@ async def download_post(request: Request):
             scenario_provenance=scenario_provenance,
             warning_note=runtime_warning,
         )
-        excel_bytes = build_excel_export(
+        export = build_excel_export_for_post_request(
             result=demo.result,
             project_inputs=demo.project_inputs,
-            provenance_metadata=replay_metadata,
+            project_type=project_type,
+            scenario=scenario,
+            runtime_origin=runtime_origin,
+            replay_metadata=replay_metadata,
         )
         if project_record and project_record.project_origin == "saved_baseline":
             replay_metadata["baseline_source"] = True
+        if export.has_error():
+            return HTMLResponse(content=export.error_content, status_code=export.status_code)
+        excel_bytes = export.bytes_data
         record_export(
             user_id=user.user_id,
             project_code=project_code,

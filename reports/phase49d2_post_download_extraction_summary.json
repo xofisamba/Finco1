@@ -1,0 +1,77 @@
+{
+  "phase": "49D-2",
+  "title": "Extract POST /download Excel construction into export_service",
+  "base_sha": "37d3935ef4dc8e54cbd3113bf8a136cf16adde9e",
+  "head_sha": null,
+  "status": "extraction_complete",
+  "production_code_changed": true,
+  "extraction_summary": {
+    "code_moved": "Excel generation and ExportResponse construction from POST /download route",
+    "destination": "app/services/export_service.py:build_excel_export_for_post_request",
+    "code_not_moved": [
+      "Authentication/session check",
+      "Form parsing (12 fields)",
+      "Project record lookup",
+      "Runtime guard",
+      "Runtime origin resolution",
+      "build_projectinputs vs build_projectinputs_from_snapshot selection",
+      "run_demo_project call",
+      "replay_metadata construction",
+      "baseline_source mutation",
+      "record_export call",
+      "StreamingResponse return",
+      "HTMLResponse error returns"
+    ],
+    "service_api": {
+      "function": "build_excel_export_for_post_request",
+      "params": ["result", "project_inputs", "project_type", "scenario", "runtime_origin", "replay_metadata"],
+      "returns": "ExportResponse with bytes_data, filename, media_type, status_code or error_content"
+    }
+  },
+  "provenance_preservation": {
+    "replay_metadata_built_before_service_call": true,
+    "runtime_origin_set_in_service": true,
+    "baseline_source_timing": "route sets after service call, before record_export — matches original",
+    "record_export_location": "route (not moved)"
+  },
+  "main_web_changes": {
+    "added_import": "build_excel_export_for_post_request on line 88",
+    "route_call": "replaces direct build_excel_export call with service call + error handling",
+    "line_delta": "+6 lines (1 import + call wrapper + error check)"
+  },
+  "behavior_preservation": {
+    "filename": "fincogpt_{type}_{scenario}.xlsx — unchanged",
+    "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet — unchanged",
+    "status_codes": "200/400/500 — unchanged",
+    "all_paths": "user_created, saved_state, saved_baseline, factory_base_runtime, validation_error, runtime_guard_blocked, unauthenticated — all preserved"
+  },
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "no_schema_migrations": true,
+  "test_results": {
+    "test_phase49d2_post_download_extraction": "42 passed",
+    "test_phase49b_export_service_extraction": "15 passed, 2 expected-line-count failures",
+    "test_phase49c_remaining_leaf_export_routes": "15 passed, 1 expected-line-count failure",
+    "main_web_import": "OK"
+  },
+  "guardrails_confirmed": {
+    "g20_blocked": true,
+    "r99_not_approved": true,
+    "r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "phase_49_series_status": {
+    "49A": "merged PR #361 — God module mapping",
+    "49B": "merged PR #362 — export_service created, 3 routes extracted",
+    "49C": "merged PR #363 — remaining route inspection",
+    "49D-1": "merged PR #364 — POST /download characterized",
+    "49D-2": "draft PR pending — POST /download Excel construction extracted"
+  },
+  "all_export_routes_now_in_service": true,
+  "recommended_next_phase": "49D-3: Extract record_export into audit service, OR Phase 50: Extract remaining god module routes (/run, /compare)"
+}

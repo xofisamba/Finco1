@@ -222,6 +222,91 @@ def build_institutional_workbook_export(
     )
 
 
+def build_excel_export_for_post_request(
+    result,
+    project_inputs,
+    project_type: str,
+    scenario: str,
+    runtime_origin: str,
+    replay_metadata: dict,
+) -> ExportResponse:
+    """Build Excel export for POST /download request.
+
+    This function encapsulates the Excel generation portion of the POST /download
+    route. It receives a fully-constructed ``replay_metadata`` dict (already mutated
+    by the route for ``baseline_source`` when applicable) and produces an
+    ExportResponse with bytes, filename, and media type.
+
+    The route retains all orchestration responsibility:
+      - authentication / session
+      - form parsing
+      - project record lookup
+      - runtime guard
+      - runtime origin resolution
+      - build_projectinputs vs build_projectinputs_from_snapshot selection
+      - record_export
+      - StreamingResponse / HTMLResponse return
+
+    Parameters
+    ----------
+    result : ModelResult
+        Completed model run result (e.g. demo.result).
+    project_inputs : ProjectInputs
+        Project inputs from the model run (e.g. demo.project_inputs).
+    project_type : str
+        Project type string from the form (e.g. "Solar", "Wind").
+    scenario : str
+        Scenario string from the form (e.g. "Base", "Downside").
+    runtime_origin : str
+        Runtime origin string (e.g. "factory_base_runtime", "saved_state").
+        Passed to build_excel_export as provenance_metadata["runtime_origin"].
+    replay_metadata : dict
+        Provenance metadata already built by the route. Must include all fields
+        required for record_export including scenario_id, active_scenario_id,
+        template_origin_override, scenario_provenance, warning_note, and
+        baseline_source (already set by route before calling this function
+        when project_origin == "saved_baseline").
+
+    Returns
+    -------
+    ExportResponse
+        With bytes_data, filename, media_type, and status_code on success;
+        or error_content and status_code on failure.
+
+    Behavior matches the original Excel generation portion of download_post
+    in main_web.py. No financial formulas, runtime calculations, or model outputs
+    are changed.
+    """
+    from app.excel_export import build_excel_export
+
+    # Ensure runtime_origin is in metadata (build_excel_export expects it)
+    metadata = dict(replay_metadata)
+    metadata["runtime_origin"] = runtime_origin
+
+    filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
+
+    try:
+        excel_bytes = build_excel_export(
+            result=result,
+            project_inputs=project_inputs,
+            provenance_metadata=metadata,
+        )
+        return ExportResponse(
+            bytes_data=excel_bytes,
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            status_code=200,
+        )
+    except (ValueError, Exception) as e:
+        return ExportResponse(
+            status_code=500,
+            error_content=(
+                f"<html><body><h2>Excel generation failed</h2>"
+                f"<p>{str(e)}</p><a href='/'>Back</a></body></html>"
+            ),
+        )
+
+
 # ── Public API — compose and return FastAPI response ─────────────────────────
 
 def serve_runtime_summary_csv(
