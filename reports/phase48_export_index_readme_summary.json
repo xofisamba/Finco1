@@ -1,0 +1,70 @@
+{
+  "phase": 48,
+  "title": "Export Index README Sheet Polish",
+  "branch": "phase48-export-index-readme-sheet-polish",
+  "base_sha": "d6276fac210d960a6a4b7e2c201a51e4d3fac8d3",
+  "head_sha": "TBD",
+  "status": "ready",
+  "workbook_index_status": "implemented",
+  "workbooks_updated": [
+    "institutional_workbook",
+    "calibration_reconciliation_workbook"
+  ],
+  "index_sheet_name": "Workbook_Index",
+  "sheet_order": {
+    "position_0": "Export_Metadata (Phase 47 standard)",
+    "position_1": "Workbook_Index (Phase 48 — second sheet)",
+    "position_2_plus": "existing sheets unchanged"
+  },
+  "index_sections": [
+    "metadata",
+    "sheet_inventory_table",
+    "trusted_pilot_scope",
+    "generic_boundary",
+    "export_hygiene",
+    "audit_interpretation",
+    "non_claims",
+    "guardrails"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_js_financial_calculations": true,
+  "no_fixture_csv_changes": true,
+  "guardrails": {
+    "g20": "BLOCKED",
+    "r99": "NOT APPROVED",
+    "r102": "NOT APPROVED",
+    "partial_pay_sweep": "not promoted",
+    "flat_min_dscr_sculpting": "not promoted",
+    "backend_source_of_truth": "confirmed"
+  },
+  "trusted_scope": {
+    "tuho": "frozen-template path, CO2 revenue treatment",
+    "oborovo": "frozen-template path, OpEx",
+    "senior_debt_dscr_shl": "frozen path"
+  },
+  "generic_boundary": "exploratory and unvalidated — not for financial decisions",
+  "pilot_status": {
+    "controlled_trusted_pilot": "GO with conditions",
+    "paid_pilot": "NOT READY",
+    "enterprise_saas": "NOT READY"
+  },
+  "paid_pilot_blockers": [
+    "generic solar validation",
+    "generic wind validation",
+    "generic wind CO2",
+    "construction IDC",
+    "C.16 Project Rights",
+    "M1-M18 IDC"
+  ],
+  "changed_files": [
+    "app/export/workbook_index.py",
+    "app/export/institutional_workbook.py",
+    "app/export/calibration_reconciliation.py",
+    "docs/phase48_export_index_readme_sheet_polish.md",
+    "docs/phase48_workbook_index_matrix.md",
+    "reports/phase48_export_index_readme_summary.json",
+    "tests/test_phase48_export_index_readme_sheet_polish.py"
+  ]
+}
