@@ -3,8 +3,8 @@
   "title": "/run route golden characterization",
   "type": "characterization-only",
   "base_sha": "cfae719f6ac062d8c1ebda055bdc89f0bd5423c7",
-  "head_sha": null,
-  "pr": null,
+  "head_sha": "3ae8dd2bc8731d917e5e2ca1ecaea11d45e270a2",
+  "pr": 379,
   "branch": "phase51a-run-route-golden-characterization",
   "status": "complete",
   "production_code_changed": false,
@@ -13,7 +13,11 @@
   "golden_cases": [
     {
       "name": "tuho_base_run",
-      "input": {"active_project": "tuho", "project_type": "Wind", "scenario": "Base"},
+      "input": {
+        "active_project": "tuho",
+        "project_type": "Wind",
+        "scenario": "Base"
+      },
       "expected_status": 200,
       "expected_project": "tuho",
       "expected_runtime_origin": "workspace_base",
@@ -22,7 +26,11 @@
     },
     {
       "name": "oborovo_base_run",
-      "input": {"active_project": "oborovo", "project_type": "Solar", "scenario": "Base"},
+      "input": {
+        "active_project": "oborovo",
+        "project_type": "Solar",
+        "scenario": "Base"
+      },
       "expected_status": 200,
       "expected_project": "oborovo",
       "expected_runtime_origin": "workspace_base",
@@ -31,35 +39,65 @@
     },
     {
       "name": "generic_wind_run",
-      "input": {"project_type": "Wind", "scenario": "Base", "capacity_mw": "50", "tariff_eur_mwh": "60", "p50_hours": "1200", "total_capex_keur": "50000", "opex_y1_keur": "1000", "gearing_pct": "70"},
+      "input": {
+        "project_type": "Wind",
+        "scenario": "Base",
+        "capacity_mw": "50",
+        "tariff_eur_mwh": "60",
+        "p50_hours": "1200",
+        "total_capex_keur": "50000",
+        "opex_y1_keur": "1000",
+        "gearing_pct": "70"
+      },
       "expected_status": 200,
       "expected_template": "partials/kpis.html",
       "expected_persistence": "record_workspace_runtime for derived project"
     },
     {
       "name": "generic_solar_run",
-      "input": {"project_type": "Solar", "scenario": "Base", "capacity_mw": "50", "tariff_eur_mwh": "60", "p50_hours": "1200", "total_capex_keur": "50000", "opex_y1_keur": "1000", "gearing_pct": "70"},
+      "input": {
+        "project_type": "Solar",
+        "scenario": "Base",
+        "capacity_mw": "50",
+        "tariff_eur_mwh": "60",
+        "p50_hours": "1200",
+        "total_capex_keur": "50000",
+        "opex_y1_keur": "1000",
+        "gearing_pct": "70"
+      },
       "expected_status": 200,
       "expected_template": "partials/kpis.html",
       "expected_persistence": "record_workspace_runtime for derived project"
     },
     {
       "name": "invalid_project_type",
-      "input": {"active_project": "tuho", "project_type": "Nuclear", "scenario": "Base"},
+      "input": {
+        "active_project": "tuho",
+        "project_type": "Nuclear",
+        "scenario": "Base"
+      },
       "expected_status": 200,
       "expected_template": "partials/errors.html",
       "expected_persistence": "none"
     },
     {
       "name": "no_auth",
-      "input": {"project_type": "Wind", "scenario": "Base"},
+      "input": {
+        "project_type": "Wind",
+        "scenario": "Base"
+      },
       "expected_status": 302,
       "expected_redirect": "/login",
       "expected_persistence": "none"
     },
     {
       "name": "dirty_workspace",
-      "input": {"project_type": "Wind", "scenario": "Base", "capacity_mw": "50", "tariff_eur_mwh": "60"},
+      "input": {
+        "project_type": "Wind",
+        "scenario": "Base",
+        "capacity_mw": "50",
+        "tariff_eur_mwh": "60"
+      },
       "expected_status": 200,
       "expected_template": "partials/errors.html",
       "expected_error_marker": "alert-error OR Unsaved edits OR no longer matches",
@@ -69,22 +107,42 @@
   "golden_metrics": {
     "service_level_kpis": {
       "kpis_keys_required": [
-        "total_revenue_keur", "total_ebitda_keur", "total_opex_keur",
-        "total_distributions_keur", "project_irr", "equity_irr",
-        "min_dscr", "avg_dscr"
+        "total_revenue_keur",
+        "total_ebitda_keur",
+        "total_opex_keur",
+        "total_distributions_keur",
+        "project_irr",
+        "equity_irr",
+        "min_dscr",
+        "avg_dscr"
       ],
       "kpis_types": "numeric (int/float, never string)",
-      "irr_range": [-0.5, 0.5],
-      "dscr_range": [0, 5],
+      "irr_range": [
+        -0.5,
+        0.5
+      ],
+      "dscr_range": [
+        0,
+        5
+      ],
       "revenue_must_be_positive": true
     },
     "service_level_tables": {
-      "required_tables": ["waterfall", "revenue", "debt", "returns"],
+      "required_tables": [
+        "waterfall",
+        "revenue",
+        "debt",
+        "returns"
+      ],
       "each_is_list": true
     },
     "service_level_messages": {
       "messages_is_list": true,
-      "integration_status_values": ["full", "partial", "degraded"]
+      "integration_status_values": [
+        "full",
+        "partial",
+        "degraded"
+      ]
     },
     "scenario_sensitivity": {
       "downside_must_differ_from_base": true,

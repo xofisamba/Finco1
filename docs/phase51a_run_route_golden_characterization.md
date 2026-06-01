@@ -4,7 +4,7 @@
 
 - **PR:** https://github.com/xofisamba/Finco1/pull/379 (draft)
 - **Branch:** `phase51a-run-route-golden-characterization`
-- **Head SHA:** (set on PR creation)
+- **Head SHA:** `3ae8dd2bc8731d917e5e2ca1ecaea11d45e270a2`
 - **Base SHA:** `cfae719f6ac062d8c1ebda055bdc89f0bd5423c7` (origin/main, post PR #378 merge)
 
 ## Objective
