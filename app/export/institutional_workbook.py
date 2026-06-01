@@ -16,6 +16,7 @@ import os
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
+from app.export_metadata import build_export_metadata, metadata_rows
 from app.export.runtime_summary import _run_project, build_runtime_summary_rows
 from app.input_helpers import (
     build_capex_items_table,
@@ -71,6 +72,7 @@ class WorkbookExportBundle:
 
 
 INSTITUTIONAL_SHEET_DEFINITIONS = (
+    WorkbookSheetDefinition(0, "Export_Metadata", "implemented", "review", True, "Export provenance, trust hygiene, and non-claims. Added Phase 47."),
     WorkbookSheetDefinition(1, "Cover", "implemented", "review", True, "Institutional cover sheet with provenance."),
     WorkbookSheetDefinition(2, "Governance", "implemented", "review", True, "Governance metadata and approval status."),
     WorkbookSheetDefinition(3, "Runtime Summary", "implemented", "runtime", True, "Existing runtime summary values only."),
@@ -143,8 +145,12 @@ def export_institutional_workbook_skeleton(project: str) -> bytes:
     bundle = _build_export_bundle(project)
     workbook = Workbook()
 
-    cover = workbook.active
-    cover.title = "Cover"
+    # Export_Metadata sheet — first sheet, trust hygiene, non-claims
+    export_meta = workbook.active
+    export_meta.title = "Export_Metadata"
+    _write_export_metadata_sheet(export_meta, bundle)
+
+    cover = workbook.create_sheet("Cover")
     _write_cover_sheet(cover, bundle)
 
     _write_governance_sheet(workbook.create_sheet("Governance"), bundle)
@@ -756,6 +762,82 @@ def _write_gap_register_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         rows,
         fill_column=3,
     )
+
+
+def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
+    """Write the Export_Metadata sheet as the first sheet (Phase 47).
+
+    This sheet provides trust hygiene, non-claims, and provenance information.
+    It does not change any financial formulas or model outputs.
+    """
+    sheet["A1"] = "Export Metadata"
+    sheet["A1"].fill = TITLE_FILL
+    sheet["A1"].font = Font(color="FFFFFF", bold=True, size=16, name="Calibri")
+    sheet["A2"] = "Trust hygiene, provenance, and non-claims — Phase 47"
+    sheet["A2"].font = Font(size=11, italic=True, name="Calibri")
+
+    # Build export metadata from bundle fields
+    meta = build_export_metadata(
+        project_id=bundle.project_key,
+        project_name=bundle.project_name,
+        scenario_id=bundle.scenario_id,
+        scenario_name=bundle.scenario_name,
+        active_project=bundle.active_project,
+        run_at=bundle.runtime_timestamp,
+        export_type="institutional_workbook",
+    )
+
+    rows_data = metadata_rows(meta)
+
+    start_row = 4
+    sheet.cell(row=start_row, column=1, value="Field")
+    sheet.cell(row=start_row, column=2, value="Value")
+    sheet.cell(row=start_row, column=1).fill = META_FILL
+    sheet.cell(row=start_row, column=1).font = HEADER_FONT
+    sheet.cell(row=start_row, column=2).fill = META_FILL
+    sheet.cell(row=start_row, column=2).font = HEADER_FONT
+
+    for offset, (label, value) in enumerate(rows_data, start=start_row + 1):
+        sheet.cell(row=offset, column=1, value=label)
+        sheet.cell(row=offset, column=1).fill = META_FILL
+        sheet.cell(row=offset, column=1).font = HEADER_FONT
+        cell = sheet.cell(row=offset, column=2, value=value)
+        cell.alignment = Alignment(wrap_text=True)
+
+    # Non-claims block — prominent warning
+    warning_row = start_row + len(rows_data) + 3
+    sheet.cell(row=warning_row, column=1, value="NON-CLAIMS")
+    sheet.cell(row=warning_row, column=1).fill = STATUS_BLOCKED_FILL
+    sheet.cell(row=warning_row, column=1).font = HEADER_FONT
+    sheet.merge_cells(
+        start_row=warning_row, start_column=1,
+        end_row=warning_row, end_column=2,
+    )
+    sheet.cell(row=warning_row, column=1).alignment = Alignment(horizontal="center")
+
+    warnings = [
+        "INTERNAL REVIEW EVIDENCE ONLY.",
+        "NOT bank/lender approval. NOT external audit certification.",
+        "NOT SaaS-ready or enterprise-ready. Controlled trusted pilot scope only.",
+        "TUHO and Oborovo are within controlled trusted pilot scope.",
+        "Generic solar/wind paths remain exploratory and unvalidated.",
+        "Do not use generic paths for financial decisions.",
+        "Backend is source of truth. Exports reflect the last clean backend run.",
+        "G20 remains BLOCKED. R99/R102 remain NOT APPROVED.",
+        "partial_pay_sweep not promoted. flat/min DSCR sculpting not promoted.",
+        "Paid pilot remains NOT READY. Enterprise SaaS remains NOT READY.",
+    ]
+    for i, text in enumerate(warnings, start=warning_row + 1):
+        sheet.cell(row=i, column=1, value=text)
+        sheet.cell(row=i, column=1).fill = STATUS_BLOCKED_FILL
+        sheet.cell(row=i, column=1).font = Font(size=10, bold=True, name="Calibri")
+        sheet.merge_cells(
+            start_row=i, start_column=1,
+            end_row=i, end_column=2,
+        )
+
+    sheet.column_dimensions["A"].width = 32
+    sheet.column_dimensions["B"].width = 72
 
 
 def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> None:
