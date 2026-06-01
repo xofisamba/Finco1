@@ -17,6 +17,8 @@ from openpyxl.utils import get_column_letter
 
 from app.export.runtime_summary import build_runtime_summary_rows, _run_project
 
+from app.export_metadata import build_export_metadata, metadata_rows
+
 
 PASS = "PASS"
 WARN = "WARN"
@@ -1301,6 +1303,78 @@ def _workbook_metadata_rows(runtime_summary_rows: list[dict[str, str]]) -> list[
         ("Replay limitations", runtime_summary_rows[0]["replay_limitations"]),
         ("Review readiness", "Safe for review with explicit governance interpretation and evidence limits"),
     ]
+
+
+def _write_export_metadata_sheet(sheet) -> None:
+    """Write Export_Metadata sheet as the first sheet (Phase 47).
+
+    Provides trust hygiene, non-claims, and provenance.
+    Does not change any financial formulas or model outputs.
+    """
+    TITLE_FILL_CAL = PatternFill("solid", fgColor="1F4E79")
+    META_FILL_CAL = PatternFill("solid", fgColor="D6E4F0")
+    BLOCKED_FILL_CAL = PatternFill("solid", fgColor="FCE4E4")
+    HEADER_FONT_CAL = Font(bold=True, size=10, name="Calibri")
+
+    sheet["A1"] = "Export Metadata"
+    sheet["A1"].fill = TITLE_FILL_CAL
+    sheet["A1"].font = Font(color="FFFFFF", bold=True, size=16, name="Calibri")
+    sheet["A2"] = "Trust hygiene, provenance, and non-claims — Phase 47"
+    sheet["A2"].font = Font(size=11, italic=True, name="Calibri")
+
+    meta = build_export_metadata(
+        project_id="calibration_reconciliation",
+        project_name=None,
+        scenario_id=None,
+        scenario_name=None,
+        active_project=None,
+        run_at=None,
+        export_type="calibration_reconciliation_workbook",
+    )
+    rows_data = metadata_rows(meta)
+
+    start_row = 4
+    sheet.cell(row=start_row, column=1, value="Field")
+    sheet.cell(row=start_row, column=2, value="Value")
+    for col in (1, 2):
+        sheet.cell(row=start_row, column=col).fill = META_FILL_CAL
+        sheet.cell(row=start_row, column=col).font = HEADER_FONT_CAL
+
+    for offset, (label, value) in enumerate(rows_data, start=start_row + 1):
+        sheet.cell(row=offset, column=1, value=label)
+        sheet.cell(row=offset, column=1).fill = META_FILL_CAL
+        sheet.cell(row=offset, column=1).font = HEADER_FONT_CAL
+        cell = sheet.cell(row=offset, column=2, value=value)
+        cell.alignment = Alignment(wrap_text=True)
+
+    warning_row = start_row + len(rows_data) + 3
+    sheet.cell(row=warning_row, column=1, value="NON-CLAIMS")
+    sheet.cell(row=warning_row, column=1).fill = BLOCKED_FILL_CAL
+    sheet.cell(row=warning_row, column=1).font = HEADER_FONT_CAL
+    sheet.merge_cells(
+        start_row=warning_row, start_column=1,
+        end_row=warning_row, end_column=2,
+    )
+    sheet.cell(row=warning_row, column=1).alignment = Alignment(horizontal="center")
+
+    warnings = [
+        "INTERNAL REVIEW EVIDENCE ONLY.",
+        "NOT bank/lender approval. NOT external audit certification.",
+        "NOT SaaS-ready or enterprise-ready.",
+        "Backend is source of truth. Exports reflect the last clean backend run.",
+        "G20 remains BLOCKED. R99/R102 remain NOT APPROVED.",
+    ]
+    for i, text in enumerate(warnings, start=warning_row + 1):
+        sheet.cell(row=i, column=1, value=text)
+        sheet.cell(row=i, column=1).fill = BLOCKED_FILL_CAL
+        sheet.cell(row=i, column=1).font = Font(size=10, bold=True, name="Calibri")
+        sheet.merge_cells(
+            start_row=i, start_column=1,
+            end_row=i, end_column=2,
+        )
+
+    sheet.column_dimensions["A"].width = 32
+    sheet.column_dimensions["B"].width = 72
 
 
 def _write_cover(sheet, runtime_summary_rows: list[dict[str, str]], summary_rows: list[dict[str, str]]) -> None:
@@ -2627,8 +2701,13 @@ def write_calibration_reconciliation_pack(
     final_closeout_rows = _final_closeout_rows([], conventions)
 
     workbook = Workbook()
-    cover = workbook.active
-    cover.title = "Cover"
+
+    # Export_Metadata sheet — first sheet, trust hygiene, non-claims (Phase 47)
+    export_meta = workbook.active
+    export_meta.title = "Export_Metadata"
+    _write_export_metadata_sheet(export_meta)
+
+    cover = workbook.create_sheet("Cover")
     navigation = workbook.create_sheet("Navigation")
     _write_cover(cover, runtime_rows, summary_rows=[])
     _write_navigation(navigation, runtime_rows)

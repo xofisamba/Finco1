@@ -1,0 +1,77 @@
+{
+  "phase": 47,
+  "title": "Export Hygiene Runtime Metadata",
+  "branch": "phase47-export-hygiene-runtime-metadata",
+  "base_sha": "a5fafdf8b93ff23d7272b11b1928798b3bc9fa63",
+  "head_sha": "TBD",
+  "status": "ready",
+  "metadata_status": "implemented",
+  "exports_inspected": [
+    "institutional_workbook",
+    "calibration_reconciliation",
+    "runtime_summary_csv"
+  ],
+  "exports_updated": [
+    "institutional_workbook",
+    "calibration_reconciliation"
+  ],
+  "metadata_fields_added": [
+    "export_generated_at",
+    "export_type",
+    "active_project",
+    "project_id",
+    "project_name",
+    "scenario_id",
+    "scenario_name",
+    "scenario_saved_at",
+    "last_clean_backend_run_at",
+    "dirty_or_stale_warning",
+    "validation_status",
+    "trusted_pilot_scope",
+    "generic_boundary",
+    "non_claims",
+    "backend_source_of_truth"
+  ],
+  "csv_metadata_decision": "No companion metadata CSV — existing header columns provide equivalent provenance; adding header comments would break machine-readability",
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_js_financial_calculations": true,
+  "no_fixture_csv_changes": true,
+  "guardrails": {
+    "g20": "BLOCKED",
+    "r99": "NOT APPROVED",
+    "r102": "NOT APPROVED",
+    "partial_pay_sweep": "not promoted",
+    "flat_min_dscr_sculpting": "not promoted",
+    "backend_source_of_truth": "confirmed"
+  },
+  "trusted_scope": {
+    "tuho": "frozen-template path, CO2 revenue treatment",
+    "oborovo": "frozen-template path, OpEx",
+    "senior_debt_dscr_shl": "frozen path"
+  },
+  "generic_boundary": "exploratory and unvalidated — not for financial decisions",
+  "pilot_status": {
+    "controlled_trusted_pilot": "GO with conditions",
+    "paid_pilot": "NOT READY",
+    "enterprise_saas": "NOT READY"
+  },
+  "paid_pilot_blockers": [
+    "generic solar validation",
+    "generic wind validation",
+    "generic wind CO2",
+    "construction IDC",
+    "C.16 Project Rights",
+    "M1-M18 IDC"
+  ],
+  "changed_files": [
+    "app/export_metadata.py",
+    "app/export/institutional_workbook.py",
+    "app/export/calibration_reconciliation.py",
+    "docs/phase47_export_hygiene_runtime_metadata.md",
+    "docs/phase47_export_metadata_matrix.md",
+    "reports/phase47_export_metadata_summary.json",
+    "tests/test_phase47_export_hygiene_runtime_metadata.py"
+  ]
+}
