@@ -1,0 +1,81 @@
+{
+  "phase": "49D-3D",
+  "title": "Wire POST /download export audit service",
+  "type": "behavior-preserving production refactor",
+  "base_sha": "1321fadc9997793401de2838950b84934336d4f2",
+  "completion_sha": null,
+  "pr": null,
+  "affected_route": "POST /download",
+  "summary": "Final export audit extraction — all 4 routes now use audit service; zero direct record_export calls remain in main_web.py",
+  "what_moved": [
+    "record_export call in POST /download → record_download_export() from app.services.export_audit_service"
+  ],
+  "what_did_not_move": [
+    "replay_metadata construction (route owns)",
+    "baseline_source timing (route sets post-export, pre-record)",
+    "governance_state construction (route owns)",
+    "active_scenario_record resolution (route owns)",
+    "build_excel_export_for_post_request call (route keeps)",
+    "StreamingResponse construction (route keeps)",
+    "Error handling (route keeps)"
+  ],
+  "scenario_id_handling": {
+    "POST_download": "active_scenario_record.scenario_id if active_scenario_record else None",
+    "GET_download": "None",
+    "service_behavior": "conditionally passes scenario_id only when not None"
+  },
+  "artifact_path_preservation": {
+    "GET": "/download?project_type={project_type}&scenario={scenario}",
+    "POST": "/download?project_type={project_type}&scenario={scenario}",
+    "status": "exact match preserved"
+  },
+  "record_export_payload": {
+    "user_id": "user.user_id",
+    "project_code": "project_code",
+    "export_type": "excel_model_export",
+    "artifact_name": "filename",
+    "artifact_path": "/download?project_type={project_type}&scenario={scenario}",
+    "project_id": "project_record.project_id if project_record else None",
+    "governance_state": "_governance_snapshot(project_code)",
+    "replay_metadata": "pre-built in route",
+    "scenario_id": "active_scenario_record.scenario_id if active_scenario_record else None (POST)"
+  },
+  "baseline_source_timing": {
+    "preserved": true,
+    "order": "build_excel_export_for_post_request → baseline_source=True → record_download_export"
+  },
+  "exception_behavior": {
+    "preserved": true,
+    "detail": "record_download_export does not swallow exceptions from record_export"
+  },
+  "direct_record_export_status": {
+    "import_removed_from_main_web": true,
+    "calls_remaining_in_main_web": 0,
+    "all_4_routes_use_audit_service": true
+  },
+  "tests": {
+    "phase49d3d_tests": "26 passed",
+    "phase49d3c_regression": "17 passed (GET portion)",
+    "phase49d3b_runtime_institutional_regression": "passed"
+  },
+  "guardrails": {
+    "no_financial_formula_changes": true,
+    "no_runtime_calculation_changes": true,
+    "no_model_output_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_schema_migrations": true,
+    "no_js_financial_calculations": true,
+    "g20_blocked": true,
+    "r99_r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "route_audit_service_map": {
+    "GET /exports/runtime-summary.csv": "record_runtime_summary_export (49D-3B)",
+    "GET /exports/institutional-workbook.xlsx": "record_institutional_workbook_export (49D-3B)",
+    "GET /download": "record_download_export (49D-3C)",
+    "POST /download": "record_download_export (49D-3D)"
+  },
+  "recommended_next_phase": "Phase 50 — Extract remaining god module routes (/run, /compare, scenario management)"
+}

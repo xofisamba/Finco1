@@ -65,7 +65,6 @@ from app.persistence.repository import (
     list_scenarios,
     promote_scenario_to_base_case,
     _get_least_created_scenario_for_project,
-    record_export,
     record_workspace_runtime,
     rename_scenario,
     resolve_active_scenario_runtime_snapshot,
@@ -2165,16 +2164,16 @@ async def download_post(request: Request):
         if export.has_error():
             return HTMLResponse(content=export.error_content, status_code=export.status_code)
         excel_bytes = export.bytes_data
-        record_export(
+        record_download_export(
             user_id=user.user_id,
             project_code=project_code,
             export_type="excel_model_export",
             artifact_name=filename,
             artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
             project_id=project_record.project_id if project_record else None,
-            scenario_id=active_scenario_record.scenario_id if active_scenario_record else None,
             governance_state=_governance_snapshot(project_code),
             replay_metadata=replay_metadata,
+            scenario_id=active_scenario_record.scenario_id if active_scenario_record else None,
         )
         return StreamingResponse(
             iter([excel_bytes]),
