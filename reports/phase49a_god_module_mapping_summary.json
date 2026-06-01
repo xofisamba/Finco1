@@ -1,0 +1,41 @@
+{
+  "phase": "49A",
+  "title": "God Module Mapping / Safe Extraction Plan",
+  "base_sha": "926317cb4b61015bf8e8e2693161cdcc22d46b0a",
+  "branch": "phase49a-god-module-mapping-safe-extraction-plan",
+  "mapping_status": "complete",
+  "god_module_candidates": [
+    {"module": "main_web.py", "lines": 3367, "routes": 34, "functions": 45, "private_helpers": 43, "primary": true},
+    {"module": "app/persistence/repository.py", "lines": 2042, "primary": false},
+    {"module": "app/input_forms.py", "lines": 396, "primary": false}
+  ],
+  "recommended_first_extraction": "export_service",
+  "recommended_first_extraction_target": "app/services/export_service.py",
+  "recommended_next_phase": "49B",
+  "extraction_count": 9,
+  "high_risk_extractions": ["run_orchestration_service"],
+  "extraction_order": [
+    "export_service",
+    "template_context_builder",
+    "validation_audit_context_builder",
+    "input_snapshot_collector",
+    "scenario_state_service",
+    "run_orchestration_service",
+    "auth_session_helpers",
+    "ops_endpoints"
+  ],
+  "no_behavior_changes": true,
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_csv_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20": "BLOCKED",
+    "r99_r102": "NOT_APPROVED",
+    "partial_pay_sweep": "NOT_PROMOTED",
+    "flat_min_dscr_sculpting": "NOT_PROMOTED",
+    "backend_source_of_truth": true
+  },
+  "validated_scope": ["TUHO_frozen_template", "Oborovo_frozen_template"]
+}
