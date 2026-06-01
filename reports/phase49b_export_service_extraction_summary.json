@@ -1,0 +1,53 @@
+{
+  "phase": "49B",
+  "title": "Extract Export Service from main_web.py",
+  "branch": "phase49b-extract-export-service-from-main-web",
+  "base_sha": "290e362b9b383df26a6fc37d9eb7b98805e339d9",
+  "head_sha": "f28f9775975499bf30dbf64d66fe538a22c1d969",
+  "pr_url": "https://github.com/xofisamba/Finco1/pull/362",
+  "pr_number": 362,
+  "status": "ready",
+  "extraction_status": "complete",
+  "service_module": "app/services/export_service.py",
+  "routes_wrapped": [
+    "GET /download",
+    "GET /exports/runtime-summary.csv",
+    "GET /exports/institutional-workbook.xlsx"
+  ],
+  "production_files_changed": [
+    "main_web.py",
+    "app/services/__init__.py",
+    "app/services/export_service.py"
+  ],
+  "main_web_lines_before": 3367,
+  "main_web_lines_after": 3349,
+  "behavior_preserved": true,
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20": "BLOCKED",
+    "r99": "NOT APPROVED",
+    "r102": "NOT APPROVED",
+    "partial_pay_sweep": "not promoted",
+    "flat_min_dscr_sculpting": "not promoted",
+    "backend_source_of_truth": true
+  },
+  "workbook_metadata_preserved": {
+    "export_metadata_first_sheet": true,
+    "workbook_index_second_sheet": true,
+    "institutional_workbook": true
+  },
+  "csv_provenance_preserved": true,
+  "changed_files": [
+    "main_web.py",
+    "app/services/__init__.py",
+    "app/services/export_service.py",
+    "docs/phase49b_extract_export_service_from_main_web.md",
+    "docs/phase49b_export_service_extraction_matrix.md",
+    "reports/phase49b_export_service_extraction_summary.json",
+    "tests/test_phase49b_export_service_extraction.py"
+  ]
+}
