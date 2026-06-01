@@ -1,0 +1,56 @@
+{
+  "phase": "50C",
+  "title": "Phase 50C Closeout: Scenario state service extraction",
+  "type": "closeout-docs-only",
+  "base_sha": "83d4388f8a6272c2a51b8646a59f6f26cb703358",
+  "head_sha": "4ff6b84d6ef86222fdb9f11dfa92da02ca5285b7",
+  "production_code_changed": false,
+  "scenario_state_service_complete_for_current_scope": true,
+  "service_functions": [
+    "build_workspace_state_metadata",
+    "scenario_provenance_for_record",
+    "RuntimeSnapshotResolution",
+    "resolve_runtime_snapshot",
+    "check_runtime_allowed"
+  ],
+  "main_web_runtime_guard_direct_import": false,
+  "main_web_record_export_calls": 0,
+  "resolver_wrapper_remaining": true,
+  "wrapper_location": "main_web._resolve_runtime_snapshot_source",
+  "routes_not_rewired_directly": [
+    "/run (thin wrapper still used)",
+    "/compare (thin wrapper still used)",
+    "POST /download (thin wrapper still used)"
+  ],
+  "prs_in_phase": [
+    {"pr": 371, "phase": "50A", "sha": "83d4388", "summary": "Scenario state characterization"},
+    {"pr": 372, "phase": "50B", "sha": "dd61248", "summary": "Extract build_workspace_state_metadata + scenario_provenance_for_record"},
+    {"pr": 373, "phase": "50C-1", "sha": "af2729c", "summary": "Characterize _resolve_runtime_snapshot_source"},
+    {"pr": 374, "phase": "50C-2", "sha": "9925bc2", "summary": "Extract RuntimeSnapshotResolution + resolve_runtime_snapshot"},
+    {"pr": 375, "phase": "50C-3", "sha": "4ff6b84", "summary": "Add check_runtime_allowed wrapper, wire all 6 call sites"}
+  ],
+  "residual_hotspots": [
+    "_project_workspace_from_request (inline, ~50 lines, 3 call sites)",
+    "_collect_form_snapshot (inline, ~40 lines, 3 call sites)",
+    "record_workspace_runtime (inline persistence call after model run)",
+    "/run route orchestration (~200 lines)",
+    "/compare route orchestration (~150 lines)",
+    "POST /download route orchestration (~150 lines)"
+  ],
+  "recommended_next_phase": "50D - Extract _project_workspace_from_request helper",
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "services_created": [
+    "app/services/scenario_state_service.py"
+  ],
+  "guardrails_preserved": [
+    "G20 BLOCKED",
+    "R99/R102 NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat/min DSCR not promoted",
+    "Backend remains source of truth"
+  ]
+}
