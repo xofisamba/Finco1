@@ -2192,13 +2192,15 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         return RedirectResponse(url="/login", status_code=302)
 
     try:
-        export = build_values_only_export_for_project(project_type, scenario)
-        if export.has_error():
-            return HTMLResponse(content=export.error_content, status_code=export.status_code)
-
+        # Build result + replay_metadata BEFORE service call so both
+        # the Excel file and record_export use the same provenance dict.
+        demo = run_demo_project(
+            project_type if project_type else "Solar",
+            scenario if scenario else "Base",
+        )
         project_code = "oborovo" if project_type.lower() == "solar" else "tuho"
         project_record = get_project_by_code(user.user_id, project_code)
-        filename = export.filename
+        filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
         replay_metadata = _replay_metadata_for_project(
             project_code,
             export_type="excel_model_export",
@@ -2212,6 +2214,17 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         )
         if project_record and project_record.project_origin == "saved_baseline":
             replay_metadata["baseline_source"] = True
+
+        export = build_values_only_export_for_project(
+            demo.result,
+            demo.project_inputs,
+            project_type,
+            scenario,
+            replay_metadata=replay_metadata,
+        )
+        if export.has_error():
+            return HTMLResponse(content=export.error_content, status_code=export.status_code)
+
         record_export(
             user_id=user.user_id,
             project_code=project_code,
@@ -2265,10 +2278,10 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
         replay_metadata=_replay_metadata_for_project(
             safe_project,
             export_type="runtime_summary_csv",
-            export_timestamp=utc_now_iso(),
-            runtime_timestamp=utc_now_iso(),
+            export_timestamp=export.metadata["export_generated_at"],
+            runtime_timestamp=export.metadata["runtime_generated_at"],
             project_id=project_record.project_id if project_record else None,
-            runtime_origin="factory_base_runtime",
+            runtime_origin=export.metadata["runtime_origin"],
             artifact_name=export.filename,
             baseline_source=(project_record.project_origin == "saved_baseline") if project_record else None,
         ),
@@ -2312,10 +2325,10 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
             safe_project,
             export_type="institutional_workbook",
             workbook_type="institutional_workbook_runtime_binding",
-            export_timestamp=utc_now_iso(),
-            runtime_timestamp=utc_now_iso(),
+            export_timestamp=export.metadata["export_generated_at"],
+            runtime_timestamp=export.metadata["runtime_generated_at"],
             project_id=project_record.project_id if project_record else None,
-            runtime_origin="factory_base_runtime",
+            runtime_origin=export.metadata["runtime_origin"],
             artifact_name=export.filename,
             baseline_source=(project_record.project_origin == "saved_baseline") if project_record else None,
         ),

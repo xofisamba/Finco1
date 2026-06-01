@@ -1,32 +1,53 @@
 """Export service — extracted from main_web.py for Phase 49B.
 
-This module provides export/download orchestration functions that were
-previously embedded directly in main_web.py route handlers.
-
-All functions are behavior-preserving — no financial formulas, runtime
-calculations, or model output changes.
+Behavior-preserving refactor — no financial formulas, runtime calculations,
+or model output changes.
 """
-
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi.responses import HTMLResponse, StreamingResponse
-
-from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
-from app.export.institutional_workbook import export_institutional_workbook_skeleton
 
 
 @dataclass(frozen=True)
 class ExportResponse:
-    """Result of an export service function — route handler composes the response."""
+    """Result of an export service function.
+
+    Attributes
+    ----------
+    bytes_data : bytes | None
+        Raw export bytes, if generated successfully.
+    filename : str | None
+        Suggested filename for the Content-Disposition header.
+    media_type : str | None
+        MIME content type.
+    status_code : int
+        HTTP status code (200 = success, 400 = bad request).
+    error_content : str | None
+        HTML error page content, if status_code != 200.
+    metadata : dict[str, Any]
+        Provenance/runtime metadata extracted during export generation.
+        Used by route handlers to populate record_export replay_metadata
+        with the same timestamps/origin values the runtime generated.
+
+        CSV / workbook exports populate these keys from runtime_rows[0]:
+          - export_generated_at  : str  (ISO timestamp of export generation)
+          - runtime_generated_at  : str  (ISO timestamp of the runtime run)
+          - runtime_origin        : str  (e.g. "factory_base_runtime", "saved_state")
+          - generated_at          : str  (alias for export_generated_at)
+          - source_branch         : str  (git branch at runtime generation)
+
+        Excel export (GET /download) accepts an optional replay_metadata
+        dict that is passed through to build_excel_export unchanged.
+    """
     bytes_data: bytes | None = None
     filename: str | None = None
     media_type: str | None = None
     status_code: int = 200
-    error_content: str | None = None  # HTML error page content
-    headers: dict | None = None
+    error_content: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def has_error(self) -> bool:
         return self.error_content is not None
@@ -49,33 +70,33 @@ def _make_streaming_response(export: ExportResponse) -> StreamingResponse | HTML
     )
 
 
-# ── Values-only Excel export ────────────────────────────────────────────────
+# ── Values-only Excel export ──────────────────────────────────────────────────
 
 def build_values_only_export_for_project(
+    result,
+    project_inputs,
     project_type: str,
     scenario: str,
     *,
-    project_inputs_override=None,
-    runtime_origin: str = "factory_base_runtime",
     replay_metadata: dict | None = None,
 ) -> ExportResponse:
-    """Build values-only Excel export bytes and metadata.
+    """Build values-only Excel export bytes.
 
-    Behavior matches the original download_post/download_get logic in main_web.py.
+    ``result`` and ``project_inputs`` come from the completed model run
+    (e.g. ``run_demo_project(...).result`` / ``run_demo_project(...).project_inputs``).
+    ``replay_metadata`` is passed directly to ``build_excel_export`` unchanged,
+    giving the Excel file the same provenance timestamps as the route's
+    ``record_export`` call.
+
+    Behavior matches the original download_get logic in main_web.py.
     """
     from app.excel_export import build_excel_export
-    from app.ui_runner import run_demo_project
 
     try:
-        demo = run_demo_project(
-            project_type if project_type else "Solar",
-            scenario if scenario else "Base",
-            project_inputs_override=project_inputs_override,
-        )
         filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
         excel_bytes = build_excel_export(
-            result=demo.result,
-            project_inputs=demo.project_inputs,
+            result=result,
+            project_inputs=project_inputs,
             provenance_metadata=replay_metadata or {},
         )
         return ExportResponse(
@@ -83,9 +104,6 @@ def build_values_only_export_for_project(
             filename=filename,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             status_code=200,
-            headers={
-                "Content-Length": str(len(excel_bytes)),
-            },
         )
     except (ValueError, Exception) as e:
         return ExportResponse(
@@ -97,25 +115,31 @@ def build_values_only_export_for_project(
         )
 
 
-# ── Runtime Summary CSV export ───────────────────────────────────────────────
+# ── Runtime Summary CSV export ────────────────────────────────────────────────
 
 def build_runtime_summary_csv_export(
     runtime_project_code: str,
     *,
     safe_project: str | None = None,
-    project_record=None,
-    user_id=None,
 ) -> ExportResponse:
-    """Build runtime summary CSV bytes and metadata.
+    """Build runtime summary CSV bytes.
+
+    Populates ExportResponse.metadata with fields extracted from
+    runtime_rows[0] so that callers can use the same
+    export_generated_at / runtime_generated_at / runtime_origin values
+    in their record_export() calls that the runtime itself recorded.
 
     Behavior matches the original runtime_summary_export logic in main_web.py.
     """
+    from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
+
     try:
         runtime_rows = build_runtime_summary_rows(runtime_project_code)
+        first_row = runtime_rows[0]
         csv_text = build_runtime_summary_csv(
             runtime_project_code,
-            generated_at=runtime_rows[0]["generated_at"],
-            source_branch=runtime_rows[0]["source_branch"],
+            generated_at=first_row["generated_at"],
+            source_branch=first_row["source_branch"],
         )
     except ValueError as exc:
         return ExportResponse(
@@ -126,6 +150,16 @@ def build_runtime_summary_csv_export(
             ),
         )
 
+    # Preserve provenance timestamps for the caller's record_export.
+    # These must match what the runtime itself recorded.
+    metadata = {
+        "export_generated_at": first_row["export_generated_at"],
+        "runtime_generated_at": first_row["runtime_generated_at"],
+        "runtime_origin": first_row["runtime_origin"],
+        "generated_at": first_row["generated_at"],
+        "source_branch": first_row["source_branch"],
+    }
+
     filename = f"phase10_{safe_project or runtime_project_code}_runtime_summary.csv"
     data = csv_text.encode("utf-8")
     return ExportResponse(
@@ -133,9 +167,7 @@ def build_runtime_summary_csv_export(
         filename=filename,
         media_type="text/csv",
         status_code=200,
-        headers={
-            "Content-Length": str(len(data)),
-        },
+        metadata=metadata,
     )
 
 
@@ -145,15 +177,22 @@ def build_institutional_workbook_export(
     runtime_project_code: str,
     *,
     safe_project: str | None = None,
-    project_record=None,
-    user_id=None,
 ) -> ExportResponse:
-    """Build institutional workbook bytes and metadata.
+    """Build institutional workbook bytes.
+
+    Populates ExportResponse.metadata with fields extracted from
+    runtime_rows[0] so that callers can use the same
+    export_generated_at / runtime_generated_at / runtime_origin values
+    in their record_export() calls that the runtime itself recorded.
 
     Behavior matches the original institutional_workbook_export logic in main_web.py.
     """
+    from app.export.institutional_workbook import export_institutional_workbook_skeleton
+    from app.export.runtime_summary import build_runtime_summary_rows
+
     try:
         runtime_rows = build_runtime_summary_rows(runtime_project_code)
+        first_row = runtime_rows[0]
         workbook_bytes = export_institutional_workbook_skeleton(runtime_project_code)
     except ValueError as exc:
         return ExportResponse(
@@ -164,33 +203,61 @@ def build_institutional_workbook_export(
             ),
         )
 
+    # Preserve provenance timestamps for the caller's record_export.
+    metadata = {
+        "export_generated_at": first_row["export_generated_at"],
+        "runtime_generated_at": first_row["runtime_generated_at"],
+        "runtime_origin": first_row["runtime_origin"],
+        "generated_at": first_row["generated_at"],
+        "source_branch": first_row["source_branch"],
+    }
+
     filename = f"phase10_{safe_project or runtime_project_code}_institutional_workbook_skeleton.xlsx"
     return ExportResponse(
         bytes_data=workbook_bytes,
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         status_code=200,
-        headers={
-            "Content-Length": str(len(workbook_bytes)),
-        },
+        metadata=metadata,
     )
 
 
 # ── Public API — compose and return FastAPI response ─────────────────────────
 
-def serve_values_only_export(project_type: str, scenario: str, **kwargs) -> StreamingResponse | HTMLResponse:
+def serve_values_only_export(
+    project_type: str,
+    scenario: str,
+    *,
+    replay_metadata: dict | None = None,
+) -> StreamingResponse | HTMLResponse:
     """Thin wrapper for route handlers — returns FastAPI response."""
-    export = build_values_only_export_for_project(project_type, scenario, **kwargs)
+    export = build_values_only_export_for_project(
+        project_type,
+        scenario,
+        replay_metadata=replay_metadata,
+    )
     return _make_streaming_response(export)
 
 
-def serve_runtime_summary_csv(runtime_project_code: str, safe_project: str | None = None, **kwargs) -> StreamingResponse | HTMLResponse:
+def serve_runtime_summary_csv(
+    runtime_project_code: str,
+    safe_project: str | None = None,
+) -> StreamingResponse | HTMLResponse:
     """Thin wrapper for route handlers — returns FastAPI response."""
-    export = build_runtime_summary_csv_export(runtime_project_code, safe_project=safe_project, **kwargs)
+    export = build_runtime_summary_csv_export(
+        runtime_project_code,
+        safe_project=safe_project,
+    )
     return _make_streaming_response(export)
 
 
-def serve_institutional_workbook(runtime_project_code: str, safe_project: str | None = None, **kwargs) -> StreamingResponse | HTMLResponse:
+def serve_institutional_workbook(
+    runtime_project_code: str,
+    safe_project: str | None = None,
+) -> StreamingResponse | HTMLResponse:
     """Thin wrapper for route handlers — returns FastAPI response."""
-    export = build_institutional_workbook_export(runtime_project_code, safe_project=safe_project, **kwargs)
+    export = build_institutional_workbook_export(
+        runtime_project_code,
+        safe_project=safe_project,
+    )
     return _make_streaming_response(export)

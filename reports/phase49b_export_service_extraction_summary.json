@@ -3,7 +3,7 @@
   "title": "Extract Export Service from main_web.py",
   "branch": "phase49b-extract-export-service-from-main-web",
   "base_sha": "290e362b9b383df26a6fc37d9eb7b98805e339d9",
-  "head_sha": "f28f9775975499bf30dbf64d66fe538a22c1d969",
+  "head_sha": "0d7b13e10ab716b0f0a5b11cecfcb6ffc8ae0c75",
   "pr_url": "https://github.com/xofisamba/Finco1/pull/362",
   "pr_number": 362,
   "status": "ready",
@@ -49,5 +49,13 @@
     "docs/phase49b_export_service_extraction_matrix.md",
     "reports/phase49b_export_service_extraction_summary.json",
     "tests/test_phase49b_export_service_extraction.py"
-  ]
+  ],
+  "pr_head_sha": "0d7b13e10ab716b0f0a5b11cecfcb6ffc8ae0c75",
+  "fix_summary": {
+    "fix_1_get_download": "replay_metadata computed BEFORE service call, passed as (result, project_inputs, replay_metadata)",
+    "fix_2_runtime_csv": "ExportResponse.metadata populated from runtime_rows[0]",
+    "fix_3_workbook": "ExportResponse.metadata populated from runtime_rows[0]",
+    "fix_4_export_response": "metadata field added, headers field removed",
+    "fix_5_signatures": "result+project_inputs required args, project_record/user_id removed"
+  }
 }
