@@ -1,0 +1,69 @@
+{
+  "phase": "50B",
+  "title": "Phase 50B: Extract low-risk scenario state helpers",
+  "type": "production refactor (narrow behavior-preserving)",
+  "base_sha": "83d4388f8a6272c2a51b8646a59f6f26cb703358",
+  "production_code_changed": true,
+  "what_moved": [
+    "_workspace_state_meta → build_workspace_state_metadata()",
+    "_scenario_provenance_for_record → scenario_provenance_for_record()",
+    "_normalize_template_source (duplicated, needed by provenance)",
+    "_template_origin_for_record (duplicated, needed by provenance)"
+  ],
+  "what_did_not_move": [
+    "_resolve_runtime_snapshot_source (deferred to Phase 50C)",
+    "resolve_active_scenario_runtime_snapshot integration (deferred)",
+    "runtime_guard_for_snapshot wrapper (deferred)",
+    "/run route orchestration",
+    "/download route orchestration",
+    "form parsing helpers"
+  ],
+  "service_api_summary": {
+    "build_workspace_state_metadata(workspace_state)": {
+      "returns": "dict with keys: dirty, dirty_label, active_scenario_id, active_scenario_name, last_runtime_origin, last_runtime_origin_label, last_runtime_snapshot_id",
+      "equivalent_to": "_workspace_state_meta(workspace_state) in main_web.py",
+      "handles_none": true
+    },
+    "scenario_provenance_for_record(project_record, scenario_record)": {
+      "returns": "dict | None",
+      "equivalent_to": "_scenario_provenance_for_record(project_record, scenario_record) in main_web.py",
+      "handles_none_project_record": true,
+      "handles_none_scenario_record": true
+    }
+  },
+  "service_module": "app/services/scenario_state_service.py",
+  "helper_count": {
+    "public": 2,
+    "internal_duplicates": 2
+  },
+  "main_web_thin_wrappers": [
+    "_workspace_state_meta → build_workspace_state_metadata",
+    "_scenario_provenance_for_record → scenario_provenance_for_record"
+  ],
+  "deferred_to_50C": [
+    "_resolve_runtime_snapshot_source",
+    "resolve_active_scenario_runtime_snapshot integration",
+    "runtime_guard_for_snapshot wrapper (check_runtime_allowed)",
+    "/run route wiring",
+    "/download route wiring"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20_blocked": true,
+    "r99_r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "test_results": {
+    "phase50b_tests": 25,
+    "phase50a_tests": 28,
+    "phase49_closeout_tests": 28,
+    "import_main_web": "OK"
+  },
+  "recommended_next_phase": "Phase 50C — Extract _resolve_runtime_snapshot_source"
+}
