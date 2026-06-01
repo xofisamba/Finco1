@@ -1,0 +1,43 @@
+{
+  "phase": "49D-3A",
+  "title": "Characterize export audit recording before extraction",
+  "base_sha": "c05d7b036ad2cab6d9c989e0ff78b3679c3e74c9",
+  "head_sha": null,
+  "status": "characterization_complete",
+  "production_code_changed": false,
+  "record_export_call_count": 4,
+  "routes_characterized": [
+    "POST /download",
+    "GET /download",
+    "GET /exports/runtime-summary.csv",
+    "GET /exports/institutional-workbook.xlsx"
+  ],
+  "ready_for_extraction": true,
+  "recommended_service_module": "app/services/export_audit_service.py",
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "characterization_notes": {
+    "record_export_call_sites": 4,
+    "governance_state_source": "_governance_snapshot()",
+    "replay_metadata_patterns": ["pre-built in route (POST/GET /download)", "inline _replay_metadata_for_project call (exports routes)"],
+    "baseline_source_timing": "POST: post-export/post-service BEFORE record_export; GET/exports: as part of _replay_metadata_for_project call",
+    "scenario_id_usage": "POST /download only",
+    "runtime_origin_source": "POST/GET /download: factory_base_runtime or saved_state; exports routes: export.metadata['runtime_origin']",
+    "artifact_path_pattern": "route URL with query params",
+    "user_id_source": "user.user_id from get_current_user()",
+    "project_id_source": "project_record.project_id if project_record else None",
+    "extraction_order_recommended": ["runtime-summary.csv", "institutional-workbook.xlsx", "GET /download", "POST /download"]
+  },
+  "guardrails_confirmed": {
+    "g20_blocked": true,
+    "r99_r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dscr_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "test_results": "pending",
+  "branch": "phase49d3a-characterize-export-audit-recording"
+}
