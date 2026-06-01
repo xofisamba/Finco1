@@ -86,7 +86,7 @@ from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
-from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export
+from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -2232,7 +2232,7 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         if export.has_error():
             return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
-        record_export(
+        record_download_export(
             user_id=user.user_id,
             project_code=project_code,
             export_type="excel_model_export",
@@ -2241,6 +2241,7 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
             project_id=project_record.project_id if project_record else None,
             governance_state=_governance_snapshot(project_code),
             replay_metadata=replay_metadata,
+            scenario_id=None,
         )
         return StreamingResponse(
             iter([export.bytes_data]),
