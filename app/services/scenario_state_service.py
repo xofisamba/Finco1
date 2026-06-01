@@ -10,6 +10,7 @@ from app.persistence.repository import (
     get_scenario_provenance,
     get_workspace_state,
     resolve_active_scenario_runtime_snapshot,
+    runtime_guard_for_snapshot,
 )
 
 
@@ -204,5 +205,29 @@ def resolve_runtime_snapshot(
 # NOTE: resolve_runtime_snapshot is the canonical implementation as of Phase 50C-2.
 # _resolve_runtime_snapshot_source in main_web.py is a thin wrapper around this.
 #
-# Deferred to later phases:
-#   - runtime_guard_for_snapshot wrapper (check_runtime_allowed)
+# Phase 50C-3: check_runtime_allowed added as thin wrapper around runtime_guard_for_snapshot.
+
+
+def check_runtime_allowed(workspace_state, snapshot):
+    """Thin wrapper around repository.runtime_guard_for_snapshot.
+
+    Phase 50C-3: Wraps runtime_guard_for_snapshot so it can be called from
+    scenario_state_service. Returns exactly the same tuple as the underlying
+    repository function.
+
+    Parameters
+    ----------
+    workspace_state : WorkspaceStateRecord | None
+        Current workspace state
+    snapshot : dict[str, Any]
+        Current dirty snapshot
+
+    Returns
+    -------
+    tuple[bool, str, str]
+        (allow_run, runtime_origin, guard_message)
+        - allow_run: True if runtime may proceed
+        - runtime_origin: "saved_state" | "workspace_base" | "factory_base_runtime" | "preview_only"
+        - guard_message: "" if allowed, otherwise blocking reason
+    """
+    return runtime_guard_for_snapshot(workspace_state, snapshot)

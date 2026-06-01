@@ -1,0 +1,62 @@
+{
+  "phase": "50C-3",
+  "title": "Add runtime guard wrapper",
+  "base_sha": "9925bc2d2af1378fb44da7471eed95e58d29e066",
+  "head_sha": null,
+  "pr": null,
+  "branch": "phase50c3-add-runtime-guard-wrapper",
+  "status": "complete",
+  "changed_files": [
+    "app/services/scenario_state_service.py",
+    "app/services/__init__.py",
+    "main_web.py",
+    "tests/test_phase50c3_runtime_guard_wrapper.py"
+  ],
+  "extraction_summary": {
+    "added_to_scenario_state_service": [
+      "check_runtime_allowed(workspace_state, snapshot) -> tuple[bool, str, str]"
+    ],
+    "removed_from_main_web_imports": [
+      "runtime_guard_for_snapshot"
+    ],
+    "call_sites_updated": 6,
+    "call_sites_unchanged": []
+  },
+  "service_api": {
+    "function": "check_runtime_allowed",
+    "signature": "(workspace_state, snapshot) -> tuple[bool, str, str]",
+    "delegates_to": "runtime_guard_for_snapshot",
+    "return_preserved": true
+  },
+  "affected_routes": [
+    "/run (POST)",
+    "/compare (POST)",
+    "/download (POST) - 2 call sites"
+  ],
+  "guard_behavior": {
+    "allow_run_false_blocks_routes": true,
+    "runtime_origin_values_unchanged": true,
+    "guard_message_unchanged": true,
+    "dirty_stale_behavior_unchanged": true
+  },
+  "tests": {
+    "phase_50c3": 21,
+    "phase_50c2": 33,
+    "phase_50c1": 28,
+    "phase_50b": 25,
+    "total": 107,
+    "all_passed": true
+  },
+  "guardrails": {
+    "no_financial_formula_changes": true,
+    "no_runtime_calculation_changes": true,
+    "no_model_output_changes": true,
+    "no_route_behavior_changes": true,
+    "no_export_behavior_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_schema_migrations": true,
+    "no_js_financial_calculations": true,
+    "main_web_zero_record_export_calls": true
+  },
+  "recommended_next_phase": "50C-4 - Extract _project_workspace_from_request helper"
+}

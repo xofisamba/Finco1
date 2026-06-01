@@ -85,7 +85,7 @@ from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
-from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record, resolve_runtime_snapshot, RuntimeSnapshotResolution
+from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record, resolve_runtime_snapshot, RuntimeSnapshotResolution, check_runtime_allowed
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -1448,7 +1448,7 @@ async def validate(request: Request):
     tenor_years = form.get("tenor_years", "")
     project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
-    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
             request=request,
@@ -1538,7 +1538,7 @@ async def run(request: Request):
     project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
     project_name = project_record.project_name
-    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
             request=request,
@@ -1914,7 +1914,7 @@ async def compare(request: Request):
     tenor_years = form.get("tenor_years", "")
     project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
-    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
             request=request,
@@ -2038,7 +2038,7 @@ async def download_post(request: Request):
         active_scenario_record = None
         runtime_warning = None
         if project_record.project_origin == "user_created":
-            allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+            allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
             if not allow_run:
                 return HTMLResponse(
                     content=f"<html><body><h2>Excel generation failed</h2><p>{guard_message}</p><a href='/'>Back</a></body></html>",
@@ -2053,7 +2053,7 @@ async def download_post(request: Request):
             override = build_projectinputs_from_snapshot(runtime_snapshot)
             runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
         else:
-            if runtime_guard_for_snapshot(workspace_state, snapshot)[1] == "saved_state" and workspace_state.active_scenario_id:
+            if check_runtime_allowed(workspace_state, snapshot)[1] == "saved_state" and workspace_state.active_scenario_id:
                 runtime_origin = "saved_state"
                 runtime_snapshot, active_scenario_record, runtime_warning, effective_runtime_origin = _resolve_runtime_snapshot_source(
                     user,
@@ -3154,7 +3154,7 @@ async def save_run_endpoint(request: Request):
     project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
     project_name = project_record.project_name
-    allow_run, runtime_origin, guard_message = runtime_guard_for_snapshot(workspace_state, snapshot)
+    allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
     if not allow_run:
         return templates.TemplateResponse(
             request=request,
