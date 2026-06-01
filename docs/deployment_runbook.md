@@ -190,4 +190,4 @@ Check `FINCO_SESSION_HOURS` setting. Default is 24 hours.
 
 ---
 
-*Last updated: Phase 26D. For trusted pilot deployment only — not for external distribution.*
+*Last updated: Phase 41. For trusted pilot deployment only — not for external distribution.*

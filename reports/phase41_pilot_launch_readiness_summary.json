@@ -1,0 +1,73 @@
+{
+  "phase": "41",
+  "title": "Pilot Launch Documentation and Handoff Checklist",
+  "base_sha": "844b0c82b247391a605a2ba76a385611c116d3f9",
+  "date": "2026-06-01",
+  "pilot_readiness_status": "READY",
+  "trusted_pilot_recommendation": "GO",
+  "trusted_pilot_basis": "Phase 40 reviewer run — no blocker found within TUHO/Oborovo frozen-template scope",
+  "validated_projects": [
+    "TUHO Wind (72 MW, Croatia) — senior debt, DSCR, SHL, CO2, equity IRR",
+    "Oborovo Solar (53.63 MW, Croatia) — senior debt, DSCR, SHL, OpEx, equity IRR"
+  ],
+  "excluded_scopes": [
+    "generic solar/wind validation (exploratory only)",
+    "generic wind CO2 (not validated)",
+    "construction IDC (not wired)",
+    "C.16 Project Rights (not wired)",
+    "M1-M18 IDC (not wired)",
+    "live sculpting / debt re-sizing (not promoted)",
+    "multi-user / RBAC / SSO (single-user only)",
+    "SaaS / enterprise readiness (not claimed)",
+    "bank / lender / external audit / certification approval (not claimed)"
+  ],
+  "blockers_count": 0,
+  "paid_pilot_blockers": [
+    "Generic solar validation (no Excel reference)",
+    "Generic wind validation (no Excel reference)",
+    "Generic wind CO2 (not validated)",
+    "Construction IDC (not wired)",
+    "C.16 Project Rights (not wired)",
+    "M1-M18 IDC (not wired)"
+  ],
+  "required_launch_checks": [
+    "Pre-launch repository check (main SHA, clean working tree)",
+    "Environment / config check (FINCO_APP_MODE=pilot, secrets, Python 3.10+)",
+    "/readyz returns model/db/workspace ready",
+    "Manual backup before first run",
+    "Auto-backup scheduler confirmed active",
+    "Pilot user briefing on validated scope and limitations",
+    "Validated scope acknowledgement by operator",
+    "Generic exclusion acknowledgement by operator",
+    "Launch handoff checklist sign-off"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_file_changes": true,
+  "no_fixture_csv_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20_blocked": true,
+    "r99_not_approved": true,
+    "r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dsccr_sculpting_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "documents_created": [
+    "docs/phase41_pilot_launch_documentation_handoff.md",
+    "docs/pilot_launch_handoff_checklist.md",
+    "docs/pilot_scope_confirmation_note.md",
+    "docs/pilot_issue_intake_template.md",
+    "docs/phase41_pilot_launch_readiness_matrix.md"
+  ],
+  "documents_updated": [
+    "docs/pilot_user_guide.md",
+    "docs/validation_pack_index.md",
+    "docs/deployment_runbook.md"
+  ],
+  "tests_created": [
+    "tests/test_phase41_pilot_launch_documentation_handoff.py"
+  ],
+  "recommended_next_phase": "Phase 42 — Pilot Launch Execution"
+}
