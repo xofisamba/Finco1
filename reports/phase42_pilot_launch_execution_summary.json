@@ -1,0 +1,43 @@
+{
+  "phase": "42",
+  "title": "Pilot Launch Execution and First Observed Run",
+  "base_sha": "1f72591b1099bff50826f7704663e5bb0a671f17",
+  "date": "2026-06-01",
+  "run_status": "COMPLETE",
+  "trusted_pilot_continuation_recommendation": "GO",
+  "validated_projects_observed": [
+    "TUHO Wind (72 MW, Croatia) — senior debt 43,359 kEUR, equity IRR 11.81%, CO2 Y1=611 kEUR",
+    "Oborovo Solar (53.63 MW, Croatia) — senior debt 42,852 kEUR, SHL opening 15,790 kEUR, Y1 OpEx=1,338 kEUR"
+  ],
+  "blockers_count": 0,
+  "issues_count": 0,
+  "clarifications_count": 1,
+  "paid_pilot_blockers": [
+    "Generic solar validation (no Excel reference)",
+    "Generic wind validation (no Excel reference)",
+    "Generic wind CO2 (not validated)",
+    "Construction IDC (not wired)",
+    "C.16 Project Rights (not wired)",
+    "M1-M18 IDC (not wired)"
+  ],
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_file_changes": true,
+  "no_fixture_csv_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails": {
+    "g20_blocked": true,
+    "r99_not_approved": true,
+    "r102_not_approved": true,
+    "partial_pay_sweep_not_promoted": true,
+    "flat_min_dsccr_sculpting_not_promoted": true,
+    "backend_source_of_truth": true
+  },
+  "documents_created": [
+    "docs/phase42_pilot_launch_execution_first_observed_run.md",
+    "docs/pilot_first_run_observation_checklist.md",
+    "docs/phase42_pilot_issue_log.md",
+    "docs/phase42_pilot_launch_execution_decision_matrix.md"
+  ],
+  "recommended_next_phase": "Phase 43 — Pilot Ongoing Operations and Issue Triage Cadence"
+}
