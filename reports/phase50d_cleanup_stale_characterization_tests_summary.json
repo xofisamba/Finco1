@@ -1,0 +1,62 @@
+{
+  "phase": "50D",
+  "title": "Clean up stale characterization tests",
+  "type": "test-hygiene-only",
+  "base_sha": "ec33a5d236e3d6b612fcf1604ae14ffad8717f4d",
+  "head_sha": null,
+  "pr": null,
+  "branch": "phase50d-cleanup-stale-characterization-tests",
+  "status": "complete",
+  "production_code_changed": false,
+  "stale_tests_identified": 6,
+  "stale_test_names": [
+    "test_record_export_called_in_download_post (49D-1)",
+    "test_runtime_guard_for_snapshot_used (49D-1)",
+    "test_build_excel_export_called_with_result_and_inputs (49D-1)",
+    "test_record_export_still_in_route (49D-2)",
+    "test_post_download_still_uses_direct_record_export (49D-3C)",
+    "test_only_one_direct_record_export_remains (49D-3C)"
+  ],
+  "tests_deleted": 0,
+  "tests_converted": 6,
+  "current_state_tests_added": 19,
+  "new_test_file": "tests/test_phase50d_current_state_after_refactor_cleanup.py",
+  "files_updated": [
+    "tests/test_phase49d1_post_download_characterization.py",
+    "tests/test_phase49d2_post_download_extraction.py",
+    "tests/test_phase49d3c_get_download_audit_service_wiring.py"
+  ],
+  "final_state_confirmations": {
+    "main_web_zero_direct_record_export": true,
+    "main_web_no_record_export_import": true,
+    "main_web_no_runtime_guard_direct_import": true,
+    "main_web_six_check_runtime_allowed_calls": true,
+    "export_service_exists": true,
+    "export_audit_service_exists": true,
+    "scenario_state_service_exists": true,
+    "post_download_uses_audit_service": true,
+    "post_download_uses_export_service": true,
+    "get_download_uses_audit_and_export_service": true,
+    "resolve_runtime_snapshot_wrapper_thin": true
+  },
+  "test_results": {
+    "phase_50d_current_state": "19 passed",
+    "phase_50c_closeout": "31 passed",
+    "phase_49_closeout": "28 passed",
+    "phase_49d1_characterization": "40 passed",
+    "phase_49c_remaining_leaf": "15 passed"
+  },
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "guardrails_preserved": [
+    "G20 BLOCKED",
+    "R99/R102 NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat/min DSCR not promoted",
+    "Backend remains source of truth"
+  ],
+  "recommended_next_phase": "51A - /run route characterization with golden output tests"
+}

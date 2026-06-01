@@ -136,31 +136,30 @@ def test_get_download_still_calls_governance_snapshot():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test 9: POST /download still uses direct record_export in main_web.py
+# Test 9: POST /download uses audit service, not direct record_export
 # ─────────────────────────────────────────────────────────────────────────────
-def test_post_download_still_uses_direct_record_export():
+def test_post_download_uses_audit_service_not_direct_record_export():
     text = MAIN_WEB.read_text()
     idx = text.find('@app.post("/download")')
     end_idx = text.find('@app.get("/download")', idx)
     section = text[idx:end_idx]
-    assert "record_export(" in section, \
-        "POST /download should still use direct record_export in main_web.py"
-    assert "record_download_export" not in section, \
-        "POST /download should NOT call record_download_export"
+    # POST /download now uses audit service
+    assert "record_download_export(" in section, \
+        "POST /download should use record_download_export audit service"
+    # No direct record_export call in the route
+    assert "record_export(" not in section, \
+        "POST /download should NOT have direct record_export call — use audit service"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test 10: Only 1 direct record_export call remains in main_web.py
+# Test 10: Zero direct record_export calls in main_web.py (all go through audit service)
 # ─────────────────────────────────────────────────────────────────────────────
-def test_only_one_direct_record_export_remains():
-    """After 49D-3C, only POST /download should have direct record_export call."""
+def test_zero_direct_record_export_calls_in_main_web():
+    """Current final state: all export audit goes through export_audit_service."""
     text = MAIN_WEB.read_text()
-    # Count record_export( calls not in service calls
     import re
     calls = list(re.finditer(r'record_export\s*\(', text))
-    # Filter: each call should be inside a service function or be the POST /download call
-    # POST /download is at line ~2168, GET /download at ~2235
-    assert len(calls) == 1, f"Expected 1 direct record_export call, found {len(calls)}"
+    assert len(calls) == 0, f"Expected 0 direct record_export calls, found {len(calls)}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

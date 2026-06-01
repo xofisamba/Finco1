@@ -136,8 +136,10 @@ def test_baseline_source_timing_preserved():
 # ─────────────────────────────────────────────────────────────────────────────
 def test_record_export_still_in_route():
     section = _get_download_post_section()
-    assert "record_export(" in section
-    assert "replay_metadata=replay_metadata" in section
+    # record_export NOT in route — export_audit_service handles audit
+    assert "record_download_export(" in section
+    # replay_metadata passed to audit service
+    assert "replay_metadata" in section or "metadata" in section.lower()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

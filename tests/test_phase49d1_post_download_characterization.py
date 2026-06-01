@@ -113,11 +113,12 @@ def test_replay_metadata_helper_exists_and_used():
 # ─────────────────────────────────────────────────────────────────────────────
 def test_record_export_called_in_download_post():
     section = _get_download_post_section()
-    assert "record_export(" in section
+    # record_export is NOT called directly in route — handled by audit service
+    assert "record_download_export(" in section  # audit service, not direct record_export
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Test 9: record_export receives replay_metadata kwarg
+# Test 9: record_download_export receives replay_metadata kwarg (audit service)
 # ─────────────────────────────────────────────────────────────────────────────
 def test_record_export_receives_replay_metadata():
     section = _get_download_post_section()
@@ -156,7 +157,7 @@ def test_success_response_is_streaming_xlsx():
 # ─────────────────────────────────────────────────────────────────────────────
 def test_runtime_guard_for_snapshot_used():
     section = _get_download_post_section()
-    assert "runtime_guard_for_snapshot(" in section
+    assert "check_runtime_allowed(" in section
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -414,7 +415,7 @@ def test_collect_form_snapshot_used():
 # ─────────────────────────────────────────────────────────────────────────────
 def test_build_excel_export_called_with_result_and_inputs():
     section = _get_download_post_section()
-    assert "build_excel_export(" in section
+    assert "build_excel_export_for_post_request(" in section
     # Called as: build_excel_export(result=demo.result, project_inputs=demo.project_inputs, provenance_metadata=replay_metadata)
     assert "result=demo.result" in section or "result=demo" in section
 
