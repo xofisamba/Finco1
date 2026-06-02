@@ -1,0 +1,297 @@
+{
+  "phase": "51H-1",
+  "title": "Phase 51H-1: Scenario state route family golden characterization",
+  "type": "characterization-only (no production code changes)",
+  "scope": "Characterize POST /scenarios/state/draft and POST /scenarios/state/discard in main_web.py. Pin all current behavior, side effects, quirks, and response shapes. No extraction yet (that is 51H-2).",
+  "base_sha": "47faffbfadf22dcdcc3d0b2f3fab9454ab22a166",
+  "head_sha": null,
+  "branch": "phase51h1-scenario-state-route-family-characterization",
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "production_code_changed": false,
+  "production_code_changes": [],
+  "characterized_routes": [
+    {
+      "path": "/scenarios/state/draft",
+      "method": "POST",
+      "handler": "save_workspace_draft_endpoint",
+      "main_web_line_start": 2018,
+      "main_web_line_end": 2052,
+      "total_lines": 35,
+      "non_blank_lines": 33,
+      "purpose": "Persist unsaved workspace edits without promoting them to saved-scenario authority.",
+      "response_type": "JSONResponse (application/json, 200)",
+      "auth_quirk": "Returns 401 JSON on no user (NOT 302 redirect to /login)"
+    },
+    {
+      "path": "/scenarios/state/discard",
+      "method": "POST",
+      "handler": "discard_workspace_draft_endpoint",
+      "main_web_line_start": 2054,
+      "main_web_line_end": 2086,
+      "total_lines": 33,
+      "non_blank_lines": 31,
+      "purpose": "Discard unsaved workspace edits and restore the last saved scenario boundary.",
+      "response_type": "JSONResponse (application/json, 200)",
+      "auth_quirk": "Returns 401 JSON on no user (NOT 302 redirect to /login)"
+    }
+  ],
+  "route_sizes": {
+    "pre_phase51h1_draft_total": 35,
+    "pre_phase51h1_draft_non_blank": 33,
+    "pre_phase51h1_discard_total": 33,
+    "pre_phase51h1_discard_non_blank": 31
+  },
+  "dependencies": {
+    "draft_route_helpers": [
+      "get_current_user(request)",
+      "_collect_form_snapshot(form)",
+      "_project_workspace_from_snapshot(user, snapshot)",
+      "save_workspace_state(...) (repository, 1×)",
+      "snapshots_equal(...)",
+      "_governance_snapshot(project_code)",
+      "_replay_metadata_for_project(project_code, project_id=..., scenario_id=..., export_type='workspace_draft_state')",
+      "_workspace_state_meta(workspace_state)"
+    ],
+    "discard_route_helpers": [
+      "get_current_user(request)",
+      "_collect_form_snapshot(form)",
+      "_project_workspace_from_snapshot(user, snapshot)",
+      "discard_workspace_draft(user.user_id, project_record.project_id) (repository, 1×)",
+      "save_workspace_state(...) (repository, 1× fallback if discard returned None)",
+      "_default_workspace_snapshot(project_code)",
+      "_governance_snapshot(project_code)",
+      "_replay_metadata_for_project(project_code, project_id=..., export_type='workspace_draft_state')",
+      "_workspace_state_meta(workspace_state)"
+    ],
+    "auth_session_user_id_source": "user.user_id (session-derived, NEVER from form)",
+    "auth_session_no_user_response": "JSONResponse({'error': 'Login required'}, status_code=401)"
+  },
+  "intended_side_effects": {
+    "draft": [
+      {
+        "call": "save_workspace_state",
+        "count": 1,
+        "args": "user_id=user.user_id, project_id=project_record.project_id, project_code=project_code, draft_snapshot=snapshot, saved_snapshot=saved_snapshot (existing or baseline), dirty=not snapshots_equal(snapshot, saved_snapshot), governance_state=_governance_snapshot(project_code), replay_metadata=_replay_metadata_for_project(project_code, project_id=project_record.project_id, scenario_id=active_scenario_id, export_type='workspace_draft_state')"
+      }
+    ],
+    "discard": [
+      {
+        "call": "discard_workspace_draft",
+        "count": 1,
+        "args": "user.user_id, project_record.project_id"
+      },
+      {
+        "call": "save_workspace_state",
+        "count": "0 or 1 (fallback)",
+        "args_when_fallback": "user_id=user.user_id, project_id=project_record.project_id, project_code=project_code, draft_snapshot=baseline_snapshot, saved_snapshot=baseline_snapshot, dirty=False, governance_state=_governance_snapshot(project_code), replay_metadata=_replay_metadata_for_project(project_code, project_id=project_record.project_id, export_type='workspace_draft_state')",
+        "note": "Only called when discard_workspace_draft returns None (no existing workspace_state). The repository's discard_workspace_draft function internally calls save_workspace_state to UPDATE the row, so the discard path always results in 1-2 writes."
+      }
+    ]
+  },
+  "forbidden_side_effects_absent": {
+    "record_export": "NOT called (0 occurrences in code)",
+    "record_download_export": "NOT called (0 occurrences)",
+    "record_runtime_summary_export": "NOT called (0 occurrences)",
+    "record_institutional_workbook_export": "NOT called (0 occurrences)",
+    "record_workspace_runtime": "NOT called (0 occurrences)",
+    "update_scenario_last_run_summary": "NOT called (0 occurrences)",
+    "db_add_commit_flush": "NOT called (0 occurrences)",
+    "session_add_commit": "NOT called (0 occurrences)",
+    "save_run": "NOT called (0 occurrences)",
+    "save_project": "NOT called (0 occurrences in route body; _project_workspace_from_snapshot may call it indirectly for unknown projects, but that's a pre-existing helper, not a route-introduced side effect)",
+    "save_scenario": "NOT called (0 occurrences)"
+  },
+  "characterized_behaviors": {
+    "draft": [
+      "POST /scenarios/state/draft exists in main_web.py",
+      "Unauthenticated → 401 + JSON {'error': 'Login required'}",
+      "Authenticated + valid form → 200 + JSON payload with required keys",
+      "Authenticated + empty form → 200 + JSON payload (no 400)",
+      "Authenticated + unknown active_project → 200 + JSON (falls back to factory_template project)",
+      "user_id derived from session, never from form",
+      "draft_snapshot = current form snapshot",
+      "saved_snapshot = existing.saved_snapshot OR project baseline_snapshot OR default",
+      "dirty = not snapshots_equal(snapshot, saved_snapshot)",
+      "replay_metadata.export_type = 'workspace_draft_state'",
+      "replay_metadata.scenario_id = active_scenario_id (when present)",
+      "Response does NOT include 'snapshot' key",
+      "Response message is a fixed string",
+      "Response does NOT have HX-Trigger header",
+      "Response does NOT have HX-Redirect header"
+    ],
+    "discard": [
+      "POST /scenarios/state/discard exists in main_web.py",
+      "Unauthenticated → 401 + JSON {'error': 'Login required'}",
+      "Authenticated + valid form → 200 + JSON payload with required keys + snapshot",
+      "Authenticated + empty form → 200 + JSON payload (no 400)",
+      "Authenticated + unknown active_project → 200 + JSON (falls back to factory_template project)",
+      "user_id derived from session, never from form",
+      "Calls discard_workspace_draft first (always)",
+      "If discard_workspace_draft returns None, calls save_workspace_state as fallback with baseline_snapshot",
+      "Response includes 'snapshot' key (full draft_snapshot dict)",
+      "Response message is a fixed string",
+      "Response does NOT have HX-Trigger header",
+      "Response does NOT have HX-Redirect header"
+    ]
+  },
+  "behavior_quirks": [
+    "Quirk 1: Draft message is a fixed string 'Workspace draft captured. Saved scenario authority is unchanged.'",
+    "Quirk 2: Discard message is a fixed string 'Unsaved edits discarded. Workspace restored to the last saved runtime boundary.'",
+    "Quirk 3: Discard response includes 'snapshot' key (full draft_snapshot dict); draft does NOT include it",
+    "Quirk 4: Draft reads 'current_saved_scenario_id' from form (when no existing workspace) OR uses existing.active_scenario_id (when existing)",
+    "Quirk 5: Draft replay_metadata uses scenario_id=active_scenario_id when present (NOT when None)",
+    "Quirk 6: Discard fallback creates a clean workspace when no existing one (dirty=False, draft_snapshot=saved_snapshot=baseline_snapshot)",
+    "Quirk 7: Draft does NOT modify last_runtime_* fields (preserved by repository)",
+    "Quirk 8: Discard keeps last_runtime_* fields (preserved by discard_workspace_draft)",
+    "Quirk 9: Unauth returns 401 JSON, NOT 302 redirect to /login (unlike /save-run and /run which return 302)",
+    "Quirk 10: No HX-Trigger header (unlike /save-run which sets HX-Trigger: refreshHistory)",
+    "Quirk 11: Routes do NOT validate form fields strictly (no _validate_form call); they accept any form input as a snapshot",
+    "Quirk 12: Routes do NOT check for HTMX-request header; they respond the same way for HTMX and non-HTMX callers"
+  ],
+  "existing_scenario_state_service_helpers": {
+    "module": "app/services/scenario_state_service.py",
+    "size_lines": 232,
+    "helpers": [
+      "build_workspace_state_metadata(workspace_state) -> dict",
+      "resolve_runtime_snapshot(*, user, project_record, workspace_state, runtime_origin) -> RuntimeSnapshotResolution",
+      "check_runtime_allowed(workspace_state, snapshot) -> (allow, origin, message)",
+      "scenario_provenance_for_record(project_record, scenario_record) -> dict | None"
+    ],
+    "no_route_orchestration": "True (no execute_*_route, no ScenarioStateRouteOutcome, no deps class)",
+    "delegated_from_main_web": "main_web._workspace_state_meta delegates to scenario_state_service.build_workspace_state_metadata (Phase 50B)"
+  },
+  "extraction_recommendation_for_51H_2": {
+    "recommended_option": "B (new file: app/services/scenario_state_route_service.py)",
+    "rationale": "Matches the canonical Phase 51B-51G-2 pattern (one service per route family). Keeps scenario_state_service.py data-layer only (no Request, no form, no auth). Smaller blast radius (one new file vs modifying existing module). Easier to test in isolation.",
+    "option_a_considered": "Extend app/services/scenario_state_service.py with route orchestration. Rejected because it would mix data-layer (no Request, no form, no auth) with route-layer (Request, form, auth) concerns, increasing the module's surface area and import-cycle risk.",
+    "candidate_api_for_51H_2": [
+      "ScenarioStateRouteOutcome (dataclass: payload: dict, status_code: int, headers: dict, is_redirect: bool, redirect_url: Optional[str])",
+      "ScenarioStateRouteDeps (dataclass: ~15-20 callables passed by main_web)",
+      "execute_draft_route(*, request, form, user, deps) -> ScenarioStateRouteOutcome",
+      "execute_discard_route(*, request, form, user, deps) -> ScenarioStateRouteOutcome",
+      "OR a single execute_scenario_state_route(*, request, form, user, action, deps) that dispatches"
+    ],
+    "behavior_preservation_required": [
+      "All 12 characterized quirks (401 JSON, no HX-Trigger, message strings, snapshot key, etc.)",
+      "All intended side effects (save_workspace_state, discard_workspace_draft)",
+      "All forbidden side effects remain absent (record_export family, record_workspace_runtime, etc.)",
+      "All required response keys (dirty, dirty_label, active_scenario_id, etc.)",
+      "replay_metadata.export_type values (workspace_draft_state)",
+      "user_id still derived from session, never from form",
+      "save_run_service.py / compare_service.py / etc. remain unchanged (no regression)"
+    ]
+  },
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS — TUHO 1.450695, Oborovo 1.150038 still match; all 5+5 golden values still pinned (no change in 51H-1)",
+    "parity_core_lock": "PASS — 4 SHA-256 files unchanged: app/waterfall_core.py (d8ab56fd...), app/project_factories.py (1b795b96...), reports/phase7_tuho_senior_debt_sizing_extraction.csv (80e79977...), reports/phase23q_oborovo_senior_debt_sizing_extraction.csv (8afdad21...)",
+    "no_service_imports_main_web_or_main_api": "PASS — all 8 existing service files verified clean; no new service file in 51H-1 (extraction is in 51H-2)"
+  },
+  "tests_run": {
+    "phase51h1_scenario_state_route_family_characterization": {
+      "pass": 92,
+      "fail": 0,
+      "xfail": 0,
+      "note": "New test suite for this phase. 13 test classes covering route existence, auth, draft/discard state behavior, persistence, side-effect classification, response behavior, architecture guardrails, 51F smoke, scenario_state_service helpers, behavior quirks, extraction boundary markers, and import smoke."
+    },
+    "phase51f_parallel_work_guardrails": {
+      "pass": 21,
+      "fail": 0,
+      "xfail": 0,
+      "note": "All 3 guardrails (engine output, parity lock, no-service-imports) still green after 51H-1 changes (test-only + docs + report; no production code changes)"
+    },
+    "phase51g1_save_run_route_golden_characterization": {
+      "pass": 59,
+      "fail": 0,
+      "xfail": 0,
+      "note": "No regression in 51G-1 /save-run tests"
+    },
+    "phase51g2_save_run_route_vertical_extraction": {
+      "pass": 63,
+      "fail": 0,
+      "xfail": 0,
+      "note": "No regression in 51G-2 /save-run extraction tests"
+    },
+    "phase51g3_save_run_user_created_branch_fix": {
+      "pass": 53,
+      "fail": 0,
+      "xfail": 0,
+      "note": "No regression in 51G-3 /save-run bugfix tests"
+    },
+    "phase51a_to_51e2_existing": {
+      "pass": 357,
+      "fail": 0,
+      "xfail": 0,
+      "note": "Pre-51H-1 baseline unchanged"
+    },
+    "total_phase51": {
+      "pass": 645,
+      "fail": 0,
+      "xfail": 0
+    },
+    "import_checks": {
+      "main_web": "OK",
+      "app_services_scenario_state_service": "OK"
+    },
+    "structural_guards": {
+      "draft_route_size_unchanged": "PASS (33 non-blank, was 33 in main)",
+      "discard_route_size_unchanged": "PASS (31 non-blank, was 31 in main)",
+      "all_8_services_clean": "PASS",
+      "main_web_has_zero_direct_record_export_calls": "PASS"
+    }
+  },
+  "known_failures": {
+    "tests/test_persistence.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51h1": false,
+      "out_of_scope_for_phase_51h1": true
+    },
+    "tests/test_repository.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51h1": false,
+      "out_of_scope_for_phase_51h1": true
+    }
+  },
+  "guardrails_preserved": [
+    "No financial formula / model / project factory / fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "Phase 51A-51G-2 routes (/run, /compare, /validate, /download, /save-run) remain thin and service-backed",
+    "run_service.py, compare_service.py, validation_service.py, download_service.py, save_run_service.py, export_service.py, export_audit_service.py all remain intact (unchanged)",
+    "scenario_state_service.py is unchanged (still 4 data-layer helpers; 232 lines)",
+    "No new app/services/* file is created in 51H-1 (extraction is in 51H-2)",
+    "No new imports of main_web or main_api (no service imports them either)",
+    "main_web.py has zero direct record_export calls",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat/min DSCR sculpting not promoted",
+    "Generic solar/wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "Backend remains source of truth",
+    "rc1 remains frozen (SHA b425a0708719eaa5e1d922b1008e5609758e0ad4 verified unchanged)",
+    "PR #299 remains closed (no longer active guardrail)",
+    "All 15 Phase 51G-1 /save-run behaviors preserved",
+    "All 6 Phase 51G-1 /save-run quirks preserved",
+    "Phase 51G-3 /save-run user_created branch fix preserved (no regression)"
+  ],
+  "changed_files": [
+    "tests/test_phase51h1_scenario_state_route_family_characterization.py (new, 92 tests)",
+    "docs/phase51h1_scenario_state_route_family_characterization.md (new)",
+    "reports/phase51h1_scenario_state_route_family_characterization_summary.json (new)"
+  ],
+  "remaining_risks": [
+    "Adjacent /scenarios/* routes (/scenarios/save, /scenarios/{id}/*) are NOT in 51H-1 scope; they are separate route families and would need their own characterization + extraction phases (51I-1 / 51I-2, etc.).",
+    "The two routes in scope are JSON-only (not HTMX-partial-based). This is a meaningful difference from /run, /save-run, /compare, /validate, /download (all of which return HTMX-rendered templates). The extraction in 51H-2 should keep the JSON-only pattern.",
+    "discard_workspace_draft is a thin repository function that internally calls save_workspace_state. The discard route therefore does 1-2 writes per call. This is the intended behavior (preserved in 51H-1 quirks 6 and 8).",
+    "There is no ScenarioStateRouteDeps class yet. 51H-2 will introduce one. The 51H-1 test suite does not pin its shape; only the route-level behavior is pinned.",
+    "scenario_state_service.py currently has 4 data-layer helpers. 51H-2 may want to add more helpers here (e.g. a 'resolve workspace_state for user+project' that the discard route could use) but that is a refactor decision, not a behavior change.",
+    "All 12 behavior quirks are pinned at the route level. 51H-2 should preserve them when extracting. The 51H-1 test suite (92 tests) is the regression net for 51H-2."
+  ],
+  "recommended_next_phase": "Phase 51H-2 (separate PR with explicit user sign-off) — Vertical extraction of POST /scenarios/state/draft and POST /scenarios/state/discard into app/services/scenario_state_route_service.py. Follow the Phase 51B/51C-2/51D-2/51E-2/51G-2 canonical pattern. Preserve all 12 characterized quirks, all intended side effects (save_workspace_state / discard_workspace_draft), and all forbidden side effects. After 51H-2: Phase 51I-1 + 51I-2 (project save-as service family). Optional Phase 51J: structural guardrail (export_service.py / export_audit_service.py does NOT import main_web)."
+}
