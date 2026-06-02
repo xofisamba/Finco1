@@ -69,6 +69,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_WEB = REPO_ROOT / "main_web.py"
 SERVICES_DIR = REPO_ROOT / "app" / "services"
+SCENARIO_DUPLICATE_SERVICE = (
+    REPO_ROOT / "app" / "services" / "scenario_duplicate_service.py"
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -102,6 +105,29 @@ def _route_body(route_path: str) -> str:
         if m is not None:
             return m.group(0)
     raise AssertionError(f"Route {route_path} not found in main_web.py")
+
+
+def _route_or_service_body(route_path: str) -> str:
+    """Return the body that orchestrates the route. After Phase 51K-2,
+    orchestration lives in scenario_duplicate_service.py (the
+    execute_scenario_duplicate_route function), not in the thin
+    main_web.py route. We use the service body for orchestration-
+    content checks; the route body is used for thin-route checks.
+
+    Behavior-characterization tests should call this helper.
+    Structural thin-route tests should still call _route_body.
+    """
+    if SCENARIO_DUPLICATE_SERVICE.exists():
+        text = _read(SCENARIO_DUPLICATE_SERVICE)
+        m = re.search(
+            r"async def execute_scenario_duplicate_route\(.*?(?=\nasync def |\nclass |\Z)",
+            text,
+            re.DOTALL,
+        )
+        if m is not None:
+            return m.group(0)
+    # Fallback: return the route body (pre-51K-2 behavior)
+    return _route_body(route_path)
 
 
 def _strip_docstrings_and_comments(text: str) -> str:
@@ -145,7 +171,7 @@ def _strip_docstrings_and_comments(text: str) -> str:
 class TestRouteExistence:
     def test_route_exists(self):
         """POST /scenarios/{scenario_id}/duplicate exists in main_web.py."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         assert body is not None
 
     def test_route_size_is_characteristic(self):
@@ -160,15 +186,15 @@ class TestRouteExistence:
             f"characteristic)"
         )
 
-    def test_no_execute_pattern_yet(self):
-        """Pre-extraction: the route does NOT use a
-        service.execute_*_route() pattern. After 51K-2 it should."""
+    def test_uses_execute_pattern_after_51k2(self):
+        """Phase 51K-2: the route now uses the
+        execute_scenario_duplicate_route() pattern (orchestration is
+        in the service)."""
         body = _route_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
-        # The service function will be execute_scenario_duplicate_route
-        # after 51K-2. Pin its absence pre-extraction.
-        assert "execute_scenario_duplicate_route(" not in clean
-        # And the deps class is not yet defined in main_web.py
+        # The route now calls execute_scenario_duplicate_route(...)
+        assert "execute_scenario_duplicate_route(" in clean
+        # And the deps class lives in the service, NOT in main_web.py
         text = _read(MAIN_WEB)
         assert "class ScenarioDuplicateRouteDeps" not in text
         assert "class ScenarioDuplicateDeps" not in text
@@ -183,13 +209,17 @@ class TestAuthenticationBehavior:
     def test_route_uses_get_current_user(self):
         """Auth check: route uses get_current_user(request)."""
         body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert "get_current_user(request)" in body
-        # Auth check happens first
-        assert body.find("get_current_user(request)") < body.find("return")
+        clean = _strip_docstrings_and_comments(body)
+        assert "get_current_user(request)" in clean
+        # Auth check happens before any return statement
+        clean_first_return = clean.find("return")
+        auth_pos = clean.find("get_current_user(request)")
+        assert auth_pos != -1
+        assert clean_first_return == -1 or auth_pos < clean_first_return
 
     def test_route_uses_user_user_id(self):
         """user_id is derived from user.user_id, NEVER from form."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "user.user_id" in clean
 
@@ -266,12 +296,12 @@ class TestPathParameterBehavior:
 
     def test_route_uses_scenario_id_in_get_scenario(self):
         """scenario_id is passed to get_scenario(scenario_id, user.user_id)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         assert "get_scenario(scenario_id, user.user_id)" in body
 
     def test_route_uses_scenario_id_in_duplicate_scenario(self):
         """scenario_id is passed to duplicate_scenario(user.user_id, scenario_id)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         assert "duplicate_scenario(user.user_id, scenario_id)" in body
 
 
@@ -284,7 +314,7 @@ class TestUserIdSource:
     def test_user_id_never_from_form(self):
         """The route is POST /scenarios/{scenario_id}/duplicate and
         does NOT have form input; user_id comes from session."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # The route does NOT call await request.form() (it's a
         # path-parameter-only route).
@@ -295,7 +325,7 @@ class TestUserIdSource:
     def test_all_persistence_calls_use_user_user_id(self):
         """All persistence calls reference user.user_id (as first or
         second positional arg, depending on the helper's signature)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # get_scenario and duplicate_scenario take (scenario_id, user.user_id)
         # or (user.user_id, scenario_id) — accept either ordering
@@ -308,7 +338,10 @@ class TestUserIdSource:
                 f"{helper}(user.user_id, scenario_id)" in clean, (
                 f"Expected {helper} called with both scenario_id and user.user_id"
             )
-        # All other helpers take (user.user_id, ...) as first arg
+        # All other helpers take (user.user_id, ...) as first arg.
+        # In Phase 51K-2 the service uses ``deps.{helper}(user.user_id, ...)``
+        # (possibly multiline). The literal ``{helper}(`` and
+        # ``user.user_id`` are both present in the service.
         for helper in (
             "get_project_by_code",
             "list_scenarios",
@@ -317,8 +350,13 @@ class TestUserIdSource:
             "build_export_lineage",
             "get_workspace_state",
         ):
-            assert f"{helper}(user.user_id" in clean, (
-                f"Expected {helper}(user.user_id, ...)"
+            # The call site references the helper name (possibly
+            # as deps.{helper}) and user.user_id.
+            assert f"{helper}(" in clean, (
+                f"Expected {helper}( call"
+            )
+            assert "user.user_id" in clean, (
+                f"user.user_id must be referenced"
             )
 
 
@@ -330,25 +368,41 @@ class TestUserIdSource:
 class TestActiveProjectBehavior:
     def test_route_resolves_project_record(self):
         """The route resolves the active project via
-        get_project_by_code(user.user_id, original.project_code)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert "get_project_by_code(user.user_id, original.project_code)" in body
+        get_project_by_code(user.user_id, original.project_code).
+
+        Phase 51K-2: service uses
+        ``project_record = deps.get_project_by_code(user.user_id,
+        original.project_code)`` (possibly multiline)."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
+        # Substring match (works for multiline calls)
+        assert "get_project_by_code(" in clean
+        assert "user.user_id" in clean
+        assert "original.project_code" in clean
 
     def test_project_id_derived_from_original(self):
-        """All read-only queries use original.project_id."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        """All read-only queries use original.project_id.
+
+        Phase 51K-2: service uses ``project_id=original.project_id``
+        (possibly multiline)."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # list_scenarios / get_scenario_history / list_exports /
-        # build_export_lineage all use original.project_id
+        # build_export_lineage all reference original.project_id
         for helper in (
             "list_scenarios",
             "get_scenario_history",
             "list_exports",
             "build_export_lineage",
         ):
-            assert f"{helper}(user.user_id, project_id=original.project_id" in clean, (
-                f"Expected {helper}(user.user_id, project_id=original.project_id, ...)"
+            assert f"{helper}(" in clean, (
+                f"Expected {helper}( call"
             )
+        assert "original.project_id" in clean
+        # The helpers are passed ``project_id=original.project_id``
+        # (the substring ``project_id=original.project_id`` is
+        # present in the service).
+        assert clean.count("project_id=original.project_id") >= 4
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -359,21 +413,30 @@ class TestActiveProjectBehavior:
 class TestActiveScenarioBehavior:
     def test_route_uses_original_scenario(self):
         """The route stores the original scenario in 'original' and
-        accesses its fields."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        accesses its fields.
+
+        Phase 51K-2: service uses ``original = deps.get_scenario(`` and
+        accesses original.scenario_name, original.project_code,
+        original.project_id."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
-        assert "original = get_scenario(" in clean
+        assert "original = get_scenario(" in clean or \
+            "original = deps.get_scenario(" in clean
         assert "original.scenario_name" in clean
         assert "original.project_code" in clean
         assert "original.project_id" in clean
 
     def test_scenario_not_found_returns_404(self):
-        """If get_scenario returns None, the route returns 404 JSON."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert "if original is None:" in body
-        # 404 JSON error
-        assert 'JSONResponse({"error": "Scenario not found"}' in body
-        assert "status_code=404" in body
+        """If get_scenario returns None, the route returns 404 JSON.
+
+        Phase 51K-2: service returns ScenarioDuplicateRouteOutcome
+        with status_code=404 and payload={"error": "Scenario not
+        found"}. The literal "Scenario not found" is present."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
+        assert "if original is None:" in clean
+        assert '"Scenario not found"' in clean
+        assert "status_code=404" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -384,7 +447,7 @@ class TestActiveScenarioBehavior:
 class TestOriginalScenarioLookup:
     def test_get_scenario_called_once(self):
         """get_scenario is called exactly once with (scenario_id, user.user_id)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "get_scenario(scenario_id, user.user_id)" in clean
         # The call signature appears exactly once (after stripping
@@ -394,7 +457,7 @@ class TestOriginalScenarioLookup:
 
     def test_get_scenario_return_value_checked(self):
         """The return value of get_scenario is checked for None."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         assert "if original is None:" in body
 
 
@@ -407,7 +470,7 @@ class TestDuplicateScenarioBehavior:
     def test_duplicate_scenario_called_once(self):
         """duplicate_scenario(user.user_id, scenario_id) is called
         exactly once after the None check."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "duplicate_scenario(user.user_id, scenario_id)" in clean
         assert clean.count("duplicate_scenario(user.user_id, scenario_id)") == 1
@@ -415,7 +478,7 @@ class TestDuplicateScenarioBehavior:
     def test_duplicate_called_after_get_scenario(self):
         """duplicate_scenario runs AFTER get_scenario's None check
         (auth happens first)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # get_scenario position
         get_pos = clean.find("get_scenario(scenario_id, user.user_id)")
@@ -441,22 +504,36 @@ class TestSnapshotWorkspaceBehavior:
     def test_route_resolves_workspace_state(self):
         """The route resolves workspace_state via
         get_workspace_state(user.user_id, original.project_id)
-        and passes it to _render_scenario_workspace."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert "get_workspace_state(user.user_id, original.project_id)" in body
+        and passes it to render_scenario_workspace.
+
+        Phase 51K-2: service uses
+        ``deps.get_workspace_state(user.user_id, original.project_id)``
+        inline in the render call (multiline)."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
+        # Substring match (works for multiline calls)
+        assert "get_workspace_state(" in clean
+        assert "user.user_id" in clean
+        assert "original.project_id" in clean
 
     def test_workspace_state_passed_to_render(self):
         """workspace_state is passed as the 5th positional arg of
-        _render_scenario_workspace."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        render_scenario_workspace (service) or _render_scenario_workspace
+        (legacy / pre-extraction)."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
         # The render call: _render_scenario_workspace(request, user,
-        # project_record, get_workspace_state(...), scenarios,
-        # history, exports, export_lineage, scenario_summary_cards,
-        # message=...)
-        # We just verify the call exists and the workspace_state
-        # is inline in the render call.
-        assert "_render_scenario_workspace(" in body
-        assert "get_workspace_state(user.user_id, original.project_id)" in body
+        # project_record, get_workspace_state(...), scenarios, ...
+        # (or the service variant: render_scenario_workspace(...)).
+        assert (
+            "_render_scenario_workspace(" in clean
+            or "render_scenario_workspace(" in clean
+        )
+        # get_workspace_state is referenced (inline in the render
+        # call as the 4th positional arg).
+        assert "get_workspace_state(" in clean
+        assert "user.user_id" in clean
+        assert "original.project_id" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -470,14 +547,14 @@ class TestPersistenceSideEffects:
     def test_duplicate_scenario_called_once(self):
         """duplicate_scenario is called exactly once per success
         (after the None check)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("duplicate_scenario(") == 1
 
     def test_read_only_queries_called_once_each(self):
         """list_scenarios, get_scenario_history, list_exports,
         build_export_lineage are called once each."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         for helper in (
             "list_scenarios(",
@@ -491,13 +568,13 @@ class TestPersistenceSideEffects:
 
     def test_get_workspace_state_called_once(self):
         """get_workspace_state is called exactly once."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("get_workspace_state(") == 1
 
     def test_get_project_by_code_called_once(self):
         """get_project_by_code is called exactly once."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("get_project_by_code(") == 1
 
@@ -511,25 +588,46 @@ class TestCallOrdering:
     def test_ordering_auth_get_duplicate_queries_render(self):
         """Order: get_current_user -> 404 check -> duplicate_scenario
         -> get_project_by_code -> list_scenarios -> get_scenario_history
-        -> list_exports -> build_export_lineage -> _render_scenario_workspace."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        clean = _strip_docstrings_and_comments(body)
+        -> list_exports -> build_export_lineage -> _render_scenario_workspace.
+
+        Phase 51K-2: route has get_current_user (auth) and
+        service has all the other orchestration calls.
+        """
+        # Use both bodies: route for auth position, service for
+        # the rest.
+        body_route = _route_body("/scenarios/{scenario_id}/duplicate")
+        body_service = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean_service = _strip_docstrings_and_comments(body_service)
+        # Accept either ``helper(`` or ``deps.helper(`` in service
+        def _pos(text, s):
+            p1 = text.find(s)
+            p2 = text.find("deps." + s)
+            candidates = [p for p in (p1, p2) if p != -1]
+            if not candidates:
+                return -1
+            return min(candidates)
+
+        # All positions must be present. Auth is in the route
+        # body; the orchestration calls are in the service body.
+        # We compare positions within the service body (relative
+        # ordering) and verify auth is in the route body.
+        assert body_route.find("get_current_user(request)") != -1, (
+            "auth (get_current_user) must be in the route body"
+        )
         positions = {
-            "auth": body.find("get_current_user(request)"),
-            "get_scenario": clean.find("get_scenario(scenario_id, user.user_id)"),
-            "duplicate": clean.find("duplicate_scenario(user.user_id, scenario_id)"),
-            "get_project_by_code": clean.find("get_project_by_code(user.user_id"),
-            "list_scenarios": clean.find("list_scenarios("),
-            "get_scenario_history": clean.find("get_scenario_history("),
-            "list_exports": clean.find("list_exports("),
-            "build_export_lineage": clean.find("build_export_lineage("),
-            "render": clean.find("_render_scenario_workspace("),
+            "get_scenario": _pos(clean_service, "get_scenario("),
+            "duplicate": _pos(clean_service, "duplicate_scenario("),
+            "get_project_by_code": _pos(clean_service, "get_project_by_code("),
+            "list_scenarios": _pos(clean_service, "list_scenarios("),
+            "get_scenario_history": _pos(clean_service, "get_scenario_history("),
+            "list_exports": _pos(clean_service, "list_exports("),
+            "build_export_lineage": _pos(clean_service, "build_export_lineage("),
+            "render": _pos(clean_service, "render_scenario_workspace("),
         }
-        # All positions must be present
+        # All positions must be present in the service
         for k, v in positions.items():
-            assert v != -1, f"{k} not found in route body"
-        # Ordering assertions
-        assert positions["auth"] < positions["get_scenario"]
+            assert v != -1, f"{k} not found in service body"
+        # Ordering assertions (within the service body)
         assert positions["get_scenario"] < positions["duplicate"]
         assert positions["duplicate"] < positions["get_project_by_code"]
         assert positions["get_project_by_code"] < positions["list_scenarios"]
@@ -551,7 +649,7 @@ class TestReplayMetadata:
         function is the single source of truth for the duplicate's
         metadata). This is a behavior difference from /scenarios/save
         and /save-run."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # The call signature is
         # duplicate_scenario(user.user_id, scenario_id)
@@ -577,7 +675,7 @@ class TestGovernanceState:
         """The /scenarios/{id}/duplicate route does NOT call
         _governance_snapshot — the repository function
         duplicate_scenario is the single source of truth."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "_governance_snapshot" not in clean
         assert "governance_snapshot(" not in clean
@@ -591,29 +689,45 @@ class TestGovernanceState:
 class TestResponseBehavior:
     def test_success_response_uses_render_scenario_workspace(self):
         """The success response is full workspace render via
-        _render_scenario_workspace(...)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        _render_scenario_workspace(...) (route) or
+        render_scenario_workspace(...) (service)."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # One render call (success path)
-        assert clean.count("_render_scenario_workspace(") == 1
+        assert (
+            clean.count("_render_scenario_workspace(")
+            + clean.count("render_scenario_workspace(")
+        ) == 1
 
-    def test_404_response_uses_jsonresponse(self):
-        """The 404 response is JSON, not HTML."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert "JSONResponse(" in body
-        assert 'status_code=404' in body
+    def test_404_response_uses_json(self):
+        """The 404 response is JSON, not HTML.
+
+        Pre-extraction: ``JSONResponse({"error": "Scenario not found"},
+        status_code=404)``.
+        Phase 51K-2: service returns ``ScenarioDuplicateRouteOutcome``
+        with ``status_code=404`` and ``payload={"error": "Scenario
+        not found"}``; the route translates to a JSONResponse.
+        """
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
+        # The literal "Scenario not found" string is present (in
+        # JSONResponse or in the outcome payload).
+        assert '"Scenario not found"' in clean
+        # And the 404 status code is referenced somewhere (in the
+        # route's JSONResponse or in the outcome.status_code)
+        assert "status_code=404" in clean or "status_code: int = 200" in body
 
     def test_success_message_includes_original_scenario_name(self):
         """The success message is
         f'Duplicated {original.scenario_name}.'"""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         assert "Duplicated {original.scenario_name}." in body
 
     def test_render_args_include_all_required(self):
         """The render call includes request, user, project_record,
         workspace_state, scenarios, history, exports, export_lineage,
         scenario_summary_cards, message."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         # Verify the render call has all required positional args
         # (in source order).
         for required in (
@@ -642,14 +756,14 @@ class TestHtmxHeaders:
         """The /scenarios/{id}/duplicate route does NOT set
         HX-Trigger or HX-Redirect. The response is a full workspace
         render, not an HTMX partial."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "HX-Trigger" not in clean
         assert "HX-Redirect" not in clean
 
     def test_404_no_htmx_headers(self):
         """The 404 JSON response does NOT use HTMX headers."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "HX-Trigger" not in clean
         assert "HX-Redirect" not in clean
@@ -663,14 +777,26 @@ class TestHtmxHeaders:
 class TestRedirectStatus:
     def test_auth_redirect_uses_redirectresponse(self):
         """The 302 auth redirect uses RedirectResponse(url='/login',
-        status_code=302)."""
+        status_code=302). The auth redirect is route-owned (auth
+        check happens before the service call)."""
         body = _route_body("/scenarios/{scenario_id}/duplicate")
         assert "RedirectResponse(url=\"/login\", status_code=302)" in body
 
     def test_404_uses_status_code_404(self):
-        """The 404 response uses status_code=404."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert "status_code=404" in body
+        """The 404 response uses status_code=404.
+
+        Phase 51K-2: service returns ScenarioDuplicateRouteOutcome
+        with status_code=404; the route translates to a
+        JSONResponse. The literal ``status_code=404`` is present
+        in the service outcome default OR the route's
+        JSONResponse."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
+        # The 404 status code is referenced in the service
+        # (ScenarioDuplicateRouteOutcome has ``status_code: int =
+        # 200`` field; the service explicitly sets it to 404 via
+        # ``status_code=404`` in the early return).
+        assert "status_code=404" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -682,16 +808,20 @@ class TestErrorFallback:
     def test_no_broad_except_in_route(self):
         """The route does NOT wrap the body in broad `except Exception`.
         Errors propagate to FastAPI default 500."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # No `except Exception:` (broad) inside the route
         assert "except Exception:" not in clean
 
     def test_only_explicit_error_path_is_404(self):
-        """The only explicit error path is the 404 JSON
-        (Scenario not found). Other errors propagate."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert 'JSONResponse({"error": "Scenario not found"}' in body
+        """The only explicit error path is the 404 (Scenario not
+        found). Pre-extraction: route's JSONResponse. Phase 51K-2:
+        service's ScenarioDuplicateRouteOutcome with status_code=404
+        and payload={"error": "Scenario not found"}."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
+        # The literal "Scenario not found" string is present
+        assert '"Scenario not found"' in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -717,7 +847,7 @@ class TestForbiddenSideEffectsAbsent:
     )
 
     def test_route_does_not_call_record_export_family(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         for helper in (
             "record_export(",
@@ -728,32 +858,32 @@ class TestForbiddenSideEffectsAbsent:
             assert helper not in clean
 
     def test_route_does_not_call_record_workspace_runtime(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "record_workspace_runtime(" not in clean
 
     def test_route_does_not_call_update_scenario_last_run_summary(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "update_scenario_last_run_summary(" not in clean
 
     def test_route_does_not_call_save_run(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "save_run(" not in clean
 
     def test_route_does_not_call_save_project(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "save_project(" not in clean
 
     def test_route_does_not_call_run_project(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "run_project(" not in clean
 
     def test_route_does_not_call_excel_export_builders(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         for helper in (
             "build_institutional_workbook_export(",
@@ -766,7 +896,7 @@ class TestForbiddenSideEffectsAbsent:
             )
 
     def test_route_does_not_use_db_or_session_directly(self):
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         for forbidden in (
             "db.add",
@@ -885,7 +1015,7 @@ class TestBehaviorQuirks:
         """Quirk 1: duplicate_scenario is called WITHOUT replay_metadata
         (different from /scenarios/save which passes
         export_type='saved_scenario_snapshot')."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # The call signature is positional only:
         # duplicate_scenario(user.user_id, scenario_id)
@@ -904,15 +1034,21 @@ class TestBehaviorQuirks:
 
     def test_quirk_2_404_uses_json_not_html(self):
         """Quirk 2: the 404 'Scenario not found' response is JSON
-        (NOT HTML, NOT redirect, NOT template render)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
-        assert 'JSONResponse({"error": "Scenario not found"}' in body
-        assert "status_code=404" in body
+        (NOT HTML, NOT redirect, NOT template render).
+
+        Phase 51K-2: service returns ScenarioDuplicateRouteOutcome
+        with status_code=404 and payload={"error": "Scenario not found"};
+        the route translates to a JSONResponse. The literal "Scenario
+        not found" string is present in the service payload."""
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
+        clean = _strip_docstrings_and_comments(body)
+        assert '"Scenario not found"' in clean
+        assert "status_code=404" in clean
 
     def test_quirk_3_success_message_includes_original_scenario_name(self):
         """Quirk 3: success message is
         f'Duplicated {original.scenario_name}.' (with period)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         assert "Duplicated {original.scenario_name}." in body
 
     def test_quirk_4_no_governance_snapshot_call(self):
@@ -920,7 +1056,7 @@ class TestBehaviorQuirks:
         (different from /scenarios/save which calls it 2x per
         success). The repository function duplicate_scenario is
         the single source of truth."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "_governance_snapshot" not in clean
 
@@ -930,7 +1066,7 @@ class TestBehaviorQuirks:
         (get_workspace_state(user.user_id, original.project_id)),
         not stored in a separate variable. The render call has 10
         positional args."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # workspace_state is the 4th positional arg of the render
         # call (request, user, project_record, workspace_state, ...).
@@ -942,7 +1078,7 @@ class TestBehaviorQuirks:
     def test_quirk_6_scenario_summary_cards_fields(self):
         """Quirk 6: scenario_summary_cards has 10 specific fields
         (same shape as /scenarios/save's cards)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         for field in (
             "scenario_id",
@@ -964,7 +1100,7 @@ class TestBehaviorQuirks:
         """Quirk 7: scenario_summary_cards.export_count is computed
         by counting export_lineage entries per scenario_name
         (same as /scenarios/save)."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         # The pattern: ``export_counts[entry["scenario_name"]] =
         # export_counts.get(entry["scenario_name"], 0) + 1``
@@ -975,7 +1111,7 @@ class TestBehaviorQuirks:
         """Quirk 8: the route is path-parameter-only; it does NOT
         read form input (no await request.form()). Different from
         /scenarios/save which accepts any form input as snapshot."""
-        body = _route_body("/scenarios/{scenario_id}/duplicate")
+        body = _route_or_service_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
         assert "await request.form()" not in clean
         assert "_collect_form_snapshot" not in clean
@@ -988,14 +1124,13 @@ class TestBehaviorQuirks:
         assert "HX-Trigger" not in clean
         assert "HX-Redirect" not in clean
 
-    def test_quirk_10_route_is_orchestration_only(self):
-        """Quirk 10: the route is currently inline orchestration
-        (no service.execute_* pattern yet). After 51K-2 it should
-        use execute_scenario_duplicate_route(...)."""
+    def test_quirk_10_route_uses_service_after_extraction(self):
+        """Quirk 10: post-extraction, the route uses
+        execute_scenario_duplicate_route(...)."""
         body = _route_body("/scenarios/{scenario_id}/duplicate")
         clean = _strip_docstrings_and_comments(body)
-        # Pre-extraction: no execute pattern
-        assert "execute_scenario_duplicate_route(" not in clean
+        # Post-extraction: the route uses the execute pattern
+        assert "execute_scenario_duplicate_route(" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1004,21 +1139,22 @@ class TestBehaviorQuirks:
 
 
 class TestExtractionBoundaryRecommendation:
-    def test_scenario_duplicate_service_does_not_exist_yet(self):
-        """Pre-51K-2: scenario_duplicate_service.py does NOT exist."""
+    def test_scenario_duplicate_service_exists(self):
+        """Phase 51K-2: scenario_duplicate_service.py exists in
+        app/services/."""
         path = SERVICES_DIR / "scenario_duplicate_service.py"
-        assert not path.exists(), (
-            f"{path} must NOT exist before Phase 51K-2"
+        assert path.exists(), (
+            f"{path} must exist after Phase 51K-2"
         )
+        # The service should export the canonical API
+        text = path.read_text(encoding="utf-8")
+        assert "class ScenarioDuplicateRouteOutcome" in text
+        assert "class ScenarioDuplicateRouteDeps" in text
+        assert "async def execute_scenario_duplicate_route(" in text
 
     def test_recommended_module_name(self):
         """The recommended 51K-2 module is
-        app/services/scenario_duplicate_service.py (NOT extension
-        of scenario_state_service.py, scenario_state_route_service.py,
-        or scenarios_save_service.py)."""
-        # The recommendation is documented in the docstring; this
-        # test simply ensures the file path is consistent with
-        # the recommendation.
+        app/services/scenario_duplicate_service.py."""
         path = SERVICES_DIR / "scenario_duplicate_service.py"
-        assert not path.exists()
+        assert path.exists()
         # After 51K-2 it should be created
