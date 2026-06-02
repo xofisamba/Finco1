@@ -1,0 +1,92 @@
+{
+  "package": {
+    "name": "Finco1 Pilot Readiness Checklist",
+    "workstream": "B7",
+    "branch": "parallel-b-governance-pack",
+    "base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "checklist_version": "0.1.0",
+    "checklist_status": "initial_template",
+    "intended_use": "internal_pilot_gate_only",
+    "external_claim_scope": "none"
+  },
+  "runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "feedback_protocol_pointer": "docs/pilot/pilot_user_feedback_protocol.md",
+  "triage_process_pointer": "docs/pilot/pilot_issue_triage_process.md",
+  "support_process_pointer": "docs/ops/support_and_incident_response.md",
+  "no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "checklist_categories": [
+    "scope_and_inputs",
+    "users_and_acknowledgement",
+    "environment_isolation",
+    "run_window",
+    "triage_and_feedback",
+    "support_and_incident_response",
+    "evidence_storage",
+    "exit_criteria",
+    "no_go_acknowledgement"
+  ],
+  "checklist": {
+    "scope_and_inputs": {
+      "pilot_scope_documented": {"required": true, "status": "pending", "notes": ""},
+      "model_areas_under_test_documented": {"required": true, "status": "pending", "notes": ""},
+      "input_set_documented": {"required": true, "status": "pending", "notes": ""},
+      "expected_output_range_documented": {"required": true, "status": "pending", "notes": ""},
+      "pilot_claim_allowed_per_area_verified": {"required": true, "status": "pending", "notes": "Cross-check with reports/validation/validation_evidence_matrix.json"}
+    },
+    "users_and_acknowledgement": {
+      "pilot_users_identified": {"required": true, "status": "pending", "notes": ""},
+      "pilot_user_acknowledgement_signed": {"required": true, "status": "pending", "notes": ""},
+      "pilot_operator_identified": {"required": true, "status": "pending", "notes": ""}
+    },
+    "environment_isolation": {
+      "pilot_environment_isolated": {"required": true, "status": "pending", "notes": ""},
+      "no_production_data_accessible": {"required": true, "status": "pending", "notes": ""},
+      "no_customer_data_accessible": {"required": true, "status": "pending", "notes": ""},
+      "no_third_party_nda_data_accessible": {"required": true, "status": "pending", "notes": ""}
+    },
+    "run_window": {
+      "start_date_documented": {"required": true, "status": "pending", "notes": ""},
+      "end_date_documented": {"required": true, "status": "pending", "notes": ""},
+      "hours_of_operation_documented": {"required": true, "status": "pending", "notes": ""}
+    },
+    "triage_and_feedback": {
+      "issue_triage_process_in_place": {"required": true, "status": "pending", "notes": "Reference: docs/pilot/pilot_issue_triage_process.md"},
+      "user_feedback_protocol_in_place": {"required": true, "status": "pending", "notes": "Reference: docs/pilot/pilot_user_feedback_protocol.md"},
+      "feedback_form_template_available": {"required": true, "status": "pending", "notes": ""}
+    },
+    "support_and_incident_response": {
+      "support_process_in_place": {"required": true, "status": "pending", "notes": "Reference: docs/ops/support_and_incident_response.md"},
+      "on_call_assigned": {"required": true, "status": "pending", "notes": ""},
+      "incident_response_tiers_documented": {"required": true, "status": "pending", "notes": ""},
+      "post_incident_review_process_documented": {"required": true, "status": "pending", "notes": ""}
+    },
+    "evidence_storage": {
+      "pilot_only_storage_location_documented": {"required": true, "status": "pending", "notes": ""},
+      "retention_policy_documented": {"required": true, "status": "pending", "notes": ""},
+      "access_control_documented": {"required": true, "status": "pending", "notes": ""}
+    },
+    "exit_criteria": {
+      "success_criteria_documented": {"required": true, "status": "pending", "notes": "Reference: controlled_pilot_runbook.md §7.2"},
+      "failure_criteria_documented": {"required": true, "status": "pending", "notes": "Reference: controlled_pilot_runbook.md §7.3"},
+      "early_termination_process_documented": {"required": true, "status": "pending", "notes": ""}
+    },
+    "no_go_acknowledgement": {
+      "no_go_claim_list_acknowledged_by_pilot_users": {"required": true, "status": "pending", "notes": ""},
+      "no_go_claim_list_acknowledged_by_pilot_operators": {"required": true, "status": "pending", "notes": ""}
+    }
+  },
+  "summary": {
+    "total_items": 0,
+    "items_pending": 0,
+    "items_passed": 0,
+    "items_failed": 0,
+    "pilot_start_authorized": false
+  },
+  "global_notes": [
+    "This checklist is the gate for pilot start. Every item must be in status 'passed' before the pilot can start. The pilot operator is responsible for updating item statuses.",
+    "Cross-check pilot_claim_allowed per area in reports/validation/validation_evidence_matrix.json. Areas where pilot_claim_allowed is false are out of pilot scope.",
+    "A pilot is internal validation with a real human in the loop. It does not produce external claims of any kind. See docs/external_review/no_go_claims.md for the full no-go scope.",
+    "The checklist is updated as a normal B-track operation. Failed items must have a remediation plan and target date before the next pilot start attempt."
+  ]
+}

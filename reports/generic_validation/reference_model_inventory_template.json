@@ -1,0 +1,90 @@
+{
+  "package": {
+    "name": "Finco1 Generic Reference Model Inventory Template",
+    "workstream": "B2",
+    "branch": "parallel-b-governance-pack",
+    "base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "inventory_version": "0.1.0",
+    "inventory_status": "empty_template",
+    "intended_use": "internal_validation_only",
+    "external_claim_scope": "none"
+  },
+  "acquisition_workflow_pointer": "docs/generic_validation/generic_reference_acquisition_plan.md",
+  "solar_requirements_pointer": "docs/generic_validation/generic_solar_reference_requirements.md",
+  "wind_requirements_pointer": "docs/generic_validation/generic_wind_reference_requirements.md",
+  "no_go_boundaries_pointer": "docs/generic_validation/generic_validation_no_go_boundaries.md",
+  "readiness_matrix_pointer": "reports/generic_validation/generic_validation_readiness_matrix.json",
+  "b1_no_go_list_pointer": "docs/external_review/no_go_claims.md",
+  "schema_notes": {
+    "status_values": [
+      "candidate",
+      "incomplete",
+      "transcribed",
+      "parity-pass",
+      "parity-fail",
+      "accepted",
+      "rejected"
+    ],
+    "status_meaning": {
+      "candidate": "Identified as a candidate; not yet evaluated against the six-component test",
+      "incomplete": "One or more required components in the six-component test are missing",
+      "transcribed": "Inputs and outputs have been transcribed to the Finco1 input format and a structured comparison sheet",
+      "parity-pass": "First parity run on transcribed inputs matches the source within tolerance",
+      "parity-fail": "First parity run on transcribed inputs does not match the source within tolerance",
+      "accepted": "Parity results have been internally reviewed and the reference is accepted for generic validation work",
+      "rejected": "Reference is rejected; see rejection_rationale"
+    }
+  },
+  "inventory": [],
+  "summary": {
+    "total_references": 0,
+    "by_technology": {
+      "solar": {"candidate": 0, "incomplete": 0, "transcribed": 0, "parity-pass": 0, "parity-fail": 0, "accepted": 0, "rejected": 0},
+      "wind": {"candidate": 0, "incomplete": 0, "transcribed": 0, "parity-pass": 0, "parity-fail": 0, "accepted": 0, "rejected": 0},
+      "solar+bess": {"candidate": 0, "incomplete": 0, "transcribed": 0, "parity-pass": 0, "parity-fail": 0, "accepted": 0, "rejected": 0},
+      "wind+bess": {"candidate": 0, "incomplete": 0, "transcribed": 0, "parity-pass": 0, "parity-fail": 0, "accepted": 0, "rejected": 0},
+      "other": {"candidate": 0, "incomplete": 0, "transcribed": 0, "parity-pass": 0, "parity-fail": 0, "accepted": 0, "rejected": 0}
+    },
+    "by_status": {
+      "candidate": 0,
+      "incomplete": 0,
+      "transcribed": 0,
+      "parity-pass": 0,
+      "parity-fail": 0,
+      "accepted": 0,
+      "rejected": 0
+    },
+    "accepted_count_per_technology": {
+      "solar": 0,
+      "wind": 0,
+      "solar+bess": 0,
+      "wind+bess": 0,
+      "other": 0
+    },
+    "relaxation_count": 0
+  },
+  "promotion_gates": {
+    "generic_solar_promotion_to_internally_tested": {
+      "required_accepted_references": 3,
+      "required_internal_review": true,
+      "required_b3_matrix_update": true,
+      "required_documented_rationale": true,
+      "current_status": "blocked",
+      "current_count": 0
+    },
+    "generic_wind_promotion_to_internally_tested": {
+      "required_accepted_references": 3,
+      "required_internal_review": true,
+      "required_b3_matrix_update": true,
+      "required_documented_rationale": true,
+      "current_status": "blocked",
+      "current_count": 0
+    }
+  },
+  "global_notes": [
+    "This inventory is empty at package creation. It will be populated per the acquisition workflow as candidates are identified and evaluated.",
+    "Each entry must record source, licence, inputs, outputs, tolerances, and replay instructions per the six-component test in generic_reference_acquisition_plan.md §2.",
+    "A reference is rejected if any required component is missing, if the licence is incompatible with internal use, or if the reference is essentially a copy of TUHO, Oborovo, or any other Finco1-produced model.",
+    "Generic solar and generic wind remain exploratory and unvalidated for any external claim. See the no-go boundaries document for the full list."
+  ]
+}

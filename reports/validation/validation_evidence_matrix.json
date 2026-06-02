@@ -1,0 +1,569 @@
+{
+  "package": {
+    "name": "Finco1 Validation Evidence Matrix",
+    "workstream": "B3",
+    "branch": "parallel-b-governance-pack",
+    "base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "b1_merged_in_base": true,
+    "b1_pr": 390,
+    "matrix_version": "0.1.0",
+    "matrix_status": "initial_draft",
+    "intended_review_window": "internal_only_no_external_claim",
+    "no_go_list_pointer": "docs/external_review/no_go_claims.md",
+    "b1_package_pointer": "docs/external_review/external_review_package_index.md"
+  },
+  "taxonomy_pointer": "docs/validation/model_evidence_taxonomy.md",
+  "boundaries_pointer": "docs/validation/internal_vs_external_validation_boundaries.md",
+  "narrative_pointer": "docs/validation/validation_evidence_matrix.md",
+  "evidence_categories_used": [
+    "not_implemented",
+    "implemented_but_unvalidated",
+    "exploratory",
+    "internally_tested",
+    "golden_parity_tested",
+    "pinned_regression_protected",
+    "pilot_user_tested",
+    "externally_reviewed",
+    "approved_for_narrow_scope",
+    "approved_for_generic_scope",
+    "blocked",
+    "not_approved"
+  ],
+  "claim_level_definitions": {
+    "external_claim_allowed": "Project-internal flag indicating whether the project is willing to make a written statement to an outside party that the area behaves as documented. NOT a lender/bank/audit/regulatory/certification/SaaS claim.",
+    "pilot_claim_allowed": "Project-internal flag indicating whether the area is ready for controlled-pilot exposure to a real human user. NOT a production claim."
+  },
+  "global_defaults": {
+    "external_claim_allowed": false,
+    "pilot_claim_allowed": false
+  },
+  "areas": [
+    {
+      "area_id": "AREA-001",
+      "area_name": "TUHO (Wind 1, 35 MW x 5 turbines) reference model",
+      "current_status": "Frozen reference template with five golden outputs pinned by Phase 51F (engine-output golden guardrail). Internal factory: app/project_factories.py:create_default_tuho_wind1().",
+      "evidence_category": "golden_parity_tested",
+      "evidence_files": [
+        "app/project_factories.py",
+        "app/waterfall_core.py",
+        "reports/phase7_tuho_senior_debt_sizing_extraction.csv",
+        "tests/test_phase51f_parallel_work_guardrails.py"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase51f_parallel_work_guardrails.py::TestEngineOutputGoldenTUHO (5 tests)",
+        "tests/test_phase51f_parallel_work_guardrails.py::TestParityCoreLock (parametrized for reports/phase7_tuho_senior_debt_sizing_extraction.csv)"
+      ],
+      "missing_evidence": [
+        "External review of TUHO scope (B1 package prepared, review not yet performed)",
+        "Pilot-user testing of TUHO end-to-end run/validate/export flow"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "No external review performed yet",
+        "No pilot run with real user yet"
+      ],
+      "dependencies": [
+        "AREA-014 (Phase 51F guardrails must remain active)"
+      ],
+      "notes": "TUHO is the narrow-scope target for promotion to approved_for_narrow_scope once B1 review and a controlled pilot are completed. The five pinned values (first_finite_dscr, first_distribution_op_idx, total_operating_periods, opex_total_keur, opex_y1_keur) are regression protection, not external validation."
+    },
+    {
+      "area_id": "AREA-002",
+      "area_name": "Oborovo (Solar PV, 75.26 MWp) reference model",
+      "current_status": "Frozen reference template with five golden outputs pinned by Phase 51F (engine-output golden guardrail). Internal factory: app/project_factories.py:create_default_oborovo().",
+      "evidence_category": "golden_parity_tested",
+      "evidence_files": [
+        "app/project_factories.py",
+        "app/waterfall_core.py",
+        "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",
+        "tests/test_phase51f_parallel_work_guardrails.py"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase51f_parallel_work_guardrails.py::TestEngineOutputGoldenOborovo (5 tests)",
+        "tests/test_phase51f_parallel_work_guardrails.py::TestParityCoreLock (parametrized for reports/phase23q_oborovo_senior_debt_sizing_extraction.csv)"
+      ],
+      "missing_evidence": [
+        "External review of Oborovo scope (B1 package prepared, review not yet performed)",
+        "Pilot-user testing of Oborovo end-to-end run/validate/export flow"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "No external review performed yet",
+        "No pilot run with real user yet"
+      ],
+      "dependencies": [
+        "AREA-014 (Phase 51F guardrails must remain active)"
+      ],
+      "notes": "Oborovo is the narrow-scope target for promotion to approved_for_narrow_scope once B1 review and a controlled pilot are completed. The five pinned values mirror TUHO and are the same kind of regression protection."
+    },
+    {
+      "area_id": "AREA-003",
+      "area_name": "Generic solar modeling",
+      "current_status": "Implemented in domain/revenue and other layers, exercised by validation/cases/solar_case_1.py and solar_case_2.py. No golden-parity pinning for the generic case; no external claim permitted.",
+      "evidence_category": "exploratory",
+      "evidence_files": [
+        "domain/revenue/",
+        "domain/capex/",
+        "validation/cases/solar_case_1.py",
+        "validation/cases/solar_case_2.py"
+      ],
+      "tests_or_reports_to_check": [
+        "validation/cases/solar_case_1.py",
+        "validation/cases/solar_case_2.py",
+        "Tests that exercise domain/revenue for solar inputs (to be enumerated by reviewer)"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for the generic solar case (see B2 workstream for acquisition framework)",
+        "External review of generic solar claims",
+        "Reference model library for generic solar (B2 is the acquisition plan; no references acquired yet)"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "No reference model library (B2 in progress)",
+        "No golden-parity test for the generic case",
+        "Generically exploratory by policy (per no-go claim list)"
+      ],
+      "dependencies": [
+        "AREA-013 (B2 reference acquisition must complete before promotion)",
+        "Oborovo (AREA-002) is a specific project, NOT generic solar; do not use Oborovo as evidence for generic solar"
+      ],
+      "notes": "Generic solar remains exploratory for any external claim per the no-go list. Oborovo is a specific project configuration and does not constitute generic-solar evidence."
+    },
+    {
+      "area_id": "AREA-004",
+      "area_name": "Generic wind modeling",
+      "current_status": "Implemented in domain layers, exercised by validation/cases/wind_case_1.py. No golden-parity pinning for the generic case; no external claim permitted.",
+      "evidence_category": "exploratory",
+      "evidence_files": [
+        "domain/revenue/",
+        "validation/cases/wind_case_1.py"
+      ],
+      "tests_or_reports_to_check": [
+        "validation/cases/wind_case_1.py",
+        "Tests that exercise domain/revenue for wind inputs (to be enumerated by reviewer)"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for the generic wind case (see B2 workstream for acquisition framework)",
+        "External review of generic wind claims",
+        "Reference model library for generic wind (B2 is the acquisition plan; no references acquired yet)"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "No reference model library (B2 in progress)",
+        "No golden-parity test for the generic case",
+        "Generically exploratory by policy (per no-go claim list)"
+      ],
+      "dependencies": [
+        "AREA-013 (B2 reference acquisition must complete before promotion)",
+        "TUHO (AREA-001) is a specific project, NOT generic wind; do not use TUHO as evidence for generic wind"
+      ],
+      "notes": "Generic wind remains exploratory for any external claim per the no-go list. TUHO is a specific project configuration and does not constitute generic-wind evidence."
+    },
+    {
+      "area_id": "AREA-005",
+      "area_name": "BESS (Battery Energy Storage System) engine",
+      "current_status": "BESS revenue engine is implemented and tested. BESS waterfall is described as 'in progress' in the project README and is not part of the standard project flow yet.",
+      "evidence_category": "implemented_but_unvalidated",
+      "evidence_files": [
+        "app/services/bess related modules (if any)",
+        "domain/revenue/bess (if present)"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_bess_engine.py",
+        "tests/test_bess_revenue.py",
+        "tests/test_bess_project_factory.py",
+        "tests/test_bess_hybrid_full_flow.py"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for BESS",
+        "End-to-end waterfall for BESS (revenue-only per README)",
+        "External review of BESS scope"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "BESS waterfall is not part of the standard project flow yet",
+        "No golden-parity test for BESS",
+        "No external claim permitted while waterfall is revenue-only"
+      ],
+      "dependencies": [],
+      "notes": "BESS is treated as in-progress. BESS-related test files exist; the reviewer should enumerate pass/fail. BESS is not pinned by Phase 51F."
+    },
+    {
+      "area_id": "AREA-006",
+      "area_name": "BESS hybrid (Solar+BESS, Wind+BESS) full flow",
+      "current_status": "Hybrid full flow has a single integration test. README describes hybrid projects as 'revenue-only (waterfall in progress)'. Not pinned.",
+      "evidence_category": "implemented_but_unvalidated",
+      "evidence_files": [],
+      "tests_or_reports_to_check": [
+        "tests/test_bess_hybrid_full_flow.py"
+      ],
+      "missing_evidence": [
+        "End-to-end waterfall for hybrid",
+        "Golden-parity pinning for hybrid",
+        "Multiple independent test cases for hybrid scenarios"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "Hybrid waterfall in progress per README",
+        "Single integration test is not sufficient evidence"
+      ],
+      "dependencies": [
+        "AREA-005 (BESS engine must be complete before hybrid can be fully validated)"
+      ],
+      "notes": "Hybrid flow is dependent on BESS engine completion. Reviewer should run the single integration test and confirm pass/fail."
+    },
+    {
+      "area_id": "AREA-007",
+      "area_name": "Tax (CIT, LCF, ATAD EBITDA limitation, withholding)",
+      "current_status": "Tax logic is implemented and has multiple dedicated tests including bankable depreciation, CIT H2 annual trigger, and book/tax bridge.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "domain/tax/",
+        "domain/depreciation/",
+        "domain/depreciation_offline/"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_cit_h2_annual_trigger.py",
+        "tests/test_bankable_depreciation.py",
+        "tests/test_depreciation.py",
+        "tests/test_book_depreciation_pnl_bridge.py",
+        "tests/test_depreciation_canonical_wiring.py"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for tax outputs (currently not pinned)",
+        "External review of tax scope (B1 package prepared, tax not yet in reviewer focus)"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "No golden-parity test for tax",
+        "No external review of tax scope"
+      ],
+      "dependencies": [],
+      "notes": "Tax is a wide area. Reviewer should enumerate which sub-areas are tested and which are not. The matrix does not split tax into CIT/LCF/ATAD/WHT sub-areas in this version."
+    },
+    {
+      "area_id": "AREA-008",
+      "area_name": "Senior debt (DSCR sculpting, schedules, service)",
+      "current_status": "Senior debt is implemented and partially pinned. The TUHO and Oborovo senior-debt extraction CSVs are parity-core-locked by Phase 51F. The DSCR-sculpting policy itself is internally tested but not pinned.",
+      "evidence_category": "golden_parity_tested",
+      "evidence_files": [
+        "app/waterfall_core.py",
+        "app/project_factories.py",
+        "reports/phase7_tuho_senior_debt_sizing_extraction.csv (parity-locked)",
+        "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv (parity-locked)",
+        "domain/senior_debt_sizing/",
+        "domain/debt/"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase51f_parallel_work_guardrails.py::TestParityCoreLock (parametrized for both senior-debt CSVs)",
+        "tests/test_phase51f_parallel_work_guardrails.py::TestEngineOutputGoldenTUHO and Oborovo (first_finite_dscr values are senior-debt-derived)",
+        "tests/test_debt_dscr_schedule_policy.py",
+        "tests/test_debt_excel_alignment.py"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for senior-debt outputs beyond the two extraction CSVs",
+        "External review of the DSCR-sculpting policy",
+        "Pilot-user testing of senior-debt sizing workflow"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "Flat/min DSCR sculpting is NOT APPROVED (different policy, not in scope here)",
+        "Partial-pay sweep is NOT PROMOTED (not in scope here)"
+      ],
+      "dependencies": [
+        "AREA-014 (Phase 51F guardrails must remain active)",
+        "AREA-001, AREA-002 (senior-debt outputs are pinned for TUHO and Oborovo only)"
+      ],
+      "notes": "Senior-debt claims are pinned for TUHO and Oborovo only. Generic senior-debt claims (e.g. 'our DSCR sculpting is correct for any project') are not supported."
+    },
+    {
+      "area_id": "AREA-009",
+      "area_name": "SHL (subordinated hybrid loan)",
+      "current_status": "SHL is referenced in the README and is part of the model. Internal tests touch SHL-related code, but the SHL scope is not pinned or externally reviewed.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "domain/debt/ (SHL-related modules if present)"
+      ],
+      "tests_or_reports_to_check": [
+        "Tests that exercise SHL inputs (to be enumerated by reviewer; not pinned by Phase 51F)"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for SHL outputs",
+        "External review of SHL scope",
+        "Pilot-user testing of SHL workflow"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "SHL is not pinned by Phase 51F",
+        "SHL is not in the B1 review focus"
+      ],
+      "dependencies": [],
+      "notes": "SHL is treated as internally tested but not yet at pilot-readiness for external-claim purposes. Reviewer should enumerate tests touching SHL."
+    },
+    {
+      "area_id": "AREA-010",
+      "area_name": "Sponsor economics (Project IRR, Equity IRR, Sponsor IRR, NPV)",
+      "current_status": "Returns module is implemented and tested. Returns are not pinned by Phase 51F; the pin covers DSCR, first distribution, period counts, and OpEx, not IRR/NPV directly.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "domain/returns/"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase10_reconciliation_irr_reporting_view.py",
+        "Other tests under tests/ that touch domain/returns (to be enumerated by reviewer)"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for IRR/NPV outputs",
+        "External review of returns scope"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "Returns are not pinned by Phase 51F",
+        "IRR/NPV are sensitive to floating-point and convention; pinning is hard"
+      ],
+      "dependencies": [],
+      "notes": "Returns are widely used in any pilot or external review; the gap between internally-tested and golden-parity-tested is the next step to consider."
+    },
+    {
+      "area_id": "AREA-011",
+      "area_name": "Distributions (first distribution timing, total distributions)",
+      "current_status": "Distributions are partially pinned by Phase 51F: first_distribution_op_idx is golden for TUHO and Oborovo. Total distributions are not pinned.",
+      "evidence_category": "golden_parity_tested",
+      "evidence_files": [
+        "app/waterfall_core.py",
+        "app/project_factories.py"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase51f_parallel_work_guardrails.py::TestEngineOutputGoldenTUHO (first_distribution_op_idx = 35)",
+        "tests/test_phase51f_parallel_work_guardrails.py::TestEngineOutputGoldenOborovo (first_distribution_op_idx = 39)"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for total distribution values",
+        "External review of distribution mechanics"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "Total distributions not pinned"
+      ],
+      "dependencies": [
+        "AREA-001, AREA-002 (first distribution index pinned for TUHO and Oborovo only)"
+      ],
+      "notes": "Partial pinning. The first distribution index is pinned; the total distribution value is not."
+    },
+    {
+      "area_id": "AREA-012",
+      "area_name": "Excel export (institutional workbook, calibration reconciliation pack)",
+      "current_status": "Excel export has dedicated tests including phase10 excel parity, phase11 institutional export product polish, phase14 export lineage UI, and the reconciliation pack.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "app/export/",
+        "app/services/export_service.py",
+        "app/services/export_audit_service.py"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase10_excel_parity_export_foundation.py",
+        "tests/test_phase11_institutional_export_product_polish.py",
+        "tests/test_phase14_export_lineage_ui.py",
+        "tests/test_phase10_calibration_reconciliation_pack.py"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for exported Excel contents",
+        "External review of export fidelity"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "Exported contents are not pinned",
+        "Excel format drift over time is a known risk"
+      ],
+      "dependencies": [],
+      "notes": "Export is a pilot-ready area; pilot-user feedback will be the first non-internal test."
+    },
+    {
+      "area_id": "AREA-013",
+      "area_name": "Scenario persistence (saved scenarios, scenario state)",
+      "current_status": "Scenario persistence is implemented and tested, with phase12 persistence and saved scenarios foundation, and phase12 scenario compare and history workflow tests.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "app/persistence/",
+        "app/services/scenario_state_service.py"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase12_persistence_and_saved_scenarios_foundation.py",
+        "tests/test_phase12_scenario_compare_and_history_workflow.py"
+      ],
+      "missing_evidence": [
+        "Golden-parity pinning for persisted scenario state",
+        "External review of persistence layer",
+        "Pilot-user testing of save/load workflow"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "Persisted state is not pinned",
+        "Persistence layer is owned by Agent A; future /save-run work (Phase 51G-2) will change behavior"
+      ],
+      "dependencies": [
+        "Agent A Phase 51G-2 (future /save-run extraction) will modify this area"
+      ],
+      "notes": "Scenario persistence is in flux because /save-run extraction is Agent A's next track. Pilot should be deferred until 51G-2 lands."
+    },
+    {
+      "area_id": "AREA-014",
+      "area_name": "Phase 51F guardrails (engine-output golden, parity-core lock, no-service-imports)",
+      "current_status": "Active on main. Three guardrails, all behavior-level. 21 tests in tests/test_phase51f_parallel_work_guardrails.py, all green at the current base.",
+      "evidence_category": "pinned_regression_protected",
+      "evidence_files": [
+        "tests/test_phase51f_parallel_work_guardrails.py",
+        "app/waterfall_core.py (parity-core)",
+        "app/project_factories.py (parity-core)",
+        "reports/phase7_tuho_senior_debt_sizing_extraction.csv (parity-core)",
+        "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv (parity-core)",
+        "docs/phase51f_parallel_work_guardrails.md"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase51f_parallel_work_guardrails.py (21 tests, all green at the current base SHA d93ad99)"
+      ],
+      "missing_evidence": [
+        "External review of the guardrail design (B1 package prepared, design not yet externally reviewed)"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "Pin correctness at time of pin-setting is not self-evident; only consistency is verifiable"
+      ],
+      "dependencies": [
+        "All pinned areas (TUHO, Oborovo, senior debt, distributions) depend on this area remaining intact"
+      ],
+      "notes": "Phase 51F guardrails are project-internal refactor protection. They are NOT external validation. They are not promoted to external_claim_allowed by virtue of being green."
+    },
+    {
+      "area_id": "AREA-015",
+      "area_name": "Phase 51G-1 /save-run golden characterization",
+      "current_status": "On main as of 2e41b24. Characterization only: 58 tests pin 15 characterized behaviors of the existing /save-run route. No extraction, no production code change.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "docs/phase51g1_save_run_route_golden_characterization.md",
+        "reports/phase51g1_save_run_route_golden_characterization_summary.json",
+        "tests/test_phase51g1_save_run_route_golden_characterization.py",
+        "main_web.py:2624-2760 (the characterized route, not modified)"
+      ],
+      "tests_or_reports_to_check": [
+        "tests/test_phase51g1_save_run_route_golden_characterization.py (58 tests)"
+      ],
+      "missing_evidence": [
+        "The route is not yet extracted; behavior is characterized in-place",
+        "Future Phase 51G-2 extraction will change the surface area; current characterization will need refresh"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "Route is not yet extracted; behavior is in-place only"
+      ],
+      "dependencies": [
+        "Agent A Phase 51G-2 (future /save-run extraction) is the next step for this area"
+      ],
+      "notes": "Characterization only, not extraction. The route is still inline in main_web.py at the lines noted. Pilot testing of /save-run must wait for 51G-2."
+    },
+    {
+      "area_id": "AREA-016",
+      "area_name": "B1 external review package (PR #390)",
+      "current_status": "Merged to main as d93ad99. Scaffolding for a third-party reviewer is in place. Reviewer not yet engaged; review not yet performed.",
+      "evidence_category": "externally_reviewed",
+      "evidence_files": [
+        "docs/external_review/external_review_package_index.md",
+        "docs/external_review/reviewer_instructions.md",
+        "docs/external_review/model_scope_and_limitations.md",
+        "docs/external_review/tuho_oborovo_validation_summary.md",
+        "docs/external_review/no_go_claims.md",
+        "reports/external_review/external_review_readiness_matrix.json"
+      ],
+      "tests_or_reports_to_check": [
+        "B1 readiness matrix (28 areas, A01-A28) in reports/external_review/external_review_readiness_matrix.json"
+      ],
+      "missing_evidence": [
+        "The actual external review output (a third-party document addressing the readiness matrix and answering the required questions)"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "No third-party reviewer has produced a written output yet"
+      ],
+      "dependencies": [],
+      "notes": "B1 is documentation/evidence prep, not external validation itself. The matrix area is filed as externally_reviewed (scaffolding) but external_claim_allowed remains false until a real review output exists."
+    },
+    {
+      "area_id": "AREA-017",
+      "area_name": "UI warnings (tax, O&M, debt headroom, etc.)",
+      "current_status": "Streamlit UI is implemented (streamlit_app.py, ui/, app/ui). Whether in-page warnings are present and exercised by tests is to be enumerated by the reviewer.",
+      "evidence_category": "implemented_but_unvalidated",
+      "evidence_files": [
+        "streamlit_app.py",
+        "ui/",
+        "app/ui/"
+      ],
+      "tests_or_reports_to_check": [
+        "Tests that exercise UI warnings (to be enumerated; no dedicated tests/ file may exist for warnings specifically)"
+      ],
+      "missing_evidence": [
+        "Dedicated tests for warning behavior",
+        "Pinning of any UI warning output"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": true,
+      "blockers": [
+        "UI is presentation only; warnings are not part of the model source of truth"
+      ],
+      "dependencies": [],
+      "notes": "UI is presentation; the model is the source of truth. UI warnings are an internal UX feature, not a model output. Pilot-user testing of UI is the appropriate evidence-gathering step."
+    },
+    {
+      "area_id": "AREA-018",
+      "area_name": "Governance (no-go claim list, validation matrix, B-track work)",
+      "current_status": "Governance documentation exists: B1 no-go claim list (PR #390, merged), this B3 matrix, B-track workstream definitions. Governance is not a model area; it is a documentation/process area.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "docs/external_review/no_go_claims.md",
+        "docs/validation/validation_evidence_matrix.md",
+        "docs/validation/model_evidence_taxonomy.md",
+        "docs/validation/internal_vs_external_validation_boundaries.md",
+        "reports/validation/validation_evidence_matrix.json"
+      ],
+      "tests_or_reports_to_check": [
+        "B1 no-go claim list (merged in PR #390)",
+        "B3 matrix (this document)"
+      ],
+      "missing_evidence": [
+        "External review of governance posture itself",
+        "Pilot-user testing of governance process"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "Governance is process; it does not have a runtime test surface"
+      ],
+      "dependencies": [],
+      "notes": "Governance is documentation. It is internally tested in the sense that the documents exist and cross-reference each other. It is not externally claimable."
+    }
+  ],
+  "global_notes": [
+    "No area in this matrix currently has external_claim_allowed: true. The project does not make external claims at this time.",
+    "Areas with pilot_claim_allowed: true are candidates for the controlled pilot (B7). They are not yet ready for any external claim.",
+    "AREA-001 (TUHO) and AREA-002 (Oborovo) are the two narrow-scope targets for promotion to approved_for_narrow_scope after B1 review and a controlled pilot.",
+    "AREA-003 (generic solar) and AREA-004 (generic wind) are explicitly exploratory and are not promoted to pilot or external claim by the existence of Oborovo / TUHO as specific projects.",
+    "AREA-014 (Phase 51F guardrails) is regression protection, not external validation, and is not promoted to external_claim_allowed by being green.",
+    "AREA-015 (Phase 51G-1) is characterization only and depends on Agent A Phase 51G-2 (future /save-run extraction) for promotion.",
+    "This matrix is a working artifact. Demotions to weaker categories are encouraged when evidence is found insufficient. See model_evidence_taxonomy.md §6 for the demotion procedure."
+  ]
+}

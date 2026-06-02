@@ -1,0 +1,350 @@
+{
+  "package": {
+    "name": "Finco1 Enterprise SaaS Readiness Tracker",
+    "workstream": "B8",
+    "branch": "parallel-b-governance-pack",
+    "base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "tracker_version": "0.1.0",
+    "tracker_status": "initial_self_assessment",
+    "intended_use": "internal_planning_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/roadmap/enterprise_saas_readiness_tracker.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "boundaries_pointer": "docs/validation/internal_vs_external_validation_boundaries.md",
+  "global_self_assessment_disclaimer": "All percentages in this tracker are project-internal self-assessments. They are not externally validated, not customer-facing, and do not authorize any external claim. Reaching 100% on a dimension does not relax any no-go claim.",
+  "dimensions": {
+    "architecture": {
+      "current_percentage": 55,
+      "target_percentage": 80,
+      "summary": "Backend is source of truth; services are being extracted from main_web.py (Phase 51+); Phase 51F no-service-imports guardrail enforces import direction. /download (Phase 51E-2) and /save-run characterization (Phase 51G-1) are on main. /save-run extraction (Phase 51G-2) is the next major route work, owned by Agent A.",
+      "blockers": [
+        "main_web.py still contains inline route logic for several routes (after 51E-2 /download is done, /save-run and others remain)",
+        "Phase 51G-2 /save-run extraction is Agent A's next track and not yet started"
+      ],
+      "dependencies": [
+        "Agent A Phase 51G-2 (future /save-run extraction)"
+      ],
+      "next_actions": [
+        {"action": "Phase 51G-2 /save-run extraction (Agent A, separate branch and PR)", "owner": "Agent A", "target_date": "TBD", "status": "not_started"},
+        {"action": "Document the Phase 51F no-service-imports guardrail as the canonical import-direction rule", "owner": "B-track", "target_date": "ongoing", "status": "in_progress"}
+      ],
+      "gate_criteria": [
+        "All major routes are extracted to services",
+        "main_web.py contains only route orchestration, no model logic",
+        "Phase 51F guardrails are green on the latest main"
+      ],
+      "no_go_claims": [
+        "No claim of production-readiness for any specific customer",
+        "No claim of SaaS readiness at 100%"
+      ]
+    },
+    "model_confidence": {
+      "current_percentage": 50,
+      "target_percentage": 75,
+      "summary": "Phase 51F pins TUHO and Oborovo outputs. Phase 51E-1, 51E-2, 51G-1 characterize existing routes. Internal tests cover domain, project factories, waterfall, and most output paths. Returns, tax, and Excel export are internally tested but not pinned. Generic solar / wind is explicitly exploratory.",
+      "blockers": [
+        "Returns, tax, and Excel export outputs are not pinned by Phase 51F",
+        "Generic solar and wind have no parity evidence (B2 acquisition in progress)"
+      ],
+      "dependencies": [
+        "B2 (generic validation) for solar / wind parity",
+        "Future Phase 51F pin additions for returns, tax, Excel export"
+      ],
+      "next_actions": [
+        {"action": "Decide protocol for adding new Phase 51F pins (returns, tax, Excel export)", "owner": "B-track with Agent A coordination", "target_date": "after B1 review feedback", "status": "not_started"},
+        {"action": "Run the full test suite and record pass/fail/skip per test file", "owner": "B-track", "target_date": "ongoing", "status": "in_progress"}
+      ],
+      "gate_criteria": [
+        "All major output areas are pinned (returns, tax, Excel export, plus current TUHO/Oborovo pins)",
+        "Full test suite is green on the latest main",
+        "Generic solar / wind have at least 3 accepted references each (B2)"
+      ],
+      "no_go_claims": [
+        "No claim of external validation of the model",
+        "Generic solar and wind remain exploratory for any external claim",
+        "Returns, tax, and Excel export are internally tested, not externally validated"
+      ]
+    },
+    "generic_validation": {
+      "current_percentage": 15,
+      "target_percentage": 70,
+      "summary": "B2 acquisition framework is in place (acquisition plan, solar requirements, wind requirements, no-go boundaries, empty inventory, empty readiness matrix). Zero references acquired. Generic solar and wind are explicitly exploratory per the no-go claim list.",
+      "blockers": [
+        "Zero references acquired",
+        "No acquisition activity has started",
+        "Generic solar and wind are explicitly not claimable externally"
+      ],
+      "dependencies": [
+        "B2 workstream execution (acquisition workflow)",
+        "Inputs-transcription pipeline tooling (not yet built)",
+        "Parity-comparison tooling (not yet built)"
+      ],
+      "next_actions": [
+        {"action": "Identify the first generic-solar candidate (B2 ACT-001)", "owner": "B2 workstream", "target_date": "next quarter", "status": "not_started"},
+        {"action": "Identify the first generic-wind candidate (B2 ACT-002)", "owner": "B2 workstream", "target_date": "next quarter", "status": "not_started"},
+        {"action": "Build inputs-transcription pipeline (B2 ACT-003)", "owner": "B2 with Agent A coordination", "target_date": "TBD", "status": "not_started"},
+        {"action": "Build parity-comparison tooling (B2 ACT-004)", "owner": "B2 workstream", "target_date": "TBD", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "At least 3 accepted references per technology",
+        "Parity results internally reviewed",
+        "B3 matrix updated to move generic solar / wind from exploratory to internally tested",
+        "Phase 51F pins added for generic parity outputs (intentional protocol)",
+        "Explicit governance change recorded"
+      ],
+      "no_go_claims": [
+        "No claim of generic solar validation",
+        "No claim of generic wind validation",
+        "TUHO and Oborovo are not generic-solar or generic-wind evidence",
+        "B2 does not validate generic solar / wind; it builds the acquisition framework"
+      ]
+    },
+    "ui_product": {
+      "current_percentage": 45,
+      "target_percentage": 75,
+      "summary": "Streamlit UI (streamlit_app.py, ui/, app/ui/) is implemented. Web layer (main_web.py, main_api.py) is being progressively refactored. UI warnings exist as code; their behavior is not formally tested. No JS financial calculations are present (backend is source of truth).",
+      "blockers": [
+        "UI warning behavior is not formally tested (per B3 AREA-017)",
+        "Web layer is mid-refactor (Agent A track)"
+      ],
+      "dependencies": [
+        "Agent A Phase 51+ route / service refactor (in progress)",
+        "B7 pilot to gather real-user UX feedback"
+      ],
+      "next_actions": [
+        {"action": "Add tests for UI warning behavior (B3 AREA-017)", "owner": "B-track with Agent A coordination", "target_date": "TBD", "status": "not_started"},
+        {"action": "Gather UX feedback in B7 controlled pilot", "owner": "B7 workstream", "target_date": "when B7 starts", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "UI warning behavior is tested",
+        "Real-user UX feedback is collected and triaged (B7)",
+        "Web layer is fully refactored (Agent A)"
+      ],
+      "no_go_claims": [
+        "UI is presentation only; model is the source of truth",
+        "No claim of production UX readiness"
+      ]
+    },
+    "persistence": {
+      "current_percentage": 40,
+      "target_percentage": 75,
+      "summary": "Scenario persistence is implemented (app/persistence/, scenario_state_service.py). /save-run is characterized (Phase 51G-1) but not extracted (Phase 51G-2 is next, owned by Agent A). The persistence layer will change when /save-run extraction lands.",
+      "blockers": [
+        "/save-run extraction (Phase 51G-2) is not yet done",
+        "Persisted state is not pinned"
+      ],
+      "dependencies": [
+        "Agent A Phase 51G-2 /save-run extraction"
+      ],
+      "next_actions": [
+        {"action": "Coordinate with Agent A on Phase 51G-2 timing and impact on persistence", "owner": "B-track with Agent A", "target_date": "TBD", "status": "not_started"},
+        {"action": "After 51G-2, consider pinning persisted state shape (subject to intentional protocol)", "owner": "B-track", "target_date": "after 51G-2", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "/save-run is extracted and stable (51G-2 merged)",
+        "Persisted state shape is pinned or documented as forward-compatible",
+        "Pilot (B7) successfully uses save / load round-trip"
+      ],
+      "no_go_claims": [
+        "No claim of production-grade persistence",
+        "Pilot must defer /save-run testing until 51G-2 lands"
+      ]
+    },
+    "governance": {
+      "current_percentage": 70,
+      "target_percentage": 90,
+      "summary": "B1 no-go claim list is merged (PR #390). B3 validation evidence matrix is in place (this branch). B2 and B7 governance is in place (this branch). Internal vs external validation boundaries are documented. The governance posture is the most-mature of the eleven dimensions; what remains is operationalization (using the matrix, the no-go list, and the boundaries consistently across the project).",
+      "blockers": [
+        "Operationalization requires the matrix, no-go list, and boundaries to be consulted in every future change",
+        "B1 external review output is not yet produced (scaffolding in place, review not yet performed)"
+      ],
+      "dependencies": [
+        "B1 external review (third party engaged, output not yet produced)",
+        "All future changes must respect the no-go claim list and the boundaries"
+      ],
+      "next_actions": [
+        {"action": "Engage a third party for B1 external review", "owner": "project lead", "target_date": "TBD", "status": "not_started"},
+        {"action": "Operationalize the matrix, no-go list, and boundaries in the change process", "owner": "B-track", "target_date": "ongoing", "status": "in_progress"}
+      ],
+      "gate_criteria": [
+        "B1 external review output produced and incorporated",
+        "Every future change PR is checked against the no-go claim list and the boundaries",
+        "The matrix is updated as part of normal B-track work"
+      ],
+      "no_go_claims": [
+        "All entries in docs/external_review/no_go_claims.md apply",
+        "All boundaries in docs/validation/internal_vs_external_validation_boundaries.md apply"
+      ]
+    },
+    "deployment": {
+      "current_percentage": 35,
+      "target_percentage": 70,
+      "summary": "Pilot deployment pattern is implicit in the existing project (deploy/ directory, .env.example, deploy/scripts, deploy/nginx, deploy/systemd, deploy/logrotate). No formal pilot-deployment guide. Production deployment is out of scope.",
+      "blockers": [
+        "No formal pilot-deployment guide",
+        "Pilot deployment will need to be designed and documented as part of B7 start"
+      ],
+      "dependencies": [
+        "B7 workstream to start (pilot readiness checklist, runbook)",
+        "Pilot environment provisioning"
+      ],
+      "next_actions": [
+        {"action": "Draft a pilot-deployment guide based on the deploy/ directory contents", "owner": "B7 workstream", "target_date": "before first pilot start", "status": "not_started"},
+        {"action": "Provision a pilot environment matching the guide", "owner": "B7 workstream with operations", "target_date": "before first pilot start", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "Pilot-deployment guide documented and reviewed",
+        "Pilot environment provisioned and tested",
+        "B7 pilot readiness checklist (runbook §2) is fully passed"
+      ],
+      "no_go_claims": [
+        "No claim of production deployment readiness",
+        "No claim of multi-tenant deployment readiness"
+      ]
+    },
+    "observability": {
+      "current_percentage": 30,
+      "target_percentage": 70,
+      "summary": "Logs and error handling exist in the codebase but are not formalized for pilot observability. No metrics or traces are defined for the pilot environment.",
+      "blockers": [
+        "No formal pilot observability specification",
+        "No metrics or traces defined for the pilot"
+      ],
+      "dependencies": [
+        "B7 workstream to start",
+        "Pilot environment provisioning"
+      ],
+      "next_actions": [
+        {"action": "Define the minimum observability set for the pilot (logs, key metrics, error budget)", "owner": "B7 workstream", "target_date": "before first pilot start", "status": "not_started"},
+        {"action": "Implement the observability set in the pilot environment", "owner": "B7 workstream with operations", "target_date": "before first pilot start", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "Minimum observability set is defined and implemented",
+        "Pilot support / incident response (ops/support_and_incident_response.md) can rely on the observability set"
+      ],
+      "no_go_claims": [
+        "No claim of production observability",
+        "No claim of SLA-backed monitoring"
+      ]
+    },
+    "security": {
+      "current_percentage": 45,
+      "target_percentage": 75,
+      "summary": "Authentication (app/auth.py) and rate limiting exist. Authorization model is implicit. Secret management is via .env (not formal). Audit logging is partial. Security posture is internal; not externally reviewed.",
+      "blockers": [
+        "Security is not externally reviewed",
+        "Audit logging is partial",
+        "Secret management is not formalized for production"
+      ],
+      "dependencies": [
+        "External security review (separate workstream, not B-track)",
+        "Pilot environment isolation (per B7 readiness checklist)"
+      ],
+      "next_actions": [
+        {"action": "Engage an external security review before any paid pilot or external-facing deployment", "owner": "project lead", "target_date": "TBD", "status": "not_started"},
+        {"action": "Formalize secret management for the pilot environment", "owner": "B7 workstream with operations", "target_date": "before first pilot start", "status": "not_started"},
+        {"action": "Audit-log all pilot user actions for the duration of the pilot", "owner": "B7 workstream", "target_date": "during pilot", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "External security review is completed and findings are addressed",
+        "Secret management is formalized",
+        "Audit logging is complete for the pilot surface",
+        "Authentication and authorization are tested end-to-end"
+      ],
+      "no_go_claims": [
+        "No claim of SOC 2, ISO 27001, or any certification",
+        "No claim of bank-grade or audit-grade security"
+      ]
+    },
+    "paid_pilot_readiness": {
+      "current_percentage": 50,
+      "target_percentage": 80,
+      "summary": "B7 controlled pilot runbook, feedback protocol, triage, and support are in place (this branch). Pilot readiness checklist is in place. Pilot has not yet started. Areas with pilot_claim_allowed: true exist (TUHO, Oborovo, etc.) but no pilot user has been onboarded.",
+      "blockers": [
+        "No pilot user has been onboarded",
+        "Pilot environment is not provisioned",
+        "Pilot scope (specific area, inputs, expected output range) is not yet defined"
+      ],
+      "dependencies": [
+        "Pilot environment provisioning (deployment dimension)",
+        "Pilot observability (observability dimension)",
+        "Pilot security (security dimension)"
+      ],
+      "next_actions": [
+        {"action": "Identify the first pilot scope and pilot user", "owner": "project lead with B7", "target_date": "TBD", "status": "not_started"},
+        {"action": "Walk the pilot readiness checklist (runbook §2) to all-pass before the first pilot", "owner": "B7 workstream", "target_date": "before first pilot start", "status": "not_started"},
+        {"action": "Run the first pilot, gather feedback, triage issues, produce a pilot summary", "owner": "B7 workstream", "target_date": "TBD", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "Pilot readiness checklist is all-passed",
+        "First pilot run completes per the runbook",
+        "Pilot summary is filed and the matrix is updated as appropriate",
+        "No no-go claims were made or implied during the pilot"
+      ],
+      "no_go_claims": [
+        "No claim that the pilot constitutes external validation",
+        "No claim that the pilot user endorses the model for any external purpose",
+        "No claim of production-readiness based on a successful pilot"
+      ]
+    },
+    "enterprise_saas_readiness": {
+      "current_percentage": 10,
+      "target_percentage": null,
+      "summary": "Explicitly not the current goal. The dimensions above feed into this one, but reaching 100% on this dimension requires a separate, dedicated governance change. Multi-tenant, SLA-backed, audit-grade SaaS is years of work from the current state, and the project does not currently make any enterprise SaaS claim.",
+      "blockers": [
+        "Multi-tenancy is not designed",
+        "SLA / SLO frameworks are not in place",
+        "Audit-grade logging and reporting are not in place",
+        "Pricing, packaging, and customer onboarding are not in place",
+        "Legal entity, contracts, and procurement are out of scope of this project"
+      ],
+      "dependencies": [
+        "All ten preceding dimensions at or near their target percentages",
+        "A separate, dedicated governance change to begin relaxing the no-go claim list (currently not contemplated)"
+      ],
+      "next_actions": [
+        {"action": "Do not start enterprise SaaS work without an explicit governance change", "owner": "project lead", "target_date": "TBD", "status": "blocked"},
+        {"action": "Update this dimension's target_percentage only as part of a roadmap revision", "owner": "B-track", "target_date": "TBD", "status": "not_started"}
+      ],
+      "gate_criteria": [
+        "Multi-tenant architecture is designed and implemented",
+        "SLA / SLO framework is in place",
+        "Audit-grade logging and reporting are in place",
+        "Pricing, packaging, and customer onboarding are designed",
+        "External security review is completed and findings are addressed",
+        "B1 external review output is incorporated",
+        "Generic solar and wind have at least 3 accepted references each",
+        "Pilot has produced a positive summary for at least one area in at least one organization",
+        "A separate governance change has explicitly authorized the project to begin relaxing the no-go claim list (currently not contemplated)"
+      ],
+      "no_go_claims": [
+        "No claim of enterprise SaaS readiness",
+        "No claim of multi-tenant readiness",
+        "No claim of SLA-backed service",
+        "No claim of audit-grade or certification-grade readiness",
+        "Reaching 100% on this dimension does not authorize any external claim; an explicit, separate governance change is required"
+      ]
+    }
+  },
+  "rollup": {
+    "average_current_percentage_excluding_enterprise_saas": null,
+    "dimensions_above_50_percent": 0,
+    "dimensions_at_or_above_75_percent": 0,
+    "lowest_current_dimensions": []
+  },
+  "update_log": [
+    {
+      "date": "package_creation",
+      "version": "0.1.0",
+      "rationale": "Initial self-assessment at package creation. Percentages are conservative. Targets are internal goals, not external commitments."
+    }
+  ],
+  "global_notes": [
+    "All percentages are project-internal self-assessments. They are not externally validated, not customer-facing, and do not authorize any external claim.",
+    "Reaching 100% on any dimension does not relax any no-go claim. The no-go claims are governed separately (see docs/external_review/no_go_claims.md and docs/validation/internal_vs_external_validation_boundaries.md).",
+    "The enterprise_saas_readiness dimension is intentionally low (10%) and has a null target. Reaching it is a multi-year effort and is not the current goal.",
+    "Updates to this tracker are normal B-track work. Demotions are encouraged when evidence is found insufficient."
+  ]
+}
