@@ -67,11 +67,19 @@ Phase 51G-2 explicitly preserves the 15 documented behaviors and
     HX-Trigger: refreshHistory.
 
 7 characterized quirks preserved:
-1. user_created branch references
-   ``_clean_user_project_runtime_snapshot`` which is NOT DEFINED.
-   Preserved as a known latent bug — NOT fixed in 51G-2.
-   See test_user_created_branch_has_latent_name_error in
-   tests/test_phase51g1_save_run_route_golden_characterization.py.
+1. (RESOLVED in 51G-3) The user_created branch previously
+   referenced ``_clean_user_project_runtime_snapshot`` which was
+   not defined anywhere, causing a NameError on every save for
+   user_created projects. Phase 51G-3 fixes this by introducing
+   ``deps.clean_user_project_runtime_snapshot`` (injected from
+   ``main_web._clean_user_project_runtime_snapshot``). The fix is
+   a small, narrow adapter that delegates to the existing
+   ``_resolve_runtime_snapshot_source`` (Phase 50C-2) and returns
+   the snapshot dict that ``build_projectinputs_from_snapshot``
+   consumes. The fix does not introduce any new persistence side
+   effects, does not change factory_template behavior, does not
+   change save_run/save_project ordering, and does not change
+   replay_metadata export_type values.
 2. runtime_origin captured but not used to mutate state.
 3. save_project.runtime_timestamp = run_record.created_at, not
    utc_now_iso.
@@ -105,13 +113,14 @@ The /save-run service does NOT call any of the forbidden helpers.
 It only calls ``save_run`` + ``save_project`` (intended runtime
 persistence) + ``run_project`` (in-memory model exec).
 
-Phase 51G-2 explicitly DOES NOT fix the pre-existing latent bug
-``_clean_user_project_runtime_snapshot``. The user_created branch
-in ``execute_save_run_route`` still references the undefined
-function, preserving the legacy behavior. A separate Phase 51G-3
-bugfix PR is recommended (with explicit user sign-off) for any
-fix.
+Phase 51G-3: the user_created branch now reaches run_project
++ save_run + save_project on the success path. The model-execution
+``except Exception`` still wraps the entire branch (Behavior 12),
+so a malformed snapshot raises ``SnapshotInputError`` from
+``build_projectinputs_from_snapshot`` and the service surfaces
+that as a 200 + save_result-err with the message, not a NameError.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -173,7 +182,7 @@ class SaveRunRouteDeps:
     the ``main_web`` -> ``save_run_service`` import direction
     clean and lets future test code inject test doubles.
 
-    The bundle has 15 callables + 2 constants.
+    The bundle has 16 callables + 2 constants.
     """
 
     # Snapshot / project / runtime guard
@@ -185,9 +194,14 @@ class SaveRunRouteDeps:
     project_types: list
     scenarios: list
 
-    # User_created branch (NOTE: clean_user_project_runtime_snapshot
-    # is NOT in this bundle — see comment in execute_save_run_route
-    # about the latent bug)
+    # User_created branch
+    # Phase 51G-3: clean_user_project_runtime_snapshot is now an
+    # explicit dep. Prior to 51G-3, the service referenced a module-
+    # level ``_clean_user_project_runtime_snapshot`` symbol that was
+    # not defined anywhere, causing a NameError on every save for
+    # user_created projects. See docstring on
+    # ``execute_save_run_route`` and the Phase 51G-1 / 51G-2 history.
+    clean_user_project_runtime_snapshot: Callable[..., dict]
     canonical_project_type: Callable[..., str]
     build_projectinputs_from_snapshot: Callable[..., Any]
 
@@ -319,16 +333,20 @@ async def execute_save_run_route(
     try:
         if project_record.project_origin == "user_created":
             # ── user_created branch ──────────────────────────────
-            # Quirk 1: PRESERVED LATENT BUG — DO NOT FIX IN 51G-2
-            # _clean_user_project_runtime_snapshot is NOT defined.
-            # This branch will hit a NameError, caught by the
-            # except Exception below, and the user gets back
-            # "Model error: name '_clean_user_project_runtime_snapshot'
-            # is not defined". The bug is documented in
-            # Phase 51G-1 (test_user_created_branch_has_latent_name_error)
-            # and recommended for a separate Phase 51G-3 bugfix PR.
-            runtime_snapshot = _clean_user_project_runtime_snapshot(  # noqa: F821
-                project_record, workspace_state, runtime_origin
+            # Phase 51G-3 bugfix: previously this branch referenced
+            # ``_clean_user_project_runtime_snapshot`` (a module-level
+            # symbol that was never defined) and so failed with a
+            # NameError on every save for user_created projects. The
+            # actual implementation now lives in
+            # ``main_web._clean_user_project_runtime_snapshot`` and is
+            # injected as ``deps.clean_user_project_runtime_snapshot``.
+            # See:
+            # - Phase 51G-1 characterization: test_user_created_branch_has_latent_name_error
+            # - Phase 51G-2 extraction (preserved the bug as a quirk)
+            # - Phase 51G-3 fix: this branch now reaches run_project
+            #   / save_run / save_project on the success path.
+            runtime_snapshot = deps.clean_user_project_runtime_snapshot(
+                user, project_record, workspace_state, runtime_origin
             )
             override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
             runtime_project_key = (

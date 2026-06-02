@@ -1025,6 +1025,49 @@ def _resolve_runtime_snapshot_source(user, project_record, workspace_state, runt
     )
 
 
+def _clean_user_project_runtime_snapshot(
+    user, project_record, workspace_state, runtime_origin: str
+) -> dict:
+    """Return the clean backend-authored runtime snapshot for a
+    user_created project used by the /save-run user_created branch.
+
+    Phase 51G-3 bugfix: prior to this, the /save-run user_created
+    branch referenced this function by name but it was never defined,
+    causing a NameError that the broad ``except Exception`` caught and
+    surfaced as a 200 + save_result-err with message
+    "Model error: name '_clean_user_project_runtime_snapshot' is not
+    defined". This is the canonical adapter that delegates to
+    ``_resolve_runtime_snapshot_source`` and returns only the snapshot
+    dict that ``build_projectinputs_from_snapshot`` consumes.
+
+    The runtime snapshot here is the same one the /run user_created
+    path uses (Phase 17C snapshot binding): it is the resolved
+    clean snapshot (workspace saved_snapshot when present, otherwise
+    project baseline_snapshot), augmented with project-identifying
+    fields (project_name, project_type, project_origin,
+    template_source, active_project) by the underlying
+    ``resolve_runtime_snapshot`` function. No form data is folded in
+    here — the form-driven field set is collected separately in the
+    service when the snapshot does not yet contain the necessary
+    keys, but for /save-run the user_created project must already
+    have a complete baseline_snapshot (created at project creation
+    time via ``_apply_new_project_required_inputs``). If the snapshot
+    is missing a required field, ``build_projectinputs_from_snapshot``
+    raises ``SnapshotInputError`` and the service surfaces that as
+    a 200 + save_result-err with a clear validation message — not
+    as a NameError.
+    """
+    snapshot, _scenario_record, _warning, _effective_origin = (
+        _resolve_runtime_snapshot_source(
+            user=user,
+            project_record=project_record,
+            workspace_state=workspace_state,
+            runtime_origin=runtime_origin,
+        )
+    )
+    return dict(snapshot or {})
+
+
 def _current_project_workspace(user, project_record):
     workspace_state = _ensure_workspace_for_project(user, project_record)
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
@@ -2633,11 +2676,13 @@ async def save_run_endpoint(request: Request):
     context assembly) lives in
     ``app.services.save_run_service.execute_save_run_route``.
 
-    Note: the pre-existing latent bug
-    ``_clean_user_project_runtime_snapshot`` (referenced in the
-    user_created branch) is preserved exactly as characterized in
-    Phase 51G-1. A separate Phase 51G-3 bugfix PR is recommended
-    (with explicit user sign-off).
+    Phase 51G-3: the pre-existing latent bug
+    ``_clean_user_project_runtime_snapshot`` is now fixed. The
+    helper is defined in main_web (delegates to
+    ``_resolve_runtime_snapshot_source``) and injected as
+    ``deps.clean_user_project_runtime_snapshot``. The user_created
+    branch of the service now reaches run_project + save_run +
+    save_project on the success path.
     """
     from app.services.save_run_service import (
         SaveRunRouteDeps,
@@ -2657,6 +2702,7 @@ async def save_run_endpoint(request: Request):
         validate_form=_validate_form,
         project_types=PROJECT_TYPES,
         scenarios=SCENARIOS,
+        clean_user_project_runtime_snapshot=_clean_user_project_runtime_snapshot,
         canonical_project_type=_canonical_project_type,
         build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
         build_schema_from_form=_build_schema_from_form,

@@ -30,10 +30,11 @@ This file pins:
     when present (project_type from form is fallback).
 11. /save-run error responses use the same save_result.html
     template (success=False + error message).
-12. _clean_user_project_runtime_snapshot is currently NOT defined
-    in main_web.py (existing latent bug: the user_created branch
-    in /save-run raises NameError when reached). This is
-    documented as a known characterization quirk, not fixed.
+12. _clean_user_project_runtime_snapshot is now defined in
+    main_web.py (Phase 51G-3 fix). The user_created branch in
+    /save-run no longer raises NameError. See the
+    test_user_created_branch_has_latent_name_error test below
+    and the Phase 51G-3 regression test for the bug history.
 13. No record_export, no record_download_export,
     no record_runtime_summary_export, no
     record_institutional_workbook_export, no record_workspace_runtime,
@@ -470,25 +471,44 @@ class TestSaveRunModelExecution:
         assert "Model error:" in body
 
     def test_user_created_branch_has_latent_name_error(self):
-        """KNOWN CHARACTERIZATION QUIRK: the user_created branch
-        references _clean_user_project_runtime_snapshot which is NOT
-        defined in main_web.py. This causes a NameError at runtime
-        when a user_created project hits /save-run.
+        """KNOWN CHARACTERIZATION QUIRK (Phase 51G-1 → 51G-2 → 51G-3).
 
-        This is a pre-existing bug, NOT introduced by Phase 51G-1.
-        Pinning it here so that any future fix is intentional.
+        Historically (Phases 51G-1 and 51G-2) the user_created branch
+        referenced ``_clean_user_project_runtime_snapshot`` which was
+        not defined anywhere — causing a NameError on every save for
+        user_created projects.
+
+        Phase 51G-3 FIXES the bug by:
+        1. defining ``_clean_user_project_runtime_snapshot`` in
+           main_web.py (a thin adapter around
+           ``_resolve_runtime_snapshot_source``), and
+        2. injecting it as ``deps.clean_user_project_runtime_snapshot``
+           in the SaveRunRouteDeps bundle.
+
+        This test now asserts the FIXED state. A separate regression
+        test in Phase 51G-3
+        (test_phase51g3_save_run_user_created_branch_fix) documents
+        the bug history with a locked expected message.
         """
+        # The service code path must reference the function via deps.
         body = _route_or_service_body("/save-run")
-        assert "_clean_user_project_runtime_snapshot" in body, (
+        assert "clean_user_project_runtime_snapshot" in body, (
             "/save-run user_created branch must reference "
-            "_clean_user_project_runtime_snapshot (even if undefined)"
+            "clean_user_project_runtime_snapshot (Phase 51G-3 fix)"
         )
-        # Verify the function is NOT defined in main_web.py
+        # The function MUST now be defined in main_web.py
         text = _read(MAIN_WEB)
-        assert "def _clean_user_project_runtime_snapshot" not in text, (
-            "_clean_user_project_runtime_snapshot should NOT be defined "
-            "(existing latent bug). If it IS now defined, the bug was "
-            "fixed — that is an intentional change, not a regression."
+        assert "def _clean_user_project_runtime_snapshot" in text, (
+            "Phase 51G-3: _clean_user_project_runtime_snapshot must be "
+            "defined in main_web.py (the bug is fixed)"
+        )
+        # And it must be wired into the SaveRunRouteDeps call site
+        assert (
+            "clean_user_project_runtime_snapshot="
+            "_clean_user_project_runtime_snapshot"
+        ) in text, (
+            "Phase 51G-3: the new dep must be wired into the "
+            "SaveRunRouteDeps call site in main_web.py"
         )
 
 

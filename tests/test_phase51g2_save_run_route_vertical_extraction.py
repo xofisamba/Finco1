@@ -316,30 +316,53 @@ class TestQuirksPreserved:
         """Quirk 1: user_created branch references
         _clean_user_project_runtime_snapshot which is NOT defined.
 
-        The bug is preserved in 51G-2 (NOT fixed)."""
+        Phase 51G-3 update: the bug is FIXED. The service no longer
+        references the bare module-level name ``_clean_user_project_ru
+        ntime_snapshot`` (which was undefined). Instead, the service
+        uses ``deps.clean_user_project_runtime_snapshot(...)`` which
+        is the injected main_web helper. The function is no longer
+        expected to be ``undefined``; the model-execution broad
+        ``except Exception`` (Behavior 12) still wraps the branch so
+        that a malformed snapshot now surfaces a clean
+        ``SnapshotInputError`` message rather than a NameError.
+
+        This test now documents the FIXED state. Phase 51G-3 has a
+        dedicated regression test
+        (test_phase51g3_save_run_user_created_branch_fix) that
+        documents the historical bug and pins the fix.
+        """
         text = _read(SERVICE)
         clean = _strip_docstrings_and_comments(text)
-        assert "_clean_user_project_runtime_snapshot" in clean, (
-            "save_run_service must still reference the undefined "
-            "_clean_user_project_runtime_snapshot (preserved latent bug)"
+        # The service must use the deps-injected version
+        assert "deps.clean_user_project_runtime_snapshot" in clean, (
+            "save_run_service must use "
+            "deps.clean_user_project_runtime_snapshot (Phase 51G-3 fix)"
         )
-        # The function must STILL NOT be defined in the service
+        # The bare, undefined module-level reference must be gone
+        assert "_clean_user_project_runtime_snapshot(" not in clean, (
+            "The bare module-level reference "
+            "_clean_user_project_runtime_snapshot must be gone "
+            "(Phase 51G-3 fix)"
+        )
+        # And the function must NOT be defined in the service either
+        # (it lives in main_web.py and is injected as a dep)
         assert "def _clean_user_project_runtime_snapshot" not in clean, (
-            "_clean_user_project_runtime_snapshot must NOT be defined — "
-            "the latent bug is preserved, not fixed in 51G-2"
+            "_clean_user_project_runtime_snapshot must NOT be defined "
+            "in the service (it is injected from main_web)"
         )
 
     def test_quirk_2_runtime_origin_captured_but_not_mutated(self):
-        """Quirk 2: runtime_origin is captured but not used to mutate state."""
+        """Quirk 2: runtime_origin is captured but not used to mutate state.
+
+        Phase 51G-3 update: runtime_origin is now passed to
+        ``deps.clean_user_project_runtime_snapshot`` (the new fix) but
+        still does not mutate state directly in the service."""
         text = _read(SERVICE)
         clean = _strip_docstrings_and_comments(text)
         # The 3-tuple unpacks runtime_origin
         assert "allow_run, runtime_origin, guard_message" in clean
-        # runtime_origin is passed to the latent bug function
-        # (which raises NameError) — not used to mutate state directly
-        # before the bug call
-        # (the only references to runtime_origin are the unpack and the
-        # call to _clean_user_project_runtime_snapshot)
+        # runtime_origin is passed to the snapshot cleaner (Phase 51G-3
+        # fix) and not used to mutate state directly
         assert clean.count("runtime_origin") >= 2
 
     def test_quirk_3_save_project_runtime_timestamp_locked_to_run(self):
@@ -552,47 +575,95 @@ class TestPhase51FGuardrails:
 # 10. Latent bug NOT fixed
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestLatentBugNotFixed:
-    """_clean_user_project_runtime_snapshot latent bug is preserved
-    (NOT fixed in 51G-2). A separate Phase 51G-3 bugfix PR is
-    recommended with explicit user sign-off.
+class TestLatentBugFixedIn51G3:
+    """_clean_user_project_runtime_snapshot latent bug is FIXED in 51G-3.
+
+    Phase 51G-2 preserved the bug (pinned in
+    ``TestLatentBugNotFixed`` historically). Phase 51G-3 fixes the
+    bug by introducing a real, working helper in main_web.py and
+    injecting it as ``deps.clean_user_project_runtime_snapshot``.
+    This class documents the FIXED state in 51G-3.
     """
 
+    def test_service_no_longer_references_undefined_bare_name(self):
+        text = _read(SERVICE)
+        clean = _strip_docstrings_and_comments(text)
+        # The bare module-level reference (which was undefined and
+        # raised NameError) must be gone.
+        assert "_clean_user_project_runtime_snapshot(" not in clean, (
+            "Phase 51G-3: the bare, undefined "
+            "_clean_user_project_runtime_snapshot(...) call must be gone"
+        )
+
+    def test_service_uses_deps_injected_clean_user_project_runtime(self):
+        """The service now calls ``deps.clean_user_project_runtime_snapshot``."""
+        text = _read(SERVICE)
+        clean = _strip_docstrings_and_comments(text)
+        assert "deps.clean_user_project_runtime_snapshot" in clean, (
+            "Phase 51G-3: the service must use "
+            "deps.clean_user_project_runtime_snapshot (injected dep)"
+        )
+
     def test_service_does_not_define_clean_user_project_runtime_snapshot(self):
+        """The function lives in main_web.py, NOT in the service."""
         text = _read(SERVICE)
         clean = _strip_docstrings_and_comments(text)
         assert "def _clean_user_project_runtime_snapshot" not in clean, (
-            "Latent bug fix is NOT in scope for 51G-2. The function "
-            "must remain undefined in the service (preserved as "
-            "pre-existing latent bug)."
+            "_clean_user_project_runtime_snapshot must be defined in "
+            "main_web.py and injected as a dep, not defined in the service"
         )
 
-    def test_service_does_not_inject_a_stub_for_clean_user_project_runtime(self):
-        """No stub like lambda *_: {} or returning {}"""
-        text = _read(SERVICE)
-        clean = _strip_docstrings_and_comments(text)
-        # If a stub were injected, we would see a deps field for it.
-        # We do not want a stub.
+    def test_deps_bundle_includes_clean_user_project_runtime_snapshot(self):
+        """SaveRunRouteDeps must include the new field."""
         from app.services.save_run_service import SaveRunRouteDeps
         import dataclasses
         fields = {f.name for f in dataclasses.fields(SaveRunRouteDeps)}
-        assert "clean_user_project_runtime_snapshot" not in fields, (
-            "Latent bug stub is NOT in scope for 51G-2. The deps bundle "
-            "must NOT include a clean_user_project_runtime_snapshot "
-            "field."
+        assert "clean_user_project_runtime_snapshot" in fields, (
+            "Phase 51G-3: SaveRunRouteDeps must include "
+            "clean_user_project_runtime_snapshot (16 callables + 2 constants)"
+        )
+
+    def test_main_web_defines_clean_user_project_runtime_snapshot(self):
+        """The helper must be defined in main_web.py (not in service)."""
+        text = _read(MAIN_WEB)
+        assert "def _clean_user_project_runtime_snapshot(" in text, (
+            "Phase 51G-3: _clean_user_project_runtime_snapshot must be "
+            "defined in main_web.py as a thin adapter around "
+            "_resolve_runtime_snapshot_source"
+        )
+
+    def test_main_web_routes_save_run_injects_the_new_dep(self):
+        """The /save-run route must wire the new dep into the bundle."""
+        text = _read(MAIN_WEB)
+        assert (
+            "clean_user_project_runtime_snapshot="
+            "_clean_user_project_runtime_snapshot"
+        ) in text, (
+            "Phase 51G-3: the /save-run route must wire "
+            "clean_user_project_runtime_snapshot into SaveRunRouteDeps"
         )
 
     def test_latent_bug_documented_in_service_module(self):
-        """The service module must document the latent bug."""
+        """The service module must document the fix history."""
         text = _read(SERVICE)
-        # Documentation can be in the module docstring
-        assert "latent bug" in text.lower() or "preserved as" in text.lower(), (
-            "Service must document the latent bug preservation in 51G-2"
+        # Either 'latent bug' (preserved-history language) or
+        # 'RESOLVED in 51G-3' (fixed-state language) is acceptable
+        lower = text.lower()
+        assert (
+            "latent bug" in lower
+            or "resolved in 51g-3" in lower
+            or "phase 51g-3" in lower
+        ), (
+            "Service must document the latent-bug history and the 51G-3 fix"
         )
 
     def test_latent_bug_pinned_in_test_phase51g1(self):
-        """The latent bug must still be pinned by Phase 51G-1 tests."""
-        text = _read(REPO_ROOT / "tests" / "test_phase51g1_save_run_route_golden_characterization.py")
+        """Phase 51G-1 still documents the bug history (now as the FIX)."""
+        text = _read(
+            REPO_ROOT
+            / "tests"
+            / "test_phase51g1_save_run_route_golden_characterization.py"
+        )
         assert "latent_name_error" in text
         assert "_clean_user_project_runtime_snapshot" in text
 
