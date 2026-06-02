@@ -51,6 +51,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_WEB = REPO_ROOT / "main_web.py"
 SCENARIO_STATE_SERVICE = REPO_ROOT / "app" / "services" / "scenario_state_service.py"
+SCENARIO_STATE_ROUTE_SERVICE = (
+    REPO_ROOT / "app" / "services" / "scenario_state_route_service.py"
+)
 
 
 @pytest.fixture
@@ -113,6 +116,44 @@ def _route_body(route_path: str) -> str:
     return m.group(0)
 
 
+def _route_or_service_body(route_path: str) -> str:
+    """Return the body that orchestrates the route. After Phase 51H-2,
+    orchestration lives in scenario_state_route_service.py (the
+    execute_draft_route / execute_discard_route functions), not in
+    the thin main_web.py route. We use the service body for
+    orchestration-content checks; the route body is used for
+    thin-route checks.
+
+    Behavior-characterization tests should call this helper.
+    Structural thin-route tests should still call _route_body.
+    """
+    if SCENARIO_STATE_ROUTE_SERVICE.exists():
+        text = _read(SCENARIO_STATE_ROUTE_SERVICE)
+        if "draft" in route_path:
+            m = re.search(
+                r"async def execute_draft_route\(.*?(?=\nasync def execute_|\Z)",
+                text,
+                re.DOTALL,
+            )
+            if m is not None:
+                return m.group(0)
+        if "discard" in route_path:
+            m = re.search(
+                r"async def execute_discard_route\(.*?(?=\nasync def execute_|\Z)",
+                text,
+                re.DOTALL,
+            )
+            if m is not None:
+                return m.group(0)
+    # Fallback: return the route body (pre-51H-2 behavior)
+    return _route_body(route_path)
+
+
+def _service_uses_scenario_state_route_service() -> bool:
+    """True if scenario_state_route_service.py exists (Phase 51H-2+)."""
+    return SCENARIO_STATE_ROUTE_SERVICE.exists()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Route existence and sizes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -132,15 +173,17 @@ class TestRouteExistence:
         assert "async def discard_workspace_draft_endpoint" in text
 
     def test_draft_route_size_is_characteristic(self):
-        """Pin current route size. After 51H-2 the size will be
-        much smaller, so this test acts as a size guard."""
+        """Pin the route (main_web.py) size only. The orchestration
+        now lives in scenario_state_route_service.py; its size is
+        NOT pinned here. Use _route_body (not _route_or_service_body)
+        to assert the thin route size."""
         body = _route_body("/scenarios/state/draft")
         non_blank = [l for l in body.splitlines() if l.strip()]
-        # Pre-extraction: ~33 non-blank. After 51H-2: should shrink.
-        # 51H-1 must NOT change the route, so size stays the same.
+        # Pre-extraction: ~33 non-blank. After 51H-2: ~36 non-blank
+        # (route stays thin; orchestration is in the service).
         assert 20 <= len(non_blank) <= 50, (
             f"/scenarios/state/draft is {len(non_blank)} non-blank lines; "
-            f"expected 20-50 (pre-extraction characteristic)"
+            f"expected 20-50 (thin route characteristic after 51H-2)"
         )
 
     def test_discard_route_size_is_characteristic(self):
@@ -148,7 +191,7 @@ class TestRouteExistence:
         non_blank = [l for l in body.splitlines() if l.strip()]
         assert 20 <= len(non_blank) <= 50, (
             f"/scenarios/state/discard is {len(non_blank)} non-blank lines; "
-            f"expected 20-50 (pre-extraction characteristic)"
+            f"expected 20-50 (thin route characteristic after 51H-2)"
         )
 
     def test_no_other_scenario_state_routes(self):
@@ -180,6 +223,8 @@ class TestAuthenticationBehavior:
     """Pin auth/session behavior for the scenario-state routes."""
 
     def test_draft_route_uses_get_current_user(self):
+        """The THIN route in main_web.py owns the auth check
+        (Phase 51H-2: auth stays in the route, not the service)."""
         body = _route_body("/scenarios/state/draft")
         assert "get_current_user(request)" in body
         # Auth check happens first
@@ -192,7 +237,7 @@ class TestAuthenticationBehavior:
 
     def test_draft_route_uses_user_user_id_only(self):
         """user_id is derived from user.user_id, never from form."""
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         assert "user.user_id" in body
         # No form-derived user_id
         clean = _strip_docstrings_and_comments(body)
@@ -200,7 +245,7 @@ class TestAuthenticationBehavior:
         assert "user_id=" in clean
 
     def test_discard_route_uses_user_user_id_only(self):
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         assert "user.user_id" in body
         assert "user_id=" in _strip_docstrings_and_comments(body)
 
@@ -347,14 +392,14 @@ class TestDraftStateBehavior:
     def test_draft_calls_save_workspace_state(self):
         """The route must call save_workspace_state(...) once per
         successful request (intended persistence write)."""
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
         assert "save_workspace_state(" in clean
         # Exactly one call
         assert clean.count("save_workspace_state(") == 1
 
     def test_draft_passes_replay_metadata_to_workspace_state(self):
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
         # replay_metadata must be passed
         assert "replay_metadata=" in clean
@@ -364,7 +409,7 @@ class TestDraftStateBehavior:
     def test_draft_does_not_call_forbidden_side_effects(self):
         """Quirk: the draft route must NOT call record_export family,
         record_workspace_runtime, update_scenario_last_run_summary."""
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
         for sym in [
             "record_export",
@@ -472,7 +517,7 @@ class TestDiscardStateBehavior:
     def test_discard_calls_discard_workspace_draft(self):
         """The route must call discard_workspace_draft(...) on the
         existing workspace."""
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
         assert "discard_workspace_draft(" in clean
         assert clean.count("discard_workspace_draft(") == 1
@@ -481,7 +526,7 @@ class TestDiscardStateBehavior:
         """Quirk: when discard_workspace_draft returns None, the
         route also calls save_workspace_state(...) to seed a
         fresh workspace_state from baseline_snapshot."""
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
         # Conditional call (in the if branch)
         assert "save_workspace_state(" in clean
@@ -489,7 +534,7 @@ class TestDiscardStateBehavior:
         assert "if workspace_state is None" in clean
 
     def test_discard_does_not_call_forbidden_side_effects(self):
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
         for sym in [
             "record_export",
@@ -517,7 +562,7 @@ class TestScenarioProjectPersistence:
         1. save_workspace_state(...) — 1 call per success
         2. No other persistence writes (no save_run, save_project,
            save_scenario, etc.)."""
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
         # save_workspace_state is called exactly once
         assert clean.count("save_workspace_state(") == 1
@@ -535,7 +580,7 @@ class TestScenarioProjectPersistence:
            discard_workspace_draft returns None)
         Total: 1-2 writes depending on whether workspace_state
         existed."""
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("discard_workspace_draft(") == 1
         # save_workspace_state may be 0 or 1 (fallback)
@@ -547,27 +592,35 @@ class TestScenarioProjectPersistence:
 
     def test_draft_save_workspace_state_args(self):
         """The save_workspace_state call must pass the expected
-        fields for a draft capture."""
-        body = _route_body("/scenarios/state/draft")
+        fields for a draft capture.
+
+        Phase 51H-2: this call now lives in
+        scenario_state_route_service.execute_draft_route. We use
+        deps.save_workspace_state(...) instead of save_workspace_state(...)
+        (callable injection)."""
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
-        # Required args
+        # Required args (use deps.* since 51H-2)
         assert "user_id=user.user_id" in clean
         assert "project_id=project_record.project_id" in clean
         assert "project_code=project_code" in clean
         assert "draft_snapshot=snapshot" in clean
         assert "saved_snapshot=saved_snapshot" in clean
-        assert "dirty=not snapshots_equal(snapshot, saved_snapshot)" in clean
-        assert "governance_state=_governance_snapshot(project_code)" in clean
+        assert "dirty=not deps.snapshots_equal(snapshot, saved_snapshot)" in clean
+        assert "governance_state=deps.governance_snapshot(project_code)" in clean
         # replay_metadata with the right export_type
         assert (
-            '_replay_metadata_for_project(\n            project_code,\n            project_id=project_record.project_id,\n            scenario_id=active_scenario_id,\n            export_type="workspace_draft_state"'
+            'replay_metadata=deps.replay_metadata_for_project(\n            project_code,\n            project_id=project_record.project_id,\n            scenario_id=active_scenario_id,\n            export_type="workspace_draft_state"'
             in clean
         )
 
     def test_discard_save_workspace_state_args(self):
         """The save_workspace_state fallback call must pass baseline_snapshot
-        for both draft and saved (creating a clean state)."""
-        body = _route_body("/scenarios/state/discard")
+        for both draft and saved (creating a clean state).
+
+        Phase 51H-2: this call now lives in
+        scenario_state_route_service.execute_discard_route."""
+        body = _route_or_service_body("/scenarios/state/discard")
         # Use raw body (don't strip string literals — they are part of
         # the export_type marker we want to check)
         # Required args
@@ -577,9 +630,12 @@ class TestScenarioProjectPersistence:
         assert 'export_type="workspace_draft_state"' in body
         # Verify the replay_metadata_for_project call is the one
         # inside the fallback (after the if workspace_state is None)
+        # Phase 51H-2: service uses deps.replay_metadata_for_project(...)
+        # with 16-space indent (inside the if-block which is inside
+        # execute_discard_route).
         clean = _strip_docstrings_and_comments(body)
         assert (
-            '_replay_metadata_for_project(\n                project_code,'
+            'replay_metadata=deps.replay_metadata_for_project(\n                project_code,'
             in clean
         )
 
@@ -633,7 +689,7 @@ class TestSideEffectClassification:
             )
 
     def test_draft_intended_persistence_is_save_workspace_state(self):
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
         # Only intended persistence is save_workspace_state
         # (and the implicit _resolve_project_record -> save_project when
@@ -651,6 +707,8 @@ class TestResponseBehavior:
     """Pin response behavior: template, status, headers, JSON shape."""
 
     def test_draft_returns_jsonresponse(self):
+        """The THIN route in main_web.py constructs the JSONResponse.
+        The service returns a ScenarioStateRouteOutcome."""
         body = _route_body("/scenarios/state/draft")
         assert "return JSONResponse(" in body
         # NOT a template render
@@ -688,17 +746,20 @@ class TestResponseBehavior:
 
     def test_draft_uses_workspace_state_meta(self):
         """Quirk: the response payload is built from
-        _workspace_state_meta(workspace_state) + a 'message' key."""
-        body = _route_body("/scenarios/state/draft")
+        deps.workspace_state_meta(workspace_state) + a 'message' key.
+
+        Phase 51H-2: this lives in
+        scenario_state_route_service.execute_draft_route now."""
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
-        assert "_workspace_state_meta(workspace_state)" in clean
+        assert "deps.workspace_state_meta(workspace_state)" in clean
         # The 'message' key is added to the payload
         assert 'payload["message"]' in clean
 
     def test_discard_uses_workspace_state_meta(self):
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
-        assert "_workspace_state_meta(workspace_state)" in clean
+        assert "deps.workspace_state_meta(workspace_state)" in clean
         # Quirks: discard response adds 'snapshot' AND 'message'
         assert 'payload["snapshot"]' in clean
         assert 'payload["message"]' in clean
@@ -772,22 +833,22 @@ class TestArchitectureGuardrails:
                 f"(regression: 51H-1 must not affect other routes)"
             )
 
-    def test_draft_route_does_not_use_execute_pattern_yet(self):
-        """Pre-extraction: the draft route does NOT use a
-        service.execute_*_route() pattern. After 51H-2 it should."""
+    def test_draft_route_uses_execute_pattern_after_51h2(self):
+        """Phase 51H-2: the draft route now uses the
+        execute_draft_route() pattern (orchestration is in the service)."""
         body = _route_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
-        # No execute_*_route() call (51H-2 will introduce this)
-        assert not re.search(r"execute_\w+_route\(", clean)
+        # The route now calls execute_draft_route(...)
+        assert "execute_draft_route(" in clean
 
-    def test_discard_route_does_not_use_execute_pattern_yet(self):
+    def test_discard_route_uses_execute_pattern_after_51h2(self):
         body = _route_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
-        assert not re.search(r"execute_\w+_route\(", clean)
+        assert "execute_discard_route(" in clean
 
     def test_draft_route_does_not_define_a_deps_class(self):
-        """Pre-extraction: no ScenarioStateDeps class in main_web.py.
-        After 51H-2 it will live in the service module."""
+        """Phase 51H-2: the deps class lives in the service module,
+        not in main_web.py."""
         text = _read(MAIN_WEB)
         assert "class ScenarioStateRouteDeps" not in text
         assert "class ScenarioStateDeps" not in text
@@ -903,30 +964,44 @@ class TestBehaviorQuirks:
 
     def test_quirk_1_draft_message_is_constant_string(self):
         """Quirk 1: the draft response's 'message' field is a fixed
-        string, not derived from any input."""
-        body = _route_body("/scenarios/state/draft")
+        string, not derived from any input.
+
+        Phase 51H-2: this lives in scenario_state_route_service now,
+        with a slightly different formatting (parenthesized string
+        concatenation for line length)."""
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
+        # The message string itself is preserved
         assert (
-            'payload["message"] = "Workspace draft captured. Saved scenario authority is unchanged."'
+            '"Workspace draft captured. Saved scenario authority is unchanged."'
             in clean
         )
+        # And it is assigned to payload["message"]
+        assert 'payload["message"]' in clean
 
     def test_quirk_2_discard_message_is_constant_string(self):
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
+        # The message string is preserved (may be split across lines
+        # by Python implicit string concatenation in the source)
         assert (
-            'payload["message"] = "Unsaved edits discarded. Workspace restored to the last saved runtime boundary."'
+            "Unsaved edits discarded. Workspace restored to the last"
             in clean
         )
+        assert (
+            "saved runtime boundary."
+            in clean
+        )
+        assert 'payload["message"]' in clean
 
     def test_quirk_3_discard_response_includes_snapshot(self):
         """Quirk 3: discard response includes a 'snapshot' key with
         workspace_state.draft_snapshot. draft does NOT include it."""
         draft_clean = _strip_docstrings_and_comments(
-            _route_body("/scenarios/state/draft")
+            _route_or_service_body("/scenarios/state/draft")
         )
         discard_clean = _strip_docstrings_and_comments(
-            _route_body("/scenarios/state/discard")
+            _route_or_service_body("/scenarios/state/discard")
         )
         # draft does NOT have 'snapshot' in payload
         assert 'payload["snapshot"]' not in draft_clean
@@ -940,17 +1015,24 @@ class TestBehaviorQuirks:
     def test_quirk_4_draft_active_scenario_id_preserved_from_form_or_existing(self):
         """Quirk 4: draft reads current_saved_scenario_id from the
         form (when no existing workspace_state) OR uses
-        existing.active_scenario_id (when workspace_state exists)."""
-        body = _route_body("/scenarios/state/draft")
-        clean = _strip_docstrings_and_comments(body)
-        # Both branches must be present
-        assert "form.get(\"current_saved_scenario_id\", \"\") or None" in clean
-        assert "existing.active_scenario_id if existing else" in clean
+        existing.active_scenario_id (when workspace_state exists).
+
+        Phase 51H-2: this lives in scenario_state_route_service now.
+        The ternary is multiline in the service source."""
+        body = _route_or_service_body("/scenarios/state/draft")
+        # The form-get branch (still one-line)
+        assert "form.get(\"current_saved_scenario_id\", \"\") or None" in body
+        # The existing-workspace branch (multiline in service, 8-space
+        # indent inside the active_scenario_id = (...) assignment)
+        assert "existing.active_scenario_id" in body
+        # The if/else is preserved (either single-line or multiline)
+        assert "if existing" in body
+        assert " else " in body
 
     def test_quirk_5_draft_replay_metadata_uses_scenario_id_when_present(self):
         """Quirk 5: when active_scenario_id is present, it is
         passed to _replay_metadata_for_project as scenario_id."""
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
         # The replay_metadata call site includes scenario_id=active_scenario_id
         assert "scenario_id=active_scenario_id" in clean
@@ -959,7 +1041,7 @@ class TestBehaviorQuirks:
         """Quirk 6: when no workspace_state exists, the discard
         route creates a fresh one with dirty=False from
         baseline_snapshot."""
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
         # The fallback branch
         assert "if workspace_state is None:" in clean
@@ -971,7 +1053,7 @@ class TestBehaviorQuirks:
         """Quirk 7: draft does NOT modify last_runtime_* fields
         (it leaves them from the existing workspace_state, or
         unset for a new workspace)."""
-        body = _route_body("/scenarios/state/draft")
+        body = _route_or_service_body("/scenarios/state/draft")
         clean = _strip_docstrings_and_comments(body)
         # No explicit last_runtime_* kwargs to save_workspace_state
         # (the route does not pass them, so the repository keeps
@@ -989,7 +1071,7 @@ class TestBehaviorQuirks:
         """Quirk 8: discard_workspace_draft (repository function)
         keeps the last_runtime_* fields; the route does not pass
         them explicitly either."""
-        body = _route_body("/scenarios/state/discard")
+        body = _route_or_service_body("/scenarios/state/discard")
         clean = _strip_docstrings_and_comments(body)
         # Same as quirk 7
         assert "last_runtime_origin=" not in clean
@@ -1040,38 +1122,48 @@ class TestExtractionBoundaryMarkers:
         assert "await request.form" not in clean
         assert "form.get" not in clean
 
-    def test_route_orchestration_can_live_in_separate_service_option_b(self):
-        """Option B: create app/services/scenario_state_route_service.py
-        with ScenarioStateRouteOutcome + execute_*_route().
-
-        This is the cleaner option per the canonical Phase 51B
-        pattern (one service per route family)."""
-        # This test just confirms the path option is available
-        option_b_path = REPO_ROOT / "app" / "services" / "scenario_state_route_service.py"
-        # Pre-extraction: does NOT exist
-        assert not option_b_path.exists(), (
-            f"{option_b_path} must NOT exist in 51H-1 (no extraction yet)"
+    def test_route_orchestration_lives_in_separate_service_after_51h2(self):
+        """Phase 51H-2: Option B was selected. The new
+        app/services/scenario_state_route_service.py exists and
+        contains the orchestration (execute_draft_route /
+        execute_discard_route / ScenarioStateRouteDeps /
+        ScenarioStateRouteOutcome)."""
+        option_b_path = (
+            REPO_ROOT / "app" / "services" / "scenario_state_route_service.py"
         )
-        # Option A path: scenario_state_service.py already exists
+        # Post-51H-2: DOES exist
+        assert option_b_path.exists(), (
+            f"{option_b_path} must exist after Phase 51H-2 (extraction is done)"
+        )
+        text = _read(option_b_path)
+        # Has the public API
+        assert "class ScenarioStateRouteOutcome" in text
+        assert "class ScenarioStateRouteDeps" in text
+        assert "async def execute_draft_route" in text
+        assert "async def execute_discard_route" in text
+        # Option A path: scenario_state_service.py still exists
+        # and is unchanged (data-layer only)
         assert SCENARIO_STATE_SERVICE.exists()
 
     def test_helpers_route_needs(self):
-        """Pin the helpers that the route uses (for 51H-2 deps bundle)."""
-        body_draft = _route_body("/scenarios/state/draft")
-        body_discard = _route_body("/scenarios/state/discard")
+        """Pin the helpers that the orchestration needs (for 51H-2
+        deps bundle). Phase 51H-2: the helpers are now deps.* (callable
+        injection); previously they were inline module-scope calls."""
+        body_draft = _route_or_service_body("/scenarios/state/draft")
+        body_discard = _route_or_service_body("/scenarios/state/discard")
         full_route_body = body_draft + "\n" + body_discard
         clean = _strip_docstrings_and_comments(full_route_body)
-        # Helpers the route uses (that would be in the deps bundle)
-        assert "get_current_user(request)" in clean
-        assert "_collect_form_snapshot(" in clean
-        assert "_project_workspace_from_snapshot(" in clean
-        assert "_default_workspace_snapshot(" in clean
-        assert "save_workspace_state(" in clean
-        assert "discard_workspace_draft(" in clean
-        assert "snapshots_equal(" in clean
-        assert "_governance_snapshot(" in clean
-        assert "_replay_metadata_for_project(" in clean
-        assert "_workspace_state_meta(" in clean
+        # Phase 51H-2: helpers are passed as deps.<name>(...)
+        # So the body uses deps.collect_form_snapshot, deps.save_workspace_state, etc.
+        assert "deps.collect_form_snapshot(" in clean
+        assert "deps.project_workspace_from_snapshot(" in clean
+        assert "deps.default_workspace_snapshot(" in clean
+        assert "deps.save_workspace_state(" in clean
+        assert "deps.discard_workspace_draft(" in clean
+        assert "deps.snapshots_equal(" in clean
+        assert "deps.governance_snapshot(" in clean
+        assert "deps.replay_metadata_for_project(" in clean
+        assert "deps.workspace_state_meta(" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
