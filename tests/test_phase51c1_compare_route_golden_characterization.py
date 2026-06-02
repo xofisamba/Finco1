@@ -86,18 +86,22 @@ def test_compare_route_signature():
     assert m, "POST /compare route must have an async def compare(...) handler"
 
 
-def test_compare_service_does_not_exist_yet():
-    """Pre-Phase-51C-2: compare_service.py must not exist."""
-    assert not COMPARE_SERVICE.exists(), (
-        "compare_service.py must NOT exist before Phase 51C-2 extraction"
+def test_compare_service_now_exists_post_phase51c2():
+    """Post-Phase-51C-2: compare_service.py must exist and own the
+    orchestration body that previously lived inside the /compare route
+    in main_web.py."""
+    assert COMPARE_SERVICE.exists(), (
+        "compare_service.py must exist after Phase 51C-2 extraction"
     )
 
 
-def test_main_web_does_not_import_compare_service():
-    """main_web must not import compare_service yet."""
+def test_main_web_imports_compare_service():
+    """Post-Phase-51C-2: main_web must import compare_service so the
+    thin /compare route can call execute_compare_route."""
     text = MAIN_WEB.read_text()
-    assert "from app.services.compare_service" not in text
-    assert "import app.services.compare_service" not in text
+    assert "from app.services.compare_service" in text, (
+        "main_web.py must import compare_service (Phase 51C-2 extraction)"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -129,53 +133,69 @@ def test_compare_route_does_not_call_legacy_runtime_guard():
     )
 
 
-def test_compare_route_uses_run_project():
+def test_compare_route_does_not_call_run_project_directly():
+    """Post-Phase-51C-2: the /compare route must NOT call run_project
+    directly. That responsibility now lives in compare_service.py —
+    the route is thin and delegates via execute_compare_route()."""
     body = _get_compare_route_body()
-    assert "run_project(" in body, (
-        "/compare route must call run_project(...) to execute scenarios"
+    assert "run_project(" not in body, (
+        "/compare route must not call run_project directly after "
+        "Phase 51C-2 extraction (it's a service concern now)"
     )
 
 
-def test_compare_route_iterates_scenarios_constant():
+def test_compare_route_delegates_to_execute_compare_route():
+    """Post-Phase-51C-2: the /compare route must call
+    execute_compare_route(...) and use the returned CompareRouteOutcome
+    to render the response."""
     body = _get_compare_route_body()
-    assert "SCENARIOS" in body, (
-        "/compare route must iterate over the SCENARIOS constant"
+    assert "execute_compare_route" in body, (
+        "/compare route must call execute_compare_route (Phase 51C-2)"
+    )
+    assert "CompareRouteDeps" in body, (
+        "/compare route must build a CompareRouteDeps instance"
     )
 
 
 def test_compare_route_renders_comparison_template():
-    body = _get_compare_route_body()
-    assert "partials/comparison.html" in body, (
-        "/compare route must render partials/comparison.html on success"
+    """Post-Phase-51C-2: the /compare route uses outcome.template_name
+    to drive the template. The service chooses partials/comparison.html
+    for success. Assert the service emits this template name (the
+    route passes the name through transparently)."""
+    text = COMPARE_SERVICE.read_text()
+    assert "partials/comparison.html" in text, (
+        "compare_service must render partials/comparison.html on success"
     )
 
 
 def test_compare_route_renders_errors_template():
-    body = _get_compare_route_body()
-    assert "partials/errors.html" in body, (
-        "/compare route must render partials/errors.html on error paths"
+    """Post-Phase-51C-2: errors.html lives in compare_service now."""
+    text = COMPARE_SERVICE.read_text()
+    assert "partials/errors.html" in text, (
+        "compare_service must render partials/errors.html on error paths"
     )
 
 
-def test_compare_route_runs_three_scenarios_in_loop():
-    """The /compare route iterates Base/Downside/Upside in a for loop
-    and captures 6 KPIs per scenario (project_irr, equity_irr, min_dscr,
-    avg_dscr, total_revenue_keur, total_ebitda_keur)."""
-    body = _get_compare_route_body()
+def test_compare_service_runs_three_scenarios_in_loop():
+    """Post-Phase-51C-2: the service iterates Base/Downside/Upside in
+    a for loop and captures 6 KPIs per scenario (project_irr,
+    equity_irr, min_dscr, avg_dscr, total_revenue_keur,
+    total_ebitda_keur)."""
+    text = COMPARE_SERVICE.read_text()
     for kpi in (
         "project_irr", "equity_irr", "min_dscr", "avg_dscr",
         "total_revenue_keur", "total_ebitda_keur",
     ):
-        assert kpi in body, f"/compare route must capture KPI: {kpi}"
+        assert kpi in text, f"compare_service must capture KPI: {kpi}"
 
 
-def test_compare_route_continues_loop_on_per_scenario_error():
-    """On per-scenario exception, the loop must continue and the
-    scenario gets ``{"error": str(e)}`` in results. This is soft-error
-    semantics, not hard-error."""
-    body = _get_compare_route_body()
-    assert '"error"' in body or "'error'" in body, (
-        "/compare route must capture per-scenario errors as "
+def test_compare_service_continues_loop_on_per_scenario_error():
+    """On per-scenario exception, the service loop must continue and
+    the scenario gets ``{"error": str(e)}`` in results. This is
+    soft-error semantics, not hard-error."""
+    text = COMPARE_SERVICE.read_text()
+    assert '"error"' in text or "'error'" in text, (
+        "compare_service must capture per-scenario errors as "
         '{"error": str(e)} and continue the loop'
     )
 
@@ -221,14 +241,28 @@ def test_compare_route_has_no_persistence_side_effects():
 
 
 def test_app_persistence_has_no_record_compare_run():
-    """Confirmed: no record_compare_run helper exists in the codebase
-    to begin with. /compare is structurally read-only by design."""
+    """Confirmed: no record_compare_run helper exists in the
+    persistence layer to begin with. /compare is structurally
+    read-only by design.
+
+    The grep is scoped to ``app/persistence/`` only — comments in
+    documentation files or in the compare_service.py module docstring
+    are allowed to mention ``record_compare_run`` by name. What must
+    not exist is an actual implementation in the persistence layer.
+    """
     result = subprocess.run(
-        ["grep", "-rn", "record_compare", "app/"],
+        ["grep", "-rn", "record_compare_run\|record_compare_compare\|def record_compare",
+         "app/persistence/"],
         capture_output=True, text=True, cwd=str(PROJECT_ROOT),
     )
     assert result.stdout.strip() == "", (
-        f"No record_compare helper should exist: {result.stdout}"
+        f"No record_compare_run helper should exist in app/persistence/: {result.stdout}"
+    )
+    # Also: compare_service.py must not DEFINE a record_compare_run
+    # function (comments are fine; a function definition is not).
+    text = COMPARE_SERVICE.read_text()
+    assert "def record_compare" not in text, (
+        "compare_service.py must not define a record_compare_run function"
     )
 
 
@@ -236,33 +270,45 @@ def test_app_persistence_has_no_record_compare_run():
 # 5. Latent bug: runtime_snapshot NameError on user_created path
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_compare_route_references_undefined_runtime_snapshot():
-    """PRE-EXISTING LATENT BUG (not introduced by Phase 51C-1).
+def test_compare_route_no_longer_references_undefined_runtime_snapshot():
+    """POST-Phase-51C-2 bug fix: the /compare route must NOT reference
+    ``runtime_snapshot`` as a free variable. Resolution now lives in
+    compare_service.execute_compare_route() via
+    ``deps.resolve_runtime_snapshot_source``.
 
-    /compare references ``runtime_snapshot`` on the user_created path
-    (line ~1612) but never defines it. The /run handler defines
-    ``runtime_snapshot`` via ``resolve_runtime_snapshot_source``; the
-    /compare handler does not. This means the user_created path in
-    /compare would raise ``NameError`` on first execution.
-
-    Phase 51C-2 must fix this as part of the extraction. Phase 51C-1
-    only characterizes the latent bug.
+    This test is the post-fix complement to the Phase 51C-1 latent
+    bug characterization. The bug was: the legacy /compare route
+    referenced ``runtime_snapshot`` on the user_created path without
+    ever defining it (NameError). Phase 51C-2 fixed it.
     """
-    text = MAIN_WEB.read_text()
-    # Find the /compare route body
-    m = re.search(
-        r"@app\.post\(\s*['\"]/compare['\"]\s*\)([\s\S]*?)(?=^@app\.)",
-        text,
-        re.MULTILINE,
+    body = _get_compare_route_body()
+    # The route body itself must not reference runtime_snapshot as a
+    # free variable — that responsibility moved to the service.
+    # Note: substring "runtime_snapshot" is allowed to appear as part
+    # of the dep name "resolve_runtime_snapshot_source" which IS in
+    # the deps bundle. We check for actual usage patterns: assignment
+    # ``runtime_snapshot =`` or attribute/dot access ``runtime_snapshot.``.
+    assert not re.search(r"runtime_snapshot\s*=", body), (
+        "/compare route body must not assign to runtime_snapshot; "
+        "resolution moved to compare_service"
     )
-    body = m.group(1)
-    assert "runtime_snapshot" in body, (
-        "expected to find the latent runtime_snapshot reference in /compare"
+    assert not re.search(r"runtime_snapshot\.", body), (
+        "/compare route body must not access runtime_snapshot.<attr>; "
+        "resolution moved to compare_service"
     )
-    # The /compare route does NOT call resolve_runtime_snapshot_source
-    assert "resolve_runtime_snapshot_source" not in body, (
-        "/compare route does not call resolve_runtime_snapshot_source — "
-        "this is the root cause of the latent NameError"
+    # The route delegates via execute_compare_route, so it must NOT
+    # call resolve_runtime_snapshot_source as a function. Note: the
+    # dep name "resolve_runtime_snapshot_source" appears in the
+    # CompareRouteDeps construction (e.g.
+    # ``resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source``),
+    # which is fine — that's just passing the callable through. We
+    # check for actual call / definition patterns instead of substring.
+    assert not re.search(r"resolve_runtime_snapshot_source\s*\(", body), (
+        "/compare route must not call resolve_runtime_snapshot_source "
+        "as a function — that lives in the service via deps"
+    )
+    assert not re.search(r"def\s+resolve_runtime_snapshot_source\b", body), (
+        "/compare route must not define resolve_runtime_snapshot_source"
     )
 
 
@@ -415,43 +461,53 @@ def test_compare_no_traceback_in_response(client):
 # 8. xfail paths (characterization of missing/buggy behavior)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(reason="PRE-EXISTING LATENT BUG: /compare references runtime_snapshot on user_created path but never defines it. Will be fixed in Phase 51C-2 as part of extraction.", strict=False)
-def test_compare_user_created_path_does_not_raise_nameerror(client):
-    """The user_created path in /compare references ``runtime_snapshot``
-    which is never defined in /compare. This would raise NameError
-    before any model execution. Marked xfail to document the latent
-    bug; Phase 51C-2 must add proper resolution."""
-    # We can't easily construct a user_created project record via
-    # TestClient in this characterization phase, so this test
-    # simply asserts that the structural issue is documented. If the
-    # user_created path is ever fixed in 51C-2, the xfail can be
-    # converted to a passing test.
-    text = MAIN_WEB.read_text()
-    m = re.search(
-        r"@app\.post\(\s*['\"]/compare['\"]\s*\)([\s\S]*?)(?=^@app\.)",
-        text,
-        re.MULTILINE,
+def test_compare_user_created_path_resolves_runtime_snapshot_via_service():
+    """POST-Phase-51C-2 bug fix (Bug A): the user_created path in
+    compare_service.execute_compare_route() must obtain
+    ``runtime_snapshot`` via ``deps.resolve_runtime_snapshot_source``
+    BEFORE calling ``build_projectinputs_from_snapshot``.
+
+    The legacy /compare route referenced ``runtime_snapshot`` on the
+    user_created path without ever defining it (NameError). Phase 51C-2
+    fixed this by resolving the snapshot early in the service and
+    passing it through to the user_created branch.
+
+    This test is the converted-to-passing form of the Phase 51C-1 xfail
+    test ``test_compare_user_created_path_does_not_raise_nameerror``.
+    """
+    text = COMPARE_SERVICE.read_text()
+    # The service must contain the resolve_runtime_snapshot_source call
+    assert "resolve_runtime_snapshot_source" in text, (
+        "compare_service must call deps.resolve_runtime_snapshot_source "
+        "to resolve runtime_snapshot for the user_created path"
     )
-    body = m.group(1)
-    # If 51C-2 has fixed the bug, runtime_snapshot should be defined
-    # in the route body (either via fallback or via
-    # resolve_runtime_snapshot_source).
-    if "runtime_snapshot" in body:
-        # Must be defined somewhere in the body
-        assert re.search(r"runtime_snapshot\s*=", body), (
-            "After Phase 51C-2 fix: runtime_snapshot must be assigned "
-            "in the /compare route body before use"
-        )
+    # The user_created branch must call build_projectinputs_from_snapshot
+    # (this is where the legacy code raised NameError because
+    # runtime_snapshot was undefined).
+    assert "build_projectinputs_from_snapshot" in text, (
+        "compare_service user_created branch must call "
+        "build_projectinputs_from_snapshot after resolving runtime_snapshot"
+    )
+    # The SnapshotInputError narrow except must be in place for the
+    # user_created branch (not the legacy bare Exception).
+    assert "snapshot_input_error" in text, (
+        "compare_service must catch SnapshotInputError narrowly on the "
+        "user_created path (mirrors run_service.py pattern)"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 9. Current-state guardrails (no production code change, no fixture CSV)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_no_production_code_changed():
-    """Phase 51C-1 is characterization only. main_web.py must be
-    unchanged vs origin/main. New files (docs, tests, report) are
-    allowed; production source files are not."""
+def test_no_production_code_changed_outside_compare_extraction():
+    """Phase 51C-2 allows EXACTLY two production code changes:
+    - main_web.py (the /compare route becomes thin)
+    - app/services/compare_service.py (new file, owns orchestration)
+
+    Every other production source file must be unchanged vs
+    origin/main. New docs/tests/report files are allowed.
+    """
     result = subprocess.run(
         ["git", "diff", "--name-only", "origin/main", "--",
          "main_web.py", "app/api/", "app/persistence/", "app/waterfall_core.py",
@@ -462,9 +518,38 @@ def test_no_production_code_changed():
         capture_output=True, text=True, cwd=str(PROJECT_ROOT),
     )
     changed = [l for l in result.stdout.strip().split("\n") if l]
-    assert changed == [], (
-        f"Production files changed in Phase 51C-1 (should be 0): {changed}"
+    # Filter: only main_web.py is allowed to be in the diff (and only
+    # the /compare route body inside it).
+    forbidden = [c for c in changed if c != "main_web.py"]
+    assert forbidden == [], (
+        f"Phase 51C-2 may only change main_web.py and add "
+        f"compare_service.py; unexpected changes: {forbidden}"
     )
+    # main_web.py IS allowed to be in the diff; pin that the diff is
+    # scoped to the /compare route body (no other route changed).
+    if "main_web.py" in changed:
+        result2 = subprocess.run(
+            ["git", "diff", "origin/main", "--", "main_web.py"],
+            capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+        )
+        diff_text = result2.stdout
+        # Pin: no other @app.post route outside /compare is touched.
+        # Heuristic: the diff must NOT add or remove any @app.post /
+        # @app.get / @app.put / @app.delete line.
+        decorator_changes = [
+            ln for ln in diff_text.splitlines()
+            if ln.startswith("+@app.") or ln.startswith("-@app.")
+        ]
+        # Allow the existing /compare decorator (it stays the same).
+        # Disallow any new or removed @app.* line elsewhere.
+        non_compare_decorator_changes = [
+            ln for ln in decorator_changes
+            if "/compare" not in ln
+        ]
+        assert non_compare_decorator_changes == [], (
+            "main_web.py diff must not touch any @app.* decorator "
+            f"other than /compare; got: {non_compare_decorator_changes}"
+        )
 
 
 def test_no_fixture_csv_changes():

@@ -1,0 +1,153 @@
+{
+  "phase": "51C-2",
+  "title": "Phase 51C-2: Extract /compare route orchestration",
+  "type": "behavior-preserving refactor with two explicit bug fixes",
+  "scope": "main_web.py /compare route + new app/services/compare_service.py",
+  "base_sha": "26afe76c0d9f0c28494e58ca63ec323fb852361e",
+  "branch": "phase51c2-extract-compare-route-orchestration",
+  "head_sha": null,
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "objective": "Extract POST /compare orchestration from main_web.py into app/services/compare_service.py using the same behavior-first pattern as Phase 51B, while fixing the two documented latent snapshot binding bugs from Phase 51C-1 (Bug A: user_created NameError; Bug B: saved_state + active_scenario uses resolved snapshot).",
+  "what_moved": [
+    "CompareRouteOutcome dataclass -> app/services/compare_service.py",
+    "CompareRouteDeps dataclass -> app/services/compare_service.py",
+    "execute_compare_route(...) -> app/services/compare_service.py",
+    "Form parsing (10 fields) -> inside execute_compare_route",
+    "Project / workspace resolution -> inside execute_compare_route",
+    "Runtime guard semantics -> inside execute_compare_route",
+    "Project type validation -> inside execute_compare_route",
+    "Override construction (user_created + template-seeded) -> inside execute_compare_route",
+    "Project key resolution (TUHO / Oborovo / Solar / Wind) -> inside execute_compare_route",
+    "Scenario loop (3 scenarios, 6 KPIs each) -> inside execute_compare_route",
+    "Soft-error per-scenario semantics -> inside execute_compare_route",
+    "Template response assembly -> inside execute_compare_route"
+  ],
+  "what_did_not_move": [
+    "Auth redirect (get_current_user -> RedirectResponse /login) - stays in main_web.py (route-owned)",
+    "await request.form() - stays in main_web.py",
+    "templates.TemplateResponse(...) rendering - stays in main_web.py",
+    "CompareRouteDeps construction with all 13 callables - stays in main_web.py (route wires deps)",
+    "/run route from Phase 51B - untouched",
+    "run_service.py from Phase 51B - untouched",
+    "scenario_state_service.py - untouched",
+    "_collect_form_snapshot, _project_workspace_from_snapshot, _normalize_template_source, _canonical_project_type, _resolve_runtime_snapshot_source, _build_schema_from_form - all stay in main_web.py (passed as deps)",
+    "build_projectinputs, build_projectinputs_from_snapshot, run_project - stay as module-scope imports in main_web.py (passed as deps)",
+    "SCENARIOS / PROJECT_TYPES constants - stay in main_web.py module scope (passed as deps)",
+    "SnapshotInputError - stays as imported class in main_web.py (passed as dep)",
+    "Financial formulas / model / project factories / fixture CSVs / schema migrations - unchanged",
+    "JS financial calculations - unchanged (none added)"
+  ],
+  "allowed_bug_fixes": [
+    {
+      "id": "Bug A",
+      "name": "user_created runtime_snapshot NameError",
+      "root_cause": "The legacy /compare route's user_created branch referenced runtime_snapshot without ever defining it. The /run handler defines runtime_snapshot via resolve_runtime_snapshot_source(...); the /compare handler did not. This means the user_created path in /compare would raise NameError on first execution.",
+      "fix": "The service resolves the snapshot early in execute_compare_route via deps.resolve_runtime_snapshot_source(...) and uses it consistently. The user_created branch now receives a properly-resolved snapshot and builds ProjectInputs from it. SnapshotInputError is caught narrowly via deps.snapshot_input_error.",
+      "verification": "Phase 51C-1 xfail test_converted to passing: test_compare_user_created_path_resolves_runtime_snapshot_via_service. New test in 51C-2 suite: test_compare_service_resolves_runtime_snapshot_for_user_created."
+    },
+    {
+      "id": "Bug B",
+      "name": "saved_state + active_scenario uses raw form values instead of resolved snapshot",
+      "root_cause": "The legacy /compare route's non-user_created branch checked runtime_snapshot and runtime_origin == saved_state but runtime_snapshot was never set in that code path (the resolver was never called for /compare). This means the saved_state + active_scenario path silently fell through to the form-driven schema build, using raw form values instead of the resolved snapshot.",
+      "fix": "The same early resolution (shown above) makes runtime_snapshot properly defined for ALL branches, including the saved_state + active_scenario path. The template-seeded branch now correctly calls build_projectinputs_from_snapshot(runtime_snapshot) when on the saved_state + active_scenario path.",
+      "verification": "Phase 51C-1 test updated: test_compare_route_references_undefined_runtime_snapshot -> test_compare_route_no_longer_references_undefined_runtime_snapshot (asserts route body no longer references runtime_snapshot as a free variable). New test in 51C-2 suite: test_compare_service_resolves_snapshot_for_saved_state_path + test_compare_service_saved_state_branch_uses_resolved_snapshot."
+    }
+  ],
+  "compare_service_api": {
+    "module": "app/services/compare_service.py",
+    "public_dataclasses": [
+      {
+        "name": "CompareRouteOutcome",
+        "fields": {
+          "template_name": "str (required)",
+          "context": "dict (required)",
+          "status_code": "int (default 200)",
+          "headers": "dict (default empty)"
+        }
+      },
+      {
+        "name": "CompareRouteDeps",
+        "fields": {
+          "collect_form_snapshot": "Callable",
+          "project_workspace_from_snapshot": "Callable",
+          "canonical_project_type": "Callable",
+          "normalize_template_source": "Callable",
+          "check_runtime_allowed": "Callable",
+          "resolve_runtime_snapshot_source": "Callable",
+          "build_schema_from_form": "Callable",
+          "build_projectinputs": "Callable",
+          "build_projectinputs_from_snapshot": "Callable",
+          "scenarios": "list[str]",
+          "project_types": "list[str]",
+          "snapshot_input_error": "type",
+          "run_project": "Callable"
+        }
+      }
+    ],
+    "public_entry_point": "async def execute_compare_route(*, request, form, user, deps) -> CompareRouteOutcome"
+  },
+  "route_size_before_after": {
+    "pre_phase51c2_total_lines": 95,
+    "pre_phase51c2_non_blank_lines": 95,
+    "post_phase51c2_total_lines": 36,
+    "post_phase51c2_non_blank_lines": 36,
+    "reduction_percent": 62.1
+  },
+  "read_only_invariant": {
+    "preserved": true,
+    "rationale": "compare_service.py and the /compare route do NOT call any persistence / record_* helper. No record_compare_run (does not exist), no record_workspace_runtime, no record_export, no update_scenario_last_run_summary, no db.add / db.commit / db.flush / session.add / session.commit.",
+    "verifications": [
+      "test_compare_service_does_not_call_persistence_helpers",
+      "test_compare_route_does_not_call_persistence_helpers",
+      "test_compare_service_does_not_define_record_compare_function"
+    ]
+  },
+  "test_results": {
+    "phase51a_run_route_golden": {"pass": 25, "fail": 0, "xfail": 0},
+    "phase51b_run_route_vertical_extraction": {"pass": 22, "fail": 0, "xfail": 0},
+    "phase51c1_compare_route_golden_characterization": {"pass": 37, "fail": 0, "xfail": 0, "note": "Was 36 pass + 1 xfail in pre-Phase-51C-2. The user_created NameError xfail was converted to a passing test in this phase. Other tests were updated to reflect fixed behavior (e.g. route no longer calls run_project directly; service does)."},
+    "phase51c2_compare_route_vertical_extraction": {"pass": 49, "fail": 0, "xfail": 0, "note": "New test suite for this phase."},
+    "total_phase51": {"pass": 133, "fail": 0, "xfail": 0},
+    "import_main_web": "OK",
+    "import_app_services_compare_service": "OK"
+  },
+  "pre_existing_parity_failures": {
+    "note": "Two legacy test modules (tests/test_persistence.py and tests/test_repository.py) fail to collect on this branch AND on origin/main HEAD with the same ImportError ('No module named persistence'). This is a pre-existing environment / refactor residue, NOT a regression introduced by Phase 51C-2. The legacy_excel marker tests cannot be enumerated due to this collection error. Out of scope for Phase 51C-2.",
+    "reproduces_on_origin_main": true
+  },
+  "guardrails_preserved": [
+    "No financial formula changes",
+    "No model calculation logic changes",
+    "No project factory changes",
+    "No fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "No generic validation framework",
+    "G20 remains BLOCKED",
+    "R99 / R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat / min DSCR sculpting not promoted",
+    "Backend remains source of truth",
+    "Generic solar / wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "/run route from Phase 51B remains thin (< 200 non-blank body lines)",
+    "run_service.py from Phase 51B remains intact",
+    "compare_service.py does NOT import main_web (one-way import direction)",
+    "compare_service.py does NOT import main_api (service is web-layer)",
+    "main_web.py has zero direct record_export calls",
+    "/compare route has zero direct persistence / record_* calls",
+    "/compare service has zero direct persistence / record_* calls",
+    "PR #299 remains draft / not merged"
+  ],
+  "changed_files": [
+    "app/services/compare_service.py (new file, +491 lines)",
+    "main_web.py (-95 lines, +33 lines net: -62 non-blank lines, -95 + 33 = -62 lines; route body shrinkage)",
+    "tests/test_phase51c1_compare_route_golden_characterization.py (updated: xfail -> passing, structural tests re-pointed to compare_service.py)",
+    "tests/test_phase51c2_compare_route_vertical_extraction.py (new file, +754 lines)",
+    "docs/phase51c2_compare_route_vertical_extraction.md (new file)",
+    "docs/phase51c2_compare_service_boundary.md (new file)"
+  ],
+  "recommended_next_phase": "Phase 51D-1: Apply the same vertical extraction pattern to the next god-module hotspot in main_web.py. Candidate targets (in order of body size, all > 50 non-blank lines): POST /validate (line 1427), POST /scenarios/state/draft (line 2181), POST /scenarios/save (line 2316). For each, the proposed pattern is: (1) characterization phase (e.g. phase5x1_*) — pin current behavior, no production code change; (2) vertical extraction phase (e.g. phase5x2_*) — extract orchestration body into a service module, keep the route thin, write characterization + extraction test suites. /compare and /run will serve as the canonical templates."
+}
