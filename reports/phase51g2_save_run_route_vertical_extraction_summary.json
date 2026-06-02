@@ -1,0 +1,252 @@
+{
+  "phase": "51G-2",
+  "title": "Phase 51G-2: Extract /save-run route family into save_run_service.py",
+  "type": "behavior-preserving vertical extraction",
+  "scope": "main_web.py /save-run route + new app/services/save_run_service.py + tests",
+  "base_sha": "2e41b24f8c47ec544e1ef52e35084646df4d4d8f",
+  "head_sha": null,
+  "branch": "phase51g2-extract-save-run-route",
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "production_code_changed": true,
+  "production_code_changes": [
+    "main_web.py (the /save-run route family becomes thin)",
+    "app/services/save_run_service.py (new file, owns orchestration)"
+  ],
+  "route_size_before_after": {
+    "post_save_run": {
+      "pre_phase51g2_total_lines": 137,
+      "pre_phase51g2_non_blank_lines": 127,
+      "post_phase51g2_total_lines": 68,
+      "post_phase51g2_non_blank_lines": 58,
+      "reduction_total_percent": 50.4,
+      "reduction_non_blank_percent": 54.3
+    }
+  },
+  "service_api": {
+    "module": "app/services/save_run_service.py",
+    "public_dataclasses": [
+      {
+        "name": "SaveRunRouteOutcome",
+        "fields": {
+          "template_name": "str = 'partials/save_result.html'",
+          "context": "dict = field(default_factory=dict)",
+          "status_code": "int = 200",
+          "headers": "dict = field(default_factory=lambda: {'HX-Trigger': 'refreshHistory'})",
+          "is_redirect": "bool = False",
+          "redirect_url": "Optional[str] = None"
+        }
+      },
+      {
+        "name": "SaveRunRouteDeps",
+        "fields_count": 17,
+        "callables": [
+          "project_workspace_from_snapshot",
+          "check_runtime_allowed",
+          "validate_form",
+          "canonical_project_type",
+          "build_projectinputs_from_snapshot",
+          "build_schema_from_form",
+          "build_projectinputs",
+          "normalize_template_source",
+          "run_project",
+          "save_run",
+          "save_project",
+          "replay_metadata_for_project",
+          "governance_snapshot",
+          "utc_now_iso"
+        ],
+        "constants": ["project_types", "scenarios"],
+        "note": "Does NOT include a clean_user_project_runtime_snapshot field. The latent bug is preserved — no stub is injected."
+      }
+    ],
+    "public_entry_points": [
+      "async def execute_save_run_route(*, request, form, user, snapshot, deps: SaveRunRouteDeps) -> SaveRunRouteOutcome"
+    ]
+  },
+  "behaviors_preserved": {
+    "behavior_1_post_save_run_exists": "preserved (route in main_web.py)",
+    "behavior_2_unauth_redirect_302_login": "preserved (route-owned)",
+    "behavior_3_auth_dirty_200_save_result_err": "preserved (service default + route render)",
+    "behavior_4_auth_factory_template_200_save_result_ok": "preserved (service default + route render)",
+    "behavior_5_user_id_from_session": "preserved (user_id = user.user_id inside service)",
+    "behavior_6_9_form_fields_exact": "preserved (9 fields read in service)",
+    "behavior_7_project_code_name_from_record": "preserved",
+    "behavior_8_effective_project_type_resolution": "preserved",
+    "behavior_9_check_runtime_allowed_3_tuple": "preserved",
+    "behavior_10_two_model_branches": "preserved (user_created + factory_template)",
+    "behavior_11_factory_template_maps_template_source": "preserved (tuho / oborovo / Solar / Wind)",
+    "behavior_12_model_broad_except": "preserved (except Exception as e: -> Model error: str(e))",
+    "behavior_13_save_run_before_save_project": "preserved (deps.save_run then deps.save_project)",
+    "behavior_14_save_project_timestamp_from_run_record": "preserved (run_record.created_at.isoformat(), NOT utc_now_iso)",
+    "behavior_15_save_result_html_hx_trigger": "preserved (service default + route forwards headers)"
+  },
+  "quirks_preserved": {
+    "quirk_1_user_created_branch_undefined_function": "PRESERVED — _clean_user_project_runtime_snapshot still referenced but NOT defined. Latent bug NOT fixed in 51G-2. Per user decision: separate Phase 51G-3 bugfix PR.",
+    "quirk_2_runtime_origin_captured_not_mutated": "preserved",
+    "quirk_3_save_project_timestamp_locked_to_run": "preserved (run_record.created_at.isoformat())",
+    "quirk_4_save_project_project_id_explicit_none": "preserved (project_id=None in kwargs)",
+    "quirk_5_all_responses_same_template": "preserved (default template_name='partials/save_result.html')",
+    "quirk_6_validate_form_uses_static_sets": "preserved (PROJECT_TYPES / SCENARIOS passed as deps lists)",
+    "quirk_7_save_run_before_save_project": "preserved (deps.save_run(...) call site comes before deps.save_project(...) call site)"
+  },
+  "intended_side_effects_preserved": {
+    "save_run": {
+      "call_count_per_success": 1,
+      "args_preserved": [
+        "user_id=user.user_id (session-derived)",
+        "project_type=effective_project_type (record or form)",
+        "scenario=scenario (form)",
+        "inputs=inputs (9 fields)",
+        "kpis=kpis (result['kpis'])",
+        "replay_metadata={...export_type='saved_run_metadata'..., runtime_timestamp=deps.utc_now_iso()}"
+      ]
+    },
+    "save_project": {
+      "call_count_per_success": 1,
+      "args_preserved": [
+        "user_id=user.user_id",
+        "project_code=project_code (from record)",
+        "project_name=project_name (from record)",
+        "source_project_template=project_code (SAME as project_code)",
+        "governance_state=deps.governance_snapshot(project_code)",
+        "last_run_summary=kpis (SAME kpis as save_run)",
+        "replay_metadata={...project_id=None..., export_type='saved_run_project_state'..., runtime_timestamp=run_record.created_at.isoformat()}"
+      ],
+      "timestamp_quirk_preserved": "save_project.runtime_timestamp == run_record.created_at.isoformat() (NOT utc_now_iso()) — locked to run timestamp"
+    },
+    "ordering_preserved": "save_run called first, then save_project. If save_run raises, save_project is NOT called. If save_project raises after save_run succeeded, the run row is already committed."
+  },
+  "forbidden_side_effects_absent": {
+    "record_export": "NOT called",
+    "record_download_export": "NOT called",
+    "record_runtime_summary_export": "NOT called",
+    "record_institutional_workbook_export": "NOT called",
+    "record_workspace_runtime": "NOT called (only /run)",
+    "update_scenario_last_run_summary": "NOT called (only /run)",
+    "record_compare_run": "NOT called (does not exist)",
+    "db_add_commit_flush": "NOT called (service uses save_run/save_project repository fns)",
+    "session_add_commit": "NOT called"
+  },
+  "latent_bug_status": {
+    "name": "_clean_user_project_runtime_snapshot",
+    "status": "preserved as pre-existing latent bug",
+    "fixed_in_51g2": false,
+    "rationale": "Per user decision: keep refactor PR and behavior change PR separate for cleaner audit trail. Phase 51G-2 is extraction 1:1 only.",
+    "recommended_phase_51g3": "Inject a real implementation (or a stub) for _clean_user_project_runtime_snapshot so the user_created branch of /save-run can actually save. Update the latent-bug test in 51G-1 to pin the new behavior. This is a behavior change and needs user sign-off.",
+    "test_pin": "tests/test_phase51g1_save_run_route_golden_characterization.py::TestSaveRunModelExecution::test_user_created_branch_has_latent_name_error"
+  },
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS — TUHO 1.450695, Oborovo 1.150038 still match; all 5+5 golden values still pinned",
+    "parity_core_lock": "PASS — 4 SHA-256 files unchanged: app/waterfall_core.py (d8ab56fd...), app/project_factories.py (1b795b96...), reports/phase7_tuho_senior_debt_sizing_extraction.csv (80e79977...), reports/phase23q_oborovo_senior_debt_sizing_extraction.csv (8afdad21...)",
+    "no_service_imports_main_web_or_main_api": "PASS — save_run_service.py does NOT import main_web or main_api; all 9 service files verified clean (run, compare, validate, download, save_run, export, export_audit, scenario_state, __init__)"
+  },
+  "tests_run": {
+    "phase51g1_save_run_route_golden_characterization": {
+      "pass": 59,
+      "fail": 0,
+      "xfail": 0,
+      "note": "Re-pointed to look at save_run_service.py for orchestration behavior. Phase 51G-1 latent-bug test continues to pass."
+    },
+    "phase51g2_save_run_route_vertical_extraction": {
+      "pass": 55,
+      "fail": 0,
+      "xfail": 0,
+      "note": "New test suite for this phase."
+    },
+    "phase51f_parallel_work_guardrails": {
+      "pass": 21,
+      "fail": 0,
+      "xfail": 0,
+      "note": "All 3 guardrails (engine output, parity lock, no-service-imports) still green."
+    },
+    "phase51a_to_51e2_existing": {
+      "pass": 357,
+      "fail": 0,
+      "xfail": 0,
+      "note": "Pre-51G-2 baseline unchanged."
+    },
+    "total_phase51": {
+      "pass": 492,
+      "fail": 0,
+      "xfail": 0
+    },
+    "import_checks": {
+      "main_web": "OK",
+      "app.services.run_service": "OK",
+      "app.services.compare_service": "OK",
+      "app.services.validation_service": "OK",
+      "app.services.download_service": "OK",
+      "app.services.save_run_service": "OK"
+    },
+    "structural_guards": {
+      "save_run_service_does_not_import_main_web": "PASS",
+      "save_run_service_does_not_import_main_api": "PASS",
+      "all_8_other_services_clean": "PASS",
+      "main_web_has_zero_direct_record_export_calls": "PASS (0 matches)"
+    }
+  },
+  "known_failures": {
+    "tests/test_persistence.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51g2": false,
+      "out_of_scope_for_phase_51g2": true
+    },
+    "tests/test_repository.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51g2": false,
+      "out_of_scope_for_phase_51g2": true
+    },
+    "_clean_user_project_runtime_snapshot_NOT_DEFINED": {
+      "is_pre_existing": true,
+      "introduced_by_phase_51g2": false,
+      "out_of_scope_for_phase_51g2": true,
+      "documentation": "Latent bug preserved in 51G-2 per user decision. Recommended for separate Phase 51G-3 bugfix PR with explicit user sign-off."
+    }
+  },
+  "guardrails_preserved": [
+    "No financial formula / model / project factory / fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "Phase 51B-51E-2 routes (/run, /compare, /validate, /download) remain thin and service-backed",
+    "run_service.py, compare_service.py, validation_service.py, download_service.py, export_service.py, export_audit_service.py, scenario_state_service.py all intact (unchanged)",
+    "save_run_service.py does NOT import main_web or main_api (one-way import direction)",
+    "main_web.py has zero direct record_export calls",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat/min DSCR sculpting not promoted",
+    "Generic solar/wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "Backend remains source of truth",
+    "rc1 remains frozen (SHA b425a0708719eaa5e1d922b1008e5609758e0ad4 verified unchanged)",
+    "PR #299 remains closed (no longer active guardrail)",
+    "All 15 Phase 51G-1 behaviors preserved EXACTLY (each pinned with a dedicated test in 51G-1 + 51G-2 suites)",
+    "All 7 Phase 51G-1 quirks preserved EXACTLY",
+    "save_run/save_project ordering preserved (save_run first)",
+    "save_project.runtime_timestamp = run_record.created_at.isoformat() preserved",
+    "save_project.replay_metadata.project_id explicitly None preserved",
+    "_clean_user_project_runtime_snapshot latent bug PRESERVED (NOT fixed in 51G-2)"
+  ],
+  "changed_files": [
+    "app/services/save_run_service.py (new, ~17KB / 569 lines)",
+    "main_web.py (/save-run route replaced with thin version: -127 non-blank +58 non-blank net: -69 lines; route body shrinkage)",
+    "tests/test_phase51g1_save_run_route_golden_characterization.py (re-pointed: structural tests now look at save_run_service.py for orchestration; behavioral assertions unchanged)",
+    "tests/test_phase51g2_save_run_route_vertical_extraction.py (new, 55 tests)",
+    "docs/phase51g2_save_run_route_vertical_extraction.md (new)",
+    "reports/phase51g2_save_run_route_vertical_extraction_summary.json (new)"
+  ],
+  "remaining_risks": [
+    "Latent bug _clean_user_project_runtime_snapshot preserved (user_created branch still dead). Recommended for separate Phase 51G-3 PR with explicit user sign-off.",
+    "Two-template-branches complexity in /save-run is substantial (~30 lines). Moved as a unit in 51G-2; any future refactor must keep it as a unit.",
+    "save_run → save_project ordering is critical; any future refactor that reverses it will fail the test suite (pinned in 51G-1 + 51G-2 tests).",
+    "save_project.runtime_timestamp = run_record.created_at.isoformat() (NOT utc_now_iso) is a subtle quirk; preserved in 51G-2.",
+    "All 4 non-auth responses use save_result.html partial + HX-Trigger: refreshHistory; preserved in 51G-2 (service default + route forwarding)."
+  ],
+  "recommended_next_phase": "Phase 51G-3 (optional, separate bugfix PR) — Fix _clean_user_project_runtime_snapshot latent bug. This is a behavior change and needs explicit user sign-off. After 51G-3 (or instead of it): Phase 51H-1 + 51H-2 (scenario state service family); Phase 51I-1 + 51I-2 (project save-as service); Phase 51J (optional structural guardrail: export_service.py / export_audit_service.py does NOT import main_web)."
+}

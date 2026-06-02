@@ -2625,136 +2625,68 @@ async def list_runs_endpoint(request: Request):
 async def save_run_endpoint(request: Request):
     """Save current model run to persistence.
 
-    Saves current form state by re-running the model (not a snapshot of the HTML card).
-    Returns HTML partial for HTMX consumption.
+    Thin orchestration wrapper (Phase 51G-2). The route is responsible
+    for auth, form parsing, snapshot collection, deps bundle construction,
+    and final template rendering. The full /save-run orchestration body
+    (project/workspace resolution, runtime guard, two execution paths,
+    intended runtime persistence writes, save_result-ok / save_result-err
+    context assembly) lives in
+    ``app.services.save_run_service.execute_save_run_route``.
+
+    Note: the pre-existing latent bug
+    ``_clean_user_project_runtime_snapshot`` (referenced in the
+    user_created branch) is preserved exactly as characterized in
+    Phase 51G-1. A separate Phase 51G-3 bugfix PR is recommended
+    (with explicit user sign-off).
     """
+    from app.services.save_run_service import (
+        SaveRunRouteDeps,
+        execute_save_run_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
-    project_type = form.get("project_type", "")
-    scenario = form.get("scenario", "")
-    project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
-    project_code = project_record.project_code
-    project_name = project_record.project_name
-    allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
-    if not allow_run:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/save_result.html",
-            context={"success": False, "error": guard_message},
-            headers={"HX-Trigger": "refreshHistory"},
+
+    deps = SaveRunRouteDeps(
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        check_runtime_allowed=check_runtime_allowed,
+        validate_form=_validate_form,
+        project_types=PROJECT_TYPES,
+        scenarios=SCENARIOS,
+        canonical_project_type=_canonical_project_type,
+        build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
+        build_schema_from_form=_build_schema_from_form,
+        build_projectinputs=build_projectinputs,
+        normalize_template_source=_normalize_template_source,
+        run_project=run_project,
+        save_run=save_run,
+        save_project=save_project,
+        replay_metadata_for_project=_replay_metadata_for_project,
+        governance_snapshot=_governance_snapshot,
+        utc_now_iso=utc_now_iso,
+    )
+
+    outcome = await execute_save_run_route(
+        request=request, form=form, user=user, snapshot=snapshot, deps=deps,
+    )
+
+    if outcome.is_redirect:
+        return RedirectResponse(
+            url=outcome.redirect_url or "/login",
+            status_code=outcome.status_code,
         )
 
-    # Never trust user_id from client; always derive from session.
-    user_id = user.user_id
-
-    # Build inputs dict from form
-    inputs = {
-        "capacity_mw": form.get("capacity_mw", ""),
-        "tariff_eur_mwh": form.get("tariff_eur_mwh", ""),
-        "p50_hours": form.get("p50_hours", ""),
-        "total_capex_keur": form.get("total_capex_keur", ""),
-        "opex_y1_keur": form.get("opex_y1_keur", ""),
-        "gearing_pct": form.get("gearing_pct", ""),
-        "target_dscr": form.get("target_dscr", ""),
-        "interest_rate_pct": form.get("interest_rate_pct", ""),
-        "tenor_years": form.get("tenor_years", ""),
-    }
-
-    # Validate form
-    errors = []
-    effective_project_type = project_record.project_type or project_type
-    if not _validate_form(effective_project_type, scenario, errors):
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/save_result.html",
-            context={"success": False, "error": errors[0] if errors else "Invalid form"},
-            headers={"HX-Trigger": "refreshHistory"},
-        )
-
-    # Re-run model to get fresh KPIs from the clean saved runtime source.
-    try:
-        if project_record.project_origin == "user_created":
-            runtime_snapshot = _clean_user_project_runtime_snapshot(project_record, workspace_state, runtime_origin)
-            override = build_projectinputs_from_snapshot(runtime_snapshot)
-            runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
-        else:
-            schema = _build_schema_from_form(
-                effective_project_type, scenario,
-                inputs.get("capacity_mw"), inputs.get("tariff_eur_mwh"),
-                inputs.get("p50_hours"), inputs.get("total_capex_keur"),
-                inputs.get("opex_y1_keur"), inputs.get("gearing_pct"),
-                inputs.get("target_dscr"), inputs.get("interest_rate_pct"),
-                inputs.get("tenor_years"),
-            )
-            override = build_projectinputs(schema)
-            runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
-            if runtime_seed == "tuho":
-                runtime_project_key = "TUHO"
-            elif runtime_seed == "oborovo":
-                runtime_project_key = "Oborovo"
-            else:
-                runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
-        result = run_project(runtime_project_key, scenario, project_inputs_override=override)
-        kpis = result["kpis"]
-    except Exception as e:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/save_result.html",
-            context={"success": False, "error": f"Model error: {str(e)}"},
-            headers={"HX-Trigger": "refreshHistory"},
-        )
-
-    # Persist to DB
-    try:
-        run_record = save_run(
-            user_id=user_id,
-            project_type=effective_project_type,
-            scenario=scenario,
-            inputs=inputs,
-            kpis=kpis,
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                export_type="saved_run_metadata",
-                runtime_timestamp=utc_now_iso(),
-            ),
-        )
-        save_project(
-            user_id=user_id,
-            project_code=project_code,
-            project_name=project_name,
-            source_project_template=project_code,
-            governance_state=_governance_snapshot(project_code),
-            last_run_summary=kpis,
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                project_id=None,
-                export_type="saved_run_project_state",
-                runtime_timestamp=run_record.created_at.isoformat(),
-            ),
-        )
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/save_result.html",
-            context={
-                "success": True,
-                "run_id": run_record.run_id,
-                "project_type": effective_project_type,
-                "scenario": scenario,
-                "created_at": run_record.created_at.isoformat(),
-            },
-            headers={"HX-Trigger": "refreshHistory"},
-        )
-    except Exception as e:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/save_result.html",
-            context={"success": False, "error": f"Save failed: {str(e)}"},
-            headers={"HX-Trigger": "refreshHistory"},
-        )
+    return templates.TemplateResponse(
+        request=request,
+        name=outcome.template_name,
+        context=outcome.context,
+        status_code=outcome.status_code,
+        headers=outcome.headers,
+    )
 
 
 @app.get("/run/{run_id}")
