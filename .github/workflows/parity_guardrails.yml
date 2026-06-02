@@ -1,0 +1,38 @@
+name: Parity Guardrails
+
+# Phase 51F — Parallel-work and runtime-refactor guardrails.
+#
+# This workflow runs the three guardrails added in Phase 51F:
+#   1. Engine-output golden (model output pinning for TUHO / Oborovo)
+#   2. Parity-core lock (SHA-256 of parity-sensitive files)
+#   3. No-service-imports-main_web/main_api (AST check)
+#
+# It is intentionally minimal and fast — the engine output tests
+# run against the existing model factories, no extra setup needed.
+# If the engine becomes too slow in future phases, this workflow
+# can be split, but for now it fits comfortably under 60s.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  parity-guardrails:
+    name: Parity Guardrails (Phase 51F)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies (reproducible via constraints.txt)
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: Run Phase 51F guardrails
+        run: |
+          python3 -m pytest -q --tb=short \
+            tests/test_phase51f_parallel_work_guardrails.py
