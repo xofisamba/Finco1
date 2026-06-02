@@ -1,0 +1,493 @@
+{
+  "package": {
+    "name": "Finco1 External Review Preparation Package",
+    "branch": "parallel-b1-external-review-prep",
+    "current_base_sha": "a541d447063cf288b1a9ea0a7bbf199755e40d53",
+    "prior_base_sha": "a53d278263f1f9e134d500e1a7915e9bde615626",
+    "base_sha_transition": "Main moved forward through Phase 51E-2 (dfe13ab) and Phase 51F (a541d44). Package rebased to current base; prior base preserved for provenance only.",
+    "track": "Agent B (docs/report only)",
+    "track_owner": "Agent B",
+    "package_version": "0.3.0",
+    "package_status": "draft_for_reviewer",
+    "intended_review_window": "single_pass_then_follow_ups"
+  },
+  "reviewer_instructions": {
+    "verify_base_sha_first": true,
+    "expected_base_sha": "a541d447063cf288b1a9ea0a7bbf199755e40d53",
+    "do_not_assume_test_pass": true,
+    "do_not_reproduce_no_go_claims": true,
+    "do_not_treat_pins_as_external_validation": true,
+    "required_output_pointer": "docs/external_review/reviewer_instructions.md#6-required-output-from-the-reviewer"
+  },
+  "no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "model_scope_pointer": "docs/external_review/model_scope_and_limitations.md",
+  "tuho_oborovo_pointer": "docs/external_review/tuho_oborovo_validation_summary.md",
+  "phase51f_pointer": "docs/phase51f_parallel_work_guardrails.md (project documentation, on the base SHA, NOT modified by this PR)",
+  "phase51f_test_pointer": "tests/test_phase51f_parallel_work_guardrails.py (on the base SHA, NOT modified by this PR)",
+  "parity_core_files_observed_sha256": {
+    "app/waterfall_core.py": "d8ab56fdb5c01847be605f68a3710c14ddf91f097db86a107e2073eebff21a63",
+    "app/project_factories.py": "1b795b96bfaf3e2795d6e5c389c447cd8c157de720e13ebab0484949b387258a",
+    "reports/phase7_tuho_senior_debt_sizing_extraction.csv": "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442",
+    "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv": "8afdad21025df890b2103c73e40423bb6e4a99f755a94c9fec7b68f1cc3f58f6"
+  },
+  "pinned_golden_values": {
+    "TUHO": {
+      "first_finite_dscr": {"value": 1.450695, "tolerance_abs": 0.001},
+      "first_distribution_op_idx": {"value": 35, "tolerance_abs": 0},
+      "total_operating_periods": {"value": 61, "tolerance_abs": 0},
+      "opex_total_keur": {"value": 85408.27, "tolerance_abs": 0.5},
+      "opex_y1_keur": {"value": 1998.01, "tolerance_abs": 0.5}
+    },
+    "Oborovo": {
+      "first_finite_dscr": {"value": 1.150038, "tolerance_abs": 0.001},
+      "first_distribution_op_idx": {"value": 39, "tolerance_abs": 0},
+      "total_operating_periods": {"value": 60, "tolerance_abs": 0},
+      "opex_total_keur": {"value": 48847.50, "tolerance_abs": 0.5},
+      "opex_y1_keur": {"value": 1338.56, "tolerance_abs": 0.5}
+    }
+  },
+  "areas": [
+    {
+      "id": "A01",
+      "area": "Current base SHA verification",
+      "current_status": "Documented; not yet reviewer-verified",
+      "evidence_available": [
+        "docs/external_review/external_review_package_index.md §3 (lists current base SHA)",
+        "docs/external_review/reviewer_instructions.md §2 (requires SHA verification as step 1)"
+      ],
+      "missing_evidence": [
+        "Reviewer's own git rev-parse output of their local checkout"
+      ],
+      "external_reviewer_question": "Confirm the current base SHA on your local checkout matches a541d447063cf288b1a9ea0a7bbf199755e40d53 before proceeding.",
+      "go_no_go_impact": "Blocks all downstream go/no-go opinions if SHA does not match.",
+      "notes": "Prior base SHA a53d278 is documented in the index for provenance only; it is not what is being reviewed."
+    },
+    {
+      "id": "A02",
+      "area": "Backend is source of truth (no JS financial calculations)",
+      "current_status": "Documented guardrail; requires code-level verification",
+      "evidence_available": [
+        "docs/external_review/no_go_claims.md §5",
+        "docs/external_review/model_scope_and_limitations.md §1"
+      ],
+      "missing_evidence": [
+        "Reviewer-grep of app/templates/** and static/** for any numeric/financial operation",
+        "Reviewer confirmation that no JS in the repo computes interest, DSCR, NPV, IRR, sculpting, sweep, or similar"
+      ],
+      "external_reviewer_question": "Are there any client-side (template or static asset) financial calculations present in the current base SHA? List every hit with file and line range.",
+      "go_no_go_impact": "Any hit is a documentation/code mismatch; must be reported as a bug, not a feature.",
+      "notes": "Presence of presentation formatting (number formatting, currency display) is acceptable; computation is not."
+    },
+    {
+      "id": "A03",
+      "area": "Domain and project-factory layer (domain/**, app/project_factories.py)",
+      "current_status": "Internally tested (per package; reviewer to verify). app/project_factories.py is also parity-core-locked by Phase 51F.",
+      "evidence_available": [
+        "domain/ directory at current base SHA",
+        "app/project_factories.py at current base SHA (parity-core-locked SHA-256: 1b795b96bfaf3e2795d6e5c389c447cd8c157de720e13ebab0484949b387258a)",
+        "tests/ entries that touch domain/project-factory behavior"
+      ],
+      "missing_evidence": [
+        "Concrete list of test files exercising this layer at the current base SHA",
+        "Pass/fail results from the reviewer's own run"
+      ],
+      "external_reviewer_question": "Which tests under tests/ exercise the domain and project-factory layer at the current base SHA, and do they pass on your local run?",
+      "go_no_go_impact": "Failures or skips move this row from 'internally tested' to 'exploratory/unvalidated' for the reviewer's purposes. app/project_factories.py also has its SHA-256 pinned; if the pin matches, that is a separate confirmation of integrity.",
+      "notes": "Listed as 'internally tested' is the project's own classification; reviewer should not adopt it without independent verification."
+    },
+    {
+      "id": "A04",
+      "area": "Senior-debt waterfall (app/waterfall_core.py)",
+      "current_status": "Internally tested AND parity-core-locked by Phase 51F",
+      "evidence_available": [
+        "app/waterfall_core.py at current base SHA (parity-core-locked SHA-256: d8ab56fdb5c01847be605f68a3710c14ddf91f097db86a107e2073eebff21a63)",
+        "Existing tests touching waterfall behavior at current base SHA"
+      ],
+      "missing_evidence": [
+        "Pass/fail results from the reviewer's own run of waterfall tests at current base SHA",
+        "Confirmation that no test was silently skipped"
+      ],
+      "external_reviewer_question": "Which tests exercise the senior-debt waterfall at the current base SHA, and what is your observed pass/fail/skip outcome?",
+      "go_no_go_impact": "Any failure or unexpected skip is a red flag and must be flagged as a conditional go at best. SHA-256 of waterfall_core.py must match the pin; otherwise the parity-core lock is broken.",
+      "notes": "Phase 51F pins waterfall_core.py and the two senior-debt CSVs."
+    },
+    {
+      "id": "A05",
+      "area": "Web routes and services (main_web.py, main_api.py, app/services/**)",
+      "current_status": "Agent A track for in-flight work; /download extraction (Phase 51E-2) is on main and is part of the base",
+      "evidence_available": [
+        "Package documents track isolation (external_review_package_index.md §6)",
+        "Phase 51E-2 commit dfe13ab is on main"
+      ],
+      "missing_evidence": [
+        "Reviewer should not attempt to evaluate Phase 51+ future work from this PR"
+      ],
+      "external_reviewer_question": "Confirm you are reviewing only the current base SHA and not pulling behavior from any parallel Agent A branch. /download route orchestration is on main and may be inspected directly; do not conflate it with future in-flight Agent A work.",
+      "go_no_go_impact": "Mixing in Agent A in-flight behavior invalidates the review.",
+      "notes": "main_web.py, main_api.py, app/services/**, future /save-run work, scenario routes, project save-as, and repository extraction are Agent A owned and are not part of this PR."
+    },
+    {
+      "id": "A06",
+      "area": "Templates and static assets (presentation only)",
+      "current_status": "Out of scope for this PR; presentation-only by policy",
+      "evidence_available": [
+        "no_go_claims.md §5 (no JS financial calculations)",
+        "model_scope_and_limitations.md §1, §5"
+      ],
+      "missing_evidence": [
+        "Reviewer-grep of templates and static assets for any financial calculation"
+      ],
+      "external_reviewer_question": "Do any template or static-asset files at the current base SHA perform financial calculations? List every hit with file and line range.",
+      "go_no_go_impact": "Any hit is a documentation/code mismatch and must be reported as a bug.",
+      "notes": "Agent B may touch templates/static only with explicit approval and only if it does not require new route context fields, main_web.py changes, app/services/ changes, or new JS financial calculations. This PR makes no such change."
+    },
+    {
+      "id": "A07",
+      "area": "Test coverage at current base SHA (general)",
+      "current_status": "Tests exist; pass/fail not pre-claimed by the package",
+      "evidence_available": [
+        "tests/ directory at current base SHA",
+        "Named references in model_scope_and_limitations.md §6.1"
+      ],
+      "missing_evidence": [
+        "Concrete enumeration of every test file at current base SHA",
+        "Concrete pass/fail/skip results from the reviewer's own run"
+      ],
+      "external_reviewer_question": "Enumerate every test file under tests/ at the current base SHA, run each, and report pass/fail/skip counts. Do not rely on the package's list.",
+      "go_no_go_impact": "A high skip rate or a meaningful failure rate moves multiple rows from 'internally tested' to 'unvalidated'.",
+      "notes": "The package explicitly states: do not assume a test file's existence means it passes."
+    },
+    {
+      "id": "A08",
+      "area": "TUHO frozen-template behavior (Wind 1, 35 MW x 5 turbines)",
+      "current_status": "Pinned by Phase 51F (engine-output golden + parity-core lock); not externally validated",
+      "evidence_available": [
+        "docs/external_review/tuho_oborovo_validation_summary.md §3.1 (pinned values)",
+        "reports/phase7_tuho_senior_debt_sizing_extraction.csv (parity-core-locked SHA-256: 80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442)",
+        "app/project_factories.py: create_default_tuho_wind1()"
+      ],
+      "missing_evidence": [
+        "Reviewer-located fixture paths and SHA",
+        "Reviewer run of tests/test_phase51f_parallel_work_guardrails.py with observed pass/fail/skip for TUHO",
+        "Side-by-side of model output vs. pinned values"
+      ],
+      "external_reviewer_question": "Do the pinned TUHO values match the model's observed output when the Phase 51F test is run at the current base SHA? Does the parity-core lock for the TUHO senior-debt CSV match the actual file hash?",
+      "go_no_go_impact": "Any drift between model output and pinned value is a conditional go at best. Any parity-core lock mismatch means the guardrail was already broken.",
+      "notes": "TUHO is a frozen reference template, not a real-world deal. Pinning is regression protection, not external validation."
+    },
+    {
+      "id": "A09",
+      "area": "Oborovo frozen-template behavior (Solar PV, 75.26 MWp)",
+      "current_status": "Pinned by Phase 51F (engine-output golden + parity-core lock); not externally validated",
+      "evidence_available": [
+        "docs/external_review/tuho_oborovo_validation_summary.md §3.2 (pinned values)",
+        "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv (parity-core-locked SHA-256: 8afdad21025df890b2103c73e40423bb6e4a99f755a94c9fec7b68f1cc3f58f6)",
+        "app/project_factories.py: create_default_oborovo()"
+      ],
+      "missing_evidence": [
+        "Reviewer run of tests/test_phase51f_parallel_work_guardrails.py with observed pass/fail/skip for Oborovo",
+        "Side-by-side of model output vs. pinned values"
+      ],
+      "external_reviewer_question": "Do the pinned Oborovo values match the model's observed output when the Phase 51F test is run at the current base SHA? Does the parity-core lock for the Oborovo senior-debt CSV match the actual file hash?",
+      "go_no_go_impact": "Any drift between model output and pinned value is a conditional go at best. Any parity-core lock mismatch means the guardrail was already broken.",
+      "notes": "Oborovo is a frozen reference template, not a real-world deal. Pinning is regression protection, not external validation."
+    },
+    {
+      "id": "A10",
+      "area": "Generic solar modeling (external claim)",
+      "current_status": "Exploratory and unvalidated for any external claim. Internal validation cases exist in validation/cases/solar_case_1.py and solar_case_2.py but are not external validation.",
+      "evidence_available": [
+        "no_go_claims.md §6",
+        "model_scope_and_limitations.md §3.4"
+      ],
+      "missing_evidence": [
+        "Any independent external validation evidence, which is explicitly absent by design"
+      ],
+      "external_reviewer_question": "Confirm that no part of this review or its output treats generic solar modeling as externally validated, production-ready, or suitable for any external claim, even though internal validation cases exist.",
+      "go_no_go_impact": "Any reviewer output that implies solar external validation is a no-go for the entire review.",
+      "notes": "Solar is exploratory at the external-claim level by policy, not by accident. Oborovo is a specific project configuration and is pinned; it is not 'generic solar'."
+    },
+    {
+      "id": "A11",
+      "area": "Generic wind modeling (external claim)",
+      "current_status": "Exploratory and unvalidated for any external claim. Internal validation cases exist in validation/cases/wind_case_1.py but are not external validation.",
+      "evidence_available": [
+        "no_go_claims.md §6",
+        "model_scope_and_limitations.md §3.4"
+      ],
+      "missing_evidence": [
+        "Any independent external validation evidence, which is explicitly absent by design"
+      ],
+      "external_reviewer_question": "Confirm that no part of this review or its output treats generic wind modeling as externally validated, production-ready, or suitable for any external claim, even though internal validation cases exist.",
+      "go_no_go_impact": "Any reviewer output that implies wind external validation is a no-go for the entire review.",
+      "notes": "Wind is exploratory at the external-claim level by policy, not by accident. TUHO is a specific project configuration and is pinned; it is not 'generic wind'."
+    },
+    {
+      "id": "A12",
+      "area": "G20",
+      "current_status": "BLOCKED",
+      "evidence_available": [
+        "no_go_claims.md §6",
+        "model_scope_and_limitations.md §3.4, §5"
+      ],
+      "missing_evidence": [
+        "G20 is blocked; no validation evidence is expected or required"
+      ],
+      "external_reviewer_question": "Confirm that G20 is treated as blocked at the current base SHA and that your output does not approve, validate, or imply approval of G20 in any form.",
+      "go_no_go_impact": "Any approval, validation, or implication of G20 approval is a no-go for the entire review.",
+      "notes": "G20 may have code in the repo; presence of code is not approval."
+    },
+    {
+      "id": "A13",
+      "area": "R99",
+      "current_status": "NOT APPROVED",
+      "evidence_available": [
+        "no_go_claims.md §6",
+        "model_scope_and_limitations.md §3.4, §5"
+      ],
+      "missing_evidence": [
+        "R99 is not approved; no validation evidence is expected or required"
+      ],
+      "external_reviewer_question": "Confirm that R99 is treated as not approved at the current base SHA and that your output does not validate or imply validation of R99 in any form.",
+      "go_no_go_impact": "Any validation or implication of R99 validation is a no-go for the entire review.",
+      "notes": "Internal references to R99 are not approvals."
+    },
+    {
+      "id": "A14",
+      "area": "R102",
+      "current_status": "NOT APPROVED",
+      "evidence_available": [
+        "no_go_claims.md §6",
+        "model_scope_and_limitations.md §3.4, §5"
+      ],
+      "missing_evidence": [
+        "R102 is not approved; no validation evidence is expected or required"
+      ],
+      "external_reviewer_question": "Confirm that R102 is treated as not approved at the current base SHA and that your output does not validate or imply validation of R102 in any form.",
+      "go_no_go_impact": "Any validation or implication of R102 validation is a no-go for the entire review.",
+      "notes": "Internal references to R102 are not approvals."
+    },
+    {
+      "id": "A15",
+      "area": "partial_pay_sweep",
+      "current_status": "Not promoted",
+      "evidence_available": [
+        "no_go_claims.md §6",
+        "model_scope_and_limitations.md §3.4, §5"
+      ],
+      "missing_evidence": [
+        "partial_pay_sweep is not promoted; no validation evidence is expected or required"
+      ],
+      "external_reviewer_question": "Confirm that partial_pay_sweep is treated as not promoted at the current base SHA and that your output does not validate or imply validation of partial_pay_sweep in any form.",
+      "go_no_go_impact": "Any validation or implication of partial_pay_sweep validation is a no-go for the entire review.",
+      "notes": "Internal references to partial_pay_sweep are not promotions."
+    },
+    {
+      "id": "A16",
+      "area": "Flat / min DSCR sculpting",
+      "current_status": "Not promoted",
+      "evidence_available": [
+        "no_go_claims.md §6",
+        "model_scope_and_limitations.md §3.4, §5"
+      ],
+      "missing_evidence": [
+        "Flat/min DSCR sculpting is not promoted; no validation evidence is expected or required"
+      ],
+      "external_reviewer_question": "Confirm that flat/min DSCR sculpting is treated as not promoted at the current base SHA and that your output does not validate or imply validation of it in any form.",
+      "go_no_go_impact": "Any validation or implication of flat/min DSCR sculpting validation is a no-go for the entire review.",
+      "notes": "Internal references to flat/min DSCR sculpting are not promotions."
+    },
+    {
+      "id": "A17",
+      "area": "PR #299",
+      "current_status": "Closed; not active",
+      "evidence_available": [
+        "external_review_package_index.md §7",
+        "no_go_claims.md §6"
+      ],
+      "missing_evidence": [
+        "No further evidence required; closed PRs are not part of the baseline"
+      ],
+      "external_reviewer_question": "Confirm that PR #299 is not treated as an active reference for current behavior at the current base SHA.",
+      "go_no_go_impact": "Treating PR #299 as active is a no-go for the entire review.",
+      "notes": "Closed PRs are not a substitute for the current state."
+    },
+    {
+      "id": "A18",
+      "area": "rc1 frozen",
+      "current_status": "Frozen; must not be modified",
+      "evidence_available": [
+        "external_review_package_index.md §7",
+        "no_go_claims.md §6"
+      ],
+      "missing_evidence": [
+        "No modification of rc1 by this PR (this PR is docs/report only)"
+      ],
+      "external_reviewer_question": "Confirm that this PR does not modify any file that is part of rc1 and that your review does not propose modifying rc1.",
+      "go_no_go_impact": "Any modification of rc1 in this PR is a no-go and a package-defining violation.",
+      "notes": "rc1 modifications require a separate, future, explicitly reviewed change."
+    },
+    {
+      "id": "A19",
+      "area": "Documentation / code consistency",
+      "current_status": "To be verified by reviewer at current base SHA",
+      "evidence_available": [
+        "All five markdown files in docs/external_review/",
+        "This readiness matrix"
+      ],
+      "missing_evidence": [
+        "Reviewer-side cross-check of every claim in docs/external_review/ against the code, fixtures, and tests at current base SHA"
+      ],
+      "external_reviewer_question": "List every documentation claim in this package that is contradicted by the code, fixtures, or test outcomes at the current base SHA, with file and line range.",
+      "go_no_go_impact": "Material contradictions are a no-go for the package as written; they must be addressed in a follow-up B-track PR, not in this one.",
+      "notes": "Mismatches should default to the more conservative interpretation."
+    },
+    {
+      "id": "A20",
+      "area": "No-go claim leakage in repo",
+      "current_status": "To be verified by reviewer at current base SHA",
+      "evidence_available": [
+        "no_go_claims.md (the catalog of what must not appear)"
+      ],
+      "missing_evidence": [
+        "Reviewer-grep of the entire repo at current base SHA for any string, comment, or claim that reproduces or implies a no-go claim"
+      ],
+      "external_reviewer_question": "Does any file in the repo at current base SHA (docs, comments, fixtures, reports) reproduce or imply any claim in no_go_claims.md? List every hit.",
+      "go_no_go_impact": "Any leak is a documentation/code mismatch and must be reported; it does not, by itself, invalidate the review, but it must be flagged.",
+      "notes": "Absence of hits is not, by itself, evidence of external validation."
+    },
+    {
+      "id": "A21",
+      "area": "Parallel-track isolation (Agent A vs Agent B)",
+      "current_status": "Enforced by file list in this PR",
+      "evidence_available": [
+        "external_review_package_index.md §5, §6",
+        "Changed-files list of this PR (only docs/external_review/** and reports/external_review/**)"
+      ],
+      "missing_evidence": [
+        "Reviewer-side diff inspection confirming zero touches to Agent A files"
+      ],
+      "external_reviewer_question": "Confirm the diff of this PR touches only docs/external_review/** and reports/external_review/** and zero files in the Agent A ownership list.",
+      "go_no_go_impact": "Any touch of an Agent A file is a no-go for this PR and must be reverted in a follow-up B-track fix.",
+      "notes": "Agent A ownership list: main_web.py, main_api.py, app/services/**, app/waterfall_core.py, app/project_factories.py, project_factories.py, domain/**, repository.py, tests/test_phase51*.py, tests/test_phase52*.py, reports/*senior_debt*.csv, fixture CSVs, schema/migrations."
+    },
+    {
+      "id": "A22",
+      "area": "Schema and migration changes",
+      "current_status": "None in this PR; none claimed",
+      "evidence_available": [
+        "external_review_package_index.md §5.2",
+        "no_go_claims.md §4"
+      ],
+      "missing_evidence": [
+        "Reviewer diff inspection confirming zero schema/migration changes"
+      ],
+      "external_reviewer_question": "Confirm that this PR contains zero schema or migration file changes.",
+      "go_no_go_impact": "Any schema/migration change is a no-go for this PR.",
+      "notes": "Schema and migration work is out of scope for the B track at this time."
+    },
+    {
+      "id": "A23",
+      "area": "Fixture CSV changes",
+      "current_status": "None in this PR; none claimed",
+      "evidence_available": [
+        "external_review_package_index.md §5.2",
+        "no_go_claims.md §4"
+      ],
+      "missing_evidence": [
+        "Reviewer diff inspection confirming zero fixture CSV changes"
+      ],
+      "external_reviewer_question": "Confirm that this PR contains zero fixture CSV changes.",
+      "go_no_go_impact": "Any fixture CSV change is a no-go for this PR.",
+      "notes": "Fixture CSVs are owned by Agent A and are out of scope for the B track."
+    },
+    {
+      "id": "A24",
+      "area": "Phase 51E-2 /download extraction",
+      "current_status": "On main as of dfe13ab; not the responsibility of this PR",
+      "evidence_available": [
+        "external_review_package_index.md §3.1 (base-SHA transition)",
+        "no_go_claims.md §7"
+      ],
+      "missing_evidence": [
+        "None expected; /download route orchestration is on main and can be inspected directly"
+      ],
+      "external_reviewer_question": "Confirm that the /download route orchestration is on main at the current base SHA and is not part of any in-flight Agent A work. Confirm that this PR has zero relationship to or effect on the /download extraction.",
+      "go_no_go_impact": "Any conflict with /download is a no-go for this PR.",
+      "notes": "Prior drafts of this package (against base a53d278) treated 51E-2 as future work; that is no longer accurate at the current base."
+    },
+    {
+      "id": "A25",
+      "area": "Phase 51F guardrails — engine-output golden (TUHO + Oborovo)",
+      "current_status": "Active on main; package-author pre-flight run at the current base SHA observed 10/10 engine-output golden tests pass (5 TUHO + 5 Oborovo)",
+      "evidence_available": [
+        "tests/test_phase51f_parallel_work_guardrails.py: TestEngineOutputGoldenTUHO, TestEngineOutputGoldenOborovo (10 tests total, 5 per project)",
+        "docs/phase51f_parallel_work_guardrails.md (project documentation of the guardrails)",
+        "Pinned values catalogued in tuho_oborovo_validation_summary.md §3 and in this matrix's pinned_golden_values field",
+        "Package-author pre-flight run recorded in tuho_oborovo_validation_summary.md §10 (informational only, NOT reviewer evidence)"
+      ],
+      "missing_evidence": [
+        "Reviewer-executed pytest run of the Phase 51F test file at the current base SHA with observed pass/fail/skip"
+      ],
+      "external_reviewer_question": "Run tests/test_phase51f_parallel_work_guardrails.py at the current base SHA. Do the engine-output golden tests pass? If any test fails, report the observed value, the golden value, the tolerance, and the delta.",
+      "go_no_go_impact": "Any pin failure means the guardrail has caught (or failed to prevent) a regression. Either way, it is a flag.",
+      "notes": "Pinning is regression protection, not external validation. Pin correctness at the time of pin-setting is not self-evident; the reviewer can only confirm consistency, not absolute correctness."
+    },
+    {
+      "id": "A26",
+      "area": "Phase 51F guardrails — parity-core lock (SHA-256 of four files)",
+      "current_status": "Active on main; the four file hashes in the test file match the actual SHA-256 of the files at the current base SHA. Package-author pre-flight run observed all 4 parametrized tests pass.",
+      "evidence_available": [
+        "tests/test_phase51f_parallel_work_guardrails.py: TestParityCoreLock (4 parametrized tests)",
+        "Observed SHA-256 of the four files at current base SHA (recorded in this matrix's parity_core_files_observed_sha256 field)",
+        "Package-author pre-flight run recorded in tuho_oborovo_validation_summary.md §10 (informational only, NOT reviewer evidence)"
+      ],
+      "missing_evidence": [
+        "Reviewer-independent SHA-256 computation of the four parity-core files at the current base SHA",
+        "Reviewer-executed pytest run of TestParityCoreLock"
+      ],
+      "external_reviewer_question": "Compute the SHA-256 of app/waterfall_core.py, app/project_factories.py, reports/phase7_tuho_senior_debt_sizing_extraction.csv, and reports/phase23q_oborovo_senior_debt_sizing_extraction.csv at the current base SHA. Do they match the hashes in the test file?",
+      "go_no_go_impact": "Any hash mismatch means the parity-core lock has already been broken — the test would fail on the base SHA. That is a serious flag, not a stylistic issue.",
+      "notes": "If the hashes match, the guardrail is intact. If they do not, the guardrail has detected an unintended change. In the second case, the project must investigate what changed and why."
+    },
+    {
+      "id": "A27",
+      "area": "Phase 51F guardrails — no-service-imports-main_web/main_api",
+      "current_status": "Active on main; AST-based check of app/services/*.py. Package-author pre-flight run observed the no-service-imports test pass.",
+      "evidence_available": [
+        "tests/test_phase51f_parallel_work_guardrails.py: TestNoServiceImportsMainWebOrMainApi",
+        "app/services/ directory at current base SHA (services: compare_service.py, download_service.py, export_audit_service.py, export_service.py, run_service.py, scenario_state_service.py, validation_service.py)",
+        "Package-author pre-flight run recorded in tuho_oborovo_validation_summary.md §10 (informational only, NOT reviewer evidence)"
+      ],
+      "missing_evidence": [
+        "Reviewer-executed pytest run of TestNoServiceImportsMainWebOrMainApi",
+        "Reviewer-AST or grep confirmation that none of the listed services imports main_web or main_api"
+      ],
+      "external_reviewer_question": "Run the no-service-imports test at the current base SHA. Independently confirm that no file under app/services/*.py actually imports main_web or main_api. Note that docstrings and comments mentioning 'extracted from main_web' are allowed by design.",
+      "go_no_go_impact": "Any actual import of main_web or main_api from a service is a Phase 51 architecture violation and a no-go for that row.",
+      "notes": "The reverse direction (routes importing services) is the intended Phase 51 architecture and is not checked by this guardrail."
+    },
+    {
+      "id": "A28",
+      "area": "Reviewer acknowledgement of no-go claims",
+      "current_status": "Required, not yet provided",
+      "evidence_available": [
+        "no_go_claims.md §11"
+      ],
+      "missing_evidence": [
+        "Signed acknowledgement line in the reviewer's final output"
+      ],
+      "external_reviewer_question": "Include the acknowledgement line from no_go_claims.md §11 in your final output, verbatim or substantively equivalent.",
+      "go_no_go_impact": "Missing acknowledgement is a no-go for accepting the review.",
+      "notes": "Required regardless of overall go/no-go opinion on the model."
+    }
+  ],
+  "global_notes": [
+    "Current base SHA is a541d447063cf288b1a9ea0a7bbf199755e40d53. Prior base SHA a53d278 is preserved in the package for provenance only and is NOT the state under review.",
+    "This matrix is a working checklist, not a verdict. The reviewer supplies the verdict per row.",
+    "The package is intentionally conservative; reviewers are encouraged to push it further toward 'unvalidated' rather than less.",
+    "The presence of a test file in tests/ at the current base SHA is not, by itself, evidence of a passing test.",
+    "Phase 51F pins (engine-output golden, parity-core lock) are regression protection, not external validation. They pin the current model against drift; they do not validate the model against external truth.",
+    "The matrix and the markdown documents it points at must be read together. The matrix alone is not a substitute for the markdown."
+  ]
+}
