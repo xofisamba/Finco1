@@ -1,0 +1,172 @@
+{
+  "phase": "51L-1",
+  "title": "POST /scenarios/add golden characterization",
+  "type": "characterization-only",
+  "stacked_on": "51K-2 (a00697b3be9e3dd86bdc2ebb4456ff8f6b4280d1)",
+  "base_sha": "a00697b3be9e3dd86bdc2ebb4456ff8f6b4280d1",
+  "base_pr": 401,
+  "base_pr_title": "Phase 51K-2: Extract scenario duplicate route",
+  "head_sha": null,
+  "head_pr": null,
+  "branch": "phase51l1-scenario-add-route-golden-characterization",
+  "characterized_route": {
+    "path": "POST /scenarios/add",
+    "handler": "add_scenario_endpoint",
+    "location": "main_web.py:2326-2397 (pre-extraction)",
+    "total_lines": 72,
+    "non_blank_lines": 62,
+    "risk": "HIGH",
+    "notes": "Persistence-heavy. Reads 2 form fields, validates, resolves project + base case, calls add_scenario, re-reads for render. 5 explicit error paths (400×2, 403, 404, 500). Partial template render with HX-Trigger."
+  },
+  "changed_files": [
+    "tests/test_phase51l1_scenario_add_route_golden_characterization.py",
+    "docs/phase51l1_scenario_add_route_golden_characterization.md",
+    "reports/phase51l1_scenario_add_route_golden_characterization_summary.json"
+  ],
+  "production_code_changed": false,
+  "behaviors_pinned": {
+    "auth": [
+      "Uses get_current_user(request)",
+      "Unauth -> 302 redirect to /login (NOT 401 JSON, NOT HX-Redirect)"
+    ],
+    "form_input": [
+      "await request.form()",
+      "Reads 2 individual fields: project_code, scenario_name (via form.get)",
+      "No _collect_form_snapshot call (different from /scenarios/save)"
+    ],
+    "validation": [
+      "If project_code empty -> 400 JSON",
+      "If scenario_name empty -> 400 JSON"
+    ],
+    "user_id_source": [
+      "user_id always from user.user_id (session)"
+    ],
+    "active_project": [
+      "project_record = get_project_record(user_id=user.user_id, project_code=project_code)",
+      "If project_record is None -> 404 JSON",
+      "If project_origin != 'user_created' -> 403 JSON"
+    ],
+    "scenario_creation": [
+      "List scenarios (without limit) to find is_base_case=True",
+      "If no base case, promote oldest scenario via promote_scenario_to_base_case",
+      "add_scenario(...) with parent_scenario_id=base_case.scenario_id",
+      "base_input_set=base_case.snapshot or base_case.base_input_set or {}",
+      "overrides={}",
+      "governance_state={}",
+      "replay_metadata={'action': 'add_scenario', 'parent_scenario_id': ..., 'project_code': ...}",
+      "If new_scenario is None -> 500 JSON"
+    ],
+    "render_context": [
+      "Re-read scenarios (with limit=12) for render",
+      "Resolve workspace_state via get_workspace_state",
+      "Build context via _build_scenario_tab_context(user, project_record, scenarios, ws)"
+    ],
+    "response": [
+      "Success: templates.TemplateResponse(name='partials/scenario_tab.html', headers={'HX-Trigger': 'scenarioAdded'})",
+      "400/403/404/500: JSON error responses"
+    ]
+  },
+  "intended_side_effects": {
+    "per_success": {
+      "get_project_record": 1,
+      "list_scenarios_for_base_case": 1,
+      "_get_least_created_scenario_for_project": "0 or 1 (only if no base case)",
+      "promote_scenario_to_base_case": "0 or 1 (only if no base case)",
+      "add_scenario": 1,
+      "list_scenarios_for_render": 1,
+      "get_workspace_state": 1,
+      "templates.TemplateResponse": 1
+    },
+    "per_400_or_403_or_404": {
+      "all_persistence": 0
+    },
+    "per_500": {
+      "get_project_record": 1,
+      "list_scenarios_for_base_case": 1,
+      "add_scenario": 1
+    },
+    "ordering": "auth -> await request.form() -> 400 checks (project_code, scenario_name) -> get_project_record -> 404 check -> 403 check -> list_scenarios (for base case) -> [if no base case] promote_scenario_to_base_case -> add_scenario -> 500 check -> list_scenarios (for render) -> get_workspace_state -> TemplateResponse"
+  },
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "save_project",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "db.add / db.commit / db.flush",
+    "session.add / session.commit"
+  ],
+  "quirks_pinned": [
+    "1. Form input: individual form.get() calls, NOT _collect_form_snapshot",
+    "2. HX-Trigger: scenarioAdded on success",
+    "3. Partial template render (partials/scenario_tab.html), NOT full workspace render",
+    "4. Fallback: promote oldest scenario to base case if none exists",
+    "5. replay_metadata uses action='add_scenario', NOT export_type",
+    "6. governance_state={} (empty dict); repository is source of truth",
+    "7. overrides={} (empty dict); user adds later",
+    "8. Only user_created projects can add scenarios (403 otherwise)",
+    "9. base_input_set fallback chain: snapshot -> base_input_set -> {}",
+    "10. Re-read scenarios list after add (with limit=12) for render context"
+  ],
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS (no change in this phase)",
+    "parity_core_lock": "PASS (no change in this phase)",
+    "no_service_imports_main_web_or_main_api": "PASS (11 services clean, route is unchanged)"
+  },
+  "tests_run": {
+    "test_phase51l1_scenario_add_route_golden_characterization": {
+      "tests": 86,
+      "passed": 86,
+      "failed": 0
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "tests": 21,
+      "passed": 21,
+      "failed": 0
+    }
+  },
+  "known_failures": [
+    {
+      "test_module": "tests/test_persistence.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    },
+    {
+      "test_module": "tests/test_repository.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    }
+  ],
+  "recommended_51l2_extraction_boundary": {
+    "module": "app/services/scenarios_add_service.py",
+    "outcome_class": "ScenariosAddRouteOutcome",
+    "deps_class": "ScenariosAddRouteDeps",
+    "execute_function": "execute_scenarios_add_route",
+    "deps_callables": [
+      "get_project_record",
+      "list_scenarios",
+      "_get_least_created_scenario_for_project",
+      "promote_scenario_to_base_case",
+      "add_scenario",
+      "get_workspace_state",
+      "build_scenario_tab_context",
+      "render_template_response"
+    ],
+    "rationale": "Different concern from scenario_state_service (data-layer), scenario_state_route_service (draft/discard), scenarios_save_service (save from form), scenario_duplicate_service (duplicate). Add creates with parent inheritance from base case; new module keeps dependency surface clean."
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51l1": false
+  },
+  "no_production_code_changes": true,
+  "ready_for_review": true,
+  "stack_note": "L1 is stacked on K2 head (a00697b). Merge order: PR #400 (K1) -> PR #401 (K2) -> PR (L1)."
+}
