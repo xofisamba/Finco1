@@ -80,6 +80,37 @@ def _route_body(name: str) -> str:
     return m.group(0)
 
 
+def _route_or_service_body(name: str) -> str:
+    """Extract the body of a named route from main_web.py or the
+    service that owns its orchestration.
+
+    After Phase 51G-2, the /save-run orchestration lives in
+    app/services/save_run_service.py. The /save-run route in
+    main_web.py is now thin (auth + form + deps + service call +
+    render). Tests that check the orchestration body must look at
+    the service, not the route.
+
+    For routes that have NOT been extracted yet, this falls back
+    to the route body in main_web.py.
+    """
+    route_body = _route_body(name)
+    # After extraction, the route is thin: it imports the service,
+    # constructs deps, and calls execute_<route>_route. If the
+    # route body does NOT contain the orchestration we are
+    # looking for, the orchestration has been extracted to a
+    # service. Fall back to the service module.
+    if "from app.services.save_run_service" in route_body:
+        # /save-run was extracted in Phase 51G-2. Look in the service.
+        return _read(REPO_ROOT / "app" / "services" / "save_run_service.py")
+    return route_body
+
+
+def _service_uses_save_run_service() -> bool:
+    """True if main_web's /save-run route uses save_run_service."""
+    route_body = _route_or_service_body("/save-run")
+    return "from app.services.save_run_service" in route_body
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. Route exists and structure preserved
 # ═══════════════════════════════════════════════════════════════════════════
@@ -88,11 +119,15 @@ class TestSaveRunRouteStructure:
     """Pin the /save-run route's location and structural shape."""
 
     def test_save_run_route_exists_in_main_web(self):
-        """POST /save-run must exist in main_web.py (not yet extracted)."""
+        """POST /save-run must exist in main_web.py.
+
+        After Phase 51G-2, the route is thin (auth + form + deps +
+        service call + render) but the route entry point itself
+        still lives in main_web.py.
+        """
         text = _read(MAIN_WEB)
         assert '@app.post("/save-run")' in text, (
-            "POST /save-run must remain in main_web.py (Phase 51G-1 is "
-            "characterization only, not extraction)."
+            "POST /save-run route must remain in main_web.py"
         )
 
     def test_save_run_route_handler_is_save_run_endpoint(self):
@@ -102,51 +137,86 @@ class TestSaveRunRouteStructure:
             "save_run_endpoint handler must exist in main_web.py"
         )
 
-    def test_save_run_route_size_is_characteristic(self):
-        """Current /save-run route size is ~127 non-blank lines.
+    def test_save_run_route_size_after_51g2(self):
+        """After Phase 51G-2 extraction, the route is thin.
 
-        This pin is the lower bound — the route MUST NOT shrink
-        (Phase 51G-1 is characterization only; later extraction
-        happens in 51G-2). The route MAY grow by 1–2 lines
-        (e.g. via comment, import) but a 50%+ drop would indicate
-        silent refactor.
+        Pre-51G-2: 127 non-blank lines. Post-51G-2: ~58 non-blank
+        lines (route is thin; orchestration moved to service).
+
+        This pin ensures the route stays THIN after extraction
+        (max 90 non-blank). If the route grows back, that means
+        someone is inlining orchestration that belongs in the
+        service.
         """
         body = _route_body("/save-run")
         non_blank = sum(1 for line in body.splitlines() if line.strip())
-        assert non_blank >= 110, (
-            f"/save-run route shrunk to {non_blank} non-blank lines. "
-            f"Phase 51G-1 is characterization only; route must remain "
-            f"intact. (Expected ~127 lines; minimum 110.)"
-        )
-        assert non_blank <= 200, (
-            f"/save-run route grew to {non_blank} non-blank lines. "
-            f"Such growth is unusual for a characterization phase."
+        assert non_blank <= 90, (
+            f"/save-run route grew to {non_blank} non-blank lines after "
+            f"Phase 51G-2. The route should be thin (auth + form + deps "
+            f"+ service call + render). Orchestration must live in "
+            f"save_run_service.py."
         )
 
     def test_save_run_route_does_not_import_main_web(self):
         """The route lives in main_web.py, so it trivially 'uses' main_web.
-        We check that it does NOT call run_service or compare_service
-        or validation_service or download_service (it has its own
-        orchestration, not yet extracted)."""
+        We check that the route does NOT import save_run_service in a way
+        that would couple main_web back to the service. The route IS
+        allowed to import the service (Phase 51G-2 forward), but it
+        should not import the OTHER services (run, compare, validate,
+        download) since /save-run is orthogonal to those.
+        """
         body = _route_body("/save-run")
+        # Strip docstrings to avoid false positives from
+        # "Phase 51G-2" / "Phase 51F" / "Phase 50" references.
+        import re as _re
+        # Strip ALL triple-quoted strings (docstrings + module-level)
+        body_no_doc = _re.sub(r'"""[\s\S]*?"""', '', body)
+        # Strip inline # comments line by line
+        body_no_doc_lines = []
+        for line in body_no_doc.splitlines():
+            if not line.lstrip().startswith("#"):
+                body_no_doc_lines.append(line)
+        body_no_doc = "\n".join(body_no_doc_lines)
+        # Allowed (post-51G-2): imports save_run_service
+        # NOT allowed: importing other services
         for forbidden in (
             "run_service.",
             "compare_service.",
             "validation_service.",
             "download_service.",
         ):
-            assert forbidden not in body, (
-                f"/save-run route must not call {forbidden} (Phase 51G-1 "
-                f"characterization — no service extraction yet)"
+            assert forbidden not in body_no_doc, (
+                f"/save-run route must not call {forbidden}"
             )
 
-    def test_save_run_route_does_not_call_service_extraction(self):
-        """No app/services/save_run_service import or call yet."""
-        text = _read(MAIN_WEB)
-        # Service extraction happens in Phase 51G-2, not 51G-1.
-        assert "save_run_service" not in text, (
-            "save_run_service must not exist yet — Phase 51G-1 is "
-            "characterization only. Extraction is Phase 51G-2."
+    def test_save_run_service_does_not_import_main_web(self):
+        """The save_run_service must NOT import main_web.
+
+        Phase 51F guardrail #3 enforces one-way import direction:
+        main_web -> save_run_service, never the reverse.
+        """
+        service_text = _read(REPO_ROOT / "app" / "services" / "save_run_service.py")
+        # Look for actual import statements, not just any mention
+        import re
+        for pattern in (r"^import main_web\b", r"^from main_web\b",
+                        r"^import main_api\b", r"^from main_api\b"):
+            assert not re.search(pattern, service_text, re.MULTILINE), (
+                f"save_run_service must not {pattern} (one-way import direction)"
+            )
+
+    def test_save_run_route_uses_save_run_service_after_51g2(self):
+        """After Phase 51G-2, the route must import and use
+        save_run_service."""
+        body = _route_body("/save-run")
+        assert "from app.services.save_run_service import" in body, (
+            "After Phase 51G-2, /save-run route must import from "
+            "app.services.save_run_service"
+        )
+        assert "SaveRunRouteDeps" in body, (
+            "Route must construct SaveRunRouteDeps bundle"
+        )
+        assert "execute_save_run_route" in body, (
+            "Route must call execute_save_run_route"
         )
 
 
@@ -173,10 +243,15 @@ class TestSaveRunAuthBoundary:
         )
 
     def test_save_run_route_body_uses_get_current_user(self):
-        """Route body must call get_current_user(request)."""
+        """Route body must call get_current_user(request).
+
+        After Phase 51G-2, the auth check stays in the route
+        (route-owned). The service does not know about the user
+        object until the route passes it in.
+        """
         body = _route_body("/save-run")
         assert "get_current_user(request)" in body, (
-            "/save-run must call get_current_user(request) for auth check"
+            "/save-run route must call get_current_user(request) for auth check"
         )
 
     def test_save_run_route_uses_redirect_response_on_no_user(self):
@@ -184,13 +259,13 @@ class TestSaveRunAuthBoundary:
         RedirectResponse(url=\"/login\", status_code=302)."""
         body = _route_body("/save-run")
         assert 'RedirectResponse(url="/login", status_code=302)' in body, (
-            "/save-run must redirect to /login with 302 on no user"
+            "/save-run route must redirect to /login with 302 on no user"
         )
 
     def test_save_run_user_id_derived_from_session_not_form(self):
         """The route comments and code must derive user_id from session,
         never from form (security: never trust client-provided user_id)."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "user_id = user.user_id" in body, (
             "/save-run must derive user_id from session via user.user_id"
         )
@@ -222,7 +297,7 @@ class TestSaveRunFormParsing:
 
     def test_route_reads_exact_9_input_fields_from_form(self):
         """The route reads exactly these 9 fields from form."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         for field in self.EXPECTED_FIELDS:
             assert f'form.get("{field}"' in body, (
                 f"/save-run must read form field {field!r}"
@@ -230,14 +305,14 @@ class TestSaveRunFormParsing:
 
     def test_route_does_not_read_user_id_from_form(self):
         """user_id must come from session, not form."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "form.get(\"user_id" not in body, (
             "/save-run must not read user_id from form (security)"
         )
 
     def test_route_builds_inputs_dict_with_all_9_fields(self):
         """The route builds a dict `inputs` with all 9 fields."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         # The route constructs inputs = { "capacity_mw": form.get(...), ... }
         assert "inputs = {" in body, (
             "/save-run must construct an inputs dict"
@@ -246,7 +321,7 @@ class TestSaveRunFormParsing:
     def test_route_reads_project_type_and_scenario_from_form(self):
         """The route reads project_type and scenario from form
         (for form-level routing)."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert 'form.get("project_type"' in body
         assert 'form.get("scenario"' in body
 
@@ -261,7 +336,7 @@ class TestSaveRunProjectScenarioSelection:
     def test_route_resolves_project_from_snapshot(self):
         """Route must call _project_workspace_from_snapshot to resolve
         project_record and workspace_state from the form snapshot."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "_project_workspace_from_snapshot" in body, (
             "/save-run must resolve project from snapshot via "
             "_project_workspace_from_snapshot"
@@ -269,14 +344,14 @@ class TestSaveRunProjectScenarioSelection:
 
     def test_route_collects_form_snapshot(self):
         """Route must collect the form snapshot via _collect_form_snapshot."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "_collect_form_snapshot" in body, (
             "/save-run must call _collect_form_snapshot(form)"
         )
 
     def test_route_uses_effective_project_type(self):
         """Route prefers project_record.project_type; falls back to form."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "effective_project_type" in body, (
             "/save-run must compute effective_project_type from "
             "project_record.project_type or form"
@@ -288,7 +363,7 @@ class TestSaveRunProjectScenarioSelection:
     def test_route_uses_project_code_and_project_name_from_record(self):
         """project_code and project_name come from project_record,
         not from form."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "project_code = project_record.project_code" in body
         assert "project_name = project_record.project_name" in body
 
@@ -302,7 +377,7 @@ class TestSaveRunRuntimeOrigin:
 
     def test_route_calls_check_runtime_allowed(self):
         """Route must call check_runtime_allowed to determine allow_run."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "check_runtime_allowed" in body, (
             "/save-run must call check_runtime_allowed to gate execution"
         )
@@ -310,7 +385,7 @@ class TestSaveRunRuntimeOrigin:
     def test_route_blocks_when_runtime_not_allowed(self):
         """If allow_run is False, route must return a 200 save_result-err
         with HX-Trigger: refreshHistory."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         # Pattern: if not allow_run: return templates.TemplateResponse(... "partials/save_result.html", context={"success": False, "error": guard_message}, headers={"HX-Trigger": "refreshHistory"})
         assert "if not allow_run:" in body
         # The "not allow_run" branch must use save_result.html partial
@@ -319,7 +394,7 @@ class TestSaveRunRuntimeOrigin:
 
     def test_runtime_origin_unpacked_to_3_tuple(self):
         """check_runtime_allowed returns 3-tuple (allow_run, runtime_origin, guard_message)."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         # Must unpack 3 values
         assert (
             "allow_run, runtime_origin, guard_message" in body
@@ -335,7 +410,7 @@ class TestSaveRunModelExecution:
 
     def test_route_branches_on_project_origin(self):
         """Route has two branches: user_created vs factory_template."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert 'project_record.project_origin == "user_created"' in body, (
             "/save-run must branch on project_origin (user_created vs factory_template)"
         )
@@ -345,7 +420,7 @@ class TestSaveRunModelExecution:
 
     def test_user_created_branch_uses_build_projectinputs_from_snapshot(self):
         """user_created branch uses build_projectinputs_from_snapshot."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         # The user_created branch should call build_projectinputs_from_snapshot
         assert "build_projectinputs_from_snapshot" in body, (
             "user_created branch must call build_projectinputs_from_snapshot"
@@ -354,7 +429,7 @@ class TestSaveRunModelExecution:
     def test_factory_template_branch_uses_build_schema_from_form(self):
         """factory_template branch uses _build_schema_from_form +
         build_projectinputs."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "_build_schema_from_form" in body, (
             "factory_template branch must call _build_schema_from_form"
         )
@@ -365,7 +440,7 @@ class TestSaveRunModelExecution:
     def test_factory_template_branch_resolves_runtime_seed(self):
         """factory_template branch maps template_source to runtime key
         (tuho / oborovo / Solar / Wind)."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "_normalize_template_source" in body, (
             "factory_template branch must call _normalize_template_source"
         )
@@ -374,21 +449,21 @@ class TestSaveRunModelExecution:
 
     def test_route_calls_run_project(self):
         """Route must call run_project(runtime_project_key, scenario, ...)."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "run_project(" in body, (
             "/save-run must call run_project to execute the model"
         )
 
     def test_route_pulls_kpis_from_result(self):
         """Route reads kpis = result[\"kpis\"] from the model result."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert 'kpis = result["kpis"]' in body, (
             "/save-run must read kpis from result dict"
         )
 
     def test_route_wraps_model_execution_in_broad_except(self):
         """Model execution is wrapped in a broad try/except Exception."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         # Two try blocks: one for model execution, one for persistence
         assert body.count("except Exception as e:") >= 2
         # Model error path uses 'Model error: {str(e)}'
@@ -403,7 +478,7 @@ class TestSaveRunModelExecution:
         This is a pre-existing bug, NOT introduced by Phase 51G-1.
         Pinning it here so that any future fix is intentional.
         """
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "_clean_user_project_runtime_snapshot" in body, (
             "/save-run user_created branch must reference "
             "_clean_user_project_runtime_snapshot (even if undefined)"
@@ -429,9 +504,13 @@ class TestSaveRunIntendedPersistenceWrites:
     """
 
     def test_route_calls_save_run(self):
-        """Route must call save_run with the expected kwargs."""
-        body = _route_body("/save-run")
-        assert "save_run(" in body, "/save-run must call save_run"
+        """Service must call save_run with the expected kwargs.
+
+        After Phase 51G-2, the orchestration lives in
+        save_run_service.py and calls deps.save_run.
+        """
+        body = _route_or_service_body("/save-run")
+        assert "save_run(" in body, "/save-run service must call save_run"
         # Verify key kwargs are passed positionally/by name
         for kw in [
             "user_id=user_id",
@@ -443,9 +522,9 @@ class TestSaveRunIntendedPersistenceWrites:
             assert kw in body, f"save_run must be called with {kw}"
 
     def test_route_calls_save_project(self):
-        """Route must call save_project with the expected kwargs."""
-        body = _route_body("/save-run")
-        assert "save_project(" in body, "/save-run must call save_project"
+        """Service must call save_project with the expected kwargs."""
+        body = _route_or_service_body("/save-run")
+        assert "save_project(" in body, "/save-run service must call save_project"
         for kw in [
             "user_id=user_id",
             "project_code=project_code",
@@ -463,20 +542,33 @@ class TestSaveRunIntendedPersistenceWrites:
         raises after save_run succeeded, save_run row is still
         committed.
         """
-        body = _route_body("/save-run")
-        run_pos = body.find("run_record = save_run(")
-        proj_pos = body.find("save_project(")
-        assert run_pos != -1
-        assert proj_pos != -1
+        body = _route_or_service_body("/save-run")
+        # In the service, save_run is called as deps.save_run(...)
+        run_pos = body.find("deps.save_run(")
+        proj_pos = body.find("deps.save_project(")
+        if run_pos == -1:
+            run_pos = body.find("run_record = save_run(")
+        if proj_pos == -1:
+            proj_pos = body.find("save_project(")
+        assert run_pos != -1, "save_run call site not found"
+        assert proj_pos != -1, "save_project call site not found"
         # save_run must come before save_project in the source
         assert run_pos < proj_pos, (
             "save_run must be called before save_project in /save-run"
         )
 
     def test_save_run_includes_replay_metadata(self):
-        """save_run call must pass replay_metadata with export_type."""
-        body = _route_body("/save-run")
-        assert "replay_metadata=_replay_metadata_for_project(" in body
+        """save_run call must pass replay_metadata with export_type.
+
+        In the service, this is ``replay_metadata=deps.replay_metadata_for_project(...)``.
+        """
+        body = _route_or_service_body("/save-run")
+        # Either route-style or service-style
+        has_route_style = "replay_metadata=_replay_metadata_for_project(" in body
+        has_service_style = "replay_metadata=deps.replay_metadata_for_project(" in body
+        assert has_route_style or has_service_style, (
+            "save_run replay_metadata must call _replay_metadata_for_project"
+        )
         assert '"saved_run_metadata"' in body, (
             "save_run replay_metadata must use export_type='saved_run_metadata'"
         )
@@ -484,7 +576,7 @@ class TestSaveRunIntendedPersistenceWrites:
     def test_save_project_includes_replay_metadata(self):
         """save_project call must pass replay_metadata with export_type
         'saved_run_project_state'."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert '"saved_run_project_state"' in body, (
             "save_project replay_metadata must use "
             "export_type='saved_run_project_state'"
@@ -497,7 +589,7 @@ class TestSaveRunIntendedPersistenceWrites:
         This guarantees the project's runtime_timestamp is the SAME
         as the run's, not a few microseconds later.
         """
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "run_record.created_at.isoformat()" in body, (
             "save_project runtime_timestamp must come from run_record.created_at"
         )
@@ -505,7 +597,7 @@ class TestSaveRunIntendedPersistenceWrites:
     def test_save_project_replay_metadata_includes_project_id_none(self):
         """save_project's replay_metadata must explicitly set project_id=None
         (the repo will fill it in based on the existing row)."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         assert "project_id=None" in body, (
             "save_project replay_metadata must set project_id=None"
         )
@@ -513,7 +605,7 @@ class TestSaveRunIntendedPersistenceWrites:
     def test_save_run_endpoint_returns_run_id(self):
         """Success response context must include run_id, project_type,
         scenario, created_at."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         for field in [
             "\"run_id\"",
             "\"project_type\"",
@@ -528,7 +620,7 @@ class TestSaveRunIntendedPersistenceWrites:
 
     def test_save_run_persistence_block_wrapped_in_try_except(self):
         """The persistence block is wrapped in try/except Exception."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         # The persistence block has its own try/except with 'Save failed' message
         assert '"Save failed:' in body or "Save failed:" in body, (
             "Persistence block must catch exceptions and return "
@@ -571,22 +663,38 @@ class TestSaveRunResponseShape:
     def test_all_responses_use_hx_trigger_refresh_history(self):
         """All save_result responses include HX-Trigger: refreshHistory.
 
-        The route uses this header to tell HTMX to refresh the run
-        history panel after a save attempt.
+        After Phase 51G-2, the HX-Trigger header is set via the
+        service's ``SaveRunRouteOutcome.headers`` default (or
+        explicitly in the route's templates.TemplateResponse call).
+        The semantic is preserved: every non-auth response carries
+        the header.
         """
-        body = _route_body("/save-run")
-        # Count occurrences of refreshHistory header
-        assert body.count('"HX-Trigger": "refreshHistory"') >= 4, (
-            "All save_result responses must include HX-Trigger: refreshHistory"
+        # Check service has the default header
+        service_text = _read(REPO_ROOT / "app" / "services" / "save_run_service.py")
+        assert "refreshHistory" in service_text, (
+            "save_run_service must emit refreshHistory in default headers"
+        )
+        # Check route passes the outcome.headers to the template response
+        route_text = _route_body("/save-run")
+        assert "headers=outcome.headers" in route_text or 'headers="HX-Trigger"' in route_text, (
+            "Route must forward outcome.headers to templates.TemplateResponse"
         )
 
     def test_all_responses_use_save_result_html(self):
-        """All non-auth responses from /save-run use save_result.html."""
-        body = _route_body("/save-run")
-        # Count templates.TemplateResponse uses
-        assert body.count('name="partials/save_result.html"') >= 4, (
-            "All 4 save_result responses (allow_run block, validate block, "
-            "model except, persist except, success) must use save_result.html"
+        """All non-auth responses from /save-run use save_result.html.
+
+        After Phase 51G-2, the template is set in the service
+        default (``SaveRunRouteOutcome.template_name``) and the
+        route forwards it to templates.TemplateResponse.
+        """
+        service_text = _read(REPO_ROOT / "app" / "services" / "save_run_service.py")
+        assert '"partials/save_result.html"' in service_text or "partials/save_result.html" in service_text, (
+            "save_run_service must use partials/save_result.html"
+        )
+        # The route must pass the outcome.template_name to templates.TemplateResponse
+        route_text = _route_body("/save-run")
+        assert "name=outcome.template_name" in route_text, (
+            "Route must pass outcome.template_name to templates.TemplateResponse"
         )
 
 
@@ -616,25 +724,34 @@ class TestSaveRunForbiddenSideEffects:
     )
     def test_save_run_route_does_not_call(self, call_name, reason):
         """Pin that /save-run does not invoke the forbidden helpers."""
-        body = _route_body("/save-run")
+        body = _route_or_service_body("/save-run")
         # Look for the call as function/method call
         assert f"{call_name}(" not in body, reason
 
     def test_save_run_does_not_import_record_export(self):
-        """/save-run must not import record_export helpers."""
-        text = _read(MAIN_WEB)
-        # The route body and its imports do not include record_export
-        # (it may appear in the file in a different context, but the
-        # route must not import or call it).
-        body = _route_body("/save-run")
+        """/save-run (route + service) must not import record_export
+        helpers. The route is allowed to import other main_web
+        helpers via deps, but record_export is forbidden.
+        """
+        body = _route_or_service_body("/save-run")
+        # Strip docstrings to avoid false positives (the service
+        # docstring lists forbidden helpers as documentation).
+        import re as _re
+        body_no_doc = _re.sub(r'^\s*""".*?"""\s*', '', body, count=1, flags=_re.DOTALL)
+        # Also strip inline # comments
+        body_no_doc_lines = []
+        for line in body_no_doc.splitlines():
+            if not line.lstrip().startswith("#"):
+                body_no_doc_lines.append(line)
+        body_no_doc = "\n".join(body_no_doc_lines)
         for forbidden in (
             "record_export",
             "record_download_export",
             "record_runtime_summary_export",
             "record_institutional_workbook_export",
         ):
-            assert forbidden not in body, (
-                f"/save-run route body must not reference {forbidden}"
+            assert forbidden not in body_no_doc, (
+                f"/save-run must not reference {forbidden}"
             )
 
 
@@ -653,11 +770,12 @@ class TestPhase51FGuardrailsStillActive:
         path = REPO_ROOT / "tests" / "test_phase51f_parallel_work_guardrails.py"
         assert path.is_file(), "Phase 51F test module must remain"
 
-    def test_no_save_run_service_yet(self):
-        """No save_run_service.py — extraction is Phase 51G-2."""
-        assert not (REPO_ROOT / "app" / "services" / "save_run_service.py").exists(), (
-            "save_run_service.py must NOT exist yet — Phase 51G-1 is "
-            "characterization only. Extraction happens in Phase 51G-2."
+    def test_save_run_service_now_exists_after_51g2(self):
+        """After Phase 51G-2, save_run_service.py MUST exist (it was
+        created in this phase).
+        """
+        assert (REPO_ROOT / "app" / "services" / "save_run_service.py").exists(), (
+            "save_run_service.py must exist after Phase 51G-2 (extraction phase)"
         )
 
     def test_main_web_intact(self):
