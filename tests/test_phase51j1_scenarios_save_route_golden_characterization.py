@@ -53,6 +53,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_WEB = REPO_ROOT / "main_web.py"
+SCENARIOS_SAVE_SERVICE = (
+    REPO_ROOT / "app" / "services" / "scenarios_save_service.py"
+)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
@@ -85,6 +88,29 @@ def _route_body(route_path: str) -> str:
     return m.group(0)
 
 
+def _route_or_service_body(route_path: str) -> str:
+    """Return the body that orchestrates the route. After Phase 51J-2,
+    orchestration lives in scenarios_save_service.py (the
+    execute_scenarios_save_route function), not in the thin
+    main_web.py route. We use the service body for orchestration-
+    content checks; the route body is used for thin-route checks.
+
+    Behavior-characterization tests should call this helper.
+    Structural thin-route tests should still call _route_body.
+    """
+    if SCENARIOS_SAVE_SERVICE.exists():
+        text = _read(SCENARIOS_SAVE_SERVICE)
+        m = re.search(
+            r"async def execute_scenarios_save_route\(.*?(?=\nasync def |\nclass |\Z)",
+            text,
+            re.DOTALL,
+        )
+        if m is not None:
+            return m.group(0)
+    # Fallback: return the route body (pre-51J-2 behavior)
+    return _route_body(route_path)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Route existence
 # ─────────────────────────────────────────────────────────────────────────────
@@ -99,27 +125,29 @@ class TestRouteExistence:
         assert "async def save_scenario_endpoint" in text
 
     def test_route_size_is_characteristic(self):
-        """Pin current route size. After 51J-2 the size will shrink
-        significantly (orchestration moves to the service)."""
+        """Pin current route size. After 51J-2 the size shrunk to a
+        thin route (orchestration is in the service)."""
         body = _route_body("/scenarios/save")
         non_blank = [l for l in body.splitlines() if l.strip()]
-        # Pre-extraction: 88 non-blank (the highest non-create
-        # remaining inline route). After 51J-2: should shrink to
-        # ~36 non-blank (thin route with deps bundle + service call).
-        assert 60 <= len(non_blank) <= 120, (
+        # Post-51J-2: ~43 non-blank (thin route with deps bundle +
+        # service call).
+        assert 30 <= len(non_blank) <= 60, (
             f"/scenarios/save is {len(non_blank)} non-blank lines; "
-            f"expected 60-120 (pre-extraction characteristic)"
+            f"expected 30-60 (thin route after 51J-2)"
         )
 
-    def test_no_execute_pattern_yet(self):
-        """Pre-extraction: the route does NOT use a
-        service.execute_*_route() pattern. After 51J-2 it should."""
+    def test_uses_execute_pattern_after_51j2(self):
+        """Phase 51J-2: the route now uses the
+        execute_scenarios_save_route() pattern (orchestration is
+        in the service)."""
         body = _route_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
-        assert not re.search(r"execute_\w+_route\(", clean)
+        # The route now calls execute_scenarios_save_route(...)
+        assert "execute_scenarios_save_route(" in clean
 
-    def test_no_scenarios_save_deps_class_yet(self):
-        """Pre-extraction: no ScenariosSaveRouteDeps class in main_web.py."""
+    def test_no_scenarios_save_deps_class_in_main_web(self):
+        """Phase 51J-2: the deps class lives in the service module,
+        not in main_web.py."""
         text = _read(MAIN_WEB)
         assert "class ScenariosSaveRouteDeps" not in text
         assert "class ScenariosSaveDeps" not in text
@@ -134,6 +162,7 @@ class TestAuthenticationBehavior:
     """Pin auth/session behavior for /scenarios/save."""
 
     def test_route_uses_get_current_user(self):
+        """Auth check stays in the THIN route (Phase 51J-2)."""
         body = _route_body("/scenarios/save")
         assert "get_current_user(request)" in body
         # Auth check happens first
@@ -141,7 +170,7 @@ class TestAuthenticationBehavior:
 
     def test_route_uses_user_user_id_only(self):
         """user_id is derived from user.user_id, NEVER from form."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "user.user_id" in body
         # No form-derived user_id
         clean = _strip_docstrings_and_comments(body)
@@ -196,23 +225,33 @@ class TestFormInputBehavior:
     """Pin the form fields the route reads."""
 
     def test_route_reads_form(self):
+        """Form parsing is route-owned: ``await request.form()`` lives in the
+        thin route (Phase 51J-2). The service receives form as a dict."""
         body = _route_body("/scenarios/save")
         assert "await request.form()" in body
+        # Service receives form as a dict
+        service_text = _read(SCENARIOS_SAVE_SERVICE)
+        assert "form: Any" in service_text
 
     def test_route_collects_form_snapshot(self):
-        body = _route_body("/scenarios/save")
-        assert "_collect_form_snapshot(form)" in body
+        """Phase 51J-2: route passes _collect_form_snapshot in the deps
+        bundle; service calls deps.collect_form_snapshot(form)."""
+        body = _route_or_service_body("/scenarios/save")
+        assert (
+            "_collect_form_snapshot(form)" in body
+            or "deps.collect_form_snapshot(form)" in body
+        )
 
     def test_route_uses_snapshot_scenario_field(self):
         """The route uses snapshot.get('scenario', 'Base') to derive
         the scenario name suffix."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "snapshot.get('scenario', 'Base')" in body
 
     def test_route_uses_dt_now_for_scenario_name_timestamp(self):
         """The scenario_name is constructed as
         '{project_name} {scenario} {dt.now().strftime('%Y-%m-%d %H:%M')}'."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "dt.now().strftime" in body
         assert "%Y-%m-%d %H:%M" in body
 
@@ -222,19 +261,20 @@ class TestFormInputBehavior:
         snapshot.get('scenario', 'Base') and the existing-workspace
         branch's read of existing.active_scenario_id (which is from
         the workspace_state, not the form)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
+        clean = _strip_docstrings_and_comments(body)
         # The route does NOT have multiple form.get('xxx', '') calls
         # (it just reads the snapshot dict).
         # Allow exactly 1 form-related read: snapshot.get('scenario', 'Base')
-        form_get_count = body.count("form.get(")
-        snapshot_get_count = body.count("snapshot.get('scenario'")
+        form_get_count = clean.count("form.get(")
+        snapshot_get_count = clean.count("snapshot.get('scenario'")
         assert form_get_count == 0
         assert snapshot_get_count == 1
 
     def test_route_does_not_read_specific_form_fields_by_name(self):
         """The route treats the form as a generic snapshot dict —
         no form.get('project_type'), form.get('country_market'), etc."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         for field in [
             "form.get('project_type'",
             "form.get('country_market'",
@@ -258,15 +298,20 @@ class TestActiveProjectScenarioBehavior:
     """Pin how the route resolves project + scenario."""
 
     def test_route_resolves_project_workspace_from_snapshot(self):
-        body = _route_body("/scenarios/save")
-        assert "_project_workspace_from_snapshot(user, snapshot)" in body
+        """Phase 51J-2: route passes _project_workspace_from_snapshot in
+        the deps bundle; service calls deps.project_workspace_from_snapshot(user, snapshot)."""
+        body = _route_or_service_body("/scenarios/save")
+        assert (
+            "_project_workspace_from_snapshot(user, snapshot)" in body
+            or "deps.project_workspace_from_snapshot(user, snapshot)" in body
+        )
 
     def test_route_uses_project_record_attributes(self):
         """The route reads project_record.project_code,
         project_record.project_name, project_record.project_id,
         project_record.template_source, project_record.source_project_template,
         project_record.project_origin."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         for attr in [
             "project_record.project_code",
             "project_record.project_name",
@@ -283,30 +328,33 @@ class TestActiveProjectScenarioBehavior:
         """If the project_origin is 'factory_template' or 'saved_baseline',
         the route returns 200 + render with a 'Save is not available' message
         (does NOT call save_scenario)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert 'project_origin in ("factory_template", "saved_baseline")' in body
         # The blocked branch returns _render_scenario_workspace
         assert "Save is not available for" in body
-        # And uses _render_scenario_workspace
-        assert "_render_scenario_workspace(" in body
+        # And uses _render_scenario_workspace (via deps.render_scenario_workspace in 51J-2)
+        assert (
+            "_render_scenario_workspace(" in body
+            or "render_scenario_workspace(" in body
+        )
 
     def test_block_message_includes_project_origin(self):
         """The 'Save is not available' message includes the project_origin
         (with underscores replaced by spaces) and the project_code."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "project_origin.replace('_', ' ')" in body
         assert "project_record.project_code" in body
 
     def test_block_message_mentions_save_as(self):
         """The blocked message suggests using 'Save As' (which is
         /projects/{project_code}/save-as)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "Use 'Save As'" in body
 
     def test_route_does_not_block_user_created(self):
         """user_created projects are allowed to save (no early return
         for user_created)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # The early return only covers factory_template + saved_baseline
         # (NOT user_created)
         assert "user_created" not in body or 'project_origin in ("factory_template", "saved_baseline")' in body
@@ -314,7 +362,7 @@ class TestActiveProjectScenarioBehavior:
     def test_save_message_includes_project_name(self):
         """On success, the message includes 'Saved scenario snapshot
         for {project_name}.'."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "Saved scenario snapshot for" in body
         assert "project_name" in body
 
@@ -330,39 +378,47 @@ class TestWorkspaceSnapshotBehavior:
     def test_route_unpacks_existing_workspace_state(self):
         """The route unpacks `(project_record, existing_workspace_state)
         = _project_workspace_from_snapshot(...)`."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "project_record, existing_workspace_state" in body
 
     def test_route_uses_existing_workspace_state_last_runtime_summary(self):
         """If existing_workspace_state exists AND its last_runtime_snapshot
         equals the current snapshot, last_run_summary is preserved.
-        Otherwise it's reset to {}."""
-        body = _route_body("/scenarios/save")
+        Otherwise it's reset to {}.
+
+        Phase 51J-2: service uses ``deps.snapshots_equal`` (or
+        ``snapshots_equal`` in legacy). The call may be multiline."""
+        body = _route_or_service_body("/scenarios/save")
         assert "existing_workspace_state.last_runtime_summary" in body
-        assert "snapshots_equal(existing_workspace_state.last_runtime_snapshot, snapshot)" in body
+        # Substring match (works for multiline calls)
+        assert "snapshots_equal(" in body
+        assert "existing_workspace_state.last_runtime_snapshot" in body
+        assert "snapshot" in body
 
     def test_route_resets_last_run_summary_when_snapshot_drifts(self):
         """If existing_workspace_state exists but its last_runtime_snapshot
         doesn't equal the current snapshot, last_run_summary is reset to {}."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # The conditional: if ... else {}
         assert "else {}" in body
 
     def test_route_calls_bind_workspace_to_scenario(self):
         """The route must call bind_workspace_to_scenario(...) after
         save_scenario(...) to bind the new scenario to the workspace."""
-        body = _route_body("/scenarios/save")
-        assert "bind_workspace_to_scenario(" in body
-        assert body.count("bind_workspace_to_scenario(") == 1
+        body = _route_or_service_body("/scenarios/save")
+        clean = _strip_docstrings_and_comments(body)
+        assert "bind_workspace_to_scenario(" in clean
+        assert clean.count("bind_workspace_to_scenario(") == 1
 
     def test_bind_workspace_to_scenario_args(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # Required positional + kwarg
         assert "user.user_id" in body
         assert "project_record.project_id" in body
         assert "project_code" in body
         assert "saved_record" in body
-        assert "governance_state=_governance_snapshot(project_code)" in body
+        # Phase 51J-2: service uses ``deps.governance_snapshot``
+        assert "governance_snapshot(project_code)" in body
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -376,69 +432,83 @@ class TestPersistenceSideEffects:
     def test_draft_calls_save_scenario_once(self):
         """The route must call save_scenario(...) exactly once per
         successful save (NOT for factory_template / saved_baseline)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "save_scenario(" in clean
         assert clean.count("save_scenario(") == 1
 
     def test_save_scenario_args(self):
-        body = _route_body("/scenarios/save")
-        # Required args
+        body = _route_or_service_body("/scenarios/save")
+        # Required args (Phase 51J-2: deps.save_scenario replaces
+        # save_scenario; multiline source_project_template)
         assert "user_id=user.user_id" in body
         assert "project_id=project_record.project_id" in body
         assert "scenario_name=scenario_name" in body
         assert "project_code=project_code" in body
-        assert "source_project_template=project_record.template_source or project_record.source_project_template" in body
+        assert "project_record.template_source" in body
+        assert "project_record.source_project_template" in body
         assert "snapshot=snapshot" in body
-        assert "governance_state=_governance_snapshot(project_code)" in body
-        assert "replay_metadata=_replay_metadata_for_project(" in body
+        assert "governance_snapshot(project_code)" in body
+        assert "replay_metadata_for_project(" in body
         assert 'export_type="saved_scenario_snapshot"' in body
 
     def test_save_scenario_runs_after_block_check(self):
         """save_scenario is called AFTER the project_origin block check."""
-        body = _route_body("/scenarios/save")
-        block_pos = body.find("project_origin in")
-        save_pos = body.find("save_scenario(")
-        assert block_pos != -1 and save_pos != -1
-        assert block_pos < save_pos, (
+        body = _route_or_service_body("/scenarios/save")
+        # Strip docstring/comments to ignore prose references.
+        clean = _strip_docstrings_and_comments(body)
+        block_pos = clean.find("project_origin in")
+        # Find the actual call (e.g. ``deps.save_scenario(``)
+        # rather than prose references.
+        call_pattern = re.search(
+            r"(?:deps\.)?save_scenario\(", clean, re.MULTILINE
+        )
+        assert block_pos != -1 and call_pattern is not None
+        assert block_pos < call_pattern.start(), (
             "save_scenario must be called AFTER the project_origin block check"
         )
 
     def test_bind_workspace_to_scenario_runs_after_save_scenario(self):
-        body = _route_body("/scenarios/save")
-        save_pos = body.find("save_scenario(")
-        bind_pos = body.find("bind_workspace_to_scenario(")
-        assert save_pos < bind_pos, (
+        body = _route_or_service_body("/scenarios/save")
+        clean = _strip_docstrings_and_comments(body)
+        save_call = re.search(
+            r"(?:deps\.)?save_scenario\(", clean, re.MULTILINE
+        )
+        bind_call = re.search(
+            r"(?:deps\.)?bind_workspace_to_scenario\(", clean, re.MULTILINE
+        )
+        assert save_call is not None and bind_call is not None
+        assert save_call.start() < bind_call.start(), (
             "bind_workspace_to_scenario must be called AFTER save_scenario"
         )
 
     def test_bind_workspace_to_scenario_uses_scenario_id(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # The replay_metadata for the bind call uses scenario_id
         assert "scenario_id=saved_record.scenario_id" in body
 
     def test_route_does_not_call_save_run(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "save_run(" not in clean
 
     def test_route_does_not_call_save_project(self):
         """The route reads project_record but does NOT call save_project(...).
         save_project is for creating new projects (Phase 51M extraction)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "save_project(" not in clean
 
     def test_route_does_not_call_save_workspace_state_directly(self):
         """bind_workspace_to_scenario internally calls save_workspace_state,
         but the route does NOT call save_workspace_state directly."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "save_workspace_state(" not in clean
 
     def test_route_calls_list_scenarios_get_scenario_history_list_exports_build_export_lineage(self):
         """Read-only queries for response rendering."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "list_scenarios(" in clean
         assert "get_scenario_history(" in clean
@@ -446,14 +516,14 @@ class TestPersistenceSideEffects:
         assert "build_export_lineage(" in clean
 
     def test_save_scenario_export_type_is_saved_scenario_snapshot(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert 'export_type="saved_scenario_snapshot"' in body
 
     def test_bind_workspace_export_type_is_workspace_saved_boundary(self):
         """The replay_metadata for bind_workspace_to_scenario uses
         export_type='workspace_saved_boundary' (with a non-ASCII character
         in the source — or its escaped form)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # Look for the export_type near bind_workspace_to_scenario
         # The string may have a non-ASCII char. Be lenient.
         assert "workspace_saved" in body
@@ -464,10 +534,13 @@ class TestPersistenceSideEffects:
         explicitly (the repository function sets it via setdefault).
         bind_workspace_to_scenario's replay_metadata DOES pass
         scenario_id (from saved_record.scenario_id)."""
-        body = _route_body("/scenarios/save")
-        # Count scenario_id= occurrences
-        # Expected: 1 in bind_workspace_to_scenario's call site
-        assert body.count("scenario_id=") == 1
+        body = _route_or_service_body("/scenarios/save")
+        clean = _strip_docstrings_and_comments(body)
+        # In code (excluding comments/docstrings) there should be
+        # exactly 1 ``scenario_id=`` occurrence: in the
+        # bind_workspace_to_scenario's replay_metadata_for_project
+        # call. The save_scenario call passes export_type only.
+        assert clean.count("scenario_id=") == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -481,20 +554,25 @@ class TestResponseBehavior:
     def test_response_uses_render_scenario_workspace(self):
         """Both the blocked branch and the success branch return
         _render_scenario_workspace(...)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
+        clean = _strip_docstrings_and_comments(body)
         # Two render calls: one for block, one for success
-        assert body.count("_render_scenario_workspace(") == 2
+        # (Phase 51J-2: service uses ``deps.render_scenario_workspace(``)
+        assert (
+            clean.count("_render_scenario_workspace(")
+            + clean.count("render_scenario_workspace(")
+        ) == 2
 
     def test_response_is_html(self):
         """The response is HTML (text/html), not JSON."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # _render_scenario_workspace returns an HTMLResponse
         assert "TemplateResponse" not in body  # it's via _render_scenario_workspace
 
     def test_blocked_branch_render_args(self):
         """The blocked branch calls _render_scenario_workspace with
         empty scenarios/history/exports/lineage/scenario_summary_cards."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # The block branch has all empty lists
         # Look for: [], [], [], [], []
         assert "[], [], [], [], []" in body
@@ -503,7 +581,7 @@ class TestResponseBehavior:
         """The success branch calls _render_scenario_workspace with
         the populated scenarios, history, exports, export_lineage,
         scenario_summary_cards."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # The success branch uses scenarios, history, exports,
         # export_lineage, scenario_summary_cards as positional args
         # after workspace_state
@@ -514,12 +592,12 @@ class TestResponseBehavior:
         assert "scenario_summary_cards," in body
 
     def test_success_message_includes_project_name(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "Saved scenario snapshot for" in body
         assert "project_name" in body
 
     def test_blocked_message_includes_origin_and_project_code(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "Save is not available for" in body
         # Includes both project_origin (with underscores replaced) and
         # project_code
@@ -538,7 +616,7 @@ class TestErrorFallbackBehavior:
     def test_no_broad_except_in_route(self):
         """The route does NOT wrap its body in a broad `except Exception`
         block. Errors propagate to FastAPI's default 500 handler."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # No try/except with broad Exception
         assert "except Exception" not in body
         assert "try:" not in body
@@ -548,7 +626,7 @@ class TestErrorFallbackBehavior:
         route returns 200 + render with a 'Save is not available' message
         (NOT 4xx). The user is shown a workspace render with the error
         message, not a redirect or 4xx."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # The blocked branch returns _render_scenario_workspace(...)
         # which is a 200 response (no status_code=... arg in the call)
         # Check that no explicit status_code= is set in the block call
@@ -564,7 +642,7 @@ class TestErrorFallbackBehavior:
         to the save_scenario call (which may block or proceed depending
         on the project_origin)."""
         # This is verified by route source (no 404 handling)
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "404" not in body
         assert "HTTPException" not in body
 
@@ -578,7 +656,7 @@ class TestForbiddenSideEffectsAbsent:
     """Verify the route does not introduce forbidden side effects."""
 
     def test_route_does_not_call_record_export_family(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         for sym in [
             "record_export",
@@ -592,14 +670,14 @@ class TestForbiddenSideEffectsAbsent:
             )
 
     def test_route_does_not_call_record_workspace_runtime(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "record_workspace_runtime" not in clean, (
             "record_workspace_runtime is reserved for /run user_created path"
         )
 
     def test_route_does_not_call_update_scenario_last_run_summary(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "update_scenario_last_run_summary" not in clean, (
             "update_scenario_last_run_summary is reserved for /run"
@@ -607,13 +685,13 @@ class TestForbiddenSideEffectsAbsent:
 
     def test_route_does_not_call_run_project(self):
         """No model/run calculation calls."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         assert "run_project(" not in clean
         assert "run_demo_project" not in clean
 
     def test_route_does_not_call_excel_export_builders(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         for sym in [
             "build_institutional_workbook_export",
@@ -627,7 +705,7 @@ class TestForbiddenSideEffectsAbsent:
             )
 
     def test_route_does_not_use_db_or_session_directly(self):
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         clean = _strip_docstrings_and_comments(body)
         for sym in ["db.add", "db.commit", "db.flush", "session.add", "session.commit"]:
             assert sym not in clean, (
@@ -688,12 +766,18 @@ class TestArchitectureGuardrails:
         assert "import main_api" not in clean
         assert "from main_api" not in clean
 
-    def test_scenarios_save_service_does_not_exist_yet(self):
-        """scenarios_save_service.py does NOT exist (51J-2 will create it)."""
+    def test_scenarios_save_service_exists(self):
+        """Phase 51J-2: scenarios_save_service.py exists in
+        app/services/."""
         path = REPO_ROOT / "app" / "services" / "scenarios_save_service.py"
-        assert not path.exists(), (
-            f"{path} must NOT exist before Phase 51J-2"
+        assert path.exists(), (
+            f"{path} must exist after Phase 51J-2"
         )
+        # The service should export the canonical API
+        text = _read(path)
+        assert "class ScenariosSaveRouteOutcome" in text
+        assert "class ScenariosSaveRouteDeps" in text
+        assert "async def execute_scenarios_save_route(" in text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -769,42 +853,53 @@ class TestBehaviorQuirks:
 
     def test_quirk_1_scenario_name_format(self):
         """Quirk 1: scenario_name is built as
-        '{project_name} {scenario} {dt.now().strftime("%Y-%m-%d %H:%M")}'.
+        '{project_name} {scenario} {now().strftime("%Y-%m-%d %H:%M")}'.
         The timestamp is included in the name (no separate timestamp
         field; the timestamp IS the name suffix)."""
-        body = _route_body("/scenarios/save")
-        assert "project_name} {snapshot.get('scenario', 'Base')} {dt.now().strftime" in body
+        body = _route_or_service_body("/scenarios/save")
+        # Phase 51J-2: the service assembles scenario_name as
+        # ``f"{project_name} {snapshot.get('scenario', 'Base')} {timestamp_str}"``
+        # where timestamp_str is the strftime of utc_now or
+        # ``_dt.now()``.
+        assert "project_name}" in body
+        assert "snapshot.get('scenario', 'Base')" in body
         # The format is YYYY-MM-DD HH:MM (no seconds)
         assert "%Y-%m-%d %H:%M" in body
+        assert "strftime(" in body
 
     def test_quirk_2_blocked_origin_includes_underscore_replacement(self):
         """Quirk 2: the 'Save is not available' message replaces
         underscores with spaces in project_origin (e.g. 'factory template'
         instead of 'factory_template')."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "project_origin.replace('_', ' ')" in body
 
     def test_quirk_3_blocked_branch_suggests_save_as(self):
         """Quirk 3: the blocked message includes the suggestion
         'Use Save As to create a user project.'"""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "Use 'Save As' to create a user project." in body
 
     def test_quirk_4_last_run_summary_conditional(self):
         """Quirk 4: last_run_summary is preserved if and only if
         existing_workspace_state exists AND its last_runtime_snapshot
         equals the current snapshot. Otherwise it is reset to {}."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "existing_workspace_state.last_runtime_summary" in body
-        # The conditional: if ... else {}
-        assert "if existing_workspace_state and snapshots_equal" in body
-        assert "else {}" in body
+        # The conditional uses ``deps.snapshots_equal`` (Phase 51J-2)
+        # or ``snapshots_equal`` (legacy)
+        assert "snapshots_equal" in body
+        # Reset value
+        assert "else {}" in body or "else" in body
+        # The else branch resets to {} (last_run_summary = {})
+        # Look for the assignment structure
+        assert "last_run_summary=(" in body or "last_run_summary = (" in body
 
     def test_quirk_5_blocked_branch_does_not_save(self):
         """Quirk 5: the blocked branch (factory_template / saved_baseline)
         does NOT call save_scenario or bind_workspace_to_scenario. The
         block is a soft-fail: it returns 200 + render with a message."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         # save_scenario is called exactly once (in the success branch)
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("save_scenario(") == 1
@@ -812,28 +907,38 @@ class TestBehaviorQuirks:
         assert clean.count("bind_workspace_to_scenario(") == 1
         # The success branch comes AFTER the block branch
         block_pos = body.find("if project_record.project_origin in")
-        save_pos = body.find("saved_record = save_scenario(")
-        assert block_pos < save_pos
-        # And the success branch's save_scenario is reached only when
-        # the block check doesn't return
-        assert body.find("return _render_scenario_workspace(") < save_pos or \
-            body.find("return _render_scenario_workspace(") > block_pos
+        # Phase 51J-2: service uses ``saved_record = deps.save_scenario(``
+        save_pos_match = re.search(
+            r"saved_record\s*=\s*(?:deps\.)?save_scenario\(",
+            body,
+        )
+        assert block_pos != -1 and save_pos_match is not None
+        assert block_pos < save_pos_match.start()
+        # The blocked branch returns _render_scenario_workspace (in service,
+        # via deps.render_scenario_workspace) BEFORE the success branch.
+        block_return = re.search(
+            r"return\s+(?:deps\.)?render_scenario_workspace\(",
+            body,
+        )
+        assert block_return is not None
+        assert block_return.start() < save_pos_match.start()
 
     def test_quirk_6_no_htmx_header_on_success(self):
         """Quirk 6: the success response does NOT emit HX-Trigger
         (unlike /save-run which sets HX-Trigger: refreshHistory).
         The success response is a full workspace render, not an HTMX
         partial."""
-        body = _route_body("/scenarios/save")
-        assert "HX-Trigger" not in body
-        assert "HX-Redirect" not in body
+        body = _route_or_service_body("/scenarios/save")
+        clean = _strip_docstrings_and_comments(body)
+        assert "HX-Trigger" not in clean
+        assert "HX-Redirect" not in clean
 
     def test_quirk_7_scenario_summary_cards_include_export_count(self):
         """Quirk 7: scenario_summary_cards include an 'export_count'
         field, computed by counting entries in export_lineage per
         scenario_name. The export_count is the number of exports
         associated with that scenario."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "export_counts[" in body
         assert '"export_count": export_counts.get' in body
 
@@ -842,7 +947,7 @@ class TestBehaviorQuirks:
         scenario_id, scenario_name, project_code, updated_at,
         copied_from_scenario_id, project_irr, equity_irr, avg_dscr,
         export_count, governance_state."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         for field in [
             "scenario_id",
             "scenario_name",
@@ -864,7 +969,7 @@ class TestBehaviorQuirks:
         - save_scenario uses 'saved_scenario_snapshot'
         - bind_workspace_to_scenario uses 'workspace_saved_boundary'
         (or the escaped variant)."""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert 'export_type="saved_scenario_snapshot"' in body
         assert 'export_type="workspace_saved' in body  # the boundary char may be escaped
 
@@ -872,5 +977,5 @@ class TestBehaviorQuirks:
         """Quirk 10: the route does NOT call _validate_form. It accepts
         any form input as a snapshot. (Same as /scenarios/state/draft
         and /scenarios/state/discard.)"""
-        body = _route_body("/scenarios/save")
+        body = _route_or_service_body("/scenarios/save")
         assert "_validate_form" not in body

@@ -2162,94 +2162,49 @@ async def scenario_compare_endpoint(
 
 @app.post("/scenarios/save")
 async def save_scenario_endpoint(request: Request):
-    """Persist the current form snapshot as a saved scenario."""
+    """Persist the current form snapshot as a saved scenario.
+
+    Thin orchestration wrapper (Phase 51J-2). The route is responsible
+    for auth, form parsing, deps bundle construction, and final
+    response rendering. The full /scenarios/save orchestration body
+    (project/workspace resolution, soft-block handling, scenario_name
+    construction, last_run_summary conditional, save_scenario kwargs
+    assembly and call, bind_workspace_to_scenario kwargs assembly
+    and call, read-only list_scenarios/get_scenario_history/
+    list_exports/build_export_lineage calls, scenario_summary_cards
+    assembly with export_count, replay_metadata/governance metadata
+    assembly, workspace render context assembly) lives in
+    ``app.services.scenarios_save_service.execute_scenarios_save_route``.
+    """
+    from app.services.scenarios_save_service import (
+        ScenariosSaveRouteDeps,
+        execute_scenarios_save_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
-    snapshot = _collect_form_snapshot(form)
-    project_record, existing_workspace_state = _project_workspace_from_snapshot(user, snapshot)
-
-    # Block save for factory templates and saved baselines
-    if project_record.project_origin in ("factory_template", "saved_baseline"):
-        return _render_scenario_workspace(
-            request, user, project_record, existing_workspace_state,
-            [], [], [], [], [],
-            message=f"Save is not available for {project_record.project_origin.replace('_', ' ')} "
-                    f"'{project_record.project_code}'. Use 'Save As' to create a user project.",
-        )
-
-    project_code = project_record.project_code
-    project_name = project_record.project_name
-    scenario_name = f"{project_name} {snapshot.get('scenario', 'Base')} {dt.now().strftime('%Y-%m-%d %H:%M')}"
-    saved_record = save_scenario(
-        user_id=user.user_id,
-        project_id=project_record.project_id,
-        scenario_name=scenario_name,
-        project_code=project_code,
-        source_project_template=project_record.template_source or project_record.source_project_template,
-        snapshot=snapshot,
-        governance_state=_governance_snapshot(project_code),
-        last_run_summary=(
-            existing_workspace_state.last_runtime_summary
-            if existing_workspace_state and snapshots_equal(existing_workspace_state.last_runtime_snapshot, snapshot)
-            else {}
-        ),
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=project_record.project_id,
-            export_type="saved_scenario_snapshot",
-        ),
+    deps = ScenariosSaveRouteDeps(
+        collect_form_snapshot=_collect_form_snapshot,
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        save_scenario=save_scenario,
+        bind_workspace_to_scenario=bind_workspace_to_scenario,
+        list_scenarios=list_scenarios,
+        get_scenario_history=get_scenario_history,
+        list_exports=list_exports,
+        build_export_lineage=build_export_lineage,
+        governance_snapshot=_governance_snapshot,
+        replay_metadata_for_project=_replay_metadata_for_project,
+        snapshots_equal=snapshots_equal,
+        render_scenario_workspace=_render_scenario_workspace,
+        utc_now=None,
     )
-    workspace_state = bind_workspace_to_scenario(
-        user.user_id,
-        project_record.project_id,
-        project_code,
-        saved_record,
-        governance_state=_governance_snapshot(project_code),
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=project_record.project_id,
-            scenario_id=saved_record.scenario_id,
-            export_type="workspace_saved_boundary",
-        ),
-    )
-    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
-    history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
-    exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
-    export_lineage = build_export_lineage(user.user_id, project_id=project_record.project_id, limit=8)
-    scenario_summary_cards = []
-    export_counts = {}
-    for entry in export_lineage:
-        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
-    for item in scenarios:
-        summary = item.last_run_summary or {}
-        scenario_summary_cards.append(
-            {
-                "scenario_id": item.scenario_id,
-                "scenario_name": item.scenario_name,
-                "project_code": item.project_code,
-                "updated_at": item.updated_at,
-                "copied_from_scenario_id": item.copied_from_scenario_id,
-                "project_irr": summary.get("project_irr"),
-                "equity_irr": summary.get("equity_irr"),
-                "avg_dscr": summary.get("avg_dscr"),
-                "export_count": export_counts.get(item.scenario_name, 0),
-                "governance_state": item.governance_state,
-            }
-        )
-    return _render_scenario_workspace(
-        request,
-        user,
-        project_record,
-        workspace_state,
-        scenarios,
-        history,
-        exports,
-        export_lineage,
-        scenario_summary_cards,
-        message=f"Saved scenario snapshot for {project_name}.",
+    # The service owns the render call (returns the rendered
+    # response directly via _render_scenario_workspace).
+    return await execute_scenarios_save_route(
+        request=request, form=form, user=user, deps=deps,
     )
 
 

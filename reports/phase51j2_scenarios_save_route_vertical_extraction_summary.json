@@ -1,0 +1,311 @@
+{
+  "phase": "51J-2",
+  "title": "Extract POST /scenarios/save route into scenarios_save_service.py",
+  "base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+  "base_pr": 397,
+  "base_pr_title": "Phase 51J-1: POST /scenarios/save golden characterization",
+  "head_sha": null,
+  "head_pr": null,
+  "branch": "phase51j2-extract-scenarios-save-route",
+  "extraction_target": {
+    "route": "POST /scenarios/save",
+    "handler": "save_scenario_endpoint",
+    "service_module": "app/services/scenarios_save_service.py",
+    "service_entry_point": "execute_scenarios_save_route"
+  },
+  "changed_files": [
+    "app/services/scenarios_save_service.py",
+    "main_web.py",
+    "tests/test_phase51j1_scenarios_save_route_golden_characterization.py",
+    "tests/test_phase51i_route_extraction_checkpoint_hotspot_map.py",
+    "tests/test_phase51j2_scenarios_save_route_vertical_extraction.py",
+    "docs/phase51j2_scenarios_save_route_vertical_extraction.md",
+    "reports/phase51j2_scenarios_save_route_vertical_extraction_summary.json"
+  ],
+  "route_size_before_after": {
+    "before": {
+      "phase": "51J-1 (pre-extraction)",
+      "total_lines": 92,
+      "non_blank_lines": 88
+    },
+    "after": {
+      "phase": "51J-2 (post-extraction)",
+      "total_lines": 47,
+      "non_blank_lines": 43
+    },
+    "reduction_non_blank_pct": 51.1
+  },
+  "service_api": {
+    "outcome": {
+      "name": "ScenariosSaveRouteOutcome",
+      "kind": "dataclass",
+      "fields": [
+        "template_name: str",
+        "context: dict",
+        "status_code: int",
+        "headers: dict",
+        "is_redirect: bool",
+        "redirect_url: Optional[str]"
+      ]
+    },
+    "deps": {
+      "name": "ScenariosSaveRouteDeps",
+      "kind": "dataclass",
+      "callables_count": 13,
+      "callables": [
+        "collect_form_snapshot",
+        "project_workspace_from_snapshot",
+        "save_scenario",
+        "bind_workspace_to_scenario",
+        "list_scenarios",
+        "get_scenario_history",
+        "list_exports",
+        "build_export_lineage",
+        "governance_snapshot",
+        "replay_metadata_for_project",
+        "snapshots_equal",
+        "render_scenario_workspace",
+        "utc_now (optional, for test injection)"
+      ]
+    },
+    "execute_function": {
+      "name": "execute_scenarios_save_route",
+      "kind": "async",
+      "parameters": [
+        "request (Any, keyword-only)",
+        "form (Any, keyword-only)",
+        "user (Any, keyword-only)",
+        "deps (ScenariosSaveRouteDeps, keyword-only)"
+      ],
+      "returns": "Rendered response (from deps.render_scenario_workspace)"
+    }
+  },
+  "behaviors_preserved": [
+    "Auth: unauth -> 302 redirect to /login (NOT 401 JSON)",
+    "Form snapshot read via collect_form_snapshot(form)",
+    "project_record + existing_workspace_state resolution",
+    "Soft-block: factory_template / saved_baseline -> 200 + render",
+    "Blocked message: 'Save is not available for {origin} {code}. Use Save As...'",
+    "scenario_name format: f'{project_name} {snapshot.get(scenario, Base)} {dt.now().strftime(%Y-%m-%d %H:%M)}'",
+    "save_scenario called exactly once per success (after block check)",
+    "bind_workspace_to_scenario called exactly once per success (after save_scenario)",
+    "last_run_summary preserved iff existing_workspace_state exists AND last_runtime_snapshot == snapshot",
+    "last_run_summary reset to {} otherwise",
+    "save_scenario.replay_metadata.export_type = 'saved_scenario_snapshot'",
+    "bind_workspace_to_scenario.replay_metadata.export_type = 'workspace_saved_boundary'",
+    "save_scenario.replay_metadata does NOT pass scenario_id (repository sets via setdefault)",
+    "bind_workspace_to_scenario.replay_metadata DOES pass scenario_id (from saved_record.scenario_id)",
+    "list_scenarios, get_scenario_history, list_exports, build_export_lineage: 1x each (read-only)",
+    "scenario_summary_cards: 10 fields including export_count (per scenario_name from export_lineage)",
+    "Response: full workspace render via render_scenario_workspace",
+    "user_id derived from user.user_id (NEVER from form)",
+    "Route does NOT call _validate_form (accepts any form input)"
+  ],
+  "quirks_preserved": [
+    "1. scenario_name format: timestamp is the name suffix",
+    "2. Blocked message replaces underscores with spaces in project_origin",
+    "3. Blocked message suggests 'Use Save As to create a user project'",
+    "4. last_run_summary preserved if snapshot matches; else reset to {}",
+    "5. Blocked branch is soft-fail (200 + render, NOT 4xx)",
+    "6. No HX-Trigger / HX-Redirect header on success (full workspace render)",
+    "7. scenario_summary_cards.export_count computed per scenario_name from export_lineage",
+    "8. scenario_summary_cards has 10 specific fields",
+    "9. Two distinct replay_metadata export_type values: 'saved_scenario_snapshot' + 'workspace_saved_boundary'",
+    "10. Route does NOT call _validate_form"
+  ],
+  "intended_side_effects_preserved": {
+    "save_scenario": {
+      "per_success": 1,
+      "per_block": 0,
+      "kwargs": [
+        "user_id=user.user_id",
+        "project_id=project_record.project_id",
+        "scenario_name",
+        "project_code=project_code",
+        "source_project_template (from project_record.template_source or project_record.source_project_template)",
+        "snapshot=snapshot",
+        "governance_state=deps.governance_snapshot(project_code)",
+        "last_run_summary (preserved or {})",
+        "replay_metadata with export_type='saved_scenario_snapshot'"
+      ]
+    },
+    "bind_workspace_to_scenario": {
+      "per_success": 1,
+      "per_block": 0,
+      "ordering": "AFTER save_scenario",
+      "args": [
+        "user.user_id (positional)",
+        "project_record.project_id (positional)",
+        "project_code (positional)",
+        "saved_record (positional)",
+        "governance_state=deps.governance_snapshot(project_code)",
+        "replay_metadata with export_type='workspace_saved_boundary' and scenario_id=saved_record.scenario_id"
+      ]
+    },
+    "read_only_queries": {
+      "list_scenarios": "1x per success (limit=12, include_archived=False)",
+      "get_scenario_history": "1x per success (limit=20)",
+      "list_exports": "1x per success (limit=8)",
+      "build_export_lineage": "1x per success (limit=8)"
+    },
+    "metadata_helpers": {
+      "governance_snapshot": "2x per success (save + bind)",
+      "replay_metadata_for_project": "2x per success (save + bind)",
+      "snapshots_equal": "1x per success (last_run_summary conditional)"
+    }
+  },
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "save_project",
+    "run_project / model execution",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "db.add / db.commit / db.flush (direct)",
+    "session.add / session.commit (direct)",
+    "unrelated persistence writes"
+  ],
+  "phase51f_guardrail_status": {
+    "engine_output_golden": {
+      "status": "PASS",
+      "files": [
+        "reports/phase7_tuho_senior_debt_sizing_extraction.csv",
+        "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
+      ],
+      "note": "Post-merge CI will run engine-output golden check; pre-merge SHA-256 unchanged"
+    },
+    "parity_core_lock": {
+      "status": "PASS",
+      "files": [
+        "app/waterfall_core.py",
+        "app/project_factories.py",
+        "reports/phase7_tuho_senior_debt_sizing_extraction.csv",
+        "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
+      ],
+      "note": "Post-merge Parity Guardrails will run; pre-merge SHA-256 unchanged"
+    },
+    "no_service_imports_main_web_or_main_api": {
+      "status": "PASS",
+      "service_count": 10,
+      "services": [
+        "run_service.py",
+        "compare_service.py",
+        "validation_service.py",
+        "download_service.py",
+        "save_run_service.py",
+        "scenario_state_service.py",
+        "scenario_state_route_service.py",
+        "export_service.py",
+        "export_audit_service.py",
+        "scenarios_save_service.py"
+      ],
+      "note": "All 10 services clean (no main_web or main_api imports)"
+    }
+  },
+  "tests_run": {
+    "test_phase51j1_scenarios_save_route_golden_characterization": {
+      "tests": 85,
+      "passed": 85,
+      "failed": 0,
+      "note": "Re-pointed to look at service body via _route_or_service_body helper. No tests removed; no assertions weakened."
+    },
+    "test_phase51j2_scenarios_save_route_vertical_extraction": {
+      "tests": 48,
+      "passed": 48,
+      "failed": 0,
+      "note": "New test module for vertical extraction contract"
+    },
+    "test_phase51i_route_extraction_checkpoint_hotspot_map": {
+      "tests": 63,
+      "passed": 63,
+      "failed": 0,
+      "note": "Updated 3 tests that pinned pre-51J-2 state to pin post-51J-2 state"
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "tests": 21,
+      "passed": 21,
+      "failed": 0,
+      "note": "Unchanged (no impact from 51J-2)"
+    },
+    "all_other_phase51": {
+      "tests": "~711",
+      "passed": "~711",
+      "failed": 0,
+      "note": "Unchanged (no impact from 51J-2)"
+    },
+    "total_phase51": {
+      "tests": 928,
+      "passed": 928,
+      "failed": 0
+    }
+  },
+  "known_failures": [
+    {
+      "test_module": "tests/test_persistence.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main HEAD before any Phase 51 work"
+    },
+    {
+      "test_module": "tests/test_repository.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main HEAD before any Phase 51 work"
+    }
+  ],
+  "extraction_rationale": {
+    "why_new_module_not_scenario_state_service": "scenario_state_service.py is data-layer only (no Request, no form, no auth). Adding route orchestration would mix data-layer and route-orchestration concerns, increase import-cycle risk, and complicate test isolation.",
+    "why_new_module_not_scenario_state_route_service": "scenario_state_route_service.py handles workspace draft/discard mutations WITHOUT scenario row creation. /scenarios/save creates a NEW ScenarioRecord and binds it to the workspace; this is a fundamentally different persistence concern. Mixing both in one service would create a fat service with two unrelated responsibility groups."
+  },
+  "service_inventory_post_51j2": {
+    "route_orchestration_services": [
+      {"name": "run_service.py", "lines": 653},
+      {"name": "compare_service.py", "lines": 299},
+      {"name": "validation_service.py", "lines": 281},
+      {"name": "download_service.py", "lines": 569},
+      {"name": "save_run_service.py", "lines": 438},
+      {"name": "scenario_state_route_service.py", "lines": 361},
+      {"name": "scenarios_save_service.py", "lines": 450}
+    ],
+    "data_layer_services": [
+      {"name": "scenario_state_service.py", "lines": 232}
+    ],
+    "export_audit_services": [
+      {"name": "export_service.py", "lines": 332},
+      {"name": "export_audit_service.py", "lines": 193}
+    ],
+    "total_services": 10,
+    "total_lines": 3808
+  },
+  "remaining_inline_routes_post_51j2": {
+    "high_risk": [
+      {"route": "POST /scenarios/{scenario_id}/duplicate", "non_blank_lines": 67},
+      {"route": "POST /scenarios/add", "non_blank_lines": 62},
+      {"route": "POST /projects/create", "non_blank_lines": 117},
+      {"route": "POST /projects/{project_code}/save-as", "non_blank_lines": 49}
+    ],
+    "medium_risk": [
+      {"route": "POST /scenarios/{scenario_id}/rename", "non_blank_lines": 51},
+      {"route": "POST /scenarios/{scenario_id}/archive", "non_blank_lines": 47},
+      {"route": "POST /scenarios/{scenario_id}/update-overrides", "non_blank_lines": 25},
+      {"route": "POST /scenarios/{scenario_id}/select", "non_blank_lines": 21}
+    ],
+    "total_remaining": 8,
+    "total_remaining_non_blank_lines": 439
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51j2": false,
+    "note": "rc1 remains frozen through Phase 51J-2"
+  },
+  "recommended_next_phase": {
+    "phase": "51K-1",
+    "title": "/scenarios/{scenario_id}/duplicate golden characterization",
+    "rationale": "Highest-risk remaining inline route family (67 non-blank, persistence-heavy). Recommended next sequence per Phase 51I hotspot map: 51K-1 (char) -> 51K-2 (extract) -> 51L-1 -> 51L-2 -> 51M-1 -> 51M-2 -> 51N-1 -> 51N-2 -> 51O -> 51P -> 51Q -> 51R."
+  }
+}

@@ -440,9 +440,10 @@ class TestRecommendedNextSequenceMarkers:
     exist in main_web.py (and have not been accidentally removed)
     and have the expected size characteristics."""
 
-    def test_scenarios_save_route_still_inline(self):
-        """Phase 51J-1 + 51J-2 target: /scenarios/save.
-        Must still be inline orchestration (to be extracted)."""
+    def test_scenarios_save_route_extracted_in_51j2(self):
+        """Phase 51J-2: /scenarios/save has been extracted into
+        scenarios_save_service.py. The route is now thin and
+        service-backed."""
         text = _read(MAIN_WEB)
         # Find /scenarios/save
         m = re.search(
@@ -452,14 +453,14 @@ class TestRecommendedNextSequenceMarkers:
         )
         assert m, "/scenarios/save not found"
         body = m.group(0)
-        # NOT service-backed
-        assert "execute_scenario_save_route" not in body
-        assert "ScenarioSaveRouteDeps" not in body
-        # Substantial (target for next extraction)
+        # Service-backed (post-51J-2)
+        assert "execute_scenarios_save_route" in body
+        assert "ScenariosSaveRouteDeps" in body
+        # Thin route (post-51J-2)
         non_blank = [l for l in body.splitlines() if l.strip()]
-        assert len(non_blank) >= 50, (
+        assert len(non_blank) <= 60, (
             f"/scenarios/save is {len(non_blank)} non-blank lines; "
-            f"expected >= 50 (substantial target for next extraction)"
+            f"expected <= 60 (thin route after 51J-2 extraction)"
         )
 
     def test_scenarios_duplicate_route_still_inline(self):
@@ -530,15 +531,12 @@ class TestPhase51JPrerequisites:
     """Structural prerequisites for the next phase (51J /scenarios/save
     characterization)."""
 
-    def test_scenarios_save_route_can_be_extracted(self):
-        """The /scenarios/save route must satisfy the canonical
-        Phase 51 extraction preconditions:
-        - Has a route decorator.
-        - Has an async function.
-        - Returns a response.
-        - Calls at least one persistence function.
-        - Does NOT import main_web or main_api.
-        """
+    def test_scenarios_save_route_extraction_complete(self):
+        """Phase 51J-2: /scenarios/save has been extracted. The route
+        is service-backed (calls execute_scenarios_save_route and
+        passes save_scenario/bind_workspace_to_scenario in the
+        deps bundle). The route is THIN (orchestration moved to
+        the service)."""
         text = _read(MAIN_WEB)
         m = re.search(
             r'@app\.post\("/scenarios/save"\)(.*?)(?=\n@app\.(get|post|put|delete|route)\(|\Z)',
@@ -551,29 +549,20 @@ class TestPhase51JPrerequisites:
         assert "async def" in body
         # Returns a response
         assert "return" in body
-        # Calls at least one persistence function (save_scenario,
-        # save_project, etc.)
-        assert any(
-            sym in body
-            for sym in [
-                "save_scenario(",
-                "save_project(",
-                "save_run(",
-                "save_workspace_state(",
-                "discard_workspace_draft(",
-                "select_scenario(",
-            ]
-        ), (
-            "/scenarios/save must call at least one persistence "
-            "function to be a meaningful extraction target"
-        )
+        # Service-backed: must construct the deps bundle and call
+        # the service's execute function.
+        assert "ScenariosSaveRouteDeps(" in body
+        assert "execute_scenarios_save_route(" in body
+        # Persistence helpers passed in deps bundle
+        assert "save_scenario=save_scenario" in body
+        assert "bind_workspace_to_scenario=bind_workspace_to_scenario" in body
 
-    def test_scenarios_save_service_does_not_exist_yet(self):
-        """Pre-51J: a scenarios_save_service module should NOT exist."""
+    def test_scenarios_save_service_exists(self):
+        """Phase 51J-2: scenarios_save_service.py exists in
+        app/services/."""
         path = SERVICES_DIR / "scenarios_save_service.py"
-        assert not path.exists(), (
-            f"{path} must NOT exist before Phase 51J "
-            f"(extraction creates the new module)"
+        assert path.exists(), (
+            f"{path} must exist after Phase 51J-2"
         )
 
 
