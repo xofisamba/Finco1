@@ -1,0 +1,282 @@
+{
+  "phase": "51H-2",
+  "title": "Phase 51H-2: Extract /scenarios/state/* route family into scenario_state_route_service.py",
+  "type": "behavior-preserving vertical extraction",
+  "scope": "main_web.py /scenarios/state/draft + /scenarios/state/discard routes + new app/services/scenario_state_route_service.py + tests",
+  "base_sha": "86d5a9041c9bbd183bdf48383a2028e59e3388f1",
+  "head_sha": null,
+  "branch": "phase51h2-extract-scenario-state-route-family",
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "production_code_changed": true,
+  "production_code_changes": [
+    "app/services/scenario_state_route_service.py (new, owns orchestration: ScenarioStateRouteOutcome, ScenarioStateRouteDeps, execute_draft_route, execute_discard_route)",
+    "main_web.py (/scenarios/state/draft and /scenarios/state/discard routes replaced with thin versions: auth + form + deps bundle + service call + JSONResponse)"
+  ],
+  "route_size_before_after": {
+    "post_scenarios_state_draft": {
+      "pre_phase51h2_total_lines": 35,
+      "pre_phase51h2_non_blank_lines": 33,
+      "post_phase51h2_total_lines": 39,
+      "post_phase51h2_non_blank_lines": 36,
+      "reduction_total_percent": -11.4,
+      "reduction_non_blank_percent": -9.1,
+      "note": "Route is now thin (orchestration moved to service). Line count is slightly higher because the route adds the deps construction (9 callables) and the service call boilerplate. The orchestration body has all moved to the service."
+    },
+    "post_scenarios_state_discard": {
+      "pre_phase51h2_total_lines": 33,
+      "pre_phase51h2_non_blank_lines": 31,
+      "post_phase51h2_total_lines": 39,
+      "post_phase51h2_non_blank_lines": 36,
+      "reduction_total_percent": -18.2,
+      "reduction_non_blank_percent": -16.1,
+      "note": "Same as draft: route is now thin. Line count is slightly higher due to deps bundle and service call boilerplate."
+    }
+  },
+  "service_api": {
+    "module": "app/services/scenario_state_route_service.py",
+    "public_dataclasses": [
+      {
+        "name": "ScenarioStateRouteOutcome",
+        "fields": {
+          "payload": "dict = field(default_factory=dict)",
+          "status_code": "int = 200",
+          "headers": "dict = field(default_factory=dict)",
+          "is_redirect": "bool = False",
+          "redirect_url": "Optional[str] = None"
+        }
+      },
+      {
+        "name": "ScenarioStateRouteDeps",
+        "fields_count": 9,
+        "callables": [
+          "collect_form_snapshot",
+          "project_workspace_from_snapshot",
+          "save_workspace_state",
+          "discard_workspace_draft",
+          "snapshots_equal",
+          "default_workspace_snapshot",
+          "governance_snapshot",
+          "replay_metadata_for_project",
+          "workspace_state_meta"
+        ],
+        "constants": [],
+        "note": "No constants are needed because the scenario-state routes do not validate the form (Phase 51H-1 quirk 11) — they accept any form input as a snapshot."
+      }
+    ],
+    "public_entry_points": [
+      "async def execute_draft_route(*, request, form, user, deps: ScenarioStateRouteDeps) -> ScenarioStateRouteOutcome",
+      "async def execute_discard_route(*, request, form, user, deps: ScenarioStateRouteDeps) -> ScenarioStateRouteOutcome"
+    ]
+  },
+  "behaviors_preserved": {
+    "draft": [
+      "POST /scenarios/state/draft exists in main_web.py (thin route)",
+      "Unauthenticated -> 401 JSON {'error': 'Login required'} (NOT 302 redirect) -- ROUTE-OWNED",
+      "Authenticated + valid form -> 200 + JSON payload",
+      "Authenticated + empty form -> 200 + JSON payload (no 400)",
+      "Authenticated + unknown active_project -> 200 + JSON (falls back to factory_template project)",
+      "user_id derived from session, never from form",
+      "draft_snapshot = current form snapshot (collected in service via deps.collect_form_snapshot)",
+      "saved_snapshot = existing.saved_snapshot OR project baseline_snapshot OR default",
+      "active_scenario_id = existing.active_scenario_id OR form.get('current_saved_scenario_id', '') or None",
+      "active_scenario_name = existing.active_scenario_name OR None",
+      "dirty = not deps.snapshots_equal(snapshot, saved_snapshot)",
+      "save_workspace_state called exactly once (via deps.save_workspace_state)",
+      "replay_metadata.export_type = 'workspace_draft_state'",
+      "replay_metadata.scenario_id = active_scenario_id (when present)",
+      "No snapshot key in response, no HX-Trigger, no template render, no HX-Redirect"
+    ],
+    "discard": [
+      "POST /scenarios/state/discard exists in main_web.py (thin route)",
+      "Unauthenticated -> 401 JSON (NOT 302 redirect) -- ROUTE-OWNED",
+      "Authenticated + valid form -> 200 + JSON payload",
+      "Authenticated + empty form -> 200 + JSON payload (no 400)",
+      "Authenticated + unknown active_project -> 200 + JSON (falls back to factory_template project)",
+      "user_id derived from session, never from form",
+      "discard_workspace_draft called exactly once (via deps.discard_workspace_draft)",
+      "If discard_workspace_draft returns None, save_workspace_state fallback called once (via deps.save_workspace_state)",
+      "Fallback uses draft_snapshot = saved_snapshot = baseline_snapshot, dirty = False",
+      "Fallback uses replay_metadata.export_type = 'workspace_draft_state'",
+      "Response includes 'snapshot' key (= workspace_state.draft_snapshot)",
+      "Response message is a fixed string",
+      "last_runtime_* fields preserved (not modified)",
+      "No HX-Trigger, no template render, no HX-Redirect",
+      "user_id always = user.user_id"
+    ]
+  },
+  "quirks_preserved": {
+    "quirk_1_draft_message_fixed_string": "preserved (in service: 'Workspace draft captured. Saved scenario authority is unchanged.')",
+    "quirk_2_discard_message_fixed_string": "preserved (in service: 'Unsaved edits discarded. Workspace restored to the last saved runtime boundary.')",
+    "quirk_3_discard_response_includes_snapshot": "preserved (in service: payload['snapshot'] = workspace_state.draft_snapshot; draft does NOT include it)",
+    "quirk_4_draft_active_scenario_id_preserved_from_form_or_existing": "preserved (in service: multiline ternary)",
+    "quirk_5_draft_replay_metadata_uses_scenario_id": "preserved (in service: replay_metadata_for_project with scenario_id=active_scenario_id)",
+    "quirk_6_discard_fallback_creates_clean_workspace": "preserved (in service: if workspace_state is None: ... save_workspace_state with baseline_snapshot and dirty=False)",
+    "quirk_7_draft_does_not_modify_last_runtime_fields": "preserved (service does not pass these kwargs; repository preserves them)",
+    "quirk_8_discard_keeps_last_runtime_fields": "preserved (discard_workspace_draft preserves them; service does not pass these kwargs)",
+    "quirk_9_unauth_401_json_not_302_redirect": "preserved (route-owned; unchanged)",
+    "quirk_10_no_htmx_trigger_header": "preserved (ScenarioStateRouteOutcome.headers defaults to empty dict)",
+    "quirk_11_routes_do_not_validate_form": "preserved (ScenarioStateRouteDeps has no validate_form field; service accepts any form)",
+    "quirk_12_routes_do_not_check_htmx_header": "preserved (HTMX-agnostic; unchanged)"
+  },
+  "intended_side_effects_preserved": {
+    "save_workspace_state_draft": {
+      "call_count_per_success": 1,
+      "args_preserved": [
+        "user_id=user.user_id (session-derived, NEVER from form)",
+        "project_id=project_record.project_id",
+        "project_code=project_code (from project_record)",
+        "active_scenario_id=active_scenario_id (from existing OR form)",
+        "active_scenario_name=active_scenario_name (from existing OR None)",
+        "draft_snapshot=snapshot (current form snapshot)",
+        "saved_snapshot=saved_snapshot (existing OR baseline OR default)",
+        "dirty=not deps.snapshots_equal(snapshot, saved_snapshot)",
+        "governance_state=deps.governance_snapshot(project_code)",
+        "replay_metadata=deps.replay_metadata_for_project(project_code, project_id=project_record.project_id, scenario_id=active_scenario_id, export_type='workspace_draft_state')"
+      ]
+    },
+    "discard_workspace_draft_discard": {
+      "call_count_per_discard": 1,
+      "args_preserved": [
+        "user.user_id, project_record.project_id"
+      ]
+    },
+    "save_workspace_state_discard_fallback": {
+      "call_count_per_discard": "0-1 (only when discard returns None)",
+      "args_preserved": [
+        "user_id=user.user_id",
+        "project_id=project_record.project_id",
+        "project_code=project_code",
+        "draft_snapshot=baseline_snapshot",
+        "saved_snapshot=baseline_snapshot",
+        "dirty=False",
+        "governance_state=deps.governance_snapshot(project_code)",
+        "replay_metadata=deps.replay_metadata_for_project(project_code, project_id=project_record.project_id, export_type='workspace_draft_state')"
+      ]
+    },
+    "ordering_preserved": "discard_workspace_draft is ALWAYS called first; save_workspace_state fallback is called only inside the if workspace_state is None branch. If discard raises, no fallback runs. The repository's discard_workspace_draft function internally calls save_workspace_state to UPDATE the existing row, so the discard path always results in 1-2 writes."
+  },
+  "forbidden_side_effects_absent": {
+    "record_export": "NOT called (0 occurrences in code after stripping docstrings/comments/strings)",
+    "record_download_export": "NOT called (0 occurrences)",
+    "record_runtime_summary_export": "NOT called (0 occurrences)",
+    "record_institutional_workbook_export": "NOT called (0 occurrences)",
+    "record_workspace_runtime": "NOT called (0 occurrences)",
+    "update_scenario_last_run_summary": "NOT called (0 occurrences)",
+    "db_add_commit_flush": "NOT called (0 occurrences)",
+    "session_add_commit": "NOT called (0 occurrences)",
+    "save_run": "NOT called (0 occurrences)",
+    "save_project": "NOT called (0 occurrences in service; route does not call it directly)",
+    "save_scenario": "NOT called (0 occurrences)",
+    "note": "The 51H-2 extraction only moves which deps the orchestration calls. It does not add new persistence, audit, or recording side effects."
+  },
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS — TUHO 1.450695, Oborovo 1.150038 still match; all 5+5 golden values still pinned (not touched)",
+    "parity_core_lock": "PASS — 4 SHA-256 files unchanged: app/waterfall_core.py (d8ab56fd...), app/project_factories.py (1b795b96...), reports/phase7_tuho_senior_debt_sizing_extraction.csv (80e79977...), reports/phase23q_oborovo_senior_debt_sizing_extraction.csv (8afdad21...)",
+    "no_service_imports_main_web_or_main_api": "PASS — scenario_state_route_service.py does NOT import main_web or main_api; all 9 service files verified clean (8 pre-existing + 1 new)"
+  },
+  "tests_run": {
+    "phase51h2_scenario_state_route_family_vertical_extraction": {
+      "pass": 81,
+      "fail": 0,
+      "xfail": 0,
+      "note": "New test suite for this phase. 14 test classes covering service module existence, import direction, scenario_state_service unchanged, routes are thin, service owns orchestration, intended side effects, forbidden side effects, JSON response behavior, other routes service-backed, deps bundle, outcome shape, integration, 51F smoke check, import smoke."
+    },
+    "phase51h1_scenario_state_route_family_characterization": {
+      "pass": 92,
+      "fail": 0,
+      "xfail": 0,
+      "note": "Re-pointed in 51H-2: the latent-bug tests now use _route_or_service_body() helper which prefers the service body for orchestration-content checks. 14 tests updated to look at scenario_state_route_service.py for orchestration (deps.* calls, fixed message strings, etc.). Test names preserved for regression history."
+    },
+    "phase51f_parallel_work_guardrails": {
+      "pass": 21,
+      "fail": 0,
+      "xfail": 0,
+      "note": "All 3 guardrails (engine output, parity lock, no-service-imports) still green after 51H-2 changes"
+    },
+    "phase51a_to_51g3_existing": {
+      "pass": 532,
+      "fail": 0,
+      "xfail": 0,
+      "note": "Pre-51H-2 baseline unchanged; all previous tests still pass"
+    },
+    "total_phase51": {
+      "pass": 726,
+      "fail": 0,
+      "xfail": 0
+    },
+    "import_checks": {
+      "main_web": "OK",
+      "app_services_scenario_state_service": "OK",
+      "app_services_scenario_state_route_service": "OK"
+    },
+    "structural_guards": {
+      "scenario_state_route_service_does_not_import_main_web": "PASS",
+      "scenario_state_route_service_does_not_import_main_api": "PASS",
+      "scenario_state_service_unchanged": "PASS (still 4 data-layer helpers, no Request, no form, no auth)",
+      "all_9_services_clean": "PASS",
+      "main_web_has_zero_direct_record_export_calls": "PASS",
+      "draft_route_uses_execute_draft_route": "PASS",
+      "discard_route_uses_execute_discard_route": "PASS"
+    }
+  },
+  "known_failures": {
+    "tests/test_persistence.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51h2": false,
+      "out_of_scope_for_phase_51h2": true
+    },
+    "tests/test_repository.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51h2": false,
+      "out_of_scope_for_phase_51h2": true
+    }
+  },
+  "guardrails_preserved": [
+    "No financial formula / model / project factory / fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "Phase 51A-51G-2 routes (/run, /compare, /validate, /download, /save-run) remain thin and service-backed",
+    "run_service.py, compare_service.py, validation_service.py, download_service.py, save_run_service.py, export_service.py, export_audit_service.py, scenario_state_service.py all remain intact (unchanged)",
+    "scenario_state_route_service.py does NOT import main_web or main_api (one-way import direction)",
+    "main_web.py has zero direct record_export calls",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat/min DSCR sculpting not promoted",
+    "Generic solar/wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "Backend remains source of truth",
+    "rc1 remains frozen (SHA b425a0708719eaa5e1d922b1008e5609758e0ad4 verified unchanged)",
+    "PR #299 remains closed (no longer active guardrail)",
+    "All 15+15 Phase 51H-1 behaviors preserved EXACTLY",
+    "All 12 Phase 51H-1 quirks preserved EXACTLY",
+    "save_run / save_project ordering preserved (no touch)",
+    "replay_metadata export_type values preserved",
+    "save_project.runtime_timestamp behavior preserved"
+  ],
+  "changed_files": [
+    "app/services/scenario_state_route_service.py (new, ~14KB / ~380 lines)",
+    "main_web.py (/scenarios/state/draft and /scenarios/state/discard routes replaced with thin versions)",
+    "tests/test_phase51h1_scenario_state_route_family_characterization.py (re-pointed: 14 tests updated to look at service for orchestration; _route_or_service_body() helper added; SCENARIO_STATE_ROUTE_SERVICE constant added; _service_uses_scenario_state_route_service() helper added)",
+    "tests/test_phase51h2_scenario_state_route_family_vertical_extraction.py (new, 81 tests)",
+    "docs/phase51h2_scenario_state_route_family_vertical_extraction.md (new)",
+    "reports/phase51h2_scenario_state_route_family_vertical_extraction_summary.json (new)"
+  ],
+  "remaining_risks": [
+    "The new module adds one more service file to maintain. This is a small cost compared to the benefit of separating data-layer (scenario_state_service.py) from route-orchestration (scenario_state_route_service.py) concerns.",
+    "The 51H-1 latent-bug tests were updated to look at the service for orchestration (deps.* calls instead of bare module-level calls). Future refactors must preserve the deps.* pattern in the service.",
+    "The ScenarioStateRouteOutcome dataclass is designed for JSON-only responses. If a future scenario-state route needs to return an HTMX-rendered template, the outcome would need additional fields (template_name, template_context, etc.). For now, the dataclass is intentionally minimal.",
+    "Both routes are JSON-only (not HTMX-partial-based). This is a meaningful difference from /run, /save-run, /compare, /validate, /download (all of which return HTMX-rendered templates). The 51H-2 extraction preserves this pattern.",
+    "discard_workspace_draft is a thin repository function that internally calls save_workspace_state. The discard service therefore does 1-2 writes per call (1 always, plus 1 fallback only when discard returns None). This is the intended behavior (preserved in 51H-1 quirks 6 and 8).",
+    "There is no ScenarioStateRouteDeps.validate_form field. The scenario-state routes do NOT validate the form (Phase 51H-1 quirk 11) — they accept any form input as a snapshot. If a future refactor needs form validation, a new dep field would be needed.",
+    "All 12 behavior quirks are pinned at the orchestration level (in the service). 51H-2 preserves them; future refactors must keep them as a unit.",
+    "The discard fallback save_workspace_state uses 16-space indent for the replay_metadata_for_project call (inside the if-block which is inside execute_discard_route). 51H-1 tests are updated to match this formatting."
+  ],
+  "recommended_next_phase": "Phase 51I-1 + 51I-2 (project save-as service family: /projects/{project_code}/save-as, /projects/create) is the natural next extraction. After 51I-2: optional Phase 51J (structural guardrail: export_service.py / export_audit_service.py does NOT import main_web). The /run, /compare, /validate, /download, /save-run, /scenarios/state/* families (Phases 51A-51H-2) now serve as the canonical templates for vertical extraction, with a known narrow bugfix phase pattern for any latent bugs discovered along the way."
+}

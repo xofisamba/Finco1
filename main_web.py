@@ -2017,72 +2017,82 @@ async def list_scenarios_endpoint(request: Request, project: str = "tuho"):
 
 @app.post("/scenarios/state/draft")
 async def save_workspace_draft_endpoint(request: Request):
-    """Persist unsaved workspace edits without promoting them to saved-scenario authority."""
+    """Persist unsaved workspace edits (thin route; orchestration in
+    app.services.scenario_state_route_service.execute_draft_route)."""
+    from app.services.scenario_state_route_service import (
+        ScenarioStateRouteDeps,
+        execute_draft_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return JSONResponse({"error": "Login required"}, status_code=401)
 
     form = await request.form()
-    snapshot = _collect_form_snapshot(form)
-    project_record, existing = _project_workspace_from_snapshot(user, snapshot)
-    project_code = project_record.project_code
-    saved_snapshot = existing.saved_snapshot if existing else (project_record.baseline_snapshot or _default_workspace_snapshot(project_code))
-    active_scenario_id = existing.active_scenario_id if existing else (form.get("current_saved_scenario_id", "") or None)
-    active_scenario_name = existing.active_scenario_name if existing else None
-    workspace_state = save_workspace_state(
-        user_id=user.user_id,
-        project_id=project_record.project_id,
-        project_code=project_code,
-        active_scenario_id=active_scenario_id,
-        active_scenario_name=active_scenario_name,
-        draft_snapshot=snapshot,
-        saved_snapshot=saved_snapshot,
-        dirty=not snapshots_equal(snapshot, saved_snapshot),
-        governance_state=_governance_snapshot(project_code),
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=project_record.project_id,
-            scenario_id=active_scenario_id,
-            export_type="workspace_draft_state",
-        ),
+    deps = ScenarioStateRouteDeps(
+        collect_form_snapshot=_collect_form_snapshot,
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        save_workspace_state=save_workspace_state,
+        discard_workspace_draft=discard_workspace_draft,
+        snapshots_equal=snapshots_equal,
+        default_workspace_snapshot=_default_workspace_snapshot,
+        governance_snapshot=_governance_snapshot,
+        replay_metadata_for_project=_replay_metadata_for_project,
+        workspace_state_meta=_workspace_state_meta,
     )
-    payload = _workspace_state_meta(workspace_state)
-    payload["message"] = "Workspace draft captured. Saved scenario authority is unchanged."
-    return JSONResponse(payload)
+    outcome = await execute_draft_route(
+        request=request, form=form, user=user, deps=deps,
+    )
+    if outcome.is_redirect:
+        return RedirectResponse(
+            url=outcome.redirect_url or "/login",
+            status_code=outcome.status_code,
+        )
+    return JSONResponse(
+        content=outcome.payload,
+        status_code=outcome.status_code,
+        headers=outcome.headers or None,
+    )
 
 
 @app.post("/scenarios/state/discard")
 async def discard_workspace_draft_endpoint(request: Request):
-    """Discard unsaved workspace edits and restore the last saved scenario boundary."""
+    """Discard unsaved workspace edits (thin route; orchestration in
+    app.services.scenario_state_route_service.execute_discard_route)."""
+    from app.services.scenario_state_route_service import (
+        ScenarioStateRouteDeps,
+        execute_discard_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return JSONResponse({"error": "Login required"}, status_code=401)
 
     form = await request.form()
-    snapshot = _collect_form_snapshot(form)
-    project_record, _ = _project_workspace_from_snapshot(user, snapshot)
-    project_code = project_record.project_code
-    workspace_state = discard_workspace_draft(user.user_id, project_record.project_id)
-    if workspace_state is None:
-        baseline_snapshot = project_record.baseline_snapshot or _default_workspace_snapshot(project_code)
-        workspace_state = save_workspace_state(
-            user_id=user.user_id,
-            project_id=project_record.project_id,
-            project_code=project_code,
-            draft_snapshot=baseline_snapshot,
-            saved_snapshot=baseline_snapshot,
-            dirty=False,
-            governance_state=_governance_snapshot(project_code),
-            replay_metadata=_replay_metadata_for_project(
-                project_code,
-                project_id=project_record.project_id,
-                export_type="workspace_draft_state",
-            ),
+    deps = ScenarioStateRouteDeps(
+        collect_form_snapshot=_collect_form_snapshot,
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        save_workspace_state=save_workspace_state,
+        discard_workspace_draft=discard_workspace_draft,
+        snapshots_equal=snapshots_equal,
+        default_workspace_snapshot=_default_workspace_snapshot,
+        governance_snapshot=_governance_snapshot,
+        replay_metadata_for_project=_replay_metadata_for_project,
+        workspace_state_meta=_workspace_state_meta,
+    )
+    outcome = await execute_discard_route(
+        request=request, form=form, user=user, deps=deps,
+    )
+    if outcome.is_redirect:
+        return RedirectResponse(
+            url=outcome.redirect_url or "/login",
+            status_code=outcome.status_code,
         )
-    payload = _workspace_state_meta(workspace_state)
-    payload["snapshot"] = workspace_state.draft_snapshot
-    payload["message"] = "Unsaved edits discarded. Workspace restored to the last saved runtime boundary."
-    return JSONResponse(payload)
+    return JSONResponse(
+        content=outcome.payload,
+        status_code=outcome.status_code,
+        headers=outcome.headers or None,
+    )
 
 
 @app.get("/scenarios/history")
