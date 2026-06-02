@@ -4,8 +4,8 @@
   "base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
   "base_pr": 397,
   "base_pr_title": "Phase 51J-1: POST /scenarios/save golden characterization",
-  "head_sha": null,
-  "head_pr": null,
+  "head_sha": "eaee5ef432cba231537592fbfa7d9bdee2e55554",
+  "head_pr": 399,
   "branch": "phase51j2-extract-scenarios-save-route",
   "extraction_target": {
     "route": "POST /scenarios/save",
@@ -264,36 +264,90 @@
   },
   "service_inventory_post_51j2": {
     "route_orchestration_services": [
-      {"name": "run_service.py", "lines": 653},
-      {"name": "compare_service.py", "lines": 299},
-      {"name": "validation_service.py", "lines": 281},
-      {"name": "download_service.py", "lines": 569},
-      {"name": "save_run_service.py", "lines": 438},
-      {"name": "scenario_state_route_service.py", "lines": 361},
-      {"name": "scenarios_save_service.py", "lines": 450}
+      {
+        "name": "run_service.py",
+        "lines": 653
+      },
+      {
+        "name": "compare_service.py",
+        "lines": 299
+      },
+      {
+        "name": "validation_service.py",
+        "lines": 281
+      },
+      {
+        "name": "download_service.py",
+        "lines": 569
+      },
+      {
+        "name": "save_run_service.py",
+        "lines": 438
+      },
+      {
+        "name": "scenario_state_route_service.py",
+        "lines": 361
+      },
+      {
+        "name": "scenarios_save_service.py",
+        "lines": 450
+      }
     ],
     "data_layer_services": [
-      {"name": "scenario_state_service.py", "lines": 232}
+      {
+        "name": "scenario_state_service.py",
+        "lines": 232
+      }
     ],
     "export_audit_services": [
-      {"name": "export_service.py", "lines": 332},
-      {"name": "export_audit_service.py", "lines": 193}
+      {
+        "name": "export_service.py",
+        "lines": 332
+      },
+      {
+        "name": "export_audit_service.py",
+        "lines": 193
+      }
     ],
     "total_services": 10,
     "total_lines": 3808
   },
   "remaining_inline_routes_post_51j2": {
     "high_risk": [
-      {"route": "POST /scenarios/{scenario_id}/duplicate", "non_blank_lines": 67},
-      {"route": "POST /scenarios/add", "non_blank_lines": 62},
-      {"route": "POST /projects/create", "non_blank_lines": 117},
-      {"route": "POST /projects/{project_code}/save-as", "non_blank_lines": 49}
+      {
+        "route": "POST /scenarios/{scenario_id}/duplicate",
+        "non_blank_lines": 67
+      },
+      {
+        "route": "POST /scenarios/add",
+        "non_blank_lines": 62
+      },
+      {
+        "route": "POST /projects/create",
+        "non_blank_lines": 117
+      },
+      {
+        "route": "POST /projects/{project_code}/save-as",
+        "non_blank_lines": 49
+      }
     ],
     "medium_risk": [
-      {"route": "POST /scenarios/{scenario_id}/rename", "non_blank_lines": 51},
-      {"route": "POST /scenarios/{scenario_id}/archive", "non_blank_lines": 47},
-      {"route": "POST /scenarios/{scenario_id}/update-overrides", "non_blank_lines": 25},
-      {"route": "POST /scenarios/{scenario_id}/select", "non_blank_lines": 21}
+      {
+        "route": "POST /scenarios/{scenario_id}/rename",
+        "non_blank_lines": 51
+      },
+      {
+        "route": "POST /scenarios/{scenario_id}/archive",
+        "non_blank_lines": 47
+      },
+      {
+        "route": "POST /scenarios/{scenario_id}/update-overrides",
+        "non_blank_lines": 25
+      },
+      {
+        "route": "POST /scenarios/{scenario_id}/select",
+        "non_blank_lines": 21
+      }
     ],
     "total_remaining": 8,
     "total_remaining_non_blank_lines": 439
