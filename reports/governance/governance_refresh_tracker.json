@@ -1,0 +1,171 @@
+{
+  "package": {
+    "name": "Finco1 Agent A / Agent B Governance Refresh Tracker",
+    "workstream": "B14",
+    "branch": "parallel-b-pilot-review-pack",
+    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
+    "tracker_version": "0.1.0",
+    "tracker_status": "empty_template",
+    "intended_use": "internal_governance_refresh_tracking_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "b8_tracker_pointer": "reports/roadmap/enterprise_saas_readiness_tracker.json",
+  "b12_heatmap_pointer": "reports/validation/model_confidence_heatmap.json",
+  "b13_paid_pilot_gate_pointer": "reports/pilot/paid_pilot_readiness_gate.json",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "refresh_status_definitions": {
+    "pending": "Refresh identified but not yet executed.",
+    "in_progress": "Refresh branch open, in progress, not yet merged.",
+    "completed": "Refresh merged to main.",
+    "cancelled": "Refresh identified but determined not to be required (with rationale)."
+  },
+  "agent_a_ownership_list_for_reference_only": {
+    "note": "This list is included for reference. Agent B NEVER modifies any file in this list. A refresh is a docs-only change.",
+    "files": [
+      "main_web.py",
+      "main_api.py",
+      "app/services/",
+      "app/waterfall_core.py",
+      "app/project_factories.py",
+      "domain/",
+      "project_factories.py",
+      "repository.py",
+      "app/templates/",
+      "app/static/",
+      "fixture CSVs",
+      "reports/*senior_debt*.csv",
+      "schema/migrations",
+      "tests/test_phase51*.py",
+      "tests/test_phase52*.py",
+      "any Agent A route / service extraction files",
+      "rc1"
+    ]
+  },
+  "pending_refreshes": [],
+  "completed_refreshes": [],
+  "cancelled_refreshes": [],
+  "agent_a_phase_log": [
+    {
+      "phase": "Phase 51G-1",
+      "sha": "2e41b24f8c47ec544e1ef52e35084646df4d4d8f",
+      "title": "POST /save-run golden characterization (#389)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-015 (Phase 51G-1 characterization)",
+        "B1 no-go list (B1 scaffolding in place at the time of this phase's merge)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b-external-review-pack (B1, merged in PR #390)",
+      "b_track_refresh_commit": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+      "notes": "Phase 51G-1 was reflected in the B1 matrix and the B1 external review package. B3 matrix AREA-015 was created at the time of B1."
+    },
+    {
+      "phase": "Phase 51G-2",
+      "sha": "ecdb699",
+      "title": "Extract /save-run route into save_run_service.py (#391)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-013 (scenario persistence)",
+        "B3 matrix AREA-015 (Phase 51G-1 characterization superseded for production surface area)",
+        "B7 runbook (Phase 51G-2 reference in §1)",
+        "B8 architecture dimension (Phase 51G-2 reference)",
+        "B8 persistence dimension (Phase 51G-2 reference)",
+        "B12 heatmap (B12 area HC-012 pin refresh pending after 51G-2/3/51H-1)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b-governance-pack (B3/B2/B7/B8, merged in PR #394)",
+      "b_track_refresh_commit": "4f9faa66fd66746fedfd665d07360016bcbf5211",
+      "notes": "Phase 51G-2 was reflected in the B3 matrix self-review patch (AREA-013, AREA-015, AREA-019 added) and in the B7 runbook and B8 tracker. See the self-review report in the PR #394 review history."
+    },
+    {
+      "phase": "Phase 51G-3",
+      "sha": "47faffbfadf22dcdcc3d0b2f3fab9454ab22a166",
+      "title": "Fix /save-run user_created branch latent bug (#392)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-013 (post-51G-2/3/51H-1 pin refresh pending)",
+        "B3 matrix AREA-019 (51G-3 added to recent Agent A route / state work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b-governance-pack (B3/B2/B7/B8, merged in PR #394)",
+      "b_track_refresh_commit": "4f9faa66fd66746fedfd665d07360016bcbf5211",
+      "notes": "Phase 51G-3 was reflected in the B3 matrix self-review patch (AREA-019)."
+    },
+    {
+      "phase": "Phase 51H-1",
+      "sha": "86d5a9041c9bbd183bdf48383a2028e59e3388f1",
+      "title": "Scenario state route family golden characterization (#393)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-013 (post-extraction pin refresh pending)",
+        "B3 matrix AREA-019 (51H-1 added to recent Agent A route / state work)",
+        "B8 architecture dimension (51H-1 reference)",
+        "B8 persistence dimension (51H-1 reference)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b-governance-pack (B3/B2/B7/B8, merged in PR #394)",
+      "b_track_refresh_commit": "4f9faa66fd66746fedfd665d07360016bcbf5211",
+      "notes": "Phase 51H-1 was reflected in the B3 matrix self-review patch (AREA-019) and in the B8 architecture and persistence dimensions."
+    },
+    {
+      "phase": "Phase 51H-2",
+      "sha": "3300b5df2a0ee902b7307720ce8384240b46b29c",
+      "title": "Extract /scenarios/state/* route family into scenario_state_route_service.py (#395)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-013 (scenario persistence - now applies to the extracted service, not just in-place persistence)",
+        "B8 architecture dimension (51H-2 reference, 51G-2 already done)",
+        "B8 persistence dimension (51H-2 reference)"
+      ],
+      "b_track_refresh_executed": false,
+      "b_track_refresh_branch": "pending",
+      "b_track_refresh_commit": null,
+      "notes": "Phase 51H-2 was merged into main at 3300b5df before the B14 plan was created. The B3 matrix and B8 tracker reference 'future Agent A work' but the B14 refresh was not executed for 51H-2. A future refresh should add 51H-2 to AREA-019 and to the B8 architecture and persistence summaries."
+    },
+    {
+      "phase": "Phase 51I",
+      "sha": "09481dc",
+      "title": "Route extraction checkpoint and updated hotspot map (#396)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [],
+      "b_track_refresh_executed": false,
+      "b_track_refresh_branch": "pending",
+      "b_track_refresh_commit": null,
+      "notes": "Phase 51I is a checkpoint and hotspot map update. It does not change route / service / state behavior. No B-track document references Phase 51I directly. No refresh required."
+    },
+    {
+      "phase": "Phase 51J-1",
+      "sha": "2273bacfafe7efbf300797216f948e22c1229408",
+      "title": "POST /scenarios/save golden characterization (#397)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-013 (post-extraction persistence behavior is now also affected by the new /scenarios/save route family)",
+        "B8 architecture dimension (51J-1 added to recent Agent A route work)",
+        "B8 persistence dimension (51J-1 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": false,
+      "b_track_refresh_branch": "pending",
+      "b_track_refresh_commit": null,
+      "notes": "Phase 51J-1 was merged at 2273bac, the current base of this branch. It is not yet reflected in the B3 matrix or the B8 tracker. A future refresh should add 51J-1 to AREA-019 and to the B8 architecture and persistence summaries."
+    }
+  ],
+  "summary": {
+    "total_phases_logged": 7,
+    "phases_with_b_track_refresh_executed": 4,
+    "phases_with_pending_b_track_refresh": 2,
+    "phases_with_no_b_track_refresh_required": 1,
+    "pending_refreshes_count": 0,
+    "completed_refreshes_count": 0,
+    "cancelled_refreshes_count": 0
+  },
+  "global_notes": [
+    "This tracker is a working artifact. It records the B-track refresh status of each Agent A phase. The 'pending_refreshes' list is for refreshes that have been opened as branches but not yet merged.",
+    "The 'agent_a_phase_log' is a historical record. It is updated as Agent A merges new phases.",
+    "The 'agent_a_ownership_list_for_reference_only' is included for Agent B's reference. Agent B NEVER modifies any file in this list. A refresh is a docs-only change.",
+    "A refresh is a normal B-track operation. It is not a code change. It is not a route change. It is not a service change. It is a docs/report-only change."
+  ]
+}

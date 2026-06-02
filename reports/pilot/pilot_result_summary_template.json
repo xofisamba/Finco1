@@ -1,0 +1,176 @@
+{
+  "package": {
+    "name": "Finco1 Pilot Result Summary Template",
+    "workstream": "B9",
+    "branch": "parallel-b-pilot-review-pack",
+    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
+    "template_version": "0.1.0",
+    "template_status": "empty_template",
+    "intended_use": "internal_pilot_summary_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/pilot_validation_execution_pack.md",
+  "evidence_capture_pointer": "docs/pilot/pilot_evidence_capture_template.md",
+  "pass_fail_criteria_pointer": "docs/pilot/pilot_pass_fail_criteria.md",
+  "no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "template_schema": {
+    "note": "All fields are empty by default. They are populated at pilot close. The template is intentionally minimal; richer detail lives in the per-run evidence records (see pilot_evidence_capture_template.md).",
+    "status_values": ["draft", "in_progress", "final"]
+  },
+  "summary": {
+    "pilot_run_id": null,
+    "pilot_user_id": null,
+    "pilot_operator_id": null,
+    "run_window_start": null,
+    "run_window_end": null,
+    "hours_of_operation": null,
+    "git_commit_at_run_window_start": null,
+    "git_commit_at_run_window_end": null,
+    "pilot_scope_doc_path": null,
+    "pilot_evidence_path": null
+  },
+  "run_decisions": {
+    "runs_total": 0,
+    "runs_completed": 0,
+    "runs_partial": 0,
+    "runs_failed": 0,
+    "runs_incomplete": 0,
+    "runs_investigate": 0,
+    "per_run_decisions": []
+  },
+  "per_area_decisions": {
+    "AREA-001_TUHO": {
+      "area_id": "AREA-001",
+      "area_name": "TUHO (Wind 1, 35 MW x 5 turbines) reference model",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    },
+    "AREA-002_Oborovo": {
+      "area_id": "AREA-002",
+      "area_name": "Oborovo (Solar PV, 75.26 MWp) reference model",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    },
+    "AREA-007_Tax": {
+      "area_id": "AREA-007",
+      "area_name": "Tax (CIT, LCF, ATAD EBITDA limitation, withholding)",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated",
+      "sub_area_note": "Tax is internally tested but not pilot-claim-allowed for the broad area; sub-area decomposition required before per-metric criteria are enforced."
+    },
+    "AREA-008_SeniorDebt": {
+      "area_id": "AREA-008",
+      "area_name": "Senior debt (DSCR sculpting, schedules, service)",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    },
+    "AREA-010_SponsorEconomics": {
+      "area_id": "AREA-010",
+      "area_name": "Sponsor economics (Project IRR, Equity IRR, Sponsor IRR, NPV)",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    },
+    "AREA-011_Distributions": {
+      "area_id": "AREA-011",
+      "area_name": "Distributions (first distribution timing, total distributions)",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    },
+    "AREA-012_ExcelExport": {
+      "area_id": "AREA-012",
+      "area_name": "Excel export (institutional workbook, calibration reconciliation pack)",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    },
+    "AREA-016_B1Package": {
+      "area_id": "AREA-016",
+      "area_name": "B1 external review package (PR #390) - documentation and evidence preparation",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    },
+    "AREA-017_UIWarnings": {
+      "area_id": "AREA-017",
+      "area_name": "UI warnings (tax, O&M, debt headroom, etc.)",
+      "metrics_pass": 0,
+      "metrics_fail": 0,
+      "metrics_investigate": 0,
+      "area_decision": "not_evaluated"
+    }
+  },
+  "issue_log_summary": {
+    "issues_total": 0,
+    "by_category": {
+      "bug": 0,
+      "unexpected_behavior": 0,
+      "ux": 0,
+      "doc": 0,
+      "infra": 0,
+      "scope": 0
+    },
+    "by_severity": {
+      "pilot_blocker": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "by_outcome": {
+      "confirmed_bug": 0,
+      "known_acceptable_deviation": 0,
+      "transcription_error": 0,
+      "scope_misalignment": 0,
+      "environment_issue": 0,
+      "cannot_reproduce": 0,
+      "open": 0
+    }
+  },
+  "user_feedback_summary": {
+    "feedback_count": 0,
+    "anonymized_usability_themes": [],
+    "top_suggestions": [],
+    "no_go_claim_made_or_implied": false
+  },
+  "boundary_confirmation": {
+    "pilot_is_internal_validation_only": true,
+    "no_external_claim_made": true,
+    "no_production_readiness_claim": true,
+    "no_customer_reference_made": true,
+    "no_saas_readiness_claim": true,
+    "no_lender_bank_audit_certification_claim": true,
+    "all_no_go_claims_acknowledged_by_pilot_user_and_operator": true
+  },
+  "matrix_update_recommendation": {
+    "areas_to_update": [],
+    "categories_to_consider": [],
+    "notes": "After pilot close, the operator identifies which B3 matrix areas should be updated based on the per-area decisions. Promotion of evidence_category (e.g. internally_tested to pilot_user_tested) requires positive per-area decisions and is recorded as a normal B-track operation."
+  },
+  "pilot_overall_decision": "not_evaluated",
+  "pilot_operator_signature": {
+    "name": null,
+    "role": null,
+    "signed_at": null,
+    "signature_method": null
+  },
+  "global_notes": [
+    "This template is empty at package creation. It is populated at pilot close. The template is intentionally minimal; richer detail lives in the per-run evidence records (see pilot_evidence_capture_template.md).",
+    "A pilot is internal validation with a real human in the loop. It does not produce external claims of any kind. See docs/external_review/no_go_claims.md for the full no-go scope.",
+    "The matrix_update_recommendation field is a hand-off to the B3 matrix; it is not an automated update. The operator must follow the B3 matrix update procedure separately."
+  ]
+}

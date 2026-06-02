@@ -1,0 +1,207 @@
+{
+  "package": {
+    "name": "Finco1 Model Confidence Heatmap",
+    "workstream": "B12",
+    "branch": "parallel-b-pilot-review-pack",
+    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
+    "heatmap_version": "0.1.0",
+    "heatmap_status": "initial_draft",
+    "intended_use": "internal_management_view_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/validation/model_confidence_heatmap.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b14_refresh_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "label_definitions": {
+    "high_internal_confidence": "Internally pinned or golden-parity tested, internal-only; not externally validated.",
+    "medium_internal_confidence": "Internally tested, with documented evidence; not externally validated.",
+    "low_internal_confidence": "Implemented and tested at the broadest level only; sub-areas may vary.",
+    "exploratory": "Research-stage or pre-validation; no parity evidence.",
+    "blocked": "Intentionally not advancing.",
+    "not_approved": "Exists in some form but not approved for any scope.",
+    "external_review_needed": "Area is candidate for the next external review cycle. NOT a positive claim; forward-looking only.",
+    "not_applicable": "The area does not apply to the current scope."
+  },
+  "labels_disallowed_in_this_heatmap": [
+    "bankable",
+    "lender_approved",
+    "lender_grade",
+    "audited",
+    "certified",
+    "regulatory_approved",
+    "enterprise_saas_ready",
+    "production_ready",
+    "sla_backed",
+    "guaranteed_returns",
+    "any label that implies external validation, lender approval, certification, or audit approval"
+  ],
+  "areas": [
+    {
+      "area_id": "HC-001",
+      "area_name": "TUHO (Wind 1, 35 MW x 5 turbines) reference model",
+      "confidence_label": "high_internal_confidence",
+      "source": "B3 AREA-001, Phase 51F pin (engine-output golden + parity-core lock)",
+      "notes": "Five metrics pinned (first_finite_dscr, first_distribution_op_idx, total_operating_periods, opex_total_keur, opex_y1_keur). Pin is regression protection, not external validation."
+    },
+    {
+      "area_id": "HC-002",
+      "area_name": "Oborovo (Solar PV, 75.26 MWp) reference model",
+      "confidence_label": "high_internal_confidence",
+      "source": "B3 AREA-002, Phase 51F pin (engine-output golden + parity-core lock)",
+      "notes": "Five metrics pinned. Pin is regression protection, not external validation."
+    },
+    {
+      "area_id": "HC-003",
+      "area_name": "Generic solar modeling",
+      "confidence_label": "exploratory",
+      "source": "B3 AREA-003, B2 acquisition framework only (zero references acquired)",
+      "notes": "Generic solar is exploratory and unvalidated for any external claim. Oborovo is a specific project, NOT generic solar."
+    },
+    {
+      "area_id": "HC-004",
+      "area_name": "Generic wind modeling",
+      "confidence_label": "exploratory",
+      "source": "B3 AREA-004, B2 acquisition framework only (zero references acquired)",
+      "notes": "Generic wind is exploratory and unvalidated for any external claim. TUHO is a specific project, NOT generic wind."
+    },
+    {
+      "area_id": "HC-005",
+      "area_name": "BESS / hybrid (Solar+BESS, Wind+BESS) full flow",
+      "confidence_label": "low_internal_confidence",
+      "source": "B3 AREA-005/006, waterfall in progress per README",
+      "notes": "BESS revenue engine tested; hybrid full flow has a single integration test. Not pinned. Not pilot-claim-allowed."
+    },
+    {
+      "area_id": "HC-006",
+      "area_name": "Senior debt (DSCR sculpting, schedules, service) - TUHO / Oborovo scope",
+      "confidence_label": "high_internal_confidence",
+      "source": "B3 AREA-008, Phase 51F parity-core lock on senior-debt extraction CSVs",
+      "notes": "Pinned for TUHO and Oborovo. Broader senior-debt policy (including flat / min DSCR sculpting and partial_pay_sweep) is not pinned and is explicitly not promoted."
+    },
+    {
+      "area_id": "HC-007",
+      "area_name": "SHL (subordinated hybrid loan)",
+      "confidence_label": "low_internal_confidence",
+      "source": "B3 AREA-009, internally tested, not pinned",
+      "notes": "Not pinned by Phase 51F. Not in B1 review focus. Not pilot-claim-allowed."
+    },
+    {
+      "area_id": "HC-008",
+      "area_name": "Tax (CIT, LCF, ATAD EBITDA limitation, withholding, depreciation)",
+      "confidence_label": "low_internal_confidence",
+      "source": "B3 AREA-007, sub-area decomposition pending",
+      "notes": "Tax is internally tested but not pinned. Sub-area decomposition (CIT, LCF, ATAD, WHT, depreciation, cash-tax timing) is required before per-sub-area pilot criteria are enforced."
+    },
+    {
+      "area_id": "HC-009",
+      "area_name": "Sponsor economics (Project IRR, Equity IRR, Sponsor IRR, NPV)",
+      "confidence_label": "medium_internal_confidence",
+      "source": "B3 AREA-010, internally tested, not pinned",
+      "notes": "Returns module implemented and tested. IRR/NPV sensitive to floating-point and convention; pinning is hard."
+    },
+    {
+      "area_id": "HC-010",
+      "area_name": "Distributions (first distribution timing, total distributions) - TUHO / Oborovo scope",
+      "confidence_label": "high_internal_confidence",
+      "source": "B3 AREA-011, partial Phase 51F pin (first_distribution_op_idx only)",
+      "notes": "First distribution index is pinned; total distributions not pinned. Pilot claim-allowed for the pinned metrics."
+    },
+    {
+      "area_id": "HC-011",
+      "area_name": "Excel export (institutional workbook, calibration reconciliation pack)",
+      "confidence_label": "medium_internal_confidence",
+      "source": "B3 AREA-012, internally tested, not pinned",
+      "notes": "Excel format drift is a known risk. Pilot-claim-allowed."
+    },
+    {
+      "area_id": "HC-012",
+      "area_name": "Persistence / scenarios (saved scenarios, scenario state)",
+      "confidence_label": "low_internal_confidence",
+      "source": "B3 AREA-013, pin refresh pending after 51G-2/51G-3/51H-1",
+      "notes": "Pilot readiness requires a fresh pin or forward-compatibility decision after the recent Agent A route / state work."
+    },
+    {
+      "area_id": "HC-013",
+      "area_name": "UI warnings (tax, O&M, debt headroom, etc.)",
+      "confidence_label": "low_internal_confidence",
+      "source": "B3 AREA-017, implemented_but_unvalidated at internal-test level",
+      "notes": "By design, pilot-user testing of UI is the evidence-gathering step. Not pinned. Pilot-claim-allowed."
+    },
+    {
+      "area_id": "HC-014",
+      "area_name": "Governance (no-go claim list, validation matrix, B-track work)",
+      "confidence_label": "high_internal_confidence",
+      "source": "B3 AREA-018, B1/B3/B2/B7/B8/B9-B14 governance in place",
+      "notes": "Governance documentation exists and is cross-referenced. B1 no-go claim list, B3 matrix, B7 runbook, B8 tracker, B9 execution pack, B10 data room, B11 commercial guardrail, B12 heatmap, B13 paid pilot gate, B14 refresh plan."
+    },
+    {
+      "area_id": "HC-015",
+      "area_name": "External review readiness",
+      "confidence_label": "external_review_needed",
+      "source": "B1 scaffolding in place; review not yet performed",
+      "notes": "B1 package merged (PR #390). B10 data room index in place. B1 reviewer Q&A template in place. No third-party review output yet."
+    },
+    {
+      "area_id": "HC-016",
+      "area_name": "Commercial claims readiness",
+      "confidence_label": "high_internal_confidence",
+      "source": "B11 commercial messaging guardrail in place",
+      "notes": "B11 guardrail, approved demo language, prohibited claims register, and commercial claims review matrix are in place. Guardrail is conservative; reaching high_internal_confidence does not authorize any external claim."
+    },
+    {
+      "area_id": "HC-017",
+      "area_name": "Paid pilot readiness",
+      "confidence_label": "low_internal_confidence",
+      "source": "B13 paid pilot gate defined; pilot not yet run",
+      "notes": "B7 runbook, B9 execution pack, B13 paid pilot gate are in place. No controlled pilot has run yet. Readiness is at the gate-defined stage, not at the pilot-completed stage."
+    },
+    {
+      "area_id": "HC-018",
+      "area_name": "Enterprise SaaS readiness",
+      "confidence_label": "not_applicable",
+      "source": "B8 tracker: enterprise_saas_readiness is intentionally 10% with null target",
+      "notes": "Enterprise SaaS readiness is a multi-year effort and is not the current goal. Multi-tenant architecture, SLA/SLO framework, audit-grade logging, pricing/packaging, external security review, B1 external review output, generic solar and wind parity, pilot completion, and a separate governance change are all required. None of this is in scope at this time."
+    }
+  ],
+  "summary": {
+    "total_areas": 18,
+    "by_label": {
+      "high_internal_confidence": 5,
+      "medium_internal_confidence": 2,
+      "low_internal_confidence": 5,
+      "exploratory": 2,
+      "blocked": 0,
+      "not_approved": 0,
+      "external_review_needed": 1,
+      "not_applicable": 1
+    },
+    "by_label_pct": {
+      "high_internal_confidence": 27.8,
+      "medium_internal_confidence": 11.1,
+      "low_internal_confidence": 27.8,
+      "exploratory": 11.1,
+      "blocked": 0.0,
+      "not_approved": 0.0,
+      "external_review_needed": 5.6,
+      "not_applicable": 5.6,
+      "blocked_or_not_approved_or_exploratory_total": 16.7
+    }
+  },
+  "update_log": [
+    {
+      "date": "package_creation",
+      "version": "0.1.0",
+      "rationale": "Initial heatmap at package creation. Labels are conservative. The strongest label that honestly applies is used; weaker labels are kept where sub-area status is unknown."
+    }
+  ],
+  "global_notes": [
+    "All labels are project-internal self-assessments. They are not externally validated, not customer-facing, and do not authorize any external claim.",
+    "Reaching a high_internal_confidence label does not relax any no-go claim. The no-go list is governed separately (see docs/external_review/no_go_claims.md and docs/commercial/no_go_claims_commercial_guardrail.md).",
+    "The heatmap is a management-level roll-up, not a replacement for the B3 matrix. The B3 matrix is the authoritative evidence inventory.",
+    "The heatmap uses conservative labels that do not imply bankability, certification, audit approval, or external validation.",
+    "Updates to the heatmap are normal B-track work and follow the procedure in model_confidence_heatmap.md §6."
+  ]
+}

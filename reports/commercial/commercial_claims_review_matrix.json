@@ -1,0 +1,242 @@
+{
+  "package": {
+    "name": "Finco1 Commercial Claims Review Matrix",
+    "workstream": "B11",
+    "branch": "parallel-b-pilot-review-pack",
+    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
+    "matrix_version": "0.1.0",
+    "matrix_status": "initial_draft",
+    "intended_use": "internal_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "prohibited_register_pointer": "docs/commercial/prohibited_claims_register.md",
+  "approved_demo_language_pointer": "docs/commercial/approved_demo_language.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "channel_definitions": {
+    "sales_conversation": "Direct sales calls, demos, follow-ups.",
+    "demo_language": "Pre-recorded demos, live demo scripts.",
+    "pitch": "Investor pitches, partner pitches, conference talks.",
+    "website_copy": "Marketing site, blog posts, white papers.",
+    "investor_materials": "Pitch decks, financial models shown to investors, due-diligence responses.",
+    "reviewer_facing": "Reviewer briefings, B1 package walkthroughs, data-room Q&A."
+  },
+  "language_class_definitions": {
+    "green": "Safe to use in any channel without further review. Project-internal statement that does not authorize any external claim.",
+    "yellow": "Consistent with the B1 no-go list but missing required context. May be used in any channel only with the documented context. Yellow without context is a guardrail violation.",
+    "red": "Prohibited in any commercial channel. Listed in the prohibited claims register."
+  },
+  "claim_categories": [
+    {
+      "claim_id": "CAT-001",
+      "claim_category": "lender_bankable",
+      "color": "red",
+      "rationale": "Implies lender approval or acceptability to any specific lender. No lender has approved the model. B1 §1 prohibits this category.",
+      "example_phrases": ["bankable", "lender-approved", "lender-grade", "ready for credit committee", "ICG-ready", "credit-policy-aligned"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §1"
+    },
+    {
+      "claim_id": "CAT-002",
+      "claim_category": "audit_certification",
+      "color": "red",
+      "rationale": "Implies an audit / certification / accreditation. None has been issued. B1 §2 prohibits this category.",
+      "example_phrases": ["audited", "certified", "accredited", "IFRS-aligned (as compliance)", "US-GAAP-aligned (as compliance)"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §2"
+    },
+    {
+      "claim_id": "CAT-003",
+      "claim_category": "regulatory_approved",
+      "color": "red",
+      "rationale": "Implies a specific regulator has approved the model. No regulator has. B1 §2 prohibits this category.",
+      "example_phrases": ["regulatory-approved", "regulatory-ready", "filing-ready", "compliant with any regulatory regime"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §2"
+    },
+    {
+      "claim_id": "CAT-004",
+      "claim_category": "saas_production_ready",
+      "color": "red",
+      "rationale": "Implies readiness for any specific customer or production use. None is in place. B1 §3 prohibits this category.",
+      "example_phrases": ["enterprise SaaS-ready", "production-ready", "SLA-backed", "warranty-covered", "ready for any specific customer", "scalable (in the sense of ready for enterprise scale)", "multi-tenant-ready", "commercially-ready", "customer-ready"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §3"
+    },
+    {
+      "claim_id": "CAT-005",
+      "claim_category": "generic_solar_validated",
+      "color": "red",
+      "rationale": "Generic solar is exploratory and unvalidated for any external claim. B1 §3.4 prohibits this category.",
+      "example_phrases": ["generic solar validated", "solar / wind parity", "any solar project (in the sense of correct for any solar project)"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §3, §3.4"
+    },
+    {
+      "claim_id": "CAT-006",
+      "claim_category": "generic_wind_validated",
+      "color": "red",
+      "rationale": "Generic wind is exploratory and unvalidated for any external claim. B1 §3.4 prohibits this category.",
+      "example_phrases": ["generic wind validated", "solar / wind parity", "any wind project (in the sense of correct for any wind project)"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §3, §3.4"
+    },
+    {
+      "claim_id": "CAT-007",
+      "claim_category": "G20_approved",
+      "color": "red",
+      "rationale": "G20 is BLOCKED. B1 §6 prohibits this category.",
+      "example_phrases": ["G20 approved", "G20 ready"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §6"
+    },
+    {
+      "claim_id": "CAT-008",
+      "claim_category": "R99_R102_approved",
+      "color": "red",
+      "rationale": "R99 and R102 are NOT APPROVED. B1 §6 prohibits this category.",
+      "example_phrases": ["R99 approved", "R102 approved"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md §6"
+    },
+    {
+      "claim_id": "CAT-009",
+      "claim_category": "not_approved_features",
+      "color": "red",
+      "rationale": "`partial_pay_sweep` and flat / min DSCR sculpting are NOT PROMOTED. B1 (general) prohibits this category.",
+      "example_phrases": ["partial-pay sweep supported", "flat DSCR sculpting supported", "any not-approved feature supported"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (general)"
+    },
+    {
+      "claim_id": "CAT-010",
+      "claim_category": "investment_advice",
+      "color": "red",
+      "rationale": "The model is a screening tool, not an investment advisor. B1 (general) prohibits this category.",
+      "example_phrases": ["investment advice", "buy recommendation", "guaranteed returns", "guaranteed IRR", "any statement that the user should rely on the model's output for a real decision"],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "n/a (prohibited)",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (general)"
+    },
+    {
+      "claim_id": "CAT-011",
+      "claim_category": "internal_screening_tool",
+      "color": "green",
+      "rationale": "Project-internal statement of what the project is. Does not authorize any external claim.",
+      "example_phrases": ["Finco1 is an internal project-finance screening tool."],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "none",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (carve-out)"
+    },
+    {
+      "claim_id": "CAT-012",
+      "claim_category": "controlled_pilot",
+      "color": "green",
+      "rationale": "Internal validation with a real human in the loop. Pilot user is bound by an acknowledgement that forbids external-claim language.",
+      "example_phrases": ["We are running a controlled pilot with real human users under the B7 runbook."],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "the B7 runbook reference, on request",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (carve-out)"
+    },
+    {
+      "claim_id": "CAT-013",
+      "claim_category": "tuho_oborovo_pin_scope",
+      "color": "green",
+      "rationale": "Pin covers five specific metrics per project, all under the Phase 51F guardrails. Pin is regression protection, not external validation.",
+      "example_phrases": ["TUHO Wind 1 and Oborovo Solar PV are reference projects with outputs pinned for regression protection."],
+      "channels": ["sales_conversation", "demo_language", "pitch", "website_copy", "investor_materials", "reviewer_facing"],
+      "required_context": "the Phase 51F pin scope, on request",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (carve-out)"
+    },
+    {
+      "claim_id": "CAT-014",
+      "claim_category": "internal_use_approval",
+      "color": "yellow",
+      "rationale": "Project-internal approval for internal use, not external approval. Yellow without context is a guardrail violation.",
+      "example_phrases": ["The model is approved for our internal use."],
+      "channels": ["sales_conversation", "pitch", "investor_materials"],
+      "required_context": "the pilot protocol (B7) and the B3 matrix; never use without context",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (general)"
+    },
+    {
+      "claim_id": "CAT-015",
+      "claim_category": "specific_outputs_for_specific_inputs",
+      "color": "yellow",
+      "rationale": "Pin covers five specific metrics per project, not generic outputs. Yellow without context implies generic correctness.",
+      "example_phrases": ["The model produces specific outputs for specific inputs."],
+      "channels": ["sales_conversation", "pitch", "investor_materials"],
+      "required_context": "the TUHO and Oborovo pin scope, not generic; never use without context",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (general)"
+    },
+    {
+      "claim_id": "CAT-016",
+      "claim_category": "controlled_pilot_running",
+      "color": "yellow",
+      "rationale": "Pilot is internal validation, not a sales process. Yellow without context implies a customer relationship.",
+      "example_phrases": ["We are running a controlled pilot."],
+      "channels": ["sales_conversation", "pitch", "investor_materials"],
+      "required_context": "the B7 runbook, not a customer reference; never use without context",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (general)"
+    },
+    {
+      "claim_id": "CAT-017",
+      "claim_category": "enterprise_readiness_progress",
+      "color": "yellow",
+      "rationale": "B8 tracker is intentionally conservative (10% enterprise_saas_readiness with null target). Yellow without context implies near-readiness.",
+      "example_phrases": ["We are working towards enterprise readiness."],
+      "channels": ["sales_conversation", "pitch", "investor_materials"],
+      "required_context": "the B8 tracker, 10% current, multi-year effort; never use without context",
+      "owner_placeholder": "Project lead",
+      "b1_reference": "no_go_claims.md (general)"
+    }
+  ],
+  "summary": {
+    "total_claim_categories": 17,
+    "by_color": {
+      "green": 3,
+      "yellow": 4,
+      "red": 10
+    },
+    "by_channel": {
+      "sales_conversation": 17,
+      "demo_language": 17,
+      "pitch": 17,
+      "website_copy": 17,
+      "investor_materials": 17,
+      "reviewer_facing": 17
+    },
+    "red_claim_categories_count": 10
+  },
+  "global_notes": [
+    "The matrix is the per-channel / per-claim authority grid. The prohibited claims register is the source of truth for what must not be said. The approved demo language is a curated set of green statements.",
+    "All claim categories are listed for every channel; the 'color' determines whether the claim may be used in the channel and under what context.",
+    "The matrix does not authorize any external claim. It is internal governance.",
+    "Removing a red entry from the matrix requires a dedicated governance change and an explicit relaxation of the corresponding B1 no-go claim. It is not a routine operation."
+  ]
+}
