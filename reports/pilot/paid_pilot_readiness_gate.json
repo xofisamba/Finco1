@@ -1,0 +1,209 @@
+{
+  "package": {
+    "name": "Finco1 Paid Pilot Readiness Gate",
+    "workstream": "B13",
+    "branch": "parallel-b-pilot-review-pack",
+    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
+    "gate_version": "0.1.0",
+    "gate_status": "empty_template",
+    "intended_use": "internal_paid_pilot_gate_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/paid_pilot_readiness_gate.md",
+  "memo_template_pointer": "docs/pilot/paid_pilot_go_no_go_decision_memo_template.md",
+  "b7_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b9_execution_pointer": "docs/pilot/pilot_validation_execution_pack.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b12_heatmap_pointer": "docs/validation/model_confidence_heatmap.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b14_refresh_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "stage_definitions": {
+    "internal_working_product": "Model implemented and tested internally; no pilot user; no commercial agreement.",
+    "controlled_internal_pilot": "Real human user onboarded with B7 acknowledgement; controlled environment; no commercial agreement.",
+    "controlled_paid_pilot": "Real human user onboarded with paid-pilot agreement and no-go acknowledgement; controlled environment; documented commercial terms; not a customer reference.",
+    "enterprise_saas_readiness": "Multi-tenant architecture, SLA/SLO, audit-grade logging, pricing/packaging, external security review, B1 external review output, generic solar and wind parity, completed pilot, separate governance change. Explicitly not the current goal."
+  },
+  "gate_definitions": {
+    "PG-01": "Controlled internal pilot completed (pilot result summary filed).",
+    "PG-02": "Pilot result reviewed by project lead (signed review note in pilot result summary).",
+    "PG-03": "B3 matrix updated with pilot results (at least one B3 area moved to pilot_user_tested or higher; or recorded demotion with rationale).",
+    "PG-04": "B11 commercial messaging guardrail tested against a real demo (at least one demo run with no guardrail violations recorded).",
+    "PG-05": "B12 heatmap updated to reflect pilot results (at least one B12 area's confidence label updated, or recorded no-change rationale).",
+    "PG-06": "Paid pilot user agreement drafted (document exists; reviewed by project lead and legal if applicable).",
+    "PG-07": "Paid pilot scope and inputs documented (specific area, specific inputs, expected output range documented).",
+    "PG-08": "Paid pilot data isolation verified (production / customer / NDA data not accessible).",
+    "PG-09": "Paid pilot environment provisioned (environment is up, observable, secure).",
+    "PG-10": "Paid pilot no-go acknowledgement drafted (pilot user and operator have signed).",
+    "PG-11": "Paid pilot support / incident response in place (tiers defined, on-call assigned, communication channel set).",
+    "PG-12": "Paid pilot go/no-go decision memo filed (memo records the decision, rationale, and unresolved blockers).",
+    "PG-13": "B1 no-go list reviewed against paid pilot scope (no conflict).",
+    "PG-14": "B11 commercial messaging guardrail reviewed against paid pilot scope (no conflict)."
+  },
+  "checklist": {
+    "PG-01_controlled_internal_pilot_completed": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "No controlled internal pilot has run yet. The B9 execution pack and the B7 runbook are in place; the first controlled internal pilot is the prerequisite for PG-01."
+    },
+    "PG-02_pilot_result_reviewed_by_project_lead": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Depends on PG-01. Project lead review of the controlled internal pilot result summary is the prerequisite for PG-02."
+    },
+    "PG-03_b3_matrix_updated_with_pilot_results": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Depends on PG-02. B3 matrix update commit required."
+    },
+    "PG-04_b11_commercial_guardrail_tested": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Depends on the B11 commercial messaging guardrail being exercised against a real demo. The guardrail is in place; the test run is the prerequisite for PG-04."
+    },
+    "PG-05_b12_heatmap_updated": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Depends on PG-02. B12 heatmap update commit required."
+    },
+    "PG-06_paid_pilot_agreement_drafted": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Agreement document not yet drafted. Drafting begins after PG-01 is passed."
+    },
+    "PG-07_paid_pilot_scope_documented": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Scope not yet documented. Documentation begins after PG-06 is drafted."
+    },
+    "PG-08_paid_pilot_data_isolation_verified": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Isolation verification depends on the paid pilot environment (PG-09) and the data manifest (PG-07)."
+    },
+    "PG-09_paid_pilot_environment_provisioned": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Environment provisioning is the operational prerequisite. Includes observability and security baseline per the B8 deployment and observability dimensions."
+    },
+    "PG-10_paid_pilot_no_go_acknowledgement_drafted": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Acknowledgement depends on PG-06 (the agreement) and on the B1 no-go list (B1, merged)."
+    },
+    "PG-11_paid_pilot_support_incident_response_in_place": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "B7 support / incident response procedure is in place; paid pilot scope adds commercial escalation, which is documented in the paid pilot agreement."
+    },
+    "PG-12_paid_pilot_go_no_go_decision_memo_filed": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Memo (per the decision memo template) is filed when all other gates are passed."
+    },
+    "PG-13_b1_no_go_list_reviewed_against_paid_pilot_scope": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Review depends on PG-07 (paid pilot scope) and on the B1 no-go list (B1, merged)."
+    },
+    "PG-14_b11_commercial_guardrail_reviewed_against_paid_pilot_scope": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": "Review depends on PG-07 (paid pilot scope) and on the B11 commercial messaging guardrail (B11)."
+    }
+  },
+  "unresolved_blockers": [
+    {
+      "blocker_id": "BLK-001",
+      "blocker_description": "B1 external review output is not yet produced. The scaffolding is in place; the review itself is pending.",
+      "blocker_owner": "project_lead",
+      "blocker_target_resolution_date": null,
+      "blocker_status": "open"
+    },
+    {
+      "blocker_id": "BLK-002",
+      "blocker_description": "B2 generic reference acquisition has not started. Zero references acquired; tooling not yet built; pins not yet added.",
+      "blocker_owner": "b_track_owner",
+      "blocker_target_resolution_date": null,
+      "blocker_status": "open"
+    },
+    {
+      "blocker_id": "BLK-003",
+      "blocker_description": "B7 controlled internal pilot has not yet run. The B7 runbook, B9 execution pack, and B13 paid pilot gate are in place; the first controlled internal pilot is the prerequisite for PG-01.",
+      "blocker_owner": "pilot_operator",
+      "blocker_target_resolution_date": null,
+      "blocker_status": "open"
+    },
+    {
+      "blocker_id": "BLK-004",
+      "blocker_description": "B12 heatmap is in its initial state. The heatmap will be updated as the B3 matrix changes and as the controlled internal pilot produces results.",
+      "blocker_owner": "b_track_owner",
+      "blocker_target_resolution_date": null,
+      "blocker_status": "open"
+    },
+    {
+      "blocker_id": "BLK-005",
+      "blocker_description": "B14 governance refresh tracker is in its initial state. The tracker will be updated as Agent A's next round of route / state work lands and the B-track governance docs need to be refreshed.",
+      "blocker_owner": "b_track_owner",
+      "blocker_target_resolution_date": null,
+      "blocker_status": "open"
+    }
+  ],
+  "responsible_owner_placeholders": {
+    "project_lead": "Overall responsibility for the gate.",
+    "pilot_operator": "Operational responsibility for the paid pilot.",
+    "b_track_owner": "Responsibility for the B-track artifacts (B3, B7, B9, B11, B12, B13).",
+    "legal_placeholder": "Responsibility for the paid pilot user agreement (placeholder; actual legal review by appropriate party).",
+    "security_placeholder": "Responsibility for the paid pilot environment security (placeholder; actual security review by appropriate party)."
+  },
+  "stage_transitions": {
+    "internal_working_product_to_controlled_internal_pilot": "Gate defined in B7 runbook §2 and B9 execution pack §4. Requires the B9 execution checklist to be all-passed and the first controlled internal pilot to be authorized.",
+    "controlled_internal_pilot_to_controlled_paid_pilot": "Gate defined in this file (B13). Requires all PG-01 through PG-14 to be passed. Decision is recorded in a memo per the decision memo template.",
+    "controlled_paid_pilot_to_enterprise_saas_readiness": "Gate NOT defined at this time. Enterprise SaaS readiness is explicitly not the current goal. See B8 tracker and the B14 refresh plan for future governance."
+  },
+  "summary": {
+    "total_gates": 14,
+    "gates_pending": 14,
+    "gates_passed": 0,
+    "gates_failed": 0,
+    "gates_blocked": 0,
+    "gates_in_progress": 0,
+    "gates_not_applicable": 0,
+    "paid_pilot_start_authorized": false,
+    "unresolved_blockers_count": 5
+  },
+  "global_notes": [
+    "This gate is the boundary between controlled internal pilot and controlled paid pilot. The four stages are defined in §1 of the narrative file.",
+    "The paid pilot is internal validation with a real human user, with an explicit commercial agreement, with documented no-go enforcement. It is NOT a customer reference and NOT external validation.",
+    "All PG-01 through PG-14 must be 'passed' for a 'go' decision. A 'go' decision without a memo is a gate violation. A 'no_go' decision requires a remediation plan.",
+    "The unresolved blockers list is the categories of blockers the gate will track when populated. None of the listed blockers are actual issues at package creation; they are pre-emptive categories."
+  ]
+}

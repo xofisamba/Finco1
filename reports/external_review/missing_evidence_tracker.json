@@ -1,0 +1,180 @@
+{
+  "package": {
+    "name": "Finco1 External Reviewer Missing Evidence Tracker",
+    "workstream": "B10",
+    "branch": "parallel-b-pilot-review-pack",
+    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
+    "tracker_version": "0.1.0",
+    "tracker_status": "initial_aggregation",
+    "intended_use": "internal_reviewer_scaffolding_only",
+    "external_claim_scope": "none"
+  },
+  "data_room_index_pointer": "docs/external_review/data_room_index.md",
+  "reviewer_checklist_pointer": "docs/external_review/reviewer_evidence_checklist.md",
+  "reviewer_qna_pointer": "docs/external_review/reviewer_qna_template.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "b2_readiness_pointer": "reports/generic_validation/generic_validation_readiness_matrix.json",
+  "b7_readiness_pointer": "reports/pilot/pilot_readiness_checklist.json",
+  "b9_execution_pointer": "reports/pilot/pilot_execution_checklist.json",
+  "no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "evidence_categories": [
+    "in_place",
+    "pending_internal",
+    "pending_pilot",
+    "pending_external_review",
+    "pending_governance_change",
+    "not_applicable"
+  ],
+  "category_definitions": {
+    "in_place": "Evidence is in place at the base SHA and the reviewer can verify it directly.",
+    "pending_internal": "Evidence is expected to be produced by internal work (B-track, Agent A track) before the next package update.",
+    "pending_pilot": "Evidence is expected to be produced by the controlled pilot (B7, B9) before the next package update.",
+    "pending_external_review": "Evidence is expected to be produced by the external review itself (B1 scaffolding is in place; the actual review output is pending).",
+    "pending_governance_change": "Evidence is gated on a dedicated governance change (e.g. relaxing the no-go list, promoting an area to approved_for_generic_scope).",
+    "not_applicable": "The evidence does not apply to this area (e.g. generic solar validation evidence does not apply to TUHO)."
+  },
+  "tracker": {
+    "B1_external_review_package": {
+      "category": "pending_external_review",
+      "missing": [
+        "The actual third-party review output (a written document addressing the B1 readiness matrix and the B10 reviewer Q&A template)."
+      ],
+      "expected_evidence": "A reviewer document, with citations to the base SHA, addressing the readiness matrix and the no-go claim list."
+    },
+    "B2_generic_solar_reference_acquisition": {
+      "category": "pending_internal",
+      "missing": [
+        "Zero generic-solar references acquired.",
+        "Inputs-transcription pipeline tooling (not yet built).",
+        "Parity-comparison tooling (not yet built).",
+        "Internal review of any acquired reference (none yet).",
+        "Phase 51F pin additions for generic-solar parity outputs (intentional protocol).",
+        "Documented governance change."
+      ],
+      "expected_evidence": "Three or more accepted references per the B2 readiness matrix gates, internally reviewed, with parity results documented, plus tooling, plus pins, plus governance change."
+    },
+    "B2_generic_wind_reference_acquisition": {
+      "category": "pending_internal",
+      "missing": [
+        "Zero generic-wind references acquired.",
+        "Inputs-transcription pipeline tooling (not yet built).",
+        "Parity-comparison tooling (not yet built).",
+        "Internal review of any acquired reference (none yet).",
+        "Phase 51F pin additions for generic-wind parity outputs (intentional protocol).",
+        "Documented governance change."
+      ],
+      "expected_evidence": "Three or more accepted references per the B2 readiness matrix gates, internally reviewed, with parity results documented, plus tooling, plus pins, plus governance change."
+    },
+    "B3_validation_evidence_matrix_general": {
+      "category": "pending_internal",
+      "missing": [
+        "Per-area reviewer verification of pass / fail / skip of every test file listed in the matrix.",
+        "External review of the matrix itself (B1 scaffolding is in place).",
+        "B3 governance refresh after Agent A's next round of route / state work (per B14)."
+      ],
+      "expected_evidence": "Reviewer-enumerated test pass/fail/skip per file, external review output, and governance refresh commits."
+    },
+    "B3_AREA-007_Tax_subarea_decomposition": {
+      "category": "pending_internal",
+      "missing": [
+        "Sub-area decomposition of Tax into CIT, LCF, ATAD/EBITDA limitation, WHT, depreciation, cash-tax timing.",
+        "Per-sub-area pilot readiness decision."
+      ],
+      "expected_evidence": "Decomposed matrix rows for each tax sub-area, with per-sub-area pilot-claim-allowed flags."
+    },
+    "B3_AREA-013_scenario_persistence_pin_refresh": {
+      "category": "pending_internal",
+      "missing": [
+        "Pin refresh / forward-compatibility decision for the post-51G-2 / 51G-3 / 51H-1 persisted state shape."
+      ],
+      "expected_evidence": "A new Phase 51F pin for the post-extraction persisted state, or a documented forward-compatibility statement."
+    },
+    "B3_AREA-014_Phase_51F_guardrails_external_review": {
+      "category": "pending_external_review",
+      "missing": [
+        "External review of the Phase 51F guardrail design."
+      ],
+      "expected_evidence": "Reviewer output addressing the Phase 51F guardrail design at the base SHA."
+    },
+    "B7_controlled_pilot_execution": {
+      "category": "pending_pilot",
+      "missing": [
+        "Pilot user onboarded.",
+        "Pilot environment provisioned.",
+        "Pilot scope (specific area, inputs, expected output range) defined.",
+        "B7 runbook readiness checklist all-passed.",
+        "B9 execution checklist all-passed.",
+        "First pilot run completed and a pilot result summary filed."
+      ],
+      "expected_evidence": "A completed pilot run with per-run evidence, a pilot result summary, and a B3 matrix update reflecting the pilot result."
+    },
+    "B8_enterprise_saas_readiness": {
+      "category": "not_applicable",
+      "missing": [
+        "The enterprise_saas_readiness dimension is intentionally at 10% with a null target. Reaching 100% requires multi-tenant architecture, SLA/SLO framework, audit-grade logging and reporting, pricing/packaging/customer onboarding, external security review, B1 external review output, generic solar and wind parity, pilot completion, and a separate governance change. None of this is in scope for the current work."
+      ],
+      "expected_evidence": "Not applicable at this time. Reaching enterprise SaaS readiness is a multi-year effort and is not the current goal."
+    },
+    "B9_pilot_execution_pack": {
+      "category": "pending_pilot",
+      "missing": [
+        "Pilot execution checklist (11 gates) all-passed.",
+        "Pilot run(s) executed and evidence captured.",
+        "Pilot result summary filed."
+      ],
+      "expected_evidence": "An executed pilot with per-run evidence, a pilot result summary, and a B3 matrix update."
+    },
+    "B11_commercial_messaging_operationalization": {
+      "category": "pending_governance_change",
+      "missing": [
+        "Operationalization of the commercial messaging guardrail in the change process (every PR checked against the prohibited claims register).",
+        "Training and acknowledgment by anyone who might speak about the model externally."
+      ],
+      "expected_evidence": "A documented operationalization procedure, with sign-off by the project lead."
+    },
+    "B12_model_confidence_heatmap_operationalization": {
+      "category": "pending_internal",
+      "missing": [
+        "Periodic updates of the heatmap as B3 matrix changes (per B14 refresh plan).",
+        "Cross-references to the B3 matrix's evidence_category values."
+      ],
+      "expected_evidence": "Heatmap updates aligned with B3 matrix updates."
+    },
+    "B13_paid_pilot_readiness_gate": {
+      "category": "pending_pilot",
+      "missing": [
+        "First controlled internal pilot completed (per B9).",
+        "Pilot result summary reviewed.",
+        "B3 matrix updated with pilot results.",
+        "Go/no-go decision memo filed."
+      ],
+      "expected_evidence": "A go/no-go decision on moving from controlled internal pilot to controlled paid pilot, with the required minimum evidence documented."
+    },
+    "B14_governance_refresh_plan": {
+      "category": "pending_internal",
+      "missing": [
+        "First Agent A round of additional Phase 51 route / state work beyond 51H-1 has not yet been integrated into the B3 matrix.",
+        "The refresh tracker JSON is empty at package creation."
+      ],
+      "expected_evidence": "Future refresh commits, with the trigger condition met (Agent A's next round of work). The refresh commits will update B3, B7, B8, B9, B10, B12, B13 as needed."
+    }
+  },
+  "summary": {
+    "total_areas": 14,
+    "by_category": {
+      "in_place": 0,
+      "pending_internal": 4,
+      "pending_pilot": 3,
+      "pending_external_review": 2,
+      "pending_governance_change": 1,
+      "not_applicable": 1
+    },
+    "most_impactful_pending": "B1 external review output, B2 generic reference acquisition, B7 controlled pilot execution"
+  },
+  "global_notes": [
+    "This tracker is a working artifact. The categories reflect what is in place, what is pending, and what is not applicable. Each entry names the expected evidence and the workstream that produces it.",
+    "The data room itself does not constitute external validation. The reviewer's output is internal validation, conditioned on the no-go claim list.",
+    "The pending_external_review category is for evidence that the external review itself produces (e.g. reviewer output). It is not external validation; it is the reviewer's opinion."
+  ]
+}

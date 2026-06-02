@@ -1,0 +1,132 @@
+{
+  "package": {
+    "name": "Finco1 Pilot Execution Checklist",
+    "workstream": "B9",
+    "branch": "parallel-b-pilot-review-pack",
+    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
+    "checklist_version": "0.1.0",
+    "checklist_status": "empty_template",
+    "intended_use": "internal_pilot_gate_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/pilot_validation_execution_pack.md",
+  "criteria_pointer": "docs/pilot/pilot_pass_fail_criteria.md",
+  "evidence_capture_pointer": "docs/pilot/pilot_evidence_capture_template.md",
+  "result_summary_pointer": "reports/pilot/pilot_result_summary_template.json",
+  "no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "b7_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "gate_definitions": {
+    "G0_scope_and_inputs_documented": "Pilot scope and inputs are documented, signed.",
+    "G1_pilot_user_acknowledgement": "Pilot user identified and acknowledgement signed.",
+    "G2_pilot_data_loaded": "Pilot data loaded; non-pilot data excluded.",
+    "G3_pilot_environment_isolated": "Pilot environment isolated; no production / customer / NDA data accessible.",
+    "G4_pilot_run_window_defined": "Pilot run window defined: start_date, end_date, hours_of_operation.",
+    "G5_issue_triage_in_place": "Issue triage process in place (pilot_issue_triage_process.md).",
+    "G6_user_feedback_protocol_in_place": "User feedback protocol in place (pilot_user_feedback_protocol.md).",
+    "G7_support_incident_response_in_place": "Support and incident response in place (support_and_incident_response.md).",
+    "G8_evidence_storage_with_retention": "Pilot artifacts storage with retention policy defined.",
+    "G9_exit_criteria_defined": "Exit criteria defined (success and failure per runbook §7).",
+    "G10_no_go_acknowledgement": "No-go claim list acknowledged by every pilot user and operator."
+  },
+  "checklist": {
+    "G0_scope_and_inputs_documented": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G1_pilot_user_acknowledgement": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G2_pilot_data_loaded": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G3_pilot_environment_isolated": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G4_pilot_run_window_defined": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G5_issue_triage_in_place": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G6_user_feedback_protocol_in_place": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G7_support_incident_response_in_place": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G8_evidence_storage_with_retention": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G9_exit_criteria_defined": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    },
+    "G10_no_go_acknowledgement": {
+      "status": "pending",
+      "evidence_path": null,
+      "completed_at": null,
+      "completed_by": null,
+      "notes": ""
+    }
+  },
+  "gate_transitions": {
+    "pending_to_passed": "Each gate moves pending -> passed when the pilot operator records evidence_path, completed_at, completed_by, and notes. Status values: pending, in_progress, passed, failed, blocked, not_applicable.",
+    "pilot_start_authorized": "Pilot start is authorized only when all gates G0-G10 are in status: passed. Any other status (failed, blocked, pending, in_progress) blocks pilot start."
+  },
+  "summary": {
+    "total_gates": 11,
+    "gates_pending": 11,
+    "gates_passed": 0,
+    "gates_failed": 0,
+    "gates_blocked": 0,
+    "gates_in_progress": 0,
+    "gates_not_applicable": 0,
+    "pilot_start_authorized": false
+  },
+  "global_notes": [
+    "This checklist is empty at package creation. It is the gate tracker for pilot start. Every gate must be in status 'passed' before the pilot can start.",
+    "The 11 gates mirror the 10-item setup checklist in the B7 runbook §2 plus the no-go acknowledgement (gate G10). The runbook's checklist is the human-readable form; this file is the machine-readable form.",
+    "Cross-check pilot_claim_allowed per area in reports/validation/validation_evidence_matrix.json. Areas where pilot_claim_allowed is false are out of pilot scope.",
+    "A pilot is internal validation with a real human in the loop. It does not produce external claims of any kind. See docs/external_review/no_go_claims.md for the full no-go scope."
+  ]
+}
