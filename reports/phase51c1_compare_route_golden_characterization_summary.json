@@ -1,0 +1,119 @@
+{
+  "phase": "51C-1",
+  "title": "/compare route golden characterization",
+  "type": "characterization-only",
+  "base_sha": "542348307ee74df2dc73a854dc11588814f2c1e3",
+  "head_sha": "PENDING_COMMIT",
+  "branch": "phase51c1-compare-route-golden-characterization",
+  "status": "in-progress",
+  "production_code_changed": false,
+  "route_characterized": true,
+  "paths_characterized": [
+    "auth_redirect",
+    "runtime_guard_block",
+    "invalid_project_type",
+    "snapshotinput_error_on_user_created_xfail",
+    "schema_build_valueerror_on_template_seeded",
+    "generic_template_seeded_wind_success",
+    "generic_template_seeded_solar_success",
+    "tuho_template_seeded_success_xfail",
+    "oborovo_template_seeded_success_xfail",
+    "saved_state_path_xfail_silent_bug",
+    "per_scenario_soft_error_xfail",
+    "all_scenarios_error_xfail",
+    "empty_form_xfail",
+    "no_persistence_side_effects_confirmed"
+  ],
+  "xfail_paths": [
+    {
+      "path": "user_created path",
+      "reason": "PRE-EXISTING LATENT BUG: /compare references runtime_snapshot on user_created branch but never defines it. Would raise NameError on first execution. Must be fixed in Phase 51C-2 as part of extraction."
+    },
+    {
+      "path": "saved_state + active_scenario path",
+      "reason": "/compare does not call resolve_runtime_snapshot_source, so the saved-state path silently bypasses the saved snapshot and uses form values. Must be fixed in Phase 51C-2."
+    },
+    {
+      "path": "TUHO template-seeded compare",
+      "reason": "No dedicated TUHO compare test exists; behavior covered indirectly by /run tests + phase 20g scenario compare history."
+    },
+    {
+      "path": "Oborovo template-seeded compare",
+      "reason": "No dedicated Oborovo compare test exists; behavior covered indirectly by /run tests + phase 20g scenario compare history."
+    },
+    {
+      "path": "per-scenario model error (loop continues)",
+      "reason": "No test for 'one scenario raises, others succeed' in /compare; soft-error semantics not pinned. Add in Phase 51C-2."
+    },
+    {
+      "path": "all three scenarios error",
+      "reason": "No test for 'all scenarios fail' in /compare; response shape under total failure not pinned. Add in Phase 51C-2."
+    },
+    {
+      "path": "empty form fields",
+      "reason": "Empty form behavior is implicit, not pinned. Add in Phase 51C-2."
+    }
+  ],
+  "proposed_service_module": "app/services/compare_service.py",
+  "proposed_api": {
+    "outcome_dataclass": "CompareRouteOutcome (template_name, context, status_code)",
+    "deps_dataclass": "CompareRouteDeps (collect_form_snapshot, project_workspace_from_snapshot, canonical_project_type, normalize_template_source, check_runtime_allowed, resolve_runtime_snapshot_source [NEW: must add to fix latent bug], build_schema_from_form, build_projectinputs, build_projectinputs_from_snapshot, scenarios, project_types, snapshot_input_error, run_project)",
+    "entry_point": "async def execute_compare_route(*, request, form, user, deps: CompareRouteDeps) -> CompareRouteOutcome"
+  },
+  "ready_for_extraction": true,
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "no_production_code_changes": true,
+  "test_results": {
+    "phase51c1_new_tests": "36 passed + 1 xfailed",
+    "phase51b_extraction_tests": "22/22 passed (no regression)",
+    "phase51a_golden_tests": "25/25 passed (no regression)",
+    "phase50d_current_state": "untouched (no regression expected)",
+    "phase50c_closeout": "untouched (no regression expected)",
+    "import_main_web": "OK"
+  },
+  "guardrails_preserved": {
+    "no_financial_formula_changes": true,
+    "no_runtime_calculation_changes": true,
+    "no_model_output_changes": true,
+    "no_route_behavior_changes": true,
+    "no_export_behavior_changes": true,
+    "no_project_factory_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_schema_migration_changes": true,
+    "no_javascript_financial_calculations": true,
+    "no_generic_validation": true,
+    "no_g20_promotion": true,
+    "no_r99_r102_promotion": true,
+    "no_partial_pay_sweep_promotion": true,
+    "no_flat_min_dscr_sculpting_promotion": true,
+    "backend_remains_source_of_truth": true,
+    "pr_299_state": "still draft, not merged",
+    "run_service_intact": true,
+    "run_route_remains_thin": true
+  },
+  "compare_route_findings": {
+    "location": "main_web.py line 1587",
+    "body_size_lines": 100,
+    "body_size_non_blank": 89,
+    "input_fields": 10,
+    "scenarios_always_iterated": ["Base", "Downside", "Upside"],
+    "kpis_per_scenario": 6,
+    "templates": ["partials/comparison.html", "partials/errors.html"],
+    "context_keys": ["project_type", "scenarios", "results"],
+    "persistence_side_effects": "NONE (read-only route, confirmed by grep)",
+    "latent_bug": "runtime_snapshot NameError on user_created path",
+    "soft_error_semantics": "loop continues on per-scenario exception, results[sc] = {error: str(e)}"
+  },
+  "changed_files": [
+    "docs/phase51c1_compare_route_golden_characterization.md (NEW)",
+    "docs/phase51c1_compare_route_behavior_matrix.md (NEW)",
+    "tests/test_phase51c1_compare_route_golden_characterization.py (NEW)",
+    "reports/phase51c1_compare_route_golden_characterization_summary.json (NEW)"
+  ],
+  "pr_299_state": "still draft, not merged",
+  "recommended_next_phase": "Phase 51C-2 — /compare route vertical extraction into app/services/compare_service.py, including the runtime_snapshot NameError latent bug fix and saved-state path resolution."
+}
