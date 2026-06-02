@@ -1,0 +1,138 @@
+{
+  "package": {
+    "name": "Finco1 Generic Validation Readiness Matrix",
+    "workstream": "B2",
+    "branch": "parallel-b-governance-pack",
+    "base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "matrix_version": "0.1.0",
+    "matrix_status": "initial_draft_no_references_accepted",
+    "intended_use": "internal_validation_only"
+  },
+  "acquisition_workflow_pointer": "docs/generic_validation/generic_reference_acquisition_plan.md",
+  "inventory_pointer": "reports/generic_validation/reference_model_inventory_template.json",
+  "solar_requirements_pointer": "docs/generic_validation/generic_solar_reference_requirements.md",
+  "wind_requirements_pointer": "docs/generic_validation/generic_wind_reference_requirements.md",
+  "no_go_boundaries_pointer": "docs/generic_validation/generic_validation_no_go_boundaries.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "b1_no_go_list_pointer": "docs/external_review/no_go_claims.md",
+  "promotion_targets": {
+    "AREA-003_generic_solar": {
+      "from_category": "exploratory",
+      "to_category_minimum": "internally_tested",
+      "to_category_recommended": "golden_parity_tested",
+      "gate": "Three independent generic-solar references with parity-pass status, internally reviewed, with B3 matrix update and documented rationale.",
+      "current_status": "blocked",
+      "blockers": [
+        "Zero accepted references at package creation",
+        "No acquisition activity has started yet (inventory is empty)",
+        "Generic solar remains exploratory by policy"
+      ]
+    },
+    "AREA-004_generic_wind": {
+      "from_category": "exploratory",
+      "to_category_minimum": "internally_tested",
+      "to_category_recommended": "golden_parity_tested",
+      "gate": "Three independent generic-wind references with parity-pass status, internally reviewed, with B3 matrix update and documented rationale.",
+      "current_status": "blocked",
+      "blockers": [
+        "Zero accepted references at package creation",
+        "No acquisition activity has started yet (inventory is empty)",
+        "Generic wind remains exploratory by policy"
+      ]
+    }
+  },
+  "current_state_by_technology": {
+    "solar": {
+      "accepted_references": 0,
+      "parity_pass_references": 0,
+      "candidate_references": 0,
+      "rejected_references": 0,
+      "average_parity_score": null,
+      "tolerance_relaxations": 0,
+      "last_updated": null
+    },
+    "wind": {
+      "accepted_references": 0,
+      "parity_pass_references": 0,
+      "candidate_references": 0,
+      "rejected_references": 0,
+      "average_parity_score": null,
+      "tolerance_relaxations": 0,
+      "last_updated": null
+    },
+    "solar+bess": {
+      "accepted_references": 0,
+      "parity_pass_references": 0,
+      "candidate_references": 0,
+      "rejected_references": 0,
+      "average_parity_score": null,
+      "tolerance_relaxations": 0,
+      "last_updated": null
+    },
+    "wind+bess": {
+      "accepted_references": 0,
+      "parity_pass_references": 0,
+      "candidate_references": 0,
+      "rejected_references": 0,
+      "average_parity_score": null,
+      "tolerance_relaxations": 0,
+      "last_updated": null
+    }
+  },
+  "gate_evaluations": {
+    "solar_gate_3_accepted": {
+      "required": 3,
+      "actual": 0,
+      "pass": false
+    },
+    "wind_gate_3_accepted": {
+      "required": 3,
+      "actual": 0,
+      "pass": false
+    }
+  },
+  "tolerance_relaxation_log": [],
+  "next_actions": [
+    {
+      "action_id": "ACT-001",
+      "description": "Identify and log the first generic-solar candidate reference (any independent third-party solar PV model with published inputs and outputs).",
+      "owner": "B2 workstream",
+      "status": "not_started",
+      "depends_on": []
+    },
+    {
+      "action_id": "ACT-002",
+      "description": "Identify and log the first generic-wind candidate reference.",
+      "owner": "B2 workstream",
+      "status": "not_started",
+      "depends_on": []
+    },
+    {
+      "action_id": "ACT-003",
+      "description": "Establish the inputs-transcription pipeline from candidate reference format to Finco1 input format. This is tooling work; it is not a model change.",
+      "owner": "B2 workstream with Agent A coordination",
+      "status": "not_started",
+      "depends_on": ["ACT-001"]
+    },
+    {
+      "action_id": "ACT-004",
+      "description": "Establish the parity-comparison tooling that produces a structured parity report (machine-readable).",
+      "owner": "B2 workstream",
+      "status": "not_started",
+      "depends_on": ["ACT-001"]
+    },
+    {
+      "action_id": "ACT-005",
+      "description": "Decide the protocol for adding new Phase 51F pins for generic-solar and generic-wind parity outputs. The protocol must follow the documented intentional-update protocol.",
+      "owner": "B2 workstream with Agent A coordination",
+      "status": "not_started",
+      "depends_on": []
+    }
+  ],
+  "global_notes": [
+    "This matrix is empty at package creation. It is the gate tracker for promoting AREA-003 (generic solar) and AREA-004 (generic wind) from exploratory to any stronger category.",
+    "Promotion requires at least three independent accepted references per technology, internally reviewed, with B3 matrix update and documented rationale.",
+    "Tolerance relaxations are tracked in this matrix; relaxations are not silent and are subject to the no-go boundaries document.",
+    "Generic solar and generic wind remain exploratory and unvalidated for any external claim. See the no-go boundaries document and the B1 no-go claim list for the full scope."
+  ]
+}
