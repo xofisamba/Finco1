@@ -1,0 +1,270 @@
+{
+  "phase": "51 Closeout",
+  "title": "Phase 51 Closeout: Route service extraction summary and residual main_web hotspot map",
+  "type": "documentation and verification only",
+  "scope": "main_web.py + new app/services/{run,compare,validation}_service.py + docs + tests",
+  "base_sha": "66d52dd74bd795639207140c63af8e7478741077",
+  "branch": "phase51-closeout-route-service-extraction-summary",
+  "head_sha": null,
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "production_code_changed": false,
+  "behavior_preserved": true,
+  "extracted_routes": [
+    {
+      "route": "POST /run",
+      "phase": "51B",
+      "pr": 380,
+      "service_module": "app/services/run_service.py",
+      "pre_extraction_non_blank_lines": 388,
+      "post_extraction_non_blank_lines": 65,
+      "reduction_percent": 83.2,
+      "behavior_changes": [],
+      "side_effects": "read-then-write (record_workspace_runtime, update_scenario_last_run_summary)"
+    },
+    {
+      "route": "POST /compare",
+      "phase": "51C-2",
+      "pr": 382,
+      "service_module": "app/services/compare_service.py",
+      "pre_extraction_non_blank_lines": 95,
+      "post_extraction_non_blank_lines": 33,
+      "reduction_percent": 65.3,
+      "behavior_changes": [
+        "Bug A: user_created path no longer raises NameError (runtime_snapshot now defined via deps.resolve_runtime_snapshot_source)",
+        "Bug B: saved_state + active_scenario path now uses resolved snapshot, not raw form values"
+      ],
+      "side_effects": "read-only (no persistence)"
+    },
+    {
+      "route": "POST /validate",
+      "phase": "51D-2",
+      "pr": 384,
+      "service_module": "app/services/validation_service.py",
+      "pre_extraction_non_blank_lines": 77,
+      "post_extraction_non_blank_lines": 32,
+      "reduction_percent": 58.4,
+      "behavior_changes": [
+        "No production behavior changes",
+        "Runtime-snapshot parity call preserved EXACTLY (parity quirk from Phase 51D-1, do not remove as cleanup)"
+      ],
+      "side_effects": "read-only (no persistence)"
+    }
+  ],
+  "service_modules": {
+    "app/services/run_service.py": {
+      "phase": "51B",
+      "public_classes": ["RunRouteOutcome", "RunRouteDeps"],
+      "public_entry_point": "async def execute_run_route(*, request, form, user, deps) -> RunRouteOutcome",
+      "execution_paths": ["user_created", "template_seeded (tuho/oborovo)", "generic"],
+      "imports_main_web": false,
+      "imports_main_api": false
+    },
+    "app/services/compare_service.py": {
+      "phase": "51C-2",
+      "public_classes": ["CompareRouteOutcome", "CompareRouteDeps"],
+      "public_entry_point": "async def execute_compare_route(*, request, form, user, deps) -> CompareRouteOutcome",
+      "execution_paths": ["3-scenario loop with soft-error per scenario"],
+      "imports_main_web": false,
+      "imports_main_api": false
+    },
+    "app/services/validation_service.py": {
+      "phase": "51D-2",
+      "public_classes": ["ValidateRouteOutcome", "ValidateRouteDeps"],
+      "public_entry_point": "async def execute_validate_route(*, request, form, user, deps) -> ValidateRouteOutcome",
+      "execution_paths": ["Stage A (enum)", "Stage B (numeric, 9 fields)", "Stage C (schema build, gated by `if not errors:`)"],
+      "imports_main_web": false,
+      "imports_main_api": false
+    }
+  },
+  "route_line_counts": {
+    "/run_post_extraction": 65,
+    "/compare_post_extraction": 33,
+    "/validate_post_extraction": 32,
+    "main_web_total_lines": 2893
+  },
+  "tests_run": {
+    "phase51a_run_route_golden": {"pass": 25, "fail": 0, "xfail": 0},
+    "phase51b_run_route_vertical_extraction": {"pass": 22, "fail": 0, "xfail": 0},
+    "phase51c1_compare_route_golden_characterization": {"pass": 37, "fail": 0, "xfail": 0, "note": "xfail converted to passing in 51C-2 (user_created NameError fix)"},
+    "phase51c2_compare_route_vertical_extraction": {"pass": 49, "fail": 0, "xfail": 0},
+    "phase51d1_validate_route_golden_characterization": {"pass": 51, "fail": 0, "xfail": 0, "note": "structural tests re-pointed to validation_service.py in 51D-2"},
+    "phase51d2_validate_route_vertical_extraction": {"pass": 52, "fail": 0, "xfail": 0},
+    "total_phase51": {"pass": 236, "fail": 0, "xfail": 0},
+    "import_checks": {
+      "main_web": "OK",
+      "app.services.run_service": "OK",
+      "app.services.compare_service": "OK",
+      "app.services.validation_service": "OK"
+    },
+    "structural_guards": {
+      "run_service_does_not_import_main_web": "PASS",
+      "compare_service_does_not_import_main_web": "PASS",
+      "validation_service_does_not_import_main_web": "PASS",
+      "main_web_has_zero_direct_record_export_calls": "PASS (0 matches)"
+    }
+  },
+  "known_failures": {
+    "tests/test_persistence.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51": false,
+      "out_of_scope_for_phase_51": true
+    },
+    "tests/test_repository.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51": false,
+      "out_of_scope_for_phase_51": true
+    }
+  },
+  "guardrails_preserved": [
+    "No financial formula changes",
+    "No model calculation logic changes",
+    "No project factory changes",
+    "No fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "No generic validation framework",
+    "G20 remains BLOCKED",
+    "R99 / R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat / min DSCR sculpting not promoted",
+    "Backend remains source of truth",
+    "Generic solar / wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "rc1 remains frozen (NOT touched by any Phase 51 commit)",
+    "/run route remains thin (< 200 non-blank body lines; 65 non-blank post-51B)",
+    "/compare route remains thin (< 50 non-blank body lines; 33 non-blank post-51C-2)",
+    "/validate route remains thin (< 50 non-blank body lines; 32 non-blank post-51D-2)",
+    "run_service.py does NOT import main_web (one-way import direction)",
+    "compare_service.py does NOT import main_web (one-way import direction)",
+    "validation_service.py does NOT import main_web (one-way import direction)",
+    "main_web.py has zero direct record_export calls",
+    "/compare route has zero direct persistence / record_* calls",
+    "/validate route has zero direct persistence / record_* calls",
+    "PR #299 has been closed (no longer active guardrail per closeout context update)"
+  ],
+  "residual_main_web_hotspots": {
+    "description": "Remaining @app.post routes in main_web.py, sorted by non-blank body lines descending. Already-extracted routes (/run, /compare, /validate) included for reference.",
+    "hotspots": [
+      {
+        "rank": 1,
+        "route": "POST /download",
+        "decorator_line": 1582,
+        "non_blank_lines": 132,
+        "notes": "Generates Excel export with current form values. Complex body, multiple scenarios."
+      },
+      {
+        "rank": 2,
+        "route": "POST /save-run",
+        "decorator_line": 2724,
+        "non_blank_lines": 125,
+        "notes": "Persists a model run to the database. Read-then-write with multiple side effects."
+      },
+      {
+        "rank": 3,
+        "route": "POST /scenarios/save",
+        "decorator_line": 2210,
+        "non_blank_lines": 86,
+        "notes": "Saves a scenario with full snapshot + provenance."
+      },
+      {
+        "rank": 4,
+        "route": "POST /scenarios/{scenario_id}/duplicate",
+        "decorator_line": 2340,
+        "non_blank_lines": 65,
+        "notes": "Duplicates a scenario with all overrides."
+      },
+      {
+        "rank": 5,
+        "route": "POST /scenarios/add",
+        "decorator_line": 2414,
+        "non_blank_lines": 60,
+        "notes": "Adds a new scenario to a project."
+      },
+      {
+        "rank": 6,
+        "route": "POST /scenarios/{scenario_id}/rename",
+        "decorator_line": 2595,
+        "non_blank_lines": 49,
+        "notes": "Renames a scenario."
+      },
+      {
+        "rank": 7,
+        "route": "POST /projects/{project_code}/save-as",
+        "decorator_line": 2544,
+        "non_blank_lines": 47,
+        "notes": "Saves a new project from current form values."
+      },
+      {
+        "rank": 8,
+        "route": "POST /scenarios/{scenario_id}/archive",
+        "decorator_line": 2651,
+        "non_blank_lines": 45,
+        "notes": "Archives a scenario."
+      },
+      {
+        "rank": 9,
+        "route": "POST /scenarios/state/draft",
+        "decorator_line": 2075,
+        "non_blank_lines": 31,
+        "notes": "Updates scenario draft state. Small but persistence-heavy. Recommended next extraction target (Phase 51E-1 + 51E-2)."
+      },
+      {
+        "rank": 10,
+        "route": "POST /scenarios/state/discard",
+        "decorator_line": 2111,
+        "non_blank_lines": 29,
+        "notes": "Discards scenario draft state."
+      },
+      {
+        "rank": 11,
+        "route": "POST /scenarios/{scenario_id}/update-overrides",
+        "decorator_line": 2513,
+        "non_blank_lines": 23,
+        "notes": "Updates scenario overrides."
+      },
+      {
+        "rank": 12,
+        "route": "POST /scenarios/{scenario_id}/select",
+        "decorator_line": 2487,
+        "non_blank_lines": 19,
+        "notes": "Selects active scenario."
+      }
+    ],
+    "extracted_reference": [
+      {
+        "route": "POST /run",
+        "non_blank_lines_post_extraction": 65,
+        "phase": "51B"
+      },
+      {
+        "route": "POST /compare",
+        "non_blank_lines_post_extraction": 33,
+        "phase": "51C-2"
+      },
+      {
+        "route": "POST /validate",
+        "non_blank_lines_post_extraction": 32,
+        "phase": "51D-2"
+      }
+    ]
+  },
+  "helper_decomposition_candidates": {
+    "description": "Large top-level helper functions in main_web.py that may be candidates for decomposition (not part of route extraction critical path).",
+    "candidates": [
+      {"name": "_project_baseline_snapshot", "line": 343, "non_blank": 109},
+      {"name": "_build_export_lineage_ui_context", "line": 699, "non_blank": 94},
+      {"name": "_validate_new_project_payload", "line": 544, "non_blank": 80},
+      {"name": "_collect_form_snapshot", "line": 267, "non_blank": 74},
+      {"name": "_build_schema_from_form", "line": 1119, "non_blank": 59},
+      {"name": "_replay_metadata_for_project", "line": 857, "non_blank": 53},
+      {"name": "_build_compare_ui_context", "line": 807, "non_blank": 47}
+    ]
+  },
+  "recommended_next_phase": "Phase 51E-1: characterization of POST /scenarios/state/draft (small persistence-heavy route, good first candidate for the scenario-route family). Followed by Phase 51E-2: vertical extraction into app/services/scenario_state_draft_service.py. Then continue with /scenarios/save (51F), /scenarios/{scenario_id}/duplicate (51G), /scenarios/add (51H), /download (51I), /save-run (51J). Consider parallel helper-decomposition track for the large helpers in main_web.py."
+}
