@@ -86,6 +86,7 @@ from app.services.export_service import build_values_only_export_for_project, bu
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
 from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record, resolve_runtime_snapshot, RuntimeSnapshotResolution, check_runtime_allowed
 from app.services.compare_service import CompareRouteDeps, execute_compare_route
+from app.services.validation_service import ValidateRouteDeps, execute_validate_route
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -1427,85 +1428,39 @@ async def index(request: Request, project: str | None = None):
 
 @app.post("/validate")
 async def validate(request: Request):
-    """Validate form inputs. Requires auth."""
+    """Validate form inputs. Requires auth.
+
+    Phase 51D-2: orchestration extracted into
+    ``app.services.validation_service.execute_validate_route``. The
+    route is now thin: auth, form parse, deps bundle, service call,
+    render.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    # Parse form data
     form = await request.form()
-    snapshot = _collect_form_snapshot(form)
-    project_type = form.get("project_type", "")
-    scenario = form.get("scenario", "")
-    capacity_mw = form.get("capacity_mw", "")
-    tariff_eur_mwh = form.get("tariff_eur_mwh", "")
-    p50_hours = form.get("p50_hours", "")
-    total_capex_keur = form.get("total_capex_keur", "")
-    opex_y1_keur = form.get("opex_y1_keur", "")
-    gearing_pct = form.get("gearing_pct", "")
-    target_dscr = form.get("target_dscr", "")
-    interest_rate_pct = form.get("interest_rate_pct", "")
-    tenor_years = form.get("tenor_years", "")
-    project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
-    project_code = project_record.project_code
-    allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
-    if not allow_run:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/errors.html",
-            context={"errors": [guard_message]},
-        )
-    runtime_snapshot = None
-    if (runtime_origin == "saved_state" and workspace_state.active_scenario_id) or project_record.project_origin == "user_created":
-        runtime_snapshot, _, _, _ = _resolve_runtime_snapshot_source(
-            user,
-            project_record,
-            workspace_state,
-            runtime_origin,
-        )
-
-    errors = []
-
-    if project_type not in PROJECT_TYPES:
-        errors.append(f"project_type must be one of {PROJECT_TYPES}")
-    if scenario not in SCENARIOS:
-        errors.append(f"scenario must be one of {SCENARIOS}")
-
-    numeric_checks = [
-        ("capacity_mw", capacity_mw, 2000.0),
-        ("tariff_eur_mwh", tariff_eur_mwh, 1000.0),
-        ("p50_hours", p50_hours, 10000.0),
-        ("total_capex_keur", total_capex_keur, 1_000_000.0),
-        ("opex_y1_keur", opex_y1_keur, 500_000.0),
-        ("gearing_pct", gearing_pct, 100.0),
-        ("target_dscr", target_dscr, 10.0),
-        ("interest_rate_pct", interest_rate_pct, 30.0),
-        ("tenor_years", tenor_years, 50.0),
-    ]
-    for fname, fval, max_val in numeric_checks:
-        _, err = _validate_numeric_field(fname, fval, max_val)
-        if err:
-            errors.append(err)
-
-    if not errors:
-        try:
-            schema = _build_schema_from_form(
-                project_type, scenario,
-                capacity_mw, tariff_eur_mwh, p50_hours,
-                total_capex_keur, opex_y1_keur,
-                gearing_pct, target_dscr, interest_rate_pct, tenor_years,
-            )
-        except ValueError as ve:
-            errors.append(str(ve))
-
+    deps = ValidateRouteDeps(
+        collect_form_snapshot=_collect_form_snapshot,
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        canonical_project_type=_canonical_project_type,
+        normalize_template_source=_normalize_template_source,
+        check_runtime_allowed=check_runtime_allowed,
+        resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
+        build_schema_from_form=_build_schema_from_form,
+        validate_numeric_field=_validate_numeric_field,
+        project_types=PROJECT_TYPES,
+        scenarios=SCENARIOS,
+        snapshot_input_error=SnapshotInputError,
+    )
+    outcome = await execute_validate_route(
+        request=request, form=form, user=user, deps=deps,
+    )
     return templates.TemplateResponse(
         request=request,
-        name="partials/validation.html",
-        context={
-            "valid": len(errors) == 0,
-            "errors": errors,
-            "form_data": {"project_type": project_type, "scenario": scenario},
-        },
+        name=outcome.template_name,
+        context=outcome.context,
+        status_code=outcome.status_code,
     )
 
 
