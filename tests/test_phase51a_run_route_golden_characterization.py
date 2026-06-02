@@ -438,6 +438,7 @@ def test_no_production_code_changes():
         "app/services/run_service.py",
         "app/services/compare_service.py",
         "app/services/validation_service.py",
+        "app/services/download_service.py",
         "main_web.py",
     }
     unexpected = [c for c in changed if c not in allowed]

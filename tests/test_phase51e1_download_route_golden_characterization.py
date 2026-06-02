@@ -122,19 +122,24 @@ def test_get_download_route_signature():
     )
 
 
-def test_download_service_does_not_exist_yet():
-    """Pre-Phase-51E-2: download_service.py must not exist."""
+def test_download_service_now_exists_post_phase51e2():
+    """Post-Phase-51E-2: download_service.py must exist and own the
+    orchestration body that previously lived inside the /download
+    route family in main_web.py."""
     download_service = PROJECT_ROOT / "app" / "services" / "download_service.py"
-    assert not download_service.exists(), (
-        "download_service.py must NOT exist before Phase 51E-2 extraction"
+    assert download_service.exists(), (
+        "download_service.py must exist after Phase 51E-2 extraction"
     )
 
 
-def test_main_web_does_not_import_download_service():
-    """main_web must not import download_service yet."""
+def test_main_web_imports_download_service():
+    """Post-Phase-51E-2: main_web must import download_service so the
+    thin /download route family can call execute_post_download_route
+    and execute_get_download_route."""
     text = MAIN_WEB.read_text()
-    assert "from app.services.download_service" not in text
-    assert "import app.services.download_service" not in text
+    assert "from app.services.download_service" in text, (
+        "main_web.py must import download_service (Phase 51E-2 extraction)"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,129 +169,143 @@ def _get_get_download_route_body() -> str:
 
 
 def test_post_download_uses_build_schema_from_form():
-    body = _get_post_download_route_body()
-    assert "_build_schema_from_form(" in body, (
-        "POST /download route must call _build_schema_from_form"
+    """Post-Phase-51E-2: download_service.py must call
+    _build_schema_from_form (schema build for POST path)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "build_schema_from_form(" in text, (
+        "download_service must call build_schema_from_form (POST path)"
     )
 
 
 def test_post_download_uses_run_demo_project():
-    body = _get_post_download_route_body()
-    assert "run_demo_project(" in body, (
-        "POST /download route must call run_demo_project"
+    """Post-Phase-51E-2: download_service.py must call run_demo_project."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "run_demo_project(" in text, (
+        "download_service must call run_demo_project"
     )
 
 
 def test_post_download_uses_record_download_export():
-    body = _get_post_download_route_body()
-    assert "record_download_export(" in body, (
-        "POST /download route must call record_download_export (intended export audit)"
+    """Post-Phase-51E-2: download_service.py must call
+    record_download_export (intended export audit)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "record_download_export(" in text, (
+        "download_service must call record_download_export (intended export audit)"
     )
 
 
 def test_post_download_uses_build_excel_export_for_post_request():
-    body = _get_post_download_route_body()
-    assert "build_excel_export_for_post_request(" in body, (
-        "POST /download route must call build_excel_export_for_post_request"
+    """Post-Phase-51E-2: download_service.py must call
+    build_excel_export_for_post_request (POST-specific builder)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "build_excel_export_for_post_request(" in text, (
+        "download_service must call build_excel_export_for_post_request"
     )
 
 
 def test_get_download_uses_build_values_only_export_for_project():
-    body = _get_get_download_route_body()
-    assert "build_values_only_export_for_project(" in body, (
-        "GET /download route must call build_values_only_export_for_project"
+    """Post-Phase-51E-2: download_service.py must call
+    build_values_only_export_for_project (GET-specific builder)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "build_values_only_export_for_project(" in text, (
+        "download_service must call build_values_only_export_for_project"
     )
 
 
 def test_get_download_uses_get_project_by_code():
-    body = _get_get_download_route_body()
-    assert "get_project_by_code(" in body, (
-        "GET /download route must call get_project_by_code"
+    """Post-Phase-51E-2: download_service.py must call get_project_by_code
+    (used only by GET path)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "get_project_by_code(" in text, (
+        "download_service must call get_project_by_code (GET path)"
     )
 
 
 def test_get_download_uses_record_download_export():
-    body = _get_get_download_route_body()
-    assert "record_download_export(" in body, (
-        "GET /download route must call record_download_export (intended export audit)"
+    """Post-Phase-51E-2: download_service.py must call
+    record_download_export (intended export audit, both POST and GET)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "record_download_export(" in text, (
+        "download_service must call record_download_export (intended export audit)"
     )
 
 
 def test_post_download_handles_user_created_branch():
-    """POST /download has a user_created branch that calls
-    check_runtime_allowed, _resolve_runtime_snapshot_source, and
+    """Post-Phase-51E-2: download_service.py must have a user_created
+    branch that calls check_runtime_allowed,
+    _resolve_runtime_snapshot_source, and
     build_projectinputs_from_snapshot."""
-    body = _get_post_download_route_body()
-    assert "user_created" in body, (
-        "POST /download route must have a user_created branch"
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "user_created" in text, (
+        "download_service must have a user_created branch"
     )
-    assert "check_runtime_allowed" in body, (
-        "POST /download user_created branch must call check_runtime_allowed"
+    assert "check_runtime_allowed" in text, (
+        "download_service user_created branch must call check_runtime_allowed"
     )
-    assert "_resolve_runtime_snapshot_source" in body, (
-        "POST /download user_created branch must call _resolve_runtime_snapshot_source"
+    assert "resolve_runtime_snapshot_source" in text, (
+        "download_service user_created branch must call resolve_runtime_snapshot_source"
     )
-    assert "build_projectinputs_from_snapshot" in body, (
-        "POST /download user_created branch must call build_projectinputs_from_snapshot"
+    assert "build_projectinputs_from_snapshot" in text, (
+        "download_service user_created branch must call build_projectinputs_from_snapshot"
     )
 
 
 def test_post_download_handles_template_seeded_branch():
-    """POST /download has a template-seeded branch that uses
-    _normalize_template_source for TUHO/Oborovo/Solar/Wind project
-    key resolution."""
-    body = _get_post_download_route_body()
-    assert "_normalize_template_source" in body, (
-        "POST /download template-seeded branch must call _normalize_template_source"
+    """Post-Phase-51E-2: download_service.py must have a template-
+    seeded branch that uses _normalize_template_source for
+    TUHO/Oborovo/Solar/Wind project key resolution."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "normalize_template_source" in text, (
+        "download_service template-seeded branch must call normalize_template_source"
     )
     # The template-seeded branch mutates runtime_origin='saved_state'
     # if active_scenario_id is set
     assert re.search(
         r'runtime_origin\s*=\s*[\"\']saved_state[\"\']',
-        body,
+        text,
     ), (
-        "POST /download template-seeded branch must mutate runtime_origin='saved_state' "
-        "when active_scenario_id is set (preserved quirk)"
+        "download_service template-seeded branch must mutate runtime_origin='saved_state' "
+        "when active_scenario_id is set (preserved quirk 3)"
     )
 
 
 def test_post_download_routes_to_TUHO_Oborovo_Solar_Wind():
-    """POST /download must select runtime_project_key from
-    {TUHO, Oborovo, Solar, Wind} based on the runtime_seed."""
-    body = _get_post_download_route_body()
-    assert "TUHO" in body, (
-        "POST /download must support TUHO project key"
+    """Post-Phase-51E-2: download_service.py must select
+    runtime_project_key from {TUHO, Oborovo, Solar, Wind} based on
+    the runtime_seed."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "TUHO" in text, (
+        "download_service must support TUHO project key"
     )
-    assert "Oborovo" in body, (
-        "POST /download must support Oborovo project key"
+    assert "Oborovo" in text, (
+        "download_service must support Oborovo project key"
     )
-    # The Solar/Wind fallback is implicit through the user_created branch
-    # and the template-seeded else branch. Just check at least one.
-    assert "Solar" in body, (
-        "POST /download must support Solar project key"
+    assert "Solar" in text, (
+        "download_service must support Solar project key"
     )
 
 
 def test_get_download_uses_factory_base_runtime():
-    """GET /download always uses runtime_origin='factory_base_runtime'."""
-    body = _get_get_download_route_body()
-    assert "factory_base_runtime" in body, (
-        "GET /download must use runtime_origin='factory_base_runtime' in replay_metadata"
+    """Post-Phase-51E-2: download_service.py GET path must use
+    runtime_origin='factory_base_runtime' in replay_metadata."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "factory_base_runtime" in text, (
+        "download_service GET path must use runtime_origin='factory_base_runtime'"
     )
 
 
 def test_get_download_hardcoded_project_code_mapping():
-    """GET /download uses a hardcoded project_code mapping:
-    'oborovo' if project_type.lower() == 'solar' else 'tuho'.
-    This is a quirk that must be preserved."""
-    body = _get_get_download_route_body()
+    """Post-Phase-51E-2: download_service.py GET path must use the
+    hardcoded project_code mapping 'oborovo' if
+    project_type.lower() == 'solar' else 'tuho' (preserved quirk 2)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
     assert re.search(
         r'project_code\s*=\s*[\"\']oborovo[\"\']\s*if',
-        body,
+        text,
     ), (
-        "GET /download must use the hardcoded project_code mapping "
+        "download_service GET path must use the hardcoded project_code mapping "
         "'oborovo' if project_type.lower() == 'solar' else 'tuho' "
-        "(preserved quirk)"
+        "(preserved quirk 2)"
     )
 
 
@@ -294,22 +313,15 @@ def test_get_download_hardcoded_project_code_mapping():
 # 3. /download route body size (characterization pin)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_post_download_body_size_characterization():
-    """Pin the current POST /download body size for Phase 51E-1
-    characterization. Phase 51E-2 will assert the post-extraction
-    size shrinks. Currently ~109 lines / ~106 non-blank."""
+def test_post_download_body_size_post_extraction_is_thin():
+    """Post-Phase-51E-2: the POST /download route must be THIN (< 50
+    non-blank body lines). The pre-extraction body was 106 non-blank;
+    the post-extraction body is ~30 non-blank."""
     body = _get_post_download_route_body()
     non_blank = [ln for ln in body.splitlines() if ln.strip()]
-    # Generous upper bound; the real shrink is asserted in 51E-2
-    assert len(non_blank) < 200, (
+    assert len(non_blank) < 50, (
         f"POST /download route body has {len(non_blank)} non-blank lines; "
-        "expected < 200 (characterization pin)"
-    )
-    # Pin: route is currently a god-module hotspot (>= 50 non-blank lines)
-    assert len(non_blank) >= 50, (
-        f"POST /download route body has {len(non_blank)} non-blank lines; "
-        "expected >= 50 (characterization pin: this is a god-module "
-        "hotspot that 51E-2 should slim down)"
+        "expected < 50 after Phase 51E-2 vertical extraction"
     )
 
 
@@ -329,56 +341,60 @@ def test_get_download_body_size_characterization():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_post_download_uses_hardcoded_xlsx_media_type():
-    """POST /download uses the hardcoded media_type
+    """Post-Phase-51E-2: download_service.py POST path must use the
+    hardcoded media_type
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'."""
-    body = _get_post_download_route_body()
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
     assert (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        in body
+        in text
     ), (
-        "POST /download must use the hardcoded xlsx media_type string"
+        "download_service POST path must use the hardcoded xlsx media_type string (quirk 5)"
     )
 
 
 def test_get_download_uses_export_media_type():
-    """GET /download uses export.media_type (from the export object)."""
-    body = _get_get_download_route_body()
-    assert "export.media_type" in body, (
-        "GET /download must use export.media_type (from the export object)"
+    """Post-Phase-51E-2: download_service.py GET path must use
+    export.media_type (from the export object)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "export.media_type" in text, (
+        "download_service GET path must use export.media_type (from the export object, quirk 5)"
     )
 
 
 def test_post_download_constructs_filename_in_route():
-    """POST /download constructs the filename in the route:
-    f'fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx'."""
-    body = _get_post_download_route_body()
+    """Post-Phase-51E-2: download_service.py POST path constructs the
+    filename in the service: f'fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx'."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
     assert re.search(
         r"fincogpt_\{?project_type",
-        body,
+        text,
     ), (
-        "POST /download must construct filename as "
-        "'fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx'"
+        "download_service POST path must construct filename as "
+        "'fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx' (quirk 6)"
     )
 
 
 def test_get_download_uses_export_filename():
-    """GET /download uses export.filename (from the export object)."""
-    body = _get_get_download_route_body()
-    assert "export.filename" in body, (
-        "GET /download must use export.filename (from the export object)"
+    """Post-Phase-51E-2: download_service.py GET path must use
+    export.filename (from the export object)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "export.filename" in text, (
+        "download_service GET path must use export.filename (from the export object, quirk 6)"
     )
 
 
 def test_post_download_artifact_path_format():
-    """POST /download constructs artifact_path as
+    """Post-Phase-51E-2: download_service.py POST path constructs
+    artifact_path as
     f'/download?project_type={project_type}&scenario={scenario}'."""
-    body = _get_post_download_route_body()
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
     assert re.search(
         r'artifact_path\s*=\s*f?[\"\']/download\?project_type=',
-        body,
+        text,
     ), (
-        "POST /download must construct artifact_path as "
-        "'/download?project_type={project_type}&scenario={scenario}'"
+        "download_service POST path must construct artifact_path as "
+        "'/download?project_type={project_type}&scenario={scenario}' (quirk 10)"
     )
 
 
@@ -386,41 +402,66 @@ def test_post_download_artifact_path_format():
 # 5. Audit / provenance behavior (INTENDED, preserved)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_download_routes_call_record_download_export():
-    """Both POST and GET /download call record_download_export with
-    the full provenance context. This is INTENDED export audit
-    behavior from Phase 49 — NOT forbidden persistence."""
-    text = MAIN_WEB.read_text()
-    # Count record_download_export calls (should be 2: one in POST, one in GET)
-    matches = re.findall(r"record_download_export\s*\(", text)
+def test_download_service_calls_record_download_export_twice():
+    """Post-Phase-51E-2: download_service.py must call
+    record_download_export TWICE (once in execute_post_download_route,
+    once in execute_get_download_route) with the full provenance
+    context. This is INTENDED export audit behavior from Phase 49
+    — NOT forbidden persistence.
+
+    Counts executable-code call sites only (docstring mentions are
+    allowed; we check for actual function calls with a `(`).
+    """
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    # Count call patterns with `(` to filter out import statements
+    # and docstring mentions. The service uses `deps.record_download_export(`
+    # which is the actual call site.
+    matches = re.findall(r"\.record_download_export\s*\(", text)
     assert len(matches) == 2, (
-        f"main_web.py must have exactly 2 record_download_export calls "
-        f"(POST + GET), found {len(matches)}"
+        f"download_service.py must have exactly 2 record_download_export "
+        f"call sites (POST + GET); found {len(matches)}. "
+        f"Note: docstring mentions are allowed; only executable call "
+        f"sites with `(` are counted."
     )
 
 
-def test_download_routes_use_export_type_excel_model_export():
-    """Both POST and GET /download use export_type='excel_model_export'."""
-    body_post = _get_post_download_route_body()
-    body_get = _get_get_download_route_body()
-    assert "excel_model_export" in body_post, (
-        "POST /download must use export_type='excel_model_export'"
+def test_download_service_uses_export_type_excel_model_export():
+    """Post-Phase-51E-2: download_service.py must use
+    export_type='excel_model_export' in both POST and GET paths
+    (minimum 2 call-site occurrences in executable code)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "excel_model_export" in text, (
+        "download_service must use export_type='excel_model_export'"
     )
-    assert "excel_model_export" in body_get, (
-        "GET /download must use export_type='excel_model_export'"
+    # Use a regex that only matches the actual export_type= call sites,
+    # not docstring mentions.
+    export_type_call_sites = re.findall(
+        r"export_type\s*=\s*[\"\']excel_model_export[\"\']",
+        text,
+    )
+    assert len(export_type_call_sites) >= 2, (
+        f"download_service must call export_type='excel_model_export' "
+        f"at least twice (POST + GET), found {len(export_type_call_sites)}"
     )
 
 
-def test_download_routes_use_workbook_type_values_only_excel_export():
-    """Both POST and GET /download use
-    workbook_type='values_only_excel_export'."""
-    body_post = _get_post_download_route_body()
-    body_get = _get_get_download_route_body()
-    assert "values_only_excel_export" in body_post, (
-        "POST /download must use workbook_type='values_only_excel_export'"
+def test_download_service_uses_workbook_type_values_only_excel_export():
+    """Post-Phase-51E-2: download_service.py must use
+    workbook_type='values_only_excel_export' in both POST and GET
+    paths (minimum 2 call-site occurrences in executable code)."""
+    text = (PROJECT_ROOT / "app" / "services" / "download_service.py").read_text()
+    assert "values_only_excel_export" in text, (
+        "download_service must use workbook_type='values_only_excel_export'"
     )
-    assert "values_only_excel_export" in body_get, (
-        "GET /download must use workbook_type='values_only_excel_export'"
+    # Use a regex that only matches the actual workbook_type= call
+    # sites, not docstring mentions.
+    workbook_type_call_sites = re.findall(
+        r"workbook_type\s*=\s*[\"\']values_only_excel_export[\"\']",
+        text,
+    )
+    assert len(workbook_type_call_sites) >= 2, (
+        f"download_service must call workbook_type='values_only_excel_export' "
+        f"at least twice (POST + GET), found {len(workbook_type_call_sites)}"
     )
 
 
@@ -691,10 +732,14 @@ def test_main_web_does_not_import_runtime_guard_for_snapshot():
     )
 
 
-def test_no_production_code_changed():
-    """Phase 51E-1 is characterization only. No production code may
-    change vs origin/main. New files (docs, tests, report) are
-    allowed."""
+def test_no_production_code_changed_outside_download_extraction():
+    """Phase 51E-2 allows EXACTLY two production code changes:
+    - main_web.py (the /download route family becomes thin)
+    - app/services/download_service.py (new file, owns orchestration)
+
+    Every other production source file must be unchanged vs
+    origin/main. New docs/tests/report files are allowed.
+    """
     result = subprocess.run(
         ["git", "diff", "--name-only", "origin/main", "--",
          "main_web.py", "app/api/", "app/persistence/", "app/waterfall_core.py",
@@ -708,9 +753,31 @@ def test_no_production_code_changed():
         capture_output=True, text=True, cwd=str(PROJECT_ROOT),
     )
     changed = [l for l in result.stdout.strip().split("\n") if l]
-    assert changed == [], (
-        f"Production files changed in Phase 51E-1 (should be 0): {changed}"
+    forbidden = [c for c in changed if c != "main_web.py"]
+    assert forbidden == [], (
+        f"Phase 51E-2 may only change main_web.py and add "
+        f"download_service.py; unexpected changes: {forbidden}"
     )
+    # main_web.py IS allowed to be in the diff; pin that the diff is
+    # scoped to the /download route family (no other route changed).
+    if "main_web.py" in changed:
+        result2 = subprocess.run(
+            ["git", "diff", "origin/main", "--", "main_web.py"],
+            capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+        )
+        diff_text = result2.stdout
+        decorator_changes = [
+            ln for ln in diff_text.splitlines()
+            if ln.startswith("+@app.") or ln.startswith("-@app.")
+        ]
+        non_download_decorator_changes = [
+            ln for ln in decorator_changes
+            if "/download" not in ln
+        ]
+        assert non_download_decorator_changes == [], (
+            "main_web.py diff must not touch any @app.* decorator "
+            f"other than /download; got: {non_download_decorator_changes}"
+        )
 
 
 def test_no_fixture_csv_changes():
