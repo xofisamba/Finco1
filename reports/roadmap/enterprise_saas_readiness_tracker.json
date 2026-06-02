@@ -18,16 +18,16 @@
     "architecture": {
       "current_percentage": 55,
       "target_percentage": 80,
-      "summary": "Backend is source of truth; services are being extracted from main_web.py (Phase 51+); Phase 51F no-service-imports guardrail enforces import direction. /download (Phase 51E-2) and /save-run characterization (Phase 51G-1) are on main. /save-run extraction (Phase 51G-2) is the next major route work, owned by Agent A.",
+      "summary": "Backend is source of truth; services are being extracted from main_web.py (Phase 51+); Phase 51F no-service-imports guardrail enforces import direction. /download (Phase 51E-2) and /save-run characterization (Phase 51G-1) are on main. Phase 51G-2 /save-run extraction has landed (app/services/save_run_service.py); Phase 51G-3 (fix) and Phase 51H-1 (scenario state characterization) have also landed. Remaining route/service extraction continues on Agent A track.",
       "blockers": [
-        "main_web.py still contains inline route logic for several routes (after 51E-2 /download is done, /save-run and others remain)",
-        "Phase 51G-2 /save-run extraction is Agent A's next track and not yet started"
+        "main_web.py still contains inline route logic for several routes (after 51E-2 /download and 51G-2 /save-run extractions, scenario state and other routes remain inline)",
+        "Remaining route/service extractions continue on Agent A track"
       ],
       "dependencies": [
-        "Agent A Phase 51G-2 (future /save-run extraction)"
+        "Agent A Phase 51H-2 (scenario state route family vertical extraction, future) and any further Agent A track route work"
       ],
       "next_actions": [
-        {"action": "Phase 51G-2 /save-run extraction (Agent A, separate branch and PR)", "owner": "Agent A", "target_date": "TBD", "status": "not_started"},
+        {"action": "Track Agent A's next route extractions (e.g. Phase 51H-2 scenario state) as they land; update B8 architecture dimension after each", "owner": "B-track with Agent A coordination", "target_date": "ongoing", "status": "in_progress"},
         {"action": "Document the Phase 51F no-service-imports guardrail as the canonical import-direction rule", "owner": "B-track", "target_date": "ongoing", "status": "in_progress"}
       ],
       "gate_criteria": [
@@ -130,26 +130,27 @@
     "persistence": {
       "current_percentage": 40,
       "target_percentage": 75,
-      "summary": "Scenario persistence is implemented (app/persistence/, scenario_state_service.py). /save-run is characterized (Phase 51G-1) but not extracted (Phase 51G-2 is next, owned by Agent A). The persistence layer will change when /save-run extraction lands.",
+      "summary": "Scenario persistence is implemented (app/persistence/, scenario_state_service.py). /save-run has been extracted in Phase 51G-2 (app/services/save_run_service.py); Phase 51G-3 fix and Phase 51H-1 scenario state characterization have also landed. The post-extraction persisted state shape has changed; pin refresh and forward-compatibility decision are pending.",
       "blockers": [
-        "/save-run extraction (Phase 51G-2) is not yet done",
-        "Persisted state is not pinned"
+        "Persisted state is not pinned (post-51G-2 shape)",
+        "Pin refresh / forward-compatibility decision required after 51G-2/51G-3/51H-1"
       ],
       "dependencies": [
-        "Agent A Phase 51G-2 /save-run extraction"
+        "Agent A Phase 51G-2 (landed), 51G-3 (landed), 51H-1 (landed) have modified this area",
+        "Future Agent A route extractions (e.g. Phase 51H-2) may further modify the persistence surface area"
       ],
       "next_actions": [
-        {"action": "Coordinate with Agent A on Phase 51G-2 timing and impact on persistence", "owner": "B-track with Agent A", "target_date": "TBD", "status": "not_started"},
-        {"action": "After 51G-2, consider pinning persisted state shape (subject to intentional protocol)", "owner": "B-track", "target_date": "after 51G-2", "status": "not_started"}
+        {"action": "After 51G-2/51G-3/51H-1, evaluate whether to pin the post-extraction persisted state shape (subject to intentional protocol)", "owner": "B-track with Agent A coordination", "target_date": "after pin/forward-compat decision", "status": "not_started"},
+        {"action": "Coordinate with Agent A on Phase 51H-2 scenario state route family extraction and its impact on persistence", "owner": "B-track with Agent A", "target_date": "TBD", "status": "not_started"}
       ],
       "gate_criteria": [
-        "/save-run is extracted and stable (51G-2 merged)",
-        "Persisted state shape is pinned or documented as forward-compatible",
-        "Pilot (B7) successfully uses save / load round-trip"
+        "/save-run is extracted and stable (51G-2 merged) — DONE",
+        "Persisted state shape is pinned or documented as forward-compatible (post-51G-2)",
+        "Pilot (B7) successfully uses save / load round-trip on the extracted service surface"
       ],
       "no_go_claims": [
         "No claim of production-grade persistence",
-        "Pilot must defer /save-run testing until 51G-2 lands"
+        "Pilot of /save-run / scenario persistence requires pinning, forward-compatibility review, or explicit pilot surface-area approval"
       ]
     },
     "governance": {

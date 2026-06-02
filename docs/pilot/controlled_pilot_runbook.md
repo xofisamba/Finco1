@@ -30,13 +30,29 @@ the B3 validation evidence matrix
 
 At the time of writing, the pilot-claim-allowed areas include TUHO,
 Oborovo, senior debt (TUHO/Oborovo scope), distributions (TUHO/Oborovo
-scope), tax (sub-area-by-sub-area), sponsor economics, Excel export,
-Phase 51F guardrails, Phase 51G-1 `/save-run` (after Agent A's
-Phase 51G-2 extraction), B1 external review package, and UI
-warnings.
+scope), tax (sub-area-by-sub-area, after decomposition), sponsor
+economics, Excel export, B1 external review package, and UI warnings.
 
-Out of pilot scope:
+Areas that are **not** pilot-claim-allowed at this time:
 
+* Phase 51F guardrails (AREAs 14 in the B3 matrix) — internal
+  CI/refactor mechanism, not a user-facing pilot feature;
+* Phase 51G-1 `/save-run` golden characterization (AREA 15) —
+  /save-run has moved beyond 51G-1 (51G-2 extraction, 51G-3 fix,
+  51H-1 scenario state characterization have landed); pilot use of
+  /save-run is possible only after the extracted service surface
+  area and persistence behavior are explicitly confirmed for
+  pilot use, and after pin refresh / forward-compatibility review;
+* Scenario persistence (AREA 13) — pin refresh and
+  forward-compatibility decision pending after 51G-2/51G-3/51H-1;
+* Recent Agent A route / state work (AREA 19, 51G-2/51G-3/51H-1) —
+  Agent A owned, not in B-track scope to pilot-test, pilot surface
+  area not yet defined;
+* Tax (AREA 7) — too broad for a blanket pilot claim; sub-area
+  decomposition required;
+* SHL (AREA 9), BESS engine (AREA 5), BESS hybrid (AREA 6),
+  Governance (AREA 18) — each has its own reason in the B3
+  matrix;
 * generic solar and generic wind (B2 acquisition in progress;
   `pilot_claim_allowed: false`);
 * BESS / hybrid full flow (waterfall in progress per README);

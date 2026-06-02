@@ -3,11 +3,14 @@
     "name": "Finco1 Validation Evidence Matrix",
     "workstream": "B3",
     "branch": "parallel-b-governance-pack",
-    "base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "branch_base_sha_current": "86d5a9041c9bbd183bdf48383a2028e59e3388f1",
+    "package_base_sha_at_creation": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "base_sha": "86d5a9041c9bbd183bdf48383a2028e59e3388f1",
+    "base_sha_note": "The base_sha field reflects the current PR base after the rebase that picked up Phase 51G-2, 51G-3, and 51H-1. It will become stale on the next rebase and is maintained as a snapshot, not as a live reference. For the live base, see origin/main.",
     "b1_merged_in_base": true,
     "b1_pr": 390,
-    "matrix_version": "0.1.0",
-    "matrix_status": "initial_draft",
+    "matrix_version": "0.2.0",
+    "matrix_status": "patched_post_self_review",
     "intended_review_window": "internal_only_no_external_claim",
     "no_go_list_pointer": "docs/external_review/no_go_claims.md",
     "b1_package_pointer": "docs/external_review/external_review_package_index.md"
@@ -237,21 +240,23 @@
       ],
       "missing_evidence": [
         "Golden-parity pinning for tax outputs (currently not pinned)",
-        "External review of tax scope (B1 package prepared, tax not yet in reviewer focus)"
+        "External review of tax scope (B1 package prepared, tax not yet in reviewer focus)",
+        "Sub-area decomposition of tax (CIT, LCF, ATAD/EBITDA limitation, WHT, depreciation, cash-tax timing) into separate pilot-readiness rows"
       ],
       "external_claim_allowed": false,
-      "pilot_claim_allowed": true,
+      "pilot_claim_allowed": false,
       "blockers": [
         "No golden-parity test for tax",
-        "No external review of tax scope"
+        "No external review of tax scope",
+        "Tax is too broad for blanket pilot claim; pilot use requires sub-area decomposition and per-sub-area pilot readiness decision"
       ],
       "dependencies": [],
-      "notes": "Tax is a wide area. Reviewer should enumerate which sub-areas are tested and which are not. The matrix does not split tax into CIT/LCF/ATAD/WHT sub-areas in this version."
+      "notes": "Tax is a wide area. The matrix does not split tax into CIT/LCF/ATAD/WHT/depreciation/cash-tax-timing sub-areas in this version. Pilot use of any tax sub-area requires explicit sub-area decomposition and per-sub-area pilot readiness decision. Until then, tax is not in pilot scope. Reviewer should enumerate which sub-areas are tested and which are not."
     },
     {
       "area_id": "AREA-008",
       "area_name": "Senior debt (DSCR sculpting, schedules, service)",
-      "current_status": "Senior debt is implemented and partially pinned. The TUHO and Oborovo senior-debt extraction CSVs are parity-core-locked by Phase 51F. The DSCR-sculpting policy itself is internally tested but not pinned.",
+      "current_status": "Senior debt is implemented; pinned for TUHO and Oborovo only; broader senior-debt policy remains internally tested / not externally validated.",
       "evidence_category": "golden_parity_tested",
       "evidence_files": [
         "app/waterfall_core.py",
@@ -393,36 +398,39 @@
     {
       "area_id": "AREA-013",
       "area_name": "Scenario persistence (saved scenarios, scenario state)",
-      "current_status": "Scenario persistence is implemented and tested, with phase12 persistence and saved scenarios foundation, and phase12 scenario compare and history workflow tests.",
+      "current_status": "Scenario persistence is implemented and tested (phase12 persistence and saved scenarios foundation; phase12 scenario compare and history workflow). Phase 51G-2 /save-run extraction has landed; Phase 51G-3 fix and Phase 51H-1 scenario state characterization have also landed. Post-51G-2 persisted state shape has changed; pin refresh is pending.",
       "evidence_category": "internally_tested",
       "evidence_files": [
         "app/persistence/",
-        "app/services/scenario_state_service.py"
+        "app/services/scenario_state_service.py",
+        "app/services/save_run_service.py (Phase 51G-2, Agent A owned, NOT modified by this PR)"
       ],
       "tests_or_reports_to_check": [
         "tests/test_phase12_persistence_and_saved_scenarios_foundation.py",
-        "tests/test_phase12_scenario_compare_and_history_workflow.py"
+        "tests/test_phase12_scenario_compare_and_history_workflow.py",
+        "Reviewer should also enumerate Phase 51G-2/51G-3/51H-1 test files (Agent A owned) to understand the new surface area"
       ],
       "missing_evidence": [
-        "Golden-parity pinning for persisted scenario state",
-        "External review of persistence layer",
-        "Pilot-user testing of save/load workflow"
+        "Golden-parity pinning for persisted scenario state (post-51G-2 shape)",
+        "External review of persistence layer (post-extraction)",
+        "Pilot-user testing of save/load workflow on the extracted service surface"
       ],
       "external_claim_allowed": false,
       "pilot_claim_allowed": true,
       "blockers": [
-        "Persisted state is not pinned",
-        "Persistence layer is owned by Agent A; future /save-run work (Phase 51G-2) will change behavior"
+        "Persisted state is not pinned (post-51G-2 shape)",
+        "Pin refresh / forward-compat decision required after 51G-2/51G-3/51H-1"
       ],
       "dependencies": [
-        "Agent A Phase 51G-2 (future /save-run extraction) will modify this area"
+        "Agent A Phase 51G-2 (landed), 51G-3 (landed), 51H-1 (landed) have modified this area",
+        "AREA-019 covers the recent Agent A route / state work in detail"
       ],
-      "notes": "Scenario persistence is in flux because /save-run extraction is Agent A's next track. Pilot should be deferred until 51G-2 lands."
+      "notes": "51G-2 has landed. Scenario/persistence pilot readiness still requires a fresh pin/forward-compatibility decision after 51G-2/51G-3/51H-1."
     },
     {
       "area_id": "AREA-014",
       "area_name": "Phase 51F guardrails (engine-output golden, parity-core lock, no-service-imports)",
-      "current_status": "Active on main. Three guardrails, all behavior-level. 21 tests in tests/test_phase51f_parallel_work_guardrails.py, all green at the current base.",
+      "current_status": "Active on main. Three guardrails, all behavior-level. 21 tests in tests/test_phase51f_parallel_work_guardrails.py, all green on the rebased PR head.",
       "evidence_category": "pinned_regression_protected",
       "evidence_files": [
         "tests/test_phase51f_parallel_work_guardrails.py",
@@ -433,54 +441,56 @@
         "docs/phase51f_parallel_work_guardrails.md"
       ],
       "tests_or_reports_to_check": [
-        "tests/test_phase51f_parallel_work_guardrails.py (21 tests, all green at the current base SHA d93ad99)"
+        "tests/test_phase51f_parallel_work_guardrails.py (21 tests; re-verified green on the rebased PR head; SHA-256 of all 4 parity-core files is identical to the prior base, confirming no Phase 51F file has been touched by the rebase)"
       ],
       "missing_evidence": [
         "External review of the guardrail design (B1 package prepared, design not yet externally reviewed)"
       ],
       "external_claim_allowed": false,
-      "pilot_claim_allowed": true,
+      "pilot_claim_allowed": false,
       "blockers": [
-        "Pin correctness at time of pin-setting is not self-evident; only consistency is verifiable"
+        "Pin correctness at time of pin-setting is not self-evident; only consistency is verifiable",
+        "Guardrails are internal CI/refactor mechanisms, not user-facing pilot features; pilot users indirectly benefit from them but do not exercise the guardrails themselves"
       ],
       "dependencies": [
         "All pinned areas (TUHO, Oborovo, senior debt, distributions) depend on this area remaining intact"
       ],
-      "notes": "Phase 51F guardrails are project-internal refactor protection. They are NOT external validation. They are not promoted to external_claim_allowed by virtue of being green."
+      "notes": "Phase 51F guardrails are project-internal refactor protection. They are NOT external validation. They are not promoted to external_claim_allowed by virtue of being green. They are also NOT pilot-tested features: pilot users indirectly benefit from them but do not exercise the guardrails themselves; the guardrails are exercised by the CI test file."
     },
     {
       "area_id": "AREA-015",
-      "area_name": "Phase 51G-1 /save-run golden characterization",
-      "current_status": "On main as of 2e41b24. Characterization only: 58 tests pin 15 characterized behaviors of the existing /save-run route. No extraction, no production code change.",
+      "area_name": "Phase 51G-1 /save-run golden characterization (superseded for production surface area by 51G-2)",
+      "current_status": "Phase 51G-1 characterization-only work has been on main since 2e41b24: 58 tests pin 15 characterized behaviors of the then-inline /save-run route. Phase 51G-2 has since extracted /save-run into save_run_service.py; Phase 51G-3 (fix) and Phase 51H-1 (scenario state characterization) have also landed. The 51G-1 characterization reflects the pre-extraction surface area; post-extraction behavior is covered by 51G-2/51G-3/51H-1 work (see AREA-019).",
       "evidence_category": "internally_tested",
       "evidence_files": [
         "docs/phase51g1_save_run_route_golden_characterization.md",
         "reports/phase51g1_save_run_route_golden_characterization_summary.json",
         "tests/test_phase51g1_save_run_route_golden_characterization.py",
-        "main_web.py:2624-2760 (the characterized route, not modified)"
+        "app/services/save_run_service.py (51G-2 extraction target, Agent A owned, NOT modified by this PR)"
       ],
       "tests_or_reports_to_check": [
-        "tests/test_phase51g1_save_run_route_golden_characterization.py (58 tests)"
+        "tests/test_phase51g1_save_run_route_golden_characterization.py (58 tests, still valid for the pre-extraction surface area)"
       ],
       "missing_evidence": [
-        "The route is not yet extracted; behavior is characterized in-place",
-        "Future Phase 51G-2 extraction will change the surface area; current characterization will need refresh"
+        "Phase 51G-2 has extracted /save-run; the 51G-1 characterization reflects pre-extraction behavior and is not refreshed for the post-extraction surface area",
+        "Post-extraction behavior is covered by Phase 51G-2/51G-3/51H-1 tests (Agent A owned, see AREA-019)"
       ],
       "external_claim_allowed": false,
-      "pilot_claim_allowed": true,
+      "pilot_claim_allowed": false,
       "blockers": [
-        "Route is not yet extracted; behavior is in-place only"
+        "/save-run has moved beyond 51G-1; pilot claim/use of /save-run should wait until extracted persistence behavior is pinned or explicitly covered by a pilot surface-area decision"
       ],
       "dependencies": [
-        "Agent A Phase 51G-2 (future /save-run extraction) is the next step for this area"
+        "Agent A Phase 51G-2 (landed), 51G-3 (landed), 51H-1 (landed) have superseded the 51G-1 characterization for production-relevant surface area",
+        "AREA-019 covers the recent Agent A route / state work in detail"
       ],
-      "notes": "Characterization only, not extraction. The route is still inline in main_web.py at the lines noted. Pilot testing of /save-run must wait for 51G-2."
+      "notes": "/save-run has moved beyond 51G-1: 51G-2 extracted the route into save_run_service.py, 51G-3 fixed a latent bug in the user_created branch, 51H-1 characterized the scenario state route family. 51G-1 characterization remains valid for the pre-extraction surface area. Pilot claim/use of /save-run should wait until extracted persistence behavior is pinned or explicitly covered by a pilot surface-area decision."
     },
     {
       "area_id": "AREA-016",
-      "area_name": "B1 external review package (PR #390)",
-      "current_status": "Merged to main as d93ad99. Scaffolding for a third-party reviewer is in place. Reviewer not yet engaged; review not yet performed.",
-      "evidence_category": "externally_reviewed",
+      "area_name": "B1 external review package (PR #390) — documentation and evidence preparation",
+      "current_status": "B1 external review package has been merged to main (PR #390) and is in the base of this branch. Scaffolding for a third-party reviewer is in place. No third-party reviewer has been engaged; no external review output exists yet.",
+      "evidence_category": "internally_tested",
       "evidence_files": [
         "docs/external_review/external_review_package_index.md",
         "docs/external_review/reviewer_instructions.md",
@@ -498,10 +508,11 @@
       "external_claim_allowed": false,
       "pilot_claim_allowed": true,
       "blockers": [
-        "No third-party reviewer has produced a written output yet"
+        "No third-party reviewer has been engaged",
+        "No external review output exists yet"
       ],
       "dependencies": [],
-      "notes": "B1 is documentation/evidence prep, not external validation itself. The matrix area is filed as externally_reviewed (scaffolding) but external_claim_allowed remains false until a real review output exists."
+      "notes": "B1 is documentation and evidence preparation, NOT external validation. The package is in place; the actual external review (a third-party document addressing the readiness matrix and answering the required questions) has not been performed. external_claim_allowed remains false. The B1 package is itself a B-track evidence-prep artifact, not the external validation it scaffolds for. Filed as internally_tested because only internal scaffolding has been produced; the externally_reviewed category would imply a third-party review output, which does not exist."
     },
     {
       "area_id": "AREA-017",
@@ -555,6 +566,49 @@
       ],
       "dependencies": [],
       "notes": "Governance is documentation. It is internally tested in the sense that the documents exist and cross-reference each other. It is not externally claimable."
+    },
+    {
+      "area_id": "AREA-019",
+      "area_name": "Recent Agent A route / state work (Phase 51G-2, 51G-3, 51H-1)",
+      "current_status": "All three phases have landed on the current PR base. 51G-2 extracted /save-run into app/services/save_run_service.py. 51G-3 fixed a latent bug in the user_created branch of /save-run. 51H-1 characterized the scenario state route family (POST /scenarios/state/draft and POST /scenarios/state/discard, 58 tests pinning 15+ characterized behaviors). All three are Agent A track; this PR does not modify them.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "app/services/save_run_service.py (Phase 51G-2, Agent A owned, NOT modified by this PR)",
+        "main_web.py (modified by 51G-2 and 51G-3, Agent A owned, NOT modified by this PR)",
+        "docs/phase51g2_save_run_route_vertical_extraction.md (Agent A owned, NOT modified by this PR)",
+        "docs/phase51g3_save_run_user_created_branch_fix.md (Agent A owned, NOT modified by this PR)",
+        "docs/phase51h1_scenario_state_route_family_characterization.md (Agent A owned, NOT modified by this PR)",
+        "reports/phase51g2_save_run_route_vertical_extraction_summary.json (Agent A owned, NOT modified by this PR)",
+        "reports/phase51g3_save_run_user_created_branch_fix_summary.json (Agent A owned, NOT modified by this PR)",
+        "reports/phase51h1_scenario_state_route_family_characterization_summary.json (Agent A owned, NOT modified by this PR)",
+        "tests/test_phase51g2_save_run_route_vertical_extraction.py (Agent A owned, NOT modified by this PR)",
+        "tests/test_phase51g3_save_run_user_created_branch_fix.py (Agent A owned, NOT modified by this PR)",
+        "tests/test_phase51h1_scenario_state_route_family_characterization.py (Agent A owned, NOT modified by this PR)"
+      ],
+      "tests_or_reports_to_check": [
+        "Phase 51G-2 commit: ecdb699 (Phase 51G-2: Extract /save-run route into save_run_service.py (#391))",
+        "Phase 51G-3 commit: 47faffbf (Phase 51G-3: Fix /save-run user_created branch latent bug (#392))",
+        "Phase 51H-1 commit: 86d5a90 (Phase 51H-1: Scenario state route family golden characterization (#393))",
+        "Reviewer should run the 51G-2/51G-3/51H-1 test files and confirm pass/fail/skip"
+      ],
+      "missing_evidence": [
+        "External review of the extracted /save-run service and the 51H-1 scenario state characterization",
+        "Golden-parity pinning for the post-51G-2 /save-run surface area (the pre-extraction 51G-1 pins do not cover the extracted behavior)",
+        "Pilot-user testing of /save-run in the post-extraction form"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "No external review of these phases",
+        "Pilot surface area for the extracted /save-run is not yet defined",
+        "These are Agent A owned; not in B-track scope to define or test",
+        "Pin refresh / forward-compatibility decision required after 51G-2/51G-3/51H-1"
+      ],
+      "dependencies": [
+        "AREA-013 (scenario persistence) is updated by 51G-2/51G-3/51H-1 and depends on a fresh pin/forward-compatibility decision",
+        "AREA-015 (Phase 51G-1 characterization) reflects pre-extraction behavior; 51G-1 is superseded for production surface area by this row"
+      ],
+      "notes": "Recent Agent A route / state work is included for completeness. The pilot_claim_allowed flag is false because (a) the post-extraction surface area is not yet defined, (b) pin refresh is pending, and (c) these are Agent A owned and not changed by this PR. Pilot readiness for any of 51G-2/51G-3/51H-1 requires a separate B-track decision after Agent A's next steps."
     }
   ],
   "global_notes": [
@@ -562,8 +616,12 @@
     "Areas with pilot_claim_allowed: true are candidates for the controlled pilot (B7). They are not yet ready for any external claim.",
     "AREA-001 (TUHO) and AREA-002 (Oborovo) are the two narrow-scope targets for promotion to approved_for_narrow_scope after B1 review and a controlled pilot.",
     "AREA-003 (generic solar) and AREA-004 (generic wind) are explicitly exploratory and are not promoted to pilot or external claim by the existence of Oborovo / TUHO as specific projects.",
-    "AREA-014 (Phase 51F guardrails) is regression protection, not external validation, and is not promoted to external_claim_allowed by being green.",
-    "AREA-015 (Phase 51G-1) is characterization only and depends on Agent A Phase 51G-2 (future /save-run extraction) for promotion.",
+    "AREA-007 (Tax) is too broad for a blanket pilot claim; sub-area decomposition (CIT, LCF, ATAD, WHT, depreciation, cash-tax timing) is required before any tax sub-area enters pilot scope.",
+    "AREA-013 (scenario persistence) and AREA-015 (Phase 51G-1) reflect pre-51G-2 behavior; pin refresh and forward-compatibility decision are pending after 51G-2/51G-3/51H-1.",
+    "AREA-014 (Phase 51F guardrails) is regression protection, not external validation, and is not promoted to external_claim_allowed by being green. It is also not a user-facing pilot feature.",
+    "AREA-015 (Phase 51G-1) is characterization only; it is superseded for production surface area by Phase 51G-2/51G-3/51H-1 (see AREA-019).",
+    "AREA-016 (B1 external review package) is documentation and evidence preparation, not external validation. The package is in place; no third-party review has been performed.",
+    "AREA-019 covers Phase 51G-2 (extraction), 51G-3 (fix), and 51H-1 (scenario state characterization). All are Agent A owned and not modified by this PR.",
     "This matrix is a working artifact. Demotions to weaker categories are encouraged when evidence is found insufficient. See model_evidence_taxonomy.md §6 for the demotion procedure."
   ]
 }
