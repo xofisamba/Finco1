@@ -1,0 +1,265 @@
+{
+  "phase": "51E-1",
+  "title": "Phase 51E-1: Download route golden characterization",
+  "type": "characterization only",
+  "scope": "POST /download + GET /download routes in main_web.py (no production code change)",
+  "base_sha": "c9144f2f4975a55a1428f79b8abae3ffaf8b8aa5",
+  "branch": "phase51e1-download-route-golden-characterization",
+  "head_sha": null,
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "characterization_status": "complete",
+  "production_code_changed": false,
+  "route_size": {
+    "post_download": {
+      "location": "main_web.py:1582",
+      "total_lines": 109,
+      "non_blank_lines": 106
+    },
+    "get_download": {
+      "location": "main_web.py:1721",
+      "total_lines": 65,
+      "non_blank_lines": 65
+    },
+    "combined_download_route_family": {
+      "total_lines": 174,
+      "non_blank_lines": 171
+    }
+  },
+  "dependencies": {
+    "form_helpers": [
+      "_collect_form_snapshot (used POST only)",
+      "_project_workspace_from_snapshot (used POST only)"
+    ],
+    "project_normalization": [
+      "_canonical_project_type (used POST only)",
+      "_normalize_template_source (used POST only)"
+    ],
+    "runtime_guard_and_resolution": [
+      "check_runtime_allowed (used POST only, user_created branch)",
+      "_resolve_runtime_snapshot_source (used POST only, both branches)"
+    ],
+    "schema_build": [
+      "_build_schema_from_form (used POST only)",
+      "build_projectinputs (used POST only)",
+      "build_projectinputs_from_snapshot (used POST only, runtime paths)"
+    ],
+    "replay_and_governance": [
+      "_scenario_provenance_for_record (used POST only)",
+      "_replay_metadata_for_project (used both)",
+      "_governance_snapshot (used both, for audit)"
+    ],
+    "model_execution": [
+      "run_demo_project (used both; POST with override, GET without)"
+    ],
+    "project_lookup": [
+      "get_project_by_code (used GET only)"
+    ],
+    "export_builders": [
+      "build_excel_export_for_post_request (used POST only)",
+      "build_values_only_export_for_project (used GET only)"
+    ],
+    "audit": [
+      "record_download_export (used both; intended export audit, preserved)"
+    ],
+    "utility": [
+      "utc_now_iso (used both)"
+    ],
+    "framework": [
+      "get_current_user (used both, route-owned)",
+      "RedirectResponse (used both)",
+      "HTMLResponse (used both, error paths)",
+      "StreamingResponse (used both, success paths)"
+    ]
+  },
+  "side_effects": {
+    "intended": [
+      {
+        "side_effect": "record_download_export call (1 per successful download)",
+        "applies_to": ["POST", "GET"],
+        "classification": "INTENDED export audit (preserved from Phase 49)",
+        "args": {
+          "user_id": "user.user_id",
+          "project_code": "from project_record in POST, hardcoded mapping in GET",
+          "export_type": "excel_model_export",
+          "artifact_name": "filename (constructed in POST, export.filename in GET)",
+          "artifact_path": "f\"/download?project_type={project_type}&scenario={scenario}\" (string URL, not filesystem path)",
+          "project_id": "project_record.project_id if project_record else None",
+          "governance_state": "_governance_snapshot(project_code)",
+          "replay_metadata": "constructed in route",
+          "scenario_id": "active_scenario_record.scenario_id if active_scenario_record else None (POST), None (GET)"
+        }
+      }
+    ],
+    "forbidden_persistence": {
+      "record_workspace_runtime": "NOT called",
+      "record_compare_run": "NOT called (does not exist)",
+      "record_export": "NOT called directly (split into 3 purpose-specific helpers; 0 direct calls in main_web.py)",
+      "update_scenario_last_run_summary": "NOT called",
+      "db_add_commit_flush": "NOT called",
+      "session_add_commit": "NOT called"
+    },
+    "model_execution": {
+      "run_demo_project": "called in both POST and GET, in-memory only, no persistence side effect"
+    }
+  },
+  "characterized_behaviors": {
+    "auth": "Unauthenticated -> 302 to /login (both POST and GET)",
+    "form_parsing_POST": "12 fields read from form (project_type, scenario, capacity_mw, tariff_eur_mwh, p50_hours, total_capex_keur, opex_y1_keur, gearing_pct, target_dscr, interest_rate_pct, tenor_years)",
+    "form_parsing_GET": "Query params with defaults: project_type='Solar', scenario='Base' (empty string -> default)",
+    "schema_build_POST": "calls _build_schema_from_form + build_projectinputs; on (ValueError, Exception) returns HTMLResponse 400 'Excel generation failed' 'Invalid input: {e}'",
+    "runtime_guard_POST_user_created": "calls check_runtime_allowed; if not allowed, returns HTMLResponse 400 'Excel generation failed' '{guard_message}'",
+    "runtime_snapshot_POST_user_created": "calls _resolve_runtime_snapshot_source; rebuilds override from snapshot; sets runtime_project_key from canonical project type (Solar/Wind)",
+    "runtime_snapshot_POST_saved_state": "mutates runtime_origin='saved_state' if active_scenario_id is set; calls _resolve_runtime_snapshot_source; rebuilds override from snapshot",
+    "runtime_seed_POST_template_seeded": "TUHO -> 'TUHO', Oborovo -> 'Oborovo', generic -> Solar/Wind from canonical",
+    "model_execution": "run_demo_project(runtime_project_key, scenario, project_inputs_override=override) for POST; run_demo_project(project_type, scenario) for GET",
+    "replay_metadata": "constructed with export_type='excel_model_export', workbook_type='values_only_excel_export', export_timestamp=utc_now_iso(), runtime_timestamp=utc_now_iso(), runtime_origin (POST: 'saved_state' if active_scenario else 'factory_base_runtime'; GET: always 'factory_base_runtime')",
+    "baseline_source_flag": "replay_metadata['baseline_source']=True if project_record.project_origin=='saved_baseline'",
+    "excel_generation_POST": "build_excel_export_for_post_request(result, project_inputs, project_type, scenario, runtime_origin, replay_metadata)",
+    "excel_generation_GET": "build_values_only_export_for_project(result, project_inputs, project_type, scenario, replay_metadata=replay_metadata)",
+    "filename_POST": "f'fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx' (constructed in route)",
+    "filename_GET": "export.filename (from export object)",
+    "media_type_POST": "'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' (hardcoded in route)",
+    "media_type_GET": "export.media_type (from export object)",
+    "headers_both": "Content-Disposition: attachment; filename=\"{filename}\" + Content-Length: {len(bytes)}",
+    "audit_both": "record_download_export called once on success with full provenance context",
+    "error_html_format": "inline '<html><body><h2>Excel generation failed</h2><p>{e}</p><a href=\\'/\\'>Back</a></body></html>'",
+    "error_status_schema_POST": "400",
+    "error_status_guard_POST": "400",
+    "error_status_export_error": "export.status_code (from export object)",
+    "error_status_top_level": "500",
+    "project_code_GET_hardcoded_mapping": "project_code='oborovo' if project_type.lower()=='solar' else 'tuho'"
+  },
+  "behavior_quirks": [
+    "POST has TWO template branches for project_key resolution: user_created (Solar/Wind) vs template-seeded (TUHO/Oborovo/Solar/Wind)",
+    "GET has HARDCODED project_code mapping (oborovo/tuho based on project_type) — does not use _project_workspace_from_snapshot",
+    "POST mutates runtime_origin='saved_state' in non-user_created branch when active_scenario_id is set",
+    "POST uses build_excel_export_for_post_request; GET uses build_values_only_export_for_project (different export builders)",
+    "POST uses hardcoded media_type; GET uses export.media_type (may differ)",
+    "POST constructs filename in route; GET uses export.filename",
+    "GET always passes scenario_id=None to record_download_export; POST passes active_scenario_record.scenario_id (or None)",
+    "Inline error HTML in both routes (no Jinja template for download errors)",
+    "Top-level except Exception is broad; returns 500 with inline error page on any uncaught exception",
+    "artifact_path is a string describing the URL, not a filesystem path",
+    "POST captures effective_runtime_origin from _resolve_runtime_snapshot_source but discards it (similar parity quirk to /validate Phase 51D-1)",
+    "POST broad except (ValueError, Exception) on schema build is overly broad (same pattern as /compare); preserved as-is"
+  ],
+  "tests_run": {
+    "phase51a_run_route_golden": {"pass": 25, "fail": 0, "xfail": 0},
+    "phase51b_run_route_vertical_extraction": {"pass": 22, "fail": 0, "xfail": 0},
+    "phase51c1_compare_route_golden_characterization": {"pass": 37, "fail": 0, "xfail": 0},
+    "phase51c2_compare_route_vertical_extraction": {"pass": 49, "fail": 0, "xfail": 0},
+    "phase51d1_validate_route_golden_characterization": {"pass": 51, "fail": 0, "xfail": 0},
+    "phase51d2_validate_route_vertical_extraction": {"pass": 52, "fail": 0, "xfail": 0},
+    "phase51e1_download_route_golden_characterization": {"pass": "TBD", "fail": "TBD", "xfail": "TBD", "note": "New test suite for this phase (to be added in this PR)"},
+    "total_phase51_pre_51e1": {"pass": 236, "fail": 0, "xfail": 0},
+    "import_checks": {
+      "main_web": "OK",
+      "app.services.run_service": "OK",
+      "app.services.compare_service": "OK",
+      "app.services.validation_service": "OK"
+    },
+    "structural_guards": {
+      "run_service_does_not_import_main_web": "PASS",
+      "compare_service_does_not_import_main_web": "PASS",
+      "validation_service_does_not_import_main_web": "PASS",
+      "main_web_has_zero_direct_record_export_calls": "PASS (0 matches)"
+    }
+  },
+  "known_failures": {
+    "tests/test_persistence.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51e1": false,
+      "out_of_scope_for_phase_51e1": true
+    },
+    "tests/test_repository.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51e1": false,
+      "out_of_scope_for_phase_51e1": true
+    }
+  },
+  "extraction_recommendation_for_51E_2": {
+    "recommended_option": "A",
+    "options": {
+      "option_A_new_service_module": {
+        "module": "app/services/download_service.py",
+        "shape": "Mirrors Phase 51B/51C-2/51D-2 pattern: thin route (auth + form + deps + service call + render), service owns orchestration, deps bundle injects helpers",
+        "outcome_dataclass": "DownloadRouteOutcome (similar to CompareRouteOutcome / ValidateRouteOutcome; structured payload with bytes_data / media_type / headers for success, error_html / error_status for inline error paths)",
+        "deps_bundle": [
+          "collect_form_snapshot",
+          "project_workspace_from_snapshot",
+          "canonical_project_type",
+          "normalize_template_source",
+          "check_runtime_allowed",
+          "resolve_runtime_snapshot_source",
+          "build_schema_from_form",
+          "scenario_provenance_for_record",
+          "replay_metadata_for_project",
+          "governance_snapshot",
+          "build_projectinputs",
+          "build_projectinputs_from_snapshot",
+          "record_download_export",
+          "utc_now_iso",
+          "run_demo_project",
+          "get_project_by_code",
+          "build_excel_export_for_post_request",
+          "build_values_only_export_for_project"
+        ],
+        "rationale": "Same shape as Phase 51 services; minimal scope; preserves all current behavior + quirks"
+      },
+      "option_B_split_existing_services": {
+        "modules": "Extend app/services/export_service.py and app/services/export_audit_service.py with download-specific helpers",
+        "rationale": "More architecturally clean but more invasive; out of scope for 51E-2; could be Phase 51K or later consolidation"
+      }
+    },
+    "preserved_quirks_required": [
+      "POST runtime_origin mutation to 'saved_state' in non-user_created branch",
+      "POST captures effective_runtime_origin but discards it (parity quirk)",
+      "GET hardcoded project_code mapping 'oborovo' / 'tuho'",
+      "POST uses hardcoded media_type; GET uses export.media_type",
+      "POST constructs filename in route; GET uses export.filename",
+      "GET passes scenario_id=None to record_download_export",
+      "POST broad except (ValueError, Exception) on schema build",
+      "Top-level except Exception returns 500 with inline error HTML",
+      "Inline error HTML format (no Jinja template for download errors)"
+    ]
+  },
+  "guardrails_preserved": [
+    "No financial formula changes",
+    "No model calculation logic changes",
+    "No project factory changes",
+    "No fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "No generic validation framework",
+    "G20 remains BLOCKED",
+    "R99 / R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat / min DSCR sculpting not promoted",
+    "Backend remains source of truth",
+    "Generic solar / wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "/run route from Phase 51B remains thin",
+    "/compare route from Phase 51C-2 remains thin",
+    "/validate route from Phase 51D-2 remains thin",
+    "run_service.py from Phase 51B remains intact",
+    "compare_service.py from Phase 51C-2 remains intact",
+    "validation_service.py from Phase 51D-2 remains intact",
+    "rc1 remains frozen (not touched by any Phase 51 commit)",
+    "PR #299 remains closed (no longer active guardrail)",
+    "Export audit (record_download_export) preserved as INTENDED behavior from Phase 49"
+  ],
+  "structural_guardrail_recommendation_for_51F": {
+    "description": "Add structural guards for export services in a future Phase 51F guardrail suite. NOT in scope for 51E-1 to avoid scope creep.",
+    "guards_to_add": [
+      "app/services/export_service.py does NOT import main_web",
+      "app/services/export_audit_service.py does NOT import main_web",
+      "main_web.has_zero_direct_record_export_calls (already pinned in Phase 51A test)"
+    ]
+  }
+}
