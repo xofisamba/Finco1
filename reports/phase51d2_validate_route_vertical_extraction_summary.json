@@ -1,0 +1,157 @@
+{
+  "phase": "51D-2",
+  "title": "Phase 51D-2: Extract validate route orchestration",
+  "type": "behavior-preserving production refactor",
+  "scope": "main_web.py /validate route + new app/services/validation_service.py",
+  "base_sha": "ca194114b0482308e45bba6bb1415da1df5d3ad3",
+  "branch": "phase51d2-extract-validate-route-orchestration",
+  "head_sha": null,
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "objective": "Extract POST /validate orchestration from main_web.py into app/services/validation_service.py using the same behavior-first vertical extraction pattern as Phase 51B (run_service) and Phase 51C-2 (compare_service). This is a behavior-preserving production refactor with NO production behavior changes. The runtime-snapshot parity call documented in Phase 51D-1 is preserved EXACTLY.",
+  "what_moved": [
+    "ValidateRouteOutcome dataclass -> app/services/validation_service.py",
+    "ValidateRouteDeps dataclass -> app/services/validation_service.py",
+    "execute_validate_route(...) entry point -> app/services/validation_service.py",
+    "Form parsing (12 fields) -> inside execute_validate_route",
+    "Snapshot + project/workspace resolution -> inside execute_validate_route",
+    "Runtime guard semantics -> inside execute_validate_route",
+    "Runtime snapshot resolution (parity call, captured unused) -> inside execute_validate_route",
+    "Stage A: enum validation -> inside execute_validate_route",
+    "Stage B: numeric field validation (9 fields, exact max values) -> inside execute_validate_route",
+    "Stage C: schema build validation (if not errors: gate, ValueError catch) -> inside execute_validate_route",
+    "Template response assembly -> inside execute_validate_route"
+  ],
+  "what_did_not_move": [
+    "Auth redirect (get_current_user -> RedirectResponse /login) - stays in main_web.py (route-owned)",
+    "await request.form() - stays in main_web.py",
+    "templates.TemplateResponse(...) rendering - stays in main_web.py",
+    "ValidateRouteDeps construction with all 11 callables - stays in main_web.py (route wires deps)",
+    "/run route from Phase 51B - untouched (68 -> 68 lines)",
+    "/compare route from Phase 51C-2 - untouched (36 -> 36 lines)",
+    "run_service.py from Phase 51B - untouched",
+    "compare_service.py from Phase 51C-2 - untouched",
+    "scenario_state_service.py - untouched",
+    "_collect_form_snapshot, _project_workspace_from_snapshot, _canonical_project_type, _normalize_template_source, _resolve_runtime_snapshot_source, _build_schema_from_form, _validate_numeric_field - all stay in main_web.py (passed as deps)",
+    "check_runtime_allowed (imported from scenario_state_service) - stays imported in main_web.py (passed as dep)",
+    "SnapshotInputError (parity dep, NOT used by /validate today) - stays imported in main_web.py (passed as dep)",
+    "PROJECT_TYPES / SCENARIOS constants - stay in main_web.py module scope (passed as deps)",
+    "Financial formulas / model / project factories / fixture CSVs / schema migrations - unchanged",
+    "JS financial calculations - unchanged (none added)",
+    "Validation behavior (Stage A -> B -> C, error accumulation, etc.) - unchanged",
+    "Numeric max values (9 fields) - unchanged",
+    "Runtime-snapshot parity call - unchanged (preserved exactly)"
+  ],
+  "allowed_behavior_changes": [
+    "None. This is a behavior-preserving refactor."
+  ],
+  "validation_service_api": {
+    "module": "app/services/validation_service.py",
+    "public_dataclasses": [
+      {
+        "name": "ValidateRouteOutcome",
+        "fields": {
+          "template_name": "str (required)",
+          "context": "dict (required)",
+          "status_code": "int (default 200)",
+          "headers": "dict (default empty)"
+        }
+      },
+      {
+        "name": "ValidateRouteDeps",
+        "fields": {
+          "collect_form_snapshot": "Callable (used)",
+          "project_workspace_from_snapshot": "Callable (used)",
+          "canonical_project_type": "Callable (NOT used by /validate today; kept for parity with compare_service)",
+          "normalize_template_source": "Callable (NOT used; kept for parity)",
+          "check_runtime_allowed": "Callable (used)",
+          "resolve_runtime_snapshot_source": "Callable (parity call IS used; snapshot captured, unused downstream)",
+          "build_schema_from_form": "Callable (used - Stage C)",
+          "validate_numeric_field": "Callable (used - Stage B; per-field helper, NOT whole-form)",
+          "project_types": "list[str] (used - Stage A)",
+          "scenarios": "list[str] (used - Stage A)",
+          "snapshot_input_error": "type (NOT used by /validate today; kept for parity)"
+        }
+      }
+    ],
+    "public_entry_point": "async def execute_validate_route(*, request, form, user, deps) -> ValidateRouteOutcome"
+  },
+  "route_size_before_after": {
+    "pre_phase51d2_total_lines": 77,
+    "pre_phase51d2_non_blank_lines": 77,
+    "post_phase51d2_total_lines": 35,
+    "post_phase51d2_non_blank_lines": 35,
+    "reduction_percent": 54.5
+  },
+  "stage_preservation": {
+    "stage_a_enum_validation": "preserved exactly (project_type in project_types, scenario in scenarios, errors accumulate)",
+    "stage_b_numeric_validation": "preserved exactly (9 fields with exact max values: 2000.0, 1000.0, 10000.0, 1_000_000.0, 500_000.0, 100.0, 10.0, 30.0, 50.0)",
+    "stage_c_schema_validation": "preserved exactly (gated by `if not errors:`, ValueError catch NOT bare Exception, str(ve) appended)",
+    "stage_order": "preserved exactly (A -> B -> C, errors accumulate, no short-circuit)"
+  },
+  "runtime_snapshot_parity_call_preservation": {
+    "preserved": true,
+    "rationale": "The Phase 51D-1 characterized runtime-snapshot parity quirk is preserved EXACTLY. The service calls deps.resolve_runtime_snapshot_source when (saved_state + active_scenario_id) OR (user_created), captures only the first tuple element as runtime_snapshot, discards the rest (scenario_record, warning, effective_runtime_origin), and does NOT use the captured snapshot downstream (annotated with noqa: F841 to make this explicit).",
+    "do_not_remove_as_cleanup": "The Phase 51D-1 documentation explicitly requires that this call be preserved as-is, NOT removed as cleanup in 51D-2. It is preserved for parity with /run and /compare."
+  },
+  "read_only_invariant": {
+    "preserved": true,
+    "rationale": "validation_service.py and the /validate route do NOT call any persistence / record_* helper. No record_compare_run (does not exist), no record_workspace_runtime, no record_export, no update_scenario_last_run_summary, no db.add / db.commit / db.flush / session.add / session.commit.",
+    "verifications": [
+      "test_validate_service_does_not_call_persistence_helpers",
+      "test_validate_route_does_not_call_persistence_helpers"
+    ]
+  },
+  "test_results": {
+    "phase51a_run_route_golden": {"pass": 25, "fail": 0, "xfail": 0},
+    "phase51b_run_route_vertical_extraction": {"pass": 22, "fail": 0, "xfail": 0},
+    "phase51c1_compare_route_golden_characterization": {"pass": 37, "fail": 0, "xfail": 0},
+    "phase51c2_compare_route_vertical_extraction": {"pass": 49, "fail": 0, "xfail": 0},
+    "phase51d1_validate_route_golden_characterization": {"pass": 51, "fail": 0, "xfail": 0, "note": "Structural tests re-pointed to validation_service.py (not weakened)."},
+    "phase51d2_validate_route_vertical_extraction": {"pass": 52, "fail": 0, "xfail": 0, "note": "New test suite for this phase."},
+    "total_phase51": {"pass": 236, "fail": 0, "xfail": 0},
+    "import_main_web": "OK",
+    "import_app_services_validation_service": "OK"
+  },
+  "pre_existing_parity_failures": {
+    "note": "Two legacy test modules (tests/test_persistence.py and tests/test_repository.py) fail to collect on this branch AND on origin/main HEAD with the same ImportError ('No module named persistence'). This is a pre-existing environment / refactor residue, NOT a regression introduced by Phase 51D-2. Out of scope.",
+    "reproduces_on_origin_main": true
+  },
+  "guardrails_preserved": [
+    "No financial formula changes",
+    "No model calculation logic changes",
+    "No project factory changes",
+    "No fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "No generic validation framework",
+    "G20 remains BLOCKED",
+    "R99 / R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat / min DSCR sculpting not promoted",
+    "Backend remains source of truth",
+    "Generic solar / wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "/run route from Phase 51B remains thin (< 200 non-blank body lines; 68 -> 68)",
+    "/compare route from Phase 51C-2 remains thin (< 50 non-blank body lines; 36 -> 36)",
+    "run_service.py from Phase 51B remains intact",
+    "compare_service.py from Phase 51C-2 remains intact",
+    "validation_service.py does NOT import main_web (one-way import direction)",
+    "validation_service.py does NOT import main_api (service is web-layer)",
+    "main_web.py has zero direct record_export calls",
+    "/validate route has zero direct persistence / record_* calls",
+    "/validate service has zero direct persistence / record_* calls",
+    "PR #299 remains draft / not merged"
+  ],
+  "changed_files": [
+    "app/services/validation_service.py (new file, +493 lines)",
+    "main_web.py (-77 lines, +35 lines net: -42 non-blank lines, -77 + 35 = -42 lines; route body shrinkage)",
+    "tests/test_phase51a_run_route_golden_characterization.py (updated: added validation_service.py to whitelist in test_no_production_code_changes)",
+    "tests/test_phase51d1_validate_route_golden_characterization.py (updated: structural tests re-pointed from main_web route body to validation_service contract; behavioral assertions on live integration tests unchanged)",
+    "tests/test_phase51d2_validate_route_vertical_extraction.py (new file, +820 lines)",
+    "docs/phase51d2_validate_route_vertical_extraction.md (new file)",
+    "docs/phase51d2_validation_service_boundary.md (new file)"
+  ],
+  "recommended_next_phase": "Phase 51E-1: Apply the same vertical extraction pattern to the next god-module hotspot in main_web.py. Candidate targets (in order of body size, all > 50 non-blank lines): POST /scenarios/state/draft (line 2181), POST /scenarios/save (line 2316), POST /scenarios/{scenario_id}/duplicate (line 2446), POST /scenarios/add (line 2520), POST /projects/create (line 2030). For each, the proposed pattern is: (1) characterization phase (e.g. phase5x1_*) — pin current behavior, no production code change; (2) vertical extraction phase (e.g. phase5x2_*) — extract orchestration body into a service module, keep the route thin, write characterization + extraction test suites. /run, /compare, and /validate (post-51D-2) will serve as the canonical templates."
+}

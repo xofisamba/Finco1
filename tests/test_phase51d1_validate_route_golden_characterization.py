@@ -92,18 +92,22 @@ def test_validate_route_signature():
     assert m, "POST /validate route must have an async def validate(...) handler"
 
 
-def test_validate_service_does_not_exist_yet():
-    """Pre-Phase-51D-2: validation_service.py must not exist."""
-    assert not VALIDATE_SERVICE.exists(), (
-        "validation_service.py must NOT exist before Phase 51D-2 extraction"
+def test_validate_service_now_exists_post_phase51d2():
+    """Post-Phase-51D-2: validation_service.py must exist and own the
+    orchestration body that previously lived inside the /validate
+    route in main_web.py."""
+    assert VALIDATE_SERVICE.exists(), (
+        "validation_service.py must exist after Phase 51D-2 extraction"
     )
 
 
-def test_main_web_does_not_import_validate_service():
-    """main_web must not import validation_service yet."""
+def test_main_web_imports_validate_service():
+    """Post-Phase-51D-2: main_web must import validation_service so the
+    thin /validate route can call execute_validate_route."""
     text = MAIN_WEB.read_text()
-    assert "from app.services.validation_service" not in text
-    assert "import app.services.validation_service" not in text
+    assert "from app.services.validation_service" in text, (
+        "main_web.py must import validation_service (Phase 51D-2 extraction)"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,53 +151,64 @@ def test_validate_route_uses_resolve_runtime_snapshot_source():
     )
 
 
-def test_validate_route_uses_build_schema_from_form():
-    body = _get_validate_route_body()
-    assert "_build_schema_from_form(" in body, (
-        "/validate route must call _build_schema_from_form (Stage C schema build validation)"
+def test_validate_service_uses_build_schema_from_form():
+    """Post-Phase-51D-2: validation_service.py must call
+    build_schema_from_form (Stage C schema build validation)."""
+    text = VALIDATE_SERVICE.read_text()
+    assert "build_schema_from_form(" in text, (
+        "validation_service must call build_schema_from_form "
+        "(Stage C schema build validation)"
     )
 
 
-def test_validate_route_uses_validate_numeric_field():
-    body = _get_validate_route_body()
-    assert "_validate_numeric_field(" in body, (
-        "/validate route must call _validate_numeric_field (Stage B numeric field validation)"
+def test_validate_service_uses_validate_numeric_field():
+    """Post-Phase-51D-2: validation_service.py must call
+    validate_numeric_field (Stage B numeric field validation)."""
+    text = VALIDATE_SERVICE.read_text()
+    assert "validate_numeric_field(" in text, (
+        "validation_service must call validate_numeric_field "
+        "(Stage B numeric field validation)"
     )
 
 
-def test_validate_route_renders_validation_template():
-    body = _get_validate_route_body()
-    assert "partials/validation.html" in body, (
-        "/validate route must render partials/validation.html"
+def test_validate_service_renders_validation_template():
+    """Post-Phase-51D-2: validation_service.py must return
+    partials/validation.html."""
+    text = VALIDATE_SERVICE.read_text()
+    assert "partials/validation.html" in text, (
+        "validation_service must render partials/validation.html on success"
     )
 
 
-def test_validate_route_renders_errors_template_on_guard_block():
-    body = _get_validate_route_body()
-    assert "partials/errors.html" in body, (
-        "/validate route must render partials/errors.html on runtime guard block"
+def test_validate_service_renders_errors_template_on_guard_block():
+    """Post-Phase-51D-2: validation_service.py must return
+    partials/errors.html on runtime guard block."""
+    text = VALIDATE_SERVICE.read_text()
+    assert "partials/errors.html" in text, (
+        "validation_service must render partials/errors.html on guard block"
     )
 
 
-def test_validate_route_iterates_all_three_stages():
-    """The /validate route must implement all three validation stages:
-    Stage A (enum), Stage B (numeric), Stage C (schema build)."""
-    body = _get_validate_route_body()
+def test_validate_service_iterates_all_three_stages():
+    """Post-Phase-51D-2: validation_service.py must implement all three
+    validation stages: Stage A (enum), Stage B (numeric), Stage C
+    (schema build)."""
+    text = VALIDATE_SERVICE.read_text()
     # Stage A: project_type / scenario enum checks
-    assert "project_type not in PROJECT_TYPES" in body, (
-        "/validate route must check project_type against PROJECT_TYPES (Stage A)"
+    assert "project_type not in" in text and "project_types" in text, (
+        "validation_service must check project_type against project_types (Stage A)"
     )
-    assert "scenario not in SCENARIOS" in body, (
-        "/validate route must check scenario against SCENARIOS (Stage A)"
+    assert "scenario not in" in text and "scenarios" in text, (
+        "validation_service must check scenario against scenarios (Stage A)"
     )
-    # Stage B: numeric_checks loop with _validate_numeric_field
-    assert "numeric_checks" in body, (
-        "/validate route must have a numeric_checks list (Stage B)"
+    # Stage B: numeric_checks loop with validate_numeric_field
+    assert "numeric_checks" in text, (
+        "validation_service must have a numeric_checks list (Stage B)"
     )
-    # Stage C: _build_schema_from_form inside a try/except ValueError,
+    # Stage C: build_schema_from_form inside a try/except ValueError,
     # gated by `if not errors:`
-    assert "if not errors:" in body, (
-        "/validate route must gate Stage C behind `if not errors:` "
+    assert "if not errors:" in text, (
+        "validation_service must gate Stage C behind `if not errors:` "
         "(Stage C only runs when Stage A and B have no errors)"
     )
 
@@ -202,22 +217,23 @@ def test_validate_route_iterates_all_three_stages():
 # 3. /validate route body size (characterization pin)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_validate_route_body_size_characterization():
-    """Pin the current /validate body size for Phase 51D-1
-    characterization. Phase 51D-2 will assert the post-extraction
-    size shrinks. Currently ~85 lines / ~76 non-blank."""
+def test_validate_route_body_size_post_extraction_is_thin():
+    """Post-Phase-51D-2: the /validate route must be THIN (< 50
+    non-blank body lines). The pre-extraction body was 76 non-blank;
+    the post-extraction body is ~30 non-blank.
+
+    We also pin that the pre-extraction body was a god-module hotspot
+    (>= 50 non-blank lines) by reading the merged commit's
+    pre-extraction body from origin/main.
+
+    Actually we just pin the post-extraction thinness here, since the
+    pre-extraction size is documented in the Phase 51D-1 docs.
+    """
     body = _get_validate_route_body()
     non_blank = [ln for ln in body.splitlines() if ln.strip()]
-    # Generous upper bound; the real shrink is asserted in 51D-2
-    assert len(non_blank) < 200, (
+    assert len(non_blank) < 50, (
         f"/validate route body has {len(non_blank)} non-blank lines; "
-        "expected < 200 (characterization pin)"
-    )
-    # Pin: route is currently a god-module hotspot (>= 50 non-blank lines)
-    assert len(non_blank) >= 50, (
-        f"/validate route body has {len(non_blank)} non-blank lines; "
-        "expected >= 50 (characterization pin: this is a god-module "
-        "hotspot that 51D-2 should slim down)"
+        "expected < 50 after Phase 51D-2 vertical extraction"
     )
 
 
@@ -225,12 +241,11 @@ def test_validate_route_body_size_characterization():
 # 4. Numeric field max values (pinned for Phase 51D-2)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_validate_route_pins_numeric_max_values():
-    """Pin all 9 numeric field max values exactly. Phase 51D-2 must
-    preserve these in the service (either hard-coded inside the
-    service, or moved to a deps field)."""
-    body = _get_validate_route_body()
-    # All 9 max values must appear in the route body.
+def test_validate_service_pins_numeric_max_values():
+    """Post-Phase-51D-2: validation_service.py must pin all 9 numeric
+    field max values exactly. The values are preserved from Phase
+    51D-1 (legacy /validate route)."""
+    text = VALIDATE_SERVICE.read_text()
     expected_max_values = {
         "2000.0": "capacity_mw",
         "1000.0": "tariff_eur_mwh",
@@ -243,13 +258,12 @@ def test_validate_route_pins_numeric_max_values():
         "50.0": "tenor_years",
     }
     for max_str, field_name in expected_max_values.items():
-        assert max_str in body, (
-            f"/validate route must pin max value {max_str} for {field_name}"
+        assert max_str in text, (
+            f"validation_service must pin max value {max_str} for {field_name}"
         )
-    # All 9 field names must appear in numeric_checks
     for field_name in expected_max_values.values():
-        assert f'"{field_name}"' in body, (
-            f"/validate route must reference field {field_name} in numeric_checks"
+        assert f'"{field_name}"' in text, (
+            f"validation_service must reference field {field_name} in numeric_checks"
         )
 
 
@@ -297,22 +311,25 @@ def test_app_persistence_has_no_record_validate_run():
 # 6. Latent / parity characteristic: runtime_snapshot resolved but unused
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_validate_route_resolves_runtime_snapshot_but_captures_only_first_element():
-    """The /validate route calls resolve_runtime_snapshot_source but
-    only uses the first element of the returned tuple (the snapshot
-    itself). The other elements (scenario_record, warning,
-    effective_runtime_origin) are discarded. This pins the parity
-    call that Phase 51D-2 must preserve.
+def test_validate_service_resolves_runtime_snapshot_but_captures_only_first_element():
+    """Post-Phase-51D-2: validation_service.py must call
+    resolve_runtime_snapshot_source but only use the first element of
+    the returned tuple (the snapshot itself). The other elements
+    (scenario_record, warning, effective_runtime_origin) are
+    discarded.
+
+    This pins the parity call that Phase 51D-1 documented and Phase
+    51D-2 preserves EXACTLY.
     """
-    body = _get_validate_route_body()
-    # The route must call resolve_runtime_snapshot_source and unpack
-    # at least the snapshot as the first element.
-    # Pattern: runtime_snapshot, _, _, _ = _resolve_runtime_snapshot_source(...)
+    text = VALIDATE_SERVICE.read_text()
+    # The service must call deps.resolve_runtime_snapshot_source and
+    # unpack at least the snapshot as the first element.
+    # Pattern: runtime_snapshot, _, _, _ = deps.resolve_runtime_snapshot_source(...)
     assert re.search(
-        r"runtime_snapshot\s*,\s*_\s*,\s*_\s*,\s*_\s*=\s*_resolve_runtime_snapshot_source",
-        body,
+        r"runtime_snapshot\s*,\s*_\s*,\s*_\s*,\s*_\s*=\s*deps\.resolve_runtime_snapshot_source",
+        text,
     ), (
-        "/validate route must unpack the resolved snapshot with "
+        "validation_service must unpack the resolved snapshot with "
         "discarded scenario_record / warning / effective_runtime_origin"
     )
 
@@ -532,30 +549,29 @@ def test_validate_empty_numeric_field_passes_stage_b(client):
     assert r.status_code == 200
 
 
-def test_validate_stage_c_runs_only_when_no_prior_errors(client):
-    """Stage C (schema build) only runs when Stage A and B have no
-    errors. We pin this via a structural test on the route body."""
-    body = _get_validate_route_body()
+def test_validate_service_stage_c_runs_only_when_no_prior_errors():
+    """Post-Phase-51D-2: validation_service.py Stage C (schema build)
+    only runs when Stage A and B have no errors. We pin this via a
+    structural test on the service source."""
+    text = VALIDATE_SERVICE.read_text()
     # The schema build must be inside a `if not errors:` block
-    # followed by a `try:` and `_build_schema_from_form`.
-    # We look for the pattern: `if not errors:\n        try:`
-    # allowing some whitespace.
+    # followed by a `try:` and `build_schema_from_form`.
     if_not_errors_try_pattern = re.search(
         r"if\s+not\s+errors\s*:\s*\n\s*try\s*:",
-        body,
+        text,
     )
     assert if_not_errors_try_pattern, (
-        "/validate route must gate Stage C schema build behind "
+        "validation_service must gate Stage C schema build behind "
         "`if not errors: try: ...` (Stage C only runs when "
         "Stage A and B have no errors)"
     )
     # The except must catch ValueError specifically (NOT bare Exception)
     value_error_except_pattern = re.search(
         r"except\s+ValueError\s+as\s+\w+\s*:",
-        body,
+        text,
     )
     assert value_error_except_pattern, (
-        "/validate route Stage C must catch ValueError specifically "
+        "validation_service Stage C must catch ValueError specifically "
         "(not bare Exception)"
     )
 
@@ -705,10 +721,14 @@ def test_main_web_does_not_import_runtime_guard_for_snapshot():
     )
 
 
-def test_no_production_code_changed():
-    """Phase 51D-1 is characterization only. No production code may
-    change vs origin/main. New files (docs, tests, report) are
-    allowed."""
+def test_no_production_code_changed_outside_validate_extraction():
+    """Phase 51D-2 allows EXACTLY two production code changes:
+    - main_web.py (the /validate route body becomes thin)
+    - app/services/validation_service.py (new file, owns orchestration)
+
+    Every other production source file must be unchanged vs
+    origin/main. New docs/tests/report files are allowed.
+    """
     result = subprocess.run(
         ["git", "diff", "--name-only", "origin/main", "--",
          "main_web.py", "app/api/", "app/persistence/", "app/waterfall_core.py",
@@ -720,9 +740,32 @@ def test_no_production_code_changed():
         capture_output=True, text=True, cwd=str(PROJECT_ROOT),
     )
     changed = [l for l in result.stdout.strip().split("\n") if l]
-    assert changed == [], (
-        f"Production files changed in Phase 51D-1 (should be 0): {changed}"
+    forbidden = [c for c in changed if c != "main_web.py"]
+    assert forbidden == [], (
+        f"Phase 51D-2 may only change main_web.py and add "
+        f"validation_service.py; unexpected changes: {forbidden}"
     )
+    # main_web.py IS allowed to be in the diff; pin that the diff is
+    # scoped to the /validate route body (no other route changed).
+    if "main_web.py" in changed:
+        result2 = subprocess.run(
+            ["git", "diff", "origin/main", "--", "main_web.py"],
+            capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+        )
+        diff_text = result2.stdout
+        # Pin: no other @app.post route outside /validate is touched.
+        decorator_changes = [
+            ln for ln in diff_text.splitlines()
+            if ln.startswith("+@app.") or ln.startswith("-@app.")
+        ]
+        non_validate_decorator_changes = [
+            ln for ln in decorator_changes
+            if "/validate" not in ln
+        ]
+        assert non_validate_decorator_changes == [], (
+            "main_web.py diff must not touch any @app.* decorator "
+            f"other than /validate; got: {non_validate_decorator_changes}"
+        )
 
 
 def test_no_fixture_csv_changes():
