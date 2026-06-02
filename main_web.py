@@ -87,6 +87,7 @@ from app.services.export_audit_service import record_runtime_summary_export, rec
 from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record, resolve_runtime_snapshot, RuntimeSnapshotResolution, check_runtime_allowed
 from app.services.compare_service import CompareRouteDeps, execute_compare_route
 from app.services.validation_service import ValidateRouteDeps, execute_validate_route
+from app.services.download_service import DownloadRouteDeps, execute_post_download_route, execute_get_download_route
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -1581,208 +1582,107 @@ async def compare(request: Request):
 
 @app.post("/download")
 async def download_post(request: Request):
-    """Generate Excel export with current form values. Requires auth."""
+    """Generate Excel export with current form values. Requires auth.
+
+    Phase 51E-2: orchestration extracted into
+    ``app.services.download_service.execute_post_download_route``.
+    The route is now thin: auth, form parse, deps bundle, service
+    call, render StreamingResponse or HTMLResponse.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
-    project_type = form.get("project_type", "")
-    scenario = form.get("scenario", "")
-    capacity_mw = form.get("capacity_mw", "")
-    tariff_eur_mwh = form.get("tariff_eur_mwh", "")
-    p50_hours = form.get("p50_hours", "")
-    total_capex_keur = form.get("total_capex_keur", "")
-    opex_y1_keur = form.get("opex_y1_keur", "")
-    gearing_pct = form.get("gearing_pct", "")
-    target_dscr = form.get("target_dscr", "")
-    interest_rate_pct = form.get("interest_rate_pct", "")
-    tenor_years = form.get("tenor_years", "")
-
-    try:
-        schema = _build_schema_from_form(
-            project_type, scenario,
-            capacity_mw, tariff_eur_mwh, p50_hours,
-            total_capex_keur, opex_y1_keur,
-            gearing_pct, target_dscr, interest_rate_pct, tenor_years,
-        )
-        override = build_projectinputs(schema)
-    except (ValueError, Exception) as e:
+    deps = DownloadRouteDeps(
+        collect_form_snapshot=_collect_form_snapshot,
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        canonical_project_type=_canonical_project_type,
+        normalize_template_source=_normalize_template_source,
+        check_runtime_allowed=check_runtime_allowed,
+        resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
+        build_schema_from_form=_build_schema_from_form,
+        build_projectinputs=build_projectinputs,
+        build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
+        scenario_provenance_for_record=_scenario_provenance_for_record,
+        replay_metadata_for_project=_replay_metadata_for_project,
+        governance_snapshot=_governance_snapshot,
+        run_demo_project=run_demo_project,
+        get_project_by_code=get_project_by_code,
+        build_excel_export_for_post_request=build_excel_export_for_post_request,
+        build_values_only_export_for_project=build_values_only_export_for_project,
+        record_download_export=record_download_export,
+        utc_now_iso=utc_now_iso,
+    )
+    outcome = await execute_post_download_route(
+        request=request, form=form, user=user, deps=deps,
+    )
+    if outcome.is_error:
         return HTMLResponse(
-            content=f"<html><body><h2>Excel generation failed</h2><p>Invalid input: {str(e)}</p><a href='/'>Back</a></body></html>",
-            status_code=400,
+            content=outcome.content, status_code=outcome.status_code,
         )
-
-    try:
-        snapshot = _collect_form_snapshot(form)
-        project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
-        project_code = project_record.project_code
-        effective_project_type = project_record.project_type or project_type
-        runtime_origin = "factory_base_runtime"
-        runtime_snapshot = None
-        active_scenario_record = None
-        runtime_warning = None
-        if project_record.project_origin == "user_created":
-            allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
-            if not allow_run:
-                return HTMLResponse(
-                    content=f"<html><body><h2>Excel generation failed</h2><p>{guard_message}</p><a href='/'>Back</a></body></html>",
-                    status_code=400,
-                )
-            runtime_snapshot, active_scenario_record, runtime_warning, effective_runtime_origin = _resolve_runtime_snapshot_source(
-                user,
-                project_record,
-                workspace_state,
-                runtime_origin,
-            )
-            override = build_projectinputs_from_snapshot(runtime_snapshot)
-            runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
-        else:
-            if check_runtime_allowed(workspace_state, snapshot)[1] == "saved_state" and workspace_state.active_scenario_id:
-                runtime_origin = "saved_state"
-                runtime_snapshot, active_scenario_record, runtime_warning, effective_runtime_origin = _resolve_runtime_snapshot_source(
-                    user,
-                    project_record,
-                    workspace_state,
-                    runtime_origin,
-                )
-                override = build_projectinputs_from_snapshot(runtime_snapshot)
-            runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
-            if runtime_seed == "tuho":
-                runtime_project_key = "TUHO"
-            elif runtime_seed == "oborovo":
-                runtime_project_key = "Oborovo"
-            else:
-                runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
-        demo = run_demo_project(runtime_project_key, scenario, project_inputs_override=override)
-        filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
-        scenario_provenance = _scenario_provenance_for_record(project_record, active_scenario_record)
-        replay_metadata = _replay_metadata_for_project(
-            project_code,
-            export_type="excel_model_export",
-            workbook_type="values_only_excel_export",
-            export_timestamp=utc_now_iso(),
-            runtime_timestamp=utc_now_iso(),
-            project_id=project_record.project_id if project_record else None,
-            scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
-            scenario_name=active_scenario_record.scenario_name if active_scenario_record else scenario,
-            runtime_origin=runtime_origin,
-            artifact_name=filename,
-            project_inputs_override=demo.project_inputs,
-            template_origin_override=(
-                "saved_project_assumptions"
-                if project_record.project_origin == "user_created"
-                else None
-            ),
-            active_scenario_id=workspace_state.active_scenario_id if runtime_origin == "saved_state" else None,
-            active_scenario_name=workspace_state.active_scenario_name if runtime_origin == "saved_state" else None,
-            scenario_provenance=scenario_provenance,
-            warning_note=runtime_warning,
-        )
-        export = build_excel_export_for_post_request(
-            result=demo.result,
-            project_inputs=demo.project_inputs,
-            project_type=project_type,
-            scenario=scenario,
-            runtime_origin=runtime_origin,
-            replay_metadata=replay_metadata,
-        )
-        if project_record and project_record.project_origin == "saved_baseline":
-            replay_metadata["baseline_source"] = True
-        if export.has_error():
-            return HTMLResponse(content=export.error_content, status_code=export.status_code)
-        excel_bytes = export.bytes_data
-        record_download_export(
-            user_id=user.user_id,
-            project_code=project_code,
-            export_type="excel_model_export",
-            artifact_name=filename,
-            artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
-            project_id=project_record.project_id if project_record else None,
-            governance_state=_governance_snapshot(project_code),
-            replay_metadata=replay_metadata,
-            scenario_id=active_scenario_record.scenario_id if active_scenario_record else None,
-        )
-        return StreamingResponse(
-            iter([excel_bytes]),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Content-Length": str(len(excel_bytes)),
-            },
-        )
-    except Exception as e:
-        return HTMLResponse(
-            content=f"<html><body><h2>Excel generation failed</h2><p>{str(e)}</p><a href='/'>Back</a></body></html>",
-            status_code=500,
-        )
+    return StreamingResponse(
+        iter([outcome.content]),
+        media_type=outcome.media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{outcome.filename}"',
+            **outcome.headers,
+        },
+        status_code=outcome.status_code,
+    )
 
 
 @app.get("/download")
 async def download_get(request: Request, project_type: str = "Solar", scenario: str = "Base"):
-    """Generate Excel export (GET - uses factory defaults). Requires auth."""
+    """Generate Excel export (GET - uses factory defaults). Requires auth.
+
+    Phase 51E-2: orchestration extracted into
+    ``app.services.download_service.execute_get_download_route``.
+    The route is now thin: auth, query params, deps bundle, service
+    call, render StreamingResponse or HTMLResponse.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    try:
-        # Build result + replay_metadata BEFORE service call so both
-        # the Excel file and record_export use the same provenance dict.
-        demo = run_demo_project(
-            project_type if project_type else "Solar",
-            scenario if scenario else "Base",
-        )
-        project_code = "oborovo" if project_type.lower() == "solar" else "tuho"
-        project_record = get_project_by_code(user.user_id, project_code)
-        filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
-        replay_metadata = _replay_metadata_for_project(
-            project_code,
-            export_type="excel_model_export",
-            workbook_type="values_only_excel_export",
-            export_timestamp=utc_now_iso(),
-            runtime_timestamp=utc_now_iso(),
-            project_id=project_record.project_id if project_record else None,
-            scenario_name=scenario,
-            runtime_origin="factory_base_runtime",
-            artifact_name=filename,
-        )
-        if project_record and project_record.project_origin == "saved_baseline":
-            replay_metadata["baseline_source"] = True
-
-        export = build_values_only_export_for_project(
-            demo.result,
-            demo.project_inputs,
-            project_type,
-            scenario,
-            replay_metadata=replay_metadata,
-        )
-        if export.has_error():
-            return HTMLResponse(content=export.error_content, status_code=export.status_code)
-
-        record_download_export(
-            user_id=user.user_id,
-            project_code=project_code,
-            export_type="excel_model_export",
-            artifact_name=filename,
-            artifact_path=f"/download?project_type={project_type}&scenario={scenario}",
-            project_id=project_record.project_id if project_record else None,
-            governance_state=_governance_snapshot(project_code),
-            replay_metadata=replay_metadata,
-            scenario_id=None,
-        )
-        return StreamingResponse(
-            iter([export.bytes_data]),
-            media_type=export.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{export.filename}"',
-                "Content-Length": str(len(export.bytes_data)),
-            },
-        )
-    except Exception as e:
+    deps = DownloadRouteDeps(
+        collect_form_snapshot=_collect_form_snapshot,
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        canonical_project_type=_canonical_project_type,
+        normalize_template_source=_normalize_template_source,
+        check_runtime_allowed=check_runtime_allowed,
+        resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
+        build_schema_from_form=_build_schema_from_form,
+        build_projectinputs=build_projectinputs,
+        build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
+        scenario_provenance_for_record=_scenario_provenance_for_record,
+        replay_metadata_for_project=_replay_metadata_for_project,
+        governance_snapshot=_governance_snapshot,
+        run_demo_project=run_demo_project,
+        get_project_by_code=get_project_by_code,
+        build_excel_export_for_post_request=build_excel_export_for_post_request,
+        build_values_only_export_for_project=build_values_only_export_for_project,
+        record_download_export=record_download_export,
+        utc_now_iso=utc_now_iso,
+    )
+    outcome = await execute_get_download_route(
+        request=request, user=user,
+        project_type=project_type, scenario=scenario,
+        deps=deps,
+    )
+    if outcome.is_error:
         return HTMLResponse(
-            content=f"<html><body><h2>Excel generation failed</h2><p>{str(e)}</p><a href='/'>Back</a></body></html>",
-            status_code=500,
+            content=outcome.content, status_code=outcome.status_code,
         )
+    return StreamingResponse(
+        iter([outcome.content]),
+        media_type=outcome.media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{outcome.filename}"',
+            **outcome.headers,
+        },
+        status_code=outcome.status_code,
+    )
 
 
 @app.get("/exports/runtime-summary.csv")

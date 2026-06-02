@@ -1,0 +1,209 @@
+{
+  "phase": "51E-2",
+  "title": "Phase 51E-2: Extract /download route family into download_service.py",
+  "type": "behavior-preserving vertical extraction",
+  "scope": "main_web.py /download route family (POST + GET) + new app/services/download_service.py",
+  "base_sha": "a53d278263f1f9e134d500e1a7915e9bde615626",
+  "branch": "phase51e2-extract-download-route-family",
+  "head_sha": null,
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "production_code_changed": true,
+  "production_code_changes_allowed": [
+    "main_web.py (the /download route family becomes thin)",
+    "app/services/download_service.py (new file, owns orchestration)"
+  ],
+  "route_size_before_after": {
+    "post_download": {
+      "pre_phase51e2_non_blank_lines": 106,
+      "post_phase51e2_non_blank_lines": 48,
+      "reduction_percent": 54.7
+    },
+    "get_download": {
+      "pre_phase51e2_non_blank_lines": 65,
+      "post_phase51e2_non_blank_lines": 49,
+      "reduction_percent": 24.6
+    },
+    "combined_download_route_family": {
+      "pre_phase51e2_non_blank_lines": 171,
+      "post_phase51e2_non_blank_lines": 97,
+      "reduction_percent": 43.3
+    }
+  },
+  "service_api": {
+    "module": "app/services/download_service.py",
+    "public_dataclasses": [
+      {
+        "name": "DownloadRouteOutcome",
+        "fields": {
+          "content": "Union[bytes, str] (required) - xlsx bytes for success or HTML string for error",
+          "media_type": "str (required) - MIME type for response",
+          "filename": "Optional[str] = None - Content-Disposition filename (None for errors)",
+          "status_code": "int = 200 - HTTP status code",
+          "headers": "dict = field(default_factory=dict) - extra response headers (e.g. Content-Length)",
+          "is_error": "bool = False - True for HTML error responses"
+        }
+      },
+      {
+        "name": "DownloadRouteDeps",
+        "fields_count": 18,
+        "fields": {
+          "collect_form_snapshot": "Callable (POST only)",
+          "project_workspace_from_snapshot": "Callable (POST only)",
+          "canonical_project_type": "Callable (POST only, user_created branch)",
+          "normalize_template_source": "Callable (POST only, template-seeded branch)",
+          "check_runtime_allowed": "Callable (POST only)",
+          "resolve_runtime_snapshot_source": "Callable (POST only, both branches)",
+          "build_schema_from_form": "Callable (POST only)",
+          "build_projectinputs": "Callable (POST only)",
+          "build_projectinputs_from_snapshot": "Callable (POST only, runtime paths)",
+          "scenario_provenance_for_record": "Callable (POST only)",
+          "replay_metadata_for_project": "Callable (POST + GET)",
+          "governance_snapshot": "Callable (POST + GET, for audit)",
+          "run_demo_project": "Callable (POST + GET)",
+          "get_project_by_code": "Callable (GET only)",
+          "build_excel_export_for_post_request": "Callable (POST only)",
+          "build_values_only_export_for_project": "Callable (GET only)",
+          "record_download_export": "Callable (POST + GET, intended export audit)",
+          "utc_now_iso": "Callable (POST + GET)"
+        }
+      }
+    ],
+    "public_entry_points": [
+      "async def execute_post_download_route(*, request, form, user, deps) -> DownloadRouteOutcome",
+      "async def execute_get_download_route(*, request, user, project_type, scenario, deps) -> DownloadRouteOutcome"
+    ]
+  },
+  "behavior_quirks_preserved": {
+    "quirk_1_post_two_template_branches": "preserved exactly (canonical_project_type + normalize_template_source both in service)",
+    "quirk_2_get_hardcoded_project_code_mapping": "preserved exactly ('oborovo' if solar else 'tuho')",
+    "quirk_3_post_mutates_runtime_origin": "preserved exactly (runtime_origin='saved_state' in non-user_created branch)",
+    "quirk_4_post_get_different_export_builders": "preserved exactly (build_excel_export_for_post_request vs build_values_only_export_for_project)",
+    "quirk_5_post_hardcoded_xlsx_media_type": "preserved exactly",
+    "quirk_5_get_uses_export_media_type": "preserved exactly",
+    "quirk_6_post_filename_in_service": "preserved exactly (fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx)",
+    "quirk_6_get_uses_export_filename": "preserved exactly",
+    "quirk_7_get_passes_scenario_id_none": "preserved exactly",
+    "quirk_8_inline_error_html_format": "preserved exactly (no Jinja template)",
+    "quirk_9_top_level_broad_except": "preserved exactly (status_code=500)",
+    "quirk_10_artifact_path_is_url_string": "preserved exactly",
+    "quirk_11_effective_runtime_origin_captured_but_discarded": "preserved exactly (_effective_runtime_origin underscore-prefixed)",
+    "quirk_12_post_broad_except_value_error_exception": "preserved exactly"
+  },
+  "audit_side_effects_preserved": {
+    "record_download_export": "INTENDED Phase 49 export audit, preserved exactly",
+    "call_count_post": 1,
+    "call_count_get": 1,
+    "args_preserved": [
+      "user_id",
+      "project_code",
+      "export_type='excel_model_export'",
+      "artifact_name",
+      "artifact_path (URL string, not filesystem path)",
+      "project_id",
+      "governance_state",
+      "replay_metadata",
+      "scenario_id (POST: active_scenario id or None; GET: None)"
+    ]
+  },
+  "forbidden_side_effects_absent": {
+    "record_workspace_runtime": "NOT called",
+    "update_scenario_last_run_summary": "NOT called",
+    "record_compare_run": "NOT called (does not exist)",
+    "record_export_direct": "0 calls in main_web.py (Phase 49 guardrail)",
+    "db_add_commit_flush": "NOT called",
+    "session_add_commit": "NOT called"
+  },
+  "tests_run": {
+    "phase51a_run_route_golden": {"pass": 25, "fail": 0, "xfail": 0},
+    "phase51b_run_route_vertical_extraction": {"pass": 22, "fail": 0, "xfail": 0},
+    "phase51c1_compare_route_golden_characterization": {"pass": 37, "fail": 0, "xfail": 0},
+    "phase51c2_compare_route_vertical_extraction": {"pass": 49, "fail": 0, "xfail": 0},
+    "phase51d1_validate_route_golden_characterization": {"pass": 51, "fail": 0, "xfail": 0},
+    "phase51d2_validate_route_vertical_extraction": {"pass": 52, "fail": 0, "xfail": 0},
+    "phase51e1_download_route_golden_characterization": {"pass": 56, "fail": 0, "xfail": 0, "note": "Structural tests re-pointed to download_service.py (not weakened)."},
+    "phase51e2_download_route_vertical_extraction": {"pass": 65, "fail": 0, "xfail": 0, "note": "New test suite for this phase."},
+    "total_phase51": {"pass": 357, "fail": 0, "xfail": 0},
+    "import_checks": {
+      "main_web": "OK",
+      "app.services.run_service": "OK",
+      "app.services.compare_service": "OK",
+      "app.services.validation_service": "OK",
+      "app.services.download_service": "OK"
+    },
+    "structural_guards": {
+      "run_service_does_not_import_main_web": "PASS",
+      "compare_service_does_not_import_main_web": "PASS",
+      "validation_service_does_not_import_main_web": "PASS",
+      "download_service_does_not_import_main_web": "PASS",
+      "download_service_does_not_import_main_api": "PASS",
+      "main_web_has_zero_direct_record_export_calls": "PASS (0 matches)"
+    }
+  },
+  "known_failures": {
+    "tests/test_persistence.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51e2": false,
+      "out_of_scope_for_phase_51e2": true
+    },
+    "tests/test_repository.py": {
+      "error": "ImportError: No module named 'persistence'",
+      "is_pre_existing": true,
+      "reproduces_on_origin_main": true,
+      "introduced_by_phase_51e2": false,
+      "out_of_scope_for_phase_51e2": true
+    }
+  },
+  "guardrails_preserved": [
+    "No financial formula changes",
+    "No model calculation logic changes",
+    "No project factory changes",
+    "No fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "No generic validation framework",
+    "G20 remains BLOCKED",
+    "R99 / R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat / min DSCR sculpting not promoted",
+    "Backend remains source of truth",
+    "Generic solar / wind remain exploratory / unvalidated",
+    "No lender / bank / audit / certification / SaaS claims",
+    "/run route from Phase 51B remains thin (< 200 non-blank body lines)",
+    "/compare route from Phase 51C-2 remains thin (< 50 non-blank body lines)",
+    "/validate route from Phase 51D-2 remains thin (< 50 non-blank body lines)",
+    "run_service.py from Phase 51B remains intact",
+    "compare_service.py from Phase 51C-2 remains intact",
+    "validation_service.py from Phase 51D-2 remains intact",
+    "export_service.py and export_audit_service.py remain intact (NOT refactored in 51E-2)",
+    "download_service.py does NOT import main_web (one-way import direction)",
+    "download_service.py does NOT import main_api (service is web-layer)",
+    "main_web.py has zero direct record_export calls",
+    "/download route family has zero direct persistence / record_* calls (except intended record_download_export audit)",
+    "/download service has zero direct persistence / record_* calls (except intended record_download_export audit)",
+    "All 12 behavior quirks preserved EXACTLY (each pinned with a dedicated test in 51E-2 suite)",
+    "rc1 remains frozen (not touched by any Phase 51 commit)",
+    "PR #299 remains closed (no longer active guardrail)",
+    "Export audit (record_download_export) preserved as INTENDED Phase 49 behavior — not classified as forbidden persistence"
+  ],
+  "changed_files": [
+    "app/services/download_service.py (new file, +569 lines)",
+    "main_web.py (-95 lines POST + -65 lines GET, +48 + +49 net: -63 lines; route body shrinkage)",
+    "tests/test_phase51a_run_route_golden_characterization.py (updated: added download_service.py to whitelist in test_no_production_code_changes)",
+    "tests/test_phase51e1_download_route_golden_characterization.py (updated: structural tests re-pointed from main_web route body to download_service contract; behavioral assertions unchanged)",
+    "tests/test_phase51e2_download_route_vertical_extraction.py (new file, +825 lines)",
+    "docs/phase51e2_download_route_vertical_extraction.md (new file)",
+    "reports/phase51e2_download_route_vertical_extraction_summary.json (new file)"
+  ],
+  "remaining_risks": [
+    "Broad except (ValueError, Exception) and except Exception patterns preserved from legacy /download route (overly-broad but matches current behavior; future cleanup phase).",
+    "Two-template-branches project_key resolution preserved as documented quirk 1 (more complex than a single if/else; preserved exactly).",
+    "POST runtime_origin mutation in non-user_created branch preserved as documented quirk 3 (could be cleaned up in a future phase).",
+    "Inline error HTML format preserved as documented quirk 8 (no Jinja template introduced; future consolidation phase could unify error pages across /download, /run, /compare, /validate).",
+    "Stream iter([outcome.content]) in the route wrapper preserves the StreamingResponse body-as-iterator pattern from the legacy route."
+  ],
+  "recommended_next_phase": "Phase 51E-3: characterize POST /save-run (~125 non-blank lines, the second-largest residual main_web.py hotspot). /save-run adds runtime persistence via record_workspace_runtime and update_scenario_last_run_summary — more sensitive than /download. Care must be taken to preserve the runtime persistence contract. After /save-run: (1) Phase 51F-1 + 51F-2: scenario state service family (/scenarios/state/draft, /scenarios/state/discard, etc.). (2) Phase 51G-1 + 51G-2: project save-as service. (3) Phase 51H: optional structural guardrail phase to add export_service.py / export_audit_service.py does NOT import main_web. /run, /compare, /validate, and /download (post-51E-2) now serve as the canonical templates for vertical extraction."
+}
