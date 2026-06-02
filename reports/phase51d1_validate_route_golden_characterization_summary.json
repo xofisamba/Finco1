@@ -1,0 +1,145 @@
+{
+  "phase": "51D-1",
+  "title": "Phase 51D-1: Validate route golden characterization",
+  "type": "characterization only",
+  "scope": "POST /validate route in main_web.py (no production code change)",
+  "base_sha": "d2130bfa3504b5c38ea1a182680a7da50871ad3e",
+  "branch": "phase51d1-validate-route-golden-characterization",
+  "head_sha": null,
+  "pr_number": null,
+  "pr_url": null,
+  "pr_state": "draft",
+  "characterization_status": "complete",
+  "production_code_changed": false,
+  "route_characterized": {
+    "name": "POST /validate",
+    "location": "main_web.py:1428",
+    "total_lines": 85,
+    "non_blank_lines": 76,
+    "decorator": "@app.post(\"/validate\")",
+    "signature": "async def validate(request: Request)"
+  },
+  "paths_characterized": {
+    "unauthenticated_redirect": "302 to /login",
+    "valid_solar_inputs": "partials/validation.html, valid=True, errors=[]",
+    "valid_wind_inputs": "partials/validation.html, valid=True, errors=[]",
+    "valid_downside_scenario": "partials/validation.html, valid=True",
+    "valid_upside_scenario": "partials/validation.html, valid=True",
+    "invalid_project_type": "partials/validation.html, valid=False, errors=[Stage A]",
+    "invalid_scenario": "partials/validation.html, valid=False, errors=[Stage A]",
+    "both_invalid": "errors accumulate (no short-circuit)",
+    "non_numeric_input": "errors=[Stage B: must be a number]",
+    "negative_input": "errors=[Stage B: must be non-negative]",
+    "above_max_input": "errors=[Stage B: must be <= max_val]",
+    "empty_numeric_field": "Stage B passes (treated as optional); Stage C may run",
+    "schema_value_error": "errors=[Stage C: str(ValueError)]",
+    "runtime_guard_blocked": "partials/errors.html, errors=[guard_message]",
+    "user_created_path": "runtime_snapshot resolved (captured, unused); stages A/B/C",
+    "saved_state_active_scenario_path": "runtime_snapshot resolved (captured, unused); stages A/B/C",
+    "tuho_template_seeded_path": "no template-seeded branching in /validate; stages A/B/C",
+    "oborovo_template_seeded_path": "no template-seeded branching in /validate; stages A/B/C",
+    "max_boundary_numerics": "Stage B passes (check is <= max_val, not < max_val)",
+    "stage_c_gate": "Stage C only runs when Stage A and B have no errors (gated by `if not errors:`)",
+    "read_only_invariant": "no record_*, db.*, session.*, update_* calls on /validate path"
+  },
+  "xfail_paths": [],
+  "stage_order_pinned": {
+    "stage_a": "enum validation (project_type in PROJECT_TYPES, scenario in SCENARIOS)",
+    "stage_b": "numeric field validation (9 fields with max values, _validate_numeric_field helper)",
+    "stage_c": "schema build validation (_build_schema_from_form, ValueError catch, gated by `if not errors:`)"
+  },
+  "numeric_max_values_pinned": {
+    "capacity_mw": 2000.0,
+    "tariff_eur_mwh": 1000.0,
+    "p50_hours": 10000.0,
+    "total_capex_keur": 1000000.0,
+    "opex_y1_keur": 500000.0,
+    "gearing_pct": 100.0,
+    "target_dscr": 10.0,
+    "interest_rate_pct": 30.0,
+    "tenor_years": 50.0
+  },
+  "parity_quirk_pinned": {
+    "issue": "runtime_snapshot resolved via _resolve_runtime_snapshot_source but captured only the first element (snapshot); scenario_record / warning / effective_runtime_origin are discarded.",
+    "reason": "Parity with /run and /compare routes, which resolve the snapshot for the same reason.",
+    "phase_51d2_decision": "Must preserve this behavior (or explicitly drop it in 51D-2 cleanup, which is a behavior change to be documented in 51D-2 PR)."
+  },
+  "proposed_service_module": "app/services/validation_service.py",
+  "proposed_service_api": {
+    "dataclasses": [
+      {
+        "name": "ValidateRouteOutcome",
+        "fields": {
+          "template_name": "str (required)",
+          "context": "dict (required)",
+          "status_code": "int (default 200)",
+          "headers": "dict (default empty)"
+        }
+      },
+      {
+        "name": "ValidateRouteDeps",
+        "fields": {
+          "collect_form_snapshot": "Callable (used)",
+          "project_workspace_from_snapshot": "Callable (used)",
+          "canonical_project_type": "Callable (NOT used by /validate today; kept for parity with compare_service pattern)",
+          "normalize_template_source": "Callable (NOT used; kept for parity)",
+          "check_runtime_allowed": "Callable (used)",
+          "resolve_runtime_snapshot_source": "Callable (used — parity call; snapshot captured, unused)",
+          "build_schema_from_form": "Callable (used — Stage C)",
+          "validate_numeric_field": "Callable (used — Stage B; per-field helper, NOT a whole-form helper)",
+          "project_types": "list[str] (used — Stage A)",
+          "scenarios": "list[str] (used — Stage A)",
+          "snapshot_input_error": "type (NOT used by /validate; kept for parity)"
+        }
+      }
+    ],
+    "public_entry_point": "async def execute_validate_route(*, request, form, user, deps) -> ValidateRouteOutcome"
+  },
+  "ready_for_extraction": true,
+  "no_formula_changes": true,
+  "no_runtime_changes": true,
+  "no_model_output_changes": true,
+  "no_fixture_changes": true,
+  "no_js_financial_calculations": true,
+  "test_results": {
+    "phase51a_run_route_golden": {"pass": 25, "fail": 0, "xfail": 0},
+    "phase51b_run_route_vertical_extraction": {"pass": 22, "fail": 0, "xfail": 0},
+    "phase51c1_compare_route_golden_characterization": {"pass": 37, "fail": 0, "xfail": 0},
+    "phase51c2_compare_route_vertical_extraction": {"pass": 49, "fail": 0, "xfail": 0},
+    "phase51d1_validate_route_golden_characterization": {"pass": 51, "fail": 0, "xfail": 0, "note": "New test suite for this phase."},
+    "total_phase51": {"pass": 184, "fail": 0, "xfail": 0},
+    "import_main_web": "OK"
+  },
+  "pre_existing_parity_failures": {
+    "note": "Two legacy test modules (tests/test_persistence.py and tests/test_repository.py) fail to collect with ImportError: No module named 'persistence'. This is a pre-existing environment / refactor residue, NOT a regression introduced by Phase 51D-1. Confirmed by `git checkout origin/main && python -m pytest -m legacy_excel tests/test_persistence.py` -> same ImportError. Out of scope for Phase 51D-1.",
+    "reproduces_on_origin_main": true
+  },
+  "guardrails_preserved": [
+    "No production code changes (main_web.py /validate route untouched)",
+    "No refactor of /validate",
+    "No validation behavior changes",
+    "No financial formula changes",
+    "No runtime calculation changes",
+    "No model output changes",
+    "No scenario behavior changes",
+    "No export behavior changes",
+    "No project factory changes",
+    "No fixture CSV changes",
+    "No schema / migration changes",
+    "No new JavaScript financial calculations",
+    "No generic validation framework",
+    "G20 remains BLOCKED",
+    "R99 / R102 remain NOT APPROVED",
+    "partial_pay_sweep not promoted",
+    "flat / min DSCR sculpting not promoted",
+    "Backend remains source of truth",
+    "run_service.py from Phase 51B remains intact",
+    "compare_service.py from Phase 51C-2 remains intact",
+    "/run route from Phase 51B remains thin (< 200 non-blank body lines)",
+    "/compare route from Phase 51C-2 remains thin (< 50 non-blank body lines)",
+    "main_web.py has zero direct record_export calls",
+    "/validate route has zero direct persistence / record_* calls",
+    "PR #299 remains draft / not merged"
+  ],
+  "recommended_next_phase": "Phase 51D-2 — /validate route vertical extraction into app/services/validation_service.py. Use the same behavior-first approach as 51B and 51C-2: (1) Create validation_service.py with the proposed API (ValidateRouteOutcome / ValidateRouteDeps / execute_validate_route). (2) Slim /validate route in main_web.py. (3) Decide on the runtime-snapshot-resolved-but-unused call: preserve for parity (recommended) OR drop for cleanup (alternative, must be explicitly documented in 51D-2 PR). (4) Pin the new contract with a Phase 51D-2 test suite mirroring test_phase51c2_compare_route_vertical_extraction.py. (5) Update Phase 51A / 51B / 51C-1 / 51C-2 / 51D-1 tests for the new contract (same relaxations as 51B and 51C-2)."
+}
