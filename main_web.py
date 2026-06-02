@@ -85,6 +85,7 @@ from app.export.institutional_workbook import export_institutional_workbook_skel
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
 from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record, resolve_runtime_snapshot, RuntimeSnapshotResolution, check_runtime_allowed
+from app.services.compare_service import CompareRouteDeps, execute_compare_route
 
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
@@ -1586,102 +1587,40 @@ async def run(request: Request):
 
 @app.post("/compare")
 async def compare(request: Request):
-    """Run Base/Downside/Upside comparison. Requires auth."""
+    """Run Base/Downside/Upside comparison. Requires auth.
+
+    Phase 51C-2: orchestration extracted into
+    ``app.services.compare_service.execute_compare_route``. The route is
+    now thin: auth, form parse, deps bundle, service call, render.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
-    snapshot = _collect_form_snapshot(form)
-    project_type = form.get("project_type", "")
-    capacity_mw = form.get("capacity_mw", "")
-    tariff_eur_mwh = form.get("tariff_eur_mwh", "")
-    p50_hours = form.get("p50_hours", "")
-    total_capex_keur = form.get("total_capex_keur", "")
-    opex_y1_keur = form.get("opex_y1_keur", "")
-    gearing_pct = form.get("gearing_pct", "")
-    target_dscr = form.get("target_dscr", "")
-    interest_rate_pct = form.get("interest_rate_pct", "")
-    tenor_years = form.get("tenor_years", "")
-    project_record, workspace_state = _project_workspace_from_snapshot(user, snapshot)
-    project_code = project_record.project_code
-    allow_run, runtime_origin, guard_message = check_runtime_allowed(workspace_state, snapshot)
-    if not allow_run:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/errors.html",
-            context={"errors": [guard_message]},
-        )
-
-    errors = []
-    effective_project_type = project_record.project_type or project_type
-    if effective_project_type not in PROJECT_TYPES:
-        errors.append(f"project_type must be one of {PROJECT_TYPES}")
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/errors.html",
-            context={"errors": errors},
-        )
-
-    if project_record.project_origin == "user_created":
-        try:
-            override = build_projectinputs_from_snapshot(runtime_snapshot)
-        except SnapshotInputError as e:
-            return templates.TemplateResponse(
-                request=request,
-                name="partials/errors.html",
-                context={"errors": [str(e)]},
-            )
-        runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
-    else:
-        try:
-            if runtime_snapshot and runtime_origin == "saved_state" and workspace_state.active_scenario_id:
-                override = build_projectinputs_from_snapshot(runtime_snapshot)
-            else:
-                schema = _build_schema_from_form(
-                    effective_project_type, "Base",
-                    capacity_mw, tariff_eur_mwh, p50_hours,
-                    total_capex_keur, opex_y1_keur,
-                    gearing_pct, target_dscr, interest_rate_pct, tenor_years,
-                )
-                override = build_projectinputs(schema)
-        except (ValueError, Exception) as e:
-            return templates.TemplateResponse(
-                request=request,
-                name="partials/errors.html",
-                context={"errors": [f"Invalid input: {str(e)}"]},
-            )
-
-        runtime_seed = _normalize_template_source(project_record.template_source or project_record.source_project_template, effective_project_type)
-        if runtime_seed == "tuho":
-            runtime_project_key = "TUHO"
-        elif runtime_seed == "oborovo":
-            runtime_project_key = "Oborovo"
-        else:
-            runtime_project_key = "Solar" if _canonical_project_type(effective_project_type) == "Solar" else "Wind"
-    results = {}
-    for sc in SCENARIOS:
-        try:
-            r = run_project(runtime_project_key, sc, project_inputs_override=override)
-            results[sc] = {
-                "project_irr": r["kpis"].get("project_irr"),
-                "equity_irr": r["kpis"].get("equity_irr"),
-                "min_dscr": r["kpis"].get("min_dscr"),
-                "avg_dscr": r["kpis"].get("avg_dscr"),
-                "total_revenue_keur": r["kpis"].get("total_revenue_keur"),
-                "total_ebitda_keur": r["kpis"].get("total_ebitda_keur"),
-            }
-        except Exception as e:
-            results[sc] = {"error": str(e)}
-
+    deps = CompareRouteDeps(
+        collect_form_snapshot=_collect_form_snapshot,
+        project_workspace_from_snapshot=_project_workspace_from_snapshot,
+        canonical_project_type=_canonical_project_type,
+        normalize_template_source=_normalize_template_source,
+        check_runtime_allowed=check_runtime_allowed,
+        resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
+        build_schema_from_form=_build_schema_from_form,
+        build_projectinputs=build_projectinputs,
+        build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
+        scenarios=SCENARIOS,
+        project_types=PROJECT_TYPES,
+        snapshot_input_error=SnapshotInputError,
+        run_project=run_project,
+    )
+    outcome = await execute_compare_route(
+        request=request, form=form, user=user, deps=deps,
+    )
     return templates.TemplateResponse(
         request=request,
-        name="partials/comparison.html",
-        context={
-            "project_type": effective_project_type,
-            "scenarios": SCENARIOS,
-            "results": results,
-        },
+        name=outcome.template_name,
+        context=outcome.context,
+        status_code=outcome.status_code,
     )
 
 

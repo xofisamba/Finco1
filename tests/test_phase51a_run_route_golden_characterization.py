@@ -413,6 +413,12 @@ def test_no_production_code_changes():
     ``main_web.py`` (the /run route becoming thin). Tests covering the
     extraction itself live in
     ``tests/test_phase51b_run_route_vertical_extraction.py``.
+
+    In Phase 51C-2, an additional production change is allowed:
+    ``app/services/compare_service.py`` (new) and a SHRINKING of
+    ``main_web.py`` (the /compare route becoming thin). Tests covering
+    the /compare extraction live in
+    ``tests/test_phase51c2_compare_route_vertical_extraction.py``.
     """
     result = subprocess.run(
         ["git", "diff", "--name-only", "HEAD"],
@@ -425,8 +431,14 @@ def test_no_production_code_changes():
         and not l.startswith("reports/")
     ]
     # In 51B the only legitimate production-code diff is the new
-    # run_service.py and the main_web.py shrink. Anything else is a regression.
-    allowed = {"app/services/run_service.py", "main_web.py"}
+    # run_service.py and the main_web.py shrink. In 51C-2, additionally,
+    # compare_service.py is allowed (new) and main_web.py shrinking for
+    # the /compare route is also allowed. Anything else is a regression.
+    allowed = {
+        "app/services/run_service.py",
+        "app/services/compare_service.py",
+        "main_web.py",
+    }
     unexpected = [c for c in changed if c not in allowed]
     assert unexpected == [], f"Production code changed unexpectedly: {unexpected}"
 
