@@ -1,0 +1,234 @@
+{
+  "phase": "51K-2",
+  "title": "Extract POST /scenarios/{scenario_id}/duplicate into scenario_duplicate_service.py",
+  "type": "behavior-preserving-vertical-extraction",
+  "stacked_on": "51K-1 (a24fdc8b908cfac0e4430fcfda73c89e76382183)",
+  "base_sha": "a24fdc8b908cfac0e4430fcfda73c89e76382183",
+  "head_sha": null,
+  "head_pr": null,
+  "branch": "phase51k2-extract-scenario-duplicate-route",
+  "extraction_target": {
+    "route": "POST /scenarios/{scenario_id}/duplicate",
+    "handler": "duplicate_scenario_endpoint",
+    "service_module": "app/services/scenario_duplicate_service.py",
+    "service_entry_point": "execute_scenario_duplicate_route"
+  },
+  "changed_files": [
+    "app/services/scenario_duplicate_service.py",
+    "main_web.py",
+    "tests/test_phase51k1_scenario_duplicate_route_golden_characterization.py",
+    "tests/test_phase51k2_scenario_duplicate_route_vertical_extraction.py",
+    "tests/test_phase51i_route_extraction_checkpoint_hotspot_map.py",
+    "docs/phase51k2_scenario_duplicate_route_vertical_extraction.md",
+    "reports/phase51k2_scenario_duplicate_route_vertical_extraction_summary.json"
+  ],
+  "route_size_before_after": {
+    "before": {
+      "phase": "51K-1 (pre-extraction)",
+      "total_lines": 73,
+      "non_blank_lines": 67
+    },
+    "after": {
+      "phase": "51K-2 (post-extraction)",
+      "total_lines": 65,
+      "non_blank_lines": 58
+    },
+    "note": "Route code is ~30 non-blank; the rest is a 12-line docstring explaining the thin-route pattern."
+  },
+  "service_api": {
+    "outcome": {
+      "name": "ScenarioDuplicateRouteOutcome",
+      "kind": "dataclass",
+      "fields": [
+        "template_name: str",
+        "context: dict",
+        "payload: dict",
+        "status_code: int",
+        "headers: dict",
+        "is_redirect: bool",
+        "redirect_url: Optional[str]"
+      ]
+    },
+    "deps": {
+      "name": "ScenarioDuplicateRouteDeps",
+      "kind": "dataclass",
+      "callables_count": 9,
+      "callables": [
+        "get_scenario",
+        "duplicate_scenario",
+        "get_project_by_code",
+        "list_scenarios",
+        "get_scenario_history",
+        "list_exports",
+        "build_export_lineage",
+        "get_workspace_state",
+        "render_scenario_workspace"
+      ]
+    },
+    "execute_function": {
+      "name": "execute_scenario_duplicate_route",
+      "kind": "async",
+      "parameters": [
+        "request (Any, keyword-only)",
+        "scenario_id (str, keyword-only)",
+        "user (Any, keyword-only)",
+        "deps (ScenarioDuplicateRouteDeps, keyword-only)"
+      ],
+      "returns": "Rendered response (success) or ScenarioDuplicateRouteOutcome (404)"
+    }
+  },
+  "behaviors_preserved": [
+    "Auth: unauth -> 302 redirect to /login (route-owned)",
+    "scenario_id path parameter passed to get_scenario and duplicate_scenario",
+    "user_id from user.user_id (session, never form)",
+    "get_scenario called once per request",
+    "duplicate_scenario called once per success (after None check)",
+    "404 early return with JSON {error: 'Scenario not found'}",
+    "project_record resolved via get_project_by_code(user.user_id, original.project_code)",
+    "Read-only queries (list_scenarios, get_scenario_history, list_exports, build_export_lineage): 1x each per success",
+    "scenario_summary_cards: 10 fields including export_count",
+    "workspace_state resolved inline in render call (Quirk 5)",
+    "No replay_metadata passed to duplicate_scenario (Quirk 1)",
+    "No _governance_snapshot call (Quirk 4)",
+    "Success: full workspace render via render_scenario_workspace",
+    "404: JSONResponse with status_code=404",
+    "No HX-Trigger / HX-Redirect headers",
+    "Success message: f'Duplicated {original.scenario_name}.'",
+    "No broad except Exception in route"
+  ],
+  "quirks_preserved": [
+    "1. duplicate_scenario called WITHOUT replay_metadata",
+    "2. 404 response is JSON (not HTML / not redirect / not template)",
+    "3. Success message: f'Duplicated {original.scenario_name}.' (with period)",
+    "4. No _governance_snapshot call",
+    "5. workspace_state resolved inline in render call",
+    "6. scenario_summary_cards has 10 specific fields",
+    "7. scenario_summary_cards.export_count per scenario_name",
+    "8. Route is path-parameter-only; no await request.form()",
+    "9. No HX-Trigger / HX-Redirect header",
+    "10. Route uses execute_scenario_duplicate_route(...)"
+  ],
+  "intended_side_effects_preserved": {
+    "per_success": {
+      "get_scenario": 1,
+      "duplicate_scenario": 1,
+      "get_project_by_code": 1,
+      "list_scenarios": 1,
+      "get_scenario_history": 1,
+      "list_exports": 1,
+      "build_export_lineage": 1,
+      "get_workspace_state": 1,
+      "render_scenario_workspace": 1
+    },
+    "per_404": {
+      "get_scenario": 1,
+      "all_other_persistence": 0,
+      "JSONResponse": 1
+    },
+    "ordering": "auth -> get_scenario (with None check + 404 early return) -> duplicate_scenario -> get_project_by_code -> list_scenarios -> get_scenario_history -> list_exports -> build_export_lineage -> render"
+  },
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "save_project",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "db.add / db.commit / db.flush",
+    "session.add / session.commit",
+    "_validate_form (route is path-parameter-only)",
+    "await request.form() (Quirk 8)"
+  ],
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS (no change)",
+    "parity_core_lock": "PASS (no change)",
+    "no_service_imports_main_web_or_main_api": "PASS (11 services clean including new scenario_duplicate_service.py)"
+  },
+  "tests_run": {
+    "test_phase51k1_scenario_duplicate_route_golden_characterization": {
+      "tests": 80,
+      "passed": 80,
+      "note": "Re-pointed to look at service body via _route_or_service_body helper. No tests removed."
+    },
+    "test_phase51k2_scenario_duplicate_route_vertical_extraction": {
+      "tests": 44,
+      "passed": 44,
+      "note": "New test module for vertical extraction contract"
+    },
+    "test_phase51i_route_extraction_checkpoint_hotspot_map": {
+      "tests": 63,
+      "passed": 63,
+      "note": "Updated 1 test to pin post-51K-2 state"
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "tests": 21,
+      "passed": 21
+    }
+  },
+  "known_failures": [
+    {
+      "test_module": "tests/test_persistence.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    },
+    {
+      "test_module": "tests/test_repository.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    }
+  ],
+  "extraction_rationale": {
+    "why_new_module_not_scenario_state_service": "scenario_state_service.py is data-layer only (no Request, no scenario_id, no auth).",
+    "why_new_module_not_scenario_state_route_service": "scenario_state_route_service.py handles workspace draft/discard mutations WITHOUT scenario row creation. Duplicate copies an existing ScenarioRecord; different concern.",
+    "why_new_module_not_scenarios_save_service": "scenarios_save_service.py is for /scenarios/save (creates a new ScenarioRecord from form snapshot). Duplicate copies an existing ScenarioRecord; different concern."
+  },
+  "service_inventory_post_51k2": {
+    "route_orchestration_services": [
+      {"name": "run_service.py", "lines": 653},
+      {"name": "compare_service.py", "lines": 299},
+      {"name": "validation_service.py", "lines": 281},
+      {"name": "download_service.py", "lines": 569},
+      {"name": "save_run_service.py", "lines": 438},
+      {"name": "scenario_state_route_service.py", "lines": 361},
+      {"name": "scenarios_save_service.py", "lines": 450},
+      {"name": "scenario_duplicate_service.py", "lines": 446}
+    ],
+    "data_layer_services": [
+      {"name": "scenario_state_service.py", "lines": 232}
+    ],
+    "export_audit_services": [
+      {"name": "export_service.py", "lines": 332},
+      {"name": "export_audit_service.py", "lines": 193}
+    ],
+    "total_services": 11,
+    "total_lines": 4254
+  },
+  "remaining_inline_routes_post_51k2": {
+    "high_risk": [
+      {"route": "POST /scenarios/add", "non_blank_lines": 62},
+      {"route": "POST /projects/create", "non_blank_lines": 117},
+      {"route": "POST /projects/{project_code}/save-as", "non_blank_lines": 49}
+    ],
+    "medium_risk": [
+      {"route": "POST /scenarios/{scenario_id}/rename", "non_blank_lines": 51},
+      {"route": "POST /scenarios/{scenario_id}/archive", "non_blank_lines": 47},
+      {"route": "POST /scenarios/{scenario_id}/update-overrides", "non_blank_lines": 25},
+      {"route": "POST /scenarios/{scenario_id}/select", "non_blank_lines": 21}
+    ],
+    "total_remaining": 7,
+    "total_remaining_non_blank_lines": 372
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51k2": false
+  },
+  "no_production_code_changes_outside_scope": true,
+  "ready_for_review": true
+}

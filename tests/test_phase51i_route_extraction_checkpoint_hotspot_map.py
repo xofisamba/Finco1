@@ -463,8 +463,10 @@ class TestRecommendedNextSequenceMarkers:
             f"expected <= 60 (thin route after 51J-2 extraction)"
         )
 
-    def test_scenarios_duplicate_route_still_inline(self):
-        """Phase 51K-1 + 51K-2 target: /scenarios/{scenario_id}/duplicate."""
+    def test_scenarios_duplicate_route_extracted_in_51k2(self):
+        """Phase 51K-2: /scenarios/{scenario_id}/duplicate has been
+        extracted into scenario_duplicate_service.py. The route is
+        now thin and service-backed."""
         text = _read(MAIN_WEB)
         m = re.search(
             r'@app\.post\("/scenarios/\{scenario_id\}/duplicate"\).*?(?=\n@app\.(get|post|put|delete|route)\(|\Z)',
@@ -473,7 +475,12 @@ class TestRecommendedNextSequenceMarkers:
         )
         assert m, "/scenarios/{scenario_id}/duplicate not found"
         body = m.group(0)
-        assert "execute_duplicate_route" not in body
+        # Service-backed (post-51K-2)
+        assert "execute_scenario_duplicate_route" in body
+        assert "ScenarioDuplicateRouteDeps" in body
+        # No longer calls persistence directly
+        assert "duplicate_scenario(" not in body
+        assert "get_scenario(" not in body
 
     def test_scenarios_add_route_still_inline(self):
         """Phase 51L-1 + 51L-2 target: /scenarios/add."""
