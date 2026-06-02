@@ -5,16 +5,17 @@
 | Project | FincoGPT / Finco1 |
 | Repository | `xofisamba/Finco1` |
 | Branch (this package) | `parallel-b1-external-review-prep` |
-| **Current base SHA (new main)** | `a541d447063cf288b1a9ea0a7bbf199755e40d53` |
-| **Prior base SHA (superseded)** | `a53d278263f1f9e134d500e1a7915e9bde615626` (= `Phase 51E-1: Download route golden characterization`) |
+| **Current base SHA (latest main)** | `2e41b24f8c47ec544e1ef52e35084646df4d4d8f` |
+| **Prior base SHAs (provenance chain)** | `a53d278263f1f9e134d500e1a7915e9bde615626` (= Phase 51E-1) → `dfe13ab` (Phase 51E-2) → `a541d447063cf288b1a9ea0a7bbf199755e40d53` (Phase 51F) → `2e41b24f8c47ec544e1ef52e35084646df4d4d8f` (Phase 51G-1, current) |
 | Workstream | B1 — external review preparation (docs/report only) |
 | Owner of this PR | Agent B (parallel track; does **not** touch Agent A files) |
 | Document type | External review preparation package |
 | Status | Draft for external reviewer — **not** a marketing, lender, certification, audit, regulatory, or SaaS deliverable |
 
-> The base SHA was rebased from `a53d278` to `a541d447` because main moved
-> after the Phase 51F merge. The prior SHA is preserved in this index for
-> provenance. **All reviewer verification must use the current base SHA.**
+> The base SHA was rebased from `a53d278` to `2e41b24` because main moved
+> through Phase 51E-2, Phase 51F, and Phase 51G-1. The prior SHAs are
+> preserved in this index for provenance. **All reviewer verification
+> must use the current base SHA.**
 
 ---
 
@@ -54,7 +55,7 @@ reports/external_review/external_review_readiness_matrix.json
 
 ## 3. Branch and base
 
-* **Current base commit:** `a541d447063cf288b1a9ea0a7bbf199755e40d53`
+* **Current base commit:** `2e41b24f8c47ec544e1ef52e35084646df4d4d8f`
 * **Branch:** `parallel-b1-external-review-prep`
 * **PR intent:** docs and report only.
 
@@ -63,32 +64,38 @@ conclusions (see `reviewer_instructions.md` §2).
 
 ### 3.1 Base-SHA transition (since the prior draft)
 
-The prior draft of this package was prepared against
+The earliest draft of this package was prepared against
 `a53d278263f1f9e134d500e1a7915e9bde615626`. Since then, main has moved
 forward through the following merges:
 
-| New SHA (short) | Phase | Note |
+| SHA (short) | Phase | Note |
 |---|---|---|
-| `a53d278` | (prior base) | Phase 51E-1 — Download route golden characterization |
-| `dfe13ab` | Phase 51E-2 | Extract download route orchestration — **now on main**, not future work |
-| `a541d44` | **Phase 51F** | Parallel-work and runtime-refactor guardrails — **now on main** and **active** |
+| `a53d278` | (earliest base) | Phase 51E-1 — Download route golden characterization |
+| `dfe13ab` | Phase 51E-2 | Extract download route orchestration — **on main**, not future work |
+| `a541d44` | Phase 51F | Parallel-work and runtime-refactor guardrails — **on main and active** |
+| `2e41b24` | **Phase 51G-1** (current) | POST /save-run golden characterization — **on main**, characterization only, no production code change |
 
-Material changes between the prior base and the current base that
-affect this package:
+Material changes across the provenance chain that affect this package:
 
-* `/download` route orchestration is no longer "future Agent A work";
-  it is on main as of `dfe13ab` and is part of the code the reviewer
-  inspects.
-* **Three Phase 51F guardrails are now active on main** and form part
-  of the state the reviewer evaluates (see §4 below and
+* `/download` route orchestration is on main as of `dfe13ab` and is
+  part of the code the reviewer inspects.
+* **Three Phase 51F guardrails are active on main** and form part of
+  the state the reviewer evaluates (see §4 below and
   `model_scope_and_limitations.md` §3.4).
+* **Phase 51G-1 is on main as of `2e41b24`**: `POST /save-run` route
+  is now characterized (pinned by 58 tests) but **not** extracted or
+  re-implemented. The future extraction is Phase 51G-2, owned by
+  Agent A. Agent B does not own `/save-run` and does not touch it in
+  this PR.
 * `a53d278` is no longer the tip of main and is preserved in this
   package only as provenance.
 
 The package's substantive scope split (validated / pinned / exploratory
-/ unvalidated) was rewritten to reflect the new base. Statements that
-were true at the prior base but false at the current base (for example
-"Phase 51E-2 is not on the base SHA branch") have been removed.
+/ unvalidated) was rewritten at the Phase 51F rebase to reflect the
+new base, and was patched at the Phase 51G-1 rebase to add the
+`/save-run` characterization to the base state description. Statements
+that were true at the prior base but false at the current base have
+been removed or corrected.
 
 ## 4. Active guardrails at the current base (Phase 51F)
 
@@ -208,18 +215,21 @@ high level:
 
 ## 9. Versioning of this package
 
-* This is the **third** version of the external review preparation
-  package (v0.3.0). Version history:
+* This is the **fourth** version of the external review preparation
+  package (v0.4.0). Version history:
   * v0.1.0 drafted at prior base SHA `a53d278` (no local repo
     available, drafted from project rules).
-  * v0.2.0 rebased to current base SHA `a541d447`; package rewritten
-    to reflect the Phase 51F guardrails and the merge of Phase 51E-2.
-  * v0.3.0 (this version) adds a pre-flight test run by the package
-    author at the current base SHA: the Phase 51F test file
-    (`tests/test_phase51f_parallel_work_guardrails.py`) was executed
-    locally and all **21 tests passed** in 0.81s. The reviewer is
-    **not** asked to take this as their own evidence; they must
-    re-run the tests themselves and report results.
+  * v0.2.0 rebased to base SHA `a541d447`; package rewritten to
+    reflect the Phase 51F guardrails and the merge of Phase 51E-2.
+  * v0.3.0 added a pre-flight test run by the package author at the
+    base SHA: `tests/test_phase51f_parallel_work_guardrails.py` was
+    executed locally and all **21 tests passed**.
+  * v0.4.0 (this version) rebases the package onto the current base
+    SHA `2e41b24` and adds the Phase 51G-1 `/save-run`
+    characterization to the base state description. No new files
+    were added; only the six existing B1 files were patched. The
+    pre-flight result of 21/21 Phase 51F tests passing remains
+    valid; Phase 51G-1 does not modify any parity-core file.
 * Any future revision must be opened as a new branch and a new PR,
   never by rewriting history on `parallel-b1-external-review-prep`
   after a reviewer has already received the package.

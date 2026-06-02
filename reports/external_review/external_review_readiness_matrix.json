@@ -2,18 +2,18 @@
   "package": {
     "name": "Finco1 External Review Preparation Package",
     "branch": "parallel-b1-external-review-prep",
-    "current_base_sha": "a541d447063cf288b1a9ea0a7bbf199755e40d53",
-    "prior_base_sha": "a53d278263f1f9e134d500e1a7915e9bde615626",
-    "base_sha_transition": "Main moved forward through Phase 51E-2 (dfe13ab) and Phase 51F (a541d44). Package rebased to current base; prior base preserved for provenance only.",
+    "current_base_sha": "2e41b24f8c47ec544e1ef52e35084646df4d4d8f",
+    "prior_base_sha": "a541d447063cf288b1a9ea0a7bbf199755e40d53",
+    "base_sha_transition": "Main moved forward through Phase 51E-2 (dfe13ab), Phase 51F (a541d44), and Phase 51G-1 (2e41b24). Package rebased to current base; full provenance chain a53d278 -> dfe13ab -> a541d447 -> 2e41b24 is documented in the index.",
     "track": "Agent B (docs/report only)",
     "track_owner": "Agent B",
-    "package_version": "0.3.0",
+    "package_version": "0.4.0",
     "package_status": "draft_for_reviewer",
     "intended_review_window": "single_pass_then_follow_ups"
   },
   "reviewer_instructions": {
     "verify_base_sha_first": true,
-    "expected_base_sha": "a541d447063cf288b1a9ea0a7bbf199755e40d53",
+    "expected_base_sha": "2e41b24f8c47ec544e1ef52e35084646df4d4d8f",
     "do_not_assume_test_pass": true,
     "do_not_reproduce_no_go_claims": true,
     "do_not_treat_pins_as_external_validation": true,
@@ -52,15 +52,15 @@
       "area": "Current base SHA verification",
       "current_status": "Documented; not yet reviewer-verified",
       "evidence_available": [
-        "docs/external_review/external_review_package_index.md §3 (lists current base SHA)",
+        "docs/external_review/external_review_package_index.md §3 (lists current base SHA and full provenance chain)",
         "docs/external_review/reviewer_instructions.md §2 (requires SHA verification as step 1)"
       ],
       "missing_evidence": [
         "Reviewer's own git rev-parse output of their local checkout"
       ],
-      "external_reviewer_question": "Confirm the current base SHA on your local checkout matches a541d447063cf288b1a9ea0a7bbf199755e40d53 before proceeding.",
+      "external_reviewer_question": "Confirm the current base SHA on your local checkout matches 2e41b24f8c47ec544e1ef52e35084646df4d4d8f before proceeding. The full provenance chain a53d278 -> dfe13ab -> a541d447 -> 2e41b24 is documented; only 2e41b24 is being reviewed.",
       "go_no_go_impact": "Blocks all downstream go/no-go opinions if SHA does not match.",
-      "notes": "Prior base SHA a53d278 is documented in the index for provenance only; it is not what is being reviewed."
+      "notes": "Earlier base SHAs are documented in the index for provenance only; they are not what is being reviewed."
     },
     {
       "id": "A02",
@@ -417,6 +417,24 @@
       "notes": "Prior drafts of this package (against base a53d278) treated 51E-2 as future work; that is no longer accurate at the current base."
     },
     {
+      "id": "A29",
+      "area": "Phase 51G-1 POST /save-run golden characterization",
+      "current_status": "On main as of 2e41b24; characterization only, no production code change, not the responsibility of this PR",
+      "evidence_available": [
+        "docs/phase51g1_save_run_route_golden_characterization.md (on the base SHA, NOT modified by this PR)",
+        "reports/phase51g1_save_run_route_golden_characterization_summary.json (on the base SHA, NOT modified by this PR)",
+        "tests/test_phase51g1_save_run_route_golden_characterization.py (on the base SHA, NOT modified by this PR; 58 tests pinning 15 characterized behaviors)",
+        "model_scope_and_limitations.md §2 (added at this rebase)",
+        "no_go_claims.md §7 (added at this rebase)"
+      ],
+      "missing_evidence": [
+        "Reviewer run of tests/test_phase51g1_save_run_route_golden_characterization.py at the current base SHA with observed pass/fail/skip (optional for B1; this test file is Agent A's characterization work and is included only for context)"
+      ],
+      "external_reviewer_question": "Confirm that the /save-run route is on main as a characterized (not extracted) route, that this PR has zero relationship to or effect on the /save-run characterization, and that no Phase 51G-1 file (docs/phase51g1_*, reports/phase51g1_*, tests/test_phase51g1_*) is in this PR's diff.",
+      "go_no_go_impact": "Any /save-run-related change in this PR is a no-go and a track-isolation violation.",
+      "notes": "Phase 51G-1 is owned by Agent A on a separate track and timeline. Future extraction is Phase 51G-2, also Agent A. Agent B explicitly does not own /save-run and does not touch it in this PR."
+    },
+    {
       "id": "A25",
       "area": "Phase 51F guardrails — engine-output golden (TUHO + Oborovo)",
       "current_status": "Active on main; package-author pre-flight run at the current base SHA observed 10/10 engine-output golden tests pass (5 TUHO + 5 Oborovo)",
@@ -483,11 +501,12 @@
     }
   ],
   "global_notes": [
-    "Current base SHA is a541d447063cf288b1a9ea0a7bbf199755e40d53. Prior base SHA a53d278 is preserved in the package for provenance only and is NOT the state under review.",
+    "Current base SHA is 2e41b24f8c47ec544e1ef52e35084646df4d4d8f. Provenance chain a53d278 -> dfe13ab -> a541d447 -> 2e41b24 is documented in the index. Only 2e41b24 is the state under review.",
     "This matrix is a working checklist, not a verdict. The reviewer supplies the verdict per row.",
     "The package is intentionally conservative; reviewers are encouraged to push it further toward 'unvalidated' rather than less.",
     "The presence of a test file in tests/ at the current base SHA is not, by itself, evidence of a passing test.",
-    "Phase 51F pins (engine-output golden, parity-core lock) are regression protection, not external validation. They pin the current model against drift; they do not validate the model against external truth.",
+    "Phase 51F pins (engine-output golden, parity-core lock) are regression protection, not external validation. They pin the current model against drift; they do not validate the model against external truth. Phase 51G-1 did not modify any parity-core file; the four locked files are unchanged from a541d447.",
+    "Phase 51G-1 (POST /save-run golden characterization) is Agent A's characterization-only work, on main as of 2e41b24, and is part of the base state. Agent B does not own /save-run and did not touch any Phase 51G-1 file in this PR.",
     "The matrix and the markdown documents it points at must be read together. The matrix alone is not a substitute for the markdown."
   ]
 }

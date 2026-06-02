@@ -1,7 +1,7 @@
 # Model Scope and Limitations
 
 This file describes the current model scope at the current base SHA
-(`a541d447063cf288b1a9ea0a7bbf199755e40d53`), separated into
+(`2e41b24f8c47ec544e1ef52e35084646df4d4d8f`), separated into
 **validated**, **pinned**, **internally tested**, **exploratory**, and
 **unvalidated** areas, followed by the Phase 51F guardrails, known
 limitations, and required reviewer questions.
@@ -54,11 +54,23 @@ base SHA. The list is descriptive, not exhaustive.
   are pinned by Phase 51F.
 * Web routes and services under `main_web.py`, `main_api.py`, and
   `app/services/**` (owned by Agent A; **not** modified by this PR, but
-  listed for context). `/download` route orchestration is now on main
-  (Phase 51E-2, `dfe13ab`).
-* Internal test suites under `tests/`, including the Phase 51F
-  guardrail tests at
-  `tests/test_phase51f_parallel_work_guardrails.py`.
+  listed for context).
+  * `/download` route orchestration is on main (Phase 51E-2, `dfe13ab`).
+  * `/save-run` route is now characterized on main (Phase 51G-1,
+    `2e41b24`): `POST /save-run` exists in `main_web.py` lines
+    2624–2760, and is pinned by 58 tests in
+    `tests/test_phase51g1_save_run_route_golden_characterization.py`.
+    Phase 51G-1 is **characterization only** — no production code
+    change, no extraction, no financial formula or model output
+    change. The future extraction is Phase 51G-2, owned by Agent A.
+    Agent B does not own `/save-run` and does not touch it in this
+    PR.
+* Internal test suites under `tests/`, including:
+  * Phase 51F guardrail tests at
+    `tests/test_phase51f_parallel_work_guardrails.py`.
+  * Phase 51G-1 golden characterization tests at
+    `tests/test_phase51g1_save_run_route_golden_characterization.py`
+    (58 tests, characterization only).
 * Validation cases under `validation/cases/` (solar and wind cases).
 
 ## 3. Validated, pinned, internally tested, exploratory, unvalidated

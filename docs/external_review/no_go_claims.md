@@ -2,7 +2,7 @@
 
 This file is a **hard list** of claims that the Finco1 project
 **does not make, endorse, support, or imply** at the current base
-SHA `a541d447063cf288b1a9ea0a7bbf199755e40d53`, and that this
+SHA `2e41b24f8c47ec544e1ef52e35084646df4d4d8f`, and that this
 external review package **does not make, endorse, support, or imply**.
 
 The external reviewer is required to read this file, to acknowledge
@@ -118,6 +118,10 @@ The project does **not** claim, and the reviewer must not imply, that:
   SHA being reviewed;
 * behavior on either parallel track has been blessed by the other
   track;
+* the `/save-run` route (now characterized on main by Phase 51G-1)
+  has been extracted, modified, or re-implemented by this PR; Agent B
+  does not own `/save-run` and Phase 51G-2 (future extraction) is
+  Agent A scope;
 * the `/save-run`, scenario routes, project save-as, or
   repository-extraction work is part of this PR;
 * the prior base SHA `a53d278` is the state under review (it is not;

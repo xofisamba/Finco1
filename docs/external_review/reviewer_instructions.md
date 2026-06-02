@@ -49,15 +49,16 @@ git -C path/to/Finco1 rev-parse HEAD
 Expected:
 
 ```
-a541d447063cf288b1a9ea0a7bbf199755e40d53
+2e41b24f8c47ec544e1ef52e35084646df4d4d8f
 ```
 
 If your local checkout does not match, stop and contact the package
 owner. Do not review a different commit without an updated package.
 
-The prior base SHA `a53d278263f1f9e134d500e1a7915e9bde615626` is
-documented in the index for provenance only; it is **not** what you are
-reviewing.
+The provenance chain documented in the index is
+`a53d278` → `dfe13ab` → `a541d447` → `2e41b24`; only `2e41b24` is
+what you are reviewing. The earlier SHAs are kept for provenance
+only.
 
 ## 3. Reading order
 
@@ -127,7 +128,7 @@ review. They are not part of this PR's diff.
 Your deliverable must include, at minimum:
 
 1. **SHA verification statement.** One line: "I verified the base SHA
-   `a541d447…` against my local checkout on `<date>`."
+   `2e41b24…` against my local checkout on `<date>`."
 2. **Readiness matrix response.** For every row in
    `external_review_readiness_matrix.json`, supply:
    * `reviewer_agrees_with_status`: yes / no / partial

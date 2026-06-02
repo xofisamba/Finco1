@@ -184,7 +184,11 @@ at the current base SHA:
    `TestParityCoreLock` match the SHA-256 of the four parity-core
    files at the current base SHA? Compute the actual hashes
    yourself, do not trust the package or the test file's recorded
-   hashes blindly.
+   hashes blindly. Note that Phase 51G-1 (current main) is
+   characterization only and did not modify any parity-core file;
+   the four pinned files (`app/waterfall_core.py`,
+   `app/project_factories.py`, and the two senior-debt extraction
+   CSVs) are unchanged from `a541d447`.
 3. **Test run.** Did the reviewer run
    `tests/test_phase51f_parallel_work_guardrails.py` and observe it
    pass? If the test was skipped (e.g. engine not importable in the
@@ -237,8 +241,9 @@ recorded here for the reviewer's reference, **not** as a substitute
 for the reviewer's own run.
 
 * Command: `python3 -m pytest tests/test_phase51f_parallel_work_guardrails.py -v`
-* Base SHA: `a541d447063cf288b1a9ea0a7bbf199755e40d53`
-* Result: **21 passed in 0.81s** (5 TUHO engine-output golden + 5
+* Base SHA at pre-flight: `a541d447063cf288b1a9ea0a7bbf199755e40d53` (Phase 51F, the base when the pre-flight was run)
+* Current base SHA: `2e41b24f8c47ec544e1ef52e35084646df4d4d8f` (Phase 51G-1, current; pre-flight was not re-run at this base because Phase 51G-1 does not modify any parity-core file or any TUHO/Oborovo pin)
+* Result: **21 passed in 0.81s** at the pre-flight base (5 TUHO engine-output golden + 5
   Oborovo engine-output golden + 4 parametrized parity-core lock + 1
   no-service-imports + 6 guardrail-inventory and docs-cross-check
   tests).
