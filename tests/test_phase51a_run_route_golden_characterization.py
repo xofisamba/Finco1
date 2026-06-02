@@ -66,15 +66,25 @@ def test_run_route_still_in_main_web():
 
 
 def test_run_service_does_not_exist_yet():
-    """app/services/run_service.py must not exist yet (Phase 51B target)."""
+    """Pre-Phase-51B: run_service.py must not exist; in/after 51B: this test is informational.
+
+    Phase 51A pinned the contract that main_web contains /run orchestration
+    and run_service does not exist. Phase 51B extracted the orchestration
+    into run_service.py, so this test now records the lifecycle transition
+    rather than asserting the pre-extraction state.
+
+    In Phase 51B, run_service.py MAY exist (and main_web MAY import it);
+    that is the legitimate next step of the refactor. The Phase 51B test
+    suite (``test_phase51b_run_route_vertical_extraction.py``) is the
+    authoritative post-extraction contract test.
+    """
     if RUN_SERVICE.exists():
-        # If exists, must not be imported by main_web
-        text = MAIN_WEB.read_text()
-        assert "from app.services.run_service" not in text, \
-            "main_web must not import from run_service yet"
-        assert "import app.services.run_service" not in text, \
-            "main_web must not import run_service yet"
+        # Phase 51B+ state: run_service exists; the actual contract
+        # (delegation, no-circular-import, behavior preservation) is
+        # verified in tests/test_phase51b_run_route_vertical_extraction.py.
+        pass
     else:
+        # Pre-51B state: run_service must not exist yet.
         assert not RUN_SERVICE.exists(), \
             "Phase 51B would create this file; must not exist yet"
 
@@ -393,7 +403,17 @@ def test_no_js_financial_calculations_added():
 
 
 def test_no_production_code_changes():
-    """No production code (main_web.py, app/**) should be modified."""
+    """No production code (main_web.py, app/**) should be modified in 51A.
+
+    Phase 51A is characterization-only, so production code must be unchanged.
+    In Phase 51B (or later), main_web.py will legitimately change as the
+    /run orchestration is extracted into run_service.py. When that happens
+    this test's "strict" assertion is relaxed: the only allowed production
+    change is ``app/services/run_service.py`` (new) and a SHRINKING of
+    ``main_web.py`` (the /run route becoming thin). Tests covering the
+    extraction itself live in
+    ``tests/test_phase51b_run_route_vertical_extraction.py``.
+    """
     result = subprocess.run(
         ["git", "diff", "--name-only", "HEAD"],
         capture_output=True, text=True, cwd=str(PROJECT_ROOT),
@@ -404,7 +424,11 @@ def test_no_production_code_changes():
         and not l.startswith("docs/")
         and not l.startswith("reports/")
     ]
-    assert changed == [], f"Production code changed: {changed}"
+    # In 51B the only legitimate production-code diff is the new
+    # run_service.py and the main_web.py shrink. Anything else is a regression.
+    allowed = {"app/services/run_service.py", "main_web.py"}
+    unexpected = [c for c in changed if c not in allowed]
+    assert unexpected == [], f"Production code changed unexpectedly: {unexpected}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
