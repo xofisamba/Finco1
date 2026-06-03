@@ -187,3 +187,38 @@ Per the spec, this is a **review-required** group. The PR is opened as **draft**
 3. Verify the 53E-1 pin still passes
 4. Manually merge (squash)
 5. Then authorize 53F (Group C / workspace_state) which requires its own P0 pin for `save_workspace_state`
+
+## Regression fix (post-review)
+
+After the initial PR was opened, a review identified a regression in
+`_compute_baseline_snapshot`:
+
+- The broken version used uppercase `"TUHO"` / `"Oborovo"` comparisons
+  instead of lowercase `"tuho"` / `"oborovo"`.
+- It did not `return baseline` immediately after the TUHO/Oborovo
+  branches, causing `pi` to be overwritten by the generic Solar/Wind
+  fallback.
+- The nested `_sum_opex` was using `getattr(item, "amount_keur", 0)`
+  instead of `getattr(item, "y1_amount_keur", 0)`.
+
+The fix restores the function **byte-for-byte identical** to
+`origin/main:app/persistence/repository.py` (commit `6ee6544e9d18d0efc3eb0ce1f6099f6c6c2d1ef2`)
+before PR #435 was opened.
+
+### Regression pin tests
+
+`tests/test_phase53e2_compute_baseline_snapshot_regression_pin.py`
+(26 tests, 7 test classes) was added to specifically catch this kind
+of regression. It pins:
+
+1. Lowercase `"tuho"` / `"oborovo"` comparisons in `_compute_baseline_snapshot`.
+2. No uppercase `"TUHO"` / `"Oborovo"` comparisons.
+3. Early `return baseline` after TUHO branch.
+4. Early `return baseline` after Oborovo branch.
+5. Generic fallback comes AFTER both branches.
+6. `_sum_opex` uses `y1_amount_keur` (not `amount_keur`).
+7. `opex_y1_keur` uses `str(_sum_opex(pi.opex))` in all 3 branches.
+8. `active_project` value for each branch (`"tuho-baseline"`, `"oborovo-baseline"`, `normalized_source`).
+9. `project_type` value for each branch (`"Wind"`, `"Solar"`, from canonical_type).
+10. Factory imports are present.
+11. **Byte-for-byte source comparison** to `origin/main`.

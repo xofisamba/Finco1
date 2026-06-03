@@ -350,6 +350,7 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
         create_default_wind_project,
         create_default_solar_project,
     )
+    from app.persistence.db import get_cursor
 
     canonical_type = project_type
     normalized_source = template_source
@@ -379,16 +380,60 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
     }
 
     def _sum_opex(items):
-        return sum(getattr(item, "amount_keur", 0) for item in items)
+        """Sum y1_amount_keur from an opex iterable."""
+        total = 0.0
+        for item in items:
+            total += float(getattr(item, "y1_amount_keur", 0) or 0)
+        return total
 
-    if normalized_source == "TUHO":
+    if normalized_source == "tuho":
         pi = create_default_tuho_wind1()
-    elif normalized_source == "Oborovo":
+        baseline.update({
+            "active_project": "tuho-baseline",
+            "project_name": pi.info.name,
+            "project_type": "Wind",
+            "template_source": "tuho",
+            "country_market": pi.info.country_iso,
+            "capacity_mw": str(pi.technical.capacity_mw),
+            "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+            "p50_hours": str(pi.technical.operating_hours_p50),
+            "total_capex_keur": str(pi.capex.total_capex),
+            "opex_y1_keur": str(_sum_opex(pi.opex)),
+            "target_dscr": str(pi.financing.target_dscr),
+            "interest_rate_pct": str(pi.financing.base_rate + pi.financing.margin_bps / 10_000),
+            "tenor_years": str(pi.financing.senior_tenor_years),
+            "cod_date": str(pi.info.cod_date),
+            "construction_months": str(pi.info.construction_months),
+            "horizon_years": str(pi.info.horizon_years),
+            "capacity_factor": f"{(pi.technical.operating_hours_p50 / 8760) * 100:.2f}",
+            "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+        })
+        return baseline
+
+    if normalized_source == "oborovo":
         pi = create_default_oborovo()
-    elif canonical_type == "Wind":
-        pi = create_default_wind_project()
-    else:
-        pi = create_default_solar_project()
+        baseline.update({
+            "active_project": "oborovo-baseline",
+            "project_name": pi.info.name,
+            "project_type": "Solar",
+            "template_source": "oborovo",
+            "country_market": pi.info.country_iso,
+            "capacity_mw": str(pi.technical.capacity_mw),
+            "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+            "p50_hours": str(pi.technical.operating_hours_p50),
+            "total_capex_keur": str(pi.capex.total_capex),
+            "opex_y1_keur": str(_sum_opex(pi.opex)),
+            "gearing_pct": str(float(getattr(pi.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+            "target_dscr": str(pi.financing.target_dscr),
+            "interest_rate_pct": str(pi.financing.base_rate + pi.financing.margin_bps / 10_000),
+            "tenor_years": str(pi.financing.senior_tenor_years),
+            "cod_date": str(pi.info.cod_date),
+            "construction_months": str(pi.info.construction_months),
+            "horizon_years": str(pi.info.horizon_years),
+            "capacity_factor": f"{(pi.technical.operating_hours_p50 / 8760) * 100:.2f}",
+            "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+        })
+        return baseline
 
     # generic_wind / generic_solar fallback
     if canonical_type == "Solar":

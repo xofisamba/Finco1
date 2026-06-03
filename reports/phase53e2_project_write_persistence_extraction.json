@@ -2,7 +2,7 @@
   "phase": "53E-2",
   "title": "Phase 53E-2: Extract project write persistence functions",
   "base_sha": "6ee6544e9d18d0efc3eb0ce1f6099f6c6c2d1ef2",
-  "head_sha": "6ee6544e9d18d0efc3eb0ce1f6099f6c6c2d1ef2",
+  "head_sha": "fcfe109a08e6a5a82c0c170e3468c2ff209eac61",
   "type": "behavior-preserving persistence refactor",
   "group": "A-2 (project writes)",
   "review_required": true,
@@ -145,5 +145,12 @@
   "hard_gates_pass": true,
   "ready_for_review": true,
   "ready_for_merge": false,
-  "recommended_next_step": "STOP. Wait for user review. Do not start Group C / workspace_state (53F) or Group B / scenarios (53G)."
+  "recommended_next_step": "STOP. Wait for user review. Do not start Group C / workspace_state (53F) or Group B / scenarios (53G).",
+  "regression_fix": {
+    "commit_message": "Restored byte-for-byte _compute_baseline_snapshot from origin/main: repository.py@6ee6544e",
+    "reason": "Reviewer found that initial 53E-2 PR had broken _compute_baseline_snapshot (uppercase TUHO/Oborovo, missing early returns, overwritten pi, _sum_opex using amount_keur instead of y1_amount_keur)",
+    "fix_type": "byte_for_byte_restoration",
+    "regression_pin_tests": 26
+  },
+  "regression_pin_test_file": "tests/test_phase53e2_compute_baseline_snapshot_regression_pin.py"
 }
