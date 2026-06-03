@@ -1,0 +1,57 @@
+{
+  "phase": "51R-1",
+  "route": "POST /scenarios/{scenario_id}/update-overrides",
+  "handler": "update_overrides_endpoint",
+  "risk": "MEDIUM/state-sensitive",
+  "route_total_lines": 30,
+  "route_non_blank_lines": 25,
+  "tests": {"test_phase51r1_scenario_update_overrides_route_golden_characterization": {"count": 56, "pass": 56, "status": "PASS"}},
+  "behaviors_pinned": [
+    "Auth check via get_current_user(request); unauth -> 302 /login",
+    "Body is JSON via await request.json() (NOT form)",
+    "overrides = body if isinstance(body, dict) else {}",
+    "get_scenario(scenario_id, user.user_id) (positional)",
+    "404 if scenario not found",
+    "400 if record.is_base_case (cannot override Base Case)",
+    "update_scenario_overrides(user.user_id, scenario_id, overrides)",
+    "500 if update returns None",
+    "templates.TemplateResponse with partials/scenario_tab.html",
+    "context via _build_scenario_tab_context",
+    "HX-Trigger: 'overridesUpdated' (unique to this route)",
+    "No HX-Redirect"
+  ],
+  "intended_side_effects": [
+    {"name": "get_scenario", "count": 1, "type": "read"},
+    {"name": "update_scenario_overrides", "count": 1, "type": "write"},
+    {"name": "get_project_record", "count": 1, "type": "read"},
+    {"name": "get_workspace_state", "count": 1, "type": "read"},
+    {"name": "list_scenarios", "count": 1, "type": "read"}
+  ],
+  "forbidden_side_effects_absent": ["record_export", "record_download_export", "record_runtime_summary_export", "record_institutional_workbook_export", "record_workspace_runtime", "update_scenario_last_run_summary", "save_run", "run_project", "build_institutional_workbook_export", "build_excel_export_for_post_request", "build_runtime_summary_csv_export", "build_values_only_export_for_project", "add_scenario", "rename_scenario", "archive_scenario", "create_scenario", "db.add", "db.commit", "db.flush", "session.add", "session.commit"],
+  "behavior_quirks": [
+    {"id": 1, "name": "json_body", "description": "body is JSON (not form)"},
+    {"id": 2, "name": "overrides_typecheck", "description": "overrides = body if isinstance(body, dict) else {}"},
+    {"id": 3, "name": "is_base_case_gate", "description": "400 if record.is_base_case"},
+    {"id": 4, "name": "500_on_update_failure", "description": "500 if update_scenario_overrides returns None"},
+    {"id": 5, "name": "partial_template", "description": "partials/scenario_tab.html (NOT full workspace)"},
+    {"id": 6, "name": "hx_trigger_overrides_updated", "description": "HX-Trigger 'overridesUpdated' (unique to this route)"},
+    {"id": 7, "name": "no_hx_redirect", "description": "no HX-Redirect (uses HX-Trigger instead)"},
+    {"id": 8, "name": "uses_build_scenario_tab_context", "description": "uses _build_scenario_tab_context (NOT _render_scenario_workspace)"},
+    {"id": 9, "name": "positional_get_scenario", "description": "get_scenario(scenario_id, user.user_id) (positional)"},
+    {"id": 10, "name": "keyword_get_project_record", "description": "get_project_record(user_id=..., project_code=...) (KEYWORD args)"}
+  ],
+  "error_paths": [
+    {"status_code": 302, "type": "redirect", "condition": "unauthenticated", "target": "/login"},
+    {"status_code": 404, "type": "json_error", "condition": "scenario not found", "body": "Scenario not found"},
+    {"status_code": 400, "type": "json_error", "condition": "is_base_case", "body": "Cannot override Base Case via this endpoint"},
+    {"status_code": 500, "type": "json_error", "condition": "update_scenario_overrides returns None", "body": "Failed to update overrides"},
+    {"status_code": 200, "type": "render_partial", "condition": "success", "body": "partials/scenario_tab.html with HX-Trigger"}
+  ],
+  "extraction_recommendation": {
+    "module_path": "app/services/scenario_update_overrides_service.py",
+    "deps_callables_count": 6
+  },
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_touched": false,
+  "ready_for_51r2": true
+}
