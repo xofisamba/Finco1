@@ -29,6 +29,7 @@ from app.persistence.scenarios_repository import (
     duplicate_scenario,
     rename_scenario,
     save_scenario,
+    add_scenario,
 )
 
 __all__ = [

@@ -64,7 +64,6 @@ class TestP0PinStillPasses:
 
 class TestOtherHighRiskWritesUntouched:
     @pytest.mark.parametrize("fn_name", [
-        "add_scenario",
         "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])

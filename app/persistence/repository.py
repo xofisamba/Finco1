@@ -118,6 +118,7 @@ from app.persistence.scenarios_repository import (
     duplicate_scenario,
     promote_scenario_to_base_case,
     save_scenario,
+    add_scenario,
 )
 
 
@@ -478,87 +479,6 @@ def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], 
     )
 
 
-
-def add_scenario(
-    user_id: str,
-    project_id: str,
-    project_code: str,
-    scenario_name: str,
-    parent_scenario_id: str,
-    base_input_set: dict[str, Any],
-    overrides: Optional[dict[str, Any]] = None,
-    governance_state: Optional[dict[str, Any]] = None,
-    replay_metadata: Optional[dict[str, Any]] = None,
-) -> Optional[ScenarioRecord]:
-    """Add a non-base scenario inheriting from a parent (typically the Base Case).
-
-    The new scenario starts with empty overrides, so its effective snapshot
-    is identical to the parent's base_input_set.
-    """
-    # Resolve effective snapshot = base_input_set merged with overrides
-    resolved = resolve_scenario_snapshot(base_input_set, overrides or {})
-
-    scenario_id = uuid.uuid4().hex[:16]
-    now = _now_utc()
-    governance_state = dict(governance_state or {})
-    replay_metadata = dict(replay_metadata or {})
-    replay_metadata.setdefault("scenario_id", scenario_id)
-    replay_metadata["parent_scenario_id"] = parent_scenario_id
-    replay_metadata["action"] = "add_scenario"
-
-    with get_cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO scenarios (
-                scenario_id, project_id, user_id, scenario_name, project_code,
-                source_project_template, copied_from_scenario_id, archived,
-                is_base_case, parent_scenario_id,
-                base_input_set_json, overrides_json,
-                snapshot_json, governance_state_json,
-                last_run_summary_json, replay_metadata_json,
-                schema_version, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?, '1.0', ?, ?)
-            """,
-            (
-                scenario_id,
-                project_id,
-                user_id,
-                scenario_name,
-                project_code,
-                "",
-                parent_scenario_id,
-                _to_json(dict(base_input_set)),
-                _to_json(dict(overrides or {})),
-                _to_json(resolved),
-                _to_json(governance_state),
-                _to_json({}),
-                _to_json(replay_metadata),
-                now.isoformat(),
-                now.isoformat(),
-            ),
-        )
-
-    return ScenarioRecord(
-        scenario_id=scenario_id,
-        project_id=project_id,
-        user_id=user_id,
-        scenario_name=scenario_name,
-        project_code=project_code,
-        source_project_template="",
-        copied_from_scenario_id=None,
-        archived=False,
-        is_base_case=False,
-        parent_scenario_id=parent_scenario_id,
-        base_input_set=dict(base_input_set),
-        overrides=dict(overrides or {}),
-        schema_version="1.0",
-        snapshot=resolved,
-        governance_state=governance_state,
-        last_run_summary={},
-        replay_metadata=replay_metadata,
-        created_at=now,
-        updated_at=now,
-    )
 
 
 def update_scenario_last_run_summary(

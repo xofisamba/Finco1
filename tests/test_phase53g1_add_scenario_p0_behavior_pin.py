@@ -24,6 +24,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_PY = REPO_ROOT / "app" / "persistence" / "repository.py"
+SCENARIOS_PY = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+# After Phase 53G-5, add_scenario lives in scenarios_repository.py
+PIN_TARGET = SCENARIOS_PY
 
 
 def _read(path: Path) -> str:
@@ -63,10 +66,16 @@ class TestAddScenarioSignature:
 class TestAddScenarioBody:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_function_defined(self, body: str):
+        # After Phase 53G-5, add_scenario lives in scenarios_repository.py
         assert "def add_scenario(" in body
+
+    def test_function_not_defined_in_repository(self):
+        # The def should NOT be in repository.py
+        text_repo = _read(REPOSITORY_PY)
+        assert "def add_scenario" not in text_repo
 
     def test_add_scenario_resolves_via_resolve_scenario_snapshot(self, body: str):
         m = re.search(r"def add_scenario\(.*?(?=\n\ndef |\Z)", body, re.DOTALL)
@@ -112,7 +121,7 @@ class TestAddScenarioBody:
 class TestAddScenarioSql:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_insert_sql(self, body: str):
         m = re.search(r"def add_scenario\(.*?(?=\n\ndef |\Z)", body, re.DOTALL)

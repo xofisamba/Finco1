@@ -247,7 +247,7 @@ class TestOtherHighRiskWritesNotMovedToExports:
 
     @pytest.mark.parametrize("fn_name", [
         "save_project", "save_workspace_state", "save_scenario",
-        "add_scenario", "update_scenario_overrides",
+        "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])
     def test_other_high_risk_write_not_in_exports(self, fn_name):
@@ -262,7 +262,7 @@ class TestOtherHighRiskWritesNotMovedToExports:
 class TestAllHighRiskWritesStillInRepository:
     @pytest.mark.parametrize("fn_name", [
         # save_scenario was moved to scenarios_repository in Phase 53G-4
-        "add_scenario", "update_scenario_overrides",
+        "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])
     def test_non_exports_high_risk_write_still_in_repository_body(self, fn_name):
