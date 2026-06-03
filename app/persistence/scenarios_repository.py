@@ -432,3 +432,58 @@ def add_scenario(
         created_at=now,
         updated_at=now,
     )
+
+
+# ============================================================
+# Group B high-risk write: update_scenario_overrides (Phase 53G-6)
+# ============================================================
+
+
+def update_scenario_overrides(
+    user_id: str,
+    scenario_id: str,
+    overrides: dict[str, Any],
+) -> "Optional[ScenarioRecord]":
+    """Patch the overrides_json of a non-base scenario.
+
+    Only keys in SCENARIO_INPUT_FIELDS are accepted; everything else is dropped.
+    Returns the updated ScenarioRecord or None if the scenario doesn't exist.
+    """
+    from app.persistence.repository import ScenarioRecord
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return None
+    if record.is_base_case:
+        return None  # base-case overrides are stored in base_input_set; use Inputs tab
+
+    # Merge: existing overrides + new ones (new ones win)
+    merged = dict(record.overrides)
+    for key, value in overrides.items():
+        if key in SCENARIO_INPUT_FIELDS:
+            merged[key] = value
+        # else: silently drop unknown keys per Phase 20B rules
+
+    # Re-resolve effective snapshot
+    resolved = resolve_scenario_snapshot(record.base_input_set, merged)
+    now = _now_utc()
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET overrides_json=?, snapshot_json=?, updated_at=?
+            WHERE scenario_id=? AND user_id=?
+            """,
+            (
+                _to_json(merged),
+                _to_json(resolved),
+                now.isoformat(),
+                scenario_id,
+                user_id,
+            ),
+        )
+
+    record.overrides = merged
+    record.snapshot = resolved
+    record.updated_at = now
+    return record
