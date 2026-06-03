@@ -2352,27 +2352,43 @@ async def add_scenario_endpoint(request: Request):
 
 @app.post("/scenarios/{scenario_id}/select")
 async def select_scenario_endpoint(request: Request, scenario_id: str):
-    """Set the active scenario for the current workspace."""
+    """Set the active scenario for the current workspace.
+
+    Thin orchestration wrapper (Phase 51S-2). The route is
+    responsible for auth, path param, deps bundle construction,
+    and final response rendering. The full
+    /scenarios/{scenario_id}/select orchestration body (scenario
+    lookup, gate, select_scenario write, partial template
+    re-render with HX-Trigger JSON payload) lives in
+    ``app.services.scenario_select_service.execute_scenario_select_route``.
+    """
+    from app.services.scenario_select_service import (
+        ScenarioSelectRouteDeps,
+        execute_scenario_select_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    record = get_scenario(scenario_id, user.user_id)
-    if record is None:
-        return JSONResponse({"error": "Scenario not found"}, status_code=404)
-
-    ok = select_scenario(user.user_id, record.project_id, scenario_id)
-    if not ok:
-        return JSONResponse({"error": "Failed to select scenario"}, status_code=500)
-
-    ws = get_workspace_state(user.user_id, record.project_id)
-    project_record = get_project_record(user_id=user.user_id, project_code=record.project_code)
-    scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    deps = ScenarioSelectRouteDeps(
+        get_scenario=get_scenario,
+        select_scenario=select_scenario,
+        get_workspace_state=get_workspace_state,
+        get_project_record=get_project_record,
+        list_scenarios=list_scenarios,
+        build_scenario_tab_context=_build_scenario_tab_context,
+    )
+    outcome = await execute_scenario_select_route(
+        request=request, scenario_id=scenario_id, user=user, deps=deps,
+    )
+    if outcome.status_code >= 400:
+        return JSONResponse(outcome.payload, status_code=outcome.status_code)
     return templates.TemplateResponse(
         request=request,
-        name="partials/scenario_tab.html",
-        context=_build_scenario_tab_context(user, project_record, scenarios, ws),
-        headers={"HX-Trigger": f"scenarioSelected:{{\"scenario_id\": \"{scenario_id}\"}}"},
+        name=outcome.template_name,
+        context=outcome.context,
+        headers=outcome.headers or None,
     )
 
 

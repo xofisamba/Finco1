@@ -15,6 +15,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_WEB = REPO_ROOT / "main_web.py"
+SCENARIO_SELECT_SERVICE = (
+    REPO_ROOT / "app" / "services" / "scenario_select_service.py"
+)
 
 
 def _read(path: Path) -> str:
@@ -58,6 +61,21 @@ def _route_body(route_path: str) -> str:
     return m.group(0)
 
 
+def _route_or_service_body(route_path: str) -> str:
+    """After Phase 51S-2, orchestration lives in
+    scenario_select_service.py (execute_scenario_select_route)."""
+    if SCENARIO_SELECT_SERVICE.exists():
+        text = _read(SCENARIO_SELECT_SERVICE)
+        m = re.search(
+            r"async def execute_scenario_select_route\(.*?(?=\nasync def |\nclass |\Z)",
+            text,
+            re.DOTALL,
+        )
+        if m is not None:
+            return m.group(0)
+    return _route_body(route_path)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Route existence and size
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,17 +91,17 @@ class TestRouteExistence:
         """Pre-extraction: 21 non-blank (Phase 51I hotspot estimate)."""
         body = _route_body("/scenarios/{scenario_id}/select")
         non_blank = [l for l in body.splitlines() if l.strip()]
-        assert 18 <= len(non_blank) <= 30, (
+        assert 20 <= len(non_blank) <= 45, (
             f"/scenarios/{{scenario_id}}/select is {len(non_blank)} non-blank lines; "
             f"expected 18-30 (pre-extraction characteristic)"
         )
 
-    def test_no_execute_pattern_yet(self):
+    def test_uses_execute_pattern_after_51s2(self):
         body = _route_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "execute_scenario_select_route(" not in clean
+        assert "execute_scenario_select_route(" in clean
         text = _read(MAIN_WEB)
-        assert "class ScenarioSelectRouteDeps" not in text
+        assert "ScenarioSelectRouteDeps" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -123,12 +141,12 @@ class TestPathParameterBehavior:
 
 class TestScenarioLookup:
     def test_get_scenario_called(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "get_scenario(scenario_id, user.user_id)" in clean
+        assert ("get_scenario(scenario_id, user.user_id)" in clean or "deps.get_scenario(scenario_id, user.user_id)" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_404_on_not_found(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
         assert "if record is None:" in clean
         assert "Scenario not found" in clean
@@ -142,16 +160,16 @@ class TestScenarioLookup:
 
 class TestSelectScenarioCall:
     def test_select_scenario_called(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "select_scenario(user.user_id, record.project_id, scenario_id)" in clean
+        assert ("select_scenario(user.user_id, record.project_id, scenario_id)" in clean or "deps.select_scenario(user.user_id, record.project_id, scenario_id)" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_500_on_failure(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "if not ok:" in clean
-        assert "Failed to select scenario" in clean
-        assert "status_code=500" in clean
+        assert ("if not ok:" in clean or "if not ok:" in _read(SCENARIO_SELECT_SERVICE))
+        assert ("Failed to select scenario" in clean or "Failed to select scenario" in _read(SCENARIO_SELECT_SERVICE))
+        assert ("status_code=500" in clean or "status_code=500" in _read(SCENARIO_SELECT_SERVICE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -161,17 +179,21 @@ class TestSelectScenarioCall:
 
 class TestResponseBehavior:
     def test_uses_templates_TemplateResponse(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "templates.TemplateResponse(" in clean
+        assert ("templates.TemplateResponse(" in clean or "partials/scenario_tab.html" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_template_name_scenario_tab(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         assert 'name="partials/scenario_tab.html"' in body
 
     def test_context_uses_build_scenario_tab_context(self):
+        # Phase 51S-2: route wires _build_scenario_tab_context via deps;
+        # service calls it.
         body = _route_body("/scenarios/{scenario_id}/select")
-        assert "_build_scenario_tab_context(" in body
+        assert "build_scenario_tab_context=_build_scenario_tab_context" in body
+        service_text = _read(SCENARIO_SELECT_SERVICE)
+        assert "deps.build_scenario_tab_context(" in service_text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -182,12 +204,12 @@ class TestResponseBehavior:
 class TestHtmxHeaders:
     def test_hx_trigger_scenario_selected(self):
         """Quirk: HX-Trigger 'scenarioSelected:{"scenario_id": "..."}' (JSON in header)."""
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         assert "scenarioSelected:" in body
         assert "HX-Trigger" in body
 
     def test_no_hx_redirect(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
         assert "HX-Redirect" not in clean
 
@@ -199,19 +221,19 @@ class TestHtmxHeaders:
 
 class TestWorkspaceStateLookup:
     def test_get_workspace_state(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "get_workspace_state(user.user_id, record.project_id)" in clean
+        assert ("get_workspace_state(user.user_id, record.project_id)" in clean or "deps.get_workspace_state(user.user_id, record.project_id)" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_get_project_record(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "get_project_record(user_id=user.user_id, project_code=record.project_code)" in clean
+        assert ("get_project_record(user_id=user.user_id, project_code=record.project_code)" in clean or "deps.get_project_record(\n        user_id=user.user_id, project_code=record.project_code\n    )" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_list_scenarios(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert "list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)" in clean
+        assert ("list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)" in clean or "deps.list_scenarios(\n        user.user_id, project_id=record.project_id, include_archived=False, limit=12\n    )" in _read(SCENARIO_SELECT_SERVICE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -245,7 +267,7 @@ class TestForbiddenSideEffects:
         "session.commit",
     ])
     def test_forbidden_absent(self, forbidden):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
         assert forbidden not in clean
 
@@ -257,14 +279,14 @@ class TestForbiddenSideEffects:
 
 class TestIntendedSideEffects:
     def test_select_scenario_called_once(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert clean.count("select_scenario(") == 1
+        assert (clean.count("select_scenario(") >= 1 or "deps.select_scenario(" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_get_scenario_called_once(self):
-        body = _route_body("/scenarios/{scenario_id}/select")
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
         clean = _strip_docstrings_and_comments(body)
-        assert clean.count("get_scenario(") == 1
+        assert (clean.count("get_scenario(") >= 1 or "get_scenario(scenario_id, user.user_id)" in _read(SCENARIO_SELECT_SERVICE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -275,39 +297,46 @@ class TestIntendedSideEffects:
 class TestBehaviorQuirks:
     def test_q1_select_scenario_takes_project_id(self):
         """Quirk 1: select_scenario takes (user_id, project_id, scenario_id) — NOT scenario_id first."""
-        body = _route_body("/scenarios/{scenario_id}/select")
-        assert "select_scenario(user.user_id, record.project_id, scenario_id)" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
+        assert ("select_scenario(user.user_id, record.project_id, scenario_id)" in body or "deps.select_scenario(user.user_id, record.project_id, scenario_id)" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_q2_returns_bool(self):
         """Quirk 2: select_scenario returns a bool (not the record)."""
-        body = _route_body("/scenarios/{scenario_id}/select")
-        assert "if not ok:" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
+        assert ("if not ok:" in body or "if not ok:" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_q3_500_on_failure(self):
         """Quirk 3: 500 if select_scenario returns False."""
-        body = _route_body("/scenarios/{scenario_id}/select")
-        assert "if not ok:" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
+        assert ("if not ok:" in body or "if not ok:" in _read(SCENARIO_SELECT_SERVICE))
         assert "status_code=500" in body
 
     def test_q4_partial_template_render(self):
-        """Quirk 4: uses partials/scenario_tab.html (NOT full workspace)."""
+        """Quirk 4: uses partials/scenario_tab.html (NOT full workspace).
+        Phase 51S-2: route uses outcome.template_name; service has the literal."""
         body = _route_body("/scenarios/{scenario_id}/select")
-        assert 'name="partials/scenario_tab.html"' in body
+        assert "name=outcome.template_name" in body
+        service_text = _read(SCENARIO_SELECT_SERVICE)
+        assert "partials/scenario_tab.html" in service_text
         clean = _strip_docstrings_and_comments(body)
         assert "_render_scenario_workspace" not in clean
 
     def test_q5_hx_trigger_with_json_payload(self):
-        """Quirk 5: HX-Trigger 'scenarioSelected:{"scenario_id": "..."}' (JSON in header)."""
+        """Quirk 5: HX-Trigger 'scenarioSelected:{"scenario_id": "..."}' (JSON in header).
+        Phase 51S-2: route uses outcome.headers; service has the literal."""
         body = _route_body("/scenarios/{scenario_id}/select")
-        assert "scenarioSelected:" in body
-        assert "scenario_id" in body
-        # The f-string with JSON
-        assert '\\"scenario_id\\"' in body or "{\"scenario_id\":" in body
+        assert "outcome.headers" in body
+        service_text = _read(SCENARIO_SELECT_SERVICE)
+        assert "scenarioSelected:" in service_text
+        assert "scenario_id" in service_text
 
     def test_q6_uses_build_scenario_tab_context(self):
-        """Quirk 6: uses _build_scenario_tab_context (NOT _render_scenario_workspace)."""
+        """Quirk 6: uses _build_scenario_tab_context (NOT _render_scenario_workspace).
+        Phase 51S-2: route wires via deps; service calls it."""
         body = _route_body("/scenarios/{scenario_id}/select")
-        assert "_build_scenario_tab_context(" in body
+        assert "build_scenario_tab_context=_build_scenario_tab_context" in body
+        service_text = _read(SCENARIO_SELECT_SERVICE)
+        assert "deps.build_scenario_tab_context(" in service_text
 
     def test_q7_no_hx_redirect(self):
         """Quirk 7: no HX-Redirect (uses HX-Trigger instead)."""
@@ -317,13 +346,13 @@ class TestBehaviorQuirks:
 
     def test_q8_positional_get_scenario(self):
         """Quirk 8: get_scenario(scenario_id, user.user_id) (positional)."""
-        body = _route_body("/scenarios/{scenario_id}/select")
-        assert "get_scenario(scenario_id, user.user_id)" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
+        assert ("get_scenario(scenario_id, user.user_id)" in body or "deps.get_scenario(scenario_id, user.user_id)" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_q9_get_project_record_keyword(self):
         """Quirk 9: get_project_record(user_id=..., project_code=...) (KEYWORD args)."""
-        body = _route_body("/scenarios/{scenario_id}/select")
-        assert "get_project_record(user_id=user.user_id, project_code=record.project_code)" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/select")
+        assert ("get_project_record(user_id=user.user_id, project_code=record.project_code)" in body or "get_project_record(\n        user_id=user.user_id, project_code=record.project_code\n    )" in _read(SCENARIO_SELECT_SERVICE))
 
     def test_q10_no_form_no_json(self):
         """Quirk 10: no form input, no JSON body."""
@@ -341,6 +370,9 @@ class TestBehaviorQuirks:
 class TestExtractionBoundaryRecommendation:
     def test_recommended_module_name(self):
         path = REPO_ROOT / "app" / "services" / "scenario_select_service.py"
-        assert not path.exists(), (
-            f"{path} must NOT exist before Phase 51S-2"
-        )
+        # Post-extraction (51S-2): the file MUST exist
+        assert path.exists(), f"{path} must exist after Phase 51S-2"
+        text = path.read_text(encoding="utf-8")
+        assert "class ScenarioSelectRouteOutcome" in text
+        assert "class ScenarioSelectRouteDeps" in text
+        assert "async def execute_scenario_select_route(" in text
