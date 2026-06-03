@@ -206,7 +206,10 @@ class TestAddScenarioCoupling:
 
 class TestSaveScenarioCoupling:
     def test_save_scenario_uses_insert_not_upsert(self):
-        text = _read(REPOSITORY_PY)
+        # After Phase 53G-4, save_scenario lives in scenarios_repository.py
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def save_scenario\(.*?(?=\n\ndef |\Z)", text, re.DOTALL)
         body = m.group(0)
         assert "INSERT INTO scenarios" in body
@@ -215,7 +218,9 @@ class TestSaveScenarioCoupling:
         assert "INSERT OR REPLACE" not in body
 
     def test_save_scenario_sets_replay_metadata_keys(self):
-        text = _read(REPOSITORY_PY)
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def save_scenario\(.*?(?=\n\ndef |\Z)", text, re.DOTALL)
         body = m.group(0)
         assert 'replay_metadata.setdefault("project_id", project_id)' in body

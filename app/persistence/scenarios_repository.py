@@ -54,9 +54,10 @@ Public surface preserved:
 """
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, Any, Optional
 
-from app.persistence._helpers import _now_utc, SCENARIO_INPUT_FIELDS
+from app.persistence._helpers import _now_utc, _to_json, SCENARIO_INPUT_FIELDS
 from app.persistence.db import get_cursor
 
 if TYPE_CHECKING:
@@ -272,3 +273,74 @@ def select_scenario(
         replay_metadata={"action": "select_scenario", "scenario_id": scenario_id},
     )
     return True
+
+
+# ============================================================
+# Group B high-risk write: save_scenario (Phase 53G-4)
+# ============================================================
+
+
+def save_scenario(
+    user_id: str,
+    project_id: str,
+    scenario_name: str,
+    project_code: str,
+    source_project_template: str,
+    snapshot: dict[str, Any],
+    governance_state: Optional[dict[str, Any]] = None,
+    last_run_summary: Optional[dict[str, Any]] = None,
+    copied_from_scenario_id: Optional[str] = None,
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> "ScenarioRecord":
+    from app.persistence.repository import ScenarioRecord
+    scenario_id = uuid.uuid4().hex[:16]
+    now = _now_utc()
+    governance_state = governance_state or {}
+    last_run_summary = last_run_summary or {}
+    replay_metadata = dict(replay_metadata or {})
+    replay_metadata.setdefault("project_id", project_id)
+    replay_metadata.setdefault("scenario_id", scenario_id)
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scenarios (
+                scenario_id, project_id, user_id, scenario_name, project_code,
+                source_project_template, copied_from_scenario_id, archived,
+                snapshot_json, governance_state_json, last_run_summary_json, replay_metadata_json,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scenario_id,
+                project_id,
+                user_id,
+                scenario_name,
+                project_code,
+                source_project_template,
+                copied_from_scenario_id,
+                _to_json(snapshot),
+                _to_json(governance_state),
+                _to_json(last_run_summary),
+                _to_json(replay_metadata),
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    return ScenarioRecord(
+        scenario_id=scenario_id,
+        project_id=project_id,
+        user_id=user_id,
+        scenario_name=scenario_name,
+        project_code=project_code,
+        source_project_template=source_project_template,
+        copied_from_scenario_id=copied_from_scenario_id,
+        archived=False,
+        snapshot=snapshot,
+        governance_state=governance_state,
+        last_run_summary=last_run_summary,
+        replay_metadata=replay_metadata,
+        created_at=now,
+        updated_at=now,
+    )
