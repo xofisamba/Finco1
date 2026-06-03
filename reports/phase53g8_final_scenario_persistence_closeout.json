@@ -1,0 +1,259 @@
+{
+  "phase": "53G-8",
+  "title": "Final scenario persistence closeout",
+  "type": "closeout_docs",
+  "base_sha": "9fb750e07a6d5d44aa65e09fb14c577af3076ac2",
+  "head_sha": "a76928b3f2205a73a3a832961f473ef1a07baefa",
+  "branch": "phase53g8-final-scenario-persistence-closeout",
+  "merged_prs": [
+    {
+      "pr": 438,
+      "phase": "53G-1",
+      "title": "P0 pins + coupling pin",
+      "merge_sha": "5e06e46f80845a6d492b2851de461e5a99810de3"
+    },
+    {
+      "pr": 439,
+      "phase": "53G-2",
+      "title": "Scenario read extraction",
+      "merge_sha": "c2c35ca96c2cf6cc7abc8dc204ccf0c825681f7b"
+    },
+    {
+      "pr": 440,
+      "phase": "53G-3",
+      "title": "Low-risk scenario action extraction",
+      "merge_sha": "989b624584af28961a26fea33f0841b45d91bb94"
+    },
+    {
+      "pr": 441,
+      "phase": "53G-4",
+      "title": "save_scenario extraction",
+      "merge_sha": "f779133085e8a9594e2a220c4e87e62862024993"
+    },
+    {
+      "pr": 442,
+      "phase": "53G-5",
+      "title": "add_scenario extraction",
+      "merge_sha": "6c1d08953f689fb5698f7778b7c41e13756b33e3"
+    },
+    {
+      "pr": 443,
+      "phase": "53G-6",
+      "title": "update_scenario_overrides extraction",
+      "merge_sha": "6b30b0aae0dfce7834bf912f23dd9fa4ad2b79ff"
+    },
+    {
+      "pr": 444,
+      "phase": "53G-7",
+      "title": "get_or_create_base_case_scenario + get_base_case_scenario",
+      "merge_sha": "9fb750e07a6d5d44aa65e09fb14c577af3076ac2"
+    }
+  ],
+  "final_repository_inventory": {
+    "loc": 455,
+    "responsibilities": [
+      "compatibility_facade (12 re-exports)",
+      "5 NOT-Group-B scenario/workspace helpers",
+      "3 deferred dataclasses (ProjectRecord, ScenarioRecord, WorkspaceStateRecord)"
+    ],
+    "remaining_functions": [
+      {
+        "name": "seed_scenarios_if_needed",
+        "reason": "NOT Group B (workshop seeding)"
+      },
+      {
+        "name": "get_scenario_provenance",
+        "reason": "NOT Group B (provenance metadata)"
+      },
+      {
+        "name": "runtime_guard_for_snapshot",
+        "reason": "NOT Group B (runtime guard)"
+      },
+      {
+        "name": "update_scenario_last_run_summary",
+        "reason": "NOT Group B (run summary writer)"
+      },
+      {
+        "name": "record_workspace_runtime",
+        "reason": "NOT Group B (workspace runtime writer)"
+      }
+    ],
+    "dataclasses": [
+      {
+        "name": "ProjectRecord",
+        "line": 191,
+        "deferred": true
+      },
+      {
+        "name": "ScenarioRecord",
+        "line": 231,
+        "deferred": true
+      },
+      {
+        "name": "WorkspaceStateRecord",
+        "line": 308,
+        "deferred": true
+      }
+    ]
+  },
+  "final_scenarios_repository_inventory": {
+    "loc": 598,
+    "responsibilities": [
+      "Group B-reads (4 functions)",
+      "Group B low-risk actions (5 functions)",
+      "Group B high-risk writes (5 functions)",
+      "1 helper (get_base_case_scenario)"
+    ],
+    "owns_functions": [
+      "resolve_scenario_snapshot",
+      "get_scenario",
+      "list_scenarios",
+      "resolve_active_scenario_runtime_snapshot",
+      "rename_scenario",
+      "archive_scenario",
+      "select_scenario",
+      "duplicate_scenario",
+      "promote_scenario_to_base_case",
+      "save_scenario",
+      "add_scenario",
+      "update_scenario_overrides",
+      "get_or_create_base_case_scenario",
+      "get_base_case_scenario"
+    ]
+  },
+  "high_risk_write_locations": {
+    "save_scenario": "scenarios_repository.py (moved 53G-4)",
+    "add_scenario": "scenarios_repository.py (moved 53G-5)",
+    "update_scenario_overrides": "scenarios_repository.py (moved 53G-6)",
+    "get_or_create_base_case_scenario": "scenarios_repository.py (moved 53G-7)",
+    "remaining_in_repository": []
+  },
+  "compatibility_facade_summary": {
+    "save_scenario": "from app.persistence.repository import save_scenario \u2713",
+    "add_scenario": "from app.persistence.repository import add_scenario \u2713",
+    "update_scenario_overrides": "from app.persistence.repository import update_scenario_overrides \u2713",
+    "get_or_create_base_case_scenario": "from app.persistence.repository import get_or_create_base_case_scenario \u2713",
+    "get_base_case_scenario": "from app.persistence.repository import get_base_case_scenario \u2713",
+    "all_4_high_risk_writes_preserved": true
+  },
+  "app_persistence_init_export_summary": {
+    "save_scenario": "supported (re-exported from scenarios_repository)",
+    "add_scenario": "NOT supported (only via app.persistence.repository.add_scenario)",
+    "update_scenario_overrides": "NOT supported (only via app.persistence.repository.update_scenario_overrides)",
+    "get_or_create_base_case_scenario": "NOT supported (only via app.persistence.repository.get_or_create_base_case_scenario)",
+    "get_base_case_scenario": "NOT supported (only via app.persistence.repository.get_base_case_scenario)",
+    "behavior_changed_vs_pre_stack": false,
+    "pre_stack_export_state": "app.persistence.save_scenario was already re-exported. The other 4 were NEVER directly re-exported from __init__.py (even before the 53G-4..53G-7 stack). No regression."
+  },
+  "p0_pin_summary": {
+    "save_scenario": "16/16 \u2713 re-pointed to scenarios_repository",
+    "add_scenario": "19/19 \u2713 re-pointed to scenarios_repository",
+    "update_scenario_overrides": "16/16 \u2713 re-pointed to scenarios_repository",
+    "get_or_create_base_case_scenario": "17/17 \u2713 re-pointed to scenarios_repository",
+    "scenario_workspace_coupling": "23/23 \u2713 re-pointed where needed"
+  },
+  "coupling_pin_summary": {
+    "bind_workspace_to_scenario_saves_workspace": "preserved in workspace_repository",
+    "discard_workspace_draft_doesnt_touch_scenarios": "preserved in workspace_repository",
+    "update_scenario_overrides_atomic": "preserved in scenarios_repository",
+    "add_scenario_stores_base_overrides_snapshot": "preserved in scenarios_repository",
+    "save_scenario_insert_only": "preserved in scenarios_repository"
+  },
+  "loc_summary": {
+    "repository.py_pre_phase_53": 2042,
+    "repository.py_post_53g8": 455,
+    "repository.py_delta": -1587,
+    "repository.py_delta_pct": -78,
+    "scenarios_repository.py_final": 598,
+    "scenarios_repository.py_new": 598,
+    "all_persistence_modules_final": {
+      "repository.py": 455,
+      "_helpers.py": 140,
+      "runs_repository.py": 140,
+      "exports_repository.py": 370,
+      "projects_repository.py": 480,
+      "workspace_repository.py": 250,
+      "scenarios_repository.py": 598,
+      "db.py": 205,
+      "provenance.py": 171,
+      "backup_restore.py": 480
+    },
+    "total_app_persistence_loc_approx": 3289
+  },
+  "remaining_risks": [
+    {
+      "risk": "Group B refactor introduced a behavior change",
+      "likelihood": "low (medium)",
+      "impact": "high",
+      "mitigation": "4 P0 pins + coupling pin + 236 tests pass"
+    },
+    {
+      "risk": "Test re-pointing missed a test file",
+      "likelihood": "low",
+      "impact": "medium",
+      "mitigation": "All 12+ test files audited; 100% pass"
+    },
+    {
+      "risk": "G5 guardrail weakening",
+      "likelihood": "none",
+      "impact": "none",
+      "mitigation": "G5 list expanded (strengthens)"
+    },
+    {
+      "risk": "__init__.py direct-import regression",
+      "likelihood": "none",
+      "impact": "none",
+      "mitigation": "Documented; no behavior changed"
+    },
+    {
+      "risk": "High-risk write behavior drift",
+      "likelihood": "low",
+      "impact": "high",
+      "mitigation": "Each had P0 pin; 4/4 pins pass"
+    },
+    {
+      "risk": "record_workspace_runtime accidentally moved",
+      "likelihood": "none",
+      "impact": "none",
+      "mitigation": "Stays in repository.py per spec"
+    }
+  ],
+  "no_go_claims": [
+    "no financial formula changes",
+    "no model output changes",
+    "no fixture CSV changes",
+    "no schema/migration changes",
+    "no JavaScript financial calculations",
+    "no runtime flag promotions",
+    "no parity-core file changes",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "generic solar/wind remain exploratory",
+    "no lender/bank/audit/certification claims",
+    "backend remains source of truth",
+    "rc1 remains frozen"
+  ],
+  "recommended_next_step": "Claude architecture review checkpoint before any new work. Then records/dataclass relocation decision (53H-1 mapping plan). No immediate runtime work before review.",
+  "tests_run": {
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "phase53g1_pins_total": 91,
+    "phase53g2_extraction": 27,
+    "phase53g3_extraction": 30,
+    "phase53g4_extraction": 13,
+    "phase53g5_extraction": 8,
+    "phase53g6_extraction": 7,
+    "phase53g7_extraction": 10,
+    "total": 236
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing",
+    "test_phase52b_persistence_side_effect_map: pre-existing",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing"
+  ]
+}
