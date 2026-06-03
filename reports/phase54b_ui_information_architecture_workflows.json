@@ -1,0 +1,544 @@
+{
+  "phase": "54B",
+  "title": "UI information architecture and workflow map",
+  "type": "docs_report_test_only",
+  "base_sha": "8476fe79d07e3cb72bf3b6621c09021f5c8a5b1d",
+  "head_sha": "8476fe79d07e3cb72bf3b6621c09021f5c8a5b1d",
+  "branch": "phase54b-ui-information-architecture-workflows",
+  "auto_merged": false,
+  "information_architecture": {
+    "sections": [
+      {
+        "id": 1,
+        "name": "Dashboard / Overview",
+        "purpose": "First-page analyst view: active scenario summary, KPIs, recent runs, validation status",
+        "user_intent": "Where am I? What is the state of my work?",
+        "current_templates": [
+          "index.html",
+          "kpis.html",
+          "runtime_summary.html",
+          "errors.html"
+        ],
+        "backend_dependencies": [
+          "scenario_state_service",
+          "run_service",
+          "validation_service"
+        ],
+        "pilot_priority": "HIGH",
+        "enterprise_priority": "HIGH"
+      },
+      {
+        "id": 2,
+        "name": "Projects",
+        "purpose": "Project browser, create/duplicate/select projects",
+        "user_intent": "Find or create a project to work on",
+        "current_templates": [
+          "project_browser.html",
+          "project_selector.html",
+          "new_project_form.html",
+          "new_project_result.html"
+        ],
+        "backend_dependencies": [
+          "projects_create_service",
+          "project_save_as_service"
+        ],
+        "pilot_priority": "HIGH",
+        "enterprise_priority": "MEDIUM"
+      },
+      {
+        "id": 3,
+        "name": "Inputs",
+        "purpose": "Edit revenue, OPEX, CAPEX assumptions",
+        "user_intent": "Change inputs and see impact on the model",
+        "current_templates": [
+          "inputs_section.html",
+          "sheet_revenue.html",
+          "sheet_opex.html",
+          "sheet_opex_detail.html",
+          "sheet_capex.html",
+          "sheet_capex_detail.html",
+          "sheet_production.html",
+          "sheet_construction.html",
+          "sheet_idc.html",
+          "sheet_inputs.html"
+        ],
+        "backend_dependencies": [
+          "scenarios_save_service",
+          "scenarios_add_service",
+          "scenario_update_overrides_service"
+        ],
+        "pilot_priority": "HIGH",
+        "enterprise_priority": "HIGH"
+      },
+      {
+        "id": 4,
+        "name": "Financing",
+        "purpose": "Senior debt / DSCR, SHL / distribution, Tax configuration",
+        "user_intent": "Configure debt and equity layer assumptions",
+        "current_templates": [
+          "sheet_senior_debt.html",
+          "sheet_shl.html",
+          "sheet_tax.html",
+          "debt_dscr_shl_panel.html"
+        ],
+        "backend_dependencies": [
+          "run_service",
+          "save_run_service"
+        ],
+        "pilot_priority": "HIGH",
+        "enterprise_priority": "HIGH"
+      },
+      {
+        "id": 5,
+        "name": "Scenarios",
+        "purpose": "Manage scenarios: list, create, load, save, archive, version",
+        "user_intent": "Switch between scenarios, save my work, compare scenarios",
+        "current_templates": [
+          "scenario_tab.html",
+          "scenario_load_result.html",
+          "scenario_version_history.html",
+          "scenario_workspace.html",
+          "scenario_compare.html"
+        ],
+        "backend_dependencies": [
+          "scenarios_add_service",
+          "scenarios_save_service",
+          "scenario_rename_service",
+          "scenario_archive_service",
+          "scenario_duplicate_service",
+          "scenario_select_service",
+          "scenario_update_overrides_service"
+        ],
+        "pilot_priority": "HIGH",
+        "enterprise_priority": "MEDIUM"
+      },
+      {
+        "id": 6,
+        "name": "Compare",
+        "purpose": "Side-by-side scenario comparison",
+        "user_intent": "What changed between two scenarios?",
+        "current_templates": [
+          "scenario_compare.html",
+          "comparison.html"
+        ],
+        "backend_dependencies": [
+          "compare_service"
+        ],
+        "pilot_priority": "MEDIUM",
+        "enterprise_priority": "MEDIUM"
+      },
+      {
+        "id": 7,
+        "name": "Audit & Reconciliation",
+        "purpose": "Review run history, validation results, audit trail",
+        "user_intent": "What did the model do? Is it consistent?",
+        "current_templates": [
+          "audit_reconciliation_tab.html",
+          "run_history.html",
+          "validation.html"
+        ],
+        "backend_dependencies": [
+          "validation_service",
+          "export_audit_service",
+          "run_service"
+        ],
+        "pilot_priority": "HIGH",
+        "enterprise_priority": "HIGH"
+      },
+      {
+        "id": 8,
+        "name": "Reports / Exports",
+        "purpose": "Download Excel, PDF, JSON exports",
+        "user_intent": "Export my work to share with collaborators",
+        "current_templates": [
+          "export_registry.html"
+        ],
+        "backend_dependencies": [
+          "export_service",
+          "export_audit_service",
+          "download_service"
+        ],
+        "pilot_priority": "MEDIUM",
+        "enterprise_priority": "MEDIUM"
+      },
+      {
+        "id": 9,
+        "name": "Data Room",
+        "purpose": "Project context, fixtures, source documents",
+        "user_intent": "What inputs backed this model?",
+        "current_templates": [],
+        "backend_dependencies": [],
+        "pilot_priority": "LOW",
+        "enterprise_priority": "MEDIUM",
+        "out_of_ui1_scope": true
+      },
+      {
+        "id": 10,
+        "name": "Settings",
+        "purpose": "User preferences, scenario defaults, display options",
+        "user_intent": "Configure my experience",
+        "current_templates": [],
+        "backend_dependencies": [],
+        "pilot_priority": "LOW",
+        "enterprise_priority": "LOW",
+        "out_of_ui1_scope": true
+      },
+      {
+        "id": 11,
+        "name": "Help / Onboarding",
+        "purpose": "Pilot onboarding, workflow guides, limitations notice",
+        "user_intent": "How do I use this?",
+        "current_templates": [
+          "pilot_help_onboarding.html",
+          "pilot_workflow_guide.html",
+          "pilot_limitations_notice.html"
+        ],
+        "backend_dependencies": [],
+        "pilot_priority": "HIGH",
+        "enterprise_priority": "LOW"
+      }
+    ]
+  },
+  "workflow_map": {
+    "workflows": [
+      {
+        "id": 1,
+        "name": "Review factory template",
+        "steps": [
+          "Open project browser",
+          "Click factory template",
+          "Review inputs",
+          "Review sheets",
+          "Review audit tab"
+        ]
+      },
+      {
+        "id": 2,
+        "name": "Duplicate project / create scenario",
+        "steps": [
+          "Open project",
+          "Click save as or duplicate scenario",
+          "Enter name",
+          "Save"
+        ]
+      },
+      {
+        "id": 3,
+        "name": "Edit assumptions",
+        "steps": [
+          "Open inputs section",
+          "Edit line item",
+          "Save (auto-draft or explicit)"
+        ]
+      },
+      {
+        "id": 4,
+        "name": "Save scenario",
+        "steps": [
+          "Click save",
+          "Confirm",
+          "Receive save_result"
+        ]
+      },
+      {
+        "id": 5,
+        "name": "Run model",
+        "steps": [
+          "Click run",
+          "See runtime_summary",
+          "See validation results"
+        ]
+      },
+      {
+        "id": 6,
+        "name": "Validate",
+        "steps": [
+          "Open audit tab",
+          "Review validation summary",
+          "Review pass/warn/fail badges"
+        ]
+      },
+      {
+        "id": 7,
+        "name": "Compare scenarios",
+        "steps": [
+          "Open compare tab",
+          "Select two scenarios",
+          "View diff"
+        ]
+      },
+      {
+        "id": 8,
+        "name": "Audit/reconcile",
+        "steps": [
+          "Open audit tab",
+          "Review badge summary",
+          "Drill into specific checks",
+          "Review run history"
+        ]
+      },
+      {
+        "id": 9,
+        "name": "Download/export",
+        "steps": [
+          "Open export registry",
+          "Select format",
+          "Click download"
+        ]
+      },
+      {
+        "id": 10,
+        "name": "Review run/scenario history",
+        "steps": [
+          "Open history tab",
+          "See run list",
+          "See scenario version list"
+        ]
+      }
+    ]
+  },
+  "backend_dependency_map": {
+    "Dashboard": {
+      "services": [
+        "scenario_state_service",
+        "run_service"
+      ],
+      "persistence": [
+        "scenarios_repository",
+        "runs_repository"
+      ]
+    },
+    "Projects": {
+      "services": [
+        "projects_create_service",
+        "project_save_as_service"
+      ],
+      "persistence": [
+        "projects_repository"
+      ]
+    },
+    "Inputs": {
+      "services": [
+        "scenarios_save_service",
+        "scenarios_add_service",
+        "scenario_update_overrides_service"
+      ],
+      "persistence": [
+        "scenarios_repository"
+      ]
+    },
+    "Financing": {
+      "services": [
+        "run_service",
+        "save_run_service"
+      ],
+      "persistence": [
+        "scenarios_repository",
+        "runs_repository"
+      ]
+    },
+    "Scenarios": {
+      "services": [
+        "scenarios_add_service",
+        "scenarios_save_service",
+        "scenario_rename_service",
+        "scenario_archive_service",
+        "scenario_duplicate_service",
+        "scenario_select_service",
+        "scenario_update_overrides_service"
+      ],
+      "persistence": [
+        "scenarios_repository"
+      ]
+    },
+    "Compare": {
+      "services": [
+        "compare_service"
+      ],
+      "persistence": [
+        "scenarios_repository"
+      ]
+    },
+    "Audit & Reconciliation": {
+      "services": [
+        "validation_service",
+        "export_audit_service",
+        "run_service"
+      ],
+      "persistence": [
+        "scenarios_repository",
+        "runs_repository",
+        "exports_repository"
+      ]
+    },
+    "Reports / Exports": {
+      "services": [
+        "export_service",
+        "export_audit_service",
+        "download_service"
+      ],
+      "persistence": [
+        "exports_repository"
+      ]
+    },
+    "Data Room": {
+      "services": [],
+      "persistence": [],
+      "out_of_ui1_scope": true
+    },
+    "Settings": {
+      "services": [],
+      "persistence": [],
+      "out_of_ui1_scope": true
+    },
+    "Help / Onboarding": {
+      "services": [],
+      "persistence": [],
+      "static_only": true
+    }
+  },
+  "state_indicator_requirements": [
+    "active_scenario",
+    "saved_vs_draft",
+    "last_run",
+    "validation_status",
+    "factory_vs_user_created",
+    "source_locked_fixture_backed",
+    "runtime_impact_per_line",
+    "scope_match",
+    "stale_result_warning",
+    "display_only_row_marker"
+  ],
+  "priority_matrix": {
+    "Dashboard": {
+      "pilot": "HIGH",
+      "enterprise": "HIGH",
+      "ui1": "yes",
+      "ui2": "yes"
+    },
+    "Projects": {
+      "pilot": "HIGH",
+      "enterprise": "MEDIUM",
+      "ui1": "yes",
+      "ui2": "yes"
+    },
+    "Inputs": {
+      "pilot": "HIGH",
+      "enterprise": "HIGH",
+      "ui1": "yes",
+      "ui2": "yes"
+    },
+    "Financing": {
+      "pilot": "HIGH",
+      "enterprise": "HIGH",
+      "ui1": "yes",
+      "ui2": "yes"
+    },
+    "Scenarios": {
+      "pilot": "HIGH",
+      "enterprise": "MEDIUM",
+      "ui1": "yes",
+      "ui2": "yes"
+    },
+    "Compare": {
+      "pilot": "MEDIUM",
+      "enterprise": "MEDIUM",
+      "ui1": "yes",
+      "ui2": "later"
+    },
+    "Audit & Reconciliation": {
+      "pilot": "HIGH",
+      "enterprise": "HIGH",
+      "ui1": "yes",
+      "ui2": "yes"
+    },
+    "Reports / Exports": {
+      "pilot": "MEDIUM",
+      "enterprise": "MEDIUM",
+      "ui1": "yes",
+      "ui2": "later"
+    },
+    "Data Room": {
+      "pilot": "LOW",
+      "enterprise": "MEDIUM",
+      "ui1": "spec",
+      "ui2": "later"
+    },
+    "Settings": {
+      "pilot": "LOW",
+      "enterprise": "LOW",
+      "ui1": "spec",
+      "ui2": "later"
+    },
+    "Help / Onboarding": {
+      "pilot": "HIGH",
+      "enterprise": "LOW",
+      "ui1": "yes",
+      "ui2": "yes"
+    }
+  },
+  "no_go_copy_risks": [
+    {
+      "risk": "validated / audit-ready / lender-grade",
+      "sections": "All",
+      "mitigation": "internal validation / model check / audit trail"
+    },
+    {
+      "risk": "real-time / live",
+      "sections": "Dashboard",
+      "mitigation": "last run with timestamp"
+    },
+    {
+      "risk": "production-ready / SaaS-ready",
+      "sections": "All",
+      "mitigation": "do not use at all in pilot"
+    },
+    {
+      "risk": "committed / locked",
+      "sections": "Scenarios",
+      "mitigation": "saved / versioned"
+    },
+    {
+      "risk": "data room",
+      "sections": "Data Room",
+      "mitigation": "model source / captured inputs"
+    },
+    {
+      "risk": "report",
+      "sections": "Reports",
+      "mitigation": "export / model output"
+    },
+    {
+      "risk": "bankable / lender-ready",
+      "sections": "All",
+      "mitigation": "BANNED in any copy"
+    }
+  ],
+  "recommended_next_step": "54C design system tokens and UI copy guardrails",
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_new": 16,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 132
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
