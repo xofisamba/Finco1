@@ -1,0 +1,333 @@
+{
+  "phase": "54C",
+  "title": "Design system tokens and UI copy guardrails",
+  "type": "docs_report_test_only",
+  "base_sha": "2c66cff8a1082ea44482a4199a4e5a48ddc40bf3",
+  "head_sha": "2c66cff8a1082ea44482a4199a4e5a48ddc40bf3",
+  "branch": "phase54c-design-system-tokens-copy-guardrails",
+  "auto_merged": false,
+  "design_tokens": {
+    "color_palette": {
+      "base": {
+        "--bg-slate-50": "#f0f4f8",
+        "--surface-white": "#ffffff",
+        "--border-light": "#dde4ed",
+        "--border-strong": "#c4cedd"
+      },
+      "primary_navy": {
+        "--navy-900": "#0f1b2d",
+        "--navy-800": "#1e3a5f",
+        "--navy-700": "#1d3352",
+        "--navy-500": "#1a56db"
+      },
+      "accent_blue": {
+        "--blue-primary": "#1a56db",
+        "--blue-hover": "#1744b8"
+      },
+      "clean_energy_green": {
+        "--green-600": "#0f7a52",
+        "--green-100": "#e0f0e9"
+      },
+      "status_semantic": {
+        "--status-pass": "#0f7a52",
+        "--status-warn": "#b45309",
+        "--status-fail": "#b91c1c",
+        "--status-info": "#1a56db"
+      },
+      "text": {
+        "--text-primary": "#0f1b2d",
+        "--text-secondary": "#475569",
+        "--text-muted": "#7a96b8"
+      }
+    },
+    "typography": {
+      "body_font": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "monospace_font": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      "tabular_numeric": "font-feature-settings: 'tnum' 1, 'lnum' 1;",
+      "right_aligned_numbers": "text-align: right; font-variant-numeric: tabular-nums;",
+      "sizes": {
+        "xs": "11px",
+        "sm": "13px",
+        "base": "14px",
+        "md": "16px",
+        "lg": "18px",
+        "xl": "22px",
+        "2xl": "28px",
+        "3xl": "36px"
+      }
+    },
+    "spacing": {
+      "1": "4px",
+      "2": "8px",
+      "3": "12px",
+      "4": "16px",
+      "6": "24px",
+      "8": "32px"
+    },
+    "modes": {
+      "dashboard_cards": "16px padding, 24px gap",
+      "dense_grids": "8px row padding, 12px column gap",
+      "sticky_headers": "position: sticky; top: 0;",
+      "sticky_frozen_columns": "position: sticky; left: 0;"
+    }
+  },
+  "component_vocabulary": [
+    {
+      "name": "chip",
+      "use": "Runtime Impact, validation state, source-locked",
+      "anatomy": "icon + label + optional tooltip"
+    },
+    {
+      "name": "badge",
+      "use": "PASS/WARN/FAIL on audit, scope notice",
+      "anatomy": "label only"
+    },
+    {
+      "name": "banner",
+      "use": "state clarity (factory/active/draft/etc.)",
+      "anatomy": "icon + title + optional description + optional action"
+    },
+    {
+      "name": "card",
+      "use": "KPI cards, scenario summary",
+      "anatomy": "title + body + optional footer"
+    },
+    {
+      "name": "grid",
+      "use": "CAPEX/OPEX/Revenue line items",
+      "anatomy": "header + rows + optional sticky-left col"
+    },
+    {
+      "name": "section",
+      "use": "tab panels, content sections",
+      "anatomy": "title + body"
+    },
+    {
+      "name": "status_pill",
+      "use": "compact state in lists",
+      "anatomy": "label"
+    },
+    {
+      "name": "tooltip",
+      "use": "sub-reason explanations",
+      "anatomy": "hover/focus disclosure"
+    },
+    {
+      "name": "validation_marker",
+      "use": "input cell with validation issue",
+      "anatomy": "icon-only cell border"
+    }
+  ],
+  "runtime_impact_chip_spec": {
+    "states": [
+      {
+        "name": "Drives model",
+        "chip_label": "Drives model",
+        "color": "green-600",
+        "icon": "\u2713",
+        "tooltip": "Input is runtime-effective and directly affects calculation outputs."
+      },
+      {
+        "name": "Display only",
+        "chip_label": "Display only",
+        "color": "slate-600",
+        "icon": "\u25ef",
+        "tooltip": "Field is visible for reference but does not currently affect runtime calculations."
+      },
+      {
+        "name": "Pending",
+        "chip_label": "Pending",
+        "color": "amber-600",
+        "icon": "\u23f3",
+        "tooltip": "Field is planned or captured but not yet wired to runtime."
+      },
+      {
+        "name": "Needs review",
+        "chip_label": "Needs review",
+        "color": "red-600",
+        "icon": "\u26a0",
+        "tooltip": "Field has ambiguous mapping, unresolved source issue, or validation concern. Requires review."
+      }
+    ],
+    "sub_reasons": [
+      "Timing only \u2014 used for construction timing/draw schedule only",
+      "Reference only \u2014 shown for reference, not runtime-effective",
+      "Pending treatment \u2014 captured but treatment is pending",
+      "Pending runtime source \u2014 runtime source not yet connected",
+      "Not comparable \u2014 scope mismatch prevents comparison",
+      "Deferred \u2014 intentionally deferred",
+      "Not applicable \u2014 does not apply to this project/scenario",
+      "Fixture-backed \u2014 value comes from a fixture CSV, not runtime solver",
+      "Frozen schedule \u2014 uses a frozen/scheduled value, not computed",
+      "Source locked \u2014 source is locked (e.g., Excel calibration)",
+      "Validation warning \u2014 has a validation concern",
+      "Excel parity known gap \u2014 known difference from Excel, documented"
+    ]
+  },
+  "state_banner_copy": [
+    {
+      "context": "Factory template",
+      "title": "Factory template",
+      "tone": "info",
+      "description": "This project uses a factory template. Some inputs are source-locked or fixture-backed."
+    },
+    {
+      "context": "User-created project",
+      "title": "User-created project",
+      "tone": "info",
+      "description": "You created this project. All inputs are editable unless source-locked."
+    },
+    {
+      "context": "Active scenario",
+      "title": "Active scenario",
+      "tone": "info",
+      "description": "Editing the active scenario updates the model after save."
+    },
+    {
+      "context": "Saved scenario",
+      "title": "Saved scenario",
+      "tone": "success",
+      "description": "Saved at {timestamp}. Scenario ID: {id}."
+    },
+    {
+      "context": "Browser draft",
+      "title": "Browser draft",
+      "tone": "warn",
+      "description": "This is an unsaved browser draft. Close the tab and your changes may be lost."
+    },
+    {
+      "context": "Dirty state",
+      "title": "Unsaved changes",
+      "tone": "warn",
+      "description": "This scenario has unsaved changes. Last saved at {timestamp}."
+    },
+    {
+      "context": "Stale result",
+      "title": "Stale result",
+      "tone": "warn",
+      "description": "Inputs changed since last run. Re-run the model for current results."
+    },
+    {
+      "context": "Last run",
+      "title": "Last run: {timestamp}",
+      "tone": "neutral",
+      "description": "Run completed at {timestamp}. Run ID: {id}."
+    },
+    {
+      "context": "Validation failed",
+      "title": "Validation failed",
+      "tone": "fail",
+      "description": "Model run did not pass internal validation. See audit tab for details."
+    },
+    {
+      "context": "Display-only row",
+      "title": "Display only",
+      "tone": "neutral",
+      "description": "This row is for reference. Editing is disabled."
+    },
+    {
+      "context": "Pending runtime source",
+      "title": "Pending runtime source",
+      "tone": "warn",
+      "description": "This input is captured but the runtime source is not yet wired. Display only."
+    }
+  ],
+  "forbidden_ui_claims": [
+    "bankable",
+    "bank-grade",
+    "lender-ready",
+    "lender-grade",
+    "certified",
+    "audit-ready",
+    "audit-grade",
+    "validated (alone)",
+    "investor-ready",
+    "SaaS-ready",
+    "production-ready",
+    "external validation",
+    "customer reference",
+    "investment advice",
+    "guaranteed returns"
+  ],
+  "safe_ui_terms": [
+    "model evidence",
+    "reconciliation",
+    "audit trail",
+    "validation checks",
+    "review status",
+    "internal confidence",
+    "controlled pilot",
+    "source mapping",
+    "model provenance",
+    "internal model evidence"
+  ],
+  "no_go_copy_scanner_spec": {
+    "scope": [
+      "app/templates/",
+      "static/",
+      "app/services/ (read-only paths)"
+    ],
+    "rules": [
+      "exact match: any user-facing string with forbidden claim fails",
+      "context exemption: negation of forbidden claim is allowed (e.g., 'Not lender-ready')"
+    ],
+    "implementation_phase": "54E closeout adds scanner test",
+    "phase_54c_test_scope": "verifies JSON spec is correct (does not scan yet)"
+  },
+  "rejection_list": [
+    "Live model",
+    "Real-time results",
+    "Auto-saved (unless implemented)",
+    "Locked (use Saved or Versioned)",
+    "Production",
+    "Bankable",
+    "Audit-ready"
+  ],
+  "component_token_table": {
+    "--chip-padding-y": "2px",
+    "--chip-padding-x": "8px",
+    "--chip-radius": "4px",
+    "--chip-font-size": "11px",
+    "--badge-padding-y": "2px",
+    "--badge-padding-x": "6px",
+    "--banner-padding": "12px",
+    "--banner-radius": "6px",
+    "--banner-icon-size": "16px",
+    "--card-padding": "16px",
+    "--card-radius": "8px",
+    "--card-shadow": "0 1px 2px rgba(15, 27, 45, 0.05)",
+    "--grid-cell-padding-y": "8px",
+    "--grid-cell-padding-x": "12px",
+    "--grid-border": "1px solid var(--border)",
+    "--grid-header-bg": "#f7f9fc",
+    "--grid-row-stripe": "#f7f9fc"
+  },
+  "recommended_next_step": "54D shared LineItemGrid specification",
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_new": 20,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 181
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
