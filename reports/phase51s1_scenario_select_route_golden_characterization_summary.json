@@ -1,0 +1,46 @@
+{
+  "phase": "51S-1",
+  "route": "POST /scenarios/{scenario_id}/select",
+  "handler": "select_scenario_endpoint",
+  "risk": "MEDIUM/LOW",
+  "route_total_lines": 25,
+  "route_non_blank_lines": 21,
+  "tests": {"test_phase51s1_scenario_select_route_golden_characterization": {"count": 54, "pass": 54, "status": "PASS"}},
+  "behaviors_pinned": [
+    "Auth check via get_current_user(request); unauth -> 302 /login",
+    "get_scenario(scenario_id, user.user_id) (positional)",
+    "404 if scenario not found",
+    "select_scenario(user.user_id, record.project_id, scenario_id)",
+    "500 if select_scenario returns False",
+    "templates.TemplateResponse with partials/scenario_tab.html",
+    "context via _build_scenario_tab_context",
+    "HX-Trigger: scenarioSelected:{\"scenario_id\": \"...\"} (JSON in header)"
+  ],
+  "intended_side_effects": [
+    {"name": "get_scenario", "count": 1, "type": "read"},
+    {"name": "select_scenario", "count": 1, "type": "write"},
+    {"name": "get_workspace_state", "count": 1, "type": "read"},
+    {"name": "get_project_record", "count": 1, "type": "read"},
+    {"name": "list_scenarios", "count": 1, "type": "read"}
+  ],
+  "forbidden_side_effects_absent": ["record_export", "record_download_export", "record_runtime_summary_export", "record_institutional_workbook_export", "record_workspace_runtime", "update_scenario_last_run_summary", "save_run", "run_project", "build_institutional_workbook_export", "build_excel_export_for_post_request", "build_runtime_summary_csv_export", "build_values_only_export_for_project", "add_scenario", "rename_scenario", "archive_scenario", "update_scenario_overrides", "create_scenario", "db.add", "db.commit", "db.flush", "session.add", "session.commit"],
+  "behavior_quirks": [
+    {"id": 1, "name": "select_scenario_takes_project_id", "description": "select_scenario(user_id, project_id, scenario_id) - project_id second"},
+    {"id": 2, "name": "returns_bool", "description": "select_scenario returns a bool (not the record)"},
+    {"id": 3, "name": "500_on_failure", "description": "500 if select_scenario returns False"},
+    {"id": 4, "name": "partial_template", "description": "partials/scenario_tab.html (NOT full workspace)"},
+    {"id": 5, "name": "hx_trigger_with_json", "description": "HX-Trigger scenarioSelected:{\"scenario_id\": \"...\"} (JSON in header)"},
+    {"id": 6, "name": "uses_build_scenario_tab_context", "description": "uses _build_scenario_tab_context (NOT _render_scenario_workspace)"},
+    {"id": 7, "name": "no_hx_redirect", "description": "no HX-Redirect (uses HX-Trigger instead)"},
+    {"id": 8, "name": "positional_get_scenario", "description": "get_scenario(scenario_id, user.user_id) (positional)"},
+    {"id": 9, "name": "keyword_get_project_record", "description": "get_project_record(user_id=..., project_code=...) (KEYWORD args)"},
+    {"id": 10, "name": "no_form_no_json", "description": "no form input, no JSON body"}
+  ],
+  "extraction_recommendation": {
+    "module_path": "app/services/scenario_select_service.py",
+    "deps_callables_count": 6
+  },
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_touched": false,
+  "ready_for_51s2": true
+}
