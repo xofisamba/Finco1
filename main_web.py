@@ -2247,52 +2247,56 @@ async def load_scenario_endpoint(request: Request, scenario_id: str):
 
 @app.post("/scenarios/{scenario_id}/duplicate")
 async def duplicate_scenario_endpoint(request: Request, scenario_id: str):
-    """Duplicate a saved scenario snapshot."""
+    """Duplicate a saved scenario snapshot.
+
+    Thin orchestration wrapper (Phase 51K-2). The route is responsible
+    for auth, path-parameter parsing, deps bundle construction, and
+    final response rendering. The full /scenarios/{scenario_id}/
+    duplicate orchestration body (original scenario lookup, 404
+    early return, duplicate_scenario call, project_record resolution,
+    read-only list_scenarios/get_scenario_history/list_exports/
+    build_export_lineage calls, scenario_summary_cards assembly with
+    export_count, workspace_state resolution, success render context
+    assembly) lives in
+    ``app.services.scenario_duplicate_service.execute_scenario_duplicate_route``.
+    """
+    from app.services.scenario_duplicate_service import (
+        ScenarioDuplicateRouteDeps,
+        execute_scenario_duplicate_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    original = get_scenario(scenario_id, user.user_id)
-    if original is None:
-        return JSONResponse({"error": "Scenario not found"}, status_code=404)
-
-    duplicate_scenario(user.user_id, scenario_id)
-    project_record = get_project_by_code(user.user_id, original.project_code)
-    scenarios = list_scenarios(user.user_id, project_id=original.project_id, include_archived=False, limit=12)
-    history = get_scenario_history(user.user_id, project_id=original.project_id, limit=20)
-    exports = list_exports(user.user_id, project_id=original.project_id, limit=8)
-    export_lineage = build_export_lineage(user.user_id, project_id=original.project_id, limit=8)
-    export_counts = {}
-    for entry in export_lineage:
-        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
-    scenario_summary_cards = []
-    for item in scenarios:
-        summary = item.last_run_summary or {}
-        scenario_summary_cards.append(
-            {
-                "scenario_id": item.scenario_id,
-                "scenario_name": item.scenario_name,
-                "project_code": item.project_code,
-                "updated_at": item.updated_at,
-                "copied_from_scenario_id": item.copied_from_scenario_id,
-                "project_irr": summary.get("project_irr"),
-                "equity_irr": summary.get("equity_irr"),
-                "avg_dscr": summary.get("avg_dscr"),
-                "export_count": export_counts.get(item.scenario_name, 0),
-                "governance_state": item.governance_state,
-            }
-        )
-    return _render_scenario_workspace(
-        request,
-        user,
-        project_record,
-        get_workspace_state(user.user_id, original.project_id),
-        scenarios,
-        history,
-        exports,
-        export_lineage,
-        scenario_summary_cards,
-        message=f"Duplicated {original.scenario_name}.",
+    deps = ScenarioDuplicateRouteDeps(
+        get_scenario=get_scenario,
+        duplicate_scenario=duplicate_scenario,
+        get_project_by_code=get_project_by_code,
+        list_scenarios=list_scenarios,
+        get_scenario_history=get_scenario_history,
+        list_exports=list_exports,
+        build_export_lineage=build_export_lineage,
+        get_workspace_state=get_workspace_state,
+        render_scenario_workspace=_render_scenario_workspace,
+    )
+    # The service returns either the rendered workspace
+    # response (success) or a ScenarioDuplicateRouteOutcome
+    # (404 not found, with status_code + payload). The route
+    # translates the outcome to a JSONResponse.
+    result = await execute_scenario_duplicate_route(
+        request=request, scenario_id=scenario_id, user=user, deps=deps,
+    )
+    # If the service returned a FastAPI response (TemplateResponse
+    # from deps.render_scenario_workspace), pass it through.
+    if hasattr(result, "status_code") and hasattr(result, "body"):
+        return result
+    # Otherwise it's a ScenarioDuplicateRouteOutcome for the
+    # 404 not-found path.
+    return JSONResponse(
+        content=result.payload,
+        status_code=result.status_code,
+        headers=result.headers or None,
     )
 
 
