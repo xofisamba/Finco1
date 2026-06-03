@@ -1,0 +1,644 @@
+{
+  "phase": "52E",
+  "title": "Phase 52E: Persistence hotspot and Phase 53 execution plan",
+  "base_sha": "20d90cdf2361d30a99e4f6ab67444ace76700cce",
+  "head_sha": "20d90cdf2361d30a99e4f6ab67444ace76700cce",
+  "type": "docs/report/test only",
+  "objective": "Convert Phase 52A-52D evidence into a concrete Phase 53 execution plan with per-group objective, dependencies, characterization tests, changed files, fa\u00e7ade, rollback, auto-merge policy, single-owner requirement, and duration.",
+  "evidence_chain": {
+    "52A": "PR #422 \u2014 function inventory (61 functions in repository.py)",
+    "52B": "PR #423 \u2014 side-effect matrix (15 write functions, 7 high-risk)",
+    "52C": "PR #424 \u2014 caller graph (4 production files, 19 files with calls, 6 groups)",
+    "52D": "PR #425 \u2014 characterization plan (7 P0 pins required, 5 P1 deferrable)"
+  },
+  "second_order_hotspot_map": {
+    "function_hotspots": [
+      {
+        "rank": 1,
+        "function": "save_workspace_state",
+        "type": "size + writes + convergence",
+        "body_loc": 131,
+        "pressure": "extreme"
+      },
+      {
+        "rank": 2,
+        "function": "save_project",
+        "type": "size + writes + multi-field",
+        "body_loc": 117,
+        "pressure": "extreme"
+      },
+      {
+        "rank": 3,
+        "function": "_compute_baseline_snapshot",
+        "type": "size + helper + project seed coupling",
+        "body_loc": 122,
+        "pressure": "high"
+      },
+      {
+        "rank": 4,
+        "function": "get_or_create_base_case_scenario",
+        "type": "size + writes + idempotent-or-create",
+        "body_loc": 85,
+        "pressure": "high"
+      },
+      {
+        "rank": 5,
+        "function": "add_scenario",
+        "type": "size + writes + multi-table",
+        "body_loc": 80,
+        "pressure": "high"
+      },
+      {
+        "rank": 6,
+        "function": "base_vs_active_compare",
+        "type": "size + mixed",
+        "body_loc": 69,
+        "pressure": "medium"
+      },
+      {
+        "rank": 7,
+        "function": "save_scenario",
+        "type": "writes + replay_metadata",
+        "body_loc": 63,
+        "pressure": "high"
+      },
+      {
+        "rank": 8,
+        "function": "record_export",
+        "type": "writes + audit pipeline sole entry",
+        "body_loc": 60,
+        "pressure": "extreme"
+      },
+      {
+        "rank": 9,
+        "function": "compare_scenarios",
+        "type": "mixed",
+        "body_loc": 57,
+        "pressure": "medium"
+      },
+      {
+        "rank": 10,
+        "function": "resolve_active_scenario_runtime_snapshot",
+        "type": "mixed",
+        "body_loc": 49,
+        "pressure": "medium"
+      }
+    ],
+    "caller_hotspots": [
+      {
+        "rank": 1,
+        "caller": "main_web.py",
+        "calls": 19,
+        "notes": "route file + 36-bulk import",
+        "pressure": "extreme"
+      },
+      {
+        "rank": 2,
+        "caller": "scenario_duplicate_service.py",
+        "calls": 26,
+        "pressure": "high"
+      },
+      {
+        "rank": 3,
+        "caller": "scenario_rename_service.py",
+        "calls": 21,
+        "pressure": "high"
+      },
+      {
+        "rank": 4,
+        "caller": "scenarios_add_service.py",
+        "calls": 18,
+        "pressure": "high"
+      },
+      {
+        "rank": 5,
+        "caller": "scenarios_save_service.py",
+        "calls": 11,
+        "pressure": "medium"
+      },
+      {
+        "rank": 6,
+        "caller": "scenario_archive_service.py",
+        "calls": 10,
+        "pressure": "medium"
+      },
+      {
+        "rank": 7,
+        "caller": "scenario_state_route_service.py",
+        "calls": 9,
+        "pressure": "medium"
+      },
+      {
+        "rank": 8,
+        "caller": "project_save_as_service.py",
+        "calls": 8,
+        "pressure": "medium"
+      },
+      {
+        "rank": 9,
+        "caller": "projects_create_service.py",
+        "calls": 7,
+        "pressure": "medium"
+      },
+      {
+        "rank": 10,
+        "caller": "export_audit_service.py",
+        "calls": 7,
+        "pressure": "low"
+      }
+    ],
+    "service_coupling_hotspots": "Top 4 service coupling hotspots are all scenario-domain (scenarios are the most-iterated entity). Group B (scenarios) coordinates with 4 services; Group A (projects) with 2; Group E (exports/audit) with 1; Group D (runs) with 1.",
+    "write_risk_hotspots": [
+      {
+        "function": "save_project",
+        "risk": "multi-table; INSERT-or-UPDATE branching",
+        "mitigation": "P0 pin required"
+      },
+      {
+        "function": "save_workspace_state",
+        "risk": "central convergence; last_runtime_* fields",
+        "mitigation": "P0 pin required"
+      },
+      {
+        "function": "save_scenario",
+        "risk": "INSERT only; no idempotency guard",
+        "mitigation": "P0 pin required"
+      },
+      {
+        "function": "add_scenario",
+        "risk": "multi-table (parent + new row)",
+        "mitigation": "P0 pin required"
+      },
+      {
+        "function": "record_export",
+        "risk": "sole audit entry point",
+        "mitigation": "P0 pin required"
+      },
+      {
+        "function": "update_scenario_overrides",
+        "risk": "is_base_case gate + filter",
+        "mitigation": "P0 pin required"
+      },
+      {
+        "function": "get_or_create_base_case_scenario",
+        "risk": "idempotent-or-create",
+        "mitigation": "P0 pin via Group B"
+      }
+    ],
+    "metadata_risk_hotspots": "replay_metadata_json is the single most-touched metadata column (13/15 writes). governance_state_json, last_run_summary_json, last_runtime_summary_json are less-touched but still cross-function dependencies."
+  },
+  "phase53_refactor_order": [
+    {
+      "rank": 1,
+      "group": "F",
+      "name": "helpers",
+      "function_count": 9,
+      "required_pins": 0,
+      "auto_merge": true,
+      "estimated_duration": "30 min"
+    },
+    {
+      "rank": 2,
+      "group": "D",
+      "name": "runs",
+      "function_count": 5,
+      "required_pins": 0,
+      "auto_merge": true,
+      "estimated_duration": "1 hour"
+    },
+    {
+      "rank": 3,
+      "group": "E",
+      "name": "exports+audit",
+      "function_count": 11,
+      "required_pins": 0,
+      "auto_merge": true,
+      "estimated_duration": "1 hour"
+    },
+    {
+      "rank": 4,
+      "group": "A-reads",
+      "name": "project reads",
+      "function_count": 6,
+      "required_pins": 0,
+      "auto_merge": true,
+      "estimated_duration": "30 min"
+    },
+    {
+      "rank": 5,
+      "group": "C",
+      "name": "workspace_state",
+      "function_count": 7,
+      "required_pins": 1,
+      "auto_merge": false,
+      "estimated_duration": "2 hours"
+    },
+    {
+      "rank": 6,
+      "group": "B",
+      "name": "scenarios",
+      "function_count": 17,
+      "required_pins": 5,
+      "auto_merge": false,
+      "estimated_duration": "1 day"
+    }
+  ],
+  "phase53_group_plans": {
+    "F_helpers": {
+      "objective": "Extract pure helper functions to app/persistence/_helpers.py; one-line re-exports in repository.py.",
+      "functions_included": [
+        "_now_utc",
+        "_to_json",
+        "_from_json",
+        "_from_iso",
+        "_safe_number",
+        "_metric_value",
+        "_strip_empty_fields",
+        "_format_db_timestamp",
+        "snapshots_equal"
+      ],
+      "functions_excluded": [
+        "_compute_baseline_snapshot",
+        "_get_least_created_scenario_for_project",
+        "_build_default_snapshot",
+        "_fill_missing_defaults",
+        "_sum_opex",
+        "_scenario_runtime_dict",
+        "_build_compare_metrics",
+        "_delta_sign_class"
+      ],
+      "risk_level": "low",
+      "dependencies": [],
+      "required_pins": 0,
+      "expected_files": [
+        "app/persistence/_helpers.py (new)",
+        "app/persistence/repository.py (re-exports)"
+      ],
+      "compatibility_facade": true,
+      "rollback": "revert single PR",
+      "auto_merge_policy": "allowed (signature-preserving)",
+      "single_owner_required": false,
+      "estimated_duration": "30 min"
+    },
+    "D_runs": {
+      "objective": "Extract run-table reads/writes to app/persistence/runs.py; re-export from repository.py.",
+      "functions_included": [
+        "save_run",
+        "get_run",
+        "list_runs",
+        "delete_run",
+        "count_runs"
+      ],
+      "functions_excluded": [
+        "seed_scenarios_if_needed (cross-domain)"
+      ],
+      "risk_level": "low-medium",
+      "dependencies": [],
+      "required_pins": 0,
+      "expected_files": [
+        "app/persistence/runs.py (new)",
+        "app/persistence/repository.py (re-exports)"
+      ],
+      "compatibility_facade": true,
+      "rollback": "revert single PR",
+      "auto_merge_policy": "allowed (isolated table, narrow surface)",
+      "single_owner_required": false,
+      "estimated_duration": "1 hour"
+    },
+    "E_exports_audit": {
+      "objective": "Extract export/audit reads/writes to app/persistence/exports_audit.py; re-export from repository.py.",
+      "functions_included": [
+        "record_export",
+        "list_exports",
+        "get_scenario_history",
+        "compare_scenarios",
+        "build_export_lineage",
+        "base_vs_active_compare",
+        "_scenario_runtime_dict",
+        "_build_compare_metrics",
+        "_delta_sign_class",
+        "_format_db_timestamp",
+        "snapshots_equal"
+      ],
+      "functions_excluded": [
+        "save_run (Group D)"
+      ],
+      "risk_level": "medium",
+      "dependencies": [],
+      "required_pins": 0,
+      "expected_files": [
+        "app/persistence/exports_audit.py (new)",
+        "app/persistence/repository.py (re-exports)"
+      ],
+      "compatibility_facade": true,
+      "rollback": "revert single PR",
+      "auto_merge_policy": "allowed (audit pipeline pinned)",
+      "single_owner_required": false,
+      "estimated_duration": "1 hour"
+    },
+    "A_projects_reads": {
+      "objective": "Extract project-table reads to app/persistence/projects.py. Sub-group because save_project is too risky to move first.",
+      "functions_included": [
+        "get_project",
+        "get_project_by_code",
+        "list_projects",
+        "list_baseline_records",
+        "get_project_record",
+        "list_project_records"
+      ],
+      "functions_excluded": [
+        "save_project",
+        "seed_baseline_projects_if_needed",
+        "_compute_baseline_snapshot",
+        "_sum_opex",
+        "_build_default_snapshot",
+        "_fill_missing_defaults",
+        "create_project_record",
+        "update_project_record"
+      ],
+      "risk_level": "low",
+      "dependencies": [],
+      "required_pins": 0,
+      "expected_files": [
+        "app/persistence/projects.py (new)",
+        "app/persistence/repository.py (re-exports)"
+      ],
+      "compatibility_facade": true,
+      "rollback": "revert single PR",
+      "auto_merge_policy": "allowed (reads only)",
+      "single_owner_required": false,
+      "estimated_duration": "30 min"
+    },
+    "A_projects_writes_subgroup": {
+      "objective": "Extract project write functions; should be moved after A-reads but before B (so project writes are still in repository.py when B is moved).",
+      "functions_included": [
+        "save_project",
+        "seed_baseline_projects_if_needed",
+        "_compute_baseline_snapshot",
+        "_sum_opex",
+        "_build_default_snapshot",
+        "_fill_missing_defaults",
+        "create_project_record",
+        "update_project_record"
+      ],
+      "functions_excluded": [],
+      "risk_level": "high",
+      "dependencies": [
+        "save_project multi-table writes"
+      ],
+      "required_pins": 1,
+      "expected_files": [
+        "app/persistence/projects.py (additional functions)",
+        "app/persistence/repository.py (re-exports)"
+      ],
+      "compatibility_facade": true,
+      "rollback": "revert single PR",
+      "auto_merge_policy": "review (requires save_project P0 pin)",
+      "single_owner_required": true,
+      "estimated_duration": "2 hours"
+    },
+    "C_workspace_state": {
+      "objective": "Extract workspace_state reads/writes to app/persistence/workspace_state.py; re-export from repository.py. Move central convergence function last among workspace functions.",
+      "functions_included": [
+        "save_workspace_state",
+        "get_workspace_state",
+        "bind_workspace_to_scenario",
+        "discard_workspace_draft",
+        "record_workspace_runtime",
+        "resolve_active_scenario_runtime_snapshot",
+        "runtime_guard_for_snapshot"
+      ],
+      "functions_excluded": [
+        "select_scenario (straddles scenarios \u2194 workspace)"
+      ],
+      "risk_level": "high",
+      "dependencies": [
+        "select_scenario and record_workspace_runtime also call save_workspace_state; these need to be updated atomically with the move"
+      ],
+      "required_pins": 1,
+      "expected_files": [
+        "app/persistence/workspace_state.py (new)",
+        "app/persistence/repository.py (re-exports)",
+        "app/services/scenario_state_route_service.py (caller update)",
+        "app/services/scenario_select_service.py (caller update)"
+      ],
+      "compatibility_facade": true,
+      "rollback": "revert single PR",
+      "auto_merge_policy": "review (high risk; central convergence)",
+      "single_owner_required": true,
+      "estimated_duration": "2 hours"
+    },
+    "B_scenarios": {
+      "objective": "Extract scenario reads/writes to app/persistence/scenarios.py. Largest and most-coupled group; should be the last in Phase 53.",
+      "functions_included": [
+        "save_scenario",
+        "get_scenario",
+        "list_scenarios",
+        "rename_scenario",
+        "archive_scenario",
+        "promote_scenario_to_base_case",
+        "duplicate_scenario",
+        "add_scenario",
+        "update_scenario_last_run_summary",
+        "update_scenario_overrides",
+        "select_scenario",
+        "get_scenario_provenance",
+        "get_base_case_scenario",
+        "get_or_create_base_case_scenario",
+        "seed_scenarios_if_needed",
+        "resolve_scenario_snapshot",
+        "SCENARIO_INPUT_FIELDS"
+      ],
+      "functions_excluded": [],
+      "risk_level": "high",
+      "dependencies": [
+        "save_scenario called by add_scenario and duplicate_scenario; select_scenario calls save_workspace_state (Group C)"
+      ],
+      "required_pins": 5,
+      "expected_files": [
+        "app/persistence/scenarios.py (new)",
+        "app/persistence/repository.py (re-exports)",
+        "4-5 service files (caller updates)"
+      ],
+      "compatibility_facade": true,
+      "rollback": "revert single PR (high coupling makes rollback complex)",
+      "auto_merge_policy": "sign-off (high risk; most-coupled)",
+      "single_owner_required": true,
+      "estimated_duration": "1 day"
+    }
+  },
+  "compatibility_facade_plan": {
+    "initial_state": "One-line per function re-export in app/persistence/repository.py",
+    "example": "from app.persistence._helpers import _now_utc, _to_json, _from_json, _from_iso, _safe_number, _metric_value, _strip_empty_fields, _format_db_timestamp, snapshots_equal",
+    "deprecation_policy": "none for now; permanent until Phase 54+",
+    "post_group_F_D_E_A_reads": "facade re-exports 9 + 5 + 11 + 6 = 31 functions",
+    "post_group_C": "add 7 workspace_state re-exports",
+    "post_group_B": "add 17 scenarios re-exports",
+    "post_group_A_2": "add 8 project writes re-exports"
+  },
+  "auto_merge_policy": {
+    "allowed": [
+      "Group F",
+      "Group D",
+      "Group E",
+      "Group A-reads"
+    ],
+    "review_required": [
+      "Group C",
+      "Group A-2"
+    ],
+    "sign_off_required": [
+      "Group B"
+    ]
+  },
+  "do_not_parallelize_rules": [
+    "Never work on Group C and Group B in parallel (overlap on save_workspace_state)",
+    "Never work on Group A-reads and Group A-2 in parallel (same target file projects.py)",
+    "Never work on Group E and Group B in parallel (overlap on get_scenario_history, compare_scenarios)",
+    "Never touch _init_schema while any group is being moved"
+  ],
+  "safe_parallelization_rules": [
+    "Group F can run in parallel with anything else (pure helpers)",
+    "Group D can run in parallel with Group F, Group A-reads, or Group E (isolated table)",
+    "Group E can run in parallel with Group F, Group D, or Group A-reads (exports independent)",
+    "Group A-reads can run in parallel with Group F, Group D, or Group E (reads only)"
+  ],
+  "stop_conditions": [
+    "Any P0 pin test fails",
+    "Any Phase 51F guardrail fails",
+    "Any production code change beyond the planned file moves",
+    "Any change to app/waterfall_core.py, app/project_factories.py, parity-core, schema, JS, fixture CSVs",
+    "Any change to replay_metadata or governance_state shape",
+    "Any new direct DB connection outside app/persistence/*",
+    "Any merge that includes a model change bundled with a persistence split",
+    "Any conflict that requires non-trivial judgment to resolve"
+  ],
+  "phase53_pr_sequence_proposal": [
+    {
+      "rank": 1,
+      "pr": "53A",
+      "phase": "Group F",
+      "description": "Extract helpers",
+      "new_tests": 0,
+      "auto_merge": true
+    },
+    {
+      "rank": 2,
+      "pr": "53B",
+      "phase": "Group D",
+      "description": "Extract runs",
+      "new_tests": 0,
+      "auto_merge": true
+    },
+    {
+      "rank": 3,
+      "pr": "53C",
+      "phase": "Group E",
+      "description": "Extract exports+audit",
+      "new_tests": 0,
+      "auto_merge": true
+    },
+    {
+      "rank": 4,
+      "pr": "53D",
+      "phase": "Group A-reads",
+      "description": "Extract project reads",
+      "new_tests": 0,
+      "auto_merge": true
+    },
+    {
+      "rank": 5,
+      "pr": "53E",
+      "phase": "Group A-P0",
+      "description": "Add save_project P0 pin",
+      "new_tests": 1,
+      "auto_merge": true
+    },
+    {
+      "rank": 6,
+      "pr": "53F",
+      "phase": "Group A-2",
+      "description": "Extract project writes",
+      "new_tests": 0,
+      "auto_merge": "review"
+    },
+    {
+      "rank": 7,
+      "pr": "53G",
+      "phase": "Group C-P0",
+      "description": "Add save_workspace_state P0 pin",
+      "new_tests": 1,
+      "auto_merge": true
+    },
+    {
+      "rank": 8,
+      "pr": "53H",
+      "phase": "Group C",
+      "description": "Extract workspace_state",
+      "new_tests": 0,
+      "auto_merge": "review"
+    },
+    {
+      "rank": 9,
+      "pr": "53I",
+      "phase": "Group B-P0",
+      "description": "Add 5 P0 pins (save_scenario, add_scenario, update_scenario_overrides, select_scenario, get_or_create_base_case_scenario)",
+      "new_tests": 5,
+      "auto_merge": "review per file"
+    },
+    {
+      "rank": 10,
+      "pr": "53J",
+      "phase": "Group B",
+      "description": "Extract scenarios (large PR)",
+      "new_tests": 0,
+      "auto_merge": "sign-off"
+    }
+  ],
+  "estimated_durations": {
+    "53A": "30 min",
+    "53B": "1 hour",
+    "53C": "1 hour",
+    "53D": "30 min",
+    "53E": "1.5 hours (write pin file)",
+    "53F": "2 hours (large PR + review)",
+    "53G": "1.5 hours (write pin file)",
+    "53H": "2 hours (large PR + review)",
+    "53I": "5 x 1.5 hours = 7.5 hours (5 pin files)",
+    "53J": "1 day (large PR + sign-off)",
+    "total": "~5 working sessions"
+  },
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    },
+    {
+      "test_module": "tests/test_phase52a_repository_inventory_hotspot_map.py",
+      "result": "61/61 pass"
+    },
+    {
+      "test_module": "tests/test_phase52b_persistence_side_effect_map.py",
+      "result": "46/46 pass"
+    },
+    {
+      "test_module": "tests/test_phase52c_repository_caller_coupling_graph.py",
+      "result": "47/47 pass"
+    },
+    {
+      "test_module": "tests/test_phase52d_persistence_behavior_characterization_plan.py",
+      "result": "51/51 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "recommended_next_step": "52F guardrail specifications/tests"
+}
