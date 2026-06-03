@@ -1,0 +1,14 @@
+{
+  "phase": "51R-2",
+  "route": "POST /scenarios/{scenario_id}/update-overrides",
+  "handler": "update_overrides_endpoint",
+  "service_module": "app/services/scenario_update_overrides_service.py",
+  "callables_in_deps": 6,
+  "tests": {
+    "test_phase51r2_scenario_update_overrides_route_vertical_extraction": {"count": 29, "pass": 29, "status": "PASS"},
+    "test_phase51r1_scenario_update_overrides_route_golden_characterization": {"count": 56, "pass": 56, "status": "PASS (re-pointed)"},
+    "test_phase51f_parallel_work_guardrails": {"count": 21, "pass": 21, "status": "PASS"}
+  },
+  "rc1_touched": false,
+  "ready_for_merge": true
+}
