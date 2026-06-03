@@ -1,0 +1,212 @@
+{
+  "phase": "53H-1",
+  "title": "Records dataclass relocation map",
+  "type": "planning_docs",
+  "base_sha": "fdfb7c92097d239d65f58f1e89ac298104965169",
+  "head_sha": "b2420e7b78e5b427ea4be9d932fdeaf59d22d049",
+  "branch": "phase53h1-records-dataclass-relocation-map",
+  "dataclass_inventory": [
+    {
+      "name": "ProjectRecord",
+      "defined_in": "app/persistence/repository.py",
+      "line": 191,
+      "approximate_loc": 40,
+      "deferred": true,
+      "in_app_persistence_imports": 5,
+      "in_app_services_imports": 3,
+      "service_files": [
+        "project_save_as_service.py",
+        "projects_create_service.py",
+        "save_run_service.py"
+      ],
+      "in_init_re_export": true
+    },
+    {
+      "name": "ScenarioRecord",
+      "defined_in": "app/persistence/repository.py",
+      "line": 231,
+      "approximate_loc": 80,
+      "deferred": true,
+      "in_app_persistence_imports": 5,
+      "in_app_services_imports": 2,
+      "service_files": [
+        "scenario_duplicate_service.py",
+        "scenario_state_service.py"
+      ],
+      "in_init_re_export": true
+    },
+    {
+      "name": "WorkspaceStateRecord",
+      "defined_in": "app/persistence/repository.py",
+      "line": 308,
+      "approximate_loc": 30,
+      "deferred": true,
+      "in_app_persistence_imports": 3,
+      "in_app_services_imports": 0,
+      "service_files": [],
+      "in_init_re_export": false
+    },
+    {
+      "name": "RunRecord",
+      "defined_in": "app/persistence/runs_repository.py",
+      "line": 31,
+      "approximate_loc": 30,
+      "deferred": false,
+      "moved_in": "Phase 53B",
+      "in_app_persistence_imports": 0,
+      "in_app_services_imports": 1,
+      "service_files": [
+        "save_run_service.py"
+      ],
+      "in_init_re_export": true
+    },
+    {
+      "name": "ScenarioExportRecord",
+      "defined_in": "app/persistence/exports_repository.py",
+      "line": 43,
+      "approximate_loc": 30,
+      "deferred": false,
+      "moved_in": "Phase 53C",
+      "in_app_persistence_imports": 0,
+      "in_app_services_imports": 0,
+      "service_files": [],
+      "in_init_re_export": true
+    }
+  ],
+  "import_coupling_summary": {
+    "ProjectRecord_5_in_app_persistence": "all lazy imports (TYPE_CHECKING + runtime) in projects_repository.py",
+    "ProjectRecord_3_in_app_services": "direct imports in service files",
+    "ScenarioRecord_5_in_app_persistence": "all lazy imports in scenarios_repository.py",
+    "ScenarioRecord_2_in_app_services": "direct imports in service files",
+    "WorkspaceStateRecord_3_in_app_persistence": "all lazy imports in workspace_repository.py",
+    "WorkspaceStateRecord_0_in_app_services": "no service imports",
+    "RunRecord_1_in_app_services": "direct import in save_run_service.py",
+    "ScenarioExportRecord_0_in_app_services": "no service imports"
+  },
+  "lazy_import_summary": {
+    "pattern": "TYPE_CHECKING + runtime function-body import",
+    "all_records_use_lazy_pattern": true,
+    "circular_imports_currently": 0,
+    "circular_imports_after_option_a": 0,
+    "circular_imports_after_option_b": 0,
+    "circular_import_risk_introduced": "none (lazy pattern is preserved)"
+  },
+  "relocation_options": [
+    {
+      "id": "A",
+      "name": "All 3 records to app/persistence/records.py",
+      "benefits": [
+        "One single source of truth for all 5 records",
+        "repository.py shrinks from 455 to ~305 lines",
+        "Matches the pattern of db.py, provenance.py (infrastructure files)",
+        "Easy to find for new contributors"
+      ],
+      "risks": [
+        "New module = more files to track",
+        "Service files would need to update import paths (low \u2014 compatibility re-exports)"
+      ],
+      "likely_changed_files_count": 12,
+      "tests_required": [
+        "P0 pin per record (3 files)",
+        "Compatibility test (1 file)",
+        "Lazy import cycle test (1 file)",
+        "Structural test (1 file)",
+        "Test re-pointing (3-5 files)"
+      ],
+      "auto_merge_eligible": true,
+      "auto_merge_caveat": "Only with strong P0 pin and compatibility tests; same pattern as Phase 53G-4..53G-7",
+      "recommendation": "RECOMMENDED"
+    },
+    {
+      "id": "B",
+      "name": "Move scenario/workspace records to owner modules",
+      "benefits": [
+        "Each module owns its data classes",
+        "Symmetry with RunRecord (already in runs_repository) and ScenarioExportRecord (already in exports_repository)"
+      ],
+      "risks": [
+        "ProjectRecord ownership is unclear",
+        "Multiple owners = more places to look"
+      ],
+      "likely_changed_files_count": 10,
+      "tests_required": [
+        "P0 pin per moved record",
+        "Compatibility re-export test"
+      ],
+      "auto_merge_eligible": true,
+      "recommendation": "Viable but less clean"
+    },
+    {
+      "id": "C",
+      "name": "Leave records in repository.py (status quo)",
+      "benefits": [
+        "No change, no risk",
+        "Defer the decision"
+      ],
+      "risks": [
+        "repository.py stays at 455 lines",
+        "3 records in a module that has no real owner semantics",
+        "Future work might re-introduce complexity"
+      ],
+      "likely_changed_files_count": 0,
+      "tests_required": [],
+      "auto_merge_eligible": "N/A",
+      "recommendation": "Defers the inevitable"
+    },
+    {
+      "id": "D",
+      "name": "Move records gradually with compatibility re-exports",
+      "benefits": [
+        "Lower per-PR risk",
+        "Each PR has its own P0 pin"
+      ],
+      "risks": [
+        "More PRs = more review burden",
+        "More test re-pointing churn"
+      ],
+      "likely_changed_files_count_per_pr": 4,
+      "tests_required": [
+        "P0 pin per record",
+        "Compatibility re-export test"
+      ],
+      "auto_merge_eligible_per_pr": true,
+      "recommendation": "Same as A but slower"
+    }
+  ],
+  "recommended_option": "A",
+  "recommended_option_rationale": "Cleanest design, lowest risk, fits Phase 53 pattern. All lazy imports work unchanged. Compatibility facade stable. Matches db.py/provenance.py infrastructure pattern.",
+  "required_tests_for_future_records_refactor": [
+    "test_phase53i1_project_record_p0_behavior_pin.py (15+ tests)",
+    "test_phase53i1_scenario_record_p0_behavior_pin.py (15+ tests)",
+    "test_phase53i1_workspace_state_record_p0_behavior_pin.py (15+ tests)",
+    "test_phase53i1_records_compatibility_facade.py",
+    "test_phase53i1_records_no_circular_import.py",
+    "test_phase53i1_records_extraction.py"
+  ],
+  "stop_conditions": [
+    "Any service file change required",
+    "Any circular import appears after move",
+    "Any P0 pin fails",
+    "Re-export object identity changes",
+    "Field shape changes",
+    "Test weakening needed",
+    "Any new direct DB/sqlite import introduced",
+    "Behavior change in any existing function"
+  ],
+  "recommended_next_step": "Run Claude review (53H-2) on post-Group-B state first. Then proceed to records relocation (53I-1) using Option A.",
+  "tests_run": {
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "phase53g1_pins_total": 91,
+    "phase53g2_to_g8_total": 145,
+    "total": 286
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing",
+    "test_phase52b_persistence_side_effect_map: pre-existing",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing"
+  ]
+}
