@@ -2378,32 +2378,47 @@ async def select_scenario_endpoint(request: Request, scenario_id: str):
 
 @app.post("/scenarios/{scenario_id}/update-overrides")
 async def update_overrides_endpoint(request: Request, scenario_id: str):
-    """Patch overrides for a non-base scenario. Expects JSON body with field overrides."""
+    """Patch overrides for a non-base scenario. Expects JSON body with field overrides.
+
+    Thin orchestration wrapper (Phase 51R-2). The route is
+    responsible for auth, JSON body parse, deps bundle construction,
+    and final response rendering. The full
+    /scenarios/{scenario_id}/update-overrides orchestration body
+    (scenario lookup, is_base_case gate, update_scenario_overrides,
+    500 failure path, partial template re-render) lives in
+    ``app.services.scenario_update_overrides_service.execute_scenario_update_overrides_route``.
+    """
+    from app.services.scenario_update_overrides_service import (
+        ScenarioUpdateOverridesRouteDeps,
+        execute_scenario_update_overrides_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    record = get_scenario(scenario_id, user.user_id)
-    if record is None:
-        return JSONResponse({"error": "Scenario not found"}, status_code=404)
-    if record.is_base_case:
-        return JSONResponse({"error": "Cannot override Base Case via this endpoint"}, status_code=400)
-
     body = await request.json()
     overrides = body if isinstance(body, dict) else {}
 
-    updated = update_scenario_overrides(user.user_id, scenario_id, overrides)
-    if updated is None:
-        return JSONResponse({"error": "Failed to update overrides"}, status_code=500)
-
-    project_record = get_project_record(user_id=user.user_id, project_code=record.project_code)
-    ws = get_workspace_state(user.user_id, record.project_id)
-    scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
+    deps = ScenarioUpdateOverridesRouteDeps(
+        get_scenario=get_scenario,
+        update_scenario_overrides=update_scenario_overrides,
+        get_project_record=get_project_record,
+        get_workspace_state=get_workspace_state,
+        list_scenarios=list_scenarios,
+        build_scenario_tab_context=_build_scenario_tab_context,
+    )
+    outcome = await execute_scenario_update_overrides_route(
+        request=request, scenario_id=scenario_id, overrides=overrides,
+        user=user, deps=deps,
+    )
+    if outcome.status_code >= 400:
+        return JSONResponse(outcome.payload, status_code=outcome.status_code)
     return templates.TemplateResponse(
         request=request,
-        name="partials/scenario_tab.html",
-        context=_build_scenario_tab_context(user, project_record, scenarios, ws),
-        headers={"HX-Trigger": "overridesUpdated"},
+        name=outcome.template_name,
+        context=outcome.context,
+        headers=outcome.headers or None,
     )
 
 
