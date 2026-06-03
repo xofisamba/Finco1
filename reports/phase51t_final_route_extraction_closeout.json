@@ -1,0 +1,150 @@
+{
+  "phase": "51T",
+  "phase_title": "Final route extraction closeout",
+  "branch": "phase51t-final-route-extraction-closeout",
+  "base_sha": "b41837a",
+  "current_main_sha": "2afdba8b79daf9462161dc8c5b6115995c4afceb",
+  "current_main_sha_post_51t": "(this PR merges to main)",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_touched": false,
+  "production_code_changed": false,
+  "no_model_parity_core_schema_js_formula_changes": true,
+  "phase51_complete": true,
+  "remaining_inline_hotspots": 0,
+  "summary": {
+    "total_routes": 34,
+    "service_backed_routes": 17,
+    "auth_ui_public_routes": 17,
+    "inline_route_orchestration_hotspots": 0,
+    "service_modules_total": 18,
+    "service_route_orchestration_modules": 15,
+    "service_data_layer_modules": 1,
+    "service_export_audit_modules": 2,
+    "service_total_lines": 5900
+  },
+  "phase51_progress": {
+    "phase_51i": {
+      "extracted_routes": 11,
+      "inline_hotspot_routes": 6,
+      "inline_hotspot_non_blank": 310,
+      "service_modules": 11,
+      "test_modules": 21
+    },
+    "phase_51n": {
+      "extracted_routes": 12,
+      "inline_hotspot_routes": 5,
+      "inline_hotspot_non_blank": 193,
+      "service_modules": 13,
+      "test_modules": 23
+    },
+    "phase_51t": {
+      "extracted_routes": 17,
+      "inline_hotspot_routes": 0,
+      "inline_hotspot_non_blank": 0,
+      "service_modules": 18,
+      "test_modules": 30
+    }
+  },
+  "completed_phases": [
+    {"phase": "51A-51B", "route": "POST /run", "service": "run_service.py", "pr": "(early)"},
+    {"phase": "51C-1/2", "route": "POST /compare", "service": "compare_service.py", "pr": "(early)"},
+    {"phase": "51D-1/2", "route": "POST /validate", "service": "validation_service.py", "pr": "(early)"},
+    {"phase": "51E-1/2", "route": "GET/POST /download", "service": "download_service.py", "pr": "(early)"},
+    {"phase": "51F", "route": "(guardrails)", "service": null, "pr": "#388"},
+    {"phase": "51G-1/2", "route": "POST /save-run", "service": "save_run_service.py", "pr": "#389, #391"},
+    {"phase": "51G-3", "route": "POST /save-run user_created fix", "service": "(same)", "pr": "#392"},
+    {"phase": "51H-1/2", "route": "POST /scenarios/state/draft+discard", "service": "scenario_state_route_service.py", "pr": "#393, #395"},
+    {"phase": "51I", "route": "(checkpoint)", "service": null, "pr": "#396"},
+    {"phase": "51J-1/2", "route": "POST /scenarios/save", "service": "scenarios_save_service.py", "pr": "#397, #399"},
+    {"phase": "51K-1/2", "route": "POST /scenarios/{id}/duplicate", "service": "scenario_duplicate_service.py", "pr": "#400, #403"},
+    {"phase": "51L-1/2", "route": "POST /scenarios/add", "service": "scenarios_add_service.py", "pr": "#404, #405"},
+    {"phase": "51M-1/2", "route": "POST /projects/create", "service": "projects_create_service.py", "pr": "#406, #407"},
+    {"phase": "51N", "route": "(checkpoint)", "service": null, "pr": "#408"},
+    {"phase": "51O-1/2", "route": "POST /projects/{code}/save-as", "service": "project_save_as_service.py", "pr": "#409, #410"},
+    {"phase": "51P-1/2", "route": "POST /scenarios/{id}/rename", "service": "scenario_rename_service.py", "pr": "#411, #412"},
+    {"phase": "51Q-1/2", "route": "POST /scenarios/{id}/archive", "service": "scenario_archive_service.py", "pr": "#414, #415"},
+    {"phase": "51R-1/2", "route": "POST /scenarios/{id}/update-overrides", "service": "scenario_update_overrides_service.py", "pr": "#416, #417"},
+    {"phase": "51S-1/2", "route": "POST /scenarios/{id}/select", "service": "scenario_select_service.py", "pr": "#418, #419"},
+    {"phase": "51T", "route": "(closeout)", "service": null, "pr": "(this)"}
+  ],
+  "no_go_claims": [
+    "no_bankability_claim",
+    "no_lender_ready_claim",
+    "no_audit_certification_claim",
+    "no_saas_ready_claim",
+    "no_external_validation_claim",
+    "generic_solar_wind_exploratory_unvalidated",
+    "g20_remains_blocked",
+    "r99_r102_not_approved",
+    "partial_pay_sweep_not_promoted",
+    "flat_min_dscr_sculpting_not_promoted",
+    "paid_pilot_gate_is_framework_not_authorization",
+    "internal_confidence_heatmap_not_external_validation",
+    "controlled_trusted_pilot_scope_bounded_by_tuho_oborovo"
+  ],
+  "agent_b_prs_integrated": [
+    {"pr": 390, "title": "Agent B B1: External review preparation package", "merged_at": "2026-06-02T14:46:41Z"},
+    {"pr": 394, "title": "Agent B Governance Pack: B3/B2/B7/B8 docs and reports", "merged_at": "2026-06-02T21:27:57Z"},
+    {"pr": 398, "title": "Agent B Pilot Review Pack: B9-B14 docs and reports", "merged_at": "2026-06-02T22:15:54Z"}
+  ],
+  "governance_file_ownership": {
+    "agent_a": [
+      "main_web.py",
+      "app/services/*",
+      "Phase 51 tests/docs/reports",
+      "route-related code"
+    ],
+    "agent_b": [
+      "docs/external_review/*",
+      "docs/pilot/*",
+      "docs/commercial/*",
+      "docs/validation/*",
+      "docs/governance/*",
+      "docs/ops/*",
+      "docs/roadmap/*",
+      "docs/generic_validation/*",
+      "reports/external_review/*",
+      "reports/pilot/*",
+      "reports/commercial/*",
+      "reports/validation/*",
+      "reports/governance/*",
+      "reports/roadmap/*",
+      "reports/generic_validation/*"
+    ],
+    "ui_track": "separate (out of scope for Phase 51)",
+    "parity_core_off_limits": [
+      "app/waterfall_core.py",
+      "app/project_factories.py",
+      "fixtures/*.csv",
+      "schema/*",
+      "migrations/*",
+      "*.js (frontend calculations)",
+      "formulas"
+    ]
+  },
+  "remaining_risks": [
+    {"name": "persistence_god_module", "description": "app/persistence.py still monolithic; Phase 52 candidate"},
+    {"name": "service_proliferation", "description": "18 service modules approaching threshold for service registry"},
+    {"name": "data_layer_small", "description": "Only 1 data-layer service (scenario_state_service.py)"},
+    {"name": "no_multi_user_governance", "description": "Single-user only. Permissions/tenancy/audit trail — future work"},
+    {"name": "ui_ux_not_revamped", "description": "Phase 51 focused on backend services, not frontend"},
+    {"name": "test_persistence_import_error", "description": "Pre-existing ImportError: No module named 'persistence' in test_persistence.py and test_repository.py"},
+    {"name": "stacked_pr_auto_close", "description": "When base branch is deleted after merge, dependent PRs auto-close; workaround: rebase"},
+    {"name": "ci_on_non_main_branches", "description": "Draft PRs against non-main branches don't trigger CI; final 51T PR is on main so CI runs"}
+  ],
+  "recommended_next_steps": {
+    "primary": "Phase 52 — repository / persistence boundary mapping (the natural follow-up to Phase 51)",
+    "alternatives": [
+      "Claude architecture review of Phase 51 + Agent B docs",
+      "UI revamp planning (parallelizable)"
+    ],
+    "rationale": "After Phase 51, the only remaining backend risk is the persistence layer. Completing this brings the backend to a clean state."
+  },
+  "phase51f_guardrails": {
+    "engine_output_golden_tubo_oborovo": "PASS",
+    "parity_core_lock_4_sha256": "PASS",
+    "no_service_imports_main_web_or_main_api": "PASS (18/18 services clean)",
+    "21_of_21_test_module": "PASS"
+  },
+  "ready_for_merge": true
+}
