@@ -1,0 +1,155 @@
+{
+  "phase": "53H-2",
+  "title": "Post scenario persistence review pack",
+  "type": "review_prep_docs",
+  "base_sha": "8f7c749cb3167820569d66618ed320d370b34ed3",
+  "head_sha": "46916a3dbec68a490bfc7ef8651fa161cf739438",
+  "branch": "phase53h2-post-scenario-persistence-review-pack",
+  "review_scope": [
+    "Post-Group-B state of app/persistence/",
+    "Phase 52 mapping docs (planning)",
+    "Phase 53A-G extractions",
+    "Phase 53G-8 closeout",
+    "Phase 53H-1 records planning",
+    "Hard safety guardrails (rc1, G20, R99/R102, etc.)"
+  ],
+  "current_main_sha": "8f7c749cb3167820569d66618ed320d370b34ed3",
+  "evidence_files": {
+    "phase_52_mapping": [
+      "docs/phase52a_repository_inventory_hotspot_map.md",
+      "docs/phase52b_persistence_side_effect_map.md",
+      "docs/phase52c_repository_caller_coupling_graph.md",
+      "docs/phase52d_persistence_behavior_characterization_plan.md",
+      "docs/phase52e_persistence_hotspot_phase53_execution_plan.md",
+      "docs/phase52f_persistence_guardrail_specifications.md",
+      "docs/phase52g_final_repository_boundary_mapping_closeout.md"
+    ],
+    "phase_53a_f_extractions": [
+      "docs/phase53a_persistence_helpers_extraction.md",
+      "docs/phase53b_persistence_runs_extraction.md",
+      "docs/phase53c_persistence_exports_audit_extraction.md",
+      "docs/phase53d_persistence_project_reads_extraction.md",
+      "docs/phase53e1_save_project_p0_behavior_pin.md",
+      "docs/phase53e2_project_write_persistence_extraction.md",
+      "docs/phase53f1_save_workspace_state_p0_behavior_pin.md",
+      "docs/phase53f2_workspace_state_persistence_extraction.md"
+    ],
+    "phase_53g_scenario_refactor": [
+      "docs/phase53g1_scenario_p0_behavior_pins.md",
+      "docs/phase53g2_scenario_read_persistence_extraction.md",
+      "docs/phase53g3_low_risk_scenario_actions_extraction.md",
+      "docs/phase53g4_save_scenario_persistence_extraction.md",
+      "docs/phase53g5_add_scenario_persistence_extraction.md",
+      "docs/phase53g6_update_scenario_overrides_persistence_extraction.md",
+      "docs/phase53g7_base_case_scenario_persistence_extraction.md",
+      "docs/phase53g8_final_scenario_persistence_closeout.md"
+    ],
+    "phase_53h_records_planning": [
+      "docs/phase53h1_records_dataclass_relocation_map.md"
+    ]
+  },
+  "claude_questions": [
+    {
+      "id": 1,
+      "question": "Did Group B refactor preserve scenario behavior?",
+      "context": "4 P0 pins + coupling pin all pass after re-pointing to scenarios_repository.py",
+      "evidence_files": [
+        "tests/test_phase53g1_save_scenario_p0_behavior_pin.py (16/16)",
+        "tests/test_phase53g1_add_scenario_p0_behavior_pin.py (19/19)",
+        "tests/test_phase53g1_update_overrides_p0_behavior_pin.py (16/16)",
+        "tests/test_phase53g1_base_case_p0_behavior_pin.py (17/17)",
+        "tests/test_phase53g1_scenario_workspace_coupling_p0_pin.py (23/23)"
+      ]
+    },
+    {
+      "id": 2,
+      "question": "Is repository.py now acceptable as compatibility facade?",
+      "context": "455 lines = 3 dataclasses (150) + 5 NOT-Group-B (165) + 12 re-exports (30) + docstring (110)",
+      "evidence_files": [
+        "docs/phase53g8_final_scenario_persistence_closeout.md",
+        "docs/phase53h1_records_dataclass_relocation_map.md"
+      ]
+    },
+    {
+      "id": 3,
+      "question": "Should records.py relocation happen now?",
+      "context": "4 options (A/B/C/D) analyzed in 53H-1",
+      "evidence_files": [
+        "docs/phase53h1_records_dataclass_relocation_map.md",
+        "reports/phase53h1_records_dataclass_relocation_map.json"
+      ]
+    },
+    {
+      "id": 4,
+      "question": "Should records relocation be auto-merge eligible?",
+      "context": "Records are data-shape definition, not behavior. Moving them is mechanical.",
+      "evidence_files": [
+        "docs/phase53h1_records_dataclass_relocation_map.md",
+        "docs/phase53g4_save_scenario_persistence_extraction.md"
+      ]
+    },
+    {
+      "id": 5,
+      "question": "Should we pause persistence work and move to UI/pilot hardening?",
+      "context": "Phase 53G completed the most sensitive extraction phase",
+      "evidence_files": [
+        "docs/phase53g8_final_scenario_persistence_closeout.md"
+      ]
+    },
+    {
+      "id": 6,
+      "question": "What are the highest-value next phases?",
+      "context": "Beyond records relocation and UI hardening",
+      "evidence_files": [
+        "docs/phase52d_persistence_behavior_characterization_plan.md",
+        "docs/phase52e_persistence_hotspot_phase53_execution_plan.md"
+      ]
+    },
+    {
+      "id": 7,
+      "question": "What should be the updated roadmap and duration estimate?",
+      "context": "Given current state, what is the realistic 3-6 month roadmap?",
+      "evidence_files": [
+        "All Phase 52 + 53 docs"
+      ]
+    }
+  ],
+  "no_go_claims": [
+    "no financial formula changes",
+    "no model output changes",
+    "no fixture CSV changes",
+    "no schema/migration changes",
+    "no JavaScript financial calculations",
+    "no runtime flag promotions",
+    "no parity-core file changes",
+    "do not touch app/waterfall_core.py",
+    "do not touch app/project_factories.py",
+    "do not touch senior-debt CSVs",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "generic solar/wind remain exploratory",
+    "no lender/bank/audit/certification claims",
+    "backend remains source of truth",
+    "rc1 remains frozen"
+  ],
+  "recommended_prompt_summary": "Senior software architect review of post-Group-B persistence refactor. 7 specific questions about behavior preservation, compatibility facade acceptability, records relocation timing, auto-merge eligibility, UI/pilot pausing, next-phase priority, and roadmap. Cite line numbers and file paths. Be specific.",
+  "recommended_next_step": "User runs Claude review using the recommended prompt. After review, user provides specific decision on records relocation (Option A/B/C/D) and on UI/pilot switch. Do NOT start records.py implementation in this phase. Do NOT start UI/Agent B/pilot work. This phase is review prep only.",
+  "tests_run": {
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "phase53g_pins_total": 91,
+    "phase53g_structural_total": 111,
+    "phase53h1_structural": 16,
+    "total": 268
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing",
+    "test_phase52b_persistence_side_effect_map: pre-existing",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing"
+  ]
+}
