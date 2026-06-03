@@ -1,0 +1,102 @@
+{
+  "phase": "51O-1",
+  "route": "POST /projects/{project_code}/save-as",
+  "handler": "save_project_as_endpoint",
+  "risk": "HIGH",
+  "route_total_lines": 51,
+  "route_non_blank_lines": 49,
+  "expected_route_size_after_51o2": 30,
+  "expected_reduction_pct": 39.0,
+  "tests": {
+    "test_phase51o1_project_save_as_route_golden_characterization": {
+      "count": 84,
+      "pass": 84,
+      "status": "PASS"
+    }
+  },
+  "behaviors_pinned": [
+    "Auth check via get_current_user(request); unauth -> 302 /login",
+    "Local import: from app.persistence.repository import get_project_record as gpr",
+    "Source lookup: gpr(user_id=user.user_id, project_code=project_code)",
+    "404 if source is None",
+    "400 if source.project_origin == user_created",
+    "new_code = f{project_code}-copy-{now.strftime('%Y%m%d%H%M%S')}",
+    "new_name = f{source.project_name} (Copy)",
+    "save_project with project_origin=user_created, is_readonly=False, last_run_summary={}",
+    "save_project governance_state inlined: {g20: BLOCKED, r99_r102: NOT_APPROVED, lender_ready: False}",
+    "save_project replay_metadata.export_type = project_duplicated",
+    "save_workspace_state with draft=saved=source.baseline_snapshot, dirty=False",
+    "save_workspace_state governance_state inlined (same dict, replicated)",
+    "save_workspace_state replay_metadata.export_type = workspace_duplicated",
+    "Success -> 302 RedirectResponse(url=f/?project={new_code})",
+    "No HX-Trigger, no HX-Redirect",
+    "No templates.TemplateResponse"
+  ],
+  "intended_side_effects": [
+    {"name": "get_project_record (as gpr)", "count": 1, "type": "read"},
+    {"name": "save_project", "count": 1, "type": "write"},
+    {"name": "save_workspace_state", "count": 1, "type": "write"}
+  ],
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "add_scenario",
+    "save_scenario",
+    "create_scenario",
+    "db.add",
+    "db.commit",
+    "db.flush",
+    "session.add",
+    "session.commit"
+  ],
+  "behavior_quirks": [
+    {"id": 1, "name": "local_import_gpr", "description": "from app.persistence.repository import get_project_record as gpr is inside the function body, not at module top"},
+    {"id": 2, "name": "new_code_pattern", "description": "f{project_code}-copy-{now.strftime('%Y%m%d%H%M%S')} — uses %Y%m%d%H%M%S format"},
+    {"id": 3, "name": "new_name_pattern", "description": "f{source.project_name} (Copy) — exact (Copy) suffix"},
+    {"id": 4, "name": "governance_state_inlined_twice", "description": "Same governance_state dict literal appears for both save_project and save_workspace_state — not a helper function"},
+    {"id": 5, "name": "baseline_source_computed", "description": "baseline_source: source.project_origin == 'saved_baseline' is a computed boolean, not a static value"},
+    {"id": 6, "name": "last_run_summary_empty", "description": "last_run_summary={} — empty dict, not None"},
+    {"id": 7, "name": "draft_equals_saved", "description": "draft_snapshot=saved_snapshot=source.baseline_snapshot — new workspace starts clean"},
+    {"id": 8, "name": "400_jsonresponse", "description": "Already a user project returns JSONResponse, not friendly UI"},
+    {"id": 9, "name": "404_jsonresponse", "description": "Project not found returns JSONResponse with formatted error"},
+    {"id": 10, "name": "success_302_redirect", "description": "Success uses 302 RedirectResponse (not HX-Redirect) — different from /projects/create"}
+  ],
+  "error_paths": [
+    {"status_code": 302, "type": "redirect", "condition": "unauthenticated", "target": "/login"},
+    {"status_code": 404, "type": "json_error", "condition": "source is None", "body": "Project '{project_code}' not found"},
+    {"status_code": 400, "type": "json_error", "condition": "source.project_origin == user_created", "body": "Already a user project"},
+    {"status_code": 302, "type": "redirect", "condition": "success", "target": "/?project={new_code}"}
+  ],
+  "extraction_recommendation": {
+    "module_path": "app/services/project_save_as_service.py",
+    "outcome_dataclass": "ProjectSaveAsRouteOutcome",
+    "deps_dataclass": "ProjectSaveAsRouteDeps",
+    "entry_point": "execute_project_save_as_route",
+    "deps_callables_count": 9,
+    "expected_deps_callables": [
+      "get_project_record",
+      "save_project",
+      "save_workspace_state",
+      "now_utc (or now_utc_factory)",
+      "project_record_creation_governance_state",
+      "workspace_state_initialization_governance_state",
+      "build_project_replay_metadata",
+      "build_workspace_replay_metadata",
+      "is_already_user_project"
+    ]
+  },
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_touched": false,
+  "ready_for_51o2": true,
+  "notes": "No ambiguous behavior, no latent bugs, no unclear persistence boundary. HIGH risk is from dual-write semantics + inlined governance_state. 51O-2 must preserve both."
+}
