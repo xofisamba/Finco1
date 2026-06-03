@@ -1,0 +1,242 @@
+{
+  "phase": "54E",
+  "title": "UI-1 closeout and UI-2 implementation plan",
+  "type": "docs_report_test_only",
+  "base_sha": "967639b5e33feaec96042ae80fc30b6aa8826780",
+  "head_sha": "967639b5e33feaec96042ae80fc30b6aa8826780",
+  "branch": "phase54e-ui1-closeout-ui2-plan",
+  "auto_merged": false,
+  "ui1_summary": {
+    "54a": "Frontend inventory: 44 templates, pure Jinja+HTMX+CSS+JS, no Alpine/Tailwind/React",
+    "54b": "Information architecture: 11 sections, 10 workflows, 7 no-go copy risks",
+    "54c": "Design system: 9 components, 4-state chip standard, 11 banner contexts, 13 forbidden claims, 10 safe terms",
+    "54d": "LineItemGrid: 4+4+4 columns, 6 cell states, 8 variants, Jinja macro plan"
+  },
+  "final_information_architecture": {
+    "sections": [
+      "Dashboard / Overview",
+      "Projects",
+      "Inputs",
+      "Financing",
+      "Scenarios",
+      "Compare",
+      "Audit & Reconciliation",
+      "Reports / Exports",
+      "Data Room",
+      "Settings",
+      "Help / Onboarding"
+    ],
+    "locked": true
+  },
+  "final_design_system_spec": {
+    "visual": {
+      "primary": "#0f1b2d (navy)",
+      "accent": "#1a56db (blue)",
+      "secondary": "#0f7a52 (muted green)",
+      "modes": "light first, dark later"
+    },
+    "typography": "Inter, tabular-numeric, right-aligned numbers",
+    "components": [
+      "chip",
+      "badge",
+      "banner",
+      "card",
+      "grid",
+      "section",
+      "status_pill",
+      "tooltip",
+      "validation_marker"
+    ],
+    "locked": true
+  },
+  "final_line_item_grid_spec": {
+    "orientation": "line items vertical, periods horizontal",
+    "frozen_left": [
+      "code",
+      "line_item",
+      "runtime_impact"
+    ],
+    "sticky_header": "period column headers",
+    "modes": [
+      "default",
+      "audit",
+      "compare",
+      "compact"
+    ],
+    "cell_states": 6,
+    "variants": 8,
+    "implementation": "Jinja macro/partial first, HTMX for mode swaps, no Alpine in UI-2, no Tailwind in UI-2, no client-side calc",
+    "locked": true
+  },
+  "ui2_implementation_plan": {
+    "items": [
+      {
+        "id": "UI-2.1",
+        "name": "State clarity banner partial",
+        "scope": "Create _state_banner.html partial with 11 variants",
+        "files_touched": [
+          "app/templates/partials/_state_banner.html (NEW)",
+          "static/styles.css (add .banner-*)"
+        ],
+        "auto_merge": false,
+        "review_required": true,
+        "risk": "low"
+      },
+      {
+        "id": "UI-2.2",
+        "name": "Runtime Impact chip partial",
+        "scope": "Create _runtime_impact_chip.html partial, replace inline chip in sheet_capex_detail",
+        "files_touched": [
+          "app/templates/partials/_runtime_impact_chip.html (NEW)",
+          "static/styles.css (add .chip-*)",
+          "app/templates/partials/sheet_capex_detail.html (include)"
+        ],
+        "auto_merge": false,
+        "review_required": true,
+        "risk": "low"
+      },
+      {
+        "id": "UI-2.3",
+        "name": "Validation summary bar",
+        "scope": "Add _validation_summary_bar.html to top of audit_reconciliation_tab",
+        "files_touched": [
+          "app/templates/partials/_validation_summary_bar.html (NEW)",
+          "app/templates/partials/audit_reconciliation_tab.html (include)",
+          "static/styles.css"
+        ],
+        "auto_merge": false,
+        "review_required": true,
+        "risk": "low"
+      },
+      {
+        "id": "UI-2.4",
+        "name": "Factory lock indicator",
+        "scope": "Show Factory template lock on factory projects",
+        "files_touched": [
+          "app/templates/partials/_factory_lock_indicator.html (NEW)",
+          "app/templates/index.html (include)",
+          "static/styles.css"
+        ],
+        "auto_merge": false,
+        "review_required": true,
+        "risk": "low"
+      },
+      {
+        "id": "UI-2.5",
+        "name": "Stale result warning",
+        "scope": "Show Stale result banner when inputs changed since last run",
+        "files_touched": [
+          "app/templates/partials/_stale_result_warning.html (NEW)",
+          "app/templates/index.html (include)",
+          "static/styles.css"
+        ],
+        "auto_merge": false,
+        "review_required": true,
+        "risk": "medium"
+      },
+      {
+        "id": "UI-2.6",
+        "name": "Run-source indicator",
+        "scope": "Show Last run timestamp and Run ID on relevant views",
+        "files_touched": [
+          "app/templates/partials/_last_run_indicator.html (NEW)",
+          "app/templates/index.html (include)",
+          "static/styles.css"
+        ],
+        "auto_merge": false,
+        "review_required": true,
+        "risk": "low"
+      }
+    ],
+    "implementation_sequence": [
+      "UI-2.1",
+      "UI-2.2",
+      "UI-2.3",
+      "UI-2.4",
+      "UI-2.5",
+      "UI-2.6"
+    ]
+  },
+  "ui2_automation_policy": {
+    "auto_merge_eligible": "NONE",
+    "reason": "First runtime change after long docs/spec phase",
+    "review_required": "All UI-2.x PRs"
+  },
+  "must_not_change": [
+    "app/persistence/",
+    "app/services/",
+    "main_web.py",
+    "app/waterfall_core.py",
+    "app/project_factories.py",
+    "app/data/finance_tables.csv",
+    "app/data/finance_parity.json",
+    "parity/",
+    "static/vendor/htmx.min.js",
+    "rc1 (b425a07) frozen SHA",
+    "model output, fixtures, schema",
+    "no-go claims",
+    "Agent B governance docs (out of 54 stack scope)"
+  ],
+  "no_go_copy_checklist": [
+    "no bankable / lender-ready / certified",
+    "no audit-ready / audit-grade alone (only audit trail)",
+    "no validated alone (only model check / internal validation)",
+    "no investor-ready / SaaS-ready / production-ready",
+    "no real-time / live model alone",
+    "no auto-saved (unless implemented)",
+    "no locked (use saved or versioned)",
+    "no guaranteed returns / investment advice / customer reference",
+    "no external validation",
+    "all copy on safe terms list (54C)"
+  ],
+  "claude_review_recommended_before_ui2": true,
+  "claude_review_questions": [
+    "Spec completeness: is UI-1 stack sufficient to begin UI-2?",
+    "Spec consistency: any conflicts between 54A-54D?",
+    "No-go copy risks: any missed in locked specs?",
+    "UI-2 priority: is recommended implementation order correct?",
+    "Locked spec quality: is 4-state chip standard sufficient?",
+    "Stack recommendations: add Alpine earlier or stay HTMX-only?",
+    "UI-1 closeout: is UI-1 ready to be marked complete?"
+  ],
+  "next_step_decision": {
+    "option_a": {
+      "name": "Agent B governance refresh (docs only, low risk)",
+      "rationale": "Refresh governance docs with post-53I persistence state and post-54 UI-1 stack"
+    },
+    "option_b": {
+      "name": "UI-2 implementation (medium risk)",
+      "rationale": "6 ordered UI-2.x PRs as documented, each requires user review"
+    },
+    "recommended": "Option A first (Agent B refresh), then Option B (UI-2)"
+  },
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_guardrails": 51,
+    "phase54d_guardrails": 36,
+    "phase54e_new": 21,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 269
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
