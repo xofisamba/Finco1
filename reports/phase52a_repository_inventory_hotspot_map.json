@@ -1,0 +1,1252 @@
+{
+  "phase": "52A",
+  "title": "Phase 52A: Repository inventory and hotspot map",
+  "base_sha": "e51a16db61c8981adc21700a671c91bac0d88d2d",
+  "head_sha": "e51a16db61c8981adc21700a671c91bac0d88d2d",
+  "type": "docs/report/test only",
+  "objective": "Inventory the persistence/repository layer and rank hotspots by size, coupling, and write intensity. Read-only mapping; no runtime code changes.",
+  "persistence_files": [
+    {
+      "path": "app/persistence/__init__.py",
+      "loc": 55,
+      "role": "package init / re-exports"
+    },
+    {
+      "path": "app/persistence/db.py",
+      "loc": 205,
+      "role": "sqlite connection / schema init / get_cursor context manager"
+    },
+    {
+      "path": "app/persistence/repository.py",
+      "loc": 2042,
+      "role": "god-module: project, scenario, run, export, audit, workspace persistence"
+    },
+    {
+      "path": "app/persistence/backup_restore.py",
+      "loc": 480,
+      "role": "sqlite backup + restore + auto-backup"
+    },
+    {
+      "path": "app/persistence/provenance.py",
+      "loc": 171,
+      "role": "git sha, branch, runtime flag, governance, replay metadata"
+    }
+  ],
+  "total_persistence_loc": 2953,
+  "function_inventory": [
+    {
+      "line": 19,
+      "name": "_now_utc",
+      "body_loc": 2,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 23,
+      "name": "_to_json",
+      "body_loc": 2,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 27,
+      "name": "_from_json",
+      "body_loc": 4,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 33,
+      "name": "_from_iso",
+      "body_loc": 4,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 69,
+      "name": "resolve_scenario_snapshot",
+      "body_loc": 15,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "scenarios",
+      "risk": "low"
+    },
+    {
+      "line": 86,
+      "name": "get_or_create_base_case_scenario",
+      "body_loc": 85,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "high"
+    },
+    {
+      "line": 173,
+      "name": "seed_scenarios_if_needed",
+      "body_loc": 26,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "medium"
+    },
+    {
+      "line": 201,
+      "name": "get_scenario_provenance",
+      "body_loc": 27,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "scenarios",
+      "risk": "low"
+    },
+    {
+      "line": 230,
+      "name": "get_base_case_scenario",
+      "body_loc": 13,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "scenarios",
+      "risk": "low"
+    },
+    {
+      "line": 245,
+      "name": "resolve_active_scenario_runtime_snapshot",
+      "body_loc": 49,
+      "kind": "sync",
+      "classification": "mixed",
+      "domain": "scenarios",
+      "risk": "high"
+    },
+    {
+      "line": 536,
+      "name": "_safe_number",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 545,
+      "name": "_metric_value",
+      "body_loc": 16,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 563,
+      "name": "snapshots_equal",
+      "body_loc": 2,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 567,
+      "name": "_strip_empty_fields",
+      "body_loc": 8,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 577,
+      "name": "runtime_guard_for_snapshot",
+      "body_loc": 29,
+      "kind": "sync",
+      "classification": "mixed",
+      "domain": "governance",
+      "risk": "medium"
+    },
+    {
+      "line": 608,
+      "name": "save_run",
+      "body_loc": 48,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "runs",
+      "risk": "medium"
+    },
+    {
+      "line": 658,
+      "name": "get_run",
+      "body_loc": 5,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "runs",
+      "risk": "low"
+    },
+    {
+      "line": 665,
+      "name": "list_runs",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "runs",
+      "risk": "low"
+    },
+    {
+      "line": 674,
+      "name": "delete_run",
+      "body_loc": 4,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "runs",
+      "risk": "low"
+    },
+    {
+      "line": 680,
+      "name": "count_runs",
+      "body_loc": 4,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "runs",
+      "risk": "low"
+    },
+    {
+      "line": 686,
+      "name": "save_project",
+      "body_loc": 117,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "projects",
+      "risk": "high"
+    },
+    {
+      "line": 805,
+      "name": "get_project",
+      "body_loc": 5,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 812,
+      "name": "get_project_by_code",
+      "body_loc": 8,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 822,
+      "name": "list_projects",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 831,
+      "name": "list_baseline_records",
+      "body_loc": 8,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 841,
+      "name": "seed_baseline_projects_if_needed",
+      "body_loc": 28,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "projects",
+      "risk": "medium"
+    },
+    {
+      "line": 871,
+      "name": "_compute_baseline_snapshot",
+      "body_loc": 122,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "projects",
+      "risk": "medium"
+    },
+    {
+      "line": 911,
+      "name": "_sum_opex",
+      "body_loc": 6,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 995,
+      "name": "_build_default_snapshot",
+      "body_loc": 9,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 1006,
+      "name": "_fill_missing_defaults",
+      "body_loc": 18,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 1026,
+      "name": "create_project_record",
+      "body_loc": 28,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "projects",
+      "risk": "medium"
+    },
+    {
+      "line": 1056,
+      "name": "get_project_record",
+      "body_loc": 11,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 1069,
+      "name": "list_project_records",
+      "body_loc": 13,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "projects",
+      "risk": "low"
+    },
+    {
+      "line": 1084,
+      "name": "update_project_record",
+      "body_loc": 30,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "projects",
+      "risk": "medium"
+    },
+    {
+      "line": 1116,
+      "name": "save_scenario",
+      "body_loc": 63,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "high"
+    },
+    {
+      "line": 1181,
+      "name": "get_scenario",
+      "body_loc": 5,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "scenarios",
+      "risk": "low"
+    },
+    {
+      "line": 1188,
+      "name": "list_scenarios",
+      "body_loc": 19,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "scenarios",
+      "risk": "low"
+    },
+    {
+      "line": 1209,
+      "name": "rename_scenario",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "low"
+    },
+    {
+      "line": 1218,
+      "name": "archive_scenario",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "low"
+    },
+    {
+      "line": 1227,
+      "name": "promote_scenario_to_base_case",
+      "body_loc": 34,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "medium"
+    },
+    {
+      "line": 1263,
+      "name": "_get_least_created_scenario_for_project",
+      "body_loc": 15,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 1280,
+      "name": "duplicate_scenario",
+      "body_loc": 17,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "medium"
+    },
+    {
+      "line": 1299,
+      "name": "add_scenario",
+      "body_loc": 80,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "high"
+    },
+    {
+      "line": 1381,
+      "name": "update_scenario_last_run_summary",
+      "body_loc": 28,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "medium"
+    },
+    {
+      "line": 1411,
+      "name": "update_scenario_overrides",
+      "body_loc": 47,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "high"
+    },
+    {
+      "line": 1460,
+      "name": "select_scenario",
+      "body_loc": 24,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "scenarios",
+      "risk": "medium"
+    },
+    {
+      "line": 1486,
+      "name": "get_workspace_state",
+      "body_loc": 8,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "workspace_state",
+      "risk": "low"
+    },
+    {
+      "line": 1496,
+      "name": "save_workspace_state",
+      "body_loc": 131,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "workspace_state",
+      "risk": "high"
+    },
+    {
+      "line": 1629,
+      "name": "bind_workspace_to_scenario",
+      "body_loc": 20,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "workspace_state",
+      "risk": "medium"
+    },
+    {
+      "line": 1651,
+      "name": "discard_workspace_draft",
+      "body_loc": 22,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "workspace_state",
+      "risk": "medium"
+    },
+    {
+      "line": 1675,
+      "name": "record_workspace_runtime",
+      "body_loc": 36,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "workspace_state",
+      "risk": "medium"
+    },
+    {
+      "line": 1713,
+      "name": "record_export",
+      "body_loc": 60,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "exports",
+      "risk": "high"
+    },
+    {
+      "line": 1775,
+      "name": "list_exports",
+      "body_loc": 20,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "exports",
+      "risk": "low"
+    },
+    {
+      "line": 1797,
+      "name": "get_scenario_history",
+      "body_loc": 12,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "audit",
+      "risk": "low"
+    },
+    {
+      "line": 1811,
+      "name": "compare_scenarios",
+      "body_loc": 57,
+      "kind": "sync",
+      "classification": "mixed",
+      "domain": "scenarios",
+      "risk": "high"
+    },
+    {
+      "line": 1870,
+      "name": "build_export_lineage",
+      "body_loc": 24,
+      "kind": "sync",
+      "classification": "mixed",
+      "domain": "exports",
+      "risk": "medium"
+    },
+    {
+      "line": 1899,
+      "name": "base_vs_active_compare",
+      "body_loc": 69,
+      "kind": "sync",
+      "classification": "mixed",
+      "domain": "scenarios",
+      "risk": "high"
+    },
+    {
+      "line": 1970,
+      "name": "_scenario_runtime_dict",
+      "body_loc": 28,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 2000,
+      "name": "_build_compare_metrics",
+      "body_loc": 16,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 2018,
+      "name": "_delta_sign_class",
+      "body_loc": 9,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    },
+    {
+      "line": 2029,
+      "name": "_format_db_timestamp",
+      "body_loc": 13,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "helpers",
+      "risk": "low"
+    }
+  ],
+  "function_inventory_db_py": [
+    {
+      "line": 17,
+      "name": "get_connection",
+      "body_loc": 11,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "db",
+      "risk": "low"
+    },
+    {
+      "line": 30,
+      "name": "_init_schema",
+      "body_loc": 145,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "db",
+      "risk": "high"
+    },
+    {
+      "line": 177,
+      "name": "_ensure_column",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "db",
+      "risk": "medium"
+    },
+    {
+      "line": 187,
+      "name": "get_cursor",
+      "body_loc": 13,
+      "kind": "sync",
+      "classification": "mixed",
+      "domain": "db",
+      "risk": "high"
+    },
+    {
+      "line": 202,
+      "name": "init_db",
+      "body_loc": 4,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "db",
+      "risk": "low"
+    }
+  ],
+  "function_inventory_backup_restore_py": [
+    {
+      "line": 62,
+      "name": "get_sqlite_db_path",
+      "body_loc": 3,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 67,
+      "name": "get_backup_dir",
+      "body_loc": 5,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 79,
+      "name": "_md5_hexdigest",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 88,
+      "name": "_copy_sqlite_with_sidecars",
+      "body_loc": 13,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 103,
+      "name": "create_sqlite_backup",
+      "body_loc": 52,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "backup_restore",
+      "risk": "medium"
+    },
+    {
+      "line": 162,
+      "name": "list_sqlite_backups",
+      "body_loc": 26,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 195,
+      "name": "validate_sqlite_backup",
+      "body_loc": 19,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 221,
+      "name": "restore_sqlite_backup",
+      "body_loc": 58,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "backup_restore",
+      "risk": "high"
+    },
+    {
+      "line": 321,
+      "name": "get_auto_backup_config",
+      "body_loc": 7,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 330,
+      "name": "_list_auto_backups",
+      "body_loc": 21,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 353,
+      "name": "should_create_auto_backup",
+      "body_loc": 32,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "backup_restore",
+      "risk": "low"
+    },
+    {
+      "line": 387,
+      "name": "create_auto_backup_if_due",
+      "body_loc": 53,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "backup_restore",
+      "risk": "medium"
+    },
+    {
+      "line": 405,
+      "name": "_auto_backup_create",
+      "body_loc": 25,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "backup_restore",
+      "risk": "medium"
+    },
+    {
+      "line": 442,
+      "name": "prune_auto_backups",
+      "body_loc": 39,
+      "kind": "sync",
+      "classification": "write",
+      "domain": "backup_restore",
+      "risk": "medium"
+    }
+  ],
+  "function_inventory_provenance_py": [
+    {
+      "line": 49,
+      "name": "utc_now_iso",
+      "body_loc": 2,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 53,
+      "name": "_run_git",
+      "body_loc": 13,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 68,
+      "name": "get_git_commit_sha",
+      "body_loc": 2,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 72,
+      "name": "get_git_branch_name",
+      "body_loc": 3,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 77,
+      "name": "runtime_flag_snapshot",
+      "body_loc": 9,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 88,
+      "name": "template_provenance",
+      "body_loc": 9,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 99,
+      "name": "provenance_marker",
+      "body_loc": 4,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 105,
+      "name": "governance_posture_summary",
+      "body_loc": 5,
+      "kind": "sync",
+      "classification": "read",
+      "domain": "provenance",
+      "risk": "low"
+    },
+    {
+      "line": 112,
+      "name": "build_replay_metadata",
+      "body_loc": 60,
+      "kind": "sync",
+      "classification": "helper",
+      "domain": "provenance",
+      "risk": "high"
+    }
+  ],
+  "domain_summary": {
+    "projects": 13,
+    "scenarios": 19,
+    "workspace_state": 5,
+    "runs": 5,
+    "exports": 3,
+    "governance": 1,
+    "audit": 1,
+    "helpers": 14,
+    "total_repository_py": 61
+  },
+  "read_write_summary": {
+    "write": 22,
+    "read": 16,
+    "mixed": 5,
+    "helper": 18,
+    "total_repository_py": 61
+  },
+  "hotspot_ranking": {
+    "largest_functions": [
+      {
+        "rank": 1,
+        "name": "save_workspace_state",
+        "line": 1496,
+        "body_loc": 131,
+        "classification": "write",
+        "domain": "workspace_state"
+      },
+      {
+        "rank": 2,
+        "name": "_compute_baseline_snapshot",
+        "line": 871,
+        "body_loc": 122,
+        "classification": "helper",
+        "domain": "projects"
+      },
+      {
+        "rank": 3,
+        "name": "save_project",
+        "line": 686,
+        "body_loc": 117,
+        "classification": "write",
+        "domain": "projects"
+      },
+      {
+        "rank": 4,
+        "name": "get_or_create_base_case_scenario",
+        "line": 86,
+        "body_loc": 85,
+        "classification": "write",
+        "domain": "scenarios"
+      },
+      {
+        "rank": 5,
+        "name": "add_scenario",
+        "line": 1299,
+        "body_loc": 80,
+        "classification": "write",
+        "domain": "scenarios"
+      },
+      {
+        "rank": 6,
+        "name": "base_vs_active_compare",
+        "line": 1899,
+        "body_loc": 69,
+        "classification": "mixed",
+        "domain": "scenarios"
+      },
+      {
+        "rank": 7,
+        "name": "save_scenario",
+        "line": 1116,
+        "body_loc": 63,
+        "classification": "write",
+        "domain": "scenarios"
+      },
+      {
+        "rank": 8,
+        "name": "record_export",
+        "line": 1713,
+        "body_loc": 60,
+        "classification": "write",
+        "domain": "exports"
+      },
+      {
+        "rank": 9,
+        "name": "compare_scenarios",
+        "line": 1811,
+        "body_loc": 57,
+        "classification": "mixed",
+        "domain": "scenarios"
+      },
+      {
+        "rank": 10,
+        "name": "resolve_active_scenario_runtime_snapshot",
+        "line": 245,
+        "body_loc": 49,
+        "classification": "mixed",
+        "domain": "scenarios"
+      }
+    ],
+    "most_called_functions": [
+      {
+        "name": "get_scenario",
+        "call_count": 18
+      },
+      {
+        "name": "list_scenarios",
+        "call_count": 18
+      },
+      {
+        "name": "get_project_by_code",
+        "call_count": 14
+      },
+      {
+        "name": "get_workspace_state",
+        "call_count": 13
+      },
+      {
+        "name": "save_workspace_state",
+        "call_count": 13
+      },
+      {
+        "name": "get_project_record",
+        "call_count": 11
+      },
+      {
+        "name": "record_export",
+        "call_count": 9
+      },
+      {
+        "name": "list_exports",
+        "call_count": 8
+      },
+      {
+        "name": "get_scenario_history",
+        "call_count": 8
+      },
+      {
+        "name": "build_export_lineage",
+        "call_count": 8
+      }
+    ],
+    "write_heavy_functions": [
+      {
+        "name": "save_workspace_state",
+        "body_loc": 131,
+        "domain": "workspace_state",
+        "classification": "write"
+      },
+      {
+        "name": "save_project",
+        "body_loc": 117,
+        "domain": "projects",
+        "classification": "write"
+      },
+      {
+        "name": "get_or_create_base_case_scenario",
+        "body_loc": 85,
+        "domain": "scenarios",
+        "classification": "write"
+      },
+      {
+        "name": "add_scenario",
+        "body_loc": 80,
+        "domain": "scenarios",
+        "classification": "write"
+      },
+      {
+        "name": "base_vs_active_compare",
+        "body_loc": 69,
+        "domain": "scenarios",
+        "classification": "mixed"
+      },
+      {
+        "name": "save_scenario",
+        "body_loc": 63,
+        "domain": "scenarios",
+        "classification": "write"
+      },
+      {
+        "name": "record_export",
+        "body_loc": 60,
+        "domain": "exports",
+        "classification": "write"
+      },
+      {
+        "name": "compare_scenarios",
+        "body_loc": 57,
+        "domain": "scenarios",
+        "classification": "mixed"
+      },
+      {
+        "name": "save_run",
+        "body_loc": 48,
+        "domain": "runs",
+        "classification": "write"
+      },
+      {
+        "name": "update_scenario_overrides",
+        "body_loc": 47,
+        "domain": "scenarios",
+        "classification": "write"
+      }
+    ],
+    "governance_replay_metadata_touchers": [
+      "save_project",
+      "save_scenario",
+      "save_run",
+      "record_export",
+      "get_or_create_base_case_scenario",
+      "runtime_guard_for_snapshot",
+      "resolve_active_scenario_runtime_snapshot",
+      "add_scenario",
+      "update_scenario_overrides",
+      "select_scenario"
+    ]
+  },
+  "direct_db_session_usage_summary": {
+    "choke_point": "app.persistence.db.get_cursor (context manager wrapping sqlite3 connection)",
+    "inside_repository_py": "every write/read uses `with get_cursor() as cur:`",
+    "commit_flush_behavior": "commit on clean __exit__, rollback on exception (in get_cursor)",
+    "explicit_cur_commit_calls": 0,
+    "direct_sqlite3_or_sqlalchemy_imports_in_repository_py": 0,
+    "direct_db_access_outside_app_persistence": 0,
+    "raw_db_connections_in_services_or_routes": 0,
+    "orm_session_add_or_session_commit": 0
+  },
+  "caller_summary_if_available": {
+    "top_10_most_coupled_caller_files": [
+      {
+        "file": "main_web.py",
+        "total_repo_calls": 26
+      },
+      {
+        "file": "app/services/scenario_duplicate_service.py",
+        "total_repo_calls": 26
+      },
+      {
+        "file": "app/services/scenario_rename_service.py",
+        "total_repo_calls": 21
+      },
+      {
+        "file": "app/services/scenarios_add_service.py",
+        "total_repo_calls": 21
+      },
+      {
+        "file": "app/services/projects_create_service.py",
+        "total_repo_calls": 12
+      },
+      {
+        "file": "app/services/scenario_state_route_service.py",
+        "total_repo_calls": 12
+      },
+      {
+        "file": "app/services/scenarios_save_service.py",
+        "total_repo_calls": 12
+      },
+      {
+        "file": "app/services/scenario_archive_service.py",
+        "total_repo_calls": 10
+      },
+      {
+        "file": "app/services/project_save_as_service.py",
+        "total_repo_calls": 8
+      },
+      {
+        "file": "app/services/export_audit_service.py",
+        "total_repo_calls": 7
+      }
+    ],
+    "production_imports_of_app_persistence_repository": [
+      "main_web.py (L41-79): 36 symbols bulk import",
+      "main_web.py (L2460): get_project_record as gpr (route-local re-import)",
+      "app/services/scenario_state_service.py: get_scenario_provenance, get_workspace_state, resolve_active_scenario_runtime_snapshot, runtime_guard_for_snapshot",
+      "app/services/export_audit_service.py: record_export",
+      "app/services/project_save_as_service.py: get_project_record as gpr (route-local re-import)"
+    ],
+    "production_imports_of_app_persistence_provenance": [
+      "main_web.py (L80): build_replay_metadata, utc_now_iso",
+      "app/export/runtime_summary.py: build_replay_metadata"
+    ],
+    "production_imports_of_app_persistence_db": [],
+    "production_imports_of_app_persistence_backup_restore": [],
+    "direct_db_imports_in_services_or_routes": 0
+  },
+  "do_not_touch_yet_list": [
+    {
+      "function": "_init_schema",
+      "file": "app/persistence/db.py",
+      "line": 30,
+      "reason": "schema migration path"
+    },
+    {
+      "function": "get_cursor",
+      "file": "app/persistence/db.py",
+      "line": 187,
+      "reason": "transactional choke point"
+    },
+    {
+      "function": "restore_sqlite_backup",
+      "file": "app/persistence/backup_restore.py",
+      "line": 221,
+      "reason": "high-stakes restore path"
+    },
+    {
+      "function": "build_replay_metadata",
+      "file": "app/persistence/provenance.py",
+      "line": 112,
+      "reason": "replay metadata shape is consumed by tests + downstream systems"
+    },
+    {
+      "function": "get_or_create_base_case_scenario",
+      "file": "app/persistence/repository.py",
+      "line": 86,
+      "reason": "idempotent-or-create semantics; called by multiple services"
+    },
+    {
+      "function": "runtime_guard_for_snapshot",
+      "file": "app/persistence/repository.py",
+      "line": 577,
+      "reason": "read + decision; gate logic must stay stable"
+    },
+    {
+      "function": "save_run",
+      "file": "app/persistence/repository.py",
+      "line": 608,
+      "reason": "touches replay_metadata + governance_state + run row"
+    },
+    {
+      "function": "save_project",
+      "file": "app/persistence/repository.py",
+      "line": 686,
+      "reason": "largest write; touches project + scenario + workspace in one transaction"
+    },
+    {
+      "function": "save_scenario",
+      "file": "app/persistence/repository.py",
+      "line": 1116,
+      "reason": "largest scenario write"
+    },
+    {
+      "function": "save_workspace_state",
+      "file": "app/persistence/repository.py",
+      "line": 1496,
+      "reason": "largest workspace write"
+    },
+    {
+      "function": "add_scenario",
+      "file": "app/persistence/repository.py",
+      "line": 1299,
+      "reason": "creates scenario + base case + governance; multi-table"
+    },
+    {
+      "function": "promote_scenario_to_base_case",
+      "file": "app/persistence/repository.py",
+      "line": 1227,
+      "reason": "promotion path"
+    },
+    {
+      "function": "update_scenario_overrides",
+      "file": "app/persistence/repository.py",
+      "line": 1411,
+      "reason": "overrides path"
+    }
+  ],
+  "recommended_52b_input_list": [
+    "save_project",
+    "save_workspace_state",
+    "save_scenario",
+    "bind_workspace_to_scenario",
+    "save_run",
+    "rename_scenario",
+    "archive_scenario",
+    "select_scenario",
+    "update_scenario_overrides",
+    "duplicate_scenario",
+    "add_scenario",
+    "record_export",
+    "record_workspace_runtime",
+    "discard_workspace_draft",
+    "update_scenario_last_run_summary"
+  ],
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass (Phase 51F guardrails still green)"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope, not introduced by Phase 52)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope, not introduced by Phase 52)"
+    }
+  ],
+  "risks": [
+    "repository.py is a 2042-LOC god-module with 61 functions",
+    "27 write/mixed functions cluster in 4 domains (scenarios, projects, workspace_state, exports)",
+    "no ORM; everything is direct sqlite3 through one context manager (choke point)",
+    "multiple services call into repository.py directly (no facade)",
+    "main_web.py keeps a 36-symbol bulk import + 1 route-local re-import"
+  ],
+  "recommended_next_step": "52B persistence side-effect map"
+}
