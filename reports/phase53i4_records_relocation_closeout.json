@@ -1,0 +1,135 @@
+{
+  "phase": "53I-4",
+  "title": "Records relocation closeout",
+  "type": "closeout_docs",
+  "base_sha": "314b7c296ebde7b5400c78c750854823ede6ec52",
+  "head_sha": "94a01fbf96aa4eee091ae0bc9a44cd7f224bdf26",
+  "branch": "phase53i4-records-relocation-closeout",
+  "auto_merged": true,
+  "final_persistence_module_map": {
+    "records.py": {
+      "loc": 304,
+      "owns": "5 record dataclasses (ProjectRecord, ScenarioRecord, WorkspaceStateRecord, RunRecord, ScenarioExportRecord)"
+    },
+    "repository.py": {
+      "loc": 305,
+      "owns": "compatibility facade + 5 NOT-Group-B functions + 12+ re-exports"
+    },
+    "scenarios_repository.py": {
+      "loc": 598,
+      "owns": "all scenario persistence (reads + low-risk + high-risk)"
+    },
+    "projects_repository.py": {
+      "loc": 494,
+      "owns": "project reads + writes"
+    },
+    "workspace_repository.py": {
+      "loc": 253,
+      "owns": "workspace functions"
+    },
+    "runs_repository.py": {
+      "loc": 107,
+      "owns": "5 run functions (RunRecord re-imported)"
+    },
+    "exports_repository.py": {
+      "loc": 386,
+      "owns": "10 export/audit functions (ScenarioExportRecord re-imported)"
+    },
+    "db.py": {
+      "loc": 205,
+      "owns": "get_cursor context manager"
+    },
+    "provenance.py": {
+      "loc": 171,
+      "owns": "replay metadata"
+    },
+    "backup_restore.py": {
+      "loc": 480,
+      "owns": "backup/restore"
+    }
+  },
+  "record_dataclass_locations": {
+    "ProjectRecord": "app/persistence/records.py (moved from repository.py)",
+    "ScenarioRecord": "app/persistence/records.py (moved from repository.py)",
+    "WorkspaceStateRecord": "app/persistence/records.py (moved from repository.py)",
+    "RunRecord": "app/persistence/records.py (moved from runs_repository.py)",
+    "ScenarioExportRecord": "app/persistence/records.py (moved from exports_repository.py)"
+  },
+  "lazy_import_count_progression": {
+    "scenarios_repository_pre_53i1": 8,
+    "scenarios_repository_post_53i3": 0,
+    "projects_repository_pre_53i1": 7,
+    "projects_repository_post_53i3": 0,
+    "workspace_repository_pre_53i1": 3,
+    "workspace_repository_post_53i3": 0,
+    "total_before": 18,
+    "total_after": 0
+  },
+  "guardrails_added_in_53i_stack": [
+    "test_phase53i1_records_field_shape_import_pins.py: 36 tests for field shape + import path pins",
+    "test_phase53i2_records_module_relocation.py: 21 tests for records.py existence + no records in old locations",
+    "test_phase53i3_no_record_lazy_imports.py: 20 tests for no lazy imports + object identity + SQL preserved",
+    "test_phase53i4_records_relocation_closeout.py: NEW final closeout tests"
+  ],
+  "remaining_residual_functions_in_repository": [
+    "seed_scenarios_if_needed (workshop seeding)",
+    "get_scenario_provenance (provenance metadata)",
+    "runtime_guard_for_snapshot (runtime guard)",
+    "update_scenario_last_run_summary (run summary writer)",
+    "record_workspace_runtime (workspace runtime writer)"
+  ],
+  "persistence_arc_status": "COMPLETE",
+  "no_go_claims": [
+    "no financial formula changes",
+    "no model output changes",
+    "no fixture CSV changes",
+    "no schema/migration changes",
+    "no JavaScript financial calculations",
+    "no runtime flag promotions",
+    "no parity-core file changes",
+    "do not touch app/waterfall_core.py",
+    "do not touch app/project_factories.py",
+    "do not touch senior-debt CSVs",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "generic solar/wind remain exploratory",
+    "no lender/bank/audit/certification claims",
+    "backend remains source of truth",
+    "rc1 remains frozen"
+  ],
+  "recommended_next_steps_priority": [
+    "1. Agent B governance refresh (docs only, low risk)",
+    "2. UI-1 information architecture (UI work resume)",
+    "3. Claude review checkpoint (per 53H-2 review pack)",
+    "4. Pause persistence and switch to other work"
+  ],
+  "do_not_start": [
+    "Agent B runtime work (only docs)",
+    "UI runtime work yet",
+    "Pilot work",
+    "Security work",
+    "Deployment work",
+    "Records.py further cleanup (already done)",
+    "Any new persistence module"
+  ],
+  "tests_run": {
+    "phase53i1_pins": 36,
+    "phase53i2_relocation": 21,
+    "phase53i3_no_lazy": 20,
+    "phase53i4_closeout_new": 15,
+    "phase53g1_pins_total": 91,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "total": 233
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing",
+    "test_phase52b_persistence_side_effect_map: pre-existing",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing"
+  ]
+}
