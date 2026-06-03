@@ -1,0 +1,778 @@
+{
+  "phase": "52D",
+  "title": "Phase 52D: Persistence behavior characterization plan",
+  "base_sha": "ba992223f3a9c2fd7aeeb966f49a7eebcced39ec",
+  "head_sha": "ba992223f3a9c2fd7aeeb966f49a7eebcced39ec",
+  "type": "docs/report/test only",
+  "objective": "Convert Phase 52B's 12 must-pin items and Phase 52C's split-group recommendations into a concrete behavior-characterization plan for Phase 53.",
+  "source_evidence": {
+    "52A_inventory": "PR #422 \u2014 function inventory of app/persistence/repository.py (61 functions, 22 write, 16 read, 5 mixed, 18 helper)",
+    "52B_side_effects": "PR #423 \u2014 side-effect matrix for 15 write functions, 7 high-risk writes, 12 must-pin items, 4 metadata columns",
+    "52C_caller_graph": "PR #424 \u2014 caller graph (27 functions, 4 production files with direct imports, 19 files with calls), 6 split groups, 11 single-owner zones, 3 parallel-safe zones, 4 do-not-parallelize zones"
+  },
+  "high_risk_writes": [
+    {
+      "name": "save_project",
+      "line": 686,
+      "body_loc": 117,
+      "domain": "projects",
+      "risk": "high",
+      "phase53_group": "A"
+    },
+    {
+      "name": "save_workspace_state",
+      "line": 1496,
+      "body_loc": 131,
+      "domain": "workspace_state",
+      "risk": "high",
+      "phase53_group": "C"
+    },
+    {
+      "name": "save_scenario",
+      "line": 1116,
+      "body_loc": 63,
+      "domain": "scenarios",
+      "risk": "high",
+      "phase53_group": "B"
+    },
+    {
+      "name": "add_scenario",
+      "line": 1299,
+      "body_loc": 80,
+      "domain": "scenarios",
+      "risk": "high",
+      "phase53_group": "B"
+    },
+    {
+      "name": "record_export",
+      "line": 1713,
+      "body_loc": 60,
+      "domain": "exports",
+      "risk": "high",
+      "phase53_group": "E"
+    },
+    {
+      "name": "update_scenario_overrides",
+      "line": 1411,
+      "body_loc": 47,
+      "domain": "scenarios",
+      "risk": "high",
+      "phase53_group": "B"
+    },
+    {
+      "name": "get_or_create_base_case_scenario",
+      "line": 86,
+      "body_loc": 85,
+      "domain": "scenarios",
+      "risk": "high",
+      "phase53_group": "B"
+    }
+  ],
+  "must_pin_items": [
+    {
+      "id": 1,
+      "function": "save_project",
+      "aspects": [
+        "INSERT path",
+        "UPDATE path",
+        "replay_metadata.project_id defaulting",
+        "governance_state preservation"
+      ],
+      "priority": "P0",
+      "required_before_phase53": true,
+      "recommended_test_file": "tests/test_phase52d_persistence_save_project_pin.py"
+    },
+    {
+      "id": 2,
+      "function": "save_workspace_state",
+      "aspects": [
+        "INSERT path",
+        "UPDATE path",
+        "replay_metadata merge with existing",
+        "last_runtime_* field preservation"
+      ],
+      "priority": "P0",
+      "required_before_phase53": true,
+      "recommended_test_file": "tests/test_phase52d_persistence_save_workspace_state_pin.py"
+    },
+    {
+      "id": 3,
+      "function": "save_scenario",
+      "aspects": [
+        "replay_metadata.project_id and scenario_id defaulting"
+      ],
+      "priority": "P0",
+      "required_before_phase53": true,
+      "recommended_test_file": "tests/test_phase52d_persistence_save_scenario_pin.py"
+    },
+    {
+      "id": 4,
+      "function": "add_scenario",
+      "aspects": [
+        "replay_metadata.action=add_scenario",
+        "parent_scenario_id storage",
+        "is_base_case=0",
+        "schema_version=1.0"
+      ],
+      "priority": "P0",
+      "required_before_phase53": true,
+      "recommended_test_file": "tests/test_phase52d_persistence_add_scenario_pin.py"
+    },
+    {
+      "id": 5,
+      "function": "record_export",
+      "aspects": [
+        "replay_metadata.export_id, runtime_snapshot_id, export_timestamp defaulting"
+      ],
+      "priority": "P0",
+      "required_before_phase53": true,
+      "recommended_test_file": "tests/test_phase52d_persistence_record_export_pin.py"
+    },
+    {
+      "id": 6,
+      "function": "update_scenario_overrides",
+      "aspects": [
+        "is_base_case gate",
+        "SCENARIO_INPUT_FIELDS filter",
+        "re-resolved snapshot"
+      ],
+      "priority": "P0",
+      "required_before_phase53": true,
+      "recommended_test_file": "tests/test_phase52d_persistence_update_scenario_overrides_pin.py"
+    },
+    {
+      "id": 7,
+      "function": "select_scenario",
+      "aspects": [
+        "replay_metadata.action=select_scenario",
+        "active_scenario_name resolution"
+      ],
+      "priority": "P0",
+      "required_before_phase53": true,
+      "recommended_test_file": "tests/test_phase52d_persistence_select_scenario_pin.py"
+    },
+    {
+      "id": 8,
+      "function": "discard_workspace_draft",
+      "aspects": [
+        "draft_snapshot=saved_snapshot",
+        "dirty=False",
+        "all other fields preserved"
+      ],
+      "priority": "P1",
+      "required_before_phase53": false,
+      "recommended_test_file": "tests/test_phase52d_persistence_discard_workspace_draft_pin.py"
+    },
+    {
+      "id": 9,
+      "function": "record_workspace_runtime",
+      "aspects": [
+        "last_runtime_scenario_id only set if runtime_origin==saved_state"
+      ],
+      "priority": "P1",
+      "required_before_phase53": false,
+      "recommended_test_file": "tests/test_phase52d_persistence_record_workspace_runtime_pin.py"
+    },
+    {
+      "id": 10,
+      "function": "bind_workspace_to_scenario",
+      "aspects": [
+        "draft_snapshot=saved_snapshot=record.snapshot",
+        "dirty=False"
+      ],
+      "priority": "P1",
+      "required_before_phase53": false,
+      "recommended_test_file": "tests/test_phase52d_persistence_bind_workspace_to_scenario_pin.py"
+    },
+    {
+      "id": 11,
+      "function": "update_scenario_last_run_summary",
+      "aspects": [
+        "replay_metadata merge with existing"
+      ],
+      "priority": "P1",
+      "required_before_phase53": false,
+      "recommended_test_file": "tests/test_phase52d_persistence_update_scenario_last_run_summary_pin.py"
+    },
+    {
+      "id": 12,
+      "function": "duplicate_scenario",
+      "aspects": [
+        "copied_from_scenario_id=source.scenario_id",
+        "governance_state copied verbatim"
+      ],
+      "priority": "P1",
+      "required_before_phase53": false,
+      "recommended_test_file": "tests/test_phase52d_persistence_duplicate_scenario_pin.py"
+    }
+  ],
+  "behavior_characterization_matrix": [
+    {
+      "id": 1,
+      "function": "save_project",
+      "current_behavior": "SELECT existing by (user_id, project_code), INSERT or UPDATE, default replay_metadata.project_id, preserve governance_state",
+      "owning_function": "save_project (L686-802)",
+      "callers": [
+        "projects_create_service",
+        "project_save_as_service",
+        "scenarios_save_service",
+        "scenarios_add_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "project_id",
+        "created_at",
+        "project_type",
+        "project_origin",
+        "template_source",
+        "baseline_snapshot_json",
+        "archived",
+        "is_readonly",
+        "governance_state_json",
+        "last_run_summary_json",
+        "replay_metadata_json",
+        "updated_at"
+      ],
+      "ordering": "none enforced at this layer",
+      "existing_tests": [
+        "tests/test_phase17_new_project_foundation.py",
+        "tests/test_phase20a_saved_baseline_models.py",
+        "tests/test_phase51m1_projects_create_route_golden_characterization.py",
+        "tests/test_phase51o1_project_save_as_route_golden_characterization.py"
+      ],
+      "missing_tests": [
+        "explicit INSERT path",
+        "explicit replay_metadata.project_id defaulting",
+        "explicit governance_state preservation"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": 2,
+      "function": "save_workspace_state",
+      "current_behavior": "SELECT existing by (user_id, project_id), INSERT or UPDATE, merge replay_metadata with existing, preserve last_runtime_*",
+      "owning_function": "save_workspace_state (L1496-1626)",
+      "callers": [
+        "scenarios_save_service",
+        "scenario_state_route_service",
+        "scenario_select_service",
+        "scenario_rename_service",
+        "bind_workspace_to_scenario (wrapper)",
+        "select_scenario (caller)",
+        "discard_workspace_draft (wrapper)",
+        "record_workspace_runtime (caller)"
+      ],
+      "metadata_fields": [
+        "workspace_id",
+        "created_at",
+        "project_code",
+        "active_scenario_id",
+        "active_scenario_name",
+        "draft_snapshot_json",
+        "saved_snapshot_json",
+        "last_runtime_snapshot_json",
+        "last_runtime_summary_json",
+        "last_runtime_snapshot_id",
+        "last_runtime_origin",
+        "last_runtime_scenario_id",
+        "last_runtime_at",
+        "dirty",
+        "governance_state_json",
+        "replay_metadata_json",
+        "updated_at"
+      ],
+      "ordering": "central convergence point",
+      "existing_tests": [
+        "tests/test_phase20f_active_scenario_runtime_binding.py",
+        "tests/test_phase51h1_scenario_state_route_family_characterization.py",
+        "tests/test_phase51j1_scenarios_save_route_golden_characterization.py"
+      ],
+      "missing_tests": [
+        "explicit INSERT path",
+        "explicit replay_metadata merge",
+        "explicit last_runtime_* field preservation"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": 3,
+      "function": "save_scenario",
+      "current_behavior": "INSERT only, default replay_metadata.project_id and scenario_id, archived=0 always",
+      "owning_function": "save_scenario (L1116-1178)",
+      "callers": [
+        "add_scenario (within module)",
+        "duplicate_scenario (within module)",
+        "scenarios_save_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "scenario_id",
+        "project_id",
+        "user_id",
+        "scenario_name",
+        "project_code",
+        "source_project_template",
+        "copied_from_scenario_id",
+        "archived",
+        "snapshot_json",
+        "governance_state_json",
+        "last_run_summary_json",
+        "replay_metadata_json",
+        "created_at",
+        "updated_at"
+      ],
+      "ordering": "must be called after project exists",
+      "existing_tests": [
+        "tests/test_phase20b_scenario_data_model.py",
+        "tests/test_phase32_scenario_persistence_versioning_foundation.py"
+      ],
+      "missing_tests": [
+        "explicit replay_metadata.project_id defaulting",
+        "explicit replay_metadata.scenario_id defaulting",
+        "explicit archived=0 invariant"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": 4,
+      "function": "add_scenario",
+      "current_behavior": "resolve snapshot, INSERT non-base, is_base_case=0, parent_scenario_id stored verbatim, replay_metadata.action=add_scenario, schema_version=1.0",
+      "owning_function": "add_scenario (L1299-1378)",
+      "callers": [
+        "scenarios_add_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "scenario_id",
+        "project_id",
+        "user_id",
+        "scenario_name",
+        "project_code",
+        "source_project_template=",
+        "copied_from_scenario_id=NULL",
+        "archived=0",
+        "is_base_case=0",
+        "parent_scenario_id",
+        "base_input_set_json",
+        "overrides_json",
+        "snapshot_json",
+        "governance_state_json",
+        "last_run_summary_json",
+        "replay_metadata_json",
+        "schema_version=1.0",
+        "created_at",
+        "updated_at"
+      ],
+      "ordering": "must be called after parent scenario exists (but parent_scenario_id stored verbatim)",
+      "existing_tests": [
+        "tests/test_phase51l1_scenario_add_route_golden_characterization.py",
+        "tests/test_phase51l2_scenarios_add_route_vertical_extraction.py"
+      ],
+      "missing_tests": [
+        "explicit replay_metadata.action=add_scenario tag",
+        "explicit parent_scenario_id verbatim storage",
+        "explicit is_base_case=0 invariant",
+        "explicit schema_version=1.0"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": 5,
+      "function": "record_export",
+      "current_behavior": "INSERT only, default replay_metadata.project_id, scenario_id, export_id, runtime_snapshot_id, export_timestamp",
+      "owning_function": "record_export (L1713-1772)",
+      "callers": [
+        "export_audit_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "export_id",
+        "scenario_id",
+        "project_id",
+        "user_id",
+        "export_type",
+        "artifact_name",
+        "artifact_path",
+        "project_code",
+        "governance_state_json",
+        "runtime_snapshot_id",
+        "replay_metadata_json",
+        "created_at"
+      ],
+      "ordering": "none enforced",
+      "existing_tests": [
+        "tests/test_phase49d3a_export_audit_recording_characterization.py",
+        "tests/test_phase12_audit_replay_metadata_hardening.py",
+        "tests/test_phase14_*.py"
+      ],
+      "missing_tests": [
+        "explicit replay_metadata.export_id defaulting",
+        "explicit replay_metadata.runtime_snapshot_id defaulting",
+        "explicit replay_metadata.export_timestamp defaulting"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": 6,
+      "function": "update_scenario_overrides",
+      "current_behavior": "read scenario, is_base_case gate (return None), merge overrides, filter to SCENARIO_INPUT_FIELDS, re-resolve snapshot, UPDATE overrides_json + snapshot_json, replay_metadata NOT touched",
+      "owning_function": "update_scenario_overrides (L1411-1457)",
+      "callers": [
+        "scenario_update_overrides_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "overrides_json",
+        "snapshot_json",
+        "updated_at"
+      ],
+      "ordering": "must be called after scenario exists",
+      "existing_tests": [
+        "tests/test_phase51r1_scenario_update_overrides_route_golden_characterization.py",
+        "tests/test_phase51r2_scenario_update_overrides_route_vertical_extraction.py"
+      ],
+      "missing_tests": [
+        "explicit is_base_case gate",
+        "explicit SCENARIO_INPUT_FIELDS filter",
+        "explicit re-resolved snapshot"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": 7,
+      "function": "select_scenario",
+      "current_behavior": "read scenario + workspace, return False if either None, save_workspace_state with active_scenario_id, active_scenario_name, draft=existing.draft, saved=existing.saved or existing.draft, governance_state, replay_metadata.action=select_scenario",
+      "owning_function": "select_scenario (L1460-1483)",
+      "callers": [
+        "scenario_select_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "active_scenario_id",
+        "active_scenario_name",
+        "draft_snapshot_json",
+        "saved_snapshot_json",
+        "governance_state_json",
+        "replay_metadata_json"
+      ],
+      "ordering": "must be called after both scenario and workspace exist",
+      "existing_tests": [
+        "tests/test_phase51s1_scenario_select_route_golden_characterization.py"
+      ],
+      "missing_tests": [
+        "explicit replay_metadata.action=select_scenario",
+        "explicit fallback when saved_snapshot is None",
+        "explicit False return when scenario or workspace not found"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": 8,
+      "function": "discard_workspace_draft",
+      "current_behavior": "read workspace, return None if None, save_workspace_state with draft=saved, dirty=False, all other fields preserved",
+      "owning_function": "discard_workspace_draft (L1651-1672)",
+      "callers": [
+        "scenario_state_route_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "draft_snapshot_json",
+        "dirty"
+      ],
+      "ordering": "must be called after workspace exists",
+      "existing_tests": [
+        "tests/test_phase51h1_scenario_state_route_family_characterization.py"
+      ],
+      "missing_tests": [
+        "explicit draft=saved test",
+        "explicit dirty=False test",
+        "explicit preservation of last_runtime_* fields"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": 9,
+      "function": "record_workspace_runtime",
+      "current_behavior": "read workspace, compute saved/draft/dirty from existing, save_workspace_state with last_runtime_*, last_runtime_scenario_id ONLY if runtime_origin==saved_state",
+      "owning_function": "record_workspace_runtime (L1675-1710)",
+      "callers": [
+        "save_run_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "last_runtime_snapshot",
+        "last_runtime_summary",
+        "last_runtime_snapshot_id",
+        "last_runtime_origin",
+        "last_runtime_scenario_id",
+        "last_runtime_at"
+      ],
+      "ordering": "must be called after workspace exists",
+      "existing_tests": [
+        "tests/test_phase13_editable_grid_*.py",
+        "tests/test_phase20f_active_scenario_runtime_binding.py"
+      ],
+      "missing_tests": [
+        "explicit last_runtime_scenario_id gate (only set when runtime_origin==saved_state)"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": 10,
+      "function": "bind_workspace_to_scenario",
+      "current_behavior": "wrapper around save_workspace_state, sets active_scenario_id, active_scenario_name, draft=saved=record.snapshot, dirty=False, governance_state=record.governance_state",
+      "owning_function": "bind_workspace_to_scenario (L1629-1648)",
+      "callers": [
+        "scenario_state_route_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "active_scenario_id",
+        "active_scenario_name",
+        "draft_snapshot_json",
+        "saved_snapshot_json",
+        "dirty",
+        "governance_state_json"
+      ],
+      "ordering": "must be called after scenario exists",
+      "existing_tests": [
+        "tests/test_phase20f_active_scenario_runtime_binding.py"
+      ],
+      "missing_tests": [
+        "explicit draft=saved=record.snapshot test",
+        "explicit dirty=False test"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": 11,
+      "function": "update_scenario_last_run_summary",
+      "current_behavior": "read scenario, return False if None, merge replay_metadata with existing, UPDATE last_run_summary_json, replay_metadata_json, updated_at",
+      "owning_function": "update_scenario_last_run_summary (L1381-1408)",
+      "callers": [
+        "save_run_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "last_run_summary_json",
+        "replay_metadata_json",
+        "updated_at"
+      ],
+      "ordering": "must be called after scenario exists",
+      "existing_tests": [
+        "tests/test_phase51g1_save_run_route_golden_characterization.py"
+      ],
+      "missing_tests": [
+        "explicit replay_metadata merge test (existing keys preserved unless overridden)"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": 12,
+      "function": "duplicate_scenario",
+      "current_behavior": "read source, return None if None, save_scenario with copied_from_scenario_id=source.scenario_id, copy governance_state and replay_metadata verbatim",
+      "owning_function": "duplicate_scenario (L1280-1296)",
+      "callers": [
+        "scenario_duplicate_service",
+        "main_web.py"
+      ],
+      "metadata_fields": [
+        "copied_from_scenario_id",
+        "governance_state",
+        "replay_metadata"
+      ],
+      "ordering": "must be called after source exists",
+      "existing_tests": [
+        "tests/test_phase51k1_scenario_duplicate_route_golden_characterization.py"
+      ],
+      "missing_tests": [
+        "explicit copied_from_scenario_id=source.scenario_id test",
+        "explicit governance_state verbatim copy test"
+      ],
+      "priority": "P1"
+    }
+  ],
+  "existing_coverage_summary": [
+    {
+      "item": "add_scenario replay_metadata.action",
+      "covered_by": "tests/test_phase51l1_scenario_add_route_golden_characterization.py"
+    },
+    {
+      "item": "select_scenario False return",
+      "covered_by": "tests/test_phase51s1_scenario_select_route_golden_characterization.py"
+    },
+    {
+      "item": "discard_workspace_draft draft=saved",
+      "covered_by": "tests/test_phase51h1_scenario_state_route_family_characterization.py"
+    },
+    {
+      "item": "update_scenario_last_run_summary replay_metadata merge",
+      "covered_by": "tests/test_phase51g1_save_run_route_golden_characterization.py"
+    },
+    {
+      "item": "duplicate_scenario copied_from_scenario_id",
+      "covered_by": "tests/test_phase51k1_scenario_duplicate_route_golden_characterization.py"
+    }
+  ],
+  "missing_coverage_summary": {
+    "P0_count": 7,
+    "P1_count": 5,
+    "P0_files": [
+      "tests/test_phase52d_persistence_save_project_pin.py",
+      "tests/test_phase52d_persistence_save_workspace_state_pin.py",
+      "tests/test_phase52d_persistence_save_scenario_pin.py",
+      "tests/test_phase52d_persistence_add_scenario_pin.py",
+      "tests/test_phase52d_persistence_record_export_pin.py",
+      "tests/test_phase52d_persistence_update_scenario_overrides_pin.py",
+      "tests/test_phase52d_persistence_select_scenario_pin.py"
+    ],
+    "P1_files": [
+      "tests/test_phase52d_persistence_discard_workspace_draft_pin.py",
+      "tests/test_phase52d_persistence_record_workspace_runtime_pin.py",
+      "tests/test_phase52d_persistence_bind_workspace_to_scenario_pin.py",
+      "tests/test_phase52d_persistence_update_scenario_last_run_summary_pin.py",
+      "tests/test_phase52d_persistence_duplicate_scenario_pin.py"
+    ]
+  },
+  "phase53_group_test_gates": {
+    "F_helpers": {
+      "required_new_pins": 0,
+      "existing_coverage_sufficient": true,
+      "notes": "pure functions; refactor invisible if signatures preserved"
+    },
+    "D_runs": {
+      "required_new_pins": 0,
+      "existing_coverage_sufficient": true,
+      "notes": "narrow caller surface (1 service + 1 route); existing tests cover it"
+    },
+    "E_exports_audit": {
+      "required_new_pins": 0,
+      "existing_coverage_sufficient": true,
+      "notes": "record_export covered by Phase 49; build_export_lineage + list_exports covered by Phase 14"
+    },
+    "A_projects": {
+      "required_new_pins": 1,
+      "existing_coverage_sufficient": false,
+      "notes": "must have save_project P0 pin (item 1) before any project function moves"
+    },
+    "C_workspace_state": {
+      "required_new_pins": 1,
+      "existing_coverage_sufficient": false,
+      "notes": "must have save_workspace_state P0 pin (item 2) before any workspace function moves; P1 pins for 3 wrappers can be added when each wrapper is actually moved"
+    },
+    "B_scenarios": {
+      "required_new_pins": 5,
+      "existing_coverage_sufficient": false,
+      "notes": "must have P0 pins for save_scenario, add_scenario, update_scenario_overrides, select_scenario, get_or_create_base_case_scenario; P1 pins for duplicate_scenario, update_scenario_last_run_summary can be added when each is moved"
+    }
+  },
+  "user_signoff_required_items": [
+    {
+      "item": "Refactor of save_project (Group A)",
+      "reason": "Combines project + baseline_snapshot + governance_state in one transaction"
+    },
+    {
+      "item": "Refactor of save_workspace_state (Group C)",
+      "reason": "Central convergence point; refactor could break 4 wrappers in cascade"
+    },
+    {
+      "item": "Refactor of add_scenario (Group B)",
+      "reason": "Writes scenario + base_input_set + overrides + governance_state + replay_metadata in one INSERT"
+    },
+    {
+      "item": "Refactor of update_scenario_overrides (Group B)",
+      "reason": "is_base_case gate + SCENARIO_INPUT_FIELDS filter"
+    },
+    {
+      "item": "Refactor of get_or_create_base_case_scenario (Group B)",
+      "reason": "Idempotent-or-create semantics"
+    },
+    {
+      "item": "Refactor of record_export (Group E)",
+      "reason": "Sole entry point for audit pipeline"
+    },
+    {
+      "item": "Any change to the replay_metadata shape",
+      "reason": "Consumed by 13 write functions and many tests; major migration"
+    }
+  ],
+  "red_flags_requiring_user_signoff": [
+    "Any new test failure in a P0 pin file",
+    "Any new test failure in test_phase51f_parallel_work_guardrails.py",
+    "Any git diff that touches app/waterfall_core.py, app/project_factories.py, parity-core, schema, JS, or fixture CSVs",
+    "Any change to the replay_metadata shape",
+    "Any change to the governance_state shape",
+    "Any change to the SCENARIO_INPUT_FIELDS set",
+    "Any change to the _init_schema function in app/persistence/db.py",
+    "Any new import of sqlite3 or sqlalchemy outside app/persistence/*",
+    "Any new direct DB connection opened outside app/persistence/*",
+    "Any merge of a Phase 53 PR that wasn't based on a clean 52G closeout",
+    "Any merge where the diff includes unexpected production code (e.g., a model change bundled with a persistence split)"
+  ],
+  "high_risk_to_test_mapping": [
+    {
+      "high_risk_write": "save_project",
+      "required_test_file": "tests/test_phase52d_persistence_save_project_pin.py",
+      "required_before_phase53": true
+    },
+    {
+      "high_risk_write": "save_workspace_state",
+      "required_test_file": "tests/test_phase52d_persistence_save_workspace_state_pin.py",
+      "required_before_phase53": true
+    },
+    {
+      "high_risk_write": "save_scenario",
+      "required_test_file": "tests/test_phase52d_persistence_save_scenario_pin.py",
+      "required_before_phase53": true
+    },
+    {
+      "high_risk_write": "add_scenario",
+      "required_test_file": "tests/test_phase52d_persistence_add_scenario_pin.py",
+      "required_before_phase53": true
+    },
+    {
+      "high_risk_write": "record_export",
+      "required_test_file": "tests/test_phase52d_persistence_record_export_pin.py",
+      "required_before_phase53": true
+    },
+    {
+      "high_risk_write": "update_scenario_overrides",
+      "required_test_file": "tests/test_phase52d_persistence_update_scenario_overrides_pin.py",
+      "required_before_phase53": true
+    },
+    {
+      "high_risk_write": "get_or_create_base_case_scenario",
+      "required_test_file": "covered via Group B + tests/test_phase52d_persistence_save_scenario_pin.py",
+      "required_before_phase53": true
+    }
+  ],
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    },
+    {
+      "test_module": "tests/test_phase52a_repository_inventory_hotspot_map.py",
+      "result": "61/61 pass"
+    },
+    {
+      "test_module": "tests/test_phase52b_persistence_side_effect_map.py",
+      "result": "46/46 pass"
+    },
+    {
+      "test_module": "tests/test_phase52c_repository_caller_coupling_graph.py",
+      "result": "47/47 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "recommended_next_step": "52E persistence hotspot / Phase 53 execution plan"
+}
