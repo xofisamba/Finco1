@@ -7,7 +7,6 @@ financial model outputs.
 
 from __future__ import annotations
 
-import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,54 +15,24 @@ from typing import Any, Optional
 from app.persistence.db import get_cursor
 
 
-def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _to_json(value: Any) -> str:
-    return json.dumps(value if value is not None else {}, default=str, sort_keys=True)
-
-
-def _from_json(value: Optional[str], default: Any) -> Any:
-    if not value:
-        return default
-    return json.loads(value)
-
-
-def _from_iso(value: str | datetime) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    return datetime.fromisoformat(value)
+# Phase 53A: Group F helpers re-exported from app.persistence._helpers for
+# backward compatibility. The original implementations live in
+# app/persistence/_helpers.py.
+from app.persistence._helpers import (
+    _now_utc,
+    _to_json,
+    _from_json,
+    _from_iso,
+    SCENARIO_INPUT_FIELDS,
+    _safe_number,
+    _metric_value,
+    snapshots_equal,
+    _strip_empty_fields,
+    _get_least_created_scenario_for_project,
+)
 
 
 
-
-# ---------------------------------------------------------------------------
-# Known input-field names for override validation.
-# ---------------------------------------------------------------------------
-SCENARIO_INPUT_FIELDS: set[str] = {
-    "active_project",
-    "project_name",
-    "project_type",
-    "project_origin",
-    "template_source",
-    "country_market",
-    "scenario",
-    "capacity_mw",
-    "tariff_eur_mwh",
-    "p50_hours",
-    "total_capex_keur",
-    "opex_y1_keur",
-    "gearing_pct",
-    "target_dscr",
-    "interest_rate_pct",
-    "tenor_years",
-    "cod_date",
-    "construction_months",
-    "horizon_years",
-    "capacity_factor",
-    "ppa_term_years",
-}
 
 
 def resolve_scenario_snapshot(
@@ -531,47 +500,6 @@ class WorkspaceStateRecord:
             updated_at=_from_iso(row["updated_at"]),
             last_runtime_at=_from_iso(row["last_runtime_at"]) if row["last_runtime_at"] else None,
         )
-
-
-def _safe_number(value: Any) -> Optional[float]:
-    if value in (None, "", "NOT_AVAILABLE", "MISSING"):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _metric_value(record: ScenarioRecord, key: str) -> Any:
-    snapshot = record.snapshot or {}
-    summary = record.last_run_summary or {}
-    metric_map = {
-        "Revenue": summary.get("total_revenue_keur"),
-        "OPEX": snapshot.get("opex_y1_keur"),
-        "EBITDA": summary.get("total_ebitda_keur"),
-        "Senior Debt": summary.get("senior_debt_keur"),
-        "SHL": summary.get("shl_balance_keur"),
-        "DSCR": summary.get("avg_dscr"),
-        "Project IRR": summary.get("project_irr"),
-        "Equity IRR": summary.get("equity_irr"),
-        "CAPEX": snapshot.get("total_capex_keur"),
-        "Distributions": summary.get("distribution_keur"),
-    }
-    return metric_map.get(key)
-
-
-def snapshots_equal(left: Optional[dict[str, Any]], right: Optional[dict[str, Any]]) -> bool:
-    return _to_json(left or {}) == _to_json(right or {})
-
-
-def _strip_empty_fields(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Remove keys whose values are empty strings.
-
-    Used to normalize snapshots before comparison so that form submissions
-    (which may contain new empty-string fields added by _collect_form_snapshot)
-    can still match workspace saved snapshots that predate those fields.
-    """
-    return {k: v for k, v in (snapshot or {}).items() if v != ""}
 
 
 def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], current_snapshot: dict[str, Any]) -> tuple[bool, str, str]:
@@ -1258,23 +1186,6 @@ def promote_scenario_to_base_case(user_id: str, scenario_id: str) -> Optional["S
         if cur.rowcount == 0:
             return None
     return get_scenario(scenario_id, user_id)
-
-
-def _get_least_created_scenario_for_project(user_id: str, project_id: str) -> Optional["ScenarioRecord"]:
-    """Return the oldest (earliest created_at) non-archived scenario for a project,
-    used as the default base case when backfilling for legacy projects."""
-    with get_cursor() as cur:
-        cur.execute(
-            """
-            SELECT * FROM scenarios
-            WHERE user_id=? AND project_id=? AND archived=0
-            ORDER BY created_at ASC
-            LIMIT 1
-            """,
-            (user_id, project_id),
-        )
-        row = cur.fetchone()
-    return ScenarioRecord.from_row(row) if row else None
 
 
 def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] = None) -> Optional[ScenarioRecord]:
