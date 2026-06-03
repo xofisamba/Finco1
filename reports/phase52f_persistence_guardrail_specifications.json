@@ -1,0 +1,239 @@
+{
+  "phase": "52F",
+  "title": "Phase 52F: Persistence guardrail specifications",
+  "base_sha": "bff3e9846e0b71e0b5b06378390ffd0e2ad28a53",
+  "head_sha": "bff3e9846e0b71e0b5b06378390ffd0e2ad28a53",
+  "type": "docs/report/test only + non-invasive structural guardrail tests",
+  "objective": "Specify and (where safe) add structural guardrails to prevent Phase 51-style proliferation and Phase 53 persistence boundary regressions.",
+  "existing_guardrails": [
+    {
+      "name": "Engine-output golden (TUHO + Oborovo)",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestEngineOutputGoldenTUHO + TestEngineOutputGoldenOborovo",
+      "tests": 6,
+      "status": "active"
+    },
+    {
+      "name": "Parity-core lock (4 SHA-256 files)",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestParityCoreLock",
+      "tests": 4,
+      "status": "active"
+    },
+    {
+      "name": "No-service-imports-main_web/main_api",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestNoServiceImportsMainWeb",
+      "tests": 6,
+      "status": "active"
+    },
+    {
+      "name": "Phase 51 doc cross-check",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestGuardrailDocsCrossCheck",
+      "tests": 5,
+      "status": "active"
+    }
+  ],
+  "total_existing_guardrail_tests": 21,
+  "proposed_guardrails": [
+    {
+      "id": "G1",
+      "name": "no direct sqlite3 / sqlalchemy imports outside app/persistence/*",
+      "implemented": true,
+      "tests": 2,
+      "false_positive_risk": "none",
+      "required_before_phase53": true
+    },
+    {
+      "id": "G2",
+      "name": "no service imports main_web or main_api",
+      "implemented": true,
+      "tests": 2,
+      "false_positive_risk": "none",
+      "required_before_phase53": true,
+      "note": "complements existing 51F guardrail"
+    },
+    {
+      "id": "G3",
+      "name": "no sqlite3.Connection or sqlite3.connect instantiation outside app/persistence/*",
+      "implemented": true,
+      "tests": 1,
+      "false_positive_risk": "none",
+      "required_before_phase53": true
+    },
+    {
+      "id": "G4",
+      "name": "no service or route imports get_cursor directly",
+      "implemented": true,
+      "tests": 1,
+      "false_positive_risk": "low",
+      "required_before_phase53": true
+    },
+    {
+      "id": "G5",
+      "name": "repository.py has the single-transaction pattern",
+      "implemented": true,
+      "tests": 3,
+      "false_positive_risk": "none",
+      "required_before_phase53": true
+    },
+    {
+      "id": "G6",
+      "name": "services use public surface of repository only",
+      "implemented": true,
+      "tests": 1,
+      "false_positive_risk": "none",
+      "required_before_phase53": true
+    },
+    {
+      "id": "D1",
+      "name": "route no-refattening",
+      "implemented": false,
+      "deferred_to": "Phase 53G/53J (manual)",
+      "false_positive_risk": "high",
+      "required_before_phase53": false
+    },
+    {
+      "id": "D2",
+      "name": "service-count / no-new-service-without-justification",
+      "implemented": false,
+      "deferred_to": "Phase 53F (soft check)",
+      "false_positive_risk": "medium",
+      "required_before_phase53": false
+    },
+    {
+      "id": "D3",
+      "name": "UI context key contract",
+      "implemented": false,
+      "deferred_to": "Phase 54",
+      "false_positive_risk": "high",
+      "required_before_phase53": false
+    },
+    {
+      "id": "D4",
+      "name": "docs no-go scanner",
+      "implemented": false,
+      "deferred_to": "Phase 54+",
+      "false_positive_risk": "high",
+      "required_before_phase53": false
+    }
+  ],
+  "implemented_guardrails": [
+    {
+      "id": "G1",
+      "name": "no direct sqlite3 / sqlalchemy imports outside app/persistence/*",
+      "test_class": "TestG1NoDirectDbImportsOutsidePersistence",
+      "test_count": 2
+    },
+    {
+      "id": "G2",
+      "name": "no service imports main_web or main_api",
+      "test_class": "TestG2NoServiceImportsMainWebOrApi",
+      "test_count": 2
+    },
+    {
+      "id": "G3",
+      "name": "no sqlite3.Connection or sqlite3.connect instantiation outside app/persistence/*",
+      "test_class": "TestG3NoDirectConnectionInstantiationOutsidePersistence",
+      "test_count": 1
+    },
+    {
+      "id": "G4",
+      "name": "no service or route imports get_cursor directly",
+      "test_class": "TestG4NoServiceImportsGetCursor",
+      "test_count": 1
+    },
+    {
+      "id": "G5",
+      "name": "repository.py has the single-transaction pattern",
+      "test_class": "TestG5RepositorySingleTransactionPattern",
+      "test_count": 3
+    },
+    {
+      "id": "G6",
+      "name": "services use public surface of repository only",
+      "test_class": "TestG6ServicesUsePublicSurfaceOnly",
+      "test_count": 1
+    }
+  ],
+  "implemented_total_tests": 10,
+  "deferred_guardrails": [
+    {
+      "id": "D1",
+      "name": "route no-refattening",
+      "reason": "sensitive to inline comments, blank lines, and docstring counting; would be brittle"
+    },
+    {
+      "id": "D2",
+      "name": "service-count / no-new-service-without-justification",
+      "reason": "count-only check is brittle; justification check is too opinionated"
+    },
+    {
+      "id": "D3",
+      "name": "UI context key contract",
+      "reason": "context surface is large; key names not documented in a single place"
+    },
+    {
+      "id": "D4",
+      "name": "docs no-go scanner",
+      "reason": "docs surface is large; regex-based scanner would have high false-positive risk"
+    }
+  ],
+  "false_positive_risks": {
+    "G1": "none",
+    "G2": "none",
+    "G3": "none",
+    "G4": "low \u2014 would only trigger on unusual variable name use of get_cursor outside persistence",
+    "G5": "none",
+    "G6": "none"
+  },
+  "phase53_required_guardrails": [
+    "G1",
+    "G2",
+    "G3",
+    "G4",
+    "G5",
+    "G6"
+  ],
+  "phase54_required_guardrails": [
+    "D3"
+  ],
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    },
+    {
+      "test_module": "tests/test_phase52a_repository_inventory_hotspot_map.py",
+      "result": "61/61 pass"
+    },
+    {
+      "test_module": "tests/test_phase52b_persistence_side_effect_map.py",
+      "result": "46/46 pass"
+    },
+    {
+      "test_module": "tests/test_phase52c_repository_caller_coupling_graph.py",
+      "result": "47/47 pass"
+    },
+    {
+      "test_module": "tests/test_phase52d_persistence_behavior_characterization_plan.py",
+      "result": "51/51 pass"
+    },
+    {
+      "test_module": "tests/test_phase52e_persistence_hotspot_phase53_execution_plan.py",
+      "result": "32/32 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "recommended_next_step": "52G Phase 52 closeout"
+}
