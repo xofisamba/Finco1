@@ -1,0 +1,143 @@
+{
+  "phase": "53E-1",
+  "title": "Phase 53E-1: Pin save_project persistence behavior",
+  "base_sha": "57eab0add68a6f692e1f9f0332f3a970679c78b9",
+  "head_sha": "d467e91f2f8488450a32306657809255d9ba6c57",
+  "type": "test/docs/report only",
+  "target_function": "save_project",
+  "pinned_behaviors": [
+    "public_import_path",
+    "signature_name_parameters_defaults_return_annotation",
+    "single_transaction_pattern",
+    "insert_path_generates_new_project_id",
+    "update_path_preserves_existing_project_id",
+    "update_path_preserves_created_at",
+    "update_path_fallbacks_for_project_origin",
+    "update_path_fallbacks_for_template_source",
+    "update_path_preserves_baseline_snapshot_when_empty",
+    "update_path_fallbacks_for_archived",
+    "replay_metadata_none_to_empty_dict",
+    "replay_metadata_setdefault_project_id",
+    "replay_metadata_json_serialization",
+    "governance_state_none_to_empty_dict",
+    "governance_state_json_serialization",
+    "last_run_summary_none_to_empty_dict",
+    "last_run_summary_json_serialization",
+    "baseline_snapshot_none_to_empty_dict",
+    "baseline_snapshot_json_serialization",
+    "baseline_snapshot_preserved_from_existing_in_update",
+    "project_origin_default_factory_template",
+    "project_origin_fallback_to_factory_template",
+    "template_source_default_none",
+    "template_source_effective_initial",
+    "template_source_fallback_in_update",
+    "archived_default_false",
+    "archived_fallback_to_existing",
+    "archived_serialized_as_int_bool",
+    "is_readonly_default_false",
+    "is_readonly_serialized_as_int_bool",
+    "now_called_exactly_once",
+    "insert_uses_now_for_both_created_at_and_updated_at",
+    "update_preserves_existing_created_at",
+    "return_type_is_project_record"
+  ],
+  "replay_metadata_behavior": {
+    "defaulting": "replay_metadata = dict(replay_metadata or {})  # None becomes {}",
+    "setdefault_in_insert": true,
+    "setdefault_in_update": true,
+    "key_setdefault": "project_id",
+    "serialization": "_to_json(replay_metadata)"
+  },
+  "governance_state_behavior": {
+    "defaulting": "governance_state = governance_state or {}  # None becomes {}",
+    "serialization": "_to_json(governance_state)"
+  },
+  "last_run_summary_behavior": {
+    "defaulting": "last_run_summary = last_run_summary or {}  # None becomes {}",
+    "serialization": "_to_json(last_run_summary)"
+  },
+  "runtime_timestamp_behavior": "not directly set by save_project (delegated to _now_utc())",
+  "project_origin_behavior": {
+    "default": "factory_template",
+    "insert_value": "passed project_origin (or its default)",
+    "update_fallback": "project_origin = project_origin or existing[\"project_origin\"] or \"factory_template\""
+  },
+  "sql_behavior_summary": {
+    "single_transaction": true,
+    "select_existing": "SELECT project_id, created_at, project_type, project_origin, template_source, baseline_snapshot_json, archived FROM projects WHERE user_id=? AND project_code=?",
+    "update": "UPDATE projects SET project_name=?, project_type=?, project_origin=?, source_project_template=?, template_source=?, baseline_snapshot_json=?, archived=?, is_readonly=?, governance_state_json=?, last_run_summary_json=?, replay_metadata_json=?, updated_at=? WHERE project_id=? AND user_id=?",
+    "insert": "INSERT INTO projects (16 columns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "no_explicit_commit": true,
+    "no_explicit_flush": true
+  },
+  "signature_summary": {
+    "name": "save_project",
+    "params": [
+      "user_id",
+      "project_code",
+      "project_name",
+      "source_project_template",
+      "project_type",
+      "project_origin",
+      "template_source",
+      "baseline_snapshot",
+      "archived",
+      "is_readonly",
+      "governance_state",
+      "last_run_summary",
+      "replay_metadata"
+    ],
+    "required": [
+      "user_id",
+      "project_code",
+      "project_name",
+      "source_project_template"
+    ],
+    "defaults": {
+      "project_type": "None",
+      "project_origin": "factory_template",
+      "template_source": "None",
+      "baseline_snapshot": "None",
+      "archived": "False",
+      "is_readonly": "False",
+      "governance_state": "None",
+      "last_run_summary": "None",
+      "replay_metadata": "None"
+    },
+    "return_annotation": "ProjectRecord"
+  },
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase53e1_save_project_p0_behavior_pin.py",
+      "result": "41/41 pass"
+    },
+    {
+      "test_module": "tests/test_phase53d_persistence_project_reads_extraction.py",
+      "result": "57/57 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "result": "19/19 pass"
+    },
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "hard_gates_pass": true,
+  "recommended_next_step": "53E-2 extract project write persistence functions"
+}
