@@ -1,0 +1,143 @@
+{
+  "package": {
+    "name": "Finco1 Pilot Issue Log Template",
+    "workstream": "B20",
+    "branch": "parallel-b20-b23-pilot-operating-review-prep",
+    "branch_base_sha": "3ebc8051f443eaeb4dca143a4b4330aea1146458",
+    "package_base_sha_at_creation": "3ebc8051f443eaeb4dca143a4b4330aea1146458",
+    "template_version": "0.1.0",
+    "template_status": "empty_template",
+    "intended_use": "internal_pilot_issue_log_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/pilot_issue_log_process.md",
+  "evidence_register_pointer": "reports/pilot/pilot_evidence_register_template.json",
+  "b7_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b9_execution_pointer": "docs/pilot/pilot_validation_execution_pack.md",
+  "b9_criteria_pointer": "docs/pilot/pilot_pass_fail_criteria.md",
+  "b9_evidence_capture_pointer": "docs/pilot/pilot_evidence_capture_template.md",
+  "b18_launch_pointer": "docs/pilot/controlled_pilot_launch_checklist.md",
+  "b19_post_pilot_pointer": "docs/pilot/post_pilot_evidence_update_template.md",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "b12_heatmap_pointer": "reports/validation/model_confidence_heatmap.json",
+  "b13_paid_pilot_gate_pointer": "reports/pilot/paid_pilot_readiness_gate.json",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "disclaimers": {
+    "pilot_issue_logs_are_internal_evidence": true,
+    "not_external_validation": true,
+    "not_customer_reference": true,
+    "not_substitute_for_b_track_governance_artifacts": true,
+    "not_paid_pilot_authorization": true,
+    "claude_review_separate": true,
+    "do_not_claim_pilot_happened_unless_actual_results_provided": true,
+    "do_not_invent_pilot_results": true,
+    "do_not_pre_populate_with_hypothetical_results": true
+  },
+  "issue_id_format": {
+    "format": "ISS-<pilot_run_id>-<sequence_number>",
+    "pilot_run_id_description": "Unique identifier of the pilot run, assigned by the pilot operator.",
+    "sequence_number_format": "4-digit zero-padded sequence number, starting at 0001.",
+    "examples": [
+      "ISS-PR-2026-Q3-001-0001",
+      "ISS-PR-2026-Q3-001-0002"
+    ]
+  },
+  "severity_taxonomy": {
+    "pilot-blocker": {
+      "definition": "Issue blocks pilot continuation. Must be resolved or accepted before the pilot continues.",
+      "resolution_window": "immediate"
+    },
+    "high": {
+      "definition": "Issue affects a significant portion of the pilot scope.",
+      "resolution_window": "3 business days"
+    },
+    "medium": {
+      "definition": "Issue affects a small portion of the pilot scope or has a clear workaround.",
+      "resolution_window": "1 week"
+    },
+    "low": {
+      "definition": "Issue is cosmetic or doc-only.",
+      "resolution_window": "2 weeks"
+    }
+  },
+  "category_taxonomy": {
+    "bug": "A defect in the model, the routes, the services, or the persistence layer.",
+    "unexpected-behavior": "The model produces output that is outside the documented range, but the cause is not yet known.",
+    "ux": "A user-experience issue that does not affect model correctness.",
+    "doc": "A documentation gap or inconsistency.",
+    "infra": "An environment, deployment, or observability issue.",
+    "scope": "A scope misalignment (e.g. the pilot user attempts a generic-solar or generic-wind input set)."
+  },
+  "sensitivity_taxonomy": {
+    "public": "No redaction required. May be shared in any context.",
+    "internal": "Internal use only. May be shared within the project team. Not for external use.",
+    "confidential": "Sensitive. May be shared with the project lead, the pilot operator, and the B-track owner. Not for reviewer-facing or external use.",
+    "restricted": "Highly sensitive. May be shared with the project lead only. Includes any pilot user data, any production data references, any NDA-protected data, any security incident details."
+  },
+  "owner_placeholders": {
+    "project_lead": "Overall responsibility for the gate / pilot.",
+    "pilot_operator": "Operational responsibility for the pilot.",
+    "b_track_owner": "Responsibility for the B-track artifacts (B3, B7, B9, B11, B12, B13, B15-B19).",
+    "legal_placeholder": "Responsibility for legal review (placeholder; actual review by appropriate party).",
+    "security_placeholder": "Responsibility for security review (placeholder; actual review by appropriate party).",
+    "agent_a_coordination": "For issues that are Agent A code, the B-track coordinates with Agent A. The B-track never modifies Agent A files."
+  },
+  "no_go_claim_impact_options": {
+    "none": "The issue does not change the no-go claim list. Common case.",
+    "new_claim_category": "A new claim category is identified. Requires a B11 commercial messaging guardrail update.",
+    "existing_claim_strengthened": "An existing no-go claim is strengthened. Requires a B11 update.",
+    "existing_claim_weakened": "An existing no-go claim is weakened. Requires a dedicated governance change. Rare.",
+    "requires_dedicated_governance_change": "The issue requires a dedicated governance change. Reserved for issues that cross the no-go boundary."
+  },
+  "b_track_artifact_update_flags": {
+    "b3_matrix_update_required": "Issue changes the B3 matrix current_status, evidence_category, missing_evidence, blockers, or notes for any area.",
+    "b12_heatmap_update_required": "Issue changes the B12 heatmap confidence_label for any area.",
+    "b13_paid_pilot_gate_update_required": "Issue changes the B13 gate status for any PG-XX gate.",
+    "b15_b19_artifacts_update_required": "Issue changes any B15-B19 governance artifact (B17, B18, B19, B19 demo script guardrail).",
+    "b14_refresh_tracker_update_required": "Issue is a new Agent A phase that requires a B-track governance refresh."
+  },
+  "issues": [],
+  "summary": {
+    "template_status": "empty_template",
+    "pilot_actually_run": false,
+    "pilot_result_provided": false,
+    "issues_total": 0,
+    "by_severity": {
+      "pilot_blocker": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "by_category": {
+      "bug": 0,
+      "unexpected_behavior": 0,
+      "ux": 0,
+      "doc": 0,
+      "infra": 0,
+      "scope": 0
+    },
+    "by_status": {
+      "reported": 0,
+      "acknowledged": 0,
+      "investigating": 0,
+      "decided": 0,
+      "resolved": 0,
+      "closed": 0,
+      "escalated": 0
+    },
+    "by_sensitivity": {
+      "public": 0,
+      "internal": 0,
+      "confidential": 0,
+      "restricted": 0
+    }
+  },
+  "global_notes": [
+    "This template is empty at package creation. It is populated only when a controlled pilot has actually run. Do not claim a pilot has happened unless actual pilot results are later provided. Do not invent pilot results. Do not pre-populate the template with hypothetical results.",
+    "Pilot issue logs are internal evidence. They are not external validation, not a customer reference, and not a substitute for any B-track governance artifact.",
+    "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is not represented in B20 as completed.",
+    "The paid pilot gate (B13) is a separate stage. B20 is for the controlled internal pilot, not the paid pilot. B20 does not authorize the paid pilot.",
+    "The no-go claim list is governed by B1 (no_go_claims.md). The B11 commercial messaging guardrail is the commercial-side enforcement. B20 records no-go_claim_impact per issue; a 'none' impact is the common case."
+  ]
+}
