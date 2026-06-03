@@ -1,0 +1,135 @@
+{
+  "phase": "53C",
+  "title": "Phase 53C: Export and audit persistence functions extraction",
+  "base_sha": "3f730efe47e3089a213a168a88a15b892c0d2751",
+  "head_sha": "3f730efe47e3089a213a168a88a15b892c0d2751",
+  "type": "behavior-preserving persistence refactor",
+  "group": "E (exports+audit)",
+  "objective": "Move Group E export/audit persistence functions from app/persistence/repository.py to app/persistence/exports_repository.py while preserving public compatibility through repository.py.",
+  "module_created": "app/persistence/exports_repository.py",
+  "module_loc": 370,
+  "functions_classes_moved": [
+    {
+      "name": "ScenarioExportRecord",
+      "kind": "dataclass",
+      "body_loc": 30
+    },
+    {
+      "name": "record_export",
+      "body_loc": 62,
+      "kind": "write (high-risk)",
+      "is_high_risk_write": true
+    },
+    {
+      "name": "list_exports",
+      "body_loc": 22,
+      "kind": "read"
+    },
+    {
+      "name": "get_scenario_history",
+      "body_loc": 14,
+      "kind": "read (via list_scenarios)"
+    },
+    {
+      "name": "compare_scenarios",
+      "body_loc": 59,
+      "kind": "mixed"
+    },
+    {
+      "name": "build_export_lineage",
+      "body_loc": 29,
+      "kind": "mixed"
+    },
+    {
+      "name": "base_vs_active_compare",
+      "body_loc": 71,
+      "kind": "mixed"
+    },
+    {
+      "name": "_scenario_runtime_dict",
+      "body_loc": 30,
+      "kind": "pure"
+    },
+    {
+      "name": "_build_compare_metrics",
+      "body_loc": 18,
+      "kind": "pure"
+    },
+    {
+      "name": "_delta_sign_class",
+      "body_loc": 10,
+      "kind": "pure"
+    },
+    {
+      "name": "_format_db_timestamp",
+      "body_loc": 14,
+      "kind": "pure"
+    }
+  ],
+  "functions_moved_count": 11,
+  "high_risk_writes_in_group": [
+    "record_export"
+  ],
+  "repository_py_loc_before_53c": 1846,
+  "repository_py_loc_after_53c": 1501,
+  "repository_py_loc_delta": -345,
+  "repository_py_facade_changes": {
+    "import_added": "from app.persistence.exports_repository import (ScenarioExportRecord, record_export, list_exports, get_scenario_history, compare_scenarios, build_export_lineage, base_vs_active_compare, _scenario_runtime_dict, _build_compare_metrics, _delta_sign_class, _format_db_timestamp)",
+    "functions_removed_from_repository_body": 11,
+    "facade_type": "module-level re-export"
+  },
+  "behavior_changes": "none",
+  "sql_text_changes": "none (only moved, not modified)",
+  "replay_metadata_defaulting_preserved": true,
+  "replay_metadata_defaulting_keys": [
+    "project_id",
+    "scenario_id",
+    "export_id",
+    "runtime_snapshot_id",
+    "export_timestamp"
+  ],
+  "governance_state_default_preserved": true,
+  "governance_rows_g20_default": "BLOCKED",
+  "governance_rows_r99_r102_default": "NOT APPROVED",
+  "import_direction_changes": "none",
+  "no_go_claims_status": "preserved",
+  "rc1_status": "frozen at b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase53c_persistence_exports_audit_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase53a_persistence_helpers_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase53b_persistence_runs_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "result": "19/19 pass"
+    },
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "hard_gates_pass": true,
+  "recommended_next_step": "53D (Group A project reads extraction)"
+}

@@ -195,7 +195,7 @@ class TestDeleteRunCountRun:
 class TestHighRiskWritesUntouched:
     @pytest.mark.parametrize("fn_name", [
         "save_project", "save_workspace_state", "save_scenario",
-        "add_scenario", "record_export", "update_scenario_overrides",
+        "add_scenario", "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])
     def test_high_risk_write_still_in_repository(self, fn_name):
