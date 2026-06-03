@@ -30,6 +30,7 @@ from app.persistence.scenarios_repository import (
     rename_scenario,
     save_scenario,
     add_scenario,
+    update_scenario_overrides,
 )
 
 __all__ = [

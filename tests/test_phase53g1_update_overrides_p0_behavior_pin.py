@@ -23,6 +23,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_PY = REPO_ROOT / "app" / "persistence" / "repository.py"
+SCENARIOS_PY = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+# After Phase 53G-6, update_scenario_overrides lives in scenarios_repository.py
+PIN_TARGET = SCENARIOS_PY
 
 
 def _read(path: Path) -> str:
@@ -55,10 +58,16 @@ class TestUpdateOverridesSignature:
 class TestUpdateOverridesBody:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_function_defined(self, body: str):
+        # After Phase 53G-6, update_scenario_overrides lives in scenarios_repository.py
         assert "def update_scenario_overrides(" in body
+
+    def test_function_not_defined_in_repository(self):
+        # The def should NOT be in repository.py
+        text_repo = _read(REPOSITORY_PY)
+        assert "def update_scenario_overrides" not in text_repo
 
     def test_calls_get_scenario_first(self, body: str):
         m = re.search(r"def update_scenario_overrides\(.*?(?=\n\ndef |\Z)", body, re.DOTALL)
@@ -114,7 +123,7 @@ class TestUpdateOverridesBody:
 class TestUpdateOverridesSql:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_update_sql(self, body: str):
         m = re.search(r"def update_scenario_overrides\(.*?(?=\n\ndef |\Z)", body, re.DOTALL)

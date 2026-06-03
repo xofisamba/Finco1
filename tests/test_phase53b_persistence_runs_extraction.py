@@ -195,7 +195,6 @@ class TestDeleteRunCountRun:
 class TestHighRiskWritesUntouched:
     @pytest.mark.parametrize("fn_name", [
         # save_scenario was moved to scenarios_repository in Phase 53G-4
-        "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])
     def test_high_risk_write_still_in_repository(self, fn_name):

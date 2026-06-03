@@ -1,6 +1,5 @@
-"""Phase 53G-5 — extraction test for add_scenario persistence."""
+"""Phase 53G-6 — extraction test for update_scenario_overrides persistence."""
 from __future__ import annotations
-import re
 from pathlib import Path
 import pytest
 
@@ -8,28 +7,27 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS_PY = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
 REPOSITORY_PY = REPO_ROOT / "app" / "persistence" / "repository.py"
 
-def _read(path):
-    return Path(path).read_text(encoding="utf-8")
+def _read(p):
+    return Path(p).read_text(encoding="utf-8")
 
 class TestMovedFunction:
-    def test_add_scenario_defined_in_scenarios(self):
-        assert "def add_scenario(" in _read(SCENARIOS_PY)
-    def test_add_scenario_not_defined_in_repository(self):
+    def test_uso_defined_in_scenarios(self):
+        assert "def update_scenario_overrides(" in _read(SCENARIOS_PY)
+    def test_uso_not_defined_in_repository(self):
         text = _read(REPOSITORY_PY)
-        n = text.count("def add_scenario(")
+        n = text.count("def update_scenario_overrides(")
         assert n == 0
 
 class TestPublicCompatibility:
-    def test_add_scenario_importable(self):
-        from app.persistence.repository import add_scenario
-        assert callable(add_scenario)
-    def test_re_export_includes_add_scenario(self):
-        text = _read(REPOSITORY_PY)
-        assert "add_scenario," in text
+    def test_uso_importable(self):
+        from app.persistence.repository import update_scenario_overrides
+        assert callable(update_scenario_overrides)
+    def test_re_export_includes_uso(self):
+        assert "update_scenario_overrides," in _read(REPOSITORY_PY)
 
 class TestP0PinStillPasses:
-    def test_add_scenario_pin_re_pointed(self):
-        text = _read(REPO_ROOT / "tests/test_phase53g1_add_scenario_p0_behavior_pin.py")
+    def test_uso_pin_re_pointed(self):
+        text = _read(REPO_ROOT / "tests/test_phase53g1_update_overrides_p0_behavior_pin.py")
         assert "PIN_TARGET = SCENARIOS_PY" in text
 
 class TestOtherHighRiskWritesUntouched:
@@ -48,7 +46,7 @@ class TestDataclassesUntouched:
         assert f"class {cls_name}" in _read(REPOSITORY_PY)
 
 class TestRepositoryPyShrank:
-    def test_repository_py_under_700_lines(self):
+    def test_repository_py_under_610_lines(self):
         text = _read(REPOSITORY_PY)
         n = len(text.splitlines())
-        assert n < 700, f"repository.py should be < 700 lines after 53G-5, got {n}"
+        assert n < 610, f"repository.py should be < 610 lines after 53G-6, got {n}"

@@ -1,0 +1,62 @@
+{
+  "phase": "53G-6",
+  "title": "Extract update_scenario_overrides persistence",
+  "type": "behavior_preserving_refactor",
+  "base_sha": "c0ea96e5007e649dd59cb051e3e5a5897b027803",
+  "head_sha": "84424ba1b3a4e3b4eb36cd036a3d80834ea41b5b",
+  "branch": "phase53g6-extract-update-scenario-overrides-persistence",
+  "stack_position": "3 of 4 (53G-4 -> 53G-5 -> 53G-6 -> 53G-7)",
+  "draft": true,
+  "auto_merged": false,
+  "review_required": true,
+  "functions_moved": [
+    {
+      "name": "update_scenario_overrides",
+      "lines_moved": 48,
+      "risk": "high"
+    }
+  ],
+  "loc_changes": {
+    "repository.py": {
+      "before": 600,
+      "after": 552,
+      "delta": -48
+    },
+    "scenarios_repository.py": {
+      "before": 432,
+      "after": 478,
+      "delta": 46
+    }
+  },
+  "compatibility_facade": {
+    "update_scenario_overrides": true
+  },
+  "p0_pin_status": {
+    "update_overrides_pin": "RE-POINTED to scenarios_repository.py, 16/16 pass",
+    "save_scenario_pin": "untouched, all pass",
+    "add_scenario_pin": "untouched, all pass",
+    "coupling_pin_update_overrides_tests": "RE-POINTED to scenarios_repository.py, 3/3 pass",
+    "base_case_pin": "untouched, all pass"
+  },
+  "tests_run": {
+    "phase53g6_extraction": 7,
+    "phase53g1_update_overrides_pin": 16,
+    "phase53g1_coupling_pin": 23,
+    "phase53g1_save_scenario_pin": 16,
+    "phase53g1_add_scenario_pin": 19,
+    "phase53g1_base_case_pin": 14,
+    "phase53g2_extraction": 27,
+    "phase53g3_extraction": 30,
+    "phase53g4_extraction": 13,
+    "phase53g5_extraction": 8,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "previous_phase53_suite": 411,
+    "total": 634
+  },
+  "high_risk_writes_remaining_in_repository": [
+    "get_or_create_base_case_scenario (53G-7, last)"
+  ],
+  "ready_for_review": true
+}

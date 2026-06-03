@@ -141,7 +141,9 @@ class TestUpdateScenarioOverridesCoupling:
     snapshot_json atomically in one UPDATE statement."""
 
     def test_update_scenario_overrides_uses_resolve_scenario_snapshot(self):
-        text = _read(REPOSITORY_PY)
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def update_scenario_overrides\(.*?(?=\n\ndef |\Z)",
                       text, re.DOTALL)
         assert m, "update_scenario_overrides not found"
@@ -150,7 +152,9 @@ class TestUpdateScenarioOverridesCoupling:
 
     def test_update_scenario_overrides_atomic_both_columns(self):
         # Single UPDATE statement that sets BOTH overrides_json AND snapshot_json
-        text = _read(REPOSITORY_PY)
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def update_scenario_overrides\(.*?(?=\n\ndef |\Z)",
                       text, re.DOTALL)
         body = m.group(0)
@@ -158,7 +162,9 @@ class TestUpdateScenarioOverridesCoupling:
 
     def test_update_scenario_overrides_rejects_base_case(self):
         # base-case overrides are stored in base_input_set, not overrides
-        text = _read(REPOSITORY_PY)
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def update_scenario_overrides\(.*?(?=\n\ndef |\Z)",
                       text, re.DOTALL)
         body = m.group(0)
@@ -167,7 +173,9 @@ class TestUpdateScenarioOverridesCoupling:
 
     def test_update_scenario_overrides_filters_to_scenario_input_fields(self):
         # Only keys in SCENARIO_INPUT_FIELDS are accepted
-        text = _read(REPOSITORY_PY)
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def update_scenario_overrides\(.*?(?=\n\ndef |\Z)",
                       text, re.DOTALL)
         body = m.group(0)
