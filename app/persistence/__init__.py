@@ -19,15 +19,16 @@ from app.persistence.repository import (
     record_export,
     save_project,
     save_run,
-    save_scenario,
 )
-# Phase 53G-2 + 53G-3: scenario reads + low-risk actions moved to scenarios_repository
+# Phase 53G-2 + 53G-3 + 53G-4: scenario reads + low-risk actions + save_scenario
+# moved to scenarios_repository
 from app.persistence.scenarios_repository import (
     get_scenario,
     list_scenarios,
     archive_scenario,
     duplicate_scenario,
     rename_scenario,
+    save_scenario,
 )
 
 __all__ = [

@@ -212,7 +212,7 @@ class TestP0PinStillPasses:
 
 class TestScenarioHighRiskWritesUntouched:
     @pytest.mark.parametrize("fn_name", [
-        "save_scenario",
+        # save_scenario was moved to scenarios_repository in Phase 53G-4
         "add_scenario",
         "update_scenario_overrides",
         "get_or_create_base_case_scenario",
