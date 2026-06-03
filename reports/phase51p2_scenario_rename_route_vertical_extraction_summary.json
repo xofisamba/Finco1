@@ -1,0 +1,90 @@
+{
+  "phase": "51P-2",
+  "route": "POST /scenarios/{scenario_id}/rename",
+  "handler": "rename_scenario_endpoint",
+  "risk": "MEDIUM",
+  "route_thinning": {
+    "pre_p2_total_lines": 55,
+    "pre_p2_non_blank_lines": 51,
+    "post_p2_total_lines": 75,
+    "post_p2_non_blank_lines": 69,
+    "delta_total": 20,
+    "delta_non_blank": 18,
+    "delta_non_blank_pct": 35.0,
+    "note": "Route did NOT shrink because the _render_with_summary_cards wrapper (which builds scenario_summary_cards from scenarios + export_lineage) was kept in the route. The orchestration body has moved to the service."
+  },
+  "service_module": {
+    "path": "app/services/scenario_rename_service.py",
+    "lines_approx": 270,
+    "callables_in_deps": 9,
+    "exports": [
+      "ScenarioRenameRouteOutcome",
+      "ScenarioRenameRouteDeps",
+      "execute_scenario_rename_route"
+    ]
+  },
+  "behaviors_preserved": [
+    "POST /scenarios/{scenario_id}/rename exists",
+    "Auth check via get_current_user(request); unauth -> 302 /login",
+    "Path parameter scenario_id",
+    "Form input scenario_name (stripped)",
+    "Empty scenario_name -> 400 JSONResponse",
+    "get_scenario(scenario_id, user.user_id) (positional)",
+    "404 if scenario not found",
+    "rename_scenario(user.user_id, scenario_id, new_name)",
+    "Workspace re-render (full, not partial)",
+    "list_scenarios with include_archived=False, limit=12",
+    "get_scenario_history with limit=20",
+    "list_exports and build_export_lineage with limit=8"
+  ],
+  "intended_side_effects": [
+    {"name": "get_scenario", "count": 1, "type": "read"},
+    {"name": "rename_scenario", "count": 1, "type": "write"},
+    {"name": "get_project_by_code", "count": 1, "type": "read"},
+    {"name": "list_scenarios", "count": 1, "type": "read"},
+    {"name": "get_scenario_history", "count": 1, "type": "read"},
+    {"name": "list_exports", "count": 1, "type": "read"},
+    {"name": "build_export_lineage", "count": 1, "type": "read"},
+    {"name": "get_workspace_state", "count": 1, "type": "read"}
+  ],
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "add_scenario",
+    "create_scenario",
+    "db.add",
+    "db.commit",
+    "db.flush",
+    "session.add",
+    "session.commit"
+  ],
+  "phase51f_guardrails": {
+    "engine_output_golden_tubo_oborovo": "PASS",
+    "parity_core_lock_4_sha256": "PASS",
+    "no_service_imports_main_web_or_main_api": "PASS",
+    "21_of_21_test_module": "PASS"
+  },
+  "tests": {
+    "test_phase51p2_scenario_rename_route_vertical_extraction": {"count": 43, "pass": 43, "status": "PASS"},
+    "test_phase51p1_scenario_rename_route_golden_characterization": {"count": 55, "pass": 55, "status": "PASS (re-pointed)"},
+    "test_phase51f_parallel_work_guardrails": {"count": 21, "pass": 21, "status": "PASS"}
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51p2": false
+  },
+  "no_production_code_changes_outside_scope": true,
+  "no_model_parity_core_schema_js_formula_changes": true,
+  "service_clean_of_main_web_and_main_api_imports": true,
+  "ready_for_merge": true
+}
