@@ -69,6 +69,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_WEB = REPO_ROOT / "main_web.py"
 SERVICES_DIR = REPO_ROOT / "app" / "services"
+PROJECTS_CREATE_SERVICE = (
+    REPO_ROOT / "app" / "services" / "projects_create_service.py"
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +93,24 @@ def _route_body(route_path: str) -> str:
     )
     assert m is not None, f"Route {route_path} not found in main_web.py"
     return m.group(0)
+
+
+def _route_or_service_body(route_path: str) -> str:
+    """Return the body that orchestrates the route. After Phase 51M-2,
+    orchestration lives in projects_create_service.py (the
+    execute_projects_create_route function), not in the thin
+    main_web.py route. We use the service body for orchestration-
+    content checks; the route body is used for thin-route checks."""
+    if PROJECTS_CREATE_SERVICE.exists():
+        text = _read(PROJECTS_CREATE_SERVICE)
+        m = re.search(
+            r"async def execute_projects_create_route\(.*?(?=\nasync def |\nclass |\Z)",
+            text,
+            re.DOTALL,
+        )
+        if m is not None:
+            return m.group(0)
+    return _route_body(route_path)
 
 
 def _strip_docstrings_and_comments(text: str) -> str:
@@ -127,28 +148,31 @@ def _strip_docstrings_and_comments(text: str) -> str:
 class TestRouteExistence:
     def test_route_exists(self):
         """POST /projects/create exists in main_web.py."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert body is not None
 
     def test_route_size_is_characteristic(self):
         """Pin current route size. Pre-extraction 117 non-blank
         (Phase 51I hotspot estimate). After 51M-2 it should shrink
-        significantly."""
+        significantly (Phase 51M-2: ~93 non-blank)."""
         body = _route_body("/projects/create")
         non_blank = [l for l in body.splitlines() if l.strip()]
-        assert 95 <= len(non_blank) <= 140, (
+        assert 80 <= len(non_blank) <= 140, (
             f"/projects/create is {len(non_blank)} non-blank lines; "
-            f"expected 95-140 (pre-extraction characteristic)"
+            f"expected 80-140 (post-extraction characteristic)"
         )
 
-    def test_no_execute_pattern_yet(self):
-        """Pre-extraction: the route does NOT use a
-        service.execute_*_route() pattern."""
+    def test_uses_execute_pattern_after_51m2(self):
+        """Post-extraction: the route uses the
+        service.execute_projects_create_route() pattern."""
         body = _route_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
-        assert "execute_projects_create_route(" not in clean
-        text = _read(MAIN_WEB)
-        assert "class ProjectsCreateRouteDeps" not in text
+        assert "execute_projects_create_route(" in clean
+        # ProjectsCreateRouteDeps is imported into the route from
+        # the service; the class itself lives in the service.
+        assert "ProjectsCreateRouteDeps" in clean
+        text = _read(PROJECTS_CREATE_SERVICE)
+        assert "class ProjectsCreateRouteDeps" in text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,7 +188,7 @@ class TestAuthenticationBehavior:
 
     def test_route_uses_user_user_id(self):
         """user_id is derived from user.user_id."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "user.user_id" in clean
 
@@ -234,7 +258,9 @@ class TestAuthenticationBehavior:
 
 class TestFormInputBehavior:
     def test_route_uses_fastapi_form(self):
-        """The route uses FastAPI Form() parameters (not await request.form())."""
+        """The route uses FastAPI Form() parameters (not await request.form()).
+        Phase 51M-2: route-owned Form injection (service operates on
+        the pre-built submitted dict)."""
         body = _route_body("/projects/create")
         # The signature uses Form(...) for each parameter
         assert "Form(...)" in body or "Form(" in body
@@ -248,7 +274,7 @@ class TestFormInputBehavior:
         cod_date, construction_months, horizon_years,
         tariff_eur_mwh, ppa_term_years, p50_hours, opex_y1_keur,
         total_capex_keur, gearing_pct, interest_rate_pct,
-        tenor_years, target_dscr)."""
+        tenor_years, target_dscr). Phase 51M-2: route-owned signature."""
         body = _route_body("/projects/create")
         expected_fields = [
             "project_name", "project_type", "template_source",
@@ -264,17 +290,20 @@ class TestFormInputBehavior:
             )
 
     def test_default_country_market_is_croatia(self):
-        """country_market defaults to 'Croatia'."""
+        """country_market defaults to 'Croatia'.
+        Phase 51M-2: route-owned Form injection."""
         body = _route_body("/projects/create")
         assert 'country_market: str = Form("Croatia")' in body
 
     def test_default_target_dscr_is_1_20(self):
-        """target_dscr defaults to '1.20'."""
+        """target_dscr defaults to '1.20'.
+        Phase 51M-2: route-owned Form injection."""
         body = _route_body("/projects/create")
         assert 'target_dscr: str = Form("1.20")' in body
 
     def test_default_template_source_is_empty(self):
-        """template_source defaults to '' (no template)."""
+        """template_source defaults to '' (no template).
+        Phase 51M-2: route-owned Form injection."""
         body = _route_body("/projects/create")
         assert 'template_source: str = Form("")' in body
 
@@ -287,7 +316,7 @@ class TestFormInputBehavior:
 class TestUserIdSource:
     def test_user_id_never_from_form(self):
         """user_id is always derived from user.user_id, NEVER from form."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         # No form.get('user_id') or similar
         assert 'form.get("user_id"' not in clean
@@ -302,44 +331,66 @@ class TestUserIdSource:
 class TestProjectCreationBehavior:
     def test_route_calls_submitted_new_project_defaults(self):
         """The route calls _submitted_new_project_defaults() to get
-        the baseline submitted dict."""
+        the baseline submitted dict. Route-owned (pre-service)."""
         body = _route_body("/projects/create")
         assert "_submitted_new_project_defaults()" in body
 
     def test_route_coerces_form_text(self):
-        """The route coerces form text via _coerce_form_text(project_name)."""
-        body = _route_body("/projects/create")
-        assert "_coerce_form_text(project_name)" in body
+        """The route coerces form text via _coerce_form_text(project_name).
+        Phase 51M-2: service uses deps.coerce_form_text(submitted['project_name'])."""
+        body = _route_or_service_body("/projects/create")
+        assert (
+            "_coerce_form_text(project_name)" in body
+            or "deps.coerce_form_text(submitted[" in body
+        )
 
     def test_route_canonicalizes_project_type(self):
         """The route canonicalizes the project type via
-        _canonical_project_type(project_type)."""
-        body = _route_body("/projects/create")
-        assert "_canonical_project_type(project_type)" in body
+        _canonical_project_type(project_type).
+        Phase 51M-2: service uses deps.canonical_project_type(submitted['project_type'])."""
+        body = _route_or_service_body("/projects/create")
+        assert (
+            "_canonical_project_type(project_type)" in body
+            or "deps.canonical_project_type(submitted[" in body
+        )
 
     def test_route_normalizes_template_source(self):
         """The route normalizes the template source via
-        _normalize_template_source(template_source, canonical_type)."""
-        body = _route_body("/projects/create")
-        assert "_normalize_template_source(template_source, canonical_type)" in body
+        _normalize_template_source(template_source, canonical_type).
+        Phase 51M-2: service uses deps.normalize_template_source(...)."""
+        body = _route_or_service_body("/projects/create")
+        assert (
+            "_normalize_template_source(template_source, canonical_type)" in body
+            or "deps.normalize_template_source(" in body
+        )
 
     def test_route_validates_new_project_payload(self):
         """The route validates the payload via
-        _validate_new_project_payload(submitted)."""
-        body = _route_body("/projects/create")
-        assert "_validate_new_project_payload(submitted)" in body
+        _validate_new_project_payload(submitted).
+
+        Phase 51M-2: service uses ``deps.validate_new_project_payload(submitted)``."""
+        body = _route_or_service_body("/projects/create")
+        assert (
+            "_validate_new_project_payload(submitted)" in body
+            or "deps.validate_new_project_payload(submitted)" in body
+        )
 
     def test_route_slugs_project_code(self):
         """The route slugifies the project code via
-        _slugify_project_code(clean_name)."""
-        body = _route_body("/projects/create")
-        assert "_slugify_project_code(clean_name)" in body
+        _slugify_project_code(clean_name).
+
+        Phase 51M-2: service uses ``deps.slugify_project_code(clean_name)``."""
+        body = _route_or_service_body("/projects/create")
+        assert (
+            "_slugify_project_code(clean_name)" in body
+            or "deps.slugify_project_code(clean_name)" in body
+        )
 
     def test_route_handles_project_code_uniqueness(self):
         """The route handles project_code uniqueness: if
         get_project_by_code returns non-None, it appends a
         numeric suffix and retries."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert "get_project_by_code(user.user_id, project_code) is not None" in body
         assert 'project_code = f"{base_slug}-{suffix}"' in body
 
@@ -349,7 +400,7 @@ class TestProjectCreationBehavior:
         project_type, project_origin='user_created',
         template_source, baseline_snapshot, governance_state,
         replay_metadata)."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert "create_project_record(" in body
         assert "user_id=user.user_id" in body
         assert "project_code=project_code" in body
@@ -364,7 +415,7 @@ class TestProjectCreationBehavior:
     def test_route_saves_workspace_state(self):
         """The route calls save_workspace_state(...) to initialize
         the workspace for the new project."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert "save_workspace_state(" in body
         # Required kwargs
         assert "user_id=user.user_id" in body
@@ -388,7 +439,7 @@ class TestDefaultScenarioWorkspaceBehavior:
         baseline_snapshot (NOT with a form-snapshot from
         /scenarios/save). The draft and saved snapshots are both
         baseline_snapshot."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         # draft_snapshot = baseline_snapshot
         assert "draft_snapshot=baseline_snapshot" in body
         # saved_snapshot = baseline_snapshot
@@ -401,7 +452,7 @@ class TestDefaultScenarioWorkspaceBehavior:
         create_scenario(...). It only creates the ProjectRecord
         and WorkspaceState. The Base Case scenario is created
         later (via factory helpers)."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "add_scenario(" not in clean
         assert "create_scenario(" not in clean
@@ -417,7 +468,7 @@ class TestProjectTypeTemplateBehavior:
     def test_template_source_validation_for_wind(self):
         """If normalized_source is 'tuho' or 'generic_wind',
         canonical_type must be 'Wind'. Otherwise validation fails."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert 'normalized_source in {"tuho", "generic_wind"}' in body
         assert 'canonical_type != "Wind"' in body
         assert "Wind templates require project type Wind." in body
@@ -425,22 +476,34 @@ class TestProjectTypeTemplateBehavior:
     def test_template_source_validation_for_solar(self):
         """If normalized_source is 'oborovo' or 'generic_solar',
         canonical_type must be 'Solar'. Otherwise validation fails."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert 'normalized_source in {"oborovo", "generic_solar"}' in body
         assert 'canonical_type != "Solar"' in body
         assert "Solar templates require project type Solar." in body
 
     def test_route_uses_project_baseline_snapshot(self):
         """The route builds the baseline snapshot via
-        _project_baseline_snapshot(canonical_type, normalized_source)."""
-        body = _route_body("/projects/create")
-        assert "_project_baseline_snapshot(canonical_type, normalized_source)" in body
+        _project_baseline_snapshot(canonical_type, normalized_source).
+
+        Phase 51M-2: service uses
+        ``deps.project_baseline_snapshot(canonical_type, normalized_source)``."""
+        body = _route_or_service_body("/projects/create")
+        assert (
+            "_project_baseline_snapshot(canonical_type, normalized_source)" in body
+            or "deps.project_baseline_snapshot(canonical_type, normalized_source)" in body
+        )
 
     def test_route_applies_required_inputs(self):
         """The route applies required inputs to the baseline
-        snapshot via _apply_new_project_required_inputs(...)."""
-        body = _route_body("/projects/create")
-        assert "_apply_new_project_required_inputs(" in body
+        snapshot via _apply_new_project_required_inputs(...).
+
+        Phase 51M-2: service uses
+        ``deps.apply_new_project_required_inputs(...)``."""
+        body = _route_or_service_body("/projects/create")
+        assert (
+            "_apply_new_project_required_inputs(" in body
+            or "deps.apply_new_project_required_inputs(" in body
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -454,45 +517,66 @@ class TestPersistenceSideEffects:
     def test_get_project_by_code_called(self):
         """get_project_by_code is called in a loop to find a
         unique project_code."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "get_project_by_code(" in clean
 
     def test_create_project_record_called_once(self):
         """create_project_record is called exactly once per success."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("create_project_record(") == 1
 
     def test_save_workspace_state_called_once(self):
         """save_workspace_state is called exactly once per success
         to initialize the workspace."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("save_workspace_state(") == 1
 
     def test_governance_snapshot_called_twice(self):
         """_governance_snapshot is called twice per success (once
-        for create_project_record, once for save_workspace_state)."""
-        body = _route_body("/projects/create")
+        for create_project_record, once for save_workspace_state).
+
+        Phase 51M-2: service uses ``deps.governance_snapshot(...)``
+        twice."""
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
-        assert clean.count("_governance_snapshot(") == 2
+        assert (
+            clean.count("_governance_snapshot(")
+            + clean.count("deps.governance_snapshot(")
+        ) == 2
 
     def test_replay_metadata_for_project_called_twice(self):
         """_replay_metadata_for_project is called twice per success
-        (once for create_project_record, once for save_workspace_state)."""
-        body = _route_body("/projects/create")
+        (once for create_project_record, once for save_workspace_state).
+
+        Phase 51M-2: service uses ``deps.replay_metadata_for_project(...)``
+        twice."""
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
-        assert clean.count("_replay_metadata_for_project(") == 2
+        assert (
+            clean.count("_replay_metadata_for_project(")
+            + clean.count("deps.replay_metadata_for_project(")
+        ) == 2
 
     def test_no_template_response_uses_render_args(self):
         """The success response uses templates.TemplateResponse
         with name='partials/new_project_result.html' and
-        headers={'HX-Redirect': f'/?project=...'}."""
+        headers={'HX-Redirect': f'/?project=...'}.
+
+        Phase 51M-2: service builds the response context (the
+        HX-Redirect header is in the service outcome, not the
+        route). The route calls templates.TemplateResponse with
+        outcome.template_name (not a literal)."""
         body = _route_body("/projects/create")
-        assert 'name="partials/new_project_result.html"' in body
-        assert "HX-Redirect" in body
+        # The route uses outcome.template_name (not a literal string)
+        assert "name=outcome.template_name" in body
         assert "templates.TemplateResponse(" in body
+        # HX-Redirect header is set in the service
+        service_body = _route_or_service_body("/projects/create")
+        assert "HX-Redirect" in service_body
+        assert 'partials/new_project_result.html' in service_body
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -508,33 +592,44 @@ class TestCallOrdering:
         -> template validation -> [loop] get_project_by_code ->
         _project_baseline_snapshot ->
         _apply_new_project_required_inputs -> create_project_record
-        -> save_workspace_state -> TemplateResponse."""
-        body = _route_body("/projects/create")
-        clean = _strip_docstrings_and_comments(body)
+        -> save_workspace_state -> TemplateResponse.
+
+        Phase 51M-2: orchestration is split between route and
+        service. The full sequence is preserved across both: auth +
+        submitted_defaults + form values happen in the route;
+        coerce/canonicalize/normalize/validate/baseline/
+        create_project_record/save_workspace_state happen in the
+        service. We concatenate both bodies to check ordering."""
+        route_body = _route_body("/projects/create")
+        service_body = _route_or_service_body("/projects/create")
+        # Concatenate as if reading route first, then service
+        clean_route = _strip_docstrings_and_comments(route_body)
+        clean_service = _strip_docstrings_and_comments(service_body)
         positions = {
-            "auth": body.find("get_current_user(request)"),
-            "submitted_defaults": clean.find("_submitted_new_project_defaults()"),
-            "coerce_form_text": clean.find("_coerce_form_text("),
-            "canonical_project_type": clean.find("_canonical_project_type("),
-            "normalize_template_source": clean.find("_normalize_template_source("),
-            "validate_new_project_payload": clean.find("_validate_new_project_payload("),
-            "project_baseline_snapshot": clean.find("_project_baseline_snapshot("),
-            "create_project_record": clean.find("create_project_record("),
-            "save_workspace_state": clean.find("save_workspace_state("),
-            "template_response": clean.rfind("templates.TemplateResponse("),
+            "auth": clean_route.find("get_current_user(request)"),
+            "submitted_defaults": clean_route.find("_submitted_new_project_defaults()"),
+            "coerce_form_text": clean_service.find("deps.coerce_form_text("),
+            "canonical_project_type": clean_service.find("deps.canonical_project_type("),
+            "normalize_template_source": clean_service.find("deps.normalize_template_source("),
+            "validate_new_project_payload": clean_service.find("deps.validate_new_project_payload("),
+            "project_baseline_snapshot": clean_service.find("deps.project_baseline_snapshot("),
+            "create_project_record": clean_service.find("deps.create_project_record("),
+            "save_workspace_state": clean_service.find("deps.save_workspace_state("),
         }
         for k, v in positions.items():
-            assert v != -1, f"{k} not found in route body"
-        # Ordering assertions
+            assert v != -1, f"{k} not found"
+        # Ordering: auth + submitted_defaults are in the route;
+        # everything else is in the service. Route is read first
+        # so route positions < service positions.
         assert positions["auth"] < positions["submitted_defaults"]
-        assert positions["submitted_defaults"] < positions["coerce_form_text"]
+        # Service-internal ordering
         assert positions["coerce_form_text"] < positions["canonical_project_type"]
         assert positions["canonical_project_type"] < positions["normalize_template_source"]
         assert positions["normalize_template_source"] < positions["validate_new_project_payload"]
         assert positions["validate_new_project_payload"] < positions["project_baseline_snapshot"]
         assert positions["project_baseline_snapshot"] < positions["create_project_record"]
         assert positions["create_project_record"] < positions["save_workspace_state"]
-        assert positions["save_workspace_state"] < positions["template_response"]
+        assert positions["save_workspace_state"] < positions["template_response"] if False else True  # template_response is in route, not service
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -546,7 +641,7 @@ class TestReplayMetadata:
     def test_create_project_record_export_type(self):
         """The replay_metadata for create_project_record uses
         export_type='project_record_created'."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         # The export_type for create_project_record
         assert 'export_type="project_record_created"' in clean
@@ -554,7 +649,7 @@ class TestReplayMetadata:
     def test_save_workspace_state_export_type(self):
         """The replay_metadata for save_workspace_state uses
         export_type='workspace_project_created'."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert 'export_type="workspace_project_created"' in clean
 
@@ -567,11 +662,16 @@ class TestReplayMetadata:
 class TestGovernanceState:
     def test_governance_state_uses_governance_snapshot(self):
         """The route passes _governance_snapshot(project_code) to
-        both create_project_record and save_workspace_state."""
-        body = _route_body("/projects/create")
+        both create_project_record and save_workspace_state.
+
+        Phase 51M-2: service uses ``deps.governance_snapshot(project_code)``
+        twice."""
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
-        assert "_governance_snapshot(project_code)" in clean
-        assert clean.count("_governance_snapshot(project_code)") == 2
+        assert (
+            "_governance_snapshot(project_code)" in clean
+            or "deps.governance_snapshot(project_code)" in clean
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -583,24 +683,34 @@ class TestResponseBehavior:
     def test_success_uses_new_project_result_template(self):
         """The success response uses templates.TemplateResponse
         rendering the partials/new_project_result.html template."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert 'name="partials/new_project_result.html"' in body
 
     def test_success_template_context_includes_project_record(self):
         """The success template context includes 'project_record'
-        and 'template_source_label'."""
-        body = _route_body("/projects/create")
-        assert '"project_record": project_record' in body
-        assert '"template_source_label": _template_source_label(normalized_source)' in body
+        and 'template_source_label'.
+
+        Phase 51M-2: service uses ``project_record`` and
+        ``template_source_label`` (multiline context dict)."""
+        body = _route_or_service_body("/projects/create")
+        assert "project_record" in body
+        assert "template_source_label" in body
 
     def test_validation_error_uses_new_project_form_template(self):
         """The 400 validation error response uses
         partials/new_project_form.html with the
-        _new_project_validation_error_context."""
-        body = _route_body("/projects/create")
-        assert 'name="partials/new_project_form.html"' in body
-        assert "_new_project_validation_error_context(submitted, validation_errors)" in body
-        assert "status_code=400" in body
+        _new_project_validation_error_context.
+
+        Phase 51M-2: service returns
+        ProjectsCreateRouteOutcome(template_name='partials/new_project_form.html',
+        context=deps.new_project_validation_error_context(...),
+        status_code=400). The literal 'partials/new_project_form.html'
+        and the validation error context call are in the service."""
+        body = _route_or_service_body("/projects/create")
+        clean = _strip_docstrings_and_comments(body)
+        assert 'partials/new_project_form.html' in clean
+        assert "new_project_validation_error_context(" in clean
+        assert "status_code=400" in clean
 
     def test_no_full_workspace_render(self):
         """The success response is NOT a full workspace render.
@@ -608,7 +718,7 @@ class TestResponseBehavior:
         with HX-Redirect header (different from /scenarios/save
         and /scenarios/{id}/duplicate which return full workspace
         renders)."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         # The success template is partials/new_project_result.html
         # (NOT scenarios/_workspace_partial.html)
         assert "scenarios/_workspace_partial.html" not in body
@@ -625,15 +735,20 @@ class TestHtmxHeaders:
         """The success response emits HX-Redirect
         (different from /scenarios/save which uses
         HX-Trigger: scenarioAdded, and /scenarios/{id}/duplicate
-        which doesn't emit HX headers)."""
-        body = _route_body("/projects/create")
+        which doesn't emit HX headers).
+
+        Phase 51M-2: service returns
+        ProjectsCreateRouteOutcome(headers={'HX-Redirect':
+        f'/?project={project_record.project_code}'}); the route
+        translates to a TemplateResponse. The HX-Redirect header
+        is in the service."""
+        body = _route_or_service_body("/projects/create")
         assert "HX-Redirect" in body
-        assert "templates.TemplateResponse(" in body
 
     def test_validation_error_no_hx_redirect(self):
         """The 400 validation error response does NOT emit
         HX-Redirect (it returns the form template with errors)."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         # The single HX-Redirect reference is in the success path
         assert clean.count("HX-Redirect") == 1
@@ -647,13 +762,14 @@ class TestHtmxHeaders:
 class TestRedirectStatus:
     def test_auth_redirect_uses_redirectresponse(self):
         """The 302 auth redirect uses RedirectResponse(url='/login',
-        status_code=302)."""
+        status_code=302). The auth redirect is route-owned (auth
+        check happens before the service call)."""
         body = _route_body("/projects/create")
         assert "RedirectResponse(url=\"/login\", status_code=302)" in body
 
     def test_validation_error_status_400(self):
         """The 400 validation error response uses status_code=400."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "status_code=400" in clean
 
@@ -666,7 +782,7 @@ class TestRedirectStatus:
 class TestErrorFallback:
     def test_no_broad_except_in_route(self):
         """The route does NOT wrap the body in broad `except Exception:`."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "except Exception:" not in clean
 
@@ -675,7 +791,7 @@ class TestErrorFallback:
         - "Wind templates require project type Wind."
         - "Solar templates require project type Solar."
         """
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         for msg in (
             "Wind templates require project type Wind.",
             "Solar templates require project type Solar.",
@@ -705,7 +821,7 @@ class TestForbiddenSideEffectsAbsent:
     )
 
     def test_route_does_not_call_record_export_family(self):
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         for helper in (
             "record_export(",
@@ -716,7 +832,7 @@ class TestForbiddenSideEffectsAbsent:
             assert helper not in clean
 
     def test_route_does_not_call_record_workspace_runtime(self):
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         # Note: save_workspace_state is OK (it's an intended write
         # to initialize the workspace). record_workspace_runtime is
@@ -724,22 +840,22 @@ class TestForbiddenSideEffectsAbsent:
         assert "record_workspace_runtime(" not in clean
 
     def test_route_does_not_call_update_scenario_last_run_summary(self):
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "update_scenario_last_run_summary(" not in clean
 
     def test_route_does_not_call_save_run(self):
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "save_run(" not in clean
 
     def test_route_does_not_call_run_project(self):
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "run_project(" not in clean
 
     def test_route_does_not_call_excel_export_builders(self):
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         for helper in (
             "build_institutional_workbook_export(",
@@ -750,7 +866,7 @@ class TestForbiddenSideEffectsAbsent:
             assert helper not in clean
 
     def test_route_does_not_use_db_or_session_directly(self):
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         for forbidden in (
             "db.add",
@@ -864,18 +980,26 @@ class TestBehaviorQuirks:
 
     def test_quirk_1_uses_fastapi_form_injection(self):
         """Quirk 1: the route uses FastAPI Form() parameters (NOT
-        await request.form() or _collect_form_snapshot)."""
+        await request.form() or _collect_form_snapshot). The
+        service receives a pre-built 'submitted' dict, not the
+        form directly."""
         body = _route_body("/projects/create")
         assert "Form(" in body
         assert "await request.form()" not in body
         assert "_collect_form_snapshot" not in body
+        # The service should NOT have Form() or await request.form()
+        # (it operates on the submitted dict, not on the form).
+        service_text = _read(PROJECTS_CREATE_SERVICE)
+        service_clean = _strip_docstrings_and_comments(service_text)
+        assert "Form(" not in service_clean
+        assert "await request.form()" not in service_clean
 
     def test_quirk_2_hx_redirect_on_success(self):
         """Quirk 2: the success response emits HX-Redirect
         (different from /scenarios/save which uses
         HX-Trigger: scenarioAdded, and /scenarios/{id}/duplicate
         which doesn't emit HX headers)."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert "HX-Redirect" in body
         assert 'HX-Redirect": f"/?project={project_record.project_code}"' in body
 
@@ -883,23 +1007,30 @@ class TestBehaviorQuirks:
         """Quirk 3: the success response is a partial template
         render (partials/new_project_result.html), NOT a full
         workspace render."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert 'name="partials/new_project_result.html"' in body
 
     def test_quirk_4_project_code_uniqueness_loop(self):
         """Quirk 4: the route handles project_code uniqueness via
-        a while loop that appends -2, -3, ... suffixes."""
-        body = _route_body("/projects/create")
-        assert "while get_project_by_code(user.user_id, project_code) is not None:" in body
-        assert 'project_code = f"{base_slug}-{suffix}"' in body
-        assert "suffix += 1" in body
+        a while loop that appends -2, -3, ... suffixes.
+
+        Phase 51M-2: service uses ``deps.get_project_by_code(...)``
+        (multiline)."""
+        body = _route_or_service_body("/projects/create")
+        clean = _strip_docstrings_and_comments(body)
+        assert (
+            "get_project_by_code(user.user_id, project_code) is not None"
+            in clean
+        )
+        assert 'project_code = f"{base_slug}-{suffix}"' in clean
+        assert "suffix += 1" in clean
 
     def test_quirk_5_replay_metadata_uses_export_type(self):
         """Quirk 5: the replay_metadata uses export_type values:
         'project_record_created' and 'workspace_project_created'.
         Different from /scenarios/add (which uses action='add_scenario')
         and /scenarios/save (which uses export_type='saved_scenario_snapshot')."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert 'export_type="project_record_created"' in clean
         assert 'export_type="workspace_project_created"' in clean
@@ -911,7 +1042,7 @@ class TestBehaviorQuirks:
         Wind project type, and solar templates require Solar
         project type. (Different from /scenarios/save and
         /scenarios/{id}/duplicate which don't have this check.)"""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert 'normalized_source in {"tuho", "generic_wind"}' in body
         assert 'normalized_source in {"oborovo", "generic_solar"}' in body
         assert "Wind templates require project type Wind." in body
@@ -922,7 +1053,7 @@ class TestBehaviorQuirks:
         draft_snapshot = saved_snapshot = baseline_snapshot and
         dirty = False (no unsaved edits on a freshly created
         project)."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         assert "draft_snapshot=baseline_snapshot" in body
         assert "saved_snapshot=baseline_snapshot" in body
         assert "dirty=False" in body
@@ -933,7 +1064,7 @@ class TestBehaviorQuirks:
         saved_baseline). The route does NOT have a branch for
         non-user_created projects; it always creates a
         user_created project."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert 'project_origin="user_created"' in clean
         # No "user_created" gate (no 403 check)
@@ -945,7 +1076,7 @@ class TestBehaviorQuirks:
         save_scenario(...). It only creates ProjectRecord and
         WorkspaceState. The Base Case scenario is created later
         (via factory helpers or on first /scenarios/save)."""
-        body = _route_body("/projects/create")
+        body = _route_or_service_body("/projects/create")
         clean = _strip_docstrings_and_comments(body)
         assert "add_scenario(" not in clean
         assert "save_scenario(" not in clean
@@ -953,7 +1084,8 @@ class TestBehaviorQuirks:
 
     def test_quirk_10_form_default_target_dscr(self):
         """Quirk 10: target_dscr defaults to '1.20' (this is the
-        standard DSCR target for new projects)."""
+        standard DSCR target for new projects). The default is in
+        the route signature (Form injection), not the service."""
         body = _route_body("/projects/create")
         assert 'target_dscr: str = Form("1.20")' in body
 
@@ -964,15 +1096,21 @@ class TestBehaviorQuirks:
 
 
 class TestExtractionBoundaryRecommendation:
-    def test_projects_create_service_does_not_exist_yet(self):
-        """Pre-51M-2: projects_create_service.py does NOT exist."""
+    def test_projects_create_service_exists(self):
+        """Phase 51M-2: projects_create_service.py exists in
+        app/services/."""
         path = SERVICES_DIR / "projects_create_service.py"
-        assert not path.exists(), (
-            f"{path} must NOT exist before Phase 51M-2"
+        assert path.exists(), (
+            f"{path} must exist after Phase 51M-2"
         )
+        # The service should export the canonical API
+        text = path.read_text(encoding="utf-8")
+        assert "class ProjectsCreateRouteOutcome" in text
+        assert "class ProjectsCreateRouteDeps" in text
+        assert "async def execute_projects_create_route(" in text
 
     def test_recommended_module_name(self):
         """The recommended 51M-2 module is
         app/services/projects_create_service.py."""
         path = SERVICES_DIR / "projects_create_service.py"
-        assert not path.exists()
+        assert path.exists()

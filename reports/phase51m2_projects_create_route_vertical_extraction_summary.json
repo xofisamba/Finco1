@@ -1,0 +1,191 @@
+{
+  "phase": "51M-2",
+  "route": "POST /projects/create",
+  "handler": "create_project_route",
+  "location": "main_web.py",
+  "extracted_to": "app/services/projects_create_service.py",
+  "merge_pr": 407,
+  "merge_target_branch": "main",
+  "merge_base_sha": "53bbe17e4f3382744a5cd1ebfefe80aa5e194a07",
+  "service_inventory_position": 13,
+  "service_module": {
+    "path": "app/services/projects_create_service.py",
+    "lines": 392,
+    "callables_in_deps": 16,
+    "exports": [
+      "ProjectsCreateRouteOutcome",
+      "ProjectsCreateRouteDeps",
+      "execute_projects_create_route"
+    ]
+  },
+  "route_thinning": {
+    "pre_m2_total_lines": 126,
+    "pre_m2_non_blank_lines": 117,
+    "post_m2_total_lines": 98,
+    "post_m2_non_blank_lines": 93,
+    "delta_total": -28,
+    "delta_non_blank": -24,
+    "delta_non_blank_pct": -21.0
+  },
+  "behaviors_preserved": [
+    "POST /projects/create exists",
+    "Auth check via get_current_user(request)",
+    "Unauthenticated -> 302 redirect to /login",
+    "Form read via FastAPI Form(...) injection",
+    "submitted dict built from _submitted_new_project_defaults() + form values",
+    "_coerce_form_text(submitted['project_name']) coerces the project name",
+    "_canonical_project_type(submitted['project_type']) canonicalizes the project type",
+    "_normalize_template_source(...) normalizes the template source",
+    "_validate_new_project_payload(submitted) validates the payload",
+    "Template source validation: wind->Wind, solar->Solar",
+    "_slugify_project_code(clean_name) slugifies the project code",
+    "Project code uniqueness loop with -2, -3, ... suffixes",
+    "_project_baseline_snapshot(canonical_type, normalized_source) builds baseline",
+    "_apply_new_project_required_inputs(...) applies required inputs",
+    "deps.create_project_record(...) creates the ProjectRecord",
+    "deps.save_workspace_state(...) initializes the workspace",
+    "deps.governance_snapshot(project_code) called twice (create + save)",
+    "deps.replay_metadata_for_project(...) called twice with different export_type",
+    "Validation error (400): TemplateResponse with partials/new_project_form.html",
+    "Success (200): TemplateResponse with partials/new_project_result.html + HX-Redirect"
+  ],
+  "quirks_preserved": [
+    {
+      "id": 1,
+      "name": "FastAPI Form(...) injection",
+      "description": "NOT await request.form() or _collect_form_snapshot"
+    },
+    {
+      "id": 2,
+      "name": "HX-Redirect on success",
+      "description": "f'/?project={project_record.project_code}' on success"
+    },
+    {
+      "id": 3,
+      "name": "Partial template render",
+      "description": "partials/new_project_result.html, NOT full workspace render"
+    },
+    {
+      "id": 4,
+      "name": "Project code uniqueness loop",
+      "description": "while get_project_by_code returns non-None, append -2, -3, ..."
+    },
+    {
+      "id": 5,
+      "name": "replay_metadata uses export_type",
+      "description": "export_type='project_record_created' and 'workspace_project_created'"
+    },
+    {
+      "id": 6,
+      "name": "Template source validation",
+      "description": "wind templates require Wind type, solar templates require Solar type"
+    },
+    {
+      "id": 7,
+      "name": "save_workspace_state args",
+      "description": "draft=saved=baseline_snapshot, dirty=False"
+    },
+    {
+      "id": 8,
+      "name": "project_origin user_created only",
+      "description": "project_origin='user_created' only; no 403 gate for non-user_created"
+    },
+    {
+      "id": 9,
+      "name": "No scenario created",
+      "description": "Does NOT explicitly call add_scenario or save_scenario; only ProjectRecord + WorkspaceState"
+    },
+    {
+      "id": 10,
+      "name": "target_dscr default",
+      "description": "target_dscr defaults to '1.20'"
+    }
+  ],
+  "intended_side_effects": [
+    {"name": "_submitted_new_project_defaults", "count": 1, "type": "read"},
+    {"name": "_coerce_form_text", "count": 1, "type": "read"},
+    {"name": "_canonical_project_type", "count": 1, "type": "read"},
+    {"name": "_normalize_template_source", "count": 1, "type": "read"},
+    {"name": "_validate_new_project_payload", "count": 1, "type": "read"},
+    {"name": "get_project_by_code", "count": "1+ (uniqueness loop)", "type": "read"},
+    {"name": "_project_baseline_snapshot", "count": 1, "type": "read"},
+    {"name": "_apply_new_project_required_inputs", "count": 1, "type": "read"},
+    {"name": "create_project_record", "count": 1, "type": "write"},
+    {"name": "save_workspace_state", "count": 1, "type": "write"},
+    {"name": "_governance_snapshot", "count": 2, "type": "read"},
+    {"name": "_replay_metadata_for_project", "count": 2, "type": "read"},
+    {"name": "_template_source_label", "count": 1, "type": "read"},
+    {"name": "templates.TemplateResponse", "count": 1, "type": "render"}
+  ],
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "db.add",
+    "db.commit",
+    "db.flush",
+    "session.add",
+    "session.commit",
+    "add_scenario",
+    "save_scenario",
+    "create_scenario",
+    "await request.form()",
+    "_collect_form_snapshot"
+  ],
+  "phase51f_guardrails": {
+    "engine_output_golden_tubo_oborovo": "PASS",
+    "parity_core_lock_4_sha256": "PASS",
+    "no_service_imports_main_web_or_main_api": "PASS",
+    "21_of_21_test_module": "PASS"
+  },
+  "tests": {
+    "test_phase51m2_projects_create_route_vertical_extraction": {
+      "count": 58,
+      "pass": 58,
+      "status": "PASS"
+    },
+    "test_phase51m1_projects_create_route_golden_characterization": {
+      "count": 92,
+      "pass": 92,
+      "status": "PASS (re-pointed to service)"
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "count": 21,
+      "pass": 21,
+      "status": "PASS"
+    },
+    "test_phase51l1_scenario_add_route_golden_characterization": {
+      "count": 86,
+      "pass": 86,
+      "status": "PASS"
+    },
+    "test_phase51l2_scenarios_add_route_vertical_extraction": {
+      "count": 42,
+      "pass": 42,
+      "status": "PASS"
+    },
+    "test_phase51i_route_extraction_checkpoint_hotspot_map": {
+      "count": 63,
+      "pass": 63,
+      "status": "PASS"
+    }
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51m2": false,
+    "verified_in_history": true
+  },
+  "no_production_code_changes_outside_scope": true,
+  "no_model_parity_core_schema_js_formula_changes": true,
+  "service_clean_of_main_web_and_main_api_imports": true,
+  "ready_for_merge": true
+}

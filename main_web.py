@@ -1885,10 +1885,31 @@ async def create_project_route(
     tenor_years: str = Form(""),
     target_dscr: str = Form("1.20"),
 ):
+    """Create a new project.
+
+    Thin orchestration wrapper (Phase 51M-2). The route is
+    responsible for auth, FastAPI Form() injection, building the
+    submitted dict from form values, deps bundle construction, and
+    final response rendering. The full /projects/create
+    orchestration body (text coercion, project type
+    canonicalization, template source normalization, payload
+    validation, template source validation, project code
+    slugification and uniqueness loop, baseline snapshot
+    construction, project record creation, workspace state
+    initialization, response context assembly with HX-Redirect
+    header) lives in
+    ``app.services.projects_create_service.execute_projects_create_route``.
+    """
+    from app.services.projects_create_service import (
+        ProjectsCreateRouteDeps,
+        execute_projects_create_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    # Build submitted dict from defaults + form values
     submitted = _submitted_new_project_defaults()
     submitted.update(
         {
@@ -1912,82 +1933,33 @@ async def create_project_route(
         }
     )
 
-    clean_name = _coerce_form_text(project_name)
-    canonical_type = _canonical_project_type(project_type)
-    normalized_source = _normalize_template_source(template_source, canonical_type)
-    submitted["project_name"] = clean_name
-    submitted["project_type"] = project_type
-    submitted["template_source"] = normalized_source
-    validation_errors = _validate_new_project_payload(submitted)
-
-    if normalized_source in {"tuho", "generic_wind"} and canonical_type != "Wind":
-        validation_errors.append("Wind templates require project type Wind.")
-    if normalized_source in {"oborovo", "generic_solar"} and canonical_type != "Solar":
-        validation_errors.append("Solar templates require project type Solar.")
-
-    if validation_errors:
-        return templates.TemplateResponse(
-            request=request,
-            name="partials/new_project_form.html",
-            context=_new_project_validation_error_context(submitted, validation_errors),
-            status_code=400,
-        )
-
-    base_slug = _slugify_project_code(clean_name)
-    project_code = base_slug
-    suffix = 2
-    while get_project_by_code(user.user_id, project_code) is not None:
-        project_code = f"{base_slug}-{suffix}"
-        suffix += 1
-
-    baseline_snapshot = _apply_new_project_required_inputs(
-        _project_baseline_snapshot(canonical_type, normalized_source),
-        project_name=clean_name,
-        project_code=project_code,
-        project_type=canonical_type,
-        project_origin="user_created",
-        template_source=normalized_source,
-        submitted=submitted,
+    deps = ProjectsCreateRouteDeps(
+        submitted_new_project_defaults=_submitted_new_project_defaults,
+        coerce_form_text=_coerce_form_text,
+        canonical_project_type=_canonical_project_type,
+        normalize_template_source=_normalize_template_source,
+        validate_new_project_payload=_validate_new_project_payload,
+        slugify_project_code=_slugify_project_code,
+        get_project_by_code=get_project_by_code,
+        project_baseline_snapshot=_project_baseline_snapshot,
+        apply_new_project_required_inputs=_apply_new_project_required_inputs,
+        create_project_record=create_project_record,
+        save_workspace_state=save_workspace_state,
+        governance_snapshot=_governance_snapshot,
+        replay_metadata_for_project=_replay_metadata_for_project,
+        new_project_validation_error_context=_new_project_validation_error_context,
+        template_source_label=_template_source_label,
+        render_template_response=templates.TemplateResponse,
     )
-
-    project_record = create_project_record(
-        user_id=user.user_id,
-        project_code=project_code,
-        project_name=clean_name,
-        project_type=canonical_type,
-        project_origin="user_created",
-        template_source=normalized_source,
-        baseline_snapshot=baseline_snapshot,
-        governance_state=_governance_snapshot(project_code),
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=None,
-            export_type="project_record_created",
-        ),
+    outcome = await execute_projects_create_route(
+        request=request, submitted=submitted, user=user, deps=deps,
     )
-    save_workspace_state(
-        user_id=user.user_id,
-        project_id=project_record.project_id,
-        project_code=project_record.project_code,
-        draft_snapshot=baseline_snapshot,
-        saved_snapshot=baseline_snapshot,
-        dirty=False,
-        governance_state=_governance_snapshot(project_code),
-        replay_metadata=_replay_metadata_for_project(
-            project_code,
-            project_id=project_record.project_id,
-            export_type="workspace_project_created",
-        ),
-    )
-
     return templates.TemplateResponse(
         request=request,
-        name="partials/new_project_result.html",
-        context={
-            "project_record": project_record,
-            "template_source_label": _template_source_label(normalized_source),
-        },
-        headers={"HX-Redirect": f"/?project={project_record.project_code}"},
+        name=outcome.template_name,
+        context=outcome.context,
+        status_code=outcome.status_code,
+        headers=outcome.headers or None,
     )
 
 
