@@ -61,7 +61,7 @@ from app.persistence._helpers import _now_utc, _to_json, SCENARIO_INPUT_FIELDS
 from app.persistence.db import get_cursor
 
 if TYPE_CHECKING:
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
 
 
 # ============================================================
@@ -87,7 +87,7 @@ def resolve_scenario_snapshot(
 
 
 def get_scenario(scenario_id: str, user_id: str) -> "Optional[ScenarioRecord]":
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
     with get_cursor() as cur:
         cur.execute("SELECT * FROM scenarios WHERE scenario_id=? AND user_id=?", (scenario_id, user_id))
         row = cur.fetchone()
@@ -100,7 +100,7 @@ def list_scenarios(
     include_archived: bool = False,
     limit: int = 25,
 ) -> "list[ScenarioRecord]":
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
     query = "SELECT * FROM scenarios WHERE user_id=?"
     params: list[Any] = [user_id]
     if project_id:
@@ -292,7 +292,7 @@ def save_scenario(
     copied_from_scenario_id: Optional[str] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
 ) -> "ScenarioRecord":
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
     scenario_id = uuid.uuid4().hex[:16]
     now = _now_utc()
     governance_state = governance_state or {}
@@ -367,7 +367,7 @@ def add_scenario(
     The new scenario starts with empty overrides, so its effective snapshot
     is identical to the parent's base_input_set.
     """
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
     # Resolve effective snapshot = base_input_set merged with overrides
     resolved = resolve_scenario_snapshot(base_input_set, overrides or {})
 
@@ -449,7 +449,7 @@ def update_scenario_overrides(
     Only keys in SCENARIO_INPUT_FIELDS are accepted; everything else is dropped.
     Returns the updated ScenarioRecord or None if the scenario doesn't exist.
     """
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
     record = get_scenario(scenario_id, user_id)
     if record is None:
         return None
@@ -496,7 +496,7 @@ def update_scenario_overrides(
 
 def get_base_case_scenario(user_id: str, project_id: str) -> "Optional[ScenarioRecord]":
     """Return the non-archived Base Case scenario for a project, if present."""
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
     with get_cursor() as cur:
         cur.execute(
             """
@@ -522,7 +522,7 @@ def get_or_create_base_case_scenario(
     replay_metadata: Optional[dict[str, Any]] = None,
 ) -> "ScenarioRecord":
     """Return the existing Base Case scenario for a project, or create one."""
-    from app.persistence.repository import ScenarioRecord
+    from app.persistence.records import ScenarioRecord
     with get_cursor() as cur:
         cur.execute(
             """

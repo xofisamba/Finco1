@@ -43,7 +43,7 @@ from app.persistence.db import get_cursor
 from app.persistence._helpers import _now_utc, _to_json
 
 if TYPE_CHECKING:
-    from app.persistence.repository import ScenarioRecord, WorkspaceStateRecord
+    from app.persistence.records import ScenarioRecord, WorkspaceStateRecord
 
 
 # -----------------------------------------------------------------
@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 # -----------------------------------------------------------------
 
 def get_workspace_state(user_id: str, project_id: str) -> "Optional[WorkspaceStateRecord]":
-    from app.persistence.repository import WorkspaceStateRecord
+    from app.persistence.records import WorkspaceStateRecord
     with get_cursor() as cur:
         cur.execute(
             "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
@@ -84,7 +84,7 @@ def save_workspace_state(
     replay_metadata: Optional[dict[str, Any]] = None,
     last_runtime_at: Optional[datetime] = None,
 ) -> "WorkspaceStateRecord":
-    from app.persistence.repository import WorkspaceStateRecord
+    from app.persistence.records import WorkspaceStateRecord
     now = _now_utc()
     governance_state = governance_state or {}
     replay_metadata = dict(replay_metadata or {})

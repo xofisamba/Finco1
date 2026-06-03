@@ -45,7 +45,7 @@ from app.persistence._helpers import _from_iso, _from_json, _now_utc, _to_json
 from app.persistence.db import get_cursor
 
 if TYPE_CHECKING:
-    from app.persistence.repository import ProjectRecord
+    from app.persistence.records import ProjectRecord
 
 
 # ===========================================================================
@@ -57,7 +57,7 @@ def get_project(project_id: str, user_id: str) -> "Optional[ProjectRecord]":
     with get_cursor() as cur:
         cur.execute("SELECT * FROM projects WHERE project_id=? AND user_id=?", (project_id, user_id))
         row = cur.fetchone()
-    from app.persistence.repository import ProjectRecord
+    from app.persistence.records import ProjectRecord
     return ProjectRecord.from_row(row) if row else None
 
 
@@ -68,7 +68,7 @@ def get_project_by_code(user_id: str, project_code: str) -> "Optional[ProjectRec
             (user_id, project_code),
         )
         row = cur.fetchone()
-    from app.persistence.repository import ProjectRecord
+    from app.persistence.records import ProjectRecord
     return ProjectRecord.from_row(row) if row else None
 
 
@@ -78,7 +78,7 @@ def list_projects(user_id: str) -> "list[ProjectRecord]":
             "SELECT * FROM projects WHERE user_id=? AND archived=0 ORDER BY updated_at DESC",
             (user_id,),
         )
-        from app.persistence.repository import ProjectRecord
+        from app.persistence.records import ProjectRecord
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
@@ -89,7 +89,7 @@ def list_baseline_records(user_id: str) -> "list[ProjectRecord]":
             "SELECT * FROM projects WHERE user_id=? AND project_origin='saved_baseline' AND archived=0 ORDER BY project_name",
             (user_id,),
         )
-        from app.persistence.repository import ProjectRecord
+        from app.persistence.records import ProjectRecord
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
@@ -118,7 +118,7 @@ def list_project_records(
     query += " ORDER BY updated_at DESC"
     with get_cursor() as cur:
         cur.execute(query, tuple(params))
-        from app.persistence.repository import ProjectRecord
+        from app.persistence.records import ProjectRecord
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
@@ -226,7 +226,7 @@ def save_project(
                 ),
             )
 
-    from app.persistence.repository import ProjectRecord
+    from app.persistence.records import ProjectRecord
     return ProjectRecord(
         project_id=project_id,
         user_id=user_id,

@@ -1,0 +1,76 @@
+{
+  "phase": "53I-3",
+  "title": "Remove record lazy imports from persistence modules",
+  "type": "mechanical_import_cleanup",
+  "base_sha": "db98da59832d25592ec1fc9a5d02b20b4fb8b9c7",
+  "head_sha": "b0c81a2063516abe250cd7801ced6c5c4004130e",
+  "branch": "phase53i3-remove-record-lazy-imports",
+  "auto_merged": true,
+  "modules_updated": [
+    {
+      "module": "app/persistence/scenarios_repository.py",
+      "lazy_imports_cleaned": 8,
+      "record": "ScenarioRecord"
+    },
+    {
+      "module": "app/persistence/projects_repository.py",
+      "lazy_imports_cleaned": 7,
+      "record": "ProjectRecord"
+    },
+    {
+      "module": "app/persistence/workspace_repository.py",
+      "lazy_imports_cleaned": 4,
+      "record": "ScenarioRecord + WorkspaceStateRecord"
+    }
+  ],
+  "loc_changes": {
+    "scenarios_repository.py": {
+      "before": 600,
+      "after": 600,
+      "delta": 0
+    },
+    "projects_repository.py": {
+      "before": 480,
+      "after": 480,
+      "delta": 0
+    },
+    "workspace_repository.py": {
+      "before": 250,
+      "after": 250,
+      "delta": 0
+    },
+    "note": "Imports changed but line count unchanged (import path strings have same length)"
+  },
+  "guardrails_added": [
+    "TestNoRecordLazyImportsFromRepository: prevents app/persistence/*_repository.py from importing record dataclasses from app.persistence.repository",
+    "TestObjectIdentityPreserved: pins that app.persistence.records.X is app.persistence.repository.X",
+    "TestSqlUnchanged: pins that save_scenario, update_scenario_overrides SQL is unchanged",
+    "TestNoNewCircularImport: all persistence modules import cleanly"
+  ],
+  "p0_pin_status": {
+    "save_scenario_pin": "untouched, all pass",
+    "add_scenario_pin": "untouched, all pass",
+    "update_overrides_pin": "untouched, all pass",
+    "base_case_pin": "untouched, all pass",
+    "coupling_pin": "untouched, all pass",
+    "53i1_field_shape_pins": "36/36 pass (1 test re-pointed to assert 0 lazy imports)",
+    "53i2_relocation_pins": "21/21 pass"
+  },
+  "tests_run": {
+    "phase53i1_pins": 36,
+    "phase53i2_pins": 21,
+    "phase53i3_new": 20,
+    "phase53g1_pins_total": 91,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "total": 218
+  },
+  "sql_text_changes": false,
+  "metadata_shape_changes": false,
+  "route_service_changes": false,
+  "rc1_untouched": true,
+  "no_new_circular_import": true,
+  "lazy_imports_remaining_in_domain_modules": 0,
+  "recommended_next_step": "53I-4 records relocation closeout + guardrails"
+}
