@@ -1,0 +1,121 @@
+{
+  "phase": "53F-1",
+  "title": "Pin save_workspace_state persistence behavior",
+  "type": "behavior_pin",
+  "base_sha": "42c2f23d9abe78908643a650b64d33e5589ed364",
+  "head_sha": "TBD",
+  "target_function": "save_workspace_state",
+  "branch": "phase53f1-save-workspace-state-p0-behavior-pin",
+  "pinned_behaviors": [
+    "importable_from_app_persistence_repository",
+    "keyword_only_signature",
+    "five_required_params",
+    "eleven_optional_params",
+    "returns_workspace_state_record",
+    "uses_now_utc_for_timestamps",
+    "calls_get_workspace_state_for_upsert_check",
+    "defaults_governance_state_to_empty_dict",
+    "defaults_replay_metadata_via_dict_copy",
+    "single_transaction_pattern_with_get_cursor",
+    "update_sql_with_14_columns",
+    "insert_sql_with_19_columns",
+    "uses_to_json_helper_8_times",
+    "uuid_hex_16_for_workspace_id",
+    "replay_metadata_merge_on_update",
+    "replay_metadata_setdefault_workspace_id_on_insert",
+    "governance_state_inherit_on_update_if_empty",
+    "last_runtime_snapshot_inherit_on_update",
+    "last_runtime_summary_inherit_on_update",
+    "last_runtime_at_inherit_on_update",
+    "last_runtime_at_isoformat_or_none",
+    "dirty_default_false",
+    "dirty_stored_as_int",
+    "workspace_state_record_has_19_fields"
+  ],
+  "dirty_behavior": {
+    "default": false,
+    "stored_as": "int(dirty)",
+    "in_workspace_state_record": "bool dirty field"
+  },
+  "active_scenario_behavior": {
+    "active_scenario_id_default": null,
+    "active_scenario_name_default": null,
+    "stored_columns": ["active_scenario_id", "active_scenario_name"]
+  },
+  "draft_snapshot_behavior": {
+    "required": true,
+    "default_if_empty": "dict (via 'or {}' on read)",
+    "serialized_via": "_to_json(draft_snapshot or {})"
+  },
+  "saved_snapshot_behavior": {
+    "required": true,
+    "default_if_empty": "dict (via 'or {}' on read)",
+    "serialized_via": "_to_json(saved_snapshot or {})"
+  },
+  "runtime_fields_behavior": {
+    "fields": [
+      "last_runtime_snapshot",
+      "last_runtime_summary",
+      "last_runtime_snapshot_id",
+      "last_runtime_origin",
+      "last_runtime_scenario_id",
+      "last_runtime_at"
+    ],
+    "behavior": "On UPDATE, all None values inherit from existing record; otherwise provided values used"
+  },
+  "replay_metadata_behavior": {
+    "default": "dict(replay_metadata or {})",
+    "on_update": "Merged with existing (new keys override existing)",
+    "on_insert": "setdefault('workspace_id', workspace_id)",
+    "serialized_via": "_to_json(replay_metadata)"
+  },
+  "governance_state_behavior": {
+    "default": "governance_state or {}",
+    "on_update_if_empty": "inherit from existing.governance_state",
+    "serialized_via": "_to_json(governance_state)"
+  },
+  "timestamp_behavior": {
+    "now": "_now_utc()",
+    "created_at_on_insert": "now (initial)",
+    "updated_at": "now (always)",
+    "last_runtime_at": "isoformat() if value else None"
+  },
+  "sql_behavior_summary": {
+    "update_columns": 14,
+    "insert_columns": 19,
+    "transaction_pattern": "single with get_cursor() as cur: per branch",
+    "use_of_to_json_helper": "≥ 8 occurrences",
+    "uuid_generation": "uuid.uuid4().hex[:16]"
+  },
+  "signature_summary": {
+    "all_keyword_only": true,
+    "required": ["user_id", "project_id", "project_code", "draft_snapshot", "saved_snapshot"],
+    "optional_defaults": {
+      "governance_state": "None",
+      "active_scenario_id": "None",
+      "active_scenario_name": "None",
+      "last_runtime_snapshot": "None",
+      "last_runtime_summary": "None",
+      "last_runtime_snapshot_id": "None",
+      "last_runtime_origin": "None",
+      "last_runtime_scenario_id": "None",
+      "dirty": "False",
+      "replay_metadata": "None",
+      "last_runtime_at": "None"
+    },
+    "return_type": "WorkspaceStateRecord"
+  },
+  "tests_run": {
+    "phase53f1_pin": 38,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_pre_flight": 2,
+    "total": 90
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "recommended_next_step": "53F-2 extract workspace_state persistence functions"
+}
