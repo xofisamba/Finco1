@@ -1,0 +1,133 @@
+{
+  "phase": "53A",
+  "title": "Phase 53A: Persistence helper functions extraction",
+  "base_sha": "349875ce54bef10801b40205f2505c304e7ed8e7",
+  "head_sha": "349875ce54bef10801b40205f2505c304e7ed8e7",
+  "type": "behavior-preserving persistence refactor",
+  "group": "F (helpers)",
+  "objective": "Move Group F helper functions from app/persistence/repository.py to app/persistence/_helpers.py while preserving public compatibility through repository.py.",
+  "module_created": "app/persistence/_helpers.py",
+  "module_loc": 137,
+  "functions_moved": [
+    {
+      "name": "_now_utc",
+      "body_loc": 2,
+      "kind": "pure"
+    },
+    {
+      "name": "_to_json",
+      "body_loc": 2,
+      "kind": "pure"
+    },
+    {
+      "name": "_from_json",
+      "body_loc": 4,
+      "kind": "pure"
+    },
+    {
+      "name": "_from_iso",
+      "body_loc": 4,
+      "kind": "pure"
+    },
+    {
+      "name": "SCENARIO_INPUT_FIELDS",
+      "kind": "set constant",
+      "size": 21
+    },
+    {
+      "name": "_safe_number",
+      "body_loc": 7,
+      "kind": "pure"
+    },
+    {
+      "name": "_metric_value",
+      "body_loc": 16,
+      "kind": "read of dataclass"
+    },
+    {
+      "name": "snapshots_equal",
+      "body_loc": 2,
+      "kind": "pure"
+    },
+    {
+      "name": "_strip_empty_fields",
+      "body_loc": 8,
+      "kind": "pure"
+    },
+    {
+      "name": "_get_least_created_scenario_for_project",
+      "body_loc": 15,
+      "kind": "single SELECT"
+    }
+  ],
+  "functions_moved_count": 10,
+  "repository_py_loc_before": 2042,
+  "repository_py_loc_after": 1953,
+  "repository_py_loc_delta": -89,
+  "repository_py_facade_changes": {
+    "import_added": "from app.persistence._helpers import (_now_utc, _to_json, _from_json, _from_iso, SCENARIO_INPUT_FIELDS, _safe_number, _metric_value, snapshots_equal, _strip_empty_fields, _get_least_created_scenario_for_project)",
+    "import_removed": "import json (no longer used in repository.py)",
+    "functions_removed_from_repository_body": 10,
+    "fa\u00e7ade_type": "module-level re-export"
+  },
+  "behavior_changes": "none",
+  "sql_text_changes": "none (only moved, not modified)",
+  "import_direction_changes": "none (only re-export added; no reverse imports)",
+  "high_risk_writes_touched": [],
+  "no_go_claims_status": "preserved (G20 BLOCKED, R99/R102 NOT APPROVED, partial_pay_sweep not promoted, etc.)",
+  "rc1_status": "frozen at b425a0708719eaa5e1d922b1008e5609758e0ad4; not in this PR's diff",
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase53a_persistence_helpers_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "result": "19/19 pass"
+    },
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    },
+    {
+      "test_module": "tests/test_phase52a_repository_inventory_hotspot_map.py",
+      "result": "61/61 pass"
+    },
+    {
+      "test_module": "tests/test_phase52b_persistence_side_effect_map.py",
+      "result": "46/46 pass"
+    },
+    {
+      "test_module": "tests/test_phase52c_repository_caller_coupling_graph.py",
+      "result": "47/47 pass"
+    },
+    {
+      "test_module": "tests/test_phase52d_persistence_behavior_characterization_plan.py",
+      "result": "51/51 pass"
+    },
+    {
+      "test_module": "tests/test_phase52e_persistence_hotspot_phase53_execution_plan.py",
+      "result": "32/32 pass"
+    },
+    {
+      "test_module": "tests/test_phase52g_final_repository_boundary_mapping_closeout.py",
+      "result": "28/28 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "hard_gates_pass": true,
+  "recommended_next_step": "53B (Group D runs extraction)"
+}
