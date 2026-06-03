@@ -261,17 +261,30 @@ class TestOtherHighRiskWritesNotMovedToExports:
 
 class TestAllHighRiskWritesStillInRepository:
     @pytest.mark.parametrize("fn_name", [
-        "save_workspace_state", "save_scenario",
+        "save_scenario",
         "add_scenario", "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])
     def test_non_exports_high_risk_write_still_in_repository_body(self, fn_name):
-        # These 5 are still DEFINED in repository.py (not re-exported)
+        # These 4 are still DEFINED in repository.py (not re-exported)
         # save_project was moved to projects_repository in Phase 53E-2
+        # save_workspace_state was moved to workspace_repository in Phase 53F-2
         from app.persistence import repository
         assert hasattr(repository, fn_name)
         text = _read(REPOSITORY_PY)
         assert f"def {fn_name}" in text, f"{fn_name} not defined in repository.py"
+
+    def test_save_workspace_state_moved_to_workspace_repository(self):
+        # Phase 53F-2: save_workspace_state was moved to workspace_repository.py
+        from app.persistence import repository
+        from app.persistence import workspace_repository
+        assert hasattr(repository, "save_workspace_state")  # re-exported
+        assert hasattr(workspace_repository, "save_workspace_state")
+        # The def should be in workspace_repository, not repository
+        text_workspace = (REPO_ROOT / "app/persistence/workspace_repository.py").read_text()
+        text_repo = _read(REPOSITORY_PY)
+        assert "def save_workspace_state" in text_workspace
+        assert "def save_workspace_state" not in text_repo
 
     def test_record_export_is_re_exported_in_repository(self):
         # record_export is re-exported from exports_repository

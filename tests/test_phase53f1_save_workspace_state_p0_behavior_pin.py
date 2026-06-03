@@ -36,6 +36,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_PY = REPO_ROOT / "app" / "persistence" / "repository.py"
+WORKSPACE_PY = REPO_ROOT / "app" / "persistence" / "workspace_repository.py"
+# After Phase 53F-2, save_workspace_state lives in workspace_repository.py.
+# The pin is re-pointed to read from there.
+PIN_TARGET = WORKSPACE_PY
 
 
 def _read(path: Path) -> str:
@@ -135,7 +139,7 @@ class TestSaveWorkspaceStateBody:
 
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_function_defined_in_repository(self, body: str):
         assert "def save_workspace_state(" in body
@@ -201,7 +205,7 @@ class TestSqlTextPinning:
 
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_update_sql_present(self, body: str):
         m = re.search(
@@ -263,7 +267,7 @@ class TestReplayMetadataBehavior:
 
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_replay_metadata_default_to_empty_dict(self, body: str):
         m = re.search(
@@ -301,7 +305,7 @@ class TestReplayMetadataBehavior:
 class TestGovernanceStateBehavior:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_governance_state_default_to_empty_dict(self, body: str):
         m = re.search(
@@ -335,7 +339,7 @@ class TestLastRuntimeBehavior:
 
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_last_runtime_snapshot_inherit_on_update(self, body: str):
         m = re.search(
@@ -382,7 +386,7 @@ class TestLastRuntimeBehavior:
 class TestDirtyFlagBehavior:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_dirty_default_false(self, body: str):
         # The signature default for dirty is False
@@ -436,12 +440,18 @@ class TestReturnRecord:
 class TestNoCallerChanges:
     """Verify that this PR doesn't change any callers."""
 
-    def test_save_workspace_state_callers_unchanged(self):
-        # The function should be referenced from services / routes the same way
-        text = _read(REPO_ROOT / "app" / "persistence" / "repository.py")
-        # It should be defined exactly once
+    def test_save_workspace_state_defined_in_workspace_repository(self):
+        # After Phase 53F-2, save_workspace_state is defined in workspace_repository.py
+        text = _read(PIN_TARGET)
         n = text.count("def save_workspace_state(")
-        assert n == 1, f"save_workspace_state should be defined once, got {n}"
+        assert n == 1, f"save_workspace_state should be defined once in workspace_repository.py, got {n}"
+
+    def test_save_workspace_state_not_defined_in_repository(self):
+        # After Phase 53F-2, save_workspace_state should NOT be defined in repository.py
+        # (only re-exported). It must appear in the import block.
+        text = _read(REPOSITORY_PY)
+        n = text.count("def save_workspace_state(")
+        assert n == 0, f"save_workspace_state should not be defined in repository.py (moved in 53F-2), got {n} occurrences"
 
 
 # ============================================================
@@ -454,7 +464,7 @@ class TestSqlFragments:
 
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_update_columns(self, body: str):
         # All 14 columns in the UPDATE SET clause (project_code, active_scenario_id,
@@ -532,7 +542,7 @@ class TestGuardrailsPreFlight:
     the Phase 52F guardrails (which would prevent 53F-2)."""
 
     def test_no_direct_sqlite_imports_in_repository(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PIN_TARGET)
         assert "import sqlite3" not in text
         assert "from sqlite3" not in text
         assert "import sqlalchemy" not in text

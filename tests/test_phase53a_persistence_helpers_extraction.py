@@ -240,7 +240,7 @@ class TestHighRiskWritesUntouched:
     """Group F extraction must not touch any high-risk write function."""
 
     @pytest.mark.parametrize("fn_name", [
-        "save_workspace_state", "save_scenario",
+        "save_scenario",
         "add_scenario", "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])
@@ -248,5 +248,6 @@ class TestHighRiskWritesUntouched:
         from app.persistence import repository
         assert hasattr(repository, fn_name), f"{fn_name} missing from repository"
         # And it should be a function defined in repository.py, not in _helpers.py
+        # (save_workspace_state was moved to workspace_repository in Phase 53F-2)
         text = _read(REPOSITORY_PY)
         assert f"def {fn_name}" in text, f"{fn_name} not defined in repository.py"
