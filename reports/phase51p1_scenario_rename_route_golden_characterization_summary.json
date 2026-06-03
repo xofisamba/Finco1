@@ -1,0 +1,95 @@
+{
+  "phase": "51P-1",
+  "route": "POST /scenarios/{scenario_id}/rename",
+  "handler": "rename_scenario_endpoint",
+  "risk": "MEDIUM",
+  "route_total_lines": 55,
+  "route_non_blank_lines": 51,
+  "tests": {
+    "test_phase51p1_scenario_rename_route_golden_characterization": {
+      "count": 55,
+      "pass": 55,
+      "status": "PASS"
+    }
+  },
+  "behaviors_pinned": [
+    "Auth check via get_current_user(request); unauth -> 302 /login",
+    "Form read via await request.form()",
+    "Empty scenario_name -> 400 JSONResponse",
+    "get_scenario(scenario_id, user.user_id) (positional)",
+    "404 if scenario not found",
+    "rename_scenario(user.user_id, scenario_id, new_name)",
+    "Full workspace re-render after rename",
+    "list_scenarios with include_archived=False, limit=12",
+    "get_scenario_history with limit=20",
+    "list_exports with limit=8",
+    "build_export_lineage with limit=8",
+    "scenario_summary_cards built from scenarios + export_lineage",
+    "Response via _render_scenario_workspace with success message"
+  ],
+  "intended_side_effects": [
+    {"name": "get_scenario", "count": 1, "type": "read"},
+    {"name": "rename_scenario", "count": 1, "type": "write"}
+  ],
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "add_scenario",
+    "create_scenario",
+    "db.add",
+    "db.commit",
+    "db.flush",
+    "session.add",
+    "session.commit"
+  ],
+  "behavior_quirks": [
+    {"id": 1, "name": "await_request_form", "description": "form read via await request.form() (not FastAPI Form injection)"},
+    {"id": 2, "name": "workspace_full_rerender", "description": "after rename, the entire workspace is re-rendered (not a partial)"},
+    {"id": 3, "name": "scenario_summary_cards_loop", "description": "scenario_summary_cards built by iterating scenarios"},
+    {"id": 4, "name": "export_count_aggregation", "description": "export_count aggregated from export_lineage"},
+    {"id": 5, "name": "scenario_name_in_message", "description": "success message includes the new scenario name"},
+    {"id": 6, "name": "no_htmx_headers", "description": "no HTMX-specific headers in this route"},
+    {"id": 7, "name": "positional_get_scenario", "description": "scenario lookup uses get_scenario(scenario_id, user.user_id) (positional)"},
+    {"id": 8, "name": "list_scenarios_with_archived_false", "description": "list_scenarios called with include_archived=False, limit=12"},
+    {"id": 9, "name": "history_limit_20", "description": "get_scenario_history called with limit=20"},
+    {"id": 10, "name": "exports_lineage_limit_8", "description": "list_exports and build_export_lineage called with limit=8 (x2)"}
+  ],
+  "error_paths": [
+    {"status_code": 302, "type": "redirect", "condition": "unauthenticated", "target": "/login"},
+    {"status_code": 400, "type": "json_error", "condition": "empty scenario_name", "body": "Scenario name is required"},
+    {"status_code": 404, "type": "json_error", "condition": "scenario not found", "body": "Scenario not found"},
+    {"status_code": 200, "type": "render", "condition": "success", "body": "full workspace render with message"}
+  ],
+  "extraction_recommendation": {
+    "module_path": "app/services/scenario_rename_service.py",
+    "outcome_dataclass": "ScenarioRenameRouteOutcome",
+    "deps_dataclass": "ScenarioRenameRouteDeps",
+    "entry_point": "execute_scenario_rename_route",
+    "deps_callables_count": 10,
+    "expected_deps_callables": [
+      "get_scenario",
+      "rename_scenario",
+      "get_project_by_code",
+      "list_scenarios",
+      "get_scenario_history",
+      "list_exports",
+      "build_export_lineage",
+      "get_workspace_state",
+      "build_scenario_summary_cards",
+      "render_scenario_workspace"
+    ]
+  },
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_touched": false,
+  "ready_for_51p2": true
+}
