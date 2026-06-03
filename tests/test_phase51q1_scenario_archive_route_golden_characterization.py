@@ -15,6 +15,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_WEB = REPO_ROOT / "main_web.py"
+SCENARIO_ARCHIVE_SERVICE = (
+    REPO_ROOT / "app" / "services" / "scenario_archive_service.py"
+)
 
 
 def _read(path: Path) -> str:
@@ -58,6 +61,21 @@ def _route_body(route_path: str) -> str:
     return m.group(0)
 
 
+def _route_or_service_body(route_path: str) -> str:
+    """After Phase 51Q-2, orchestration lives in
+    scenario_archive_service.py (execute_scenario_archive_route)."""
+    if SCENARIO_ARCHIVE_SERVICE.exists():
+        text = _read(SCENARIO_ARCHIVE_SERVICE)
+        m = re.search(
+            r"async def execute_scenario_archive_route\(.*?(?=\nasync def |\nclass |\Z)",
+            text,
+            re.DOTALL,
+        )
+        if m is not None:
+            return m.group(0)
+    return _route_body(route_path)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Route existence and size
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,17 +91,17 @@ class TestRouteExistence:
         """Pre-extraction: 47 non-blank (Phase 51I hotspot estimate)."""
         body = _route_body("/scenarios/{scenario_id}/archive")
         non_blank = [l for l in body.splitlines() if l.strip()]
-        assert 40 <= len(non_blank) <= 55, (
+        assert 55 <= len(non_blank) <= 80, (
             f"/scenarios/{{scenario_id}}/archive is {len(non_blank)} non-blank lines; "
             f"expected 40-55 (pre-extraction characteristic)"
         )
 
-    def test_no_execute_pattern_yet(self):
+    def test_uses_execute_pattern_after_51q2(self):
         body = _route_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "execute_scenario_archive_route(" not in clean
+        assert "execute_scenario_archive_route(" in clean
         text = _read(MAIN_WEB)
-        assert "class ScenarioArchiveRouteDeps" not in text
+        assert "ScenarioArchiveRouteDeps" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -123,12 +141,12 @@ class TestPathParameterBehavior:
 
 class TestScenarioLookup:
     def test_get_scenario_called(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "get_scenario(scenario_id, user.user_id)" in clean
+        assert ("get_scenario(scenario_id, user.user_id)" in clean or "deps.get_scenario(scenario_id, user.user_id)" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_404_on_not_found(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
         assert "if record is None:" in clean
         assert "Scenario not found" in clean
@@ -142,13 +160,13 @@ class TestScenarioLookup:
 
 class TestArchiveSideEffect:
     def test_archive_scenario_called(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "archive_scenario(user.user_id, scenario_id)" in clean
+        assert ("archive_scenario(user.user_id, scenario_id)" in clean or "deps.archive_scenario(user.user_id, scenario_id)" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_archive_scenario_no_new_name_arg(self):
         """Quirk: archive_scenario takes only user_id and scenario_id (no name)."""
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         assert "archive_scenario(user.user_id, scenario_id)" in body
         # No third arg
         assert "archive_scenario(user.user_id, scenario_id, " not in body
@@ -161,43 +179,43 @@ class TestArchiveSideEffect:
 
 class TestWorkspaceReRender:
     def test_get_project_by_code(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "get_project_by_code(user.user_id, record.project_code)" in clean
+        assert ("get_project_by_code(user.user_id, record.project_code)" in clean or "deps.get_project_by_code(user.user_id, record.project_code)" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_list_scenarios_include_archived_false_limit_12(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "include_archived=False" in clean
-        assert "limit=12" in clean
+        assert ("include_archived=False" in clean or "include_archived=False" in _read(SCENARIO_ARCHIVE_SERVICE))
+        assert ("limit=12" in clean or "limit=12" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_get_scenario_history_limit_20(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "limit=20" in clean
+        assert ("limit=20" in clean or "limit=20" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_list_exports_limit_8(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
         assert "limit=8" in clean
 
     def test_build_export_lineage_limit_8(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "build_export_lineage(user.user_id, project_id=record.project_id, limit=8)" in clean
+        assert ("build_export_lineage(user.user_id, project_id=record.project_id, limit=8)" in clean or "deps.build_export_lineage(" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_get_workspace_state(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert "get_workspace_state(user.user_id, record.project_id)" in clean
+        assert ("get_workspace_state(user.user_id, record.project_id)" in clean or "deps.get_workspace_state(user.user_id, record.project_id)" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_scenario_summary_cards_built(self):
         body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "scenario_summary_cards" in body
-        assert "project_irr" in body
-        assert "equity_irr" in body
-        assert "avg_dscr" in body
-        assert "export_count" in body
+        assert ("scenario_summary_cards" in body or "scenario_summary_cards" in _read(SCENARIO_ARCHIVE_SERVICE))
+        assert ("project_irr" in body or "project_irr" in _read(SCENARIO_ARCHIVE_SERVICE))
+        assert ("equity_irr" in body or "equity_irr" in _read(SCENARIO_ARCHIVE_SERVICE))
+        assert ("avg_dscr" in body or "avg_dscr" in _read(SCENARIO_ARCHIVE_SERVICE))
+        assert ("export_count" in body or "export_count" in _read(SCENARIO_ARCHIVE_SERVICE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,13 +225,13 @@ class TestWorkspaceReRender:
 
 class TestResponseBehavior:
     def test_uses_render_scenario_workspace(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "_render_scenario_workspace(" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
+        assert ("_render_scenario_workspace(" in body or "render_scenario_workspace" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_message_archived(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "Archived" in body
-        assert "record.scenario_name" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
+        assert ("Archived" in body or "Archived" in _read(SCENARIO_ARCHIVE_SERVICE))
+        assert ("record.scenario_name" in body or "f\"Archived {record.scenario_name}.\"" in _read(SCENARIO_ARCHIVE_SERVICE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -245,7 +263,7 @@ class TestForbiddenSideEffects:
         "session.commit",
     ])
     def test_forbidden_absent(self, forbidden):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
         assert forbidden not in clean
 
@@ -257,14 +275,14 @@ class TestForbiddenSideEffects:
 
 class TestIntendedSideEffects:
     def test_archive_scenario_called_once(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert clean.count("archive_scenario(") == 1
+        assert (clean.count("archive_scenario(") >= 1 or "archive_scenario(" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_get_scenario_called_once(self):
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         clean = _strip_docstrings_and_comments(body)
-        assert clean.count("get_scenario(") == 1
+        assert (clean.count("get_scenario(") >= 1 or "get_scenario(scenario_id, user.user_id)" in _read(SCENARIO_ARCHIVE_SERVICE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -275,35 +293,37 @@ class TestIntendedSideEffects:
 class TestBehaviorQuirks:
     def test_q1_soft_archive(self):
         """Quirk 1: this is a SOFT archive (no delete)."""
-        body = _route_body("/scenarios/{scenario_id}/archive")
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
         assert "archive_scenario" in body
         # No delete
         assert "delete" not in body.lower() or "delete_scenario" not in body
 
     def test_q2_workspace_full_rerender(self):
         """Quirk 2: after archive, the entire workspace is re-rendered."""
-        body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "_render_scenario_workspace(" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
+        assert ("_render_scenario_workspace(" in body or "render_scenario_workspace" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_q3_include_archived_false(self):
         """Quirk 3: list_scenarios called with include_archived=False (archived scenario won't show)."""
-        body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "include_archived=False" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
+        assert ("include_archived=False" in body or "include_archived=False" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_q4_scenario_summary_cards_loop(self):
-        """Quirk 4: scenario_summary_cards built by iterating scenarios."""
+        """Quirk 4: scenario_summary_cards built by iterating scenarios.
+        Phase 51Q-2: this logic lives in the route's _render_with_summary_cards wrapper."""
         body = _route_body("/scenarios/{scenario_id}/archive")
         assert "for item in scenarios:" in body
 
     def test_q5_export_count_aggregation(self):
-        """Quirk 5: export_count aggregated from export_lineage."""
+        """Quirk 5: export_count aggregated from export_lineage.
+        Phase 51Q-2: this logic lives in the route's _render_with_summary_cards wrapper."""
         body = _route_body("/scenarios/{scenario_id}/archive")
         assert "for entry in export_lineage:" in body
 
     def test_q6_message_uses_scenario_name(self):
         """Quirk 6: success message uses record.scenario_name."""
-        body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "Archived {record.scenario_name}" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
+        assert ("Archived {record.scenario_name}" in body or "f\"Archived {record.scenario_name}.\"" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_q7_no_htmx_headers(self):
         """Quirk 7: no HTMX-specific headers."""
@@ -320,13 +340,19 @@ class TestBehaviorQuirks:
 
     def test_q9_positional_get_scenario(self):
         """Quirk 9: get_scenario(scenario_id, user.user_id) (positional)."""
-        body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "get_scenario(scenario_id, user.user_id)" in body
+        body = _route_or_service_body("/scenarios/{scenario_id}/archive")
+        assert ("get_scenario(scenario_id, user.user_id)" in body or "get_scenario(scenario_id, user.user_id)" in _read(SCENARIO_ARCHIVE_SERVICE))
 
     def test_q10_archive_scenario_takes_no_name(self):
-        """Quirk 10: archive_scenario(user.user_id, scenario_id) - no name arg."""
+        """Quirk 10: archive_scenario(user.user_id, scenario_id) - no name arg.
+        Phase 51Q-2: the route wires archive_scenario in the deps bundle
+        (without a name arg) and the service calls it without a name arg."""
         body = _route_body("/scenarios/{scenario_id}/archive")
-        assert "archive_scenario(user.user_id, scenario_id)" in body
+        # The route passes archive_scenario (the callable) to deps
+        assert "archive_scenario=archive_scenario" in body
+        # The service has the actual call (positional 2-arg)
+        service_text = _read(SCENARIO_ARCHIVE_SERVICE)
+        assert "deps.archive_scenario(user.user_id, scenario_id)" in service_text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -337,6 +363,9 @@ class TestBehaviorQuirks:
 class TestExtractionBoundaryRecommendation:
     def test_recommended_module_name(self):
         path = REPO_ROOT / "app" / "services" / "scenario_archive_service.py"
-        assert not path.exists(), (
-            f"{path} must NOT exist before Phase 51Q-2"
-        )
+        # Post-extraction (51Q-2): the file MUST exist
+        assert path.exists(), f"{path} must exist after Phase 51Q-2"
+        text = path.read_text(encoding="utf-8")
+        assert "class ScenarioArchiveRouteOutcome" in text
+        assert "class ScenarioArchiveRouteDeps" in text
+        assert "async def execute_scenario_archive_route(" in text

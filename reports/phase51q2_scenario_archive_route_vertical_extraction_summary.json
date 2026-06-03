@@ -1,0 +1,16 @@
+{
+  "phase": "51Q-2",
+  "route": "POST /scenarios/{scenario_id}/archive",
+  "handler": "archive_scenario_endpoint",
+  "service_module": "app/services/scenario_archive_service.py",
+  "callables_in_deps": 9,
+  "tests": {
+    "test_phase51q2_scenario_archive_route_vertical_extraction": {"count": 30, "pass": 30, "status": "PASS"},
+    "test_phase51q1_scenario_archive_route_golden_characterization": {"count": 53, "pass": 53, "status": "PASS (re-pointed)"},
+    "test_phase51f_parallel_work_guardrails": {"count": 21, "pass": 21, "status": "PASS"}
+  },
+  "rc1_touched": false,
+  "no_production_code_changes_outside_scope": true,
+  "service_clean_of_main_web_and_main_api_imports": true,
+  "ready_for_merge": true
+}

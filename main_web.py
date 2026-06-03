@@ -2553,53 +2553,72 @@ async def rename_scenario_endpoint(request: Request, scenario_id: str):
 
 @app.post("/scenarios/{scenario_id}/archive")
 async def archive_scenario_endpoint(request: Request, scenario_id: str):
-    """Soft-archive a saved scenario."""
+    """Soft-archive a saved scenario.
+
+    Thin orchestration wrapper (Phase 51Q-2). The route is
+    responsible for auth, path param, deps bundle construction,
+    and final response rendering. The full
+    /scenarios/{scenario_id}/archive orchestration body (scenario
+    lookup, soft-archive, workspace re-render) lives in
+    ``app.services.scenario_archive_service.execute_scenario_archive_route``.
+    """
+    from app.services.scenario_archive_service import (
+        ScenarioArchiveRouteDeps,
+        execute_scenario_archive_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    record = get_scenario(scenario_id, user.user_id)
-    if record is None:
-        return JSONResponse({"error": "Scenario not found"}, status_code=404)
-
-    archive_scenario(user.user_id, scenario_id)
-    project_record = get_project_by_code(user.user_id, record.project_code)
-    scenarios = list_scenarios(user.user_id, project_id=record.project_id, include_archived=False, limit=12)
-    history = get_scenario_history(user.user_id, project_id=record.project_id, limit=20)
-    exports = list_exports(user.user_id, project_id=record.project_id, limit=8)
-    export_lineage = build_export_lineage(user.user_id, project_id=record.project_id, limit=8)
-    export_counts = {}
-    for entry in export_lineage:
-        export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
-    scenario_summary_cards = []
-    for item in scenarios:
-        summary = item.last_run_summary or {}
-        scenario_summary_cards.append(
-            {
-                "scenario_id": item.scenario_id,
-                "scenario_name": item.scenario_name,
-                "project_code": item.project_code,
-                "updated_at": item.updated_at,
-                "copied_from_scenario_id": item.copied_from_scenario_id,
-                "project_irr": summary.get("project_irr"),
-                "equity_irr": summary.get("equity_irr"),
-                "avg_dscr": summary.get("avg_dscr"),
-                "export_count": export_counts.get(item.scenario_name, 0),
-                "governance_state": item.governance_state,
-            }
+    def _render_with_summary_cards(
+        request, user, project_record, workspace_state, scenarios, history,
+        exports, export_lineage, message
+    ):
+        export_counts = {}
+        for entry in export_lineage:
+            export_counts[entry["scenario_name"]] = (
+                export_counts.get(entry["scenario_name"], 0) + 1
+            )
+        scenario_summary_cards = []
+        for item in scenarios:
+            summary = item.last_run_summary or {}
+            scenario_summary_cards.append(
+                {
+                    "scenario_id": item.scenario_id,
+                    "scenario_name": item.scenario_name,
+                    "project_code": item.project_code,
+                    "updated_at": item.updated_at,
+                    "copied_from_scenario_id": item.copied_from_scenario_id,
+                    "project_irr": summary.get("project_irr"),
+                    "equity_irr": summary.get("equity_irr"),
+                    "avg_dscr": summary.get("avg_dscr"),
+                    "export_count": export_counts.get(item.scenario_name, 0),
+                    "governance_state": item.governance_state,
+                }
+            )
+        return _render_scenario_workspace(
+            request, user, project_record, workspace_state, scenarios, history,
+            exports, export_lineage, scenario_summary_cards, message
         )
-    return _render_scenario_workspace(
-        request,
-        user,
-        project_record,
-        get_workspace_state(user.user_id, record.project_id),
-        scenarios,
-        history,
-        exports,
-        export_lineage,
-        scenario_summary_cards,
-        message=f"Archived {record.scenario_name}.",
+
+    deps = ScenarioArchiveRouteDeps(
+        get_scenario=get_scenario,
+        archive_scenario=archive_scenario,
+        get_project_by_code=get_project_by_code,
+        list_scenarios=list_scenarios,
+        get_scenario_history=get_scenario_history,
+        list_exports=list_exports,
+        build_export_lineage=build_export_lineage,
+        get_workspace_state=get_workspace_state,
+        render_scenario_workspace=_render_with_summary_cards,
     )
+    outcome = await execute_scenario_archive_route(
+        request=request, scenario_id=scenario_id, user=user, deps=deps,
+    )
+    if outcome.status_code >= 400:
+        return JSONResponse(outcome.payload, status_code=outcome.status_code)
+    return outcome.rendered_response
 
 
 @app.get("/runs")
