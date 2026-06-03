@@ -1,0 +1,285 @@
+{
+  "phase": "54D",
+  "title": "Shared LineItemGrid specification",
+  "type": "docs_report_test_only",
+  "base_sha": "dcfba47b0dd37bd22f4d4e29b466d8f3fe744d30",
+  "head_sha": "dcfba47b0dd37bd22f4d4e29b466d8f3fe744d30",
+  "branch": "phase54d-shared-line-item-grid-spec",
+  "auto_merged": false,
+  "line_item_grid_spec": {
+    "orientation": "line items vertical, periods horizontal",
+    "frozen_left": [
+      "code",
+      "line_item",
+      "runtime_impact"
+    ],
+    "sticky_header": "period column headers",
+    "numeric_formatting": "text-align: right; font-variant-numeric: tabular-nums;",
+    "subtotal_style": "bold text, top border, var(--grid-header-bg) background",
+    "period_grouping": "year-level if monthly; quarter-level if annual",
+    "modes": [
+      "default",
+      "audit",
+      "compare",
+      "compact"
+    ]
+  },
+  "required_columns": {
+    "always": [
+      {
+        "name": "code",
+        "width": "80-100px",
+        "frozen_left": true
+      },
+      {
+        "name": "line_item",
+        "width": "200-280px",
+        "frozen_left": true
+      },
+      {
+        "name": "runtime_impact",
+        "width": "100-120px",
+        "frozen_left": true,
+        "component": "chip"
+      },
+      {
+        "name": "total",
+        "width": "100-120px",
+        "alignment": "right"
+      }
+    ],
+    "period_columns": {
+      "width": "80-100px each",
+      "alignment": "right",
+      "format": "comma-separated thousands, 2 decimals for percentages"
+    },
+    "audit_mode_only": [
+      {
+        "name": "source",
+        "width": "120px"
+      },
+      {
+        "name": "last_modified",
+        "width": "100px"
+      },
+      {
+        "name": "modified_by",
+        "width": "100px"
+      },
+      {
+        "name": "run_id",
+        "width": "80px"
+      }
+    ],
+    "compare_mode_only": [
+      {
+        "name": "base_value",
+        "width": "100px"
+      },
+      {
+        "name": "delta",
+        "width": "100px",
+        "alignment": "right",
+        "signed": true
+      },
+      {
+        "name": "delta_pct",
+        "width": "80px",
+        "alignment": "right",
+        "signed": true
+      },
+      {
+        "name": "source_scenario",
+        "width": "120px"
+      }
+    ]
+  },
+  "cell_state_spec": [
+    {
+      "state": "input",
+      "visual": "white bg, editable border",
+      "editable": true
+    },
+    {
+      "state": "calculated",
+      "visual": "light gray bg, no border",
+      "editable": false
+    },
+    {
+      "state": "display-only",
+      "visual": "light gray bg, italic, no border",
+      "editable": false
+    },
+    {
+      "state": "pending",
+      "visual": "amber-tinted bg",
+      "editable": false
+    },
+    {
+      "state": "needs-review",
+      "visual": "red-tinted bg, validation marker",
+      "editable": false
+    },
+    {
+      "state": "validation-issue",
+      "visual": "red border",
+      "editable": true
+    }
+  ],
+  "mode_spec": {
+    "default": "4 always columns + period columns",
+    "audit": "default + 4 audit columns (source, last_modified, modified_by, run_id)",
+    "compare": "default + 4 compare columns (base_value, delta, delta_pct, source_scenario)",
+    "compact": "line item + total only, hides code and runtime_impact"
+  },
+  "variant_spec": [
+    {
+      "variant": "CAPEX",
+      "use_case": "sheet_capex.html, sheet_capex_detail.html",
+      "period_granularity": "annual",
+      "subtotal_style": "per category"
+    },
+    {
+      "variant": "OPEX",
+      "use_case": "sheet_opex.html, sheet_opex_detail.html",
+      "period_granularity": "annual",
+      "subtotal_style": "per category"
+    },
+    {
+      "variant": "Revenue",
+      "use_case": "sheet_revenue.html",
+      "period_granularity": "annual",
+      "subtotal_style": "per source"
+    },
+    {
+      "variant": "Debt/DSCR",
+      "use_case": "sheet_senior_debt.html",
+      "period_granularity": "annual",
+      "subtotal_style": "per instrument"
+    },
+    {
+      "variant": "SHL/Distribution",
+      "use_case": "sheet_shl.html",
+      "period_granularity": "annual",
+      "subtotal_style": "per tranche"
+    },
+    {
+      "variant": "CFADS/Cash Flow",
+      "use_case": "sheet_financials.html",
+      "period_granularity": "annual",
+      "subtotal_style": "per period"
+    },
+    {
+      "variant": "Scenario Compare",
+      "use_case": "scenario_compare.html",
+      "period_granularity": "annual",
+      "subtotal_style": "side-by-side"
+    },
+    {
+      "variant": "Audit/Reconciliation",
+      "use_case": "audit_reconciliation_tab.html",
+      "period_granularity": "n/a",
+      "subtotal_style": "badge list"
+    }
+  ],
+  "implementation_plan": {
+    "stack_decision": "Jinja macro/partial first",
+    "macro_location": "app/templates/macros/line_item_grid.html",
+    "htmx_for_mode_swaps": true,
+    "alpine_for_local_state": "later (not in UI-2)",
+    "tailwind": "later (not in UI-2)",
+    "client_side_calculations": false,
+    "css_approach": "add classes: .line-item-grid, .line-item-grid--frozen-left, .line-item-grid--compact, .line-item-grid--audit, .line-item-grid--compare"
+  },
+  "macro_signature_candidate": {
+    "name": "line_item_grid",
+    "params": [
+      {
+        "name": "items",
+        "type": "list of dicts"
+      },
+      {
+        "name": "period_labels",
+        "type": "list of strings"
+      },
+      {
+        "name": "mode",
+        "type": "default|audit|compare|compact"
+      },
+      {
+        "name": "base_url",
+        "type": "str (for HTMX)"
+      },
+      {
+        "name": "show_subtotals",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "name": "frozen_left",
+        "type": "bool",
+        "default": true
+      }
+    ]
+  },
+  "context_key_contract_candidates": {
+    "candidate_1_list_of_dicts": {
+      "shape": "list of {code, name, runtime_impact, sub_reason, values[], total, subtotal, metadata{}}",
+      "compatible_with": "current sheet_*.html data shape"
+    },
+    "candidate_2_structured_response": {
+      "shape": "{items[], periods[], mode, subtotals[], totals{}}",
+      "new_for": "UI-2"
+    },
+    "decision_status": "deferred to UI-2 implementation"
+  },
+  "test_strategy": {
+    "ui3_unit_tests": "render macro with mock data, verify HTML structure",
+    "ui3_visual_regression": "screenshot comparison (optional, requires tooling)",
+    "ui3_mode_swap": "verify HTMX mode swap returns correct partial",
+    "ui3_accessibility": "verify aria-* attributes, keyboard navigation",
+    "ui3_data_contract": "verify backend response shape matches macro expectations"
+  },
+  "migration_order": [
+    "Create macro and base CSS",
+    "Migrate sheet_capex.html (most-used)",
+    "Migrate sheet_opex.html",
+    "Migrate sheet_revenue.html",
+    "Migrate sheet_senior_debt.html and sheet_shl.html",
+    "Migrate sheet_financials.html and sheet_inputs.html",
+    "Migrate sheet_production.html, sheet_construction.html, sheet_idc.html",
+    "Migrate sheet_tax.html",
+    "Migrate sheet_capex_detail.html, sheet_opex_detail.html",
+    "Migrate scenario_compare.html and comparison.html to compare mode",
+    "Migrate audit_reconciliation_tab.html to audit mode"
+  ],
+  "recommended_next_step": "54E UI-1 closeout and UI-2 implementation plan",
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_guardrails": 51,
+    "phase54d_new": 19,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 231
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
