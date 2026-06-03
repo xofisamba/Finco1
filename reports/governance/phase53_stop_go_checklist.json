@@ -1,0 +1,160 @@
+{
+  "package": {
+    "name": "Finco1 Phase 53 Stop/Go Checklist",
+    "workstream": "B33",
+    "branch": "parallel-b30-b34-phase53-monitoring-pack",
+    "branch_base_sha": "ab33cbb61bc685311e2c18b57f20ef3f01becfce",
+    "package_base_sha_at_creation": "ab33cbb61bc685311e2c18b57f20ef3f01becfce",
+    "checklist_version": "0.1.0",
+    "checklist_status": "initial_draft",
+    "intended_use": "internal_phase53_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/phase53_stop_go_checklist.md",
+  "b30_53A_53B_refresh_pointer": "docs/governance/phase53ab_governance_refresh.md",
+  "b31_progress_ledger_pointer": "docs/governance/phase53_progress_ledger.md",
+  "b32_evidence_intake_pointer": "docs/validation/phase53_evidence_intake_template.md",
+  "b34_cadence_pointer": "docs/governance/b_track_phase53_refresh_cadence.md",
+  "b29_change_control_pointer": "docs/governance/phase53_change_control_checklist.md",
+  "b25_phase53_risk_pointer": "docs/governance/phase53_risk_gate_matrix.md",
+  "b26_must_pin_pointer": "docs/validation/phase53_must_pin_evidence_tracker.md",
+  "b27_guardrail_pointer": "docs/governance/phase52_53_guardrail_adoption_tracker.md",
+  "b28_pilot_delta_pointer": "docs/pilot/post_phase52_pilot_external_readiness_delta.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "disclaimers": {
+    "agent_b_does_not_approve_code_correctness": true,
+    "agent_b_checks_governance_evidence_readiness_only": true,
+    "agent_a_owns_code_and_tests": true,
+    "user_approves_merge_sign_off_decisions": true,
+    "phase_53_not_executed_by_agent_b": true,
+    "phase_53_results_not_invented": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "checklist_is_conservative_biased_toward_stopping": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "roles": {
+    "agent_a": "Owns the code, the tests, the guardrails, the migration scripts, and the CI. Agent A produces the PR description, the diff narrative, the rollback procedure, and the test results.",
+    "agent_b": "Owns the B-track governance pack. Agent B checks governance/evidence readiness only. Agent B does not approve code correctness. Agent B applies this checklist to each Phase 53 PR.",
+    "user": "Approves merge and sign-off decisions. User has the final say on proceed / stop decisions."
+  },
+  "proceed_conditions": [
+    "All hard-stop conditions are clear.",
+    "CI workflow test is passing on the PR's head commit.",
+    "CI workflow Parity Guardrails (Phase 51F) is passing on the PR's head commit.",
+    "All structural guardrails (G1-G6) are passing on the PR's head commit.",
+    "All behavior guardrail tests (21 baseline + per-PR additions) are passing on the PR's head commit.",
+    "The PR's diff narrative describes the change, the rationale, and the rollback procedure.",
+    "The PR's affected must-pin items (per the B26 tracker) are accounted for in the PR's pin tests.",
+    "The PR's auto-merge class (per the B25 policy) is consistent with the PR's actual auto-merge status.",
+    "Agent B has been notified of the PR.",
+    "The PR does not violate the do-not-parallelize rules.",
+    "The PR is in the correct Phase 53 sequence position."
+  ],
+  "stop_conditions": [
+    "Any must-pin item is broken or failing the pin test.",
+    "Any structural guardrail (G1-G6) is broken or failing the enforcement test.",
+    "Any behavior guardrail test is failing.",
+    "CI workflow test is failing on the PR's head commit.",
+    "CI workflow Parity Guardrails (Phase 51F) is failing on the PR's head commit.",
+    "The Phase 53 refactor order is violated.",
+    "The PR is merged with a non-passing check.",
+    "The PR touches a file outside the Agent A-owned file set.",
+    "The PR includes a paid pilot authorization claim, an external validation claim, a customer reference claim, a production-readiness claim, an enterprise SaaS-readiness claim, a bankability / audit / certification / lender / regulatory / SaaS claim, an investment advice claim, or a guaranteed returns claim."
+  ],
+  "manual_review_triggers": [
+    "The PR's auto-merge class is review_required (Group A-2 or C).",
+    "The PR's diff includes changes to app/persistence/* files.",
+    "The PR's diff includes changes to repository.py.",
+    "The PR's diff includes changes to app/services/*.",
+    "The PR's diff includes changes to the test files.",
+    "The PR's title includes REVIEW REQUIRED or DRAFT, REVIEW REQUIRED."
+  ],
+  "sign_off_triggers": [
+    "The PR's auto-merge class is sign_off_required (Group B).",
+    "The PR is a Phase 53 closeout (53G-8, 53H-2, 53I-4, 53J).",
+    "The PR touches a must-pin item that is currently marked as pilot_blocker: yes or paid_pilot_blocker: yes.",
+    "The PR is the first PR in a new Phase 53 group."
+  ],
+  "rollback_escalation_triggers": [
+    "The PR breaks a parity-core lock (4 SHA-256 files).",
+    "The PR breaks an engine-output golden (TUHO or Oborovo).",
+    "The PR produces a model output drift on TUHO or Oborovo.",
+    "The PR breaks a financial formula.",
+    "The PR produces a JS financial calculation change.",
+    "The PR produces a fixture CSV change.",
+    "The PR produces a schema / migration change that was not pre-authorized.",
+    "The PR is merged without Agent B's notification.",
+    "The PR is the 53J final closeout and any hard-stop condition is unclear."
+  ],
+  "no_parallelization_checks": [
+    "The PR is not in a do-not-parallelize area (Group B, Group C, Group A-2 writes, or the persistence layer migration) — or, if it is, the PR is reviewed with sign-off per the B25 auto-merge policy.",
+    "The PR is not run in parallel with a conflicting PR.",
+    "The PR does not modify the persistence layer migration script."
+  ],
+  "single_owner_zone_checks": [
+    "The PR's affected files are all in the single-owner zones for the PR's group.",
+    "The PR does not modify files in a different single-owner zone without coordination with the other zone's owner."
+  ],
+  "guardrail_failure_responses": {
+    "G1_failure": "The PR is blocked. The PR introduces a direct sqlite3 / sqlalchemy import outside app/persistence/*. The PR is rolled back if merged.",
+    "G2_failure": "The PR is blocked. The PR introduces a service import in main_web.py or main_api.py. The PR is rolled back if merged.",
+    "G3_failure": "The PR is blocked. The PR introduces a sqlite3.Connection or sqlite3.connect instantiation outside app/persistence/*. The PR is rolled back if merged.",
+    "G4_failure": "The PR is blocked. The PR introduces a direct get_cursor import in a service or route. The PR is rolled back if merged.",
+    "G5_failure": "The PR is blocked. The PR breaks the single-transaction pattern in repository.py. The PR is rolled back if merged.",
+    "G6_failure": "The PR is blocked. The PR uses a private attribute or function of the repository from a service. The PR is rolled back if merged.",
+    "new_structural_guardrail_failure": "The PR is blocked. The new guardrail is documented in B27 and the PR is re-evaluated.",
+    "deferred_guardrail_d1_d4_implemented": "The PR is documented in B27 and the guardrail is added to the active guardrail list."
+  },
+  "ci_failure_responses": {
+    "test_workflow_failure": "The PR is blocked. The PR is not merged. Agent B escalates to the user.",
+    "parity_guardrails_failure": "The PR is blocked. The PR is not merged. Agent B escalates to the user.",
+    "any_other_workflow_failure": "The PR is blocked. Agent B escalates to the user.",
+    "ci_reruns_not_fire_on_draft_to_ready": "The PR is still considered against the original head commit's CI status. Agent B notes the CI status at the time of the original head commit."
+  },
+  "parity_drift_responses": {
+    "parity_core_lock_drift": "The PR is blocked. The parity-core lock is the source of truth for the engine output stability. The PR is rolled back if merged.",
+    "engine_output_golden_drift": "The PR is blocked. The engine-output golden is the source of truth for the model output stability. The PR is rolled back if merged."
+  },
+  "model_output_drift_responses": {
+    "tuho_drift": "The PR is blocked. The model output is the source of truth for the financial model. The PR is rolled back if merged.",
+    "oborovo_drift": "The PR is blocked. The model output is the source of truth for the financial model. The PR is rolled back if merged.",
+    "generic_solar_wind_drift": "The PR is blocked. Generic solar / wind remain exploratory and unvalidated. The PR is rolled back if merged."
+  },
+  "unexpected_file_touch_responses": {
+    "b_track_file_touch": "The PR is blocked. Agent B escalates to the user.",
+    "fixture_csv_touch": "The PR is blocked. Agent B escalates to the user.",
+    "schema_migration_touch": "The PR is blocked. Agent B escalates to the user.",
+    "template_static_touch": "The PR is blocked. Agent B escalates to the user.",
+    "test_file_touch": "The PR is reviewed by Agent B. Test changes are generally OK if the test count increases and the test results are passing.",
+    "js_financial_calculation_touch": "The PR is blocked. Agent B escalates to the user.",
+    "financial_formula_touch": "The PR is blocked. Agent B escalates to the user."
+  },
+  "paid_pilot_no_go_claim_responses": {
+    "paid_pilot_authorization_claim": "The PR is blocked. Agent B escalates to the user.",
+    "external_validation_claim": "The PR is blocked. Agent B escalates to the user.",
+    "customer_reference_claim": "The PR is blocked. Agent B escalates to the user.",
+    "production_readiness_claim": "The PR is blocked. Agent B escalates to the user.",
+    "enterprise_saas_readiness_claim": "The PR is blocked. Agent B escalates to the user.",
+    "bankability_audit_certification_lender_regulatory_saas_claim": "The PR is blocked. Agent B escalates to the user.",
+    "investment_advice_claim": "The PR is blocked. Agent B escalates to the user.",
+    "guaranteed_returns_claim": "The PR is blocked. Agent B escalates to the user.",
+    "no_go_claim_relaxed": "The PR is blocked. Agent B escalates to the user."
+  },
+  "decision_tree": [
+    "1. Are all hard-stop conditions clear? No -> Stop. Escalate to user. Yes -> Continue.",
+    "2. Is the PR's auto-merge class sign_off_required? Yes -> User sign-off required. Escalate to user. No -> Continue.",
+    "3. Is the PR's auto-merge class review_required? Yes -> Agent B performs manual review. Are all review conditions clear? Yes -> Recommend proceed. No -> Stop. Escalate to user. No -> Continue.",
+    "4. Is the PR's auto-merge class auto_merge_allowed? Yes -> Recommend proceed. Agent B notes the recommendation in the B32 evidence intake record. No -> Stop. Escalate to user."
+  ],
+  "global_notes": [
+    "Agent B does not approve code correctness. Agent B checks governance/evidence readiness only. Agent A owns code and tests. User approves merge/sign-off decisions.",
+    "The checklist is conservative. It is biased toward stopping or escalating rather than proceeding. The default response to a hard-stop condition is to stop and escalate, not to proceed.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}

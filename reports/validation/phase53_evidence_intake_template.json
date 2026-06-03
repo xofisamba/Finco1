@@ -1,0 +1,194 @@
+{
+  "package": {
+    "name": "Finco1 Phase 53 Evidence Intake Template",
+    "workstream": "B32",
+    "branch": "parallel-b30-b34-phase53-monitoring-pack",
+    "branch_base_sha": "ab33cbb61bc685311e2c18b57f20ef3f01becfce",
+    "package_base_sha_at_creation": "ab33cbb61bc685311e2c18b57f20ef3f01becfce",
+    "template_version": "0.1.0",
+    "template_status": "initial_draft_empty",
+    "intended_use": "internal_phase53_governance_only",
+    "external_claim_scope": "none",
+    "is_template_only": true,
+    "is_pre_populated": false
+  },
+  "narrative_pointer": "docs/validation/phase53_evidence_intake_template.md",
+  "b30_53A_53B_refresh_pointer": "docs/governance/phase53ab_governance_refresh.md",
+  "b31_progress_ledger_pointer": "docs/governance/phase53_progress_ledger.md",
+  "b33_stop_go_pointer": "docs/governance/phase53_stop_go_checklist.md",
+  "b34_cadence_pointer": "docs/governance/b_track_phase53_refresh_cadence.md",
+  "b26_must_pin_pointer": "docs/validation/phase53_must_pin_evidence_tracker.md",
+  "b27_guardrail_pointer": "docs/governance/phase52_53_guardrail_adoption_tracker.md",
+  "b29_change_control_pointer": "docs/governance/phase53_change_control_checklist.md",
+  "b28_pilot_delta_pointer": "docs/pilot/post_phase52_pilot_external_readiness_delta.md",
+  "disclaimers": {
+    "phase_53_not_executed_by_agent_b": true,
+    "phase_53_results_not_invented": true,
+    "template_is_empty_at_creation": true,
+    "no_must_pin_item_updated_without_evidence": true,
+    "no_paid_pilot_authorization": true,
+    "no_external_validation_claim": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true,
+    "agent_b_does_not_implement_phase_53": true,
+    "agent_a_implements_phase_53": true,
+    "agent_b_does_not_approve_code_correctness": true,
+    "agent_b_checks_governance_evidence_readiness_only": true
+  },
+  "template_sections": [
+    "PR identification",
+    "Changed files",
+    "Tests and CI",
+    "Guardrail result",
+    "Hard-stop condition check",
+    "Must-pin impact",
+    "Pilot impact",
+    "Paid pilot impact",
+    "External review impact",
+    "No-go claim impact",
+    "Required B-track artifact updates",
+    "Reviewer notes"
+  ],
+  "template_fields": {
+    "pr_identification": [
+      "PR number",
+      "Phase ID",
+      "Group",
+      "Merge SHA",
+      "Merge timestamp"
+    ],
+    "changed_files": [
+      "Total files changed",
+      "Files by directory",
+      "Persistence files touched (yes/no; if yes, list)",
+      "repository.py touched (yes/no)",
+      "App code touched (yes/no)",
+      "Tests added/modified",
+      "Schema / migration changes (yes/no)",
+      "Fixture CSV changes (yes/no)",
+      "Template / static asset changes (yes/no)",
+      "Docs / report changes"
+    ],
+    "tests_and_ci": [
+      "Tests run",
+      "CI result",
+      "CI workflow URL",
+      "Parity Guardrails (Phase 51F) result",
+      "Behavior guardrail tests count change (before -> after)",
+      "Structural guardrail tests count change (before -> after)"
+    ],
+    "guardrail_result": [
+      "G1 result",
+      "G2 result",
+      "G3 result",
+      "G4 result",
+      "G5 result",
+      "G6 result",
+      "Any new structural guardrail added",
+      "Any deferred guardrail implemented (D1-D4)"
+    ],
+    "hard_stop_condition_check": [
+      "Any must-pin item broken or failing the pin test",
+      "Any structural guardrail (G1-G6) broken or failing the enforcement test",
+      "Any behavior guardrail test failing",
+      "The Phase 53 refactor order violated",
+      "The Phase 53 PR merged with a non-passing check",
+      "All hard-stop conditions clear"
+    ],
+    "must_pin_impact": [
+      "Affected must-pin items (P0)",
+      "Affected must-pin items (P1)",
+      "Must-pin status change (per item)",
+      "Pin test file (per item)",
+      "Pin test result (per item)",
+      "B26 must-pin tracker update required",
+      "B26 must-pin tracker update draft"
+    ],
+    "pilot_impact": [
+      "Controlled internal pilot impact",
+      "Paid pilot impact",
+      "B9-B14 pilot review pack update required",
+      "B18 controlled pilot launch checklist update required",
+      "B19 demo claims checklist update required",
+      "B20 pilot issue log process update required"
+    ],
+    "paid_pilot_impact": [
+      "Paid pilot gate (B13) impact",
+      "B13 paid pilot gate update required",
+      "PG-01..PG-14 status change (per gate)",
+      "Legal / security review placeholder status",
+      "Paid pilot authorization granted (always NO in B32)"
+    ],
+    "external_review_impact": [
+      "External reviewer run impact",
+      "B1 external review package update required",
+      "B10 data room index update required",
+      "B11 commercial claims review matrix update required",
+      "B12 confidence heatmap update required",
+      "B16 external review closeout status update required",
+      "B23 reviewer question bank update required",
+      "External validation claimed (always NO in B32)"
+    ],
+    "no_go_claim_impact": [
+      "No-go claim category affected",
+      "No-go claim relaxed (always NO in B32)",
+      "B11 commercial guardrail update required",
+      "B1 no-go claims update required"
+    ],
+    "required_b_track_artifact_updates": [
+      "B1 external review package",
+      "B3 validation matrix",
+      "B8 enterprise SaaS readiness tracker",
+      "B10 data room index",
+      "B11 commercial guardrail",
+      "B12 confidence heatmap",
+      "B13 paid pilot gate",
+      "B16 external review closeout status",
+      "B19 demo claims checklist",
+      "B20 pilot issue log template",
+      "B22 demo / investor / partner QA guardrail",
+      "B23 reviewer question bank",
+      "B24-B29 post-Phase 52 governance pack",
+      "B26 must-pin tracker",
+      "B27 guardrail adoption tracker",
+      "B30-B34 (this branch) B-track refresh"
+    ],
+    "reviewer_notes": [
+      "Agent B reviewer notes",
+      "Agent A sign-off",
+      "User sign-off requirement",
+      "Date of intake",
+      "Intake branch"
+    ]
+  },
+  "usage_workflow": [
+    "Agent A creates the Phase 53 PR.",
+    "Agent A opens the PR as a DRAFT.",
+    "Agent A requests Agent B's governance review.",
+    "Agent B fills in the B32 intake record (no values invented).",
+    "Agent B aggregates multiple B32 records into a B-track governance refresh branch (e.g., B35+).",
+    "The B-track governance refresh branch updates the B-track artifacts per the intake records."
+  ],
+  "explicit_no_population": {
+    "must_pin_items_pre_populated_as_pinned": false,
+    "guardrails_pre_populated_as_added_or_removed": false,
+    "pilot_readiness_pre_populated": false,
+    "external_review_status_pre_populated": false,
+    "paid_pilot_gates_pre_populated_as_satisfied": false,
+    "paid_pilot_authorization_pre_populated": false,
+    "no_go_claims_pre_relaxed": false,
+    "external_validation_pre_claimed": false,
+    "customer_reference_pre_claimed": false,
+    "production_readiness_pre_claimed": false,
+    "enterprise_saas_readiness_pre_claimed": false
+  },
+  "global_notes": [
+    "This is an empty template. No Phase 53 result is invented. No must-pin item is updated without evidence. No paid pilot authorization is granted.",
+    "Agent B does not implement Phase 53. Agent A implements Phase 53. Agent B records the evidence Agent A provides.",
+    "The template is filled in only when Agent A provides the actual evidence for a Phase 53 PR. The template is not pre-populated with hypothetical or expected values.",
+    "Agent B does not approve code correctness. Agent B checks governance/evidence readiness only. Agent A owns code and tests. User approves merge/sign-off decisions.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}
