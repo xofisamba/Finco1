@@ -1,0 +1,248 @@
+{
+  "package": {
+    "name": "Finco1 Phase 52/53 Guardrail Adoption Tracker",
+    "workstream": "B27",
+    "branch": "parallel-b24-b29-post-phase52-governance-pack",
+    "branch_base_sha": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "package_base_sha_at_creation": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "tracker_version": "0.1.0",
+    "tracker_status": "initial_draft",
+    "intended_use": "internal_phase52_53_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/phase52_53_guardrail_adoption_tracker.md",
+  "source_reports": {
+    "phase_52f_source": "reports/phase52f_persistence_guardrail_specifications.json",
+    "phase_52g_source": "reports/phase52g_final_repository_boundary_mapping_closeout.json"
+  },
+  "disclaimers": {
+    "agent_b_does_not_implement_guardrails": true,
+    "agent_a_implements_guardrails": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_phase_53_results_represented_as_completed": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "status_value_definitions": {
+    "active": "guardrail is implemented and enforced.",
+    "proposed": "guardrail is proposed but not implemented.",
+    "deferred": "guardrail is explicitly deferred to a later phase.",
+    "soft_check": "guardrail is implemented as a soft check only (e.g., a manual review checklist, not a CI test).",
+    "not_applicable": "guardrail is not applicable."
+  },
+  "summary": {
+    "existing_guardrails_count": 4,
+    "existing_guardrail_tests_count": 21,
+    "implemented_structural_guardrails_count": 6,
+    "implemented_structural_guardrail_tests_count": 10,
+    "deferred_guardrails_count": 4,
+    "total_active_guardrail_tests": 31,
+    "behavior_guardrail_tests_change": "21 -> 31",
+    "phase_53_required_guardrails_count": 6,
+    "phase_54_required_guardrails_count": 1
+  },
+  "existing_guardrails": [
+    {
+      "id": "EX-01",
+      "name": "Engine-output golden (TUHO + Oborovo)",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestEngineOutputGoldenTUHO + TestEngineOutputGoldenOborovo",
+      "tests": 6,
+      "status": "active"
+    },
+    {
+      "id": "EX-02",
+      "name": "Parity-core lock (4 SHA-256 files)",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestParityCoreLock",
+      "tests": 4,
+      "status": "active"
+    },
+    {
+      "id": "EX-03",
+      "name": "No-service-imports-main_web/main_api",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestNoServiceImportsMainWeb",
+      "tests": 6,
+      "status": "active"
+    },
+    {
+      "id": "EX-04",
+      "name": "Phase 51 doc cross-check",
+      "source": "tests/test_phase51f_parallel_work_guardrails.py::TestGuardrailDocsCrossCheck",
+      "tests": 5,
+      "status": "active"
+    }
+  ],
+  "implemented_structural_guardrails": [
+    {
+      "id": "G1",
+      "name": "no direct sqlite3 / sqlalchemy imports outside app/persistence/*",
+      "test_class": "TestG1NoDirectDbImportsOutsidePersistence",
+      "test_count": 2,
+      "implementation_status": "implemented",
+      "false_positive_risk": "none",
+      "required_before_phase53": true,
+      "enforcement_scope": "all files outside app/persistence/* must not import sqlite3 or sqlalchemy directly.",
+      "owner": {"implementation": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "high",
+      "pilot_relevance": "high",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "G2",
+      "name": "no service imports main_web or main_api",
+      "test_class": "TestG2NoServiceImportsMainWebOrApi",
+      "test_count": 2,
+      "implementation_status": "implemented",
+      "false_positive_risk": "none",
+      "required_before_phase53": true,
+      "note": "complements existing 51F guardrail",
+      "enforcement_scope": "no service imports in main_web.py or main_api.py; complements the existing 51F guardrail.",
+      "owner": {"implementation": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "high",
+      "pilot_relevance": "high",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "G3",
+      "name": "no sqlite3.Connection or sqlite3.connect instantiation outside app/persistence/*",
+      "test_class": "TestG3NoDirectConnectionInstantiationOutsidePersistence",
+      "test_count": 1,
+      "implementation_status": "implemented",
+      "false_positive_risk": "none",
+      "required_before_phase53": true,
+      "enforcement_scope": "no sqlite3.Connection or sqlite3.connect instantiation outside app/persistence/*.",
+      "owner": {"implementation": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "high",
+      "pilot_relevance": "high",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "G4",
+      "name": "no service or route imports get_cursor directly",
+      "test_class": "TestG4NoServiceImportsGetCursor",
+      "test_count": 1,
+      "implementation_status": "implemented",
+      "false_positive_risk": "low (would only trigger on unusual variable name use of get_cursor outside persistence)",
+      "required_before_phase53": true,
+      "enforcement_scope": "no service or route may import get_cursor directly; they must use the public surface of the persistence layer.",
+      "owner": {"implementation": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "high",
+      "pilot_relevance": "high",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "G5",
+      "name": "repository.py has the single-transaction pattern",
+      "test_class": "TestG5RepositorySingleTransactionPattern",
+      "test_count": 3,
+      "implementation_status": "implemented",
+      "false_positive_risk": "none",
+      "required_before_phase53": true,
+      "enforcement_scope": "repository.py must use the single-transaction pattern (3 tests).",
+      "owner": {"implementation": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "high",
+      "pilot_relevance": "high",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "G6",
+      "name": "services use public surface of repository only",
+      "test_class": "TestG6ServicesUsePublicSurfaceOnly",
+      "test_count": 1,
+      "implementation_status": "implemented",
+      "false_positive_risk": "none",
+      "required_before_phase53": true,
+      "enforcement_scope": "services must use the public surface of the repository only; no private attribute or function access.",
+      "owner": {"implementation": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "high",
+      "pilot_relevance": "high",
+      "external_review_relevance": "medium"
+    }
+  ],
+  "deferred_guardrails": [
+    {
+      "id": "D1",
+      "name": "route no-refattening",
+      "implementation_status": "deferred",
+      "deferred_to": "Phase 53G/53J (manual)",
+      "false_positive_risk": "high",
+      "reason": "sensitive to inline comments, blank lines, and docstring counting; would be brittle",
+      "owner": {"deferral_owner": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "low (manual review only)",
+      "pilot_relevance": "low",
+      "external_review_relevance": "low"
+    },
+    {
+      "id": "D2",
+      "name": "service-count / no-new-service-without-justification",
+      "implementation_status": "deferred",
+      "deferred_to": "Phase 53F (soft check)",
+      "false_positive_risk": "medium",
+      "reason": "count-only check is brittle; justification check is too opinionated",
+      "owner": {"deferral_owner": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "medium",
+      "pilot_relevance": "low",
+      "external_review_relevance": "low"
+    },
+    {
+      "id": "D3",
+      "name": "UI context key contract",
+      "implementation_status": "deferred",
+      "deferred_to": "Phase 54",
+      "false_positive_risk": "high",
+      "reason": "context surface is large; key names not documented in a single place",
+      "owner": {"deferral_owner": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "low",
+      "pilot_relevance": "low",
+      "external_review_relevance": "low"
+    },
+    {
+      "id": "D4",
+      "name": "docs no-go scanner",
+      "implementation_status": "deferred",
+      "deferred_to": "Phase 54+",
+      "false_positive_risk": "high",
+      "reason": "docs surface is large; regex-based scanner would have high false-positive risk",
+      "owner": {"deferral_owner": "Agent A", "tracker_update": "Agent B"},
+      "phase_53_relevance": "low",
+      "pilot_relevance": "low",
+      "external_review_relevance": "high (a docs no-go scanner would help the B-track governance review process; the tracker is the manual process that fills that gap until the scanner is implemented)"
+    }
+  ],
+  "future_governance_guardrails_not_implemented": [
+    {
+      "id": "FUT-01",
+      "name": "route-thinness guardrail",
+      "implementation_status": "not_implemented",
+      "rationale": "post-51 lesson; not implemented in this branch.",
+      "related_to": "D1 (route no-refattening)"
+    },
+    {
+      "id": "FUT-02",
+      "name": "service-count guardrail",
+      "implementation_status": "not_implemented",
+      "rationale": "post-51 lesson; not implemented in this branch.",
+      "related_to": "D2 (service-count / no-new-service-without-justification)"
+    }
+  ],
+  "phase_53_required_guardrails": ["G1", "G2", "G3", "G4", "G5", "G6"],
+  "phase_54_required_guardrails": ["D3"],
+  "hard_stop_linkage": {
+    "any_G1_G6_broken": "PR is blocked per B25 hard-stop conditions.",
+    "any_D1_D4_required_for_phase_53": false,
+    "any_D1_D4_required_for_phase_54": ["D3"]
+  },
+  "global_notes": [
+    "Agent B does not implement guardrails. Agent A implements guardrails.",
+    "Agent B does not modify app/persistence, app/services, main_web.py, or any Agent A-owned file. The guardrail adoption tracker is the B-track governance wrapper for the Agent A guardrail work.",
+    "The 6 implemented structural guardrails (G1-G6) and the 4 deferred guardrails (D1-D4) are sourced from the Phase 52F report.",
+    "The 21 -> 31 behavior guardrail test count change is the project's internal self-assessment. The change is verified by the Phase 52F report.",
+    "All 6 implemented structural guardrails (G1-G6) are required before Phase 53. The Phase 53 PRs must continue to satisfy the 6 guardrails.",
+    "D3 (UI context key contract) is the only Phase 54 guardrail. D1, D2, D4 are not required before Phase 54.",
+    "Route-thinness and service-count guardrails are post-51 lessons, not implemented as a part of B27. The D1 and D2 deferred guardrails track similar concerns.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}
