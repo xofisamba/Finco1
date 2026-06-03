@@ -1,0 +1,170 @@
+{
+  "phase": "51K-1",
+  "title": "POST /scenarios/{scenario_id}/duplicate golden characterization",
+  "type": "characterization-only",
+  "base_sha": "6569d1fe6e78184aad648cba757970cd2b003775",
+  "base_pr": 399,
+  "base_pr_title": "Phase 51J-2: Extract POST /scenarios/save into scenarios_save_service.py",
+  "head_sha": null,
+  "head_pr": null,
+  "branch": "phase51k1-scenario-duplicate-route-golden-characterization",
+  "characterized_route": {
+    "path": "POST /scenarios/{scenario_id}/duplicate",
+    "handler": "duplicate_scenario_endpoint",
+    "location": "main_web.py:2248-2320 (pre-extraction)",
+    "total_lines": 73,
+    "non_blank_lines": 67,
+    "risk": "HIGH",
+    "notes": "Persistence-heavy. Calls duplicate_scenario (write) plus 7 read-only queries plus 1 workspace_state read. No form input (path-parameter-only)."
+  },
+  "changed_files": [
+    "tests/test_phase51k1_scenario_duplicate_route_golden_characterization.py",
+    "docs/phase51k1_scenario_duplicate_route_golden_characterization.md",
+    "reports/phase51k1_scenario_duplicate_route_golden_characterization_summary.json"
+  ],
+  "production_code_changed": false,
+  "behaviors_pinned": {
+    "auth": [
+      "Uses get_current_user(request)",
+      "Unauth -> 302 redirect to /login (NOT 401 JSON, NOT HX-Redirect)",
+      "Auth check happens FIRST in route body"
+    ],
+    "path_parameter": [
+      "Route signature: async def duplicate_scenario_endpoint(request: Request, scenario_id: str)",
+      "scenario_id is the URL path parameter",
+      "scenario_id passed to get_scenario(scenario_id, user.user_id)",
+      "scenario_id passed to duplicate_scenario(user.user_id, scenario_id)"
+    ],
+    "user_id_source": [
+      "user_id always from user.user_id (session)",
+      "Never from form (no form input at all)"
+    ],
+    "active_project": [
+      "project_record = get_project_by_code(user.user_id, original.project_code)",
+      "All read-only queries use original.project_id"
+    ],
+    "active_scenario": [
+      "Route does NOT explicitly track active scenario beyond original",
+      "No set_active_scenario call"
+    ],
+    "original_lookup": [
+      "get_scenario(scenario_id, user.user_id) called once",
+      "If original is None -> 404 JSON {error: 'Scenario not found'}"
+    ],
+    "duplicate_persistence": [
+      "duplicate_scenario(user.user_id, scenario_id) called once (after None check)",
+      "No replay_metadata or governance_state passed (repository is source of truth)"
+    ],
+    "workspace_snapshot": [
+      "workspace_state resolved inline in render call",
+      "Not stored in separate variable"
+    ],
+    "response": [
+      "Success: full workspace render via _render_scenario_workspace(...)",
+      "404: JSONResponse with status_code=404",
+      "No HX-Trigger / HX-Redirect headers"
+    ]
+  },
+  "intended_side_effects": {
+    "per_success": {
+      "get_scenario": 1,
+      "duplicate_scenario": 1,
+      "get_project_by_code": 1,
+      "list_scenarios": 1,
+      "get_scenario_history": 1,
+      "list_exports": 1,
+      "build_export_lineage": 1,
+      "get_workspace_state": 1,
+      "_render_scenario_workspace": 1
+    },
+    "per_404": {
+      "get_scenario": 1,
+      "all_other_persistence": 0,
+      "JSONResponse": 1
+    },
+    "ordering": "auth -> get_scenario (with None check + 404 early return) -> duplicate_scenario -> get_project_by_code -> list_scenarios -> get_scenario_history -> list_exports -> build_export_lineage -> render"
+  },
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "save_project",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "db.add / db.commit / db.flush",
+    "session.add / session.commit"
+  ],
+  "quirks_pinned": [
+    "1. duplicate_scenario called WITHOUT replay_metadata (different from /scenarios/save)",
+    "2. 404 response is JSON, not HTML / not redirect / not template render",
+    "3. Success message is f'Duplicated {original.scenario_name}.' (with period)",
+    "4. Route does NOT call _governance_snapshot (different from /scenarios/save)",
+    "5. workspace_state resolved inline in render call (not in separate variable)",
+    "6. scenario_summary_cards has 10 specific fields (same shape as /scenarios/save)",
+    "7. scenario_summary_cards.export_count computed per scenario_name from export_lineage",
+    "8. Route is path-parameter-only (no await request.form(); different from /scenarios/save)",
+    "9. Route does NOT emit HX-Trigger or HX-Redirect (full workspace render)",
+    "10. Route is currently inline orchestration (no service pattern yet)"
+  ],
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS (no change in this phase)",
+    "parity_core_lock": "PASS (no change in this phase)",
+    "no_service_imports_main_web_or_main_api": "PASS (10 services clean, route is unchanged)"
+  },
+  "tests_run": {
+    "test_phase51k1_scenario_duplicate_route_golden_characterization": {
+      "tests": 80,
+      "passed": 80,
+      "failed": 0
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "tests": 21,
+      "passed": 21,
+      "failed": 0
+    },
+    "other_phase51_unchanged": "pass"
+  },
+  "known_failures": [
+    {
+      "test_module": "tests/test_persistence.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    },
+    {
+      "test_module": "tests/test_repository.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    }
+  ],
+  "recommended_51k2_extraction_boundary": {
+    "module": "app/services/scenario_duplicate_service.py",
+    "outcome_class": "ScenarioDuplicateRouteOutcome",
+    "deps_class": "ScenarioDuplicateRouteDeps",
+    "execute_function": "execute_scenario_duplicate_route",
+    "deps_callables": [
+      "get_scenario",
+      "duplicate_scenario",
+      "get_project_by_code",
+      "list_scenarios",
+      "get_scenario_history",
+      "list_exports",
+      "build_export_lineage",
+      "get_workspace_state",
+      "render_scenario_workspace"
+    ],
+    "rationale": "Different concern from scenario_state_service (data-layer), scenario_state_route_service (draft/discard), and scenarios_save_service (save from form). Duplicate copies an existing ScenarioRecord; new module keeps the dependency surface clean."
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51k1": false
+  },
+  "no_production_code_changes": true,
+  "ready_for_review": true
+}
