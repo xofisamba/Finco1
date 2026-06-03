@@ -1,0 +1,568 @@
+{
+  "phase": "52C",
+  "title": "Phase 52C: Repository caller and coupling graph",
+  "base_sha": "f780572ccfb3c6f3ccaab50842c9cae840d0dc2e",
+  "head_sha": "f780572ccfb3c6f3ccaab50842c9cae840d0dc2e",
+  "type": "docs/report/test only",
+  "objective": "Map who calls the 27 highest-impact persistence functions, identify direct-import patterns, surface coupling hotspots, and propose Phase 53 candidate split groups. Read-only mapping; no runtime code changes.",
+  "caller_graph": {
+    "top_15_most_called_functions": [
+      {
+        "rank": 1,
+        "name": "get_scenario",
+        "call_count": 17,
+        "top_caller": "app/services/scenario_duplicate_service.py (4)"
+      },
+      {
+        "rank": 2,
+        "name": "list_scenarios",
+        "call_count": 17,
+        "top_caller": "app/services/scenario_rename_service.py (3)"
+      },
+      {
+        "rank": 3,
+        "name": "get_project_by_code",
+        "call_count": 14,
+        "top_caller": "app/services/projects_create_service.py (3)"
+      },
+      {
+        "rank": 4,
+        "name": "save_workspace_state",
+        "call_count": 13,
+        "top_caller": "app/services/scenarios_save_service.py (3)"
+      },
+      {
+        "rank": 5,
+        "name": "get_workspace_state",
+        "call_count": 13,
+        "top_caller": "app/services/scenario_state_route_service.py (3)"
+      },
+      {
+        "rank": 6,
+        "name": "get_project_record",
+        "call_count": 11,
+        "top_caller": "main_web.py (4)"
+      },
+      {
+        "rank": 7,
+        "name": "record_export",
+        "call_count": 9,
+        "top_caller": "app/services/export_audit_service.py (5)"
+      },
+      {
+        "rank": 8,
+        "name": "get_scenario_history",
+        "call_count": 8,
+        "top_caller": "main_web.py (4)"
+      },
+      {
+        "rank": 9,
+        "name": "build_export_lineage",
+        "call_count": 8,
+        "top_caller": "app/services/export_audit_service.py (4)"
+      },
+      {
+        "rank": 10,
+        "name": "list_exports",
+        "call_count": 8,
+        "top_caller": "app/services/export_audit_service.py (3)"
+      },
+      {
+        "rank": 11,
+        "name": "save_project",
+        "call_count": 7,
+        "top_caller": "app/services/projects_create_service.py (3)"
+      },
+      {
+        "rank": 12,
+        "name": "duplicate_scenario",
+        "call_count": 6,
+        "top_caller": "app/services/scenario_duplicate_service.py (6)"
+      },
+      {
+        "rank": 13,
+        "name": "bind_workspace_to_scenario",
+        "call_count": 5,
+        "top_caller": "app/services/scenario_state_route_service.py (3)"
+      },
+      {
+        "rank": 14,
+        "name": "add_scenario",
+        "call_count": 5,
+        "top_caller": "app/services/scenarios_add_service.py (4)"
+      },
+      {
+        "rank": 15,
+        "name": "rename_scenario",
+        "call_count": 4,
+        "top_caller": "app/services/scenario_rename_service.py (3)"
+      }
+    ],
+    "top_10_most_coupled_caller_files": [
+      {
+        "rank": 1,
+        "file": "app/services/scenario_duplicate_service.py",
+        "total_repo_calls": 26,
+        "functions_called": "get_scenario, list_scenarios, get_project_by_code, get_workspace_state, get_project_record, duplicate_scenario, save_scenario (via duplicate_scenario)"
+      },
+      {
+        "rank": 2,
+        "file": "app/services/scenario_rename_service.py",
+        "total_repo_calls": 21,
+        "functions_called": "list_scenarios, get_workspace_state, get_scenario, rename_scenario, save_workspace_state, get_project_by_code"
+      },
+      {
+        "rank": 3,
+        "file": "main_web.py",
+        "total_repo_calls": 19,
+        "functions_called": "get_project_record, get_scenario_history, get_scenario, list_scenarios, save_workspace_state, save_scenario (and 36-symbol bulk import)"
+      },
+      {
+        "rank": 4,
+        "file": "app/services/scenarios_add_service.py",
+        "total_repo_calls": 18,
+        "functions_called": "get_scenario, list_scenarios, get_project_record, add_scenario, save_workspace_state, get_project_by_code"
+      },
+      {
+        "rank": 5,
+        "file": "app/services/scenarios_save_service.py",
+        "total_repo_calls": 11,
+        "functions_called": "save_workspace_state, save_scenario, get_workspace_state, get_scenario"
+      },
+      {
+        "rank": 6,
+        "file": "app/services/scenario_archive_service.py",
+        "total_repo_calls": 10,
+        "functions_called": "get_scenario, list_scenarios, archive_scenario, get_workspace_state"
+      },
+      {
+        "rank": 7,
+        "file": "app/services/scenario_state_route_service.py",
+        "total_repo_calls": 9,
+        "functions_called": "get_workspace_state, save_workspace_state, bind_workspace_to_scenario, discard_workspace_draft"
+      },
+      {
+        "rank": 8,
+        "file": "app/services/project_save_as_service.py",
+        "total_repo_calls": 8,
+        "functions_called": "get_project_record, get_scenario, save_workspace_state, save_project"
+      },
+      {
+        "rank": 9,
+        "file": "app/services/projects_create_service.py",
+        "total_repo_calls": 7,
+        "functions_called": "get_project_by_code, get_scenario, create_project_record, save_project, save_workspace_state"
+      },
+      {
+        "rank": 10,
+        "file": "app/services/export_audit_service.py",
+        "total_repo_calls": 7,
+        "functions_called": "record_export, build_export_lineage, list_exports"
+      }
+    ]
+  },
+  "repository_function_caller_counts": {
+    "save_project": 7,
+    "save_workspace_state": 13,
+    "save_scenario": 0,
+    "bind_workspace_to_scenario": 5,
+    "save_run": 4,
+    "rename_scenario": 4,
+    "archive_scenario": 3,
+    "select_scenario": 0,
+    "update_scenario_overrides": 0,
+    "duplicate_scenario": 6,
+    "add_scenario": 5,
+    "record_export": 9,
+    "record_workspace_runtime": 2,
+    "discard_workspace_draft": 2,
+    "update_scenario_last_run_summary": 0,
+    "get_scenario": 17,
+    "list_scenarios": 17,
+    "get_project_by_code": 14,
+    "get_workspace_state": 13,
+    "get_project_record": 11,
+    "get_scenario_history": 8,
+    "build_export_lineage": 8,
+    "list_exports": 8
+  },
+  "caller_file_summary": {
+    "production_files_with_direct_imports": 4,
+    "production_files_with_calls": 19,
+    "main_web_calls": 19,
+    "most_coupled_service": "scenario_duplicate_service.py (26 calls)"
+  },
+  "direct_import_summary": {
+    "production_imports": [
+      {
+        "caller": "main_web.py",
+        "module": "app.persistence.repository",
+        "symbols": "36-symbol bulk import (L41-79)",
+        "kind": "bulk"
+      },
+      {
+        "caller": "main_web.py",
+        "module": "app.persistence.repository",
+        "symbols": "get_project_record as gpr (L2460)",
+        "kind": "route-local re-import"
+      },
+      {
+        "caller": "main_web.py",
+        "module": "app.persistence.provenance",
+        "symbols": "build_replay_metadata, utc_now_iso",
+        "kind": "direct"
+      },
+      {
+        "caller": "app/services/scenario_state_service.py",
+        "module": "app.persistence.repository",
+        "symbols": "get_scenario_provenance, get_workspace_state, resolve_active_scenario_runtime_snapshot, runtime_guard_for_snapshot",
+        "kind": "direct"
+      },
+      {
+        "caller": "app/services/export_audit_service.py",
+        "module": "app.persistence.repository",
+        "symbols": "record_export",
+        "kind": "direct"
+      },
+      {
+        "caller": "app/services/project_save_as_service.py",
+        "module": "app.persistence.repository",
+        "symbols": "get_project_record as gpr (route-local re-import)",
+        "kind": "service-local re-import"
+      },
+      {
+        "caller": "app/export/runtime_summary.py",
+        "module": "app.persistence.provenance",
+        "symbols": "build_replay_metadata",
+        "kind": "direct"
+      }
+    ],
+    "direct_persistence_imports_in_route_services": 1,
+    "direct_persistence_imports_in_main_web_or_main_api": 1,
+    "services_or_routes_importing_persistence_db_directly": 0
+  },
+  "coupling_hotspots": [
+    {
+      "hotspot": "main_web.py",
+      "reason": "largest single caller + 36-symbol bulk import"
+    },
+    {
+      "hotspot": "scenario_duplicate_service.py",
+      "reason": "most-coupled service (26 calls)"
+    },
+    {
+      "hotspot": "scenario_rename_service.py",
+      "reason": "second-most-coupled service (21 calls)"
+    },
+    {
+      "hotspot": "scenarios_add_service.py",
+      "reason": "third-most-coupled service (18 calls)"
+    },
+    {
+      "hotspot": "save_workspace_state",
+      "reason": "central convergence point + 13 callers"
+    }
+  ],
+  "circular_import_check": {
+    "app_persistence_internal_graph": {
+      "app.persistence.db": [],
+      "app.persistence.repository": [
+        "app.persistence.db"
+      ],
+      "app.persistence.provenance": [],
+      "app.persistence.backup_restore": [
+        "app.persistence.db"
+      ]
+    },
+    "internal_cycles": 0,
+    "cross_package_cycles": 0,
+    "is_strict_dag": true
+  },
+  "phase53_candidate_split_groups": {
+    "A_projects": {
+      "functions": [
+        "save_project",
+        "get_project",
+        "get_project_by_code",
+        "list_projects",
+        "list_baseline_records",
+        "seed_baseline_projects_if_needed",
+        "_compute_baseline_snapshot",
+        "_sum_opex",
+        "_build_default_snapshot",
+        "_fill_missing_defaults",
+        "create_project_record",
+        "get_project_record",
+        "list_project_records",
+        "update_project_record",
+        "_get_least_created_scenario_for_project"
+      ],
+      "primary_callers": [
+        "projects_create_service",
+        "project_save_as_service",
+        "main_web.py"
+      ],
+      "risk": "high"
+    },
+    "B_scenarios": {
+      "functions": [
+        "save_scenario",
+        "get_scenario",
+        "list_scenarios",
+        "rename_scenario",
+        "archive_scenario",
+        "promote_scenario_to_base_case",
+        "duplicate_scenario",
+        "add_scenario",
+        "update_scenario_last_run_summary",
+        "update_scenario_overrides",
+        "select_scenario",
+        "get_scenario_provenance",
+        "get_base_case_scenario",
+        "get_or_create_base_case_scenario",
+        "seed_scenarios_if_needed",
+        "resolve_scenario_snapshot",
+        "SCENARIO_INPUT_FIELDS"
+      ],
+      "primary_callers": [
+        "scenario_duplicate_service",
+        "scenario_rename_service",
+        "scenarios_add_service",
+        "scenarios_save_service",
+        "scenario_archive_service"
+      ],
+      "risk": "high"
+    },
+    "C_workspace_state": {
+      "functions": [
+        "save_workspace_state",
+        "get_workspace_state",
+        "bind_workspace_to_scenario",
+        "discard_workspace_draft",
+        "record_workspace_runtime",
+        "resolve_active_scenario_runtime_snapshot",
+        "runtime_guard_for_snapshot"
+      ],
+      "primary_callers": [
+        "scenario_state_route_service",
+        "scenarios_save_service"
+      ],
+      "risk": "high"
+    },
+    "D_runs": {
+      "functions": [
+        "save_run",
+        "get_run",
+        "list_runs",
+        "delete_run",
+        "count_runs"
+      ],
+      "primary_callers": [
+        "save_run_service",
+        "main_web.py"
+      ],
+      "risk": "medium"
+    },
+    "E_exports_audit": {
+      "functions": [
+        "record_export",
+        "list_exports",
+        "get_scenario_history",
+        "compare_scenarios",
+        "build_export_lineage",
+        "base_vs_active_compare",
+        "_scenario_runtime_dict",
+        "_build_compare_metrics",
+        "_delta_sign_class",
+        "_format_db_timestamp",
+        "snapshots_equal"
+      ],
+      "primary_callers": [
+        "export_audit_service",
+        "main_web.py"
+      ],
+      "risk": "high"
+    },
+    "F_helpers": {
+      "functions": [
+        "_now_utc",
+        "_to_json",
+        "_from_json",
+        "_from_iso",
+        "_safe_number",
+        "_metric_value",
+        "_strip_empty_fields",
+        "_get_least_created_scenario_for_project",
+        "SCENARIO_INPUT_FIELDS"
+      ],
+      "primary_callers": [
+        "(all groups)"
+      ],
+      "risk": "low"
+    }
+  },
+  "single_owner_zones": [
+    {
+      "function": "record_export",
+      "sole_production_caller": "app/services/export_audit_service.py"
+    },
+    {
+      "function": "build_export_lineage",
+      "sole_production_caller": "app/services/export_audit_service.py"
+    },
+    {
+      "function": "list_exports",
+      "sole_production_caller": "app/services/export_audit_service.py"
+    },
+    {
+      "function": "get_scenario_provenance",
+      "sole_production_caller": "app/services/scenario_state_service.py"
+    },
+    {
+      "function": "resolve_active_scenario_runtime_snapshot",
+      "sole_production_caller": "app/services/scenario_state_service.py"
+    },
+    {
+      "function": "runtime_guard_for_snapshot",
+      "sole_production_caller": "app/services/scenario_state_service.py (and tests)"
+    },
+    {
+      "function": "get_base_case_scenario",
+      "sole_production_caller": "(no production caller; test-only)"
+    },
+    {
+      "function": "seed_scenarios_if_needed",
+      "sole_production_caller": "(no production caller; called from test fixtures and seed paths)"
+    },
+    {
+      "function": "seed_baseline_projects_if_needed",
+      "sole_production_caller": "(called from test fixtures)"
+    },
+    {
+      "function": "delete_run",
+      "sole_production_caller": "(no production caller; test/admin)"
+    },
+    {
+      "function": "count_runs",
+      "sole_production_caller": "(no production caller; test/admin)"
+    }
+  ],
+  "parallel_safe_zones": [
+    {
+      "zone": "Group D (runs)",
+      "functions": [
+        "save_run",
+        "get_run",
+        "list_runs",
+        "delete_run",
+        "count_runs"
+      ],
+      "reason": "isolated table; no read/write dependencies on other groups"
+    },
+    {
+      "zone": "Group F (helpers)",
+      "functions": [
+        "_now_utc",
+        "_to_json",
+        "_from_json",
+        "_from_iso",
+        "_safe_number",
+        "_metric_value",
+        "_strip_empty_fields",
+        "_format_db_timestamp",
+        "snapshots_equal"
+      ],
+      "reason": "pure functions; no side effects"
+    },
+    {
+      "zone": "Group A (projects) reads",
+      "functions": [
+        "get_project",
+        "get_project_by_code",
+        "list_projects",
+        "list_baseline_records",
+        "get_project_record",
+        "list_project_records"
+      ],
+      "reason": "reads only; no transaction interaction with other groups"
+    }
+  ],
+  "do_not_parallelize_zones": [
+    {
+      "zone": "save_workspace_state convergence",
+      "functions": [
+        "save_workspace_state",
+        "bind_workspace_to_scenario",
+        "select_scenario",
+        "discard_workspace_draft",
+        "record_workspace_runtime"
+      ],
+      "reason": "all five route through save_workspace_state"
+    },
+    {
+      "zone": "scenario <-> workspace coupling",
+      "functions": [
+        "select_scenario",
+        "record_workspace_runtime",
+        "bind_workspace_to_scenario"
+      ],
+      "reason": "read scenarios; write workspace; read-then-write order matters"
+    },
+    {
+      "zone": "save_project + seed_baseline",
+      "functions": [
+        "save_project",
+        "seed_baseline_projects_if_needed",
+        "_compute_baseline_snapshot"
+      ],
+      "reason": "share same write path"
+    },
+    {
+      "zone": "add_scenario + save_scenario + duplicate_scenario",
+      "functions": [
+        "add_scenario",
+        "save_scenario",
+        "duplicate_scenario"
+      ],
+      "reason": "add and duplicate both call save_scenario"
+    }
+  ],
+  "refactor_recommendations": {
+    "refactor_order": [
+      "F (helpers)",
+      "D (runs)",
+      "E (exports+audit)",
+      "A (projects) reads",
+      "C (workspace_state)",
+      "B (scenarios)"
+    ],
+    "compatibility_facade": "yes \u2014 re-export from new group modules via app/persistence/repository.py for one major version",
+    "direct_import_preservation": "preserve direct repository imports from route services temporarily; update 4 sites in one pass when facade is built",
+    "facade_deprecation": "incrementally deprecate in subsequent minor versions; tests should exercise both legacy facade and new direct import"
+  },
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    },
+    {
+      "test_module": "tests/test_phase52a_repository_inventory_hotspot_map.py",
+      "result": "61/61 pass"
+    },
+    {
+      "test_module": "tests/test_phase52b_persistence_side_effect_map.py",
+      "result": "46/46 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "recommended_next_step": "52D behavior characterization plan"
+}
