@@ -2,15 +2,16 @@
   "package": {
     "name": "Finco1 Validation Evidence Matrix",
     "workstream": "B3",
-    "branch": "parallel-b-governance-pack",
-    "branch_base_sha_current": "86d5a9041c9bbd183bdf48383a2028e59e3388f1",
-    "package_base_sha_at_creation": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
-    "base_sha": "86d5a9041c9bbd183bdf48383a2028e59e3388f1",
-    "base_sha_note": "The base_sha field reflects the current PR base after the rebase that picked up Phase 51G-2, 51G-3, and 51H-1. It will become stale on the next rebase and is maintained as a snapshot, not as a live reference. For the live base, see origin/main.",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha_current": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "previous_base_sha": "86d5a9041c9bbd183bdf48383a2028e59e3388f1",
+    "base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "base_sha_note": "B15 refresh base. Reflects current PR base after the B15 governance refresh, which incorporates the Phase 51N checkpoint (post-M2 route extraction checkpoint + Agent B docs integration + Claude review preparation pack). The matrix will become stale on the next rebase and is maintained as a snapshot, not as a live reference. For the live base, see origin/main.",
     "b1_merged_in_base": true,
     "b1_pr": 390,
-    "matrix_version": "0.2.0",
-    "matrix_status": "patched_post_self_review",
+    "matrix_version": "0.3.0",
+    "matrix_status": "refreshed_post_phase_51n",
     "intended_review_window": "internal_only_no_external_claim",
     "no_go_list_pointer": "docs/external_review/no_go_claims.md",
     "b1_package_pointer": "docs/external_review/external_review_package_index.md"
@@ -39,6 +40,25 @@
   "global_defaults": {
     "external_claim_allowed": false,
     "pilot_claim_allowed": false
+  },
+  "post_phase_51n_route_extraction_state": {
+    "summary": "After Phase 51N, Agent A has reached the post-M2 route extraction checkpoint. 12 service-backed routes and 13 service modules are in place; 5 inline hotspots remain (tracked in B17).",
+    "service_backed_routes_count": 12,
+    "service_modules_count": 13,
+    "remaining_inline_hotspot_routes": [
+      "POST /projects/{code}/save-as",
+      "POST /scenarios/{id}/rename",
+      "POST /scenarios/{id}/archive",
+      "POST /scenarios/{id}/update-overrides",
+      "POST /scenarios/{id}/select"
+    ],
+    "remaining_inline_hotspots_governance_tracker": "docs/governance/remaining_hotspots_governance_tracker.md (B17)"
+  },
+  "claude_review_status": {
+    "representation_in_this_branch": "not_represented_as_completed",
+    "rationale": "Claude review is handled separately outside the B-track governance pack. The Phase 51N checkpoint includes a Claude review preparation pack, but Claude review itself is not represented in this B-track branch as completed. A Claude review result, when provided by the user, will be reflected in B16 (External Review Closeout Tracker) only — and only as a separate workstream, never as a side-effect of B15.",
+    "claude_review_separate_from_b15": true,
+    "claude_review_separate_from_b16": true
   },
   "areas": [
     {
@@ -398,17 +418,21 @@
     {
       "area_id": "AREA-013",
       "area_name": "Scenario persistence (saved scenarios, scenario state)",
-      "current_status": "Scenario persistence is implemented and tested (phase12 persistence and saved scenarios foundation; phase12 scenario compare and history workflow). Phase 51G-2 /save-run extraction has landed; Phase 51G-3 fix and Phase 51H-1 scenario state characterization have also landed. Post-51G-2 persisted state shape has changed; pin refresh is pending.",
+      "current_status": "Scenario persistence is implemented and tested (phase12 persistence and saved scenarios foundation; phase12 scenario compare and history workflow). Phases 51G-2, 51G-3, 51H-1, 51H-2, 51J-1, 51J-2, 51K-1, 51K-2, 51L-1, 51L-2, 51M-1, 51M-2 have all landed. The post-extraction persisted state shape has changed; pin refresh is still pending. Phase 51N has documented the post-M2 state.",
       "evidence_category": "internally_tested",
       "evidence_files": [
         "app/persistence/",
         "app/services/scenario_state_service.py",
-        "app/services/save_run_service.py (Phase 51G-2, Agent A owned, NOT modified by this PR)"
+        "app/services/save_run_service.py (Phase 51G-2, Agent A owned, NOT modified by this PR)",
+        "app/services/scenarios_save_service.py (Phase 51J-2, Agent A owned, NOT modified by this PR)",
+        "app/services/scenario_duplicate_service.py (Phase 51K-2, Agent A owned, NOT modified by this PR)",
+        "app/services/scenarios_add_service.py (Phase 51L-2, Agent A owned, NOT modified by this PR)",
+        "app/services/projects_create_service.py (Phase 51M-2, Agent A owned, NOT modified by this PR)"
       ],
       "tests_or_reports_to_check": [
         "tests/test_phase12_persistence_and_saved_scenarios_foundation.py",
         "tests/test_phase12_scenario_compare_and_history_workflow.py",
-        "Reviewer should also enumerate Phase 51G-2/51G-3/51H-1 test files (Agent A owned) to understand the new surface area"
+        "Reviewer should also enumerate Phase 51G-2/51G-3/51H-1/51H-2/51J-1/51J-2/51K-1/51K-2/51L-1/51L-2/51M-1/51M-2 test files (Agent A owned) to understand the new surface area"
       ],
       "missing_evidence": [
         "Golden-parity pinning for persisted scenario state (post-51G-2 shape)",
@@ -419,13 +443,13 @@
       "pilot_claim_allowed": true,
       "blockers": [
         "Persisted state is not pinned (post-51G-2 shape)",
-        "Pin refresh / forward-compat decision required after 51G-2/51G-3/51H-1"
+        "Pin refresh / forward-compat decision required after 51G-2/51G-3/51H-1/51H-2/51J-1/51J-2/51K-1/51K-2/51L-1/51L-2/51M-1/51M-2"
       ],
       "dependencies": [
-        "Agent A Phase 51G-2 (landed), 51G-3 (landed), 51H-1 (landed) have modified this area",
+        "Agent A Phases 51G-2 through 51M-2 have all landed and modified this area",
         "AREA-019 covers the recent Agent A route / state work in detail"
       ],
-      "notes": "51G-2 has landed. Scenario/persistence pilot readiness still requires a fresh pin/forward-compatibility decision after 51G-2/51G-3/51H-1."
+      "notes": "12 service-backed routes and 13 service modules are now in place per Phase 51N. Scenario/persistence pilot readiness still requires a fresh pin/forward-compatibility decision after 51G-2 through 51M-2."
     },
     {
       "area_id": "AREA-014",
@@ -441,7 +465,7 @@
         "docs/phase51f_parallel_work_guardrails.md"
       ],
       "tests_or_reports_to_check": [
-        "tests/test_phase51f_parallel_work_guardrails.py (21 tests; re-verified green on the rebased PR head; SHA-256 of all 4 parity-core files is identical to the prior base, confirming no Phase 51F file has been touched by the rebase)"
+        "tests/test_phase51f_parallel_work_guardrails.py (21 tests; SHA-256 of all 4 parity-core files is identical to the prior base, confirming no Phase 51F file has been touched by any B-track refresh)"
       ],
       "missing_evidence": [
         "External review of the guardrail design (B1 package prepared, design not yet externally reviewed)"
@@ -489,7 +513,7 @@
     {
       "area_id": "AREA-016",
       "area_name": "B1 external review package (PR #390) — documentation and evidence preparation",
-      "current_status": "B1 external review package has been merged to main (PR #390) and is in the base of this branch. Scaffolding for a third-party reviewer is in place. No third-party reviewer has been engaged; no external review output exists yet.",
+      "current_status": "B1 external review package has been merged to main (PR #390) and is in the base of this branch. Scaffolding for a third-party reviewer is in place. No third-party reviewer has been engaged; no external review output exists yet. B16 (External Review Closeout Tracker) tracks the closeout state separately from Claude review.",
       "evidence_category": "internally_tested",
       "evidence_files": [
         "docs/external_review/external_review_package_index.md",
@@ -497,22 +521,30 @@
         "docs/external_review/model_scope_and_limitations.md",
         "docs/external_review/tuho_oborovo_validation_summary.md",
         "docs/external_review/no_go_claims.md",
-        "reports/external_review/external_review_readiness_matrix.json"
+        "reports/external_review/external_review_readiness_matrix.json",
+        "docs/external_review/external_review_closeout_tracker.md (B16)",
+        "reports/external_review/external_review_closeout_status.json (B16)"
       ],
       "tests_or_reports_to_check": [
-        "B1 readiness matrix (28 areas, A01-A28) in reports/external_review/external_review_readiness_matrix.json"
+        "B1 readiness matrix (28 areas, A01-A28) in reports/external_review/external_review_readiness_matrix.json",
+        "B16 closeout tracker in reports/external_review/external_review_closeout_status.json"
       ],
       "missing_evidence": [
-        "The actual external review output (a third-party document addressing the readiness matrix and answering the required questions)"
+        "The actual external review output (a third-party document addressing the readiness matrix and answering the required questions)",
+        "Claude review output (handled separately, not in this branch)"
       ],
       "external_claim_allowed": false,
       "pilot_claim_allowed": true,
       "blockers": [
         "No third-party reviewer has been engaged",
-        "No external review output exists yet"
+        "No external review output exists yet",
+        "Claude review is separate and is not represented in this branch as completed"
       ],
-      "dependencies": [],
-      "notes": "B1 is documentation and evidence preparation, NOT external validation. The package is in place; the actual external review (a third-party document addressing the readiness matrix and answering the required questions) has not been performed. external_claim_allowed remains false. The B1 package is itself a B-track evidence-prep artifact, not the external validation it scaffolds for. Filed as internally_tested because only internal scaffolding has been produced; the externally_reviewed category would imply a third-party review output, which does not exist."
+      "dependencies": [
+        "Claude review is separate and is not part of the B-track governance pack",
+        "B16 closeout tracker is the source of truth for what is ready for external review, what is missing, and what cannot be claimed"
+      ],
+      "notes": "B1 is documentation and evidence preparation, NOT external validation. The package is in place; the actual external review (a third-party document addressing the readiness matrix and answering the required questions) has not been performed. external_claim_allowed remains false. The B1 package is itself a B-track evidence-prep artifact, not the external validation it scaffolds for. Claude review is separate (per Phase 51N preparation pack) and is tracked in B16 (External Review Closeout Tracker), never as a side-effect of B15."
     },
     {
       "area_id": "AREA-017",
@@ -542,18 +574,26 @@
     {
       "area_id": "AREA-018",
       "area_name": "Governance (no-go claim list, validation matrix, B-track work)",
-      "current_status": "Governance documentation exists: B1 no-go claim list (PR #390, merged), this B3 matrix, B-track workstream definitions. Governance is not a model area; it is a documentation/process area.",
+      "current_status": "Governance documentation exists: B1 no-go claim list (PR #390, merged), this B3 matrix, B-track workstream definitions (B1, B2, B3, B7, B8, B9, B10, B11, B12, B13, B14, B15, B16, B17, B18, B19). Governance is not a model area; it is a documentation/process area.",
       "evidence_category": "internally_tested",
       "evidence_files": [
         "docs/external_review/no_go_claims.md",
         "docs/validation/validation_evidence_matrix.md",
         "docs/validation/model_evidence_taxonomy.md",
         "docs/validation/internal_vs_external_validation_boundaries.md",
-        "reports/validation/validation_evidence_matrix.json"
+        "reports/validation/validation_evidence_matrix.json",
+        "docs/governance/agent_a_b_governance_refresh_plan.md (B14)",
+        "docs/governance/remaining_hotspots_governance_tracker.md (B17)",
+        "docs/external_review/external_review_closeout_tracker.md (B16)",
+        "docs/pilot/controlled_pilot_launch_checklist.md (B18)",
+        "docs/pilot/post_pilot_evidence_update_template.md (B19)"
       ],
       "tests_or_reports_to_check": [
         "B1 no-go claim list (merged in PR #390)",
-        "B3 matrix (this document)"
+        "B3 matrix (this document)",
+        "B14 governance refresh tracker",
+        "B16 external review closeout tracker",
+        "B17 remaining hotspots tracker"
       ],
       "missing_evidence": [
         "External review of governance posture itself",
@@ -569,46 +609,121 @@
     },
     {
       "area_id": "AREA-019",
-      "area_name": "Recent Agent A route / state work (Phase 51G-2, 51G-3, 51H-1)",
-      "current_status": "All three phases have landed on the current PR base. 51G-2 extracted /save-run into app/services/save_run_service.py. 51G-3 fixed a latent bug in the user_created branch of /save-run. 51H-1 characterized the scenario state route family (POST /scenarios/state/draft and POST /scenarios/state/discard, 58 tests pinning 15+ characterized behaviors). All three are Agent A track; this PR does not modify them.",
+      "area_name": "Recent Agent A route / state work (Phase 51G-2 through 51N)",
+      "current_status": "All 13 phases from 51G-2 through 51N have landed on the current base. After Phase 51N, 12 service-backed routes and 13 service modules are in place. 5 inline hotspots remain (POST /projects/{code}/save-as; POST /scenarios/{id}/rename; POST /scenarios/{id}/archive; POST /scenarios/{id}/update-overrides; POST /scenarios/{id}/select) — tracked in B17. Phase 51N is a checkpoint + Claude review preparation pack; Claude review itself is separate.",
       "evidence_category": "internally_tested",
       "evidence_files": [
         "app/services/save_run_service.py (Phase 51G-2, Agent A owned, NOT modified by this PR)",
-        "main_web.py (modified by 51G-2 and 51G-3, Agent A owned, NOT modified by this PR)",
-        "docs/phase51g2_save_run_route_vertical_extraction.md (Agent A owned, NOT modified by this PR)",
-        "docs/phase51g3_save_run_user_created_branch_fix.md (Agent A owned, NOT modified by this PR)",
-        "docs/phase51h1_scenario_state_route_family_characterization.md (Agent A owned, NOT modified by this PR)",
-        "reports/phase51g2_save_run_route_vertical_extraction_summary.json (Agent A owned, NOT modified by this PR)",
-        "reports/phase51g3_save_run_user_created_branch_fix_summary.json (Agent A owned, NOT modified by this PR)",
-        "reports/phase51h1_scenario_state_route_family_characterization_summary.json (Agent A owned, NOT modified by this PR)",
-        "tests/test_phase51g2_save_run_route_vertical_extraction.py (Agent A owned, NOT modified by this PR)",
-        "tests/test_phase51g3_save_run_user_created_branch_fix.py (Agent A owned, NOT modified by this PR)",
-        "tests/test_phase51h1_scenario_state_route_family_characterization.py (Agent A owned, NOT modified by this PR)"
+        "app/services/scenario_state_route_service.py (Phase 51H-2, Agent A owned, NOT modified by this PR)",
+        "app/services/scenarios_save_service.py (Phase 51J-2, Agent A owned, NOT modified by this PR)",
+        "app/services/scenario_duplicate_service.py (Phase 51K-2, Agent A owned, NOT modified by this PR)",
+        "app/services/scenarios_add_service.py (Phase 51L-2, Agent A owned, NOT modified by this PR)",
+        "app/services/projects_create_service.py (Phase 51M-2, Agent A owned, NOT modified by this PR)",
+        "main_web.py (modified by all extractions, Agent A owned, NOT modified by this PR)",
+        "docs/phase51g2_save_run_route_vertical_extraction.md (Agent A owned)",
+        "docs/phase51g3_save_run_user_created_branch_fix.md (Agent A owned)",
+        "docs/phase51h1_scenario_state_route_family_characterization.md (Agent A owned)",
+        "docs/phase51h2_scenarios_state_route_vertical_extraction.md (Agent A owned)",
+        "docs/phase51j1_scenarios_save_route_golden_characterization.md (Agent A owned)",
+        "docs/phase51j2_scenarios_save_route_vertical_extraction.md (Agent A owned)",
+        "docs/phase51k1_scenarios_duplicate_route_golden_characterization.md (Agent A owned)",
+        "docs/phase51k2_scenarios_duplicate_route_vertical_extraction.md (Agent A owned)",
+        "docs/phase51l1_scenarios_add_route_golden_characterization.md (Agent A owned)",
+        "docs/phase51l2_scenarios_add_route_vertical_extraction.md (Agent A owned)",
+        "docs/phase51m1_projects_create_route_golden_characterization.md (Agent A owned)",
+        "docs/phase51m2_projects_create_route_vertical_extraction.md (Agent A owned)",
+        "docs/phase51n_post_m2_route_extraction_checkpoint.md (Agent A owned, NOT modified by this PR)",
+        "tests/test_phase51g2_save_run_route_vertical_extraction.py (Agent A owned)",
+        "tests/test_phase51g3_save_run_user_created_branch_fix.py (Agent A owned)",
+        "tests/test_phase51h1_scenario_state_route_family_characterization.py (Agent A owned)",
+        "tests/test_phase51h2_scenarios_state_route_vertical_extraction.py (Agent A owned)",
+        "tests/test_phase51j1_scenarios_save_route_golden_characterization.py (Agent A owned)",
+        "tests/test_phase51j2_scenarios_save_route_vertical_extraction.py (Agent A owned)",
+        "tests/test_phase51k1_scenarios_duplicate_route_golden_characterization.py (Agent A owned)",
+        "tests/test_phase51k2_scenarios_duplicate_route_vertical_extraction.py (Agent A owned)",
+        "tests/test_phase51l1_scenarios_add_route_golden_characterization.py (Agent A owned)",
+        "tests/test_phase51l2_scenarios_add_route_vertical_extraction.py (Agent A owned)",
+        "tests/test_phase51m1_projects_create_route_golden_characterization.py (Agent A owned)",
+        "tests/test_phase51m2_projects_create_route_vertical_extraction.py (Agent A owned)",
+        "tests/test_phase51n_post_m2_route_extraction_checkpoint.py (Agent A owned)"
       ],
       "tests_or_reports_to_check": [
         "Phase 51G-2 commit: ecdb699 (Phase 51G-2: Extract /save-run route into save_run_service.py (#391))",
         "Phase 51G-3 commit: 47faffbf (Phase 51G-3: Fix /save-run user_created branch latent bug (#392))",
         "Phase 51H-1 commit: 86d5a90 (Phase 51H-1: Scenario state route family golden characterization (#393))",
-        "Reviewer should run the 51G-2/51G-3/51H-1 test files and confirm pass/fail/skip"
+        "Phase 51H-2 commit: 3300b5df (Phase 51H-2: Extract /scenarios/state/* route family into scenario_state_route_service.py (#395))",
+        "Phase 51I commit: 09481dc (Phase 51I: Route extraction checkpoint and updated hotspot map (#396))",
+        "Phase 51J-1 commit: 2273bac (Phase 51J-1: POST /scenarios/save golden characterization (#397))",
+        "Phase 51J-2 commit: 6569d1f (Phase 51J-2: Extract POST /scenarios/save into scenarios_save_service.py (#399))",
+        "Phase 51K-1 commit: 2b875de (Phase 51K-1: POST /scenarios/{scenario_id}/duplicate golden characterization (#400))",
+        "Phase 51K-2 commit: 9e7d272 (Phase 51K-2: Extract POST /scenarios/{scenario_id}/duplicate into scenario_duplicate_service.py (#403))",
+        "Phase 51L-1 commit: 798d59c (Phase 51L-1: POST /scenarios/add golden characterization (#404))",
+        "Phase 51L-2 commit: ca3591a (Phase 51L-2: Extract /scenarios/add into scenarios_add_service.py (#405))",
+        "Phase 51M-1 commit: 53bbe17 (Phase 51M-1: POST /projects/create golden characterization (#406))",
+        "Phase 51M-2 commit: 2afdba8 (Phase 51M-2: Extract POST /projects/create into projects_create_service.py (#407))",
+        "Phase 51N commit: aced60b58c5552800b95a90e17b22b32981efab8 (Phase 51N: Post-M2 route extraction checkpoint, Agent B docs integration, Claude review preparation pack (#408))",
+        "Reviewer should run the 51G-2/51G-3/51H-1/51H-2/51J-1/51J-2/51K-1/51K-2/51L-1/51L-2/51M-1/51M-2/51N test files and confirm pass/fail/skip"
       ],
       "missing_evidence": [
-        "External review of the extracted /save-run service and the 51H-1 scenario state characterization",
-        "Golden-parity pinning for the post-51G-2 /save-run surface area (the pre-extraction 51G-1 pins do not cover the extracted behavior)",
-        "Pilot-user testing of /save-run in the post-extraction form"
+        "External review of the extracted routes (51G-2, 51H-2, 51J-2, 51K-2, 51L-2, 51M-2) and the 51N checkpoint",
+        "Golden-parity pinning for the post-extraction surface area (51G-2, 51J-2) beyond the pre-extraction 51G-1 / 51J-1 pins",
+        "Pilot-user testing of the extracted routes on the new service surface",
+        "Claude review result (handled separately; not in this branch)"
       ],
       "external_claim_allowed": false,
       "pilot_claim_allowed": false,
       "blockers": [
         "No external review of these phases",
-        "Pilot surface area for the extracted /save-run is not yet defined",
+        "Pilot surface area for the extracted routes is not yet defined (pin refresh pending for 51G-2 / 51J-2)",
         "These are Agent A owned; not in B-track scope to define or test",
-        "Pin refresh / forward-compatibility decision required after 51G-2/51G-3/51H-1"
+        "Pin refresh / forward-compatibility decision required after 51G-2/51G-3/51H-1/51H-2/51J-1/51J-2",
+        "5 inline hotspots remain (B17) and require future Agent A characterization + extraction phases (51O-51S)"
       ],
       "dependencies": [
-        "AREA-013 (scenario persistence) is updated by 51G-2/51G-3/51H-1 and depends on a fresh pin/forward-compatibility decision",
-        "AREA-015 (Phase 51G-1 characterization) reflects pre-extraction behavior; 51G-1 is superseded for production surface area by this row"
+        "AREA-013 (scenario persistence) is updated by 51G-2/51G-3/51H-1/51H-2/51J-1/51J-2/51K-1/51K-2/51L-1/51L-2/51M-1/51M-2 and depends on a fresh pin/forward-compatibility decision",
+        "AREA-015 (Phase 51G-1 characterization) reflects pre-extraction behavior; 51G-1 is superseded for production surface area by this row",
+        "B17 remaining-hotspots tracker covers the 5 inline hotspots that 51N did not extract"
       ],
-      "notes": "Recent Agent A route / state work is included for completeness. The pilot_claim_allowed flag is false because (a) the post-extraction surface area is not yet defined, (b) pin refresh is pending, and (c) these are Agent A owned and not changed by this PR. Pilot readiness for any of 51G-2/51G-3/51H-1 requires a separate B-track decision after Agent A's next steps."
+      "notes": "Recent Agent A route / state work is included for completeness. The pilot_claim_allowed flag is false because (a) the post-extraction surface area is not yet defined, (b) pin refresh is pending, (c) these are Agent A owned and not changed by this PR, and (d) 5 inline hotspots remain in B17. Pilot readiness for any of these routes requires a separate B-track decision after Agent A's next steps. Phase 51N is a checkpoint and Claude review preparation; Claude review itself is separate."
+    },
+    {
+      "area_id": "AREA-020",
+      "area_name": "Phase 51N post-M2 route extraction checkpoint + Agent B docs integration + Claude review preparation pack",
+      "current_status": "Phase 51N has landed on the current base (aced60b). It is a checkpoint, not a route or service change. It includes: (a) a post-M2 route extraction checkpoint documenting 12 service-backed routes and 13 service modules reached; (b) Agent B docs integration work performed on the Agent A side (Agent B side will mirror via B15-B19 in this branch); (c) a Claude review preparation pack on the Agent A side. The 5 remaining inline hotspots are tracked separately in B17.",
+      "evidence_category": "internally_tested",
+      "evidence_files": [
+        "docs/phase51n_post_m2_route_extraction_checkpoint.md (Agent A owned, NOT modified by this PR)",
+        "tests/test_phase51n_post_m2_route_extraction_checkpoint.py (Agent A owned, NOT modified by this PR)",
+        "reports/phase51n_post_m2_route_extraction_checkpoint_summary.json (Agent A owned, NOT modified by this PR)",
+        "docs/governance/remaining_hotspots_governance_tracker.md (B17, this branch)",
+        "reports/governance/remaining_hotspots_governance_tracker.json (B17, this branch)",
+        "docs/external_review/external_review_closeout_tracker.md (B16, this branch)",
+        "reports/external_review/external_review_closeout_status.json (B16, this branch)"
+      ],
+      "tests_or_reports_to_check": [
+        "Phase 51N commit: aced60b58c5552800b95a90e17b22b32981efab8 (Phase 51N: Post-M2 route extraction checkpoint, Agent B docs integration, Claude review preparation pack (#408))",
+        "Reviewer should run test_phase51n_post_m2_route_extraction_checkpoint.py and confirm pass/fail/skip",
+        "Reviewer should verify that the 12 service-backed routes and 13 service modules claimed by 51N are present in app/services/ (Agent A owned, NOT modified by this PR)"
+      ],
+      "missing_evidence": [
+        "External review of the Phase 51N checkpoint document",
+        "External review of the Claude review preparation pack (separate from Claude review itself)",
+        "Claude review output (handled separately, not in this branch)",
+        "Pilot-user testing of any of the 12 service-backed routes (Agent A track)"
+      ],
+      "external_claim_allowed": false,
+      "pilot_claim_allowed": false,
+      "blockers": [
+        "Phase 51N is a checkpoint, not a user-facing feature",
+        "No external review performed yet",
+        "Claude review is separate and is not represented in this branch as completed"
+      ],
+      "dependencies": [
+        "AREA-019 (the underlying recent Agent A route / state work)",
+        "B17 remaining-hotspots tracker for the 5 inline hotspots",
+        "B16 external review closeout tracker for what is ready for external review, what is missing, and what cannot be claimed"
+      ],
+      "notes": "Phase 51N is the post-M2 checkpoint. 12 service-backed routes and 13 service modules are documented. 5 inline hotspots are tracked in B17. Claude review preparation is included in 51N (Agent A side); Claude review itself is separate and is not represented in this branch as completed. AREA-020 was added in B15 (this branch) to track the 51N checkpoint from a B-track governance perspective. B15 does not claim Claude has approved anything; B15 does not authorize paid pilot; B15 does not claim external validation."
     }
   ],
   "global_notes": [
@@ -617,11 +732,13 @@
     "AREA-001 (TUHO) and AREA-002 (Oborovo) are the two narrow-scope targets for promotion to approved_for_narrow_scope after B1 review and a controlled pilot.",
     "AREA-003 (generic solar) and AREA-004 (generic wind) are explicitly exploratory and are not promoted to pilot or external claim by the existence of Oborovo / TUHO as specific projects.",
     "AREA-007 (Tax) is too broad for a blanket pilot claim; sub-area decomposition (CIT, LCF, ATAD, WHT, depreciation, cash-tax timing) is required before any tax sub-area enters pilot scope.",
-    "AREA-013 (scenario persistence) and AREA-015 (Phase 51G-1) reflect pre-51G-2 behavior; pin refresh and forward-compatibility decision are pending after 51G-2/51G-3/51H-1.",
+    "AREA-013 (scenario persistence) and AREA-015 (Phase 51G-1) reflect pre-51G-2 behavior; pin refresh and forward-compatibility decision are pending after 51G-2 through 51M-2.",
     "AREA-014 (Phase 51F guardrails) is regression protection, not external validation, and is not promoted to external_claim_allowed by being green. It is also not a user-facing pilot feature.",
     "AREA-015 (Phase 51G-1) is characterization only; it is superseded for production surface area by Phase 51G-2/51G-3/51H-1 (see AREA-019).",
-    "AREA-016 (B1 external review package) is documentation and evidence preparation, not external validation. The package is in place; no third-party review has been performed.",
-    "AREA-019 covers Phase 51G-2 (extraction), 51G-3 (fix), and 51H-1 (scenario state characterization). All are Agent A owned and not modified by this PR.",
+    "AREA-016 (B1 external review package) is documentation and evidence preparation, not external validation. The package is in place; no third-party review has been performed. B16 closeout tracker reflects this.",
+    "AREA-019 covers Phase 51G-2 through 51N. All are Agent A owned and not modified by this PR. 5 inline hotspots remain (B17).",
+    "AREA-020 (Phase 51N) was added in B15 to track the 51N checkpoint from a B-track governance perspective. It does not claim Claude has approved anything.",
+    "Claude review is separate. The B-track governance pack does not represent Claude review as completed. Claude review is handled outside this branch; the B16 External Review Closeout Tracker will reflect the result, when provided, as a separate workstream.",
     "This matrix is a working artifact. Demotions to weaker categories are encouraged when evidence is found insufficient. See model_evidence_taxonomy.md §6 for the demotion procedure."
   ]
 }

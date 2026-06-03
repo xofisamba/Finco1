@@ -18,16 +18,27 @@ files.
 
 Agent A owns the route / service extraction work in Phase 51+.
 The B-track governance documents (B1, B3, B7, B8, B9, B10, B11, B12,
-B13) reference Agent A's work indirectly through:
+B13, B14, B15, B16, B17, B18, B19) reference Agent A's work
+indirectly through:
 
 * base SHA references (which move when main moves);
-* phase commit references (51G-1, 51G-2, 51G-3, 51H-1, 51H-2, 51I, 51J-1, ...);
+* phase commit references (51G-1, 51G-2, 51G-3, 51H-1, 51H-2, 51I,
+  51J-1, 51J-2, 51K-1, 51K-2, 51L-1, 51L-2, 51M-1, 51M-2, 51N, ...);
 * per-area evidence in the B3 matrix (e.g. AREA-019 covers
-  51G-2/51G-3/51H-1);
+  recent Agent A route / state work; AREA-020 covers the Phase 51N
+  checkpoint);
 * B8 architecture and persistence dimensions (which reference
-  Agent A's most recent extractions);
-* B13 paid pilot gate (which references Agent A's `/save-run`
-  and `/scenarios/state/*` work).
+  Agent A's most recent extractions — 12 service-backed routes,
+  13 service modules reached at Phase 51N; 5 remaining inline
+  hotspots tracked in B17);
+* B13 paid pilot gate (which references Agent A's `/save-run`,
+  `/scenarios/state/*`, `/scenarios/save`, `/scenarios/{id}/duplicate`,
+  `/scenarios/add`, `/projects/create` work);
+* B16 external review closeout tracker (which is independent of
+  Claude review);
+* B17 remaining hotspots tracker (5 routes — `save-as`, `rename`,
+  `archive`, `update-overrides`, `select` — with expected future
+  Agent A phase numbering 51O/51P/51Q/51R/51S).
 
 When Agent A merges a new route / state / service, these
 references can become stale. A stale reference is not a security
@@ -43,7 +54,8 @@ A refresh is required when **any** of the following is true:
   Phase 51+ phase that touches a route, a state, a service, or a
   related artifact that the B-track documents mention by name
   (e.g. `/save-run`, `/scenarios/state/draft`,
-  `/scenarios/state/discard`).
+  `/scenarios/state/discard`, `/scenarios/save`,
+  `/scenarios/{id}/duplicate`, `/scenarios/add`, `/projects/create`).
 * **Agent A merges a new Phase 51F pin or pin-change.** The B3
   matrix's parity-core lock and engine-output golden guardrail
   reference Phase 51F. A new pin or pin-change must be reflected
@@ -52,12 +64,26 @@ A refresh is required when **any** of the following is true:
   Agent A ownership list.** The B3 matrix's `evidence_files` and
   `tests_or_reports_to_check` arrays reference specific files. A
   rename may break those references.
+* **Agent A merges a Phase 51N-style checkpoint.** The Phase 51N
+  checkpoint landed Agent B docs integration and a Claude review
+  preparation pack. Future checkpoints (e.g. Phase 51O, 51P, etc.)
+  may include similar Agent B integration that requires a B-track
+  refresh to keep the matrix / heatmap / data room in sync.
 * **The user explicitly requests a refresh.** This is the catch-all
   trigger.
 
 A refresh is **not** required for Agent A work that does not
 affect the B-track documents (e.g. a refactor inside an
 Agent A file that does not change its name or its semantics).
+
+**Important — Claude review is separate.** Phase 51N includes a
+"Claude review preparation pack" (Agent A side), but the Claude
+review itself is performed outside the Agent B branch and outside
+the B-track governance pack. A Claude review result, when
+provided by the user, will be reflected in B16 (External Review
+Closeout Tracker) only — and only as a separate workstream, never
+as a side-effect of B15. Do not treat any B-track refresh as a
+Claude review result.
 
 ## 3. Documents likely to go stale
 
@@ -73,9 +99,13 @@ The B-track documents most likely to go stale are:
   /save-run and the persistence layer.
 * `docs/pilot/pilot_validation_execution_pack.md` (B9) — references
   to the B3 matrix and the B7 runbook.
-* `docs/external_review/data_room_index.md` and
-  `docs/external_review/reviewer_evidence_checklist.md` (B10) —
+* `docs/external_review/data_room_index.md` (B10) — references to
+  all B-track artifacts; refreshed to include the 51N section.
+* `docs/external_review/reviewer_evidence_checklist.md` (B10) —
   references to all B-track artifacts.
+* `docs/external_review/external_review_closeout_tracker.md` and
+  `reports/external_review/external_review_closeout_status.json`
+  (B16) — explicit closeout state independent of Claude review.
 * `docs/commercial/no_go_claims_commercial_guardrail.md` (B11) —
   references to the B1 no-go list (no refresh needed unless the
   B1 no-go list changes).
@@ -84,6 +114,17 @@ The B-track documents most likely to go stale are:
   references to Agent A's most recent extractions.
 * `docs/governance/agent_a_b_governance_refresh_plan.md` (B14, this
   file) — references to the trigger conditions.
+* `docs/governance/remaining_hotspots_governance_tracker.md` and
+  `reports/governance/remaining_hotspots_governance_tracker.json`
+  (B17) — 5 remaining inline hotspots.
+* `docs/pilot/controlled_pilot_launch_checklist.md` and
+  `reports/pilot/controlled_pilot_launch_checklist.json` (B18) —
+  practical launch checklist; uses B7 + B9 + B13 as input.
+* `docs/pilot/post_pilot_evidence_update_template.md`,
+  `reports/pilot/post_pilot_evidence_update_template.json`,
+  `docs/commercial/demo_script_guardrail.md`,
+  `reports/commercial/demo_claims_checklist.json` (B19) — pilot
+  follow-up + demo script guardrail; uses B11 as input.
 
 ## 4. How to detect stale references
 
@@ -150,7 +191,8 @@ reviews it from a governance perspective. The checklist is:
 * [ ] **Phase commit identified.** What is the phase number, the
       SHA, and the title? Is the phase in the B-track's expected
       set of phases (route extraction, service extraction, route
-      characterization, scenario state, etc.)?
+      characterization, scenario state, scenario duplicate, scenario
+      add, projects create, post-M2 checkpoint, etc.)?
 * [ ] **Routes / services affected.** What routes or services are
       affected? Are they referenced in any B-track document?
 * [ ] **Test files affected.** What new test files are added?
@@ -161,11 +203,22 @@ reviews it from a governance perspective. The checklist is:
       dependencies, notes)? If yes, refresh.
 * [ ] **B8 architecture and persistence dimensions affected.**
       Are the architecture and persistence summaries still
-      accurate? If no, refresh.
+      accurate (12 service-backed routes, 13 service modules,
+      5 remaining inline hotspots tracked in B17)? If no, refresh.
 * [ ] **B13 paid pilot gate affected.** Does the new phase
       affect the pilot surface area? If yes, refresh.
 * [ ] **B12 heatmap affected.** Does the new phase change the
       confidence label of any B12 area? If yes, refresh.
+* [ ] **B17 remaining hotspots tracker affected.** Is the new
+      phase a characterization or extraction of one of the 5
+      remaining inline hotspots (`save-as`, `rename`, `archive`,
+      `update-overrides`, `select`)? If yes, update the B17
+      tracker with the new SHA and the new state.
+* [ ] **B16 external review closeout tracker affected.** Does
+      the new phase change what is ready for external review,
+      what is missing, or what cannot be claimed? If yes, refresh
+      B16 (Claude review remains separate and is not represented
+      here as completed).
 * [ ] **B1 no-go list affected.** Does the new phase change any
       no-go claim? If yes, refresh the B1 list (separate
       governance change) and the B11 commercial messaging
@@ -192,7 +245,9 @@ machine-readable). It records:
 * `agent_a_phase_log` — a log of Agent A phases that have been
   reviewed, with the B-track impact assessed per phase.
 
-The tracker is updated as part of normal B-track work.
+The tracker is updated as part of normal B-track work. After
+B15, the tracker has 15 phase entries (51G-1 through 51N) and
+1 completed refresh (B15 itself).
 
 ## 8. The "Agent B never modifies Agent A files" rule
 
@@ -235,19 +290,28 @@ process to prevent recurrence.
 * It is not external validation.
 * It is not a substitute for any B-track artifact.
 * It is not a justification for Agent B to modify Agent A files.
+* It is not Claude review. Claude review is separate.
 
 ## 10. Cross-references
 
 * `reports/governance/governance_refresh_tracker.json` (B14,
   machine-readable)
+* `reports/governance/remaining_hotspots_governance_tracker.json`
+  (B17, machine-readable)
 * `docs/validation/validation_evidence_matrix.md` (B3)
 * `docs/validation/model_confidence_heatmap.md` (B12)
 * `docs/pilot/controlled_pilot_runbook.md` (B7)
 * `docs/pilot/pilot_validation_execution_pack.md` (B9)
 * `docs/pilot/paid_pilot_readiness_gate.md` (B13)
+* `docs/pilot/controlled_pilot_launch_checklist.md` (B18)
+* `docs/pilot/post_pilot_evidence_update_template.md` (B19)
 * `docs/external_review/data_room_index.md` (B10)
+* `docs/external_review/external_review_closeout_tracker.md` (B16)
 * `docs/commercial/no_go_claims_commercial_guardrail.md` (B11)
+* `docs/commercial/demo_script_guardrail.md` (B19)
 * `docs/roadmap/enterprise_saas_readiness_tracker.md` (B8)
+* `docs/governance/agent_a_b_governance_refresh_plan.md` (B14, this
+  file)
 * `docs/external_review/no_go_claims.md` (B1)
 
 ---

@@ -2,10 +2,11 @@
   "package": {
     "name": "Finco1 Enterprise SaaS Readiness Tracker",
     "workstream": "B8",
-    "branch": "parallel-b-governance-pack",
-    "base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
-    "tracker_version": "0.1.0",
-    "tracker_status": "initial_self_assessment",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "previous_base_sha": "d93ad99813b351a63dcf2100108d53c1dedfe87d",
+    "tracker_version": "0.2.0",
+    "tracker_status": "refreshed_post_phase_51n",
     "intended_use": "internal_planning_only",
     "external_claim_scope": "none"
   },
@@ -13,25 +14,45 @@
   "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
   "no_go_claims_pointer": "docs/external_review/no_go_claims.md",
   "boundaries_pointer": "docs/validation/internal_vs_external_validation_boundaries.md",
+  "b14_refresh_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "b16_closeout_pointer": "docs/external_review/external_review_closeout_tracker.md",
+  "b17_remaining_hotspots_pointer": "docs/governance/remaining_hotspots_governance_tracker.md",
   "global_self_assessment_disclaimer": "All percentages in this tracker are project-internal self-assessments. They are not externally validated, not customer-facing, and do not authorize any external claim. Reaching 100% on a dimension does not relax any no-go claim.",
+  "post_phase_51n_state": {
+    "service_backed_routes_count": 12,
+    "service_modules_count": 13,
+    "remaining_inline_hotspot_routes_count": 5,
+    "remaining_inline_hotspot_routes": [
+      "POST /projects/{code}/save-as",
+      "POST /scenarios/{id}/rename",
+      "POST /scenarios/{id}/archive",
+      "POST /scenarios/{id}/update-overrides",
+      "POST /scenarios/{id}/select"
+    ],
+    "remaining_inline_hotspots_governance_tracker": "B17 (docs/governance/remaining_hotspots_governance_tracker.md)"
+  },
+  "claude_review_status": {
+    "representation_in_this_tracker": "not_represented_as_completed",
+    "rationale": "Claude review is handled separately outside the B-track governance pack. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is not represented in this tracker as completed. The external review readiness dimension is updated to reflect B16 closeout tracker and the separation of Claude review."
+  },
   "dimensions": {
     "architecture": {
-      "current_percentage": 55,
+      "current_percentage": 65,
       "target_percentage": 80,
-      "summary": "Backend is source of truth; services are being extracted from main_web.py (Phase 51+); Phase 51F no-service-imports guardrail enforces import direction. /download (Phase 51E-2) and /save-run characterization (Phase 51G-1) are on main. Phase 51G-2 /save-run extraction has landed (app/services/save_run_service.py); Phase 51G-3 (fix) and Phase 51H-1 (scenario state characterization) have also landed. Remaining route/service extraction continues on Agent A track.",
+      "summary": "Backend is source of truth; services are being extracted from main_web.py (Phase 51+); Phase 51F no-service-imports guardrail enforces import direction. After Phase 51N, 12 service-backed routes and 13 service modules are in place. 5 inline hotspots remain (POST /projects/{code}/save-as; POST /scenarios/{id}/rename; POST /scenarios/{id}/archive; POST /scenarios/{id}/update-overrides; POST /scenarios/{id}/select) — tracked in B17. Phase 51N is the post-M2 checkpoint; future extractions (51O-51S) are anticipated for the 5 hotspots. /download (Phase 51E-2), /save-run (51G-2), /scenarios/state/* (51H-2), /scenarios/save (51J-2), /scenarios/{id}/duplicate (51K-2), /scenarios/add (51L-2), /projects/create (51M-2) are all on main and service-backed.",
       "blockers": [
-        "main_web.py still contains inline route logic for several routes (after 51E-2 /download and 51G-2 /save-run extractions, scenario state and other routes remain inline)",
-        "Remaining route/service extractions continue on Agent A track"
+        "5 inline hotspot routes remain after 51N (POST /projects/{code}/save-as; POST /scenarios/{id}/rename; POST /scenarios/{id}/archive; POST /scenarios/{id}/update-overrides; POST /scenarios/{id}/select)",
+        "Future Agent A extractions (51O-51S, expected) will further reduce the inline hotspot count"
       ],
       "dependencies": [
-        "Agent A Phase 51H-2 (scenario state route family vertical extraction, future) and any further Agent A track route work"
+        "Agent A future phases 51O-51S (5 expected, one per remaining inline hotspot) tracked in B17"
       ],
       "next_actions": [
-        {"action": "Track Agent A's next route extractions (e.g. Phase 51H-2 scenario state) as they land; update B8 architecture dimension after each", "owner": "B-track with Agent A coordination", "target_date": "ongoing", "status": "in_progress"},
+        {"action": "Track Agent A's next route extractions (e.g. Phase 51O save-as, 51P rename, 51Q archive, 51R update-overrides, 51S select) as they land; update B8 architecture dimension after each", "owner": "B-track with Agent A coordination", "target_date": "ongoing", "status": "in_progress"},
         {"action": "Document the Phase 51F no-service-imports guardrail as the canonical import-direction rule", "owner": "B-track", "target_date": "ongoing", "status": "in_progress"}
       ],
       "gate_criteria": [
-        "All major routes are extracted to services",
+        "All major routes are extracted to services (currently 12 of 17; 5 inline hotspots remain)",
         "main_web.py contains only route orchestration, no model logic",
         "Phase 51F guardrails are green on the latest main"
       ],
@@ -43,14 +64,15 @@
     "model_confidence": {
       "current_percentage": 50,
       "target_percentage": 75,
-      "summary": "Phase 51F pins TUHO and Oborovo outputs. Phase 51E-1, 51E-2, 51G-1 characterize existing routes. Internal tests cover domain, project factories, waterfall, and most output paths. Returns, tax, and Excel export are internally tested but not pinned. Generic solar / wind is explicitly exploratory.",
+      "summary": "Phase 51F pins TUHO and Oborovo outputs. Phase 51E-1, 51E-2, 51G-1, 51J-1, 51K-1, 51L-1, 51M-1, 51H-1 characterize existing routes. Internal tests cover domain, project factories, waterfall, and most output paths. Returns, tax, and Excel export are internally tested but not pinned. Generic solar / wind is explicitly exploratory. Phase 51N is a checkpoint + Claude review preparation pack; Claude review itself is separate.",
       "blockers": [
         "Returns, tax, and Excel export outputs are not pinned by Phase 51F",
         "Generic solar and wind have no parity evidence (B2 acquisition in progress)"
       ],
       "dependencies": [
         "B2 (generic validation) for solar / wind parity",
-        "Future Phase 51F pin additions for returns, tax, Excel export"
+        "Future Phase 51F pin additions for returns, tax, Excel export",
+        "Claude review result (handled separately)"
       ],
       "next_actions": [
         {"action": "Decide protocol for adding new Phase 51F pins (returns, tax, Excel export)", "owner": "B-track with Agent A coordination", "target_date": "after B1 review feedback", "status": "not_started"},
@@ -64,7 +86,8 @@
       "no_go_claims": [
         "No claim of external validation of the model",
         "Generic solar and wind remain exploratory for any external claim",
-        "Returns, tax, and Excel export are internally tested, not externally validated"
+        "Returns, tax, and Excel export are internally tested, not externally validated",
+        "Claude review is separate and is not represented here as completed"
       ]
     },
     "generic_validation": {
@@ -104,13 +127,13 @@
     "ui_product": {
       "current_percentage": 45,
       "target_percentage": 75,
-      "summary": "Streamlit UI (streamlit_app.py, ui/, app/ui/) is implemented. Web layer (main_web.py, main_api.py) is being progressively refactored. UI warnings exist as code; their behavior is not formally tested. No JS financial calculations are present (backend is source of truth).",
+      "summary": "Streamlit UI (streamlit_app.py, ui/, app/ui/) is implemented. Web layer (main_web.py, main_api.py) is being progressively refactored. After Phase 51N, 12 service-backed routes and 13 service modules are in place. UI warnings exist as code; their behavior is not formally tested. No JS financial calculations are present (backend is source of truth).",
       "blockers": [
         "UI warning behavior is not formally tested (per B3 AREA-017)",
-        "Web layer is mid-refactor (Agent A track)"
+        "Web layer is mid-refactor (Agent A track; 5 inline hotspots remain)"
       ],
       "dependencies": [
-        "Agent A Phase 51+ route / service refactor (in progress)",
+        "Agent A future phases 51O-51S (5 remaining inline hotspots, tracked in B17)",
         "B7 pilot to gather real-user UX feedback"
       ],
       "next_actions": [
@@ -120,7 +143,7 @@
       "gate_criteria": [
         "UI warning behavior is tested",
         "Real-user UX feedback is collected and triaged (B7)",
-        "Web layer is fully refactored (Agent A)"
+        "Web layer is fully refactored (Agent A; 5 inline hotspots remain after 51N)"
       ],
       "no_go_claims": [
         "UI is presentation only; model is the source of truth",
@@ -128,24 +151,27 @@
       ]
     },
     "persistence": {
-      "current_percentage": 40,
+      "current_percentage": 50,
       "target_percentage": 75,
-      "summary": "Scenario persistence is implemented (app/persistence/, scenario_state_service.py). /save-run has been extracted in Phase 51G-2 (app/services/save_run_service.py); Phase 51G-3 fix and Phase 51H-1 scenario state characterization have also landed. The post-extraction persisted state shape has changed; pin refresh and forward-compatibility decision are pending.",
+      "summary": "After Phase 51N, 12 service-backed routes are in place, including /save-run (51G-2), /scenarios/state/* (51H-2), /scenarios/save (51J-2), /scenarios/{id}/duplicate (51K-2), /scenarios/add (51L-2), /projects/create (51M-2). 13 service modules are in place. The post-extraction persisted state shape has changed; pin refresh and forward-compatibility decision are pending. The 5 remaining inline hotspots (tracked in B17) are all persistence-adjacent.",
       "blockers": [
-        "Persisted state is not pinned (post-51G-2 shape)",
-        "Pin refresh / forward-compatibility decision required after 51G-2/51G-3/51H-1"
+        "Persisted state is not pinned (post-51G-2 shape and beyond)",
+        "Pin refresh / forward-compatibility decision required after 51G-2/51G-3/51H-1/51H-2/51J-1/51J-2/51K-1/51K-2/51L-1/51L-2/51M-1/51M-2"
       ],
       "dependencies": [
-        "Agent A Phase 51G-2 (landed), 51G-3 (landed), 51H-1 (landed) have modified this area",
-        "Future Agent A route extractions (e.g. Phase 51H-2) may further modify the persistence surface area"
+        "Agent A future phases 51O-51S (5 remaining inline hotspots, all persistence-adjacent) tracked in B17"
       ],
       "next_actions": [
-        {"action": "After 51G-2/51G-3/51H-1, evaluate whether to pin the post-extraction persisted state shape (subject to intentional protocol)", "owner": "B-track with Agent A coordination", "target_date": "after pin/forward-compat decision", "status": "not_started"},
-        {"action": "Coordinate with Agent A on Phase 51H-2 scenario state route family extraction and its impact on persistence", "owner": "B-track with Agent A", "target_date": "TBD", "status": "not_started"}
+        {"action": "After 51G-2 through 51M-2, evaluate whether to pin the post-extraction persisted state shape (subject to intentional protocol)", "owner": "B-track with Agent A coordination", "target_date": "after pin/forward-compat decision", "status": "not_started"},
+        {"action": "Coordinate with Agent A on Phase 51O-51S (5 remaining inline hotspots) and their impact on persistence", "owner": "B-track with Agent A", "target_date": "ongoing", "status": "in_progress"}
       ],
       "gate_criteria": [
         "/save-run is extracted and stable (51G-2 merged) — DONE",
-        "Persisted state shape is pinned or documented as forward-compatible (post-51G-2)",
+        "/scenarios/save is extracted and stable (51J-2 merged) — DONE",
+        "/scenarios/{id}/duplicate is extracted and stable (51K-2 merged) — DONE",
+        "/scenarios/add is extracted and stable (51L-2 merged) — DONE",
+        "/projects/create is extracted and stable (51M-2 merged) — DONE",
+        "Persisted state shape is pinned or documented as forward-compatible (post-extraction)",
         "Pilot (B7) successfully uses save / load round-trip on the extracted service surface"
       ],
       "no_go_claims": [
@@ -154,16 +180,18 @@
       ]
     },
     "governance": {
-      "current_percentage": 70,
+      "current_percentage": 75,
       "target_percentage": 90,
-      "summary": "B1 no-go claim list is merged (PR #390). B3 validation evidence matrix is in place (this branch). B2 and B7 governance is in place (this branch). Internal vs external validation boundaries are documented. The governance posture is the most-mature of the eleven dimensions; what remains is operationalization (using the matrix, the no-go list, and the boundaries consistently across the project).",
+      "summary": "B1 no-go claim list is merged (PR #390). B3 validation evidence matrix is in place (B15 refresh). B2 and B7 governance is in place. B8 enterprise SaaS readiness tracker is in place (B15 refresh). B11 commercial messaging guardrail is in place. B12 heatmap is in place (B15 refresh). B13 paid pilot gate is in place. B14 governance refresh plan is in place (B15 refresh). B15 governance refresh has been executed. B16 external review closeout tracker is in place. B17 remaining hotspots tracker is in place. B18 controlled pilot launch checklist is in place. B19 post-pilot evidence update template + demo script guardrail is in place. Internal vs external validation boundaries are documented. The governance posture is the most-mature of the eleven dimensions; what remains is operationalization (using the matrix, the no-go list, and the boundaries consistently across the project).",
       "blockers": [
         "Operationalization requires the matrix, no-go list, and boundaries to be consulted in every future change",
-        "B1 external review output is not yet produced (scaffolding in place, review not yet performed)"
+        "B1 external review output is not yet produced (scaffolding in place, review not yet performed; B16 closeout tracker reflects this)",
+        "Claude review is separate and is not represented in this tracker as completed"
       ],
       "dependencies": [
         "B1 external review (third party engaged, output not yet produced)",
-        "All future changes must respect the no-go claim list and the boundaries"
+        "All future changes must respect the no-go claim list and the boundaries",
+        "Claude review result (handled separately)"
       ],
       "next_actions": [
         {"action": "Engage a third party for B1 external review", "owner": "project lead", "target_date": "TBD", "status": "not_started"},
@@ -260,9 +288,9 @@
       ]
     },
     "paid_pilot_readiness": {
-      "current_percentage": 50,
+      "current_percentage": 55,
       "target_percentage": 80,
-      "summary": "B7 controlled pilot runbook, feedback protocol, triage, and support are in place (this branch). Pilot readiness checklist is in place. Pilot has not yet started. Areas with pilot_claim_allowed: true exist (TUHO, Oborovo, etc.) but no pilot user has been onboarded.",
+      "summary": "B7 controlled pilot runbook, feedback protocol, triage, and support are in place. B9 execution pack and B13 paid pilot gate are in place. B18 controlled pilot launch checklist is in place. B19 post-pilot evidence update template and demo script guardrail are in place. Pilot has not yet started. Areas with pilot_claim_allowed: true exist (TUHO, Oborovo, etc.) but no pilot user has been onboarded. B15 has refreshed the matrix; pilot gates themselves remain pending.",
       "blockers": [
         "No pilot user has been onboarded",
         "Pilot environment is not provisioned",
@@ -275,11 +303,12 @@
       ],
       "next_actions": [
         {"action": "Identify the first pilot scope and pilot user", "owner": "project lead with B7", "target_date": "TBD", "status": "not_started"},
-        {"action": "Walk the pilot readiness checklist (runbook §2) to all-pass before the first pilot", "owner": "B7 workstream", "target_date": "before first pilot start", "status": "not_started"},
+        {"action": "Walk the pilot readiness checklist (runbook §2) and B18 launch checklist to all-pass before the first pilot", "owner": "B7 workstream", "target_date": "before first pilot start", "status": "not_started"},
         {"action": "Run the first pilot, gather feedback, triage issues, produce a pilot summary", "owner": "B7 workstream", "target_date": "TBD", "status": "not_started"}
       ],
       "gate_criteria": [
         "Pilot readiness checklist is all-passed",
+        "B18 launch checklist is all-passed",
         "First pilot run completes per the runbook",
         "Pilot summary is filed and the matrix is updated as appropriate",
         "No no-go claims were made or implied during the pilot"
@@ -331,7 +360,7 @@
   },
   "rollup": {
     "average_current_percentage_excluding_enterprise_saas": null,
-    "dimensions_above_50_percent": 0,
+    "dimensions_above_50_percent": 3,
     "dimensions_at_or_above_75_percent": 0,
     "lowest_current_dimensions": []
   },
@@ -340,12 +369,19 @@
       "date": "package_creation",
       "version": "0.1.0",
       "rationale": "Initial self-assessment at package creation. Percentages are conservative. Targets are internal goals, not external commitments."
+    },
+    {
+      "date": "b15_refresh",
+      "version": "0.2.0",
+      "rationale": "Phase 51N checkpoint refresh. Architecture dimension increased from 55 to 65 (12 service-backed routes, 13 service modules reached; 5 inline hotspots remain and are tracked in B17). Persistence dimension increased from 40 to 50 (5 of 6 service extractions pinned for stability; pin refresh of post-extraction state shape still pending). Governance dimension increased from 70 to 75 (B15-B19 governance artifacts in place). Paid pilot readiness dimension increased from 50 to 55 (B18 launch checklist and B19 post-pilot template in place). Claude review explicitly separated and not represented as completed. No new external claims authorized."
     }
   ],
   "global_notes": [
     "All percentages are project-internal self-assessments. They are not externally validated, not customer-facing, and do not authorize any external claim.",
     "Reaching 100% on any dimension does not relax any no-go claim. The no-go claims are governed separately (see docs/external_review/no_go_claims.md and docs/validation/internal_vs_external_validation_boundaries.md).",
     "The enterprise_saas_readiness dimension is intentionally low (10%) and has a null target. Reaching it is a multi-year effort and is not the current goal.",
-    "Updates to this tracker are normal B-track work. Demotions are encouraged when evidence is found insufficient."
+    "Updates to this tracker are normal B-track work. Demotions are encouraged when evidence is found insufficient.",
+    "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is reflected in B16 (External Review Closeout Tracker) only as a separate workstream.",
+    "The 5 remaining inline hotspots (POST /projects/{code}/save-as; POST /scenarios/{id}/rename; POST /scenarios/{id}/archive; POST /scenarios/{id}/update-overrides; POST /scenarios/{id}/select) are tracked in B17 with expected future Agent A phase numbering 51O/51P/51Q/51R/51S. Future extractions of these routes will be reflected in this tracker as they land."
   ]
 }

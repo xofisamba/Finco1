@@ -1,0 +1,132 @@
+{
+  "package": {
+    "name": "Finco1 Demo Claims Checklist",
+    "workstream": "B19",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "checklist_version": "0.1.0",
+    "checklist_status": "empty_template",
+    "intended_use": "internal_demo_claims_review_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/commercial/demo_script_guardrail.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b11_prohibited_register_pointer": "docs/commercial/prohibited_claims_register.md",
+  "b11_approved_demo_language_pointer": "docs/commercial/approved_demo_language.md",
+  "b11_commercial_matrix_pointer": "reports/commercial/commercial_claims_review_matrix.json",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "disclaimers": {
+    "internal_guardrail_not_marketing_launch_approval": true,
+    "does_not_loosen_b11_prohibited_claims": true,
+    "does_not_introduce_new_green_language": true,
+    "claude_review_separate": true
+  },
+  "absolute_prohibition_rules": {
+    "no_investment_advice": {
+      "rule": "No investment advice. A demo is not a recommendation to invest, lend, or act. A demo is a demonstration of internal validation work.",
+      "absolute": true,
+      "not_relaxed_by": [
+        "B11 safe harbor statements",
+        "B19 demo flow",
+        "B12 heatmap labels",
+        "B3 matrix evidence categories"
+      ]
+    },
+    "no_guaranteed_returns": {
+      "rule": "No guaranteed returns. A demo does not guarantee any return. The model is a screening tool, not a guarantee instrument.",
+      "absolute": true,
+      "not_relaxed_by": [
+        "B11 safe harbor statements",
+        "B19 demo flow",
+        "B12 heatmap labels",
+        "B3 matrix evidence categories"
+      ]
+    },
+    "no_bankability": {
+      "rule": "No bankability. A demo does not establish bankability. The model is a screening tool, not a bank-grade product.",
+      "absolute": true,
+      "not_relaxed_by": [
+        "B11 safe harbor statements",
+        "B19 demo flow",
+        "B12 heatmap labels",
+        "B3 matrix evidence categories"
+      ]
+    },
+    "no_saas_ready_claims": {
+      "rule": "No SaaS-ready claims. A demo does not establish SaaS readiness. The model is internal, not multi-tenant, not SLA-backed.",
+      "absolute": true,
+      "not_relaxed_by": [
+        "B11 safe harbor statements",
+        "B19 demo flow",
+        "B12 heatmap labels",
+        "B3 matrix evidence categories"
+      ]
+    }
+  },
+  "allowed_demo_flow": [
+    {"step": 1, "segment": "Introduction", "claim": "Finco1 is an internal project-finance screening tool.", "color": "green", "required_context": "none", "b11_reference": "approved_demo_language.md §1.1"},
+    {"step": 2, "segment": "Scope statement", "claim": "Finco1 has been used for internal testing on specific reference projects (TUHO Wind 1, Oborovo Solar PV).", "color": "green", "required_context": "none", "b11_reference": "approved_demo_language.md §1.2"},
+    {"step": 3, "segment": "Pilot statement", "claim": "We are running a controlled pilot with real human users under the B7 runbook.", "color": "green", "required_context": "the B7 runbook reference, on request", "b11_reference": "approved_demo_language.md §1.2"},
+    {"step": 4, "segment": "Reference projects statement", "claim": "TUHO Wind 1 and Oborovo Solar PV are reference projects with outputs pinned for regression protection.", "color": "green", "required_context": "the Phase 51F pin scope, on request", "b11_reference": "approved_demo_language.md §1.3"},
+    {"step": 5, "segment": "Bounded scope statement", "claim": "Generic solar and wind are exploratory and unvalidated for external claim.", "color": "green", "required_context": "none; mandatory before any discussion of generic technology", "b11_reference": "approved_demo_language.md §2.2"},
+    {"step": 6, "segment": "No external validation statement", "claim": "Finco1 has not been externally validated.", "color": "green", "required_context": "none; mandatory before any discussion of validation status", "b11_reference": "approved_demo_language.md §2.5"},
+    {"step": 7, "segment": "Demo run", "claim": "Live or recorded demo of the model on a documented input set.", "color": "informational", "required_context": "TUHO inputs, Oborovo inputs, or pilot user inputs (anonymized)", "b11_reference": "no claim; demo run is a demonstration, not a claim"},
+    {"step": 8, "segment": "No-go boundary statement", "claim": "Finco1 is not a lender / bank / audit / certification / regulatory / SaaS-grade product.", "color": "green", "required_context": "none; mandatory before any discussion of claims or use cases", "b11_reference": "approved_demo_language.md §2.2"},
+    {"step": 9, "segment": "Q&A", "claim": "Answer questions only with the B11 safe harbor statements.", "color": "green", "required_context": "refer specific claim questions to the no-go list", "b11_reference": "approved_demo_language.md (general)"}
+  ],
+  "prohibited_demo_claims": [
+    {"category": "no_investment_advice", "examples": ["investment advice", "buy recommendation", "any statement that the user should rely on the model's output for a real decision"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.6"},
+    {"category": "no_guaranteed_returns", "examples": ["guaranteed returns", "guaranteed IRR", "guaranteed NPV"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.6"},
+    {"category": "no_bankability", "examples": ["bankable", "lender-grade", "lender-approved", "ready for credit committee", "ICG-ready", "credit-policy-aligned"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.1"},
+    {"category": "no_audit_certification_regulatory", "examples": ["audited", "certified", "accredited", "regulatory-approved", "regulatory-ready", "filing-ready", "compliant with any regulatory regime"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.2"},
+    {"category": "no_saas_ready", "examples": ["enterprise SaaS-ready", "production-ready", "SLA-backed", "warranty-covered", "multi-tenant-ready", "scalable (in the sense of ready for enterprise scale)"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.3"},
+    {"category": "no_generic_solar_wind", "examples": ["generic solar validated", "generic wind validated", "solar / wind parity", "any solar project", "any wind project"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.4"},
+    {"category": "no_g20_r99_r102", "examples": ["G20 approved", "G20 ready", "R99 approved", "R102 approved"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.5"},
+    {"category": "no_partial_pay_sweep_or_flat_dscr", "examples": ["partial-pay sweep supported", "flat DSCR sculpting supported"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.5"},
+    {"category": "no_customer_reference", "examples": ["we have customers", "ready for any specific customer", "production reference"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.3"},
+    {"category": "no_external_validation", "examples": ["externally validated", "third-party approved", "any claim that the model has been approved by a third party"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.4"},
+    {"category": "no_production_readiness", "examples": ["production-ready", "ready for any production use", "ready for any specific customer"], "color": "red", "b11_reference": "prohibited_claims_register.md §3.3"}
+  ],
+  "per_slide_checklist_template": {
+    "note": "Each demo slide or demo section must be reviewed against this checklist. The checklist is recorded per slide / per section in this file (when populated).",
+    "fields": [
+      {"field": "slide_section_id", "type": "string", "required": true},
+      {"field": "slide_section_title", "type": "string", "required": true},
+      {"field": "claim_made", "type": "string", "required": true},
+      {"field": "claim_category", "type": "string", "required": true, "note": "B11 claim category (CAT-001 through CAT-017) or new category if not covered"},
+      {"field": "color", "type": "enum", "values": ["green", "yellow", "red"], "required": true},
+      {"field": "required_context_if_yellow", "type": "string", "required_if_color": "yellow"},
+      {"field": "reviewer", "type": "string", "required": true, "note": "anonymized identifier"},
+      {"field": "reviewed_at", "type": "ISO-8601", "required": true},
+      {"field": "verdict", "type": "enum", "values": ["pass", "fail", "conditional", "not_applicable"], "required": true},
+      {"field": "notes", "type": "string", "required": false}
+    ],
+    "verdict_rules": {
+      "pass": "Approved for the demo. Claim is consistent with the B11 rules and the absolute prohibition rules.",
+      "fail": "Not approved for the demo. Claim violates the B11 rules or the absolute prohibition rules. The slide / section must be removed or rewritten.",
+      "conditional": "Approved only if the required context is added. The slide / section must include the required context before the demo.",
+      "not_applicable": "The slide / section does not contain a claim that requires review."
+    }
+  },
+  "slides": [],
+  "summary": {
+    "checklist_status": "empty_template",
+    "slides_reviewed": 0,
+    "slides_passed": 0,
+    "slides_failed": 0,
+    "slides_conditional": 0,
+    "slides_not_applicable": 0,
+    "absolute_prohibition_rules_count": 4,
+    "prohibited_demo_claim_categories_count": 11,
+    "allowed_demo_flow_steps_count": 9
+  },
+  "global_notes": [
+    "This checklist is empty at package creation. It is populated when a demo is reviewed slide-by-slide. The checklist is the per-slide record of the demo claims review.",
+    "The four absolute prohibition rules (no_investment_advice, no_guaranteed_returns, no_bankability, no_saas_ready_claims) are absolute. They are not relaxed by the B11 safe harbor statements, the B19 demo flow, the B12 heatmap labels, or the B3 matrix evidence categories.",
+    "The 11 prohibited demo claim categories mirror the B11 prohibited claims register, with demo-specific tightening (no customer reference, no external validation, no production readiness are added to the demo flow as explicit prohibitions).",
+    "The 9 allowed demo flow steps are a guideline. Segments may be reordered if the reordering is consistent with the B11 rules. Segments may not be removed if their content is required (e.g. the generic solar / wind statement is mandatory before any discussion of generic technology).",
+    "A demo that violates the prohibited claims list triggers a guardrail violation. The remedy is to revert the violation (scrub the script, edit the recording, or cancel the demo), identify how it happened, and update the process to prevent recurrence.",
+    "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is not represented in B19 as completed."
+  ]
+}

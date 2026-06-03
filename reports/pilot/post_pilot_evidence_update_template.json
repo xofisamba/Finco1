@@ -1,0 +1,139 @@
+{
+  "package": {
+    "name": "Finco1 Post-Pilot Evidence Update Template",
+    "workstream": "B19",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "template_version": "0.1.0",
+    "template_status": "empty_template",
+    "intended_use": "internal_post_pilot_evidence_update_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/post_pilot_evidence_update_template.md",
+  "b7_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b9_execution_pointer": "docs/pilot/pilot_validation_execution_pack.md",
+  "b9_result_summary_pointer": "reports/pilot/pilot_result_summary_template.json",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b12_heatmap_pointer": "docs/validation/model_confidence_heatmap.md",
+  "b13_paid_pilot_gate_pointer": "docs/pilot/paid_pilot_readiness_gate.md",
+  "b14_refresh_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "b17_remaining_hotspots_pointer": "docs/governance/remaining_hotspots_governance_tracker.md",
+  "b18_launch_checklist_pointer": "docs/pilot/controlled_pilot_launch_checklist.md",
+  "b19_demo_script_pointer": "docs/commercial/demo_script_guardrail.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "disclaimers": {
+    "do_not_claim_pilot_happened_unless_actual_results_provided": true,
+    "do_not_invent_pilot_results": true,
+    "do_not_pre_populate_with_hypothetical_results": true,
+    "demo_script_guardrail_is_internal_not_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "successful_pilot_does_not_authorize_paid_pilot": true
+  },
+  "pilot_findings_summary": {
+    "pilot_run_id": null,
+    "pilot_user_id": null,
+    "pilot_operator_id": null,
+    "run_window_start": null,
+    "run_window_end": null,
+    "hours_of_operation": null,
+    "git_commit_at_run_window_start": null,
+    "git_commit_at_run_window_end": null,
+    "pilot_scope": [],
+    "pilot_result_summary_path": null,
+    "pilot_overall_decision": "not_evaluated"
+  },
+  "issues_found": {
+    "issues_total": 0,
+    "by_category": {
+      "bug": 0,
+      "unexpected_behavior": 0,
+      "ux": 0,
+      "doc": 0,
+      "infra": 0,
+      "scope": 0
+    },
+    "by_severity": {
+      "pilot_blocker": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "by_outcome": {
+      "confirmed_bug": 0,
+      "known_acceptable_deviation": 0,
+      "transcription_error": 0,
+      "scope_misalignment": 0,
+      "environment_issue": 0,
+      "cannot_reproduce": 0,
+      "open": 0
+    }
+  },
+  "evidence_collected": {
+    "run_logs_count": 0,
+    "validation_records_count": 0,
+    "exports_count": 0,
+    "screenshots_count": 0,
+    "user_feedback_count": 0,
+    "issue_log_count": 0,
+    "no_go_claim_acknowledgement_signed": false
+  },
+  "matrix_rows_to_update": {
+    "rows_to_update": [],
+    "categories_to_consider": [
+      "internally_tested_to_pilot_user_tested",
+      "pilot_user_tested_to_internally_tested (demotion)",
+      "missing_evidence_removed",
+      "blockers_updated",
+      "notes_updated"
+    ],
+    "pilot_claim_allowed_not_relaxed_by_pilot_alone": true,
+    "matrix_update_is_normal_b_track_operation": true,
+    "matrix_update_does_not_require_agent_a_coordination": true,
+    "matrix_update_requires_fresh_commit": true
+  },
+  "heatmap_updates": {
+    "areas_changed": [],
+    "labels_changed": [],
+    "introduces_new_green_yellow_red_boundary_in_b11": false,
+    "update_per_b12_heatmap_update_procedure": "docs/validation/model_confidence_heatmap.md §6"
+  },
+  "paid_pilot_gate_impact": {
+    "PG-01_status_after_pilot": "pending_until_pilot_actually_runs_and_closes",
+    "PG-02_status_after_pilot": "pending",
+    "PG-03_status_after_pilot": "pending",
+    "PG-04_status_after_pilot": "pending",
+    "PG-05_status_after_pilot": "pending",
+    "PG-06_through_PG-14_status_after_pilot": "pending",
+    "paid_pilot_authorized_by_pilot_alone": false,
+    "paid_pilot_authorization_requires_separate_b13_gates": true
+  },
+  "commercial_no_go_claim_review": {
+    "new_claim_categories_identified": 0,
+    "no_go_violations_recorded": 0,
+    "no_go_violation_pilot_pause_triggered": false,
+    "b11_guardrail_updated": false,
+    "b11_prohibited_register_updated": false,
+    "b11_commercial_claims_matrix_updated": false,
+    "b11_approved_demo_language_updated": false,
+    "b19_demo_claims_checklist_updated": false
+  },
+  "handoff_signature_required_from": ["pilot_operator", "project_lead"],
+  "summary": {
+    "template_status": "empty_template",
+    "pilot_actually_run": false,
+    "pilot_result_provided": false,
+    "matrix_updated": false,
+    "heatmap_updated": false,
+    "paid_pilot_authorized": false,
+    "external_validation_claimed": false
+  },
+  "global_notes": [
+    "This template is empty at package creation. It is populated only when a controlled pilot has actually run. Do not invent pilot results. Do not pre-populate the template with hypothetical results.",
+    "A successful controlled internal pilot does not authorize a paid pilot. The paid pilot gate (B13) is a separate stage and requires additional gates (PG-01 through PG-14) to be passed.",
+    "The B11 commercial messaging guardrail is reviewed for any new claim categories that surfaced during the pilot. If a new claim category is identified, the prohibited claims register is updated, the commercial claims review matrix is updated, and the approved demo language is updated.",
+    "A pilot user who violates the no-go language acknowledgement triggers a pilot pause and a triage review. The guardrail is strengthened if necessary.",
+    "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is not represented in B19 as completed.",
+    "Demo script guardrail is internal, not marketing launch approval. The companion document (docs/commercial/demo_script_guardrail.md) is internal governance, not a marketing playbook. It does not authorize the project to begin external communications."
+  ]
+}
