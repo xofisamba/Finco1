@@ -1,0 +1,104 @@
+{
+  "phase": "53G-3",
+  "title": "Extract low-risk scenario actions",
+  "type": "behavior_preserving_refactor",
+  "base_sha": "c2c35ca96c2cf6cc7abc8dc204ccf0c825681f7b",
+  "head_sha": "7eb4e0deaf6581b797a5f63eed2085f9264d73cc",
+  "branch": "phase53g3-extract-low-risk-scenario-actions",
+  "auto_merged": true,
+  "functions_moved": [
+    {
+      "name": "rename_scenario",
+      "lines_moved": 8,
+      "risk": "low"
+    },
+    {
+      "name": "archive_scenario",
+      "lines_moved": 8,
+      "risk": "low"
+    },
+    {
+      "name": "promote_scenario_to_base_case",
+      "lines_moved": 35,
+      "risk": "medium"
+    },
+    {
+      "name": "duplicate_scenario",
+      "lines_moved": 18,
+      "risk": "medium"
+    },
+    {
+      "name": "select_scenario",
+      "lines_moved": 25,
+      "risk": "medium"
+    }
+  ],
+  "loc_changes": {
+    "repository.py": {
+      "before": 826,
+      "after": 743,
+      "delta": -83
+    },
+    "scenarios_repository.py": {
+      "before": 200,
+      "after": 280,
+      "delta": 80
+    }
+  },
+  "compatibility_facade": {
+    "rename_scenario": true,
+    "archive_scenario": true,
+    "select_scenario": true,
+    "duplicate_scenario": true,
+    "promote_scenario_to_base_case": true
+  },
+  "p0_pin_status": {
+    "pin_files": [
+      "tests/test_phase53g1_scenario_workspace_coupling_p0_pin.py",
+      "tests/test_phase53g1_save_scenario_p0_behavior_pin.py",
+      "tests/test_phase53g1_add_scenario_p0_behavior_pin.py",
+      "tests/test_phase53g1_update_overrides_p0_behavior_pin.py",
+      "tests/test_phase53g1_base_case_p0_behavior_pin.py"
+    ],
+    "passes": true
+  },
+  "tests_run": {
+    "phase53g3_extraction": 34,
+    "phase53g2_extraction": 31,
+    "phase53g1_pins": 90,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "previous_phase53_suite": 475,
+    "total": 680
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing",
+    "test_phase52b_persistence_side_effect_map: pre-existing",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing"
+  ],
+  "no_scope_creep": {
+    "no_route_touched": true,
+    "no_service_touched": true,
+    "no_model_touched": true,
+    "no_parity_core_touched": true,
+    "no_schema_touched": true,
+    "no_js_touched": true,
+    "no_formula_touched": true,
+    "no_fixture_touched": true,
+    "rc1_untouched": true,
+    "no_sql_text_changes": true,
+    "no_replay_metadata_shape_changes": true,
+    "no_dataclass_relocation": true
+  },
+  "high_risk_writes_untouched": {
+    "save_scenario": "in repository.py (53G-4, REVIEW REQUIRED)",
+    "add_scenario": "in repository.py (53G-5, REVIEW REQUIRED)",
+    "update_scenario_overrides": "in repository.py (53G-6, REVIEW REQUIRED)",
+    "get_or_create_base_case_scenario": "in repository.py (53G-7, REVIEW REQUIRED)"
+  },
+  "ready_for_review": true,
+  "recommended_next_step": "STOP. User review of PR #440. 53G-4..53G-7 are review-required."
+}

@@ -104,14 +104,19 @@ from app.persistence.workspace_repository import (
 )
 
 
-# Phase 53G-2: Group B-reads (scenario reads) re-exported from
-# app.persistence.scenarios_repository for backward compatibility.
+# Phase 53G-2 + 53G-3: Group B (scenario reads + low-risk actions) re-exported
+# from app.persistence.scenarios_repository for backward compatibility.
 # The original implementations live in app/persistence/scenarios_repository.py.
 from app.persistence.scenarios_repository import (
     get_scenario,
     list_scenarios,
     resolve_scenario_snapshot,
     resolve_active_scenario_runtime_snapshot,
+    rename_scenario,
+    archive_scenario,
+    select_scenario,
+    duplicate_scenario,
+    promote_scenario_to_base_case,
 )
 
 
@@ -537,77 +542,8 @@ def save_scenario(
     )
 
 
-def rename_scenario(user_id: str, scenario_id: str, new_name: str) -> bool:
-    with get_cursor() as cur:
-        cur.execute(
-            "UPDATE scenarios SET scenario_name=?, updated_at=? WHERE scenario_id=? AND user_id=?",
-            (new_name, _now_utc().isoformat(), scenario_id, user_id),
-        )
-        return cur.rowcount > 0
 
 
-def archive_scenario(user_id: str, scenario_id: str) -> bool:
-    with get_cursor() as cur:
-        cur.execute(
-            "UPDATE scenarios SET archived=1, updated_at=? WHERE scenario_id=? AND user_id=?",
-            (_now_utc().isoformat(), scenario_id, user_id),
-        )
-        return cur.rowcount > 0
-
-
-def promote_scenario_to_base_case(user_id: str, scenario_id: str) -> Optional["ScenarioRecord"]:
-    """Promote an existing scenario to be the project's Base Case.
-
-    Clears is_base_case flag from all other scenarios for this project first,
-    then sets it on the target scenario.
-    Idempotent: safe to call on a scenario that is already the base case.
-    """
-    with get_cursor() as cur:
-        # Clear any existing base case — scoped via subquery so it only clears
-        # one of the user's scenarios (not a different user's scenario accidentally)
-        cur.execute(
-            """
-            UPDATE scenarios
-            SET is_base_case=0, updated_at=?
-            WHERE scenario_id=(
-                SELECT scenario_id FROM scenarios
-                WHERE user_id=? AND is_base_case=1
-                LIMIT 1
-            )
-            """,
-            (_now_utc().isoformat(), user_id),
-        )
-        # Promote the target scenario
-        cur.execute(
-            """
-            UPDATE scenarios
-            SET is_base_case=1, updated_at=?
-            WHERE scenario_id=? AND user_id=?
-            """,
-            (_now_utc().isoformat(), scenario_id, user_id),
-        )
-        if cur.rowcount == 0:
-            return None
-    return get_scenario(scenario_id, user_id)
-
-
-def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] = None) -> Optional[ScenarioRecord]:
-    record = get_scenario(scenario_id, user_id)
-    if record is None:
-        return None
-    copy_name = new_name or f"{record.scenario_name} Copy"
-    return save_scenario(
-        user_id=user_id,
-        project_id=record.project_id,
-        scenario_name=copy_name,
-        project_code=record.project_code,
-        source_project_template=record.source_project_template,
-        snapshot=record.snapshot,
-        governance_state=record.governance_state,
-        last_run_summary=record.last_run_summary,
-        copied_from_scenario_id=record.scenario_id,
-        replay_metadata=record.replay_metadata,
-    )
 
 
 def add_scenario(
@@ -770,31 +706,6 @@ def update_scenario_overrides(
     record.updated_at = now
     return record
 
-
-def select_scenario(
-    user_id: str,
-    project_id: str,
-    scenario_id: str,
-) -> bool:
-    """Set the active scenario for the given project in workspace_state."""
-    record = get_scenario(scenario_id, user_id)
-    if record is None:
-        return False
-    ws = get_workspace_state(user_id, project_id)
-    if ws is None:
-        return False
-    save_workspace_state(
-        user_id=user_id,
-        project_id=project_id,
-        project_code=ws.project_code,
-        active_scenario_id=scenario_id,
-        active_scenario_name=record.scenario_name,
-        draft_snapshot=ws.draft_snapshot,
-        saved_snapshot=ws.saved_snapshot if ws.saved_snapshot else ws.draft_snapshot,
-        governance_state=ws.governance_state,
-        replay_metadata={"action": "select_scenario", "scenario_id": scenario_id},
-    )
-    return True
 
 
 def record_workspace_runtime(
