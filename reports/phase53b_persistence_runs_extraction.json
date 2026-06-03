@@ -1,0 +1,92 @@
+{
+  "phase": "53B",
+  "title": "Phase 53B: Run persistence functions extraction",
+  "base_sha": "bcdd687fb3e0f459b8a88cdcee91701b898f7507",
+  "head_sha": "bcdd687fb3e0f459b8a88cdcee91701b898f7507",
+  "type": "behavior-preserving persistence refactor",
+  "group": "D (runs)",
+  "objective": "Move Group D run-related persistence functions from app/persistence/repository.py to app/persistence/runs_repository.py while preserving public compatibility through repository.py.",
+  "module_created": "app/persistence/runs_repository.py",
+  "module_loc": 140,
+  "functions_classes_moved": [
+    {
+      "name": "RunRecord",
+      "kind": "dataclass",
+      "body_loc": 38
+    },
+    {
+      "name": "save_run",
+      "body_loc": 50,
+      "kind": "write"
+    },
+    {
+      "name": "get_run",
+      "body_loc": 7,
+      "kind": "read"
+    },
+    {
+      "name": "list_runs",
+      "body_loc": 9,
+      "kind": "read"
+    },
+    {
+      "name": "delete_run",
+      "body_loc": 5,
+      "kind": "write (DELETE)"
+    },
+    {
+      "name": "count_runs",
+      "body_loc": 6,
+      "kind": "read (COUNT)"
+    }
+  ],
+  "functions_moved_count": 6,
+  "repository_py_loc_before_53b": 1953,
+  "repository_py_loc_after_53b": 1846,
+  "repository_py_loc_delta": -107,
+  "repository_py_facade_changes": {
+    "import_added": "from app.persistence.runs_repository import (RunRecord, save_run, get_run, list_runs, delete_run, count_runs)",
+    "functions_removed_from_repository_body": 6,
+    "facade_type": "module-level re-export"
+  },
+  "behavior_changes": "none",
+  "sql_text_changes": "none (only moved, not modified)",
+  "import_direction_changes": "none",
+  "high_risk_writes_touched": [],
+  "no_go_claims_status": "preserved",
+  "rc1_status": "frozen at b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase53b_persistence_runs_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase53a_persistence_helpers_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "result": "19/19 pass"
+    },
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "hard_gates_pass": true,
+  "recommended_next_step": "53C (Group E exports+audit extraction)"
+}
