@@ -1,0 +1,75 @@
+{
+  "phase": "53G-7",
+  "title": "Extract base-case scenario persistence",
+  "type": "behavior_preserving_refactor",
+  "base_sha": "899bf0d273ead6ba5203003b046279b65b911ca5",
+  "head_sha": "fa52aab75b9c5481af533a8fd897816b21dac792",
+  "branch": "phase53g7-extract-base-case-scenario-persistence",
+  "stack_position": "4 of 4 (53G-4 -> 53G-5 -> 53G-6 -> 53G-7)",
+  "draft": true,
+  "auto_merged": false,
+  "review_required": true,
+  "functions_moved": [
+    {
+      "name": "get_or_create_base_case_scenario",
+      "lines_moved": 86,
+      "risk": "high"
+    },
+    {
+      "name": "get_base_case_scenario",
+      "lines_moved": 14,
+      "risk": "low",
+      "note": "helper moved with the high-risk write because it is the read counterpart used by resolve_active_scenario_runtime_snapshot in scenarios_repository.py"
+    }
+  ],
+  "loc_changes": {
+    "repository.py": {
+      "before": 552,
+      "after": 453,
+      "delta": -99
+    },
+    "scenarios_repository.py": {
+      "before": 478,
+      "after": 600,
+      "delta": 122
+    }
+  },
+  "compatibility_facade": {
+    "get_or_create_base_case_scenario": true,
+    "get_base_case_scenario": true
+  },
+  "p0_pin_status": {
+    "base_case_pin": "RE-POINTED to scenarios_repository.py, 17/17 pass",
+    "save_scenario_pin": "untouched, all pass",
+    "add_scenario_pin": "untouched, all pass",
+    "update_overrides_pin": "untouched, all pass",
+    "coupling_pin": "untouched, all pass"
+  },
+  "tests_run": {
+    "phase53g7_extraction": 10,
+    "phase53g1_base_case_pin": 17,
+    "phase53g1_coupling_pin": 23,
+    "phase53g1_save_scenario_pin": 16,
+    "phase53g1_add_scenario_pin": 19,
+    "phase53g1_update_overrides_pin": 16,
+    "phase53g2_extraction": 27,
+    "phase53g3_extraction": 30,
+    "phase53g4_extraction": 13,
+    "phase53g5_extraction": 8,
+    "phase53g6_extraction": 7,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "previous_phase53_suite": 404,
+    "total": 638
+  },
+  "high_risk_writes_remaining_in_repository": [],
+  "group_b_completion": {
+    "all_4_high_risk_scenario_writes_moved": true,
+    "save_scenario": "moved 53G-4",
+    "add_scenario": "moved 53G-5",
+    "update_scenario_overrides": "moved 53G-6",
+    "get_or_create_base_case_scenario": "moved 53G-7"
+  },
+  "ready_for_review": true
+}

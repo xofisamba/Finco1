@@ -23,6 +23,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_PY = REPO_ROOT / "app" / "persistence" / "repository.py"
+SCENARIOS_PY = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+# After Phase 53G-7, get_or_create_base_case_scenario lives in scenarios_repository.py
+PIN_TARGET = SCENARIOS_PY
 
 
 def _read(path: Path) -> str:
@@ -60,10 +63,16 @@ class TestBaseCaseSignature:
 class TestBaseCaseBody:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_function_defined(self, body: str):
+        # After Phase 53G-7, get_or_create_base_case_scenario lives in scenarios_repository.py
         assert "def get_or_create_base_case_scenario(" in body
+
+    def test_function_not_defined_in_repository(self):
+        # The def should NOT be in repository.py
+        text_repo = _read(REPOSITORY_PY)
+        assert "def get_or_create_base_case_scenario" not in text_repo
 
     def test_select_existing_with_is_base_case_1(self, body: str):
         m = re.search(r"def get_or_create_base_case_scenario\(.*?(?=\n\ndef |\Z)", body, re.DOTALL)
@@ -97,7 +106,7 @@ class TestBaseCaseBody:
 class TestBaseCaseSql:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_select_sql(self, body: str):
         m = re.search(r"def get_or_create_base_case_scenario\(.*?(?=\n\ndef |\Z)", body, re.DOTALL)
@@ -141,7 +150,7 @@ class TestBaseCaseSql:
 class TestBaseCaseReturns:
     @pytest.fixture
     def body(self):
-        return _read(REPOSITORY_PY)
+        return _read(PIN_TARGET)
 
     def test_returned_scenario_has_is_base_case_true(self, body: str):
         m = re.search(r"def get_or_create_base_case_scenario\(.*?(?=\n\ndef |\Z)", body, re.DOTALL)

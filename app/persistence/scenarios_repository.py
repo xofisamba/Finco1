@@ -487,3 +487,112 @@ def update_scenario_overrides(
     record.snapshot = resolved
     record.updated_at = now
     return record
+
+
+# ============================================================
+# Group B high-risk write: get_or_create_base_case_scenario (Phase 53G-7)
+# ============================================================
+
+
+def get_base_case_scenario(user_id: str, project_id: str) -> "Optional[ScenarioRecord]":
+    """Return the non-archived Base Case scenario for a project, if present."""
+    from app.persistence.repository import ScenarioRecord
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM scenarios
+            WHERE user_id=? AND project_id=? AND is_base_case=1 AND archived=0
+            LIMIT 1
+            """,
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+    return ScenarioRecord.from_row(row) if row else None
+
+
+def get_or_create_base_case_scenario(
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    project_name: str,
+    project_type: str,
+    source_project_template: str,
+    base_input_set: dict[str, Any],
+    governance_state: dict[str, Any],
+    replay_metadata: Optional[dict[str, Any]] = None,
+) -> "ScenarioRecord":
+    """Return the existing Base Case scenario for a project, or create one."""
+    from app.persistence.repository import ScenarioRecord
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT * FROM scenarios
+            WHERE user_id=? AND project_id=? AND is_base_case=1 AND archived=0
+            LIMIT 1
+            """,
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+
+    if row:
+        return ScenarioRecord.from_row(row)
+
+    scenario_id = uuid.uuid4().hex[:16]
+    now = _now_utc()
+    governance_state = dict(governance_state or {})
+    rm = dict(replay_metadata or {})
+    rm.setdefault("project_id", project_id)
+    rm.setdefault("scenario_id", scenario_id)
+    rm["is_base_case"] = True
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scenarios (
+                scenario_id, project_id, user_id, scenario_name, project_code,
+                source_project_template, copied_from_scenario_id, archived,
+                is_base_case, parent_scenario_id,
+                base_input_set_json, overrides_json, schema_version,
+                snapshot_json, governance_state_json, last_run_summary_json,
+                replay_metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 1, NULL, ?, ?, '1.0', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scenario_id,
+                project_id,
+                user_id,
+                project_name or "Base Case",
+                project_code,
+                source_project_template,
+                _to_json(base_input_set),
+                _to_json({}),  # overrides_json
+                _to_json(governance_state),
+                _to_json(base_input_set),  # snapshot_json = full input (effective = base + empty overrides)
+                _to_json({}),  # last_run_summary_json
+                _to_json(rm),
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    return ScenarioRecord(
+        scenario_id=scenario_id,
+        project_id=project_id,
+        user_id=user_id,
+        scenario_name=project_name or "Base Case",
+        project_code=project_code,
+        source_project_template=source_project_template,
+        copied_from_scenario_id=None,
+        archived=False,
+        is_base_case=True,
+        parent_scenario_id=None,
+        base_input_set=base_input_set,
+        overrides={},
+        schema_version="1.0",
+        snapshot=base_input_set,
+        governance_state=governance_state,
+        last_run_summary={},
+        replay_metadata=rm,
+        created_at=now,
+        updated_at=now,
+    )
