@@ -63,6 +63,22 @@ from app.persistence.exports_repository import (
 )
 
 
+# Phase 53D: Group A-reads (project reads) re-exported from
+# app.persistence.projects_repository for backward compatibility.
+# The original implementations live in app/persistence/projects_repository.py.
+# Project writes (save_project, create_project_record, update_project_record,
+# seed_baseline_projects_if_needed, etc.) remain in repository.py for now
+# and will move in Group A-2 with the P0 pin for save_project.
+from app.persistence.projects_repository import (
+    get_project,
+    get_project_by_code,
+    list_projects,
+    list_baseline_records,
+    get_project_record,
+    list_project_records,
+)
+
+
 
 
 
@@ -607,42 +623,6 @@ def save_project(
     )
 
 
-def get_project(project_id: str, user_id: str) -> Optional[ProjectRecord]:
-    with get_cursor() as cur:
-        cur.execute("SELECT * FROM projects WHERE project_id=? AND user_id=?", (project_id, user_id))
-        row = cur.fetchone()
-    return ProjectRecord.from_row(row) if row else None
-
-
-def get_project_by_code(user_id: str, project_code: str) -> Optional[ProjectRecord]:
-    with get_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM projects WHERE user_id=? AND project_code=?",
-            (user_id, project_code),
-        )
-        row = cur.fetchone()
-    return ProjectRecord.from_row(row) if row else None
-
-
-def list_projects(user_id: str) -> list[ProjectRecord]:
-    with get_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM projects WHERE user_id=? AND archived=0 ORDER BY updated_at DESC",
-            (user_id,),
-        )
-        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
-
-
-def list_baseline_records(user_id: str) -> list[ProjectRecord]:
-    """Return saved-baseline records (project_origin='saved_baseline') for a user."""
-    with get_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM projects WHERE user_id=? AND project_origin='saved_baseline' AND archived=0 ORDER BY project_name",
-            (user_id,),
-        )
-        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
-
-
 def seed_baseline_projects_if_needed(user_id: str) -> list[ProjectRecord]:
     """
     Ensure TUHO Baseline and Oborovo Baseline exist for user.
@@ -856,34 +836,6 @@ def create_project_record(
         replay_metadata=replay_metadata,
         is_readonly=is_readonly,
     )
-
-
-def get_project_record(
-    *,
-    user_id: str,
-    project_id: Optional[str] = None,
-    project_code: Optional[str] = None,
-) -> Optional[ProjectRecord]:
-    if project_id:
-        return get_project(project_id, user_id)
-    if project_code:
-        return get_project_by_code(user_id, project_code)
-    return None
-
-
-def list_project_records(
-    *,
-    user_id: str,
-    include_archived: bool = False,
-) -> list[ProjectRecord]:
-    query = "SELECT * FROM projects WHERE user_id=?"
-    params: list[Any] = [user_id]
-    if not include_archived:
-        query += " AND archived=0"
-    query += " ORDER BY updated_at DESC"
-    with get_cursor() as cur:
-        cur.execute(query, tuple(params))
-        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
 def update_project_record(

@@ -1,0 +1,115 @@
+{
+  "phase": "53D",
+  "title": "Phase 53D: Project read persistence functions extraction",
+  "base_sha": "868b99e2671aa3ecadcb1dc3f711c0cd38747795",
+  "head_sha": "868b99e2671aa3ecadcb1dc3f711c0cd38747795",
+  "type": "behavior-preserving persistence refactor",
+  "group": "A-reads (project reads)",
+  "objective": "Move Group A-reads (project read) persistence functions from app/persistence/repository.py to app/persistence/projects_repository.py while preserving public compatibility through repository.py. Do NOT touch project write functions.",
+  "module_created": "app/persistence/projects_repository.py",
+  "module_loc": 95,
+  "functions_moved": [
+    {
+      "name": "get_project",
+      "body_loc": 7,
+      "kind": "read"
+    },
+    {
+      "name": "get_project_by_code",
+      "body_loc": 10,
+      "kind": "read"
+    },
+    {
+      "name": "list_projects",
+      "body_loc": 9,
+      "kind": "read"
+    },
+    {
+      "name": "list_baseline_records",
+      "body_loc": 11,
+      "kind": "read (saved-baseline records)"
+    },
+    {
+      "name": "get_project_record",
+      "body_loc": 13,
+      "kind": "read (dispatcher)"
+    },
+    {
+      "name": "list_project_records",
+      "body_loc": 15,
+      "kind": "read (with include_archived flag)"
+    }
+  ],
+  "functions_moved_count": 6,
+  "high_risk_writes_in_group": [],
+  "project_writes_NOT_moved": [
+    "save_project",
+    "seed_baseline_projects_if_needed",
+    "create_project_record",
+    "update_project_record",
+    "_compute_baseline_snapshot",
+    "_sum_opex",
+    "_build_default_snapshot",
+    "_fill_missing_defaults"
+  ],
+  "repository_py_loc_before_53d": 1501,
+  "repository_py_loc_after_53d": 1452,
+  "repository_py_loc_delta": -49,
+  "repository_py_facade_changes": {
+    "import_added": "from app.persistence.projects_repository import (get_project, get_project_by_code, list_projects, list_baseline_records, get_project_record, list_project_records)",
+    "functions_removed_from_repository_body": 6,
+    "facade_type": "module-level re-export"
+  },
+  "behavior_changes": "none",
+  "sql_text_changes": "none (only moved, not modified)",
+  "circular_import_handling": "TYPE_CHECKING + string forward references for ProjectRecord; lazy import inside function bodies",
+  "import_direction_changes": "none",
+  "no_go_claims_status": "preserved",
+  "rc1_status": "frozen at b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "guardrail_updates": [
+    "tests/test_phase52f_persistence_guardrail_regression.py::TestG5RepositorySingleTransactionPattern::test_at_least_20_with_get_cursor_blocks: now sums across all persistence modules (was: only repository.py)"
+  ],
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase53d_persistence_project_reads_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase53c_persistence_exports_audit_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase53b_persistence_runs_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase53a_persistence_helpers_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "result": "19/19 pass"
+    },
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "hard_gates_pass": true,
+  "phase_53_block_1_complete": true,
+  "recommended_next_step": "STOP after 53D. Recommend Claude review of post-Block 1 state before 53E (Group A-2 / project writes)."
+}

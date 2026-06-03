@@ -226,9 +226,23 @@ class TestG5RepositorySingleTransactionPattern:
             assert "connection.commit" not in stripped, f"explicit connection.commit found: {line}"
 
     def test_at_least_20_with_get_cursor_blocks(self):
-        text = _read(REPOSITORY_PY)
-        n = len(re.findall(r"with\s+get_cursor\(\)\s+as\s+cur", text))
-        assert n >= 20, f"expected >= 20 with get_cursor() blocks in repository.py, got {n}"
+        # Phase 53 extraction moves get_cursor blocks out of repository.py
+        # into _helpers.py, runs_repository.py, exports_repository.py, and
+        # projects_repository.py. We check the TOTAL across all persistence
+        # modules to verify the single-transaction pattern is still used.
+        from pathlib import Path
+        total = 0
+        for f in [
+            REPOSITORY_PY,
+            REPO_ROOT / "app" / "persistence" / "_helpers.py",
+            REPO_ROOT / "app" / "persistence" / "runs_repository.py",
+            REPO_ROOT / "app" / "persistence" / "exports_repository.py",
+            REPO_ROOT / "app" / "persistence" / "projects_repository.py",
+        ]:
+            if f.exists():
+                n = len(re.findall(r"with\s+get_cursor\(\)\s+as\s+cur", _read(f)))
+                total += n
+        assert total >= 20, f"expected >= 20 with get_cursor() blocks total in app/persistence, got {total}"
 
 
 # ----------------------------- G6: services use public surface only ----------------------------
