@@ -1,0 +1,244 @@
+{
+  "phase": "54A",
+  "title": "Frontend inventory and UI architecture baseline",
+  "type": "docs_report_test_only",
+  "base_sha": "ab33cbb61bc685311e2c18b57f20ef3f01becfce",
+  "head_sha": "ab33cbb61bc685311e2c18b57f20ef3f01becfce",
+  "branch": "phase54a-frontend-inventory-ui-baseline",
+  "auto_merged": false,
+  "frontend_stack_summary": {
+    "jinja_templates": true,
+    "htmx": true,
+    "custom_css": true,
+    "vanilla_js": true,
+    "alpine_present": false,
+    "tailwind_present": false,
+    "react_present": false,
+    "vue_present": false,
+    "svelte_present": false,
+    "bundler_present": false,
+    "node_npm_present": false
+  },
+  "template_inventory": {
+    "total_templates": 44,
+    "total_loc": 7889,
+    "base_templates": [
+      "app/templates/base.html",
+      "app/templates/login.html"
+    ],
+    "index": [
+      "app/templates/index.html"
+    ],
+    "sheet_partials": [
+      "sheet_capex.html",
+      "sheet_capex_detail.html",
+      "sheet_opex.html",
+      "sheet_opex_detail.html",
+      "sheet_revenue.html",
+      "sheet_production.html",
+      "sheet_construction.html",
+      "sheet_idc.html",
+      "sheet_senior_debt.html",
+      "sheet_shl.html",
+      "sheet_tax.html",
+      "sheet_financials.html",
+      "sheet_inputs.html"
+    ],
+    "workspace_partials": [
+      "workspace_shell.html",
+      "workspace_tabs.html",
+      "scenario_workspace.html",
+      "shared_runtime_block.html",
+      "kpis.html",
+      "errors.html"
+    ],
+    "scenario_partials": [
+      "scenario_tab.html",
+      "scenario_compare.html",
+      "scenario_load_result.html",
+      "scenario_version_history.html",
+      "comparison.html"
+    ],
+    "run_partials": [
+      "runtime_summary.html",
+      "run_history.html",
+      "save_result.html"
+    ],
+    "project_partials": [
+      "project_browser.html",
+      "project_selector.html",
+      "new_project_form.html",
+      "new_project_result.html",
+      "inputs_section.html"
+    ],
+    "audit_export_partials": [
+      "audit_reconciliation_tab.html",
+      "export_registry.html"
+    ],
+    "pilot_partials": [
+      "pilot_help_onboarding.html",
+      "pilot_limitations_notice.html",
+      "pilot_workflow_guide.html"
+    ],
+    "error_empty_partials": [
+      "error_banner.html",
+      "empty_states_notice.html"
+    ],
+    "note": "44 total = 3 base/index + 41 partials",
+    "partials_count": {
+      "sheet": 13,
+      "workspace": 6,
+      "scenario": 5,
+      "run": 3,
+      "project": 5,
+      "audit_export": 2,
+      "pilot": 3,
+      "validation_errors": 2,
+      "debt": 1,
+      "validation": 1,
+      "total": 41
+    }
+  },
+  "static_asset_inventory": [
+    {
+      "file": "static/styles.css",
+      "lines": 4354,
+      "role": "all styling"
+    },
+    {
+      "file": "static/app.js",
+      "lines": 412,
+      "role": "tab switching, draft persistence"
+    },
+    {
+      "file": "static/vendor/htmx.min.js",
+      "bytes": 48101,
+      "role": "HTMX vendor"
+    }
+  ],
+  "htmx_usage_summary": {
+    "vendor_file": "static/vendor/htmx.min.js",
+    "templates_with_hx_attrs": [
+      "new_project_form.html",
+      "project_selector.html",
+      "run_history.html",
+      "scenario_tab.html",
+      "workspace_shell.html"
+    ],
+    "wired_via": [
+      "hx-post",
+      "hx-get",
+      "hx-target",
+      "hx-trigger"
+    ]
+  },
+  "tailwind_alpine_react_presence": {
+    "tailwind": false,
+    "alpine": false,
+    "react": false,
+    "vue": false,
+    "svelte": false
+  },
+  "runtime_impact_taxonomy_status": {
+    "taxonomy_file": "app/runtime_impact_taxonomy.py",
+    "states": [
+      {
+        "name": "Drives model",
+        "meaning": "runtime-effective"
+      },
+      {
+        "name": "Display only",
+        "meaning": "reference/displayed, no runtime effect"
+      },
+      {
+        "name": "Pending",
+        "meaning": "planned/captured, not yet wired"
+      },
+      {
+        "name": "Needs review",
+        "meaning": "ambiguous, validation concern, requires review"
+      }
+    ],
+    "sub_reasons": [
+      "Timing only",
+      "Reference only",
+      "Pending treatment",
+      "Pending runtime source",
+      "Not comparable",
+      "Deferred",
+      "Not applicable",
+      "Fixture-backed",
+      "Frozen schedule",
+      "Source locked",
+      "Validation warning",
+      "Excel parity known gap"
+    ],
+    "ui_display_consistency": "inconsistent \u2014 some sheets show chips, others show plain text",
+    "spec_layer": "implemented in runtime_impact_taxonomy.py",
+    "display_layer": "fragmented across sheets"
+  },
+  "ui_duplication_hotspots": [
+    "13 sheet_*.html partials re-implement row markup, totals, status cells",
+    "KPI cards duplicated in kpis.html and ad-hoc in sheets",
+    "Banners vary: error_banner.html, pilot_* partials, audit_reconciliation_tab.html",
+    "Badges: some pages use class, some inline color",
+    "Runtime Impact chips: spec exists but UI display fragmented",
+    "Forms: new_project_form.html + inputs_section.html duplicate form markup",
+    "Tabs: split between app.js::switchTab and partials"
+  ],
+  "risks": [
+    {
+      "risk": "No design tokens for runtime impact states",
+      "severity": "medium"
+    },
+    {
+      "risk": "No shared LineItemGrid macro",
+      "severity": "high"
+    },
+    {
+      "risk": "Inconsistent badge/chip styling",
+      "severity": "medium"
+    },
+    {
+      "risk": "Single 4354-line styles.css (no module split)",
+      "severity": "low"
+    },
+    {
+      "risk": "No accessibility audit",
+      "severity": "medium"
+    },
+    {
+      "risk": "No dark mode",
+      "severity": "low"
+    },
+    {
+      "risk": "Hard-coded 'Finco One' brand string in CSS comment",
+      "severity": "low"
+    }
+  ],
+  "recommended_next_step": "54B information architecture and workflow map",
+  "tests_run": {
+    "phase54a_optional": "added",
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
