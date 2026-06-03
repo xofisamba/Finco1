@@ -14,17 +14,20 @@ from app.persistence.repository import (
     get_project,
     get_project_by_code,
     get_run,
-    get_scenario,
     get_scenario_history,
     list_exports,
     list_projects,
     list_runs,
-    list_scenarios,
     record_export,
     rename_scenario,
     save_project,
     save_run,
     save_scenario,
+)
+# Phase 53G-2: scenario read functions moved to scenarios_repository
+from app.persistence.scenarios_repository import (
+    get_scenario,
+    list_scenarios,
 )
 
 __all__ = [

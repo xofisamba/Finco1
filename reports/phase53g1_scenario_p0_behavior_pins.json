@@ -3,7 +3,7 @@
   "title": "Pin scenario persistence behavior",
   "type": "behavior_pin",
   "base_sha": "61a5cf278a2b037cd6a616f1349e64e70b71a42f",
-  "head_sha": "TBD",
+  "head_sha": "1768fe465b6d780f2c82ed02f299f6cd4af61d3c",
   "branch": "phase53g1-scenario-p0-behavior-pins",
   "current_repository_inventory": {
     "loc": 922,

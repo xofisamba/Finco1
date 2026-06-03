@@ -228,9 +228,13 @@ class TestSaveScenarioCoupling:
 
 
 class TestResolveScenarioSnapshotCoupling:
-    def test_resolve_scenario_snapshot_in_repository(self):
-        text = _read(REPOSITORY_PY)
-        assert "def resolve_scenario_snapshot(" in text
+    def test_resolve_scenario_snapshot_in_scenarios_repository(self):
+        # After Phase 53G-2, resolve_scenario_snapshot lives in scenarios_repository.py
+        from app.persistence import scenarios_repository
+        assert hasattr(scenarios_repository, "resolve_scenario_snapshot")
+        # It's re-exported from repository.py
+        from app.persistence.repository import resolve_scenario_snapshot
+        assert callable(resolve_scenario_snapshot)
 
     def test_resolve_scenario_snapshot_signature(self):
         # (base_input_set, overrides) -> dict
