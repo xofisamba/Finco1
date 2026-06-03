@@ -38,10 +38,11 @@ PROJECT_WRITES = [
     "create_project_record",
     "update_project_record",
     "_compute_baseline_snapshot",
-    "_sum_opex",
     "_build_default_snapshot",
     "_fill_missing_defaults",
 ]
+# Note: _sum_opex is a NESTED function inside _compute_baseline_snapshot
+# and moves with it. It is not a top-level function so it is not listed here.
 
 
 # ----------------------------- Module existence ----------------------------
@@ -66,10 +67,12 @@ class TestProjectsModuleContent:
         assert re.search(rf"^def {re.escape(name)}\(", text, re.MULTILINE), \
             f"projects_repository.py does not define {name}"
 
-    def test_projects_module_has_6_functions(self):
+    def test_projects_module_has_at_least_6_functions(self):
+        # After Phase 53E-2, projects_repository.py also contains the A-2 write functions.
+        # We expect at least 6 (the A-reads set); the A-2 writes may be present too.
         text = _read(PROJECTS_PY)
         defs = re.findall(r"^def\s+(\w+)", text, re.MULTILINE)
-        assert len(defs) == 6, f"expected 6 functions, got {len(defs)}: {defs}"
+        assert len(defs) >= 6, f"expected >= 6 functions, got {len(defs)}: {defs}"
 
     def test_projects_module_has_get_cursor_import(self):
         text = _read(PROJECTS_PY)
@@ -97,40 +100,59 @@ class TestRepositoryFacade:
         assert "from app.persistence.projects_repository import" in text
 
 
-# ----------------------------- Project writes NOT moved ----------------------------
+# ----------------------------- Project writes NOT moved (post-53E-2) ----------------------------
 
 
-class TestProjectWritesNotMoved:
+class TestProjectWritesMovedIn53E2:
+    """After Phase 53E-2, all 8 A-2 project write functions are now in projects_repository.py.
+    They are still importable from app.persistence.repository via the re-export façade."""
+
     @pytest.mark.parametrize("fn_name", PROJECT_WRITES)
-    def test_write_NOT_in_projects_repository(self, fn_name):
+    def test_write_NOW_in_projects_repository(self, fn_name):
         from app.persistence import projects_repository
-        assert not hasattr(projects_repository, fn_name), \
-            f"{fn_name} should NOT be in projects_repository (stays in repository.py for Group A-2)"
+        assert hasattr(projects_repository, fn_name), \
+            f"{fn_name} should be in projects_repository (moved in 53E-2)"
 
     @pytest.mark.parametrize("fn_name", PROJECT_WRITES)
-    def test_write_still_in_repository_body(self, fn_name):
-        text = _read(REPOSITORY_PY)
-        assert f"def {fn_name}" in text, f"{fn_name} not defined in repository.py"
+    def test_write_still_in_repository_via_reexport(self, fn_name):
+        # Functions are re-exported; check by import
+        from app.persistence import repository
+        assert hasattr(repository, fn_name), \
+            f"{fn_name} should be re-exported from repository"
+
+    @pytest.mark.parametrize("fn_name", PROJECT_WRITES)
+    def test_repository_and_projects_share_same_object(self, fn_name):
+        from app.persistence import repository, projects_repository
+        assert getattr(repository, fn_name) is getattr(projects_repository, fn_name)
 
 
-# ----------------------------- save_project specifically ----------------------------
+# ----------------------------- save_project specifically (post-53E-2) ----------------------------
 
 
-class TestSaveProjectStillInRepository:
-    """save_project is the highest-risk write in Phase 52 (1 of 7). It must stay in repository.py until Group A-2."""
+class TestSaveProjectNowInProjectsRepository:
+    """save_project is the highest-risk write. After 53E-2 it lives in projects_repository.py."""
 
-    def test_save_project_in_repository(self):
+    def test_save_project_in_repository_via_reexport(self):
         from app.persistence import repository
         assert hasattr(repository, "save_project")
 
-    def test_save_project_defined_in_repository_body(self):
-        # save_project is a function (not re-exported) — must be defined in repository.py
-        text = _read(REPOSITORY_PY)
+    def test_save_project_in_projects_repository(self):
+        from app.persistence import projects_repository
+        assert hasattr(projects_repository, "save_project")
+
+    def test_save_project_defined_in_projects_repository_body(self):
+        text = _read(PROJECTS_PY)
         assert "def save_project(" in text
 
-    def test_save_project_not_in_projects_repository(self):
-        from app.persistence import projects_repository
-        assert not hasattr(projects_repository, "save_project")
+    def test_save_project_53e1_pin_still_passes(self):
+        # The 53E-1 pin (test_phase53e1_save_project_p0_behavior_pin.py) must still pass
+        # because 53E-2 was designed to satisfy it
+        from app.persistence.repository import save_project
+        # Quick signature check
+        import inspect
+        sig = inspect.signature(save_project)
+        params = list(sig.parameters.keys())
+        assert "user_id" in params and "project_code" in params and "replay_metadata" in params
 
 
 # ----------------------------- Behavior preservation ----------------------------

@@ -261,12 +261,13 @@ class TestOtherHighRiskWritesNotMovedToExports:
 
 class TestAllHighRiskWritesStillInRepository:
     @pytest.mark.parametrize("fn_name", [
-        "save_project", "save_workspace_state", "save_scenario",
+        "save_workspace_state", "save_scenario",
         "add_scenario", "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])
     def test_non_exports_high_risk_write_still_in_repository_body(self, fn_name):
-        # These 6 are still DEFINED in repository.py (not re-exported)
+        # These 5 are still DEFINED in repository.py (not re-exported)
+        # save_project was moved to projects_repository in Phase 53E-2
         from app.persistence import repository
         assert hasattr(repository, fn_name)
         text = _read(REPOSITORY_PY)

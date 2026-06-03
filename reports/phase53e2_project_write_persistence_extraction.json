@@ -1,0 +1,156 @@
+{
+  "phase": "53E-2",
+  "title": "Phase 53E-2: Extract project write persistence functions",
+  "base_sha": "6ee6544e9d18d0efc3eb0ce1f6099f6c6c2d1ef2",
+  "head_sha": "fcfe109a08e6a5a82c0c170e3468c2ff209eac61",
+  "type": "behavior-preserving persistence refactor",
+  "group": "A-2 (project writes)",
+  "review_required": true,
+  "auto_merge_allowed": false,
+  "objective": "Move Group A-2 project write functions from app/persistence/repository.py to app/persistence/projects_repository.py while preserving public compatibility through repository.py.",
+  "functions_moved": [
+    {
+      "name": "save_project",
+      "body_loc": 96,
+      "is_high_risk": true,
+      "kind": "write (INSERT+UPDATE)"
+    },
+    {
+      "name": "create_project_record",
+      "body_loc": 29,
+      "is_high_risk": false,
+      "kind": "write (wrapper)"
+    },
+    {
+      "name": "update_project_record",
+      "body_loc": 31,
+      "is_high_risk": false,
+      "kind": "write (calls save_project)"
+    },
+    {
+      "name": "seed_baseline_projects_if_needed",
+      "body_loc": 29,
+      "is_high_risk": false,
+      "kind": "write (calls save_project + _compute_baseline_snapshot)"
+    },
+    {
+      "name": "_compute_baseline_snapshot",
+      "body_loc": 123,
+      "is_high_risk": false,
+      "kind": "helper (project seed coupling)"
+    },
+    {
+      "name": "_build_default_snapshot",
+      "body_loc": 10,
+      "is_high_risk": false,
+      "kind": "pure"
+    },
+    {
+      "name": "_fill_missing_defaults",
+      "body_loc": 20,
+      "is_high_risk": false,
+      "kind": "pure"
+    },
+    {
+      "name": "_sum_opex",
+      "body_loc": 5,
+      "is_high_risk": false,
+      "kind": "pure (nested inside _compute_baseline_snapshot)"
+    }
+  ],
+  "functions_moved_count": 8,
+  "high_risk_writes_moved": [
+    "save_project"
+  ],
+  "repository_py_loc_before_53e2": 1452,
+  "repository_py_loc_after_53e2": 1100,
+  "repository_py_loc_delta": -352,
+  "projects_repository_py_loc_before_53e2": 95,
+  "projects_repository_py_loc_after_53e2": 480,
+  "projects_repository_py_loc_delta": 385,
+  "repository_py_facade_changes": {
+    "import_added": "from app.persistence.projects_repository import (save_project, create_project_record, update_project_record, seed_baseline_projects_if_needed, _compute_baseline_snapshot, _build_default_snapshot, _fill_missing_defaults)",
+    "functions_removed_from_repository_body": 7,
+    "facade_type": "module-level re-export"
+  },
+  "compatibility_facade_status": "verified \u2014 from app.persistence.repository import save_project still works",
+  "project_record_handling": "ProjectRecord remains in app.persistence.repository. projects_repository.py uses TYPE_CHECKING + runtime lazy import to avoid circular import.",
+  "behavior_changes": "none",
+  "sql_text_changes": "none (only moved, not modified)",
+  "replay_metadata_behavior": "unchanged (verified by 53E-1 pin)",
+  "governance_state_behavior": "unchanged (verified by 53E-1 pin)",
+  "last_run_summary_behavior": "unchanged (verified by 53E-1 pin)",
+  "runtime_timestamp_behavior": "unchanged (verified by 53E-1 pin)",
+  "project_origin_behavior": "unchanged (verified by 53E-1 pin)",
+  "import_direction_changes": "none",
+  "non_project_high_risk_writes_touched": [],
+  "non_project_high_risk_writes_status": "save_workspace_state, save_scenario, add_scenario, update_scenario_overrides, get_or_create_base_case_scenario still in repository.py (untouched)",
+  "no_go_claims_status": "preserved",
+  "rc1_status": "frozen at b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "test_updates": [
+    "tests/test_phase53e1_save_project_p0_behavior_pin.py: re-pointed to projects_repository.py for SQL fragment checks",
+    "tests/test_phase53d_persistence_project_reads_extraction.py: TestProjectWritesNotMoved -> TestProjectWritesMovedIn53E2 (re-asserts new state)",
+    "tests/test_phase53a_persistence_helpers_extraction.py: removed save_project from 'still in repository body' list",
+    "tests/test_phase53b_persistence_runs_extraction.py: same",
+    "tests/test_phase53c_persistence_exports_audit_extraction.py: same"
+  ],
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase53e2_project_write_persistence_extraction.py",
+      "result": "PASS"
+    },
+    {
+      "test_module": "tests/test_phase53e1_save_project_p0_behavior_pin.py",
+      "result": "41/41 pass (re-pointed)"
+    },
+    {
+      "test_module": "tests/test_phase53d_persistence_project_reads_extraction.py",
+      "result": "PASS (updated)"
+    },
+    {
+      "test_module": "tests/test_phase53a_persistence_helpers_extraction.py",
+      "result": "PASS (updated)"
+    },
+    {
+      "test_module": "tests/test_phase53b_persistence_runs_extraction.py",
+      "result": "PASS (updated)"
+    },
+    {
+      "test_module": "tests/test_phase53c_persistence_exports_audit_extraction.py",
+      "result": "PASS (updated)"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "result": "19/19 pass"
+    },
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    }
+  ],
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "hard_gates_pass": true,
+  "ready_for_review": true,
+  "ready_for_merge": false,
+  "recommended_next_step": "STOP. Wait for user review. Do not start Group C / workspace_state (53F) or Group B / scenarios (53G).",
+  "regression_fix": {
+    "commit_message": "Restored byte-for-byte _compute_baseline_snapshot from origin/main: repository.py@6ee6544e",
+    "reason": "Reviewer found that initial 53E-2 PR had broken _compute_baseline_snapshot (uppercase TUHO/Oborovo, missing early returns, overwritten pi, _sum_opex using amount_keur instead of y1_amount_keur)",
+    "fix_type": "byte_for_byte_restoration",
+    "regression_pin_tests": 26
+  },
+  "regression_pin_test_file": "tests/test_phase53e2_compute_baseline_snapshot_regression_pin.py"
+}
