@@ -1,0 +1,188 @@
+{
+  "phase": "53I-1",
+  "title": "Records field shape and import compatibility pins",
+  "type": "behavior_pin",
+  "base_sha": "258f870416cf4348a9d8658a2d6fc7a86abcad7e",
+  "head_sha": "f3e59755dd1b68ad274fd8f786568ac7dec7db58",
+  "branch": "phase53i1-records-field-shape-import-pins",
+  "record_inventory": [
+    {
+      "name": "ProjectRecord",
+      "defined_in": "app/persistence/repository.py",
+      "line": 191,
+      "field_count": 16,
+      "is_dataclass": true,
+      "has_slots": true
+    },
+    {
+      "name": "ScenarioRecord",
+      "defined_in": "app/persistence/repository.py",
+      "line": 231,
+      "field_count": 19,
+      "is_dataclass": false,
+      "has_slots": true,
+      "note": "manual __init__ with __slots__"
+    },
+    {
+      "name": "WorkspaceStateRecord",
+      "defined_in": "app/persistence/repository.py",
+      "line": 308,
+      "field_count": 19,
+      "is_dataclass": true,
+      "has_slots": true
+    },
+    {
+      "name": "RunRecord",
+      "defined_in": "app/persistence/runs_repository.py",
+      "line": 31,
+      "field_count": 10,
+      "is_dataclass": true,
+      "has_slots": true
+    },
+    {
+      "name": "ScenarioExportRecord",
+      "defined_in": "app/persistence/exports_repository.py",
+      "line": 43,
+      "field_count": 12,
+      "is_dataclass": true,
+      "has_slots": true
+    }
+  ],
+  "field_shape_inventory": {
+    "ProjectRecord": [
+      "project_id",
+      "user_id",
+      "project_code",
+      "project_name",
+      "project_type",
+      "project_origin",
+      "source_project_template",
+      "template_source",
+      "baseline_snapshot",
+      "archived",
+      "is_readonly",
+      "governance_state",
+      "last_run_summary",
+      "replay_metadata",
+      "created_at",
+      "updated_at"
+    ],
+    "ScenarioRecord": [
+      "scenario_id",
+      "project_id",
+      "user_id",
+      "scenario_name",
+      "project_code",
+      "source_project_template",
+      "copied_from_scenario_id",
+      "archived",
+      "is_base_case",
+      "parent_scenario_id",
+      "base_input_set",
+      "overrides",
+      "schema_version",
+      "snapshot",
+      "governance_state",
+      "last_run_summary",
+      "replay_metadata",
+      "created_at",
+      "updated_at"
+    ],
+    "WorkspaceStateRecord": [
+      "workspace_id",
+      "project_id",
+      "user_id",
+      "project_code",
+      "active_scenario_id",
+      "active_scenario_name",
+      "draft_snapshot",
+      "saved_snapshot",
+      "last_runtime_snapshot",
+      "last_runtime_summary",
+      "last_runtime_snapshot_id",
+      "last_runtime_origin",
+      "last_runtime_scenario_id",
+      "dirty",
+      "governance_state",
+      "replay_metadata",
+      "created_at",
+      "updated_at",
+      "last_runtime_at"
+    ],
+    "RunRecord": [
+      "run_id",
+      "user_id",
+      "project_type",
+      "scenario",
+      "created_at",
+      "inputs",
+      "kpis",
+      "excel_path",
+      "notes",
+      "replay_metadata"
+    ],
+    "ScenarioExportRecord": [
+      "export_id",
+      "scenario_id",
+      "project_id",
+      "user_id",
+      "export_type",
+      "artifact_name",
+      "artifact_path",
+      "project_code",
+      "governance_state",
+      "runtime_snapshot_id",
+      "replay_metadata",
+      "created_at"
+    ]
+  },
+  "import_path_inventory": {
+    "ProjectRecord_repository": "from app.persistence.repository import ProjectRecord",
+    "ProjectRecord_app_persistence": "from app.persistence import ProjectRecord (re-exported)",
+    "ScenarioRecord_repository": "from app.persistence.repository import ScenarioRecord",
+    "ScenarioRecord_app_persistence": "from app.persistence import ScenarioRecord (re-exported)",
+    "WorkspaceStateRecord_repository": "from app.persistence.repository import WorkspaceStateRecord",
+    "WorkspaceStateRecord_app_persistence": "NOT re-exported (internal use only)",
+    "RunRecord_runs_repository": "from app.persistence.runs_repository import RunRecord",
+    "RunRecord_app_persistence": "from app.persistence import RunRecord (re-exported)",
+    "RunRecord_repository": "from app.persistence.repository import RunRecord (re-exported)",
+    "ScenarioExportRecord_exports_repository": "from app.persistence.exports_repository import ScenarioExportRecord",
+    "ScenarioExportRecord_app_persistence": "from app.persistence import ScenarioExportRecord (re-exported)",
+    "ScenarioExportRecord_repository": "from app.persistence.repository import ScenarioExportRecord (re-exported)"
+  },
+  "lazy_import_summary": {
+    "scenarios_repository_py_lazy_record_imports_current": 5,
+    "scenarios_repository_py_lazy_record_imports_after_53i3": 0,
+    "projects_repository_py_lazy_record_imports_current": 5,
+    "projects_repository_py_lazy_record_imports_after_53i3": 0,
+    "workspace_repository_py_lazy_record_imports_current": 3,
+    "workspace_repository_py_lazy_record_imports_after_53i3": 0
+  },
+  "compatibility_requirements": [
+    "All 5 records importable from app.persistence.records (NEW path, post-53I-2)",
+    "All 5 records still importable from app.persistence.repository (compatibility facade)",
+    "4 records re-exported from app.persistence (ProjectRecord, ScenarioRecord, RunRecord, ScenarioExportRecord)",
+    "WorkspaceStateRecord NOT re-exported from app.persistence (pre-existing behavior, no change)",
+    "Object identity preserved: same class object across paths",
+    "Field shapes preserved exactly",
+    "from_row methods preserved exactly",
+    "__slots__ preserved for all 5 records",
+    "No new lazy import cycle introduced"
+  ],
+  "tests_run": {
+    "phase53i1_pins": 35,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "phase53g1_pins_total": 91,
+    "total": 176
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing",
+    "test_phase52b_persistence_side_effect_map: pre-existing",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing"
+  ],
+  "recommended_next_step": "53I-2 records.py relocation"
+}
