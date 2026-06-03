@@ -1,0 +1,14 @@
+{
+  "phase": "51S-2",
+  "route": "POST /scenarios/{scenario_id}/select",
+  "handler": "select_scenario_endpoint",
+  "service_module": "app/services/scenario_select_service.py",
+  "callables_in_deps": 6,
+  "tests": {
+    "test_phase51s2_scenario_select_route_vertical_extraction": {"count": 27, "pass": 27, "status": "PASS"},
+    "test_phase51s1_scenario_select_route_golden_characterization": {"count": 54, "pass": 54, "status": "PASS (re-pointed)"},
+    "test_phase51f_parallel_work_guardrails": {"count": 21, "pass": 21, "status": "PASS"}
+  },
+  "rc1_touched": false,
+  "ready_for_merge": true
+}
