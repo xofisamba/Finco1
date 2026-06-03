@@ -24,9 +24,9 @@
   "disclaimers": {
     "phase_52_is_mapping_only_not_refactor": true,
     "phase_52_zero_production_code_changes": true,
-    "phase_53_ready_but_not_executed": true,
-    "phase_53_not_executed_by_agent_b": true,
     "phase_53_not_implemented_by_agent_b": true,
+    "phase_53_status_at_branch_creation_was_ready": true,
+    "phase_53_status_at_pr_creation": "53A_53B_merged_53C_53J_planned",
     "no_persistence_or_repository_code_changes_by_agent_b": true,
     "no_product_capability_claim": true,
     "no_model_validation_claim": true,
@@ -112,7 +112,7 @@
     "post_51t_review_separate": true
   },
   "evidence_still_missing": [
-    "Phase 53 PRs (53A-53J) merged to main. The Phase 53 PRs are planned, not yet merged.",
+    "Some Phase 53 PRs (53A, 53B) have merged to main between branch creation and PR creation. The remaining Phase 53 PRs (53C-53J) are planned but not yet merged. The B24-B29 pack does not claim to reflect the 53A/53B results; a future B-track governance refresh is expected to reconcile.",
     "12 must-pin items pinned. The 12 must-pin items are identified, not yet pinned. P0 items are blockers; P1 items may be deferred.",
     "Persistence layer refactor executed. The refactor is planned for Phase 53, not performed.",
     "External reviewer run completed. The external reviewer has not yet run the controlled review.",
@@ -157,7 +157,7 @@
   },
   "global_notes": [
     "Phase 52 is mapping and planning only. Phase 52 made zero production code changes. The repository / persistence refactor is planned for Phase 53, not performed in Phase 52.",
-    "Phase 53 is ready but not executed. Agent B does not implement Phase 53. Agent A executes Phase 53.",
+    "Phase 53 status at branch creation (PR #428 merge commit, Phase 52G closeout): planned and ready, not yet started by Agent A. Phase 53 status at PR creation: in progress, with 53A (PR #429) and 53B (PR #430) merged to main and 53C-53J still planned. Agent B does not implement Phase 53. Agent A executes Phase 53. The B24-B29 pack does not claim to reflect the 53A/53B results; a future B-track governance refresh is expected to reconcile.",
     "The post-Phase 52 readiness state is an internal planning estimate, not external validation, not a customer reference, not production readiness, and not paid pilot authorization.",
     "The readiness percentages are conservative and are based on the project's internal self-assessment. They are not externally validated.",
     "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification.",

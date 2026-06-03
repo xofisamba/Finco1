@@ -140,6 +140,14 @@ checklist:
 
 ## 2. Per-milestone refresh (Agent B)
 
+> The per-milestone refresh sections below are written for
+> **future** Phase 53 PRs. As of PR creation, 53A (PR #429)
+> and 53B (PR #430) have already landed on main. The B-track
+> governance refresh for 53A and 53B is the responsibility
+> of a follow-up B-track governance refresh branch (for
+> example B30+); the B29 checklist was authored before
+> 53A/53B and applies to subsequent PRs in the sequence.
+
 The B-track governance refresh is required at the
 following milestones:
 

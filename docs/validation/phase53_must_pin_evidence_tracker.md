@@ -330,6 +330,16 @@ extraction.
 
 ## 7. Per-PR pin progress tracking
 
+> This per-PR pin progress is a **planning convention**
+> for the Phase 53 PRs. As of PR creation, 53A (PR #429) and
+> 53B (PR #430) have landed on main; this section does not
+> claim to reflect their pin state. The
+> `current_status: identified` value for all 12 must-pin
+> items in the items table above is the value at branch
+> creation; an actual pin is recorded only after the
+> corresponding Phase 53 PR's pin tests pass on main and the
+> B26 tracker is refreshed.
+
 The B-track governance review of each Phase 53 PR will
 update the must-pin status of the relevant items. The
 expected mapping is:

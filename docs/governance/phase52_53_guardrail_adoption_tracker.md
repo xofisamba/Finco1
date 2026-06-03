@@ -184,7 +184,10 @@ The 4 deferred guardrails from Phase 52F are:
 ### D1 — route no-refattening
 
 * **Implementation status:** deferred.
-* **Deferred to:** Phase 53G/53J (manual).
+* **Deferred to:** Phase 53G/53J (manual). *(As of branch
+  creation, 53F and 53G were planned but not yet executed
+  by Agent A; 53A and 53B have since merged on main. The
+  deferral target is a planning convention.)*
 * **False-positive risk:** high.
 * **Reason for deferral:** sensitive to inline comments,
   blank lines, and docstring counting; would be brittle.
@@ -197,7 +200,10 @@ The 4 deferred guardrails from Phase 52F are:
 ### D2 — service-count / no-new-service-without-justification
 
 * **Implementation status:** deferred.
-* **Deferred to:** Phase 53F (soft check).
+* **Deferred to:** Phase 53F (soft check). *(As of branch
+  creation, 53F was planned but not yet executed by Agent A;
+  53A and 53B have since merged on main. The deferral target
+  is a planning convention.)*
 * **False-positive risk:** medium.
 * **Reason for deferral:** count-only check is brittle;
   justification check is too opinionated.

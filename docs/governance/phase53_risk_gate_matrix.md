@@ -9,10 +9,14 @@ execute.
 > Phase 53. Agent B tracks the risk and gate matrix and
 > refreshes the B-track artifacts when Phase 53 lands.
 >
-> **Phase 53 is not yet executed.** The risk and gate matrix
-> is the planning artifact for the upcoming Phase 53 work.
-> No Phase 53 results are represented in this branch as
-> completed.
+> **Phase 53 is partially executed by Agent A.** As of branch
+> creation (Phase 52G closeout, PR #428), Phase 53 was
+> planned and ready but not yet executed. PRs #429 (Phase
+> 53A) and #430 (Phase 53B) have since landed on main. The
+> remaining Phase 53 PRs (53C-53J) are still planned. This
+> B-track pack is the governance wrapper for the full
+> sequence; the B24-B29 pack does not claim to reflect the
+> 53A/53B results.
 >
 > **No persistence or repository code changes by Agent B.**
 > Agent B is docs-only. The risk and gate matrix is the B-track
@@ -43,7 +47,8 @@ sequential; it is a recommendation that minimizes blast
 radius and maximizes safety.
 
 * **F** — Group F helpers (recommended first action: 53A
-  Group F helpers).
+  Group F helpers). *(Recommended by the Phase 52G closeout;
+  53A has since landed on main as PR #429.)*
 * **D** — Group D.
 * **E** — Group E.
 * **A-reads** — Group A reads (sub-group of A).

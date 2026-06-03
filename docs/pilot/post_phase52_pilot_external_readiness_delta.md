@@ -154,8 +154,13 @@ workstream.
 The following evidence is still missing after Phase 52 and
 remains missing:
 
-* **Phase 53 PRs (53A-53J) merged to main.** The Phase 53
-  PRs are planned, not yet merged.
+* **Phase 53 PRs (53A, 53B) merged to main.** Some Phase 53
+  PRs (53A, 53B) have merged to main between branch
+  creation and PR creation. The remaining Phase 53 PRs
+  (53C-53J) are planned but not yet merged. The B24-B29
+  pack does not claim to reflect the 53A/53B results; a
+  future B-track governance refresh is expected to
+  reconcile.
 * **12 must-pin items pinned.** The 12 must-pin items are
   identified, not yet pinned. P0 items are blockers; P1
   items may be deferred.

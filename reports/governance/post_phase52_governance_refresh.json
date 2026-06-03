@@ -23,8 +23,9 @@
   "disclaimers": {
     "phase_52_is_mapping_only_not_refactor": true,
     "phase_52_zero_production_code_changes": true,
-    "phase_53_ready_but_not_executed_by_agent_b": true,
     "phase_53_not_implemented_by_agent_b": true,
+    "phase_53_status_at_branch_creation_was_ready": true,
+    "phase_53_status_at_pr_creation": "in_progress_agent_a_53A_53B_merged_53C_53J_planned",
     "no_persistence_or_repository_code_changes_by_agent_b": true,
     "no_product_capability_claim": true,
     "no_model_validation_claim": true,
@@ -85,18 +86,25 @@
     "no enterprise SaaS readiness"
   ],
   "phase_53_state": {
-    "phase_53_status": "ready_but_not_executed",
+    "status_at_branch_creation": "ready_but_not_started",
+    "status_at_pr_creation": "in_progress_agent_a_53A_53B_merged_53C_53J_planned",
     "phase_53_executor": "Agent A",
-    "phase_53_not_executed_by": "Agent B",
+    "phase_53_not_implemented_by": "Agent B",
     "refactor_order": ["F", "D", "E", "A-reads", "A-2", "C", "B"],
     "planned_pr_sequence": ["53A", "53B", "53C", "53D", "53E", "53F", "53G", "53H", "53I", "53J"],
     "planned_pr_sequence_count": 10,
+    "merged_at_pr_creation": ["53A", "53B"],
+    "merged_at_pr_creation_prs": [
+      {"pr": 429, "phase_id": "53A", "title": "Phase 53A: Extract persistence helper functions"},
+      {"pr": 430, "phase_id": "53B", "title": "Phase 53B: Extract run persistence functions"}
+    ],
     "auto_merge_policy": {
       "auto_merge_class_allowed_if_checks_pass": ["F", "D", "E", "A-reads"],
       "review_required": ["A-2", "C"],
       "sign_off_required": ["B"]
     },
     "recommended_first_action": "53A Group F helpers",
+    "recommended_first_action_note": "Recommended by the Phase 52G closeout (PR #428). 53A has since landed on main as PR #429. The remaining Phase 53 PRs 53C-53J are still planned.",
     "hard_stop_conditions_defined": true
   },
   "post_phase_52_readiness_state": {
@@ -134,16 +142,19 @@
   "summary": {
     "phase_52_closed": true,
     "phase_52_made_zero_production_code_changes": true,
-    "phase_53_ready_but_not_executed": true,
+    "phase_53_not_implemented_by_agent_b": true,
+    "phase_53_status_at_branch_creation_was_ready": true,
+    "phase_53_status_at_pr_creation": "in_progress_agent_a_53A_53B_merged_53C_53J_planned",
     "no_persistence_refactor": true,
     "no_external_validation": true,
     "no_paid_pilot_authorization": true,
-    "phase_53_first_recommended_action": "53A Group F helpers"
+    "phase_53_first_recommended_action": "53A Group F helpers",
+    "phase_53_first_recommended_action_note": "Recommended by the Phase 52G closeout (PR #428). 53A has since landed on main as PR #429. The remaining Phase 53 PRs 53C-53J are still planned."
   },
   "global_notes": [
     "This refresh is docs-only. No code, route, service, template, static, fixture, schema, migration, persistence, or repository changes.",
     "Phase 52 made zero production code changes. Phase 52 is mapping and planning only. The repository / persistence refactor is planned for Phase 53.",
-    "Phase 53 is ready but not executed. Agent B does not implement Phase 53. Agent A executes Phase 53.",
+    "Phase 53 status at branch creation (PR #428 merge commit, Phase 52G closeout): planned and ready, not yet started by Agent A. Phase 53 status at PR creation: in progress, with 53A (PR #429) and 53B (PR #430) merged to main and 53C-53J still planned. Agent B does not implement Phase 53. Agent A executes Phase 53. The B24-B29 pack does not claim to reflect the 53A/53B results; a future B-track governance refresh is expected to reconcile.",
     "The post-Phase 52 governance state is an internal planning estimate, not external validation, not a customer reference, not production readiness, and not paid pilot authorization.",
     "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification.",
     "The 12 must-pin items are tracked in B26. The 6 structural guardrails (G1-G6) and the 21 → 31 behavior guardrail test count change are tracked in B27. The Phase 53 risk & gate matrix is in B25. The pilot / external review readiness delta is in B28. The Phase 53 change-control checklist is in B29."
