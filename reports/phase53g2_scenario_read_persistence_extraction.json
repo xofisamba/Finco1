@@ -1,0 +1,104 @@
+{
+  "phase": "53G-2",
+  "title": "Extract scenario read persistence functions",
+  "type": "behavior_preserving_refactor",
+  "base_sha": "5e06e46f80845a6d492b2851de461e5a99810de3",
+  "head_sha": "7ff3ef36144b43db3bb6b53bd8011163b0315641",
+  "branch": "phase53g2-extract-scenario-read-persistence",
+  "auto_merged": true,
+  "new_module": "app/persistence/scenarios_repository.py",
+  "functions_moved": [
+    {
+      "name": "get_scenario",
+      "lines_moved": 4,
+      "risk": "low"
+    },
+    {
+      "name": "list_scenarios",
+      "lines_moved": 20,
+      "risk": "low"
+    },
+    {
+      "name": "resolve_scenario_snapshot",
+      "lines_moved": 16,
+      "risk": "low"
+    },
+    {
+      "name": "resolve_active_scenario_runtime_snapshot",
+      "lines_moved": 50,
+      "risk": "low"
+    }
+  ],
+  "loc_changes": {
+    "repository.py": {
+      "before": 922,
+      "after": 826,
+      "delta": -96
+    },
+    "scenarios_repository.py": {
+      "before": 0,
+      "after": 200,
+      "delta": 200
+    }
+  },
+  "compatibility_facade": {
+    "get_scenario": true,
+    "list_scenarios": true,
+    "resolve_scenario_snapshot": true,
+    "resolve_active_scenario_runtime_snapshot": true
+  },
+  "p0_pin_status": {
+    "pin_files": [
+      "tests/test_phase53g1_scenario_workspace_coupling_p0_pin.py",
+      "tests/test_phase53g1_save_scenario_p0_behavior_pin.py",
+      "tests/test_phase53g1_add_scenario_p0_behavior_pin.py",
+      "tests/test_phase53g1_update_overrides_p0_behavior_pin.py",
+      "tests/test_phase53g1_base_case_p0_behavior_pin.py"
+    ],
+    "tests_re_pointed": 1,
+    "passes": true
+  },
+  "tests_run": {
+    "phase53g1_coupling": 23,
+    "phase53g1_save_scenario": 18,
+    "phase53g1_add_scenario": 19,
+    "phase53g1_update_overrides": 16,
+    "phase53g1_base_case": 14,
+    "phase53g2_extraction": 31,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "previous_phase53_suite": 475,
+    "total": 646
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing, repository.py now 826 LOC vs 2042 baseline",
+    "test_phase52b_persistence_side_effect_map: pre-existing, lazy import pattern",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing, lazy import pattern"
+  ],
+  "no_scope_creep": {
+    "no_route_touched": true,
+    "no_service_touched": true,
+    "no_model_touched": true,
+    "no_parity_core_touched": true,
+    "no_schema_touched": true,
+    "no_js_touched": true,
+    "no_formula_touched": true,
+    "no_fixture_touched": true,
+    "rc1_untouched": true,
+    "no_sql_text_changes": true,
+    "no_replay_metadata_shape_changes": true,
+    "no_governance_state_shape_changes": true,
+    "no_last_run_summary_shape_changes": true,
+    "no_dataclass_relocation": true
+  },
+  "high_risk_writes_untouched": {
+    "save_scenario": "in repository.py (53G-4)",
+    "add_scenario": "in repository.py (53G-5)",
+    "update_scenario_overrides": "in repository.py (53G-6)",
+    "get_or_create_base_case_scenario": "in repository.py (53G-7)"
+  },
+  "recommended_next_step": "53G-3 extract low-risk scenario actions (auto-merge allowed)"
+}
