@@ -238,6 +238,8 @@ class TestG5RepositorySingleTransactionPattern:
             REPO_ROOT / "app" / "persistence" / "runs_repository.py",
             REPO_ROOT / "app" / "persistence" / "exports_repository.py",
             REPO_ROOT / "app" / "persistence" / "projects_repository.py",
+            REPO_ROOT / "app" / "persistence" / "scenarios_repository.py",
+            REPO_ROOT / "app" / "persistence" / "workspace_repository.py",
         ]:
             if f.exists():
                 n = len(re.findall(r"with\s+get_cursor\(\)\s+as\s+cur", _read(f)))

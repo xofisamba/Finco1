@@ -181,7 +181,10 @@ class TestUpdateScenarioOverridesCoupling:
 
 class TestAddScenarioCoupling:
     def test_add_scenario_stores_base_overrides_resolved(self):
-        text = _read(REPOSITORY_PY)
+        # After Phase 53G-5, add_scenario lives in scenarios_repository.py
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def add_scenario\(.*?(?=\n\ndef |\Z)", text, re.DOTALL)
         body = m.group(0)
         # All three columns stored
@@ -192,7 +195,9 @@ class TestAddScenarioCoupling:
         assert "_to_json(resolved)" in body
 
     def test_add_scenario_records_action_in_replay_metadata(self):
-        text = _read(REPOSITORY_PY)
+        from pathlib import Path
+        scenarios_py = REPO_ROOT / "app" / "persistence" / "scenarios_repository.py"
+        text = scenarios_py.read_text(encoding="utf-8")
         m = re.search(r"def add_scenario\(.*?(?=\n\ndef |\Z)", text, re.DOTALL)
         body = m.group(0)
         assert 'replay_metadata["action"] = "add_scenario"' in body

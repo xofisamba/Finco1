@@ -1,0 +1,72 @@
+{
+  "phase": "53G-5",
+  "title": "Extract add_scenario persistence",
+  "type": "behavior_preserving_refactor",
+  "base_sha": "084ef6ba99a339d64785bb88fcca21b4104eb5ac",
+  "head_sha": "1fbe2923463737e4b250ce3093ac3df679649e28",
+  "branch": "phase53g5-extract-add-scenario-persistence",
+  "stack_position": "2 of 4 (53G-4 -> 53G-5 -> 53G-6 -> 53G-7)",
+  "draft": true,
+  "auto_merged": false,
+  "review_required": true,
+  "functions_moved": [
+    {
+      "name": "add_scenario",
+      "lines_moved": 80,
+      "risk": "high"
+    }
+  ],
+  "loc_changes": {
+    "repository.py": {
+      "before": 680,
+      "after": 600,
+      "delta": -80
+    },
+    "scenarios_repository.py": {
+      "before": 346,
+      "after": 432,
+      "delta": 86
+    }
+  },
+  "compatibility_facade": {
+    "add_scenario": true
+  },
+  "p0_pin_status": {
+    "add_scenario_pin": "RE-POINTED to scenarios_repository.py, 19/19 pass",
+    "save_scenario_pin": "untouched, all pass",
+    "coupling_pin_add_scenario_tests": "RE-POINTED to scenarios_repository.py, 2/2 pass",
+    "coupling_pin_save_scenario_tests": "untouched, all pass",
+    "update_overrides_pin": "untouched, all pass",
+    "base_case_pin": "untouched, all pass"
+  },
+  "g5_guardrail_update": {
+    "files_added": [
+      "scenarios_repository.py",
+      "workspace_repository.py"
+    ],
+    "reason": "Cross-module total of with_get_cursor() blocks needs to include new modules",
+    "threshold": ">= 20 (unchanged)",
+    "weakening": false
+  },
+  "tests_run": {
+    "phase53g5_extraction": 8,
+    "phase53g1_add_scenario_pin": 19,
+    "phase53g1_coupling_pin": 23,
+    "phase53g1_save_scenario_pin": 16,
+    "phase53g1_update_overrides_pin": 16,
+    "phase53g1_base_case_pin": 14,
+    "phase53g2_extraction": 27,
+    "phase53g3_extraction": 30,
+    "phase53g4_extraction": 13,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "previous_phase53_suite": 416,
+    "total": 632
+  },
+  "high_risk_writes_remaining_in_repository": [
+    "update_scenario_overrides (53G-6)",
+    "get_or_create_base_case_scenario (53G-7)"
+  ],
+  "ready_for_review": true
+}
