@@ -6,7 +6,7 @@ app.persistence.repository for backward compatibility.
 
 Function inventory (Group E, from Phase 52A/52C/52E/52G):
 
-- ScenarioExportRecord (dataclass)
+- ScenarioExportRecord (moved to records.py in Phase 53I-2)
 - record_export           (high-risk write, audited by Phase 49 tests)
 - list_exports
 - get_scenario_history
@@ -31,45 +31,14 @@ SQL text. Replay_metadata defaulting is preserved verbatim.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Optional
 
 from app.persistence._helpers import _from_iso, _from_json, _now_utc, _to_json, snapshots_equal
 from app.persistence.db import get_cursor
+# Phase 53I-2: ScenarioExportRecord moved to app/persistence/records.py
+from app.persistence.records import ScenarioExportRecord
 
 
-@dataclass(slots=True)
-class ScenarioExportRecord:
-    export_id: str
-    scenario_id: Optional[str]
-    project_id: Optional[str]
-    user_id: str
-    export_type: str
-    artifact_name: str
-    artifact_path: Optional[str]
-    project_code: str
-    governance_state: dict[str, Any]
-    runtime_snapshot_id: Optional[str]
-    replay_metadata: dict[str, Any]
-    created_at: datetime
-
-    @classmethod
-    def from_row(cls, row) -> "ScenarioExportRecord":
-        return cls(
-            export_id=row["export_id"],
-            scenario_id=row["scenario_id"],
-            project_id=row["project_id"],
-            user_id=row["user_id"],
-            export_type=row["export_type"],
-            artifact_name=row["artifact_name"],
-            artifact_path=row["artifact_path"],
-            project_code=row["project_code"],
-            governance_state=_from_json(row["governance_state_json"], {}),
-            runtime_snapshot_id=row["runtime_snapshot_id"],
-            replay_metadata=_from_json(row["replay_metadata_json"], {}),
-            created_at=_from_iso(row["created_at"]),
-        )
 
 
 def record_export(

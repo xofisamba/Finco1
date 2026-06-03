@@ -1,0 +1,130 @@
+{
+  "phase": "53I-2",
+  "title": "Create records module and relocate persistence records",
+  "type": "mechanical_runtime_refactor",
+  "base_sha": "e88965f5c44775ad8e2cdbdb4db6fe59bb2a6d6e",
+  "head_sha": "cf2ef70e707e9e28e6203d2a492f9b24ca3e9f1c",
+  "branch": "phase53i2-create-records-module",
+  "auto_merged": true,
+  "functions_moved": [
+    {
+      "name": "ProjectRecord (dataclass)",
+      "lines_moved": 41,
+      "from": "repository.py:189",
+      "to": "records.py"
+    },
+    {
+      "name": "ScenarioRecord (manual)",
+      "lines_moved": 76,
+      "from": "repository.py:230",
+      "to": "records.py"
+    },
+    {
+      "name": "WorkspaceStateRecord (dataclass)",
+      "lines_moved": 47,
+      "from": "repository.py:306",
+      "to": "records.py"
+    },
+    {
+      "name": "RunRecord (dataclass)",
+      "lines_moved": 41,
+      "from": "runs_repository.py:31",
+      "to": "records.py"
+    },
+    {
+      "name": "ScenarioExportRecord (dataclass)",
+      "lines_moved": 33,
+      "from": "exports_repository.py:43",
+      "to": "records.py"
+    }
+  ],
+  "loc_changes": {
+    "records.py": {
+      "before": 0,
+      "after": 285,
+      "delta": 285
+    },
+    "repository.py": {
+      "before": 455,
+      "after": 310,
+      "delta": -145
+    },
+    "runs_repository.py": {
+      "before": 140,
+      "after": 110,
+      "delta": -30
+    },
+    "exports_repository.py": {
+      "before": 386,
+      "after": 360,
+      "delta": -26
+    }
+  },
+  "compatibility_facade": {
+    "ProjectRecord": {
+      "records": true,
+      "repository": true,
+      "init": true
+    },
+    "ScenarioRecord": {
+      "records": true,
+      "repository": true,
+      "init": true
+    },
+    "WorkspaceStateRecord": {
+      "records": true,
+      "repository": true,
+      "init": false
+    },
+    "RunRecord": {
+      "records": true,
+      "repository": true,
+      "init": true,
+      "runs_repository": true
+    },
+    "ScenarioExportRecord": {
+      "records": true,
+      "repository": true,
+      "init": true,
+      "exports_repository": true
+    }
+  },
+  "object_identity_pins": {
+    "ProjectRecord": "A is B is C (records, repository, init)",
+    "ScenarioRecord": "A is B is C (records, repository, init)",
+    "WorkspaceStateRecord": "A is B (records, repository)",
+    "RunRecord": "A is B is C is D (records, runs_repository, repository, init)",
+    "ScenarioExportRecord": "A is B is C is D (records, exports_repository, repository, init)"
+  },
+  "p0_pin_status": {
+    "save_scenario_pin": "untouched, all pass",
+    "add_scenario_pin": "untouched, all pass",
+    "update_overrides_pin": "untouched, all pass",
+    "base_case_pin": "untouched, all pass",
+    "coupling_pin": "untouched, all pass",
+    "53i1_field_shape_pins": "36/36 pass (re-pointed, 1 new test added)"
+  },
+  "tests_run": {
+    "phase53i1_pins_repointed": 36,
+    "phase53i2_new": 21,
+    "phase53g1_pins_total": 91,
+    "phase53g2_7_repointed": 71,
+    "phase53g8_53h1_53h2_informational": 49,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "total": 318
+  },
+  "sql_text_changes": false,
+  "metadata_shape_changes": false,
+  "route_service_changes": false,
+  "rc1_untouched": true,
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52a_persistence_files_loc: pre-existing",
+    "test_phase52b_persistence_side_effect_map: pre-existing",
+    "test_phase52c_repository_caller_coupling_graph: pre-existing"
+  ],
+  "recommended_next_step": "53I-3 remove record lazy imports"
+}

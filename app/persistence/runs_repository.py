@@ -6,7 +6,7 @@ app.persistence.repository for backward compatibility.
 
 Function inventory (Group D, from Phase 52A/52C/52E/52G):
 
-- RunRecord (dataclass)
+- RunRecord (moved to records.py in Phase 53I-2)
 - save_run
 - get_run
 - list_runs
@@ -19,55 +19,14 @@ change is the file location.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Optional
 
 from app.persistence._helpers import _from_iso, _from_json, _now_utc, _to_json
 from app.persistence.db import get_cursor
+# Phase 53I-2: RunRecord moved to app/persistence/records.py
+from app.persistence.records import RunRecord
 
 
-@dataclass(slots=True)
-class RunRecord:
-    run_id: str
-    user_id: str
-    project_type: str
-    scenario: str
-    created_at: datetime
-    inputs: dict[str, Any]
-    kpis: dict[str, Any]
-    excel_path: Optional[str] = None
-    notes: Optional[str] = None
-    replay_metadata: dict[str, Any] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "run_id": self.run_id,
-            "user_id": self.user_id,
-            "project_type": self.project_type,
-            "scenario": self.scenario,
-            "created_at": self.created_at.isoformat(),
-            "inputs": self.inputs,
-            "kpis": self.kpis,
-            "excel_path": self.excel_path,
-            "notes": self.notes,
-            "replay_metadata": self.replay_metadata or {},
-        }
-
-    @classmethod
-    def from_row(cls, row) -> "RunRecord":
-        return cls(
-            run_id=row["run_id"],
-            user_id=row["user_id"],
-            project_type=row["project_type"],
-            scenario=row["scenario"],
-            created_at=_from_iso(row["created_at"]),
-            inputs=_from_json(row["inputs_json"], {}),
-            kpis=_from_json(row["kpis_json"], {}),
-            excel_path=row["excel_path"],
-            notes=row["notes"],
-            replay_metadata=_from_json(row["replay_metadata_json"], {}),
-        )
 
 
 def save_run(
