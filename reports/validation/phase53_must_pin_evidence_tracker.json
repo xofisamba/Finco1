@@ -1,0 +1,322 @@
+{
+  "package": {
+    "name": "Finco1 Phase 53 Must-Pin / Evidence Tracker",
+    "workstream": "B26",
+    "branch": "parallel-b24-b29-post-phase52-governance-pack",
+    "branch_base_sha": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "package_base_sha_at_creation": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "tracker_version": "0.1.0",
+    "tracker_status": "initial_draft",
+    "intended_use": "internal_phase53_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/validation/phase53_must_pin_evidence_tracker.md",
+  "source_reports": {
+    "phase_52d_source": "reports/phase52d_persistence_behavior_characterization_plan.json",
+    "phase_52g_source": "reports/phase52g_final_repository_boundary_mapping_closeout.json",
+    "phase_52b_source": "reports/phase52b_persistence_side_effect_map.json",
+    "phase_52a_source": "reports/phase52a_repository_inventory_hotspot_map.json"
+  },
+  "disclaimers": {
+    "agent_b_does_not_implement_phase_53": true,
+    "agent_a_pins_the_must_pin_items": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_phase_53_results_represented_as_completed": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "status_value_definitions": {
+    "identified": "must-pin item is identified in Phase 52D but not yet pinned.",
+    "pinned": "must-pin item is pinned by a Phase 53 PR.",
+    "partially_pinned": "must-pin item is partially pinned; the remaining aspects are deferred.",
+    "deferred": "must-pin item is deferred to a later phase (e.g., Phase 54+).",
+    "blocked": "must-pin item is blocked by a Phase 53 hard-stop condition.",
+    "not_applicable": "must-pin item is not applicable (e.g., the function is no longer called)."
+  },
+  "summary": {
+    "total_must_pin_items": 12,
+    "p0_count": 7,
+    "p1_count": 5,
+    "high_risk_writes_count": 7,
+    "persistence_files_mapped": 5,
+    "persistence_files_total_loc": 2953,
+    "all_initial_status": "identified",
+    "all_pinned_in_phase_52": false,
+    "all_pinned_in_phase_53": false
+  },
+  "persistence_files_mapped": [
+    {"id": "PF-01", "path": "app/persistence/__init__.py", "loc": 55, "role": "package init / re-exports"},
+    {"id": "PF-02", "path": "app/persistence/db.py", "loc": 205, "role": "sqlite connection / schema init / get_cursor"},
+    {"id": "PF-03", "path": "app/persistence/repository.py", "loc": 2042, "role": "god-module: project, scenario, run, export, audit, workspace"},
+    {"id": "PF-04", "path": "app/persistence/backup_restore.py", "loc": 480, "role": "sqlite backup + restore + auto-backup"},
+    {"id": "PF-05", "path": "app/persistence/provenance.py", "loc": 171, "role": "git sha, branch, runtime flag, governance, replay metadata"}
+  ],
+  "high_risk_writes": [
+    {"id": "HRW-01", "function": "save_project", "line": 686, "body_loc": 117, "domain": "projects", "risk": "high", "phase53_group": "A", "must_pin_link": "MP-001"},
+    {"id": "HRW-02", "function": "save_workspace_state", "line": 1496, "body_loc": 131, "domain": "workspace_state", "risk": "high", "phase53_group": "C", "must_pin_link": "MP-002"},
+    {"id": "HRW-03", "function": "save_scenario", "line": 1116, "body_loc": 63, "domain": "scenarios", "risk": "high", "phase53_group": "B", "must_pin_link": "MP-003"},
+    {"id": "HRW-04", "function": "add_scenario", "line": 1299, "body_loc": 80, "domain": "scenarios", "risk": "high", "phase53_group": "B", "must_pin_link": "MP-004"},
+    {"id": "HRW-05", "function": "record_export", "line": 1713, "body_loc": 60, "domain": "exports", "risk": "high", "phase53_group": "E", "must_pin_link": "MP-005"},
+    {"id": "HRW-06", "function": "update_scenario_overrides", "line": 1411, "body_loc": 47, "domain": "scenarios", "risk": "high", "phase53_group": "B", "must_pin_link": "MP-006"},
+    {"id": "HRW-07", "function": "get_or_create_base_case_scenario", "line": 86, "body_loc": 85, "domain": "scenarios", "risk": "high", "phase53_group": "B", "must_pin_link": null}
+  ],
+  "must_pin_items": [
+    {
+      "id": "MP-001",
+      "function": "save_project",
+      "priority": "P0",
+      "phase53_group": "A",
+      "location": "app/persistence/repository.py L686-802",
+      "aspects_to_pin": [
+        "INSERT path",
+        "UPDATE path",
+        "replay_metadata.project_id defaulting",
+        "governance_state preservation"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_save_project_pin.py",
+      "required_before_phase53": true,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": true,
+      "paid_pilot_blocker": true,
+      "external_review_relevance": "high"
+    },
+    {
+      "id": "MP-002",
+      "function": "save_workspace_state",
+      "priority": "P0",
+      "phase53_group": "C",
+      "location": "app/persistence/repository.py L1496-1626",
+      "aspects_to_pin": [
+        "INSERT path",
+        "UPDATE path",
+        "replay_metadata merge with existing",
+        "last_runtime_* field preservation"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_save_workspace_state_pin.py",
+      "required_before_phase53": true,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": true,
+      "paid_pilot_blocker": true,
+      "external_review_relevance": "high"
+    },
+    {
+      "id": "MP-003",
+      "function": "save_scenario",
+      "priority": "P0",
+      "phase53_group": "B",
+      "location": "app/persistence/repository.py L1116-1178",
+      "aspects_to_pin": [
+        "replay_metadata.project_id and scenario_id defaulting"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_save_scenario_pin.py",
+      "required_before_phase53": true,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": true,
+      "paid_pilot_blocker": true,
+      "external_review_relevance": "high"
+    },
+    {
+      "id": "MP-004",
+      "function": "add_scenario",
+      "priority": "P0",
+      "phase53_group": "B",
+      "location": "app/persistence/repository.py L1299-1378",
+      "aspects_to_pin": [
+        "replay_metadata.action=add_scenario",
+        "parent_scenario_id storage",
+        "is_base_case=0",
+        "schema_version=1.0"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_add_scenario_pin.py",
+      "required_before_phase53": true,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": true,
+      "paid_pilot_blocker": true,
+      "external_review_relevance": "high"
+    },
+    {
+      "id": "MP-005",
+      "function": "record_export",
+      "priority": "P0",
+      "phase53_group": "E",
+      "location": "app/persistence/repository.py L1713-1772",
+      "aspects_to_pin": [
+        "replay_metadata.export_id, runtime_snapshot_id, export_timestamp defaulting"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_record_export_pin.py",
+      "required_before_phase53": true,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": true,
+      "paid_pilot_blocker": true,
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "MP-006",
+      "function": "update_scenario_overrides",
+      "priority": "P0",
+      "phase53_group": "B",
+      "location": "app/persistence/repository.py L1411-1457",
+      "aspects_to_pin": [
+        "is_base_case gate",
+        "SCENARIO_INPUT_FIELDS filter",
+        "re-resolved snapshot"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_update_scenario_overrides_pin.py",
+      "required_before_phase53": true,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": true,
+      "paid_pilot_blocker": true,
+      "external_review_relevance": "high"
+    },
+    {
+      "id": "MP-007",
+      "function": "select_scenario",
+      "priority": "P0",
+      "phase53_group": "B",
+      "location": "app/persistence/repository.py L1460-1483",
+      "aspects_to_pin": [
+        "replay_metadata.action=select_scenario",
+        "active_scenario_name resolution"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_select_scenario_pin.py",
+      "required_before_phase53": true,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": true,
+      "paid_pilot_blocker": true,
+      "external_review_relevance": "high"
+    },
+    {
+      "id": "MP-008",
+      "function": "discard_workspace_draft",
+      "priority": "P1",
+      "phase53_group": "C",
+      "location": "app/persistence/repository.py L1651-1672",
+      "aspects_to_pin": [
+        "draft_snapshot=saved_snapshot",
+        "dirty=False",
+        "all other fields preserved"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_discard_workspace_draft_pin.py",
+      "required_before_phase53": false,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": false,
+      "paid_pilot_blocker": "medium",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "MP-009",
+      "function": "record_workspace_runtime",
+      "priority": "P1",
+      "phase53_group": "C",
+      "location": "app/persistence/repository.py L1675-1710",
+      "aspects_to_pin": [
+        "last_runtime_scenario_id only set if runtime_origin==saved_state"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_record_workspace_runtime_pin.py",
+      "required_before_phase53": false,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": false,
+      "paid_pilot_blocker": "medium",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "MP-010",
+      "function": "bind_workspace_to_scenario",
+      "priority": "P1",
+      "phase53_group": "C",
+      "location": "app/persistence/repository.py L1629-1648",
+      "aspects_to_pin": [
+        "draft_snapshot=saved_snapshot=record.snapshot",
+        "dirty=False"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_bind_workspace_to_scenario_pin.py",
+      "required_before_phase53": false,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": false,
+      "paid_pilot_blocker": "medium",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "MP-011",
+      "function": "update_scenario_last_run_summary",
+      "priority": "P1",
+      "phase53_group": "B",
+      "location": "app/persistence/repository.py L1381-1408",
+      "aspects_to_pin": [
+        "replay_metadata merge with existing"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_update_scenario_last_run_summary_pin.py",
+      "required_before_phase53": false,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": false,
+      "paid_pilot_blocker": "medium",
+      "external_review_relevance": "medium"
+    },
+    {
+      "id": "MP-012",
+      "function": "duplicate_scenario",
+      "priority": "P1",
+      "phase53_group": "B",
+      "location": "app/persistence/repository.py L1280-1296",
+      "aspects_to_pin": [
+        "copied_from_scenario_id=source.scenario_id",
+        "governance_state copied verbatim"
+      ],
+      "recommended_test_file": "tests/test_phase52d_persistence_duplicate_scenario_pin.py",
+      "required_before_phase53": false,
+      "current_status": "identified",
+      "owner": {"pin": "Agent A", "tracker_update": "Agent B"},
+      "dependency": null,
+      "pilot_blocker": false,
+      "paid_pilot_blocker": "medium",
+      "external_review_relevance": "medium"
+    }
+  ],
+  "expected_per_pr_pin_progress": {
+    "53A_F_helpers": {"pins_pinned": [], "rationale": "Helpers are not must-pin items."},
+    "53B_F_consumers": {"pins_pinned": [], "rationale": "Consumers are not must-pin items."},
+    "53C_D_runs": {"pins_pinned": [], "rationale": "Group D is not in the must-pin list."},
+    "53D_E_exports_audit": {"pins_pinned": ["MP-005"], "rationale": "record_export (MP-005) is in Group E."},
+    "53E_A_reads": {"pins_pinned": [], "rationale": "Read-only changes do not pin must-pin items."},
+    "53F_A_writes": {"pins_pinned": ["MP-001"], "rationale": "save_project (MP-001) is in Group A."},
+    "53G_C_workspace_state": {"pins_pinned": ["MP-002", "MP-008", "MP-009", "MP-010"], "rationale": "save_workspace_state and friends are in Group C."},
+    "53H_B_part1": {"pins_pinned": ["MP-003", "MP-004", "MP-006", "MP-007"], "rationale": "P0 Group B must-pin items."},
+    "53I_B_part2": {"pins_pinned": ["MP-011", "MP-012"], "rationale": "P1 Group B must-pin items."},
+    "53J_B_part3": {"pins_pinned": [], "rationale": "Any deferred must-pin items re-evaluated; HRW-07 documented."}
+  },
+  "global_notes": [
+    "Agent B does not implement Phase 53. Agent A pins the must-pin items.",
+    "Agent B does not modify app/persistence, app/services, main_web.py, or any Agent A-owned file. The must-pin / evidence tracker is the B-track governance wrapper for the Agent A pin work.",
+    "The 12 must-pin items are sourced from the Phase 52D report. They are the project's internal self-assessment. They are not externally validated.",
+    "The 7 high-risk writes are sourced from the Phase 52B report. They are the project's internal self-assessment.",
+    "The 5 persistence files are sourced from the Phase 52G report. They are the project's internal self-assessment.",
+    "The expected per-PR pin progress is the B-track governance planning convention. Agent A may adjust the mapping in execution as long as the must-pin items are pinned before they are modified.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}

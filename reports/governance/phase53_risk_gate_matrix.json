@@ -1,0 +1,205 @@
+{
+  "package": {
+    "name": "Finco1 Phase 53 Risk & Gate Matrix",
+    "workstream": "B25",
+    "branch": "parallel-b24-b29-post-phase52-governance-pack",
+    "branch_base_sha": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "package_base_sha_at_creation": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "matrix_version": "0.1.0",
+    "matrix_status": "initial_draft",
+    "intended_use": "internal_phase53_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/phase53_risk_gate_matrix.md",
+  "b24_refresh_pointer": "docs/governance/post_phase52_governance_refresh.md",
+  "b26_must_pin_pointer": "docs/validation/phase53_must_pin_evidence_tracker.md",
+  "b27_guardrail_pointer": "docs/governance/phase52_53_guardrail_adoption_tracker.md",
+  "b28_pilot_delta_pointer": "docs/pilot/post_phase52_pilot_external_readiness_delta.md",
+  "b29_change_control_pointer": "docs/governance/phase53_change_control_checklist.md",
+  "b16_closeout_pointer": "docs/external_review/external_review_closeout_tracker.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "disclaimers": {
+    "phase_53_not_executed_by_agent_b": true,
+    "phase_53_not_implemented_by_agent_b": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_phase_53_results_represented_as_completed": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "phase_53_refactor_order": ["F", "D", "E", "A-reads", "A-2", "C", "B"],
+  "phase_53_planned_pr_sequence": ["53A", "53B", "53C", "53D", "53E", "53F", "53G", "53H", "53I", "53J"],
+  "phase_53_pr_sequence_count": 10,
+  "phase_53_pr_to_group_mapping": {
+    "53A": "F",
+    "53B": "F",
+    "53C": "D",
+    "53D": "E",
+    "53E": "A-reads",
+    "53F": "A-2",
+    "53G": "C",
+    "53H": "B",
+    "53I": "B",
+    "53J": "B"
+  },
+  "owner_definitions": {
+    "code": "Agent A",
+    "governance_review": "Agent B",
+    "test_evidence": "Agent A",
+    "guardrail_specification": "Agent A",
+    "guardrail_adoption_tracking": "Agent B"
+  },
+  "auto_merge_policy": {
+    "F": {
+      "risk_level": "low",
+      "auto_merge_class": "allowed_if_checks_pass",
+      "review_required": false,
+      "sign_off_required": false,
+      "notes": "Helpers only; no behavior change."
+    },
+    "D": {
+      "risk_level": "low-medium",
+      "auto_merge_class": "allowed_if_checks_pass",
+      "review_required": false,
+      "sign_off_required": false,
+      "notes": "Plan-driven; limited blast radius."
+    },
+    "E": {
+      "risk_level": "medium",
+      "auto_merge_class": "allowed_if_checks_pass",
+      "review_required": false,
+      "sign_off_required": false,
+      "notes": "Plan-driven; some blast radius."
+    },
+    "A-reads": {
+      "risk_level": "low",
+      "auto_merge_class": "allowed_if_checks_pass",
+      "review_required": false,
+      "sign_off_required": false,
+      "notes": "Read-only changes."
+    },
+    "A-2": {
+      "risk_level": "medium-high",
+      "auto_merge_class": "review_required",
+      "review_required": true,
+      "sign_off_required": false,
+      "notes": "Writes; affects production data path."
+    },
+    "C": {
+      "risk_level": "medium-high",
+      "auto_merge_class": "review_required",
+      "review_required": true,
+      "sign_off_required": false,
+      "notes": "Significant refactor."
+    },
+    "B": {
+      "risk_level": "high",
+      "auto_merge_class": "sign_off_required",
+      "review_required": true,
+      "sign_off_required": true,
+      "notes": "Highest blast radius; sign-off required."
+    }
+  },
+  "expected_evidence_per_group": {
+    "F": "Helpers tested in isolation.",
+    "D": "Plan conformance. Behavior unchanged.",
+    "E": "Plan conformance. Behavior unchanged.",
+    "A-reads": "Read-only tests; no production data path changes.",
+    "A-2": "Write path tests; rollback procedure documented.",
+    "C": "Significant refactor tests; cross-module integration tests.",
+    "B": "Sign-off review; full regression suite."
+  },
+  "hard_stop_conditions": [
+    "Any must-pin item is broken or fails the pin test. The PR is blocked. The B-track governance refresh is required.",
+    "Any structural guardrail (G1-G6) is broken or fails the enforcement test. The PR is blocked. The B-track governance refresh is required.",
+    "Any behavior guardrail test fails. The PR is blocked. The rollback procedure is invoked.",
+    "The Phase 53 refactor order is violated. The PR is blocked. Agent B escalates to the user.",
+    "Agent B is not notified of the PR. The B-track governance refresh may be skipped. Agent B is subsequently informed.",
+    "The Phase 53 PR is merged with a non-passing check. The PR is rolled back if possible. The B-track governance refresh is required."
+  ],
+  "do_not_parallelize_areas": [
+    {
+      "area": "Group B writes",
+      "rationale": "Highest blast radius. Sign-off required."
+    },
+    {
+      "area": "Group C refactor",
+      "rationale": "Significant refactor. Review required."
+    },
+    {
+      "area": "Group A-2 writes",
+      "rationale": "Affects the production data path. Review required."
+    },
+    {
+      "area": "Persistence layer migration",
+      "rationale": "The persistence layer migration is not parallel-safe. The migration is performed by Agent A in a single coordinated step."
+    }
+  ],
+  "pilot_impact_per_group": {
+    "F": "None. Helpers only.",
+    "D": "None. Plan-driven.",
+    "E": "None. Plan-driven.",
+    "A-reads": "None. Read-only.",
+    "A-2": "High. Affects the production data path. Pilot surface area may change. Pin refresh or forward-compatibility decision may be required.",
+    "C": "High. Significant refactor. Pilot surface area may change. Pin refresh required.",
+    "B": "Highest. Highest blast radius. Pilot surface area will change. Pin refresh required."
+  },
+  "external_review_impact_per_group": {
+    "F": "None.",
+    "D": "None.",
+    "E": "None.",
+    "A-reads": "None.",
+    "A-2": "Medium. The B3 matrix, B12 heatmap, and B16 closeout tracker may need a refresh.",
+    "C": "High. The B3 matrix, B12 heatmap, and B16 closeout tracker need a refresh.",
+    "B": "Highest. The B3 matrix, B12 heatmap, B16 closeout tracker, and B8 enterprise SaaS readiness tracker may need a refresh."
+  },
+  "paid_pilot_gate_impact_per_group": {
+    "F": "None.",
+    "D": "None.",
+    "E": "None.",
+    "A-reads": "None.",
+    "A-2": "Medium. The B13 paid pilot gate may need a refresh.",
+    "C": "High. The B13 paid pilot gate needs a refresh.",
+    "B": "Highest. The B13 paid pilot gate needs a refresh."
+  },
+  "b_track_refresh_trigger_per_group": {
+    "F": "None.",
+    "D": "None.",
+    "E": "None.",
+    "A-reads": "None.",
+    "A-2": "B3 matrix, B12 heatmap, B13 gate, B16 closeout, B26 must-pin tracker refresh.",
+    "C": "B3 matrix, B12 heatmap, B13 gate, B16 closeout, B26 must-pin tracker, B27 guardrail adoption tracker refresh.",
+    "B": "All B-track artifacts refresh."
+  },
+  "no_go_claim_categories_per_group": {
+    "F": ["none"],
+    "D": ["none"],
+    "E": ["none"],
+    "A-reads": ["none"],
+    "A-2": ["none"],
+    "C": ["none"],
+    "B": ["none"]
+  },
+  "summary": {
+    "total_groups": 7,
+    "groups_with_auto_merge_class": 4,
+    "groups_with_review_required": 2,
+    "groups_with_sign_off_required": 1,
+    "no_parallelize_areas_count": 4,
+    "hard_stop_conditions_count": 6,
+    "planned_prs_count": 10,
+    "recommended_first_action": "53A Group F helpers",
+    "phase_53_executed_by": "Agent A",
+    "phase_53_governance_reviewed_by": "Agent B"
+  },
+  "global_notes": [
+    "Agent B does not implement Phase 53. Agent A executes Phase 53.",
+    "Agent B does not modify repository.py, app/persistence, app/services, main_web.py, or any Agent A-owned file. The risk and gate matrix is the B-track governance wrapper for the Agent A code work.",
+    "The risk and gate matrix is internal planning, not external validation, not a customer reference, not production readiness, and not paid pilot authorization.",
+    "The auto-merge policy is a documented governance expectation. Branch protection rules on main, if configured, enforce the policy technically. If branch protection is not configured, the policy is a soft expectation.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}

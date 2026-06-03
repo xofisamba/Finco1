@@ -1,0 +1,213 @@
+{
+  "package": {
+    "name": "Finco1 Phase 53 Change-Control Checklist",
+    "workstream": "B29",
+    "branch": "parallel-b24-b29-post-phase52-governance-pack",
+    "branch_base_sha": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "package_base_sha_at_creation": "349875ce54bef10801b40205f2505c304e7ed8e7",
+    "checklist_version": "0.1.0",
+    "checklist_status": "initial_draft",
+    "intended_use": "internal_phase53_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/phase53_change_control_checklist.md",
+  "b24_refresh_pointer": "docs/governance/post_phase52_governance_refresh.md",
+  "b25_phase53_risk_pointer": "docs/governance/phase53_risk_gate_matrix.md",
+  "b26_must_pin_pointer": "docs/validation/phase53_must_pin_evidence_tracker.md",
+  "b27_guardrail_pointer": "docs/governance/phase52_53_guardrail_adoption_tracker.md",
+  "b28_pilot_delta_pointer": "docs/pilot/post_phase52_pilot_external_readiness_delta.md",
+  "b14_refresh_plan_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "b16_closeout_pointer": "docs/external_review/external_review_closeout_tracker.md",
+  "b13_paid_pilot_pointer": "docs/pilot/paid_pilot_readiness_gate.md",
+  "b3_matrix_pointer": "docs/validation/validation_evidence_matrix.md",
+  "b12_heatmap_pointer": "docs/validation/model_confidence_heatmap.md",
+  "b8_saas_pointer": "docs/roadmap/enterprise_saas_readiness_tracker.md",
+  "disclaimers": {
+    "phase_53_not_executed_by_agent_b": true,
+    "phase_53_not_implemented_by_agent_b": true,
+    "agent_b_applies_checklist_to_each_phase_53_pr": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_phase_53_results_represented_as_completed": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "per_pr_review_checklist": {
+    "no_code_touch_rule_for_agent_b": [
+      "app/persistence/*",
+      "app/services/*",
+      "main_web.py",
+      "main_api.py",
+      "app/waterfall_core.py",
+      "app/project_factories.py",
+      "domain/*",
+      "project_factories.py",
+      "repository.py",
+      "app/templates/*",
+      "app/static/*",
+      "fixture CSVs",
+      "schema / migration files",
+      "B1-B23 files unless explicitly listed in this branch as a refresh"
+    ],
+    "agent_a_owned_files_check": [
+      "Phase 53 PR's files are all Agent A-owned files",
+      "Phase 53 PR does not modify any B-track file unless explicitly listed in this branch as a refresh",
+      "Phase 53 PR does not modify any fixture CSV",
+      "Phase 53 PR does not modify any schema / migration file"
+    ],
+    "no_parallelization_reminder": [
+      "Phase 53 PR is not in a do-not-parallelize area (Group B, Group C, Group A-2 writes, or the persistence layer migration) — or, if it is, the PR is reviewed with sign-off per the B25 auto-merge policy.",
+      "Phase 53 PR does not violate the parallel-safety rules from the Phase 52G closeout.",
+      "Phase 53 PR is not run in parallel with a conflicting PR."
+    ],
+    "required_evidence_after_each_53_pr": [
+      "Phase 53 PR's test suite passes (new + existing tests).",
+      "Phase 53 PR's behavior guardrail tests pass (the 21 -> 31 behavior guardrail test count is preserved or increased).",
+      "Phase 53 PR's structural guardrail tests pass (G1-G6 are enforced).",
+      "Phase 53 PR's pin tests pass (the relevant must-pin items are pinned, per B26).",
+      "Phase 53 PR's diff narrative is documented."
+    ],
+    "b_track_refresh_trigger": {
+      "F_D_E_A_reads": "no B-track refresh required",
+      "A_2": "B3 matrix, B12 heatmap, B13 gate, B16 closeout, B26 must-pin tracker refresh",
+      "C": "B3 matrix, B12 heatmap, B13 gate, B16 closeout, B26 must-pin tracker, B27 guardrail adoption tracker refresh",
+      "B": "all B-track artifacts refresh"
+    },
+    "manual_review_sign_off_trigger": {
+      "F_D_E_A_reads": "auto-merge class allowed if checks pass (no manual review required)",
+      "A_2_C": "review required; Agent B reviews the PR",
+      "B": "sign-off required; Agent B and the user review the PR"
+    },
+    "stop_escalate_trigger": [
+      "Any must-pin item is broken or fails the pin test. The PR is blocked. Agent B escalates to the user.",
+      "Any structural guardrail (G1-G6) is broken or fails the enforcement test. The PR is blocked. Agent B escalates to the user.",
+      "Any behavior guardrail test fails. The PR is blocked. Agent B escalates to the user.",
+      "The Phase 53 refactor order is violated. The PR is blocked. Agent B escalates to the user.",
+      "Agent B is not notified of the PR. The B-track governance refresh may be skipped. Agent B is subsequently informed.",
+      "The Phase 53 PR is merged with a non-passing check. The PR is rolled back if possible. Agent B escalates to the user."
+    ],
+    "no_overclaim_after_each_successful_phase_53_pr": [
+      "Agent B does not claim Phase 53 has completed unless the user has explicitly accepted the closeout.",
+      "Agent B does not claim the persistence refactor is complete unless all 12 must-pin items are pinned and all 6 structural guardrails are enforced.",
+      "Agent B does not claim external validation.",
+      "Agent B does not claim paid pilot authorization.",
+      "Agent B does not claim enterprise SaaS readiness.",
+      "Agent B does not claim Claude review completion.",
+      "Agent B does not claim post-51T review completion.",
+      "Agent B does not relax any no-go claim.",
+      "Agent B does not claim customer reference.",
+      "Agent B does not claim marketing launch approval.",
+      "Agent B does not claim production readiness.",
+      "Agent B does not claim a customer pilot or a paid pilot is running."
+    ]
+  },
+  "per_milestone_refresh": {
+    "after_53A_F_helpers": {
+      "b_track_refresh_required": false,
+      "agent_b_confirms": [
+        "Agent A has not modified any Agent A-owned file outside the Group F helpers.",
+        "Agent A has not modified any B-track file."
+      ]
+    },
+    "after_53D_E_exports_audit": {
+      "b_track_refresh_required": true,
+      "must_pin_updates": ["MP-005 (record_export, P0) marked as pinned"],
+      "guardrail_updates": ["G1, G3, G5 confirmed active (no change expected)"],
+      "matrix_updates": ["B3 matrix: AREA-018 / AREA-019 (export / audit area) updated"],
+      "heatmap_updates": ["B12 heatmap: HC-018 / HC-019 (export / audit area) updated"]
+    },
+    "after_53F_A_writes": {
+      "b_track_refresh_required": true,
+      "must_pin_updates": ["MP-001 (save_project, P0) marked as pinned"],
+      "matrix_updates": ["B3 matrix: AREA-001 (project area) updated"],
+      "heatmap_updates": ["B12 heatmap: HC-001 updated"],
+      "paid_pilot_gate_updates": ["B13 paid pilot gate: PG-04 (project persistence) re-evaluated"]
+    },
+    "after_53G_C_workspace_state": {
+      "b_track_refresh_required": true,
+      "must_pin_updates": [
+        "MP-002 (save_workspace_state, P0) marked as pinned",
+        "MP-008, MP-009, MP-010 (P1) marked as pinned or deferred"
+      ],
+      "guardrail_updates": ["G1, G2, G3, G4, G5, G6 confirmed active (no change expected)"],
+      "matrix_updates": ["B3 matrix: AREA-013 (workspace state area) updated"],
+      "heatmap_updates": ["B12 heatmap: HC-013 updated"],
+      "paid_pilot_gate_updates": ["B13 paid pilot gate: PG-08 (workspace persistence) re-evaluated"],
+      "closeout_updates": ["B16 closeout status: workspace persistence area updated"]
+    },
+    "after_53H_53J_B_scenarios": {
+      "b_track_refresh_required": true,
+      "must_pin_updates": [
+        "MP-003, MP-004, MP-006, MP-007 (P0) marked as pinned",
+        "MP-011, MP-012 (P1) marked as pinned or deferred"
+      ],
+      "guardrail_updates": ["G1, G2, G3, G4, G5, G6 confirmed active"],
+      "matrix_updates": ["B3 matrix: AREA-002, AREA-003, AREA-004 (scenario areas) updated"],
+      "heatmap_updates": ["B12 heatmap: HC-002, HC-003, HC-004 updated"],
+      "paid_pilot_gate_updates": ["B13 paid pilot gate: PG-02, PG-03, PG-05 (scenario persistence) re-evaluated"],
+      "closeout_updates": ["B16 closeout status: scenario persistence area updated"],
+      "saas_tracker_updates": ["B8 enterprise SaaS readiness tracker: scenario persistence dimension updated"]
+    },
+    "after_53J_B_closeout": {
+      "b_track_refresh_required": true,
+      "refresh_plan_trigger": ["B14 governance refresh plan: next B-track governance refresh is triggered"],
+      "closeout_updates": ["B16 closeout status: Phase 53 closeout is recorded"],
+      "b24_b29_re_evaluation": ["B24-B29 are re-evaluated for the next phase"]
+    }
+  },
+  "b_track_refresh_triggers": {
+    "B3_matrix": "when a Phase 53 PR changes a validation area",
+    "B12_heatmap": "when a Phase 53 PR changes a model confidence area",
+    "B13_paid_pilot_gate": "when a Phase 53 PR changes the paid pilot gate state",
+    "B16_closeout": "when a Phase 53 PR changes the external review closeout state",
+    "B20_pilot_issue_log": "populated only when a controlled pilot actually runs",
+    "B21_pilot_user_acknowledgement": "populated only when a controlled pilot actually runs",
+    "B22_qa_matrix": "refreshed only when an actual Q&A session occurs (not on Phase 53 PRs)",
+    "B23_reviewer_question_bank": "refreshed only when an actual reviewer Q&A session occurs",
+    "B26_must_pin_tracker": "refreshed on every Phase 53 PR that pins a must-pin item",
+    "B27_guardrail_adoption_tracker": "refreshed on every Phase 53 PR that adds a structural guardrail or a behavior guardrail test"
+  },
+  "escalate_to_user_when": [
+    "Any hard-stop condition is met (per B25).",
+    "Any must-pin item is broken or fails the pin test.",
+    "Any structural guardrail (G1-G6) is broken or fails the enforcement test.",
+    "The Phase 53 refactor order is violated.",
+    "The Phase 53 PR is merged with a non-passing check.",
+    "The B-track governance refresh is not feasible.",
+    "The user has explicitly asked for a B-track governance refresh that conflicts with the Phase 53 plan.",
+    "The Claude review / post-51T review is referenced as external validation, customer reference, or paid pilot authorization."
+  ],
+  "stop_phase_53_when": [
+    "Any hard-stop condition is met (per B25).",
+    "Any must-pin item is broken or fails the pin test.",
+    "Any structural guardrail (G1-G6) is broken or fails the enforcement test.",
+    "The Phase 53 refactor order is violated.",
+    "The user has explicitly asked to stop Phase 53."
+  ],
+  "no_claim_categories_after_each_successful_phase_53_pr": {
+    "phase_53_completed": false,
+    "persistence_refactor_complete": false,
+    "external_validation": false,
+    "paid_pilot_authorization": false,
+    "enterprise_saas_readiness": false,
+    "claude_review_completed": false,
+    "post_51t_review_completed": false,
+    "no_go_relaxation": false,
+    "customer_reference": false,
+    "marketing_launch_approval": false,
+    "production_readiness": false,
+    "customer_pilot_or_paid_pilot_running": false,
+    "guardrail_relaxation": false,
+    "b_track_governance_refresh_skipped": false
+  },
+  "global_notes": [
+    "Agent B does not implement Phase 53. Agent A executes Phase 53. Agent B applies this checklist to each Phase 53 PR.",
+    "Agent B does not modify repository.py, app/persistence, app/services, main_web.py, or any Agent A-owned file.",
+    "The change-control checklist is the B-track governance wrapper for the Agent A code work. It is internal governance, not external validation.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification.",
+    "After each successful Phase 53 PR, Agent B does not relax any no-go claim, does not skip the B-track governance refresh, and does not modify any B1-B23 file unless explicitly listed in this branch as a refresh."
+  ]
+}
