@@ -1,0 +1,186 @@
+{
+  "phase": "51M-1",
+  "title": "POST /projects/create golden characterization",
+  "type": "characterization-only",
+  "stacked_on": "51L-2 (88acb5a8d7a0defc98960bc7e23a706ee3c048f6)",
+  "base_sha": "88acb5a8d7a0defc98960bc7e23a706ee3c048f6",
+  "base_pr": 405,
+  "base_pr_title": "Phase 51L-2: Extract scenario add route",
+  "head_sha": null,
+  "head_pr": null,
+  "branch": "phase51m1-projects-create-route-golden-characterization",
+  "characterized_route": {
+    "path": "POST /projects/create",
+    "handler": "create_project_route",
+    "location": "main_web.py:1867-1992 (pre-extraction)",
+    "total_lines": 126,
+    "non_blank_lines": 117,
+    "risk": "HIGH",
+    "notes": "Largest remaining inline route. Uses FastAPI Form(...) injection (NOT await request.form()). Creates ProjectRecord + WorkspaceState (no scenario created explicitly). 18 form fields with defaults. Project code uniqueness loop. Template source validation (wind/solar)."
+  },
+  "changed_files": [
+    "tests/test_phase51m1_projects_create_route_golden_characterization.py",
+    "docs/phase51m1_projects_create_route_golden_characterization.md",
+    "reports/phase51m1_projects_create_route_golden_characterization_summary.json"
+  ],
+  "production_code_changed": false,
+  "behaviors_pinned": {
+    "auth": [
+      "Uses get_current_user(request)",
+      "Unauth -> 302 redirect to /login (NOT 401 JSON, NOT HX-Redirect)"
+    ],
+    "form_inputs": [
+      "Uses FastAPI Form(...) injection (NOT await request.form())",
+      "18 form fields: project_name, project_type, template_source, country_market, capacity_mw, cod_date, construction_months, horizon_years, tariff_eur_mwh, ppa_term_years, p50_hours, opex_y1_keur, total_capex_keur, gearing_pct, interest_rate_pct, tenor_years, target_dscr",
+      "country_market defaults to 'Croatia'",
+      "target_dscr defaults to '1.20'",
+      "template_source defaults to ''"
+    ],
+    "user_id_source": [
+      "user_id always from user.user_id (session)"
+    ],
+    "project_creation": [
+      "_submitted_new_project_defaults() + form values",
+      "_coerce_form_text(project_name)",
+      "_canonical_project_type(project_type)",
+      "_normalize_template_source(template_source, canonical_type)",
+      "_validate_new_project_payload(submitted)",
+      "Template source validation (wind/solar)",
+      "_slugify_project_code(clean_name)",
+      "Project code uniqueness loop (-2, -3, ...)",
+      "create_project_record(...) with project_origin='user_created'",
+      "save_workspace_state(...) with draft=saved=baseline_snapshot, dirty=False"
+    ],
+    "default_scenario_workspace": [
+      "Does NOT call add_scenario(...) or save_scenario(...)",
+      "Creates ProjectRecord + WorkspaceState only"
+    ],
+    "project_type_template": [
+      "Wind templates require Wind project type",
+      "Solar templates require Solar project type"
+    ],
+    "replay_metadata": [
+      "create_project_record: export_type='project_record_created'",
+      "save_workspace_state: export_type='workspace_project_created'"
+    ],
+    "governance_state": [
+      "_governance_snapshot(project_code) called twice (save + workspace)"
+    ],
+    "response": [
+      "Success: templates.TemplateResponse(name='partials/new_project_result.html', context={...}, headers={'HX-Redirect': f'/?project=...'})",
+      "Validation error (400): templates.TemplateResponse(name='partials/new_project_form.html', context=_new_project_validation_error_context(...), status_code=400)"
+    ]
+  },
+  "intended_side_effects": {
+    "per_success": {
+      "_submitted_new_project_defaults": 1,
+      "_coerce_form_text": 1,
+      "_canonical_project_type": 1,
+      "_normalize_template_source": 1,
+      "_validate_new_project_payload": 1,
+      "get_project_by_code": "1+ (uniqueness loop)",
+      "_project_baseline_snapshot": 1,
+      "_apply_new_project_required_inputs": 1,
+      "create_project_record": 1,
+      "save_workspace_state": 1,
+      "_governance_snapshot": 2,
+      "_replay_metadata_for_project": 2,
+      "_template_source_label": 1,
+      "templates.TemplateResponse": 1
+    },
+    "per_400": {
+      "all_persistence_after_validation": 0,
+      "templates.TemplateResponse": 1
+    },
+    "ordering": "auth -> _submitted_new_project_defaults + form values -> _coerce_form_text -> _canonical_project_type -> _normalize_template_source -> _validate_new_project_payload -> template validation -> [loop] get_project_by_code -> _project_baseline_snapshot -> _apply_new_project_required_inputs -> create_project_record -> save_workspace_state -> TemplateResponse"
+  },
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "db.add / db.commit / db.flush",
+    "session.add / session.commit"
+  ],
+  "quirks_pinned": [
+    "1. Uses FastAPI Form(...) parameters, NOT await request.form() or _collect_form_snapshot",
+    "2. HX-Redirect: f'/?project={project_record.project_code}' on success",
+    "3. Partial template render (partials/new_project_result.html), NOT full workspace render",
+    "4. Project code uniqueness loop with -2, -3, ... suffixes",
+    "5. replay_metadata uses export_type: 'project_record_created' and 'workspace_project_created'",
+    "6. Template source validation: wind templates require Wind type, solar templates require Solar type",
+    "7. save_workspace_state with draft=saved=baseline_snapshot, dirty=False",
+    "8. project_origin='user_created' only; no gate for non-user_created",
+    "9. Does NOT explicitly call add_scenario or save_scenario; only creates ProjectRecord + WorkspaceState",
+    "10. target_dscr defaults to '1.20'"
+  ],
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS (no change in this phase)",
+    "parity_core_lock": "PASS (no change in this phase)",
+    "no_service_imports_main_web_or_main_api": "PASS (12 services clean, route is unchanged)"
+  },
+  "tests_run": {
+    "test_phase51m1_projects_create_route_golden_characterization": {
+      "tests": 92,
+      "passed": 92,
+      "failed": 0
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "tests": 21,
+      "passed": 21,
+      "failed": 0
+    }
+  },
+  "known_failures": [
+    {
+      "test_module": "tests/test_persistence.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    },
+    {
+      "test_module": "tests/test_repository.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    }
+  ],
+  "recommended_51m2_extraction_boundary": {
+    "module": "app/services/projects_create_service.py",
+    "outcome_class": "ProjectsCreateRouteOutcome",
+    "deps_class": "ProjectsCreateRouteDeps",
+    "execute_function": "execute_projects_create_route",
+    "deps_callables": [
+      "get_project_by_code",
+      "create_project_record",
+      "save_workspace_state",
+      "_submitted_new_project_defaults",
+      "_coerce_form_text",
+      "_canonical_project_type",
+      "_normalize_template_source",
+      "_validate_new_project_payload",
+      "_slugify_project_code",
+      "_project_baseline_snapshot",
+      "_apply_new_project_required_inputs",
+      "_governance_snapshot",
+      "_replay_metadata_for_project",
+      "_new_project_validation_error_context",
+      "_template_source_label",
+      "render_template_response"
+    ],
+    "rationale": "Different concern from scenario_state_service (data-layer), scenarios_add_service (scenario creation from form), scenario_duplicate_service (duplicate), and scenarios_save_service (save). Project creation creates ProjectRecord + WorkspaceState; new module keeps dependency surface clean."
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51m1": false
+  },
+  "no_production_code_changes": true,
+  "ready_for_review": true,
+  "stack_note": "M1 is stacked on L2 head (88acb5a). Merge order: PR #405 (L2) -> PR (M1) -> PR (M2)."
+}
