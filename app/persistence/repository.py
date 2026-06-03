@@ -104,6 +104,16 @@ from app.persistence.workspace_repository import (
 )
 
 
+# Phase 53I-2: Record dataclasses re-exported from
+# app.persistence.records for backward compatibility.
+# The original implementations live in app/persistence/records.py.
+from app.persistence.records import (
+    ProjectRecord,
+    ScenarioRecord,
+    WorkspaceStateRecord,
+)
+
+
 # Phase 53G-2 + 53G-3 + 53G-4: Group B (scenario reads + low-risk actions + save_scenario)
 # re-exported from app.persistence.scenarios_repository for backward compatibility.
 # The original implementations live in app/persistence/scenarios_repository.py.
@@ -187,168 +197,8 @@ def get_scenario_provenance(
 
 
 
-@dataclass(slots=True)
-class ProjectRecord:
-    project_id: str
-    user_id: str
-    project_code: str
-    project_name: str
-    project_type: Optional[str]
-    project_origin: str
-    source_project_template: str
-    template_source: Optional[str]
-    baseline_snapshot: dict[str, Any]
-    archived: bool
-    is_readonly: bool
-    governance_state: dict[str, Any]
-    last_run_summary: dict[str, Any]
-    replay_metadata: dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-
-    @classmethod
-    def from_row(cls, row) -> "ProjectRecord":
-        return cls(
-            project_id=row["project_id"],
-            user_id=row["user_id"],
-            project_code=row["project_code"],
-            project_name=row["project_name"],
-            project_type=row["project_type"],
-            project_origin=row["project_origin"] or "factory_template",
-            source_project_template=row["source_project_template"],
-            template_source=row["template_source"],
-            baseline_snapshot=_from_json(row["baseline_snapshot_json"], {}),
-            archived=bool(row["archived"]),
-            is_readonly=bool(row["is_readonly"]) if "is_readonly" in row.keys() else False,
-            governance_state=_from_json(row["governance_state_json"], {}),
-            last_run_summary=_from_json(row["last_run_summary_json"], {}),
-            replay_metadata=_from_json(row["replay_metadata_json"], {}),
-            created_at=_from_iso(row["created_at"]),
-            updated_at=_from_iso(row["updated_at"]),
-        )
 
 
-class ScenarioRecord:
-    __slots__ = (
-        "scenario_id", "project_id", "user_id", "scenario_name", "project_code",
-        "source_project_template", "copied_from_scenario_id", "archived",
-        "is_base_case", "parent_scenario_id", "base_input_set", "overrides",
-        "schema_version", "snapshot", "governance_state", "last_run_summary",
-        "replay_metadata", "created_at", "updated_at",
-    )
-
-    def __init__(
-        self,
-        scenario_id: str,
-        project_id: str,
-        user_id: str,
-        scenario_name: str,
-        project_code: str,
-        source_project_template: str,
-        copied_from_scenario_id: Optional[str],
-        archived: bool,
-        is_base_case: bool = False,
-        parent_scenario_id: Optional[str] = None,
-        base_input_set: Optional[dict] = None,
-        overrides: Optional[dict] = None,
-        schema_version: str = "1.0",
-        snapshot: Optional[dict] = None,
-        governance_state: Optional[dict] = None,
-        last_run_summary: Optional[dict] = None,
-        replay_metadata: Optional[dict] = None,
-        created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None,
-    ):
-        self.scenario_id = scenario_id
-        self.project_id = project_id
-        self.user_id = user_id
-        self.scenario_name = scenario_name
-        self.project_code = project_code
-        self.source_project_template = source_project_template
-        self.copied_from_scenario_id = copied_from_scenario_id
-        self.archived = archived
-        self.is_base_case = is_base_case
-        self.parent_scenario_id = parent_scenario_id
-        self.base_input_set = base_input_set or {}
-        self.overrides = overrides or {}
-        self.schema_version = schema_version
-        self.snapshot = snapshot or {}
-        self.governance_state = governance_state or {}
-        self.last_run_summary = last_run_summary or {}
-        self.replay_metadata = replay_metadata or {}
-        self.created_at = created_at
-        self.updated_at = updated_at
-
-    @classmethod
-    def from_row(cls, row) -> "ScenarioRecord":
-        return cls(
-            scenario_id=row["scenario_id"],
-            project_id=row["project_id"],
-            user_id=row["user_id"],
-            scenario_name=row["scenario_name"],
-            project_code=row["project_code"],
-            source_project_template=row["source_project_template"],
-            copied_from_scenario_id=row["copied_from_scenario_id"],
-            archived=bool(row["archived"]),
-            is_base_case=bool(row["is_base_case"]) if "is_base_case" in row.keys() else False,
-            parent_scenario_id=row["parent_scenario_id"] if "parent_scenario_id" in row.keys() else None,
-            base_input_set=_from_json(row["base_input_set_json"] if "base_input_set_json" in row.keys() else "{}", {}),
-            overrides=_from_json(row["overrides_json"] if "overrides_json" in row.keys() else "{}", {}),
-            schema_version=row["schema_version"] if "schema_version" in row.keys() else "1.0",
-            snapshot=_from_json(row["snapshot_json"], {}),
-            governance_state=_from_json(row["governance_state_json"], {}),
-            last_run_summary=_from_json(row["last_run_summary_json"], {}),
-            replay_metadata=_from_json(row["replay_metadata_json"], {}),
-            created_at=_from_iso(row["created_at"]),
-            updated_at=_from_iso(row["updated_at"]),
-        )
-
-
-@dataclass(slots=True)
-class WorkspaceStateRecord:
-    workspace_id: str
-    project_id: str
-    user_id: str
-    project_code: str
-    active_scenario_id: Optional[str]
-    active_scenario_name: Optional[str]
-    draft_snapshot: dict[str, Any]
-    saved_snapshot: dict[str, Any]
-    last_runtime_snapshot: dict[str, Any]
-    last_runtime_summary: dict[str, Any]
-    last_runtime_snapshot_id: Optional[str]
-    last_runtime_origin: Optional[str]
-    last_runtime_scenario_id: Optional[str]
-    dirty: bool
-    governance_state: dict[str, Any]
-    replay_metadata: dict[str, Any]
-    created_at: datetime
-    updated_at: datetime
-    last_runtime_at: Optional[datetime]
-
-    @classmethod
-    def from_row(cls, row) -> "WorkspaceStateRecord":
-        return cls(
-            workspace_id=row["workspace_id"],
-            project_id=row["project_id"],
-            user_id=row["user_id"],
-            project_code=row["project_code"],
-            active_scenario_id=row["active_scenario_id"],
-            active_scenario_name=row["active_scenario_name"],
-            draft_snapshot=_from_json(row["draft_snapshot_json"], {}),
-            saved_snapshot=_from_json(row["saved_snapshot_json"], {}),
-            last_runtime_snapshot=_from_json(row["last_runtime_snapshot_json"], {}),
-            last_runtime_summary=_from_json(row["last_runtime_summary_json"], {}),
-            last_runtime_snapshot_id=row["last_runtime_snapshot_id"],
-            last_runtime_origin=row["last_runtime_origin"],
-            last_runtime_scenario_id=row["last_runtime_scenario_id"],
-            dirty=bool(row["dirty"]),
-            governance_state=_from_json(row["governance_state_json"], {}),
-            replay_metadata=_from_json(row["replay_metadata_json"], {}),
-            created_at=_from_iso(row["created_at"]),
-            updated_at=_from_iso(row["updated_at"]),
-            last_runtime_at=_from_iso(row["last_runtime_at"]) if row["last_runtime_at"] else None,
-        )
 
 
 def runtime_guard_for_snapshot(workspace_state: Optional[WorkspaceStateRecord], current_snapshot: dict[str, Any]) -> tuple[bool, str, str]:

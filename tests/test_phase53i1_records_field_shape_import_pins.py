@@ -62,10 +62,20 @@ class TestImportPaths:
         from app.persistence.exports_repository import ScenarioExportRecord
         assert ScenarioExportRecord is not None
 
-    def test_records_module_does_not_exist_yet(self):
-        # Per spec: 53I-1 does NOT create records.py. It only pins.
-        assert not RECORDS_PY.exists(), \
-            "records.py should NOT exist before 53I-2"
+    def test_records_module_exists_post_53i2(self):
+        # After 53I-2, records.py MUST exist (and be importable)
+        assert RECORDS_PY.exists(), \
+            "records.py should exist after 53I-2"
+
+    def test_records_module_importable(self):
+        # All 5 records must be importable from records module
+        from app.persistence.records import (
+            ProjectRecord, ScenarioRecord, WorkspaceStateRecord,
+            RunRecord, ScenarioExportRecord,
+        )
+        for cls in [ProjectRecord, ScenarioRecord, WorkspaceStateRecord,
+                    RunRecord, ScenarioExportRecord]:
+            assert cls is not None
 
 
 # ============================================================

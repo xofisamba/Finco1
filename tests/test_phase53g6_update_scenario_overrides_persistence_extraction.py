@@ -40,9 +40,10 @@ class TestOtherHighRiskWritesUntouched:
         assert f"def {fn_name}" in text
 
 class TestDataclassesUntouched:
+    """After 53I-2, the 3 dataclasses moved to records.py."""
     @pytest.mark.parametrize("cls_name", ["ProjectRecord", "ScenarioRecord", "WorkspaceStateRecord"])
-    def test_dataclass_still_in_repository(self, cls_name):
-        assert f"class {cls_name}" in _read(REPOSITORY_PY)
+    def test_dataclass_still_in_records_post_53i2(self, cls_name):
+        assert f"class {cls_name}" in _read(REPO_ROOT / "app" / "persistence" / "records.py")
 
 class TestRepositoryPyShrank:
     def test_repository_py_under_610_lines(self):

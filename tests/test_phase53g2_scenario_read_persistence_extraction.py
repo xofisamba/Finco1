@@ -202,14 +202,16 @@ class TestHighRiskScenarioWritesUntouched:
 
 
 class TestDataclassesUntouched:
+    """After 53I-2, the 3 dataclasses moved to records.py.
+    This test is updated to verify they live in records.py, not repository.py."""
     @pytest.mark.parametrize("cls_name", [
         "ProjectRecord",
         "ScenarioRecord",
         "WorkspaceStateRecord",
     ])
-    def test_dataclass_still_in_repository(self, cls_name):
-        text = _read(REPOSITORY_PY)
-        assert f"class {cls_name}" in text, f"{cls_name} not defined in repository.py"
+    def test_dataclass_still_in_records_post_53i2(self, cls_name):
+        text = (REPO_ROOT / "app" / "persistence" / "records.py").read_text()
+        assert f"class {cls_name}" in text, f"{cls_name} not defined in records.py"
 
 
 # ============================================================
