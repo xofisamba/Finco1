@@ -1,15 +1,24 @@
-"""Scenario read persistence functions extracted from app.persistence.repository.
+"""Scenario persistence functions extracted from app.persistence.repository.
 
-This module holds Group B-reads (scenario read) persistence functions
-extracted during Phase 53G-2. The functions are re-exported from
-app.persistence.repository for backward compatibility.
+This module holds Group B scenario persistence functions extracted
+during Phase 53G-2 (reads) and Phase 53G-3 (low-risk actions). The
+functions are re-exported from app.persistence.repository for
+backward compatibility.
 
-Function inventory (Group B-reads, from Phase 52A/52C/52E/52G + 53G-1):
+Function inventory (Group B-reads, Phase 53G-2):
 
 - get_scenario
 - list_scenarios
 - resolve_scenario_snapshot
 - resolve_active_scenario_runtime_snapshot
+
+Function inventory (Group B low-risk actions, Phase 53G-3):
+
+- rename_scenario
+- archive_scenario
+- select_scenario
+- duplicate_scenario
+- promote_scenario_to_base_case
 
 Functions NOT in this module (stay in repository.py until their own
 extraction PR):
@@ -18,11 +27,6 @@ extraction PR):
 - add_scenario                          (Group B high-risk write, 53G-5)
 - update_scenario_overrides             (Group B high-risk write, 53G-6)
 - get_or_create_base_case_scenario      (Group B high-risk write, 53G-7)
-- promote_scenario_to_base_case         (Group B low-risk, 53G-3)
-- duplicate_scenario                    (Group B low-risk, 53G-3)
-- rename_scenario                       (Group B low-risk, 53G-3)
-- archive_scenario                      (Group B low-risk, 53G-3)
-- select_scenario                       (Group B low-risk, 53G-3)
 - seed_scenarios_if_needed              (NOT Group B, stays in repository.py)
 - get_scenario_provenance               (NOT Group B, stays in repository.py)
 - get_base_case_scenario                (NOT Group B, stays in repository.py)
@@ -42,21 +46,27 @@ Public surface preserved:
 - app.persistence.repository.list_scenarios               ✓
 - app.persistence.repository.resolve_scenario_snapshot     ✓
 - app.persistence.repository.resolve_active_scenario_runtime_snapshot ✓
+- app.persistence.repository.rename_scenario              ✓
+- app.persistence.repository.archive_scenario             ✓
+- app.persistence.repository.select_scenario              ✓
+- app.persistence.repository.duplicate_scenario           ✓
+- app.persistence.repository.promote_scenario_to_base_case ✓
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from app.persistence._helpers import SCENARIO_INPUT_FIELDS
+from app.persistence._helpers import _now_utc, SCENARIO_INPUT_FIELDS
 from app.persistence.db import get_cursor
 
 if TYPE_CHECKING:
     from app.persistence.repository import ScenarioRecord
 
 
-# -----------------------------------------------------------------
-# resolve_scenario_snapshot
-# -----------------------------------------------------------------
+# ============================================================
+# Group B-reads (Phase 53G-2)
+# ============================================================
+
 
 def resolve_scenario_snapshot(
     base_input_set: dict[str, Any],
@@ -75,10 +85,6 @@ def resolve_scenario_snapshot(
     return base
 
 
-# -----------------------------------------------------------------
-# get_scenario
-# -----------------------------------------------------------------
-
 def get_scenario(scenario_id: str, user_id: str) -> "Optional[ScenarioRecord]":
     from app.persistence.repository import ScenarioRecord
     with get_cursor() as cur:
@@ -86,10 +92,6 @@ def get_scenario(scenario_id: str, user_id: str) -> "Optional[ScenarioRecord]":
         row = cur.fetchone()
     return ScenarioRecord.from_row(row) if row else None
 
-
-# -----------------------------------------------------------------
-# list_scenarios
-# -----------------------------------------------------------------
 
 def list_scenarios(
     user_id: str,
@@ -113,10 +115,6 @@ def list_scenarios(
         return [ScenarioRecord.from_row(row) for row in cur.fetchall()]
 
 
-# -----------------------------------------------------------------
-# resolve_active_scenario_runtime_snapshot
-# -----------------------------------------------------------------
-
 def resolve_active_scenario_runtime_snapshot(
     user_id: str,
     project_id: str,
@@ -132,8 +130,6 @@ def resolve_active_scenario_runtime_snapshot(
     - Non-base => resolve_scenario_snapshot(base_case.base_input_set, overrides_json)
     - Missing / invalid scenario => (None, None, warning)
     """
-    # get_base_case_scenario stays in repository.py (not Group B-reads).
-    # Lazy import to avoid circular import.
     from app.persistence.repository import get_base_case_scenario
 
     if not active_scenario_id:
@@ -170,3 +166,109 @@ def resolve_active_scenario_runtime_snapshot(
             "Selected scenario did not have a resolvable Base Case record, so runtime used the scenario's saved base input set."
         )
     return scenario_record, snapshot, warning
+
+
+# ============================================================
+# Group B low-risk actions (Phase 53G-3)
+# ============================================================
+
+
+def rename_scenario(user_id: str, scenario_id: str, new_name: str) -> bool:
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE scenarios SET scenario_name=?, updated_at=? WHERE scenario_id=? AND user_id=?",
+            (new_name, _now_utc().isoformat(), scenario_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def archive_scenario(user_id: str, scenario_id: str) -> bool:
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE scenarios SET archived=1, updated_at=? WHERE scenario_id=? AND user_id=?",
+            (_now_utc().isoformat(), scenario_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def promote_scenario_to_base_case(user_id: str, scenario_id: str) -> "Optional[ScenarioRecord]":
+    """Promote an existing scenario to be the project's Base Case.
+
+    Clears is_base_case flag from all other scenarios for this project first,
+    then sets it on the target scenario.
+    Idempotent: safe to call on a scenario that is already the base case.
+    """
+    with get_cursor() as cur:
+        # Clear any existing base case — scoped via subquery so it only clears
+        # one of the user's scenarios (not a different user's scenario accidentally)
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET is_base_case=0, updated_at=?
+            WHERE scenario_id=(
+                SELECT scenario_id FROM scenarios
+                WHERE user_id=? AND is_base_case=1
+                LIMIT 1
+            )
+            """,
+            (_now_utc().isoformat(), user_id),
+        )
+        # Promote the target scenario
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET is_base_case=1, updated_at=?
+            WHERE scenario_id=? AND user_id=?
+            """,
+            (_now_utc().isoformat(), scenario_id, user_id),
+        )
+        if cur.rowcount == 0:
+            return None
+    return get_scenario(scenario_id, user_id)
+
+
+def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] = None) -> "Optional[ScenarioRecord]":
+    from app.persistence.repository import save_scenario
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return None
+    copy_name = new_name or f"{record.scenario_name} Copy"
+    return save_scenario(
+        user_id=user_id,
+        project_id=record.project_id,
+        scenario_name=copy_name,
+        project_code=record.project_code,
+        source_project_template=record.source_project_template,
+        snapshot=record.snapshot,
+        governance_state=record.governance_state,
+        last_run_summary=record.last_run_summary,
+        copied_from_scenario_id=record.scenario_id,
+        replay_metadata=record.replay_metadata,
+    )
+
+
+def select_scenario(
+    user_id: str,
+    project_id: str,
+    scenario_id: str,
+) -> bool:
+    """Set the active scenario for the given project in workspace_state."""
+    from app.persistence.repository import get_workspace_state, save_workspace_state
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return False
+    ws = get_workspace_state(user_id, project_id)
+    if ws is None:
+        return False
+    save_workspace_state(
+        user_id=user_id,
+        project_id=project_id,
+        project_code=ws.project_code,
+        active_scenario_id=scenario_id,
+        active_scenario_name=record.scenario_name,
+        draft_snapshot=ws.draft_snapshot,
+        saved_snapshot=ws.saved_snapshot if ws.saved_snapshot else ws.draft_snapshot,
+        governance_state=ws.governance_state,
+        replay_metadata={"action": "select_scenario", "scenario_id": scenario_id},
+    )
+    return True

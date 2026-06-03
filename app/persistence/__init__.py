@@ -5,12 +5,10 @@ from app.persistence.repository import (
     RunRecord,
     ScenarioExportRecord,
     ScenarioRecord,
-    archive_scenario,
     build_export_lineage,
     compare_scenarios,
     count_runs,
     delete_run,
-    duplicate_scenario,
     get_project,
     get_project_by_code,
     get_run,
@@ -19,15 +17,17 @@ from app.persistence.repository import (
     list_projects,
     list_runs,
     record_export,
-    rename_scenario,
     save_project,
     save_run,
     save_scenario,
 )
-# Phase 53G-2: scenario read functions moved to scenarios_repository
+# Phase 53G-2 + 53G-3: scenario reads + low-risk actions moved to scenarios_repository
 from app.persistence.scenarios_repository import (
     get_scenario,
     list_scenarios,
+    archive_scenario,
+    duplicate_scenario,
+    rename_scenario,
 )
 
 __all__ = [
