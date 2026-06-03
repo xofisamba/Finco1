@@ -1,12 +1,13 @@
 {
   "package": {
     "name": "Finco1 Agent A / Agent B Governance Refresh Tracker",
-    "workstream": "B14",
-    "branch": "parallel-b-pilot-review-pack",
-    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
-    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
-    "tracker_version": "0.1.0",
-    "tracker_status": "empty_template",
+    "workstream": "B14+B15",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "previous_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "tracker_version": "0.2.0",
+    "tracker_status": "refreshed_post_phase_51n",
     "intended_use": "internal_governance_refresh_tracking_only",
     "external_claim_scope": "none"
   },
@@ -46,7 +47,28 @@
     ]
   },
   "pending_refreshes": [],
-  "completed_refreshes": [],
+  "completed_refreshes": [
+    {
+      "refresh_id": "B15-REFRESH-001",
+      "refresh_name": "Phase 51N governance refresh",
+      "branch": "parallel-b15-b19-refresh-pilot-pack",
+      "refresh_commit": "pending (not yet committed in this branch)",
+      "executed_at": "branch_open",
+      "rationale": "Phase 51J-2, 51K-1, 51K-2, 51L-1, 51L-2, 51M-1, 51M-2, 51N have landed on main since the previous B14 refresh. B3 matrix, B8 tracker, B12 heatmap, B11/B13 trackers, B10 data room index, and missing-evidence tracker need base_sha and per-phase references updated.",
+      "files_refreshed": [
+        "reports/governance/governance_refresh_tracker.json",
+        "docs/governance/agent_a_b_governance_refresh_plan.md",
+        "reports/validation/validation_evidence_matrix.json",
+        "reports/validation/model_confidence_heatmap.json",
+        "reports/roadmap/enterprise_saas_readiness_tracker.json",
+        "reports/pilot/pilot_execution_checklist.json",
+        "reports/pilot/paid_pilot_readiness_gate.json",
+        "reports/external_review/missing_evidence_tracker.json",
+        "docs/external_review/data_room_index.md"
+      ],
+      "notes": "Refresh is docs-only. No Agent A file touched. No code, route, service, template, static, fixture, schema, or persistence change. Phase 51N is checkpoint/evidence prep, not Claude review. Claude review is separate and is not represented here as completed."
+    }
+  ],
   "cancelled_refreshes": [],
   "agent_a_phase_log": [
     {
@@ -121,21 +143,23 @@
         "B8 architecture dimension (51H-2 reference, 51G-2 already done)",
         "B8 persistence dimension (51H-2 reference)"
       ],
-      "b_track_refresh_executed": false,
-      "b_track_refresh_branch": "pending",
-      "b_track_refresh_commit": null,
-      "notes": "Phase 51H-2 was merged into main at 3300b5df before the B14 plan was created. The B3 matrix and B8 tracker reference 'future Agent A work' but the B14 refresh was not executed for 51H-2. A future refresh should add 51H-2 to AREA-019 and to the B8 architecture and persistence summaries."
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51H-2, 51I, 51J-1 refresh references)",
+      "notes": "Phase 51H-2 was previously logged as 'pending' in B14 (PR #398). B15 refresh adds 51H-2 to AREA-019 in the B3 matrix and to the B8 architecture and persistence summaries. B3 matrix refresh notes the post-extraction persisted state."
     },
     {
       "phase": "Phase 51I",
       "sha": "09481dc",
       "title": "Route extraction checkpoint and updated hotspot map (#396)",
       "b_track_impact_assessed": true,
-      "b_track_documents_affected": [],
-      "b_track_refresh_executed": false,
-      "b_track_refresh_branch": "pending",
-      "b_track_refresh_commit": null,
-      "notes": "Phase 51I is a checkpoint and hotspot map update. It does not change route / service / state behavior. No B-track document references Phase 51I directly. No refresh required."
+      "b_track_documents_affected": [
+        "B17 remaining-hotspots tracker (B15 + B17 introduce governance tracking for the 5 remaining inline hotspots that 51I documented)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15 + B17, this branch)",
+      "b_track_refresh_commit": "pending (B15 + B17 include 51I checkpoint and hotspot references)",
+      "notes": "Phase 51I is a checkpoint and hotspot map update. It does not change route / service / state behavior. B17 introduces a governance tracker for the 5 remaining inline hotspots that 51I identified."
     },
     {
       "phase": "Phase 51J-1",
@@ -147,25 +171,148 @@
         "B8 architecture dimension (51J-1 added to recent Agent A route work)",
         "B8 persistence dimension (51J-1 added to recent Agent A route work)"
       ],
-      "b_track_refresh_executed": false,
-      "b_track_refresh_branch": "pending",
-      "b_track_refresh_commit": null,
-      "notes": "Phase 51J-1 was merged at 2273bac, the current base of this branch. It is not yet reflected in the B3 matrix or the B8 tracker. A future refresh should add 51J-1 to AREA-019 and to the B8 architecture and persistence summaries."
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b-pilot-review-pack (B9-B14, PR #398) + parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "a579d352fd8bca1f91a1daea81feb8bca64f1114 (PR #398 squash merge)",
+      "notes": "Phase 51J-1 was reflected in PR #398 (B9-B14 pilot review pack) and in B15. B15 adds 51J-1 to AREA-019 with a note that 51J-2 has superseded it for production surface area."
+    },
+    {
+      "phase": "Phase 51J-2",
+      "sha": "6569d1f",
+      "title": "Extract POST /scenarios/save into scenarios_save_service.py (#399)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-013 (post-extraction persistence behavior; 51J-1 characterization now superseded for production surface area)",
+        "B8 architecture dimension (51J-2 added to recent Agent A route work; 12 service-backed routes reached)",
+        "B8 persistence dimension (51J-2 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51J-2 in AREA-019 and B8 architecture summary)",
+      "notes": "Phase 51J-2 extracts POST /scenarios/save into scenarios_save_service.py. B3 matrix refresh logs 51J-2 as a recent Agent A extraction; pin refresh remains pending for the post-extraction persisted state shape."
+    },
+    {
+      "phase": "Phase 51K-1",
+      "sha": "2b875de",
+      "title": "POST /scenarios/{scenario_id}/duplicate golden characterization (#400)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-019 (51K-1 added to recent Agent A route work)",
+        "B8 architecture dimension (51K-1 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51K-1 in AREA-019 and B8 architecture summary)",
+      "notes": "Phase 51K-1 is a characterization of the then-inline /scenarios/{scenario_id}/duplicate route. Superseded for production surface area by Phase 51K-2 (extraction). B3 matrix refresh notes the characterization."
+    },
+    {
+      "phase": "Phase 51K-2",
+      "sha": "9e7d272",
+      "title": "Extract POST /scenarios/{scenario_id}/duplicate into scenario_duplicate_service.py (#403)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-019 (51K-2 added to recent Agent A route work)",
+        "B8 architecture dimension (51K-2 added to recent Agent A route work; service module count increased)",
+        "B8 persistence dimension (51K-2 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51K-2 in AREA-019 and B8 architecture summary)",
+      "notes": "Phase 51K-2 extracts POST /scenarios/{scenario_id}/duplicate into scenario_duplicate_service.py. B3 matrix refresh logs 51K-2; pin refresh is not required for this route."
+    },
+    {
+      "phase": "Phase 51L-1",
+      "sha": "798d59c",
+      "title": "POST /scenarios/add golden characterization (#404)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-019 (51L-1 added to recent Agent A route work)",
+        "B8 architecture dimension (51L-1 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51L-1 in AREA-019 and B8 architecture summary)",
+      "notes": "Phase 51L-1 is a characterization of the then-inline /scenarios/add route. Superseded for production surface area by Phase 51L-2 (extraction). B3 matrix refresh notes the characterization."
+    },
+    {
+      "phase": "Phase 51L-2",
+      "sha": "ca3591a",
+      "title": "Extract /scenarios/add into scenarios_add_service.py (#405)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-019 (51L-2 added to recent Agent A route work)",
+        "B8 architecture dimension (51L-2 added to recent Agent A route work; service module count increased)",
+        "B8 persistence dimension (51L-2 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51L-2 in AREA-019 and B8 architecture summary)",
+      "notes": "Phase 51L-2 extracts /scenarios/add into scenarios_add_service.py. B3 matrix refresh logs 51L-2; pin refresh is not required for this route."
+    },
+    {
+      "phase": "Phase 51M-1",
+      "sha": "53bbe17",
+      "title": "POST /projects/create golden characterization (#406)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-019 (51M-1 added to recent Agent A route work)",
+        "B8 architecture dimension (51M-1 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51M-1 in AREA-019 and B8 architecture summary)",
+      "notes": "Phase 51M-1 is a characterization of the then-inline /projects/create route. Superseded for production surface area by Phase 51M-2 (extraction). B3 matrix refresh notes the characterization."
+    },
+    {
+      "phase": "Phase 51M-2",
+      "sha": "2afdba8",
+      "title": "Extract POST /projects/create into projects_create_service.py (#407)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-019 (51M-2 added to recent Agent A route work)",
+        "B8 architecture dimension (51M-2 added to recent Agent A route work; service module count increased)",
+        "B8 persistence dimension (51M-2 added to recent Agent A route work)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51M-2 in AREA-019 and B8 architecture summary)",
+      "notes": "Phase 51M-2 extracts POST /projects/create into projects_create_service.py. B3 matrix refresh logs 51M-2; pin refresh is not required for this route."
+    },
+    {
+      "phase": "Phase 51N",
+      "sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+      "title": "Post-M2 route extraction checkpoint, Agent B docs integration, Claude review preparation pack (#408)",
+      "b_track_impact_assessed": true,
+      "b_track_documents_affected": [
+        "B3 matrix AREA-020 (Phase 51N checkpoint, new area)",
+        "B12 heatmap HC-019 (Phase 51N checkpoint, new area)",
+        "B8 architecture dimension (12 service-backed routes, 13 service modules reached; 5 remaining inline hotspots documented in B17)",
+        "B10 data room index (07-b15-b19-refresh-pilot-pack section added)",
+        "B11 commercial messaging guardrail (no change; 51N is docs/evidence prep, no new claim category)",
+        "B14 refresh plan (this file; 8 new phase entries added)"
+      ],
+      "b_track_refresh_executed": true,
+      "b_track_refresh_branch": "parallel-b15-b19-refresh-pilot-pack (B15, this branch)",
+      "b_track_refresh_commit": "pending (B15 includes 51N in AREA-020, HC-019, B8 architecture summary, and B10 data room index)",
+      "notes": "Phase 51N is a checkpoint and Claude review preparation pack. It is NOT Claude review itself. Claude review is handled separately and is not represented in this branch as completed. 51N documents the post-M2 state: 12 service-backed routes, 13 service modules, 5 remaining inline hotspots. The 5 hotspots are tracked in B17 with expected future Agent A phase numbering (51O/51P/51Q/51R/51S)."
     }
   ],
   "summary": {
-    "total_phases_logged": 7,
-    "phases_with_b_track_refresh_executed": 4,
-    "phases_with_pending_b_track_refresh": 2,
-    "phases_with_no_b_track_refresh_required": 1,
+    "total_phases_logged": 15,
+    "phases_with_b_track_refresh_executed": 15,
+    "phases_with_pending_b_track_refresh": 0,
+    "phases_with_no_b_track_refresh_required": 0,
     "pending_refreshes_count": 0,
-    "completed_refreshes_count": 0,
-    "cancelled_refreshes_count": 0
+    "completed_refreshes_count": 1,
+    "cancelled_refreshes_count": 0,
+    "b15_refresh_status": "in_progress (B15 branch open, B15 entries logged in completed_refreshes, no commit yet)"
   },
   "global_notes": [
     "This tracker is a working artifact. It records the B-track refresh status of each Agent A phase. The 'pending_refreshes' list is for refreshes that have been opened as branches but not yet merged.",
-    "The 'agent_a_phase_log' is a historical record. It is updated as Agent A merges new phases.",
+    "The 'agent_a_phase_log' is a historical record. It is updated as Agent A merges new phases. After B15, all 15 logged phases (51G-1 through 51N) have B-track refresh entries. Future phases will be added as they land.",
     "The 'agent_a_ownership_list_for_reference_only' is included for Agent B's reference. Agent B NEVER modifies any file in this list. A refresh is a docs-only change.",
-    "A refresh is a normal B-track operation. It is not a code change. It is not a route change. It is not a service change. It is a docs/report-only change."
+    "A refresh is a normal B-track operation. It is not a code change. It is not a route change. It is not a service change. It is a docs/report-only change.",
+    "Phase 51N is checkpoint and Claude review preparation. Claude review is handled separately outside Agent B branches and is not represented as completed in this tracker. Do not interpret B15 or B16 as a Claude review result.",
+    "The 5 remaining inline hotspots (POST /projects/{code}/save-as; POST /scenarios/{id}/rename; POST /scenarios/{id}/archive; POST /scenarios/{id}/update-overrides; POST /scenarios/{id}/select) are tracked in B17 with expected future Agent A phase numbering 51O/51P/51Q/51R/51S. This tracker does not include the 51O-51S phases; they are future work."
   ]
 }

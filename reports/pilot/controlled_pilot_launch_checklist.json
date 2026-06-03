@@ -1,0 +1,160 @@
+{
+  "package": {
+    "name": "Finco1 Controlled Pilot Launch Checklist",
+    "workstream": "B18",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "checklist_version": "0.1.0",
+    "checklist_status": "empty_template",
+    "intended_use": "internal_controlled_pilot_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/controlled_pilot_launch_checklist.md",
+  "b7_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b9_execution_pointer": "docs/pilot/pilot_validation_execution_pack.md",
+  "b9_checklist_pointer": "reports/pilot/pilot_execution_checklist.json",
+  "b9_result_summary_pointer": "reports/pilot/pilot_result_summary_template.json",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b12_heatmap_pointer": "docs/validation/model_confidence_heatmap.md",
+  "b13_paid_pilot_gate_pointer": "docs/pilot/paid_pilot_readiness_gate.md",
+  "b14_refresh_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "b17_remaining_hotspots_pointer": "docs/governance/remaining_hotspots_governance_tracker.md",
+  "b19_post_pilot_pointer": "docs/pilot/post_pilot_evidence_update_template.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "disclaimers": {
+    "controlled_pilot_only": true,
+    "not_customer_reference": true,
+    "not_production_readiness": true,
+    "not_external_validation": true,
+    "not_paid_pilot_authorization": true,
+    "paid_pilot_authorization_requires_b13_separately": true,
+    "claude_review_separate": true
+  },
+  "scope_definitions": {
+    "allowed_pilot_areas_per_b3_matrix": [
+      {"area_id": "AREA-001", "area_name": "TUHO", "pilot_claim_allowed": true, "notes": "Five pinned metrics; regression protection."},
+      {"area_id": "AREA-002", "area_name": "Oborovo", "pilot_claim_allowed": true, "notes": "Five pinned metrics; regression protection."},
+      {"area_id": "AREA-008", "area_name": "Senior debt (TUHO/Oborovo scope)", "pilot_claim_allowed": true, "notes": "Pinned for TUHO and Oborovo only."},
+      {"area_id": "AREA-010", "area_name": "Sponsor economics", "pilot_claim_allowed": true, "notes": "Internally tested, not pinned."},
+      {"area_id": "AREA-011", "area_name": "Distributions (TUHO/Oborovo scope)", "pilot_claim_allowed": true, "notes": "Partial Phase 51F pin (first_distribution_op_idx only)."},
+      {"area_id": "AREA-012", "area_name": "Excel export", "pilot_claim_allowed": true, "notes": "Internally tested, not pinned."},
+      {"area_id": "AREA-013", "area_name": "Persistence / scenarios", "pilot_claim_allowed": true, "notes": "Pin refresh pending."},
+      {"area_id": "AREA-016", "area_name": "B1 external review package", "pilot_claim_allowed": true, "notes": "Documentation review; not a model area."},
+      {"area_id": "AREA-017", "area_name": "UI warnings", "pilot_claim_allowed": true, "notes": "Pilot user testing is the evidence-gathering step."}
+    ],
+    "excluded_pilot_areas_per_b3_matrix": [
+      {"area_id": "AREA-003", "area_name": "Generic solar", "pilot_claim_allowed": false, "reason": "Generic solar is exploratory; not validated."},
+      {"area_id": "AREA-004", "area_name": "Generic wind", "pilot_claim_allowed": false, "reason": "Generic wind is exploratory; not validated."},
+      {"area_id": "AREA-005", "area_name": "BESS engine", "pilot_claim_allowed": false, "reason": "BESS waterfall in progress."},
+      {"area_id": "AREA-006", "area_name": "BESS hybrid full flow", "pilot_claim_allowed": false, "reason": "Hybrid waterfall in progress."},
+      {"area_id": "AREA-007", "area_name": "Tax (broad)", "pilot_claim_allowed": false, "reason": "Sub-area decomposition required."},
+      {"area_id": "AREA-009", "area_name": "SHL", "pilot_claim_allowed": false, "reason": "Not pinned; not in B1 review focus."}
+    ],
+    "remaining_inline_hotspots_excluded": [
+      {"route": "POST /projects/{code}/save-as", "reason": "Inline; tracked in B17; expected future phase 51O."},
+      {"route": "POST /scenarios/{id}/rename", "reason": "Inline; tracked in B17; expected future phase 51P."},
+      {"route": "POST /scenarios/{id}/archive", "reason": "Inline; tracked in B17; expected future phase 51Q."},
+      {"route": "POST /scenarios/{id}/update-overrides", "reason": "Inline; tracked in B17; expected future phase 51R."},
+      {"route": "POST /scenarios/{id}/select", "reason": "Inline; tracked in B17; expected future phase 51S."}
+    ]
+  },
+  "data_definitions": {
+    "allowed_data": [
+      "TUHO inputs (then-inline / now-frozen reference template)",
+      "Oborovo inputs (then-inline / now-frozen reference template)",
+      "Pilot user inputs (anonymized)",
+      "Internal test inputs (validation/cases/)"
+    ],
+    "prohibited_data": [
+      "Production data",
+      "Customer data",
+      "NDA-protected data",
+      "External model outputs (third-party model results)"
+    ]
+  },
+  "evidence_to_collect": [
+    "Run logs (start time, end time, warnings, model output)",
+    "Validation records (expected vs observed, per metric)",
+    "Exports (Excel, with SHA-256 checksums)",
+    "Screenshots (when they document something the run logs don't)",
+    "User feedback (anonymized per pilot user ID)",
+    "Issue log (category, severity, outcome)"
+  ],
+  "pass_fail_signal": {
+    "per_area_decisions": ["pass", "fail", "investigate", "not_evaluated"],
+    "per_run_decisions": ["pass", "fail", "investigate"],
+    "pilot_overall_decisions": ["pass", "fail", "investigate"],
+    "rule": "Pilot run is 'pass' if all must-pass metrics across all pilot-claim-allowed areas pass. Pilot run is 'fail' if any must-pass metric fails. Pilot run is 'investigate' if any should-pass metric fails and no must-pass metric fails.",
+    "note": "A 'pass' is a positive internal signal. It is not external validation. It is not a customer reference. It is not production readiness."
+  },
+  "issue_logging": {
+    "categories": ["bug", "unexpected-behavior", "ux", "doc", "infra", "scope"],
+    "severities": ["pilot-blocker", "high", "medium", "low"],
+    "resolution_windows": {
+      "pilot-blocker": "immediate",
+      "high": "3 business days",
+      "medium": "1 week",
+      "low": "2 weeks"
+    },
+    "outcomes": ["confirmed_bug", "known_acceptable_deviation", "transcription_error", "scope_misalignment", "environment_issue", "cannot_reproduce", "open"]
+  },
+  "pilot_user_acknowledgement": {
+    "required": true,
+    "contents": [
+      "Acknowledgement that the pilot is internal validation with a real human user",
+      "Acknowledgement that the pilot is not external validation, not a customer reference, not production readiness",
+      "Acknowledgement of the no-go claim list",
+      "Forbiddance from making any external-claim language about the model",
+      "Recording of the pilot user's anonymized identifier",
+      "Recording of the pilot user's data isolation requirements"
+    ]
+  },
+  "no_go_language_acknowledgement": {
+    "required": true,
+    "contents": [
+      "Acknowledgement of the B1 no-go list",
+      "Acknowledgement of the B11 commercial messaging guardrail",
+      "Forbiddance from making any of the prohibited claims during the pilot",
+      "Recording of the no-go categories acknowledged (lender, audit, saas, claim, approval, advice)"
+    ],
+    "violation_consequence": "A pilot user who violates the no-go language acknowledgement triggers a pilot pause and a triage review. The pilot is paused until the violation is investigated and resolved."
+  },
+  "rollback_stop_criteria": [
+    "A pilot-blocker issue that cannot be resolved within the pilot run window",
+    "A no-go claim made or implied by the pilot user or operator",
+    "A data isolation breach (production, customer, or NDA data accessed)",
+    "A security incident (unauthorized access, data leak)",
+    "A model output that is outside the documented output range for a must-pass metric and cannot be explained",
+    "The pilot user requests a stop",
+    "The project lead requests a stop"
+  ],
+  "post_run_evidence_update_handoff": {
+    "trigger": "When the pilot run window closes",
+    "owner": "pilot_operator + project_lead",
+    "procedure": [
+      "Aggregate per-run evidence into the pilot result summary",
+      "Compute per-area decisions",
+      "File the pilot result summary (per the B9 result summary template)",
+      "Update the B3 matrix with the pilot result (current_status, evidence_category, missing_evidence, blockers, notes)",
+      "Update the B12 heatmap if any area's confidence label changes",
+      "Review the B11 commercial messaging guardrail for any new claim categories",
+      "Update the B14 governance refresh tracker with any follow-up items"
+    ],
+    "handoff_signature_required_from": ["pilot_operator", "project_lead"]
+  },
+  "summary": {
+    "checklist_total_items": 14,
+    "checklist_status": "empty_template",
+    "pilot_authorized": false,
+    "paid_pilot_authorized": false,
+    "external_validation_claimed": false
+  },
+  "global_notes": [
+    "This checklist is empty at package creation. It is the practical launch procedure for the controlled internal pilot. It is not customer reference, not production readiness, not external validation, not paid pilot authorization.",
+    "The paid pilot gate (B13) is a separate stage. B18 does not authorize the paid pilot. B18 authorizes the controlled internal pilot only.",
+    "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is not represented in B18 as completed.",
+    "The 5 remaining inline hotspots (POST /projects/{code}/save-as; POST /scenarios/{id}/rename; POST /scenarios/{id}/archive; POST /scenarios/{id}/update-overrides; POST /scenarios/{id}/select) are excluded from pilot scope because they are still inline and are tracked in B17. Future Agent A extractions (51O-51S) will, when they land, update the B17 tracker and may allow future pilot scope to include them after appropriate characterization + extraction + pin refresh.",
+    "The allowed data excludes production, customer, and NDA data. The pilot user is bound by the no-go claim list and the B11 commercial messaging guardrail. A pilot user who violates the no-go language acknowledgement triggers a pilot pause."
+  ]
+}

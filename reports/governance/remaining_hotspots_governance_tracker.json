@@ -1,0 +1,141 @@
+{
+  "package": {
+    "name": "Finco1 Remaining Hotspots Governance Tracker",
+    "workstream": "B17",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "tracker_version": "0.1.0",
+    "tracker_status": "initial_draft_post_phase_51n",
+    "intended_use": "internal_governance_tracking_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/remaining_hotspots_governance_tracker.md",
+  "b14_refresh_tracker_pointer": "reports/governance/governance_refresh_tracker.json",
+  "b3_matrix_pointer": "reports/validation/validation_evidence_matrix.json",
+  "b8_tracker_pointer": "reports/roadmap/enterprise_saas_readiness_tracker.json",
+  "b10_data_room_pointer": "docs/external_review/data_room_index.md",
+  "b16_closeout_pointer": "docs/external_review/external_review_closeout_tracker.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "post_phase_51n_state": {
+    "service_backed_routes_count": 12,
+    "service_modules_count": 13,
+    "remaining_inline_hotspot_routes_count": 5,
+    "phase_51n_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "phase_51n_source": "Phase 51N: Post-M2 route extraction checkpoint, Agent B docs integration, Claude review preparation pack (#408)"
+  },
+  "rule_reminder": "Agent B does not perform the extraction. Agent B does not modify Agent A files. The 5 extractions are Agent A work. Agent B updates this tracker when the Agent A phase lands, as a normal B-track governance refresh.",
+  "expected_phase_numbering_note": "The expected future Agent A phase numbering (51O/51P/51Q/51R/51S) is a planning convention, not a commitment. Agent A may number the actual phases differently; the B-track updates the tracker when the actual phase lands.",
+  "tracker": {
+    "POST_/projects/{code}/save-as": {
+      "route": "POST /projects/{code}/save-as",
+      "current_inline_status": "inline in main_web.py (Agent A owned). The route handles project save-as; it is the inline counterpart to the projects_create_service.py extracted in Phase 51M-2.",
+      "risk_level": "medium",
+      "expected_future_agent_a_phase": "51O",
+      "expected_characterization_phase": "51O-1",
+      "expected_extraction_phase": "51O-2",
+      "governance_impact": "B3 matrix AREA-019 update; B8 architecture dimension increment (12 -> 13 service-backed routes, 13 -> 14 service modules); B14 governance refresh tracker addition.",
+      "pilot_impact": "If save-as is in pilot scope (B7 + B9), the pilot surface area changes after extraction. Pin refresh or forward-compatibility decision is required if save-as is pilot-claim-allowed.",
+      "external_review_impact": "B10 data room index update; B16 closeout tracker update.",
+      "no_go_claim_impact": "none",
+      "agent_b_refresh_trigger": "When the Agent A phase lands, update this tracker, the B3 matrix, the B8 tracker, the B14 refresh tracker, and the B10 data room index.",
+      "notes": "Save-as is the most natural follow-up to the projects_create_service.py extraction in 51M-2. The Agent A work on this route will follow the same pattern as 51M-1 (characterization) + 51M-2 (extraction).",
+      "status": "pending_agent_a"
+    },
+    "POST_/scenarios/{id}/rename": {
+      "route": "POST /scenarios/{id}/rename",
+      "current_inline_status": "inline in main_web.py (Agent A owned). The route handles scenario rename; it is a persistence-adjacent operation.",
+      "risk_level": "low",
+      "expected_future_agent_a_phase": "51P",
+      "expected_characterization_phase": "51P-1",
+      "expected_extraction_phase": "51P-2",
+      "governance_impact": "B3 matrix AREA-019 update; B8 architecture dimension increment; B14 governance refresh tracker addition.",
+      "pilot_impact": "If rename is in pilot scope, the pilot surface area changes after extraction.",
+      "external_review_impact": "B10 data room index update; B16 closeout tracker update.",
+      "no_go_claim_impact": "none",
+      "agent_b_refresh_trigger": "When the Agent A phase lands, update this tracker, the B3 matrix, the B8 tracker, the B14 refresh tracker, and the B10 data room index.",
+      "notes": "Rename is the simplest of the 5 hotspots. The Agent A work on this route will follow the same pattern as 51K-1 + 51K-2 (or 51L-1 + 51L-2).",
+      "status": "pending_agent_a"
+    },
+    "POST_/scenarios/{id}/archive": {
+      "route": "POST /scenarios/{id}/archive",
+      "current_inline_status": "inline in main_web.py (Agent A owned). The route handles scenario archive; it is a persistence-adjacent operation that changes scenario state.",
+      "risk_level": "medium",
+      "expected_future_agent_a_phase": "51Q",
+      "expected_characterization_phase": "51Q-1",
+      "expected_extraction_phase": "51Q-2",
+      "governance_impact": "B3 matrix AREA-019 update; B8 architecture dimension increment; B14 governance refresh tracker addition.",
+      "pilot_impact": "If archive is in pilot scope, the pilot surface area changes after extraction.",
+      "external_review_impact": "B10 data room index update; B16 closeout tracker update.",
+      "no_go_claim_impact": "none",
+      "agent_b_refresh_trigger": "When the Agent A phase lands, update this tracker, the B3 matrix, the B8 tracker, the B14 refresh tracker, and the B10 data room index.",
+      "notes": "Archive is similar in pattern to scenarios/state/* already extracted in Phase 51H-2. The Agent A work on this route may reuse patterns from 51H-2.",
+      "status": "pending_agent_a"
+    },
+    "POST_/scenarios/{id}/update-overrides": {
+      "route": "POST /scenarios/{id}/update-overrides",
+      "current_inline_status": "inline in main_web.py (Agent A owned). The route handles scenario update-overrides; it is a persistence-adjacent operation that updates scenario parameters.",
+      "risk_level": "high",
+      "expected_future_agent_a_phase": "51R",
+      "expected_characterization_phase": "51R-1",
+      "expected_extraction_phase": "51R-2",
+      "governance_impact": "B3 matrix AREA-019 update; B8 architecture dimension increment; B14 governance refresh tracker addition.",
+      "pilot_impact": "If update-overrides is in pilot scope, the pilot surface area changes after extraction. Pin refresh or forward-compatibility decision is required if update-overrides is pilot-claim-allowed.",
+      "external_review_impact": "B10 data room index update; B16 closeout tracker update.",
+      "no_go_claim_impact": "none",
+      "agent_b_refresh_trigger": "When the Agent A phase lands, update this tracker, the B3 matrix, the B8 tracker, the B14 refresh tracker, and the B10 data room index.",
+      "notes": "Update-overrides is the highest-risk of the 5 hotspots. The Agent A work on this route will follow the same pattern as 51K-1 + 51K-2 (or 51L-1 + 51L-2) with additional validation.",
+      "status": "pending_agent_a"
+    },
+    "POST_/scenarios/{id}/select": {
+      "route": "POST /scenarios/{id}/select",
+      "current_inline_status": "inline in main_web.py (Agent A owned). The route handles scenario select; it is a persistence-adjacent operation that sets the active scenario for the user.",
+      "risk_level": "medium",
+      "expected_future_agent_a_phase": "51S",
+      "expected_characterization_phase": "51S-1",
+      "expected_extraction_phase": "51S-2",
+      "governance_impact": "B3 matrix AREA-019 update; B8 architecture dimension increment; B14 governance refresh tracker addition.",
+      "pilot_impact": "If select is in pilot scope, the pilot surface area changes after extraction.",
+      "external_review_impact": "B10 data room index update; B16 closeout tracker update.",
+      "no_go_claim_impact": "none",
+      "agent_b_refresh_trigger": "When the Agent A phase lands, update this tracker, the B3 matrix, the B8 tracker, the B14 refresh tracker, and the B10 data room index.",
+      "notes": "Select is similar in pattern to the scenarios/state/* extraction in Phase 51H-2. The Agent A work on this route may reuse patterns from 51H-2.",
+      "status": "pending_agent_a"
+    }
+  },
+  "status_definitions": {
+    "pending_agent_a": "The route is inline. The Agent A characterization and extraction phases are pending. Agent B tracks but does not perform the work.",
+    "characterization_complete": "The Agent A characterization phase for this route has landed. The route is still inline but is characterized. The B-track updates AREA-019 to reflect the new characterization.",
+    "extraction_complete": "The Agent A extraction phase for this route has landed. The route is no longer inline. The B-track updates AREA-019, the B8 architecture dimension, the B10 data room index, and the B16 closeout tracker to reflect the extraction.",
+    "cancelled_with_rationale": "The Agent A work on this route was cancelled (with rationale). The route remains inline indefinitely."
+  },
+  "summary": {
+    "total_remaining_inline_hotspots": 5,
+    "by_risk_level": {
+      "low": 1,
+      "medium": 3,
+      "high": 1
+    },
+    "by_status": {
+      "pending_agent_a": 5,
+      "characterization_complete": 0,
+      "extraction_complete": 0,
+      "cancelled_with_rationale": 0
+    },
+    "expected_phase_numbering": {
+      "51O": "POST /projects/{code}/save-as",
+      "51P": "POST /scenarios/{id}/rename",
+      "51Q": "POST /scenarios/{id}/archive",
+      "51R": "POST /scenarios/{id}/update-overrides",
+      "51S": "POST /scenarios/{id}/select"
+    }
+  },
+  "global_notes": [
+    "This tracker is internal governance. It is not a code change. It does not authorize Agent B to extract or modify any Agent A file.",
+    "Agent B does not perform the extractions. Agent B does not modify Agent A files. The 5 extractions are Agent A work.",
+    "The expected future Agent A phase numbering (51O/51P/51Q/51R/51S) is a planning convention, not a commitment.",
+    "The no-go claim list is unchanged by the 5 hotspot extractions. The extractions are route / service / code changes on the Agent A track, not no-go category changes.",
+    "When the Agent A phase lands, the B-track updates this tracker, the B3 matrix, the B8 tracker, the B14 refresh tracker, the B10 data room index, and the B16 closeout tracker. The B-track does not modify any Agent A file."
+  ]
+}

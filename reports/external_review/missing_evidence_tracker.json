@@ -2,11 +2,12 @@
   "package": {
     "name": "Finco1 External Reviewer Missing Evidence Tracker",
     "workstream": "B10",
-    "branch": "parallel-b-pilot-review-pack",
-    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
-    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
-    "tracker_version": "0.1.0",
-    "tracker_status": "initial_aggregation",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "previous_branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "tracker_version": "0.2.0",
+    "tracker_status": "refreshed_post_phase_51n",
     "intended_use": "internal_reviewer_scaffolding_only",
     "external_claim_scope": "none"
   },
@@ -172,9 +173,16 @@
     },
     "most_impactful_pending": "B1 external review output, B2 generic reference acquisition, B7 controlled pilot execution"
   },
+  "b15_refresh_notes": {
+    "date": "b15_refresh",
+    "version": "0.2.0",
+    "rationale": "Phase 51N checkpoint has landed. B15 governance refresh has been executed on this branch (parallel-b15-b19-refresh-pilot-pack). The missing-evidence tracker is updated to reflect the B15 base SHA (aced60b) and to note that B15 has been executed (BLK-005 is now historical; B15 itself has been performed as a refresh, not as a pending future action). The 5 remaining inline hotspots (tracked in B17) are not added to this tracker because they are not 'missing evidence' items; they are 'pending future Agent A characterization / extraction' items, which is a different category. B16 (External Review Closeout Tracker) is the source of truth for what is ready for external review, what is missing, and what cannot be claimed; Claude review is separate and is not represented here as completed."
+  },
   "global_notes": [
     "This tracker is a working artifact. The categories reflect what is in place, what is pending, and what is not applicable. Each entry names the expected evidence and the workstream that produces it.",
     "The data room itself does not constitute external validation. The reviewer's output is internal validation, conditioned on the no-go claim list.",
-    "The pending_external_review category is for evidence that the external review itself produces (e.g. reviewer output). It is not external validation; it is the reviewer's opinion."
+    "The pending_external_review category is for evidence that the external review itself produces (e.g. reviewer output). It is not external validation; it is the reviewer's opinion.",
+    "B15 governance refresh updated branch_base_sha to aced60b (Phase 51N checkpoint). The 14 missing-evidence areas are unchanged in their categories; the B15 refresh is a documentation refresh, not a new evidence placement. B16 (External Review Closeout Tracker) is the source of truth for what is ready for external review, what is missing, and what cannot be claimed.",
+    "Claude review is separate. The B-track governance pack does not represent Claude review as completed. Phase 51N includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is reflected in B16 only as a separate workstream."
   ]
 }

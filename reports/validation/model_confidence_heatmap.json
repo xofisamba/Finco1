@@ -2,11 +2,12 @@
   "package": {
     "name": "Finco1 Model Confidence Heatmap",
     "workstream": "B12",
-    "branch": "parallel-b-pilot-review-pack",
-    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
-    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
-    "heatmap_version": "0.1.0",
-    "heatmap_status": "initial_draft",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "previous_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "heatmap_version": "0.2.0",
+    "heatmap_status": "refreshed_post_phase_51n",
     "intended_use": "internal_management_view_only",
     "external_claim_scope": "none"
   },
@@ -15,6 +16,8 @@
   "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
   "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
   "b14_refresh_pointer": "docs/governance/agent_a_b_governance_refresh_plan.md",
+  "b17_remaining_hotspots_pointer": "docs/governance/remaining_hotspots_governance_tracker.md",
+  "b16_closeout_pointer": "docs/external_review/external_review_closeout_tracker.md",
   "label_definitions": {
     "high_internal_confidence": "Internally pinned or golden-parity tested, internal-only; not externally validated.",
     "medium_internal_confidence": "Internally tested, with documented evidence; not externally validated.",
@@ -38,6 +41,10 @@
     "guaranteed_returns",
     "any label that implies external validation, lender approval, certification, or audit approval"
   ],
+  "claude_review_status": {
+    "representation_in_this_heatmap": "not_represented_as_completed",
+    "rationale": "Claude review is handled separately outside the B-track governance pack. The Phase 51N checkpoint includes a Claude review preparation pack, but Claude review itself is not represented in this heatmap as completed. HC-019 (Phase 51N checkpoint) is internal_testing and explicit about Claude being separate."
+  },
   "areas": [
     {
       "area_id": "HC-001",
@@ -120,8 +127,8 @@
       "area_id": "HC-012",
       "area_name": "Persistence / scenarios (saved scenarios, scenario state)",
       "confidence_label": "low_internal_confidence",
-      "source": "B3 AREA-013, pin refresh pending after 51G-2/51G-3/51H-1",
-      "notes": "Pilot readiness requires a fresh pin or forward-compatibility decision after the recent Agent A route / state work."
+      "source": "B3 AREA-013, pin refresh pending after 51G-2/51G-3/51H-1/51H-2/51J-1/51J-2/51K-1/51K-2/51L-1/51L-2/51M-1/51M-2",
+      "notes": "Pilot readiness requires a fresh pin or forward-compatibility decision after the recent Agent A route / state work. 12 service-backed routes are in place per Phase 51N; the post-extraction persisted state shape has changed and is not yet pinned. Pin refresh is the prerequisite for any promotion of this label."
     },
     {
       "area_id": "HC-013",
@@ -134,29 +141,29 @@
       "area_id": "HC-014",
       "area_name": "Governance (no-go claim list, validation matrix, B-track work)",
       "confidence_label": "high_internal_confidence",
-      "source": "B3 AREA-018, B1/B3/B2/B7/B8/B9-B14 governance in place",
-      "notes": "Governance documentation exists and is cross-referenced. B1 no-go claim list, B3 matrix, B7 runbook, B8 tracker, B9 execution pack, B10 data room, B11 commercial guardrail, B12 heatmap, B13 paid pilot gate, B14 refresh plan."
+      "source": "B3 AREA-018, B1/B3/B2/B7/B8/B9-B19 governance in place",
+      "notes": "Governance documentation exists and is cross-referenced. B1 no-go claim list, B3 matrix, B7 runbook, B8 tracker, B9 execution pack, B10 data room, B11 commercial guardrail, B12 heatmap, B13 paid pilot gate, B14 refresh plan, B15 governance refresh, B16 external review closeout tracker, B17 remaining hotspots tracker, B18 controlled pilot launch checklist, B19 post-pilot evidence update template + demo script guardrail."
     },
     {
       "area_id": "HC-015",
       "area_name": "External review readiness",
       "confidence_label": "external_review_needed",
-      "source": "B1 scaffolding in place; review not yet performed",
-      "notes": "B1 package merged (PR #390). B10 data room index in place. B1 reviewer Q&A template in place. No third-party review output yet."
+      "source": "B1 scaffolding in place; review not yet performed; B16 closeout tracker in place (Phase 51N Claude review preparation pack is on Agent A side; Claude review itself is separate)",
+      "notes": "B1 package merged (PR #390). B10 data room index in place. B1 reviewer Q&A template in place. B16 external review closeout tracker in place (this branch). No third-party review output yet. Claude review is separate and is not represented here as completed."
     },
     {
       "area_id": "HC-016",
       "area_name": "Commercial claims readiness",
       "confidence_label": "high_internal_confidence",
       "source": "B11 commercial messaging guardrail in place",
-      "notes": "B11 guardrail, approved demo language, prohibited claims register, and commercial claims review matrix are in place. Guardrail is conservative; reaching high_internal_confidence does not authorize any external claim."
+      "notes": "B11 guardrail, approved demo language, prohibited claims register, and commercial claims review matrix are in place. B19 demo script guardrail and demo claims checklist are in place. Guardrail is conservative; reaching high_internal_confidence does not authorize any external claim."
     },
     {
       "area_id": "HC-017",
       "area_name": "Paid pilot readiness",
       "confidence_label": "low_internal_confidence",
-      "source": "B13 paid pilot gate defined; pilot not yet run",
-      "notes": "B7 runbook, B9 execution pack, B13 paid pilot gate are in place. No controlled pilot has run yet. Readiness is at the gate-defined stage, not at the pilot-completed stage."
+      "source": "B13 paid pilot gate defined; pilot not yet run; B18 controlled pilot launch checklist in place (this branch)",
+      "notes": "B7 runbook, B9 execution pack, B13 paid pilot gate, B18 launch checklist are in place. No controlled pilot has run yet. Readiness is at the gate-defined stage, not at the pilot-completed stage. Paid pilot is not authorized by this branch or by B15/B18."
     },
     {
       "area_id": "HC-018",
@@ -164,10 +171,17 @@
       "confidence_label": "not_applicable",
       "source": "B8 tracker: enterprise_saas_readiness is intentionally 10% with null target",
       "notes": "Enterprise SaaS readiness is a multi-year effort and is not the current goal. Multi-tenant architecture, SLA/SLO framework, audit-grade logging, pricing/packaging, external security review, B1 external review output, generic solar and wind parity, pilot completion, and a separate governance change are all required. None of this is in scope at this time."
+    },
+    {
+      "area_id": "HC-019",
+      "area_name": "Phase 51N post-M2 route extraction checkpoint + Claude review preparation pack",
+      "confidence_label": "external_review_needed",
+      "source": "B3 AREA-020, Phase 51N checkpoint at aced60b58c5552800b95a90e17b22b32981efab8; 12 service-backed routes, 13 service modules, 5 remaining inline hotspots (B17)",
+      "notes": "Phase 51N is a checkpoint and Claude review preparation pack. It documents 12 service-backed routes and 13 service modules reached. 5 inline hotspots remain and are tracked in B17 with expected future Agent A phases 51O/51P/51Q/51R/51S. Claude review is separate and is not represented here as completed. external_review_needed is the appropriate label; it does not authorize any external claim."
     }
   ],
   "summary": {
-    "total_areas": 18,
+    "total_areas": 19,
     "by_label": {
       "high_internal_confidence": 5,
       "medium_internal_confidence": 2,
@@ -175,19 +189,19 @@
       "exploratory": 2,
       "blocked": 0,
       "not_approved": 0,
-      "external_review_needed": 1,
+      "external_review_needed": 2,
       "not_applicable": 1
     },
     "by_label_pct": {
-      "high_internal_confidence": 27.8,
-      "medium_internal_confidence": 11.1,
-      "low_internal_confidence": 27.8,
-      "exploratory": 11.1,
+      "high_internal_confidence": 26.3,
+      "medium_internal_confidence": 10.5,
+      "low_internal_confidence": 26.3,
+      "exploratory": 10.5,
       "blocked": 0.0,
       "not_approved": 0.0,
-      "external_review_needed": 5.6,
-      "not_applicable": 5.6,
-      "blocked_or_not_approved_or_exploratory_total": 16.7
+      "external_review_needed": 10.5,
+      "not_applicable": 5.3,
+      "blocked_or_not_approved_or_exploratory_total": 15.8
     }
   },
   "update_log": [
@@ -195,6 +209,11 @@
       "date": "package_creation",
       "version": "0.1.0",
       "rationale": "Initial heatmap at package creation. Labels are conservative. The strongest label that honestly applies is used; weaker labels are kept where sub-area status is unknown."
+    },
+    {
+      "date": "b15_refresh",
+      "version": "0.2.0",
+      "rationale": "Phase 51N checkpoint refresh. Added HC-019 for the 51N checkpoint with external_review_needed label (not a positive claim; forward-looking only). Updated HC-012 note to mention all 12 service-backed routes and the post-extraction pin refresh. Updated HC-014 source note to include B15-B19 governance artifacts. Updated HC-015 source note to include B16 closeout tracker and explicit note that Claude review is separate. Updated HC-016 source note to include B19 demo script guardrail. Updated HC-017 source note to include B18 launch checklist. Clarified that no label change promotes any area to external claim authority."
     }
   ],
   "global_notes": [
@@ -202,6 +221,7 @@
     "Reaching a high_internal_confidence label does not relax any no-go claim. The no-go list is governed separately (see docs/external_review/no_go_claims.md and docs/commercial/no_go_claims_commercial_guardrail.md).",
     "The heatmap is a management-level roll-up, not a replacement for the B3 matrix. The B3 matrix is the authoritative evidence inventory.",
     "The heatmap uses conservative labels that do not imply bankability, certification, audit approval, or external validation.",
-    "Updates to the heatmap are normal B-track work and follow the procedure in model_confidence_heatmap.md §6."
+    "Updates to the heatmap are normal B-track work and follow the procedure in model_confidence_heatmap.md §6.",
+    "Claude review is separate. The B-track governance pack does not represent Claude review as completed. Phase 51N includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is reflected in B16 (External Review Closeout Tracker) only as a separate workstream."
   ]
 }

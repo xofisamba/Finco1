@@ -2,11 +2,12 @@
   "package": {
     "name": "Finco1 Paid Pilot Readiness Gate",
     "workstream": "B13",
-    "branch": "parallel-b-pilot-review-pack",
-    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
-    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
-    "gate_version": "0.1.0",
-    "gate_status": "empty_template",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "previous_branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "gate_version": "0.2.0",
+    "gate_status": "empty_template_post_b15_refresh",
     "intended_use": "internal_paid_pilot_gate_only",
     "external_claim_scope": "none"
   },
@@ -175,6 +176,20 @@
       "blocker_owner": "b_track_owner",
       "blocker_target_resolution_date": null,
       "blocker_status": "open"
+    },
+    {
+      "blocker_id": "BLK-006",
+      "blocker_description": "Phase 51N checkpoint has landed. B15 governance refresh has been executed on this branch (parallel-b15-b19-refresh-pilot-pack). 12 service-backed routes and 13 service modules are in place per Phase 51N. 5 inline hotspots remain and are tracked in B17 with expected future Agent A phase numbering 51O/51P/51Q/51R/51S. The paid pilot gates themselves (PG-01 through PG-14) are unaffected by Agent A's route extractions and remain pending until the first controlled internal pilot is completed.",
+      "blocker_owner": "b_track_owner",
+      "blocker_target_resolution_date": null,
+      "blocker_status": "open"
+    },
+    {
+      "blocker_id": "BLK-007",
+      "blocker_description": "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is not represented in this branch as completed. The paid pilot gate does not depend on Claude review; it depends on the controlled internal pilot result (PG-01), the B3 matrix update (PG-03), the B11 commercial guardrail test (PG-04), the B12 heatmap update (PG-05), and the B1 no-go list / B11 guardrail review (PG-13/PG-14).",
+      "blocker_owner": "b_track_owner",
+      "blocker_target_resolution_date": null,
+      "blocker_status": "open"
     }
   ],
   "responsible_owner_placeholders": {
@@ -198,12 +213,14 @@
     "gates_in_progress": 0,
     "gates_not_applicable": 0,
     "paid_pilot_start_authorized": false,
-    "unresolved_blockers_count": 5
+    "unresolved_blockers_count": 7
   },
   "global_notes": [
     "This gate is the boundary between controlled internal pilot and controlled paid pilot. The four stages are defined in §1 of the narrative file.",
     "The paid pilot is internal validation with a real human user, with an explicit commercial agreement, with documented no-go enforcement. It is NOT a customer reference and NOT external validation.",
     "All PG-01 through PG-14 must be 'passed' for a 'go' decision. A 'go' decision without a memo is a gate violation. A 'no_go' decision requires a remediation plan.",
-    "The unresolved blockers list is the categories of blockers the gate will track when populated. None of the listed blockers are actual issues at package creation; they are pre-emptive categories."
+    "The unresolved blockers list is the categories of blockers the gate will track when populated. None of the listed blockers are actual issues at package creation; they are pre-emptive categories.",
+    "B15 governance refresh added BLK-006 (Phase 51N checkpoint landed; B15 refresh executed) and BLK-007 (Claude review is separate; paid pilot gate does not depend on Claude review). All PG-01 through PG-14 remain pending; no paid pilot is authorized by this branch or by B15.",
+    "Claude review is separate. The B-track governance pack does not represent Claude review as completed. Phase 51N includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is reflected in B16 (External Review Closeout Tracker) only as a separate workstream."
   ]
 }

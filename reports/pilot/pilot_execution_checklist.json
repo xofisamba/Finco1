@@ -2,11 +2,12 @@
   "package": {
     "name": "Finco1 Pilot Execution Checklist",
     "workstream": "B9",
-    "branch": "parallel-b-pilot-review-pack",
-    "branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
-    "package_base_sha_at_creation": "2273bacfafe7efbf300797216f948e22c1229408",
-    "checklist_version": "0.1.0",
-    "checklist_status": "empty_template",
+    "branch": "parallel-b15-b19-refresh-pilot-pack",
+    "branch_base_sha": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "previous_branch_base_sha": "2273bacfafe7efbf300797216f948e22c1229408",
+    "package_base_sha_at_creation": "aced60b58c5552800b95a90e17b22b32981efab8",
+    "checklist_version": "0.2.0",
+    "checklist_status": "empty_template_post_b15_refresh",
     "intended_use": "internal_pilot_gate_only",
     "external_claim_scope": "none"
   },
@@ -127,6 +128,8 @@
     "This checklist is empty at package creation. It is the gate tracker for pilot start. Every gate must be in status 'passed' before the pilot can start.",
     "The 11 gates mirror the 10-item setup checklist in the B7 runbook §2 plus the no-go acknowledgement (gate G10). The runbook's checklist is the human-readable form; this file is the machine-readable form.",
     "Cross-check pilot_claim_allowed per area in reports/validation/validation_evidence_matrix.json. Areas where pilot_claim_allowed is false are out of pilot scope.",
-    "A pilot is internal validation with a real human in the loop. It does not produce external claims of any kind. See docs/external_review/no_go_claims.md for the full no-go scope."
+    "A pilot is internal validation with a real human in the loop. It does not produce external claims of any kind. See docs/external_review/no_go_claims.md for the full no-go scope.",
+    "B15 governance refresh updated branch_base_sha and package_base_sha to aced60b (Phase 51N checkpoint). The pilot gates themselves are unaffected by Agent A's route extractions; the gates remain pending until the first controlled pilot is authorized. B18 (controlled pilot launch checklist) provides the practical launch procedure that uses this checklist as input.",
+    "Claude review is separate. The B-track governance pack does not represent Claude review as completed. Phase 51N includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is reflected in B16 (External Review Closeout Tracker) only as a separate workstream."
   ]
 }

@@ -1,8 +1,9 @@
 # External Reviewer Data Room Index
 
 This file is the **index** for an external reviewer's data room. It
-organizes the existing B-track artifacts (B1, B2, B3, B7, B8) into
-a structure a reviewer can navigate.
+organizes the existing B-track artifacts (B1, B2, B3, B7, B8, B9,
+B10, B11, B12, B13, B14, B15, B16, B17, B18, B19) into a
+structure a reviewer can navigate.
 
 > **The data room does not itself constitute external validation.**
 > It is a navigation aid for a third-party reviewer producing a
@@ -10,6 +11,12 @@ a structure a reviewer can navigate.
 > claim list (`docs/external_review/no_go_claims.md`) and is
 > explicitly forbidden from producing any external-claim language.
 > See `docs/validation/internal_vs_external_validation_boundaries.md`.
+>
+> **Claude review is separate.** The Phase 51N checkpoint
+> (Agent A side) includes a Claude review preparation pack;
+> Claude review itself is handled outside this branch and is
+> tracked in B16 (External Review Closeout Tracker) only as a
+> separate workstream, never as a side-effect of B15.
 
 ---
 
@@ -18,10 +25,16 @@ a structure a reviewer can navigate.
 The data room exists because the B-track has produced a substantial
 set of artifacts (B1 external review package, B2 generic
 reference acquisition, B3 validation evidence matrix, B7 controlled
-pilot runbook, B8 enterprise SaaS readiness tracker, plus B9–B14
-in flight) and a third-party reviewer needs to know which artifact
-to read for which question. Without an index, the reviewer must
-discover the structure by reading the file tree.
+pilot runbook, B8 enterprise SaaS readiness tracker, B9 pilot
+execution pack, B10 data room + reviewer checklist + Q&A, B11
+commercial messaging guardrail, B12 model confidence heatmap, B13
+paid pilot gate, B14 governance refresh plan, B15 governance
+refresh of the post-Phase 51N state, B16 external review closeout
+tracker, B17 remaining hotspots governance tracker, B18 controlled
+pilot launch checklist, B19 post-pilot evidence update template
+and demo script guardrail) and a third-party reviewer needs to
+know which artifact to read for which question. Without an index,
+the reviewer must discover the structure by reading the file tree.
 
 The index does not introduce new content. It cross-references
 existing artifacts. The artifacts themselves are the source of
@@ -32,7 +45,8 @@ truth.
 The data room covers all B-track artifacts. It does **not** cover
 Agent A artifacts except as cross-referenced from B-track
 documents (e.g. the B3 matrix AREA-019 references Agent A's
-Phase 51G-2/51G-3/51H-1 work).
+Phase 51G-2 through 51N work; AREA-020 references the Phase 51N
+checkpoint).
 
 The data room is a navigation aid. It does not authorize any
 external claim. The reviewer's output, regardless of findings, is
@@ -86,7 +100,7 @@ data-room/
 │   ├── docs/roadmap/enterprise_saas_readiness_tracker.md
 │   └── reports/roadmap/enterprise_saas_readiness_tracker.json
 │
-├── 06-b9-b14-pilot-review-pack/  (this branch)
+├── 06-b9-b14-pilot-review-pack/  (PR #398, merged)
 │   ├── docs/pilot/pilot_validation_execution_pack.md
 │   ├── docs/pilot/pilot_pass_fail_criteria.md
 │   ├── docs/pilot/pilot_evidence_capture_template.md
@@ -107,6 +121,18 @@ data-room/
 │   ├── reports/pilot/paid_pilot_readiness_gate.json
 │   ├── docs/governance/agent_a_b_governance_refresh_plan.md
 │   └── reports/governance/governance_refresh_tracker.json
+│
+├── 07-b15-b19-refresh-pilot-pack/  (this branch, B15-B19)
+│   ├── docs/external_review/external_review_closeout_tracker.md (B16)
+│   ├── reports/external_review/external_review_closeout_status.json (B16)
+│   ├── docs/governance/remaining_hotspots_governance_tracker.md (B17)
+│   ├── reports/governance/remaining_hotspots_governance_tracker.json (B17)
+│   ├── docs/pilot/controlled_pilot_launch_checklist.md (B18)
+│   ├── reports/pilot/controlled_pilot_launch_checklist.json (B18)
+│   ├── docs/pilot/post_pilot_evidence_update_template.md (B19)
+│   ├── reports/pilot/post_pilot_evidence_update_template.json (B19)
+│   ├── docs/commercial/demo_script_guardrail.md (B19)
+│   └── reports/commercial/demo_claims_checklist.json (B19)
 │
 └── 99-cross-cutting/
     ├── docs/external_review/no_go_claims.md
@@ -176,7 +202,25 @@ The data room's mapping is:
 * **B8 enterprise SaaS readiness tracker** ↔
   `05-b8-enterprise-saas-readiness/` in the data room.
 * **B9–B14 pilot review pack** ↔ `06-b9-b14-pilot-review-pack/` in
-  the data room (this branch).
+  the data room (PR #398, merged; pre-B15 base).
+* **B15–B19 refresh + closeout + launch + post-pilot pack** ↔
+  `07-b15-b19-refresh-pilot-pack/` in the data room (this branch).
+  * B15 is a governance refresh of the existing 9 B-track files
+    (B3 matrix, B12 heatmap, B8 tracker, B11/B13 trackers, B10
+    data room index, B10 missing-evidence tracker, B14 refresh
+    plan, B14 governance refresh tracker) to reflect the
+    post-Phase 51N state (12 service-backed routes, 13 service
+    modules, 5 inline hotspots remaining).
+  * B16 is the External Review Closeout Tracker (separate from
+    Claude review; Claude review is handled outside this branch
+    and is not represented here as completed).
+  * B17 is the Remaining Hotspots Governance Tracker (5 inline
+    hotspots: save-as, rename, archive, update-overrides, select).
+  * B18 is the Controlled Pilot Launch Checklist (practical
+    launch procedure, uses B7 + B9 + B13 as input).
+  * B19 is the Post-Pilot Evidence Update Template and the
+    Demo Script Guardrail (post-pilot follow-up; uses B11 as
+    input for the guardrail).
 
 ## 9. What the data room is not
 
@@ -213,6 +257,16 @@ and are not relaxed by the data room.
 * `docs/external_review/reviewer_evidence_checklist.md` (B10)
 * `docs/external_review/reviewer_qna_template.md` (B10)
 * `reports/external_review/missing_evidence_tracker.json` (B10)
+* `docs/external_review/external_review_closeout_tracker.md` (B16)
+* `reports/external_review/external_review_closeout_status.json` (B16)
+* `docs/governance/remaining_hotspots_governance_tracker.md` (B17)
+* `reports/governance/remaining_hotspots_governance_tracker.json` (B17)
+* `docs/pilot/controlled_pilot_launch_checklist.md` (B18)
+* `reports/pilot/controlled_pilot_launch_checklist.json` (B18)
+* `docs/pilot/post_pilot_evidence_update_template.md` (B19)
+* `reports/pilot/post_pilot_evidence_update_template.json` (B19)
+* `docs/commercial/demo_script_guardrail.md` (B19)
+* `reports/commercial/demo_claims_checklist.json` (B19)
 * `docs/phase51f_parallel_work_guardrails.md` (project doc on base)
 
 ---
