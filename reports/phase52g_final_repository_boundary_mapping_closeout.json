@@ -1,0 +1,427 @@
+{
+  "phase": "52G",
+  "title": "Phase 52G: Final repository boundary mapping closeout",
+  "base_sha": "c69e6ef3021e3dd5baf863ab381b4c2c310af0cd",
+  "head_sha": "c69e6ef3021e3dd5baf863ab381b4c2c310af0cd",
+  "type": "docs/report/test only",
+  "objective": "Close Phase 52 with a final report and prepare a precise Phase 53 launch plan.",
+  "phase52_prs": [
+    {
+      "pr": 422,
+      "phase": "52A",
+      "title": "Repository inventory and hotspot map",
+      "merge_sha": "5cffb6f21b07bd871bd222ca4cd1354fd4d58a0e",
+      "tests": 61
+    },
+    {
+      "pr": 423,
+      "phase": "52B",
+      "title": "Persistence side-effect map",
+      "merge_sha": "f780572ccfb3c6f3ccaab50842c9cae840d0dc2e",
+      "tests": 46
+    },
+    {
+      "pr": 424,
+      "phase": "52C",
+      "title": "Repository caller and coupling graph",
+      "merge_sha": "ba992223f3a9c2fd7aeeb966f49a7eebcced39ec",
+      "tests": 47
+    },
+    {
+      "pr": 425,
+      "phase": "52D",
+      "title": "Behavior characterization plan",
+      "merge_sha": "20d90cdf2361d30a99e4f6ab67444ace76700cce",
+      "tests": 51
+    },
+    {
+      "pr": 426,
+      "phase": "52E",
+      "title": "Persistence hotspot and Phase 53 execution plan",
+      "merge_sha": "bff3e9846e0b71e0b5b06378390ffd0e2ad28a53",
+      "tests": 32
+    },
+    {
+      "pr": 427,
+      "phase": "52F",
+      "title": "Guardrail specifications",
+      "merge_sha": "c69e6ef3021e3dd5baf863ab381b4c2c310af0cd",
+      "tests": 29
+    }
+  ],
+  "final_persistence_inventory": {
+    "files": [
+      {
+        "path": "app/persistence/__init__.py",
+        "loc": 55,
+        "role": "package init / re-exports"
+      },
+      {
+        "path": "app/persistence/db.py",
+        "loc": 205,
+        "role": "sqlite connection / schema init / get_cursor"
+      },
+      {
+        "path": "app/persistence/repository.py",
+        "loc": 2042,
+        "role": "god-module: project, scenario, run, export, audit, workspace"
+      },
+      {
+        "path": "app/persistence/backup_restore.py",
+        "loc": 480,
+        "role": "sqlite backup + restore + auto-backup"
+      },
+      {
+        "path": "app/persistence/provenance.py",
+        "loc": 171,
+        "role": "git sha, branch, runtime flag, governance, replay metadata"
+      }
+    ],
+    "total_loc": 2953,
+    "repository_py_function_counts": {
+      "write": 22,
+      "read": 16,
+      "mixed": 5,
+      "helper": 18,
+      "total": 61
+    },
+    "repository_py_domain_counts": {
+      "projects": 13,
+      "scenarios": 19,
+      "workspace_state": 5,
+      "runs": 5,
+      "exports": 3,
+      "governance": 1,
+      "audit": 1,
+      "helpers": 14,
+      "total": 61
+    }
+  },
+  "final_side_effect_map_summary": {
+    "high_risk_writes": [
+      {
+        "name": "save_project",
+        "line": 686,
+        "body_loc": 117,
+        "domain": "projects",
+        "group": "A"
+      },
+      {
+        "name": "save_workspace_state",
+        "line": 1496,
+        "body_loc": 131,
+        "domain": "workspace_state",
+        "group": "C"
+      },
+      {
+        "name": "save_scenario",
+        "line": 1116,
+        "body_loc": 63,
+        "domain": "scenarios",
+        "group": "B"
+      },
+      {
+        "name": "add_scenario",
+        "line": 1299,
+        "body_loc": 80,
+        "domain": "scenarios",
+        "group": "B"
+      },
+      {
+        "name": "record_export",
+        "line": 1713,
+        "body_loc": 60,
+        "domain": "exports",
+        "group": "E"
+      },
+      {
+        "name": "update_scenario_overrides",
+        "line": 1411,
+        "body_loc": 47,
+        "domain": "scenarios",
+        "group": "B"
+      },
+      {
+        "name": "get_or_create_base_case_scenario",
+        "line": 86,
+        "body_loc": 85,
+        "domain": "scenarios",
+        "group": "B"
+      }
+    ],
+    "must_pin_items_count": {
+      "P0": 7,
+      "P1": 5,
+      "total": 12
+    },
+    "metadata_columns": [
+      "replay_metadata_json",
+      "governance_state_json",
+      "last_run_summary_json",
+      "last_runtime_summary_json",
+      "snapshot_json",
+      "overrides_json",
+      "base_input_set_json",
+      "baseline_snapshot_json"
+    ]
+  },
+  "final_caller_graph_summary": {
+    "top_4_caller_files": [
+      {
+        "file": "main_web.py",
+        "calls": 19,
+        "notes": "19 direct calls + 36-symbol bulk import"
+      },
+      {
+        "file": "app/services/scenario_duplicate_service.py",
+        "calls": 26
+      },
+      {
+        "file": "app/services/scenario_rename_service.py",
+        "calls": 21
+      },
+      {
+        "file": "app/services/scenarios_add_service.py",
+        "calls": 18
+      }
+    ],
+    "production_files_with_direct_persistence_imports": 4,
+    "services_with_route_local_reimports": 1,
+    "direct_db_imports_outside_persistence": 0
+  },
+  "phase53_order": [
+    {
+      "rank": 1,
+      "group": "F",
+      "name": "helpers",
+      "function_count": 9,
+      "required_pins": 0,
+      "auto_merge": true,
+      "single_owner": false,
+      "duration": "30 min"
+    },
+    {
+      "rank": 2,
+      "group": "D",
+      "name": "runs",
+      "function_count": 5,
+      "required_pins": 0,
+      "auto_merge": true,
+      "single_owner": false,
+      "duration": "1 hour"
+    },
+    {
+      "rank": 3,
+      "group": "E",
+      "name": "exports+audit",
+      "function_count": 11,
+      "required_pins": 0,
+      "auto_merge": true,
+      "single_owner": false,
+      "duration": "1 hour"
+    },
+    {
+      "rank": 4,
+      "group": "A-reads",
+      "name": "project reads",
+      "function_count": 6,
+      "required_pins": 0,
+      "auto_merge": true,
+      "single_owner": false,
+      "duration": "30 min"
+    },
+    {
+      "rank": 5,
+      "group": "A-2",
+      "name": "project writes",
+      "function_count": 8,
+      "required_pins": 1,
+      "auto_merge": "review",
+      "single_owner": true,
+      "duration": "2 hours"
+    },
+    {
+      "rank": 6,
+      "group": "C",
+      "name": "workspace_state",
+      "function_count": 7,
+      "required_pins": 1,
+      "auto_merge": "review",
+      "single_owner": true,
+      "duration": "2 hours"
+    },
+    {
+      "rank": 7,
+      "group": "B",
+      "name": "scenarios",
+      "function_count": 17,
+      "required_pins": 5,
+      "auto_merge": "sign-off",
+      "single_owner": true,
+      "duration": "1 day"
+    }
+  ],
+  "phase53_automation_policy": {
+    "auto_merge_groups": [
+      "F",
+      "D",
+      "E",
+      "A-reads"
+    ],
+    "review_required_groups": [
+      "A-2",
+      "C"
+    ],
+    "sign_off_required_groups": [
+      "B"
+    ],
+    "hard_stop_conditions": [
+      "Any P0 pin test fails",
+      "Any Phase 51F guardrail fails",
+      "Any of the new G1-G6 guardrails fails",
+      "Any production code change beyond the planned file moves",
+      "Any change to app/waterfall_core.py, app/project_factories.py, parity-core, schema, JS, fixture CSVs",
+      "Any change to replay_metadata or governance_state shape",
+      "Any new direct DB connection outside app/persistence/*",
+      "Any merge that includes a model change bundled with a persistence split",
+      "Any conflict that requires non-trivial judgment"
+    ]
+  },
+  "user_signoff_required_items": [
+    "Refactor of save_project (Group A)",
+    "Refactor of save_workspace_state (Group C)",
+    "Refactor of add_scenario (Group B)",
+    "Refactor of update_scenario_overrides (Group B)",
+    "Refactor of get_or_create_base_case_scenario (Group B)",
+    "Refactor of record_export (Group E)",
+    "Any change to the replay_metadata shape"
+  ],
+  "parallel_work_recommendations": {
+    "agent_b_docs": "Safe to run in parallel. Agent B B20-B23 merged (PR #421). B24 (Phase 52 closeout cross-check) and B25 (Phase 53 prep docs) are safe to do alongside Phase 53.",
+    "ui_1_audit": "Safe to run in parallel, as long as it does not touch app/persistence/*. The G2 guardrail (no service imports main_web) protects this.",
+    "phase_53_runtime": "Do NOT run two parallel agents on Phase 53 runtime work. The do-not-parallelize rules forbid C and B, A-reads and A-2, E and B in parallel."
+  },
+  "no_go_claims": [
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "Generic solar/wind remain exploratory and unvalidated",
+    "No lender / bank / audit / certification / SaaS / production / external-validation / customer-reference / investment-advice claims",
+    "Backend remains source of truth",
+    "rc1 remains frozen at SHA b425a0708719eaa5e1d922b1008e5609758e0ad4"
+  ],
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "verified_unchanged_through": "Phase 51 final closeout (PR #420) and Phase 52A-52F (PRs #422-#427)",
+    "in_merge_diff": false
+  },
+  "known_failures": [
+    {
+      "name": "tests/test_persistence.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    },
+    {
+      "name": "tests/test_repository.py",
+      "failure": "pre-existing ImportError: No module named 'persistence' (out of scope)"
+    }
+  ],
+  "readiness_delta": {
+    "persistence_files_mapped": {
+      "pre": 0,
+      "post": 5,
+      "delta": 5
+    },
+    "functions_inventoried": {
+      "pre": 0,
+      "post": 89,
+      "delta": 89
+    },
+    "high_risk_writes_identified": {
+      "pre": 0,
+      "post": 7,
+      "delta": 7
+    },
+    "must_pin_items": {
+      "pre": 0,
+      "post": 12,
+      "delta": 12
+    },
+    "split_groups_identified": {
+      "pre": 0,
+      "post": 6,
+      "delta": 6
+    },
+    "single_owner_zones": {
+      "pre": 0,
+      "post": 11,
+      "delta": 11
+    },
+    "parallel_safe_zones": {
+      "pre": 0,
+      "post": 3,
+      "delta": 3
+    },
+    "do_not_parallelize_zones": {
+      "pre": 0,
+      "post": 4,
+      "delta": 4
+    },
+    "behavioral_guardrails": {
+      "pre": 21,
+      "post": 31,
+      "delta": 10
+    },
+    "hotspot_functions_ranked": {
+      "pre": 0,
+      "post": 10,
+      "delta": 10
+    }
+  },
+  "claude_review_recommendation": {
+    "proceed_directly": true,
+    "rationale": [
+      "Phase 52 evidence is complete and reproducible (6 JSON reports + 7 markdown docs)",
+      "Phase 53 plan is concrete (10 PRs, specific per-group objectives, specific test gates)",
+      "Hard-stop conditions are explicit and enforceable",
+      "New G1-G6 guardrails add 10 new automated safety nets",
+      "Group F is the safest, smallest, fastest first step"
+    ],
+    "alternative": "If user wants Claude review, recommended timing is after Phase 53D (after F, D, E, A-reads are merged)"
+  },
+  "tests_run": [
+    {
+      "test_module": "tests/test_phase51f_parallel_work_guardrails.py",
+      "result": "21/21 pass"
+    },
+    {
+      "test_module": "tests/test_phase52a_repository_inventory_hotspot_map.py",
+      "result": "61/61 pass"
+    },
+    {
+      "test_module": "tests/test_phase52b_persistence_side_effect_map.py",
+      "result": "46/46 pass"
+    },
+    {
+      "test_module": "tests/test_phase52c_repository_caller_coupling_graph.py",
+      "result": "47/47 pass"
+    },
+    {
+      "test_module": "tests/test_phase52d_persistence_behavior_characterization_plan.py",
+      "result": "51/51 pass"
+    },
+    {
+      "test_module": "tests/test_phase52e_persistence_hotspot_phase53_execution_plan.py",
+      "result": "32/32 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "result": "19/19 pass"
+    },
+    {
+      "test_module": "tests/test_phase52f_persistence_guardrail_regression.py",
+      "result": "10/10 pass"
+    }
+  ],
+  "recommended_next_step": "Phase 53A \u2014 Extract Group F (helpers)"
+}
