@@ -1,0 +1,102 @@
+{
+  "phase": "51O-2",
+  "route": "POST /projects/{project_code}/save-as",
+  "handler": "save_project_as_endpoint",
+  "risk": "HIGH",
+  "route_thinning": {
+    "pre_o2_total_lines": 51,
+    "pre_o2_non_blank_lines": 49,
+    "post_o2_total_lines": 67,
+    "post_o2_non_blank_lines": 58,
+    "delta_total": 16,
+    "delta_non_blank": 9,
+    "delta_non_blank_pct": 18.0,
+    "note": "Route did NOT shrink significantly because inline helper functions for governance_state / replay_metadata / is_already_user_project were kept in the route. The orchestration body (save_project + save_workspace_state + new_code/new_name + gate + redirect_url) has moved to the service."
+  },
+  "service_module": {
+    "path": "app/services/project_save_as_service.py",
+    "lines_approx": 360,
+    "callables_in_deps": 9,
+    "exports": [
+      "ProjectSaveAsRouteOutcome",
+      "ProjectSaveAsRouteDeps",
+      "execute_project_save_as_route"
+    ]
+  },
+  "behaviors_preserved": [
+    "POST /projects/{project_code}/save-as exists",
+    "Auth check via get_current_user(request); unauth -> 302 /login",
+    "Path parameter project_code",
+    "Source lookup: get_project_record(user_id, project_code)",
+    "404 if source is None",
+    "400 if source.project_origin == user_created",
+    "new_code = f{project_code}-copy-{now.strftime('%Y%m%d%H%M%S')}",
+    "new_name = f{source.project_name} (Copy)",
+    "save_project with project_origin=user_created, is_readonly=False, last_run_summary={}",
+    "save_workspace_state with draft=saved=source.baseline_snapshot, dirty=False",
+    "governance_state dict inlined twice (route helpers)",
+    "replay_metadata.export_type = project_duplicated (save_project)",
+    "replay_metadata.export_type = workspace_duplicated (save_workspace_state)",
+    "Success -> 302 RedirectResponse",
+    "No HX-Trigger, no HX-Redirect",
+    "No templates.TemplateResponse"
+  ],
+  "intended_side_effects": [
+    {"name": "get_project_record (deps)", "count": 1, "type": "read"},
+    {"name": "save_project (deps)", "count": 1, "type": "write"},
+    {"name": "save_workspace_state (deps)", "count": 1, "type": "write"}
+  ],
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "add_scenario",
+    "save_scenario",
+    "create_scenario",
+    "db.add",
+    "db.commit",
+    "db.flush",
+    "session.add",
+    "session.commit"
+  ],
+  "phase51f_guardrails": {
+    "engine_output_golden_tubo_oborovo": "PASS",
+    "parity_core_lock_4_sha256": "PASS",
+    "no_service_imports_main_web_or_main_api": "PASS",
+    "21_of_21_test_module": "PASS"
+  },
+  "tests": {
+    "test_phase51o2_project_save_as_route_vertical_extraction": {
+      "count": 49,
+      "pass": 49,
+      "status": "PASS"
+    },
+    "test_phase51o1_project_save_as_route_golden_characterization": {
+      "count": 84,
+      "pass": 84,
+      "status": "PASS (re-pointed)"
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "count": 21,
+      "pass": 21,
+      "status": "PASS"
+    }
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51o2": false
+  },
+  "no_production_code_changes_outside_scope": true,
+  "no_model_parity_core_schema_js_formula_changes": true,
+  "service_clean_of_main_web_and_main_api_imports": true,
+  "ready_for_merge": true
+}

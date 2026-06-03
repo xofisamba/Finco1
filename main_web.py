@@ -2409,53 +2409,70 @@ async def update_overrides_endpoint(request: Request, scenario_id: str):
 
 @app.post("/projects/{project_code}/save-as")
 async def save_project_as_endpoint(request: Request, project_code: str):
-    """Duplicate a factory template or saved baseline into a user-editable project."""
+    """Duplicate a factory template or saved baseline into a
+    user-editable project.
+
+    Thin orchestration wrapper (Phase 51O-2). The route is
+    responsible for auth, the path parameter, deps bundle
+    construction, and final response rendering. The full
+    /projects/{project_code}/save-as orchestration body (source
+    project lookup, gate on user_created, new_code/new_name
+    generation, save_project with governance_state + replay_metadata,
+    save_workspace_state with governance_state + replay_metadata)
+    lives in
+    ``app.services.project_save_as_service.execute_project_save_as_route``.
+    """
+    from app.services.project_save_as_service import (
+        ProjectSaveAsRouteDeps,
+        execute_project_save_as_route,
+    )
+    from app.persistence.repository import get_project_record as gpr
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    from app.persistence.repository import get_project_record as gpr
-    source = gpr(user_id=user.user_id, project_code=project_code)
-    if source is None:
-        return JSONResponse({"error": f"Project '{project_code}' not found"}, status_code=404)
-    if source.project_origin == "user_created":
-        return JSONResponse({"error": "Already a user project"}, status_code=400)
-    now = _now_utc()
-    new_code = f"{project_code}-copy-{now.strftime('%Y%m%d%H%M%S')}"
-    new_name = f"{source.project_name} (Copy)"
-    new_record = save_project(
-        user_id=user.user_id,
-        project_code=new_code,
-        project_name=new_name,
-        project_type=source.project_type,
-        project_origin="user_created",
-        source_project_template=source.source_project_template,
-        template_source=source.template_source,
-        baseline_snapshot=source.baseline_snapshot,
-        is_readonly=False,
-        governance_state={"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False},
-        last_run_summary={},
-        replay_metadata={
+
+    def _project_record_creation_governance_state():
+        return {"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False}
+
+    def _workspace_state_initialization_governance_state():
+        return {"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False}
+
+    def _build_project_replay_metadata(source, project_code):
+        return {
             "export_type": "project_duplicated",
             "source_project_code": project_code,
             "source_project_origin": source.project_origin,
             "baseline_source": source.project_origin == "saved_baseline",
-        },
-    )
-    save_workspace_state(
-        user_id=user.user_id,
-        project_id=new_record.project_id,
-        project_code=new_record.project_code,
-        draft_snapshot=source.baseline_snapshot,
-        saved_snapshot=source.baseline_snapshot,
-        dirty=False,
-        governance_state={"g20": "BLOCKED", "r99_r102": "NOT_APPROVED", "lender_ready": False},
-        replay_metadata={
+        }
+
+    def _build_workspace_replay_metadata(source, project_code):
+        return {
             "export_type": "workspace_duplicated",
             "source_project_code": project_code,
             "baseline_source": source.project_origin == "saved_baseline",
-        },
+        }
+
+    def _is_already_user_project(source):
+        return source.project_origin == "user_created"
+
+    deps = ProjectSaveAsRouteDeps(
+        get_project_record=gpr,
+        save_project=save_project,
+        save_workspace_state=save_workspace_state,
+        now_utc=_now_utc,
+        project_record_creation_governance_state=_project_record_creation_governance_state,
+        workspace_state_initialization_governance_state=_workspace_state_initialization_governance_state,
+        build_project_replay_metadata=_build_project_replay_metadata,
+        build_workspace_replay_metadata=_build_workspace_replay_metadata,
+        is_already_user_project=_is_already_user_project,
     )
-    return RedirectResponse(url=f"/?project={new_code}", status_code=302)
+    outcome = await execute_project_save_as_route(
+        request=request, project_code=project_code, user=user, deps=deps,
+    )
+    if outcome.is_redirect:
+        return RedirectResponse(url=outcome.redirect_url, status_code=outcome.status_code)
+    return JSONResponse(outcome.payload, status_code=outcome.status_code)
 
 
 @app.post("/scenarios/{scenario_id}/rename")
