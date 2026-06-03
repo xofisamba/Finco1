@@ -3,7 +3,7 @@
   "title": "Pin save_workspace_state persistence behavior",
   "type": "behavior_pin",
   "base_sha": "42c2f23d9abe78908643a650b64d33e5589ed364",
-  "head_sha": "TBD",
+  "head_sha": "992bcbcb859416ce0f40714c56490bdce48ce56e",
   "target_function": "save_workspace_state",
   "branch": "phase53f1-save-workspace-state-p0-behavior-pin",
   "pinned_behaviors": [
@@ -40,7 +40,10 @@
   "active_scenario_behavior": {
     "active_scenario_id_default": null,
     "active_scenario_name_default": null,
-    "stored_columns": ["active_scenario_id", "active_scenario_name"]
+    "stored_columns": [
+      "active_scenario_id",
+      "active_scenario_name"
+    ]
   },
   "draft_snapshot_behavior": {
     "required": true,
@@ -84,12 +87,18 @@
     "update_columns": 14,
     "insert_columns": 19,
     "transaction_pattern": "single with get_cursor() as cur: per branch",
-    "use_of_to_json_helper": "≥ 8 occurrences",
+    "use_of_to_json_helper": "\u2265 8 occurrences",
     "uuid_generation": "uuid.uuid4().hex[:16]"
   },
   "signature_summary": {
     "all_keyword_only": true,
-    "required": ["user_id", "project_id", "project_code", "draft_snapshot", "saved_snapshot"],
+    "required": [
+      "user_id",
+      "project_id",
+      "project_code",
+      "draft_snapshot",
+      "saved_snapshot"
+    ],
     "optional_defaults": {
       "governance_state": "None",
       "active_scenario_id": "None",

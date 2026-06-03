@@ -320,13 +320,19 @@ class TestImports:
 
 class TestByteForByteSourceComparison:
     """The strongest pin: byte-for-byte source comparison to the original
-    in origin/main before PR #435."""
+    in the pre-53E-2 base SHA (6ee6544e9d18d0efc3eb0ce1f6099f6c6c2d1ef2).
+    This SHA is the documented base of PR #435 and is the last commit
+    that had _compute_baseline_snapshot in app/persistence/repository.py.
+    """
+
+    # Pre-53E-2 base SHA (last commit on main before PR #435 was merged)
+    PRE_53E2_BASE_SHA = "6ee6544e9d18d0efc3eb0ce1f6099f6c6c2d1ef2"
 
     def test_compute_baseline_snapshot_byte_for_byte(self):
         import subprocess
-        # Get the original function body from main
+        # Get the original function body from the pre-53E-2 base SHA
         result = subprocess.run(
-            ["git", "show", "origin/main:app/persistence/repository.py"],
+            ["git", "show", f"{self.PRE_53E2_BASE_SHA}:app/persistence/repository.py"],
             capture_output=True, text=True, cwd=str(REPO_ROOT)
         )
         assert result.returncode == 0
@@ -336,7 +342,7 @@ class TestByteForByteSourceComparison:
             r"def _compute_baseline_snapshot\(.*?(?=\ndef _build_default_snapshot)",
             original_full, re.DOTALL
         )
-        assert m_orig, "Could not find _compute_baseline_snapshot in origin/main"
+        assert m_orig, "Could not find _compute_baseline_snapshot in pre-53E-2 base"
         original_body = m_orig.group(0)
         # Get the new function body
         new_full = _read(PROJECTS_PY)
@@ -348,7 +354,7 @@ class TestByteForByteSourceComparison:
         new_body = m_new.group(0)
         # Compare byte-for-byte
         assert original_body == new_body, (
-            f"_compute_baseline_snapshot differs from origin/main.\n"
+            f"_compute_baseline_snapshot differs from pre-53E-2 base.\n"
             f"Original length: {len(original_body)}, New length: {len(new_body)}\n"
             f"First 200 chars of new: {new_body[:200]!r}"
         )

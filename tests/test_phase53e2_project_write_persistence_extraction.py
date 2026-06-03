@@ -127,10 +127,11 @@ class TestP0PinStillPasses:
 
 
 class TestOtherHighRiskWritesUntouched:
-    """These 5 high-risk writes are NOT in Group A-2 and must remain in repository.py."""
+    """These 4 high-risk writes are NOT in Group A-2 and must remain in repository.py.
+    save_workspace_state was moved to workspace_repository in Phase 53F-2."""
 
     @pytest.mark.parametrize("fn_name", [
-        "save_workspace_state", "save_scenario",
+        "save_scenario",
         "add_scenario", "update_scenario_overrides",
         "get_or_create_base_case_scenario",
     ])

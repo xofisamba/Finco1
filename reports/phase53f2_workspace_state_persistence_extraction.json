@@ -1,0 +1,107 @@
+{
+  "phase": "53F-2",
+  "title": "Extract workspace_state persistence functions",
+  "type": "behavior_preserving_refactor",
+  "base_sha": "8143056f1bb826bebdf49457751a0e7a339c4988",
+  "head_sha": "365b988b41aa48d28607758c134e9af9175c1626",
+  "branch": "phase53f2-extract-workspace-state-persistence",
+  "review_required": true,
+  "auto_merged": false,
+  "new_module": "app/persistence/workspace_repository.py",
+  "functions_moved": [
+    {
+      "name": "save_workspace_state",
+      "lines_moved": 132,
+      "risk": "high",
+      "pinned_in": "53F-1"
+    },
+    {
+      "name": "get_workspace_state",
+      "lines_moved": 9,
+      "risk": "low"
+    },
+    {
+      "name": "bind_workspace_to_scenario",
+      "lines_moved": 21,
+      "risk": "medium"
+    },
+    {
+      "name": "discard_workspace_draft",
+      "lines_moved": 24,
+      "risk": "medium"
+    }
+  ],
+  "loc_changes": {
+    "repository.py": {
+      "before": 1100,
+      "after": 922,
+      "delta": -178
+    },
+    "workspace_repository.py": {
+      "before": 0,
+      "after": 250,
+      "delta": 250
+    }
+  },
+  "compatibility_facade": {
+    "save_workspace_state": true,
+    "get_workspace_state": true,
+    "discard_workspace_draft": true,
+    "bind_workspace_to_scenario": true,
+    "WorkspaceStateRecord": true
+  },
+  "p0_pin_status": {
+    "pin_file": "tests/test_phase53f1_save_workspace_state_p0_behavior_pin.py",
+    "tests_re_pointed": 39,
+    "passes": true
+  },
+  "tests_run": {
+    "phase53f1_pin": 39,
+    "phase53f2_extraction": 40,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_regression": 10,
+    "phase52f_guardrail_specifications": 19,
+    "phase53a_helpers": 66,
+    "phase53b_runs": 45,
+    "phase53c_exports": 73,
+    "phase53d_project_reads": 57,
+    "phase53e1_save_project_pin": 41,
+    "phase53e2_project_writes": 40,
+    "phase53e2_regression_pin": 26,
+    "total": 477
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)",
+    "test_phase52b_persistence_side_effect_map.py::TestTransactionalModelConsistency::test_repository_uses_get_cursor: pre-existing, lazy import pattern",
+    "test_phase52c_repository_caller_coupling_graph.py::TestCircularImportCheck::test_no_real_cycles_in_actual_code: pre-existing, lazy import pattern"
+  ],
+  "no_scope_creep": {
+    "no_route_touched": true,
+    "no_service_touched": true,
+    "no_model_touched": true,
+    "no_parity_core_touched": true,
+    "no_schema_touched": true,
+    "no_js_touched": true,
+    "no_formula_touched": true,
+    "no_fixture_touched": true,
+    "rc1_untouched": true,
+    "no_sql_text_changes": true,
+    "no_replay_metadata_shape_changes": true,
+    "no_governance_state_shape_changes": true,
+    "no_last_run_summary_shape_changes": true
+  },
+  "scenario_high_risk_writes_untouched": {
+    "save_scenario": "in repository.py",
+    "add_scenario": "in repository.py",
+    "update_scenario_overrides": "in repository.py",
+    "get_or_create_base_case_scenario": "in repository.py"
+  },
+  "project_high_risk_writes_locations": {
+    "save_project": "in projects_repository.py (moved in 53E-2)",
+    "record_export": "in exports_repository.py (moved in 53C)",
+    "save_workspace_state": "in workspace_repository.py (moved in 53F-2, this PR)"
+  },
+  "ready_for_review": true,
+  "recommended_next_step": "user reviews PR and merges manually (Group C is review-required)"
+}
