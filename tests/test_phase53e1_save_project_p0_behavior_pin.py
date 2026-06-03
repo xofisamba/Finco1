@@ -28,6 +28,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_PY = REPO_ROOT / "app" / "persistence" / "repository.py"
+PROJECTS_PY = REPO_ROOT / "app" / "persistence" / "projects_repository.py"
 
 
 def _read(path: Path) -> str:
@@ -42,12 +43,13 @@ class TestPublicImportPath:
         from app.persistence.repository import save_project
         assert save_project is not None
 
-    def test_save_project_module_origin_is_repository(self):
-        # save_project should be DEFINED in app.persistence.repository (not a re-export)
+    def test_save_project_module_origin_is_projects_repository(self):
+        # After Phase 53E-2, save_project is DEFINED in app.persistence.projects_repository
+        # (with re-export from app.persistence.repository)
         from app.persistence import repository
         # The __module__ attribute tells us where the function was defined.
-        assert repository.save_project.__module__ == "app.persistence.repository", \
-            f"save_project.__module__ is {repository.save_project.__module__}, expected app.persistence.repository"
+        assert repository.save_project.__module__ == "app.persistence.projects_repository", \
+            f"save_project.__module__ is {repository.save_project.__module__}, expected app.persistence.projects_repository"
 
 
 # ----------------------------- Signature pin ----------------------------
@@ -100,18 +102,17 @@ class TestSignature:
 
 class TestSQLFragments:
     """Pin the SQL fragments that save_project uses, so that any
-    refactor preserves them. These are checked against the source
-    of repository.py (and would also need to be checked against the
-    new module in 53E-2)."""
+    refactor preserves them. After 53E-2, save_project lives in
+    app.persistence.projects_repository, so we check that file."""
 
     def test_select_existing_sql_present(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         assert "SELECT project_id, created_at, project_type, project_origin, template_source, baseline_snapshot_json, archived" in text
         assert "FROM projects" in text
         assert "WHERE user_id=? AND project_code=?" in text
 
     def test_update_sql_present(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         assert "UPDATE projects" in text
         assert "SET project_name=?, project_type=?, project_origin=?, source_project_template=?, template_source=?" in text
         assert "baseline_snapshot_json=?, archived=?, is_readonly=?, governance_state_json=?, last_run_summary_json=?" in text
@@ -119,7 +120,7 @@ class TestSQLFragments:
         assert "WHERE project_id=? AND user_id=?" in text
 
     def test_insert_sql_present(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         assert "INSERT INTO projects (" in text
         assert "project_id, user_id, project_code, project_name, project_type, project_origin," in text
         assert "source_project_template, template_source, baseline_snapshot_json, archived, is_readonly," in text
@@ -127,9 +128,8 @@ class TestSQLFragments:
         assert ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" in text
 
     def test_single_transaction_pattern(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         # Find the save_project function block and verify it has a single with block
-        # The function is at line 507
         lines = text.splitlines()
         # Find start
         start = None
@@ -140,10 +140,7 @@ class TestSQLFragments:
         # Find the next def or class at same indent
         end = None
         for i in range(start+1, len(lines)):
-            if lines[i].startswith("def ") and not lines[i].startswith("def _"):
-                # Could be save_project's inner def - but save_project has no inner defs
-                # Actually, the line "def save_project(" starts save_project
-                # Next def or class is the next top-level function
+            if lines[i].startswith("def "):
                 end = i
                 break
         if end is None:
@@ -169,14 +166,14 @@ class TestReplayMetadataBehavior:
         # The source uses: replay_metadata = dict(replay_metadata or {})
         # This means None is converted to {} before being used
         from app.persistence.repository import save_project
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         # The exact pattern
         assert "replay_metadata = dict(replay_metadata or {})" in text
 
     def test_replay_metadata_setdefault_project_id(self):
         # Both INSERT and UPDATE paths use replay_metadata.setdefault("project_id", project_id)
         from app.persistence.repository import save_project
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         # In the save_project function block, setdefault is called
         # We check the function body
         sig = inspect.getsource(save_project)
@@ -194,7 +191,7 @@ class TestGovernanceStateBehavior:
     """
 
     def test_governance_state_none_becomes_empty_dict(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         assert "governance_state = governance_state or {}" in text
 
     def test_governance_state_is_json_serialized(self):
@@ -211,7 +208,7 @@ class TestLastRunSummaryBehavior:
     """Pin last_run_summary behavior."""
 
     def test_last_run_summary_none_becomes_empty_dict(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         assert "last_run_summary = last_run_summary or {}" in text
 
     def test_last_run_summary_is_json_serialized(self):
@@ -227,7 +224,7 @@ class TestBaselineSnapshotBehavior:
     """Pin baseline_snapshot behavior."""
 
     def test_baseline_snapshot_none_becomes_empty_dict(self):
-        text = _read(REPOSITORY_PY)
+        text = _read(PROJECTS_PY)
         assert "baseline_snapshot = baseline_snapshot or {}" in text
 
     def test_baseline_snapshot_is_json_serialized(self):
@@ -333,12 +330,15 @@ class TestReturnType:
     def test_returns_project_record_instance(self):
         from app.persistence.repository import save_project, ProjectRecord
         sig = inspect.signature(save_project)
-        # Return annotation is a string "ProjectRecord" due to the local class pattern
+        # Return annotation may be either the string "ProjectRecord" (forward ref)
+        # or the actual ProjectRecord class (if Python resolved it at call time).
         ann = sig.return_annotation
+        # Strip the outer quotes if present
         if isinstance(ann, str):
-            assert ann == "ProjectRecord"
+            stripped = ann.strip("'\"")
+            assert stripped == "ProjectRecord", f"got {ann!r}"
         else:
-            assert ann is ProjectRecord
+            assert ann is ProjectRecord, f"got {ann!r}"
 
     def test_return_is_dataclass(self):
         from app.persistence.repository import ProjectRecord
@@ -428,10 +428,10 @@ class TestExistingCoverage:
 class TestOtherGuardrails:
     """Verify Phase 51F and Phase 52F guardrails still pass for save_project context."""
 
-    def test_no_save_project_in_projects_repository(self):
-        # Currently save_project should NOT be in projects_repository.py
+    def test_save_project_now_in_projects_repository(self):
+        # After Phase 53E-2, save_project IS in projects_repository.py (post-extraction)
         from app.persistence import projects_repository
-        assert not hasattr(projects_repository, "save_project")
+        assert hasattr(projects_repository, "save_project")
 
     def test_no_save_project_in_helpers(self):
         from app.persistence import _helpers
