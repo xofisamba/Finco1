@@ -1,0 +1,730 @@
+{
+  "phase": "51N",
+  "phase_title": "Post-M2 route extraction checkpoint, Agent B docs integration, and Claude review preparation pack",
+  "base_sha": "2afdba8b79daf9462161dc8c5b6115995c4afceb",
+  "head_sha": null,
+  "branch": "phase51n-post-m2-route-extraction-checkpoint",
+  "current_main_sha": "2afdba8b79daf9462161dc8c5b6115995c4afceb",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_touched": false,
+  "production_code_changed": false,
+  "main_web_py_changed": false,
+  "app_services_changed": false,
+  "parity_core_files_changed": false,
+  "changed_files": [
+    "docs/phase51n_post_m2_route_extraction_checkpoint.md",
+    "reports/phase51n_post_m2_route_extraction_checkpoint.json"
+  ],
+  "phase51f_guardrails_status": "PASS",
+  "phase51f_guardrails_test_count": 21,
+  "known_pre_existing_failures": [
+    "tests/test_persistence.py: ImportError: No module named 'persistence' (pre-existing on origin/main HEAD, not introduced by Phase 51N)",
+    "tests/test_repository.py: same ImportError, pre-existing"
+  ],
+  "completed_agent_a_route_extractions": [
+    {
+      "phase": "51A",
+      "route": "POST /run",
+      "service_module": "app/services/run_service.py",
+      "char_pr": "(early)",
+      "extr_pr": "(early)",
+      "bugfix_pr": null,
+      "pre_size_non_blank": 140,
+      "post_size_non_blank": 67,
+      "service_lines": 653,
+      "status": "extracted"
+    },
+    {
+      "phase": "51B",
+      "route": "POST /run extraction",
+      "service_module": "app/services/run_service.py",
+      "char_pr": null,
+      "extr_pr": "(early)",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 67,
+      "service_lines": 653,
+      "status": "extracted"
+    },
+    {
+      "phase": "51C-1",
+      "route": "POST /compare characterization",
+      "service_module": "app/services/compare_service.py",
+      "char_pr": "(early)",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 110,
+      "post_size_non_blank": null,
+      "service_lines": 299,
+      "status": "characterized"
+    },
+    {
+      "phase": "51C-2",
+      "route": "POST /compare extraction",
+      "service_module": "app/services/compare_service.py",
+      "char_pr": null,
+      "extr_pr": "(early)",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 35,
+      "service_lines": 299,
+      "status": "extracted"
+    },
+    {
+      "phase": "51D-1",
+      "route": "POST /validate characterization",
+      "service_module": "app/services/validation_service.py",
+      "char_pr": "(early)",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 95,
+      "post_size_non_blank": null,
+      "service_lines": 281,
+      "status": "characterized"
+    },
+    {
+      "phase": "51D-2",
+      "route": "POST /validate extraction",
+      "service_module": "app/services/validation_service.py",
+      "char_pr": null,
+      "extr_pr": "(early)",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 34,
+      "service_lines": 281,
+      "status": "extracted"
+    },
+    {
+      "phase": "51E-1",
+      "route": "GET/POST /download characterization",
+      "service_module": "app/services/download_service.py",
+      "char_pr": "(early)",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 155,
+      "post_size_non_blank": null,
+      "service_lines": 569,
+      "status": "characterized"
+    },
+    {
+      "phase": "51E-2",
+      "route": "GET/POST /download extraction",
+      "service_module": "app/services/download_service.py",
+      "char_pr": null,
+      "extr_pr": "(early)",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 49,
+      "service_lines": 569,
+      "status": "extracted"
+    },
+    {
+      "phase": "51F",
+      "route": "parallel-work guardrails (no route)",
+      "service_module": null,
+      "char_pr": null,
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": null,
+      "service_lines": null,
+      "status": "guardrails"
+    },
+    {
+      "phase": "51G-1",
+      "route": "POST /save-run characterization",
+      "service_module": "app/services/save_run_service.py",
+      "char_pr": "PR #389",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 155,
+      "post_size_non_blank": null,
+      "service_lines": 438,
+      "status": "characterized"
+    },
+    {
+      "phase": "51G-2",
+      "route": "POST /save-run extraction",
+      "service_module": "app/services/save_run_service.py",
+      "char_pr": null,
+      "extr_pr": "PR #391",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 61,
+      "service_lines": 438,
+      "status": "extracted"
+    },
+    {
+      "phase": "51G-3",
+      "route": "POST /save-run user_created bugfix",
+      "service_module": "app/services/save_run_service.py",
+      "char_pr": null,
+      "extr_pr": null,
+      "bugfix_pr": "PR #392",
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 61,
+      "service_lines": 438,
+      "status": "bugfixed"
+    },
+    {
+      "phase": "51H-1",
+      "route": "POST /scenarios/state/* characterization",
+      "service_module": "app/services/scenario_state_route_service.py",
+      "char_pr": "PR #393",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 95,
+      "post_size_non_blank": null,
+      "service_lines": 361,
+      "status": "characterized"
+    },
+    {
+      "phase": "51H-2",
+      "route": "POST /scenarios/state/* extraction",
+      "service_module": "app/services/scenario_state_route_service.py",
+      "char_pr": null,
+      "extr_pr": "PR #395",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 36,
+      "service_lines": 361,
+      "status": "extracted"
+    },
+    {
+      "phase": "51I",
+      "route": "checkpoint + hotspot map",
+      "service_module": null,
+      "char_pr": null,
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": null,
+      "service_lines": null,
+      "status": "checkpoint"
+    },
+    {
+      "phase": "51J-1",
+      "route": "POST /scenarios/save characterization",
+      "service_module": "app/services/scenarios_save_service.py",
+      "char_pr": "PR #397",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 88,
+      "post_size_non_blank": null,
+      "service_lines": 450,
+      "status": "characterized"
+    },
+    {
+      "phase": "51J-2",
+      "route": "POST /scenarios/save extraction",
+      "service_module": "app/services/scenarios_save_service.py",
+      "char_pr": null,
+      "extr_pr": "PR #399",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 43,
+      "service_lines": 450,
+      "status": "extracted"
+    },
+    {
+      "phase": "51K-1",
+      "route": "POST /scenarios/{id}/duplicate characterization",
+      "service_module": "app/services/scenario_duplicate_service.py",
+      "char_pr": "PR #400",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 67,
+      "post_size_non_blank": null,
+      "service_lines": 383,
+      "status": "characterized"
+    },
+    {
+      "phase": "51K-2",
+      "route": "POST /scenarios/{id}/duplicate extraction",
+      "service_module": "app/services/scenario_duplicate_service.py",
+      "char_pr": null,
+      "extr_pr": "PR #403 (recreated)",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 70,
+      "service_lines": 383,
+      "status": "extracted"
+    },
+    {
+      "phase": "51L-1",
+      "route": "POST /scenarios/add characterization",
+      "service_module": "app/services/scenarios_add_service.py",
+      "char_pr": "PR #404 (recreated)",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 62,
+      "post_size_non_blank": null,
+      "service_lines": 408,
+      "status": "characterized"
+    },
+    {
+      "phase": "51L-2",
+      "route": "POST /scenarios/add extraction",
+      "service_module": "app/services/scenarios_add_service.py",
+      "char_pr": null,
+      "extr_pr": "PR #405",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 49,
+      "service_lines": 408,
+      "status": "extracted"
+    },
+    {
+      "phase": "51M-1",
+      "route": "POST /projects/create characterization",
+      "service_module": "app/services/projects_create_service.py",
+      "char_pr": "PR #406",
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": 117,
+      "post_size_non_blank": null,
+      "service_lines": 392,
+      "status": "characterized"
+    },
+    {
+      "phase": "51M-2",
+      "route": "POST /projects/create extraction",
+      "service_module": "app/services/projects_create_service.py",
+      "char_pr": null,
+      "extr_pr": "PR #407",
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": 93,
+      "service_lines": 392,
+      "status": "extracted"
+    },
+    {
+      "phase": "51N",
+      "route": "checkpoint (this phase)",
+      "service_module": null,
+      "char_pr": null,
+      "extr_pr": null,
+      "bugfix_pr": null,
+      "pre_size_non_blank": null,
+      "post_size_non_blank": null,
+      "service_lines": null,
+      "status": "checkpoint"
+    }
+  ],
+  "service_inventory": {
+    "total_modules": 13,
+    "route_orchestration": [
+      {"file": "run_service.py", "lines": 653, "route": "POST /run", "imports_main_web": false, "imports_main_api": false, "risk": "MEDIUM", "canonical_pattern": true},
+      {"file": "compare_service.py", "lines": 299, "route": "POST /compare", "imports_main_web": false, "imports_main_api": false, "risk": "LOW", "canonical_pattern": true},
+      {"file": "validation_service.py", "lines": 281, "route": "POST /validate", "imports_main_web": false, "imports_main_api": false, "risk": "LOW", "canonical_pattern": true},
+      {"file": "download_service.py", "lines": 569, "route": "GET/POST /download", "imports_main_web": false, "imports_main_api": false, "risk": "MEDIUM", "canonical_pattern": true},
+      {"file": "save_run_service.py", "lines": 438, "route": "POST /save-run", "imports_main_web": false, "imports_main_api": false, "risk": "MEDIUM", "canonical_pattern": true},
+      {"file": "scenario_state_route_service.py", "lines": 361, "route": "POST /scenarios/state/draft+discard", "imports_main_web": false, "imports_main_api": false, "risk": "LOW", "canonical_pattern": true},
+      {"file": "scenarios_save_service.py", "lines": 450, "route": "POST /scenarios/save", "imports_main_web": false, "imports_main_api": false, "risk": "LOW", "canonical_pattern": true},
+      {"file": "scenario_duplicate_service.py", "lines": 383, "route": "POST /scenarios/{id}/duplicate", "imports_main_web": false, "imports_main_api": false, "risk": "LOW", "canonical_pattern": true},
+      {"file": "scenarios_add_service.py", "lines": 408, "route": "POST /scenarios/add", "imports_main_web": false, "imports_main_api": false, "risk": "LOW", "canonical_pattern": true},
+      {"file": "projects_create_service.py", "lines": 392, "route": "POST /projects/create", "imports_main_web": false, "imports_main_api": false, "risk": "LOW", "canonical_pattern": true}
+    ],
+    "data_layer_helper": [
+      {"file": "scenario_state_service.py", "lines": 233, "imports_main_web": false, "imports_main_api": false, "data_layer_only": true}
+    ],
+    "export_audit": [
+      {"file": "export_service.py", "lines": 333, "imports_main_web": false, "imports_main_api": false},
+      {"file": "export_audit_service.py", "lines": 194, "imports_main_web": false, "imports_main_api": false}
+    ],
+    "all_clean_of_main_web_and_main_api_imports": true,
+    "route_orchestration_services_total_lines": 4234
+  },
+  "updated_main_web_hotspot_map": {
+    "service_backed_routes": [
+      {"method": "POST", "path": "/run", "handler": "run", "non_blank": 67, "service": "run_service", "risk": "MEDIUM"},
+      {"method": "POST", "path": "/compare", "handler": "compare", "non_blank": 35, "service": "compare_service", "risk": "LOW"},
+      {"method": "POST", "path": "/validate", "handler": "validate", "non_blank": 34, "service": "validation_service", "risk": "LOW"},
+      {"method": "GET", "path": "/download", "handler": "download_get", "non_blank": 49, "service": "download_service", "risk": "MEDIUM"},
+      {"method": "POST", "path": "/download", "handler": "download_post", "non_blank": 48, "service": "download_service", "risk": "MEDIUM"},
+      {"method": "POST", "path": "/save-run", "handler": "save_run_endpoint", "non_blank": 61, "service": "save_run_service", "risk": "MEDIUM"},
+      {"method": "POST", "path": "/scenarios/state/draft", "handler": "save_workspace_draft_endpoint", "non_blank": 36, "service": "scenario_state_route_service", "risk": "LOW"},
+      {"method": "POST", "path": "/scenarios/state/discard", "handler": "discard_workspace_draft_endpoint", "non_blank": 36, "service": "scenario_state_route_service", "risk": "LOW"},
+      {"method": "POST", "path": "/scenarios/save", "handler": "save_scenario_endpoint", "non_blank": 43, "service": "scenarios_save_service", "risk": "LOW"},
+      {"method": "POST", "path": "/scenarios/{scenario_id}/duplicate", "handler": "duplicate_scenario_endpoint", "non_blank": 70, "service": "scenario_duplicate_service", "risk": "LOW"},
+      {"method": "POST", "path": "/scenarios/add", "handler": "add_scenario_endpoint", "non_blank": 49, "service": "scenarios_add_service", "risk": "LOW"},
+      {"method": "POST", "path": "/projects/create", "handler": "create_project_route", "non_blank": 93, "service": "projects_create_service", "risk": "LOW"}
+    ],
+    "remaining_inline_hotspots": [
+      {"method": "POST", "path": "/projects/{project_code}/save-as", "handler": "save_project_as_endpoint", "non_blank": 49, "risk": "HIGH", "recommended_phase": "51O"},
+      {"method": "POST", "path": "/scenarios/{scenario_id}/rename", "handler": "rename_scenario_endpoint", "non_blank": 51, "risk": "MEDIUM", "recommended_phase": "51P"},
+      {"method": "POST", "path": "/scenarios/{scenario_id}/archive", "handler": "archive_scenario_endpoint", "non_blank": 47, "risk": "MEDIUM", "recommended_phase": "51Q"},
+      {"method": "POST", "path": "/scenarios/{scenario_id}/update-overrides", "handler": "update_overrides_endpoint", "non_blank": 25, "risk": "MEDIUM", "recommended_phase": "51R"},
+      {"method": "POST", "path": "/scenarios/{scenario_id}/select", "handler": "select_scenario_endpoint", "non_blank": 21, "risk": "MEDIUM", "recommended_phase": "51S"}
+    ],
+    "auth_ui_public_routes": [
+      {"method": "POST", "path": "/login", "handler": "login_post", "non_blank": 50, "out_of_scope": true, "reason": "auth UI"},
+      {"method": "GET", "path": "/login", "handler": "login_get", "non_blank": 12, "out_of_scope": true, "reason": "auth UI"},
+      {"method": "POST", "path": "/logout", "handler": "logout", "non_blank": 8, "out_of_scope": true, "reason": "auth"},
+      {"method": "GET", "path": "/", "handler": "index", "non_blank": 66, "out_of_scope": true, "reason": "UI index"},
+      {"method": "GET", "path": "/scenarios", "handler": "list_scenarios_endpoint", "non_blank": 21, "out_of_scope": true, "reason": "UI list"},
+      {"method": "GET", "path": "/scenarios/history", "handler": "scenario_history_endpoint", "non_blank": 21, "out_of_scope": true, "reason": "UI history"},
+      {"method": "GET", "path": "/scenarios/compare", "handler": "scenario_compare_endpoint", "non_blank": 36, "out_of_scope": true, "reason": "UI compare"},
+      {"method": "GET", "path": "/scenarios/{scenario_id}/load", "handler": "load_scenario_endpoint", "non_blank": 33, "out_of_scope": true, "reason": "UI load"},
+      {"method": "GET", "path": "/runs", "handler": "list_runs_endpoint", "non_blank": 20, "out_of_scope": true, "reason": "UI list"},
+      {"method": "GET", "path": "/run/{run_id}", "handler": "get_run_endpoint", "non_blank": 30, "out_of_scope": true, "reason": "UI view"},
+      {"method": "GET", "path": "/projects/browse", "handler": "project_browser", "non_blank": 26, "out_of_scope": true, "reason": "UI browser"},
+      {"method": "GET", "path": "/projects/new", "handler": "new_project_form", "non_blank": 15, "out_of_scope": true, "reason": "UI form"},
+      {"method": "GET", "path": "/exports/institutional-workbook.xlsx", "handler": "institutional_workbook_export", "non_blank": 40, "out_of_scope": true, "reason": "export GET (uses export_service)"},
+      {"method": "GET", "path": "/exports/runtime-summary.csv", "handler": "runtime_summary_export", "non_blank": 39, "out_of_scope": true, "reason": "export GET (uses export_service)"},
+      {"method": "GET", "path": "/health", "handler": "health", "non_blank": 8, "out_of_scope": true, "reason": "health check"},
+      {"method": "GET", "path": "/readyz", "handler": "readyz", "non_blank": 11, "out_of_scope": true, "reason": "health check"},
+      {"method": "GET", "path": "/public-health", "handler": "public_health", "non_blank": 8, "out_of_scope": true, "reason": "public health"}
+    ],
+    "summary": {
+      "total_routes": 34,
+      "service_backed_routes": 12,
+      "remaining_inline_hotspot_routes": 5,
+      "remaining_inline_hotspot_non_blank": 193,
+      "auth_ui_public_routes": 17,
+      "high_risk_inline_remaining": 1,
+      "medium_risk_inline_remaining": 4
+    }
+  },
+  "route_extraction_improvement_metrics": {
+    "phase_51_total": {
+      "completed_extracted_route_families": 8,
+      "extracted_routes_or_endpoints": 12,
+      "remaining_inline_route_hotspots": 5,
+      "total_remaining_inline_non_blank": 193,
+      "service_modules_total": 13,
+      "service_route_orchestration_modules": 10,
+      "service_route_orchestration_total_lines": 4234,
+      "test_modules": 23,
+      "tests_total_approx": 900
+    },
+    "phase_51i_vs_51n": {
+      "phase_51i_extracted_routes": 11,
+      "phase_51n_extracted_routes": 12,
+      "phase_51i_inline_hotspot_routes": 6,
+      "phase_51n_inline_hotspot_routes": 5,
+      "phase_51i_inline_non_blank": 310,
+      "phase_51n_inline_non_blank": 193,
+      "phase_51i_inline_non_blank_delta": -117,
+      "phase_51i_inline_non_blank_delta_pct": -38.0,
+      "phase_51i_service_modules": 11,
+      "phase_51n_service_modules": 13,
+      "phase_51i_high_risk_inline": 2,
+      "phase_51n_high_risk_inline": 1
+    },
+    "plain_language_summary": {
+      "materially_improved": [
+        "12 routes now have a clean service boundary (10 route-orchestration services follow the canonical pattern)",
+        "Largest remaining inline route (/projects/create, 117 non-blank) is now extracted",
+        "HIGH-risk inline category reduced from 2 routes to 1",
+        "Pattern is repeatable and canonical (validated by 51L-2 and 51M-2)",
+        "Tests now pin behavior before extraction (characterization + extraction test pairs)",
+        "Service cleanliness verified automatically (13/13 services pass no-main_web-import check)"
+      ],
+      "remains_risky": [
+        "/projects/{code}/save-as is the only HIGH-risk inline route left (dual-write semantics)",
+        "Service proliferation (13 modules approaching threshold where service registry helps)",
+        "Data-layer/helper category is very small (1 service: scenario_state_service.py)",
+        "Persistence is monolithic (app/persistence.py god-module; Phase 52 candidate)",
+        "No multi-user / enterprise governance implementation"
+      ],
+      "now_easier_due_to_pattern": [
+        "Adding a new service-backed route is mechanical",
+        "Test injection is trivial (deps are callables)",
+        "Audit/review of behavior is centralized in *RouteDeps dataclass",
+        "Cross-service consistency is high (every service follows the same template)"
+      ]
+    }
+  },
+  "agent_b_prs_reviewed": {
+    "390": {
+      "title": "Agent B B1: External review preparation package",
+      "merged_at": "2026-06-02T14:46:41Z",
+      "files_added": 6,
+      "lines_added": 1711,
+      "purpose": "Prepare model for structured external review; establish no-go claim boundaries",
+      "categories": ["docs/external_review/", "reports/external_review/"],
+      "touched_agent_a_code": false,
+      "include_in_claude_review_scope": true,
+      "no_go_claim_boundaries": [
+        "no_bankability_claim",
+        "no_lender_ready_claim",
+        "no_audit_certification_claim",
+        "no_saas_ready_claim",
+        "no_external_validation_claim",
+        "generic_solar_wind_exploratory_unvalidated"
+      ]
+    },
+    "394": {
+      "title": "Agent B Governance Pack: B3/B2/B7/B8 docs and reports",
+      "merged_at": "2026-06-02T21:27:57Z",
+      "files_added": 17,
+      "lines_added": 3584,
+      "purpose": "Establish broader governance + validation + pilot + ops framework",
+      "categories": [
+        "docs/generic_validation/",
+        "docs/ops/",
+        "docs/pilot/",
+        "docs/roadmap/",
+        "docs/validation/",
+        "reports/generic_validation/",
+        "reports/pilot/",
+        "reports/roadmap/",
+        "reports/validation/"
+      ],
+      "touched_agent_a_code": false,
+      "include_in_claude_review_scope": true,
+      "no_go_claim_boundaries": [
+        "generic_solar_wind_exploratory_unvalidated",
+        "internal_confidence_not_external_validation",
+        "pilot_scope_narrow_bounded_by_tuho_oborovo"
+      ]
+    },
+    "398": {
+      "title": "Agent B Pilot Review Pack: B9-B14 docs and reports",
+      "merged_at": "2026-06-02T22:15:54Z",
+      "files_added": 20,
+      "lines_added": 4193,
+      "purpose": "Add pilot execution / paid pilot / commercial claims / governance refresh documents",
+      "categories": [
+        "docs/commercial/",
+        "docs/external_review/",
+        "docs/governance/",
+        "docs/pilot/",
+        "docs/validation/",
+        "reports/commercial/",
+        "reports/external_review/",
+        "reports/governance/",
+        "reports/pilot/",
+        "reports/validation/"
+      ],
+      "touched_agent_a_code": false,
+      "include_in_claude_review_scope": true,
+      "no_go_claim_boundaries": [
+        "g20_remains_blocked",
+        "r99_r102_not_approved",
+        "partial_pay_sweep_not_promoted",
+        "flat_min_dscr_sculpting_not_promoted",
+        "paid_pilot_gate_is_framework_not_authorization",
+        "internal_confidence_heatmap_not_external_validation",
+        "controlled_trusted_pilot_scope_bounded_by_tuho_oborovo"
+      ],
+      "b12_caveat": "Model confidence heatmap is internal-only, not external validation. Maps confidence within TUHO/Oborovo case-study scope; does not generalize to generic solar/wind.",
+      "b13_caveat": "Paid pilot gate is a gate framework, not authorization. Defines criteria a paid pilot must meet; does NOT by itself authorize any specific paid pilot. Each paid pilot requires separate approval against the gate framework.",
+      "b14_governance_refresh_plan_summary": "Agent A owns route extraction, main_web.py, app/services, Phase 51 tests/docs/reports. Agent B owns docs/reports governance/readiness/review packs. UI track is separate. Parity-core files are off-limits unless explicit model-change PR. Agent B should not modify Agent A route/service files. Agent A should reference Agent B docs but not rewrite them unless requested."
+    }
+  },
+  "agent_b_summary": {
+    "total_prs": 3,
+    "total_files_added": 43,
+    "total_lines_added": 9488,
+    "all_in_docs_or_reports": true,
+    "touched_agent_a_code": false,
+    "no_go_boundaries_reinforced": 17,
+    "include_in_claude_review_scope": true,
+    "no_go_boundaries_list": [
+      "no_bankability_claim",
+      "no_lender_ready_claim",
+      "no_audit_certification_claim",
+      "no_saas_ready_claim",
+      "no_external_validation_claim",
+      "generic_solar_wind_exploratory_unvalidated",
+      "internal_confidence_not_external_validation",
+      "pilot_scope_narrow_bounded_by_tuho_oborovo",
+      "g20_remains_blocked",
+      "r99_r102_not_approved",
+      "partial_pay_sweep_not_promoted",
+      "flat_min_dscr_sculpting_not_promoted",
+      "paid_pilot_gate_is_framework_not_authorization",
+      "internal_confidence_heatmap_not_external_validation",
+      "controlled_trusted_pilot_scope_bounded_by_tuho_oborovo",
+      "agent_b_no_modify_agent_a_files",
+      "agent_a_reference_not_rewrite_agent_b_docs"
+    ]
+  },
+  "governance_file_ownership": {
+    "agent_a": [
+      "main_web.py",
+      "app/services/*",
+      "Phase 51 tests/docs/reports",
+      "route-related code"
+    ],
+    "agent_b": [
+      "docs/external_review/*",
+      "docs/pilot/*",
+      "docs/commercial/*",
+      "docs/validation/*",
+      "docs/governance/*",
+      "docs/ops/*",
+      "docs/roadmap/*",
+      "docs/generic_validation/*",
+      "reports/external_review/*",
+      "reports/pilot/*",
+      "reports/commercial/*",
+      "reports/validation/*",
+      "reports/governance/*",
+      "reports/roadmap/*",
+      "reports/generic_validation/*"
+    ],
+    "ui_track": "separate, out of scope for Phase 51N",
+    "parity_core_off_limits": [
+      "app/waterfall_core.py",
+      "app/project_factories.py",
+      "fixtures/*.csv",
+      "schema/*",
+      "migrations/*",
+      "*.js (frontend calculations)",
+      "formulas"
+    ],
+    "cross_track_rules": [
+      "Agent B should not modify Agent A route/service files (verified: Agent B PRs only touch docs/* and reports/*)",
+      "Agent A should reference Agent B docs but not rewrite them unless requested (Phase 51N references but does not modify)",
+      "Both tracks can coexist on the same main branch (51L-2 + 51M-1 + 51M-2 + Agent B PRs all merged cleanly)"
+    ]
+  },
+  "no_go_claims": [
+    "no_bankability_claim",
+    "no_lender_ready_claim",
+    "no_audit_certification_claim",
+    "no_saas_ready_claim",
+    "no_external_validation_claim",
+    "generic_solar_wind_exploratory_unvalidated",
+    "g20_remains_blocked",
+    "r99_r102_not_approved",
+    "partial_pay_sweep_not_promoted",
+    "flat_min_dscr_sculpting_not_promoted",
+    "paid_pilot_gate_is_framework_not_authorization",
+    "internal_confidence_heatmap_not_external_validation",
+    "controlled_trusted_pilot_scope_bounded_by_tuho_oborovo"
+  ],
+  "remaining_risks": {
+    "technical": [
+      {"id": 1, "name": "repository_persistence_god_module", "description": "app/persistence.py is still monolithic; Phase 52 candidate"},
+      {"id": 2, "name": "remaining_inline_route_risk", "description": "1 HIGH (/projects/{code}/save-as) + 4 MEDIUM (193 non-blank combined) routes still inline"},
+      {"id": 3, "name": "ui_ux_not_revamped", "description": "Phase 51 focused on backend services, not frontend"},
+      {"id": 4, "name": "data_model_persistence_hardening_needed", "description": "Schema migrations, test fixtures, repository test coverage still pre-existing gaps"},
+      {"id": 5, "name": "no_multi_user_enterprise_governance", "description": "Single-user only. Permissions/tenancy/audit trail at user level — future work"},
+      {"id": 6, "name": "service_proliferation_risk", "description": "13 service modules approaching threshold where service registry helps; not yet blocker"},
+      {"id": 7, "name": "route_line_count_not_always_drastically_reduced", "description": "When deps/signature remain in route body (e.g., 18+ Form fields), route shrinks 20-30% only; orchestration moved but signature stays"}
+    ],
+    "process": [
+      {"id": 8, "name": "test_coverage_for_5_remaining_inline_routes_not_pinned", "description": "Some have characterization tests but not full vertical extraction tests"},
+      {"id": 9, "name": "stacked_pr_auto_close_pattern", "description": "When base branch is deleted after merge, dependent PRs auto-close. Workaround: rebase onto main, recreate. Requires coordination."},
+      {"id": 10, "name": "agent_a_b_coordination_loose", "description": "Phase 51N is the first checkpoint explicitly integrating both tracks' evidence"}
+    ],
+    "pre_existing_out_of_scope": [
+      {"id": 11, "name": "test_persistence_and_test_repository_import_error", "description": "ImportError: No module named 'persistence'. Pre-existing on origin/main HEAD. NOT introduced by Phase 51 work."}
+    ]
+  },
+  "recommended_next_steps": {
+    "primary": "Claude review of Phase 51 + Agent B docs packages (evidence pack is now sufficient)",
+    "secondary_paths": [
+      {
+        "path": "A",
+        "name": "Continue Phase 51 (extract remaining 5 inline routes)",
+        "phases": [
+          "51O: /projects/{code}/save-as (HIGH, 49 non-blank)",
+          "51P: /scenarios/{id}/rename (MEDIUM, 51 non-blank)",
+          "51Q: /scenarios/{id}/archive (MEDIUM, 47 non-blank)",
+          "51R: /scenarios/{id}/update-overrides (MEDIUM, 25 non-blank)",
+          "51S: /scenarios/{id}/select (MEDIUM, 21 non-blank)"
+        ],
+        "estimated_effort": "3-4 weeks",
+        "pros": ["lowest hanging fruit", "well-established pattern", "low regression risk", "each route is small PR"],
+        "cons": ["incremental value beyond what's already proven"]
+      },
+      {
+        "path": "B",
+        "name": "Phase 52: repository / persistence boundary mapping",
+        "phases": ["Address app/persistence.py god-module risk", "Define data-layer services for routes that write directly to persistence"],
+        "estimated_effort": "larger (4-6 weeks)",
+        "pros": ["addresses largest remaining backend risk", "natural next step in same architectural line", "needed before multi-user work"],
+        "cons": ["deeper architectural change", "higher risk"]
+      },
+      {
+        "path": "C",
+        "name": "UI revamp planning",
+        "phases": ["Based on Claude review of UI/UX implications"],
+        "estimated_effort": "uncertain",
+        "pros": ["parallelizable with backend work", "user-visible improvement"],
+        "cons": ["depends on Claude recommendations", "largest scope uncertainty"]
+      }
+    ],
+    "my_recommendation": "Path A first, then Path B. Path C in parallel.",
+    "rationale": "Path A is the lowest risk and most well-understood; completing it brings the inline hotspot map to zero. Then Path B is the natural follow-up to address the persistence layer. Path C (UI revamp) is best pursued in parallel and doesn't block backend work."
+  },
+  "claude_review_preparation": {
+    "current_main_sha": "2afdba8b79daf9462161dc8c5b6115995c4afceb",
+    "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "phase51f_guardrails_status": "PASS",
+    "scope": {
+      "agent_a": {
+        "route_extraction_quality": "12 routes extracted across 8 families; 5 inline hotspots remaining",
+        "service_pattern_maturity": "10 route-orchestration services follow canonical pattern (Outcome + Deps + execute)",
+        "test_coverage_growth": "~900+ Phase 51 tests across 23 modules",
+        "evidence_files": [
+          "docs/phase51n_post_m2_route_extraction_checkpoint.md",
+          "reports/phase51n_post_m2_route_extraction_checkpoint.json",
+          "app/services/*.py (all 13 service modules)",
+          "tests/test_phase51*.py (Phase 51 test suite)"
+        ]
+      },
+      "agent_b": {
+        "no_go_claim_boundaries": "PR #390 docs/external_review/no_go_claims.md",
+        "validation_framework": "PR #394 docs/validation/* + docs/generic_validation/*",
+        "pilot_execution_framework": "PR #398 docs/pilot/*",
+        "commercial_claims_guardrails": "PR #398 docs/commercial/*",
+        "governance_refresh_plan": "PR #398 docs/governance/agent_a_b_governance_refresh_plan.md"
+      }
+    },
+    "desired_claude_outputs": [
+      "Architecture quality assessment (route/service pattern maturity, consistency, risks)",
+      "Quantified improvement since Phase 51I checkpoint",
+      "Application-readiness percentages by dimension (code quality, test coverage, ops readiness, security, performance, multi-user, docs)",
+      "Pilot readiness vs enterprise SaaS readiness (clear separation)",
+      "UI revamp implications and prerequisites",
+      "Remaining technical debt (prioritized, Phase 52+ candidates)",
+      "Next roadmap recommendation (Path A vs B vs C, with rationale)"
+    ],
+    "reviewer_constraints": [
+      "No production code changes during the review",
+      "No Agent B docs/reports rewriting; suggest changes only",
+      "No-go claims remain hard boundaries; reviewer can assess capabilities, cannot approve promotion of any no-go claim",
+      "rc1 remains frozen; review can analyze but not modify",
+      "Parity-core remains off-limits; review can analyze but not propose changes"
+    ],
+    "out_of_scope_for_reviewer": [
+      "UI/UX layer (separate track; out of scope until UI revamp planning)",
+      "Future Phase 51N+1+ work (51O-51S, Phase 52); reviewer may recommend but not start",
+      "Auth/multi-user/tenancy (future work, not yet implemented)",
+      "Specific bugfixes (pre-existing persistence test ImportError, etc.)"
+    ]
+  },
+  "tests_run": {
+    "test_phase51f_parallel_work_guardrails": {"tests": 21, "passed": 21, "status": "PASS"},
+    "test_phase51a_run_route_golden_characterization": {"tests": 25, "passed": 25, "status": "PASS"},
+    "test_phase51b_run_route_vertical_extraction": {"tests": 22, "passed": 22, "status": "PASS"},
+    "test_phase51c1_compare_route_golden_characterization": {"tests": 37, "passed": 37, "status": "PASS"},
+    "test_phase51c2_compare_route_vertical_extraction": {"tests": 49, "passed": 49, "status": "PASS"},
+    "test_phase51d1_validate_route_golden_characterization": {"tests": 51, "passed": 51, "status": "PASS"},
+    "test_phase51d2_validate_route_vertical_extraction": {"tests": 52, "passed": 52, "status": "PASS"},
+    "test_phase51e1_download_route_golden_characterization": {"tests": 56, "passed": 56, "status": "PASS"},
+    "test_phase51e2_download_route_vertical_extraction": {"tests": 65, "passed": 65, "status": "PASS"},
+    "test_phase51g1_save_run_route_golden_characterization": {"tests": 54, "passed": 54, "status": "PASS"},
+    "test_phase51g2_save_run_route_vertical_extraction": {"tests": 55, "passed": 55, "status": "PASS"},
+    "test_phase51g3_save_run_user_created_branch_fix": {"tests": 48, "passed": 48, "status": "PASS"},
+    "test_phase51h1_scenario_state_route_family_characterization": {"tests": 76, "passed": 76, "status": "PASS"},
+    "test_phase51h2_scenario_state_route_family_vertical_extraction": {"tests": 66, "passed": 66, "status": "PASS"},
+    "test_phase51i_route_extraction_checkpoint_hotspot_map": {"tests": 27, "passed": 27, "status": "PASS"},
+    "test_phase51j1_scenarios_save_route_golden_characterization": {"tests": 71, "passed": 71, "status": "PASS"},
+    "test_phase51j2_scenarios_save_route_vertical_extraction": {"tests": 42, "passed": 42, "status": "PASS"},
+    "test_phase51k1_scenario_duplicate_route_golden_characterization": {"tests": 64, "passed": 64, "status": "PASS"},
+    "test_phase51k2_scenario_duplicate_route_vertical_extraction": {"tests": 37, "passed": 37, "status": "PASS"},
+    "test_phase51l1_scenario_add_route_golden_characterization": {"tests": 68, "passed": 68, "status": "PASS"},
+    "test_phase51l2_scenarios_add_route_vertical_extraction": {"tests": 34, "passed": 34, "status": "PASS"},
+    "test_phase51m1_projects_create_route_golden_characterization": {"tests": 72, "passed": 72, "status": "PASS"},
+    "test_phase51m2_projects_create_route_vertical_extraction": {"tests": 49, "passed": 49, "status": "PASS"}
+  },
+  "ready_for_review": true,
+  "ready_for_claude_review": true
+}
