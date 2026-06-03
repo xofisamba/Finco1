@@ -279,22 +279,20 @@ class TestLazyImports:
     """Pin the count of lazy imports of record dataclasses in
     scenarios_repository.py. After 53I-3, this count should drop to 0."""
 
-    def test_count_lazy_imports_in_scenarios_repository(self):
+    def test_count_lazy_imports_in_scenarios_repository_post_53i3(self):
+        # After 53I-3, no record dataclass lazy imports should remain
+        # (they should now import directly from app.persistence.records).
         text = _read(SCENARIOS_PY)
-        # Count `from app.persistence.repository import ...` lines
-        # that include a record dataclass
         lines = text.splitlines()
         count = 0
         for line in lines:
             if "from app.persistence.repository import" in line:
-                # Check if it includes any of the 3 records
                 if any(r in line for r in [
                     "ProjectRecord", "ScenarioRecord", "WorkspaceStateRecord"
                 ]):
                     count += 1
-        # Current state (pre-relocation): some lazy imports exist
-        assert count > 0, \
-            "Expected at least one lazy import of record dataclass in scenarios_repository.py (pre-relocation)"
+        assert count == 0, \
+            f"After 53I-3, expected 0 record lazy imports, got {count}"
 
     def test_count_lazy_imports_in_other_modules(self):
         # Count in other modules
