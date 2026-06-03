@@ -1,0 +1,187 @@
+{
+  "package": {
+    "name": "Finco1 Pilot User Acknowledgement Checklist",
+    "workstream": "B21",
+    "branch": "parallel-b20-b23-pilot-operating-review-prep",
+    "branch_base_sha": "3ebc8051f443eaeb4dca143a4b4330aea1146458",
+    "package_base_sha_at_creation": "3ebc8051f443eaeb4dca143a4b4330aea1146458",
+    "template_version": "0.1.0",
+    "template_status": "empty_template",
+    "intended_use": "internal_pilot_user_acknowledgement_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/pilot_user_acknowledgement.md",
+  "data_handling_pointer": "docs/pilot/pilot_data_handling_notice.md",
+  "b7_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b7_feedback_protocol_pointer": "docs/pilot/pilot_user_feedback_protocol.md",
+  "b9_evidence_capture_pointer": "docs/pilot/pilot_evidence_capture_template.md",
+  "b18_launch_pointer": "docs/pilot/controlled_pilot_launch_checklist.md",
+  "b19_post_pilot_pointer": "docs/pilot/post_pilot_evidence_update_template.md",
+  "b20_issue_log_pointer": "docs/pilot/pilot_issue_log_process.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "disclaimers": {
+    "not_a_legal_contract": true,
+    "internal_pilot_acknowledgement_template_only": true,
+    "no_legal_advice_given": true,
+    "controlled_internal_pilot_only": true,
+    "not_external_validation": true,
+    "not_customer_reference": true,
+    "not_production_readiness": true,
+    "not_paid_pilot_authorization": true,
+    "claude_review_separate": true,
+    "do_not_claim_pilot_happened_unless_actual_results_provided": true
+  },
+  "identification": {
+    "pilot_run_id": null,
+    "pilot_user_id_anonymized": null,
+    "pilot_user_real_name": null,
+    "pilot_operator_id": null,
+    "project_lead_id": null,
+    "acknowledgement_date": null,
+    "acknowledgement_version": "B21 v0.1.0"
+  },
+  "scope_acknowledgements": {
+    "internal_validation_activity": false,
+    "controlled_environment_per_b7_b9_b18": false,
+    "not_a_customer_relationship": false,
+    "not_a_production_rollout": false,
+    "not_external_validation": false,
+    "not_a_paid_pilot": false
+  },
+  "no_external_validation_acknowledgements": {
+    "pilot_is_internal_validation_with_real_human": false,
+    "pilot_does_not_constitute_external_validation": false,
+    "pilot_does_not_authorize_external_claims": false,
+    "pilot_does_not_establish_bankability": false,
+    "pilot_does_not_establish_lender_grade": false,
+    "pilot_does_not_establish_audit_grade": false,
+    "pilot_does_not_establish_certification_grade": false,
+    "pilot_does_not_establish_regulatory_grade": false,
+    "pilot_is_not_a_substitute_for_third_party_review": false
+  },
+  "no_investment_advice_acknowledgements": {
+    "model_is_screening_tool_not_advisor": false,
+    "model_output_is_not_investment_advice": false,
+    "model_output_is_not_buy_recommendation": false,
+    "model_output_is_not_guarantee_of_returns": false,
+    "pilot_user_must_not_rely_on_output_for_real_decisions": false,
+    "pilot_user_must_not_encourage_third_parties_to_rely": false
+  },
+  "no_customer_reference_acknowledgements": {
+    "pilot_user_is_not_a_customer": false,
+    "pilot_user_is_not_a_reference": false,
+    "pilot_user_is_forbidden_from_public_endorsement": false,
+    "pilot_user_is_forbidden_from_external_claim": false,
+    "anonymized_identifier_used_for_evidence_tagging_only": false
+  },
+  "allowed_data_acknowledgements": {
+    "tuho_inputs_allowed": false,
+    "oborovo_inputs_allowed": false,
+    "pilot_user_inputs_anonymized_allowed": false,
+    "internal_test_inputs_allowed": false
+  },
+  "prohibited_data_acknowledgements": {
+    "production_data_prohibited": false,
+    "customer_data_prohibited": false,
+    "nda_protected_data_prohibited": false,
+    "external_model_outputs_prohibited": false,
+    "personal_data_beyond_pilot_necessary_prohibited": false,
+    "pilot_user_agrees_to_not_introduce_prohibited_data": false,
+    "pilot_user_agrees_to_report_accidental_introduction_immediately": false
+  },
+  "confidentiality_acknowledgements": {
+    "internal_pilot_details_confidential": false,
+    "internal_pilot_materials_confidential": false,
+    "internal_pilot_evidence_confidential": false,
+    "no_sharing_with_third_parties_without_consent": false,
+    "no_publishing_without_consent": false,
+    "anonymized_result_may_be_shared_within_project": false
+  },
+  "evidence_collection_consent": {
+    "run_logs_consent": false,
+    "validation_records_consent": false,
+    "exports_consent": false,
+    "screenshots_consent": false,
+    "user_feedback_consent": false,
+    "issue_log_entries_consent": false,
+    "internal_evidence_not_used_in_external_claim_language": false,
+    "internal_evidence_not_used_in_marketing_without_consent": false,
+    "anonymized_identifier_used_for_evidence_tagging_only": false
+  },
+  "issue_reporting_obligation_acknowledgements": {
+    "pilot_user_agrees_to_report_issues": false,
+    "pilot_user_agrees_to_report_no_go_violations_immediately": false,
+    "pilot_user_agrees_to_report_data_isolation_breach_immediately": false,
+    "pilot_user_agrees_to_report_security_incident_immediately": false
+  },
+  "no_go_language_acknowledgement_per_category": {
+    "lender_bank_acknowledged": false,
+    "audit_certification_regulatory_acknowledged": false,
+    "saas_production_commercial_acknowledged": false,
+    "generic_solar_wind_validation_acknowledged": false,
+    "approval_of_not_approved_areas_acknowledged": false,
+    "advice_guarantees_acknowledged": false,
+    "all_prohibited_claims_forbidden_during_pilot": false,
+    "violation_triggers_pilot_pause_and_triage_review": false
+  },
+  "user_stop_withdrawal_right_acknowledgements": {
+    "pilot_user_has_right_to_stop_at_any_time": false,
+    "stop_procedure_is_documented": false,
+    "no_penalty_for_stopping": false
+  },
+  "project_stop_rollback_criteria_acknowledgements": {
+    "pilot_blocker_unresolvable": false,
+    "no_go_claim_made_or_implied": false,
+    "data_isolation_breach": false,
+    "security_incident": false,
+    "model_output_outside_documented_range": false,
+    "pilot_user_requests_stop": false,
+    "project_lead_requests_stop": false
+  },
+  "paid_pilot_separation_acknowledgements": {
+    "paid_pilot_gate_separate": false,
+    "paid_pilot_requires_additional_gates": false,
+    "paid_pilot_user_agreement_separate": false,
+    "this_acknowledgement_does_not_authorize_paid_pilot": false,
+    "paid_pilot_user_is_not_internal_pilot_user": false
+  },
+  "signatures": {
+    "pilot_user": {
+      "name": null,
+      "role": null,
+      "signed_at": null,
+      "signature_method": null,
+      "signed": false
+    },
+    "pilot_operator": {
+      "name": null,
+      "role": null,
+      "signed_at": null,
+      "signature_method": null,
+      "signed": false
+    },
+    "project_lead": {
+      "name": null,
+      "role": null,
+      "signed_at": null,
+      "signature_method": null,
+      "signed": false
+    }
+  },
+  "summary": {
+    "template_status": "empty_template",
+    "pilot_actually_run": false,
+    "pilot_user_onboarded": false,
+    "acknowledgement_fully_signed": false,
+    "total_acknowledgements_required": 47,
+    "total_acknowledgements_signed": 0
+  },
+  "global_notes": [
+    "This checklist is empty at package creation. It is populated only when a controlled pilot has actually been authorized and a pilot user has been onboarded.",
+    "This is not a legal contract. It is an internal pilot acknowledgement template. The project lead assigns actual personnel and any contractual terms separately. This document does not give legal advice and does not constitute a binding agreement.",
+    "The controlled internal pilot is internal validation. It is not external validation, not a customer reference, and not production readiness. The paid pilot gate (B13) is a separate stage. This acknowledgement does not authorize the paid pilot.",
+    "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is not represented in B21 as completed.",
+    "Do not claim a pilot has happened unless actual pilot results are later provided. Do not invent pilot results. Do not pre-populate the template with hypothetical signatures."
+  ]
+}

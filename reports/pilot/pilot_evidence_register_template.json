@@ -1,0 +1,99 @@
+{
+  "package": {
+    "name": "Finco1 Pilot Evidence Register Template",
+    "workstream": "B20",
+    "branch": "parallel-b20-b23-pilot-operating-review-prep",
+    "branch_base_sha": "3ebc8051f443eaeb4dca143a4b4330aea1146458",
+    "package_base_sha_at_creation": "3ebc8051f443eaeb4dca143a4b4330aea1146458",
+    "template_version": "0.1.0",
+    "template_status": "empty_template",
+    "intended_use": "internal_pilot_evidence_register_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/pilot_issue_log_process.md",
+  "issue_log_pointer": "reports/pilot/pilot_issue_log_template.json",
+  "b7_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b9_evidence_capture_pointer": "docs/pilot/pilot_evidence_capture_template.md",
+  "b9_result_summary_pointer": "reports/pilot/pilot_result_summary_template.json",
+  "b18_launch_pointer": "docs/pilot/controlled_pilot_launch_checklist.md",
+  "b19_post_pilot_pointer": "docs/pilot/post_pilot_evidence_update_template.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "disclaimers": {
+    "pilot_evidence_is_internal": true,
+    "not_external_validation": true,
+    "not_customer_reference": true,
+    "not_used_in_marketing_or_sales_without_pilot_user_consent": true,
+    "claude_review_separate": true,
+    "do_not_claim_pilot_happened_unless_actual_results_provided": true
+  },
+  "evidence_id_format": {
+    "format": "EV-<pilot_run_id>-<sequence_number>-<type_short>",
+    "pilot_run_id_description": "Unique identifier of the pilot run, assigned by the pilot operator.",
+    "sequence_number_format": "4-digit zero-padded sequence number, starting at 0001.",
+    "type_short_values": ["LOG", "VAL", "XLSX", "PNG", "FBK", "ACK", "OTHER"],
+    "type_short_descriptions": {
+      "LOG": "Run log",
+      "VAL": "Validation record",
+      "XLSX": "Excel export",
+      "PNG": "Screenshot",
+      "FBK": "User feedback",
+      "ACK": "Acknowledgement",
+      "OTHER": "Other"
+    },
+    "examples": [
+      "EV-PR-2026-Q3-001-0001-LOG",
+      "EV-PR-2026-Q3-001-0001-VAL",
+      "EV-PR-2026-Q3-001-0001-XLSX"
+    ]
+  },
+  "evidence_type_definitions": {
+    "run_log": "Run logs (start time, end time, run-time warnings, model output).",
+    "validation_record": "Validation records (expected vs observed, per metric, per B3 area).",
+    "export": "Exported Excel files with checksums.",
+    "screenshot": "Screenshots of the user-facing run when they document something the run logs do not.",
+    "user_feedback": "User feedback per the B7 pilot user feedback protocol (anonymized).",
+    "issue_log": "Issue log entries (the B20 issue log template entries themselves).",
+    "no_go_acknowledgement": "Signed no-go acknowledgement by pilot user and operator.",
+    "other": "Any other evidence not covered above, with notes."
+  },
+  "sensitivity_taxonomy": {
+    "public": "No redaction required. May be shared in any context.",
+    "internal": "Internal use only. May be shared within the project team. Not for external use.",
+    "confidential": "Sensitive. May be shared with the project lead, the pilot operator, and the B-track owner. Not for reviewer-facing or external use.",
+    "restricted": "Highly sensitive. May be shared with the project lead only. Includes any pilot user data, any production data references, any NDA-protected data, any security incident details."
+  },
+  "retention_policy": {
+    "pointer": "docs/pilot/pilot_user_feedback_protocol.md §5",
+    "summary": "Per the B7 pilot user feedback protocol. Default retention is the duration of the pilot run window plus 90 days, unless the pilot scope or the project lead specifies a different retention.",
+    "notes": "Confidential and restricted evidence (e.g. pilot user data) is retained per the protocol and is not used in any external-claim language, in any marketing material, in any sales conversation, or in any external review document, without the pilot user's explicit written consent."
+  },
+  "evidence_items": [],
+  "summary": {
+    "template_status": "empty_template",
+    "pilot_actually_run": false,
+    "evidence_items_total": 0,
+    "by_evidence_type": {
+      "run_log": 0,
+      "validation_record": 0,
+      "export": 0,
+      "screenshot": 0,
+      "user_feedback": 0,
+      "issue_log": 0,
+      "no_go_acknowledgement": 0,
+      "other": 0
+    },
+    "by_sensitivity": {
+      "public": 0,
+      "internal": 0,
+      "confidential": 0,
+      "restricted": 0
+    }
+  },
+  "global_notes": [
+    "This template is empty at package creation. It is populated only when a controlled pilot has actually run. Do not claim a pilot has happened unless actual pilot results are later provided. Do not invent evidence. Do not pre-populate the template with hypothetical evidence.",
+    "Pilot evidence is internal. It is not external validation, not a customer reference, and is not used in marketing or sales without the pilot user's explicit written consent.",
+    "Claude review is separate. The Phase 51N checkpoint includes a Claude review preparation pack on the Agent A side; Claude review itself is handled outside this branch and is not represented in B20 as completed.",
+    "Each evidence item has a SHA-256 checksum, a size in bytes, a creation timestamp, and a retention-until date. The retention policy is per docs/pilot/pilot_user_feedback_protocol.md §5.",
+    "Confidential and restricted evidence (e.g. pilot user data) is handled per the B7 protocol and is not used in any external-claim language without the pilot user's explicit written consent."
+  ]
+}
