@@ -1,0 +1,247 @@
+{
+  "phase": "51L-2",
+  "title": "Extract POST /scenarios/add into scenarios_add_service.py",
+  "type": "behavior-preserving-vertical-extraction",
+  "base_sha": "798d59c177c7b8decf73732e2028119716bbb4a2",
+  "head_sha": null,
+  "head_pr": null,
+  "branch": "phase51l2-extract-scenario-add-route",
+  "extraction_target": {
+    "route": "POST /scenarios/add",
+    "handler": "add_scenario_endpoint",
+    "service_module": "app/services/scenarios_add_service.py",
+    "service_entry_point": "execute_scenarios_add_route"
+  },
+  "changed_files": [
+    "app/services/scenarios_add_service.py",
+    "main_web.py",
+    "tests/test_phase51l1_scenario_add_route_golden_characterization.py",
+    "tests/test_phase51l2_scenarios_add_route_vertical_extraction.py",
+    "tests/test_phase51i_route_extraction_checkpoint_hotspot_map.py",
+    "docs/phase51l2_scenarios_add_route_vertical_extraction.md",
+    "reports/phase51l2_scenarios_add_route_vertical_extraction_summary.json"
+  ],
+  "route_size_before_after": {
+    "before": {
+      "phase": "51L-1 (pre-extraction)",
+      "total_lines": 72,
+      "non_blank_lines": 62
+    },
+    "after": {
+      "phase": "51L-2 (post-extraction)",
+      "total_lines": 54,
+      "non_blank_lines": 49
+    },
+    "reduction_non_blank_pct": 21.0
+  },
+  "service_api": {
+    "outcome": {
+      "name": "ScenariosAddRouteOutcome",
+      "kind": "dataclass",
+      "fields": [
+        "template_name: str",
+        "context: dict",
+        "payload: dict",
+        "status_code: int",
+        "headers: dict",
+        "is_redirect: bool",
+        "redirect_url: Optional[str]"
+      ]
+    },
+    "deps": {
+      "name": "ScenariosAddRouteDeps",
+      "kind": "dataclass",
+      "callables_count": 7,
+      "callables": [
+        "get_project_record",
+        "list_scenarios",
+        "get_least_created_scenario_for_project",
+        "promote_scenario_to_base_case",
+        "add_scenario",
+        "get_workspace_state",
+        "build_scenario_tab_context"
+      ]
+    },
+    "execute_function": {
+      "name": "execute_scenarios_add_route",
+      "kind": "async",
+      "parameters": [
+        "request (Any, keyword-only)",
+        "form (Any, keyword-only)",
+        "user (Any, keyword-only)",
+        "deps (ScenariosAddRouteDeps, keyword-only)"
+      ],
+      "returns": "ScenariosAddRouteOutcome (success with template_name+context+headers OR error with payload+status_code)"
+    }
+  },
+  "behaviors_preserved": [
+    "Auth: unauth -> 302 redirect to /login (route-owned)",
+    "await request.form() (route-owned)",
+    "Form input read via individual form.get() calls (Quirk 1)",
+    "Validation: missing project_code -> 400 JSON",
+    "Validation: missing scenario_name -> 400 JSON",
+    "get_project_record resolves the project",
+    "404 early return: project not found",
+    "403 early return: non-user_created project (Quirk 8)",
+    "list_scenarios finds the base case",
+    "Fallback: promote oldest scenario to base case (Quirk 4)",
+    "add_scenario called once per success",
+    "500 early return: add_scenario failure",
+    "Re-read scenarios (with limit=12) for render (Quirk 10)",
+    "get_workspace_state for render",
+    "build_scenario_tab_context for template context",
+    "Success: templates.TemplateResponse(name='partials/scenario_tab.html', ...) with HX-Trigger",
+    "No broad except Exception: in route"
+  ],
+  "quirks_preserved": [
+    "1. Form input via individual form.get() calls (NOT _collect_form_snapshot)",
+    "2. HX-Trigger: scenarioAdded on success",
+    "3. Partial template render: partials/scenario_tab.html (NOT full workspace)",
+    "4. Fallback: promote oldest scenario to base case if none exists",
+    "5. replay_metadata uses action='add_scenario' (NOT export_type)",
+    "6. governance_state={} (empty dict); repository is source of truth",
+    "7. overrides={} (empty dict); user adds later",
+    "8. Only user_created projects can add scenarios (403 otherwise)",
+    "9. base_input_set fallback chain: snapshot -> base_input_set -> {}",
+    "10. Re-read scenarios list after add (with limit=12) for render context"
+  ],
+  "intended_side_effects_preserved": {
+    "per_success": {
+      "get_project_record": 1,
+      "list_scenarios_base_case": 1,
+      "get_least_created_scenario_for_project": "0 or 1 (if no base case)",
+      "promote_scenario_to_base_case": "0 or 1 (if no base case)",
+      "add_scenario": 1,
+      "list_scenarios_render": 1,
+      "get_workspace_state": 1,
+      "build_scenario_tab_context": 1,
+      "TemplateResponse": 1
+    },
+    "per_400": {
+      "all_persistence": 0,
+      "JSONResponse": 1
+    },
+    "per_404": {
+      "all_persistence": 0,
+      "JSONResponse": 1
+    },
+    "per_403": {
+      "all_persistence": 0,
+      "JSONResponse": 1
+    },
+    "per_500": {
+      "get_project_record": 1,
+      "list_scenarios_base_case": 1,
+      "get_least_created_scenario_for_project": "0 or 1",
+      "promote_scenario_to_base_case": "0 or 1",
+      "add_scenario": 1,
+      "JSONResponse": 1
+    },
+    "ordering": "auth -> form -> 400 checks -> get_project_record -> 404 check -> 403 check -> list_scenarios (base case) -> [optional] promote -> add_scenario -> 500 check -> list_scenarios (render) -> get_workspace_state -> build_scenario_tab_context -> TemplateResponse"
+  },
+  "forbidden_side_effects_absent": [
+    "record_export",
+    "record_download_export",
+    "record_runtime_summary_export",
+    "record_institutional_workbook_export",
+    "record_workspace_runtime",
+    "update_scenario_last_run_summary",
+    "save_run",
+    "save_project",
+    "run_project",
+    "build_institutional_workbook_export",
+    "build_excel_export_for_post_request",
+    "build_runtime_summary_csv_export",
+    "build_values_only_export_for_project",
+    "db.add / db.commit / db.flush",
+    "session.add / session.commit",
+    "_validate_form (Quirk 1)",
+    "_collect_form_snapshot (Quirk 1)"
+  ],
+  "phase51f_guardrail_status": {
+    "engine_output_golden": "PASS (no change)",
+    "parity_core_lock": "PASS (no change)",
+    "no_service_imports_main_web_or_main_api": "PASS (12 services clean including new scenarios_add_service.py)"
+  },
+  "tests_run": {
+    "test_phase51l1_scenario_add_route_golden_characterization": {
+      "tests": 86,
+      "passed": 86,
+      "note": "Re-pointed to look at service body via _route_or_service_body helper."
+    },
+    "test_phase51l2_scenarios_add_route_vertical_extraction": {
+      "tests": 42,
+      "passed": 42,
+      "note": "New test module for vertical extraction contract"
+    },
+    "test_phase51i_route_extraction_checkpoint_hotspot_map": {
+      "tests": 63,
+      "passed": 63,
+      "note": "Updated 1 test to pin post-51L-2 state"
+    },
+    "test_phase51f_parallel_work_guardrails": {
+      "tests": 21,
+      "passed": 21
+    }
+  },
+  "known_failures": [
+    {
+      "test_module": "tests/test_persistence.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    },
+    {
+      "test_module": "tests/test_repository.py",
+      "error": "ImportError: No module named 'persistence'",
+      "scope": "out of scope, pre-existing on origin/main"
+    }
+  ],
+  "extraction_rationale": {
+    "why_new_module_not_scenario_state_service": "scenario_state_service.py is data-layer only (no Request, no form, no auth).",
+    "why_new_module_not_scenario_state_route_service": "scenario_state_route_service.py handles workspace draft/discard mutations WITHOUT scenario row creation. Add creates a new ScenarioRecord; different concern.",
+    "why_new_module_not_scenarios_save_service": "scenarios_save_service.py is for /scenarios/save (creates a new ScenarioRecord from form snapshot). Add creates a new non-base scenario with parent inheritance from base case; different concern.",
+    "why_new_module_not_scenario_duplicate_service": "scenario_duplicate_service.py is for /scenarios/{id}/duplicate (copies an existing ScenarioRecord). Different concern."
+  },
+  "service_inventory_post_51l2": {
+    "route_orchestration_services": [
+      {"name": "run_service.py", "lines": 653},
+      {"name": "compare_service.py", "lines": 299},
+      {"name": "validation_service.py", "lines": 281},
+      {"name": "download_service.py", "lines": 569},
+      {"name": "save_run_service.py", "lines": 438},
+      {"name": "scenario_state_route_service.py", "lines": 361},
+      {"name": "scenarios_save_service.py", "lines": 450},
+      {"name": "scenario_duplicate_service.py", "lines": 446},
+      {"name": "scenarios_add_service.py", "lines": 388}
+    ],
+    "data_layer_services": [
+      {"name": "scenario_state_service.py", "lines": 232}
+    ],
+    "export_audit_services": [
+      {"name": "export_service.py", "lines": 332},
+      {"name": "export_audit_service.py", "lines": 193}
+    ],
+    "total_services": 12,
+    "total_lines": 4642
+  },
+  "remaining_inline_routes_post_51l2": {
+    "high_risk": [
+      {"route": "POST /projects/create", "non_blank_lines": 117},
+      {"route": "POST /projects/{project_code}/save-as", "non_blank_lines": 49}
+    ],
+    "medium_risk": [
+      {"route": "POST /scenarios/{scenario_id}/rename", "non_blank_lines": 51},
+      {"route": "POST /scenarios/{scenario_id}/archive", "non_blank_lines": 47},
+      {"route": "POST /scenarios/{scenario_id}/update-overrides", "non_blank_lines": 25},
+      {"route": "POST /scenarios/{scenario_id}/select", "non_blank_lines": 21}
+    ],
+    "total_remaining": 6,
+    "total_remaining_non_blank_lines": 310
+  },
+  "rc1_status": {
+    "frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "touched_in_51l2": false
+  },
+  "no_production_code_changes_outside_scope": true,
+  "ready_for_review": true
+}

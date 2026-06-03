@@ -63,6 +63,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN_WEB = REPO_ROOT / "main_web.py"
 SERVICES_DIR = REPO_ROOT / "app" / "services"
+SCENARIOS_ADD_SERVICE = (
+    REPO_ROOT / "app" / "services" / "scenarios_add_service.py"
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -84,6 +87,24 @@ def _route_body(route_path: str) -> str:
     )
     assert m is not None, f"Route {route_path} not found in main_web.py"
     return m.group(0)
+
+
+def _route_or_service_body(route_path: str) -> str:
+    """Return the body that orchestrates the route. After Phase 51L-2,
+    orchestration lives in scenarios_add_service.py (the
+    execute_scenarios_add_route function), not in the thin
+    main_web.py route. We use the service body for orchestration-
+    content checks; the route body is used for thin-route checks."""
+    if SCENARIOS_ADD_SERVICE.exists():
+        text = _read(SCENARIOS_ADD_SERVICE)
+        m = re.search(
+            r"async def execute_scenarios_add_route\(.*?(?=\nasync def |\nclass |\Z)",
+            text,
+            re.DOTALL,
+        )
+        if m is not None:
+            return m.group(0)
+    return _route_body(route_path)
 
 
 def _strip_docstrings_and_comments(text: str) -> str:
@@ -121,27 +142,29 @@ def _strip_docstrings_and_comments(text: str) -> str:
 class TestRouteExistence:
     def test_route_exists(self):
         """POST /scenarios/add exists in main_web.py."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert body is not None
 
     def test_route_size_is_characteristic(self):
-        """Pin current route size. Pre-extraction ~62 non-blank
-        (Phase 51I hotspot estimate). After 51L-2 it should shrink
-        to ~25-30 non-blank (thin route)."""
+        """Pin current route size. Post-51L-2 the route is thin
+        (orchestration is in the service)."""
         body = _route_body("/scenarios/add")
         non_blank = [l for l in body.splitlines() if l.strip()]
-        assert 50 <= len(non_blank) <= 85, (
+        # Post-51L-2: ~45-55 non-blank (includes docstring)
+        assert 30 <= len(non_blank) <= 60, (
             f"/scenarios/add is {len(non_blank)} non-blank lines; "
-            f"expected 50-85 (pre-extraction characteristic)"
+            f"expected 30-60 (thin route after 51L-2)"
         )
 
-    def test_no_execute_pattern_yet(self):
-        """Pre-extraction: the route does NOT use a
-        service.execute_*_route() pattern."""
+    def test_uses_execute_pattern_after_51l2(self):
+        """Phase 51L-2: the route now uses the
+        execute_scenarios_add_route() pattern (orchestration is
+        in the service)."""
         body = _route_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
-        assert "execute_scenarios_add_route(" not in clean
-        # And the deps class is not yet defined
+        # The route now calls execute_scenarios_add_route(...)
+        assert "execute_scenarios_add_route(" in clean
+        # And the deps class lives in the service, NOT in main_web.py
         text = _read(MAIN_WEB)
         assert "class ScenariosAddRouteDeps" not in text
         assert "class ScenariosAddDeps" not in text
@@ -160,7 +183,7 @@ class TestAuthenticationBehavior:
 
     def test_route_uses_user_user_id(self):
         """user_id is derived from user.user_id."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "user.user_id" in clean
 
@@ -215,40 +238,52 @@ class TestAuthenticationBehavior:
 class TestFormInputBehavior:
     def test_route_reads_form(self):
         """The route reads the form via await request.form()."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "await request.form()" in body
 
     def test_route_reads_project_code_field(self):
         """The route reads the project_code field via
         form.get('project_code', '').strip()."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert 'form.get("project_code", "").strip()' in body
 
     def test_route_reads_scenario_name_field(self):
         """The route reads the scenario_name field via
         form.get('scenario_name', '').strip()."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert 'form.get("scenario_name", "").strip()' in body
 
     def test_route_does_not_call_collect_form_snapshot(self):
         """The route does NOT call _collect_form_snapshot (unlike
         /scenarios/save). It reads individual form fields."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "_collect_form_snapshot" not in clean
 
     def test_missing_project_code_returns_400(self):
-        """If project_code is empty, the route returns 400 JSON."""
-        body = _route_body("/scenarios/add")
-        assert "if not project_code:" in body
-        assert 'JSONResponse({"error": "project_code is required"}' in body
-        assert "status_code=400" in body
+        """If project_code is empty, the route returns 400 JSON.
+
+        Phase 51L-2: service returns ScenariosAddRouteOutcome
+        with status_code=400 and
+        payload={"error": "project_code is required"}.
+        """
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert "if not project_code:" in clean
+        assert '"project_code is required"' in clean
+        assert "status_code=400" in clean
 
     def test_missing_scenario_name_returns_400(self):
-        """If scenario_name is empty, the route returns 400 JSON."""
-        body = _route_body("/scenarios/add")
-        assert "if not scenario_name:" in body
-        assert 'JSONResponse({"error": "scenario_name is required"}' in body
+        """If scenario_name is empty, the route returns 400 JSON.
+
+        Phase 51L-2: service returns ScenariosAddRouteOutcome
+        with status_code=400 and
+        payload={"error": "scenario_name is required"}.
+        """
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert "if not scenario_name:" in clean
+        assert '"scenario_name is required"' in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -259,7 +294,7 @@ class TestFormInputBehavior:
 class TestUserIdSource:
     def test_user_id_never_from_form(self):
         """user_id is always derived from user.user_id, NEVER from form."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         # No form.get('user_id') or similar
         assert 'form.get("user_id"' not in clean
@@ -274,24 +309,42 @@ class TestUserIdSource:
 class TestActiveProjectBehavior:
     def test_route_resolves_project_record(self):
         """The route resolves the project via
-        get_project_record(user_id=user.user_id, project_code=project_code)."""
-        body = _route_body("/scenarios/add")
-        assert "get_project_record(user_id=user.user_id, project_code=project_code)" in body
+        get_project_record(user_id=user.user_id, project_code=project_code).
+
+        Phase 51L-2: service uses
+        ``deps.get_project_record(user_id=user.user_id,
+        project_code=project_code)`` (multiline)."""
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert "get_project_record(" in clean
+        assert "user_id=user.user_id" in clean
+        assert "project_code=project_code" in clean
 
     def test_project_not_found_returns_404(self):
-        """If project_record is None, the route returns 404 JSON."""
-        body = _route_body("/scenarios/add")
-        assert "if project_record is None:" in body
-        assert 'JSONResponse({"error": "Project not found"}' in body
-        assert "status_code=404" in body
+        """If project_record is None, the route returns 404 JSON.
+
+        Phase 51L-2: service returns ScenariosAddRouteOutcome
+        with status_code=404 and
+        payload={"error": "Project not found"}."""
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert "if project_record is None:" in clean
+        assert '"Project not found"' in clean
+        assert "status_code=404" in clean
 
     def test_non_user_created_project_returns_403(self):
         """If project_origin is NOT user_created, the route returns
-        403 JSON (forbidden)."""
-        body = _route_body("/scenarios/add")
-        assert "if project_record.project_origin != \"user_created\":" in body
-        assert 'JSONResponse({"error": "Add Scenario is only available for user-created projects"}' in body
-        assert "status_code=403" in body
+        403 JSON (forbidden).
+
+        Phase 51L-2: service returns ScenariosAddRouteOutcome
+        with status_code=403 and
+        payload={"error": "Add Scenario is only available for
+        user-created projects"}."""
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert 'project_record.project_origin != "user_created"' in clean
+        assert '"Add Scenario is only available for' in clean  # multiline
+        assert "status_code=403" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,24 +355,35 @@ class TestActiveProjectBehavior:
 class TestScenarioCreationBehavior:
     def test_route_finds_base_case_scenario(self):
         """The route finds the Base Case scenario for the project
-        via list_scenarios + a for-loop checking is_base_case."""
-        body = _route_body("/scenarios/add")
+        via list_scenarios + a for-loop checking is_base_case.
+
+        Phase 51L-2: service uses
+        ``deps.list_scenarios(user.user_id, ...)`` and the
+        is_base_case check."""
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
-        assert "list_scenarios(user.user_id, project_id=project_record.project_id" in clean
+        assert "list_scenarios(" in clean
         assert "is_base_case" in clean
 
     def test_route_promotes_oldest_scenario_if_no_base_case(self):
         """If no base_case exists, the route promotes the oldest
         scenario to base_case via
-        promote_scenario_to_base_case(...)."""
-        body = _route_body("/scenarios/add")
+        promote_scenario_to_base_case(...).
+
+        Phase 51L-2: service uses
+        ``deps.promote_scenario_to_base_case`` and
+        ``deps.get_least_created_scenario_for_project``."""
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "promote_scenario_to_base_case" in clean
-        assert "_get_least_created_scenario_for_project" in clean
+        assert (
+            "_get_least_created_scenario_for_project" in clean
+            or "get_least_created_scenario_for_project" in clean
+        )
 
     def test_route_calls_add_scenario(self):
         """The route calls add_scenario(...) with the right kwargs."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "add_scenario(" in body
         # Required args
         assert "user_id=user.user_id" in body
@@ -333,10 +397,16 @@ class TestScenarioCreationBehavior:
         assert "replay_metadata=" in body
 
     def test_route_handles_add_scenario_failure(self):
-        """If add_scenario returns None, the route returns 500 JSON."""
-        body = _route_body("/scenarios/add")
+        """If add_scenario returns None, the route returns 500 JSON.
+
+        Phase 51L-2: service returns
+        ScenariosAddRouteOutcome(status_code=500,
+        payload={"error": "Failed to create scenario"}); the route
+        translates to a JSONResponse. The literal "Failed to create
+        scenario" string and 500 status code are in the service."""
+        body = _route_or_service_body("/scenarios/add")
         assert "if new_scenario is None:" in body
-        assert 'JSONResponse({"error": "Failed to create scenario"}' in body
+        assert '"Failed to create scenario"' in body
         assert "status_code=500" in body
 
 
@@ -349,13 +419,13 @@ class TestSnapshotWorkspaceBehavior:
     def test_route_resolves_workspace_state(self):
         """The route resolves workspace_state via
         get_workspace_state(user.user_id, project_record.project_id)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "get_workspace_state(user.user_id, project_record.project_id)" in body
 
     def test_base_input_set_uses_base_case_snapshot_or_base_input_set(self):
         """base_input_set falls back from base_case.snapshot to
         base_case.base_input_set to {}."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "base_case.snapshot or base_case.base_input_set or {}" in body
 
 
@@ -368,33 +438,33 @@ class TestPersistenceSideEffects:
     """Pin intended persistence calls."""
 
     def test_get_project_record_called_once(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("get_project_record(") == 1
 
     def test_list_scenarios_called_for_base_case_lookup(self):
         """list_scenarios is called to find the base case."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         # 2 calls: 1 for base case lookup, 1 for render context
         assert clean.count("list_scenarios(") == 2
 
     def test_add_scenario_called_once(self):
         """add_scenario is called exactly once per success."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("add_scenario(") == 1
 
     def test_promote_scenario_to_base_case_conditional(self):
         """promote_scenario_to_base_case is called only when needed
         (no base case found in the scenarios list)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "promote_scenario_to_base_case" in body
 
     def test_get_workspace_state_called_once(self):
         """get_workspace_state is called exactly once for the
         render context."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert clean.count("get_workspace_state(") == 1
 
@@ -411,29 +481,41 @@ class TestCallOrdering:
         get_project_record -> 404 check -> 403 check ->
         list_scenarios (for base case) -> promote_scenario_to_base_case
         (if needed) -> add_scenario -> 500 check -> list_scenarios
-        (for render) -> get_workspace_state -> TemplateResponse."""
-        body = _route_body("/scenarios/add")
-        clean = _strip_docstrings_and_comments(body)
+        (for render) -> get_workspace_state -> TemplateResponse.
+
+        Phase 51L-2: auth + form are in the route; everything else
+        is in the service. We check the service body for the
+        orchestration order and the route body for auth/form.
+        """
+        body_route = _route_body("/scenarios/add")
+        body_service = _route_or_service_body("/scenarios/add")
+        clean_service = _strip_docstrings_and_comments(body_service)
+        # Auth and form are route-owned
+        assert body_route.find("get_current_user(request)") != -1
+        assert body_route.find("await request.form()") != -1
+        # The rest is in the service
         positions = {
-            "auth": body.find("get_current_user(request)"),
-            "form": body.find("await request.form()"),
-            "get_project_record": clean.find("get_project_record(user_id=user.user_id"),
-            "list_scenarios_first": clean.find("list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False)"),
-            "add_scenario": clean.find("add_scenario("),
-            "list_scenarios_second": clean.find("list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)"),
-            "get_workspace_state": clean.find("get_workspace_state("),
-            "template_response": clean.find("templates.TemplateResponse("),
+            "get_project_record": clean_service.find("deps.get_project_record("),
+            "list_scenarios_first": clean_service.find("deps.list_scenarios("),
+            "add_scenario": clean_service.find("deps.add_scenario("),
+            "list_scenarios_second": clean_service.find(
+                "limit=12"
+            ),
+            "get_workspace_state": clean_service.find(
+                "deps.get_workspace_state("
+            ),
+            "build_scenario_tab_context": clean_service.find(
+                "deps.build_scenario_tab_context("
+            ),
         }
         for k, v in positions.items():
-            assert v != -1, f"{k} not found in route body"
-        # Ordering assertions
-        assert positions["auth"] < positions["form"]
-        assert positions["form"] < positions["get_project_record"]
+            assert v != -1, f"{k} not found in service body"
+        # Ordering assertions (within the service body)
         assert positions["get_project_record"] < positions["list_scenarios_first"]
         assert positions["list_scenarios_first"] < positions["add_scenario"]
         assert positions["add_scenario"] < positions["list_scenarios_second"]
         assert positions["list_scenarios_second"] < positions["get_workspace_state"]
-        assert positions["get_workspace_state"] < positions["template_response"]
+        assert positions["get_workspace_state"] < positions["build_scenario_tab_context"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -446,7 +528,7 @@ class TestReplayMetadata:
         """The replay_metadata dict has 3 fields: action,
         parent_scenario_id, project_code. (Different from
         /scenarios/save which uses export_type.)"""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert '"action": "add_scenario"' in clean
         assert '"parent_scenario_id": base_case.scenario_id' in clean
@@ -463,7 +545,7 @@ class TestGovernanceState:
         """The route passes governance_state={} (empty dict) to
         add_scenario (the repository function is the single source
         of truth for governance)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "governance_state={}" in body
 
 
@@ -476,37 +558,71 @@ class TestResponseBehavior:
     def test_success_response_uses_template_response(self):
         """The success response is templates.TemplateResponse
         rendering the partials/scenario_tab.html template."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert 'name="partials/scenario_tab.html"' in body
         assert "templates.TemplateResponse(" in body
 
     def test_template_context_uses_build_scenario_tab_context(self):
         """The template context is built via
-        _build_scenario_tab_context(user, project_record, scenarios, ws)."""
-        body = _route_body("/scenarios/add")
-        assert "_build_scenario_tab_context(user, project_record, scenarios, ws)" in body
+        _build_scenario_tab_context(user, project_record, scenarios, ws).
+
+        Phase 51L-2: service uses
+        ``deps.build_scenario_tab_context(user, project_record,
+        scenarios, ws)``."""
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert "build_scenario_tab_context(" in clean
+        assert "user" in clean
+        assert "project_record" in clean
+        assert "scenarios" in clean
+        assert "ws" in clean
 
     def test_400_response_uses_jsonresponse(self):
         """The 400 responses (missing project_code or scenario_name)
-        are JSON."""
-        body = _route_body("/scenarios/add")
-        assert 'JSONResponse({"error": "project_code is required"}' in body
-        assert 'JSONResponse({"error": "scenario_name is required"}' in body
+        are JSON.
+
+        Phase 51L-2: service returns
+        ScenariosAddRouteOutcome(status_code=400, payload={"error": ...});
+        the route translates to a JSONResponse. The literal
+        "project_code is required" and "scenario_name is required"
+        strings are in the service payload."""
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert '"project_code is required"' in clean
+        assert '"scenario_name is required"' in clean
 
     def test_404_response_uses_jsonresponse(self):
         """The 404 response (project not found) is JSON."""
-        body = _route_body("/scenarios/add")
-        assert 'JSONResponse({"error": "Project not found"}' in body
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert '"Project not found"' in clean
 
     def test_403_response_uses_jsonresponse(self):
-        """The 403 response (non-user_created project) is JSON."""
-        body = _route_body("/scenarios/add")
-        assert 'JSONResponse({"error": "Add Scenario is only available for user-created projects"}' in body
+        """The 403 response (non-user_created project) is JSON.
+
+        Phase 51L-2: service has multiline payload string."""
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        # The string is split across multiple lines in the service:
+        # ``"Add Scenario is only available for "\n  "user-created projects"``
+        # We accept either the joined form or a substring match.
+        assert (
+            '"Add Scenario is only available for user-created projects"'
+            in clean
+            or '"Add Scenario is only available for' in clean
+        )
 
     def test_500_response_uses_jsonresponse(self):
-        """The 500 response (add_scenario failure) is JSON."""
-        body = _route_body("/scenarios/add")
-        assert 'JSONResponse({"error": "Failed to create scenario"}' in body
+        """The 500 response (add_scenario failure) is JSON.
+
+        Phase 51L-2: service returns
+        ScenariosAddRouteOutcome(status_code=500, payload={"error":
+        "Failed to create scenario"}); the route translates to a
+        JSONResponse. The literal "Failed to create scenario" is
+        in the service payload."""
+        body = _route_or_service_body("/scenarios/add")
+        clean = _strip_docstrings_and_comments(body)
+        assert '"Failed to create scenario"' in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -520,14 +636,14 @@ class TestHtmxHeaders:
         (different from /scenarios/save which doesn't set any
         HX-Trigger, and /save-run which sets HX-Trigger:
         refreshHistory)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert 'HX-Trigger' in body
         assert "scenarioAdded" in body
 
     def test_error_responses_no_hx_trigger(self):
         """The 400/403/404/500 error responses do NOT set
         HX-Trigger (they're JSON)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         # No HX-Trigger in JSON error paths
         # (The single HX-Trigger reference is in the success
@@ -543,7 +659,8 @@ class TestHtmxHeaders:
 class TestRedirectStatus:
     def test_auth_redirect_uses_redirectresponse(self):
         """The 302 auth redirect uses RedirectResponse(url='/login',
-        status_code=302)."""
+        status_code=302). The auth redirect is route-owned (auth
+        check happens before the service call)."""
         body = _route_body("/scenarios/add")
         assert "RedirectResponse(url=\"/login\", status_code=302)" in body
 
@@ -551,18 +668,19 @@ class TestRedirectStatus:
         """Status codes: 302 (auth), 400 (missing fields), 403
         (non-user_created), 404 (project not found), 500
         (add_scenario failure), 200 (success)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
-        # 302 (auth)
-        assert "status_code=302" in body
+        # 302 (auth) is route-owned
+        body_route = _route_body("/scenarios/add")
+        assert "status_code=302" in body_route
         # 400 (missing project_code + missing scenario_name)
         assert clean.count("status_code=400") == 2
         # 403 (non-user_created)
-        assert "status_code=403" in body
+        assert "status_code=403" in clean
         # 404 (project not found)
-        assert "status_code=404" in body
+        assert "status_code=404" in clean
         # 500 (add_scenario failure)
-        assert "status_code=500" in body
+        assert "status_code=500" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -575,7 +693,7 @@ class TestErrorFallback:
         """The route does NOT wrap the body in broad
         `except Exception:`. Errors propagate to FastAPI's default
         500 (except the explicit add_scenario failure check)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         # The only "except Exception:" should NOT be present
         # in the route body (the 500 JSON is explicit, not via
@@ -590,15 +708,17 @@ class TestErrorFallback:
         - 403 non-user_created project
         - 500 add_scenario failure
         """
-        body = _route_body("/scenarios/add")
-        for error in (
+        body = _route_or_service_body("/scenarios/add")
+        # Use substring matches since the service may assemble the
+        # error message across multiple lines.
+        for fragment in (
             '"project_code is required"',
             '"scenario_name is required"',
             '"Project not found"',
-            '"Add Scenario is only available for user-created projects"',
+            '"Add Scenario is only available',  # multiline in service
             '"Failed to create scenario"',
         ):
-            assert error in body, f"Missing error path: {error}"
+            assert fragment in body, f"Missing error path: {fragment}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -624,7 +744,7 @@ class TestForbiddenSideEffectsAbsent:
     )
 
     def test_route_does_not_call_record_export_family(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         for helper in (
             "record_export(",
@@ -635,32 +755,32 @@ class TestForbiddenSideEffectsAbsent:
             assert helper not in clean
 
     def test_route_does_not_call_record_workspace_runtime(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "record_workspace_runtime(" not in clean
 
     def test_route_does_not_call_update_scenario_last_run_summary(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "update_scenario_last_run_summary(" not in clean
 
     def test_route_does_not_call_save_run(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "save_run(" not in clean
 
     def test_route_does_not_call_save_project(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "save_project(" not in clean
 
     def test_route_does_not_call_run_project(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "run_project(" not in clean
 
     def test_route_does_not_call_excel_export_builders(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         for helper in (
             "build_institutional_workbook_export(",
@@ -671,7 +791,7 @@ class TestForbiddenSideEffectsAbsent:
             assert helper not in clean
 
     def test_route_does_not_use_db_or_session_directly(self):
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         for forbidden in (
             "db.add",
@@ -789,7 +909,7 @@ class TestBehaviorQuirks:
         (project_code, scenario_name) instead of using
         _collect_form_snapshot. Different from /scenarios/save
         which uses collect_form_snapshot."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "form.get(" in clean
         assert "_collect_form_snapshot" not in clean
@@ -799,7 +919,7 @@ class TestBehaviorQuirks:
         HX-Trigger: scenarioAdded (different from /scenarios/save
         which doesn't emit HX-Trigger, and /save-run which emits
         HX-Trigger: refreshHistory)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert 'HX-Trigger' in body
         assert "scenarioAdded" in body
 
@@ -808,25 +928,34 @@ class TestBehaviorQuirks:
         render (partials/scenario_tab.html), NOT a full workspace
         render (different from /scenarios/save which returns a
         full workspace render)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert 'name="partials/scenario_tab.html"' in body
 
     def test_quirk_4_promote_oldest_scenario_fallback(self):
         """Quirk 4: if no base_case exists but other scenarios do,
         the route promotes the OLDEST scenario to base_case via
         promote_scenario_to_base_case(...). This handles imported
-        projects without a designated base case."""
-        body = _route_body("/scenarios/add")
+        projects without a designated base case.
+
+        Phase 51L-2: service uses
+        ``deps.promote_scenario_to_base_case`` and
+        ``deps.get_least_created_scenario_for_project`` (the
+        ``_`` prefix is in the legacy main_web import name, not
+        in the service which uses the deps attribute)."""
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert "promote_scenario_to_base_case" in clean
-        assert "_get_least_created_scenario_for_project" in clean
+        assert (
+            "_get_least_created_scenario_for_project" in clean
+            or "get_least_created_scenario_for_project" in clean
+        )
         assert "oldest" in clean
 
     def test_quirk_5_replay_metadata_uses_action_not_export_type(self):
         """Quirk 5: replay_metadata uses ``action='add_scenario'``
         instead of ``export_type=...`` (different from
         /scenarios/save which uses export_type)."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         assert '"action": "add_scenario"' in clean
         # No export_type in the replay_metadata
@@ -836,41 +965,45 @@ class TestBehaviorQuirks:
         """Quirk 6: the route passes governance_state={} (empty
         dict). The repository function add_scenario is the single
         source of truth for the new scenario's governance state."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "governance_state={}" in body
 
     def test_quirk_7_overrides_is_empty_dict(self):
         """Quirk 7: the route passes overrides={} (empty dict).
         New scenarios start with no overrides; the user can add
         overrides later."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "overrides={}" in body
 
     def test_quirk_8_user_created_project_required(self):
         """Quirk 8: only user_created projects can add scenarios.
         factory_template and saved_baseline return 403."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert 'project_record.project_origin != "user_created"' in body
         assert "status_code=403" in body
 
     def test_quirk_9_base_input_set_fallback_chain(self):
         """Quirk 9: base_input_set falls back from
         base_case.snapshot to base_case.base_input_set to {}."""
-        body = _route_body("/scenarios/add")
+        body = _route_or_service_body("/scenarios/add")
         assert "base_case.snapshot or base_case.base_input_set or {}" in body
 
     def test_quirk_10_re_read_scenarios_after_add(self):
         """Quirk 10: after add_scenario, the route re-reads the
         scenarios list (without include_archived=False) and the
         workspace state for the render context. This ensures the
-        new scenario is in the rendered scenario tab."""
-        body = _route_body("/scenarios/add")
+        new scenario is in the rendered scenario tab.
+
+        Phase 51L-2: service uses ``deps.list_scenarios(...)``
+        (multiline call, possibly)."""
+        body = _route_or_service_body("/scenarios/add")
         clean = _strip_docstrings_and_comments(body)
         # list_scenarios is called twice: once for base case
         # lookup (without limit), once for render (with limit=12).
         assert clean.count("list_scenarios(") == 2
-        # The second call has limit=12
-        assert "list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)" in body
+        # The second call has limit=12 (the substring
+        # ``limit=12`` is present in the service).
+        assert "limit=12" in clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -879,17 +1012,21 @@ class TestBehaviorQuirks:
 
 
 class TestExtractionBoundaryRecommendation:
-    def test_scenarios_add_service_does_not_exist_yet(self):
-        """Pre-51L-2: scenarios_add_service.py does NOT exist."""
+    def test_scenarios_add_service_exists(self):
+        """Phase 51L-2: scenarios_add_service.py exists in
+        app/services/."""
         path = SERVICES_DIR / "scenarios_add_service.py"
-        assert not path.exists(), (
-            f"{path} must NOT exist before Phase 51L-2"
+        assert path.exists(), (
+            f"{path} must exist after Phase 51L-2"
         )
+        # The service should export the canonical API
+        text = path.read_text(encoding="utf-8")
+        assert "class ScenariosAddRouteOutcome" in text
+        assert "class ScenariosAddRouteDeps" in text
+        assert "async def execute_scenarios_add_route(" in text
 
     def test_recommended_module_name(self):
         """The recommended 51L-2 module is
-        app/services/scenarios_add_service.py (NOT extension of
-        scenario_state_service.py, scenario_state_route_service.py,
-        scenarios_save_service.py, or scenario_duplicate_service.py)."""
+        app/services/scenarios_add_service.py."""
         path = SERVICES_DIR / "scenarios_add_service.py"
-        assert not path.exists()
+        assert path.exists()

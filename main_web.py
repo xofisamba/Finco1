@@ -2328,71 +2328,53 @@ async def add_scenario_endpoint(request: Request):
     """Add a new non-base scenario inheriting from the project's Base Case.
 
     Only available for user_created projects.
+
+    Thin orchestration wrapper (Phase 51L-2). The route is responsible
+    for auth, form parsing, deps bundle construction, and final
+    response rendering. The full /scenarios/add orchestration body
+    (form input read, validation, project lookup, user_created gate,
+    base case lookup, oldest-scenario promotion fallback,
+    base_input_set fallback chain, add_scenario call assembly, post-add
+    scenario list reload, workspace_state lookup, response context
+    assembly with HX-Trigger header, 5 explicit error paths) lives
+    in
+    ``app.services.scenarios_add_service.execute_scenarios_add_route``.
     """
+    from app.services.scenarios_add_service import (
+        ScenariosAddRouteDeps,
+        execute_scenarios_add_route,
+    )
+
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     form = await request.form()
-    project_code = form.get("project_code", "").strip()
-    scenario_name = form.get("scenario_name", "").strip()
-
-    if not project_code:
-        return JSONResponse({"error": "project_code is required"}, status_code=400)
-    if not scenario_name:
-        return JSONResponse({"error": "scenario_name is required"}, status_code=400)
-
-    project_record = get_project_record(user_id=user.user_id, project_code=project_code)
-    if project_record is None:
-        return JSONResponse({"error": "Project not found"}, status_code=404)
-    if project_record.project_origin != "user_created":
-        return JSONResponse({"error": "Add Scenario is only available for user-created projects"}, status_code=403)
-
-    # Find the Base Case scenario for this project
-    base_case = None
-    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False)
-    for s in scenarios:
-        if s.is_base_case:
-            base_case = s
-            break
-
-    # If no base case exists but other scenarios do, promote the oldest one to base case.
-    # This handles projects where scenarios were imported/copied without a designated base case.
-    # We pick the one with the earliest created_at so we promote the original scenario, not a later derivative.
-    if base_case is None and scenarios:
-        oldest = _get_least_created_scenario_for_project(user.user_id, project_record.project_id)
-        if oldest:
-            base_case = promote_scenario_to_base_case(user.user_id, oldest.scenario_id)
-        else:
-            base_case = None
-
-    new_scenario = add_scenario(
-        user_id=user.user_id,
-        project_id=project_record.project_id,
-        project_code=project_record.project_code,
-        scenario_name=scenario_name,
-        parent_scenario_id=base_case.scenario_id,
-        base_input_set=base_case.snapshot or base_case.base_input_set or {},
-        overrides={},
-        governance_state={},
-        replay_metadata={
-            "action": "add_scenario",
-            "parent_scenario_id": base_case.scenario_id,
-            "project_code": project_code,
-        },
+    deps = ScenariosAddRouteDeps(
+        get_project_record=get_project_record,
+        list_scenarios=list_scenarios,
+        get_least_created_scenario_for_project=_get_least_created_scenario_for_project,
+        promote_scenario_to_base_case=promote_scenario_to_base_case,
+        add_scenario=add_scenario,
+        get_workspace_state=get_workspace_state,
+        build_scenario_tab_context=_build_scenario_tab_context,
     )
-
-    if new_scenario is None:
-        return JSONResponse({"error": "Failed to create scenario"}, status_code=500)
-
-    # Return the updated Scenario tab HTML fragment
-    scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
-    ws = get_workspace_state(user.user_id, project_record.project_id)
+    result = await execute_scenarios_add_route(
+        request=request, form=form, user=user, deps=deps,
+    )
+    # If the result is a JSON error path (4xx/5xx), translate to JSONResponse.
+    if result.payload:
+        return JSONResponse(
+            content=result.payload,
+            status_code=result.status_code,
+            headers=result.headers or None,
+        )
+    # Success: translate to TemplateResponse.
     return templates.TemplateResponse(
         request=request,
-        name="partials/scenario_tab.html",
-        context=_build_scenario_tab_context(user, project_record, scenarios, ws),
-        headers={"HX-Trigger": "scenarioAdded"},
+        name=result.template_name,
+        context=result.context,
+        headers=result.headers or None,
     )
 
 

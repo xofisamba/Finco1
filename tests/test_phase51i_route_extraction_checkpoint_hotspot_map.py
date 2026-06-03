@@ -482,8 +482,10 @@ class TestRecommendedNextSequenceMarkers:
         assert "duplicate_scenario(" not in body
         assert "get_scenario(" not in body
 
-    def test_scenarios_add_route_still_inline(self):
-        """Phase 51L-1 + 51L-2 target: /scenarios/add."""
+    def test_scenarios_add_route_extracted_in_51l2(self):
+        """Phase 51L-2: /scenarios/add has been extracted into
+        scenarios_add_service.py. The route is now thin and
+        service-backed."""
         text = _read(MAIN_WEB)
         m = re.search(
             r'@app\.post\("/scenarios/add"\).*?(?=\n@app\.(get|post|put|delete|route)\(|\Z)',
@@ -492,7 +494,12 @@ class TestRecommendedNextSequenceMarkers:
         )
         assert m, "/scenarios/add not found"
         body = m.group(0)
-        assert "execute_add_route" not in body
+        # Service-backed (post-51L-2)
+        assert "execute_scenarios_add_route" in body
+        assert "ScenariosAddRouteDeps" in body
+        # No longer calls persistence directly
+        assert "add_scenario(" not in body
+        assert "get_project_record(" not in body
 
     def test_projects_create_route_still_inline(self):
         """Phase 51M-1 + 51M-2 target: /projects/create."""
