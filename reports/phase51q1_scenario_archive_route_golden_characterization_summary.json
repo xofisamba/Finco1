@@ -1,0 +1,50 @@
+{
+  "phase": "51Q-1",
+  "route": "POST /scenarios/{scenario_id}/archive",
+  "handler": "archive_scenario_endpoint",
+  "risk": "MEDIUM",
+  "route_total_lines": 50,
+  "route_non_blank_lines": 47,
+  "tests": {"test_phase51q1_scenario_archive_route_golden_characterization": {"count": 53, "pass": 53, "status": "PASS"}},
+  "behaviors_pinned": [
+    "Auth check via get_current_user(request); unauth -> 302 /login",
+    "get_scenario(scenario_id, user.user_id) (positional)",
+    "404 if scenario not found",
+    "archive_scenario(user.user_id, scenario_id) (no name arg)",
+    "Full workspace re-render after archive",
+    "list_scenarios with include_archived=False, limit=12",
+    "get_scenario_history with limit=20",
+    "list_exports and build_export_lineage with limit=8",
+    "scenario_summary_cards built from scenarios + export_lineage",
+    "Response via _render_scenario_workspace with 'Archived' message"
+  ],
+  "intended_side_effects": [
+    {"name": "get_scenario", "count": 1, "type": "read"},
+    {"name": "archive_scenario", "count": 1, "type": "write"}
+  ],
+  "forbidden_side_effects_absent": ["record_export", "record_download_export", "record_runtime_summary_export", "record_institutional_workbook_export", "record_workspace_runtime", "update_scenario_last_run_summary", "save_run", "run_project", "build_institutional_workbook_export", "build_excel_export_for_post_request", "build_runtime_summary_csv_export", "build_values_only_export_for_project", "add_scenario", "rename_scenario", "create_scenario", "db.add", "db.commit", "db.flush", "session.add", "session.commit"],
+  "behavior_quirks": [
+    {"id": 1, "name": "soft_archive", "description": "this is a SOFT archive (no delete)"},
+    {"id": 2, "name": "workspace_full_rerender", "description": "after archive, the entire workspace is re-rendered"},
+    {"id": 3, "name": "include_archived_false", "description": "list_scenarios called with include_archived=False (archived scenario won't show)"},
+    {"id": 4, "name": "scenario_summary_cards_loop", "description": "scenario_summary_cards built by iterating scenarios"},
+    {"id": 5, "name": "export_count_aggregation", "description": "export_count aggregated from export_lineage"},
+    {"id": 6, "name": "message_uses_scenario_name", "description": "success message uses record.scenario_name"},
+    {"id": 7, "name": "no_htmx_headers", "description": "no HTMX-specific headers"},
+    {"id": 8, "name": "no_form_input", "description": "no form input is read (archive takes no body)"},
+    {"id": 9, "name": "positional_get_scenario", "description": "scenario lookup uses get_scenario(scenario_id, user.user_id) (positional)"},
+    {"id": 10, "name": "archive_no_name_arg", "description": "archive_scenario(user.user_id, scenario_id) - no name arg"}
+  ],
+  "error_paths": [
+    {"status_code": 302, "type": "redirect", "condition": "unauthenticated", "target": "/login"},
+    {"status_code": 404, "type": "json_error", "condition": "scenario not found", "body": "Scenario not found"},
+    {"status_code": 200, "type": "render", "condition": "success", "body": "full workspace render with message"}
+  ],
+  "extraction_recommendation": {
+    "module_path": "app/services/scenario_archive_service.py",
+    "deps_callables_count": 9
+  },
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_touched": false,
+  "ready_for_51q2": true
+}
