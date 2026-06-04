@@ -1,0 +1,166 @@
+{
+  "phase": "57E",
+  "title": "CSS token consolidation inventory and plan",
+  "branch": "phase57e-css-token-consolidation-inventory",
+  "type": "docs/report/test-only",
+  "auto_merge_eligible": true,
+  "css_changes_in_this_phase": false,
+  "base_sha_start": "4194aef753ecc50f00e0827081dc6b718f7e2bd3",
+  "base_sha_start_note": "post-57D, Live no-go copy scanner merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "current_css_state": {
+    "file": "static/styles.css",
+    "lines": 5018,
+    "unique_selectors": 594,
+    "root_blocks": [
+      {
+        "block": 1,
+        "line": 10,
+        "name": "main design tokens",
+        "property_count_approx": 62
+      },
+      {
+        "block": 2,
+        "line": 828,
+        "name": "typography tokens",
+        "property_count_approx": 2
+      },
+      {
+        "block": 3,
+        "line": 2695,
+        "name": "cell / runtime tokens",
+        "property_count_approx": 17
+      }
+    ],
+    "total_custom_properties": 81
+  },
+  "duplicate_or_overlapping_tokens": [
+    {
+      "name": "--color-accent",
+      "block": 3,
+      "duplicate_of": "--accent",
+      "block_of_duplicate": 1,
+      "recommendation": "keep as forward-compatible alias"
+    },
+    {
+      "name": "--cell-warning-bg",
+      "block": 3,
+      "duplicate_of": "--warn-bg",
+      "block_of_duplicate": 1,
+      "recommendation": "could be removed and var(--warn-bg) used directly"
+    },
+    {
+      "name": "--cell-error-bg",
+      "block": 3,
+      "duplicate_of": "--blocked-bg",
+      "block_of_duplicate": 1,
+      "recommendation": "could be removed and var(--blocked-bg) used directly"
+    }
+  ],
+  "component_class_groups": [
+    {
+      "component": "state banner",
+      "prefixes": [".dirty-state-banner", ".workspace-state-banner"],
+      "count_approx": 11,
+      "phase_origin": "UI-2.1, 56F state banner polish"
+    },
+    {
+      "component": "project switch",
+      "prefixes": [".sidebar-section", ".project-card"],
+      "count_approx": 20,
+      "phase_origin": "56E project switch simplification"
+    },
+    {
+      "component": "Help",
+      "prefixes": [".pilot-help-onboarding", ".pho-"],
+      "count_approx": 5,
+      "phase_origin": "56B help section"
+    },
+    {
+      "component": "New Project",
+      "prefixes": [".np-"],
+      "count_approx": 8,
+      "phase_origin": "56C new project v1 form"
+    },
+    {
+      "component": "LineItemGrid",
+      "prefixes": [".lig- (uses existing .fc-*)"],
+      "count_approx": 0,
+      "phase_origin": "57A LineItemGrid CAPEX pilot",
+      "notes": "57A did not require new CSS; reuses existing .fc-* classes for byte-for-byte identical visual look."
+    },
+    {
+      "component": "validation bar",
+      "prefixes": [".validation-summary-bar", ".vsb-"],
+      "count_approx": 10,
+      "phase_origin": "UI-2.3, 55F"
+    },
+    {
+      "component": "runtime chip",
+      "prefixes": [".runtime-impact-chip", ".ric-"],
+      "count_approx": 5,
+      "phase_origin": "UI-2.2"
+    }
+  ],
+  "consolidation_steps": [
+    {
+      "step": 1,
+      "title": "Merge :root blocks into single :root at top of file",
+      "risk": "low",
+      "auto_merge_eligible": true,
+      "rationale": "No new tokens, no renames, no value changes. Order of declaration does not affect use. Visual look unchanged."
+    },
+    {
+      "step": 2,
+      "title": "Remove duplicate --color-accent alias (or keep as shim)",
+      "risk": "medium",
+      "auto_merge_eligible": false,
+      "rationale": "Removing requires updating inline-style references. Recommended: keep the alias."
+    },
+    {
+      "step": 3,
+      "title": "Rename fc-* classes to cell-* (deferred until Tailwind)",
+      "risk": "high",
+      "auto_merge_eligible": false,
+      "rationale": "Every template references the old class names. Visual review required. Recommend DEFER until Tailwind."
+    },
+    {
+      "step": 4,
+      "title": "Tailwind build config",
+      "risk": "high",
+      "auto_merge_eligible": false,
+      "rationale": "Out of scope until after UI-3 closeout. Single config change adds Tailwind alongside existing CSS; replace fc-* gradually with visual review per component."
+    }
+  ],
+  "tailwind_timing": {
+    "do_not_introduce_until": "after UI-3 closeout",
+    "ui3_arc_status": "57A done, 57F planned",
+    "when_introduced": "as a build-config change, not a visual change; fc-* classes replaced gradually with visual review per component"
+  },
+  "auto_merge_eligible_steps": [1],
+  "visual_review_required_steps": [2, 3, 4],
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_forbidden_user_facing_claims": true,
+    "rc1_untouched": true
+  },
+  "files_in_phase_57e_pr": [
+    "docs/phase57e_css_token_consolidation_inventory.md",
+    "reports/phase57e_css_token_consolidation_inventory.json",
+    "tests/test_phase57e_css_token_consolidation_inventory.py"
+  ]
+}
