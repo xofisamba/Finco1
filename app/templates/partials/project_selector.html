@@ -1,32 +1,67 @@
-<!-- Project Selector — Phase 21: sidebar shows active project only -->
+<!-- Project Selector — Phase 21 + Phase 56E: sidebar shows active project.
+     Phase 56E simplifies the visual hierarchy:
+     - Project name is the primary label (largest, top).
+     - Technology badge + active scenario are compact metadata.
+     - Project code / slug is hidden by default; available via "Details" toggle.
+     - Project origin (factory template / user-created / saved baseline) is
+       shown as a small pill to disambiguate parity-referenced vs. user work.
+     - "Switch" and "New project" actions are product-clear (no debug icons).
+-->
 <div class="project-selector" id="project-selector">
 
   <!-- Active project (always shown) -->
   {% if project_record %}
   <div class="ps-active-project">
-    <div class="ps-ap-type">
+    <div class="ps-ap-name">{{ project_record.project_name }}</div>
+    <div class="ps-ap-meta-row">
+      {% if project_record.project_type %}
       <span class="ps-ap-badge {% if project_record.project_type == 'Wind' %}ps-badge--wind{% else %}ps-badge--solar{% endif %}">
         {{ project_record.project_type }}
       </span>
+      {% endif %}
+      {# Phase 56E: project origin pill (factory template / user created / saved baseline) #}
+      {% if project_record.project_origin == 'factory_template' %}
+      <span class="ps-ap-origin ps-ap-origin--factory">Reference</span>
+      {% elif project_record.project_origin == 'user_created' %}
+      <span class="ps-ap-origin ps-ap-origin--user">My project</span>
+      {% elif project_record.project_origin == 'saved_baseline' %}
+      <span class="ps-ap-origin ps-ap-origin--baseline">Saved baseline</span>
+      {% endif %}
     </div>
-    <div class="ps-ap-name">{{ project_record.project_name }}</div>
     {% if workspace_state and workspace_state.active_scenario_name %}
     <div class="ps-ap-scenario">
       <span class="ps-ap-scenario-dot"></span>
+      <span class="ps-ap-scenario-label">Scenario</span>
       {{ workspace_state.active_scenario_name }}
     </div>
     {% endif %}
-    <div class="ps-ap-meta">{{ project_record.project_code }}</div>
+    {# Phase 56E: project code / slug is hidden by default and only revealed
+       via a "Details" disclosure. We always render it in the DOM (hidden)
+       so the test suite can find it, but it is not the primary visible
+       label. #}
+    <details class="ps-ap-details">
+      <summary class="ps-ap-details-summary">Details</summary>
+      <div class="ps-ap-details-body">
+        <span class="ps-ap-details-label">Project code</span>
+        <code class="ps-ap-details-code">{{ project_record.project_code }}</code>
+      </div>
+    </details>
   </div>
   {% elif project_ctx %}
   <div class="ps-active-project">
     <div class="ps-ap-name">{{ project_ctx.name }}</div>
-    <div class="ps-ap-meta">{{ project_ctx.id }}</div>
+    <details class="ps-ap-details">
+      <summary class="ps-ap-details-summary">Details</summary>
+      <div class="ps-ap-details-body">
+        <span class="ps-ap-details-label">Project code</span>
+        <code class="ps-ap-details-code">{{ project_ctx.id }}</code>
+      </div>
+    </details>
   </div>
   {% else %}
   <div class="ps-active-project ps-active-project--empty">
     <div class="ps-ap-name">No project selected</div>
-    <div class="ps-ap-meta">Use Load to open a project</div>
+    <div class="ps-ap-empty-hint">Choose an existing project or create a new one.</div>
   </div>
   {% endif %}
 
@@ -34,7 +69,7 @@
   <div class="ps-state-badges">
     {% if workspace_state %}
       {% if workspace_state.dirty %}
-      <span class="badge badge-warn">Unsaved changes</span>
+      <span class="badge badge-warn">Unsaved</span>
       {% else %}
       <span class="badge badge-pass">Saved</span>
       {% endif %}
@@ -44,8 +79,17 @@
     {% endif %}
   </div>
 
-  <!-- Quick actions -->
+  <!-- Quick actions (Phase 56E: clearer "Switch" and "New project" actions) -->
   <div class="ps-quick-actions">
+    <button class="ps-action-btn ps-action-btn--primary"
+            id="btn-new-project"
+            type="button"
+            hx-get="/projects/new"
+            hx-target="#panel-new-project"
+            hx-swap="innerHTML">
+      <span class="ps-action-icon" aria-hidden="true">+</span>
+      <span class="ps-action-label">New project</span>
+    </button>
     <button class="ps-action-btn"
             id="btn-load-project"
             type="button"
@@ -53,21 +97,14 @@
             hx-target="#project-browser-container"
             hx-swap="innerHTML"
             onclick="openProjectBrowser()">
-      <span class="ps-action-icon">⎘</span> Load / Switch
-    </button>
-    <button class="ps-action-btn"
-            id="btn-new-project"
-            type="button"
-            hx-get="/projects/new"
-            hx-target="#panel-new-project"
-            hx-swap="innerHTML">
-      <span class="ps-action-icon">+</span> New Project
+      <span class="ps-action-icon" aria-hidden="true">⇄</span>
+      <span class="ps-action-label">Switch project</span>
     </button>
   </div>
 
 </div>
 
-<!-- Project Browser — rendered in main area, triggered by Load / Switch -->
+<!-- Project Browser — rendered in main area, triggered by Switch project -->
 <div id="project-browser-container"></div>
 
 <style>

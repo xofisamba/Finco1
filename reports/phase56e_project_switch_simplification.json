@@ -1,0 +1,140 @@
+{
+  "phase": "56E",
+  "title": "Phase 56E: Simplify project switcher",
+  "branch": "phase56e-project-switch-simplification",
+  "base_sha": "0c4e00be8cfb6f5b02c430bd367f9117916b95ad",
+  "base_branch": "main",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "type": "runtime UI / draft-only",
+  "auto_merge": false,
+  "status": "DRAFT",
+  "files_changed": [
+    {
+      "path": "app/templates/partials/project_selector.html",
+      "kind": "sidebar card simplification",
+      "lines_added": 60,
+      "lines_removed": 25,
+      "note": "Active project card: project_name font 0.85->0.95rem; project_code moved to <details> disclosure; origin pill (Reference / My project / Saved baseline) added; 'New project' promoted to primary action; button labels updated to product wording."
+    },
+    {
+      "path": "static/styles.css",
+      "kind": "additive",
+      "lines_added": 115,
+      "lines_removed": 0,
+      "note": "Appended Phase 56E section: 14 new selectors (.ps-ap-meta-row, .ps-ap-origin, .ps-ap-details, .ps-action-btn--primary, etc.). No :root changes; count remains 5."
+    },
+    {
+      "path": "tests/test_phase56e_project_switch_simplification.py",
+      "kind": "new",
+      "lines_added": 650,
+      "lines_removed": 0,
+      "note": "New test file with 13 test classes."
+    },
+    {
+      "path": "docs/phase56e_project_switch_simplification.md",
+      "kind": "new",
+      "lines_added": 230,
+      "lines_removed": 0,
+      "note": "New design + scope + visual-review checklist doc."
+    }
+  ],
+  "files_unchanged_but_verified": [
+    "static/app.js",
+    "app/main_web.py",
+    "app/waterfall_core.py",
+    "app/project_factories.py",
+    "app/runtime_impact_taxonomy.py",
+    "app/persistence/*",
+    "app/services/*",
+    "app/templates/partials/project_browser.html",
+    "app/templates/partials/workspace_shell.html",
+    "app/templates/partials/workspace_tabs.html",
+    "app/templates/index.html"
+  ],
+  "elements_changed": {
+    "active_project_card": {
+      "primary_label": "project_record.project_name",
+      "font_size_change": "0.85rem -> 0.95rem",
+      "project_code_display": "hidden by default in <details> disclosure",
+      "origin_pill": {
+        "factory_template": "Reference",
+        "user_created": "My project",
+        "saved_baseline": "Saved baseline"
+      },
+      "scenario_label": "Scenario: <name>"
+    },
+    "switch_button": {
+      "label_old": "Load / Switch",
+      "label_new": "Switch project",
+      "icon_old": "⎘",
+      "icon_new": "⇄",
+      "style": "secondary"
+    },
+    "new_project_button": {
+      "label": "New project",
+      "icon": "+",
+      "style": "primary (ps-action-btn--primary)",
+      "position": "first (above Switch project)"
+    }
+  },
+  "no_go_copy_treatment": {
+    "preserved": [
+      "Project origin pill uses product-neutral wording (Reference / My project / Saved baseline)",
+      "TUHO/Oborovo factories are labeled 'Reference' (consistent with 56B rephrasing)"
+    ],
+    "added_none": "No new positive 'validated' / 'lender-ready' / etc. claims introduced"
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_model_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_new_forbidden_ui_claims": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_schema_migration_changes": true,
+    "no_new_persistence_writes": true,
+    "rc1_untouched": true,
+    "draft_only": true,
+    "auto_merge_disabled": true,
+    "previous_phases_preserved": "56B Help + 56C v1 form + 56D COD derivation all intact"
+  },
+  "tests_added": {
+    "file": "tests/test_phase56e_project_switch_simplification.py",
+    "test_classes": 13,
+    "estimated_tests": 68,
+    "coverage_areas": [
+      "Active project name is primary label (font >= 0.9rem, first in DOM order)",
+      "Project code is in <details> disclosure (hidden by default, no 'open' attribute)",
+      "Old ps-ap-meta line showing project_code is removed",
+      "Switch project button has new label, htmx attrs, openProjectBrowser() call",
+      "New project button is first in quick-actions, has ps-action-btn--primary class",
+      "Both endpoints (/projects/browse, /projects/new) preserved",
+      "Origin pill 3 variants (factory/user/baseline) with product-neutral wording",
+      "Technology badge (Solar/Wind) preserved",
+      "Empty state has helpful hint",
+      "CSS is additive (14 new selectors, :root count 5)",
+      "Scope guardrails: app.js, waterfall_core, project_factories, runtime_impact_taxonomy, persistence, services, main_web all unchanged",
+      "rc1 SHA constant stable",
+      "56B/56C/56D preserved (Help tab, v1 form, COD readonly)",
+      "11 forbidden terms absent from project_selector.html and project_browser.html"
+    ]
+  },
+  "stack_order": {
+    "previous_1": "56B (Help section, MERGED #477)",
+    "previous_2": "56C (New Project v1, MERGED #480)",
+    "previous_3": "56D (COD derived, MERGED #481)",
+    "current": "56E (Project switch simplification, this PR)",
+    "next": "56F (State banner polish)",
+    "after": "56G (UX cleanup closeout + visual review pack)"
+  },
+  "recommended_review_order": [
+    "Visual: open app, confirm active project card shows name first, code is hidden",
+    "Visual: click 'Details' disclosure, confirm project code reveals",
+    "Visual: confirm 'New project' is first/primary, 'Switch project' is second",
+    "Visual: click 'Switch project' to open browser, confirm factory/baselines/user tabs work",
+    "Test: pytest tests/test_phase56e_project_switch_simplification.py -v",
+    "Test: pytest tests/test_phase56b_help_section.py tests/test_phase56c_new_project_v1_form_simplification.py tests/test_phase56d_cod_derived_field.py -v (must stay green)"
+  ]
+}
