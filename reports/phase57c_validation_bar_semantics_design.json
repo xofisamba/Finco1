@@ -1,0 +1,148 @@
+{
+  "phase": "57C",
+  "title": "Validation bar semantics design",
+  "branch": "phase57c-validation-bar-semantics-design",
+  "type": "docs/report/test-only",
+  "auto_merge_eligible": true,
+  "runtime_changes_in_this_phase": false,
+  "base_sha_start": "4036b62dbcffd576b9ce4808123e775bd9726185",
+  "base_sha_start_note": "post-57B, Agent B post-56 / post-57A governance refresh merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "problem_statement": {
+    "current_behavior": "G20 BLOCKED and R99/R102 NOT APPROVED are mapped to fail_count=2 in _validation_summary_for_context for every project. This creates permanent red warning / alarm fatigue on the validation bar (UI-2.3).",
+    "issue": "The same UI affordance communicates both 'per-run check failed' and 'permanent governance guard exists', with no way for the user to distinguish them. Red bar on every project teaches users to ignore red bars.",
+    "is_correctness_bug": false,
+    "is_ux_problem": true
+  },
+  "proposed_design": {
+    "split_into_two_dicts": {
+      "governance_guard_summary": {
+        "description": "Permanent, project-scoped governance state. Does not change with each run. The 'baseline' the project was created under.",
+        "fields": {
+          "g20_status": "BLOCKED | OK | N/A",
+          "r99_r102_status": "NOT APPROVED | APPROVED | N/A",
+          "generic_unvalidated": "bool (generic Solar/Wind)",
+          "guarded": "bool (any guard active)",
+          "guard_count": "int",
+          "labels": ["safe copy strings"]
+        }
+      },
+      "validation_summary_refined": {
+        "description": "Per-run / per-model / per-check issues only. Changes with each run.",
+        "fields": {
+          "pass_count": "int",
+          "warn_count": "int",
+          "fail_count": "int",
+          "last_validated_at": "ISO timestamp (no positive claim)",
+          "labels": ["safe copy strings"]
+        }
+      }
+    },
+    "ui_sections": {
+      "section_A_governance_guard": {
+        "renders_when": "at least one guard is active",
+        "visual_state": "neutral / warn (not fail)",
+        "text_examples": [
+          "Governance guard: G20",
+          "Governance guard: R99/R102 (NOT APPROVED)",
+          "Reference only: generic Solar/Wind"
+        ],
+        "action_label": "Requires review"
+      },
+      "section_B_per_run_validation": {
+        "renders_when": "always",
+        "visual_state": "pass / warn / fail (per-run check counts)",
+        "text_examples": [
+          "Model evidence: 3 internal checks passed",
+          "Requires review: 1 internal check failed"
+        ],
+        "action_label": "View run details"
+      },
+      "section_C_last_run_indicator": {
+        "renders_when": "always",
+        "existing": "UI-2.6"
+      }
+    },
+    "why_neutral_warn_for_section_A": [
+      "Guards are project-scoped and permanent, not 'failures' in the per-run sense",
+      "Red bar on every project trains users to ignore red bars",
+      "Neutral/warn communicates 'known baseline' without alarm",
+      "Allows extension to per-run if a guard becomes run-conditional"
+    ]
+  },
+  "safe_copy_catalog": {
+    "old_to_new": {
+      "Validation failed": "Requires review",
+      "Validated": "Model evidence / Internal check",
+      "Validation summary": "Internal check summary",
+      "Failed checks": "Requires review: N internal checks",
+      "Validation bar": "Internal check bar",
+      "Validation passed": "Model evidence: N internal checks passed",
+      "Audited": "(removed)",
+      "G20 BLOCKED (headline)": "Governance guard: G20 (BLOCKED)",
+      "R99/R102 NOT APPROVED (headline)": "Governance guard: R99/R102 (NOT APPROVED)"
+    }
+  },
+  "future_runtime_pr_57c1_required_tests": {
+    "splitting_tests": [
+      "test_governance_guard_summary_is_separate_from_validation_summary",
+      "test_governance_guard_summary_g20_blocked",
+      "test_governance_guard_summary_r99_r102_not_approved",
+      "test_governance_guard_summary_generic_unvalidated",
+      "test_governance_guard_summary_inactive",
+      "test_validation_summary_purely_per_run",
+      "test_validation_summary_per_run_with_real_issue"
+    ],
+    "ui_contract_tests": [
+      "test_validation_bar_shows_governance_guard_section_when_active",
+      "test_validation_bar_shows_per_run_section_always",
+      "test_validation_bar_does_not_show_red_when_only_guards_active",
+      "test_validation_bar_shows_red_when_per_run_check_fails",
+      "test_validation_bar_safe_copy_for_each_section"
+    ],
+    "regression_tests": [
+      "test_55f_validation_summary_helper_still_returns_dict",
+      "test_56h1_hoist_preserved",
+      "test_no_runtime_model_or_formula_changes",
+      "test_no_css_or_js_changes",
+      "test_no_g20_r99_r102_promotion"
+    ]
+  },
+  "alternatives_considered": {
+    "A_keep_one_summary_change_wording": "REJECTED (alarm fatigue remains)",
+    "B_hide_bar_when_only_guards": "REJECTED (more alarming than neutral/warn)",
+    "C_blocked_to_pass": "REJECTED (forbidden positive claim)",
+    "D_new_lifecycle_status": "REJECTED (state machine change, out of scope)"
+  },
+  "open_questions_for_user": [
+    "Section A visual state: neutral/warn or quieter info/blue?",
+    "Section A action link: docs page or R99/R102 status page?",
+    "last_validated_at: remove entirely or keep as timestamp?",
+    "Generic Solar/Wind: separate banner, merged into governance, or both?",
+    "Rollout: single PR or split into helper+tests and template+visual?"
+  ],
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_forbidden_user_facing_claims": true,
+    "rc1_untouched": true
+  },
+  "files_in_phase_57c_pr": [
+    "docs/phase57c_validation_bar_semantics_design.md",
+    "reports/phase57c_validation_bar_semantics_design.json",
+    "tests/test_phase57c_validation_bar_semantics_design.py"
+  ]
+}
