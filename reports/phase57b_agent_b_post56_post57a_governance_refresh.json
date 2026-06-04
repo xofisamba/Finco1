@@ -1,0 +1,124 @@
+{
+  "phase": "57B",
+  "title": "Agent B post-56 / post-57A governance refresh",
+  "branch": "phase57b-agent-b-post56-post57a-governance-refresh",
+  "type": "docs/report/test-only",
+  "auto_merge_eligible": true,
+  "base_sha_start": "b173355b6021577f6567069ebd748aa3176f2475",
+  "base_sha_start_note": "post-57A, LineItemGrid CAPEX pilot merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "agent_b_docs_reviewed": {
+    "governance": [
+      "docs/governance/agent_a_b_governance_refresh_plan.md",
+      "docs/governance/b_track_phase53_refresh_cadence.md",
+      "docs/governance/phase52_53_guardrail_adoption_tracker.md",
+      "docs/governance/phase53_change_control_checklist.md",
+      "docs/governance/phase53_progress_ledger.md",
+      "docs/governance/phase53_risk_gate_matrix.md",
+      "docs/governance/phase53_stop_go_checklist.md",
+      "docs/governance/phase53ab_governance_refresh.md",
+      "docs/governance/post_phase52_governance_refresh.md",
+      "docs/governance/remaining_hotspots_governance_tracker.md"
+    ],
+    "external_review": [
+      "docs/external_review/data_room_index.md",
+      "docs/external_review/external_review_closeout_tracker.md",
+      "docs/external_review/external_review_package_index.md",
+      "docs/external_review/external_reviewer_question_bank.md",
+      "docs/external_review/model_scope_and_limitations.md",
+      "docs/external_review/no_go_claims.md",
+      "docs/external_review/reviewer_evidence_checklist.md",
+      "docs/external_review/reviewer_instructions.md",
+      "docs/external_review/reviewer_qna_template.md",
+      "docs/external_review/tuho_oborovo_validation_summary.md"
+    ],
+    "agent_b_prs": [
+      {"pr": 390, "title": "B1 External review preparation package", "merged": "2026-06-02"},
+      {"pr": 394, "title": "B3/B2/B7/B8 Governance pack", "merged": "2026-06-02"},
+      {"pr": 398, "title": "B9-B14 Pilot review pack", "merged": "2026-06-02"},
+      {"pr": 413, "title": "B15-B19 Phase 51N governance refresh and pilot closeout", "merged": "2026-06-03"},
+      {"pr": 421, "title": "B20-B23 Pilot operating and review prep", "merged": "2026-06-03"},
+      {"phase": "55A", "title": "Agent B post-UI-2 governance refresh", "merged": "2026-06-04"}
+    ]
+  },
+  "stale_statements_found": [
+    "UI state components (55E/55F/55G wires) still described as planned in some governance docs",
+    "Help copy (56B) still references pre-56 'validated' wording in some places",
+    "New Project v1 form (56C) field layout not yet reflected in pilot review docs",
+    "COD policy (56D) not yet reflected in reviewer evidence checklist",
+    "Project switch simplification (56E) not yet reflected in pilot operating docs",
+    "State banner visual hierarchy (56F) not yet reflected in pilot docs",
+    "LineItemGrid pilot (57A) not yet documented in pilot review pack",
+    "Route-render smoke (57-pre) not yet documented in pilot review pack"
+  ],
+  "no_go_claims_preserved": [
+    "bankable",
+    "bank-grade",
+    "lender-ready",
+    "certified",
+    "audit-ready",
+    "validated (positive user-facing)",
+    "investor-ready",
+    "SaaS-ready",
+    "production-ready",
+    "external validation",
+    "customer reference",
+    "investment advice",
+    "guaranteed returns"
+  ],
+  "no_go_claims_added_57a": [
+    "model-validated",
+    "LineItemGrid is validated",
+    "LineItemGrid is audit-ready",
+    "LineItemGrid is certified"
+  ],
+  "ui_state_components_internal_only": true,
+  "lineitemgrid_presentation_refactor_only": true,
+  "no_external_readiness_claims": true,
+  "governance_map_post_57a": {
+    "persistence_arc_53": "CLOSED",
+    "ui_1_spec_54": "CLOSED",
+    "ui_2_prep_54f_j": "CLOSED",
+    "ui_2_runtime_stack": "CLOSED + WIRES LIVE",
+    "post_ui_2_review_response_55a_d": "CLOSED",
+    "context_wiring_55e_g": "CLOSED",
+    "ux_cleanup_56a_g": "CLOSED",
+    "nameerror_hotfix_56h_1": "CLOSED",
+    "route_render_smoke_57_pre": "CLOSED",
+    "lineitemgrid_capex_pilot_57a": "CLOSED",
+    "phase_57b_this_refresh": "CLOSED"
+  },
+  "recommended_next_agent_b_refresh": [
+    "Update phase52_53_guardrail_adoption_tracker.md to reflect 55E/55F/55G + 57-pre/57A",
+    "Update phase53_progress_ledger.md to close 53 and add 54/55/56/57 arcs",
+    "Update phase53_risk_gate_matrix.md with UI-3.x runtime grid migrations risk",
+    "Update tuho_oborovo_validation_summary.md to use 'Reference' per 56B",
+    "Update reviewer_evidence_checklist.md with 57A LineItemGrid section",
+    "Update no_go_claims.md with new LineItemGrid forbidden claims",
+    "Update external_review_closeout_tracker.md with 57A/57B rows"
+  ],
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_forbidden_user_facing_claims": true,
+    "rc1_untouched": true
+  },
+  "files_in_phase_57b_pr": [
+    "docs/phase57b_agent_b_post56_post57a_governance_refresh.md",
+    "reports/phase57b_agent_b_post56_post57a_governance_refresh.json",
+    "tests/test_phase57b_agent_b_post56_post57a_governance_refresh.py"
+  ]
+}
