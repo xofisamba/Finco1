@@ -1,0 +1,130 @@
+{
+  "phase": "56F",
+  "title": "Phase 56F: Polish state banner hierarchy",
+  "branch": "phase56f-state-banner-visual-hierarchy-polish",
+  "base_sha": "a58ffa1022710b3ec5e1592971ff421037622c58",
+  "base_branch": "phase56e-project-switch-simplification",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "type": "runtime UI visual polish / draft-only",
+  "auto_merge": false,
+  "status": "DRAFT",
+  "files_changed": [
+    {
+      "path": "app/templates/partials/_state_banner.html",
+      "kind": "icon glyph replacement + additive class",
+      "lines_added": 22,
+      "lines_removed": 22,
+      "note": "Replaced 2-letter code icons (FT/AS/SS/...) with simple Unicode glyphs (◆/●/✓/◐/↻/!/◇/◌). Added .banner-56f modifier class. All 11 contexts + 5 tones preserved."
+    },
+    {
+      "path": "static/styles.css",
+      "kind": "additive",
+      "lines_added": 85,
+      "lines_removed": 0,
+      "note": "Appended Phase 56F section: 10 new selectors (.banner-56f, .banner-56f.banner-{info,success,warn,fail,neutral}, .banner-56f .banner-icon, .banner-56f .banner-body, .banner-56f .banner-title, .banner-56f .banner-desc). 0 :root changes; count remains 5."
+    },
+    {
+      "path": "tests/test_phase56f_state_banner_visual_hierarchy.py",
+      "kind": "new",
+      "lines_added": 480,
+      "lines_removed": 0,
+      "note": "New test file with 12 test classes."
+    },
+    {
+      "path": "docs/phase56f_state_banner_visual_hierarchy.md",
+      "kind": "new",
+      "lines_added": 200,
+      "lines_removed": 0,
+      "note": "New design + scope + visual-review checklist doc."
+    }
+  ],
+  "files_unchanged_but_verified": [
+    "static/app.js",
+    "app/main_web.py",
+    "app/waterfall_core.py",
+    "app/project_factories.py",
+    "app/runtime_impact_taxonomy.py",
+    "app/persistence/*",
+    "app/services/*",
+    "app/templates/partials/workspace_shell.html",
+    "app/templates/partials/workspace_tabs.html",
+    "app/templates/partials/index.html"
+  ],
+  "icon_glyph_mapping": {
+    "factory_template": "◆",
+    "user_created_project": "●",
+    "active_scenario": "●",
+    "saved_scenario": "✓",
+    "browser_draft": "◐",
+    "dirty_state": "◐",
+    "stale_result": "↻",
+    "last_run": "✓",
+    "validation_failed": "!",
+    "display_only_row": "◇",
+    "pending_runtime_source": "◌"
+  },
+  "no_go_copy_treatment": {
+    "preserved": [
+      "55G banner_context priority order unchanged",
+      "All 11 banner contexts still supported (factory_template, user_created_project, etc.)",
+      "All 5 banner tones still supported (info, success, warn, fail, neutral)",
+      "role='status' and aria-label accessibility attributes preserved"
+    ]
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_model_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_new_forbidden_ui_claims": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_schema_migration_changes": true,
+    "no_new_persistence_writes": true,
+    "rc1_untouched": true,
+    "draft_only": true,
+    "auto_merge_disabled": true,
+    "previous_phases_preserved": "56B Help + 56C v1 form + 56D COD derivation + 56E project switch all intact",
+    "ui2_1_intact": true,
+    "55g_banner_context_intact": true
+  },
+  "tests_added": {
+    "file": "tests/test_phase56f_state_banner_visual_hierarchy.py",
+    "test_classes": 12,
+    "estimated_tests": 97,
+    "coverage_areas": [
+      "All 11 banner contexts still have _title and _desc",
+      "All 5 banner tones referenced in template and defined in CSS",
+      "Accessibility attributes preserved (role=status, aria-label, aria-hidden)",
+      ".banner-56f class applied; smaller padding (0.5rem vs 0.75rem); smaller icon (22px vs 28px); no heavy shadow",
+      "Each context uses a single Unicode glyph (old 2-letter codes FT/AS/SS/BD/UC/SR/LR/VF/DO/PR are gone)",
+      "Original .banner rule preserved for backward compat",
+      "All 5 tone styles defined for both old (.banner-{tone}) and new (.banner-56f.banner-{tone}) variants",
+      "12 forbidden terms absent (no positive no-go claims)",
+      "No debug-style language (stack trace, exception, panic, abort, fatal)",
+      "CSS additive (10 new selectors; :root count 5)",
+      "Scope guardrails: app.js, main_web.py, waterfall_core, project_factories, runtime_impact_taxonomy, persistence all unchanged",
+      "rc1 SHA constant stable",
+      "Template still uses banner_context and banner_tone|default('info')"
+    ]
+  },
+  "stack_order": {
+    "previous_1": "56B (Help section, MERGED #477)",
+    "previous_2": "56C (New Project v1, MERGED #480)",
+    "previous_3": "56D (COD derived, MERGED #481)",
+    "previous_4": "56E (Project switch simplification, this stack)",
+    "current": "56F (State banner polish, this PR)",
+    "next": "56G (UX cleanup closeout + visual review pack)"
+  },
+  "recommended_review_order": [
+    "Visual: open app, observe state banner when applicable; confirm calmer/more compact than before",
+    "Visual: confirm icon is a single Unicode glyph (◆/●/✓/◐/↻/!/◇/◌) not 2-letter code",
+    "Visual: confirm accessibility attributes (role=status, aria-label) still present",
+    "Visual: confirm all 5 tones still distinguishable (info/success/warn/fail/neutral)",
+    "Test: pytest tests/test_phase56f_state_banner_visual_hierarchy.py -v",
+    "Test: pytest tests/test_ui2_1_state_banner_partial.py -v (must stay green)",
+    "Test: pytest tests/test_phase55g_banner_context.py -v (must stay green)",
+    "Test: pytest tests/test_phase56e_project_switch_simplification.py -v (must stay green)"
+  ]
+}
