@@ -1,0 +1,142 @@
+{
+  "phase": "56C",
+  "title": "Phase 56C: Simplify New Project form",
+  "branch": "phase56c-new-project-v1-form-simplification",
+  "base_sha": "4bbd751422483900bc6a8d3a436fd2368f56ef7b",
+  "base_branch": "phase56b-help-section-sidebar",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "type": "runtime UI + safe backend defaulting / draft-only",
+  "auto_merge": false,
+  "status": "DRAFT",
+  "files_changed": [
+    {
+      "path": "app/templates/partials/workspace_shell.html",
+      "kind": "form replacement",
+      "lines_added": 60,
+      "lines_removed": 25,
+      "note": "Inline #panel-new-project form replaced with v1 (10 master + 11 hidden assumptions)."
+    },
+    {
+      "path": "main_web.py",
+      "kind": "safe defaulting (no model change)",
+      "lines_added": 28,
+      "lines_removed": 11,
+      "note": "_validate_new_project_payload: 11 detailed assumptions now optional_float/optional_int. Master data and cod_date stay required. Route signature unchanged."
+    },
+    {
+      "path": "static/styles.css",
+      "kind": "additive",
+      "lines_added": 34,
+      "lines_removed": 0,
+      "note": "Appended .np-helper, .np-warning, .np-hidden-defaults blocks. No :root changes; count remains 5."
+    },
+    {
+      "path": "tests/test_phase56c_new_project_v1_form_simplification.py",
+      "kind": "new",
+      "lines_added": 560,
+      "lines_removed": 0,
+      "note": "New test file with 13 test classes."
+    },
+    {
+      "path": "docs/phase56c_new_project_v1_form_simplification.md",
+      "kind": "new",
+      "lines_added": 240,
+      "lines_removed": 0,
+      "note": "New design + scope + visual-review checklist doc."
+    }
+  ],
+  "files_unchanged_but_verified": [
+    "static/app.js",
+    "app/waterfall_core.py",
+    "app/project_factories.py",
+    "app/runtime_impact_taxonomy.py",
+    "app/persistence/*",
+    "app/services/projects_create_service.py",
+    "app/templates/partials/new_project_form.html",
+    "app/templates/partials/pilot_help_onboarding.html",
+    "app/templates/partials/pilot_workflow_guide.html"
+  ],
+  "v1_form_fields": [
+    {"name": "project_name", "type": "text", "required": true, "label": "Project Name"},
+    {"name": "spv_name", "type": "text", "required": false, "label": "SPV / Company Name", "note": "NEW; lands in baseline_snapshot"},
+    {"name": "country_market", "type": "text", "required": true, "label": "Country / Market"},
+    {"name": "project_type", "type": "select", "required": true, "label": "Technology", "options": ["Solar", "Wind"]},
+    {"name": "capacity_mw", "type": "number", "required": true, "label": "Capacity (MW)"},
+    {"name": "currency", "type": "select", "required": false, "label": "Currency", "options": ["EUR", "USD", "HRK"], "default": "EUR", "note": "NEW; lands in baseline_snapshot"},
+    {"name": "construction_start_date", "type": "date", "required": false, "label": "Start of Construction", "note": "NEW; primary input for COD derivation in 56D"},
+    {"name": "construction_duration_months", "type": "number", "required": false, "label": "Construction Duration (months)", "note": "Renamed from construction_months"},
+    {"name": "cod_date", "type": "date", "required": true, "label": "COD Date", "note": "Still required input in 56C; will be derived in 56D"},
+    {"name": "template_source", "type": "select", "required": false, "label": "Template", "options_from": "new_project_template_options", "note": "Renders ⚠️ Unvalidated label for generic templates"}
+  ],
+  "hidden_inputs_with_safe_defaults": [
+    "horizon_years", "tariff_eur_mwh", "ppa_term_years", "p50_hours",
+    "opex_y1_keur", "total_capex_keur", "gearing_pct", "interest_rate_pct",
+    "tenor_years", "target_dscr (default '1.20')", "construction_months"
+  ],
+  "backend_changes": {
+    "function": "_validate_new_project_payload",
+    "change": "11 detailed assumptions switched from require_* to optional_* (still validated when present, never required).",
+    "still_required": ["project_name", "project_type", "country_market", "capacity_mw", "cod_date"],
+    "route_signature_unchanged": true,
+    "model_changes": false,
+    "schema_changes": false
+  },
+  "no_go_copy_treatment": {
+    "preserved": [
+      "NEW_PROJECT_TEMPLATE_OPTIONS already carries ⚠️ Unvalidated · Derived path for generic templates"
+    ],
+    "added": [
+      "Explicit np-warning block under template_source field reminding users that generic projects are exploratory / unvalidated"
+    ]
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_model_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_new_forbidden_ui_claims": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_schema_migration_changes": true,
+    "no_new_persistence_writes": true,
+    "rc1_untouched": true,
+    "draft_only": true,
+    "auto_merge_disabled": true,
+    "51m1_golden_characterization_intact": true
+  },
+  "tests_added": {
+    "file": "tests/test_phase56c_new_project_v1_form_simplification.py",
+    "test_classes": 13,
+    "estimated_tests": 60,
+    "coverage_areas": [
+      "All 10 v1 master fields present in inline form",
+      "All 11 detailed assumptions are hidden (not visible)",
+      "np-hidden-defaults block contains 11 hidden inputs",
+      "Label renames: project_type -> Technology, construction_duration_months label",
+      "New fields: spv_name (optional), currency (EUR default), construction_start_date",
+      "Template source warning preserved",
+      "Backend validation: 11 fields now optional, capacity_mw and cod_date still required",
+      "Route signature unchanged (51M-1 stays green)",
+      "Sidebar detailed form unchanged",
+      "Scope guardrails: app.js, waterfall_core, project_factories, runtime_impact_taxonomy, persistence all unchanged",
+      "CSS additive (3 new selectors; :root count 5)",
+      "rc1 SHA constant stable",
+      "No new persistence writes; no financial model changes"
+    ]
+  },
+  "stack_order": {
+    "previous": "56B (Help section, MERGED-ready, DRAFT #477)",
+    "current": "56C (New Project v1, this PR)",
+    "next": "56D (COD derived field, stacked on 56C)"
+  },
+  "recommended_review_order": [
+    "Visual: open New Project form, confirm 10 visible fields, 11 hidden defaults",
+    "Visual: confirm Technology label on project_type select, Construction Duration label on duration field",
+    "Visual: confirm Currency select defaults to EUR",
+    "Visual: confirm ⚠️ Unvalidated warning for generic templates",
+    "Test: pytest tests/test_phase56c_new_project_v1_form_simplification.py -v",
+    "Test: pytest tests/test_phase51m1_projects_create_route_golden_characterization.py -v (must stay green)",
+    "Test: pytest tests/test_phase56b_help_section.py -v (must stay green)"
+  ]
+}
