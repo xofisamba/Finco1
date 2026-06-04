@@ -1,0 +1,251 @@
+{
+  "phase": "54I",
+  "title": "UI-2 PR sequence and manual review plan",
+  "type": "docs_report_test_only",
+  "base_sha": "04aa09368ad22766f94dae0a3954c23975ba872d",
+  "head_sha": "04aa09368ad22766f94dae0a3954c23975ba872d",
+  "branch": "phase54i-ui2-pr-sequence-manual-review-plan",
+  "auto_merged": false,
+  "ui2_sequence": [
+    {
+      "id": "UI-2.1",
+      "name": "State clarity banner partial",
+      "auto_merge": false,
+      "draft_only": true,
+      "stackable": true
+    },
+    {
+      "id": "UI-2.2",
+      "name": "Runtime Impact chip partial",
+      "auto_merge": false,
+      "draft_only": true,
+      "stackable": true
+    },
+    {
+      "id": "UI-2.3",
+      "name": "Validation summary bar",
+      "auto_merge": false,
+      "draft_only": true,
+      "stackable": true
+    },
+    {
+      "id": "UI-2.4",
+      "name": "Factory lock indicator",
+      "auto_merge": false,
+      "draft_only": true,
+      "stackable": true
+    },
+    {
+      "id": "UI-2.5",
+      "name": "Stale result warning",
+      "auto_merge": false,
+      "draft_only": true,
+      "stackable": true
+    },
+    {
+      "id": "UI-2.6",
+      "name": "Run-source indicator",
+      "auto_merge": false,
+      "draft_only": true,
+      "stackable": true
+    }
+  ],
+  "expected_changed_files": {
+    "UI-2.1": [
+      "app/templates/partials/_state_banner.html (NEW)",
+      "app/templates/index.html (additive)",
+      "app/templates/partials/workspace_shell.html (additive, optional)",
+      "static/styles.css (additive .banner-*)"
+    ],
+    "UI-2.2": [
+      "app/templates/partials/_runtime_impact_chip.html (NEW)",
+      "app/templates/partials/sheet_capex_detail.html (replace inline, KEEP _rt_tooltip)",
+      "static/styles.css (additive .chip-*)"
+    ],
+    "UI-2.3": [
+      "app/templates/partials/_validation_summary_bar.html (NEW)",
+      "app/templates/partials/audit_reconciliation_tab.html (additive at top)",
+      "static/styles.css (additive .validation-summary-bar)"
+    ],
+    "UI-2.4": [
+      "app/templates/partials/_factory_lock_indicator.html (NEW)",
+      "app/templates/partials/workspace_shell.html OR app/templates/index.html (additive)",
+      "static/styles.css (additive .factory-lock-indicator)"
+    ],
+    "UI-2.5": [
+      "app/templates/index.html (additive: import + call)"
+    ],
+    "UI-2.6": [
+      "app/templates/partials/_last_run_indicator.html (NEW)",
+      "app/templates/index.html (additive)",
+      "app/templates/partials/scenario_workspace.html (additive, optional)",
+      "app/templates/partials/kpis.html (additive, optional)",
+      "static/styles.css (additive .last-run-indicator)"
+    ]
+  },
+  "tests_required": {
+    "UI-2.1": [
+      "11 string tests",
+      "5 tone tests",
+      "no-go copy tests",
+      "snapshot test",
+      "visual review"
+    ],
+    "UI-2.2": [
+      "4 string tests",
+      "1 taxonomy test",
+      "1 backward-compat test",
+      "no-go copy tests",
+      "visual review"
+    ],
+    "UI-2.3": [
+      "4 string tests",
+      "no-go copy tests",
+      "visual review",
+      "optional integration test"
+    ],
+    "UI-2.4": [
+      "2 string tests",
+      "no-go copy tests",
+      "visual review"
+    ],
+    "UI-2.5": [
+      "1 string test",
+      "no-go copy tests",
+      "visual review"
+    ],
+    "UI-2.6": [
+      "2 string tests",
+      "no-go copy tests",
+      "visual review"
+    ]
+  },
+  "visual_review_checklists": {
+    "UI-2.1": [
+      "5 tones render correctly",
+      "icons visible",
+      "dismissable when applicable",
+      "accessible (aria-*)",
+      "copy matches 54C spec"
+    ],
+    "UI-2.2": [
+      "4 chip variants with correct color+icon",
+      "tooltip on hover",
+      "inline and block work",
+      "old badge-rt-* still works"
+    ],
+    "UI-2.3": [
+      "4 tone variants render",
+      "counts display",
+      "timestamp displays",
+      "no forbidden claims",
+      "tone colors match 54C"
+    ],
+    "UI-2.4": [
+      "both states render",
+      "lock icon visible",
+      "tooltip explains source-locked/fixture-backed",
+      "no forbidden claims"
+    ],
+    "UI-2.5": [
+      "banner shows when expected",
+      "copy is correct",
+      "no forbidden claims",
+      "no regression in other macros"
+    ],
+    "UI-2.6": [
+      "indicator shows when runtime_summary exists",
+      "timestamp displays",
+      "no forbidden claims",
+      "small/unobtrusive",
+      "no conflict with rs-provenance-banner"
+    ]
+  },
+  "no_go_checks_required": {
+    "UI-2.1": [
+      "13 forbidden terms manual",
+      "active scenario banner must not contain real-time/live"
+    ],
+    "UI-2.2": [
+      "13 forbidden terms manual",
+      "chip labels match 54C spec",
+      "tooltips use locked 12 sub-reason text"
+    ],
+    "UI-2.3": [
+      "bar title must be 'Internal validation summary'",
+      "no validated/audit-ready/certified"
+    ],
+    "UI-2.4": [
+      "allowed: Factory template, Frozen template, Source-locked; forbidden: validated factory, trusted template, certified source, lender-grade template"
+    ],
+    "UI-2.5": [
+      "no new copy in this PR (reuses existing macro)"
+    ],
+    "UI-2.6": [
+      "allowed: Last run, Run completed at; forbidden: Real-time, Live, Current run"
+    ]
+  },
+  "stack_policy": {
+    "draft_only_stacking_allowed": true,
+    "pattern": "main -> UI-2.1 (draft) -> UI-2.2 (draft) -> ... -> UI-2.6 (ready)",
+    "rebases": "after each merge, next PR rebases onto updated main",
+    "only_one_ready_at_a_time": true,
+    "never_auto_merge": true
+  },
+  "manual_review_policy": {
+    "required_for_each_pr": [
+      "user review of the diff (required for all 6 items)",
+      "user review of rendered HTML (screenshot or rendered output)",
+      "confirmation that no-go copy checks pass",
+      "confirmation that rollback plan is feasible",
+      "sign-off before merge"
+    ],
+    "options": [
+      "approve as-is",
+      "request changes",
+      "reject and request re-design"
+    ]
+  },
+  "cross_cutting_tests": {
+    "phase51f_guardrails": "all",
+    "phase52f_G1_G6": "all",
+    "phase53i_records": "all",
+    "phase54A_H_tests": "all",
+    "phase54I_tests": "all",
+    "phase54J_tests": "after this phase"
+  },
+  "recommended_next_step": "54J UI-2 readiness closeout and first implementation prompt pack",
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_guardrails": 51,
+    "phase54d_guardrails": 36,
+    "phase54e_guardrails": 38,
+    "phase54f_guardrails": 33,
+    "phase54g_guardrails": 60,
+    "phase54h_guardrails": 34,
+    "phase54i_new": 18,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 431
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
