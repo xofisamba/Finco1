@@ -1,0 +1,211 @@
+{
+  "phase": "54H",
+  "title": "UI no-go copy scanner",
+  "type": "docs_report_test_only",
+  "base_sha": "46adff407e2ee33aab2f0134e82b18bcc2bb46bd",
+  "head_sha": "46adff407e2ee33aab2f0134e82b18bcc2bb46bd",
+  "branch": "phase54h-ui-no-go-copy-scanner",
+  "auto_merged": false,
+  "forbidden_terms": [
+    "bankable",
+    "bank-grade",
+    "lender-ready",
+    "lender-grade",
+    "certified",
+    "audit-ready",
+    "audit-grade",
+    "validated",
+    "investor-ready",
+    "SaaS-ready",
+    "production-ready",
+    "external validation",
+    "customer reference",
+    "investment advice",
+    "guaranteed returns"
+  ],
+  "current_state_in_templates": {
+    "bankable": 0,
+    "bank-grade": 0,
+    "lender-ready": 0,
+    "audit-ready": 0,
+    "investor-ready": 0,
+    "SaaS-ready": 1,
+    "production-ready": 0,
+    "certified": 3,
+    "validated": 7
+  },
+  "safe_uses_audit": {
+    "SaaS-ready": [
+      "'Not SaaS-ready' (negation in pilot_help_onboarding.html)"
+    ],
+    "certified": [
+      "'not certified audit' (negation in audit_reconciliation_tab.html)",
+      "'not a certified external audit' (negation in pilot_help_onboarding.html)",
+      "'not a certified audit' (negation in pilot_limitations_notice.html)"
+    ],
+    "validated": [
+      "All 7+ occurrences are in safe context: section labels, negations, or qualified references"
+    ]
+  },
+  "allowed_contexts": {
+    "validated": {
+      "allowed_phrases": [
+        "validated frozen-template parity",
+        "validated pilot evidence",
+        "Validated templates",
+        "Validated parity",
+        "UNVALIDATED",
+        "unvalidated",
+        "not validated against Excel",
+        "validated against",
+        "separately validated",
+        "validated by"
+      ],
+      "negation_patterns": [
+        "not",
+        "un",
+        "no",
+        "is not",
+        "[Not included]",
+        "separately"
+      ],
+      "qualification_patterns": [
+        "frozen-template",
+        "pilot",
+        "parity",
+        "templates",
+        "Excel",
+        "TUHO",
+        "Oborovo",
+        "fixture"
+      ]
+    },
+    "certified": {
+      "allowed_phrases": [
+        "not certified audit",
+        "not a certified external audit",
+        "no certified",
+        "External audit / certification (header)",
+        "certification (in negation)"
+      ],
+      "negation_patterns": [
+        "not",
+        "no",
+        "[Not included]"
+      ]
+    },
+    "other_terms": {
+      "allowed_patterns": [
+        "negation: 'not X', 'no X', 'un-X', 'is not X'",
+        "qualification: 'framework only', 'X framework'",
+        "section header: '[Not included] X'"
+      ]
+    }
+  },
+  "scanner_scope": {
+    "primary": "app/templates/**/*.html",
+    "optional_deferred": [
+      "docs/**/*.md",
+      "reports/**/*.json",
+      "app/services/**/*.py",
+      "static/app.js"
+    ]
+  },
+  "false_positive_policy": {
+    "primary_strategy": "negation allow-list (forbidden term within \u00b120 words of negation)",
+    "secondary_strategy": "whitelist phrases (explicitly allowed phrases containing forbidden terms)"
+  },
+  "scanning_approach": {
+    "phase_1_this_pr": "spec only, no scanner yet",
+    "rationale_for_deferral": "current templates are clean; scanner false-positive tuning is high effort",
+    "phase_2_future": "54H-2 or UI-3 implementation",
+    "recommended_architecture": [
+      "tokenize template text",
+      "check forbidden terms as standalone tokens",
+      "check context within \u00b120 words for negation/qualification",
+      "flag only if no negation/qualification context found",
+      "allow negation patterns",
+      "allow qualification patterns",
+      "maintain whitelist of known-safe phrases"
+    ]
+  },
+  "examples": {
+    "allowed": [
+      "Validated pilot evidence (section label)",
+      "Generic projects remain exploratory and unvalidated (negation)",
+      "Not SaaS-ready (negation)",
+      "Not a certified audit (negation)",
+      "Validated against Excel (qualified)",
+      "Validated frozen-template parity (qualified)",
+      "UNVALIDATED (badge label, negation)"
+    ],
+    "blocked": [
+      "Bankable model (positive claim)",
+      "Lender-ready (positive claim)",
+      "Certified audit (positive claim)",
+      "Validated model (positive claim, no qualifier)",
+      "Production-ready (positive claim)",
+      "Investor-ready (positive claim)",
+      "Guaranteed returns (positive claim)",
+      "Investment advice (positive claim)"
+    ]
+  },
+  "recommendation": {
+    "decision": "DEFER scanner implementation to 54H-2 or UI-3",
+    "rationale": [
+      "current templates are clean (no positive forbidden claims)",
+      "scanner false-positive tuning is high effort",
+      "UI-2 priority is implementation, not enforcement",
+      "no regression risk per 54F/54G analysis",
+      "manual no-go review per UI-2 PR is sufficient until automated"
+    ],
+    "when_to_implement": [
+      "if UI-2 introduces a forbidden claim",
+      "if a 54x PR adds a forbidden claim",
+      "if a future phase requires automated enforcement"
+    ]
+  },
+  "implemented_guardrail": false,
+  "deferred_guardrail": {
+    "phase": "54H-2 or UI-3",
+    "scope": "all templates (and optionally docs/reports)",
+    "rules": "see scanning_approach.recommended_architecture"
+  },
+  "how_ui2_prs_use_scanner": {
+    "now": "manual no-go checklist in 54E \u00a7 no-go copy checklist; each UI-2.x PR requires user review (per 54G)",
+    "future": "python -m tests.test_phase54h_ui_no_go_copy_scanner; fix flagged copy or add to whitelist with justification"
+  },
+  "recommended_next_step": "54I UI-2 PR sequence and manual-review plan",
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_guardrails": 51,
+    "phase54d_guardrails": 36,
+    "phase54e_guardrails": 38,
+    "phase54f_guardrails": 33,
+    "phase54g_guardrails": 60,
+    "phase54h_new": 19,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 396
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
