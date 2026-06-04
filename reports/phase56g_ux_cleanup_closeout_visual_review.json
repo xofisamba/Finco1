@@ -1,0 +1,191 @@
+{
+  "phase": "56G",
+  "title": "Phase 56G: UX cleanup closeout and visual review pack",
+  "branch": "phase56g-ux-cleanup-closeout-visual-review",
+  "base_sha": "694fbc520e6c08d8fece9ecf8316898690c71cef",
+  "head_sha": "694fbc520e6c08d8fece9ecf8316898690c71cef",
+  "base_branch": "phase56f-state-banner-visual-hierarchy-polish",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "type": "docs/report/test-only / draft-only",
+  "auto_merge": false,
+  "status": "DRAFT",
+  "files_changed": [
+    {
+      "path": "docs/phase56g_ux_cleanup_closeout_visual_review.md",
+      "kind": "new",
+      "lines_added": 380,
+      "lines_removed": 0,
+      "note": "Closeout doc: summary of 56A-56F, before/after UX delta, manual visual review checklist, remaining UX issues, recommended next phases, merge guidance."
+    },
+    {
+      "path": "reports/phase56g_ux_cleanup_closeout_visual_review.json",
+      "kind": "new",
+      "lines_added": 220,
+      "lines_removed": 0,
+      "note": "Structured closeout report (this file)."
+    },
+    {
+      "path": "tests/test_phase56g_ux_cleanup_closeout_visual_review.py",
+      "kind": "new",
+      "lines_added": 250,
+      "lines_removed": 0,
+      "note": "Sanity tests: 56G docs exist, checklist items present, next-phase recommendations correct, no-go claims absent."
+    }
+  ],
+  "stack_summary": {
+    "56A": {
+      "title": "UX cleanup characterization",
+      "pr": 476,
+      "status": "MERGED",
+      "headline": "Inventory: Help is 302 LOC, project_selector is 185 LOC, New Project form has 17 fields, 'Validated' wording flagged."
+    },
+    "56B": {
+      "title": "Help section",
+      "pr": 477,
+      "status": "MERGED",
+      "headline": "Help moved to dedicated Help tab; compact .help-pointer on Overview; 'Validated' -> 'Reference' / 'parity evidence'."
+    },
+    "56C": {
+      "title": "New Project v1 form",
+      "pr": 480,
+      "status": "MERGED",
+      "headline": "Inline form reduced to 10 master fields; 11 detailed assumptions moved to hidden inputs (with safe defaults) to be filled later in Inputs."
+    },
+    "56D": {
+      "title": "COD derived field",
+      "pr": 481,
+      "status": "MERGED",
+      "headline": "COD auto-derived server-side from construction_start_date + construction_duration_months; manual override is deferred; derived COD always wins when derivable."
+    },
+    "56E": {
+      "title": "Project switch simplification",
+      "pr": 482,
+      "status": "DRAFT",
+      "headline": "Active project card: project_name is primary label; project_code moved to <details> disclosure; origin pill (Reference / My project / Saved baseline); 'New project' is the primary action."
+    },
+    "56F": {
+      "title": "State banner polish",
+      "pr": 483,
+      "status": "DRAFT",
+      "headline": "Banner icons: 2-letter codes -> simple Unicode glyphs; .banner-56f modifier class for calmer visual hierarchy (smaller padding, smaller icon, no heavy shadow)."
+    },
+    "56G": {
+      "title": "UX cleanup closeout and visual review pack",
+      "pr": "this",
+      "status": "DRAFT",
+      "headline": "Docs/report/test only; visual review checklist; next-phase recommendation."
+    }
+  },
+  "ux_delta": {
+    "help_56B": {
+      "before": "302-line inline Help block clutters Overview",
+      "after": "Full Help lives in dedicated Help tab; compact .help-pointer on Overview; 'Validated' rephrased to 'Reference' / 'parity evidence'."
+    },
+    "new_project_56C_56D": {
+      "before": "17 fields, 11 detailed assumptions visible; manual COD date.",
+      "after": "10 master fields visible; 11 detailed assumptions hidden (with safe defaults); COD auto-derived server-side from construction_start_date + construction_duration_months."
+    },
+    "project_switch_56E": {
+      "before": "Project code/slug shown as primary line below name; 'Load / Switch' button (debug icon); 'New project' below, ghost style.",
+      "after": "Project code moved to <details> 'Details' disclosure; origin pill (Reference / My project / Saved baseline); 'Switch project' button (product icon); 'New project' is first, primary style."
+    },
+    "state_banner_56F": {
+      "before": "2-letter code icons (FT/AS/SS/...); padding 0.75rem 1rem, icon 28px; bold left border (3px solid).",
+      "after": "Simple Unicode glyphs; padding 0.5rem 0.85rem, icon 22px; softer background, no heavy left rule; .banner-56f modifier class."
+    }
+  },
+  "visual_review_checklist": {
+    "overview": "Compact Help pointer visible; state banner calm; KPI grid renders; governance cards (G20 BLOCKED, R99/R102 NOT APPROVED) render; export lineage panel renders.",
+    "help_tab": "Tab visible; workflow stepper renders; TUHO/Oborovo labeled [Reference] (not [Validated]); generic/new project exploratory warning visible; 'Not a lender / external audit / SaaS' disclaimers intact; no positive 'validated'/'lender-ready' claims.",
+    "new_project": "'New project' first action, visually primary; 'Switch project' second; inline form has 10 visible fields; no detailed financial assumption inputs visible; template select shows warning for generic; COD auto-derived.",
+    "project_switching": "Active project name primary label; project code hidden by default; 'Details' disclosure reveals code; origin pill (Reference / My project / Saved baseline); active scenario shown; 'Switch project' opens browser; browser tabs (Factory Templates / Saved Baselines / My Projects) work.",
+    "active_project_display": "Sidebar card shows project name as largest label; compact metadata (tech + origin + scenario); no debug-style code/slug in primary view.",
+    "state_banner": "Banner icon is single Unicode glyph; banner is compact; tone is visually distinguishable; role='status' and aria-label preserved; no debug-style language.",
+    "inputs": "All 11 detailed financial assumption inputs available; sidebar form (legacy new_project_form.html) unchanged.",
+    "scenarios": "Save/duplicate/load scenarios work; scenario tab scoped to active project.",
+    "audit_validation": "Audit/Parity tab shows parity evidence for TUHO/Oborovo; validation summary bar (UI-2.3) renders; G20 BLOCKED, R99/R102 NOT APPROVED preserved; generic projects unvalidated (no positive 'validated' claim).",
+    "run_workflow": "Run button works; KPI grid updates; last run indicator (UI-2.6) renders; stale result warning (UI-2.5) shows when appropriate; save/run behavior unchanged from 56D."
+  },
+  "remaining_issues": [
+    "Project switch limited to dropdown (56E simplified visual hierarchy; quick-pick could be future enhancement)",
+    "Detailed assumptions still hidden + default (56C moved them; user can still enter via Inputs; a more visible 'Add assumptions' prompt after create could improve discoverability)",
+    "Generic Solar / Wind remain exploratory (per spec, stay warning until separately reviewed)",
+    "Inputs sheet still needs LineItemGrid (per 55B, sheet_capex.html is the first pilot; UI-3.1 is next)",
+    "Tailwind not introduced (per 55C, deferred until AFTER UI-3 closeout)",
+    "CSS token cleanup still pending (5 :root blocks per 55C; merge + ad-hoc hex replacement is the recommended prerequisite for Tailwind)"
+  ],
+  "recommended_next_step": {
+    "primary": "Phase UI-3.1: LineItemGrid CAPEX summary pilot",
+    "rationale": "Per 55B, sheet_capex.html (CAPEX summary, 235 LOC) is the first LineItemGrid pilot. Migrate the existing inline CAPEX table to the LineItemGrid macro. Low risk: pure template migration; no backend changes.",
+    "prerequisites": [
+      "Merge 56E (project switch) and 56F (state banner) first",
+      "User visual approval"
+    ],
+    "secondary": "Phase Token Cleanup: :root block consolidation (BEFORE Tailwind-1)",
+    "tailwind_status": "DEFERRED. Per 55C, Tailwind is deferred until AFTER UI-3 closeout. Pre-Tailwind: 1-2 PRs of token consolidation first (merge 5 :root blocks, replace ad-hoc hex).",
+    "generic_solar_wind_status": "EXPLORATORY. Per spec, generic projects stay warning until separately reviewed. Productization is out of scope.",
+    "do_not_start": [
+      "UI-3 grid work",
+      "Tailwind / Alpine setup",
+      "Generic Solar / Wind productization",
+      "BESS / Hybrid / Portfolio work"
+    ]
+  },
+  "ui3_readiness": {
+    "status": "READY (after 56E/56F are merged and visually approved)",
+    "first_pilot": "sheet_capex.html (CAPEX summary, 235 LOC) per 55B",
+    "blocked_by": "56E and 56F visual review and merge",
+    "tailwind_dependency": "Token consolidation must come before Tailwind-1 (per 55C)"
+  },
+  "tailwind_status": "DEFERRED. Per 55C phased Tailwind plan: 0 (audit, done) -> 1 (build config) -> 2 (migrate one component) -> 3 (broader) -> 4 (full). 56E/56F/56G do NOT introduce Tailwind.",
+  "no_go_claims": {
+    "preserved_unchanged": [
+      "G20 remains BLOCKED",
+      "R99/R102 remain NOT APPROVED",
+      "Generic Solar / Wind remain exploratory / unvalidated",
+      "No bankability / lender-ready / audit-ready / certified / validated / SaaS-ready / production-ready claims introduced or reinstated",
+      "TUHO / Oborovo labeled 'Reference' (not 'Validated')",
+      "Backend remains source of truth; no JS financial calculations"
+    ],
+    "no_new_no_go_claims_in_56G": true
+  },
+  "tests_run": {
+    "56G_specific": [
+      "tests/test_phase56g_ux_cleanup_closeout_visual_review.py"
+    ],
+    "all_previous_phases": [
+      "tests/test_phase56f_state_banner_visual_hierarchy.py",
+      "tests/test_phase56e_project_switch_simplification.py",
+      "tests/test_phase56d_cod_derived_field.py",
+      "tests/test_phase56c_new_project_v1_form_simplification.py",
+      "tests/test_phase56b_help_section.py",
+      "tests/test_phase56a_ux_cleanup_help_project_new_project_characterization.py",
+      "tests/test_phase55e_runtime_summary_index_context.py",
+      "tests/test_phase55f_validation_summary_context.py",
+      "tests/test_phase55g_banner_context.py",
+      "tests/test_phase54*.py",
+      "tests/test_phase51f_parallel_work_guardrails.py",
+      "tests/test_phase52f_persistence_guardrail_specifications.py",
+      "tests/test_phase53i4_records_relocation_closeout.py"
+    ]
+  },
+  "known_failures": [
+    "tests/test_persistence.py and tests/test_repository.py may fail collection with ImportError: No module named 'persistence' (pre-existing, out of scope)",
+    "Some git-based guard tests may skip/fail in environments without git/gitpython (pre-existing, out of scope)"
+  ],
+  "stack_order": {
+    "merged": ["56A", "56B", "56C", "56D"],
+    "draft_pending_review": ["56E (PR #482)", "56F (PR #483)", "56G (this PR)"]
+  },
+  "manual_merge_order": [
+    "1. Review PR #482 (56E) — sidebar visual review",
+    "2. Merge 56E if approved (squash, delete branch)",
+    "3. Re-evaluate 56F (PR #483) — it currently stacks on 56E; retarget to main if 56E is merged first",
+    "4. Review PR #483 (56F) — state banner visual review",
+    "5. Merge 56F if approved",
+    "6. Re-evaluate 56G (this PR) — it currently stacks on 56F",
+    "7. Review 56G — closeout doc + visual review pack",
+    "8. Merge 56G (docs-only)",
+    "9. THEN start UI-3.1 (LineItemGrid CAPEX summary pilot)"
+  ]
+}
