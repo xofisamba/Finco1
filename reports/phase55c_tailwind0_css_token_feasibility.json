@@ -1,0 +1,175 @@
+{
+  "phase": "55C",
+  "title": "Tailwind-0 / CSS token consolidation feasibility",
+  "status": "DRAFT",
+  "type": "docs/report-only",
+  "base_sha": "5b722e475e2520d00df4d800619dedbdb47b1bea",
+  "head_sha": "5b722e475e2520d00df4d800619dedbdb47b1bea",
+  "branch": "phase55c-tailwind0-css-token-feasibility",
+  "css_loc_summary": {
+    "lines": 4686,
+    "bytes": 123456,
+    "size_kb": 124,
+    "root_block_count": 5,
+    "estimated_root_block_count_from_review": 3,
+    "delta": "Actual count is 5, not 3 (Claude review was approximate). Token consolidation is more important than initially estimated."
+  },
+  "root_block_inventory": [
+    {"line": 10, "theme": "Main tokens", "variables": "--bg, --text-1, --text-2, --border, --accent, etc."},
+    {"line": 828, "theme": "Override / dark mode hint?", "variables": "(verify)"},
+    {"line": 1330, "theme": "Sidebar tokens", "variables": "--sidebar-w: 200px"},
+    {"line": 1335, "theme": "Sidebar collapsed", "variables": "--sidebar-w: 0px"},
+    {"line": 2695, "theme": "Second main block (or component tokens)", "variables": "(verify)"}
+  ],
+  "css_variable_inventory": {
+    "total_unique": "60+",
+    "most_used": [
+      {"token": "--text-2", "occurrences": 78},
+      {"token": "--text-1", "occurrences": 15}
+    ],
+    "barely_used": [
+      {"token": "--bg-1", "occurrences": 1},
+      {"token": "--bg-2", "occurrences": 1},
+      {"token": "--border-2", "occurrences": 3}
+    ],
+    "ad_hoc_hex_values": [
+      "#666", "#1a1a1a", "#475569", "#f8fafc", "#cbd5e1", "#1f6feb"
+    ]
+  },
+  "component_class_inventory": {
+    "fc_grid": 160,
+    "btn": 28,
+    "banner": 14,
+    "validation_summary": 14,
+    "sheet_card": 7,
+    "last_run_indicator": 7,
+    "chip": 6,
+    "factory_lock": 5,
+    "other_mixed": 400
+  },
+  "current_css_risks": [
+    "5 :root blocks - token sprawl",
+    "Ad-hoc hex values bypass design system",
+    "Inconsistent fallback usage (var(--text-1) vs var(--text-1, #1a1a1a))",
+    "160 fc-* selectors - large surface area for LineItemGrid migration",
+    "Deep class names like .fc-grid-wrapper.fc-capex-grid-wrapper hard to reuse",
+    "No documentation of which token is for what",
+    "No automated check that existing tokens are used"
+  ],
+  "tailwind_benefits": [
+    "Easier to enforce consistent design tokens",
+    "Utility classes are colocated with templates",
+    "No need to maintain a 4,686-LOC stylesheet",
+    "Purged output is smaller than current 124 KB",
+    "Easier to add new components without growing styles.css"
+  ],
+  "tailwind_risks": [
+    "Big-bang rewrite of 4,686 LOC",
+    "Build pipeline (Tailwind + PostCSS) - currently none",
+    "package.json, tailwind.config.js, postcss.config.js required",
+    "dist/ directory and build artifacts",
+    "Template rewrite for every partial",
+    "Forced consistency overrides our CSS variables",
+    "No clear fallback path if Tailwind breaks",
+    "No clear pilot (every sheet has different patterns)"
+  ],
+  "recommended_timing": "After UI-3 closeout. Token consolidation is a prerequisite.",
+  "phased_tailwind_plan": {
+    "tailwind_0": {
+      "phase": "This PR",
+      "scope": "Feasibility assessment (docs only)",
+      "code_changes": false
+    },
+    "tailwind_1": {
+      "phase": "After UI-3",
+      "scope": "Build config (package.json, tailwind.config.js, postcss.config.js, build script)",
+      "code_changes": "config only, no template changes",
+      "visual_change": "none"
+    },
+    "tailwind_2": {
+      "phase": "After Tailwind-1",
+      "scope": "Token mapping (--text-1 -> text-primary, etc.)",
+      "code_changes": "tailwind.config.js only",
+      "visual_change": "none"
+    },
+    "tailwind_3": {
+      "phase": "After Tailwind-2",
+      "scope": "Pilot component (e.g., validation summary bar)",
+      "code_changes": "1 component migrated",
+      "visual_change": "minimal, by design",
+      "rollback": "revert 1 component"
+    },
+    "tailwind_4": {
+      "phase": "After Tailwind-3",
+      "scope": "LineItemGrid adoption (per 55B migration order)",
+      "code_changes": "per-sheet migration, each sheet is its own PR",
+      "visual_change": "none within each sheet",
+      "rollback": "per-sheet PR"
+    }
+  },
+  "rollback_plan": {
+    "tailwind_1": "rm package.json and revert config. No template changes.",
+    "tailwind_2": "Remove theme mapping. Templates still use var(--text-1).",
+    "tailwind_3": "Revert 1 component. Keep custom CSS in static/styles.base.css.",
+    "tailwind_4": "Per-sheet rollback. Each sheet migration is its own PR."
+  },
+  "hard_gates_for_future_tailwind_prs": {
+    "tailwind_1": [
+      "Adds package.json, tailwind.config.js, postcss.config.js",
+      "Adds static/styles.generated.css as build artifact",
+      "No template changes",
+      "Visual: no change",
+      "Must pass all existing tests",
+      "CI must include npm run build:css step"
+    ],
+    "tailwind_2": [
+      "Updates tailwind.config.js to map tokens",
+      "Templates still use var(--text-1)",
+      "Visual: no change"
+    ],
+    "tailwind_3": [
+      "One component migrated to Tailwind",
+      "Visual review by user",
+      "Rollback plan documented"
+    ],
+    "tailwind_4": [
+      "Per 55B migration order",
+      "Each sheet migration is its own PR",
+      "Each PR has a visual review by user"
+    ]
+  },
+  "pre_tailwind_token_consolidation": {
+    "scope": "1-2 PRs, low risk, additive only",
+    "tasks": [
+      "Merge 5 :root blocks into 1-2",
+      "Replace ad-hoc hex values with var(--token) references",
+      "Document each token in a comment block at the top of styles.css"
+    ],
+    "blocking": "Yes - prerequisite for Tailwind-1"
+  },
+  "files_modified": [
+    "docs/phase55c_tailwind0_css_token_feasibility.md",
+    "reports/phase55c_tailwind0_css_token_feasibility.json"
+  ],
+  "files_created": [
+    "docs/phase55c_tailwind0_css_token_feasibility.md",
+    "reports/phase55c_tailwind0_css_token_feasibility.json"
+  ],
+  "production_code_changed": false,
+  "templates_changed": false,
+  "static_css_js_changed": false,
+  "service_persistence_changed": false,
+  "main_web_changed": false,
+  "model_parity_schema_formula_fixture_changed": false,
+  "frontend_dependency_changed": false,
+  "no_go_claim_introduced": false,
+  "rc1_untouched": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_run": [
+    "tests/test_phase54*.py",
+    "tests/test_phase51f_parallel_work_guardrails.py",
+    "tests/test_phase52f_persistence_guardrail_specifications.py"
+  ],
+  "known_failures": [],
+  "recommended_next_step": "55D UI-3 readiness and no-go scanner plan"
+}
