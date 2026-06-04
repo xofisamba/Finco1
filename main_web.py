@@ -609,17 +609,43 @@ def _validate_new_project_payload(submitted: dict[str, str]) -> list[str]:
         errors.append("COD date is required.")
 
     capacity_mw = require_float("capacity_mw", "Capacity (MW)", strictly_positive=True)
-    tariff = require_float("tariff_eur_mwh", "Tariff (EUR/MWh)", min_value=0)
-    p50_hours = require_float("p50_hours", "P50 hours", strictly_positive=True)
-    opex_y1 = require_float("opex_y1_keur", "OPEX Y1 (kEUR)", min_value=0)
-    total_capex = require_float("total_capex_keur", "Total CAPEX (kEUR)", strictly_positive=True)
-    gearing_pct = require_float("gearing_pct", "Gearing (%)", min_value=0, max_value=100)
-    interest_rate_pct = require_float("interest_rate_pct", "Interest rate (%)", min_value=0)
-    tenor_years = require_int("tenor_years", "Tenor (years)", strictly_positive=True)
-    target_dscr = require_float("target_dscr", "Target DSCR", strictly_positive=True)
-    construction_months = require_int("construction_months", "Construction months", strictly_positive=True)
-    horizon_years = require_int("horizon_years", "Horizon years", strictly_positive=True)
-    ppa_term_years = require_int("ppa_term_years", "PPA term years", strictly_positive=True)
+
+    # Phase 56C: the 11 detailed financial assumptions are no longer
+    # required at project creation. They are now entered in the
+    # Inputs sheet after the project exists. We still validate them
+    # when they are present (so the legacy full-form path keeps
+    # working), but we no longer error on empty/missing values.
+    def optional_float(field_name: str, label: str) -> float | None:
+        text = _coerce_form_text(submitted.get(field_name))
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            errors.append(f"{label} must be a number.")
+            return None
+
+    def optional_int(field_name: str, label: str) -> int | None:
+        text = _coerce_form_text(submitted.get(field_name))
+        if not text:
+            return None
+        try:
+            return int(float(text))
+        except ValueError:
+            errors.append(f"{label} must be a whole number.")
+            return None
+
+    tariff = optional_float("tariff_eur_mwh", "Tariff (EUR/MWh)")
+    p50_hours = optional_float("p50_hours", "P50 hours")
+    opex_y1 = optional_float("opex_y1_keur", "OPEX Y1 (kEUR)")
+    total_capex = optional_float("total_capex_keur", "Total CAPEX (kEUR)")
+    gearing_pct = optional_float("gearing_pct", "Gearing (%)")
+    interest_rate_pct = optional_float("interest_rate_pct", "Interest rate (%)")
+    tenor_years = optional_int("tenor_years", "Tenor (years)")
+    target_dscr = optional_float("target_dscr", "Target DSCR")
+    construction_months = optional_int("construction_months", "Construction months")
+    horizon_years = optional_int("horizon_years", "Horizon years")
+    ppa_term_years = optional_int("ppa_term_years", "PPA term years")
 
     if (
         ppa_term_years is not None
