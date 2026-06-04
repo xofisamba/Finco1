@@ -1,0 +1,137 @@
+{
+  "phase": "55D",
+  "title": "UI-3 readiness and no-go scanner plan",
+  "status": "DRAFT",
+  "type": "docs/report-only",
+  "base_sha": "cf3c51a7b74752037809da7c3eb17824c41fd803",
+  "head_sha": "cf3c51a7b74752037809da7c3eb17824c41fd803",
+  "branch": "phase55d-ui3-readiness-no-go-scanner-plan",
+  "stack_summary": {
+    "55A": {"title": "Agent B post-UI-2 governance refresh", "status": "MERGED", "pr": 469, "merge_sha": "1b97a2b747331c10a848369cef1e3738ecea438d"},
+    "55B": {"title": "UI-3.1 LineItemGrid characterization", "status": "MERGED", "pr": 470, "merge_sha": "5b722e475e2520d00df4d800619dedbdb47b1bea"},
+    "55C": {"title": "Tailwind-0 / CSS token feasibility", "status": "MERGED", "pr": 471, "merge_sha": "cf3c51a7b74752037809da7c3eb17824c41fd803"},
+    "55D": {"title": "UI-3 readiness and no-go scanner plan", "status": "DRAFT (this PR)"}
+  },
+  "agent_b_refresh_summary": "55A documented stale references and provided a refreshed summary. No actual edit to existing Agent B docs (out of scope for 55A). Next mandatory refresh point: after UI-3.1 merge.",
+  "ui3_readiness_summary": {
+    "first_pilot": "sheet_capex.html (CAPEX summary, 235 LOC)",
+    "rationale": "Smallest sheet with full fc-grid design system, single period, section bands, subtotals, input vs runtime cells, read-only notice",
+    "migration_order": [
+      "1. sheet_capex.html (CAPEX summary) - first pilot",
+      "2. sheet_opex.html (OPEX summary) - similar structure",
+      "3. sheet_revenue.html (Revenue) - non-numeric cell variant",
+      "4. sheet_capex_detail.html (CAPEX detail) - multi-period + sticky",
+      "5. sheet_opex_detail.html (OPEX detail) - multi-period + sticky",
+      "6. Other sheets - bulk last"
+    ],
+    "test_strategy": ["Snapshot test before/after", "Accessibility preserved", "Chip renders", "Read-only notice preserved", "Form action unchanged", "Visual review"],
+    "visual_review_requirement": "100% by user before merge for every UI-3 runtime PR"
+  },
+  "tailwind_recommendation": {
+    "timing": "After UI-3 closeout, NOT now",
+    "phased_plan": {
+      "tailwind_0": "Feasibility assessment (this stack)",
+      "tailwind_1": "Build config (package.json, tailwind.config.js, postcss.config.js, build script) - no template changes",
+      "tailwind_2": "Token mapping (--text-1 -> text-primary, etc.) - no template changes",
+      "tailwind_3": "Pilot component (e.g., validation summary bar) - 1 component migrated, visual review",
+      "tailwind_4": "LineItemGrid adoption - per-sheet migration per 55B order"
+    },
+    "pre_tailwind_blocker": "1-2 PRs of token consolidation: merge 5 :root blocks, replace ad-hoc hex, document tokens"
+  },
+  "no_go_scanner_plan": {
+    "target_files": ["app/templates/**/*.html", "static/app.js", "static/styles.css (content: properties only)"],
+    "exempted_by_default": ["docs/**/*.md", "reports/**/*.json", "tests/test_*.py", "app/persistence/records.py"],
+    "forbidden_positive_claims": [
+      "bankable", "bank-grade", "lender-ready", "certified",
+      "audit-ready", "validated", "investor-ready", "SaaS-ready",
+      "production-ready", "external validation", "customer reference",
+      "investment advice", "guaranteed returns"
+    ],
+    "allowed_contexts_for_false_positive": [
+      "Python identifiers (is_validated, is_approved)",
+      "Variable/class names (validation_summary, validation_bar)",
+      "Comments in templates/CSS",
+      "data- attributes (data-validated=true)",
+      "Validate verb (legitimate action)",
+      "no-go self-referential",
+      "Docs that list forbidden terms (no_go_claims.md)",
+      "Test fixtures"
+    ],
+    "false_positive_policy": [
+      "Each finding includes file path, line, match, 80 chars of context",
+      "Scanner does NOT auto-fix",
+      "Finding is a signal for human review, not a hard error",
+      "Finding can be dismissed (with reason), fixed, or documented as exception"
+    ],
+    "css_comment_policy": "CSS comments are NOT scanned",
+    "docs_exemption": "docs/ and reports/ exempted by file path pattern. --include-docs and --include-tests flags for explicit opt-in.",
+    "implementation_phases": {
+      "55E_deferred": "Implement scanner, --report mode only",
+      "55F_deferred": "Add --strict mode, run in CI",
+      "55G_deferred": "Populate --baseline with current false positives"
+    }
+  },
+  "context_wiring_backlog": [
+    {
+      "option": 1,
+      "key": "runtime_summary",
+      "used_by": "_last_run_indicator.html",
+      "current_state": "NOT in index.html context - renders nothing",
+      "wiring_impact": "Activates the run-source indicator on dashboard",
+      "backend_changes": "minor plumbing",
+      "pilot_impact": "low",
+      "priority": "first"
+    },
+    {
+      "option": 2,
+      "key": "validation_summary",
+      "used_by": "_validation_summary_bar.html",
+      "current_state": "NOT in index.html context (audit_reconciliation_tab only)",
+      "wiring_impact": "Activates validation summary bar on dashboard",
+      "backend_changes": "minor (needs validation_summary_for_workspace helper)",
+      "pilot_impact": "low",
+      "priority": "second"
+    },
+    {
+      "option": 3,
+      "key": "banner_context",
+      "used_by": "_state_banner.html",
+      "current_state": "NOT set anywhere - renders nothing",
+      "wiring_impact": "Activates state clarity banner",
+      "backend_changes": "moderate (needs banner_context_for_workspace helper that detects 11 contexts)",
+      "pilot_impact": "medium",
+      "priority": "third"
+    }
+  ],
+  "first_ui3_prompt_preview": "Branch: phase-ui3-1-line-item-grid-pilot-capex. Type: runtime template refactor (no backend changes). Draft: YES. Visual review: REQUIRED. Allowed files: _line_item_grid.html (NEW), sheet_capex.html (refactor), styles.css (additive), tests, docs, reports. Hard gates: snapshot test byte-equivalent, 754 tests pass, no new no-go claims, rc1 untouched, visual review by user.",
+  "first_tailwind_prompt_preview": "Branch: phase-tailwind-1-build-config. Type: build infra only (no template changes, no visual change). Allowed files: package.json (NEW), tailwind.config.js (NEW), postcss.config.js (NEW), .gitignore, static/styles.generated.css (NEW build artifact). Hard gates: npm run build:css produces valid output, generated file loaded only if ?tailwind=1, no template changes, all tests pass, rc1 untouched.",
+  "agent_b_next_prompt_preview": "Branch: phase-agent-b-post-ui3-1-refresh. Type: docs-only. Allowed files: docs/agent_b_*.md, reports/agent_b_*.json, tests. Hard gates: no production code, no templates, no static CSS/JS, all tests pass, rc1 untouched.",
+  "files_modified": [
+    "docs/phase55d_ui3_readiness_no_go_scanner_plan.md",
+    "reports/phase55d_ui3_readiness_no_go_scanner_plan.json"
+  ],
+  "files_created": [
+    "docs/phase55d_ui3_readiness_no_go_scanner_plan.md",
+    "reports/phase55d_ui3_readiness_no_go_scanner_plan.json"
+  ],
+  "production_code_changed": false,
+  "templates_changed": false,
+  "static_css_js_changed": false,
+  "service_persistence_changed": false,
+  "main_web_changed": false,
+  "model_parity_schema_formula_fixture_changed": false,
+  "frontend_dependency_changed": false,
+  "no_go_claim_introduced": false,
+  "rc1_untouched": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_run": [
+    "tests/test_phase55d_*.py (skipped - docs-only phase, no test file added)",
+    "tests/test_phase55*.py if feasible (only docs in this stack)",
+    "tests/test_phase54*.py",
+    "tests/test_phase51f_parallel_work_guardrails.py",
+    "tests/test_phase52f_persistence_guardrail_specifications.py",
+    "tests/test_phase53i4_records_relocation_closeout.py"
+  ],
+  "known_failures": [],
+  "recommended_next_step": "Stop after this PR. Future work: UI-3.1 CAPEX summary pilot, token consolidation, live no-go scanner (55E), context-wiring backlog."
+}
