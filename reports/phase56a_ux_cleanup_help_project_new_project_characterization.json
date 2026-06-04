@@ -1,0 +1,204 @@
+{
+  "phase": "56A",
+  "title": "UX cleanup characterization: Help, project switch, New Project flow",
+  "status": "DRAFT",
+  "type": "docs/report-only",
+  "base_sha": "12b82ca9ecd2fb6629c5238dad2d2938ec4694ac",
+  "head_sha": "12b82ca9ecd2fb6629c5238dad2d2938ec4694ac",
+  "branch": "phase56a-ux-cleanup-help-project-new-project-characterization",
+  "help_inventory": {
+    "total_help_loc": 302,
+    "files": [
+      {"file": "app/templates/partials/pilot_help_onboarding.html", "loc": 222, "kind": "full inline help block"},
+      {"file": "app/templates/partials/pilot_workflow_guide.html", "loc": 80, "kind": "workflow stepper"},
+      {"file": "app/templates/partials/pilot_limitations_notice.html", "loc": "small", "kind": "limitations notice"},
+      {"file": "app/templates/partials/inputs_section.html", "loc": "small", "kind": "inline micro-help"},
+      {"file": "app/templates/partials/sheet_capex.html", "loc": "small", "kind": "sheet-level contextual help"}
+    ],
+    "appears_on": "Overview tab in workspace_shell.html",
+    "appears_per_sheet": false,
+    "current_copy_risk": "pilot_help_onboarding.html contains the word 'Validated' as a positive claim — must be rephrased in 56B",
+    "what_moves_to_help_section": [
+      "pilot_help_onboarding.html (full block)",
+      "pilot_workflow_guide.html (stepper)",
+      "pilot_limitations_notice.html"
+    ],
+    "what_stays_micro_help": [
+      "inputs_section.html inline notes",
+      "sheet_capex.html contextual notes",
+      "tooltip-style hints in form fields"
+    ]
+  },
+  "sidebar_project_switch_inventory": {
+    "active_project_card_partial": "app/templates/partials/project_selector.html (185 LOC)",
+    "browser_partial": "app/templates/partials/project_browser.html",
+    "current_sidebar_sections": [
+      "Active project card (type, name, scenario, code)",
+      "State badges (Unsaved / Saved)",
+      "Quick actions (Load/Switch, New Project)"
+    ],
+    "current_load_switch_behavior": "Modal panel in main area, 3 tabs (Factory, Baselines, My Projects), click to switchToProject()",
+    "current_new_project_behavior": "Inline panel in workspace_shell.html, 17-field form, POST /projects/create, page reload",
+    "user_confusion_points": [
+      "Debug-style labels (project_code slug visible by default)",
+      "Tight state badges (Unsaved + Saved can coexist)",
+      "Small 'New Project' button",
+      "Workflow guide on Overview tab competes with main content"
+    ]
+  },
+  "new_project_form_inventory": {
+    "current_field_count": 17,
+    "current_required_fields": 17,
+    "true_master_data_fields": 6,
+    "detailed_model_assumption_fields": 11,
+    "fields": [
+      {"name": "project_name", "type": "text", "required": true, "kind": "master_data", "keep": true},
+      {"name": "project_type", "type": "select", "required": true, "kind": "master_data", "keep": true, "rename_to": "technology"},
+      {"name": "template_source", "type": "select", "required": true, "kind": "master_data", "keep": true},
+      {"name": "country_market", "type": "text", "required": true, "kind": "master_data", "keep": true, "rename_to": "country_or_market"},
+      {"name": "capacity_mw", "type": "number", "required": true, "kind": "master_data", "keep": true},
+      {"name": "cod_date", "type": "date", "required": true, "kind": "manual_primary_input", "keep": false, "replace_with": "derived from start+duration"},
+      {"name": "construction_months", "type": "number", "required": true, "kind": "master_data", "keep": true, "rename_to": "construction_duration_months"},
+      {"name": "horizon_years", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "tariff_eur_mwh", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "ppa_term_years", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "p50_hours", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "opex_y1_keur", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "total_capex_keur", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "gearing_pct", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "interest_rate_pct", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "tenor_years", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"},
+      {"name": "target_dscr", "type": "number", "required": true, "kind": "detailed_assumption", "keep": false, "move_to": "Inputs"}
+    ]
+  },
+  "proposed_new_project_v1_fields": [
+    {"name": "project_name", "type": "text", "required": true, "kind": "master_data"},
+    {"name": "spv_name", "type": "text", "required": true, "kind": "master_data", "added": true},
+    {"name": "country_or_market", "type": "text", "required": true, "kind": "master_data", "renamed": true},
+    {"name": "technology", "type": "select", "required": true, "kind": "master_data", "renamed": true, "options": ["Solar", "Wind"]},
+    {"name": "capacity_mw", "type": "number", "required": true, "kind": "master_data"},
+    {"name": "currency", "type": "select", "required": true, "kind": "master_data", "added": true, "default": "EUR", "options": ["EUR", "USD", "HRK"]},
+    {"name": "construction_start_date", "type": "date", "required": true, "kind": "master_data", "added": true},
+    {"name": "construction_duration_months", "type": "number", "required": true, "kind": "master_data", "renamed": true},
+    {"name": "cod_date", "type": "derived", "required": false, "kind": "derived_read_only", "added": true},
+    {"name": "template_source", "type": "select", "required": true, "kind": "master_data", "options": ["generic_solar", "generic_wind", "tuho", "oborovo"], "unvalidated_label": "⚠️ Unvalidated · Derived path"}
+  ],
+  "excluded_create_form_fields": [
+    "horizon_years", "tariff_eur_mwh", "ppa_term_years", "p50_hours",
+    "opex_y1_keur", "total_capex_keur", "gearing_pct", "interest_rate_pct",
+    "tenor_years", "target_dscr"
+  ],
+  "cod_calculation_policy": {
+    "formula": "COD = construction_start_date + construction_duration_months",
+    "implementation": "Python dateutil.relativedelta (handles leap year, month-end)",
+    "display": "read-only in create form",
+    "client_side_preview": "JavaScript date arithmetic (NOT a financial calculation)",
+    "validation": "missing or invalid duration must produce a clear error",
+    "manual_override": "deferred; if added, must be explicit toggle + audited via replay_metadata; never default"
+  },
+  "implementation_phases": [
+    {
+      "id": "56B",
+      "title": "Help section: remove full inline help from sheets and Overview",
+      "objective": "Move 222-line pilot_help_onboarding.html + workflow_guide.html + limitations_notice into a dedicated Help sidebar section",
+      "files": ["app/templates/partials/help_section.html (NEW)", "workspace_shell.html (remove help includes, add Help tab)", "static/styles.css (additive)"],
+      "tests": "snapshot test of Help section render; no-go copy check (rephrase 'validated' to 'trusted pilot evidence')",
+      "risk": "LOW",
+      "auto_merge": false,
+      "visual_review": true
+    },
+    {
+      "id": "56C",
+      "title": "New Project v1 form simplification",
+      "objective": "Trim create form to 10 master data fields. Move 11 detailed assumption fields to Inputs.",
+      "files": ["new_project_form.html (replace)", "projects_create_service.py (deprecate old fields, accept new ones, default detailed fields)", "projects_repository.py (default values for omitted fields)", "main_web.py (Form() update)"],
+      "tests": "old fields still accepted for backward compat; new minimal fields create a project; project is saved with safe defaults; user redirected to Inputs",
+      "risk": "MEDIUM",
+      "auto_merge": false,
+      "visual_review": true
+    },
+    {
+      "id": "56D",
+      "title": "COD derived field wiring",
+      "objective": "Add derived cod_date field; remove manual input; ensure backward compat for old projects",
+      "files": ["new_project_form.html (replace manual input with read-only)", "projects_create_service.py (compute COD)", "projects_repository.py (validate COD matches start+duration for new projects)"],
+      "tests": "COD computation correctness (leap year, month-end); old projects with manual cod_date still work; new projects always have cod_date = start + duration",
+      "risk": "LOW",
+      "auto_merge": false,
+      "visual_review": true
+    },
+    {
+      "id": "56E",
+      "title": "Project switch simplification",
+      "objective": "Simplify sidebar so Load/Switch and New Project are more discoverable; hide debug labels by default; clean up active project card",
+      "files": ["project_selector.html (cosmetic)", "project_browser.html (cosmetic)", "static/styles.css (additive)"],
+      "tests": "active project card shows clean labels; project_code hidden by default; no debug labels; Load/Switch and New Project buttons big and discoverable",
+      "risk": "LOW",
+      "auto_merge": false,
+      "visual_review": true
+    },
+    {
+      "id": "56F",
+      "title": "State banner visual hierarchy polish",
+      "objective": "Make state banners and governance cards less visually dominant. Keep functionality, improve hierarchy.",
+      "files": ["static/styles.css (additive .banner-tone-* rules)", "_state_banner.html (optional small markup)"],
+      "tests": "no regression in banner content/context keys; visual hierarchy improved; no no-go copy",
+      "risk": "LOW",
+      "auto_merge": false,
+      "visual_review": true
+    },
+    {
+      "id": "56G",
+      "title": "UX cleanup closeout + visual review",
+      "objective": "Final visual review + Agent B governance refresh + live no-go scanner implementation",
+      "files": ["docs/report/test only", "live no-go scanner (if not yet implemented)"],
+      "tests": "visual review checklist",
+      "risk": "LOW",
+      "auto_merge": false,
+      "visual_review": true
+    }
+  ],
+  "risk_review": {
+    "changing_project_creation_too_soon": {"severity": "MEDIUM", "mitigation": "56C accepts old fields for backward compat; detailed fields get safe defaults"},
+    "hiding_useful_help": {"severity": "MEDIUM", "mitigation": "56B moves Help, doesn't delete it; old locations can be linked during transition"},
+    "moving_assumptions_out_of_create_form": {"severity": "MEDIUM", "mitigation": "Detailed fields get safe defaults (zero or baseline values)"},
+    "cod_date_calculation": {"severity": "LOW", "mitigation": "relativedelta is well-tested; leap year and month-end handled"},
+    "generic_solar_wind_appearing_validated": {"severity": "HIGH", "mitigation": "Use existing '⚠️ Unvalidated · Derived path' label from NEW_PROJECT_TEMPLATE_OPTIONS; never use 'validated' as a positive claim"},
+    "confusing_factory_vs_generic": {"severity": "HIGH", "mitigation": "Already addressed by tab separation; factory uses badge-muted, user uses badge-pass"},
+    "visual_regression": {"severity": "MEDIUM", "mitigation": "Visual review required on every runtime PR"},
+    "loss_of_debug_info": {"severity": "LOW", "mitigation": "Keep in HTML, hide via CSS; can be re-enabled for support"},
+    "help_block_contains_validated": {"severity": "HIGH", "mitigation": "pilot_help_onboarding.html must be rephrased in 56B"}
+  },
+  "files_modified": [
+    "docs/phase56a_ux_cleanup_help_project_new_project_characterization.md",
+    "reports/phase56a_ux_cleanup_help_project_new_project_characterization.json"
+  ],
+  "files_created": [
+    "docs/phase56a_ux_cleanup_help_project_new_project_characterization.md",
+    "reports/phase56a_ux_cleanup_help_project_new_project_characterization.json"
+  ],
+  "production_code_changed": false,
+  "templates_changed": false,
+  "static_css_js_changed": false,
+  "service_persistence_changed": false,
+  "main_web_changed": false,
+  "model_parity_schema_formula_fixture_changed": false,
+  "frontend_dependency_changed": false,
+  "no_go_claim_introduced": false,
+  "rc1_untouched": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_run": [
+    "tests/test_phase55g_banner_context.py",
+    "tests/test_phase55e_runtime_summary_index_context.py",
+    "tests/test_phase55f_validation_summary_context.py",
+    "tests/test_ui2_1_state_banner_partial.py",
+    "tests/test_ui2_6_run_source_indicator.py",
+    "tests/test_phase54*.py",
+    "tests/test_phase51f_parallel_work_guardrails.py",
+    "tests/test_phase52f_persistence_guardrail_specifications.py",
+    "tests/test_phase53i4_records_relocation_closeout.py"
+  ],
+  "tests_passing": 707,
+  "known_failures": [],
+  "recommended_next_step": "56B Help section: remove full inline help from sheets and Overview, rephrase 'validated' copy"
+}
