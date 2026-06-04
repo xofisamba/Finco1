@@ -4684,3 +4684,43 @@ body {
   color: var(--text-2, #475569);
   font-style: italic;
 }
+
+/* ── Phase 56B: Help pointer (Overview → Help tab) ─────────────────────── */
+.help-pointer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 1rem;
+  background: var(--bg-2, #f8fafc);
+  border: 1px dashed var(--border-2, #cbd5e1);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--text-2, #475569);
+}
+
+.help-pointer__label {
+  font-weight: 700;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, #475569);
+  background: var(--bg-1, #ffffff);
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border-2, #cbd5e1);
+  border-radius: 3px;
+}
+
+.help-pointer__text {
+  line-height: 1.45;
+}
+
+.help-pointer__link {
+  color: var(--primary, #1d4ed8);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.help-pointer__link:hover {
+  color: var(--primary-hover, #1e40af);
+}

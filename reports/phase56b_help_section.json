@@ -1,0 +1,136 @@
+{
+  "phase": "56B",
+  "title": "Phase 56B: Move Help into dedicated section",
+  "branch": "phase56b-help-section-sidebar",
+  "base_sha": "84f8b6af8b47a2b6e60f7f940da8c580649cea15",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "type": "runtime UI / draft-only",
+  "auto_merge": false,
+  "status": "DRAFT",
+  "files_changed": [
+    {
+      "path": "app/templates/partials/workspace_tabs.html",
+      "kind": "additive",
+      "lines_added": 1,
+      "lines_removed": 0,
+      "note": "Added Help tab button"
+    },
+    {
+      "path": "app/templates/partials/workspace_shell.html",
+      "kind": "additive + remove",
+      "lines_added": 14,
+      "lines_removed": 4,
+      "note": "Removed inline pilot_workflow_guide + pilot_help_onboarding from #panel-overview. Added compact .help-pointer. Added #panel-help block after #panel-compare."
+    },
+    {
+      "path": "app/templates/partials/pilot_help_onboarding.html",
+      "kind": "rephrase",
+      "lines_added": 4,
+      "lines_removed": 4,
+      "note": "Rephrased positive 'Validated' framing to 'Reference' / 'parity evidence'."
+    },
+    {
+      "path": "app/templates/partials/pilot_workflow_guide.html",
+      "kind": "rephrase",
+      "lines_added": 4,
+      "lines_removed": 4,
+      "note": "Rephrased 'Validated scope:' to 'Reference scope:'; 'parity-validated' to 'has parity evidence'."
+    },
+    {
+      "path": "static/styles.css",
+      "kind": "additive",
+      "lines_added": 44,
+      "lines_removed": 0,
+      "note": "Appended .help-pointer block. No :root variables added or modified. :root count remains 5."
+    },
+    {
+      "path": "tests/test_phase56b_help_section.py",
+      "kind": "new",
+      "lines_added": 440,
+      "lines_removed": 0,
+      "note": "New test file with 11 test classes."
+    },
+    {
+      "path": "docs/phase56b_help_section.md",
+      "kind": "new",
+      "lines_added": 200,
+      "lines_removed": 0,
+      "note": "New design + scope + visual-review checklist doc."
+    }
+  ],
+  "files_unchanged_but_verified": [
+    "static/app.js",
+    "app/main_web.py",
+    "app/waterfall_core.py",
+    "app/project_factories.py",
+    "app/runtime_impact_taxonomy.py",
+    "app/persistence/*",
+    "app/services/projects_create_service.py",
+    "app/services/scenario_state_service.py",
+    "app/templates/partials/pilot_limitations_notice.html",
+    "app/templates/partials/audit_reconciliation_tab.html",
+    "app/templates/partials/new_project_form.html"
+  ],
+  "no_go_copy_treatment": {
+    "rephrased_terms": [
+      {"before": "Validated templates", "after": "Reference templates"},
+      {"before": "[Validated] TUHO", "after": "[Reference] TUHO ... (has parity evidence against Excel)"},
+      {"before": "[Validated] Oborovo", "after": "[Reference] Oborovo ... (has parity evidence against Excel)"},
+      {"before": "Validated scope:", "after": "Reference scope:"},
+      {"before": "parity-validated against Excel", "after": "has parity evidence against Excel"},
+      {"before": "validated results", "after": "parity-reviewed results"}
+    ],
+    "preserved_disclaimers": [
+      "Not a lender or bank approval",
+      "Not an external audit or certification",
+      "Not SaaS-ready",
+      "single-user / internal pilot mode"
+    ],
+    "untouched_in_56b_intentionally": [
+      "pilot_limitations_notice.html (Downloads tab, not Help)"
+    ]
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_service_persistence_model_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_new_forbidden_ui_claims": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_schema_migration_changes": true,
+    "no_new_persistence_writes": true,
+    "rc1_untouched": true,
+    "draft_only": true,
+    "auto_merge_disabled": true
+  },
+  "tests_added": {
+    "file": "tests/test_phase56b_help_section.py",
+    "test_classes": 11,
+    "estimated_tests": 30,
+    "coverage_areas": [
+      "Validated rephrasing in both Help partials",
+      "Help tab presence in workspace_tabs.html",
+      "Help panel presence in workspace_shell.html",
+      "Full Help removed from inline Overview",
+      "Compact help-pointer present in Overview",
+      "Help content still reachable via #panel-help",
+      "Exploratory/unvalidated warning preserved",
+      "Forbidden no-go terms absent from Help partials",
+      "New Project form unchanged (inline + sidebar)",
+      "static/app.js + waterfall_core + project_factories + persistence unchanged",
+      "CSS is additive (no :root change, count remains 5)",
+      "rc1 SHA constant stable",
+      "Overview KPI grid and export-lineage panel intact"
+    ]
+  },
+  "recommended_review_order": [
+    "Visual: open Overview, confirm Help block is gone, see compact pointer",
+    "Visual: click Help tab, confirm full content is reachable",
+    "Visual: click the pointer's Help link, confirm it switches to Help tab",
+    "Visual: confirm TUHO/Oborovo labels are [Reference], not [Validated]",
+    "Visual: confirm generic / new project warning still present",
+    "Tests: pytest tests/test_phase56b_help_section.py -v"
+  ]
+}

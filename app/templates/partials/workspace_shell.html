@@ -202,12 +202,6 @@
     Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
   </div>
 
-  {# Phase 25A: Pilot Workflow Guide - shown on Overview tab #}
-  {% include "partials/pilot_workflow_guide.html" %}
-
-  {# Phase 25B: Pilot Help / Onboarding - collapsible panel on Overview tab #}
-  {% include "partials/pilot_help_onboarding.html" %}
-
   <div class="export-lineage-panel" id="export-lineage-panel" aria-label="Export lineage summary">
     <div class="export-lineage-panel__header">
       <div>
@@ -297,6 +291,16 @@
         <div class="kpi-label">Warnings</div>
         <div class="kpi-value warning" id="kpi-warnings">-</div>
       </div>
+    </div>
+
+    {# Phase 56B: Compact contextual Help pointer replaces the full inline Help block.
+       The full Help content (workflow guide + onboarding) now lives in the dedicated
+       `#panel-help` tab added at the end of this workspace_shell.html. The link
+       uses href="#help" which routes through the existing hashchange -> switchTab
+       handler in static/app.js — no new JS required. #}
+    <div class="help-pointer" id="overview-help-pointer" role="note" aria-label="Pointer to dedicated Help section">
+      <span class="help-pointer__label">Help</span>
+      <span class="help-pointer__text">Need a tour? Open the <a href="#help" class="help-pointer__link">Help</a> tab for model guidance, workflow steps, and pilot limitations.</span>
     </div>
 
     <!-- Runtime summary HTMX swap target -->
@@ -632,6 +636,20 @@
   <div class="tab-panel" id="panel-compare">
     {% set compare_panel = True %}
     {% include "partials/scenario_compare.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- HELP (Phase 56B) -- -->
+  {# Full Help content lives here as a dedicated section, not inline in Overview.
+     Preserves the same partials that used to render inline, so all current
+     disclaimers, references, and limitations remain reachable. #}
+  <div class="tab-panel" id="panel-help" role="region" aria-label="Help, onboarding, and model guidance">
+    <div class="panel-header">
+      <div class="panel-title">Help &amp; Model Guidance</div>
+      <div class="panel-desc">Pilot workflow, onboarding, and reviewer-facing limitations. Reference templates and internal parity evidence only — not a lender approval, bank approval, external audit, or SaaS certification.</div>
+    </div>
+
+    {% include "partials/pilot_workflow_guide.html" %}
+    {% include "partials/pilot_help_onboarding.html" %}
   </div>
 
 </div><!-- .workspace-content -->
