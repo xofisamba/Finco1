@@ -1,0 +1,135 @@
+{
+  "package": {
+    "name": "Finco1 Phase 57A LineItemGrid Visual Review Pack",
+    "workstream": "B36",
+    "branch": "parallel-b35-b40-ui-governance-visual-review-pack",
+    "branch_base_sha": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
+    "package_base_sha_at_creation": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
+    "review_pack_version": "0.1.0",
+    "review_pack_status": "initial_draft_empty_protocol",
+    "intended_use": "internal_ui_visual_review_only",
+    "external_claim_scope": "none",
+    "is_protocol_only": true,
+    "is_pre_populated": false
+  },
+  "narrative_pointer": "docs/ui/phase57a_line_item_grid_visual_review.md",
+  "b35_post_phase56_pointer": "docs/governance/post_phase56_ui_governance_refresh.md",
+  "b37_ui_regression_pointer": "docs/validation/ui_regression_evidence_matrix.md",
+  "b38_ui_no_go_pointer": "docs/commercial/ui demo_guardrail_refresh.md",
+  "b39_controlled_pilot_ux_pointer": "docs/pilot/controlled_pilot_ux_runbook.md",
+  "b40_ui3_migration_pointer": "docs/governance/ui3_line_item_grid_migration_governance_plan.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "disclaimers": {
+    "b36_is_not_approval_of_pr_487": true,
+    "agent_b_does_not_approve_code_correctness": true,
+    "visual_review_is_manual_evidence_unless_screenshots_or_tests_prove_otherwise": true,
+    "line_item_grid_capex_pilot_is_not_full_ui_3_rollout": true,
+    "line_item_grid_capex_pilot_is_not_financial_model_validation": true,
+    "pr_487_status_recorded_as_fact_not_claim": true,
+    "pr_487_is_open_draft_at_b36_authoring": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_template_or_static_changes_by_agent_b": true,
+    "no_app_code_changes_by_agent_b": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "pr_487_fact_record": {
+    "pr_number": 487,
+    "title": "Phase 57A: UI-3.1 LineItemGrid CAPEX summary pilot",
+    "state_at_b36_authoring": "open",
+    "draft_at_b36_authoring": true,
+    "merged_at_b36_authoring": false,
+    "state_at_b35_pr_opening": "closed",
+    "draft_at_b35_pr_opening": false,
+    "merged_at_b35_pr_opening": true,
+    "merge_commit_sha_at_b35_pr_opening": "b173355b6021577f6567069ebd748aa3176f2475",
+    "pre_merge_head_sha_at_b35_pr_opening": "9f9d935df520ff87251149845e6c427331fd1984",
+    "base_sha": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
+    "head_sha_at_b36_authoring": "b0c06a1f16c25dd2ba432972ecb2147780b3d579",
+    "mergeable_at_b36_authoring": "true (clean)",
+    "additions_at_b36_authoring": 1594,
+    "deletions_at_b36_authoring": 162,
+    "changed_files_at_b36_authoring": 6,
+    "scope_per_pr_description": "migrates only app/templates/partials/sheet_capex.html to shared LineItemGrid partial/macro",
+    "b36_does_not_claim": "B36 does not claim PR #487 is approved by Agent B. B36 records the merge as a factual record. The visual review is performed by the user or the designated reviewer; Agent B records the protocol."
+  },
+  "visual_checklist_sections": [
+    "Pre-check",
+    "Old-vs-new visual invariants",
+    "Preserved CSS class invariants",
+    "Accessibility / read-only marker checks",
+    "No-overflow check",
+    "No-console-error check",
+    "Network 404 check",
+    "Tab navigation check",
+    "GET / check"
+  ],
+  "pass_fail_criteria": {
+    "pass": "all checklist items in section 2 are checked pass.",
+    "blocker_fail": [
+      "Old-vs-new visual invariants broken.",
+      "Preserved CSS class invariants broken.",
+      "Tab navigation broken.",
+      "GET / raises NameError (regression of PR #485).",
+      "GET / context does not include the three new context keys.",
+      "No-overflow check fails at standard viewports."
+    ],
+    "non_blocker_fail": [
+      "Color contrast is below WCAG AA but above WCAG A.",
+      "No-console-error check shows expected deprecation warnings.",
+      "Long values are truncated awkwardly but do not break the layout."
+    ]
+  },
+  "what_blocks_merge": [
+    "Any blocker fail in section 3.",
+    "Any visual invariant break.",
+    "Any preserved CSS class break.",
+    "Any new console error.",
+    "Any 404, 500, or 403 request.",
+    "Any tab navigation break.",
+    "Any GET / NameError regression.",
+    "Any GET / context-contract regression (missing runtime_summary, validation_summary, or banner_context)."
+  ],
+  "what_can_be_fixed_later": [
+    "Minor color contrast improvements.",
+    "Long value truncation improvements.",
+    "Empty-state message wording.",
+    "Subtotal / total row styling refinements.",
+    "Focus indicator styling refinements."
+  ],
+  "evidence_to_collect": [
+    "Screenshots of the CAPEX summary grid at standard viewports (1280px, 1024px) and smaller viewports (768px, 480px).",
+    "Screenshots of the index page (GET /) showing the runtime summary, validation summary, and banner context.",
+    "Browser console log (no errors expected).",
+    "Browser network log (no 404/500/403 expected).",
+    "Tab navigation trace (logical order expected).",
+    "Screen reader output (column headers and read-only state expected)."
+  ],
+  "no_claim_categories": {
+    "pr_487_approved_by_agent_b": false,
+    "pr_487_visual_review_performed_by_agent_b": false,
+    "pr_487_scheduled_to_merge": false,
+    "line_item_grid_capex_validates_financial_model": false,
+    "line_item_grid_capex_is_full_ui_3_rollout": false,
+    "line_item_grid_capex_is_production_ready": false,
+    "line_item_grid_capex_is_enterprise_saas_ready": false,
+    "line_item_grid_capex_is_external_validation": false,
+    "line_item_grid_capex_is_paid_pilot_authorization": false,
+    "customer_reference": false,
+    "lender_bank_audit_certification_regulatory_saas_claim": false,
+    "investment_advice": false,
+    "guaranteed_returns": false
+  },
+  "global_notes": [
+    "B36 is not approval of PR #487. Agent B does not approve code correctness. The visual review is manual evidence unless screenshots or tests prove otherwise.",
+    "The LineItemGrid CAPEX pilot is not the full UI-3 rollout. The LineItemGrid CAPEX pilot is not financial model validation.",
+    "PR #487 status at the time of B36 authoring: open draft, mergeable, base SHA 9d05c0c, head SHA b0c06a1. B36 records PR #487 status as a fact, not as a B36 claim.",
+    "PR #487 status at the time of B35 PR opening: MERGED on main as b173355b6021577f6567069ebd748aa3176f2475. B36 records the merge as a factual record.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}

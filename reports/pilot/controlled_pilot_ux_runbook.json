@@ -1,0 +1,190 @@
+{
+  "package": {
+    "name": "Finco1 Controlled Pilot UX Runbook",
+    "workstream": "B39",
+    "branch": "parallel-b35-b40-ui-governance-visual-review-pack",
+    "branch_base_sha": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
+    "package_base_sha_at_creation": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
+    "runbook_version": "0.1.0",
+    "runbook_status": "initial_draft_ui_focused",
+    "intended_use": "internal_controlled_pilot_ux_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/controlled_pilot_ux_runbook.md",
+  "b35_post_phase56_pointer": "docs/governance/post_phase56_ui_governance_refresh.md",
+  "b36_line_item_grid_pointer": "docs/ui/phase57a_line_item_grid_visual_review.md",
+  "b37_ui_regression_pointer": "docs/validation/ui_regression_evidence_matrix.md",
+  "b38_ui_no_go_pointer": "docs/commercial/ui demo_guardrail_refresh.md",
+  "b40_ui3_migration_pointer": "docs/governance/ui3_line_item_grid_migration_governance_plan.md",
+  "b18_pilot_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b20_pilot_issue_log_pointer": "docs/pilot/pilot_issue_log_process.md",
+  "b21_pilot_ack_pointer": "docs/pilot/pilot_user_acknowledgement.md",
+  "b22_qa_pointer": "docs/commercial/demo_qa_guardrail.md",
+  "b23_qbank_pointer": "docs/external_review/reviewer_question_bank.md",
+  "disclaimers": {
+    "controlled_pilot_is_internal_not_external": true,
+    "controlled_pilot_is_not_customer_reference": true,
+    "controlled_pilot_does_not_authorize_paid_pilot": true,
+    "controlled_pilot_is_not_external_review": true,
+    "b20_b21_b22_b23_remain_primary_pilot_governance": true,
+    "b39_supplements_not_replaces": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_template_or_static_changes_by_agent_b": true,
+    "no_app_code_changes_by_agent_b": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "pilot_ux_objective": {
+    "ux_clarity": "are the UI changes clear and understandable?",
+    "task_efficiency": "can users complete their tasks faster or with fewer errors?",
+    "visual_consistency": "are the visual changes consistent across the app?",
+    "no_regression": "do the UI changes break any existing user task?",
+    "what_validation_is_not": [
+      "model validation",
+      "financial formula validation",
+      "parity-core lock validation",
+      "engine-output golden validation",
+      "customer reference",
+      "paid pilot authorization",
+      "external validation",
+      "production readiness or enterprise SaaS readiness claim"
+    ]
+  },
+  "user_task_list": [
+    {"task_id": "T1", "task_name": "Open the index page. Verify that the runtime summary, validation summary, and banner context are visible."},
+    {"task_id": "T2", "task_name": "Navigate to the Inputs tab. Verify that the Inputs tab is functional in the post-UI-2.6 context."},
+    {"task_id": "T3", "task_name": "Create a new project. Verify that the New Project form is functional in the post-56C context."},
+    {"task_id": "T4", "task_name": "Switch projects. Verify that the project switcher is functional in the post-56E context."},
+    {"task_id": "T5", "task_name": "Open the Help section. Verify that the Help section is accessible in the post-56B context."},
+    {"task_id": "T6", "task_name": "View the CAPEX summary. Verify that the CAPEX summary grid is rendered correctly via the shared LineItemGrid partial."},
+    {"task_id": "T7", "task_name": "Check the state banner. Verify that the state banner hierarchy is clear in the post-56F context."},
+    {"task_id": "T8", "task_name": "View the COD. Verify that the COD is derived from construction_start_date and construction_duration_months in the post-56D context."},
+    {"task_id": "T9", "task_name": "Submit a run. Verify that the run summary is updated correctly."},
+    {"task_id": "T10", "task_name": "View the audit. Verify that the validation summary is shown correctly in the post-55F context."}
+  ],
+  "allowed_data": {
+    "canonical_reference_projects": ["TUHO", "Oborovo"],
+    "sample_project_from_creation_flow": true,
+    "what_is_not_allowed": [
+      "Generic solar / wind projects. Generic solar / wind remain exploratory and unvalidated.",
+      "Any project that is not in the canonical reference set.",
+      "Any production customer data. No production customer data is available; the controlled pilot uses only the canonical reference projects."
+    ]
+  },
+  "prohibited_data": [
+    "Production customer data (not available; canonical reference projects only).",
+    "Generic solar / wind project data (exploratory and unvalidated).",
+    "Any data that is not in the canonical reference set.",
+    "Any data that is restricted by the project's security / privacy policy."
+  ],
+  "setup_checklist": [
+    {"item": "The pilot environment is configured.", "description": "The controlled pilot uses a local or staging environment with the canonical reference projects loaded."},
+    {"item": "The pilot user is assigned.", "description": "A designated internal user is assigned to the controlled pilot. The pilot user is internal, not external."},
+    {"item": "The pilot user acknowledgement is signed.", "description": "The B21 pilot user acknowledgement checklist is completed by the pilot user. The acknowledgement is internal governance, not a legal contract."},
+    {"item": "The pilot evidence register is initialized.", "description": "The B20 pilot evidence register template is initialized with the pilot start date, the pilot end date, the pilot user, and the canonical reference projects."},
+    {"item": "The pilot issue log is initialized.", "description": "The B20 pilot issue log template is initialized."},
+    {"item": "The pilot friction log is initialized.", "description": "The B39 friction log (in this runbook) is initialized."},
+    {"item": "The pilot confusion log is initialized.", "description": "The B39 confusion log (in this runbook) is initialized."}
+  ],
+  "run_checklist": [
+    {"item": "The pilot user opens the index page.", "description": "The pilot user records the screenshot, the console log, the network log, and the tab navigation trace."},
+    {"item": "The pilot user runs through tasks T1-T10.", "description": "The pilot user records the screenshot, the console log, the network log, and the tab navigation trace for each task."},
+    {"item": "The pilot user records friction points.", "description": "The pilot user records any friction point in the B39 friction log."},
+    {"item": "The pilot user records confusion points.", "description": "The pilot user records any confusion point in the B39 confusion log."},
+    {"item": "The pilot user records issues.", "description": "The pilot user records any issue in the B20 pilot issue log."},
+    {"item": "The pilot user records evidence.", "description": "The pilot user records any evidence in the B20 pilot evidence register."}
+  ],
+  "evidence_to_collect": [
+    "Screenshots of the UI for each task.",
+    "Browser console logs for each task.",
+    "Browser network logs for each task.",
+    "Tab navigation traces for each task.",
+    "Friction log entries (per task).",
+    "Confusion log entries (per task).",
+    "Issue log entries (per issue).",
+    "Evidence register entries (per evidence)."
+  ],
+  "friction_log_template": {
+    "log_id": "FL-###",
+    "fields": ["task_id", "severity", "description", "screenshot", "pilot_user", "date_time"],
+    "severity_values": ["low", "medium", "high"]
+  },
+  "confusion_log_template": {
+    "log_id": "CL-###",
+    "fields": ["task_id", "severity", "description", "screenshot", "pilot_user", "date_time"],
+    "severity_values": ["low", "medium", "high"]
+  },
+  "issue_severity_definitions": {
+    "low": "cosmetic or minor UX issue. Does not block the controlled pilot.",
+    "medium": "functional issue that the pilot user can work around. Does not block the controlled pilot but should be fixed in a follow-up PR.",
+    "high": "functional issue that blocks one or more tasks. Blocks the controlled pilot until fixed."
+  },
+  "stop_criteria": [
+    "High-severity issue is identified that blocks one or more tasks.",
+    "Critical data integrity issue is identified.",
+    "The pilot user is unable to complete any task due to a UI or persistence issue.",
+    "The pilot user requests a stop."
+  ],
+  "rollback_criteria": [
+    "A financial output drift is detected on TUHO or Oborovo.",
+    "A parity-core lock drift is detected.",
+    "An engine-output golden drift is detected on TUHO or Oborovo.",
+    "A model output drift is detected on TUHO or Oborovo.",
+    "A schema / migration drift is detected.",
+    "A persistence / repository drift is detected."
+  ],
+  "post_run_evidence_update": [
+    "B20 pilot issue log (per-issue entries)",
+    "B20 pilot evidence register (per-evidence entries)",
+    "B21 pilot user acknowledgement (per-item sign-off entries)",
+    "B22 Q&A matrix (per-Q&A entries)",
+    "B23 reviewer question bank (per-question answers)",
+    "B39 friction log (per-friction entries)",
+    "B39 confusion log (per-confusion entries)"
+  ],
+  "what_blocks_controlled_pilot": [
+    "High-severity UX issue that blocks one or more tasks.",
+    "Critical data integrity issue.",
+    "Financial output drift on TUHO or Oborovo.",
+    "Parity-core lock drift.",
+    "Engine-output golden drift on TUHO or Oborovo.",
+    "Model output drift on TUHO or Oborovo.",
+    "Schema / migration drift.",
+    "Persistence / repository drift.",
+    "Any hard-stop condition from the B25 / B33 stop/go checklist.",
+    "Any prohibited no-go claim scenario."
+  ],
+  "what_can_be_fixed_later": [
+    "Low-severity UX issues.",
+    "Medium-severity UX issues that the pilot user can work around.",
+    "Cosmetic issues.",
+    "Minor color contrast improvements.",
+    "Minor wording improvements.",
+    "Minor visual polish."
+  ],
+  "no_claim_categories": {
+    "controlled_pilot_is_customer_reference": false,
+    "controlled_pilot_authorizes_paid_pilot": false,
+    "controlled_pilot_approves_production_rollout": false,
+    "controlled_pilot_approves_enterprise_saas_rollout": false,
+    "controlled_pilot_approves_marketing_launch": false,
+    "controlled_pilot_claims_external_validation": false,
+    "controlled_pilot_makes_lender_claim": false,
+    "controlled_pilot_makes_investment_advice_claim": false,
+    "controlled_pilot_makes_guaranteed_returns_claim": false,
+    "controlled_pilot_validates_generic_solar_wind": false
+  },
+  "generic_solar_wind_status": "exploratory_and_unvalidated",
+  "g20_status": "BLOCKED",
+  "r99_r102_status": "NOT_APPROVED",
+  "global_notes": [
+    "The controlled pilot is internal, not external. It is not a customer reference. It does not authorize paid pilot.",
+    "The controlled pilot is not the external review. The external review is a separate workstream.",
+    "B20, B21, B22, B23 are the B-track governance artifacts that govern the controlled pilot. B39 is a UI-focused runbook that supplements the B20 / B21 / B22 / B23 artifacts.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}
