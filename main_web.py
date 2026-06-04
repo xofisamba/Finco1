@@ -697,6 +697,36 @@ def _format_ui_timestamp(value) -> str:
     return text or "unavailable"
 
 
+def _runtime_summary_for_index(workspace_state) -> dict | None:
+    """Build a conservative runtime_summary dict for index.html.
+
+    This is the data the UI-2.6 last-run indicator consumes.
+
+    Source: only fields already in the workspace state record.
+    - `run_id` ← `last_runtime_snapshot_id` (real, from prior run)
+    - `last_run_at` ← `last_runtime_at` (real timestamp from prior run)
+
+    Returns None if no real runtime data exists, so the indicator
+    partial correctly renders nothing (no fake run_id, no fake timestamp).
+
+    The function is read-only — it does not write or mutate state.
+    """
+    if workspace_state is None:
+        return None
+    run_id = workspace_state.last_runtime_snapshot_id
+    last_run_at = workspace_state.last_runtime_at
+    if not run_id and not last_run_at:
+        return None
+    result: dict = {}
+    if run_id:
+        result["run_id"] = str(run_id)
+    if last_run_at is not None:
+        ts = _format_ui_timestamp(last_run_at)
+        if ts and ts != "unavailable":
+            result["last_run_at"] = ts
+    return result if result else None
+
+
 def _build_export_lineage_ui_context(project_record, workspace_state, export_lineage: list[dict[str, object]]) -> dict[str, object]:
     workspace_meta = _workspace_state_meta(workspace_state)
     project_label = project_record.project_name if project_record else "Workspace Project"
@@ -1466,6 +1496,10 @@ async def index(request: Request, project: str | None = None):
             "base_case_record": next((s for s in scenario_records if s.is_base_case), None),
             "non_base_scenarios": [s for s in scenario_records if not s.is_base_case],
             "scenario_editable_fields": SCENARIO_EDITABLE_FIELDS,
+            # Phase 55E: UI-2.6 run-source indicator context
+            # Derived from existing workspace_state (last_runtime_snapshot_id,
+            # last_runtime_at). None when no real runtime data exists.
+            "runtime_summary": _runtime_summary_for_index(workspace_state),
         },
     )
 
