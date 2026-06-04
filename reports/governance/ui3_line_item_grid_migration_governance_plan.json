@@ -77,7 +77,8 @@
   },
   "out_of_scope_sheets": {
     "list": ["all sheets other than app/templates/partials/sheet_capex.html"],
-    "sheet_capex_migration_status_at_b40_authoring": "Phase 57A PR #487 (open draft). Not yet merged."
+    "sheet_capex_migration_status_at_b40_authoring": "Phase 57A PR #487 (open draft). Not yet merged.",
+    "sheet_capex_migration_status_at_b35_pr_opening": "Phase 57A PR #487 MERGED on main as b173355b6021577f6567069ebd748aa3176f2475. The CAPEX summary grid is the only sheet that has been migrated to the shared LineItemGrid partial/macro at the time of B35 PR opening."
   },
   "future_migration_candidates": {
     "list": ["all sheets in the canonical reference project set (TUHO and Oborovo)", "all sheets in the canonical reference set that are not yet migrated"],
@@ -151,7 +152,18 @@
     "draft": true,
     "merged": false,
     "scope": "migrates only app/templates/partials/sheet_capex.html to shared LineItemGrid partial/macro",
-    "b40_does_not_claim": "B40 does not claim PR #487 is approved, merged, or scheduled to merge."
+    "b40_does_not_claim": "B40 does not claim PR #487 is approved by Agent B. B40 records the merge as a factual record."
+  },
+  "phase_57a_pilot_status_at_b35_pr_opening": {
+    "pr_number": 487,
+    "title": "Phase 57A: UI-3.1 LineItemGrid CAPEX summary pilot",
+    "state": "closed",
+    "draft": false,
+    "merged": true,
+    "merge_commit_sha": "b173355b6021577f6567069ebd748aa3176f2475",
+    "pre_merge_head_sha": "9f9d935df520ff87251149845e6c427331fd1984",
+    "scope": "migrates only app/templates/partials/sheet_capex.html to shared LineItemGrid partial/macro",
+    "b40_does_not_claim": "B40 does not claim PR #487 is approved by Agent B. B40 records the merge as a factual record. The merge decision is the user's."
   },
   "global_notes": [
     "UI-3 is a UI migration. UI-3 is not a financial model migration, not a backend migration, not a persistence migration, not a schema/migration, not a parity-core migration.",

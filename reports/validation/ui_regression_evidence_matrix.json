@@ -81,16 +81,17 @@
     {"area_id": "URE-18", "area_name": "Generic no-go claim display", "evidence_type": "visual review + content review", "current_coverage": "The no-go claim list (B1) and the commercial guardrail (B11) are in place. The generic no-go claim display is a UI element that surfaces the no-go claim list. Per Phase 54C the design system tokens and copy guardrails are in place.", "source_pr_or_phase": "B1 + B11 + B38 + Phase 54C / Phase 54H", "gap": "Per-template visual review of the no-go claim display is not yet performed.", "pilot_relevance": "medium", "paid_pilot_relevance": "high", "external_review_relevance": "high", "next_action": "User or designated reviewer performs the visual review of the no-go claim display."}
   ],
   "per_pr_review_summary": {
-    "PR_487_Phase_57A_open_draft": {"visual_review_state": "B36 protocol empty; visual review not yet performed"},
-    "PR_480_Phase_56C_DRAFT": {"visual_review_state": "B36 protocol empty; visual review not yet performed"},
-    "PR_477_Phase_56B_DRAFT": {"visual_review_state": "B36 protocol empty; visual review not yet performed"},
-    "PR_482_Phase_56E_DRAFT": {"visual_review_state": "B36 protocol empty; visual review not yet performed"},
-    "PR_483_Phase_56F_DRAFT": {"visual_review_state": "B36 protocol empty; visual review not yet performed"},
-    "PR_484_Phase_56G_DRAFT": {"visual_review_state": "B36 protocol empty; visual review not yet performed"},
-    "PR_481_Phase_56D_merged": {"visual_review_state": "Per-template visual review of the COD display is not yet performed"},
-    "PR_485_Phase_56H_1_merged": {"visual_review_state": "Visual review not yet performed (the hotfix is targeted; visual review is the GET / regression check)"},
-    "PR_486_Phase_57_pre_merged": {"visual_review_state": "Automated tests in place. Visual review of the route-render smoke and context-contract tests not yet performed."}
+    "PR_487_Phase_57A_merged": {"merge_commit_sha": "b173355b6021577f6567069ebd748aa3176f2475", "status_at_b37_authoring": "DRAFT", "status_at_b35_pr_opening": "MERGED on main", "visual_review_state": "B36 protocol empty; visual review not yet performed by the user or the designated reviewer"},
+    "PR_480_Phase_56C_merged": {"merge_commit_sha": "5268a7e7188f9e73d39e05427bcad9414ef42164", "status_at_b37_authoring": "DRAFT", "status_at_b35_pr_opening": "MERGED on main", "visual_review_state": "B36 protocol empty; visual review not yet performed"},
+    "PR_477_Phase_56B_merged": {"merge_commit_sha": "167bc22f2c8210fd8bb3652f02cb1fb2290ced8f", "status_at_b37_authoring": "DRAFT", "status_at_b35_pr_opening": "MERGED on main", "visual_review_state": "B36 protocol empty; visual review not yet performed"},
+    "PR_482_Phase_56E_merged": {"merge_commit_sha": "65b1919f326f9532897b6d6a148c73a185faabd4", "status_at_b37_authoring": "DRAFT", "status_at_b35_pr_opening": "MERGED on main", "visual_review_state": "B36 protocol empty; visual review not yet performed"},
+    "PR_483_Phase_56F_merged": {"merge_commit_sha": "4b1060826c538c1cb6c378fb0201b36cbef320e0", "status_at_b37_authoring": "DRAFT", "status_at_b35_pr_opening": "MERGED on main", "visual_review_state": "B36 protocol empty; visual review not yet performed"},
+    "PR_484_Phase_56G_merged": {"merge_commit_sha": "df88b332e22a2920799d1ac376e564e1ed4efa22", "status_at_b37_authoring": "DRAFT", "status_at_b35_pr_opening": "MERGED on main", "visual_review_state": "B36 protocol empty; visual review not yet performed"},
+    "PR_481_Phase_56D_merged": {"merge_commit_sha": "0c4e00be8cfb6f5b02c430bd367f9117916b95ad", "visual_review_state": "Per-template visual review of the COD display is not yet performed"},
+    "PR_485_Phase_56H_1_merged": {"merge_commit_sha": "3086a18029afc73efebceb5486e3dc05bb0b6740", "visual_review_state": "Visual review not yet performed (the hotfix is targeted; visual review is the GET / regression check)"},
+    "PR_486_Phase_57_pre_merged": {"merge_commit_sha": "9d05c0c8de8e097c59cf7253ada5592cb6556905", "visual_review_state": "Automated tests in place. Visual review of the route-render smoke and context-contract tests not yet performed."}
   },
+  "freshness_note": "All 'DRAFT' PRs listed at the time of B37 authoring (PR #480, #477, #482, #483, #484, #487) have merged on main before this B35 PR was opened. B37 records the merge commit SHAs as a factual record.",
   "no_claim_categories": {
     "matrix_validates_financial_model": false,
     "matrix_authorizes_paid_pilot": false,

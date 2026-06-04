@@ -1,11 +1,16 @@
-# Post-Phase54-56 UI Governance Refresh
+# Post-Phase54-57A UI Governance Refresh
 
-This file is the **post-Phase 54-56 UI governance refresh**.
-It is the B-track governance wrapper for the UI-1
-information architecture, the UI-2 prep, the UI-2.6
-context wiring, the Phase 56A-56G UX cleanup, the Phase
-56H-1 hotfix, and the Phase 57-pre route-render smoke
-and index context-contract tests.
+This file is the **post-Phase 54-57A UI governance
+refresh** (originally authored as the post-Phase 54-56
+UI governance refresh; PR #487 Phase 57A merged on
+main between B35 authoring and B35 PR opening; the
+governance scope was widened to include Phase 57A as a
+factual record). It is the B-track governance wrapper
+for the UI-1 information architecture, the UI-2 prep,
+the UI-2.6 context wiring, the Phase 56A-56G UX
+cleanup, the Phase 56H-1 hotfix, the Phase 57-pre
+route-render smoke and index context-contract tests,
+and the Phase 57A LineItemGrid CAPEX summary pilot.
 
 > **UI cleanup does not change financial formulas. UI
 > cleanup does not validate model outputs. UI cleanup
@@ -17,12 +22,25 @@ and index context-contract tests.
 > records the B-track governance state and the visual
 > review evidence for Agent A's UI work.**
 >
-> **PR #487 (Phase 57A: UI-3.1 LineItemGrid CAPEX
-> summary pilot) is open draft at the time of B35
-> authoring.** B35 does not claim that PR #487 is
-> merged, approved, or scheduled to merge. PR #487
-> status is recorded as a fact in the B36 visual review
-> pack, not as a B35 claim.
+> **Freshness update:** PR #487 (Phase 57A: UI-3.1
+> LineItemGrid CAPEX summary pilot) was open draft at
+> the time of B35 authoring; it merged on main as
+> `b173355b6021577f6567069ebd748aa3176f2475` before
+> this B35 PR was opened. B35 records PR #487 as
+> MERGED on main as a factual record. B35 does not
+> claim that PR #487 is approved by Agent B, that
+> Agent B has performed a visual review, or that PR
+> #487 is production-ready. The B36 visual review
+> protocol remains relevant as a post-merge reference
+> for the visual review that the user or designated
+> reviewer may perform.
+>
+> **Freshness update:** The Phase 56B (PR #477), 56C
+> (PR #480), 56E (PR #482), 56F (PR #483), and 56G
+> (PR #484) PRs were DRAFT at the time of B35
+> authoring; they all merged on main before this B35
+> PR was opened. B35 records these PRs as MERGED on
+> main as a factual record.
 
 ---
 
@@ -78,19 +96,34 @@ change the financial model.
 ### 1.3 Phase 56A-56G — UX cleanup
 
 * **Phase 56A (PR #476):** UX cleanup characterization
-  (docs/report/test-only, per PR title).
-* **Phase 56B (PR #477, DRAFT):** Move Help into
-  dedicated section.
-* **Phase 56C (PR #480, DRAFT):** Simplify New Project
-  form.
+  (docs/report/test-only, per PR title). **Status at
+  B35 authoring:** MERGED on main. **Status at B35
+  PR opening:** MERGED on main (unchanged).
+* **Phase 56B (PR #477):** Move Help into dedicated
+  section. **Status at B35 authoring:** DRAFT.
+  **Status at B35 PR opening:** MERGED on main as
+  `167bc22f2c8210fd8bb3652f02cb1fb2290ced8f`.
+* **Phase 56C (PR #480):** Simplify New Project form.
+  **Status at B35 authoring:** DRAFT. **Status at
+  B35 PR opening:** MERGED on main as
+  `5268a7e7188f9e73d39e05427bcad9414ef42164`.
 * **Phase 56D (PR #481):** Derive COD from construction
-  start and duration (post-fix policy).
-* **Phase 56E (PR #482, DRAFT):** Simplify project
-  switcher.
-* **Phase 56F (PR #483, DRAFT):** Polish state banner
-  hierarchy.
-* **Phase 56G (PR #484, DRAFT):** UX cleanup closeout
-  and visual review pack.
+  start and duration (post-fix policy). **Status at
+  B35 authoring:** MERGED on main. **Status at B35
+  PR opening:** MERGED on main (unchanged).
+* **Phase 56E (PR #482):** Simplify project switcher.
+  **Status at B35 authoring:** DRAFT. **Status at
+  B35 PR opening:** MERGED on main as
+  `65b1919f326f9532897b6d6a148c73a185faabd4`.
+* **Phase 56F (PR #483):** Polish state banner
+  hierarchy. **Status at B35 authoring:** DRAFT.
+  **Status at B35 PR opening:** MERGED on main as
+  `4b1060826c538c1cb6c378fb0201b36cbef320e0`.
+* **Phase 56G (PR #484):** UX cleanup closeout and
+  visual review pack. **Status at B35 authoring:**
+  DRAFT. **Status at B35 PR opening:** MERGED on
+  main as
+  `df88b332e22a2920799d1ac376e564e1ed4efa22`.
 
 **B35 implication:** The UX cleanup PRs are mostly
 docs/report/test-only or template-level changes. The
@@ -99,9 +132,10 @@ calculation change that does not affect the financial
 model outputs; it affects how the derived COD is
 displayed in the UI based on the construction_start_date
 and construction_duration_months fields. The remaining
-DRAFT PRs (56B, 56C, 56E, 56F, 56G) are recorded as DRAFT
-per the PR title; B35 does not claim they are merged or
-approved.
+DRAFT PRs (56B, 56C, 56E, 56F, 56G) were recorded as
+DRAFT at the time of B35 authoring; they have all
+merged on main before this B35 PR was opened. B35
+records the merge commit SHAs as a factual record.
 
 ### 1.4 Phase 56H-1 — hotfix
 
@@ -125,6 +159,27 @@ context keys expected by the templates are present in
 the index page context. These tests are guardrails for
 the UI-3 work; they do not validate the underlying state
 or authorize any external claim.
+
+### 1.6 Phase 57A — LineItemGrid CAPEX summary pilot (post-authoring merge)
+
+* **PR #487 (Phase 57A: UI-3.1 LineItemGrid CAPEX
+  summary pilot) MERGED on main** as
+  `b173355b6021577f6567069ebd748aa3176f2475`.
+  **Status at B35 authoring:** open draft (base
+  `9d05c0c8de8e097c59cf7253ada5592cb6556905`, head
+  `b0c06a1f16c25dd2ba432972ecb2147780b3d579`).
+  **Status at B35 PR opening:** MERGED on main.
+* B35 records the merge as a factual record. B35
+  does not perform a visual review. The B36 visual
+  review protocol is the post-merge reference for the
+  visual review that the user or designated reviewer
+  may perform.
+* B35 does not relax any no-go claim based on PR
+  #487 being merged. The LineItemGrid CAPEX pilot
+  remains a single-sheet pilot, not a full
+  spreadsheet engine, not a model validation, not a
+  production-readiness or enterprise-SaaS-readiness
+  claim.
 
 ## 2. What improved
 
@@ -239,8 +294,12 @@ for any external claim:
   structure; the actual evidence is collected during
   the UI-3 migration and the controlled pilot.
 * **PR #487 (Phase 57A LineItemGrid CAPEX) merge
-  decision.** PR #487 is open draft at the time of
-  B35 authoring. The merge decision is the user's.
+  decision.** PR #487 was open draft at the time of
+  B35 authoring; it has merged on main as
+  `b173355b6021577f6567069ebd748aa3176f2475` before
+  this B35 PR was opened. B35 records the merge as a
+  factual record; the user (not Agent B) made the
+  merge decision.
 * **Phase 56B, 56C, 56E, 56F, 56G DRAFT status.** The
   remaining UX cleanup PRs are DRAFT per the PR title.
   The merge decision for each is the user's.
@@ -338,7 +397,9 @@ not promoted** by the Phase 54A-56 UI work:
   certification / regulatory / SaaS claim.
 * B35 does not claim investment advice or guaranteed
   returns.
-* B35 does not claim PR #487 is approved or merged.
+* B35 records PR #487 as MERGED on main as a factual
+  record; B35 does not claim PR #487 is approved by
+  Agent B.
 
 ## 11. Cross-references
 

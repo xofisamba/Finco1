@@ -44,14 +44,19 @@
     "state_at_b36_authoring": "open",
     "draft_at_b36_authoring": true,
     "merged_at_b36_authoring": false,
+    "state_at_b35_pr_opening": "closed",
+    "draft_at_b35_pr_opening": false,
+    "merged_at_b35_pr_opening": true,
+    "merge_commit_sha_at_b35_pr_opening": "b173355b6021577f6567069ebd748aa3176f2475",
+    "pre_merge_head_sha_at_b35_pr_opening": "9f9d935df520ff87251149845e6c427331fd1984",
     "base_sha": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
-    "head_sha": "b0c06a1f16c25dd2ba432972ecb2147780b3d579",
+    "head_sha_at_b36_authoring": "b0c06a1f16c25dd2ba432972ecb2147780b3d579",
     "mergeable_at_b36_authoring": "true (clean)",
     "additions_at_b36_authoring": 1594,
     "deletions_at_b36_authoring": 162,
     "changed_files_at_b36_authoring": 6,
     "scope_per_pr_description": "migrates only app/templates/partials/sheet_capex.html to shared LineItemGrid partial/macro",
-    "b36_does_not_claim": "B36 does not claim PR #487 is approved, merged, or scheduled to merge."
+    "b36_does_not_claim": "B36 does not claim PR #487 is approved by Agent B. B36 records the merge as a factual record. The visual review is performed by the user or the designated reviewer; Agent B records the protocol."
   },
   "visual_checklist_sections": [
     "Pre-check",
@@ -106,8 +111,8 @@
     "Screen reader output (column headers and read-only state expected)."
   ],
   "no_claim_categories": {
-    "pr_487_approved": false,
-    "pr_487_merged": false,
+    "pr_487_approved_by_agent_b": false,
+    "pr_487_visual_review_performed_by_agent_b": false,
     "pr_487_scheduled_to_merge": false,
     "line_item_grid_capex_validates_financial_model": false,
     "line_item_grid_capex_is_full_ui_3_rollout": false,
@@ -124,6 +129,7 @@
     "B36 is not approval of PR #487. Agent B does not approve code correctness. The visual review is manual evidence unless screenshots or tests prove otherwise.",
     "The LineItemGrid CAPEX pilot is not the full UI-3 rollout. The LineItemGrid CAPEX pilot is not financial model validation.",
     "PR #487 status at the time of B36 authoring: open draft, mergeable, base SHA 9d05c0c, head SHA b0c06a1. B36 records PR #487 status as a fact, not as a B36 claim.",
+    "PR #487 status at the time of B35 PR opening: MERGED on main as b173355b6021577f6567069ebd748aa3176f2475. B36 records the merge as a factual record.",
     "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
   ]
 }

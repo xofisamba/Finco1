@@ -398,26 +398,45 @@ The matrix covers the following UI areas:
 
 The following per-PR visual review state is recorded:
 
-* **PR #487 (Phase 57A, open draft):** B36 visual review
-  protocol is empty. Visual review not yet performed.
-* **PR #480 (Phase 56C, DRAFT):** B36 visual review
-  protocol is empty. Visual review not yet performed.
-* **PR #477 (Phase 56B, DRAFT):** B36 visual review
-  protocol is empty. Visual review not yet performed.
-* **PR #482 (Phase 56E, DRAFT):** B36 visual review
-  protocol is empty. Visual review not yet performed.
-* **PR #483 (Phase 56F, DRAFT):** B36 visual review
-  protocol is empty. Visual review not yet performed.
-* **PR #484 (Phase 56G, DRAFT):** B36 visual review
-  protocol is empty. Visual review not yet performed.
-* **PR #481 (Phase 56D, merged):** Per-template visual
-  review of the COD display is not yet performed.
-* **PR #485 (Phase 56H-1, merged):** Visual review not
-  yet performed (the hotfix is targeted; visual review
-  is the GET / regression check).
-* **PR #486 (Phase 57-pre, merged):** Automated tests
-  in place. Visual review of the route-render smoke
-  and context-contract tests not yet performed.
+* **PR #487 (Phase 57A, MERGED on main as
+  `b173355b6021577f6567069ebd748aa3176f2475`):** B36
+  visual review protocol is empty. Visual review not
+  yet performed by the user or the designated
+  reviewer. B37 records the merge as a factual record.
+* **PR #480 (Phase 56C, MERGED on main as
+  `5268a7e7188f9e73d39e05427bcad9414ef42164`):** B36
+  visual review protocol is empty. Visual review not
+  yet performed.
+* **PR #477 (Phase 56B, MERGED on main as
+  `167bc22f2c8210fd8bb3652f02cb1fb2290ced8f`):** B36
+  visual review protocol is empty. Visual review not
+  yet performed.
+* **PR #482 (Phase 56E, MERGED on main as
+  `65b1919f326f9532897b6d6a148c73a185faabd4`):** B36
+  visual review protocol is empty. Visual review not
+  yet performed.
+* **PR #483 (Phase 56F, MERGED on main as
+  `4b1060826c538c1cb6c378fb0201b36cbef320e0`):** B36
+  visual review protocol is empty. Visual review not
+  yet performed.
+* **PR #484 (Phase 56G, MERGED on main as
+  `df88b332e22a2920799d1ac376e564e1ed4efa22`):** B36
+  visual review protocol is empty. Visual review not
+  yet performed.
+* **PR #481 (Phase 56D, MERGED on main):** Per-template
+  visual review of the COD display is not yet
+  performed.
+* **PR #485 (Phase 56H-1, MERGED on main):** Visual
+  review not yet performed (the hotfix is targeted;
+  visual review is the GET / regression check).
+* **PR #486 (Phase 57-pre, MERGED on main):** Automated
+  tests in place. Visual review of the route-render
+  smoke and context-contract tests not yet performed.
+
+All "DRAFT" PRs listed at the time of B37 authoring
+(PR #480, #477, #482, #483, #484, #487) have merged
+on main before this B35 PR was opened. B37 records
+the merge commit SHAs as a factual record.
 
 ## 4. What B37 is not
 

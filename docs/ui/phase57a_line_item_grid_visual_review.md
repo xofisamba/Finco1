@@ -16,6 +16,16 @@ pack**. It is the B-track visual review pack for PR #487
 > draft, mergeable, base SHA `9d05c0c`, head SHA
 > `b0c06a1`.** B36 records PR #487 status as a fact,
 > not as a B36 claim.
+>
+> **Freshness update:** PR #487 merged on main as
+> `b173355b6021577f6567069ebd748aa3176f2475` (pre-merge
+> head `9f9d935df520ff87251149845e6c427331fd1984`)
+> before this B35 PR was opened. B36 records the
+> merge as a factual record. B36 remains the
+> post-merge reference for the visual review that the
+> user or designated reviewer may perform. B36 does
+> not claim that Agent B has performed the visual
+> review.
 
 ---
 
@@ -29,24 +39,31 @@ the GitHub API; B36 does not claim any of these are
 * **PR number:** 487.
 * **Title:** "Phase 57A: UI-3.1 LineItemGrid CAPEX
   summary pilot".
-* **State:** `open`.
-* **Draft:** `true`.
-* **Merged:** `false`.
+* **State at B36 authoring:** `open`.
+* **Draft at B36 authoring:** `true`.
+* **Merged at B36 authoring:** `false`.
 * **Base SHA:** `9d05c0c8de8e097c59cf7253ada5592cb6556905`
   (PR #486 squash merge, Phase 57-pre route-render smoke
   and index context-contract tests).
-* **Head SHA:** `b0c06a1f16c25dd2ba432972ecb2147780b3d579`.
-* **Mergeable:** `true` (clean).
-* **Mergeable state:** `clean`.
-* **Files changed:** 6 (1594 insertions, 162 deletions,
-  per the PR description).
+* **Head SHA at B36 authoring:**
+  `b0c06a1f16c25dd2ba432972ecb2147780b3d579`.
+* **Mergeable at B36 authoring:** `true` (clean).
+* **Mergeable state at B36 authoring:** `clean`.
+* **Files changed at B36 authoring:** 6 (1594 insertions,
+  162 deletions, per the PR description).
 * **Scope per PR description:** migrates only
   `app/templates/partials/sheet_capex.html` to shared
   LineItemGrid partial/macro.
 
-**B36 does not claim that PR #487 is approved, merged,
-or scheduled to merge.** The merge decision is the
-user's.
+**Status at B35 PR opening:** PR #487 merged on main
+as `b173355b6021577f6567069ebd748aa3176f2475`.
+Pre-merge head SHA:
+`9f9d935df520ff87251149845e6c427331fd1984`.
+
+**B36 does not claim that PR #487 is approved by
+Agent B.** B36 records the merge as a factual record.
+The visual review is performed by the user or the
+designated reviewer; Agent B records the protocol.
 
 ## 2. CAPEX summary visual checklist
 
