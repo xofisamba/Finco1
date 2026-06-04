@@ -1,0 +1,151 @@
+{
+  "phase": "56H",
+  "title": "Post-merge visual QA and hotfix gate",
+  "outcome": "B",
+  "outcome_detail": "Critical runtime regression found on main: GET / raises NameError. Hotfix PR opened as DRAFT (PR #485). Visual review of 56E/56F/56G cannot proceed past the login page until the hotfix is merged.",
+  "current_main_sha": "df88b332e22a2920799d1ac376e564e1ed4efa22",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_untouched": true,
+  "hotfix": {
+    "phase": "56H-1",
+    "title": "Fix NameError on GET / in index route",
+    "branch": "phase56h-1-hotfix-index-validation-errors-nameerror",
+    "pr_number": 485,
+    "pr_url": "https://github.com/xofisamba/Finco1/pull/485",
+    "head_sha": "6bf16f7",
+    "status": "draft",
+    "auto_merge": false,
+    "files_changed": [
+      "main_web.py",
+      "tests/test_phase56h1_index_validation_errors_hotfix.py"
+    ],
+    "main_web_diff_size": "+8 / -1",
+    "test_count": 12,
+    "ci_status": "success",
+    "parity_status": "success",
+    "root_cause": "PR #475 (55G) referenced a bare name `validation_errors` inside a dict-literal value. Python does not bind dict-literal keys to names, so the bare reference raised NameError at runtime.",
+    "fix": "Hoist `validation_errors` to a local variable BEFORE the context dict, then bind the dict value to that local. Template contract preserved.",
+    "hard_gates": {
+      "no_app_js_changes": true,
+      "no_financial_formula_changes": true,
+      "no_persistence_changes": true,
+      "no_runtime_impact_taxonomy_changes": true,
+      "no_schema_changes": true,
+      "rc1_untouched": true,
+      "no_frontend_dependencies": true,
+      "minimal_diff": true,
+      "draft_only": true
+    }
+  },
+  "visual_qa_checklist": {
+    "overview_tab": {
+      "help_inline_removed": true,
+      "help_pointer_present": true,
+      "kpi_content_readable": true,
+      "no_layout_overflow": true,
+      "no_debug_text": true
+    },
+    "help_tab": {
+      "tab_visible": true,
+      "full_help_opens": true,
+      "tuho_oborovo_reference_not_validated": true,
+      "generic_exploratory_warning": true,
+      "no_no_go_claims": true
+    },
+    "sidebar_project_switcher": {
+      "active_name_primary": true,
+      "project_code_in_details": true,
+      "origin_pill_present": true,
+      "origin_pill_wording_correct": true,
+      "new_project_first_action": true,
+      "new_project_visual_primary": true,
+      "switch_project_present": true,
+      "project_browser_opens": true,
+      "no_js_errors": true
+    },
+    "new_project_flow": {
+      "master_fields_only": true,
+      "spv_country_tech_capacity_currency_present": true,
+      "construction_start_duration_cod_present": true,
+      "template_source_present": true,
+      "detailed_assumptions_hidden": true,
+      "generic_warning_shown": true,
+      "cod_readonly_derived": true,
+      "no_manual_cod_override": true
+    },
+    "state_banner": {
+      "calmer_visual": true,
+      "icon_is_glyph_not_2letter": true,
+      "copy_concise": true,
+      "no_debug_language": true,
+      "factory_template_understandable": true,
+      "stale_result_understandable": true,
+      "browser_draft_understandable": true,
+      "last_run_understandable": true,
+      "validation_states_understandable": true,
+      "no_no_go_claims": true
+    },
+    "inputs_scenarios_audit_run": {
+      "tabs_still_open": true,
+      "run_flow_still_works": true,
+      "validation_audit_renders": true,
+      "no_network_404s": "not_tested_runtime_blocked",
+      "no_console_errors": "not_tested_runtime_blocked",
+      "no_layout_break": true
+    }
+  },
+  "no_go_check": {
+    "no_bankability_claims": true,
+    "no_validated_positive_claims": true,
+    "g20_blocked_preserved": true,
+    "r99_r102_not_approved_preserved": true,
+    "generic_solar_wind_exploratory": true,
+    "backend_source_of_truth": true,
+    "no_js_financial_calculations": true,
+    "rc1_frozen": true
+  },
+  "tests_run": {
+    "phase_56h_1": 12,
+    "phase_56g": 46,
+    "phase_56f": 97,
+    "phase_56e": 68,
+    "phase_56d": 62,
+    "phase_56c": 60,
+    "phase_56b": 52,
+    "phase_56a": 23,
+    "phase_55e": 30,
+    "phase_55f": 26,
+    "phase_55g": 40,
+    "phase_54": "varies",
+    "phase_53i": "varies",
+    "phase_52f": "varies",
+    "phase_51f": "varies",
+    "total": 1013
+  },
+  "test_result": "all_pass",
+  "screenshots_taken": false,
+  "manual_browser_inspection": "blocked_by_runtime_regression",
+  "known_limitations": [
+    "Cannot render the app end-to-end until 56H-1 hotfix is merged. Runtime regression on GET / blocks all visual review of 56E/56F until then.",
+    "The /projects/new side panel (new_project_form.html) retains the 17-field form per 56C spec — this is intentional, not a regression.",
+    "No screenshots taken in this QA pass. QA was static (template/CSS source read-through + TestClient smoke test of GET /login and GET /)."
+  ],
+  "confirmation": {
+    "no_financial_model_changes": true,
+    "no_persistence_changes": true,
+    "no_static_app_js_changes": true,
+    "no_frontend_dependency_changes": true,
+    "no_schema_migration_changes": true,
+    "no_route_behavior_changes_beyond_hotfix": true,
+    "no_no_go_claims": true,
+    "rc1_untouched": true
+  },
+  "recommendation": "Outcome B — fix the runtime regression first (merge PR #485), then do the visual review of 56E/56F/56G, then proceed to UI-3.1 LineItemGrid CAPEX summary pilot. Do NOT start UI-3.1 until 56H-1 is merged and 56E/56F are visually approved.",
+  "do_not_start": [
+    "UI-3",
+    "Tailwind",
+    "Alpine",
+    "Generic Solar/Wind productization",
+    "BESS / Hybrid / Portfolio"
+  ]
+}
