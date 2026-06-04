@@ -4755,3 +4755,43 @@ body {
 .np-hidden-defaults {
   display: none;
 }
+
+/* ── Phase 56D: COD derived field display ──────────────────────── */
+.np-derived-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg-2, #f1f5f9);
+  border-left: 3px solid var(--info-border, #3b82f6);
+  border-radius: 4px;
+  font-size: 0.74rem;
+  color: var(--text-2, #475569);
+  line-height: 1.4;
+}
+
+.np-derived-note__label {
+  font-weight: 700;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--info-color, #1d4ed8);
+  background: var(--bg-1, #ffffff);
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--info-border, #3b82f6);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.np-derived-note__text {
+  flex: 1;
+}
+
+/* Readonly date input — keep it visually distinct */
+input[readonly],
+input[aria-readonly="true"] {
+  background: var(--bg-2, #f1f5f9);
+  color: var(--muted, #9ca3af);
+  cursor: not-allowed;
+}
