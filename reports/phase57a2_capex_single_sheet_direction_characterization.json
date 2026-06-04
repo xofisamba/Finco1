@@ -1,0 +1,140 @@
+{
+  "phase": "57A-2",
+  "title": "CAPEX single-sheet direction characterization",
+  "branch": "phase57a2-capex-single-sheet-direction-characterization",
+  "type": "docs/report/test-only",
+  "auto_merge_eligible": true,
+  "runtime_capex_rewrite_in_this_phase": false,
+  "base_sha_start": "88a6de68df1c651904accd5621ef2d8b5047a464",
+  "base_sha_start_note": "post-57F, UI-3.2 next-grid readiness plan merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "user_feedback": "The app should NOT have two CAPEX views (CAPEX Summary + CAPEX Detail / Excel reconciliation). The desired product direction is ONE Excel-like CAPEX sheet, similar to the source Excel model.",
+  "current_capex_ui_inventory": {
+    "view_A_capex_summary": {
+      "file": "app/templates/partials/sheet_capex.html",
+      "loc": 350,
+      "rendered_via": "lig_render macro (post-57A)",
+      "columns": ["Line Item", "Code", "Amount (kEUR)"],
+      "row_types": ["section_band", "data", "data_financing", "subtotal", "total", "delta_warning"],
+      "editability_user_project": "data rows editable; data_financing / subtotal / total / delta_warning read-only",
+      "editability_factory_reference": "all read-only",
+      "source": "project_ctx.capex_items (aggregated, 6 main sections)",
+      "sheet_banner": "🏗️ CAPEX Detail (note: mislabel; should be 'CAPEX Summary')"
+    },
+    "view_B_capex_detail": {
+      "file": "app/templates/partials/sheet_capex_detail.html",
+      "loc": 883,
+      "rendered_via": "hand-written table (not migrated to LineItemGrid)",
+      "columns": ["Line Item", "Code", "Amount (kEUR)", "Cost per MW", "Contingency (%)", "VAT (rate, amount)", "Payment schedule (M1..Mn)", "WHT (rate, amount)", "Depreciation", "Comments", "Test / status"],
+      "editability_user_project": "line item names and amounts editable; payment schedule and WHT derived (backend-computed)",
+      "editability_factory_reference": "all cells read-only with 'backend' badge for runtime-calculated values",
+      "source": "project_ctx.capex_detail_items (extended per-line data)",
+      "sheet_banner": "🏗️ CAPEX Detail"
+    },
+    "rendered_together_in": "app/templates/partials/workspace_shell.html:452-453"
+  },
+  "why_two_views_are_confusing": [
+    "Same tab, two competing surfaces, both labeled '🏗️ CAPEX Detail' (banner mislabel)",
+    "Different levels of detail, different editability",
+    "Different data sources (capex_items vs capex_detail_items); not guaranteed in sync",
+    "Different update paths; changes to one view do not propagate to the other",
+    "Two competing visual hierarchies (compact 3-column vs wide Excel-like)"
+  ],
+  "user_target_capex_model": {
+    "description": "ONE Excel-like CAPEX sheet, similar to the source Excel model",
+    "columns": [
+      {"name": "Line Item", "editability": "editable (user project)"},
+      {"name": "Amount (kEUR)", "editability": "editable (user project)"},
+      {"name": "Cost per MW", "editability": "editable (user project)"},
+      {"name": "Contingency (%)", "editability": "editable (user project)"},
+      {"name": "VAT (rate, amount)", "editability": "read-only (derived)"},
+      {"name": "WHT (rate, amount)", "editability": "read-only (derived)"},
+      {"name": "Depreciation", "editability": "read-only (derived)"},
+      {"name": "Comments", "editability": "editable (user project)"},
+      {"name": "Test / status", "editability": "read-only (derived from model checks)"},
+      {"name": "Payment schedule (M1..Mn)", "editability": "read-only (derived from payment curve)"},
+      {"name": "Utilisation during construction", "editability": "read-only (derived)"},
+      {"name": "Future IDC basis", "editability": "read-only (placeholder for future IDC work)"}
+    ]
+  },
+  "gap_analysis": {
+    "summary_view_A": "lacks cost per MW, contingency, VAT, WHT, depreciation, comments, test/status, payment schedule, utilisation, future IDC basis",
+    "detail_view_B": "has all target columns except 'future IDC basis' (which is new in 57A-2)",
+    "target_single_sheet": "promotes view B and adds 'future IDC basis' placeholder"
+  },
+  "recommended_direction": "Promote the Detail view (B) to the single CAPEX sheet and remove or collapse the Summary view (A).",
+  "reasons_for_recommended_direction": [
+    "Detail view (B) already has all target columns",
+    "Summary view (A) does not map to the source Excel model",
+    "Detail view (B) is closer to the source Excel model",
+    "57A LineItemGrid macro can be extended for view B's wider column set",
+    "Summary view (A)'s 57A work is not wasted; macro can be reused and extended"
+  ],
+  "treatment_of_57a_lineitemgrid": {
+    "keep_macro_as_technical_foundation": true,
+    "extend_macro_for_full_capex_line_grid": true,
+    "extensions_needed": [
+      "per-cell editability (not just per-row)",
+      "long horizontal grids (M1..Mn payment schedule columns)",
+      "horizontal scroll or column grouping for wide grids"
+    ],
+    "do_not_continue_summary_only_migration": true,
+    "do_not_migrate_opex_revenue_before_capex_single_sheet_locked": true
+  },
+  "next_runtime_proposal_57a_3": {
+    "objective": "Turn CAPEX into a single Excel-like line-item sheet (promote view B, hide/collapse view A).",
+    "allowed_files": [
+      "app/templates/partials/_line_item_grid.html (macro extension only)",
+      "app/templates/partials/sheet_capex.html (rewrite as single sheet)",
+      "app/templates/partials/sheet_capex_detail.html (mark as deprecated, do not delete)",
+      "app/templates/partials/workspace_shell.html (remove second include)",
+      "tests/test_phase<phase>_capex_single_sheet.py",
+      "docs/phase<phase>_capex_single_sheet_runtime.md",
+      "reports/phase<phase>_capex_single_sheet_runtime.json",
+      "tests/test_phase57pre_route_render_smoke.py (allowlist update only)"
+    ],
+    "forbidden_files": [
+      "main_web.py",
+      "app/waterfall_core.py",
+      "app/project_factories.py",
+      "app/persistence/*",
+      "app/services/*",
+      "static/app.js",
+      "static/styles.css (unless user explicitly approves)",
+      "any schema / migration",
+      "any fixture CSV",
+      "any frontend dependency config"
+    ],
+    "no_backend_model_idc_changes": true,
+    "no_tailwind_alpine": true,
+    "draft_only_no_auto_merge": true
+  },
+  "supersedes_57f_opex_recommendation": true,
+  "supersedes_57f_opex_recommendation_note": "The 57F plan recommended OPEX as the next candidate. This 57A-2 direction correction supersedes that recommendation: the CAPEX single-sheet direction must be locked first, then the LineItemGrid macro must be extended, then 57A-3 single CAPEX sheet is the next runtime migration. OPEX/Revenue is deferred until after 57A-3 is locked.",
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_runtime_capex_rewrite_in_57a2": true,
+    "no_ui32_opex_revenue_yet": true,
+    "no_idc_calculation_changes": true,
+    "rc1_untouched": true
+  },
+  "files_in_phase_57a2_pr": [
+    "docs/phase57a2_capex_single_sheet_direction_characterization.md",
+    "reports/phase57a2_capex_single_sheet_direction_characterization.json",
+    "tests/test_phase57a2_capex_single_sheet_direction_characterization.py"
+  ]
+}
