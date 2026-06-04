@@ -1,0 +1,430 @@
+{
+  "phase": "54G",
+  "title": "UI-2 implementation boundary and test plan",
+  "type": "docs_report_test_only",
+  "base_sha": "cb9cad0c2693fff9e5dc2e0c13a1b85515fa73e6",
+  "head_sha": "cb9cad0c2693fff9e5dc2e0c13a1b85515fa73e6",
+  "branch": "phase54g-ui2-implementation-boundary-test-plan",
+  "auto_merged": false,
+  "ui2_item_boundaries": {
+    "UI-2.1_state_banner": {
+      "files_allowed_to_create": [
+        "app/templates/partials/_state_banner.html"
+      ],
+      "files_allowed_to_modify": [
+        "app/templates/index.html",
+        "app/templates/partials/workspace_shell.html"
+      ],
+      "files_NOT_allowed": [
+        "static/styles.css (except additive new banner classes)",
+        "Existing templates NOT to be removed or rewritten",
+        "CSS :root variables",
+        "Existing gov-banner block"
+      ],
+      "allowed_context_keys": [
+        "banner_context (one of 11)",
+        "banner_data"
+      ],
+      "missing_keys": [
+        "is_browser_draft",
+        "is_saved"
+      ],
+      "missing_keys_workaround": "default False, render conditionally",
+      "css_classes": [
+        "class=\"banner banner-{tone}\"",
+        "tone: info, success, warn, fail, neutral"
+      ],
+      "css_changes_allowed": "YES (additive, minimal new classes, clearly marked /* UI-2.1 banner */)",
+      "js_changes_allowed": "NO",
+      "required_tests": [
+        "string tests for 11 contexts",
+        "no-go copy tests",
+        "snapshot test",
+        "visual review"
+      ],
+      "manual_review_checklist": [
+        "11 contexts render",
+        "Tone colors match spec",
+        "No forbidden claims",
+        "Copy from 54C spec",
+        "Dismissable TBD",
+        "Accessible (aria-*)"
+      ],
+      "rollback": "revert include, delete partial, revert CSS",
+      "auto_merge": "NO",
+      "stop_conditions": [
+        "tests fail",
+        "forbidden claims",
+        "forbidden files modified",
+        "CI/Parity fail",
+        "visual review fail"
+      ]
+    },
+    "UI-2.2_runtime_chip": {
+      "files_allowed_to_create": [
+        "app/templates/partials/_runtime_impact_chip.html"
+      ],
+      "files_allowed_to_modify": [
+        "app/templates/partials/sheet_capex_detail.html",
+        "app/templates/partials/audit_reconciliation_tab.html (optional)"
+      ],
+      "files_NOT_allowed": [
+        "_rt_tooltip helper in sheet_capex_detail.html (until new partial verified)",
+        "badge-rt-* classes",
+        "runtime_impact_taxonomy.py"
+      ],
+      "allowed_context_keys": [
+        "runtime_impact (4 states)",
+        "sub_reason (optional)",
+        "inline (bool)"
+      ],
+      "missing_keys": [
+        "sub_reason per runtime_impact (likely present)"
+      ],
+      "css_classes": [
+        "class=\"chip chip-{state}\"",
+        "state: drives-model, display-only, pending, needs-review"
+      ],
+      "css_changes_allowed": "YES (additive, .chip and .chip-{state})",
+      "js_changes_allowed": "NO",
+      "required_tests": [
+        "string tests for 4 states",
+        "taxonomy test",
+        "no-go copy tests",
+        "visual review"
+      ],
+      "manual_review_checklist": [
+        "4 chip variants render",
+        "Tooltip matches 54C sub-reason spec",
+        "Inline and block work",
+        "Old badge-rt-* chips still work"
+      ],
+      "rollback": "revert sheet_capex_detail.html to inline chip, keep _rt_tooltip, delete partial, revert CSS",
+      "auto_merge": "NO",
+      "stop_conditions": [
+        "tests fail",
+        "forbidden claims",
+        "taxonomy test fails",
+        "CI/Parity fail"
+      ]
+    },
+    "UI-2.3_validation_bar": {
+      "files_allowed_to_create": [
+        "app/templates/partials/_validation_summary_bar.html"
+      ],
+      "files_allowed_to_modify": [
+        "app/templates/partials/audit_reconciliation_tab.html"
+      ],
+      "files_NOT_allowed": [
+        "audit_reconciliation_tab.html row content (only add bar at top)",
+        "validation_service",
+        "backend (unless validation_summary key added)"
+      ],
+      "allowed_context_keys": [
+        "validation_summary (pass_count, warn_count, fail_count, last_validated_at)"
+      ],
+      "missing_keys": [
+        "validation_summary"
+      ],
+      "missing_keys_workaround": "compute in partial from existing context",
+      "css_classes": [
+        "class=\"validation-summary-bar validation-summary-bar-{tone}\"",
+        "tone: pass, warn, fail, info"
+      ],
+      "css_changes_allowed": "YES (additive, .validation-summary-bar)",
+      "js_changes_allowed": "NO",
+      "required_tests": [
+        "string tests for 4 tones",
+        "no-go copy tests",
+        "visual review"
+      ],
+      "manual_review_checklist": [
+        "4 tone variants render",
+        "Count + timestamp display",
+        "No forbidden claims",
+        "Tone colors match"
+      ],
+      "rollback": "revert include, delete partial, revert CSS",
+      "auto_merge": "NO",
+      "stop_conditions": [
+        "tests fail",
+        "forbidden claims",
+        "CI/Parity fail"
+      ]
+    },
+    "UI-2.4_factory_lock": {
+      "files_allowed_to_create": [
+        "app/templates/partials/_factory_lock_indicator.html"
+      ],
+      "files_allowed_to_modify": [
+        "app/templates/partials/workspace_shell.html OR app/templates/index.html"
+      ],
+      "files_NOT_allowed": [
+        "pilot_limitations_notice.html",
+        "data_source_label semantics"
+      ],
+      "allowed_context_keys": [
+        "is_factory_template (bool)",
+        "factory_template_name (optional)"
+      ],
+      "missing_keys": [
+        "is_factory_template"
+      ],
+      "missing_keys_workaround": "check data_source_label for TUHO/Oborovo",
+      "css_classes": [
+        "class=\"factory-lock-indicator factory-lock-indicator--{tone}\""
+      ],
+      "css_changes_allowed": "YES (additive, .factory-lock-indicator)",
+      "js_changes_allowed": "NO",
+      "required_tests": [
+        "string tests for both states",
+        "no-go copy tests",
+        "visual review"
+      ],
+      "manual_review_checklist": [
+        "Both states render",
+        "Lock icon visible",
+        "No forbidden claims",
+        "Tooltip explains source-locked/fixture-backed"
+      ],
+      "rollback": "revert include, delete partial, revert CSS",
+      "auto_merge": "NO",
+      "stop_conditions": [
+        "tests fail",
+        "forbidden claims",
+        "CI/Parity fail"
+      ]
+    },
+    "UI-2.5_stale_warning": {
+      "files_allowed_to_create": [
+        "NONE (reuses empty_states_notice.html::stale_run() macro)"
+      ],
+      "files_allowed_to_modify": [
+        "app/templates/index.html (add import + call)"
+      ],
+      "files_NOT_allowed": [
+        "empty_states_notice.html",
+        "stale_run() macro definition"
+      ],
+      "allowed_context_keys": [
+        "none (macro takes no args)"
+      ],
+      "missing_keys": [
+        "inputs_changed_since_run"
+      ],
+      "missing_keys_workaround": "always show warning when runtime_summary exists but no fresh run",
+      "css_classes": [
+        "existing .empty-state-notice, .empty-state-notice--warn"
+      ],
+      "css_changes_allowed": "NO (uses existing classes)",
+      "js_changes_allowed": "NO",
+      "required_tests": [
+        "string tests for stale_run() macro",
+        "no-go copy tests",
+        "visual review"
+      ],
+      "manual_review_checklist": [
+        "Banner shows when expected",
+        "Copy is correct",
+        "No forbidden claims"
+      ],
+      "rollback": "revert include in index.html",
+      "auto_merge": "NO",
+      "stop_conditions": [
+        "tests fail",
+        "forbidden claims",
+        "CI/Parity fail"
+      ]
+    },
+    "UI-2.6_run_source": {
+      "files_allowed_to_create": [
+        "app/templates/partials/_last_run_indicator.html"
+      ],
+      "files_allowed_to_modify": [
+        "app/templates/index.html",
+        "app/templates/partials/scenario_workspace.html (optional)",
+        "app/templates/partials/kpis.html (optional)"
+      ],
+      "files_NOT_allowed": [
+        "rs-provenance-banner in runtime_summary.html",
+        "runtime_summary dict shape",
+        "run_service"
+      ],
+      "allowed_context_keys": [
+        "runtime_summary.ran_at",
+        "runtime_summary.status",
+        "runtime_summary.active_scenario_name",
+        "runtime_summary.data_source_label",
+        "runtime_summary.run_id (optional)"
+      ],
+      "missing_keys": [
+        "runtime_summary.run_id (may not be in current dict)"
+      ],
+      "missing_keys_workaround": "use existing data only",
+      "css_classes": [
+        "class=\"last-run-indicator last-run-indicator--{tone}\""
+      ],
+      "css_changes_allowed": "YES (additive, .last-run-indicator)",
+      "js_changes_allowed": "NO",
+      "required_tests": [
+        "string tests with and without runtime_summary",
+        "no-go copy tests",
+        "visual review"
+      ],
+      "manual_review_checklist": [
+        "Indicator shows when runtime_summary exists",
+        "Timestamp displays",
+        "No forbidden claims",
+        "Indicator is small/unobtrusive"
+      ],
+      "rollback": "revert includes, delete partial, revert CSS",
+      "auto_merge": "NO",
+      "stop_conditions": [
+        "tests fail",
+        "forbidden claims",
+        "CI/Parity fail"
+      ]
+    }
+  },
+  "required_tests_by_item": {
+    "UI-2.1": [
+      "string tests for 11 contexts",
+      "no-go copy tests",
+      "snapshot test",
+      "visual review"
+    ],
+    "UI-2.2": [
+      "string tests for 4 states",
+      "taxonomy test",
+      "no-go copy tests",
+      "visual review"
+    ],
+    "UI-2.3": [
+      "string tests for 4 tones",
+      "no-go copy tests",
+      "visual review"
+    ],
+    "UI-2.4": [
+      "string tests for both states",
+      "no-go copy tests",
+      "visual review"
+    ],
+    "UI-2.5": [
+      "string tests for stale_run() macro",
+      "no-go copy tests",
+      "visual review"
+    ],
+    "UI-2.6": [
+      "string tests with/without runtime_summary",
+      "no-go copy tests",
+      "visual review"
+    ]
+  },
+  "allowed_files_by_item": {
+    "UI-2.1": [
+      "create: app/templates/partials/_state_banner.html",
+      "modify: index.html, workspace_shell.html"
+    ],
+    "UI-2.2": [
+      "create: app/templates/partials/_runtime_impact_chip.html",
+      "modify: sheet_capex_detail.html"
+    ],
+    "UI-2.3": [
+      "create: app/templates/partials/_validation_summary_bar.html",
+      "modify: audit_reconciliation_tab.html"
+    ],
+    "UI-2.4": [
+      "create: app/templates/partials/_factory_lock_indicator.html",
+      "modify: workspace_shell.html OR index.html"
+    ],
+    "UI-2.5": [
+      "create: NONE",
+      "modify: index.html"
+    ],
+    "UI-2.6": [
+      "create: app/templates/partials/_last_run_indicator.html",
+      "modify: index.html, scenario_workspace.html (optional), kpis.html (optional)"
+    ]
+  },
+  "forbidden_changes": [
+    "CSS :root variables",
+    "Existing CSS classes (.gov-banner, .badge-rt-*, .audit-row-status, etc.)",
+    "Existing Jinja helpers (_rt_tooltip) until new partial verified",
+    "Existing empty_states_notice.html macros",
+    "runtime_impact_taxonomy.py",
+    "runtime_summary dict shape",
+    "run_service and any service file",
+    "Any persistence file",
+    "main_web.py",
+    "No-go claims",
+    "rc1 (b425a07)"
+  ],
+  "manual_review_checklists": {
+    "per_item": [
+      "All HTML variants render correctly",
+      "No forbidden UI claims (per 54C list)",
+      "Copy matches 54C locked spec",
+      "Tone colors match 54C spec",
+      "CSS additions are additive and clearly marked",
+      "No existing classes/helpers removed",
+      "No backend files modified"
+    ]
+  },
+  "rollback_plan": {
+    "generic": [
+      "Revert the include in the parent template",
+      "Delete the new partial (if any)",
+      "Revert any added CSS",
+      "Run guardrails (51F, 52F, 53I, 54x) to confirm clean",
+      "Verify rc1 still untouched"
+    ]
+  },
+  "ui2_auto_merge_policy": {
+    "default": "NO",
+    "rationale": "First runtime change after long docs/spec phase. Each PR must be reviewed by user before merge.",
+    "exception": "None. Even low-risk items (UI-2.5) require user review."
+  },
+  "stop_conditions_universal": [
+    "Any test fails",
+    "Any forbidden UI claim found",
+    "Any forbidden file modified",
+    "CI/Parity Guardrails fail",
+    "Visual review fails",
+    "Backend file changed (UI-2 is presentation only)",
+    "Service file changed",
+    "Template semantics changed (only additive includes allowed)",
+    "rc1 changed"
+  ],
+  "recommended_next_step": "54H UI no-go copy scanner spec",
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_guardrails": 51,
+    "phase54d_guardrails": 36,
+    "phase54e_guardrails": 38,
+    "phase54f_guardrails": 33,
+    "phase54g_new": 17,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 336
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
