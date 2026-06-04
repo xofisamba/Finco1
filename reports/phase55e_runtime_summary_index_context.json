@@ -1,0 +1,55 @@
+{
+  "phase": "55E",
+  "title": "Wire runtime_summary into index context",
+  "status": "DRAFT",
+  "type": "minimal-backend-context-wiring",
+  "base_sha": "c280a353c1b18c81112b1a6d13eac7d156b4cc20",
+  "head_sha": "pending",
+  "branch": "phase55e-wire-runtime-summary-index-context",
+  "context_keys_added": [
+    {
+      "key": "runtime_summary",
+      "used_by": "_last_run_indicator.html",
+      "source": "workspace_state.last_runtime_snapshot_id, workspace_state.last_runtime_at",
+      "shape": "None | {\"run_id\": str, \"last_run_at\": str} (any subset of fields with real data)"
+    }
+  ],
+  "files_modified": [
+    "main_web.py (added _runtime_summary_for_index helper, added runtime_summary to index context)"
+  ],
+  "files_created": [
+    "tests/test_phase55e_runtime_summary_index_context.py",
+    "docs/phase55e_runtime_summary_index_context.md",
+    "reports/phase55e_runtime_summary_index_context.json"
+  ],
+  "production_code_changed": true,
+  "production_code_scope": "single read-only helper + single context key in existing render context",
+  "templates_changed": false,
+  "static_css_js_changed": false,
+  "service_persistence_changed": false,
+  "model_parity_schema_formula_fixture_changed": false,
+  "frontend_dependency_changed": false,
+  "persistence_writes_added": false,
+  "financial_output_changed": false,
+  "run_route_behavior_changed": false,
+  "no_go_claim_introduced": false,
+  "rc1_untouched": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_added": 30,
+  "tests_total": 839,
+  "tests_passing": 839,
+  "ci_status": "pending",
+  "parity_guardrails_status": "pending",
+  "phase51f_status": "pass",
+  "phase52f_status": "pass",
+  "phase53i_status": "pass",
+  "phase54_status": "pass",
+  "ui21_regression": "pass",
+  "ui22_regression": "pass",
+  "ui23_regression": "pass",
+  "ui24_regression": "pass",
+  "ui25_regression": "pass",
+  "ui26_regression": "pass",
+  "pr_draft": true,
+  "ready_for_user_visual_review": true
+}
