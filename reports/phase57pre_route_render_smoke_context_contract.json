@@ -1,0 +1,92 @@
+{
+  "phase": "57pre",
+  "title": "Route-render smoke and index context-contract tests",
+  "goal": "Add broad GET route-render smoke coverage and a focused GET / context-contract test, so future UI / template work (UI-3.1 LineItemGrid, the post-UX-cleanup token consolidation, anything else) cannot ship a TemplateResponse regression of the same shape as the 56H-1 NameError bug.",
+  "type": "test-only",
+  "auto_merge_eligible": true,
+  "current_main_sha": "3086a18029afc73efebceb5486e3dc05bb0b6740",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_untouched": true,
+  "why_56h1_was_missed": {
+    "root_cause": "55G (PR #475) referenced a bare name 'validation_errors' inside a dict-literal value. Python does not bind dict-literal keys to names in the enclosing scope, so the bare reference raised NameError at runtime.",
+    "test_gap": "55G / 55F / 55E tests import the helper functions in isolation; they do not render the full index route via FastAPI TestClient. CI runs Phase 51F + 51M-1 + revenue + opex + SHL waterfall tests, not the index route's TemplateResponse call. Parity Guardrails check structural invariants only.",
+    "bug_lifetime_days": 5,
+    "bug_merged_at": "2026-06-04T12:16:21Z",
+    "fix_merged_at": "2026-06-04T17:35:15Z"
+  },
+  "routes_covered": [
+    {"path": "/login", "label": "login", "auth_required": false, "tests": ["status_not_500", "no_exception_marker"]},
+    {"path": "/public-health", "label": "public health", "auth_required": false, "tests": ["status_not_500"]},
+    {"path": "/readyz", "label": "readyz", "auth_required": false, "tests": ["status_not_500"]},
+    {"path": "/health", "label": "private health", "auth_required": true, "tests": ["status_not_500", "no_exception_marker"]},
+    {"path": "/", "label": "index", "auth_required": true, "tests": ["status_200", "workspace_marker_present", "no_nameerror", "banner_context_path", "runtime_summary_path", "validation_summary_path", "help_tab_path", "content_type_html", "project_param_tuho", "project_param_oborovo"]},
+    {"path": "/download", "label": "download GET", "auth_required": true, "tests": ["status_not_500"]},
+    {"path": "/projects/new", "label": "new project form", "auth_required": true, "tests": ["status_not_500", "no_exception_marker"]},
+    {"path": "/projects/browse", "label": "project browser", "auth_required": true, "tests": ["status_not_500", "no_exception_marker"]},
+    {"path": "/scenarios", "label": "scenarios", "auth_required": true, "tests": ["status_not_500", "no_exception_marker"]},
+    {"path": "/scenarios/history", "label": "scenarios history", "auth_required": true, "tests": ["status_not_500", "no_exception_marker"]},
+    {"path": "/scenarios/compare", "label": "scenarios compare", "auth_required": true, "tests": ["status_not_500", "no_exception_marker"]},
+    {"path": "/runs", "label": "runs list", "auth_required": true, "tests": ["status_not_500", "no_exception_marker"]}
+  ],
+  "routes_covered_count": 13,
+  "routes_skipped": [
+    {"path": "/scenarios/{scenario_id}/load", "reason": "requires a real scenario_id; the smoke test would need to seed a scenario fixture. Future: add a real seed-scenario fixture and a parametrized test."},
+    {"path": "/run/{run_id}", "reason": "requires a real run_id; the smoke test would need to seed a run. Future: add a real seed-run fixture and a parametrized test."},
+    {"path": "/download", "reason": "returns a streaming XLSX response; status is checked but content is not asserted (asserting XLSX format / structure is the job of the run tests)."},
+    {"path": "/exports/runtime-summary.csv", "reason": "currently raises a pre-existing TypeError on main (record_runtime_summary_export() got an unexpected keyword argument 'safe_project'). OUT OF SCOPE for 57pre test-only PR. A future PR will fix the call signature and re-enable smoke."},
+    {"path": "/exports/institutional-workbook.xlsx", "reason": "currently raises a pre-existing TypeError on main (record_institutional_workbook_export() got an unexpected keyword argument 'safe_project'). OUT OF SCOPE for 57pre test-only PR. A future PR will fix the call signature and re-enable smoke."}
+  ],
+  "exception_markers_checked": [
+    "Traceback",
+    "NameError",
+    "UnboundLocalError",
+    "Internal Server Error",
+    "ExceptionGroup",
+    "unhandled",
+    "exception_type="
+  ],
+  "tests_added": {
+    "total": 45,
+    "by_class": {
+      "test_get_route_smoke": 13,
+      "TestIndexContextContract": 10,
+      "Test56H1RegressionPin": 3,
+      "TestGuardrails": 8,
+      "TestRc1Untouched": 3,
+      "TestSkipDocumentation": 6,
+      "TestCloseoutArtifacts": 4
+    }
+  },
+  "ci_status": "success",
+  "parity_status": "success",
+  "hard_gates": {
+    "no_runtime_code_changes": true,
+    "no_template_changes": true,
+    "no_css_changes": true,
+    "no_js_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_schema_migration_changes": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_frontend_dependencies_added": true,
+    "no_no_go_claims": true,
+    "rc1_untouched": true
+  },
+  "files_changed": [
+    "tests/test_phase57pre_route_render_smoke.py",
+    "docs/phase57pre_route_render_smoke_context_contract.md",
+    "reports/phase57pre_route_render_smoke_context_contract.json"
+  ],
+  "recommendation": "UI-3.1 can start conditionally. The 57pre smoke suite is in place. UI-3.1 work must (1) include the smoke suite in its test list, (2) add any new GET endpoint(s) to the parametrized GET_ROUTES table, (3) add any new context key on GET / to the TestIndexContextContract class, and (4) keep the 56H-1 regression pin passing. If the 57pre smoke suite fails on the UI-3.1 branch, the PR is rejected at the smoke-test step before it reaches the post-merge visual QA pass.",
+  "do_not_start": [
+    "UI-3.1 (until this PR is merged and the smoke suite is in the UI-3.1 test list)",
+    "Tailwind",
+    "Alpine",
+    "Generic Solar / Wind productization",
+    "BESS / Hybrid / Portfolio"
+  ]
+}
