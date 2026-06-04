@@ -1,0 +1,140 @@
+{
+  "phase": "57D",
+  "title": "Live no-go copy scanner implementation",
+  "branch": "phase57d-live-no-go-copy-scanner",
+  "type": "test-only",
+  "auto_merge_eligible": true,
+  "base_sha_start": "09f151a32a12152f5b2650e26394aa4174e215d3",
+  "base_sha_start_note": "post-57C, Validation bar semantics design merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "problem_statement": {
+    "current_state": "No-go copy tests are snapshot-based and tied to specific branches (54H spec, 57A branch). There is no always-on, repository-wide scanner that future PRs can rely on.",
+    "risk": "A new PR (UI-3.2, CSS consolidation, Help update) could silently introduce a forbidden term in a template or pilot-facing doc.",
+    "is_correctness_bug": false,
+    "is_safety_problem": true
+  },
+  "canonical_no_go_terms": [
+    "bankable",
+    "bank-grade",
+    "lender-ready",
+    "certified",
+    "audit-ready",
+    "validated",
+    "investor-ready",
+    "SaaS-ready",
+    "production-ready",
+    "external validation",
+    "customer reference",
+    "investment advice",
+    "guaranteed returns",
+    "model-validated",
+    "LineItemGrid is validated"
+  ],
+  "allowed_path_patterns": [
+    "tests/test_phase54h_ui_no_go_copy_scanner.py",
+    "tests/test_phase57a_ui3_line_item_grid_capex_summary.py",
+    "tests/test_phase57d_live_no_go_copy_scanner.py",
+    "docs/phase*_*.md",
+    "docs/external_review/no_go_claims.md",
+    "reports/phase*_no_go*.json",
+    "docs/governance/phase53_*.md"
+  ],
+  "allowed_negative_context_phrases": [
+    "not validated",
+    "not approved",
+    "must not be presented as",
+    "no-go",
+    "no go",
+    "forbidden positive claim",
+    "is not a",
+    "does not validate the model",
+    "presentation refactor only",
+    "where it read",
+    "replaced with",
+    "rephrasing",
+    "no runtime change",
+    "no promotion",
+    "internal check",
+    "model evidence",
+    "reference",
+    "parity evidence"
+  ],
+  "scanner_implementation": {
+    "module": "tests/test_phase57d_live_no_go_copy_scanner.py",
+    "scans": [
+      "app/templates/**/*.html",
+      "docs/**/*.md",
+      "reports/**/*.json"
+    ],
+    "skips": [
+      "Jinja comments {# ... #}",
+      "HTML comments <!-- ... -->"
+    ],
+    "context_window_chars": 200,
+    "reports_violations_as_test_failures": true,
+    "does_not_silently_rewrite": true,
+    "runtime_side_effects": false
+  },
+  "test_classes": {
+    "TestScannerHelper": [
+      "test_no_go_terms_constant_has_canonical_list",
+      "test_allowed_path_patterns_contains_test_files",
+      "test_allowed_path_patterns_contains_no_go_docs",
+      "test_scan_file_finds_no_violations_in_clean_template",
+      "test_scan_file_finds_violation_in_template_with_forbidden_term",
+      "test_scan_file_skips_jinja_and_html_comments",
+      "test_scan_file_recognizes_negative_context",
+      "test_scan_file_recognizes_historical_mention"
+    ],
+    "TestLiveRepositoryScan": [
+      "test_app_templates_clean",
+      "test_docs_clean_except_allowlisted",
+      "test_reports_clean_except_allowlisted"
+    ],
+    "TestRc1Untouched": [
+      "test_rc1_sha_constant_stable",
+      "test_rc1_still_in_git_history"
+    ],
+    "TestHardNoGoScope": [
+      "test_no_runtime_files_in_diff",
+      "test_no_main_web_py_changes",
+      "test_no_app_js_changes",
+      "test_no_styles_css_changes",
+      "test_no_services_or_persistence_changes"
+    ],
+    "TestScannerDoesNotSilentlyRewrite": [
+      "test_scanner_only_reports_no_writes",
+      "test_scanner_no_runtime_side_effects"
+    ]
+  },
+  "behavior_on_existing_violations": {
+    "action": "Test fails with a clear violation report (file path, line number, forbidden term, surrounding context).",
+    "no_silent_rewrite": true,
+    "report_violations_to_combined_report": true,
+    "defer_fix_to_future_pr": true
+  },
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_silent_copy_rewrites": true,
+    "rc1_untouched": true
+  },
+  "files_in_phase_57d_pr": [
+    "docs/phase57d_live_no_go_copy_scanner.md",
+    "reports/phase57d_live_no_go_copy_scanner.json",
+    "tests/test_phase57d_live_no_go_copy_scanner.py"
+  ]
+}
