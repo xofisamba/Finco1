@@ -4352,3 +4352,100 @@ body {
   font-weight: 500;
   color: var(--text-1, #1a1a1a);
 }
+
+/* ── UI-2.1: State Clarity Banner ────────────────────────────────────── */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, #dde4ed);
+  margin-bottom: 1rem;
+  background: var(--surface, #ffffff);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.banner-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--surface-2, #f7f9fc);
+  color: var(--text-1, #1a1a1a);
+  margin-top: 0.05rem;
+}
+
+.banner-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.banner-title {
+  font-weight: 700;
+  color: var(--text-1, #1a1a1a);
+}
+
+.banner-desc {
+  color: var(--text-2, #475569);
+  font-size: 0.8rem;
+}
+
+.banner-info {
+  border-left: 3px solid #1a56db;
+  background: #f0f5ff;
+}
+
+.banner-info .banner-icon {
+  background: #1a56db;
+  color: #ffffff;
+}
+
+.banner-success {
+  border-left: 3px solid #0f7a52;
+  background: #e8f3ed;
+}
+
+.banner-success .banner-icon {
+  background: #0f7a52;
+  color: #ffffff;
+}
+
+.banner-warn {
+  border-left: 3px solid #b45309;
+  background: #fef5e7;
+}
+
+.banner-warn .banner-icon {
+  background: #b45309;
+  color: #ffffff;
+}
+
+.banner-fail {
+  border-left: 3px solid #b91c1c;
+  background: #fde8e8;
+}
+
+.banner-fail .banner-icon {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.banner-neutral {
+  border-left: 3px solid #7a96b8;
+  background: var(--surface-2, #f7f9fc);
+}
+
+.banner-neutral .banner-icon {
+  background: #7a96b8;
+  color: #ffffff;
+}

@@ -1,0 +1,147 @@
+{
+  "phase": "UI-2.1",
+  "title": "State clarity banner partial",
+  "type": "runtime_template_implementation",
+  "branch": "phase-ui2-1-state-clarity-banner",
+  "base_sha": "075dc77b5953226b9115513ff208671da97030ef",
+  "head_sha": "075dc77b5953226b9115513ff208671da97030ef",
+  "draft": true,
+  "auto_merged": false,
+  "files_added": [
+    {
+      "file": "app/templates/partials/_state_banner.html",
+      "lines": 90
+    },
+    {
+      "file": "tests/test_ui2_1_state_banner_partial.py",
+      "lines": 280
+    },
+    {
+      "file": "docs/ui2_1_state_clarity_banner_partial.md"
+    },
+    {
+      "file": "reports/ui2_1_state_clarity_banner_partial.json"
+    }
+  ],
+  "files_modified": [
+    {
+      "file": "app/templates/index.html",
+      "change": "added 3-line include"
+    },
+    {
+      "file": "static/styles.css",
+      "change": "added 96 lines of .banner-* classes"
+    }
+  ],
+  "files_NOT_changed": [
+    "main_web.py",
+    "app/services/",
+    "app/persistence/",
+    "app/runtime_impact_taxonomy.py",
+    "static/app.js",
+    ":root CSS variables"
+  ],
+  "css_selectors_added": [
+    ".banner",
+    ".banner-icon",
+    ".banner-body",
+    ".banner-title",
+    ".banner-desc",
+    ".banner-info",
+    ".banner-success",
+    ".banner-warn",
+    ".banner-fail",
+    ".banner-neutral"
+  ],
+  "banner_spec": {
+    "contexts": 11,
+    "tones": 5,
+    "contexts_list": [
+      "factory_template",
+      "user_created_project",
+      "active_scenario",
+      "saved_scenario",
+      "browser_draft",
+      "dirty_state",
+      "stale_result",
+      "last_run",
+      "validation_failed",
+      "display_only_row",
+      "pending_runtime_source"
+    ],
+    "tones_list": [
+      "info",
+      "success",
+      "warn",
+      "fail",
+      "neutral"
+    ],
+    "html_structure": "<div class=\"banner banner-{tone}\" role=\"status\" aria-label=\"{title}\"><span class=\"banner-icon\">{icon}</span><div class=\"banner-body\"><span class=\"banner-title\">{title}</span><span class=\"banner-desc\">{description}</span></div></div>"
+  },
+  "behavior": {
+    "missing_context_renders_nothing": true,
+    "default_tone": "info",
+    "icon_format": "2-letter code (e.g., FT for factory_template)",
+    "accessibility": [
+      "role=\"status\"",
+      "aria-label=\"{title}\"",
+      "aria-hidden on icon"
+    ]
+  },
+  "no_go_copy_check": {
+    "passed": true,
+    "checked_terms": [
+      "bankable",
+      "lender-ready",
+      "investor-ready",
+      "production-ready",
+      "guaranteed returns",
+      "investment advice",
+      "customer reference",
+      "external validation",
+      "validated (alone)",
+      "audit-ready"
+    ],
+    "safe_terms_used": [
+      "model evidence",
+      "validation checks",
+      "review"
+    ]
+  },
+  "tests_run": {
+    "ui2_1_new": 56,
+    "phase54A_J": 412,
+    "phase51f": 21,
+    "phase52f_specifications": 19,
+    "phase52f_regression": 10,
+    "phase53i4": 45,
+    "total": 563
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_service_persistence_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_forbidden_ui_claims": true,
+    "phase_51f_pass": true,
+    "phase_52f_pass": true,
+    "phase_53i_pass": true,
+    "phase_54_pass": true,
+    "all_tests_pass": true,
+    "rc1_untouched": true,
+    "pr_draft": true
+  },
+  "visual_review_required": true,
+  "visual_review_checklist": [
+    "banner appears in correct position",
+    "missing context renders nothing",
+    "5 tones render with correct color",
+    "11 contexts have correct title and description",
+    "icon visible, 2-letter code",
+    "responsive on narrow viewports",
+    "no regression in gov-banner",
+    "no regression in other UI parts"
+  ],
+  "next_step": "UI-2.2 stack on top of UI-2.1 if all gates pass"
+}
