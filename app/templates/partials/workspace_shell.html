@@ -148,8 +148,12 @@
             <input type="number" id="np-construction_duration_months" name="construction_duration_months" step="1" min="1" placeholder="e.g. 24" />
           </div>
           <div class="field">
-            <label for="np-cod_date">COD Date <span class="np-helper">(derived from start + duration in 56D; enter here for now)</span></label>
-            <input type="date" id="np-cod_date" name="cod_date" required />
+            <label for="np-cod_date">COD Date <span class="np-helper">(derived from Start of Construction + Duration; server-side)</span></label>
+            <input type="date" id="np-cod_date" name="cod_date" readonly aria-readonly="true" placeholder="auto-derived" />
+            <div class="np-derived-note" id="np-cod-derived-note" role="note" aria-label="Auto-derived COD display">
+              <span class="np-derived-note__label">Auto-derived</span>
+              <span class="np-derived-note__text">Enter Start of Construction and Construction Duration above. The backend will compute COD = start + duration and save it into the project.</span>
+            </div>
           </div>
           <div class="field">
             <label for="np-template_source">Template</label>

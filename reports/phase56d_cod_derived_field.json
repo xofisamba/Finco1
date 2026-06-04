@@ -1,0 +1,162 @@
+{
+  "phase": "56D",
+  "title": "Phase 56D: Derive COD from construction start and duration",
+  "branch": "phase56d-cod-derived-field",
+  "base_sha": "67461d00d90d43cd71b0363d99e13b770c875a5b",
+  "base_branch": "phase56c-new-project-v1-form-simplification",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "type": "runtime UI + safe backend derivation / draft-only",
+  "auto_merge": false,
+  "status": "DRAFT",
+  "files_changed": [
+    {
+      "path": "main_web.py",
+      "kind": "additive helpers + minimal route wiring",
+      "lines_added": 95,
+      "lines_removed": 5,
+      "note": "Adds _parse_iso_date, _derive_cod_date, _read_optional_form_fields, _apply_56d_extras_to_submitted helpers. _apply_new_project_required_inputs extended to write spv_name, currency, construction_start_date, construction_duration_months. Route body slim (60-110 lines pinned by 51M-2)."
+    },
+    {
+      "path": "app/templates/partials/workspace_shell.html",
+      "kind": "form field change + additive block",
+      "lines_added": 6,
+      "lines_removed": 2,
+      "note": "cod_date input made readonly, required removed. .np-derived-note block added explaining server-side derivation."
+    },
+    {
+      "path": "static/styles.css",
+      "kind": "additive",
+      "lines_added": 38,
+      "lines_removed": 0,
+      "note": "Appended .np-derived-note, .np-derived-note__label, .np-derived-note__text, input[readonly], input[aria-readonly=true] blocks. No :root changes; count remains 5."
+    },
+    {
+      "path": "tests/test_phase56d_cod_derived_field.py",
+      "kind": "new",
+      "lines_added": 600,
+      "lines_removed": 0,
+      "note": "New test file with 10 test classes (52 tests)."
+    },
+    {
+      "path": "docs/phase56d_cod_derived_field.md",
+      "kind": "new",
+      "lines_added": 240,
+      "lines_removed": 0,
+      "note": "New design + scope + visual-review checklist doc."
+    }
+  ],
+  "files_unchanged_but_verified": [
+    "static/app.js",
+    "app/waterfall_core.py",
+    "app/project_factories.py",
+    "app/runtime_impact_taxonomy.py",
+    "app/persistence/*",
+    "app/services/projects_create_service.py",
+    "app/templates/partials/new_project_form.html",
+    "app/templates/partials/pilot_help_onboarding.html",
+    "app/templates/partials/pilot_workflow_guide.html"
+  ],
+  "new_helpers": [
+    {
+      "name": "_parse_iso_date",
+      "signature": "(value: str | None) -> dt | None",
+      "purpose": "Parse ISO-8601 date string YYYY-MM-DD. Returns None on missing/malformed."
+    },
+    {
+      "name": "_derive_cod_date",
+      "signature": "(construction_start_date, construction_duration_months) -> str | None",
+      "purpose": "Derive COD from start + duration using dateutil.relativedelta. Returns YYYY-MM-DD string or None."
+    },
+    {
+      "name": "_read_optional_form_fields",
+      "signature": "(request: Request) -> dict[str, str]",
+      "purpose": "Read raw body via await request.body() + urllib.parse.parse_qs. Bypasses await request.form() (forbidden by 51M-1)."
+    },
+    {
+      "name": "_apply_56d_extras_to_submitted",
+      "signature": "(submitted, extra) -> dict[str, str]",
+      "purpose": "Merge 4 extra form fields into submitted. Always assigns server-derived COD when derivable (ignores manual cod_date in form body). Manual override is NOT supported in 56D (deferred)."
+    }
+  ],
+  "cod_derivation_policy": {
+    "formula": "COD = construction_start_date + construction_duration_months",
+    "library": "dateutil.relativedelta",
+    "deterministic": true,
+    "month_end_snap": true,
+    "leap_year_handled": true,
+    "missing_inputs": "returns None (no fake date)",
+    "manual_override": "NOT supported in 56D (deferred). Derived COD always wins when start+duration are valid; manually supplied cod_date in form body is ignored."
+  },
+  "test_cases_pinned": {
+    "normal": "2025-01-15 + 24 months = 2027-01-15",
+    "month_end_jan_31": "2025-01-31 + 1 month = 2025-02-28",
+    "month_end_mar_31": "2025-03-31 + 1 month = 2025-04-30",
+    "month_end_may_31": "2025-05-31 + 1 month = 2025-06-30",
+    "month_end_dec_31": "2025-12-31 + 1 month = 2026-01-31",
+    "leap_year_12": "2024-02-29 + 12 months = 2025-02-28",
+    "leap_year_48": "2024-02-29 + 48 months = 2028-02-29",
+    "missing_start": "None",
+    "missing_duration": "None",
+    "zero_duration": "None",
+    "negative_duration": "None"
+  },
+  "no_go_copy_treatment": {
+    "preserved": [
+      "Help tab from 56B",
+      "v1 form master data from 56C",
+      "Exploratory/unvalidated warning for generic templates"
+    ]
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_model_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_new_forbidden_ui_claims": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_schema_migration_changes": true,
+    "no_new_persistence_writes": true,
+    "rc1_untouched": true,
+    "draft_only": true,
+    "auto_merge_disabled": true,
+    "51m1_golden_characterization_intact": true,
+    "51m2_route_thinning_intact": true,
+    "construction_engine_unchanged": true
+  },
+  "tests_added": {
+    "file": "tests/test_phase56d_cod_derived_field.py",
+    "test_classes": 10,
+    "estimated_tests": 52,
+    "coverage_areas": [
+      "_derive_cod_date: normal, month-end, leap-year, missing, invalid",
+      "_parse_iso_date: valid, empty, malformed",
+      "Inline form: cod_date is readonly, not required, label mentions derivation",
+      "Inline form: .np-derived-note block exists with start + duration + COD language",
+      "create_project_route: calls _apply_56d_extras_to_submitted and _read_optional_form_fields",
+      "create_project_route: signature unchanged (17 fields), body under 110 non-blank lines",
+      "_apply_56d_extras_to_submitted: uses _derive_cod_date, pulls 4 extras, substitutes derived COD when empty",
+      "_apply_new_project_required_inputs: writes spv_name, currency, construction_start_date, construction_duration_months to baseline_snapshot",
+      "Scope guardrails: app.js, waterfall_core, project_factories, runtime_impact_taxonomy, persistence unchanged",
+      "CSS additive (.np-derived-note, input[readonly]); :root count 5",
+      "rc1 SHA constant stable",
+      "relativedelta imported from dateutil",
+      "Helper determinism pinned for normal / month-end / leap-year"
+    ]
+  },
+  "stack_order": {
+    "previous_1": "56B (Help section, MERGED-ready, DRAFT #477)",
+    "previous_2": "56C (New Project v1, stacked on 56B, DRAFT #478)",
+    "current": "56D (COD derived, this PR, stacked on 56C)"
+  },
+  "recommended_review_order": [
+    "Visual: open New Project, confirm COD field is readonly with .np-derived-note below",
+    "Visual: confirm 56B Help tab still works, 56C v1 form is intact",
+    "Test: pytest tests/test_phase56d_cod_derived_field.py -v",
+    "Test: pytest tests/test_phase51m1_projects_create_route_golden_characterization.py -v (must stay green)",
+    "Test: pytest tests/test_phase51m2_projects_create_route_vertical_extraction.py -v (must stay green)",
+    "Test: pytest tests/test_phase56c_new_project_v1_form_simplification.py -v (must stay green)",
+    "Test: pytest tests/test_phase56b_help_section.py -v (must stay green)"
+  ]
+}

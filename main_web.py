@@ -3,6 +3,7 @@ import json
 import os
 import re
 from datetime import datetime as dt
+from dateutil.relativedelta import relativedelta
 
 from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
@@ -505,6 +506,139 @@ def _submitted_new_project_defaults() -> dict[str, str]:
     }
 
 
+def _parse_iso_date(value: str | None) -> dt | None:
+    """Parse an ISO-8601 date (YYYY-MM-DD) string into a ``datetime``,
+    or return ``None`` if the value is empty / malformed. Phase 56D."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return dt.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _derive_cod_date(
+    construction_start_date: str | None,
+    construction_duration_months: str | None,
+) -> str | None:
+    """Derive the COD (Commercial Operation Date) from the construction
+    start date and the construction duration in months.
+
+    Phase 56D — COD is no longer a primary manual input. It is
+    derived server-side from:
+
+        COD = construction_start_date + construction_duration_months
+
+    Date convention (deterministic, per Phase 56D policy):
+
+    - Same day-of-month when possible (e.g. 2025-01-15 + 24 months
+      = 2027-01-15).
+    - If the target month has fewer days, snap to month-end
+      (e.g. 2025-01-31 + 1 month = 2025-02-28, not 2025-03-03).
+    - Leap-year behavior is deterministic (handled by ``relativedelta``).
+    - Duration must be a positive integer number of months.
+    - Missing start OR missing/invalid duration returns ``None`` (no
+      fake date is invented).
+
+    Returns:
+        ISO-8601 date string (YYYY-MM-DD) on success, or ``None`` if
+        the inputs are missing/invalid.
+    """
+    start = _parse_iso_date(construction_start_date)
+    if start is None:
+        return None
+    text = (construction_duration_months or "").strip()
+    if not text:
+        return None
+    try:
+        months = int(float(text))
+    except ValueError:
+        return None
+    if months <= 0:
+        return None
+    derived = start + relativedelta(months=months)
+    return derived.strftime("%Y-%m-%d")
+
+
+async def _read_optional_form_fields(request: Request) -> dict[str, str]:
+    """Read optional 56C/56D form fields from the request body without
+    going through ``request.form()`` (which is forbidden by the
+    Phase 51M-1 golden characterization — the route must use
+    ``Form(...)`` parameters only).
+
+    The route signature is frozen at 18 Form fields (Phase 51M-1
+    golden). New optional fields (spv_name, currency,
+    construction_start_date, construction_duration_months) live
+    in the raw body and are read by the route via
+    ``request.body()`` + ``urllib.parse.parse_qs``.
+
+    Returns:
+        A flat dict of form-key -> first-value (empty string if
+        the key is absent or the body is empty).
+    """
+    from urllib.parse import parse_qs
+
+    try:
+        raw_body = await request.body()
+    except Exception:
+        return {}
+    if not raw_body:
+        return {}
+    try:
+        decoded = raw_body.decode("utf-8")
+    except UnicodeDecodeError:
+        return {}
+    parsed: dict[str, str] = {}
+    for _k, _vs in parse_qs(decoded, keep_blank_values=True).items():
+        if _vs:
+            parsed[_k] = _vs[0]
+    return parsed
+
+
+def _apply_56d_extras_to_submitted(
+    submitted: dict[str, str],
+    extra: dict[str, str],
+) -> dict[str, str]:
+    """Phase 56C/56D: merge the 4 extra form fields into the
+    submitted dict so they land in the baseline_snapshot via
+    ``_apply_new_project_required_inputs``.
+
+    COD policy (Phase 56D, manual override NOT supported):
+
+    - COD is ALWAYS derived server-side from
+      ``construction_start_date + construction_duration_months``.
+    - The server-derived value ALWAYS wins when it can be
+      computed (i.e. when both start and duration are valid).
+    - A manually supplied ``cod_date`` in the form body is
+      IGNORED when derivation succeeds. This is by design:
+      manual COD override is deferred in 56D; a future
+      override would require explicit audited override logic.
+    - If start or duration is missing or invalid, derivation
+      returns ``None`` and the existing validation handles
+      missing COD safely (no fake date is invented)."""
+    submitted["spv_name"] = (extra.get("spv_name", "") or "").strip()
+    submitted["currency"] = (
+        (extra.get("currency", "") or "").strip() or "EUR"
+    )
+    submitted["construction_start_date"] = (
+        (extra.get("construction_start_date", "") or "").strip()
+    )
+    submitted["construction_duration_months"] = (
+        (extra.get("construction_duration_months", "") or "").strip()
+    )
+    derived_cod = _derive_cod_date(
+        submitted["construction_start_date"],
+        submitted["construction_duration_months"],
+    )
+    # Phase 56D policy: derived COD always wins when derivable.
+    # Manual override is deferred; a future override would need
+    # explicit audited logic.
+    if derived_cod:
+        submitted["cod_date"] = derived_cod
+    return submitted
+
+
 def _coerce_form_text(value: str | None) -> str:
     return (value or "").strip()
 
@@ -690,6 +824,20 @@ def _apply_new_project_required_inputs(
             "tenor_years": _format_snapshot_number(_coerce_form_int(submitted.get("tenor_years"))),
             "target_dscr": _format_snapshot_number(_coerce_form_float(submitted.get("target_dscr")), decimals=2),
         }
+    )
+    # Phase 56C + 56D: write the new v1 master-data fields and
+    # the construction start/duration inputs (which drive the
+    # derived cod_date above) into the baseline_snapshot so they
+    # survive into the saved scenario.
+    snapshot["spv_name"] = _coerce_form_text(submitted.get("spv_name"))
+    snapshot["currency"] = (
+        _coerce_form_text(submitted.get("currency")) or "EUR"
+    )
+    snapshot["construction_start_date"] = _coerce_form_text(
+        submitted.get("construction_start_date")
+    )
+    snapshot["construction_duration_months"] = _format_snapshot_number(
+        _coerce_form_int(submitted.get("construction_duration_months"))
     )
     return snapshot
 
@@ -2061,6 +2209,15 @@ async def create_project_route(
     initialization, response context assembly with HX-Redirect
     header) lives in
     ``app.services.projects_create_service.execute_projects_create_route``.
+
+    Phase 56D: COD is ALWAYS derived server-side from
+    ``construction_start_date + construction_duration_months`` (the
+    two new form fields added in 56C). Manual COD override is
+    NOT supported in 56D — a manually supplied cod_date in the
+    form body is IGNORED when derivation succeeds. A future
+    manual override would require explicit audited override
+    logic and is out of scope here. The 56D logic lives in
+    ``_apply_56d_extras_to_submitted``.
     """
     from app.services.projects_create_service import (
         ProjectsCreateRouteDeps,
@@ -2094,6 +2251,12 @@ async def create_project_route(
             "target_dscr": target_dscr,
         }
     )
+    # Phase 56C + 56D: capture the 4 extra form fields (added in 56C
+    # but NOT in the 51M-1 frozen route signature) by parsing the
+    # raw body. Helpers do the heavy lifting so the route body
+    # stays slim (60-110 non-blank line ceiling).
+    extra = await _read_optional_form_fields(request)
+    _apply_56d_extras_to_submitted(submitted, extra)
 
     deps = ProjectsCreateRouteDeps(
         submitted_new_project_defaults=_submitted_new_project_defaults,
