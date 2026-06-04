@@ -727,6 +727,52 @@ def _runtime_summary_for_index(workspace_state) -> dict | None:
     return result if result else None
 
 
+def _validation_summary_for_context(project_code: str | None) -> dict | None:
+    """Build a conservative validation_summary dict for UI-2.3.
+
+    Source: only existing governance state via `_governance_snapshot`.
+    Maps real governance status fields to pass/warn/fail counts:
+    - G20 BLOCKED or R99/R102 NOT APPROVED -> fail count
+    - Other governance state -> warn count
+    - All clear -> pass count (no items to review)
+
+    Returns None if no real governance snapshot can be built.
+
+    The function is read-only — it does not write or mutate state.
+    """
+    if not project_code:
+        return None
+    snap = _governance_snapshot(project_code)
+    if not snap:
+        return None
+    pass_count = 0
+    warn_count = 0
+    fail_count = 0
+    # G20 BLOCKED and R99/R102 NOT APPROVED are real, existing hard-stop
+    # governance states. They are NOT no-go copy: they are internal
+    # governance state flags, not positive UI claims.
+    g20 = (snap.get("g20_status") or "").upper()
+    r99 = (snap.get("r99_r102_status") or "").upper()
+    if g20 == "BLOCKED":
+        fail_count += 1
+    elif g20:
+        warn_count += 1
+    else:
+        pass_count += 1
+    if r99 == "NOT APPROVED":
+        fail_count += 1
+    elif r99:
+        warn_count += 1
+    else:
+        pass_count += 1
+    return {
+        "pass_count": pass_count,
+        "warn_count": warn_count,
+        "fail_count": fail_count,
+        "last_validated_at": "",  # No real value exists; left blank intentionally
+    }
+
+
 def _build_export_lineage_ui_context(project_record, workspace_state, export_lineage: list[dict[str, object]]) -> dict[str, object]:
     workspace_meta = _workspace_state_meta(workspace_state)
     project_label = project_record.project_name if project_record else "Workspace Project"
@@ -1500,6 +1546,10 @@ async def index(request: Request, project: str | None = None):
             # Derived from existing workspace_state (last_runtime_snapshot_id,
             # last_runtime_at). None when no real runtime data exists.
             "runtime_summary": _runtime_summary_for_index(workspace_state),
+            # Phase 55F: UI-2.3 validation summary bar context
+            # Derived from existing _governance_snapshot. None if no real
+            # governance state can be built.
+            "validation_summary": _validation_summary_for_context(project_record.project_code),
         },
     )
 

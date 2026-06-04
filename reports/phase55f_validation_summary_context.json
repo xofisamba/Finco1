@@ -1,0 +1,55 @@
+{
+  "phase": "55F",
+  "title": "Wire validation_summary into index/audit context",
+  "status": "DRAFT",
+  "type": "minimal-backend-context-wiring",
+  "base_sha": "163a8a02a8c1ae5900dd8df628175605571fd480",
+  "head_sha": "pending",
+  "branch": "phase55f-wire-validation-summary-context",
+  "context_keys_added": [
+    {
+      "key": "validation_summary",
+      "used_by": "_validation_summary_bar.html (in audit_reconciliation_tab.html)",
+      "source": "_governance_snapshot(project_code) - G20 status + R99/R102 status",
+      "shape": "None | {\"pass_count\": int, \"warn_count\": int, \"fail_count\": int, \"last_validated_at\": str (empty when no real value)}"
+    }
+  ],
+  "files_modified": [
+    "main_web.py (added _validation_summary_for_context helper, added validation_summary to index context)"
+  ],
+  "files_created": [
+    "tests/test_phase55f_validation_summary_context.py",
+    "docs/phase55f_validation_summary_context.md",
+    "reports/phase55f_validation_summary_context.json"
+  ],
+  "production_code_changed": true,
+  "production_code_scope": "single read-only helper + single context key",
+  "templates_changed": false,
+  "static_css_js_changed": false,
+  "service_persistence_changed": false,
+  "model_parity_schema_formula_fixture_changed": false,
+  "frontend_dependency_changed": false,
+  "persistence_writes_added": false,
+  "financial_output_changed": false,
+  "run_route_behavior_changed": false,
+  "no_go_claim_introduced": false,
+  "rc1_untouched": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_added": 26,
+  "tests_total": 865,
+  "tests_passing": 865,
+  "ci_status": "pending",
+  "parity_guardrails_status": "pending",
+  "phase51f_status": "pass",
+  "phase52f_status": "pass",
+  "phase53i_status": "pass",
+  "phase54_status": "pass",
+  "ui21_regression": "pass",
+  "ui22_regression": "pass",
+  "ui23_regression": "pass",
+  "ui24_regression": "pass",
+  "ui25_regression": "pass",
+  "ui26_regression": "pass",
+  "pr_draft": true,
+  "ready_for_user_visual_review": true
+}
