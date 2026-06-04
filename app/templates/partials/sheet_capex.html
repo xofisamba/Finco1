@@ -258,8 +258,15 @@
 {% for code in financing_rows %}
   {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
     {% set item = capex_by_code[code] %}
+    {# Phase 57A-1 hotfix: financing rows use a dedicated
+       row type ("data_financing") so the LineItemGrid partial
+       can keep them read-only regardless of the global
+       `editable` arg. Financing values (IDC, bank fees,
+       commitment fees, other financial, VAT costs,
+       reserve accounts) are backend-computed and must
+       not be user-editable. #}
     {% set _ = lig_rows.append({
-      "type": "data",
+      "type": "data_financing",
       "attrs": {
         "data-capex-code": item.code,
         "data-capex-name": item.name,

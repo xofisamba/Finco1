@@ -485,15 +485,24 @@ class TestGuardrails:
         57A (UI-3.1 LineItemGrid CAPEX pilot) DOES modify
         `app/templates/partials/sheet_capex.html` and adds
         `app/templates/partials/_line_item_grid.html`. When
-        57A is stacked on 57pre, this test will fail.
+        57A is stacked on 57pre, this test would normally
+        fail.
 
-        For the 57A branch: skip this test, since template
-        changes are explicitly allowed for the LineItemGrid
-        pilot.
+        For the 57A branch: skip this test, but ONLY if the
+        template diff is exactly the 57A allowlist
+        (the two allowed template files below, plus the
+        usual test/docs/report files). If any other template
+        file is in the diff, the guard fails.
+
+        This narrow allowlist is what keeps the 57pre
+        guardrail meaningful for future UI-3 sheet
+        migrations (e.g. UI-3.2 OPEX, UI-3.3 Revenue). Those
+        branches must update this allowlist explicitly with
+        their own template files; they cannot piggyback on
+        57A's allowance just because `_line_item_grid.html`
+        already exists on disk.
         """
-        # Detect the 57A / 57pre branch: if `_line_item_grid.html`
-        # is in the diff, this is 57A (which IS allowed to touch
-        # templates), so skip.
+        import subprocess
         r = subprocess.run(
             ["git", "diff", "main", "--name-only"],
             cwd=str(REPO_ROOT),
@@ -503,18 +512,33 @@ class TestGuardrails:
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
         changed = set(r.stdout.strip().split("\n"))
-        # 57A exemption: check both diff and added files
-        lig_path = REPO_ROOT / "app" / "templates" / "partials" / "_line_item_grid.html"
-        if lig_path.exists():
-            pytest.skip(
-                "57A is allowed to modify app/templates/ "
-                "(LineItemGrid pilot)."
-            )
-        for f in changed:
-            assert not f.startswith("app/templates/"), (
-                f"Forbidden template change: {f!r}. 57pre must be "
-                f"test/docs/report only."
-            )
+        # 57A allowlist: these are the only template paths 57A
+        # is allowed to add / modify. Any other template file
+        # in the diff must fail the guardrail.
+        ALLOWED_57A_TEMPLATE_PATHS = {
+            "app/templates/partials/_line_item_grid.html",
+            "app/templates/partials/sheet_capex.html",
+        }
+        # Find template files in the diff that are NOT in
+        # the 57A allowlist.
+        forbidden_template_changes = [
+            f for f in changed
+            if f.startswith("app/templates/") and f not in ALLOWED_57A_TEMPLATE_PATHS
+        ]
+        assert not forbidden_template_changes, (
+            f"Template changes outside the 57A allowlist "
+            f"detected. The 57pre guardrail allows ONLY: "
+            f"{sorted(ALLOWED_57A_TEMPLATE_PATHS)}. "
+            f"Found forbidden template changes: "
+            f"{forbidden_template_changes}. "
+            f"57pre is test/docs/report only. "
+            f"Future UI-3 sheet migrations must update "
+            f"ALLOWED_57A_TEMPLATE_PATHS explicitly."
+        )
+        # Note: we do NOT skip the test just because the
+        # allowed template files exist on disk. We only
+        # check the diff. This is the key tightening vs
+        # the previous (too-broad) exemption.
 
     def test_no_schema_or_migration_changed(self):
         """No schema / migration / fixture file may be modified."""
@@ -582,6 +606,117 @@ class TestGuardrails:
             assert f not in forbidden, (
                 f"Forbidden frontend dependency config: {f!r}."
             )
+
+
+# ============================================================
+# 4.5 57A template-change allowlist (Fix B)
+# ============================================================
+
+
+class TestTemplateChangeAllowlist:
+    """Fix B: the 57A template-change relaxation is limited to
+    exactly two template paths. Future UI-3 sheet
+    migrations must update the allowlist explicitly; they
+    cannot piggyback on 57A's exemption just because
+    `_line_item_grid.html` already exists on disk."""
+
+    # The exact 57A allowlist. If a future branch (e.g.
+    # UI-3.2 OPEX, UI-3.3 Revenue) needs to modify other
+    # templates, this allowlist must be updated explicitly
+    # in that branch's PR.
+    ALLOWED_57A_TEMPLATE_PATHS = {
+        "app/templates/partials/_line_item_grid.html",
+        "app/templates/partials/sheet_capex.html",
+    }
+
+    def test_57a_allowlist_contains_only_the_two_expected_paths(self):
+        """The allowlist must be exactly the 57A
+        template pair, no more, no less."""
+        assert self.ALLOWED_57A_TEMPLATE_PATHS == {
+            "app/templates/partials/_line_item_grid.html",
+            "app/templates/partials/sheet_capex.html",
+        }, (
+            "The 57A template allowlist must be exactly the "
+            "two files specified in Fix B. Do not add other "
+            "paths here; future migrations must update this "
+            "list explicitly."
+        )
+
+    @pytest.mark.parametrize(
+        "forbidden",
+        [
+            "app/templates/partials/sheet_opex.html",
+            "app/templates/partials/sheet_opex_detail.html",
+            "app/templates/partials/sheet_revenue.html",
+            "app/templates/partials/sheet_senior_debt.html",
+            "app/templates/partials/sheet_shl.html",
+            "app/templates/partials/sheet_construction.html",
+            "app/templates/partials/sheet_production.html",
+            "app/templates/partials/sheet_inputs.html",
+            "app/templates/partials/sheet_financials.html",
+            "app/templates/partials/sheet_idc.html",
+            "app/templates/partials/sheet_tax.html",
+            "app/templates/partials/sheet_capex_detail.html",
+            "app/templates/partials/inputs_section.html",
+        ],
+    )
+    def test_other_sheets_are_not_in_allowlist(self, forbidden):
+        """Other sheets must NOT be in the 57A allowlist.
+        They are out of scope for 57A and must wait for their
+        own migration PRs (UI-3.2 etc.)."""
+        assert forbidden not in self.ALLOWED_57A_TEMPLATE_PATHS, (
+            f"{forbidden!r} is in the 57A allowlist but is "
+            f"explicitly out of scope for 57A. The 57A "
+            f"allowlist must be limited to the LineItemGrid "
+            f"partial and the CAPEX Detail sheet."
+        )
+
+    def test_lig_partial_path_in_allowlist(self):
+        """The new shared LineItemGrid partial must be in
+        the allowlist (it's the 57A deliverable)."""
+        assert (
+            "app/templates/partials/_line_item_grid.html"
+            in self.ALLOWED_57A_TEMPLATE_PATHS
+        )
+
+    def test_sheet_capex_path_in_allowlist(self):
+        """The migrated CAPEX Detail sheet must be in the
+        allowlist (it's the 57A migration target)."""
+        assert (
+            "app/templates/partials/sheet_capex.html"
+            in self.ALLOWED_57A_TEMPLATE_PATHS
+        )
+
+    def test_existence_of_lig_partial_does_not_grant_other_branches_exemption(self):
+        """The relaxation must NOT be based on mere file
+        existence of `_line_item_grid.html`. Source-level
+        test: the relaxation code in test_no_template_changed
+        must use the diff-based allowlist (ALLOWED_57A_TEMPLATE_PATHS),
+        not a file-existence check."""
+        import inspect
+        import sys
+        mod_name = "tests.test_phase57pre_route_render_smoke"
+        mod = sys.modules[mod_name]
+        # Look up TestGuardrails in the same module
+        # (no need to re-import).
+        TestGuardrails = mod.TestGuardrails
+        source = inspect.getsource(
+            TestGuardrails.test_no_template_changed
+        )
+        # The relaxation must reference the allowlist,
+        # not a bare file-existence check.
+        assert "ALLOWED_57A_TEMPLATE_PATHS" in source, (
+            "test_no_template_changed must use the diff-based "
+            "allowlist (ALLOWED_57A_TEMPLATE_PATHS), not a "
+            "file-existence check. This is the Fix B "
+            "tightening."
+        )
+        # It must NOT rely solely on file existence.
+        assert "lig_path.exists()" not in source, (
+            "test_no_template_changed must NOT skip on "
+            "_line_item_grid.html existence alone. This was "
+            "the too-broad pre-Fix-B behavior."
+        )
 
 
 # ============================================================

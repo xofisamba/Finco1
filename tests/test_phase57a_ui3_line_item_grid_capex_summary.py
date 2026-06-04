@@ -249,18 +249,29 @@ class TestRenderPreservesContent:
 
     def test_render_has_section_bands(self):
         html = _render_sheet_capex()
+        # Note: Jinja autoescape turns `&` into `&amp;` in
+        # the rendered HTML. Both forms are accepted here
+        # for robustness; the strict escape test is
+        # `test_section_bands_are_html_escaped` (Fix C).
         for label in [
             "Construction",
             "Development",
             "Construction Management",
-            "Civil & Land",
-            "Insurances & Risk",
+            ("Civil &amp; Land", "Civil & Land"),
+            ("Insurances &amp; Risk", "Insurances & Risk"),
             "Financing Costs",
         ]:
-            assert label in html, (
-                f"Section band label {label!r} must appear in "
-                f"the rendered CAPEX table."
-            )
+            if isinstance(label, tuple):
+                assert any(alt in html for alt in label), (
+                    f"Section band label {label!r} (or its "
+                    f"escaped form) must appear in the "
+                    f"rendered CAPEX table."
+                )
+            else:
+                assert label in html, (
+                    f"Section band label {label!r} must "
+                    f"appear in the rendered CAPEX table."
+                )
 
     def test_render_has_subtotal_labels(self):
         html = _render_sheet_capex()
@@ -307,7 +318,13 @@ class TestRenderPreservesContent:
     def test_render_has_amount_cells_with_formatting(self):
         """The amount cells must have the value formatted
         (subtotals/totals with thousands separators like
-        1,500.00; editable data row inputs as 1000.00)."""
+        1,500.00; editable data row inputs as 1000.00).
+
+        Note: financing rows (idc) are read-only in user
+        project mode (Fix A), so idc is NOT an editable
+        input value. It must still appear in the rendered
+        HTML, just as read-only text.
+        """
         html = _render_sheet_capex()
         # Subtotal/total formatting with thousands separator
         # (e.g. 1,500.00 for Construction Subtotal = 1000 + 500)
@@ -332,8 +349,19 @@ class TestRenderPreservesContent:
         assert 'value="300.00"' in html
         # 100.00 (insurances)
         assert 'value="100.00"' in html
-        # 50.00 (idc)
-        assert 'value="50.00"' in html
+        # 50.00 (idc) — financing row, so it is NOT an
+        # editable input. The value must still be visible
+        # in the rendered HTML (as read-only text).
+        assert "50.00" in html, (
+            "idc financing row amount (50.00) must still "
+            "appear visibly in the rendered HTML even "
+            "though it is read-only (Fix A)."
+        )
+        assert 'value="50.00"' not in html, (
+            "idc financing row must NOT render an editable "
+            "<input value=\"50.00\"> in user project mode "
+            "(Fix A: financing rows are read-only)."
+        )
 
     def test_render_input_field_for_editable_cell(self):
         """When is_user_project=True, the amount cell for a
@@ -371,6 +399,195 @@ class TestRenderPreservesContent:
         # The factory-reference notice must appear
         assert "Factory Reference" in html
         assert "template defaults" in html
+
+    def test_financing_rows_readonly_in_user_project(self):
+        """Financing rows (idc, bank_fees, commitment_fees,
+        other_financial, vat_costs, reserve_accounts) must
+        remain read-only even in user project mode. They
+        are backend-computed values (Fix A)."""
+        from jinja2 import Environment, FileSystemLoader, select_autoescape
+        env = Environment(
+            loader=FileSystemLoader(str(APP_TEMPLATES.parent)),
+            autoescape=select_autoescape(["html"]),
+        )
+        tmpl = env.get_template("partials/sheet_capex.html")
+        html = tmpl.render(
+            project_ctx=SAMPLE_PROJECT_CTX,
+            is_user_project=True,
+        )
+        # The SAMPLE_PROJECT_CTX includes an idc item. We
+        # extend it to cover the other financing codes that
+        # might be present in the row loop.
+        FINANCING_CODES = [
+            "idc",
+            "bank_fees",
+            "commitment_fees",
+            "other_financial",
+            "vat_costs",
+            "reserve_accounts",
+        ]
+        for code in FINANCING_CODES:
+            input_name = f'name="capex_{code}_keur"'
+            assert input_name not in html, (
+                f"Financing row {code!r} must NOT render an "
+                f"editable <input> in user project mode. "
+                f"Found {input_name!r} in the rendered HTML. "
+                f"Financing rows are backend-computed and must "
+                f"remain read-only (Fix A)."
+            )
+        # The SAMPLE_PROJECT_CTX includes `idc` so we can
+        # verify the idc data row still renders visibly and
+        # with read-only semantics.
+        # Find the idc data row (tr with data-capex-code="idc")
+        idc_row_match = re.search(
+            r'<tr[^>]*data-capex-code="idc"[^>]*>(.*?)</tr>',
+            html,
+            re.DOTALL,
+        )
+        assert idc_row_match is not None, (
+            "The idc financing row must still render in the "
+            "HTML (visible row, just not editable)."
+        )
+        idc_row_html = idc_row_match.group(1)
+        # The idc row's amount cell must have aria-readonly="true"
+        assert 'aria-readonly="true"' in idc_row_html, (
+            "The idc financing row's amount cell must have "
+            "aria-readonly=\"true\" (read-only semantics). "
+            "Found: " + idc_row_html[:300]
+        )
+        # The idc amount must still be visible (not blank).
+        # The sample data has idc.amount_keur = 50.00.
+        assert "50.00" in idc_row_html, (
+            "The idc financing row's amount value (50.00) "
+            "must still be visible in the rendered HTML."
+        )
+        # The idc row must NOT have an <input> tag at all.
+        assert "<input" not in idc_row_html, (
+            "The idc financing row must not contain an "
+            "<input> element (read-only financing)."
+        )
+        # Also: ordinary hard CAPEX data rows (epc_contract,
+        # production_units, etc.) MUST still be editable in
+        # user project mode (regression guard for Fix A).
+        for editable_code in [
+            "epc_contract",
+            "production_units",
+            "project_acquisition",
+            "lease_tax",
+            "insurances",
+        ]:
+            input_name = f'name="capex_{editable_code}_keur"'
+            assert input_name in html, (
+                f"Ordinary hard CAPEX data row {editable_code!r} "
+                f"must still render an editable <input> in user "
+                f"project mode. Found no {input_name!r} in the "
+                f"rendered HTML. Fix A must not over-restrict "
+                f"editable rows."
+            )
+
+    def test_financing_rows_readonly_in_factory_reference(self):
+        """Financing rows must remain read-only in factory
+        reference mode too (was already true pre-57A, must
+        remain true post-Fix-A)."""
+        from jinja2 import Environment, FileSystemLoader, select_autoescape
+        env = Environment(
+            loader=FileSystemLoader(str(APP_TEMPLATES.parent)),
+            autoescape=select_autoescape(["html"]),
+        )
+        tmpl = env.get_template("partials/sheet_capex.html")
+        html = tmpl.render(
+            project_ctx=SAMPLE_PROJECT_CTX,
+            is_user_project=False,
+        )
+        FINANCING_CODES = [
+            "idc",
+            "bank_fees",
+            "commitment_fees",
+            "other_financial",
+            "vat_costs",
+            "reserve_accounts",
+        ]
+        for code in FINANCING_CODES:
+            input_name = f'name="capex_{code}_keur"'
+            assert input_name not in html, (
+                f"Financing row {code!r} must NOT render an "
+                f"editable <input> in factory reference mode."
+            )
+        # Factory reference notice must be present
+        assert "Factory Reference" in html
+        assert "template defaults" in html
+
+    def test_section_bands_are_html_escaped(self):
+        """Section band labels must be HTML-escaped (so
+        `&` becomes `&amp;`). Fix C."""
+        from jinja2 import Environment, FileSystemLoader, select_autoescape
+        env = Environment(
+            loader=FileSystemLoader(str(APP_TEMPLATES.parent)),
+            autoescape=select_autoescape(["html"]),
+        )
+        tmpl = env.get_template("partials/sheet_capex.html")
+        html = tmpl.render(
+            project_ctx=SAMPLE_PROJECT_CTX,
+            is_user_project=True,
+        )
+        # Section band labels that contain `&` must be
+        # escaped to `&amp;` in the HTML. (Civil & Land,
+        # Insurances & Risk, Construction Management all
+        # contain `&`.)
+        for label_with_amp in [
+            "Civil &amp; Land",
+            "Insurances &amp; Risk",
+            "Construction Management",  # no &, but appears
+        ]:
+            assert label_with_amp in html, (
+                f"Section band label {label_with_amp!r} must "
+                f"appear in the rendered HTML (autoescaped). "
+                f"Found: {html[:500]}"
+            )
+        # And the unescaped `&` form should NOT appear in
+        # the section band labels.
+        # (Note: there are other `&` characters in the
+        # rendered HTML e.g. inside aria-label values or
+        # inside `<span class="fc-delta-warning">⚠ ...
+        # kEUR delta ...</span>` — those are still inside
+        # `safe` HTML and are OK. The fix is specifically
+        # for the section band plain-string cell.)
+        # We assert that the section band <td> with
+        # colspan="3" and class "lig-cell fc-section-band__label"
+        # contains escaped &.
+        for m in re.finditer(
+            r'<td class="lig-cell fc-section-band__label"[^>]*>([^<]+)</td>',
+            html,
+        ):
+            label_text = m.group(1).strip()
+            # No literal & in section band plain-text labels
+            if "&" in label_text and "&amp;" not in label_text:
+                pytest.fail(
+                    f"Section band label {label_text!r} contains "
+                    f"an unescaped `&`. Fix C requires autoescape."
+                )
+
+    def test_lig_data_financing_class_present(self):
+        """The new data_financing row type must add the
+        `lig-row--data-financing` CSS class. (Stable
+        marker for the Fix A policy.)"""
+        from jinja2 import Environment, FileSystemLoader, select_autoescape
+        env = Environment(
+            loader=FileSystemLoader(str(APP_TEMPLATES.parent)),
+            autoescape=select_autoescape(["html"]),
+        )
+        tmpl = env.get_template("partials/sheet_capex.html")
+        html = tmpl.render(
+            project_ctx=SAMPLE_PROJECT_CTX,
+            is_user_project=True,
+        )
+        # The idc row in SAMPLE_PROJECT_CTX should have
+        # the lig-row--data-financing class.
+        assert "lig-row--data-financing" in html, (
+            "The data_financing row type must produce a "
+            "lig-row--data-financing CSS class (stable "
+            "marker for Fix A)."
+        )
 
     def test_render_preserves_sheet_banner(self):
         """The sheet-banner block (top-of-sheet tag) must be

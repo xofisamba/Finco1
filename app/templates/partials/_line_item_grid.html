@@ -22,17 +22,24 @@
                        kind ∈ {"label", "code", "amount", "period"}
      - rows          : list of dicts with keys
                        {type, cells, classes?, attrs?}
-                       type ∈ {"data", "subtotal", "total",
+                       type ∈ {"data", "data_financing",
+                               "subtotal", "total",
                                "section_band", "delta_warning"}
                        cells is a list aligned to `columns`.
-                       Each cell is a string (already-escaped HTML)
-                       OR a dict {value, kind, classes?, attrs?}
-                       kind ∈ {"text", "input", "code", "amount",
-                               "runtime_indicator"}
+                       Each cell is EITHER a plain string
+                       (auto-escaped) for section_band cells,
+                       OR a dict with keys
+                       {value, kind, [classes], [attrs],
+                        [safe_html]}
+                       kind ∈ {"label", "code", "amount",
+                               "delta_value"}
      - editable      : bool (default False). When True, rows of
                        type "data" render a native <input> in
                        the amount cell. When False, the amount
-                       cell is read-only.
+                       cell is read-only. Rows of type
+                       "subtotal", "total", "delta_warning",
+                       and "data_financing" are ALWAYS
+                       read-only regardless of `editable`.
      - input_field_template : str | None
                        Optional Jinja2 template for the input name,
                        e.g. "capex_{code}_keur". The macro
@@ -74,9 +81,28 @@
    Stable test marker
    ------------------
    The wrapper always has class `lig-wrapper` and a
-   per-table class `lig-capex-pilot` (derived from the
-   table_label). The 57A test asserts both classes are
+   per-table class `lig-capex-pilot` (currently
+   hard-coded for the 57A CAPEX pilot; future
+   migrations that reuse this macro should either
+   update the class or wrap the call with their own
+   div). The 57A test asserts both classes are
    present on the rendered HTML.
+
+   Read-only row types
+   --------------------
+   Some row types are ALWAYS read-only, regardless of
+   the `editable` arg:
+
+     - subtotal       (subtotal rows)
+     - total          (grand total rows)
+     - delta_warning  (delta-vs-summary rows)
+     - data_financing (financing-cost rows; these are
+                       backend-computed values like IDC,
+                       bank fees, etc. and must not be
+                       user-editable)
+
+   Ordinary `data` rows are editable when `editable=True`
+   and `input_field_template` is provided.
 ─#}
 {%- macro lig_render(table_label, columns, rows, editable=False, input_field_template=None, table_id=None) -%}
 <div class="lig-wrapper lig-capex-pilot"
@@ -117,6 +143,12 @@
         {%- elif row.type == "delta_warning" -%}
           {%- set _ = row_classes.append("lig-row--delta") -%}
           {%- set _ = row_classes.append("fc-delta-row") -%}
+        {%- elif row.type == "data_financing" -%}
+          {%- set _ = row_classes.append("lig-row--data") -%}
+          {%- set _ = row_classes.append("lig-row--data-financing") -%}
+          {%- if row.attrs and row.attrs.get("data-capex-code") -%}
+            {%- set _ = row_classes.append("lig-row--data-capex") -%}
+          {%- endif -%}
         {%- else -%}
           {%- set _ = row_classes.append("lig-row--data") -%}
           {%- if row.attrs and row.attrs.get("data-capex-code") -%}
@@ -155,9 +187,9 @@
               {%- endif -%}
               <td class="{{ cell_classes | join(' ') }}"
                   {%- if cell.kind == "amount" and not editable %} aria-readonly="true"{% endif -%}
-                  {%- if cell.kind == "amount" and (row.type == "subtotal" or row.type == "total" or row.type == "delta_warning") %} aria-readonly="true"{% endif -%}
+                  {%- if cell.kind == "amount" and (row.type == "subtotal" or row.type == "total" or row.type == "delta_warning" or row.type == "data_financing") %} aria-readonly="true"{% endif -%}
                   {%- if cell.attrs %}{% for k, v in cell.attrs.items() %} {{ k }}="{{ v }}"{% endfor %}{% endif -%}>
-                {%- if cell.kind == "amount" and editable and input_field_template and row.type == "data" -%}
+                {%- if cell.kind == "amount" and editable and input_field_template and row.type == "data" and row.type != "data_financing" -%}
                   {%- set code_value = "" -%}
                   {%- if row.attrs is defined and row.attrs -%}
                     {%- if row.attrs.get("data-capex-code") -%}
@@ -194,8 +226,13 @@
                 {%- endif -%}
               </td>
             {%- else -%}
-              {# cell is raw HTML (e.g. for a section band label) #}
-              <td class="lig-cell fc-section-band__label" colspan="3">{{ cell | safe }}</td>
+              {# cell is a plain-text string (e.g. for a section
+                 band label). Auto-escape by default so callers
+                 can't accidentally inject HTML. If a caller
+                 truly needs HTML, they should pass a dict
+                 cell with kind="section_band_label" and
+                 safe_html=True (future extension). #}
+              <td class="lig-cell fc-section-band__label" colspan="3">{{ cell }}</td>
             {%- endif -%}
           {%- endfor -%}
         </tr>
