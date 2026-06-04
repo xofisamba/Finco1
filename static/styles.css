@@ -4489,3 +4489,100 @@ body {
   background: #7a96b8;
   color: #ffffff;
 }
+
+/* ── UI-2.3: Validation Summary Bar ────────────────────────────────────── */
+.validation-summary-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border, #dde4ed);
+  margin-bottom: 0.9rem;
+  background: var(--surface, #ffffff);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.validation-summary-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: var(--surface-2, #f7f9fc);
+  color: var(--text-1, #1a1a1a);
+  margin-top: 0.05rem;
+}
+
+.validation-summary-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.validation-summary-title {
+  font-weight: 700;
+  color: var(--text-1, #1a1a1a);
+}
+
+.validation-summary-desc {
+  color: var(--text-2, #475569);
+  font-size: 0.78rem;
+}
+
+.validation-summary-meta {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-2, #475569);
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.15rem;
+  align-self: flex-start;
+}
+
+.validation-summary-pass {
+  border-left: 3px solid #0f7a52;
+  background: #e8f3ed;
+}
+
+.validation-summary-pass .validation-summary-icon {
+  background: #0f7a52;
+  color: #ffffff;
+}
+
+.validation-summary-warn {
+  border-left: 3px solid #b45309;
+  background: #fef5e7;
+}
+
+.validation-summary-warn .validation-summary-icon {
+  background: #b45309;
+  color: #ffffff;
+}
+
+.validation-summary-fail {
+  border-left: 3px solid #b91c1c;
+  background: #fde8e8;
+}
+
+.validation-summary-fail .validation-summary-icon {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.validation-summary-info {
+  border-left: 3px solid #1a56db;
+  background: #f0f5ff;
+}
+
+.validation-summary-info .validation-summary-icon {
+  background: #1a56db;
+  color: #ffffff;
+}
