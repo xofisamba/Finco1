@@ -1729,6 +1729,13 @@ async def index(request: Request, project: str | None = None):
         for r in list_baseline_records(user.user_id)
     ]
 
+    # Phase 56H-1 hotfix: hoist validation_errors to a local variable
+    # so that downstream helpers (_banner_context_for_index) can
+    # reference it. Previously it was a dict-literal entry only, which
+    # left the bare name undefined when referenced from inside the
+    # same dict literal (causing NameError on GET /).
+    validation_errors: list[str] = []
+
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -1737,7 +1744,7 @@ async def index(request: Request, project: str | None = None):
             "scenarios": SCENARIOS,
             "caveats": CAVEATS,
             "form_data": workspace_state.draft_snapshot if workspace_state else project_record.baseline_snapshot or _default_workspace_snapshot(project_record.project_code),
-            "validation_errors": [],
+            "validation_errors": validation_errors,
             "success_message": None,
             "user": user,
             "project_ctx": ctx,
