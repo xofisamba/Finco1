@@ -1,0 +1,144 @@
+{
+  "phase": "UI-2.4",
+  "title": "Factory lock indicator partial",
+  "type": "runtime_template_implementation",
+  "branch": "phase-ui2-4-factory-lock-indicator",
+  "base_sha": "6bd991f87b1aea2007d5c18818ce67b14aa30ba3",
+  "stack_base_sha": "556bb13c6a6033a86d2dbea973806b03156964b8",
+  "head_sha": "556bb13c6a6033a86d2dbea973806b03156964b8",
+  "draft": true,
+  "auto_merged": false,
+  "files_added": [
+    {
+      "file": "app/templates/partials/_factory_lock_indicator.html",
+      "lines": 40
+    },
+    {
+      "file": "tests/test_ui2_4_factory_lock_indicator.py",
+      "lines": 270
+    },
+    {
+      "file": "docs/ui2_4_factory_lock_indicator.md"
+    },
+    {
+      "file": "reports/ui2_4_factory_lock_indicator.json"
+    }
+  ],
+  "files_modified": [
+    {
+      "file": "app/templates/partials/workspace_shell.html",
+      "change": "added 4-line {% with %}+{% include %} block"
+    },
+    {
+      "file": "static/styles.css",
+      "change": "added 49 lines of .factory-lock-* classes"
+    }
+  ],
+  "files_NOT_changed": [
+    "main_web.py",
+    "app/services/",
+    "app/persistence/",
+    "app/runtime_impact_taxonomy.py",
+    "static/app.js",
+    ":root CSS variables"
+  ],
+  "css_selectors_added": [
+    ".factory-lock-indicator",
+    ".factory-lock-icon",
+    ".factory-lock-body",
+    ".factory-lock-title",
+    ".factory-lock-desc"
+  ],
+  "indicator_spec": {
+    "detection_logic": [
+      "is_factory_template is true/'true'/'1'",
+      "template_source contains 'TUHO' or 'Oborovo' (case-insensitive)",
+      "project_origin contains 'TUHO' or 'Oborovo' (case-insensitive)",
+      "template_source contains 'factory' (case-insensitive)"
+    ],
+    "fallback": "render NOTHING if no factory signal found",
+    "html_structure": "<div class=\"factory-lock-indicator\" role=\"status\"><span class=\"factory-lock-icon\">FL</span><div class=\"factory-lock-body\"><span class=\"factory-lock-title\">{title}</span><span class=\"factory-lock-desc\">{description}</span></div></div>"
+  },
+  "behavior": {
+    "safe_fallback_renders_nothing": true,
+    "compact_size": "smaller than UI-2.1 banner (0.5rem padding)",
+    "no_backend_context_required": "uses form_data keys already in workspace_shell",
+    "no_enterprise_permissioning_implication": true
+  },
+  "safe_copy": [
+    "Factory template \u2014 {name}",
+    "Create a scenario or use Save As before editing controlled assumptions."
+  ],
+  "no_go_copy_check": {
+    "passed": true,
+    "checked_terms": [
+      "bankable",
+      "lender-ready",
+      "lender-grade",
+      "certified template",
+      "approved model",
+      "bank-ready template",
+      "locked by governance",
+      "production control",
+      "investor-ready",
+      "production-ready",
+      "guaranteed returns",
+      "investment advice",
+      "customer reference",
+      "external validation",
+      "audit-ready",
+      "validated (alone)"
+    ],
+    "safe_terms_used": [
+      "Factory template",
+      "Save As",
+      "controlled assumptions"
+    ]
+  },
+  "tests_run": {
+    "ui2_4_new": 50,
+    "ui2_3_existing": 50,
+    "ui2_2_existing": 50,
+    "ui2_1_existing": 56,
+    "phase54A_J": 412,
+    "phase51f": 21,
+    "phase52f_specifications": 19,
+    "phase52f_regression": 10,
+    "phase53i4": 45,
+    "total": 713
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_service_persistence_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_forbidden_ui_claims": true,
+    "phase_51f_pass": true,
+    "phase_52f_pass": true,
+    "phase_53i_pass": true,
+    "phase_54_pass": true,
+    "ui2_1_pass": true,
+    "ui2_2_pass": true,
+    "ui2_3_pass": true,
+    "all_tests_pass": true,
+    "rc1_untouched": true,
+    "pr_draft": true
+  },
+  "visual_review_required": true,
+  "visual_review_checklist": [
+    "indicator appears at top of workspace shell",
+    "no factory signal = nothing renders",
+    "TUHO/Oborovo signal = indicator appears",
+    "FL icon visible",
+    "indicator is compact and inline",
+    "copy says 'Factory template' + 'Create a scenario...'",
+    "no forbidden UI claims",
+    "no regression in other workspace elements",
+    "accessible (role=status, aria-label, aria-hidden)"
+  ],
+  "next_step": "STOP. User visual review of both UI-2.3 and UI-2.4 drafts required.",
+  "cleanup_notes": "Applied defensive form_data handling in workspace_shell.html and normalized detection logic to lower-case comparison in _factory_lock_indicator.html. Behavior preserved.",
+  "defensive_form_data": true,
+  "normalized_lowercase": true
+}

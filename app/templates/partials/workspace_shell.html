@@ -2,6 +2,16 @@
 <!-- Project Browser - rendered here by /projects/browse (htmx) -->
 <div id="project-browser-container"></div>
 
+{# ── UI-2.4: Factory lock indicator (renders nothing if no factory signal) ──────────── #}
+{% set _factory_form_data = form_data|default({}) %}
+{% with
+  template_source=_factory_form_data.get('template_source', ''),
+  project_origin=_factory_form_data.get('project_origin', ''),
+  is_factory_template=_factory_form_data.get('is_factory_template', '')
+%}
+  {% include "partials/_factory_lock_indicator.html" %}
+{% endwith %}
+
 <!-- Hidden persistence form - mirrors legacy sidebar_input block -->
 <!-- Used by app.js for save/run/discard and inputs draft persistence -->
 <form id="main-form" style="display:none;" aria-hidden="true">

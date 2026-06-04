@@ -1,0 +1,45 @@
+{# ── UI-2.4: Factory Lock Indicator Partial ──────────────────────────────
+   Renders a small lock indicator for factory-template projects.
+
+   Per Phase 54F-J guidance: is_factory_template context key is currently
+   missing. Use the documented workaround: check form_data.template_source
+   and form_data.project_origin if available.
+
+   If no safe factory-template signal is found, render NOTHING.
+
+   Safe copy: "Factory template", "Source-locked template",
+   "Create a scenario or use Save As before editing controlled assumptions."
+
+   Do NOT use: "locked by governance", "certified template",
+   "approved model", "bank-ready template", "production control".
+#}
+
+{% set _ts = template_source|default('') %}
+{% set _po = project_origin|default('') %}
+{% set _explicit = is_factory_template|default('') %}
+{% set _ts_l = _ts|lower %}
+{% set _po_l = _po|lower %}
+
+{% if _explicit == true or _explicit == 'true' or _explicit == '1' %}
+  {% set _is_factory = true %}
+  {% set _name = factory_template_name|default('Factory') %}
+{% elif _ts_l and ('tuho' in _ts_l or 'oborovo' in _ts_l or 'factory' in _ts_l) %}
+  {% set _is_factory = true %}
+  {% set _name = _ts %}
+{% elif _po_l and ('tuho' in _po_l or 'oborovo' in _po_l) %}
+  {% set _is_factory = true %}
+  {% set _name = _po %}
+{% else %}
+  {% set _is_factory = false %}
+  {% set _name = '' %}
+{% endif %}
+
+{% if _is_factory %}
+<div class="factory-lock-indicator" role="status" aria-label="Factory template indicator">
+  <span class="factory-lock-icon" aria-hidden="true">FL</span>
+  <div class="factory-lock-body">
+    <span class="factory-lock-title">Factory template — {{ _name }}</span>
+    <span class="factory-lock-desc">Create a scenario or use Save As before editing controlled assumptions.</span>
+  </div>
+</div>
+{% endif %}
