@@ -138,10 +138,6 @@
 </div>
 
 {# ── Detail Grid ─────────────────────────────────────────────────────────────── #}
-{# ── Phase 22B: Runtime Impact tooltip macro ────────────────────────────────── #}
-{%- macro _rt_tooltip(label) -%}
-{%- if label == 'Drives model' -%}This row is currently used by the backend model.{%- elif label == 'Display only' -%}Shown for audit/context only; does not affect model output.{%- elif label == 'Reference only' -%}Excel/reference row only.{%- elif label == 'Pending treatment' -%}Requires user/accounting/tax/funding treatment selection before runtime use.{%- elif label == 'Pending runtime source' -%}No runtime source mapped yet.{%- elif label == 'Not comparable' -%}App and Excel values represent different scopes.{%- elif label == 'Needs review' -%}Mismatch detected — review required.{%- elif label == 'Timing only' -%}Schedule used for construction draw/IDC timing only — not a CAPEX total.{%- elif label == 'Not applicable' -%}Not applicable for this project type.{%- elif label == 'Deferred' -%}Deferred for later phase.{%- else -%}{{ label }}{%- endif -%}
-{%- endmacro -%}
 
 <div class="fc-capex-grid-wrapper sheet-card">
 
@@ -335,10 +331,11 @@
         </td>
 
         <td class="fc-cell fc-cell--status" data-col="10">
-        {# ── Phase 22B: Runtime Impact badge (primary, most visible) ────────── #}
-        {% set rt = child.runtime_impact|default('Unknown') %}
-        {% set rt_class = rt|replace(' ', '-')|lower() %}
-        <span class="badge badge-rt badge-rt-{{ rt_class }}" title="{{ _rt_tooltip(rt) }}">{{ rt }}</span>
+        {# ── UI-2.2: Runtime Impact chip (uses new partial) ───────────── #}
+        {% set rt = child.runtime_impact|default('') %}
+        {% with runtime_impact=rt, sub_reason='' %}
+          {% include "partials/_runtime_impact_chip.html" %}
+        {% endwith %}
         {# Scope badge (secondary) #}
         {% set scopeval = child.scope|default('') %}
         {% if scopeval == 'aggregate_total' %}
