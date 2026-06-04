@@ -1,0 +1,137 @@
+{
+  "package": {
+    "name": "Finco1 UI No-Go Claim / Demo Guardrail Refresh",
+    "workstream": "B38",
+    "branch": "parallel-b35-b40-ui-governance-visual-review-pack",
+    "branch_base_sha": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
+    "package_base_sha_at_creation": "9d05c0c8de8e097c59cf7253ada5592cb6556905",
+    "refresh_version": "0.1.0",
+    "refresh_status": "initial_draft_ui_focused",
+    "intended_use": "internal_ui_commercial_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/commercial/ui demo_guardrail_refresh.md",
+  "b35_post_phase56_pointer": "docs/governance/post_phase56_ui_governance_refresh.md",
+  "b36_line_item_grid_pointer": "docs/ui/phase57a_line_item_grid_visual_review.md",
+  "b37_ui_regression_pointer": "docs/validation/ui_regression_evidence_matrix.md",
+  "b39_controlled_pilot_ux_pointer": "docs/pilot/controlled_pilot_ux_runbook.md",
+  "b40_ui3_migration_pointer": "docs/governance/ui3_line_item_grid_migration_governance_plan.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b19_demo_pointer": "docs/commercial/demo_claims_checklist.json",
+  "b22_qa_pointer": "docs/commercial/qa_claims_matrix.json",
+  "disclaimers": {
+    "ui_polish_does_not_mean_production_ready": true,
+    "ui_polish_does_not_mean_enterprise_saas_ready": true,
+    "line_item_grid_pilot_does_not_mean_full_spreadsheet_engine": true,
+    "capex_summary_pilot_does_not_mean_full_model_validation": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_template_or_static_changes_by_agent_b": true,
+    "no_app_code_changes_by_agent_b": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "allowed_demo_statements": [
+    {"statement": "The CAPEX summary grid is now rendered via the shared LineItemGrid partial.", "required_caveat": "The LineItemGrid is a UI refactor; the underlying financial model is unchanged.", "source": "Phase 57A PR #487 (open draft)"},
+    {"statement": "The runtime summary, validation summary, and banner context are now available on the index page.", "required_caveat": "The context wiring is a UI refactor; the underlying state is unchanged.", "source": "Phase 55E-55G PR #473-#475"},
+    {"statement": "The Help section has been moved into a dedicated section.", "required_caveat": "The Help section is a UI refactor; the underlying instructions are unchanged.", "source": "Phase 56B PR #477 (DRAFT)"},
+    {"statement": "The New Project form has been simplified.", "required_caveat": "The form simplification is a UI refactor; the required fields and validation are unchanged.", "source": "Phase 56C PR #480 (DRAFT)"},
+    {"statement": "The COD is now derived from construction_start_date and construction_duration_months.", "required_caveat": "The COD derivation is a UI-side display calculation; the financial model is unchanged.", "source": "Phase 56D PR #481"},
+    {"statement": "The project switcher has been simplified.", "required_caveat": "The project switcher is a UI refactor; the project selection logic is unchanged.", "source": "Phase 56E PR #482 (DRAFT)"},
+    {"statement": "The state banner hierarchy has been polished.", "required_caveat": "The state banner is a UI refactor; the underlying state is unchanged.", "source": "Phase 56F PR #483 (DRAFT)"},
+    {"statement": "The route-render smoke and index context-contract tests are now in place.", "required_caveat": "The tests are guardrails for the UI-3 work; they do not validate the underlying state or authorize any external claim.", "source": "Phase 57-pre PR #486"}
+  ],
+  "prohibited_demo_statements": [
+    {"statement": "Production-ready.", "no_go_category": "production_ready_claim"},
+    {"statement": "Enterprise SaaS-ready.", "no_go_category": "enterprise_saas_readiness_claim"},
+    {"statement": "Bankable / lender-ready / auditable / certified / regulatory-approved.", "no_go_category": "lender_bank_audit_certification_regulatory_claim"},
+    {"statement": "Investment advice / guaranteed returns / investor-grade.", "no_go_category": "investment_advice_guaranteed_returns_claim"},
+    {"statement": "Customer reference / production customer / live customer / deployed at [customer name].", "no_go_category": "customer_reference_claim"},
+    {"statement": "The model is validated.", "no_go_category": "financial_model_validation_claim"},
+    {"statement": "The LineItemGrid is a full spreadsheet engine / the CAPEX summary pilot is the full model.", "no_go_category": "line_item_grid_capex_summary_overclaim"},
+    {"statement": "Paid pilot authorized / pilot is running / pilot is approved.", "no_go_category": "paid_pilot_authorization"},
+    {"statement": "External validation completed / external reviewer approved / audit passed.", "no_go_category": "external_validation_claim"},
+    {"statement": "Generic solar / wind validated.", "no_go_category": "generic_solar_wind_validation_claim"}
+  ],
+  "required_caveats": [
+    "The UI improvements do not change the financial model.",
+    "The UI improvements do not validate the engine output.",
+    "The UI improvements do not authorize paid pilot.",
+    "The UI improvements do not constitute external validation.",
+    "The LineItemGrid is a UI refactor; the underlying financial model is unchanged.",
+    "The CAPEX summary pilot is a single-sheet pilot; it is not the full UI-3 rollout.",
+    "The CAPEX summary pilot does not constitute model validation.",
+    "Generic solar and wind remain exploratory and unvalidated.",
+    "G20 remains BLOCKED.",
+    "R99 and R102 remain NOT APPROVED."
+  ],
+  "escalation_triggers": [
+    "Any prohibited demo statement is made in a demo / commercial context.",
+    "Any required caveat is missing from an allowed statement.",
+    "The LineItemGrid pilot is described as a 'full spreadsheet engine' or the 'full model'.",
+    "The CAPEX summary pilot is described as 'model validation' or 'external validation'.",
+    "The paid pilot is described as 'authorized' or 'running'.",
+    "The external review is described as 'completed' or 'approved'.",
+    "Generic solar / wind is described as 'validated' or 'production-ready'.",
+    "The UI improvements are described as 'production-ready' or 'enterprise SaaS-ready'.",
+    "The customer reference is made.",
+    "The Claude review or post-51T review is referenced as external validation or certification."
+  ],
+  "mapping_to_existing_no_go_claims": {
+    "B1_no_go_claim_list": "docs/external_review/no_go_claims.md (canonical no-go claim list; B38 supplements B1 with UI-specific guardrails).",
+    "B11_commercial_guardrail": "docs/commercial/no_go_claims_commercial_guardrail.md (commercial / demo guardrail; B38 supplements B11 with UI-specific guardrails).",
+    "B19_demo_claims_checklist": "docs/commercial/demo_claims_checklist.json (demo claims checklist; B38 supplements B19 with UI-specific guardrails).",
+    "B22_qa_matrix": "docs/commercial/qa_claims_matrix.json (Q&A matrix; B38 supplements B22 with UI-specific guardrails).",
+    "B1_B11_B19_B22_remain_primary": "B1, B11, B19, B22 remain the primary no-go claim artifacts. B38 is a UI-focused refresh, not a replacement."
+  },
+  "ui_polish_does_not_mean": [
+    "production readiness",
+    "enterprise SaaS readiness",
+    "paid pilot authorization",
+    "external validation",
+    "model validation",
+    "customer reference",
+    "marketing launch approval"
+  ],
+  "line_item_grid_pilot_does_not_mean": [
+    "full spreadsheet engine",
+    "replacement for the underlying financial model",
+    "replacement for the underlying engine",
+    "replacement for the underlying persistence layer",
+    "full UI-3 rollout"
+  ],
+  "capex_summary_pilot_does_not_mean": [
+    "full model validation",
+    "external validation",
+    "pin of the underlying model outputs",
+    "replacement for the parity-core lock",
+    "replacement for the engine-output golden"
+  ],
+  "preserved_no_go_claim_categories": {
+    "lender_reliance": false,
+    "audit": false,
+    "certification": false,
+    "regulatory_approval": false,
+    "saas_claim": false,
+    "investment_advice": false,
+    "guaranteed_returns": false,
+    "customer_reference": false,
+    "production_readiness": false,
+    "enterprise_saas_readiness": false,
+    "bankability": false
+  },
+  "generic_solar_wind_status": "exploratory_and_unvalidated",
+  "g20_status": "BLOCKED",
+  "r99_r102_status": "NOT_APPROVED",
+  "global_notes": [
+    "UI polish is a UI refactor. UI polish does not change the financial model, does not validate the engine output, does not authorize paid pilot, does not constitute external validation.",
+    "The LineItemGrid pilot (Phase 57A) is a single-sheet pilot. It migrates only app/templates/partials/sheet_capex.html to the shared LineItemGrid partial/macro. The LineItemGrid pilot is not a full spreadsheet engine, not a replacement for the underlying financial model, and not a full UI-3 rollout.",
+    "The CAPEX summary pilot does not constitute model validation. The parity-core lock is unchanged. The engine-output golden is unchanged.",
+    "B1, B11, B19, B22 remain the primary no-go claim artifacts. B38 is a UI-focused refresh, not a replacement.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}
