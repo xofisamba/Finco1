@@ -4724,3 +4724,34 @@ body {
 .help-pointer__link:hover {
   color: var(--primary-hover, #1e40af);
 }
+
+/* ── Phase 56C: New Project v1 form helpers ─────────────────────── */
+.np-helper {
+  color: var(--text-2, #475569);
+  font-weight: 400;
+  font-size: 0.72rem;
+  display: block;
+  margin-top: 0.15rem;
+}
+
+.np-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--warn-bg, #fef9c3);
+  border-left: 3px solid var(--warn-border, #fde047);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: var(--warn-color, #92400e);
+  line-height: 1.4;
+}
+
+.np-warning .badge {
+  flex-shrink: 0;
+}
+
+.np-hidden-defaults {
+  display: none;
+}
