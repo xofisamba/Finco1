@@ -1,0 +1,145 @@
+{
+  "phase": "57F",
+  "title": "UI-3.2 next-grid readiness plan",
+  "branch": "phase57f-ui3-2-next-grid-readiness-plan",
+  "type": "docs/report/test-only",
+  "auto_merge_eligible": true,
+  "runtime_migration_in_this_phase": false,
+  "base_sha_start": "9f194ed7bbaa792049573f72bb6699ba25fb701d",
+  "base_sha_start_note": "post-57E, CSS token consolidation inventory merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "57a_results": {
+    "merged_pr": 487,
+    "merge_sha": "b173355b6021577f6567069ebd748aa3176f2475",
+    "shared_partial": "app/templates/partials/_line_item_grid.html",
+    "migrated_sheet": "app/templates/partials/sheet_capex.html",
+    "tests_added": 57,
+    "review_fixes_required": [
+      {
+        "fix": "A",
+        "label": "Financing rows read-only in user project mode",
+        "severity": "REQUIRED",
+        "type": "behavior_regression"
+      },
+      {
+        "fix": "B",
+        "label": "Tighten 57pre template-change relaxation",
+        "severity": "REQUIRED",
+        "type": "guardrail"
+      },
+      {
+        "fix": "C",
+        "label": "Section band escaping",
+        "severity": "RECOMMENDED",
+        "type": "html_correctness"
+      },
+      {
+        "fix": "D",
+        "label": "Macro contract cleanup",
+        "severity": "RECOMMENDED",
+        "type": "documentation"
+      }
+    ]
+  },
+  "candidate_next_grids": [
+    {"sheet": "sheet_opex.html", "complexity": "medium", "value": "high", "recommended": true},
+    {"sheet": "sheet_opex_detail.html", "complexity": "medium", "value": "medium", "recommended": false},
+    {"sheet": "sheet_revenue.html", "complexity": "medium", "value": "medium", "recommended": false},
+    {"sheet": "sheet_capex_detail.html", "complexity": "low", "value": "low", "recommended": false},
+    {"sheet": "sheet_senior_debt.html", "complexity": "low", "value": "low", "recommended": false},
+    {"sheet": "sheet_shl.html", "complexity": "low", "value": "low", "recommended": false},
+    {"sheet": "sheet_tax.html", "complexity": "low", "value": "low", "recommended": false},
+    {"sheet": "sheet_construction.html", "complexity": "low", "value": "low", "recommended": false},
+    {"sheet": "sheet_production.html", "complexity": "low", "value": "low", "recommended": false},
+    {"sheet": "sheet_inputs.html", "complexity": "high", "value": "low", "recommended": false},
+    {"sheet": "sheet_financials.html", "complexity": "high", "value": "low", "recommended": false},
+    {"sheet": "sheet_idc.html", "complexity": "low", "value": "low", "recommended": false}
+  ],
+  "recommendation": {
+    "do_not_migrate_in_57f": true,
+    "wait_for_user_visual_review_of_57a": true,
+    "ui_3_2_should_be_draft_only": true,
+    "ui_3_2_should_not_auto_merge": true,
+    "likely_next_candidate": "sheet_opex.html",
+    "alternative_candidates": ["sheet_revenue.html", "sheet_capex_detail.html"]
+  },
+  "ui_3_2_requirements": {
+    "allowed_files": [
+      "app/templates/partials/_line_item_grid.html (only if minor extension needed)",
+      "app/templates/partials/sheet_<chosen>.html",
+      "tests/test_phase<phase>_ui3_2_*.py",
+      "docs/phase<phase>_ui3_2_*.md",
+      "reports/phase<phase>_ui3_2_*.json",
+      "tests/test_phase57pre_route_render_smoke.py (allowlist update only)"
+    ],
+    "forbidden_files": [
+      "main_web.py",
+      "app/waterfall_core.py",
+      "app/project_factories.py",
+      "app/persistence/*",
+      "app/services/*",
+      "static/app.js",
+      "static/styles.css (unless user explicitly approves)",
+      "any schema / migration",
+      "any fixture CSV",
+      "any frontend dependency config"
+    ],
+    "required_tests": [
+      "all 57A test classes extended for the new sheet",
+      "test_<chosen>_rows_readonly_when_financing (Fix A mirror)",
+      "test_<chosen>_row_order_matches_pre_migration",
+      "test_<chosen>_section_bands_escaped (Fix C mirror)",
+      "test_<chosen>_preserves_existing_classes",
+      "test_ui_2_wires_still_active (regression for 55E/55F/55G)",
+      "test_56h1_hoist_still_present (regression for 56H-1)",
+      "test_57pre_template_change_allowlist_updated"
+    ],
+    "visual_review_checklist": [
+      "Open the app in a browser",
+      "Navigate to the migrated sheet",
+      "Confirm row labels and order match pre-UI-3.2",
+      "Confirm kEUR formatting matches pre-UI-3.2",
+      "Confirm editable / read-only semantics match pre-UI-3.2",
+      "Confirm column order is unchanged",
+      "Confirm section bands / subtotals / totals are visually clear",
+      "Confirm no horizontal overflow",
+      "Confirm Inputs tab still opens",
+      "Confirm GET / still works",
+      "Confirm Overview / Inputs / Audit tabs all load",
+      "Confirm no console errors / no network 404s"
+    ],
+    "rollback_plan": [
+      "git revert <merge-sha> and merge the revert",
+      "OR: git checkout <pre-merge-sha> and force-push (only if no follow-up commits depend on UI-3.2)"
+    ],
+    "wait_for_validation_bar_fix": {
+      "wait": true,
+      "rationale": "57C-1 may change the validation_summary contract. If it does, UI-3.2 should follow 57C-1 to avoid re-work.",
+      "exception": "If 57C-1 only adds a new governance_guard_summary key without changing the existing validation_summary contract, UI-3.2 can proceed in parallel."
+    }
+  },
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_forbidden_user_facing_claims": true,
+    "rc1_untouched": true
+  },
+  "files_in_phase_57f_pr": [
+    "docs/phase57f_ui3_2_next_grid_readiness_plan.md",
+    "reports/phase57f_ui3_2_next_grid_readiness_plan.json",
+    "tests/test_phase57f_ui3_2_next_grid_readiness_plan.py"
+  ]
+}
