@@ -4449,3 +4449,43 @@ body {
   background: #7a96b8;
   color: #ffffff;
 }
+
+/* ── UI-2.2: Runtime Impact Chip ────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 2px 6px;
+  margin: 1px;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.chip-drives-model {
+  background: #0f7a52;
+  color: #ffffff;
+}
+
+.chip-display-only {
+  background: #475569;
+  color: #ffffff;
+}
+
+.chip-pending {
+  background: #b45309;
+  color: #ffffff;
+}
+
+.chip-needs-review {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.chip-unknown,
+.chip-fallback {
+  background: #7a96b8;
+  color: #ffffff;
+}

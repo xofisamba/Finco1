@@ -1,0 +1,141 @@
+{
+  "phase": "UI-2.2",
+  "title": "Runtime Impact chip partial",
+  "type": "runtime_template_implementation",
+  "branch": "phase-ui2-2-runtime-impact-chip",
+  "base_sha": "075dc77b5953226b9115513ff208671da97030ef",
+  "stack_base_sha": "bc23496237416c0b66c33b67d28ff5585f8e7caa",
+  "head_sha": "TBD (in progress)",
+  "draft": true,
+  "auto_merged": false,
+  "files_added": [
+    {
+      "file": "app/templates/partials/_runtime_impact_chip.html",
+      "lines": 38
+    },
+    {
+      "file": "tests/test_ui2_2_runtime_impact_chip_partial.py",
+      "lines": 280
+    },
+    {
+      "file": "docs/ui2_2_runtime_impact_chip_partial.md"
+    },
+    {
+      "file": "reports/ui2_2_runtime_impact_chip_partial.json"
+    }
+  ],
+  "files_modified": [
+    {
+      "file": "app/templates/partials/sheet_capex_detail.html",
+      "change": "replaced inline chip with {% with %}+{% include %}; old chip commented out"
+    },
+    {
+      "file": "static/styles.css",
+      "change": "added 40 lines of .chip-* classes"
+    }
+  ],
+  "files_NOT_changed": [
+    "main_web.py",
+    "app/services/",
+    "app/persistence/",
+    "app/runtime_impact_taxonomy.py",
+    "static/app.js",
+    ":root CSS variables"
+  ],
+  "css_selectors_added": [
+    ".chip",
+    ".chip-drives-model",
+    ".chip-display-only",
+    ".chip-pending",
+    ".chip-needs-review",
+    ".chip-unknown",
+    ".chip-fallback"
+  ],
+  "chip_spec": {
+    "states": 4,
+    "states_list": [
+      "Drives model",
+      "Display only",
+      "Pending",
+      "Needs review"
+    ],
+    "tooltips": {
+      "Drives model": "Included in model calculations.",
+      "Display only": "Shown for review; does not affect calculations.",
+      "Pending": "Mapped but not yet connected to runtime calculations.",
+      "Needs review": "Requires review before use."
+    },
+    "html_structure": "<span class=\"chip chip-{state-class}\" title=\"{tooltip}\">{label}</span>"
+  },
+  "behavior": {
+    "missing_runtime_impact_renders_nothing": true,
+    "sub_reason_optional_appended_to_tooltip": true,
+    "preserved_backward_compat": {
+      "rt_tooltip_macro": "preserved in sheet_capex_detail.html",
+      "old_badge_rt_classes": "preserved in sheet_capex_detail.html inline style"
+    }
+  },
+  "no_go_copy_check": {
+    "passed": true,
+    "checked_terms": [
+      "bankable",
+      "lender-ready",
+      "certified",
+      "audit-ready",
+      "validated (alone)",
+      "investor-ready",
+      "SaaS-ready",
+      "production-ready",
+      "guaranteed returns",
+      "investment advice",
+      "customer reference",
+      "external validation"
+    ],
+    "safe_terms_used": [
+      "model calculations",
+      "review",
+      "does not affect calculations",
+      "runtime calculations",
+      "requires review"
+    ]
+  },
+  "tests_run": {
+    "ui2_2_new": 49,
+    "ui2_1_existing": 56,
+    "phase54A_J": 412,
+    "phase51f": 21,
+    "phase52f_specifications": 19,
+    "phase52f_regression": 10,
+    "phase53i4": 45,
+    "total": 612
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_service_persistence_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_forbidden_ui_claims": true,
+    "phase_51f_pass": true,
+    "phase_52f_pass": true,
+    "phase_53i_pass": true,
+    "phase_54_pass": true,
+    "ui2_1_pass": true,
+    "all_tests_pass": true,
+    "rc1_untouched": true,
+    "pr_draft": true
+  },
+  "visual_review_required": true,
+  "visual_review_checklist": [
+    "chip renders with correct color for each of 4 states",
+    "tooltip shows on hover (title attribute)",
+    "chip is small, inline, doesn't break layout",
+    "empty/missing runtime_impact renders nothing",
+    "CAPEX detail page still works",
+    "other sheets using old .badge-rt-* still work",
+    "no regression in runtime summary, audit, scenario views",
+    "old .badge-rt-* chips in other partials still work"
+  ],
+  "next_step": "STOP. User visual review of both UI-2.1 and UI-2.2 drafts required.",
+  "cleanup_notes": "Removed _rt_tooltip macro (only used by old chip) and commented-out old chip line. Clean replacement per user instruction."
+}
