@@ -439,12 +439,22 @@ class TestHotfixScope:
         )
 
     def test_no_app_js_changes_in_hotfix(self):
-        """The hotfix must NOT touch static/app.js."""
-        # This is a structural test: the hotfix only modifies
-        # main_web.py and tests/test_phase56h1_*.py. Other files
-        # must be unchanged.
+        """The hotfix must NOT touch static/app.js.
+
+        The branch may include the hotfix itself (main_web.py +
+        hotfix test) AND the closeout (56H doc + report + test).
+        What is NOT allowed: any change to static/app.js,
+        waterfall_core.py, project_factories.py,
+        runtime_impact_taxonomy.py, or anything in app/persistence/.
+        """
+        FORBIDDEN_FILES = {
+            "static/app.js",
+            "app/waterfall_core.py",
+            "app/project_factories.py",
+            "app/runtime_impact_taxonomy.py",
+        }
+        # Anything in app/persistence/ is also forbidden
         import subprocess
-        # We can check the diff between main and the hotfix branch
         r = subprocess.run(
             ["git", "diff", "main", "--name-only"],
             cwd=str(REPO_ROOT),
@@ -452,13 +462,16 @@ class TestHotfixScope:
             text=True,
         )
         if r.returncode == 0 and r.stdout.strip():
-            changed_files = r.stdout.strip().split("\n")
-            # If we're on the hotfix branch, only main_web.py and the
-            # test file should be changed.
-            assert set(changed_files) == {
-                "main_web.py",
-                "tests/test_phase56h1_index_validation_errors_hotfix.py",
-            }, (
-                f"Hotfix branch should only change main_web.py + tests. "
-                f"Found: {changed_files}"
-            )
+            changed_files = set(r.stdout.strip().split("\n"))
+            # No forbidden file may be in the diff
+            for f in FORBIDDEN_FILES:
+                assert f not in changed_files, (
+                    f"Hotfix branch must NOT change {f}. "
+                    f"Found in diff: {changed_files}"
+                )
+            # No app/persistence/* file
+            for f in changed_files:
+                assert not f.startswith("app/persistence/"), (
+                    f"Hotfix branch must NOT change any app/persistence/* "
+                    f"file. Found: {f}"
+                )
