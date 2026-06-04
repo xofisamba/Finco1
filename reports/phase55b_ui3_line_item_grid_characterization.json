@@ -1,0 +1,195 @@
+{
+  "phase": "55B",
+  "title": "UI-3.1 LineItemGrid characterization",
+  "status": "DRAFT",
+  "type": "docs/report-only",
+  "base_sha": "1b97a2b747331c10a848369cef1e3738ecea438d",
+  "head_sha": "1b97a2b747331c10a848369cef1e3738ecea438d",
+  "branch": "phase55b-ui3-line-item-grid-characterization",
+  "sheet_partial_inventory": {
+    "total_sheet_partials": 13,
+    "audit_tab_partials": 1,
+    "total_grid_bearing_partials": 14,
+    "total_sheet_loc": 3823,
+    "audit_tab_loc": 230,
+    "total_loc": 4053,
+    "by_partial": [
+      {"name": "sheet_capex.html", "loc": 235, "role": "CAPEX summary", "uses_fc_grid": true, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_capex_detail.html", "loc": 883, "role": "CAPEX detail", "uses_fc_grid": true, "uses_runtime_chip": true, "uses_sticky": true, "is_multi_period": true},
+      {"name": "sheet_construction.html", "loc": 164, "role": "Construction schedule", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_financials.html", "loc": 528, "role": "Financial summary", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_idc.html", "loc": 169, "role": "IDC schedule", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_inputs.html", "loc": 35, "role": "Input form", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_opex.html", "loc": 428, "role": "OPEX summary", "uses_fc_grid": true, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_opex_detail.html", "loc": 658, "role": "OPEX detail", "uses_fc_grid": true, "uses_runtime_chip": false, "uses_sticky": true, "is_multi_period": true},
+      {"name": "sheet_production.html", "loc": 74, "role": "Production schedule", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_revenue.html", "loc": 232, "role": "Revenue schedule", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_senior_debt.html", "loc": 174, "role": "Senior debt", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_shl.html", "loc": 123, "role": "Shareholder loan", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "sheet_tax.html", "loc": 120, "role": "Tax", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false},
+      {"name": "audit_reconciliation_tab.html", "loc": 230, "role": "Audit reconciliation", "uses_fc_grid": false, "uses_runtime_chip": false, "uses_sticky": false, "is_multi_period": false, "notes": "has validation summary bar"}
+    ]
+  },
+  "grid_pattern_inventory": {
+    "primary_grid_class": "fc-grid (from Phase 20I fc-grid design system)",
+    "primary_grid_wrapper_classes": ["fc-grid-wrapper", "fc-capex-grid-wrapper", "fc-opex-grid-wrapper"],
+    "cell_classes": [
+      "fc-cell (base)",
+      "fc-cell--code (code identifier)",
+      "fc-cell--amount (numeric value)",
+      "fc-cell-input (editable, contains native input)",
+      "fc-cell-runtime (read-only, value from model)"
+    ],
+    "row_classes": [
+      "fc-grid-header (header row)",
+      "fc-section-band (group separator)",
+      "fc-total-row (sum row)",
+      "fc-subtotal-row (group subtotal)"
+    ]
+  },
+  "runtime_impact_usage": {
+    "total_inclusions": 1,
+    "files": ["app/templates/partials/sheet_capex_detail.html"],
+    "line_range": "335-337",
+    "context": "Per-line-item runtime_impact for CAPEX children"
+  },
+  "subtotal_patterns": {
+    "files_using_subtotals": [
+      "sheet_capex.html",
+      "sheet_capex_detail.html",
+      "sheet_construction.html",
+      "sheet_financials.html",
+      "sheet_idc.html",
+      "sheet_opex.html",
+      "sheet_opex_detail.html",
+      "sheet_revenue.html",
+      "sheet_shl.html",
+      "sheet_tax.html"
+    ],
+    "class": "fc-total-row fc-subtotal-row"
+  },
+  "input_state_patterns": {
+    "input_cell": {
+      "class": "fc-cell-input",
+      "aria": "aria-label set on input",
+      "data_attr": "data-capex-code",
+      "name_attr": "capex_<code>_keur",
+      "behavior": "editable, posts to form action"
+    },
+    "calculated_cell": {
+      "class": "fc-cell-runtime",
+      "aria": "aria-readonly=true",
+      "behavior": "read-only, value from model"
+    },
+    "baseline_template": {
+      "banner_class": "inp-readonly-notice inp-readonly-notice--<sheet>",
+      "behavior": "all cells are runtime, no inputs"
+    }
+  },
+  "sticky_column_usage": {
+    "files": ["sheet_capex_detail.html", "sheet_opex_detail.html"],
+    "pattern": "position: sticky; left: 0; on first <th>"
+  },
+  "capex_summary_vs_detail_complexity": {
+    "summary_loc": 235,
+    "detail_loc": 883,
+    "complexity_ratio": 3.8,
+    "summary_uses_fc_grid": true,
+    "summary_is_multi_period": false,
+    "summary_uses_sticky": false,
+    "summary_uses_runtime_chip": false,
+    "detail_uses_fc_grid": true,
+    "detail_is_multi_period": true,
+    "detail_uses_sticky": true,
+    "detail_uses_runtime_chip": true
+  },
+  "first_pilot_recommendation": {
+    "partial": "sheet_capex.html",
+    "rationale": [
+      "Smallest sheet that exhibits the full fc-grid design system (235 LOC)",
+      "Has section bands, subtotals, input vs runtime cells",
+      "Has read-only notice for baselines",
+      "Single period column (Year 1 kEUR) - no multi-period complexity",
+      "Already tested daily by users",
+      "Migrating to a unified LineItemGrid macro is straightforward"
+    ]
+  },
+  "migration_order": [
+    {"step": 1, "partial": "sheet_capex.html", "role": "CAPEX summary (first pilot)"},
+    {"step": 2, "partial": "sheet_opex.html", "role": "OPEX summary (similar structure)"},
+    {"step": 3, "partial": "sheet_revenue.html", "role": "Revenue (non-numeric cell variant)"},
+    {"step": 4, "partial": "sheet_capex_detail.html", "role": "CAPEX detail (multi-period + sticky + chip)"},
+    {"step": 5, "partial": "sheet_opex_detail.html", "role": "OPEX detail (multi-period + sticky)"},
+    {"step": 6, "partial": "other sheets", "role": "construction, IDC, senior_debt, shl, tax, financials (bulk last)"}
+  ],
+  "ui3_test_strategy": [
+    "Snapshot test of rendered HTML before/after migration (byte-equivalent for same input)",
+    "Accessibility test: aria-label, aria-readonly, role preserved",
+    "Runtime impact chip renders when runtime_impact context present",
+    "Read-only notice preserved on baseline templates",
+    "Edit/input behaviour preserved (form action unchanged)",
+    "Visual review by user before merge"
+  ],
+  "visual_review_checklist": [
+    "Section bands render with correct colspan",
+    "Subtotal rows render with correct class and value",
+    "Input cells accept numeric values, validate",
+    "Runtime cells are read-only, formatted correctly",
+    "Read-only notice appears on baseline templates",
+    "Runtime impact chip renders on detail sheets",
+    "Sticky column works on horizontal scroll",
+    "No layout regression",
+    "No new no-go copy",
+    "rc1 untouched"
+  ],
+  "hard_gates_for_runtime_grid_prs": [
+    "Only allowed template files modified (sheet partial + new shared partial if needed)",
+    "No backend/service/persistence/model changes",
+    "No static CSS/JS class modifications (additive only)",
+    "No :root changes",
+    "No frontend dependency changes",
+    "No new no-go copy claims",
+    "rc1 untouched",
+    "Snapshot tests pass",
+    "100% visual review by user before merge",
+    "PR remains draft until user approval"
+  ],
+  "tailwind_build_consideration": {
+    "do_not_combine": [
+      "Do NOT introduce Tailwind build setup in the same PR as a grid migration",
+      "Do NOT introduce Alpine.js in the same PR"
+    ],
+    "rationale": "Tailwind and Alpine are orthogonal workstreams. Each requires its own PR and visual review."
+  },
+  "files_modified": [
+    "docs/phase55b_ui3_line_item_grid_characterization.md",
+    "reports/phase55b_ui3_line_item_grid_characterization.json"
+  ],
+  "files_created": [
+    "docs/phase55b_ui3_line_item_grid_characterization.md",
+    "reports/phase55b_ui3_line_item_grid_characterization.json"
+  ],
+  "production_code_changed": false,
+  "templates_changed": false,
+  "static_css_js_changed": false,
+  "service_persistence_changed": false,
+  "main_web_changed": false,
+  "model_parity_schema_formula_fixture_changed": false,
+  "frontend_dependency_changed": false,
+  "no_go_claim_introduced": false,
+  "rc1_untouched": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_run": [
+    "tests/test_phase54*.py",
+    "tests/test_ui2_1_state_banner_partial.py",
+    "tests/test_ui2_2_runtime_impact_chip_partial.py",
+    "tests/test_ui2_3_validation_summary_bar.py",
+    "tests/test_ui2_4_factory_lock_indicator.py",
+    "tests/test_ui2_5_stale_result_warning.py",
+    "tests/test_ui2_6_run_source_indicator.py",
+    "tests/test_phase51f_parallel_work_guardrails.py",
+    "tests/test_phase52f_persistence_guardrail_specifications.py"
+  ],
+  "known_failures": [],
+  "recommended_next_step": "55C Tailwind-0 CSS token feasibility"
+}
