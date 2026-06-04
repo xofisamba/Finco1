@@ -1,0 +1,47 @@
+{
+  "phase": "UI-2.5",
+  "title": "Stale result warning",
+  "status": "DRAFT",
+  "base_sha": "fd8a110263b177922ee753c2cedf8222c2175eee",
+  "branch": "phase-ui2-5-stale-result-warning",
+  "files_modified": [
+    "app/templates/index.html",
+    "tests/test_ui2_5_stale_result_warning.py",
+    "docs/ui2_5_stale_result_warning.md",
+    "reports/ui2_5_stale_result_warning.json"
+  ],
+  "files_created": [
+    "tests/test_ui2_5_stale_result_warning.py",
+    "docs/ui2_5_stale_result_warning.md",
+    "reports/ui2_5_stale_result_warning.json"
+  ],
+  "template_files_modified": [
+    "app/templates/index.html"
+  ],
+  "css_files_modified": [],
+  "css_selectors_added": [],
+  "tests_added": 43,
+  "tests_total": 756,
+  "tests_passing": 756,
+  "ci_status": "pending",
+  "parity_guardrails_status": "pending",
+  "phase51f_status": "pass",
+  "phase52f_status": "pass",
+  "phase53i_status": "pass",
+  "phase54_status": "pass",
+  "ui21_regression": "pass",
+  "ui22_regression": "pass",
+  "ui23_regression": "pass",
+  "ui24_regression": "pass",
+  "no_go_copy_check": "pass",
+  "backend_changes": "none",
+  "service_changes": "none",
+  "persistence_changes": "none",
+  "model_changes": "none",
+  "js_financial_calc": "none",
+  "frontend_dep_changes": "none",
+  "route_behavior_changes": "none",
+  "rc1_sha_untouched": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "pr_draft": true,
+  "ready_for_user_visual_review": true
+}

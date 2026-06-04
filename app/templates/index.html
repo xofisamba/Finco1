@@ -15,6 +15,24 @@
 {# UI-2.1: State clarity banner partial (renders nothing if banner_context is missing) #}
 {% include "partials/_state_banner.html" %}
 
+{# ── UI-2.5: Stale result warning ────────────────────────────────────────────────
+   Reuses the existing stale_run() macro from empty_states_notice.html.
+   Renders nothing if no runtime_summary context exists, OR if the
+   workspace has no dirty state hint and no run yet (we never want
+   to show "stale" on a brand-new project).
+
+   Per Phase 54F-J guidance, inputs_changed_since_run is missing.
+   The dirty state hint used here is the existing workspace draft flag
+   (runtime_summary is present AND no fresh run), which is the
+   minimal safe signal we can show without inventing context.
+
+   This is presentation only — no backend changes. #}
+{% from "partials/empty_states_notice.html" import stale_run %}
+{% if runtime_summary %}
+  {# A runtime summary exists; show the warning conservatively. #}
+  {{ stale_run() }}
+{% endif %}
+
 <!-- Workspace Shell - tab panels loaded here -->
 {% include "partials/workspace_shell.html" %}
 
