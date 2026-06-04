@@ -12,6 +12,9 @@
   <span class="badge badge-blocked">Blocked</span>
 </div>
 
+{# UI-2.1: State clarity banner partial (renders nothing if banner_context is missing) #}
+{% include "partials/_state_banner.html" %}
+
 <!-- Workspace Shell - tab panels loaded here -->
 {% include "partials/workspace_shell.html" %}
 
