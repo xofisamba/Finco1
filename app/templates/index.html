@@ -43,6 +43,9 @@
 <!-- Workspace Shell - tab panels loaded here -->
 {% include "partials/workspace_shell.html" %}
 
+{# ── UI-2.6: Last run / run-source indicator (renders nothing if no runtime_summary) ── #}
+{% include "partials/_last_run_indicator.html" %}
+
 {% endblock %}
 
 {% block sidebar_input %}

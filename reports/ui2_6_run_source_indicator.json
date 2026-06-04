@@ -1,0 +1,63 @@
+{
+  "phase": "UI-2.6",
+  "title": "Run-source indicator",
+  "status": "DRAFT",
+  "base_sha": "2101264060210960754f4a8c1d92770025603f06",
+  "branch": "phase-ui2-6-run-source-indicator",
+  "files_modified": [
+    "app/templates/index.html",
+    "static/styles.css",
+    "tests/test_ui2_6_run_source_indicator.py",
+    "docs/ui2_6_run_source_indicator.md",
+    "reports/ui2_6_run_source_indicator.json"
+  ],
+  "files_created": [
+    "app/templates/partials/_last_run_indicator.html",
+    "tests/test_ui2_6_run_source_indicator.py",
+    "docs/ui2_6_run_source_indicator.md",
+    "reports/ui2_6_run_source_indicator.json"
+  ],
+  "template_files_modified": [
+    "app/templates/index.html"
+  ],
+  "template_files_created": [
+    "app/templates/partials/_last_run_indicator.html"
+  ],
+  "css_files_modified": [
+    "static/styles.css"
+  ],
+  "css_selectors_added": [
+    ".last-run-indicator",
+    ".last-run-indicator__row",
+    ".last-run-indicator__row--note",
+    ".last-run-indicator__label",
+    ".last-run-indicator__value",
+    ".last-run-indicator__value--mono",
+    ".last-run-indicator__note"
+  ],
+  "tests_added": 48,
+  "tests_total": 804,
+  "tests_passing": 804,
+  "ci_status": "pending",
+  "parity_guardrails_status": "pending",
+  "phase51f_status": "pass",
+  "phase52f_status": "pass",
+  "phase53i_status": "pass",
+  "phase54_status": "pass",
+  "ui21_regression": "pass",
+  "ui22_regression": "pass",
+  "ui23_regression": "pass",
+  "ui24_regression": "pass",
+  "ui25_regression": "pass",
+  "no_go_copy_check": "pass",
+  "backend_changes": "none",
+  "service_changes": "none",
+  "persistence_changes": "none",
+  "model_changes": "none",
+  "js_financial_calc": "none",
+  "frontend_dep_changes": "none",
+  "route_behavior_changes": "none",
+  "rc1_sha_untouched": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "pr_draft": true,
+  "ready_for_user_visual_review": true
+}

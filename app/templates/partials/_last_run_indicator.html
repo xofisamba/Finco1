@@ -1,0 +1,44 @@
+{# ── UI-2.6: Last run / run-source indicator ─────────────────────────────────────
+   Conservative last-run indicator.
+
+   Behavior:
+   - Renders nothing if `runtime_summary` is missing from the context.
+   - Renders nothing if `runtime_summary.run_id` is missing AND no
+     `runtime_summary.last_run_at` is present (we never show a fake ID).
+   - When `runtime_summary.run_id` is present, displays safe generic
+     "Last run" / "Runtime source" copy + the run_id (truncated).
+   - When only `runtime_summary.last_run_at` is present (no run_id),
+     shows safe generic last-run info with no run_id.
+
+   No backend context was added in this PR — this partial is a safe
+   extension point that renders nothing in the current state. When
+   `runtime_summary` is later added to the index context, the partial
+   will activate automatically.
+
+   Copy is conservative. No no-go claims. #}
+{% set _rs = runtime_summary|default({}) %}
+{% set _rs_run_id = _rs.run_id|default('') %}
+{% set _rs_last_run_at = _rs.last_run_at|default('') %}
+{% if _rs_run_id or _rs_last_run_at %}
+  <aside class="last-run-indicator" role="status" aria-label="Last run source">
+    <div class="last-run-indicator__row">
+      <span class="last-run-indicator__label">Last run</span>
+      <span class="last-run-indicator__value">Runtime source</span>
+    </div>
+    {% if _rs_run_id %}
+      <div class="last-run-indicator__row last-run-indicator__row--id">
+        <span class="last-run-indicator__label">Run reference</span>
+        <span class="last-run-indicator__value last-run-indicator__value--mono">{{ _rs_run_id[:12] }}{% if _rs_run_id|length > 12 %}…{% endif %}</span>
+      </div>
+    {% endif %}
+    {% if _rs_last_run_at %}
+      <div class="last-run-indicator__row last-run-indicator__row--time">
+        <span class="last-run-indicator__label">When</span>
+        <span class="last-run-indicator__value">{{ _rs_last_run_at }}</span>
+      </div>
+    {% endif %}
+    <div class="last-run-indicator__row last-run-indicator__row--note">
+      <span class="last-run-indicator__note">Review model evidence before export.</span>
+    </div>
+  </aside>
+{% endif %}

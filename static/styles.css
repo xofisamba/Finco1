@@ -4635,3 +4635,52 @@ body {
   color: var(--text-2, #475569);
   font-size: 0.74rem;
 }
+
+/* ── UI-2.6: Last run / run-source indicator ─────────────────────────────── */
+.last-run-indicator {
+  display: block;
+  margin: 0.75rem 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-2, #cbd5e1);
+  border-left: 3px solid var(--accent-1, #1f6feb);
+  background: var(--bg-2, #f8fafc);
+  font-size: 0.78rem;
+  color: var(--text-1, #1a1a1a);
+  border-radius: 4px;
+}
+
+.last-run-indicator__row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.last-run-indicator__row--note {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--border-2, #cbd5e1);
+}
+
+.last-run-indicator__label {
+  font-weight: 600;
+  color: var(--text-2, #475569);
+  min-width: 8rem;
+}
+
+.last-run-indicator__value {
+  color: var(--text-1, #1a1a1a);
+}
+
+.last-run-indicator__value--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  background: var(--bg-1, #ffffff);
+  padding: 0 0.25rem;
+  border: 1px solid var(--border-2, #cbd5e1);
+  border-radius: 3px;
+}
+
+.last-run-indicator__note {
+  color: var(--text-2, #475569);
+  font-style: italic;
+}
