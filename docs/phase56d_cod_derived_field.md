@@ -124,8 +124,14 @@ The new v1 form submits these additional fields into the
 
 **Manual COD override is NOT supported in 56D** (deferred per the
 56D brief). The form's `cod_date` field is `readonly`. The backend
-uses the derived value when the form's manual value is empty. If a
-future override is required, it must be:
+**always** assigns the server-derived COD when
+`construction_start_date + construction_duration_months` are both
+valid — any manually supplied `cod_date` in the form body is
+**ignored** in that case. If start or duration is missing/invalid,
+derivation returns `None` and the existing validation handles
+missing COD safely (no fake date is invented).
+
+If a future override is required, it must be:
 
 - Explicit (a separate toggle / audit field), and
 - Audited via `replay_metadata`.

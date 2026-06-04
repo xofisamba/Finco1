@@ -604,9 +604,19 @@ def _apply_56d_extras_to_submitted(
     submitted dict so they land in the baseline_snapshot via
     ``_apply_new_project_required_inputs``.
 
-    Also derives ``cod_date`` from construction start + duration
-    when the form's cod_date is empty (manual override is NOT
-    supported in 56D; deferred)."""
+    COD policy (Phase 56D, manual override NOT supported):
+
+    - COD is ALWAYS derived server-side from
+      ``construction_start_date + construction_duration_months``.
+    - The server-derived value ALWAYS wins when it can be
+      computed (i.e. when both start and duration are valid).
+    - A manually supplied ``cod_date`` in the form body is
+      IGNORED when derivation succeeds. This is by design:
+      manual COD override is deferred in 56D; a future
+      override would require explicit audited override logic.
+    - If start or duration is missing or invalid, derivation
+      returns ``None`` and the existing validation handles
+      missing COD safely (no fake date is invented)."""
     submitted["spv_name"] = (extra.get("spv_name", "") or "").strip()
     submitted["currency"] = (
         (extra.get("currency", "") or "").strip() or "EUR"
@@ -621,7 +631,10 @@ def _apply_56d_extras_to_submitted(
         submitted["construction_start_date"],
         submitted["construction_duration_months"],
     )
-    if not (submitted.get("cod_date") or "").strip() and derived_cod:
+    # Phase 56D policy: derived COD always wins when derivable.
+    # Manual override is deferred; a future override would need
+    # explicit audited logic.
+    if derived_cod:
         submitted["cod_date"] = derived_cod
     return submitted
 
@@ -2197,12 +2210,14 @@ async def create_project_route(
     header) lives in
     ``app.services.projects_create_service.execute_projects_create_route``.
 
-    Phase 56D: When the form's cod_date is empty, derive it from
-    construction_start_date + construction_duration_months (which
-    arrive as new form fields added in 56C). Manual COD override
-    is NOT supported in 56D (deferred; if a manual cod_date is
-    provided AND start+duration are present, the manual value
-    wins; otherwise server-side derivation fills the gap).
+    Phase 56D: COD is ALWAYS derived server-side from
+    ``construction_start_date + construction_duration_months`` (the
+    two new form fields added in 56C). Manual COD override is
+    NOT supported in 56D — a manually supplied cod_date in the
+    form body is IGNORED when derivation succeeds. A future
+    manual override would require explicit audited override
+    logic and is out of scope here. The 56D logic lives in
+    ``_apply_56d_extras_to_submitted``.
     """
     from app.services.projects_create_service import (
         ProjectsCreateRouteDeps,

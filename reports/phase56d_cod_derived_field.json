@@ -75,7 +75,7 @@
     {
       "name": "_apply_56d_extras_to_submitted",
       "signature": "(submitted, extra) -> dict[str, str]",
-      "purpose": "Merge 4 extra form fields into submitted. Substitute derived COD if manual is empty."
+      "purpose": "Merge 4 extra form fields into submitted. Always assigns server-derived COD when derivable (ignores manual cod_date in form body). Manual override is NOT supported in 56D (deferred)."
     }
   ],
   "cod_derivation_policy": {
@@ -85,7 +85,7 @@
     "month_end_snap": true,
     "leap_year_handled": true,
     "missing_inputs": "returns None (no fake date)",
-    "manual_override": "NOT supported in 56D (deferred)"
+    "manual_override": "NOT supported in 56D (deferred). Derived COD always wins when start+duration are valid; manually supplied cod_date in form body is ignored."
   },
   "test_cases_pinned": {
     "normal": "2025-01-15 + 24 months = 2027-01-15",

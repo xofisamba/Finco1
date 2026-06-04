@@ -360,13 +360,49 @@ class TestCreateRouteWiresDerivation:
                 f"_apply_56d_extras_to_submitted must reference {field}"
             )
 
-    def test_helper_substitutes_derived_cod_when_empty(self):
+    def test_helper_assigns_derived_cod_always_when_derivable(self):
+        """Phase 56D policy (post-fix): server-derived COD ALWAYS wins
+        when it can be computed, regardless of whether the form's
+        manual cod_date is empty or not. Manual override is
+        deferred; it is NOT supported in 56D."""
         body = _helper_apply_56d_body()
-        # The helper must set submitted["cod_date"] from derived_cod
-        # only when submitted["cod_date"] is empty.
+        # The helper must set submitted["cod_date"] = derived_cod
+        # unconditionally when derived_cod is truthy.
         assert "cod_date" in body
-        # The logic: if not cod_date and derived_cod: submitted["cod_date"] = derived_cod
         assert "derived_cod" in body
+        # The body must contain the post-fix pattern:
+        #   if derived_cod:
+        #       submitted["cod_date"] = derived_cod
+        # (NOT the old "if not cod_date and derived_cod" pattern)
+        # We verify the post-fix pattern by checking for the
+        # simpler conditional.
+        post_fix_pattern = re.search(
+            r"if derived_cod\s*:\s*\n\s*submitted\[\"cod_date\"\]\s*=\s*derived_cod",
+            body,
+        )
+        assert post_fix_pattern is not None, (
+            "Helper must use the post-fix pattern: 'if derived_cod: "
+            "submitted[\"cod_date\"] = derived_cod'. The old pattern "
+            "'if not cod_date and derived_cod' would still allow "
+            "manual override, which contradicts Phase 56D policy."
+        )
+
+    def test_helper_does_not_allow_manual_override(self):
+        """Post-fix regression guard: the helper must NOT contain
+        the old 'if not cod_date and derived_cod' pattern that
+        allowed manual override when derived COD is available."""
+        body = _helper_apply_56d_body()
+        old_pattern = re.search(
+            r"if not\s+\(?\s*submitted\.get\(\"cod_date\"\)\s*or\s+\"\"",
+            body,
+        )
+        # The old pattern would be: `if not (submitted.get("cod_date") or "").strip() and derived_cod:`
+        # We assert it is NOT in the body.
+        assert old_pattern is None, (
+            "Helper must not contain the old 'if not cod_date and "
+            "derived_cod' pattern (allows manual override, which "
+            "contradicts Phase 56D policy)."
+        )
 
     def test_helper_has_56d_marker(self):
         body = _helper_apply_56d_body()
@@ -410,6 +446,169 @@ class TestCreateRouteWiresDerivation:
         assert 60 <= len(non_blank) <= 110, (
             f"Route body is {len(non_blank)} non-blank lines; expected 60-110"
         )
+
+    def test_route_docstring_does_not_say_manual_wins(self):
+        """Post-fix: the route docstring must NOT contain the
+        old wording 'manual value wins' or 'manual cod_date wins'.
+        It must explicitly state that derived COD always wins."""
+        text = MAIN_WEB.read_text()
+        m = re.search(
+            r"async def create_project_route\((.*?)\):(.*?)(?=^async def |^def |^@app\.)",
+            text,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        assert m is not None
+        # Extract the docstring (text up to the first \n    \"\"\" after the open :)
+        body = m.group(2)
+        docstring_match = re.search(r'"""(.*?)"""', body, flags=re.DOTALL)
+        assert docstring_match is not None, "create_project_route must have a docstring"
+        docstring = docstring_match.group(1)
+        assert "manual value wins" not in docstring, (
+            "Route docstring must not say 'manual value wins'. "
+            "Phase 56D policy: manual override is NOT supported, "
+            "derived COD always wins."
+        )
+        assert "manual cod_date wins" not in docstring
+        # The docstring SHOULD mention that manual override is NOT supported
+        assert "manual" in docstring.lower() and "not supported" in docstring.lower()
+
+
+class TestCodManualOverridePolicy:
+    """Phase 56D post-fix regression guards.
+
+    The original 56D code substituted derived COD only when the
+    form's manual cod_date was empty. That contradicted the
+    56D policy: "manual COD override is NOT supported". The
+    post-fix helper ALWAYS assigns derived COD when derivable,
+    regardless of whether the form body contains a manual
+    cod_date. These tests pin the post-fix behavior."""
+
+    def test_derived_cod_wins_over_manual_when_both_supplied(self):
+        """If the form body contains BOTH a manual cod_date AND
+        valid start+duration, the helper must assign the
+        server-derived COD, NOT the manual one."""
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {
+            "cod_date": "2099-12-31",  # manual override attempt
+        }
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "2025-01-15",
+            "construction_duration_months": "24",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        # Derived COD = 2025-01-15 + 24 months = 2027-01-15
+        assert result["cod_date"] == "2027-01-15", (
+            f"Derived COD must win over manual cod_date. "
+            f"Got {result['cod_date']!r}, expected '2027-01-15'"
+        )
+
+    def test_derived_cod_assigned_when_manual_empty(self):
+        """The simple case: no manual cod_date, derived wins."""
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {"cod_date": ""}
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "2025-01-15",
+            "construction_duration_months": "24",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        assert result["cod_date"] == "2027-01-15"
+
+    def test_no_derived_cod_when_start_missing(self):
+        """If start is missing, no derived COD. The form's manual
+        cod_date (if any) is preserved so existing validation
+        handles missing COD safely."""
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {"cod_date": ""}
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "",
+            "construction_duration_months": "24",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        # No derived COD; submitted cod_date stays empty (validation will catch it)
+        assert result["cod_date"] == "", (
+            "If start is missing, no derived COD should be assigned. "
+            "Manual cod_date is preserved for downstream validation."
+        )
+
+    def test_no_derived_cod_when_duration_missing(self):
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {"cod_date": ""}
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "2025-01-15",
+            "construction_duration_months": "",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        assert result["cod_date"] == ""
+
+    def test_no_derived_cod_when_duration_zero(self):
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {"cod_date": ""}
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "2025-01-15",
+            "construction_duration_months": "0",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        assert result["cod_date"] == ""
+
+    def test_no_derived_cod_when_duration_negative(self):
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {"cod_date": ""}
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "2025-01-15",
+            "construction_duration_months": "-5",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        assert result["cod_date"] == ""
+
+    def test_derived_cod_month_end_still_works(self):
+        """Month-end snap (Jan 31 + 1 month = Feb 28) still works
+        with the post-fix policy."""
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {"cod_date": "2099-12-31"}  # manual attempt
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "2025-01-31",
+            "construction_duration_months": "1",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        assert result["cod_date"] == "2025-02-28", (
+            f"Month-end snap must work. Got {result['cod_date']!r}"
+        )
+
+    def test_derived_cod_leap_year_still_works(self):
+        """Leap year (Feb 29 + 12 months = Feb 28 next year)
+        still works with the post-fix policy."""
+        from main_web import _apply_56d_extras_to_submitted
+
+        submitted = {"cod_date": "2099-12-31"}  # manual attempt
+        extra = {
+            "spv_name": "",
+            "currency": "EUR",
+            "construction_start_date": "2024-02-29",
+            "construction_duration_months": "12",
+        }
+        result = _apply_56d_extras_to_submitted(submitted, extra)
+        assert result["cod_date"] == "2025-02-28"
 
 
 # ============================================================
