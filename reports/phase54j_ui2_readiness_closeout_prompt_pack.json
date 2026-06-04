@@ -1,0 +1,257 @@
+{
+  "phase": "54J",
+  "title": "UI-2 readiness closeout and first implementation prompt pack",
+  "type": "docs_report_test_only",
+  "base_sha": "f8390e423927c0d4acd9d247bfb6e83f975fd063",
+  "head_sha": "f8390e423927c0d4acd9d247bfb6e83f975fd063",
+  "branch": "phase54j-ui2-readiness-closeout-prompt-pack",
+  "auto_merged": false,
+  "ui2_readiness_summary": {
+    "54F": "Template/context characterization (6 items, 6 missing keys)",
+    "54G": "Implementation boundary and test plan (per-item spec)",
+    "54H": "No-go copy scanner spec (deferred implementation, templates clean)",
+    "54I": "PR sequence and manual review plan (6 PRs, all draft-only, no auto-merge)"
+  },
+  "final_context_map": {
+    "locked": true,
+    "items": [
+      {
+        "key": "banner_context",
+        "used_by": "UI-2.1",
+        "status": "NEW (parent supplies)"
+      },
+      {
+        "key": "banner_data",
+        "used_by": "UI-2.1",
+        "status": "NEW (parent supplies)"
+      },
+      {
+        "key": "runtime_impact",
+        "used_by": "UI-2.2",
+        "status": "existing"
+      },
+      {
+        "key": "sub_reason",
+        "used_by": "UI-2.2",
+        "status": "likely existing, verify"
+      },
+      {
+        "key": "validation_summary",
+        "used_by": "UI-2.3",
+        "status": "MISSING (workaround: compute in partial)"
+      },
+      {
+        "key": "is_factory_template",
+        "used_by": "UI-2.4",
+        "status": "MISSING (workaround: check data_source_label)"
+      },
+      {
+        "key": "inputs_changed_since_run",
+        "used_by": "UI-2.5",
+        "status": "MISSING (workaround: always show when runtime_summary exists)"
+      },
+      {
+        "key": "runtime_summary.run_id",
+        "used_by": "UI-2.6",
+        "status": "MISSING (workaround: omit)"
+      },
+      {
+        "key": "runtime_summary.ran_at",
+        "used_by": "UI-2.6",
+        "status": "existing"
+      },
+      {
+        "key": "runtime_summary.status",
+        "used_by": "UI-2.6",
+        "status": "existing"
+      }
+    ]
+  },
+  "first_implementation_prompt": {
+    "id": "UI-2.1",
+    "name": "State clarity banner partial",
+    "branch": "phase-ui2-1-state-clarity-banner",
+    "base_sha": "f8390e423927c0d4acd9d247bfb6e83f975fd063",
+    "type": "runtime template change (additive only)",
+    "files_allowed_to_create": [
+      "app/templates/partials/_state_banner.html"
+    ],
+    "files_allowed_to_modify": [
+      "app/templates/index.html (additive include)",
+      "app/templates/partials/workspace_shell.html (additive include, optional)",
+      "static/styles.css (additive .banner-* classes only)"
+    ],
+    "files_NOT_allowed": [
+      "existing gov-banner block in index.html",
+      "CSS :root variables",
+      "any other template",
+      "any service file, persistence file, or main_web.py",
+      "app/runtime_impact_taxonomy.py"
+    ],
+    "banner_partial_spec": {
+      "contexts": 11,
+      "tones": 5,
+      "contexts_list": [
+        "factory_template",
+        "user_created_project",
+        "active_scenario",
+        "saved_scenario",
+        "browser_draft",
+        "dirty_state",
+        "stale_result",
+        "last_run",
+        "validation_failed",
+        "display_only_row",
+        "pending_runtime_source"
+      ],
+      "tones_list": [
+        "info",
+        "success",
+        "warn",
+        "fail",
+        "neutral"
+      ]
+    },
+    "allowed_context_keys": [
+      "banner_context",
+      "banner_data"
+    ],
+    "missing_keys_workaround": "if is_browser_draft or is_saved not present, default False",
+    "no_go_copy_checks": [
+      "no bankable, lender-ready, certified, audit-ready, validated (alone)",
+      "no investor-ready, SaaS-ready, production-ready",
+      "no guaranteed returns, investment advice, customer reference",
+      "active scenario banner must not contain real-time or live (use 'as you save')",
+      "bar title: must use 54C locked copy"
+    ],
+    "required_tests": [
+      "11 string tests (one per banner context)",
+      "5 tone tests (info, success, warn, fail, neutral)",
+      "no-go copy tests",
+      "snapshot test (rendered HTML for at least 3 contexts)",
+      "visual review (user reviews at least 3 contexts)"
+    ],
+    "manual_review_checklist": [
+      "all 5 tones render with correct color",
+      "icon visible in each context",
+      "copy matches 54C locked spec exactly",
+      "no forbidden UI claims",
+      "accessible (aria-label or role)",
+      "no regression in existing gov-banner"
+    ],
+    "rollback_plan": [
+      "revert include in index.html and workspace_shell.html",
+      "delete app/templates/partials/_state_banner.html",
+      "revert added CSS",
+      "run guardrails (51F, 52F, 53I, 54x) to confirm clean"
+    ],
+    "auto_merge": "NO",
+    "stop_conditions": [
+      "any test fails",
+      "any forbidden claim found",
+      "any forbidden file modified",
+      "CI/Parity fail",
+      "visual review fails"
+    ]
+  },
+  "second_prompt_preview": {
+    "id": "UI-2.2",
+    "name": "Runtime Impact chip partial",
+    "branch": "phase-ui2-2-runtime-impact-chip",
+    "stackable_with_ui21": true,
+    "files_allowed_to_create": [
+      "app/templates/partials/_runtime_impact_chip.html"
+    ],
+    "files_allowed_to_modify": [
+      "app/templates/partials/sheet_capex_detail.html (replace inline chip, KEEP _rt_tooltip)",
+      "static/styles.css (additive .chip-* classes)"
+    ],
+    "chip_states": [
+      "drives-model",
+      "display-only",
+      "pending",
+      "needs-review"
+    ],
+    "auto_merge": "NO"
+  },
+  "hard_gates": {
+    "per_ui2_pr": [
+      "changed files are templates/CSS only",
+      "Phase 51F + 52F G1-G6 + 53I + 54x guardrails pass",
+      "rc1 (b425a07) untouched",
+      "no production code changed except allowed template/CSS",
+      "no backend files modified",
+      "no service files modified",
+      "PR is mergeable (CI green)",
+      "user has reviewed rendered HTML",
+      "user has signed off"
+    ]
+  },
+  "visual_review_checklist": [
+    "HTML variants render correctly",
+    "no forbidden UI claims",
+    "copy matches 54C locked spec",
+    "tone colors match 54C spec",
+    "CSS additions are additive and clearly marked",
+    "no existing classes/helpers removed",
+    "no backend files modified",
+    "rollback plan feasible"
+  ],
+  "recommendation": {
+    "decision": "WAIT for user/Claude review before starting UI-2.1",
+    "rationale": [
+      "First runtime change after long docs/spec phase",
+      "Locked specs should be verified before code is written",
+      "Claude review recommended (7 questions)",
+      "Pilot implications: even a banner is user-facing"
+    ],
+    "next_steps_priority": [
+      "1. User reviews 54F-54J specs",
+      "2. Optional: Claude review checkpoint (7 questions)",
+      "3. After approval: start UI-2.1",
+      "4. After UI-2.1 merge: start UI-2.2",
+      "5. Continue through UI-2.6"
+    ],
+    "alternative": "If user wants to skip Claude review, can go directly to UI-2.1 (54F-54I specs are sufficient)"
+  },
+  "stackability_recommendation": {
+    "ui21_and_ui22_stackable_as_drafts": true,
+    "reason": "additive, no conflicts, only share static/styles.css with different class names",
+    "only_one_ready_at_a_time": true,
+    "pattern": "UI-2.1 draft -> UI-2.2 draft (based on UI-2.1) -> UI-2.1 ready -> merge -> UI-2.2 ready"
+  },
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_guardrails": 51,
+    "phase54d_guardrails": 36,
+    "phase54e_guardrails": 38,
+    "phase54f_guardrails": 33,
+    "phase54g_guardrails": 60,
+    "phase54h_guardrails": 34,
+    "phase54i_guardrails": 53,
+    "phase54j_new": 21,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 487
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
