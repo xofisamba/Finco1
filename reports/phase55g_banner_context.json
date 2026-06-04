@@ -1,0 +1,65 @@
+{
+  "phase": "55G",
+  "title": "Wire banner_context into index context",
+  "status": "DRAFT",
+  "type": "minimal-backend-context-wiring",
+  "base_sha": "e0f9f0634af347e51c54dc43beefa5ee64815d1e",
+  "head_sha": "pending",
+  "branch": "phase55g-wire-banner-context",
+  "context_keys_added": [
+    {
+      "key": "banner_context",
+      "used_by": "_state_banner.html (already included in index.html from UI-2.1)",
+      "source": "project_record.project_origin, workspace_state.dirty, workspace_state.last_runtime_snapshot_id, workspace_state.active_scenario_id, validation_errors",
+      "shape": "None | one of: validation_failed, stale_result, browser_draft, factory_template, active_scenario, user_created_project"
+    }
+  ],
+  "deterministic_priority_order": [
+    "1. validation_failed (validation_errors non-empty)",
+    "2. stale_result (dirty + last_runtime_snapshot_id)",
+    "3. browser_draft (dirty without last_runtime_snapshot_id)",
+    "4. factory_template (project_origin != user_created)",
+    "5. active_scenario (user project with active_scenario_id)",
+    "6. user_created_project (user project without active_scenario_id)",
+    "7. None (no clear state)"
+  ],
+  "files_modified": [
+    "main_web.py (added _banner_context_for_index helper, added banner_context to index context)"
+  ],
+  "files_created": [
+    "tests/test_phase55g_banner_context.py",
+    "docs/phase55g_banner_context.md",
+    "reports/phase55g_banner_context.json"
+  ],
+  "production_code_changed": true,
+  "production_code_scope": "single read-only helper + single context key",
+  "templates_changed": false,
+  "static_css_js_changed": false,
+  "service_persistence_changed": false,
+  "model_parity_schema_formula_fixture_changed": false,
+  "frontend_dependency_changed": false,
+  "persistence_writes_added": false,
+  "financial_output_changed": false,
+  "run_route_behavior_changed": false,
+  "save_run_scenario_behavior_changed": false,
+  "no_go_claim_introduced": false,
+  "rc1_untouched": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "tests_added": 40,
+  "tests_total": 905,
+  "tests_passing": 905,
+  "ci_status": "pending",
+  "parity_guardrails_status": "pending",
+  "phase51f_status": "pass",
+  "phase52f_status": "pass",
+  "phase53i_status": "pass",
+  "phase54_status": "pass",
+  "ui21_regression": "pass",
+  "ui22_regression": "pass",
+  "ui23_regression": "pass",
+  "ui24_regression": "pass",
+  "ui25_regression": "pass",
+  "ui26_regression": "pass",
+  "pr_draft": true,
+  "ready_for_user_visual_review": true
+}

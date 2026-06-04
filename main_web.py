@@ -773,6 +773,52 @@ def _validation_summary_for_context(project_code: str | None) -> dict | None:
     }
 
 
+def _banner_context_for_index(
+    project_record,
+    workspace_state,
+    validation_errors: list | None = None,
+) -> str | None:
+    """Build a conservative banner_context for UI-2.1.
+
+    Returns one of the supported 11 contexts, or None for "no banner".
+    Uses only existing state signals, never invents new ones.
+
+    Deterministic priority order (highest first):
+    1. validation_failed - only if explicit validation_errors list non-empty
+    2. stale_result - workspace_state.dirty AND last_runtime_snapshot_id
+    3. browser_draft - dirty without runtime snapshot
+    4. factory_template - project_origin is not user_created
+    5. active_scenario - workspace_state has an active_scenario_id
+    6. user_created_project - project_origin is user_created
+    7. None - no clear state (banner not rendered)
+
+    The function is read-only.
+    """
+    if validation_errors and len(validation_errors) > 0:
+        return "validation_failed"
+    dirty = bool(workspace_state and getattr(workspace_state, "dirty", False))
+    has_runtime = bool(
+        workspace_state and getattr(workspace_state, "last_runtime_snapshot_id", None)
+    )
+    if dirty and has_runtime:
+        return "stale_result"
+    if dirty and not has_runtime:
+        return "browser_draft"
+    is_user = bool(
+        project_record and getattr(project_record, "project_origin", "") == "user_created"
+    )
+    has_active = bool(
+        workspace_state and getattr(workspace_state, "active_scenario_id", None)
+    )
+    if not is_user:
+        return "factory_template"
+    if has_active:
+        return "active_scenario"
+    if is_user:
+        return "user_created_project"
+    return None
+
+
 def _build_export_lineage_ui_context(project_record, workspace_state, export_lineage: list[dict[str, object]]) -> dict[str, object]:
     workspace_meta = _workspace_state_meta(workspace_state)
     project_label = project_record.project_name if project_record else "Workspace Project"
@@ -1550,6 +1596,12 @@ async def index(request: Request, project: str | None = None):
             # Derived from existing _governance_snapshot. None if no real
             # governance state can be built.
             "validation_summary": _validation_summary_for_context(project_record.project_code),
+            # Phase 55G: UI-2.1 state clarity banner context
+            # Derived from existing project_record, workspace_state, validation_errors.
+            # Deterministic priority; None when no clear state.
+            "banner_context": _banner_context_for_index(
+                project_record, workspace_state, validation_errors
+            ),
         },
     )
 
