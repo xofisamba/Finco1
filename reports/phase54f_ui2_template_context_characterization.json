@@ -1,0 +1,278 @@
+{
+  "phase": "54F",
+  "title": "UI-2 template and context characterization",
+  "type": "docs_report_test_only",
+  "base_sha": "3c55439ef935ec91e1f3bb8c5e6e736041ff4a6c",
+  "head_sha": "3c55439ef935ec91e1f3bb8c5e6e736041ff4a6c",
+  "branch": "phase54f-ui2-template-context-characterization",
+  "auto_merged": false,
+  "target_template_inventory": {
+    "UI-2.1_state_banner": {
+      "target_templates": [
+        "app/templates/index.html"
+      ],
+      "new_files": [
+        "app/templates/partials/_state_banner.html"
+      ],
+      "include_in": [
+        "index.html",
+        "scenario_workspace.html",
+        "workspace_shell.html"
+      ],
+      "tone": "additive only"
+    },
+    "UI-2.2_runtime_chip": {
+      "target_templates": [
+        "app/templates/partials/sheet_capex_detail.html"
+      ],
+      "new_files": [
+        "app/templates/partials/_runtime_impact_chip.html"
+      ],
+      "include_in": [
+        "sheet_capex_detail.html",
+        "audit_reconciliation_tab.html"
+      ],
+      "current_pattern": "<span class=\"badge badge-rt badge-rt-{{ rt_class }}\" title=\"{{ _rt_tooltip(rt) }}\">{{ rt }}</span>",
+      "tone": "additive, replaces inline chip in 1-2 sheets"
+    },
+    "UI-2.3_validation_summary_bar": {
+      "target_templates": [
+        "app/templates/partials/audit_reconciliation_tab.html"
+      ],
+      "new_files": [
+        "app/templates/partials/_validation_summary_bar.html"
+      ],
+      "include_in": [
+        "audit_reconciliation_tab.html"
+      ],
+      "tone": "additive"
+    },
+    "UI-2.4_factory_lock": {
+      "target_templates": [
+        "app/templates/partials/workspace_shell.html or app/templates/index.html"
+      ],
+      "new_files": [
+        "app/templates/partials/_factory_lock_indicator.html"
+      ],
+      "include_in": [
+        "workspace_shell.html",
+        "index.html"
+      ],
+      "tone": "additive"
+    },
+    "UI-2.5_stale_warning": {
+      "target_templates": [
+        "app/templates/index.html"
+      ],
+      "new_files": [],
+      "reuse_existing": "empty_states_notice.html::stale_run() macro",
+      "tone": "additive, reuses existing macro"
+    },
+    "UI-2.6_run_source": {
+      "target_templates": [
+        "app/templates/partials/runtime_summary.html"
+      ],
+      "new_files": [
+        "app/templates/partials/_last_run_indicator.html"
+      ],
+      "include_in": [
+        "index.html",
+        "scenario_workspace.html",
+        "kpis.html (optional)"
+      ],
+      "tone": "additive, 2-3 places"
+    }
+  },
+  "context_key_inventory": {
+    "index.html": {
+      "variables_used": [
+        "none (static)"
+      ]
+    },
+    "runtime_summary.html": {
+      "runtime_summary": {
+        "project_name": "str",
+        "active_scenario_name": "str (optional)",
+        "data_source_label": "str (optional)",
+        "ran_at": "str (formatted timestamp)",
+        "status": "str (ok or error)",
+        "project_irr": "str (can be NOT_AVAILABLE)",
+        "equity_irr": "str (can be NOT_AVAILABLE)",
+        "avg_dscr": "str (can be NOT_AVAILABLE)",
+        "senior_debt_keur": "str (can be NOT_AVAILABLE)",
+        "total_revenue_keur": "str (can be NOT_AVAILABLE)",
+        "total_ebitda_keur": "str (can be NOT_AVAILABLE)",
+        "total_opex_keur": "str (can be NOT_AVAILABLE)",
+        "total_distributions_keur": "str (can be NOT_AVAILABLE)",
+        "error_message": "str (optional)"
+      },
+      "messages": "list of str"
+    },
+    "sheet_capex_detail.html": {
+      "child_dict": {
+        "code": "str",
+        "name": "str",
+        "runtime_impact": "str (4-state value)",
+        "values": "list (per period)"
+      },
+      "helper": "_rt_tooltip(rt) defined inline"
+    },
+    "audit_reconciliation_tab.html": {
+      "audit_row_status": "list of audit check results with PASS/WARN/FAIL text",
+      "scope_notice": "TUHO / Oborovo only"
+    },
+    "workspace_shell.html": {
+      "project_context": "project + scenario",
+      "factory_template_flag": "to verify"
+    }
+  },
+  "route_service_context_sources": {
+    "main_web_routes": [
+      "index route renders index.html",
+      "model output partial renders runtime_summary.html",
+      "audit tab renders audit_reconciliation_tab.html",
+      "project editor renders sheet_*.html partials"
+    ],
+    "services": [
+      "app/services/scenario_state_service.py (scenario state for index.html / workspace_shell.html)",
+      "app/services/run_service.py (model run, produces runtime_summary)",
+      "app/services/save_run_service.py (saves run output)",
+      "app/services/projects_create_service.py (creates new project)",
+      "app/services/project_save_as_service.py (duplicate as)"
+    ],
+    "taxonomy_source": "app/runtime_impact_taxonomy.py (canonical 4-state taxonomy)"
+  },
+  "existing_status_patterns": {
+    "banners": [
+      ".gov-banner / .gov-blocked (governance)",
+      ".error-banner (error_banner.html)",
+      ".pilot-limitations-notice (pilot_limitations_notice.html)",
+      ".empty-state-notice (empty_states_notice.html)",
+      ".alert / .alert-error / .alert-info (validation.html)",
+      ".run-banner (runtime_summary.html)"
+    ],
+    "badges": [
+      ".badge + tone variants (pass/warn/blocked/info/runtime)",
+      ".badge-rt + 4 state variants (drives-model/display-only/pending/needs-review)",
+      ".audit-row-status (audit reconciliation inline)",
+      ".run-type-badge, .run-scenario-badge (run history)"
+    ],
+    "chip_vs_badge": {
+      "current": "uses .badge for both chip and badge semantics",
+      "ui2_plan": "introduce .chip as new class for Runtime Impact, keep .badge for status"
+    }
+  },
+  "missing_context_keys": [
+    {
+      "key": "is_factory_template: bool",
+      "needed_for": "UI-2.4 factory lock",
+      "backend_status": "verify (may need backend addition)"
+    },
+    {
+      "key": "is_browser_draft: bool",
+      "needed_for": "UI-2.1 dirty state banner",
+      "backend_status": "verify"
+    },
+    {
+      "key": "is_saved: bool",
+      "needed_for": "UI-2.1 saved scenario banner",
+      "backend_status": "verify"
+    },
+    {
+      "key": "validation_summary: { pass: int, warn: int, fail: int, last_validated_at: str }",
+      "needed_for": "UI-2.3 validation summary bar",
+      "backend_status": "verify"
+    },
+    {
+      "key": "inputs_changed_since_run: bool",
+      "needed_for": "UI-2.5 stale result warning",
+      "backend_status": "verify"
+    },
+    {
+      "key": "sub_reason: str (per runtime_impact)",
+      "needed_for": "UI-2.2 sub-reason tooltip",
+      "backend_status": "likely present, verify"
+    }
+  ],
+  "ui2_risk_matrix": [
+    {
+      "item": "UI-2.1 state banner",
+      "risk": "low",
+      "reason": "new partial, additive, well-spec'd",
+      "auto_merge_eligible": false
+    },
+    {
+      "item": "UI-2.2 runtime chip",
+      "risk": "low",
+      "reason": "new partial, replaces inline chip in 1 sheet",
+      "auto_merge_eligible": false
+    },
+    {
+      "item": "UI-2.3 validation bar",
+      "risk": "low-medium",
+      "reason": "needs backend validation_summary key",
+      "auto_merge_eligible": false
+    },
+    {
+      "item": "UI-2.4 factory lock",
+      "risk": "low-medium",
+      "reason": "needs backend is_factory_template key",
+      "auto_merge_eligible": false
+    },
+    {
+      "item": "UI-2.5 stale warning",
+      "risk": "low",
+      "reason": "reuses existing stale_run() macro",
+      "auto_merge_eligible": false
+    },
+    {
+      "item": "UI-2.6 run-source",
+      "risk": "low",
+      "reason": "mostly display, may need data rearrangement",
+      "auto_merge_eligible": false
+    }
+  ],
+  "must_not_change": [
+    "All current templates NOT to be removed or rewritten \u2014 only minimal additive changes",
+    "CSS variables (:root block in static/styles.css) NOT to be changed",
+    "_rt_tooltip(rt) helper in sheet_capex_detail.html NOT to be removed until new chip partial verified",
+    "runtime_summary dict shape NOT to change (UI-2.6 uses existing keys)",
+    "rc1 (b425a07) frozen SHA",
+    "app/persistence/, app/services/, main_web.py",
+    "app/waterfall_core.py, app/project_factories.py",
+    "parity/ directory",
+    "model output, fixtures, schema",
+    "no-go claims"
+  ],
+  "recommended_next_step": "54G UI-2 implementation boundary and test plan",
+  "tests_run": {
+    "phase54a_guardrails": 21,
+    "phase54b_guardrails": 45,
+    "phase54c_guardrails": 51,
+    "phase54d_guardrails": 36,
+    "phase54e_guardrails": 38,
+    "phase54f_new": 16,
+    "phase51f_guardrails": 21,
+    "phase52f_guardrail_specifications": 19,
+    "phase52f_guardrail_regression": 10,
+    "phase53i4_records_relocation_closeout": 45,
+    "total": 302
+  },
+  "known_failures": [
+    "tests/test_persistence.py: pre-existing ImportError (out of scope)",
+    "tests/test_repository.py: pre-existing ImportError (out of scope)"
+  ],
+  "no_go_claims_preserved": [
+    "no bankable / lender-ready / certified / audit-ready / validated / investor-ready / SaaS-ready / production-ready claims",
+    "no customer reference / investment advice / guaranteed returns",
+    "generic solar/wind remain exploratory and unvalidated",
+    "G20 remains BLOCKED",
+    "R99/R102 remain NOT APPROVED",
+    "partial_pay_sweep remains not promoted",
+    "flat/min DSCR sculpting remains not promoted",
+    "paid pilot gate is a framework only",
+    "backend remains source of truth",
+    "no JS financial calculations",
+    "rc1 remains frozen"
+  ]
+}
