@@ -17,19 +17,26 @@
 
 {# ── UI-2.5: Stale result warning ────────────────────────────────────────────────
    Reuses the existing stale_run() macro from empty_states_notice.html.
-   Renders nothing if no runtime_summary context exists, OR if the
-   workspace has no dirty state hint and no run yet (we never want
-   to show "stale" on a brand-new project).
 
-   Per Phase 54F-J guidance, inputs_changed_since_run is missing.
-   The dirty state hint used here is the existing workspace draft flag
-   (runtime_summary is present AND no fresh run), which is the
-   minimal safe signal we can show without inventing context.
+   Explicit stale signal used (already in context, no backend changes):
+     workspace_state.dirty                      — draft has unsaved edits
+     workspace_state.last_runtime_snapshot_id   — a runtime was ever bound
+
+   The warning renders ONLY when BOTH are true:
+     1. The draft is dirty (unsaved edits active), AND
+     2. A previous runtime snapshot exists.
+
+   In other words: the draft is newer than the last clean runtime snapshot.
+   This is the same condition that backend already detects in
+   `_workspace_state_meta()` (see "older than current draft" label) and
+   in `_build_export_lineage_ui_context()` (action_note for unsaved drafts).
+
+   Important: `runtime_summary` is NOT a stale signal. It only proves
+   a previous run exists. We never use it alone to render stale_run().
 
    This is presentation only — no backend changes. #}
 {% from "partials/empty_states_notice.html" import stale_run %}
-{% if runtime_summary %}
-  {# A runtime summary exists; show the warning conservatively. #}
+{% if workspace_state and workspace_state.dirty and workspace_state.last_runtime_snapshot_id %}
   {{ stale_run() }}
 {% endif %}
 

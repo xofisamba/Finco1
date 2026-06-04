@@ -1,12 +1,12 @@
 """UI-2.5 — Stale result warning tests.
 
 Verifies:
-- index.html still defines or uses existing stale_run() macro safely
-- Stale warning copy uses safe language
-- Warning is conditional on existing runtime_summary context
-- Missing runtime_summary renders safely
+- index.html uses the EXISTING explicit stale signal
+  (workspace_state.dirty + last_runtime_snapshot_id) — not runtime_summary alone
+- The Jinja fragment for the stale warning renders correctly when the
+  explicit signal is present, and renders nothing otherwise
+- Missing signal renders nothing safely
 - No forbidden positive no-go claims
-- CSS includes only additive .stale-result-* classes if CSS is changed
 - No main_web.py / services / persistence / app.js changes
 - UI-2.1..UI-2.4 tests still pass
 - Existing Phase 54 tests still pass
@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 
 import pytest
+from jinja2 import Environment, DictLoader
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = REPO_ROOT / "app" / "templates" / "index.html"
@@ -25,78 +26,163 @@ APP_JS = REPO_ROOT / "static" / "app.js"
 EMPTY_STATES = REPO_ROOT / "app" / "templates" / "partials" / "empty_states_notice.html"
 
 
+# A small Jinja fragment that mirrors exactly the UI-2.5 wiring in
+# index.html, so we can test its logic in isolation.
+# The fragment is the verbatim block from index.html.
+STALE_FRAGMENT = """
+{% from "partials/empty_states_notice.html" import stale_run %}
+{% if workspace_state and workspace_state.dirty and workspace_state.last_runtime_snapshot_id %}
+  {{ stale_run() }}
+{% endif %}
+"""
+
+
+def _render_stale_fragment(context: dict) -> str:
+    """Render the UI-2.5 stale fragment in isolation."""
+    env = Environment(
+        loader=DictLoader({
+            "fragment": STALE_FRAGMENT,
+            "partials/empty_states_notice.html": EMPTY_STATES.read_text(),
+        }),
+        autoescape=False,
+    )
+    template = env.get_template("fragment")
+    return template.render(**context)
+
+
+def _make_workspace(dirty: bool, last_runtime_snapshot_id) -> object:
+    """Build a stub workspace_state object with the relevant fields."""
+    return type("W", (), {
+        "dirty": dirty,
+        "last_runtime_snapshot_id": last_runtime_snapshot_id,
+    })()
+
+
 # ============================================================
-# 1. index.html uses existing stale_run() macro safely
+# 1. Source-level: explicit stale signal in index.html
 # ============================================================
 
 
-class TestIndexHtmlIntegration:
-    def test_index_imports_stale_run_macro(self):
+class TestExplicitStaleSignal:
+    def test_index_uses_workspace_state_dirty(self):
         text = INDEX_HTML.read_text()
-        assert 'from "partials/empty_states_notice.html" import stale_run' in text
+        assert "workspace_state.dirty" in text
 
-    def test_index_calls_stale_run_macro(self):
+    def test_index_uses_last_runtime_snapshot_id(self):
         text = INDEX_HTML.read_text()
-        assert "{{ stale_run() }}" in text
+        assert "last_runtime_snapshot_id" in text
 
-    def test_macro_definition_still_exists(self):
-        text = EMPTY_STATES.read_text()
-        assert "{% macro stale_run() %}" in text
-
-
-# ============================================================
-# 2. Stale warning copy uses safe language
-# ============================================================
-
-
-class TestSafeCopy:
-    def test_stale_run_macro_has_safe_copy(self):
-        text = EMPTY_STATES.read_text()
-        assert "Stale run" in text
-        assert "previous run" in text
-        assert "run again" in text or "Re-run" in text
-
-    def test_no_real_time_in_macro(self):
-        text = EMPTY_STATES.read_text().lower()
-        assert "real-time" not in text
-
-    def test_no_live_in_macro(self):
-        text = EMPTY_STATES.read_text().lower()
-        pattern = r"\blive\b"
-        assert not re.search(pattern, text)
-
-    def test_no_guaranteed_in_macro(self):
-        text = EMPTY_STATES.read_text().lower()
-        assert "guaranteed" not in text
-
-
-# ============================================================
-# 3. Warning is conditional on existing context
-# ============================================================
-
-
-class TestConditionalRendering:
-    def test_index_uses_if_runtime_summary(self):
+    def test_stale_run_guard_is_combined_signal(self):
         text = INDEX_HTML.read_text()
-        assert "{% if runtime_summary %}" in text
+        # Find the if line that guards stale_run()
+        # It should be a single line containing all three checks
+        guard_lines = [
+            line for line in text.split("\n")
+            if "{% if" in line and "stale_run" in text[text.find(line):text.find(line) + 200]
+        ]
+        assert any(
+            ("workspace_state" in line and "dirty" in line and "last_runtime_snapshot_id" in line)
+            for line in guard_lines
+        )
 
-    def test_index_has_endif(self):
+    def test_stale_run_guard_does_not_use_runtime_summary(self):
         text = INDEX_HTML.read_text()
-        assert "{% endif %}" in text
+        # The stale_run() call should be inside a guard that does NOT
+        # reference runtime_summary
+        # Find the if block that contains {{ stale_run() }}
+        stale_pos = text.find("{{ stale_run() }}")
+        assert stale_pos > 0
+        # Find the most recent {% if ... %} before stale_pos
+        if_pattern = re.compile(r"\{% if [^%]+%\}", re.MULTILINE)
+        matches = list(if_pattern.finditer(text, 0, stale_pos))
+        assert matches
+        last_if = matches[-1].group(0)
+        assert "runtime_summary" not in last_if
 
 
 # ============================================================
-# 4. Missing runtime_summary renders safely
+# 2. Jinja fragment: runtime_summary alone does NOT render
 # ============================================================
 
 
-class TestMissingContextSafe:
-    def test_no_runtime_summary_renders_nothing(self):
-        text = INDEX_HTML.read_text()
-        if_pos = text.find("{% if runtime_summary %}")
-        call_pos = text.find("{{ stale_run() }}")
-        endif_pos = text.find("{% endif %}", if_pos)
-        assert 0 <= if_pos < call_pos < endif_pos
+class TestRuntimeSummaryAloneDoesNotTrigger:
+    def test_runtime_summary_alone_renders_nothing(self):
+        out = _render_stale_fragment({
+            "runtime_summary": {"project_id": "tuho", "ran_at": "2026-01-01T00:00:00"},
+        })
+        assert "empty-state-notice--warn" not in out
+        assert "esn-icon" not in out
+        assert "Stale run" not in out
+
+    def test_runtime_summary_with_clean_workspace_renders_nothing(self):
+        out = _render_stale_fragment({
+            "runtime_summary": {"project_id": "tuho", "ran_at": "2026-01-01T00:00:00"},
+            "workspace_state": _make_workspace(dirty=False, last_runtime_snapshot_id="snap-123"),
+        })
+        assert "empty-state-notice--warn" not in out
+
+    def test_runtime_summary_with_no_runtime_bound_renders_nothing(self):
+        out = _render_stale_fragment({
+            "runtime_summary": {"project_id": "tuho", "ran_at": "2026-01-01T00:00:00"},
+            "workspace_state": _make_workspace(dirty=True, last_runtime_snapshot_id=None),
+        })
+        assert "empty-state-notice--warn" not in out
+
+    def test_runtime_summary_with_no_workspace_state_renders_nothing(self):
+        out = _render_stale_fragment({
+            "runtime_summary": {"project_id": "tuho", "ran_at": "2026-01-01T00:00:00"},
+        })
+        assert "empty-state-notice--warn" not in out
+
+
+# ============================================================
+# 3. Jinja fragment: explicit signal DOES render
+# ============================================================
+
+
+class TestExplicitSignalRenders:
+    def test_dirty_and_runtime_bound_renders_warning(self):
+        out = _render_stale_fragment({
+            "workspace_state": _make_workspace(dirty=True, last_runtime_snapshot_id="snap-123"),
+        })
+        assert "empty-state-notice--warn" in out
+        assert "esn-icon" in out
+        assert "Stale run" in out
+
+    def test_warning_copy_is_conservative(self):
+        out = _render_stale_fragment({
+            "workspace_state": _make_workspace(dirty=True, last_runtime_snapshot_id="snap-123"),
+        })
+        # Mentions "previous run" and "run again" — conservative copy
+        assert "previous run" in out
+        assert "run again" in out or "Re-run" in out
+
+
+# ============================================================
+# 4. Jinja fragment: missing signal renders nothing safely
+# ============================================================
+
+
+class TestMissingSignalSafe:
+    def test_no_workspace_state_renders_nothing(self):
+        out = _render_stale_fragment({})
+        assert "empty-state-notice--warn" not in out
+
+    def test_none_workspace_state_renders_nothing(self):
+        out = _render_stale_fragment({"workspace_state": None})
+        assert "empty-state-notice--warn" not in out
+
+    def test_workspace_state_without_dirty_attr_renders_nothing(self):
+        out = _render_stale_fragment({
+            "workspace_state": _make_workspace(dirty=False, last_runtime_snapshot_id="snap-123"),
+        })
+        assert "empty-state-notice--warn" not in out
+
+    def test_dirty_workspace_without_runtime_renders_nothing(self):
+        out = _render_stale_fragment({
+            "workspace_state": _make_workspace(dirty=True, last_runtime_snapshot_id=""),
+        })
+        assert "empty-state-notice--warn" not in out
 
 
 # ============================================================
@@ -182,7 +268,7 @@ class TestNoForbiddenFileChanges:
 
 
 # ============================================================
-# 8. Macro is reused, not duplicated
+# 8. Macro is reused, not redefined
 # ============================================================
 
 
@@ -198,38 +284,31 @@ class TestMacroReuse:
 
 
 # ============================================================
-# 9. Integration with existing context
+# 9. Context keys used are all existing
 # ============================================================
 
 
-class TestContextIntegration:
-    def test_uses_runtime_summary_not_inputs_changed(self):
+class TestUsesExistingContextKeys:
+    def test_uses_workspace_state(self):
         text = INDEX_HTML.read_text()
-        assert "runtime_summary" in text
-        # inputs_changed_since_run should not be USED as a template variable
-        # (only mentioned in comments is fine)
-        import re
+        assert "workspace_state" in text
+
+    def test_uses_dirty_attr(self):
+        text = INDEX_HTML.read_text()
+        assert ".dirty" in text
+
+    def test_uses_last_runtime_snapshot_id(self):
+        text = INDEX_HTML.read_text()
+        assert "last_runtime_snapshot_id" in text
+
+    def test_does_not_use_inputs_changed_since_run(self):
+        text = INDEX_HTML.read_text()
         used = re.findall(r"\{\{[^}]*inputs_changed_since_run[^}]*\}\}", text)
         assert len(used) == 0
         used = re.findall(r"\{%[^%]*inputs_changed_since_run[^%]*%\}", text)
         assert len(used) == 0
 
-    def test_uses_safe_fallback_when_context_missing(self):
-        text = INDEX_HTML.read_text()
-        assert "{% if runtime_summary %}" in text
-
-
-# ============================================================
-# 10. No computation of staleness
-# ============================================================
-
-
-class TestNoStalenessComputation:
-    def test_no_js_calculation(self):
-        text = INDEX_HTML.read_text()
-        assert "function " not in text
-
-    def test_no_backend_context_added(self):
+    def test_does_not_invent_backend_context(self):
         text = INDEX_HTML.read_text()
         assert "{% set is_stale" not in text
         assert "{% set stale" not in text
