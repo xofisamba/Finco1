@@ -28,51 +28,54 @@
   {% if _ctx == 'factory_template' %}
     {% set _title = 'Factory template' %}
     {% set _desc = 'Factory template — use Save As or create a scenario before editing controlled assumptions.' %}
-    {% set _icon = 'FT' %}
+    {% set _icon = '◆' %}
   {% elif _ctx == 'user_created_project' %}
     {% set _title = 'User-created project' %}
     {% set _desc = 'You created this project. All inputs are editable unless source-locked.' %}
-    {% set _icon = 'UP' %}
+    {% set _icon = '●' %}
   {% elif _ctx == 'active_scenario' %}
     {% set _title = 'Active scenario' %}
     {% set _desc = 'Editing the active scenario updates the model after save.' %}
-    {% set _icon = 'AS' %}
+    {% set _icon = '●' %}
   {% elif _ctx == 'saved_scenario' %}
     {% set _title = 'Saved scenario' %}
     {% set _desc = 'Saved. Scenario ID on file. Use the scenario tab to load or duplicate.' %}
-    {% set _icon = 'SS' %}
+    {% set _icon = '✓' %}
   {% elif _ctx == 'browser_draft' %}
     {% set _title = 'Browser draft' %}
     {% set _desc = 'Unsaved browser draft — changes are not saved to a scenario yet.' %}
-    {% set _icon = 'BD' %}
+    {% set _icon = '◐' %}
   {% elif _ctx == 'dirty_state' %}
     {% set _title = 'Unsaved changes' %}
     {% set _desc = 'This scenario has unsaved changes. Save the scenario to create a clean snapshot, then run the model.' %}
-    {% set _icon = 'UC' %}
+    {% set _icon = '◐' %}
   {% elif _ctx == 'stale_result' %}
     {% set _title = 'Stale result' %}
     {% set _desc = 'Results may be stale — inputs changed after the last run. Re-run the model for current results.' %}
-    {% set _icon = 'SR' %}
+    {% set _icon = '↻' %}
   {% elif _ctx == 'last_run' %}
     {% set _title = 'Last run available' %}
     {% set _desc = 'Last run available — review model evidence before export.' %}
-    {% set _icon = 'LR' %}
+    {% set _icon = '✓' %}
   {% elif _ctx == 'validation_failed' %}
     {% set _title = 'Validation failed' %}
     {% set _desc = 'Validation checks need review before relying on this run.' %}
-    {% set _icon = 'VF' %}
+    {% set _icon = '!' %}
   {% elif _ctx == 'display_only_row' %}
     {% set _title = 'Display only' %}
     {% set _desc = 'This row is for reference. Editing is disabled.' %}
-    {% set _icon = 'DO' %}
+    {% set _icon = '◇' %}
   {% elif _ctx == 'pending_runtime_source' %}
     {% set _title = 'Pending runtime source' %}
     {% set _desc = 'This input is captured but the runtime source is not yet wired. Display only.' %}
-    {% set _icon = 'PR' %}
+    {% set _icon = '◌' %}
   {% endif %}
 
   {% if _title %}
-  <div class="banner banner-{{ _tone }}" role="status" aria-label="{{ _title }}">
+  {# Phase 56F: added `.banner-56f` modifier class for the new calmer
+     visual hierarchy. The base `.banner` is preserved for backward
+     compat (other places in the app still use the original style). #}
+  <div class="banner banner-{{ _tone }} banner-56f" role="status" aria-label="{{ _title }}">
     <span class="banner-icon" aria-hidden="true">{{ _icon }}</span>
     <div class="banner-body">
       <span class="banner-title">{{ _title }}</span>

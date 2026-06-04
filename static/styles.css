@@ -4919,3 +4919,100 @@ input[aria-readonly="true"] {
   margin-bottom: 0.35rem;
   word-break: break-word;
 }
+
+/* ── Phase 56F: State banner visual hierarchy polish ───────────────── */
+/* Phase 56F: make state banners feel like product UX, not debug
+   output. The base `.banner` is preserved for backward compat; the
+   new `.banner-56f` modifier is the recommended look going forward. */
+.banner-56f {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid var(--border, #dde4ed);
+  margin-bottom: 0.75rem;
+  background: var(--surface, #ffffff);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  /* No heavy shadow, no oversized borders — calmer feel. */
+  box-shadow: none;
+}
+.banner-56f .banner-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: transparent;
+  color: var(--text-2, #475569);
+  margin: 0;
+}
+.banner-56f .banner-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.banner-56f .banner-title {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-1, #1a1a1a);
+  line-height: 1.3;
+}
+.banner-56f .banner-desc {
+  color: var(--text-2, #475569);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+/* 56F tones — softer backgrounds, no bold left border (icon does the
+   semantic signalling). Kept for visual hierarchy of severity. */
+.banner-56f.banner-info {
+  background: #f5f7fb;
+  border-color: #d8e0ec;
+}
+.banner-56f.banner-info .banner-icon {
+  color: #1a56db;
+  background: rgba(26, 86, 219, 0.08);
+}
+
+.banner-56f.banner-success {
+  background: #f3f8f4;
+  border-color: #d2e3d8;
+}
+.banner-56f.banner-success .banner-icon {
+  color: #0f7a52;
+  background: rgba(15, 122, 82, 0.08);
+}
+
+.banner-56f.banner-warn {
+  background: #fdf6e7;
+  border-color: #ecdfb9;
+}
+.banner-56f.banner-warn .banner-icon {
+  color: #a85a07;
+  background: rgba(180, 83, 9, 0.08);
+}
+
+.banner-56f.banner-fail {
+  background: #fbecec;
+  border-color: #ecc7c7;
+}
+.banner-56f.banner-fail .banner-icon {
+  color: #a11818;
+  background: rgba(185, 28, 28, 0.08);
+}
+
+.banner-56f.banner-neutral {
+  background: var(--surface-2, #f7f9fc);
+  border-color: var(--border, #dde4ed);
+}
+.banner-56f.banner-neutral .banner-icon {
+  color: #5a6a82;
+  background: rgba(122, 150, 184, 0.08);
+}
