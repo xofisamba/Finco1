@@ -1,0 +1,155 @@
+{
+  "phase": "UI-2.3",
+  "title": "Validation summary bar partial",
+  "type": "runtime_template_implementation",
+  "branch": "phase-ui2-3-validation-summary-bar",
+  "base_sha": "6bd991f87b1aea2007d5c18818ce67b14aa30ba3",
+  "head_sha": "6bd991f87b1aea2007d5c18818ce67b14aa30ba3",
+  "draft": true,
+  "auto_merged": false,
+  "files_added": [
+    {
+      "file": "app/templates/partials/_validation_summary_bar.html",
+      "lines": 50
+    },
+    {
+      "file": "tests/test_ui2_3_validation_summary_bar.py",
+      "lines": 270
+    },
+    {
+      "file": "docs/ui2_3_validation_summary_bar.md"
+    },
+    {
+      "file": "reports/ui2_3_validation_summary_bar.json"
+    }
+  ],
+  "files_modified": [
+    {
+      "file": "app/templates/partials/audit_reconciliation_tab.html",
+      "change": "added 2-line include at top of tab"
+    },
+    {
+      "file": "static/styles.css",
+      "change": "added 97 lines of .validation-summary-* classes"
+    }
+  ],
+  "files_NOT_changed": [
+    "main_web.py",
+    "app/services/",
+    "app/persistence/",
+    "app/runtime_impact_taxonomy.py",
+    "static/app.js",
+    ":root CSS variables"
+  ],
+  "css_selectors_added": [
+    ".validation-summary-bar",
+    ".validation-summary-icon",
+    ".validation-summary-body",
+    ".validation-summary-title",
+    ".validation-summary-desc",
+    ".validation-summary-meta",
+    ".validation-summary-pass",
+    ".validation-summary-warn",
+    ".validation-summary-fail",
+    ".validation-summary-info"
+  ],
+  "bar_spec": {
+    "context_handling": {
+      "validation_summary_supplied": "render counts/status from it (pass/warn/fail counts + last_validated_at)",
+      "validation_summary_missing": "render compact neutral info bar with safe internal-review message"
+    },
+    "tones": 4,
+    "tones_list": [
+      "pass",
+      "warn",
+      "fail",
+      "info"
+    ],
+    "tone_triggers": {
+      "pass": "0 fail, 0 warn",
+      "warn": ">= 1 warn, 0 fail",
+      "fail": ">= 1 fail",
+      "info": "validation_summary missing"
+    },
+    "html_structure": "<div class=\"validation-summary-bar validation-summary-{tone}\" role=\"status\"><span class=\"validation-summary-icon\">VS</span><div class=\"validation-summary-body\"><span class=\"validation-summary-title\">{label}</span><span class=\"validation-summary-desc\">{description}</span></div>{if last_validated_at}<span class=\"validation-summary-meta\">{timestamp}</span>{endif}</div>"
+  },
+  "behavior": {
+    "compact_size": "smaller than UI-2.1 banner (0.65rem padding vs 0.75rem)",
+    "always_renders": true,
+    "no_financial_logic": true,
+    "no_external_validation_claim": true,
+    "optional_last_validated_at": "shown on right side when validation_summary is supplied"
+  },
+  "safe_copy": [
+    "Validation checks need review",
+    "Items needing review",
+    "No blocking checks shown",
+    "Internal validation checks",
+    "Review status is shown per item below",
+    "No blocking checks message is shown when all rows pass",
+    "Last checked: {timestamp}"
+  ],
+  "no_go_copy_check": {
+    "passed": true,
+    "checked_terms": [
+      "bankable",
+      "lender-ready",
+      "certified",
+      "audit-ready",
+      "validated (alone)",
+      "investor-ready",
+      "SaaS-ready",
+      "production-ready",
+      "guaranteed returns",
+      "investment advice",
+      "customer reference",
+      "external validation"
+    ],
+    "safe_terms_used": [
+      "validation checks",
+      "review",
+      "model evidence",
+      "internal review"
+    ]
+  },
+  "tests_run": {
+    "ui2_3_new": 50,
+    "ui2_1_existing": 56,
+    "ui2_2_existing": 50,
+    "phase54A_J": 412,
+    "phase51f": 21,
+    "phase52f_specifications": 19,
+    "phase52f_regression": 10,
+    "phase53i4": 45,
+    "total": 663
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_service_persistence_changes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes": true,
+    "no_root_css_variable_changes": true,
+    "no_forbidden_ui_claims": true,
+    "phase_51f_pass": true,
+    "phase_52f_pass": true,
+    "phase_53i_pass": true,
+    "phase_54_pass": true,
+    "ui2_1_pass": true,
+    "ui2_2_pass": true,
+    "all_tests_pass": true,
+    "rc1_untouched": true,
+    "pr_draft": true
+  },
+  "visual_review_required": true,
+  "visual_review_checklist": [
+    "bar appears at top of audit/reconciliation tab",
+    "4 tones render with correct color",
+    "missing context shows neutral info copy",
+    "compact, doesn't push other content down",
+    "no regression in audit-disclaimer or other audit sections",
+    "accessible (role=status, aria-label, aria-hidden on icon)",
+    "VS icon visible",
+    "no forbidden UI claims"
+  ],
+  "next_step": "UI-2.4 stack on top of UI-2.3 if all gates pass"
+}

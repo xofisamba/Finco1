@@ -5,6 +5,9 @@
 
 <div class="audit-reconciliation-tab" id="audit-reconciliation-tab">
 
+  {# ── UI-2.3: Validation summary bar (renders neutral info bar if validation_summary context is missing) ──────────── #}
+  {% include "partials/_validation_summary_bar.html" %}
+
   <div class="audit-disclaimer">
     <span class="badge badge-warn">Scope notice</span>
     <span class="audit-disclaimer-text">

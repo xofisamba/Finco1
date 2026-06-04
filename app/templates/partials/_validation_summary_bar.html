@@ -1,0 +1,52 @@
+{# ── UI-2.3: Validation Summary Bar Partial ─────────────────────────────
+   Renders a compact summary of internal validation checks at the top of
+   the audit/reconciliation tab.
+
+   Uses safe language: "validation checks", "review status", "needs review",
+   "model evidence", "internal review", "no blocking checks shown".
+
+   If validation_summary context is missing (Phase 54F-J: not yet exposed
+   by backend), renders a compact neutral bar with a safe internal-review
+   message — does NOT compute financial logic in the template.
+
+   Tone variants: pass | warn | fail | info
+#}
+
+{% set _vs = validation_summary|default('') %}
+
+{% if _vs %}
+  {% set _pass = _vs.pass_count|default(0) %}
+  {% set _warn = _vs.warn_count|default(0) %}
+  {% set _fail = _vs.fail_count|default(0) %}
+  {% set _last = _vs.last_validated_at|default('') %}
+
+  {% if _fail and _fail > 0 %}
+    {% set _tone = 'fail' %}
+    {% set _label = 'Validation checks need review' %}
+    {% set _desc = _fail ~ ' item(s) need review before relying on this run.' %}
+  {% elif _warn and _warn > 0 %}
+    {% set _tone = 'warn' %}
+    {% set _label = 'Items needing review' %}
+    {% set _desc = _warn ~ ' item(s) flagged for internal review.' %}
+  {% else %}
+    {% set _tone = 'pass' %}
+    {% set _label = 'No blocking checks shown' %}
+    {% set _desc = 'Internal validation checks did not flag blocking issues. Review model evidence before export.' %}
+  {% endif %}
+{% else %}
+  {# Fallback when validation_summary context is missing. Use safe neutral copy. #}
+  {% set _tone = 'info' %}
+  {% set _label = 'Internal validation checks' %}
+  {% set _desc = 'Review status is shown per item below. No blocking checks message is shown when all rows pass.' %}
+{% endif %}
+
+<div class="validation-summary-bar validation-summary-{{ _tone }}" role="status" aria-label="{{ _label }}">
+  <span class="validation-summary-icon" aria-hidden="true">VS</span>
+  <div class="validation-summary-body">
+    <span class="validation-summary-title">{{ _label }}</span>
+    <span class="validation-summary-desc">{{ _desc }}</span>
+  </div>
+  {% if _vs and _last %}
+    <span class="validation-summary-meta">Last checked: {{ _last }}</span>
+  {% endif %}
+</div>
