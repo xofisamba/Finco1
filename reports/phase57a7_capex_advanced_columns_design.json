@@ -1,0 +1,152 @@
+{
+  "phase": "57A-7",
+  "title": "CAPEX advanced columns design (VAT / WHT / depreciation / payment schedule / utilisation)",
+  "type": "docs/report/test-only",
+  "branch": "phase57a7-capex-advanced-columns-design",
+  "base_sha": "bfd7e8586b32a50b8a48a22850b95ba659bdedc1",
+  "purpose": "Design each advanced CAPEX column in detail. None of the columns are wired to the backend in this PR. The wiring requires backend changes (IDC engine, funding drawdown, tax engine, depreciation schedule) that are explicitly out of scope for 57A-7.",
+  "columns": [
+    {
+      "name": "cost_per_mw",
+      "type": "derived",
+      "formula": "amount_keur / capacity_mw",
+      "editable": false,
+      "backend_wiring_required": "none",
+      "phase_to_wire": "already shown in top card strip; per-line is a UI PR"
+    },
+    {
+      "name": "contingency",
+      "type": "future_model_input",
+      "sub_fields": ["contingency_pct"],
+      "unit": "percent (0-100)",
+      "editable": true,
+      "backend_wiring_required": "new contingency_pct field on CapexItem",
+      "feeds": ["P&L", "Balance Sheet", "Cash Flow"],
+      "phase_to_wire": "57A-8+ (deferred)"
+    },
+    {
+      "name": "vat",
+      "type": "future_model_input",
+      "sub_fields": ["vat_applicability", "vat_rate_pct"],
+      "editable": true,
+      "backend_wiring_required": "new vat_applicability and vat_rate_pct fields on CapexItem",
+      "feeds": ["Cash Flow", "Balance Sheet", "Working Capital"],
+      "phase_to_wire": "57A-8+ (deferred)"
+    },
+    {
+      "name": "wht",
+      "type": "future_model_input",
+      "sub_fields": ["wht_rate_pct"],
+      "editable": true,
+      "backend_wiring_required": "new wht_rate_pct field on CapexItem",
+      "feeds": ["Tax engine", "Cash Flow"],
+      "phase_to_wire": "57A-8+ (deferred)"
+    },
+    {
+      "name": "depreciation",
+      "type": "future_model_input",
+      "sub_fields": ["depreciation_category", "useful_life_years", "is_depreciable"],
+      "editable": true,
+      "backend_wiring_required": "new fields on CapexItem + depreciation schedule generator",
+      "feeds": ["P&L (depreciation expense)", "Fixed asset schedule", "Balance Sheet", "Tax engine"],
+      "phase_to_wire": "57A-8+ (deferred)"
+    },
+    {
+      "name": "comments",
+      "type": "free_form_text",
+      "editable": true,
+      "backend_wiring_required": "new comments field on CapexItem",
+      "feeds": ["(display only, no model effect)"],
+      "phase_to_wire": "57A-8+ (deferred, safest first column)"
+    },
+    {
+      "name": "payment_schedule_m1_m18",
+      "type": "future_model_input",
+      "sub_fields": ["monthly_schedule"],
+      "unit": "fraction (0.0-1.0) per construction month",
+      "editable": true,
+      "backend_wiring_required": "new monthly_schedule: tuple[float, ...] field on CapexItem",
+      "feeds": ["Equity drawdown", "Senior loan drawdown", "SHL drawdown", "Senior IDC + SHL IDC", "Opening senior debt balance at COD", "Opening SHL balance at COD"],
+      "phase_to_wire": "57A-8+ (deferred, largest stage)"
+    },
+    {
+      "name": "utilisation",
+      "type": "future_model_input",
+      "sub_fields": ["utilisation"],
+      "unit": "fraction (0.0-1.0) per construction month",
+      "editable": true,
+      "backend_wiring_required": "new utilisation: tuple[float, ...] field on CapexItem",
+      "feeds": ["Same as payment schedule (drawdown / IDC chain)"],
+      "phase_to_wire": "57A-8+ (deferred)"
+    }
+  ],
+  "staged_backend_integration": [
+    {
+      "stage": 1,
+      "columns": ["comments"],
+      "rationale": "No model effect; pure UI annotation; safest first column.",
+      "backend_changes": "new comments: str field on CapexItem"
+    },
+    {
+      "stage": 2,
+      "columns": ["cost_per_mw"],
+      "rationale": "Derived column; UI-only; no backend change.",
+      "backend_changes": "none"
+    },
+    {
+      "stage": 3,
+      "columns": ["contingency", "vat", "wht"],
+      "rationale": "All three affect cash flow / balance sheet / working capital / tax. Stage together.",
+      "backend_changes": "new capex.tax_engine module + new contingency_pct, vat_applicability, vat_rate_pct, wht_rate_pct fields on CapexItem"
+    },
+    {
+      "stage": 4,
+      "columns": ["depreciation"],
+      "rationale": "Requires depreciation schedule generator; larger effort; own PR.",
+      "backend_changes": "new depreciation_category, useful_life_years, is_depreciable fields on CapexItem + depreciation schedule generator"
+    },
+    {
+      "stage": 5,
+      "columns": ["payment_schedule_m1_m18", "utilisation"],
+      "rationale": "Together feed IDC and funding drawdown chain. Largest stage.",
+      "backend_changes": "new monthly_schedule: tuple[float, ...] and utilisation: tuple[float, ...] fields on CapexItem + construction funding engine changes"
+    }
+  ],
+  "what_is_not_in_57a7": [
+    "no_new_columns_in_capex_sheet",
+    "no_new_fields_on_capex_item",
+    "no_tax_engine",
+    "no_depreciation_schedule",
+    "no_idc_calculation_change",
+    "no_construction_funding_engine_change",
+    "no_senior_debt_shl_drawdown_logic_change"
+  ],
+  "files_added": [
+    "docs/phase57a7_capex_advanced_columns_design.md",
+    "reports/phase57a7_capex_advanced_columns_design.json",
+    "tests/test_phase57a7_capex_advanced_columns_design.py"
+  ],
+  "files_not_changed": [
+    "app/templates/partials/sheet_capex.html",
+    "app/templates/partials/sheet_capex_detail.html",
+    "app/templates/partials/workspace_shell.html",
+    "app/ui/project_context.py",
+    "app/domain/capex/source_model.py",
+    "app/project_factories.py",
+    "main_web.py",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "hard_no_go": [
+    "no_financial_formula_changes",
+    "no_idc_calculation_changes",
+    "no_construction_funding_changes",
+    "no_g20_r99_r102_promotion",
+    "no_tailwind_alpine",
+    "no_portfolio_bess_hybrid",
+    "no_schema_migration_in_57a7",
+    "no_backend_keys_visible_in_ui",
+    "rc1_frozen"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4"
+}
