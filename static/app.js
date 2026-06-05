@@ -383,6 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   bindDraftPersistenceFields(document);
   bindEditableGridInputs(document);
+  bindCapexAddLineUx(document);
 
   document.querySelectorAll('.input-group-summary').forEach(function(summary) {
     summary.addEventListener('click', function() {
@@ -400,6 +401,7 @@ document.addEventListener('htmx:afterSwap', function(evt) {
   var target = evt && evt.target ? evt.target : document;
   bindDraftPersistenceFields(target);
   bindEditableGridInputs(target);
+  bindCapexAddLineUx(target);
   if (window.syncEditableGridMirrors) {
     window.syncEditableGridMirrors();
   }
@@ -410,3 +412,270 @@ document.addEventListener('htmx:afterSwap', function(evt) {
     panel.classList.add('active');
   }
 });
+
+/* ─────────────────────────────────────────────────────────────────────
+ *  Phase 57A-8: CAPEX Add-Line UX (in-memory preview)
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ *  Pure-UI affordance. When the user clicks a `+ Add line`
+ *  button in `#capex-add-line-toolbar`, this module inserts
+ *  a temporary row into the rendered CAPEX grid. The
+ *  temporary row:
+ *
+ *    * has `data-capex-tmp="true"` on the <tr>
+ *    * has a generated temporary business code
+ *      (e.g. C.03.TMP-1) shown in the Code cell
+ *    * has an editable label and editable amount
+ *    * has an Unsaved / not persisted badge
+ *    * has a Remove / cancel button
+ *
+ *  CRITICAL INVARIANTS:
+ *
+ *    1. The amount <input> for a temporary row has NO
+ *       `name` attribute. So the temporary row is
+ *       NEVER included in the form payload that is
+ *       submitted to the backend.
+ *    2. Temporary rows do NOT create any new backend
+ *       CAPEX input. The backend CAPEX structure is
+ *       untouched.
+ *    3. The authoritative CAPEX totals (Hard CAPEX,
+ *       Financing, Total) are NOT modified. A small
+ *       preview-only total is rendered in the toolbar
+ *       (clearly labelled "Preview only — not used by
+ *       Run until persistence is implemented").
+ *    4. When temporary rows exist, a warning block
+ *       is shown to make the in-memory-only behaviour
+ *       explicit.
+ *    5. The module makes NO API calls. No fetch, no
+ *       XHR, no htmx request, no form submission.
+ *
+ *  This is a runtime UI prototype only. Persistence is
+ *  explicitly out of scope (see 57A-6 design doc).
+ */
+(function () {
+  'use strict';
+
+  // Per-category counter for generated temporary codes.
+  // Reset on full page reload.
+  var _tmpCounter = {};
+
+  function _nextTmpIndex(catCode) {
+    _tmpCounter[catCode] = (_tmpCounter[catCode] || 0) + 1;
+    return _tmpCounter[catCode];
+  }
+
+  function _generateTmpCode(catCode) {
+    return catCode + '.TMP-' + _nextTmpIndex(catCode);
+  }
+
+  // Find the rendered grid wrapper for CAPEX.
+  function _gridRoot(root) {
+    return (root || document).querySelector(
+      '#capex-single-sheet-grid'
+    );
+  }
+
+  // Find the tbody of the grid.
+  function _gridTbody(root) {
+    var t = _gridRoot(root);
+    if (!t) return null;
+    return t.tBodies && t.tBodies[0] ? t.tBodies[0] : null;
+  }
+
+  // Find the section_band <tr> for a given category code.
+  // This is the <tr data-capex-add-line="C.01"> element.
+  function _findCategoryRow(catCode, root) {
+    var sel = 'tr[data-capex-category="' + catCode + '"]';
+    var rows = (root || document).querySelectorAll(sel);
+    if (!rows || !rows.length) return null;
+    return rows[0];
+  }
+
+  // Find the last sub-line row of a given category, i.e.
+  // the row before the cat-subtotal row.
+  function _findCategorySubtotalRow(catCode, root) {
+    var sel = 'tr[data-capex-row="cat-subtotal-' + catCode + '"]';
+    var rows = (root || document).querySelectorAll(sel);
+    if (!rows || !rows.length) return null;
+    return rows[0];
+  }
+
+  // Build a temporary row element.
+  function _buildTmpRow(catCode, catName, tmpCode) {
+    var tr = document.createElement('tr');
+    tr.className = 'lig-row--data lig-row--data-tmp';
+    tr.setAttribute('data-capex-tmp', 'true');
+    tr.setAttribute('data-capex-tmp-category', catCode);
+    tr.setAttribute('data-capex-tmp-code', tmpCode);
+    tr.setAttribute('data-capex-tmp-not-persisted', 'true');
+
+    // Label cell
+    var labelTd = document.createElement('td');
+    labelTd.className = 'lig-cell fc-grid-col-label fc-cell fc-cell--indented';
+    var labelSpan = document.createElement('span');
+    labelSpan.className = 'lig-cell-runtime';
+    labelSpan.setAttribute('data-capex-tmp-label', 'true');
+    labelSpan.textContent = 'New line — ' + catCode;
+    labelTd.appendChild(labelSpan);
+    // "Unsaved" badge
+    var badge = document.createElement('span');
+    badge.className = 'badge badge-warning capex-tmp-unsaved-badge';
+    badge.setAttribute('data-capex-tmp-unsaved-badge', 'true');
+    badge.textContent = 'Unsaved / not persisted';
+    labelTd.appendChild(document.createTextNode(' '));
+    labelTd.appendChild(badge);
+    tr.appendChild(labelTd);
+
+    // Code cell
+    var codeTd = document.createElement('td');
+    codeTd.className = 'lig-cell fc-cell fc-cell--code';
+    codeTd.setAttribute('data-capex-tmp-code-cell', 'true');
+    codeTd.textContent = tmpCode;
+    tr.appendChild(codeTd);
+
+    // Amount cell
+    var amountTd = document.createElement('td');
+    amountTd.className = 'lig-cell fc-cell fc-cell--amount fc-cell--indented';
+    var amountInput = document.createElement('input');
+    amountInput.type = 'number';
+    amountInput.step = 'any';
+    amountInput.min = '0';
+    amountInput.value = '0.00';
+    // CRITICAL: no name attribute => the row is not
+    // included in any form submit.
+    amountInput.setAttribute('data-capex-tmp-amount', 'true');
+    amountInput.setAttribute(
+      'aria-label',
+      'Temporary CAPEX amount for ' + tmpCode + ' (not persisted)'
+    );
+    amountInput.className = 'lig-input fc-input-native';
+    amountInput.addEventListener('input', function () {
+      _updatePreviewTotals();
+    });
+    amountTd.appendChild(amountInput);
+    // Remove button cell
+    var removeTd = document.createElement('td');
+    removeTd.className = 'lig-cell fc-cell fc-cell--tmp-remove';
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'capex-tmp-remove-btn';
+    removeBtn.setAttribute('data-capex-tmp-remove', 'true');
+    removeBtn.setAttribute('aria-label', 'Remove temporary line ' + tmpCode);
+    removeBtn.textContent = '\u2715 Remove';
+    removeBtn.addEventListener('click', function () {
+      _removeTmpRow(tr);
+    });
+    removeTd.appendChild(removeBtn);
+    tr.appendChild(amountTd);
+    tr.appendChild(removeTd);
+
+    return tr;
+  }
+
+  // Recompute the preview-only total.
+  function _updatePreviewTotals() {
+    var tmpRows = document.querySelectorAll(
+      'tr[data-capex-tmp="true"]'
+    );
+    var total = 0.0;
+    var n = 0;
+    for (var i = 0; i < tmpRows.length; i++) {
+      var input = tmpRows[i].querySelector(
+        'input[data-capex-tmp-amount="true"]'
+      );
+      var amt = input ? parseFloat(input.value) : 0.0;
+      if (!isNaN(amt)) total += amt;
+      n++;
+    }
+    var totalsEl = document.querySelector(
+      '[data-capex-add-line-preview-totals="true"]'
+    );
+    var detailEl = document.querySelector(
+      '[data-capex-add-line-preview-detail="true"]'
+    );
+    if (totalsEl && detailEl) {
+      if (n > 0) {
+        totalsEl.removeAttribute('hidden');
+        detailEl.textContent =
+          ' ' + n + ' temporary line' + (n === 1 ? '' : 's') +
+          ' totalling ' + total.toFixed(2) + ' kEUR ' +
+          '(preview, not included in authoritative CAPEX total).';
+      } else {
+        totalsEl.setAttribute('hidden', '');
+        detailEl.textContent = '';
+      }
+    }
+    // Show / hide the run/save warning.
+    var warn = document.getElementById('capex-tmp-run-warning');
+    if (warn) {
+      if (n > 0) warn.removeAttribute('hidden');
+      else warn.setAttribute('hidden', '');
+    }
+  }
+
+  // Remove a temporary row.
+  function _removeTmpRow(tr) {
+    if (tr && tr.parentNode) tr.parentNode.removeChild(tr);
+    _updatePreviewTotals();
+  }
+
+  // Wire a single add-line button.
+  function _bindAddLineButton(btn) {
+    if (!btn || btn.__capexBound) return;
+    btn.__capexBound = true;
+    btn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      var catCode = btn.getAttribute('data-capex-add-line-btn');
+      var catName = btn.getAttribute('data-capex-cat-name') || catCode;
+      if (!catCode) return;
+      var tbody = _gridTbody(document);
+      if (!tbody) {
+        // Grid is not on this page (e.g. factory reference
+        // or another tab). Silently no-op.
+        return;
+      }
+      // Decide where to insert: just BEFORE the
+      // category subtotal row (or at end of category
+      // block if subtotal not found).
+      var subtotal = _findCategorySubtotalRow(catCode, document);
+      var tmpCode = _generateTmpCode(catCode);
+      var tr = _buildTmpRow(catCode, catName, tmpCode);
+      if (subtotal && subtotal.parentNode === tbody) {
+        tbody.insertBefore(tr, subtotal);
+      } else {
+        // Fall back: insert at end of tbody.
+        tbody.appendChild(tr);
+      }
+      _updatePreviewTotals();
+    });
+  }
+
+  // Public binding entry point. Idempotent.
+  function bindCapexAddLineUx(root) {
+    var scope = root || document;
+    var btns = scope.querySelectorAll(
+      '[data-capex-add-line-btn]'
+    );
+    for (var i = 0; i < btns.length; i++) {
+      _bindAddLineButton(btns[i]);
+    }
+  }
+
+  // Expose for tests / external callers.
+  window.bindCapexAddLineUx = bindCapexAddLineUx;
+  window._capexTmpCount = function () {
+    return document.querySelectorAll(
+      'tr[data-capex-tmp="true"]'
+    ).length;
+  };
+  window._capexTmpPurge = function () {
+    var rows = document.querySelectorAll(
+      'tr[data-capex-tmp="true"]'
+    );
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].parentNode.removeChild(rows[i]);
+    }
+    _tmpCounter = {};
+    _updatePreviewTotals();
+  };
+})();

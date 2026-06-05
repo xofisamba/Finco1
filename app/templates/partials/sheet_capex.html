@@ -78,6 +78,45 @@
       add-line requires a schema change, that
       schema change is documented in 57A-6 and is
       explicitly out of scope for 57A-5.
+
+  Phase 57A-8 (add-line UX, in-memory preview only):
+    * The "Add line" affordance is rendered as a
+      toolbar of small + buttons (one per C.01..C.16
+      category) in the capex-add-line-toolbar block
+      just above the line-item grid. C.17 and C.18
+      do NOT have an add-line button.
+    * Clicking + inserts a temporary row into the
+      grid. The temporary row:
+        - has data-capex-tmp=\"true\"
+        - has a generated temporary business code
+          (e.g. C.03.TMP-1) shown in the Code cell
+        - has an editable label and editable amount
+        - has an Unsaved / not persisted badge
+        - has a Remove / cancel button
+    * Temporary rows have NO `name` attribute on
+      their amount input, so they are NOT submitted
+      with the rest of the form (no backend key is
+      ever created, no existing CAPEX value is
+      modified).
+    * Temporary rows do NOT affect the hard CAPEX
+      total, the category subtotals, the financing
+      total, or the grand total in any authoritative
+      way. A small preview-only total is shown in
+      the toolbar (clearly labelled \"Preview only —
+      not used by Run until persistence is
+      implemented\").
+    * When temporary rows exist, a warning block
+      appears just above the Run / Save actions
+      saying: \"Temporary CAPEX lines are not
+      persisted and are not included in model run.\"
+    * The capex-add-line-copy block above the grid
+      explains: \"Added lines are temporary in this
+      preview and will be persisted in a later
+      phase. They are not included in model runs
+      yet.\"
+    * Behaviour is implemented in static/app.js as
+      pure DOM manipulation. No API calls. No
+      persistence. No model / run mutation.
 -->
 
 {% from "partials/_line_item_grid.html" import lig_render %}
@@ -527,6 +566,58 @@
     Total CAPEX are derived automatically. Financing (C.17)
     and Reserve Accounts (C.18) are backend-computed and
     are read-only here.
+  </p>
+</div>
+
+{# ── Add-line toolbar (in-memory preview, C.01..C.16 only) ─────── #}
+{# 57A-8: pure-UI affordance. Toolbar of small + buttons,
+   one per C.01..C.16 category. C.17 and C.18 do NOT
+   appear here. Behaviour lives in static/app.js. #}
+<div class="capex-add-line-toolbar" id="capex-add-line-toolbar"
+     data-capex-add-line-toolbar="true"
+     data-capex-toolbar-in-memory="true">
+  <p class="capex-add-line-copy" data-capex-add-line-copy="true">
+    <strong>Add line preview</strong> — Added lines are temporary in this preview and will be persisted in a later phase. They are not included in model runs yet.
+  </p>
+  <div class="capex-add-line-buttons" role="group"
+       aria-label="Add temporary CAPEX line per category">
+    {% for cat in capex_categories %}
+      {% if (not cat.is_backend_calculated)
+         and (cat.code not in ["C.17", "C.18"]) %}
+        <button type="button"
+                class="capex-add-line-btn"
+                data-capex-add-line-btn="{{ cat.code }}"
+                data-capex-cat-name="{{ cat.name }}"
+                aria-label="Add temporary line to {{ cat.name }}">
+          <span class="capex-add-line-btn-code">{{ cat.code }}</span>
+          <span class="capex-add-line-btn-icon" aria-hidden="true">+</span>
+          <span class="capex-add-line-btn-text">Add line</span>
+        </button>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <p class="capex-add-line-preview-totals"
+     data-capex-add-line-preview-totals="true"
+     hidden>
+    <strong>Preview only — not used by Run until persistence is implemented.</strong>
+    <span class="capex-add-line-preview-totals-detail"
+          data-capex-add-line-preview-detail="true"></span>
+  </p>
+</div>
+
+{# ── Run/Save warning (only shown when temporary rows exist) ─────── #}
+<div class="capex-tmp-run-warning" id="capex-tmp-run-warning"
+     data-capex-tmp-run-warning="true"
+     hidden>
+  <p>
+    <strong>⚠ Temporary CAPEX lines are not persisted
+    and are not included in model run.</strong>
+  </p>
+  <p>
+    Added lines are preview-only and will be lost on
+    page reload. The authoritative CAPEX total and the
+    backend Run output are unaffected by temporary
+    lines.
   </p>
 </div>
 

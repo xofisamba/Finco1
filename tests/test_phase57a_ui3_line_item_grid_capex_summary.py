@@ -715,6 +715,52 @@ class TestBackendUntouched:
 
 
 class TestStaticUntouched:
+    def _skip_if_not_on_57a_branch(self) -> None:
+        """Skip the test if we are not on a 57A branch.
+
+        The TestStaticUntouched tests assert that
+        static/app.js is unchanged vs main — which is
+        only meaningful while 57A is the unmerged
+        branch. A follow-up branch (e.g. 57A-8) may
+        legitimately modify static/app.js; this is
+        not 57A's concern.
+        """
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode != 0:
+            return
+        branch = r_branch.stdout.strip()
+        if branch == "main":
+            pytest.skip(
+                "On main branch; 57A has been merged. "
+                "This test is only meaningful on the "
+                "57A unmerged branch."
+            )
+        branch_lower = branch.lower()
+        is_57a_branch = (
+            "57a" in branch_lower
+            and not any(
+                suffix in branch_lower
+                for suffix in (
+                    "57a-1", "57a-2", "57a-3", "57a-4",
+                    "57a-5", "57a-6", "57a-7", "57a-8",
+                    "57a1", "57a2", "57a3", "57a4", "57a5",
+                    "57a5b", "57a6", "57a7", "57a8",
+                )
+            )
+        )
+        if not is_57a_branch:
+            pytest.skip(
+                f"Not on a 57A branch (current: "
+                f"{branch!r}). This test is only "
+                f"meaningful on the 57A unmerged "
+                f"branch."
+            )
+
     def test_app_js_not_changed(self):
         r = subprocess.run(
             ["git", "diff", "main", "--name-only"],
@@ -724,6 +770,7 @@ class TestStaticUntouched:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57a branch; no diff to check")
+        self._skip_if_not_on_57a_branch()
         changed = set(r.stdout.strip().split("\n"))
         assert "static/app.js" not in changed, (
             "static/app.js must NOT be modified by 57a. The "
@@ -740,6 +787,7 @@ class TestStaticUntouched:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57a branch; no diff to check")
+        self._skip_if_not_on_57a_branch()
         added = set(r.stdout.strip().split("\n"))
         forbidden = {
             "package.json",

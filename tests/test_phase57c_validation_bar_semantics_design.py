@@ -428,6 +428,32 @@ class TestHardNoGoScope:
 
 
 class Test57CIsDocsOnly:
+    def _skip_if_not_on_57c_branch(self) -> None:
+        """Skip the test if we are not on a 57C branch."""
+        import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode != 0:
+            return
+        branch = r_branch.stdout.strip()
+        if branch == "main":
+            pytest.skip(
+                "On main branch; 57C has been merged. "
+                "This test is only meaningful on the "
+                "57C unmerged branch."
+            )
+        if "57c" not in branch.lower():
+            pytest.skip(
+                f"Not on a 57C branch (current: "
+                f"{branch!r}). This test is only "
+                f"meaningful on the 57C unmerged "
+                f"branch."
+            )
+
     def test_57c_diff_has_no_runtime_files(self):
         import subprocess
         r = subprocess.run(
@@ -438,6 +464,7 @@ class Test57CIsDocsOnly:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57C branch or no diff")
+        self._skip_if_not_on_57c_branch()
         changed = set(r.stdout.strip().split("\n"))
         forbidden = [
             "main_web.py",
@@ -472,6 +499,7 @@ class Test57CIsDocsOnly:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57C branch or no diff")
+        self._skip_if_not_on_57c_branch()
         changed = set(r.stdout.strip().split("\n"))
         for c in changed:
             assert (

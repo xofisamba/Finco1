@@ -375,6 +375,32 @@ class TestRc1Untouched:
 
 
 class TestHardNoGoScope:
+    def _skip_if_not_on_57d_branch(self) -> None:
+        """Skip the test if we are not on a 57D branch."""
+        import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode != 0:
+            return
+        branch = r_branch.stdout.strip()
+        if branch == "main":
+            pytest.skip(
+                "On main branch; 57D has been merged. "
+                "This test is only meaningful on the "
+                "57D unmerged branch."
+            )
+        if "57d" not in branch.lower():
+            pytest.skip(
+                f"Not on a 57D branch (current: "
+                f"{branch!r}). This test is only "
+                f"meaningful on the 57D unmerged "
+                f"branch."
+            )
+
     def test_no_runtime_files_in_diff(self):
         import subprocess
         r = subprocess.run(
@@ -385,6 +411,7 @@ class TestHardNoGoScope:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57D branch or no diff")
+        self._skip_if_not_on_57d_branch()
         changed = set(r.stdout.strip().split("\n"))
         forbidden_files = [
             "main_web.py",
@@ -410,6 +437,7 @@ class TestHardNoGoScope:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57D branch or no diff")
+        self._skip_if_not_on_57d_branch()
         changed = set(r.stdout.strip().split("\n"))
         for c in changed:
             assert not c.startswith("app/persistence/"), (

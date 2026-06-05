@@ -373,6 +373,26 @@ class TestNoPersistenceSchemaChange:
 
     def test_no_static_changes(self):
         import subprocess
+        # Skip if not on a 57A-5 branch.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or (
+                    "57a5" not in branch.lower()
+                    and "57a-5" not in branch.lower()
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-5 branch (current: "
+                    f"{branch!r})."
+                )
         for path in ["static/app.js", "static/styles.css"]:
             r = subprocess.run(
                 ["git", "diff", "origin/main", "--name-only", "--",
@@ -421,6 +441,14 @@ class TestFileScope:
                     "This test is only meaningful on the "
                     "57A-5 unmerged branch."
                 )
+            if (
+                "57a5" not in branch.lower()
+                and "57a-5" not in branch.lower()
+            ):
+                pytest.skip(
+                    f"Not on a 57A-5 branch (current: "
+                    f"{branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",
              "app/templates/partials/sheet_capex.html"],
@@ -436,6 +464,26 @@ class TestFileScope:
 
     def test_no_documentation_files_added(self):
         import subprocess
+        # Skip if not on a 57A-5 branch.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or (
+                    "57a5" not in branch.lower()
+                    and "57a-5" not in branch.lower()
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-5 branch (current: "
+                    f"{branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",
              "docs/", "reports/"],

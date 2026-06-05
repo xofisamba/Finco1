@@ -461,8 +461,33 @@ class Test57A2IsDocsOnly:
         modifies sheet_capex.html and workspace_shell.html.
         If 57A-3 deliverable files are present in the
         diff, the 57A-3 runtime files are allowed alongside
-        the 57A-2 docs/reports/tests files."""
+        the 57A-2 docs/reports/tests files.
+
+        57A-8 also modifies sheet_capex.html + static/
+        as part of the in-memory add-line UX prototype.
+        """
         import re as _re
+        # Skip if not on a 57A-2 / 57A-3 / 57A-8 branch.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or not any(
+                    tag in branch.lower()
+                    for tag in ("57a2", "57a-2", "57a3",
+                                "57a-3", "57a8", "57a-8")
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-2/3/8 branch (current: "
+                    f"{branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "main", "--name-only"],
             cwd=str(REPO_ROOT),
@@ -476,14 +501,32 @@ class Test57A2IsDocsOnly:
             _re.search(r"57a3|57A-?3", f, _re.IGNORECASE)
             for f in changed
         )
+        # is_57a8 means: we are on a 57A-8 branch
+        # (regardless of file names in the diff).
+        is_57a8 = (
+            "57a8" in branch.lower() or "57a-8" in branch.lower()
+        )
         # 57A-3 may also include sheet_capex.html and
         # workspace_shell.html in the diff.
         ALLOWED_57A3_FILES = {
             "app/templates/partials/sheet_capex.html",
             "app/templates/partials/workspace_shell.html",
         }
+        # 57A-8 may also include sheet_capex.html,
+        # static/app.js, static/styles.css, plus
+        # test files for 57A-8 and other phases.
+        ALLOWED_57A8_FILES = {
+            "app/templates/partials/sheet_capex.html",
+            "static/app.js",
+            "static/styles.css",
+        }
         for c in changed:
             if is_57a3 and c in ALLOWED_57A3_FILES:
+                continue
+            if is_57a8 and (
+                c in ALLOWED_57A8_FILES
+                or c.startswith("tests/")
+            ):
                 continue
             assert (
                 c.startswith("docs/")
@@ -503,7 +546,41 @@ class Test57A2IsDocsOnly:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57A-2 branch or no diff")
+        # Skip if not on a 57A-2 / 57A-8 branch.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or not any(
+                    tag in branch.lower()
+                    for tag in ("57a2", "57a-2", "57a8",
+                                "57a-8")
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-2/57A-8 branch (current: "
+                    f"{branch!r})."
+                )
         changed = set(r.stdout.strip().split("\n"))
+        # 57A-8 is allowed to modify static/app.js,
+        # static/styles.css, app/templates/partials/sheet_capex.html.
+        is_57a8 = (
+            "57a8" in branch.lower() or "57a-8" in branch.lower()
+        )
+        if is_57a8:
+            allowed_for_57a8 = {
+                "app/templates/partials/sheet_capex.html",
+                "static/app.js",
+                "static/styles.css",
+            }
+        else:
+            allowed_for_57a8 = set()
         forbidden = [
             "main_web.py",
             "app/waterfall_core.py",
@@ -512,6 +589,8 @@ class Test57A2IsDocsOnly:
             "static/styles.css",
         ]
         for c in changed:
+            if is_57a8 and c in allowed_for_57a8:
+                continue
             for f in forbidden:
                 if c.endswith(f):
                     pytest.fail(

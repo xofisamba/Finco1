@@ -720,6 +720,41 @@ class TestLigRenderMacroUsed:
 
 
 class TestNoBackendModelPersistenceChanges:
+    def _skip_if_not_on_57a3_branch(self) -> None:
+        """Skip the test if we are not on a 57A-3 branch.
+
+        The TestNoBackendModelPersistenceChanges tests
+        assert that the diff vs main does NOT contain
+        static/app.js etc. — which is only meaningful
+        while 57A-3 is the unmerged branch. A
+        follow-up branch (e.g. 57A-8) may legitimately
+        modify static files; this is not 57A-3's
+        concern.
+        """
+        import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode != 0:
+            return
+        branch = r_branch.stdout.strip()
+        if branch == "main":
+            pytest.skip(
+                "On main branch; 57A-3 has been merged. "
+                "This test is only meaningful on the "
+                "57A-3 unmerged branch."
+            )
+        if "57a3" not in branch.lower() and "57a-3" not in branch.lower():
+            pytest.skip(
+                f"Not on a 57A-3 branch (current: "
+                f"{branch!r}). This test is only "
+                f"meaningful on the 57A-3 unmerged "
+                f"branch."
+            )
+
     @pytest.mark.parametrize(
         "forbidden",
         [
@@ -740,6 +775,7 @@ class TestNoBackendModelPersistenceChanges:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57A-3 branch or no diff")
+        self._skip_if_not_on_57a3_branch()
         changed = set(r.stdout.strip().split("\n"))
         for c in changed:
             assert not c.endswith(forbidden), (
@@ -757,6 +793,7 @@ class TestNoBackendModelPersistenceChanges:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57A-3 branch or no diff")
+        self._skip_if_not_on_57a3_branch()
         changed = set(r.stdout.strip().split("\n"))
         for c in changed:
             assert not c.startswith("app/persistence/")

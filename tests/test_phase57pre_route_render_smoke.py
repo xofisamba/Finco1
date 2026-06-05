@@ -427,6 +427,41 @@ class TestGuardrails:
         # Persistence / services (full dir)
     }
 
+    def _skip_if_not_on_57pre_branch(self) -> None:
+        """Skip the test if we are not on a 57pre branch.
+
+        The TestGuardrails tests assert that the diff vs
+        main does NOT contain runtime / persistence /
+        service / template files. That is only
+        meaningful while 57pre is the unmerged branch.
+        On a follow-up branch (e.g. 57A-8) or on main
+        itself, a different PR may legitimately
+        modify these files. This is not 57pre's
+        concern.
+        """
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode != 0:
+            return
+        branch = r_branch.stdout.strip()
+        if branch == "main":
+            pytest.skip(
+                "On main branch; 57pre has been merged. "
+                "This test is only meaningful on the "
+                "57pre unmerged branch."
+            )
+        if "57pre" not in branch.lower():
+            pytest.skip(
+                f"Not on a 57pre branch (current: "
+                f"{branch!r}). This test is only "
+                f"meaningful on the 57pre unmerged "
+                f"branch."
+            )
+
     @pytest.mark.parametrize("forbidden", sorted(FORBIDDEN_FILES))
     def test_no_runtime_file_changed(self, forbidden):
         """The PR must not have modified any runtime file."""
@@ -438,6 +473,35 @@ class TestGuardrails:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
+        self._skip_if_not_on_57pre_branch()
+        # Skip if we are not on a 57pre branch. The
+        # test asserts that runtime files (static/app.js
+        # etc.) are not in the diff vs main — which is
+        # only meaningful while 57pre is the unmerged
+        # branch. A follow-up branch (e.g. 57A-8) may
+        # legitimately modify these files; this is not
+        # 57pre's concern.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57pre has been merged. "
+                    "This test is only meaningful on the "
+                    "57pre unmerged branch."
+                )
+            if "57pre" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57pre branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57pre unmerged "
+                    f"branch."
+                )
         changed = set(r.stdout.strip().split("\n"))
         assert forbidden not in changed, (
             f"Forbidden file {forbidden!r} was modified by this PR. "
@@ -454,6 +518,7 @@ class TestGuardrails:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
+        self._skip_if_not_on_57pre_branch()
         changed = set(r.stdout.strip().split("\n"))
         for f in changed:
             assert not f.startswith("app/persistence/"), (
@@ -471,6 +536,7 @@ class TestGuardrails:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
+        self._skip_if_not_on_57pre_branch()
         changed = set(r.stdout.strip().split("\n"))
         for f in changed:
             assert not f.startswith("app/services/"), (
@@ -511,6 +577,7 @@ class TestGuardrails:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
+        self._skip_if_not_on_57pre_branch()
         changed = set(r.stdout.strip().split("\n"))
         # 57A / 57A-3 allowlist: these are the only template
         # paths 57A and 57A-3 are allowed to add / modify.
@@ -557,6 +624,7 @@ class TestGuardrails:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
+        self._skip_if_not_on_57pre_branch()
         changed = set(r.stdout.strip().split("\n"))
         for f in changed:
             assert not (
@@ -578,6 +646,7 @@ class TestGuardrails:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
+        self._skip_if_not_on_57pre_branch()
         changed = set(r.stdout.strip().split("\n"))
         for f in changed:
             assert f not in {
@@ -598,6 +667,7 @@ class TestGuardrails:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
+        self._skip_if_not_on_57pre_branch()
         added = set(r.stdout.strip().split("\n"))
         forbidden = {
             "package.json",

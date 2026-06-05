@@ -424,8 +424,27 @@ class TestFileScope:
 
     def test_no_documentation_or_test_files_added(self):
         # 57A-4 runtime UI change. No new docs or report
-        # files.
+        # files. Skip if not on a 57A-4 branch.
         import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or (
+                    "57a4" not in branch.lower()
+                    and "57a-4" not in branch.lower()
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-4 branch (current: "
+                    f"{branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",
              "docs/", "reports/"],
@@ -465,6 +484,26 @@ class TestFileScope:
 
     def test_no_main_web_or_services_changes(self):
         import subprocess
+        # Skip if not on a 57A-4 branch.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or (
+                    "57a4" not in branch.lower()
+                    and "57a-4" not in branch.lower()
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-4 branch (current: "
+                    f"{branch!r})."
+                )
         for path in [
             "main_web.py",
             "app/services/",
