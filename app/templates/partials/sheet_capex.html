@@ -301,6 +301,28 @@
     "contingencies": ("C.13", "Contingencies"),
     "taxes": ("C.14", "Import Taxes"),
   } %}
+  {# Per-backend-key Excel-style display codes. The backend
+     key (e.g. "epc_contract") is preserved in
+     data-capex-code but is NOT shown to the user. The
+     Excel-style code (e.g. "C.02.01") is shown in the
+     Code column. The full dotted code is preserved in
+     data-capex-code-full. #}
+  {% set backend_to_display_code = {
+    "epc_contract":            "C.02.01",
+    "production_units":        "C.01.01",
+    "epc_other":               "C.02.02",
+    "project_acquisition":     "C.15.01",
+    "project_rights":          "C.16.01",
+    "ops_prep":                "C.15.02",
+    "construction_mgmt_a":     "C.09.01",
+    "construction_mgmt_b":     "C.09.02",
+    "commissioning":           "C.10.01",
+    "audit_legal":             "C.11.01",
+    "lease_tax":               "C.07.01",
+    "insurances":              "C.06.01",
+    "contingencies":           "C.13.01",
+    "taxes":                   "C.14.01",
+  } %}
   {# Group items by category #}
   {% set items_by_cat = {} %}
   {% for code, item in capex_by_code.items() %}
@@ -323,15 +345,21 @@
     {% set cat_total = namespace(value=0.0) %}
     {% for item in items %}
       {% set amt = item.amount_keur|default(0)|float %}
+      {# Resolve the visible Excel-style code. If the
+         backend key is not in the display-code table
+         (e.g. a user-added line with no mapping), use a
+         dash so the user never sees a snake_case key. #}
+      {% set visible_code = backend_to_display_code.get(item.code, "—") %}
       {% set _ = lig_rows.append({
         "type": "data",
         "attrs": {
           "data-capex-code": item.code,
+          "data-capex-code-full": visible_code,
           "data-capex-name": item.name,
         },
         "cells": [
           {"kind": "label",  "value": item.name},
-          {"kind": "code",   "value": item.code},
+          {"kind": "code",   "value": visible_code},
           {"kind": "amount", "value": "{:.2f}".format(amt)},
         ],
       }) %}
