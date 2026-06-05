@@ -1,0 +1,202 @@
+{
+  "phase": "57A-9B",
+  "title": "CAPEX Sub-Lines Schema + Repository Skeleton",
+  "type": "runtime + migration",
+  "branch": "phase57a9b-capex-sub-lines-schema",
+  "base_sha": "c37bc6b8cbd9f144c22a063cccff4925f878d9a3",
+  "purpose": "Implement the schema + repository skeleton for user-added CAPEX sub-lines, per the 57A-9A design gate (PR #505, MERGED). Adds the capex_sub_lines table, the app/persistence/capex_sub_lines.py module (record, validators, mapping, factory guard, aggregation helpers, DB-backed helpers), and 104 new tests. Does NOT wire save/load, Run, Excel export, or update_scenario_overrides (all deferred to 57A-9C/9D/9E).",
+  "status": "DRAFT — runtime + migration, NOT auto-merge eligible",
+  "stop_after_report": true,
+  "files_changed": [
+    {
+      "path": "app/persistence/db.py",
+      "change": "modified",
+      "loc": 30,
+      "rationale": "Add idempotent CREATE TABLE IF NOT EXISTS capex_sub_lines + CREATE INDEX IF NOT EXISTS idx_capex_sub_lines_project. Existing tables unchanged."
+    },
+    {
+      "path": "app/persistence/capex_sub_lines.py",
+      "change": "added",
+      "loc": 610,
+      "rationale": "New persistence helper module: CapexSubLine dataclass, CAPEX_CATEGORY_TO_FIELD mapping (locked), ALLOWED_PARENT_CATEGORIES + REJECTED_PARENT_CATEGORIES sets, pure validators (validate_parent_category, validate_business_code), pure counter (generate_next_business_code, gap-preserving), factory project guard (assert_project_allows_capex_sub_lines), pure aggregation helpers (resolve_effective_sub_line_amount with REPLACE-not-delta semantic, fold_sub_lines_into_capex with factory no-op and C.08/C.11 additive into audit_legal), DB-backed helpers (list_sub_lines_for_project, list_business_codes_for_project, create_sub_line, soft_delete_sub_line). No imports from UI / static / run / export / model / waterfall / factories."
+    },
+    {
+      "path": "tests/test_phase57a9b_capex_sub_lines_schema.py",
+      "change": "added",
+      "loc": 1100,
+      "rationale": "104 new tests pinning: schema, columns, idempotent migration, existing tables unchanged, UNIQUE/FK constraints, index, UUID stability, business code format, gap-preserving counter, C.01..C.16 allowed, C.17/C.18 rejected, unknown categories rejected, locked mapping, every field exists on CapexStructure, C.08 + C.11 fold additively into audit_legal, override REPLACES default (Claude delta review fix), factory project guard (PermissionError), factory no-op in fold, soft-deleted excluded, no production code changed, rc1 frozen."
+    },
+    {
+      "path": "docs/phase57a9b_capex_sub_lines_schema.md",
+      "change": "added",
+      "loc": 0,
+      "rationale": "Design + change doc with goals, non-goals, schema, mapping, aggregation rule, files-changed, files-not-changed, hard no-go, phase plan, stop-and-document."
+    },
+    {
+      "path": "reports/phase57a9b_capex_sub_lines_schema.json",
+      "change": "added",
+      "loc": 0,
+      "rationale": "Machine-readable summary (this file)."
+    }
+  ],
+  "files_not_changed": [
+    "app/templates/partials/sheet_capex.html",
+    "app/templates/partials/_line_item_grid.html",
+    "app/templates/partials/workspace_shell.html",
+    "static/app.js",
+    "static/styles.css",
+    "main_web.py",
+    "main_api.py",
+    "domain/inputs.py",
+    "domain/capex/source_model.py",
+    "app/waterfall_core.py",
+    "app/project_factories.py",
+    "app/excel_export.py",
+    "app/input_helpers.py",
+    "app/ui/project_context.py",
+    "app/services/",
+    "app/persistence/_helpers.py",
+    "app/persistence/records.py",
+    "app/persistence/projects_repository.py",
+    "app/persistence/scenarios_repository.py",
+    "app/persistence/workspace_repository.py",
+    "app/persistence/runs_repository.py",
+    "app/persistence/exports_repository.py",
+    "app/persistence/repository.py",
+    "app/persistence/provenance.py",
+    "app/persistence/backup_restore.py",
+    "app/persistence/__init__.py"
+  ],
+  "schema": {
+    "table_name": "capex_sub_lines",
+    "ddl_outline": [
+      "id INTEGER PRIMARY KEY AUTOINCREMENT",
+      "sub_line_id TEXT NOT NULL UNIQUE",
+      "project_id TEXT NOT NULL",
+      "parent_category_code TEXT NOT NULL",
+      "business_code TEXT NOT NULL",
+      "display_order INTEGER NOT NULL",
+      "label TEXT NOT NULL",
+      "amount_keur REAL NOT NULL DEFAULT 0.0",
+      "comments TEXT NOT NULL DEFAULT ''",
+      "schedule_json TEXT NOT NULL DEFAULT '{}'",
+      "source TEXT NOT NULL DEFAULT 'user'",
+      "is_active INTEGER NOT NULL DEFAULT 1",
+      "governance_state_json TEXT NOT NULL DEFAULT '{}'",
+      "replay_metadata_json TEXT NOT NULL DEFAULT '{}'",
+      "created_at TEXT NOT NULL",
+      "updated_at TEXT NOT NULL",
+      "FOREIGN KEY(project_id) REFERENCES projects(project_id)",
+      "UNIQUE(project_id, business_code)"
+    ],
+    "index_name": "idx_capex_sub_lines_project",
+    "index_columns": [
+      "project_id",
+      "is_active",
+      "parent_category_code",
+      "display_order"
+    ],
+    "migration_idempotent": true,
+    "existing_tables_unchanged": [
+      "projects",
+      "scenarios",
+      "runs",
+      "workspace_states",
+      "scenario_exports"
+    ]
+  },
+  "locked_mapping": {
+    "size": 16,
+    "unique_field_count": 15,
+    "every_field_on_capex_structure": true,
+    "c08_c11_audit_legal_ambiguity_locked": true,
+    "c17_c18_rejected": true,
+    "mapping": {
+      "C.01": "production_units",
+      "C.02": "epc_contract",
+      "C.03": "grid_connection",
+      "C.04": "ops_prep",
+      "C.05": "epc_other",
+      "C.06": "insurances",
+      "C.07": "lease_tax",
+      "C.08": "audit_legal",
+      "C.09": "construction_mgmt_a",
+      "C.10": "commissioning",
+      "C.11": "audit_legal",
+      "C.12": "construction_mgmt_b",
+      "C.13": "contingencies",
+      "C.14": "taxes",
+      "C.15": "project_acquisition",
+      "C.16": "project_rights"
+    }
+  },
+  "aggregation_rule": {
+    "semantics": "scenario override REPLACES default (NOT a delta adjustment)",
+    "claude_delta_review_fix": true,
+    "helper": "resolve_effective_sub_line_amount(default, override)",
+    "formula": "effective_amount_keur = override_amount_keur if override_amount_keur is not None else default_amount_keur",
+    "fold_helper": "fold_sub_lines_into_capex(capex, user_sub_lines, scenario_overrides=None)",
+    "field_delta": "base_amount_keur + sum(effective_sub_line_amounts)",
+    "factory_no_op": true,
+    "factory_no_op_rationale": "Empty user_sub_lines returns capex unchanged. TUHO / Oborovo / Generic Solar / Generic Wind parity preserved by construction.",
+    "soft_deleted_excluded": true,
+    "unknown_category_raises_value_error": true,
+    "c08_c11_additive_into_audit_legal": true
+  },
+  "validators": {
+    "validate_parent_category": {
+      "allowed": "C.01..C.16",
+      "rejected": ["C.17", "C.18"],
+      "rejected_message": "C.17 and C.18 are read-only in the CAPEX catalogue and do not accept user-added sub-lines",
+      "unknown_message": "not a known CAPEX category"
+    },
+    "validate_business_code": {
+      "format": "C.NN.U###",
+      "nn_range": "01..16",
+      "counter_digits": 3,
+      "u_prefix_rationale": "Disjoint namespace from template C.NN.NN codes (57A-5B canonical catalogue)"
+    }
+  },
+  "factory_project_guard": {
+    "function": "assert_project_allows_capex_sub_lines",
+    "allowed_origins": ["user_project", "saved_baseline"],
+    "rejected_origins": ["factory_template"],
+    "rejection_type": "PermissionError",
+    "defense_in_depth": "factory_template + is_readonly=False still rejected"
+  },
+  "phase_plan": {
+    "57A-9A": "MERGED (design gate, PR #505)",
+    "57A-9B": "THIS PR (runtime + migration, DRAFT)",
+    "57A-9C": "Save / Load (runtime, DRAFT, gated on review)",
+    "57A-9D": "Run integration (runtime, DRAFT)",
+    "57A-9E": "Excel export (runtime, DRAFT)",
+    "57A-9F": "Governance refresh (docs/report/test, auto-merge)",
+    "57A-10": "TUHO/Oborovo parity gate (docs/report/test, auto-merge)"
+  },
+  "test_counts": {
+    "57A-9B_new_tests": 104,
+    "57A-9A_design_gate_tests": 89,
+    "57A-8_in_memory_preview_tests": 64,
+    "57A-6_add_line_design_tests": 24,
+    "57B_to_57F_tests": 187,
+    "57pre_route_smoke_tests": 30,
+    "phase_51f_parity_guardrails": 21,
+    "total_57_arc_tests_passing": 519
+  },
+  "hard_no_go": [
+    "no_financial_formula_changes",
+    "no_idc_calculation_changes",
+    "no_construction_funding_changes",
+    "no_senior_debt_shl_drawdown_changes",
+    "no_tax_engine_changes",
+    "no_depreciation_engine_changes",
+    "no_g20_r99_r102_promotion",
+    "no_tailwind_alpine_react_vue_svelte",
+    "no_backend_keys_visible_in_ui (Phase 57A-3 invariant preserved)",
+    "no_overrides_json_schema_change (additive only; SCENARIO_INPUT_FIELDS still 21 keys)",
+    "no_factory_project_mutation (factory guard is NOT wired into any route/handler in 57A-9B)",
+    "no_57a8_in_memory_preview_regression (toolbar, tmp marker, badge, warning block, preview-only totals all preserved)",
+    "rc1_frozen (b425a0708719eaa5e1d922b1008e5609758e0ad4)"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4"
+}
