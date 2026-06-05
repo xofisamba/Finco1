@@ -438,22 +438,6 @@
   {% set capex_financing_total = financing_total_fb.value %}
 {% endif %}
 
-{# ── Workbook grid (rendered via shared LineItemGrid) ────────────── #}
-<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet">
-  {{ lig_render(
-       table_label="CAPEX input sheet for " ~ project_ctx.name,
-       columns=[
-         {"key": "label",  "label": "Line Item", "kind": "label",  "classes": "fc-grid-col-label"},
-         {"key": "code",   "label": "Code",      "kind": "code",   "classes": "fc-th fc-th--code"},
-         {"key": "amount", "label": "Amount (kEUR)", "kind": "amount", "classes": "fc-th fc-th--amount"},
-       ],
-       rows=lig_rows,
-       editable=is_user_project,
-       input_field_template="capex_{code}_keur",
-       table_id="capex-single-sheet-grid",
-     ) }}
-</div>
-
 {# ── Derived top summary (small strip; NOT a competing view) ──── #}
 <div class="capex-summary-strip" id="capex-summary-strip"
      data-derived-from="capex-single-sheet-grid">
@@ -479,6 +463,34 @@
     <div class="capex-summary-card__unit">kEUR / MW</div>
   </div>
   {% endif %}
+</div>
+
+{# ── Clear copy: line items drive the model-level total ──── #}
+<div class="capex-driving-copy" data-capex-driving-copy="true">
+  <p>
+    <strong>CAPEX line items drive the model-level CAPEX total.</strong>
+    Edit the line items below in the C.01–C.18 grid; the
+    category subtotals, the hard CAPEX total, and the
+    Total CAPEX are derived automatically. Financing (C.17)
+    and Reserve Accounts (C.18) are backend-computed and
+    are read-only here.
+  </p>
+</div>
+
+{# ── Workbook grid (rendered via shared LineItemGrid) ────────────── #}
+<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet">
+  {{ lig_render(
+       table_label="CAPEX input sheet for " ~ project_ctx.name,
+       columns=[
+         {"key": "label",  "label": "Line Item", "kind": "label",  "classes": "fc-grid-col-label"},
+         {"key": "code",   "label": "Code",      "kind": "code",   "classes": "fc-th fc-th--code"},
+         {"key": "amount", "label": "Amount (kEUR)", "kind": "amount", "classes": "fc-th fc-th--amount"},
+       ],
+       rows=lig_rows,
+       editable=is_user_project,
+       input_field_template="capex_{code}_keur",
+       table_id="capex-single-sheet-grid",
+     ) }}
 </div>
 
 {# ── Deferred placeholders / future model inputs ─────────────── #}
