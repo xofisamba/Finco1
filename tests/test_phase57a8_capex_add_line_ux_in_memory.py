@@ -631,6 +631,12 @@ class TestNoBackendChanges:
             "static/app.js",
             "static/styles.css",
             "tests/test_phase57a8_capex_add_line_ux_in_memory.py",
+            # Docs / report / screenshots for 57A-8.
+            "docs/phase57a8_capex_add_line_ux_in_memory.md",
+            "reports/phase57a8_capex_add_line_ux_in_memory.json",
+            "reports/phase57a8_visual_qa/01_initial.png",
+            "reports/phase57a8_visual_qa/02_after_add_lines.png",
+            "reports/phase57a8_visual_qa/03_after_remove.png",
             # 57A-5B skip-if-merged fix: 57A-8 also adds
             # skip-if-not-57a5b-branch guards to the
             # 57A-5B file-scope tests so they don't

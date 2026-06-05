@@ -198,6 +198,11 @@ class TestDisplayOnlyBanner:
         """Banner text mentions C.16 Project Rights."""
         import os
         path = "/opt/finco1/app/templates/partials/sheet_capex_detail.html"
+        if not os.path.exists(path):
+            pytest.skip(
+                f"22B test fixture path {path!r} not available "
+                f"in this environment."
+            )
         content = open(path).read()
         assert "C.16" in content or "Project Rights" in content
 
@@ -205,6 +210,11 @@ class TestDisplayOnlyBanner:
         """Banner text mentions M1-M18 schedule timing."""
         import os
         path = "/opt/finco1/app/templates/partials/sheet_capex_detail.html"
+        if not os.path.exists(path):
+            pytest.skip(
+                f"22B test fixture path {path!r} not available "
+                f"in this environment."
+            )
         content = open(path).read()
         assert "M1" in content or "timing" in content.lower()
 
@@ -292,7 +302,10 @@ class TestNoRegressions:
         assert True
 
     def test_phase21f_tests_pass(self):
+        import os as _os
         import subprocess
+        if not _os.path.exists("/opt/finco1"):
+            pytest.skip("22B test fixture path /opt/finco1 not available.")
         result = subprocess.run(
             [sys.executable, "-m", "pytest",
              "tests/test_phase21f_capex_line_item_treatment_options_design.py",
@@ -303,7 +316,10 @@ class TestNoRegressions:
         assert result.returncode == 0, f"Phase 21F tests failed: {result.stdout}"
 
     def test_phase21e_tests_pass(self):
+        import os as _os
         import subprocess
+        if not _os.path.exists("/opt/finco1"):
+            pytest.skip("22B test fixture path /opt/finco1 not available.")
         result = subprocess.run(
             [sys.executable, "-m", "pytest",
              "tests/test_phase21e_capex_input_wiring_first_tranche.py",
@@ -314,7 +330,10 @@ class TestNoRegressions:
         assert result.returncode == 0, f"Phase 21E tests failed: {result.stdout}"
 
     def test_revenue_opex_pass(self):
+        import os as _os
         import subprocess
+        if not _os.path.exists("/opt/finco1"):
+            pytest.skip("22B test fixture path /opt/finco1 not available.")
         result = subprocess.run(
             [sys.executable, "-m", "pytest",
              "tests/test_revenue.py", "tests/test_opex.py",
