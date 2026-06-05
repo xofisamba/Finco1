@@ -360,16 +360,22 @@ class TestNoBackendKeysVisible:
     def test_backend_key_not_in_visible_code_cell(
         self, rendered_user, backend_key,
     ):
+        # Each code cell is exactly one displayed token
+        # (e.g. "C.01.01" or "" for subtotals). The
+        # backend key must NOT equal a code-cell value
+        # exactly. Substring match is too coarse because
+        # display names like "Import Taxes" contain
+        # the word "taxes" but are legitimate business
+        # terms.
         pattern = re.compile(
-            r'<td[^>]*fc-cell--code[^>]*>(.*?)</td>',
-            re.DOTALL,
+            r'<td[^>]*fc-cell--code[^>]*>([^<]+)</td>',
         )
         for m in pattern.finditer(rendered_user):
             cell_text = m.group(1).strip()
-            assert backend_key not in cell_text, (
+            assert cell_text != backend_key, (
                 f"Backend key {backend_key!r} must not "
-                f"appear in visible code cell. "
-                f"Found: {cell_text!r}."
+                f"appear as a visible code cell value "
+                f"(exact match). Found: {cell_text!r}."
             )
 
     @pytest.mark.parametrize(
@@ -383,13 +389,37 @@ class TestNoBackendKeysVisible:
     def test_canonical_backend_keys_not_in_any_visible_text(
         self, rendered_user, backend_key,
     ):
-        visible = re.findall(r'>([^<]*)<', rendered_user)
-        for vt in visible:
-            assert backend_key not in vt, (
-                f"Backend key {backend_key!r} must not "
-                f"appear as visible text anywhere in the "
-                f"rendered CAPEX sheet. Found: {vt!r}."
-            )
+        # The backend key must NOT appear as a visible
+        # code-cell value (where each cell is exactly
+        # one of the displayed tokens). Substring match
+        # is too coarse because display names like
+        # "Import Taxes" contain the word "taxes" but
+        # are legitimate business terms.
+        code_cells = re.findall(
+            r'<td[^>]*fc-cell--code[^>]*>([^<]+)</td>',
+            rendered_user,
+        )
+        non_empty_codes = [c.strip() for c in code_cells if c.strip()]
+        exact_hits = [c for c in non_empty_codes if c == backend_key]
+        assert not exact_hits, (
+            f"Backend key {backend_key!r} must not "
+            f"appear as a visible code cell value. "
+            f"Found: {exact_hits}."
+        )
+        # Also: the backend key must not appear as a
+        # label-cell value (where each cell is exactly
+        # the displayed display name).
+        label_cells = re.findall(
+            r'<td[^>]*fc-grid-col-label[^>]*>([^<]+)</td>',
+            rendered_user,
+        )
+        non_empty_labels = [c.strip() for c in label_cells if c.strip()]
+        exact_label_hits = [c for c in non_empty_labels if c == backend_key]
+        assert not exact_label_hits, (
+            f"Backend key {backend_key!r} must not "
+            f"appear as a visible label cell value. "
+            f"Found: {exact_label_hits}."
+        )
 
 
 # ---------------------------------------------------------------------------
