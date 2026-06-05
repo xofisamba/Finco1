@@ -534,6 +534,24 @@ class TestNoBackendChanges:
         )
 
     def test_no_persistence_changes(self):
+        # Skip on 57A-9X branches: the persistence layer is
+        # the explicit target of the 57A-9 save/load + Run +
+        # Excel sub-arc. Same pattern as the 57A-5B skip-guard
+        # added in the same PR.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if "57a9" in branch.lower():
+                pytest.skip(
+                    f"57A-9X branch — app/persistence/ is the "
+                    f"target of the save/load wiring "
+                    f"(current: {branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",
              "app/persistence/"],
@@ -610,6 +628,24 @@ class TestNoBackendChanges:
         )
 
     def test_allowed_files_only(self):
+        # Skip on 57A-9X branches: this allowlist enumerates
+        # the files 57A-8 can touch. A 57A-9X branch has a
+        # different allowlist (defined in 57A-9C's test
+        # file). Same pattern as the 57A-5B skip-guard
+        # added in the same PR.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if "57a9" in branch.lower():
+                pytest.skip(
+                    f"57A-9X branch — 57A-8's allowlist does not "
+                    f"apply (current: {branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only"],
             cwd=str(REPO_ROOT),

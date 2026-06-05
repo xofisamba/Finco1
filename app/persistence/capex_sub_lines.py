@@ -56,6 +56,8 @@ from __future__ import annotations
 
 import re
 import uuid
+
+from app.persistence.db import get_cursor
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple
 
@@ -696,6 +698,206 @@ def soft_delete_sub_line(
     return cur.rowcount > 0
 
 
+# ---------------------------------------------------------------------------
+# High-level save/load helpers (Phase 57A-9C wiring)
+# ---------------------------------------------------------------------------
+
+
+def replace_sub_lines_for_project(
+    cur: Any,
+    *,
+    project_id: str,
+    sub_lines: Sequence[CapexSubLine],
+) -> list[CapexSubLine]:
+    """Replace the project's active sub-lines with the given set.
+
+    This is the **save flow** wiring for Phase 57A-9C. The
+    pattern is the standard Phase 53G audit-friendly one:
+    soft-delete the existing active rows, then insert the
+    new set. Soft-deleted rows are kept in the table for
+    audit / replay; the ``business_code`` slot is NOT
+    released (gaps are preserved).
+
+    The input sub-lines may carry their own ``sub_line_id``
+    (UUID). If so, the inserted row reuses that UUID —
+    preserving identity across round-trips. If the
+    ``sub_line_id`` is empty or None, a fresh UUID is
+    generated.
+
+    The ``business_code`` is auto-computed for any sub-line
+    whose ``business_code`` is empty (new lines) but the
+    existing one is reused for lines that already have one
+    (round-trip).
+
+    Returns the list of inserted records (with their
+    database-assigned ``id``, ``created_at``,
+    ``updated_at``).
+    """
+    import json as _json
+    from datetime import datetime, timezone
+    # 1. Soft-delete the existing active rows.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cur.execute(
+        """
+        UPDATE capex_sub_lines
+        SET is_active = 0, updated_at = ?
+        WHERE project_id = ? AND is_active = 1
+        """,
+        (now_iso, project_id),
+    )
+    # 1b. Permanently delete any soft-deleted rows that
+    # share a sub_line_id with the new set, so the UNIQUE
+    # constraint does not block the re-insert. This is
+    # safe: the soft-delete row was created by a prior
+    # save_project call, and we're about to replace it
+    # with an active row carrying the same UUID.
+    new_uuids = [
+        sub.sub_line_id for sub in sub_lines if sub.sub_line_id
+    ]
+    if new_uuids:
+        placeholders = ",".join("?" for _ in new_uuids)
+        cur.execute(
+            f"""
+            DELETE FROM capex_sub_lines
+            WHERE sub_line_id IN ({placeholders})
+            """,
+            tuple(new_uuids),
+        )
+    # 2. Insert the new set.
+    inserted: list[CapexSubLine] = []
+    for sub in sub_lines:
+        # If the input carries a UUID, reuse it; else generate.
+        sub_line_id = (
+            sub.sub_line_id if sub.sub_line_id else str(uuid.uuid4())
+        )
+        # If the input carries a business_code, validate it;
+        # else auto-compute the next counter.
+        if sub.business_code:
+            validate_business_code(sub.business_code)
+            business_code = sub.business_code
+        else:
+            existing = list_business_codes_for_project(cur, project_id)
+            business_code = generate_next_business_code(
+                existing, sub.parent_category_code,
+            )
+        # Compute display_order. If the input carries a
+        # non-zero display_order, reuse it (round-trip
+        # preservation). If it's 0, auto-compute as
+        # max + 1 (for new lines that don't care about
+        # ordering).
+        if sub.display_order and sub.display_order > 0:
+            display_order = sub.display_order
+        else:
+            cur.execute(
+                """
+                SELECT COALESCE(MAX(display_order), 0) FROM capex_sub_lines
+                WHERE project_id = ? AND parent_category_code = ?
+                """,
+                (project_id, sub.parent_category_code),
+            )
+            row = cur.fetchone()
+            max_order = (
+                int(row[0]) if row and row[0] is not None else 0
+            )
+            display_order = max_order + 1
+        # Direct INSERT (the create_sub_line helper would
+        # generate its own UUID, which we then would have to
+        # swap out — that DELETE+UPDATE dance is racy on a
+        # shared cursor. A direct INSERT with the desired
+        # sub_line_id is cleaner and preserves the
+        # all-or-nothing transaction semantics of the
+        # surrounding save_project call).
+        cur.execute(
+            """
+            INSERT INTO capex_sub_lines (
+                sub_line_id, project_id, parent_category_code, business_code,
+                display_order, label, amount_keur, comments, schedule_json,
+                source, is_active, governance_state_json, replay_metadata_json,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+            """,
+            (
+                sub_line_id,
+                project_id,
+                sub.parent_category_code,
+                business_code,
+                display_order,
+                sub.label,
+                float(sub.amount_keur),
+                sub.comments or "",
+                sub.schedule_json or "{}",
+                sub.source or "user",
+                _json.dumps(sub.governance_state or {}),
+                _json.dumps(sub.replay_metadata or {}),
+                now_iso,
+                now_iso,
+            ),
+        )
+        # Read back the inserted row to construct the record.
+        cur.execute(
+            """
+            SELECT id, created_at, updated_at FROM capex_sub_lines
+            WHERE sub_line_id = ?
+            """,
+            (sub_line_id,),
+        )
+        row = cur.fetchone()
+        rec = CapexSubLine(
+            id=row[0],
+            sub_line_id=sub_line_id,
+            project_id=project_id,
+            parent_category_code=sub.parent_category_code,
+            business_code=business_code,
+            display_order=display_order,
+            label=sub.label,
+            amount_keur=float(sub.amount_keur),
+            comments=sub.comments or "",
+            schedule_json=sub.schedule_json or "{}",
+            source=sub.source or "user",
+            is_active=True,
+            governance_state=sub.governance_state or {},
+            replay_metadata=sub.replay_metadata or {},
+            created_at=row[1],
+            updated_at=row[2],
+        )
+        inserted.append(rec)
+    return inserted
+
+
+def soft_delete_sub_line_for_project(
+    cur: Any,
+    *,
+    project_id: str,
+    sub_line_id: str,
+) -> bool:
+    """Soft-delete a single sub-line by id.
+
+    This is the canonical alias of ``soft_delete_sub_line``,
+    used by the save flow to mark a removed line in-memory
+    and then ask the persistence layer to mark it inactive.
+    """
+    return soft_delete_sub_line(
+        cur, project_id=project_id, sub_line_id=sub_line_id,
+    )
+
+
+def get_active_sub_lines_for_project(
+    project_id: str,
+) -> list[CapexSubLine]:
+    """Read active sub-lines for a project (load flow).
+
+    Convenience wrapper that opens a short-lived cursor.
+    For callers that already hold a cursor, use
+    ``list_sub_lines_for_project`` directly. The wrapper
+    returns a list (not a tuple) for ergonomics in the
+    save/load flow; the underlying helper returns a tuple.
+    """
+    with get_cursor() as cur:
+        return list(
+            list_sub_lines_for_project(cur, project_id, include_inactive=False)
+        )
+
+
 __all__ = [
     "ALLOWED_PARENT_CATEGORIES",
     "CAPEX_CATEGORY_TO_FIELD",
@@ -706,10 +908,13 @@ __all__ = [
     "create_sub_line",
     "fold_sub_lines_into_capex",
     "generate_next_business_code",
+    "get_active_sub_lines_for_project",
     "list_business_codes_for_project",
     "list_sub_lines_for_project",
+    "replace_sub_lines_for_project",
     "resolve_effective_sub_line_amount",
     "soft_delete_sub_line",
+    "soft_delete_sub_line_for_project",
     "validate_business_code",
     "validate_parent_category",
 ]

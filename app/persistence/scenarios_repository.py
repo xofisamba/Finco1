@@ -446,7 +446,17 @@ def update_scenario_overrides(
 ) -> "Optional[ScenarioRecord]":
     """Patch the overrides_json of a non-base scenario.
 
-    Only keys in SCENARIO_INPUT_FIELDS are accepted; everything else is dropped.
+    Only keys in SCENARIO_INPUT_FIELDS are accepted; everything else is
+    dropped (Phase 20B invariant).
+
+    Phase 57A-9C additive extension: a second allowlist of
+    **reserved keys** is consulted BEFORE the silent-drop
+    check. Reserved keys (currently ``_capex_sub_line_overrides``
+    and ``_capex_sub_line_overrides_metadata``) are accepted
+    as opaque blobs and merged into ``overrides_json``
+    alongside the flat-path entries. This is the scenario
+    override surface for CAPEX user-added sub-lines.
+
     Returns the updated ScenarioRecord or None if the scenario doesn't exist.
     """
     from app.persistence.records import ScenarioRecord
@@ -456,14 +466,32 @@ def update_scenario_overrides(
     if record.is_base_case:
         return None  # base-case overrides are stored in base_input_set; use Inputs tab
 
+    # Phase 57A-9C: reserved-key allowlist. These keys are
+    # opaque blobs (sub-line override maps + metadata). They
+    # pass the allowlist check before the SCENARIO_INPUT_FIELDS
+    # silent-drop rule fires, so callers can persist CAPEX
+    # sub-line per-scenario amounts without that data being
+    # dropped on the floor.
+    _RESERVED_OVERRIDE_KEYS = frozenset(
+        {"_capex_sub_line_overrides", "_capex_sub_line_overrides_metadata"}
+    )
+
     # Merge: existing overrides + new ones (new ones win)
     merged = dict(record.overrides)
     for key, value in overrides.items():
         if key in SCENARIO_INPUT_FIELDS:
             merged[key] = value
+        elif key in _RESERVED_OVERRIDE_KEYS:
+            merged[key] = value
         # else: silently drop unknown keys per Phase 20B rules
 
-    # Re-resolve effective snapshot
+    # Re-resolve effective snapshot. The reserved sub-line
+    # overrides are NOT consulted here: the effective CAPEX
+    # total at runtime is computed by the 57A-9D integration
+    # helper, which folds the sub-lines into CapexStructure
+    # at materialization time. For 57A-9C we only wire the
+    # persistence + scenario-override surface; the run
+    # integration is gated on 57A-9D.
     resolved = resolve_scenario_snapshot(record.base_input_set, merged)
     now = _now_utc()
 
