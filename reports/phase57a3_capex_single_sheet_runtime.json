@@ -1,0 +1,102 @@
+{
+  "phase": "57A-3",
+  "title": "CAPEX single-sheet runtime draft (post-feedback revision)",
+  "branch": "phase57a3-capex-single-sheet-runtime",
+  "type": "runtime-ui-change",
+  "auto_merge_eligible": false,
+  "draft_required": true,
+  "visual_review_required": true,
+  "post_feedback_revision": true,
+  "previous_revision_summary": "Previous version used simplified C.01..C.05 grouping. User feedback: C.01..C.05 was a screenshot crop, not the full model. CAPEX must preserve C.01..C.18 hierarchy and sub-lines.",
+  "base_sha_start": "b19127da51e5568b4786f3391c56d9e43627bb08",
+  "base_sha_start_note": "post-57A-2, CAPEX single-sheet direction characterization merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "what_this_pr_does": "Promotes the app to source of truth for CAPEX. Renders the canonical C.01..C.18 hierarchy with sub-lines (C.01.01, C.01.02, ...) in a single Excel-like CAPEX input sheet (sheet_capex.html). Removes the Excel-vs-App reconciliation Detail view from the primary CAPEX tab. Documents future model inputs (VAT, WHT, depreciation, payment schedule, utilisation) and a Sources & Uses bridge.",
+  "canonical_categories_c01_to_c18": [
+    {"code": "C.01", "name": "Production Unit"},
+    {"code": "C.02", "name": "EPC Contract"},
+    {"code": "C.03", "name": "Grid Connection"},
+    {"code": "C.04", "name": "Monitoring & Telecom"},
+    {"code": "C.05", "name": "Operation Investments"},
+    {"code": "C.06", "name": "Insurances"},
+    {"code": "C.07", "name": "Land Securing Costs"},
+    {"code": "C.08", "name": "Bank Due Diligence"},
+    {"code": "C.09", "name": "Construction Management"},
+    {"code": "C.10", "name": "Commissioning"},
+    {"code": "C.11", "name": "Audit & Accounting & Legal"},
+    {"code": "C.12", "name": "Construction Mgmt"},
+    {"code": "C.13", "name": "Contingencies"},
+    {"code": "C.14", "name": "Import Taxes"},
+    {"code": "C.15", "name": "Project Acquisition / Development"},
+    {"code": "C.16", "name": "Project Rights"},
+    {"code": "C.17", "name": "Financing Costs (read-only, backend-computed)"},
+    {"code": "C.18", "name": "Reserve Accounts (read-only, backend-computed)"}
+  ],
+  "data_source": {
+    "primary": "project_ctx.capex_detail_items (built by app/ui/project_context.py::_build_capex_detail_items)",
+    "fallback": "C.01..C.18 scaffold rendered from project_ctx.capex_items (6-section summary mapped to C.01..C.05 + C.17 financing rows)"
+  },
+  "sub_lines_preserved": true,
+  "sub_line_sanitization": "Dotted codes (C.01.01) are sanitized to underscores (C_01_01) for use in HTML input name attributes. The full dotted code is preserved in data-capex-code-full.",
+  "future_model_inputs_documented": [
+    {"name": "VAT applicability / rate / cost", "feeds": "cash flow / balance sheet / working capital / tax receivable"},
+    {"name": "WHT rate / cost", "feeds": "tax / cash flow treatment"},
+    {"name": "Depreciation category / useful life / flag", "feeds": "P&L and fixed asset schedule"},
+    {"name": "Payment schedule by construction month", "feeds": "equity / SHL / senior debt drawdown, IDC, opening balances at COD"},
+    {"name": "Utilisation of funds during construction", "feeds": "same drawdown / IDC chain as payment schedule"}
+  ],
+  "sources_and_uses_bridge_documented": [
+    "Sources & Uses",
+    "Equity drawdown",
+    "Senior loan drawdown",
+    "SHL drawdown",
+    "Senior IDC + SHL IDC",
+    "Opening senior debt balance at COD",
+    "Opening SHL balance at COD",
+    "Fixed asset base",
+    "VAT receivable / payable",
+    "WHT payable / cash",
+    "Depreciation in P&L",
+    "Balance Sheet",
+    "Cash Flow"
+  ],
+  "files_changed": [
+    "app/templates/partials/sheet_capex.html (rewritten: C.01..C.18 with sub-lines)",
+    "app/templates/partials/workspace_shell.html (removed sheet_capex_detail.html include)",
+    "tests/test_phase57a3_capex_single_sheet_runtime.py (rewritten: 16 test classes)",
+    "docs/phase57a3_capex_single_sheet_runtime.md (rewritten)",
+    "reports/phase57a3_capex_single_sheet_runtime.json (rewritten)"
+  ],
+  "files_unchanged_deprecated_alias": [
+    "app/templates/partials/sheet_capex_detail.html"
+  ],
+  "files_unchanged_technical_foundation": [
+    "app/templates/partials/_line_item_grid.html (57A macro reused as-is)"
+  ],
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_idc_calculation_changes": true,
+    "no_construction_funding_engine_changes": true,
+    "no_senior_debt_shl_drawdown_changes": true,
+    "no_tax_engine_changes": true,
+    "no_opex_revenue_grid_migration": true,
+    "no_portfolio_bess_hybrid": true,
+    "no_forbidden_user_facing_claims": true,
+    "rc1_untouched": true
+  },
+  "auto_merge_policy": "DRAFT only. NOT marked ready. NOT auto-merged. Visual review required."
+}
