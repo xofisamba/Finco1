@@ -119,12 +119,27 @@
    to `project_ctx.capex_items` (the flat 6-section summary
    data). The fallback path is for backward compatibility
    only; the production path uses the C.01–C.18 detail data.
+
+   57A-5B: `project_ctx.capex_detail_items` is a TUPLE of
+   category dicts (built by
+   `app/ui/project_context.py::_build_capex_detail_items`).
+   The previous template code expected a dict with a
+   `.categories` property, which caused the canonical
+   catalogue to be silently hidden and the template to
+   fall through to the older 6-section fallback.
 #}
-{% set capex_detail = project_ctx.capex_detail_items if project_ctx.capex_detail_items else None %}
-{% set capex_categories = capex_detail.categories if capex_detail else () %}
-{% set capex_grand_total = capex_detail.grand_total_keur if capex_detail else 0.0 %}
-{% set capex_hard_total = capex_detail.hard_capex_total_keur if capex_detail else 0.0 %}
-{% set capex_financing_total = capex_detail.financing_total_keur if capex_detail else 0.0 %}
+{% set _raw_detail = project_ctx.capex_detail_items %}
+{% if _raw_detail is mapping and _raw_detail.get('categories') is defined %}
+  {% set capex_categories = _raw_detail['categories'] %}
+  {% set capex_grand_total = _raw_detail.get('grand_total_keur', 0.0) %}
+  {% set capex_hard_total = _raw_detail.get('hard_capex_total_keur', 0.0) %}
+  {% set capex_financing_total = _raw_detail.get('financing_total_keur', 0.0) %}
+{% else %}
+  {% set capex_categories = _raw_detail if _raw_detail else () %}
+  {% set capex_grand_total = (project_ctx.grand_total_keur if project_ctx.grand_total_keur is defined else 0.0) %}
+  {% set capex_hard_total = (project_ctx.hard_capex_total_keur if project_ctx.hard_capex_total_keur is defined else 0.0) %}
+  {% set capex_financing_total = (project_ctx.financing_total_keur if project_ctx.financing_total_keur is defined else 0.0) %}
+{% endif %}
 
 {# ── Build lig_rows (structured data for the LineItemGrid macro) ───── #}
 {% set lig_rows = [] %}
