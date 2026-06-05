@@ -275,17 +275,21 @@ class TestRenderPreservesContent:
 
     def test_render_has_subtotal_labels(self):
         html = _render_sheet_capex()
+        # Phase 57A-3 rewrote sheet_capex.html to a single
+        # Excel-like input sheet with C.01..C.05 category
+        # groupings (replacing the pre-57A-3 Construction /
+        # Development / etc. section groupings). The
+        # subtotal labels are now C.01..C.05 Subtotal.
         for label in [
-            "Construction Subtotal",
-            "Development Subtotal",
-            "Construction Mgmt Subtotal",
-            "Civil &amp; Land Subtotal",  # Jinja autoescape for &
-            "Insurances &amp; Risk Subtotal",
-            "Financing Costs Total",
+            "C.01 Subtotal",
+            "C.02 Subtotal",
+            "C.04 Subtotal",
+            "C.05 Subtotal",
+            "Financing Costs Subtotal",
         ]:
             assert label in html, (
                 f"Subtotal label {label!r} must appear in the "
-                f"rendered CAPEX table."
+                f"rendered CAPEX table (post-57A-3 single sheet)."
             )
 
     def test_render_has_data_capex_codes(self):
@@ -301,19 +305,35 @@ class TestRenderPreservesContent:
 
     def test_render_has_fc_total_row_classes(self):
         """The subtotal / total CSS classes must be preserved
-        so the existing CSS still applies."""
+        so the existing CSS still applies.
+
+        Note: post-57A-3, the grand total row uses
+        `lig-row--total` (the LineItemGrid macro's modern
+        marker) rather than the legacy `fc-grand-total` class.
+        The `data-capex-row="grand-total"` attribute is the
+        stable, version-independent marker for the grand
+        total row.
+        """
         html = _render_sheet_capex()
         for cls in [
             "fc-total-row",
             "fc-subtotal-row",
             "fc-section-band",
-            "fc-grand-total",
-            "fc-hard-capex-total",
         ]:
             assert cls in html, (
                 f"CSS class {cls!r} must appear in the rendered "
                 f"HTML (preserved by 57A migration)."
             )
+        # Grand total: assert the modern stable marker.
+        assert 'data-capex-row="grand-total"' in html, (
+            "Grand total row must have data-capex-row="
+            "\"grand-total\" attribute (stable marker)."
+        )
+        # Hard CAPEX total: also a stable marker.
+        assert 'data-capex-row="hard-capex-total"' in html, (
+            "Hard CAPEX total row must have data-capex-row="
+            "\"hard-capex-total\" attribute (stable marker)."
+        )
 
     def test_render_has_amount_cells_with_formatting(self):
         """The amount cells must have the value formatted
@@ -591,10 +611,16 @@ class TestRenderPreservesContent:
 
     def test_render_preserves_sheet_banner(self):
         """The sheet-banner block (top-of-sheet tag) must be
-        preserved."""
+        preserved.
+
+        Note: post-57A-3, the banner label is "🏗️ CAPEX"
+        (the single CAPEX sheet, no "Detail" suffix) per
+        user direction: one CAPEX sheet, not two competing
+        views.
+        """
         html = _render_sheet_capex()
         assert "sheet-banner" in html
-        assert "🏗️ CAPEX Detail" in html
+        assert "🏗️ CAPEX" in html
 
     def test_render_preserves_dirty_indicator(self):
         """The dirty-indicator (used by HTMX form) must be

@@ -512,12 +512,19 @@ class TestGuardrails:
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on a 57pre branch; no diff to check")
         changed = set(r.stdout.strip().split("\n"))
-        # 57A allowlist: these are the only template paths 57A
-        # is allowed to add / modify. Any other template file
-        # in the diff must fail the guardrail.
+        # 57A / 57A-3 allowlist: these are the only template
+        # paths 57A and 57A-3 are allowed to add / modify.
+        # Any other template file in the diff must fail the
+        # guardrail.
+        #
+        # 57A-3 added `workspace_shell.html` to the allowlist
+        # because 57A-3 removes the deprecated
+        # `sheet_capex_detail.html` include from the CAPEX
+        # panel (collapsing the dual view to a single sheet).
         ALLOWED_57A_TEMPLATE_PATHS = {
             "app/templates/partials/_line_item_grid.html",
             "app/templates/partials/sheet_capex.html",
+            "app/templates/partials/workspace_shell.html",
         }
         # Find template files in the diff that are NOT in
         # the 57A allowlist.

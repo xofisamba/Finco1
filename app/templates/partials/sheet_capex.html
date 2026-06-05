@@ -1,21 +1,50 @@
-<!-- CAPEX Detail Grid — {{ project_ctx.name }} -->
-<!-- Phase 20I — fc-grid design system, workbook-style line-item surface -->
 <!--
-  Phase 57A / UI-3.1 migration: this sheet now renders through
-  the shared LineItemGrid partial (`partials/_line_item_grid.html`)
-  via its `lig_render` macro. The visible HTML / CSS class set
-  is preserved 1:1 so the existing `static/styles.css` rules
-  continue to apply without modification.
+  CAPEX Single-Sheet — {{ project_ctx.name }}
+  Phase 57A-3 / UI-3.2: Single Excel-like CAPEX input sheet.
 
-  The data model is now a structured rows list (instead of inline
-  Jinja loops), so the next sheet migration (e.g. OPEX) can
-  reuse the same macro with a different rows payload.
+  The app is the source of truth. This sheet is the primary
+  CAPEX input surface. There is no Excel vs App reconciliation
+  in this sheet. The previous competing "CAPEX Summary" and
+  "CAPEX Detail" views have been collapsed into this single
+  input sheet.
+
+  The previous `sheet_capex_detail.html` (Excel-vs-App audit
+  view) is kept on disk as a deprecated alias and is no
+  longer included in `workspace_shell.html`. Users who need
+  the old audit surface can still access the file directly,
+  but it is not surfaced in the primary CAPEX tab.
+
+  Out of scope (per spec):
+    * No IDC calculation change.
+    * No construction funding engine change.
+    * No senior debt / SHL drawdown logic change.
+    * No tax engine change.
+    * No backend financial formula change.
+
+  Editability policy:
+    * Normal CAPEX line items: editable for user-created
+      projects (`is_user_project=True`).
+    * Backend-calculated financing / IDC rows
+      (idc, bank_fees, commitment_fees, other_financial,
+      vat_costs, reserve_accounts): read-only (data_financing
+      row type, preserved from 57A-1 Fix A).
+    * Subtotal / total / delta_warning rows: read-only.
+    * Cost per MW, VAT, WHT, depreciation, payment schedule,
+      utilisation columns: read-only (derived from amount;
+      detailed logic deferred to a follow-up phase).
+
+  Rendered via the shared `lig_render` macro from
+  `partials/_line_item_grid.html`. The macro is extended
+  for per-cell editability (cells in the amount column
+  are inputs in user project mode; all other columns are
+  read-only).
 -->
 
 {% from "partials/_line_item_grid.html" import lig_render %}
 
+{# ── Sheet banner ────────────────────────────────────────────────────────── #}
 <div class="sheet-banner">
-  <span class="sheet-banner-tag">🏗️ CAPEX Detail</span>
+  <span class="sheet-banner-tag">🏗️ CAPEX</span>
   <span class="sheet-banner-badge">
     {% if not is_user_project %}
     <span class="badge badge-muted">Factory Reference — read-only</span>
@@ -25,246 +54,135 @@
   </span>
 </div>
 
-{# ── Build resolved capex_items with section/group info ──────────────── #}
-{% set capex_by_section = {
-  "Construction": ["epc_contract", "production_units", "epc_other"],
-  "Development": ["project_acquisition", "project_rights", "ops_prep"],
-  "Construction Management": ["construction_mgmt_a", "construction_mgmt_b", "commissioning", "audit_legal"],
-  "Civil & Land": ["lease_tax"],
-  "Insurances & Risk": ["insurances", "contingencies", "taxes"],
-} %}
-{% set financing_rows = ["idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs", "reserve_accounts"] %}
+{# ── Read-only notice for factory / reference projects ─────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--capex">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Factory template — read only</strong>
+    <p>This is a factory template. Use <strong>Duplicate / Save As</strong> to
+    create your own copy, then edit CAPEX assumptions.</p>
+    <p class="inp-readonly-notice__hint">
+      The app is the source of truth. Edit line items directly in this sheet;
+      section totals and the grand total are derived automatically.
+    </p>
+  </div>
+</div>
+{% endif %}
 
+{# ── Build capex data structures ──────────────────────────────────────── #}
+{#
+   Categories (C.01..C.05) group line items. Each category has
+   a label and a list of capex line codes. The capex items
+   are looked up from `project_ctx.capex_items` (the same
+   source the previous Summary view used). Financing rows
+   (idc, bank_fees, etc.) are listed separately so they can
+   be rendered as read-only data_financing rows.
+
+   `categories` is the single source of truth for which line
+   items belong to which category. The 57A Summary view used
+   a different grouping (Construction / Development / ...) —
+   the new C.01..C.05 grouping is closer to the source Excel
+   model's C.01..C.18 numbering and to the user's stated
+   product direction.
+#}
+{% set categories = [
+  ("C.01", "Construction", ["epc_contract", "production_units", "epc_other"]),
+  ("C.02", "Development",  ["project_acquisition", "project_rights", "ops_prep"]),
+  ("C.03", "Construction Management", ["construction_mgmt_a", "construction_mgmt_b", "commissioning", "audit_legal"]),
+  ("C.04", "Civil & Land", ["lease_tax"]),
+  ("C.05", "Insurances & Risk", ["insurances", "contingencies", "taxes"]),
+] %}
+
+{% set financing_rows = [
+  "idc", "bank_fees", "commitment_fees",
+  "other_financial", "vat_costs", "reserve_accounts",
+] %}
+
+{# Lookup capex items by code #}
 {% set capex_by_code = {} %}
 {% for item in project_ctx.capex_items %}
   {% set _ = capex_by_code.update({item.code: item}) %}
 {% endfor %}
 
-{# Compute subtotals #}
-{% set hard_items = [] %}
-{% for section, codes in capex_by_section.items() %}
+{# Compute total capacity MW (for cost per MW display) #}
+{% set _capacity_mw = (project_ctx.capacity_mw|default(0)|float) %}
+{% if _capacity_mw <= 0 %}
+  {% set _capacity_mw = 0 %}
+  {# capacity_mw is not a standard field; fall back to a #}
+  {# not-displayed value so cost per MW is 0 instead of #}
+  {# throwing a ZeroDivisionError. #}
+{% endif %}
+
+{# ── Build lig_rows (structured data for the LineItemGrid macro) ─────── #}
+{% set lig_rows = [] %}
+{% set category_totals = {} %}
+{% set grand_total = namespace(value=0.0) %}
+
+{% for cat_code, cat_label, codes in categories %}
+  {# Category section band #}
+  {% set _ = lig_rows.append({
+    "type": "section_band",
+    "cells": [cat_code ~ "  " ~ cat_label],
+  }) %}
+
+  {% set cat_total = namespace(value=0.0) %}
   {% for code in codes %}
     {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
-      {% set _ = hard_items.append(capex_by_code[code]) %}
+      {% set item = capex_by_code[code] %}
+      {% set per_mw = (item.amount_keur / _capacity_mw) if _capacity_mw > 0 else 0 %}
+      {% set _ = lig_rows.append({
+        "type": "data",
+        "attrs": {
+          "data-capex-code": item.code,
+          "data-capex-name": item.name,
+        },
+        "cells": [
+          {"kind": "label",  "value": item.name},
+          {"kind": "code",   "value": item.code},
+          {"kind": "amount", "value": "{:.2f}".format(item.amount_keur)},
+        ],
+      }) %}
+      {% set cat_total.value = cat_total.value + item.amount_keur %}
     {% endif %}
   {% endfor %}
-{% endfor %}
-{% set hard_capex_total = namespace(total=0.0) %}
-{% for item in hard_items %}
-  {% set hard_capex_total.total = hard_capex_total.total + item.amount_keur %}
-{% endfor %}
 
-{% set financing_total = namespace(total=0.0) %}
-{% for code in financing_rows %}
-  {% if code in capex_by_code %}
-    {% set item = capex_by_code[code] %}
-    {% if item.amount_keur > 0 %}
-      {% set financing_total.total = financing_total.total + item.amount_keur %}
-    {% endif %}
-  {% endif %}
-{% endfor %}
-
-{# ── Build the structured rows list for the LineItemGrid ──────────── #}
-{% set lig_rows = [] %}
-
-{# Construction section #}
-{% set _ = lig_rows.append({
-  "type": "section_band",
-  "cells": ["Construction"],
-}) %}
-{% set construction_total = namespace(total=0.0) %}
-{% for code in ["epc_contract", "production_units", "epc_other"] %}
-  {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
-    {% set item = capex_by_code[code] %}
+  {# Category subtotal (derived, read-only) #}
+  {% set _ = category_totals.update({cat_code: cat_total.value}) %}
+  {% if cat_total.value > 0 %}
     {% set _ = lig_rows.append({
-      "type": "data",
-      "attrs": {
-        "data-capex-code": item.code,
-        "data-capex-name": item.name,
-      },
+      "type": "subtotal",
       "cells": [
-        {"kind": "label", "value": item.name},
-        {"kind": "code", "value": item.code},
-        {"kind": "amount", "value": "{:.2f}".format(item.amount_keur)},
+        {"kind": "label",  "value": cat_code ~ " Subtotal", "safe_html": True},
+        {"kind": "code",   "value": ""},
+        {"kind": "amount", "value": "{:,.2f}".format(cat_total.value)},
       ],
     }) %}
-    {% set construction_total.total = construction_total.total + item.amount_keur %}
   {% endif %}
+
+  {% set grand_total.value = grand_total.value + cat_total.value %}
 {% endfor %}
+
+{# ── Hard CAPEX total (Construction + Development + CM + Civil + Insurances) ─ #}
 {% set _ = lig_rows.append({
   "type": "subtotal",
-  "classes": ["fc-construction-subtotal"],
+  "attrs": {"data-capex-row": "hard-capex-total"},
   "cells": [
-    {"kind": "label", "value": "Construction Subtotal"},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(construction_total.total)},
+    {"kind": "label",  "value": "<strong>Hard CAPEX Total</strong>", "safe_html": True},
+    {"kind": "code",   "value": ""},
+    {"kind": "amount", "value": "{:,.2f}".format(grand_total.value)},
   ],
 }) %}
 
-{# Development section #}
+{# ── Financing Costs section (read-only — data_financing rows) ────────── #}
 {% set _ = lig_rows.append({
   "type": "section_band",
-  "cells": ["Development"],
+  "cells": ["Financing Costs (read-only — backend-computed)"],
 }) %}
-{% set dev_total = namespace(total=0.0) %}
-{% for code in ["project_acquisition", "project_rights", "ops_prep"] %}
-  {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
-    {% set item = capex_by_code[code] %}
-    {% set _ = lig_rows.append({
-      "type": "data",
-      "attrs": {
-        "data-capex-code": item.code,
-        "data-capex-name": item.name,
-      },
-      "cells": [
-        {"kind": "label", "value": item.name},
-        {"kind": "code", "value": item.code},
-        {"kind": "amount", "value": "{:.2f}".format(item.amount_keur)},
-      ],
-    }) %}
-    {% set dev_total.total = dev_total.total + item.amount_keur %}
-  {% endif %}
-{% endfor %}
-{% set _ = lig_rows.append({
-  "type": "subtotal",
-  "classes": ["fc-development-subtotal"],
-  "cells": [
-    {"kind": "label", "value": "Development Subtotal"},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(dev_total.total)},
-  ],
-}) %}
-
-{# Construction Management section #}
-{% set _ = lig_rows.append({
-  "type": "section_band",
-  "cells": ["Construction Management"],
-}) %}
-{% set cm_total = namespace(total=0.0) %}
-{% for code in ["construction_mgmt_a", "construction_mgmt_b", "commissioning", "audit_legal"] %}
-  {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
-    {% set item = capex_by_code[code] %}
-    {% set _ = lig_rows.append({
-      "type": "data",
-      "attrs": {
-        "data-capex-code": item.code,
-        "data-capex-name": item.name,
-      },
-      "cells": [
-        {"kind": "label", "value": item.name},
-        {"kind": "code", "value": item.code},
-        {"kind": "amount", "value": "{:.2f}".format(item.amount_keur)},
-      ],
-    }) %}
-    {% set cm_total.total = cm_total.total + item.amount_keur %}
-  {% endif %}
-{% endfor %}
-{% set _ = lig_rows.append({
-  "type": "subtotal",
-  "classes": ["fc-cm-subtotal"],
-  "cells": [
-    {"kind": "label", "value": "Construction Mgmt Subtotal"},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(cm_total.total)},
-  ],
-}) %}
-
-{# Civil & Land section #}
-{% set _ = lig_rows.append({
-  "type": "section_band",
-  "cells": ["Civil & Land"],
-}) %}
-{% set civil_total = namespace(total=0.0) %}
-{% for code in ["lease_tax"] %}
-  {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
-    {% set item = capex_by_code[code] %}
-    {% set _ = lig_rows.append({
-      "type": "data",
-      "attrs": {
-        "data-capex-code": item.code,
-        "data-capex-name": item.name,
-      },
-      "cells": [
-        {"kind": "label", "value": item.name},
-        {"kind": "code", "value": item.code},
-        {"kind": "amount", "value": "{:.2f}".format(item.amount_keur)},
-      ],
-    }) %}
-    {% set civil_total.total = civil_total.total + item.amount_keur %}
-  {% endif %}
-{% endfor %}
-{% set _ = lig_rows.append({
-  "type": "subtotal",
-  "classes": ["fc-civil-subtotal"],
-  "cells": [
-    {"kind": "label", "value": "Civil & Land Subtotal"},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(civil_total.total)},
-  ],
-}) %}
-
-{# Insurances & Risk section #}
-{% set _ = lig_rows.append({
-  "type": "section_band",
-  "cells": ["Insurances & Risk"],
-}) %}
-{% set risk_total = namespace(total=0.0) %}
-{% for code in ["insurances", "contingencies", "taxes"] %}
-  {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
-    {% set item = capex_by_code[code] %}
-    {% set _ = lig_rows.append({
-      "type": "data",
-      "attrs": {
-        "data-capex-code": item.code,
-        "data-capex-name": item.name,
-      },
-      "cells": [
-        {"kind": "label", "value": item.name},
-        {"kind": "code", "value": item.code},
-        {"kind": "amount", "value": "{:.2f}".format(item.amount_keur)},
-      ],
-    }) %}
-    {% set risk_total.total = risk_total.total + item.amount_keur %}
-  {% endif %}
-{% endfor %}
-{% set _ = lig_rows.append({
-  "type": "subtotal",
-  "classes": ["fc-risk-subtotal"],
-  "cells": [
-    {"kind": "label", "value": "Insurances & Risk Subtotal"},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(risk_total.total)},
-  ],
-}) %}
-
-{# Hard CAPEX Total #}
-{% set hard_total = construction_total.total + dev_total.total + cm_total.total + civil_total.total + risk_total.total %}
-{% set _ = lig_rows.append({
-  "type": "total",
-  "classes": ["fc-hard-capex-total"],
-  "cells": [
-    {"kind": "label", "value": "Hard CAPEX Total"},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(hard_total)},
-  ],
-}) %}
-
-{# Financing Costs section #}
-{% set _ = lig_rows.append({
-  "type": "section_band",
-  "cells": ["Financing Costs"],
-}) %}
-{% set financing_total_v = namespace(total=0.0) %}
+{% set financing_total = namespace(value=0.0) %}
 {% for code in financing_rows %}
   {% if code in capex_by_code and capex_by_code[code].amount_keur > 0 %}
     {% set item = capex_by_code[code] %}
-    {# Phase 57A-1 hotfix: financing rows use a dedicated
-       row type ("data_financing") so the LineItemGrid partial
-       can keep them read-only regardless of the global
-       `editable` arg. Financing values (IDC, bank fees,
-       commitment fees, other financial, VAT costs,
-       reserve accounts) are backend-computed and must
-       not be user-editable. #}
     {% set _ = lig_rows.append({
       "type": "data_financing",
       "attrs": {
@@ -272,65 +190,95 @@
         "data-capex-name": item.name,
       },
       "cells": [
-        {"kind": "label", "value": item.name},
-        {"kind": "code", "value": item.code},
+        {"kind": "label",  "value": item.name},
+        {"kind": "code",   "value": item.code},
         {"kind": "amount", "value": "{:.2f}".format(item.amount_keur)},
       ],
     }) %}
-    {% set financing_total_v.total = financing_total_v.total + item.amount_keur %}
+    {% set financing_total.value = financing_total.value + item.amount_keur %}
   {% endif %}
 {% endfor %}
-{% set _ = lig_rows.append({
-  "type": "subtotal",
-  "classes": ["fc-financing-subtotal"],
-  "cells": [
-    {"kind": "label", "value": "Financing Costs Total"},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(financing_total_v.total)},
-  ],
-}) %}
-
-{# Grand Total #}
-{% set grand_total = hard_total + financing_total_v.total %}
-{% set _ = lig_rows.append({
-  "type": "total",
-  "classes": ["fc-grand-total"],
-  "cells": [
-    {"kind": "label", "value": "<strong>Total CAPEX</strong>", "safe_html": True},
-    {"kind": "code", "value": ""},
-    {"kind": "amount", "value": "{:,.2f}".format(grand_total)},
-  ],
-}) %}
-
-{# Delta vs Summary #}
-{% if grand_total != project_ctx.total_capex_keur %}
+{% if financing_total.value > 0 %}
   {% set _ = lig_rows.append({
-    "type": "delta_warning",
+    "type": "subtotal",
+    "attrs": {"data-capex-row": "financing-costs-total"},
     "cells": [
-      {"kind": "label", "value": "<span class=\"fc-delta-label\">vs. Summary Total</span>", "safe_html": True},
-      {"kind": "code", "value": ""},
-      {"kind": "delta_value", "value": "<span class=\"fc-delta-warning\">⚠ {:,.2f} kEUR delta — backend authoritative</span>".format(grand_total - project_ctx.total_capex_keur), "safe_html": True},
+      {"kind": "label",  "value": "Financing Costs Subtotal", "safe_html": True},
+      {"kind": "code",   "value": ""},
+      {"kind": "amount", "value": "{:,.2f}".format(financing_total.value)},
     ],
   }) %}
 {% endif %}
 
-{# ── Workbook grid (rendered via shared LineItemGrid) ────────────── #}
-<div class="fc-grid-wrapper fc-capex-grid-wrapper">
+{# ── Grand Total CAPEX (derived, read-only) ───────────────────────────── #}
+{% set _all_total = grand_total.value + financing_total.value %}
+{% set _ = lig_rows.append({
+  "type": "total",
+  "attrs": {"data-capex-row": "grand-total"},
+  "cells": [
+    {"kind": "label",  "value": "<strong>Total CAPEX</strong>", "safe_html": True},
+    {"kind": "code",   "value": ""},
+    {"kind": "amount", "value": "{:,.2f}".format(_all_total)},
+  ],
+}) %}
+
+{# ── Workbook grid (rendered via shared LineItemGrid) ────────────────── #}
+<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet">
   {{ lig_render(
-       table_label="CAPEX detail grid for " ~ project_ctx.name,
+       table_label="CAPEX input sheet for " ~ project_ctx.name,
        columns=[
-         {"key": "label", "label": "Line Item", "kind": "label", "classes": "fc-grid-col-label"},
-         {"key": "code", "label": "Code", "kind": "code", "classes": "fc-th fc-th--code"},
+         {"key": "label",  "label": "Line Item", "kind": "label",  "classes": "fc-grid-col-label"},
+         {"key": "code",   "label": "Code",      "kind": "code",   "classes": "fc-th fc-th--code"},
          {"key": "amount", "label": "Amount (kEUR)", "kind": "amount", "classes": "fc-th fc-th--amount"},
        ],
        rows=lig_rows,
        editable=is_user_project,
        input_field_template="capex_{code}_keur",
-       table_id="capex-detail-grid",
+       table_id="capex-single-sheet-grid",
      ) }}
 </div>
 
-{# ── Read-only notice for baselines ──────────────────────────────────── #}
+{# ── Derived top summary (small strip; NOT a competing view) ──────────── #}
+<div class="capex-summary-strip" id="capex-summary-strip"
+     data-derived-from="capex-single-sheet-grid">
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Hard CAPEX</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(grand_total.value) }}</div>
+    <div class="capex-summary-card__unit">kEUR (sum of C.01–C.05)</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Financing</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(financing_total.value) }}</div>
+    <div class="capex-summary-card__unit">kEUR (read-only)</div>
+  </div>
+  <div class="capex-summary-card capex-summary-card--total">
+    <div class="capex-summary-card__label">Total CAPEX</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(_all_total) }}</div>
+    <div class="capex-summary-card__unit">kEUR (derived)</div>
+  </div>
+  {% if _capacity_mw > 0 %}
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">CAPEX / MW</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(_all_total / _capacity_mw) }}</div>
+    <div class="capex-summary-card__unit">kEUR / MW</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Deferred columns note (placeholders for next iteration) ─────────── #}
+<div class="capex-deferred-note">
+  <p>
+    <strong>Deferred to follow-up phase:</strong> Cost per MW is
+    derived (read-only). VAT applicability / amount, WHT rate /
+    amount, depreciation category / years, payment schedule by
+    construction month, and utilisation during construction are
+    placeholders for now; detailed logic is preserved at the
+    backend level and will be wired in a follow-up phase that
+    does not change financial outputs.
+  </p>
+</div>
+
+{# ── Read-only notice for factory / reference projects (footer) ──────── #}
 {% if not is_user_project %}
 <div class="inp-readonly-notice inp-readonly-notice--capex">
   <span class="badge badge-muted">Factory Reference</span>
@@ -347,4 +295,5 @@
 {# ── Footer note ─────────────────────────────────────────────────────── #}
 <div class="table-note">
   <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+  &nbsp;App is source of truth · C.01–C.05 are input categories
 </div>

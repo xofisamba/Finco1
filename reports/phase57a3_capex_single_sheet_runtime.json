@@ -1,0 +1,136 @@
+{
+  "phase": "57A-3",
+  "title": "CAPEX single-sheet runtime draft",
+  "branch": "phase57a3-capex-single-sheet-runtime",
+  "type": "runtime-ui-change",
+  "auto_merge_eligible": false,
+  "draft_required": true,
+  "visual_review_required": true,
+  "base_sha_start": "b19127da51e5568b4786f3391c56d9e43627bb08",
+  "base_sha_start_note": "post-57A-2, CAPEX single-sheet direction characterization merged",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "what_this_pr_does": "Promotes the app to source of truth for CAPEX and collapses the two competing CAPEX views (57A Summary view A and 57A-2 Excel-reconciliation Detail view B) into a single Excel-like CAPEX input sheet (sheet_capex.html).",
+  "what_happened_to_old_summary_view_A": {
+    "file_before": "app/templates/partials/sheet_capex.html (350 LOC, 57A-migrated, 3-column aggregate)",
+    "action": "rewritten as the primary single CAPEX input sheet",
+    "lig_macro_reused": true,
+    "lig_macro_extended": false,
+    "css_classes_preserved": true
+  },
+  "what_happened_to_old_detail_view_B": {
+    "file_before": "app/templates/partials/sheet_capex_detail.html (883 LOC, hand-written Excel reconciliation)",
+    "action": "removed from workspace_shell.html include; kept on disk as deprecated alias",
+    "removed_features": [
+      "Authority summary strip (Backend auth. / App mapped / Excel ref only / Mismatch / Scope diff / Deferred)",
+      "Display only audit banner",
+      "Excel kEUR / App kEUR / Delta kEUR / Status columns",
+      "18 monthly payment columns (M1..M18) toggleable range",
+      "Display mode toggle (Values / Schedule / Flags)",
+      "Collapse all / Expand all controls (kept for future re-introduction if needed)"
+    ],
+    "kept_features": [
+      "File remains on disk (no 404 for direct-path references)",
+      "Detailed CAPEX line items in capex_detail_items preserved at backend"
+    ]
+  },
+  "new_capex_sheet_structure": {
+    "sheet_banner": "🏗️ CAPEX (single label, not 'Detail')",
+    "derived_top_summary": {
+      "items": ["Hard CAPEX", "Financing", "Total CAPEX", "CAPEX / MW (when capacity_mw > 0)"],
+      "is_competing_view": false,
+      "derived_from": "capex-single-sheet-grid"
+    },
+    "category_groupings": [
+      {"code": "C.01", "label": "Construction", "line_codes": ["epc_contract", "production_units", "epc_other"]},
+      {"code": "C.02", "label": "Development",  "line_codes": ["project_acquisition", "project_rights", "ops_prep"]},
+      {"code": "C.03", "label": "Construction Management", "line_codes": ["construction_mgmt_a", "construction_mgmt_b", "commissioning", "audit_legal"]},
+      {"code": "C.04", "label": "Civil & Land", "line_codes": ["lease_tax"]},
+      {"code": "C.05", "label": "Insurances & Risk", "line_codes": ["insurances", "contingencies", "taxes"]}
+    ],
+    "financing_costs_section": {
+      "codes": ["idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs", "reserve_accounts"],
+      "row_type": "data_financing (read-only, preserved from 57A-1 Fix A)"
+    },
+    "totals": ["Hard CAPEX Total", "Financing Costs Subtotal", "Total CAPEX"]
+  },
+  "editability_policy": {
+    "editable_user_project": ["ordinary CAPEX line items (epc_contract, production_units, etc.)"],
+    "readonly_always": [
+      "financing / IDC rows (idc, bank_fees, etc.) — preserved from 57A-1 Fix A",
+      "subtotals and totals"
+    ],
+    "readonly_factory_reference": "everything"
+  },
+  "deferred_placeholders": [
+    "VAT applicability / amount",
+    "WHT rate / amount",
+    "Depreciation category / years",
+    "Payment schedule by construction month",
+    "Utilisation during construction"
+  ],
+  "files_changed": [
+    "app/templates/partials/sheet_capex.html (rewritten)",
+    "app/templates/partials/workspace_shell.html (removed sheet_capex_detail.html include)"
+  ],
+  "files_unchanged_deprecated_alias": [
+    "app/templates/partials/sheet_capex_detail.html (kept on disk as deprecated alias)"
+  ],
+  "files_unchanged_technical_foundation": [
+    "app/templates/partials/_line_item_grid.html (57A macro reused as-is, no extension needed)"
+  ],
+  "hard_no_go_verified": {
+    "no_financial_model_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_project_factories_changes": true,
+    "no_persistence_changes": true,
+    "no_services_changes": true,
+    "no_main_web_py_changes": true,
+    "no_app_js_changes": true,
+    "no_styles_css_changes": true,
+    "no_schema_migration_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_frontend_dep_changes": true,
+    "no_tailwind_alpine_react_vue_svelte": true,
+    "no_g20_r99_r102_guard_promotion": true,
+    "no_generic_solar_wind_work": true,
+    "no_bess_hybrid_portfolio_work": true,
+    "no_idc_calculation_changes": true,
+    "no_construction_funding_engine_changes": true,
+    "no_senior_debt_shl_drawdown_changes": true,
+    "no_tax_engine_changes": true,
+    "no_opex_revenue_grid_migration": true,
+    "no_portfolio_bess_hybrid": true,
+    "no_forbidden_user_facing_claims": true,
+    "rc1_untouched": true
+  },
+  "test_coverage": {
+    "test_file": "tests/test_phase57a3_capex_single_sheet_runtime.py",
+    "test_classes": 16,
+    "parametrized_tests": "50+",
+    "covers": [
+      "only one primary CAPEX sheet",
+      "no Excel-vs-App comparison",
+      "C.01..C.05 category groupings",
+      "line items editable inputs",
+      "subtotals/totals read-only",
+      "financing/IDC rows read-only",
+      "cost per MW derived",
+      "deferred placeholders documented",
+      "factory reference read-only",
+      "line items sum to section total",
+      "no no-go claims",
+      "lig_render macro used",
+      "no backend / model / persistence changes",
+      "lig macro not modified",
+      "file scope correct",
+      "rc1 untouched"
+    ]
+  },
+  "files_in_phase_57a3_pr": [
+    "app/templates/partials/sheet_capex.html (rewritten)",
+    "app/templates/partials/workspace_shell.html (modified)",
+    "tests/test_phase57a3_capex_single_sheet_runtime.py (NEW)",
+    "docs/phase57a3_capex_single_sheet_runtime.md (NEW)",
+    "reports/phase57a3_capex_single_sheet_runtime.json (NEW)"
+  ]
+}

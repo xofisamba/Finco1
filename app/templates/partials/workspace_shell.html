@@ -448,9 +448,16 @@
   </div>
 
   <!-- ----------------------------------------------- CAPEX -- -->
+  <!--
+    Phase 57A-3: single CAPEX input sheet. The previous
+    competing `sheet_capex_detail.html` (Excel vs App audit
+    view) is no longer included here. It is kept on disk as
+    a deprecated alias; the file can still be reached via
+    direct path but is not surfaced in the primary CAPEX
+    tab.
+  -->
   <div class="tab-panel" id="panel-capex">
     {% include "partials/sheet_capex.html" %}
-    {% include "partials/sheet_capex_detail.html" %}
   </div>
 
   <!-- ----------------------------------------------- SENIOR DEBT -- -->
