@@ -1,0 +1,109 @@
+{
+  "phase": "57A-2",
+  "title": "CAPEX 2.0 design characterization",
+  "type": "docs/report/test-only",
+  "branch": "phase57a2-capex-2-design-characterization",
+  "base_sha": "ef4046aacad1b299842ab6aeac434af1a4d73368",
+  "user_visible_capex_gaps": [
+    "Backend keys (lease_tax, epc_contract, project_rights) may surface in the Code column.",
+    "Two competing CAPEX views (sheet_capex.html + deprecated sheet_capex_detail.html) still confuse the product.",
+    "Add-line-item UX is missing.",
+    "Excel-like columns (cost/MW, contingency, VAT, WHT, depreciation, comments, payment M1..M18, utilisation) are missing.",
+    "G20 / R99 / R102 governance guards must not block CAPEX editing."
+  ],
+  "current_active_template": "app/templates/partials/sheet_capex.html",
+  "current_deprecated_template": "app/templates/partials/sheet_capex_detail.html",
+  "current_columns": ["Line Item", "Code", "Amount"],
+  "target_columns": [
+    "Line Item",
+    "Code",
+    "Amount",
+    "Cost / MW",
+    "Contingency",
+    "VAT",
+    "WHT",
+    "Depreciation",
+    "Comments",
+    "Payment schedule M1..M18",
+    "Utilisation"
+  ],
+  "editable_policy": {
+    "C.01..C.16 sub-line amount": "editable in user project mode",
+    "C.17 sub-line": "read-only (data_financing)",
+    "C.18 sub-line": "read-only (data_financing)",
+    "category subtotal": "read-only (derived)",
+    "Hard CAPEX Total (C.01..C.16)": "read-only (derived)",
+    "Financing Total (C.17)": "read-only (derived)",
+    "Reserves Total (C.18)": "read-only (derived)",
+    "Total CAPEX (C.01..C.18)": "read-only (derived)",
+    "Comments column (when added)": "editable",
+    "all rows in factory reference mode": "read-only"
+  },
+  "visible_business_codes": {
+    "lease_tax": "C.07.01",
+    "epc_contract": "C.02.01",
+    "project_rights": "C.16.01",
+    "production_units": "C.01.01",
+    "epc_other": "C.02.02",
+    "project_acquisition": "C.15.01",
+    "ops_prep": "C.15.02",
+    "construction_mgmt_a": "C.09.01",
+    "construction_mgmt_b": "C.09.02",
+    "commissioning": "C.10.01",
+    "audit_legal": "C.11.01",
+    "insurances": "C.06.01",
+    "contingencies": "C.13.01",
+    "taxes": "C.14.01"
+  },
+  "add_line_item": {
+    "supported_in": "57A-6 design first, runtime in 57A-8+",
+    "scope": "in-memory in 57A-6; persistence in follow-up",
+    "numeric_impact": "category subtotal, Hard CAPEX Total, Total CAPEX",
+    "no_impact": "P&L, Balance Sheet, Cash Flow, IDC, funding drawdown, tax, depreciation"
+  },
+  "future_model_inputs": [
+    "Cost / MW (derived)",
+    "Contingency %",
+    "VAT applicability/rate/cost",
+    "WHT rate/cost",
+    "Depreciation category/life",
+    "Payment schedule M1..M18",
+    "Utilisation"
+  ],
+  "future_only_status": "all 7 columns designed in 57A-7 but not wired",
+  "runtime_sequence": [
+    {"order": 1, "phase": "57A-2", "type": "docs/report/test", "auto_merge": true},
+    {"order": 2, "phase": "57A-3", "type": "runtime UI", "auto_merge": false, "draft": true},
+    {"order": 3, "phase": "57A-4", "type": "runtime UI", "auto_merge": false, "draft": true},
+    {"order": 4, "phase": "57A-5", "type": "runtime UI + safe data", "auto_merge": false, "draft": true},
+    {"order": 5, "phase": "57A-6", "type": "design first (docs/report/test)", "auto_merge": true},
+    {"order": 6, "phase": "57A-7", "type": "docs/report/test", "auto_merge": true}
+  ],
+  "hard_no_go": [
+    "no_financial_formula_changes_unless_explicitly_scoped",
+    "no_idc_calculation_changes",
+    "no_construction_funding_changes",
+    "no_g20_r99_r102_promotion",
+    "no_tailwind_alpine",
+    "no_portfolio_bess_hybrid",
+    "no_schema_migration_unless_explicitly_approved",
+    "no_backend_keys_visible_in_ui",
+    "rc1_frozen"
+  ],
+  "files_added": [
+    "docs/phase57a2_capex_2_design_characterization.md",
+    "reports/phase57a2_capex_2_design_characterization.json",
+    "tests/test_phase57a2_capex_2_design_characterization.py"
+  ],
+  "files_not_changed": [
+    "app/templates/partials/sheet_capex.html",
+    "app/templates/partials/sheet_capex_detail.html",
+    "app/templates/partials/workspace_shell.html",
+    "app/domain/capex/source_model.py",
+    "app/project_factories.py",
+    "main_web.py",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4"
+}
