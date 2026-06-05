@@ -1,0 +1,104 @@
+{
+  "phase": "57A-6",
+  "title": "CAPEX add-line-item design",
+  "type": "docs/report/test-only",
+  "branch": "phase57a6-capex-add-line-item-design",
+  "base_sha": "faa62744a0c3e47b248fbcef0d940b83fef5d5d5",
+  "purpose": "Design the add-line UX for the C.01..C.18 CAPEX sheet. The UX is data-only in 57A-5 (data-capex-add-line=\"<code>\"). This PR designs the JS hook, the numeric impact, and the persistence approach. No runtime implementation in 57A-6.",
+  "ux_flow": {
+    "discovery": "Small '+ Add line' button at the right edge of each C.01..C.16 category section band.",
+    "click": "JS hook reads the parent category code from data-capex-add-line=\"<code>\", finds the next available sub-line code, inserts an empty input row.",
+    "edit": "User types a label and an amount. The amount input uses the existing input_field_template=\"capex_{code}_keur\".",
+    "save": "Standard CAPEX update flow applies the new line."
+  },
+  "next_available_code": "Read existing sub-line codes for the category (e.g. C.01.01, C.01.02, C.01.03); assign the next available (C.01.04).",
+  "numeric_impact": {
+    "category_sub_line_list": "yes (new entry)",
+    "category_subtotal": "yes (derived)",
+    "hard_capex_total_c01_c16": "yes (derived)",
+    "total_capex_c01_c18": "yes (derived)",
+    "p_and_l": "no",
+    "balance_sheet": "no",
+    "cash_flow": "no",
+    "idc": "no",
+    "funding_drawdown": "no",
+    "tax_engine": "no",
+    "depreciation": "no",
+    "c17_c18_rows": "no"
+  },
+  "persistence_approach": {
+    "recommended": "option_c_hybrid",
+    "options_considered": [
+      {
+        "name": "option_a_schema_change",
+        "description": "Replace fixed field set with list of sub-line items in CapexStructure. Breaking change.",
+        "rejected_reason": "Breaking change to persistence layer; not minimal."
+      },
+      {
+        "name": "option_b_in_memory_only",
+        "description": "New line is preserved across the user's session but not saved to disk.",
+        "rejected_reason": "User loses work on next session open. Bad UX."
+      },
+      {
+        "name": "option_c_hybrid",
+        "description": "New table capex_sub_lines keyed on project_id + category_code. Does not change CapexStructure shape.",
+        "selected_reason": "Migration-friendly; does not break existing CapexStructure; allows free add/remove."
+      }
+    ],
+    "table_schema": {
+      "name": "capex_sub_lines",
+      "columns": [
+        {"name": "id", "type": "integer PK"},
+        {"name": "project_id", "type": "integer FK"},
+        {"name": "category_code", "type": "text", "example": "C.01"},
+        {"name": "sub_line_code", "type": "text", "example": "C.01.04"},
+        {"name": "name", "type": "text"},
+        {"name": "amount_keur", "type": "real"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "updated_at", "type": "timestamp"}
+      ]
+    },
+    "implementation_note": "The capex_detail_items builder in app/ui/project_context.py::_build_capex_detail_items would augment each category's children tuple with rows from capex_sub_lines for the current project. No change to CapexStructure shape."
+  },
+  "stop_and_document": "The migration file and the persistence-layer changes are explicitly out of scope for 57A-6. The 57A-6 PR is design only — no migration, no persistence change, no runtime change. The actual implementation must come in a future runtime PR (e.g. 57A-8 or later) that explicitly scopes the migration.",
+  "out_of_scope": [
+    "no_runtime_implementation",
+    "no_idc_calculation_change",
+    "no_construction_funding_change",
+    "no_senior_debt_shl_drawdown_change",
+    "no_tax_engine_change",
+    "no_backend_formula_change",
+    "no_g20_r99_r102_promotion",
+    "no_tailwind_alpine",
+    "no_schema_migration_in_57a6",
+    "no_backend_keys_visible_in_ui"
+  ],
+  "files_added": [
+    "docs/phase57a6_capex_add_line_item_design.md",
+    "reports/phase57a6_capex_add_line_item_design.json",
+    "tests/test_phase57a6_capex_add_line_item_design.py"
+  ],
+  "files_not_changed": [
+    "app/templates/partials/sheet_capex.html",
+    "app/templates/partials/sheet_capex_detail.html",
+    "app/templates/partials/workspace_shell.html",
+    "app/ui/project_context.py",
+    "app/domain/capex/source_model.py",
+    "app/project_factories.py",
+    "main_web.py",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "hard_no_go": [
+    "no_financial_formula_changes",
+    "no_idc_calculation_changes",
+    "no_construction_funding_changes",
+    "no_g20_r99_r102_promotion",
+    "no_tailwind_alpine",
+    "no_portfolio_bess_hybrid",
+    "no_schema_migration_in_57a6",
+    "no_backend_keys_visible_in_ui",
+    "rc1_frozen"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4"
+}
