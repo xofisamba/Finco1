@@ -458,6 +458,26 @@ class TestNoBackendModelChanges:
 
     def test_no_changes_to_app_js_or_styles(self):
         import subprocess
+        # Skip if not on a 57A-3 branch.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or (
+                    "57a3" not in branch.lower()
+                    and "57a-3" not in branch.lower()
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-3 branch (current: "
+                    f"{branch!r})."
+                )
         for path in ["static/app.js", "static/styles.css"]:
             r = subprocess.run(
                 ["git", "diff", "main", "--name-only", "--",
@@ -513,7 +533,27 @@ class TestFileScope:
         # We compare against origin/main so that
         # already-merged main commits (e.g. 57A-2) do
         # not show up in the diff.
+        # Skip if we are not on a 57A-3 branch.
         import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or (
+                    "57a3" not in branch.lower()
+                    and "57a-3" not in branch.lower()
+                )
+            ):
+                pytest.skip(
+                    f"Not on a 57A-3 branch (current: "
+                    f"{branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",
              "docs/", "reports/"],
@@ -541,6 +581,14 @@ class TestFileScope:
                     "On main branch; 57A-3 has been merged. "
                     "This test is only meaningful on the "
                     "57A-3 unmerged branch."
+                )
+            if (
+                "57a3" not in branch.lower()
+                and "57a-3" not in branch.lower()
+            ):
+                pytest.skip(
+                    f"Not on a 57A-3 branch (current: "
+                    f"{branch!r})."
                 )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only"],

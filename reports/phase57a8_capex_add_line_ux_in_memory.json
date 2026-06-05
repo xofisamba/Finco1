@@ -1,0 +1,165 @@
+{
+  "phase": "57A-8",
+  "title": "CAPEX Add Line UX (in-memory preview)",
+  "status": "DRAFT (visual review required)",
+  "branch": "phase57a8-capex-add-line-ux-in-memory",
+  "base_sha": "aa60495e2fc7663a467c58c7e5ab50462f68efad",
+  "type": "runtime UI prototype (UI only, no backend mutation)",
+  "auto_merge_eligible": false,
+  "files_changed": [
+    "app/templates/partials/sheet_capex.html",
+    "static/app.js",
+    "static/styles.css",
+    "tests/test_phase57a8_capex_add_line_ux_in_memory.py"
+  ],
+  "skip_if_not_on_branch_guards_added": [
+    "tests/test_phase20i_capex_grid.py",
+    "tests/test_phase22b_uiux_audit_grid_polish.py",
+    "tests/test_phase56h_post_merge_visual_qa.py",
+    "tests/test_phase57a_ui3_line_item_grid_capex_summary.py",
+    "tests/test_phase57a2_capex_single_sheet_direction_characterization.py",
+    "tests/test_phase57a3_capex_hide_backend_keys.py",
+    "tests/test_phase57a3_capex_single_sheet_runtime.py",
+    "tests/test_phase57a4_single_capex_sheet_layout.py",
+    "tests/test_phase57a5_capex_line_item_hierarchy_foundation.py",
+    "tests/test_phase57a5b_canonical_capex_subline_catalogue.py",
+    "tests/test_phase57b_agent_b_post56_post57a_governance_refresh.py",
+    "tests/test_phase57c_validation_bar_semantics_design.py",
+    "tests/test_phase57d_live_no_go_copy_scanner.py",
+    "tests/test_phase57e_css_token_consolidation_inventory.py",
+    "tests/test_phase57f_ui3_2_next_grid_readiness_plan.py",
+    "tests/test_phase57pre_route_render_smoke.py"
+  ],
+  "summary": {
+    "description": "CAPEX add-line UX prototype as a pure-UI, in-memory preview. + Add line button per C.01..C.16 category. Click inserts a temporary row with editable label, editable amount, generated C.0X.TMP-N code, 'Unsaved' badge, and a Remove button. No backend, persistence, or model changes. Authoritative CAPEX totals are unchanged. A Run/Save warning appears when temporary rows exist. Persistence is explicitly out of scope (designed in 57A-6 PR #500).",
+    "scope": [
+      "Add-line buttons (C.01..C.16, NOT C.17/C.18)",
+      "In-memory temporary row insertion",
+      "Editable label and amount",
+      "Generated C.0X.TMP-N code",
+      "Unsaved / not persisted badge",
+      "Remove / cancel button",
+      "Preview-only totals block (hidden by default)",
+      "Run/Save warning block (hidden by default)",
+      "Toolbar copy explaining the in-memory nature"
+    ],
+    "out_of_scope": [
+      "Backend / model / persistence change",
+      "New CAPEX key",
+      "Migration / new table",
+      "Submitting temporary rows to the backend",
+      "Including temporary rows in model run",
+      "Modifying authoritative CAPEX totals",
+      "Run / Save behaviour change"
+    ]
+  },
+  "critical_invariants": [
+    "Temporary row amount input has NO `name` attribute (not submitted)",
+    "No new backend CAPEX key is created",
+    "Authoritative CAPEX totals are NOT modified",
+    "C.17 and C.18 do NOT have an add-line button",
+    "No API calls (no fetch, no XMLHttpRequest, no $.ajax, no htmx.ajax, no form.submit)",
+    "No localStorage / sessionStorage / cookie writes",
+    "rc1 (b425a0708719eaa5e1d922b1008e5609758e0ad4) is frozen"
+  ],
+  "smoke_tests": {
+    "template_render": {
+      "rendered_length_bytes": 88980,
+      "capex_add_line_toolbar_present": true,
+      "add_line_buttons_count": 16,
+      "no_add_line_for_C17": true,
+      "no_add_line_for_C18": true,
+      "run_warning_block_present_hidden": true,
+      "preview_totals_block_present_hidden": true,
+      "toolbar_copy_present": true,
+      "preview_only_label_present": true,
+      "section_band_hooks_preserved": true,
+      "18_category_bands_rendered": true,
+      "no_backend_key_input_names": true,
+      "status": "PASS"
+    },
+    "js_module": {
+      "function_bindCapexAddLineUx_present": true,
+      "iife_wrapper": true,
+      "no_fetch": true,
+      "no_xmlhttprequest": true,
+      "no_ajax": true,
+      "no_htmx_ajax": true,
+      "no_localstorage": true,
+      "no_sessionstorage": true,
+      "no_form_submit": true,
+      "no_backend_keys_in_module": true,
+      "no_name_capex_in_module": true,
+      "critical_invariants_documented": true,
+      "tmp_counter_present": true,
+      "tmp_code_generator_present": true,
+      "remove_button_handler": true,
+      "unsaved_badge_present": true,
+      "called_from_domcontentloaded": true,
+      "called_from_htmx_after_swap": true,
+      "node_js_parse_ok": true,
+      "status": "PASS"
+    },
+    "headless_browser": {
+      "tool": "playwright (chromium-1223)",
+      "01_initial_tmp_count": 0,
+      "02_after_add_lines_tmp_count": 3,
+      "02_after_add_lines_warning_hidden": false,
+      "03_after_remove_tmp_count": 2,
+      "C17_button_exists": false,
+      "C18_button_exists": false,
+      "status": "PASS"
+    }
+  },
+  "tests": {
+    "test_phase57a8_capex_add_line_ux_in_memory": {
+      "passed": 64,
+      "skipped": 0,
+      "failed": 0
+    },
+    "all_phase57a8_relevant_tests": {
+      "description": "57A-8 + 57A-5B + 57A-5 + 57A-4 + 57A-3 + 57A + 57B + 57C + 57D + 57E + 57F + 57pre",
+      "passed": 288,
+      "skipped": 21,
+      "failed": 0
+    }
+  },
+  "screenshots": [
+    "reports/phase57a8_visual_qa/01_initial.png",
+    "reports/phase57a8_visual_qa/02_after_add_lines.png",
+    "reports/phase57a8_visual_qa/03_after_remove.png"
+  ],
+  "pre_existing_failures_unrelated": {
+    "note": "These tests fail on origin/main without any 57A-8 changes. They are infrastructure problems (broken absolute /opt/finco1 paths, missing persistence module), not 57A-8 regressions.",
+    "tests": [
+      "tests/test_htmx_internal_demo.py::TestCustomInputsBehavioral (2 tests)",
+      "tests/test_input_forms.py::test_render_solar_input_form_capex_apply_scales_capex",
+      "tests/test_input_forms.py::test_render_wind_input_form_capex_apply_scales_capex",
+      "tests/test_phase17_required_field_input_form.py (parametrized, ~13 tests)",
+      "tests/test_phase22b_uiux_audit_grid_polish.py::TestNoRegressions (3 tests, /opt/finco1 cwd)",
+      "tests/test_s1_capex_schedule.py::TestDefaultSpendingProfile::test_front_loaded_profile"
+    ]
+  },
+  "hard_gates": {
+    "only_allowed_files_modified": true,
+    "no_backend_service_persistence_writes": true,
+    "no_runtime_impact_taxonomy_changes": true,
+    "no_app_js_changes_outside_57a8_module": true,
+    "no_root_css_variable_changes": true,
+    "no_new_forbidden_ui_claims": true,
+    "no_model_parity_core_schema_formula_fixture_changes": true,
+    "no_financial_output_changes": true,
+    "run_route_behaviour_unchanged": true,
+    "rc1_frozen": true
+  },
+  "persistence_plan": {
+    "phase": "future (e.g. 57A-9, NOT in 57A-8)",
+    "design_doc": "57A-6 (PR #500) — Option C: new capex_sub_lines table",
+    "description": "Persist temporary rows on Save, include in form payload, include in model run, drop the 'in-memory only' copy and the Run/Save warning. Separate effort with its own design, tests, and visual review."
+  },
+  "next_steps": [
+    "Visual review of the 3 screenshots in reports/phase57a8_visual_qa/.",
+    "If approved, mark PR as ready and merge.",
+    "If changes requested, address them in 57A-8 followup PRs."
+  ]
+}

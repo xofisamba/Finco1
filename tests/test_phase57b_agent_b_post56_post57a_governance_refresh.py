@@ -382,6 +382,32 @@ class TestPriorPhasePreservation:
 
 
 class Test57BIsDocsOnly:
+    def _skip_if_not_on_57b_branch(self) -> None:
+        """Skip the test if we are not on a 57B branch."""
+        import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode != 0:
+            return
+        branch = r_branch.stdout.strip()
+        if branch == "main":
+            pytest.skip(
+                "On main branch; 57B has been merged. "
+                "This test is only meaningful on the "
+                "57B unmerged branch."
+            )
+        if "57b" not in branch.lower():
+            pytest.skip(
+                f"Not on a 57B branch (current: "
+                f"{branch!r}). This test is only "
+                f"meaningful on the 57B unmerged "
+                f"branch."
+            )
+
     def test_57b_diff_has_no_runtime_files(self):
         """57B must be docs/report/test-only. Use git
         diff against main to confirm."""
@@ -394,6 +420,7 @@ class Test57BIsDocsOnly:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57B branch or no diff")
+        self._skip_if_not_on_57b_branch()
         changed = set(r.stdout.strip().split("\n"))
         forbidden = [
             "main_web.py",
@@ -430,6 +457,7 @@ class Test57BIsDocsOnly:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57B branch or no diff")
+        self._skip_if_not_on_57b_branch()
         changed = set(r.stdout.strip().split("\n"))
         for c in changed:
             assert (

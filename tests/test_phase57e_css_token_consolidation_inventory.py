@@ -201,6 +201,33 @@ class TestNoCssChangesIn57E:
         assert data["css_changes_in_this_phase"] is False
 
     def test_styles_css_unchanged_in_57e_diff(self):
+        # Skip if we are not on a 57E branch. The test
+        # asserts that static/styles.css is unchanged
+        # vs main, which is only meaningful while 57E
+        # is the unmerged branch. A follow-up branch
+        # (e.g. 57A-8) may legitimately modify the
+        # stylesheet; this is not 57E's concern.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57E has been merged. "
+                    "This test is only meaningful on the "
+                    "57E unmerged branch."
+                )
+            if "57e" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57E branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57E unmerged "
+                    f"branch."
+                )
         r = subprocess.run(
             ["git", "diff", "main", "--name-only", "--", "static/styles.css"],
             cwd=str(REPO_ROOT),
@@ -216,6 +243,24 @@ class TestNoCssChangesIn57E:
         )
 
     def test_app_js_unchanged_in_57e_diff(self):
+        # Same skip-if-not-57E-branch pattern.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57E has been merged."
+                )
+            if "57e" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57E branch (current: "
+                    f"{branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "main", "--name-only", "--", "static/app.js"],
             cwd=str(REPO_ROOT),
@@ -281,6 +326,33 @@ class Test57EIsDocsOnly:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57E branch or no diff")
+        # Skip if we are not on a 57E branch. The test
+        # asserts the diff vs main is only
+        # docs/reports/tests files — only meaningful
+        # while 57E is the unmerged branch. A follow-up
+        # branch (e.g. 57A-8) may legitimately modify
+        # runtime files; this is not 57E's concern.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57E has been merged. "
+                    "This test is only meaningful on the "
+                    "57E unmerged branch."
+                )
+            if "57e" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57E branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57E unmerged "
+                    f"branch."
+                )
         changed = set(r.stdout.strip().split("\n"))
         for c in changed:
             assert (

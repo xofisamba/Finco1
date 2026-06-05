@@ -593,6 +593,36 @@ class TestNoBackendChanges:
         )
 
     def test_no_static_changes(self):
+        # Skip if 57A-5B has already been merged into
+        # main OR if we are not on a 57A-5B branch. The
+        # test asserts static files are unchanged vs
+        # main, which is only meaningful while 57A-5B is
+        # an unmerged branch. On a follow-up branch
+        # (e.g. 57A-8) or on main itself, a different
+        # PR may legitimately modify static/ — this
+        # test is not 57A-5B's concern.
+        import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57A-5B has been merged. "
+                    "This test is only meaningful on the "
+                    "57A-5B unmerged branch."
+                )
+            if "57a5b" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57A-5B branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57A-5B unmerged "
+                    f"branch."
+                )
         for path in ["static/app.js", "static/styles.css"]:
             r = subprocess.run(
                 ["git", "diff", "origin/main", "--name-only", "--",
@@ -606,6 +636,36 @@ class TestNoBackendChanges:
             )
 
     def test_only_template_and_test_changed(self):
+        # Skip if 57A-5B has already been merged into
+        # main OR if we are not on a 57A-5B branch. The
+        # test asserts the diff vs main only contains
+        # sheet_capex.html and the 57A-5B test file.
+        # On a follow-up branch (e.g. 57A-8) the diff
+        # vs main legitimately contains other files —
+        # this test is only meaningful while 57A-5B is
+        # an unmerged branch.
+        import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57A-5B has been merged. "
+                    "This test is only meaningful on the "
+                    "57A-5B unmerged branch."
+                )
+            if "57a5b" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57A-5B branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57A-5B unmerged "
+                    f"branch."
+                )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only"],
             cwd=str(REPO_ROOT),

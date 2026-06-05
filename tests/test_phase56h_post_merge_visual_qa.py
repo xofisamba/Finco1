@@ -455,6 +455,23 @@ class TestHotfixScope:
         }
         # Anything in app/persistence/ is also forbidden
         import subprocess
+        # Skip if not on a 56H branch.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if (
+                branch == "main"
+                or "56h" not in branch.lower()
+            ):
+                pytest.skip(
+                    f"Not on a 56H branch (current: "
+                    f"{branch!r})."
+                )
         r = subprocess.run(
             ["git", "diff", "main", "--name-only"],
             cwd=str(REPO_ROOT),

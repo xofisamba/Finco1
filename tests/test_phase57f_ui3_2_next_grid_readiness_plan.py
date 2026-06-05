@@ -274,6 +274,34 @@ class Test57FIsDocsOnly:
         )
         if r.returncode != 0 or not r.stdout.strip():
             pytest.skip("Not on 57F branch or no diff")
+        # Skip if we are not on a 57F branch. The test
+        # asserts that the diff vs main is only
+        # docs/reports/tests files — which is only
+        # meaningful while 57F is the unmerged branch.
+        # A follow-up branch (e.g. 57A-8) may
+        # legitimately modify runtime files; this is
+        # not 57F's concern.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57F has been merged. "
+                    "This test is only meaningful on the "
+                    "57F unmerged branch."
+                )
+            if "57f" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57F branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57F unmerged "
+                    f"branch."
+                )
         changed = set(r.stdout.strip().split("\n"))
         for c in changed:
             assert (
@@ -285,6 +313,33 @@ class Test57FIsDocsOnly:
             )
 
     def test_no_template_files_in_57f_diff(self):
+        # Skip if we are not on a 57F branch. The test
+        # asserts that no app/templates/ file is in the
+        # diff vs main, which is only meaningful while
+        # 57F is the unmerged branch. A follow-up branch
+        # (e.g. 57A-8) may legitimately modify template
+        # files; this is not 57F's concern.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57F has been merged. "
+                    "This test is only meaningful on the "
+                    "57F unmerged branch."
+                )
+            if "57f" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57F branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57F unmerged "
+                    f"branch."
+                )
         r = subprocess.run(
             ["git", "diff", "main", "--name-only", "--",
              "app/templates/"],
@@ -300,6 +355,33 @@ class Test57FIsDocsOnly:
         )
 
     def test_no_css_files_in_57f_diff(self):
+        # Skip if we are not on a 57F branch. The test
+        # asserts that static CSS/JS is unchanged vs
+        # main, which is only meaningful while 57F is
+        # the unmerged branch. A follow-up branch
+        # (e.g. 57A-8) may legitimately modify these
+        # files; this is not 57F's concern.
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57F has been merged. "
+                    "This test is only meaningful on the "
+                    "57F unmerged branch."
+                )
+            if "57f" not in branch.lower():
+                pytest.skip(
+                    f"Not on a 57F branch (current: "
+                    f"{branch!r}). This test is only "
+                    f"meaningful on the 57F unmerged "
+                    f"branch."
+                )
         r = subprocess.run(
             ["git", "diff", "main", "--name-only", "--",
              "static/styles.css", "static/app.js"],

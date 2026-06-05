@@ -5016,3 +5016,118 @@ input[aria-readonly="true"] {
   color: #5a6a82;
   background: rgba(122, 150, 184, 0.08);
 }
+
+/* ───────────────────────────────────────────────────────────────────
+ * Phase 57A-8: CAPEX Add-Line UX (in-memory preview)
+ * ───────────────────────────────────────────────────────────────────
+ * Visual styling for the add-line toolbar, the temporary
+ * row marker, and the run/save warning. Keep this minimal;
+ * do NOT introduce any framework / utility class system.
+ */
+
+.capex-add-line-toolbar {
+  margin: 0.5rem 0 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--border, #d4d4d8);
+  border-radius: 6px;
+  background: rgba(124, 58, 237, 0.04);
+}
+
+.capex-add-line-copy {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.78rem;
+  color: var(--muted, #71717a);
+  line-height: 1.3;
+}
+
+.capex-add-line-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.capex-add-line-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.74rem;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  border: 1px solid var(--border, #d4d4d8);
+  border-radius: 4px;
+  background: var(--surface, #fff);
+  color: var(--text, #18181b);
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.capex-add-line-btn:hover {
+  background: rgba(124, 58, 237, 0.08);
+  border-color: #7c3aed;
+}
+.capex-add-line-btn:focus {
+  outline: 2px solid #7c3aed;
+  outline-offset: 1px;
+}
+.capex-add-line-btn-code {
+  font-weight: 600;
+  color: #7c3aed;
+}
+.capex-add-line-btn-icon {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #7c3aed;
+}
+.capex-add-line-btn-text {
+  color: var(--muted, #71717a);
+}
+
+.capex-add-line-preview-totals {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.74rem;
+  color: #b45309;
+  line-height: 1.3;
+}
+
+tr.lig-row--data-tmp {
+  background: rgba(124, 58, 237, 0.05);
+  border-left: 3px solid #7c3aed;
+}
+tr.lig-row--data-tmp td.fc-cell--tmp-remove {
+  text-align: right;
+  width: 110px;
+  min-width: 110px;
+}
+.capex-tmp-unsaved-badge {
+  font-size: 0.65rem;
+  margin-left: 0.4rem;
+}
+.capex-tmp-remove-btn {
+  padding: 0.18rem 0.5rem;
+  font-size: 0.7rem;
+  border: 1px solid #d4d4d8;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.capex-tmp-remove-btn:hover {
+  background: #fee2e2;
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.capex-tmp-run-warning {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #fbbf24;
+  border-radius: 6px;
+  background: rgba(251, 191, 36, 0.08);
+  color: #92400e;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.capex-tmp-run-warning p {
+  margin: 0 0 0.3rem 0;
+}
+.capex-tmp-run-warning p:last-child {
+  margin: 0;
+}
