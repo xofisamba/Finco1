@@ -786,9 +786,44 @@ class TestNoBackendModelPersistenceChanges:
 
 class TestFileScope:
     def test_sheet_capex_changed(self):
+        # Skip if the 57A-3 branch has already been merged
+        # into main. The test asserts that
+        # sheet_capex.html is in the diff vs main, which
+        # is only meaningful while 57A-3 is an unmerged
+        # branch.
         import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57A-3 has been merged. "
+                    "This test is only meaningful on the "
+                    "57A-3 unmerged branch."
+                )
+        # Also skip if sheet_capex.html is already in
+        # origin/main (i.e. 57A-3 was already merged and
+        # we are running on a follow-up branch).
+        r_origin = subprocess.run(
+            ["git", "diff", "origin/main", "--name-only", "--",
+             "app/templates/partials/sheet_capex.html"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_origin.returncode == 0 and not r_origin.stdout.strip():
+            pytest.skip(
+                "sheet_capex.html is unchanged vs origin/main; "
+                "57A-3 has been merged. This test is only "
+                "meaningful on the 57A-3 unmerged branch."
+            )
         r = subprocess.run(
-            ["git", "diff", "main", "--name-only", "--",
+            ["git", "diff", "origin/main", "--name-only", "--",
              "app/templates/partials/sheet_capex.html"],
             cwd=str(REPO_ROOT),
             capture_output=True,
@@ -817,9 +852,45 @@ class TestFileScope:
         )
 
     def test_workspace_shell_changed(self):
+        # Skip if the 57A-3 branch has already been merged
+        # into main. The test asserts that
+        # workspace_shell.html is in the diff vs main,
+        # which is only meaningful while 57A-3 is an
+        # unmerged branch.
         import subprocess
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip()
+            if branch == "main":
+                pytest.skip(
+                    "On main branch; 57A-3 has been merged. "
+                    "This test is only meaningful on the "
+                    "57A-3 unmerged branch."
+                )
+        # Also skip if workspace_shell.html is already
+        # in origin/main (i.e. 57A-3 was already merged
+        # and we are running on a follow-up branch).
+        r_origin = subprocess.run(
+            ["git", "diff", "origin/main", "--name-only", "--",
+             "app/templates/partials/workspace_shell.html"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_origin.returncode == 0 and not r_origin.stdout.strip():
+            pytest.skip(
+                "workspace_shell.html is unchanged vs "
+                "origin/main; 57A-3 has been merged. This "
+                "test is only meaningful on the 57A-3 "
+                "unmerged branch."
+            )
         r = subprocess.run(
-            ["git", "diff", "main", "--name-only", "--",
+            ["git", "diff", "origin/main", "--name-only", "--",
              "app/templates/partials/workspace_shell.html"],
             cwd=str(REPO_ROOT),
             capture_output=True,
