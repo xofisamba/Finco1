@@ -60,6 +60,24 @@
   Rendered via the shared `lig_render` macro from
   `partials/_line_item_grid.html`. The 57A macro is
   reused as-is.
+
+  Phase 57A-5 (line-item hierarchy foundation):
+    * Each C.01..C.16 category band is marked with
+      `data-capex-add-line="<code>"` so a future JS
+      hook (in 57A-6 runtime) can present a "Add line"
+      affordance.
+    * Each category subtotal is derived from its
+      sub-lines (read-only).
+    * The grand total is derived from all 18 sections
+      (read-only).
+    * C.17 and C.18 are NOT marked as add-line (they
+      are backend-computed and must not be user-
+      editable).
+    * Persistence is NOT changed in 57A-5. The
+      add-line UX is in-memory only; if dynamic
+      add-line requires a schema change, that
+      schema change is documented in 57A-6 and is
+      explicitly out of scope for 57A-5.
 -->
 
 {% from "partials/_line_item_grid.html" import lig_render %}
@@ -116,9 +134,29 @@
   {#    project_ctx.capex_detail_items ──────────────────────────── #}
   {% for cat in capex_categories %}
     {# Category section band: C.01..C.18 #}
+    {# 57A-5: foundation for the add-line UX hook.
+       For C.01..C.16 (non-backend-calculated, user-
+       editable categories), the section band is
+       marked with data-capex-add-line so a future
+       JS hook (in 57A-6 runtime) can present a
+       "Add line" affordance under this category.
+
+       The hook is data-only in this PR (no
+       behaviour). Adding a line still requires a
+       schema change that is out of scope for 57A-5;
+       see 57A-6 design doc. #}
+    {% set _add_line = (
+      cat.code if (
+        not cat.is_backend_calculated
+        and cat.code not in ["C.17", "C.18"]
+      ) else ""
+    ) %}
     {% set _ = lig_rows.append({
       "type": "section_band",
-      "attrs": {"data-capex-category": cat.code},
+      "attrs": {
+        "data-capex-category": cat.code,
+        "data-capex-add-line": _add_line,
+      },
       "cells": [cat.code ~ "  " ~ cat.name],
     }) %}
     {# Sub-lines under the category #}
