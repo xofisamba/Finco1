@@ -160,6 +160,41 @@ def _init_schema(conn):
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_states_user_project ON workspace_states(user_id, project_id)"
     )
+
+    # Phase 57A-9B: CAPEX user-added sub-lines table.
+    # See docs/phase57a9a_capex_add_line_persistence_design_gate.md
+    # and docs/phase57a9b_capex_sub_lines_schema.md.
+    # Existence of user-added sub-lines lives here; per-scenario
+    # amount overrides live in the scenario overrides_json blob
+    # (landed in 57A-9C, NOT in this PR).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS capex_sub_lines (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            sub_line_id           TEXT    NOT NULL UNIQUE,
+            project_id            TEXT    NOT NULL,
+            parent_category_code  TEXT    NOT NULL,
+            business_code         TEXT    NOT NULL,
+            display_order         INTEGER NOT NULL,
+            label                 TEXT    NOT NULL,
+            amount_keur           REAL    NOT NULL DEFAULT 0.0,
+            comments              TEXT    NOT NULL DEFAULT '',
+            schedule_json         TEXT    NOT NULL DEFAULT '{}',
+            source                TEXT    NOT NULL DEFAULT 'user',
+            is_active             INTEGER NOT NULL DEFAULT 1,
+            governance_state_json TEXT    NOT NULL DEFAULT '{}',
+            replay_metadata_json  TEXT    NOT NULL DEFAULT '{}',
+            created_at            TEXT    NOT NULL,
+            updated_at            TEXT    NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id),
+            UNIQUE(project_id, business_code)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_capex_sub_lines_project"
+        " ON capex_sub_lines(project_id, is_active, parent_category_code, display_order)"
+    )
     _ensure_column(conn, "runs", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "projects", "project_type", "TEXT")
     _ensure_column(conn, "projects", "project_origin", "TEXT NOT NULL DEFAULT 'factory_template'")
