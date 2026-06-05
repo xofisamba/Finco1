@@ -1,0 +1,287 @@
+{
+  "phase": "57A-9A",
+  "title": "CAPEX Add-Line Persistence Design Gate",
+  "type": "docs/report/test-only",
+  "branch": "phase57a9a-capex-add-line-persistence-design-gate",
+  "base_sha": "976f5a449e195ecd5fa6ae4fbfe1b734b5ea5446",
+  "purpose": "Design gate for the persistence + backend model contract of user-added CAPEX sub-lines introduced in 57A-8 as in-memory only. This PR is docs/report/test-only. It does NOT implement persistence. The runtime implementation lands in 57A-9B through 57A-9E, gated on review of this design.",
+  "stop_after_report": "This PR is the final word on the persistence + backend model contract. Do not auto-merge. Do not start 57A-9B / 57A-9C / 57A-9D / 57A-9E before review and explicit go-ahead.",
+  "recap_57a8": {
+    "toolbar_buttons": 16,
+    "toolbar_categories": "C.01..C.16 (NOT C.17 / C.18)",
+    "tmp_marker": "data-capex-tmp=\"true\"",
+    "tmp_code_format": "C.0X.TMP-N",
+    "amount_input_has_name_attribute": false,
+    "api_calls": "none (no fetch / XHR / htmx.ajax / form.submit / localStorage / sessionStorage)",
+    "authoritative_totals_modified": false,
+    "preview_only_block_present": true,
+    "run_save_warning_block_present": true,
+    "test_count_new": 64,
+    "test_count_main_post_merge": "776 passed, 59 skipped, 0 failed",
+    "merge_sha": "976f5a449e195ecd5fa6ae4fbfe1b734b5ea5446",
+    "pr_number": 504,
+    "rc1_frozen": true
+  },
+  "ownership_model": {
+    "selected": "hybrid_q4",
+    "matrix": {
+      "q1_project_only": "rejected — kills per-scenario amount variation",
+      "q2_project_snapshot_blob": "rejected — schema-less in a JSON blob, hard to query",
+      "q3_table_only_with_project_amount": "rejected — kills per-scenario amount variation",
+      "q4_table_plus_scenario_override_blob": "SELECTED"
+    },
+    "existence_layer": "dedicated capex_sub_lines table (single source of truth for what user-added sub-lines exist for this project)",
+    "amount_layer": "scenario overrides_json blob with reserved keys _capex_sub_line_overrides and _capex_sub_line_overrides_metadata"
+  },
+  "persistence_approach": {
+    "selected": "option_4_hybrid",
+    "options": [
+      {
+        "name": "option_1_pure_scenario_override_blob",
+        "rejected": true,
+        "reason": "Schema-less, hard to query, hard to enforce referential integrity, requires changing Phase 20B silent-drop behavior on the standard flat input fields"
+      },
+      {
+        "name": "option_2_pure_project_snapshot_blob",
+        "rejected": true,
+        "reason": "Kills per-scenario amount variation; propagates schema-less problem to a more-widely-read code path"
+      },
+      {
+        "name": "option_3_dedicated_table_only_base",
+        "rejected_as_base": true,
+        "reason": "Requires either a column per scenario (impossible — scenarios are dynamic) or a side column with a JSON blob keyed by scenario_id (re-introduces the schema-less blob problem inside the table)"
+      },
+      {
+        "name": "option_4_hybrid",
+        "selected": true,
+        "reason": "Only option that satisfies all four hard constraints simultaneously: (1) no new named field on CapexStructure, (2) per-scenario amount variation works, (3) schema-strong existence, (4) minimal Phase 20B blast radius"
+      },
+      {
+        "name": "option_5_pure_project_template_copy",
+        "rejected": true,
+        "reason": "Breaking change to the model; would require re-shaping the model or wrapping the model in an adapter, both of which are out of scope for the persistence design gate"
+      }
+    ]
+  },
+  "per_category_mapping": {
+    "purpose": "Single point of integration between the user sub-line world and the model world. Maps each C.01..C.16 category to the corresponding CapexStructure field name. Encoded as a constant CAPEX_CATEGORY_TO_FIELD in app/persistence/capex_sub_lines.py (proposed, future runtime PR).",
+    "mapping": {
+      "C.01": {"name": "Production Unit", "capex_field": "production_units"},
+      "C.02": {"name": "EPC Contract", "capex_field": "epc_contract"},
+      "C.03": {"name": "Grid Connection", "capex_field": "grid_connection"},
+      "C.04": {"name": "Monitoring & Telecom", "capex_field": "ops_prep"},
+      "C.05": {"name": "Operation Investments", "capex_field": "epc_other"},
+      "C.06": {"name": "Insurances", "capex_field": "insurances"},
+      "C.07": {"name": "Land Securing Costs", "capex_field": "lease_tax"},
+      "C.08": {"name": "Bank Due Diligence", "capex_field": "audit_legal"},
+      "C.09": {"name": "Construction Management", "capex_field": "construction_mgmt_a"},
+      "C.10": {"name": "Commissioning", "capex_field": "commissioning"},
+      "C.11": {"name": "Audit & Accounting & Legal", "capex_field": "audit_legal"},
+      "C.12": {"name": "Construction Mgmt", "capex_field": "construction_mgmt_b"},
+      "C.13": {"name": "Contingencies", "capex_field": "contingencies"},
+      "C.14": {"name": "Import Taxes", "capex_field": "taxes"},
+      "C.15": {"name": "Project Acquisition / Development", "capex_field": "project_acquisition"},
+      "C.16": {"name": "Project Rights", "capex_field": "project_rights"},
+      "C.17": {"name": "Financing Costs", "capex_field": null, "note": "Read-only; no per-line mapping; sum flows from financing fields (idc_keur, commitment_fees_keur, bank_fees_keur, other_financial_keur, vat_costs_keur)"},
+      "C.18": {"name": "Reserve Accounts", "capex_field": null, "note": "Read-only; no per-line mapping; sum flows from reserve_accounts_keur"}
+    }
+  },
+  "aggregation_rule": {
+    "formula": "effective_amount_keur = base_amount_keur + sum(user_sub_lines for this category, scenario_overrides[sub_line_id] if present else user_sub_lines.default_amount_keur)",
+    "soft_deleted_excluded": true,
+    "hard_deleted_excluded": true,
+    "factory_projects_no_op": true,
+    "model_derives_automatically": true,
+    "model_derivation_note": "total_capex_keur, sculpt_capex_keur, hard_capex_keur are properties on CapexStructure that sum the 15 named CapexItem.amount_keur fields. Folding user sub-lines into those fields re-derives all sums automatically. No new model code is required."
+  },
+  "schema_sketch": {
+    "table_name": "capex_sub_lines",
+    "ddl_outline": [
+      "id INTEGER PRIMARY KEY AUTOINCREMENT",
+      "sub_line_id TEXT NOT NULL UNIQUE  -- stable UUID; survives soft-delete + re-add",
+      "project_id TEXT NOT NULL  -- FK projects.project_id",
+      "parent_category_code TEXT NOT NULL  -- e.g. 'C.02'",
+      "business_code TEXT NOT NULL  -- e.g. 'C.02.U001'",
+      "display_order INTEGER NOT NULL  -- 1, 2, 3, ... per (project_id, parent_category_code)",
+      "label TEXT NOT NULL",
+      "amount_keur REAL NOT NULL DEFAULT 0.0  -- project-level default amount",
+      "comments TEXT NOT NULL DEFAULT ''",
+      "schedule_json TEXT NOT NULL DEFAULT '{}'  -- optional M1-M18 schedule override (future)",
+      "source TEXT NOT NULL DEFAULT 'user'  -- 'user' | 'imported' | 'cloned'",
+      "is_active INTEGER NOT NULL DEFAULT 1  -- soft-delete flag",
+      "governance_state_json TEXT NOT NULL DEFAULT '{}'",
+      "replay_metadata_json TEXT NOT NULL DEFAULT '{}'",
+      "created_at TEXT NOT NULL",
+      "updated_at TEXT NOT NULL",
+      "UNIQUE(project_id, business_code)",
+      "INDEX idx_capex_sub_lines_project ON capex_sub_lines(project_id, is_active, parent_category_code, display_order)"
+    ]
+  },
+  "business_code_format": {
+    "pattern": "C.NN.U###",
+    "components": {
+      "C": "literal 'C' prefix",
+      "NN": "2-digit zero-padded parent category number (01..16)",
+      "U": "literal 'U' prefix marking 'user-added' (vs. template C.NN.NN codes)",
+      "###": "3-digit zero-padded counter, unique per (project_id, parent_category_code); counter starts at 001 and is assigned by MAX(counter) + 1 on insert"
+    },
+    "u_prefix_rationale": "Disjoint namespace from the template C.NN.NN codes (see 57A-5B canonical catalogue). Prevents collisions with future template changes.",
+    "gap_preservation_on_soft_delete": "Gaps are preserved on soft-delete: counter continues from MAX(including deleted) + 1. Audit trail remains readable. business_code is NOT the durable identifier; the UUID sub_line_id is. Scenarios override amount by sub_line_id, not by business_code.",
+    "categories_excluded": ["C.17", "C.18"],
+    "hard_delete_handling": "Out of scope for 57A-9A. Proposed for 57A-9B: a separate is_hard_deleted flag that releases the business code so it can be reused."
+  },
+  "stable_uuid_invariant": {
+    "primary_key": "sub_line_id (UUID)",
+    "display_key": "business_code (C.NN.U###)",
+    "scenario_override_key": "sub_line_id (UUID), NOT business_code",
+    "rationale": "If the user soft-deletes C.02.U001 and creates a new C.02.U001 with a new UUID, the old scenario's override still references the old UUID and silently becomes a no-op. The scenario does not 'follow' the new line. The user can manually re-bind the override if desired (future UX work, not in 57A-9A)."
+  },
+  "scenario_override_blob_shape": {
+    "reserved_keys": ["_capex_sub_line_overrides", "_capex_sub_line_overrides_metadata"],
+    "schema": {
+      "_capex_sub_line_overrides": {
+        "type": "object",
+        "shape": "{<sub_line_id: string>: <amount: float>, ...}",
+        "validation": "sub_line_id must be a non-empty string; amount must be a number"
+      },
+      "_capex_sub_line_overrides_metadata": {
+        "type": "object",
+        "shape": "{last_modified_at: string, schema_version: string, ...}",
+        "validation": "best-effort; missing fields are tolerated"
+      }
+    },
+    "update_scenario_overrides_change": {
+      "behavior": "ADDITIVE — add a second allowlist SCENARIO_SUB_LINE_OVERRIDE_KEYS consulted BEFORE the silent-drop check. Existing 22-key flat-path unchanged. Phase 20B invariant preserved for all other keys."
+    }
+  },
+  "run_integration": {
+    "helper": "_apply_user_sub_lines_to_capex(capex: CapexStructure, user_sub_lines: tuple[CapexSubLine, ...], scenario_overrides: dict[str, dict[str, float]]) -> CapexStructure",
+    "invocation_point": "After scenario resolution, before model invocation (proposed for 57A-9D; verify exact location is part of 57A-9D design verification)",
+    "factory_safety": "Empty user_sub_lines tuple -> capex returned unchanged. Factory projects have no user-added sub-lines -> helper is a no-op. TUHO/Oborovo parity preserved by construction.",
+    "model_impact": "ZERO new model code. The post-fold CapexStructure is a new immutable instance; the existing properties (hard_capex_keur, sculpt_capex_keur, total_capex) re-derive automatically."
+  },
+  "excel_export_integration": {
+    "parameter_used": "advanced_capex_line_items (currently unused optional parameter on export_project_to_excel)",
+    "materialization": "Materialize the user sub-lines into a tuple of objects compatible with advanced_capex_line_items, with amount_keur already overridden by the scenario override blob",
+    "summary_sheet_impact": "NONE — build_capex_summary_table reads project_inputs.capex which is already the post-fold structure",
+    "items_sheet_impact": "build_capex_items_table continues to read the 15 named CapexItem fields; user sub-lines appear as additional items in advanced_capex_line_items consumed by the tax / book depreciation sheets"
+  },
+  "save_load_flow": {
+    "save_pattern": "Soft-delete + re-insert: open transaction, mark existing capex_sub_lines rows is_active=0, insert new rows with is_active=1 and fresh sub_line_id UUIDs, commit",
+    "audit_preservation": "Soft-deleted rows are NOT garbage-collected on save; they are kept for replay / governance",
+    "round_trip_invariant": "Write project snapshot + sub-lines + scenario overrides, read them back, run the model, get bit-identical results to the in-memory-only state",
+    "validator_helper": "validate_sub_line_override_blob(blob: dict) -> dict — raises ValueError on schema errors; returns sanitized copy"
+  },
+  "governance_audit_replay": {
+    "writes_through": "All capex_sub_lines writes go through app/persistence/capex_sub_lines.py (proposed). Direct SQL from UI / route handlers is forbidden by convention (Phase 53I-2 rule).",
+    "replay_metadata_pattern": "Phase 51F Parity Guardrails pattern: replay_count incremented on every write, last_replay_at + last_replay_sha stamped",
+    "no_go_copy_scanner": "Phase 57D scanner will be extended in 57A-9B or 57A-9C to also scan capex_sub_lines",
+    "governance_refresh": "Phase 53I governance refresh re-run after 57A-9E lands (planned 57A-9F PR)"
+  },
+  "phase_plan": [
+    {
+      "phase": "57A-9A",
+      "title": "CAPEX Add-Line Persistence Design Gate",
+      "type": "docs/report/test",
+      "auto_merge_eligible": false,
+      "pre_req": "57A-8",
+      "notes": "THIS PR. No implementation. Stop after report. Wait for review."
+    },
+    {
+      "phase": "57A-9B",
+      "title": "CAPEX Add-Line Schema",
+      "type": "runtime + migration",
+      "auto_merge_eligible": false,
+      "pre_req": "57A-9A",
+      "notes": "Adds the capex_sub_lines table, the app/persistence/capex_sub_lines.py module skeleton, and the migration. No UI change. No save / load change."
+    },
+    {
+      "phase": "57A-9C",
+      "title": "CAPEX Add-Line Save / Load",
+      "type": "runtime",
+      "auto_merge_eligible": false,
+      "pre_req": "57A-9B",
+      "notes": "Wires the project save / load flow to the new table. Adds the 2-key allowlist extension to update_scenario_overrides. No Run change. No UI change beyond the existing 57A-8 toolbar (which now optionally persists on save)."
+    },
+    {
+      "phase": "57A-9D",
+      "title": "CAPEX Add-Line Run Integration",
+      "type": "runtime",
+      "auto_merge_eligible": false,
+      "pre_req": "57A-9C",
+      "notes": "Adds the _apply_user_sub_lines_to_capex helper, wires it into the scenario resolution path, and verifies the post-fold numbers match the in-memory preview within rounding tolerance."
+    },
+    {
+      "phase": "57A-9E",
+      "title": "CAPEX Add-Line Excel Export",
+      "type": "runtime",
+      "auto_merge_eligible": false,
+      "pre_req": "57A-9D",
+      "notes": "Materializes the user sub-lines into the existing advanced_capex_line_items parameter. The summary CapEx sheet and the 15-item CapEx_Items sheet pick up the folded amounts automatically."
+    },
+    {
+      "phase": "57A-9F",
+      "title": "Agent B post-57A-9 governance refresh",
+      "type": "docs/report/test",
+      "auto_merge_eligible": true,
+      "pre_req": "57A-9E",
+      "notes": "Re-runs the Phase 53I governance refresh and the Phase 51F Parity Guardrails extension. Updates the no-go copy scanner (57D) to also scan capex_sub_lines."
+    },
+    {
+      "phase": "57A-10",
+      "title": "Sheet-sheet parity gate (TUHO + Oborovo)",
+      "type": "docs/report/test",
+      "auto_merge_eligible": true,
+      "pre_req": "57A-9F",
+      "notes": "Verifies that the post-57A-9F TUHO Baseline and Oborovo Baseline sheets produce bit-identical numbers to the pre-57A-9B baselines, with the new user sub-line code path disabled (no capex_sub_lines rows for those projects)."
+    }
+  ],
+  "out_of_scope": [
+    "opex_sub_line_persistence",
+    "revenue_sub_line_persistence",
+    "construction_schedule_per_sub_line_override (column reserved for future enhancement)",
+    "tax_depreciation_per_line_override (parameter exists, UX is future arc)",
+    "sub_line_cloning_semantics_on_scenario_create (future UX decision)",
+    "sub_line_excel_import (round-trip export only in 57A-9E)",
+    "multi_user_sub_line_collaboration"
+  ],
+  "hard_no_go": [
+    "no_financial_formula_changes",
+    "no_idc_calculation_changes",
+    "no_construction_funding_changes",
+    "no_senior_debt_shl_drawdown_changes",
+    "no_tax_engine_changes",
+    "no_depreciation_engine_changes",
+    "no_g20_r99_r102_promotion",
+    "no_tailwind_alpine_react_vue_svelte",
+    "no_backend_keys_visible_in_ui (Phase 57A-3 invariant preserved)",
+    "no_new_app_domain_modules (helper lives under app/persistence/capex_sub_lines.py)",
+    "no_overrides_json_schema_change (additive allowlist only, Phase 20B silent-drop preserved)",
+    "no_silent_override_of_existing_scenario_override (rejected with validation error)",
+    "no_factory_project_mutation (factory_template + is_readonly=True cannot have user sub-lines; raises PermissionError)",
+    "no_57a8_in_memory_preview_regression (toolbar, marker, badge, warning block, preview-only totals all continue to work)",
+    "rc1_frozen (b425a0708719eaa5e1d922b1008e5609758e0ad4)"
+  ],
+  "files_added": [
+    "docs/phase57a9a_capex_add_line_persistence_design_gate.md",
+    "reports/phase57a9a_capex_add_line_persistence_design_gate.json",
+    "tests/test_phase57a9a_capex_add_line_persistence_design_gate.py"
+  ],
+  "files_not_changed": [
+    "app/persistence/records.py",
+    "app/persistence/_helpers.py",
+    "app/persistence/projects_repository.py",
+    "app/persistence/scenarios_repository.py",
+    "app/persistence/db.py",
+    "app/ui/project_context.py",
+    "app/input_helpers.py",
+    "app/excel_export.py",
+    "domain/inputs.py",
+    "app/templates/partials/sheet_capex.html",
+    "static/app.js",
+    "static/styles.css",
+    "main_web.py",
+    "main_api.py"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4"
+}
