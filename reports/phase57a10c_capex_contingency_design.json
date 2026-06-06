@@ -1,0 +1,152 @@
+{
+  "phase": "57A-10C",
+  "title": "CAPEX contingency design",
+  "type": "docs/report/test-only",
+  "branch": "phase57a10c-capex-contingency-design",
+  "requested_base": "latest main after PR #516 merge",
+  "prior_merge_anchor": "5578b02fef3c1d9ddb176cd40099626b97d2e5a9",
+  "status": "design_only",
+  "reviewed_inputs": [
+    "docs/phase57a2_capex_2_design_characterization.md",
+    "docs/phase57a7_capex_advanced_columns_design.md",
+    "docs/phase57a10_capex_advanced_columns_foundation_design.md",
+    "docs/phase57a10b_capex_cost_per_mw_derived_design.md",
+    "docs/phase57a9a_capex_add_line_persistence_design_gate.md",
+    "docs/phase57a9b_capex_sub_lines_schema.md",
+    "docs/phase57a9c_capex_sub_lines_save_load.md",
+    "docs/phase57a9d_capex_sub_lines_run_integration.md",
+    "docs/phase57a9e_capex_sub_lines_excel_export_audit_integration.md",
+    "docs/phase57a9h_scenario_duplication_capex_override_fix.md",
+    "app/templates/partials/sheet_capex.html",
+    "app/excel_export.py",
+    "app/persistence/capex_sub_lines.py",
+    "app/persistence/scenarios_repository.py"
+  ],
+  "ownership_options": [
+    {"option": "A", "ownership": "category_level"},
+    {"option": "B", "ownership": "line_item_level"},
+    {"option": "C", "ownership": "both"}
+  ],
+  "preferred_ownership_option": "B",
+  "source_of_truth": {
+    "authoritative_field": "base_amount_keur",
+    "contingency_input": "contingency_pct",
+    "derived_contingency_cost": true,
+    "derived_effective_total": true
+  },
+  "scenario_semantics": {
+    "base_amount_override_rule": "replace_not_delta",
+    "contingency_pct_override_rule": "replace_not_delta",
+    "derived_contingency_cost_behavior": "recompute_from_effective_values",
+    "effective_total_behavior": "recompute_from_base_plus_contingency",
+    "direct_contingency_cost_override": "not_allowed_by_default"
+  },
+  "user_added_sub_lines": {
+    "supported": true,
+    "storage": "project_owned_baseline_fields_plus_future_override_keys",
+    "display": [
+      "base_amount_keur",
+      "contingency_pct",
+      "derived_contingency_cost_keur",
+      "effective_total_keur"
+    ],
+    "export": [
+      "base_amount_keur",
+      "effective_base_amount_keur",
+      "contingency_pct",
+      "derived_contingency_cost_keur",
+      "effective_total_keur"
+    ]
+  },
+  "capex_totals": {
+    "rolls_into_total_capex": true,
+    "separate_evidence_component": true,
+    "recommended_views": [
+      "base_capex_subtotal",
+      "contingency_subtotal",
+      "effective_capex_total"
+    ]
+  },
+  "funding_idc_boundary": {
+    "sources_and_uses": "future_phase_only",
+    "construction_funding": "future_phase_only",
+    "idc": "future_phase_only",
+    "debt_sizing": "future_phase_only",
+    "no_implicit_funding_assumption": true
+  },
+  "generic_compatibility": {
+    "supported_paths": ["TUHO", "Oborovo", "Generic Solar", "Generic Wind"],
+    "no_template_specific_assumptions": true,
+    "generic_governance_note": "generic paths remain exploratory/unvalidated unless separately validated"
+  },
+  "export_strategy": {
+    "CapEx": "future_base_plus_contingency_plus_effective_total_summary",
+    "CapEx_Items": "future_read_only_line_evidence",
+    "CapEx_SubLines_Audit": "preferred_first_location_for_detailed_contingency_evidence",
+    "reconciliation_sheets": "evidence_only_not_hidden_adjustment"
+  },
+  "future_interactions": {
+    "cost_per_mw": "basis_must_be_explicit_base_or_effective",
+    "vat_wht": "later_phase_must_choose_tax_basis",
+    "depreciation": "later_phase_must_choose_depreciable_basis",
+    "payment_schedule": "later_phase_must_choose_timing_rule",
+    "utilisation": "later_phase_must_choose_timing_rule"
+  },
+  "recommendation_section": {
+    "preferred_option": "B",
+    "rejected_options": [
+      "category_level_only",
+      "total_including_contingency_authoritative",
+      "simultaneous_category_and_line_contingency"
+    ],
+    "reasoning": [
+      "aligns with capex sub-line ownership",
+      "keeps source of truth clear",
+      "supports user-added rows cleanly",
+      "preserves scenario replace semantics",
+      "keeps funding and idc bridge explicit"
+    ],
+    "implementation_complexity": "low_for_evidence medium_for_persistence high_for_funding_idc_integration",
+    "migration_impact": "none_in_design_phase future_schema_extension_only_if_runtime_enabled",
+    "parity_impact": "stable_if_base_and_contingency_remain_transparent",
+    "export_impact": "safe_if_first_added_as_read_only_audit_evidence",
+    "rollback_strategy": "remove_contingency_evidence_without_redefining_base_amount_semantics"
+  },
+  "estimated_future_implementation_sequence": [
+    "57A-10D_persistence_field_strategy",
+    "57A-10E_export_evidence",
+    "57A-10F_runtime_capex_total_support",
+    "57A-10G_funding_idc_debt_sizing_integration"
+  ],
+  "documented_topics": [
+    "contingency ownership",
+    "source of truth",
+    "scenario semantics",
+    "user-added line behavior",
+    "funding/idc boundary",
+    "export strategy",
+    "Generic Solar/Wind compatibility"
+  ],
+  "files_not_changed": [
+    "app/waterfall_core.py",
+    "app/services/run_service.py",
+    "app/services/capex_sub_lines_integration.py",
+    "app/excel_export.py",
+    "app/persistence",
+    "app/project_factories.py",
+    "schema",
+    "migrations",
+    "app/templates",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "design_only_boundaries": [
+    "no_runtime_implementation",
+    "no_schema_changes",
+    "no_export_changes",
+    "no_run_changes",
+    "no_financial_formula_changes"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "recommendation": "PASS"
+}
