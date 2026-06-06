@@ -243,6 +243,36 @@ async def _execute_user_created_path(
     """
     try:
         override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
+
+        # Phase 57A-9D: fold persisted user-added CAPEX
+        # sub-lines into the input CapexStructure. This
+        # is the explicit Run/materialization boundary.
+        # It runs ONLY in the user-created path — factory
+        # / template-seeded paths (TUHO, Oborovo, Generic
+        # Solar, Generic Wind) do NOT call this helper.
+        # 57A-8 in-memory preview rows are NOT persisted,
+        # so they cannot leak in here.
+        if active_scenario_record is not None:
+            _scenario_overrides_for_fold = (
+                active_scenario_record.overrides
+            )
+        else:
+            _scenario_overrides_for_fold = None
+        from app.services.capex_sub_lines_integration import (
+            _apply_user_sub_lines_to_capex,
+        )
+        folded_capex = _apply_user_sub_lines_to_capex(
+            override.capex,
+            project_id=project_record.project_id,
+            scenario_overrides=_scenario_overrides_for_fold,
+        )
+        if folded_capex is not override.capex:
+            # The fold produced a new CapexStructure (it
+            # is frozen, so it had to). Replace the
+            # override's capex with the folded one.
+            from dataclasses import replace as _dc_replace
+            override = _dc_replace(override, capex=folded_capex)
+
         scenario_name = (
             (runtime_snapshot.get("scenario") if runtime_snapshot else None)
             or snapshot.get("scenario", "")
