@@ -901,7 +901,7 @@ def _runtime_summary_for_index(workspace_state) -> dict | None:
     return result if result else None
 
 
-def _validation_summary_for_context(project_code: str | None) -> dict | None:
+def _validation_summary_for_context_legacy(project_code: str | None) -> dict | None:
     """Build a conservative validation_summary dict for UI-2.3.
 
     Source: only existing governance state via `_governance_snapshot`.
@@ -944,6 +944,85 @@ def _validation_summary_for_context(project_code: str | None) -> dict | None:
         "warn_count": warn_count,
         "fail_count": fail_count,
         "last_validated_at": "",  # No real value exists; left blank intentionally
+    }
+
+
+def _validation_summary_for_context(
+    project_record,
+    validation_errors: list[str] | None = None,
+) -> dict | None:
+    """Build UI-2.3 validation summary from current run/input issues only.
+
+    Platform governance guards stay visible via
+    ``_governance_guard_summary_for_context`` and do not make every run
+    look broken by default.
+    """
+    if project_record is None:
+        return None
+    issue_count = len([err for err in (validation_errors or []) if str(err).strip()])
+    if issue_count > 0:
+        return {
+            "pass_count": 0,
+            "warn_count": 0,
+            "fail_count": issue_count,
+            "actual_issue_count": issue_count,
+            "last_validated_at": "",
+        }
+    return {
+        "pass_count": 1,
+        "warn_count": 0,
+        "fail_count": 0,
+        "actual_issue_count": 0,
+        "last_validated_at": "",
+    }
+
+
+def _governance_guard_summary_for_context(project_record) -> dict | None:
+    """Build platform-level governance / feature guard UI context."""
+    if project_record is None:
+        return None
+    snap = project_record.governance_state or _governance_snapshot(project_record.project_code)
+    template_source = (
+        (project_record.template_source or "")
+        or str((project_record.baseline_snapshot or {}).get("template_source", ""))
+    ).strip().lower()
+    project_code = (project_record.project_code or "").strip().lower()
+
+    items: list[dict[str, str]] = []
+    g20 = (snap.get("g20_status") or "").upper()
+    if g20:
+        items.append(
+            {
+                "title": "G20",
+                "status": g20,
+                "badge_class": "badge-blocked" if g20 == "BLOCKED" else "badge-warn",
+                "detail": "Platform-level governance guard, not a current-run validation failure.",
+            }
+        )
+    r99 = (snap.get("r99_r102_status") or "").upper()
+    if r99:
+        items.append(
+            {
+                "title": "R99/R102",
+                "status": r99,
+                "badge_class": "badge-notapproved" if r99 == "NOT APPROVED" else "badge-warn",
+                "detail": "Feature promotion guard, not a current-run validation failure.",
+            }
+        )
+    if template_source in {"generic_solar", "generic_wind"} or project_code in {"generic_solar", "generic_wind"}:
+        items.append(
+            {
+                "title": "Generic project path",
+                "status": "EXPLORATORY / UNVALIDATED",
+                "badge_class": "badge-warn",
+                "detail": "Reference-status only. Do not treat generic solar/wind as trusted TUHO/Oborovo parity evidence.",
+            }
+        )
+    return {
+        "label": "Governance / Feature Guards",
+        "items": items,
+        "has_items": bool(items),
+        "note": "These are platform-level limitations and review boundaries, not current-run validation errors.",
     }
 
 
@@ -1773,10 +1852,15 @@ async def index(request: Request, project: str | None = None):
             # Derived from existing workspace_state (last_runtime_snapshot_id,
             # last_runtime_at). None when no real runtime data exists.
             "runtime_summary": _runtime_summary_for_index(workspace_state),
-            # Phase 55F: UI-2.3 validation summary bar context
-            # Derived from existing _governance_snapshot. None if no real
-            # governance state can be built.
-            "validation_summary": _validation_summary_for_context(project_record.project_code),
+            # Phase 57C: UI-2.3 validation summary bar context now reflects
+            # actual current-run/input issues only. Platform guards render
+            # separately below the bar.
+            "validation_summary": _validation_summary_for_context(
+                project_record, validation_errors
+            ),
+            "governance_guard_summary": _governance_guard_summary_for_context(
+                project_record
+            ),
             # Phase 55G: UI-2.1 state clarity banner context
             # Derived from existing project_record, workspace_state, validation_errors.
             # Deterministic priority; None when no clear state.

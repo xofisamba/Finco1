@@ -1,9 +1,9 @@
 """Phase 55F — Wire validation_summary into index/audit context tests.
 
 Verifies:
-- _validation_summary_for_context() returns None when project_code missing
-- _validation_summary_for_context() returns counts derived from real
-  governance snapshot (G20 status, R99/R102 status)
+- _validation_summary_for_context() returns None when project record missing
+- _validation_summary_for_context() reflects actual run/input issues only
+- governance guards stay separate from current-run validation counts
 - No fake counts are generated
 - _validation_summary_bar.html renders with supplied validation_summary
 - Missing/empty data does not crash
@@ -36,63 +36,49 @@ class TestValidationSummaryHelper:
         text = MAIN_WEB.read_text()
         assert "def _validation_summary_for_context" in text
 
-    def test_helper_returns_none_for_missing_project_code(self):
-        # When project_code is None, returns None
+    def test_helper_returns_none_for_missing_project_record(self):
+        # When project record is None, returns None
         # We don't import main_web (FastAPI side effects). Test the logic.
-        def helper(project_code):
-            if not project_code:
+        def helper(project_record):
+            if project_record is None:
                 return None
-            return {"pass_count": 0, "warn_count": 0, "fail_count": 0, "last_validated_at": ""}
+            return {"pass_count": 1, "warn_count": 0, "fail_count": 0, "actual_issue_count": 0, "last_validated_at": ""}
         assert helper(None) is None
-        assert helper("") is None
 
-    def test_helper_counts_derived_from_governance(self):
-        # When G20 is BLOCKED, fail_count includes it
-        # When R99/R102 is NOT APPROVED, fail_count includes it
-        # When all clear, pass_count includes them
-        def helper(snap):
-            if not snap:
+    def test_helper_counts_actual_validation_issues_only(self):
+        # Governance flags remain visible elsewhere and must not make
+        # the validation bar look broken by default.
+        def helper(project_record, validation_errors=None):
+            if project_record is None:
                 return None
-            pass_count = 0
-            warn_count = 0
-            fail_count = 0
-            g20 = (snap.get("g20_status") or "").upper()
-            r99 = (snap.get("r99_r102_status") or "").upper()
-            if g20 == "BLOCKED":
-                fail_count += 1
-            elif g20:
-                warn_count += 1
-            else:
-                pass_count += 1
-            if r99 == "NOT APPROVED":
-                fail_count += 1
-            elif r99:
-                warn_count += 1
-            else:
-                pass_count += 1
+            issue_count = len([err for err in (validation_errors or []) if str(err).strip()])
+            if issue_count > 0:
+                return {
+                    "pass_count": 0,
+                    "warn_count": 0,
+                    "fail_count": issue_count,
+                    "actual_issue_count": issue_count,
+                    "last_validated_at": "",
+                }
             return {
-                "pass_count": pass_count,
-                "warn_count": warn_count,
-                "fail_count": fail_count,
+                "pass_count": 1,
+                "warn_count": 0,
+                "fail_count": 0,
+                "actual_issue_count": 0,
                 "last_validated_at": "",
             }
-        # G20 BLOCKED, R99 NOT APPROVED -> 2 fail
-        result = helper({"g20_status": "BLOCKED", "r99_r102_status": "NOT APPROVED"})
-        assert result["fail_count"] == 2
-        assert result["warn_count"] == 0
-        assert result["pass_count"] == 0
-        # All clear
-        result = helper({"g20_status": "PASS", "r99_r102_status": "APPROVED"})
+        project_record = {"project_code": "tuho", "governance_state": {"g20_status": "BLOCKED", "r99_r102_status": "NOT APPROVED"}}
+        result = helper(project_record)
         assert result["fail_count"] == 0
-        assert result["warn_count"] == 2
-        assert result["pass_count"] == 0
-        # Mixed
-        result = helper({"g20_status": "PASS", "r99_r102_status": "NOT APPROVED"})
-        assert result["fail_count"] == 1
-        assert result["warn_count"] == 1
+        assert result["warn_count"] == 0
+        assert result["pass_count"] == 1
+        assert result["actual_issue_count"] == 0
+        result = helper(project_record, ["Missing required input", "Runtime guard failed"])
+        assert result["fail_count"] == 2
+        assert result["actual_issue_count"] == 2
 
     def test_helper_does_not_invent_counts(self):
-        # When no governance snapshot, returns None (not a fake zero dict)
+        # When no project record, returns None (not a fake zero dict)
         text = MAIN_WEB.read_text()
         m = re.search(
             r"def _validation_summary_for_context.*?(?=\ndef |\nclass )",
@@ -118,6 +104,10 @@ class TestIndexContextWiring:
         text = MAIN_WEB.read_text()
         assert "_validation_summary_for_context" in text
 
+    def test_index_context_contains_governance_guard_summary(self):
+        text = MAIN_WEB.read_text()
+        assert '"governance_guard_summary":' in text or "'governance_guard_summary':" in text
+
 
 # ============================================================
 # 3. _validation_summary_bar.html renders with supplied validation_summary
@@ -133,9 +123,10 @@ class TestPartialRenders:
         )
         template = env.get_template("partial")
         out = template.render(validation_summary={
-            "pass_count": 5,
+            "pass_count": 1,
             "warn_count": 0,
             "fail_count": 0,
+            "actual_issue_count": 0,
             "last_validated_at": "",
         })
         assert "No blocking checks shown" in out
@@ -152,6 +143,7 @@ class TestPartialRenders:
             "pass_count": 0,
             "warn_count": 2,
             "fail_count": 0,
+            "actual_issue_count": 2,
             "last_validated_at": "",
         })
         assert "Items needing review" in out
@@ -168,6 +160,7 @@ class TestPartialRenders:
             "pass_count": 0,
             "warn_count": 0,
             "fail_count": 1,
+            "actual_issue_count": 1,
             "last_validated_at": "",
         })
         assert "Validation checks need review" in out
@@ -221,6 +214,10 @@ class TestNoForbiddenClaims:
         # No "validated" as a standalone word
         pattern = r"\bvalidated\b"
         assert not re.search(pattern, text)
+
+    def test_governance_guard_copy_present(self):
+        text = PARTIAL.read_text()
+        assert "Governance / Feature Guards" in text
 
     def test_no_certified_in_helper(self):
         text = MAIN_WEB.read_text()
