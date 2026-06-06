@@ -278,6 +278,491 @@ class TestSaveProjectAcceptsSubLines:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Audit-replay safety: in-place update + soft-delete only
+#    (Phase 57A-9C review fix — Option A)
+# ---------------------------------------------------------------------------
+
+
+class TestAuditReplaySafetyInPlaceUpdate:
+    """The 57A-9C review caught a violation of the audit /
+    replay intent: the original implementation
+    soft-deleted active rows and then HARD-deleted
+    soft-deleted rows whose sub_line_id matched the
+    new set, just to satisfy the UNIQUE constraint.
+    This test class pins the corrected Option-A
+    behavior: in-place update for matching UUIDs, no
+    hard deletes anywhere.
+
+    The corrected replace_sub_lines_for_project:
+      - If a row with the caller's sub_line_id already
+        exists (active OR soft-deleted), it is updated
+        in place. id and created_at are preserved;
+        is_active is flipped to 1; fields are refreshed;
+        updated_at is bumped. NO new row is created.
+      - If no row with the caller's sub_line_id
+        exists, a new row is INSERTed.
+      - After all upserts, active rows whose sub_line_id
+        is not in the new set are soft-deleted. NO hard
+        deletes.
+    """
+
+    def test_second_save_with_same_uuid_updates_in_place(
+        self, test_db, user_id, project_id, make_sub_line
+    ):
+        """Saving the same project twice with the same
+        sub_line_id must UPDATE the existing row, not
+        create a second one. The row count stays 1."""
+        from app.persistence.projects_repository import save_project
+        from app.persistence.capex_sub_lines import (
+            list_sub_lines_for_project,
+        )
+        caller_uuid = str(uuid.uuid4())
+        sub = make_sub_line(
+            sub_line_id=caller_uuid,
+            label="v1",
+            amount_keur=100.0,
+        )
+        save_project(
+            user_id=user_id,
+            project_code="PRJ-UPD",
+            project_name="In-place update",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub],
+        )
+        # Save again with a different label / amount
+        # but the same UUID.
+        sub_v2 = make_sub_line(
+            sub_line_id=caller_uuid,
+            label="v2",
+            amount_keur=200.0,
+        )
+        save_project(
+            user_id=user_id,
+            project_code="PRJ-UPD",
+            project_name="In-place update v2",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub_v2],
+        )
+        # Row count must be exactly 1 (no second row).
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            count = c.execute(
+                "SELECT COUNT(*) FROM capex_sub_lines "
+                "WHERE project_id IN "
+                "(SELECT project_id FROM projects "
+                "WHERE project_code='PRJ-UPD')"
+            ).fetchone()[0]
+            assert count == 1, (
+                f"expected exactly 1 row, got {count} "
+                f"(in-place update failed)"
+            )
+            # And the row carries the v2 label.
+            label = c.execute(
+                "SELECT label, amount_keur, is_active "
+                "FROM capex_sub_lines "
+                "WHERE sub_line_id=?",
+                (caller_uuid,),
+            ).fetchone()
+            assert label[0] == "v2"
+            assert label[1] == 200.0
+            assert label[2] == 1
+
+    def test_inactive_rows_are_not_hard_deleted(
+        self, test_db, user_id, project_id, make_sub_line
+    ):
+        """If a row was previously soft-deleted, it must
+        remain in the table after a subsequent save (no
+        hard delete). The audit / replay trail is
+        preserved."""
+        from app.persistence.projects_repository import save_project
+        from app.persistence.capex_sub_lines import (
+            list_sub_lines_for_project,
+            soft_delete_sub_line,
+        )
+        caller_uuid = str(uuid.uuid4())
+        sub = make_sub_line(
+            sub_line_id=caller_uuid,
+            label="Original",
+            amount_keur=500.0,
+        )
+        record = save_project(
+            user_id=user_id,
+            project_code="PRJ-AUDIT",
+            project_name="Audit preservation",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub],
+        )
+        # Manually soft-delete the row (simulating a
+        # user-driven removal).
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            cur = c.cursor()
+            assert soft_delete_sub_line(
+                cur,
+                project_id=record.project_id,
+                sub_line_id=caller_uuid,
+            )
+            c.commit()
+        # Save again with the SAME UUID (simulating a
+        # re-add of the previously-removed line).
+        sub_re_add = make_sub_line(
+            sub_line_id=caller_uuid,
+            label="Re-added",
+            amount_keur=750.0,
+        )
+        save_project(
+            user_id=user_id,
+            project_code="PRJ-AUDIT",
+            project_name="Audit preservation v2",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub_re_add],
+        )
+        # The row count must still be 1 (no second row,
+        # no hard delete, no phantom duplicates).
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute(
+                "SELECT id, sub_line_id, label, is_active "
+                "FROM capex_sub_lines "
+                "WHERE project_id=?",
+                (record.project_id,),
+            ).fetchall()
+        assert len(rows) == 1, (
+            f"expected exactly 1 row, got {len(rows)}: "
+            f"{[dict(r) for r in rows]}"
+        )
+        # The single row is now active and carries the
+        # re-added label.
+        assert rows[0]["is_active"] == 1
+        assert rows[0]["label"] == "Re-added"
+
+    def test_id_and_created_at_preserved_on_in_place_update(
+        self, test_db, user_id, project_id, make_sub_line
+    ):
+        """The id and created_at columns are preserved
+        when a sub_line_id round-trips. updated_at is
+        bumped. The row identity is stable."""
+        from app.persistence.projects_repository import save_project
+        caller_uuid = str(uuid.uuid4())
+        sub = make_sub_line(
+            sub_line_id=caller_uuid,
+            label="v1",
+            amount_keur=100.0,
+        )
+        record = save_project(
+            user_id=user_id,
+            project_code="PRJ-IDENTITY",
+            project_name="Identity preservation",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub],
+        )
+        # Read id and created_at after first save.
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            row1 = c.execute(
+                "SELECT id, created_at, updated_at "
+                "FROM capex_sub_lines WHERE sub_line_id=?",
+                (caller_uuid,),
+            ).fetchone()
+        # Save again with the same UUID.
+        sub_v2 = make_sub_line(
+            sub_line_id=caller_uuid,
+            label="v2",
+            amount_keur=200.0,
+        )
+        save_project(
+            user_id=user_id,
+            project_code="PRJ-IDENTITY",
+            project_name="Identity preservation v2",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub_v2],
+        )
+        # Read id and created_at after second save.
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            row2 = c.execute(
+                "SELECT id, created_at, updated_at "
+                "FROM capex_sub_lines WHERE sub_line_id=?",
+                (caller_uuid,),
+            ).fetchone()
+        assert row1["id"] == row2["id"], (
+            "id must be preserved across in-place updates"
+        )
+        assert row1["created_at"] == row2["created_at"], (
+            "created_at must be preserved across in-place "
+            "updates"
+        )
+
+    def test_empty_list_soft_deletes_all_active_only(
+        self, test_db, user_id, project_id, make_sub_line
+    ):
+        """Saving with capex_sub_lines=[] soft-deletes
+        every active row for the project. Soft-deleted
+        rows are NOT hard-deleted (audit trail)."""
+        from app.persistence.projects_repository import save_project
+        sub_a = make_sub_line(label="A", amount_keur=10.0)
+        sub_b = make_sub_line(label="B", amount_keur=20.0)
+        record = save_project(
+            user_id=user_id,
+            project_code="PRJ-EMPTY-LIST",
+            project_name="Empty list semantics",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub_a, sub_b],
+        )
+        # Verify 2 active rows.
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            count = c.execute(
+                "SELECT COUNT(*) FROM capex_sub_lines "
+                "WHERE project_id=? AND is_active=1",
+                (record.project_id,),
+            ).fetchone()[0]
+            assert count == 2
+        # Save with empty list.
+        save_project(
+            user_id=user_id,
+            project_code="PRJ-EMPTY-LIST",
+            project_name="Empty list semantics v2",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[],
+        )
+        # All 2 rows must be soft-deleted (is_active=0).
+        # They must still be in the table (no hard delete).
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute(
+                "SELECT label, is_active FROM capex_sub_lines "
+                "WHERE project_id=? "
+                "ORDER BY label",
+                (record.project_id,),
+            ).fetchall()
+        assert len(rows) == 2, (
+            f"audit rows must be preserved, got {len(rows)}"
+        )
+        for r in rows:
+            assert r["is_active"] == 0, (
+                f"row {r['label']} must be soft-deleted, "
+                f"got is_active={r['is_active']}"
+            )
+
+    def test_none_means_do_not_touch(
+        self, test_db, user_id, project_id, make_sub_line
+    ):
+        """Saving with capex_sub_lines=None is the
+        do-not-touch signal: existing active rows are
+        NOT soft-deleted."""
+        from app.persistence.projects_repository import save_project
+        sub = make_sub_line(label="keep me", amount_keur=99.0)
+        record = save_project(
+            user_id=user_id,
+            project_code="PRJ-NONE",
+            project_name="None semantics",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub],
+        )
+        # Save again with no capex_sub_lines argument.
+        save_project(
+            user_id=user_id,
+            project_code="PRJ-NONE",
+            project_name="None semantics v2",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            # capex_sub_lines defaults to None
+        )
+        # The row must still be active.
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            row = c.execute(
+                "SELECT label, is_active FROM capex_sub_lines "
+                "WHERE project_id=?",
+                (record.project_id,),
+            ).fetchone()
+        assert row["label"] == "keep me"
+        assert row["is_active"] == 1
+
+    def test_existing_callers_unaffected_default_none(
+        self, test_db, user_id, project_id
+    ):
+        """Backward compat: existing save_project callers
+        that do not pass capex_sub_lines at all get
+        exactly the pre-57A-9C behavior."""
+        import inspect
+        from app.persistence.projects_repository import save_project
+        sig = inspect.signature(save_project)
+        capex_param = sig.parameters["capex_sub_lines"]
+        # The default must be None.
+        assert capex_param.default is None, (
+            f"capex_sub_lines default must be None, got "
+            f"{capex_param.default!r}"
+        )
+
+    def test_removed_line_soft_deleted_not_hard_deleted(
+        self, test_db, user_id, project_id, make_sub_line
+    ):
+        """If a sub-line is in v1 but not in v2, the
+        row is soft-deleted (is_active=0) but still in
+        the table for audit. The v2 save does NOT
+        hard-delete the v1 row."""
+        from app.persistence.projects_repository import save_project
+        uuid_keep = str(uuid.uuid4())
+        uuid_drop = str(uuid.uuid4())
+        keep = make_sub_line(
+            sub_line_id=uuid_keep, label="Keep", amount_keur=10.0,
+        )
+        drop = make_sub_line(
+            sub_line_id=uuid_drop, label="Drop", amount_keur=20.0,
+        )
+        record = save_project(
+            user_id=user_id,
+            project_code="PRJ-REMOVE",
+            project_name="Remove semantics",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[keep, drop],
+        )
+        # v2: only keep
+        save_project(
+            user_id=user_id,
+            project_code="PRJ-REMOVE",
+            project_name="Remove semantics v2",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[keep],
+        )
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            rows = c.execute(
+                "SELECT sub_line_id, is_active FROM capex_sub_lines "
+                "WHERE project_id=?",
+                (record.project_id,),
+            ).fetchall()
+        by_id = {r["sub_line_id"]: r["is_active"] for r in rows}
+        # Both rows must still be in the table.
+        assert uuid_keep in by_id
+        assert uuid_drop in by_id, (
+            "dropped line must NOT be hard-deleted; "
+            "it must remain as a soft-deleted audit row"
+        )
+        # Keep is active, Drop is inactive.
+        assert by_id[uuid_keep] == 1
+        assert by_id[uuid_drop] == 0
+
+    def test_factory_project_still_raises(
+        self, test_db, user_id, project_id
+    ):
+        """Defense-in-depth factory guard still works
+        after the in-place-update refactor. The guard
+        is consulted BEFORE the sub-line upsert runs."""
+        from app.persistence.capex_sub_lines import (
+            assert_project_allows_capex_sub_lines,
+        )
+        from app.persistence.records import ProjectRecord
+        rec = ProjectRecord(
+            project_id="fake",
+            user_id=user_id,
+            project_code="FAKE",
+            project_name="Fake",
+            project_type="Wind",
+            project_origin="factory_template",
+            source_project_template="Generic",
+            template_source="Generic",
+            baseline_snapshot={},
+            archived=False,
+            is_readonly=False,
+            governance_state={},
+            last_run_summary={},
+            replay_metadata={},
+            created_at="2026-06-05T00:00:00+00:00",
+            updated_at="2026-06-05T00:00:00+00:00",
+        )
+        with pytest.raises(PermissionError):
+            assert_project_allows_capex_sub_lines(rec)
+
+    def test_replace_helper_has_no_hard_delete_statement(
+        self,
+    ):
+        """Static guard: the replace_sub_lines_for_project
+        implementation must not contain any DELETE FROM
+        capex_sub_lines statement. The audit / replay
+        trail is preserved by soft-delete only."""
+        import inspect
+        from app.persistence.capex_sub_lines import (
+            replace_sub_lines_for_project,
+        )
+        src = inspect.getsource(replace_sub_lines_for_project)
+        assert "DELETE FROM capex_sub_lines" not in src, (
+            "replace_sub_lines_for_project must NOT contain "
+            "a DELETE FROM capex_sub_lines statement. The "
+            "audit / replay trail must be preserved by "
+            "soft-delete (is_active=0) only."
+        )
+
+    def test_soft_delete_helper_still_works(
+        self, test_db, user_id, project_id, make_sub_line
+    ):
+        """The 57A-9B soft_delete_sub_line helper still
+        works as a soft-delete (is_active=0). It is the
+        canonical way to remove a single row."""
+        from app.persistence.projects_repository import save_project
+        from app.persistence.capex_sub_lines import (
+            soft_delete_sub_line,
+        )
+        sub = make_sub_line(
+            label="To soft-delete", amount_keur=10.0,
+        )
+        record = save_project(
+            user_id=user_id,
+            project_code="PRJ-SD",
+            project_name="Single soft-delete",
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[sub],
+        )
+        with sqlite3.connect(os.environ["FINCO_DB_PATH"]) as c:
+            c.row_factory = sqlite3.Row
+            cur = c.cursor()
+            sub_id = cur.execute(
+                "SELECT sub_line_id FROM capex_sub_lines "
+                "WHERE project_id=?",
+                (record.project_id,),
+            ).fetchone()[0]
+            assert soft_delete_sub_line(
+                cur, project_id=record.project_id,
+                sub_line_id=sub_id,
+            )
+            c.commit()
+            # Row is in table, is_active=0.
+            row = cur.execute(
+                "SELECT is_active FROM capex_sub_lines "
+                "WHERE sub_line_id=?",
+                (sub_id,),
+            ).fetchone()
+            assert row[0] == 0
+
+
+# ---------------------------------------------------------------------------
 # 2. UUID stability across save → load round-trips
 # ---------------------------------------------------------------------------
 

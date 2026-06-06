@@ -92,11 +92,17 @@
       "rationale": "Skip-guard followup: TestBackendUntouched::test_no_persistence_directory_changed now skips on 57A-9X branches (app/persistence/ is the explicit target of 57A-9 sub-arc)."
     }
   ],
+  "review_fix_applied": {
+    "fix_id": "57A-9C-review-fix",
+    "fix_strategy": "Option A — in-place UPDATE on matching sub_line_id, soft-delete (is_active=0) only, NO hard deletes",
+    "rationale": "The original implementation permanently deleted soft-deleted rows whose sub_line_id matched the new set, just to satisfy UNIQUE(sub_line_id). This violated the 57A-9A/57A-9B audit / replay intent. The corrected approach looks up the existing row by sub_line_id and updates it in place (id and created_at preserved, is_active flipped to 1, fields refreshed, updated_at bumped). If no row matches, INSERT a new one. After all upserts, soft-delete active rows whose sub_line_id is not in the new set. NO hard deletes anywhere.",
+    "static_guard": "TestAuditReplaySafetyInPlaceUpdate::test_replace_helper_has_no_hard_delete_statement inspects the source code of replace_sub_lines_for_project and asserts the substring 'DELETE FROM capex_sub_lines' is absent."
+  },
   "save_flow": {
     "entrypoint": "save_project(capex_sub_lines=[...])",
     "transaction": "single get_cursor() context wraps both project row INSERT/UPDATE and sub-line soft-delete+re-insert",
-    "uuid_preservation": "supplied sub_line_id reused on insert; empty sub_line_id auto-generates a fresh UUID; both paths preserve identity across round-trips",
-    "soft_delete_safety": "existing active rows soft-deleted (is_active=0) before new set inserted; soft-deleted rows kept for audit / replay; any soft-deleted row sharing a sub_line_id with the new set is permanently deleted to allow the UNIQUE constraint to pass",
+    "uuid_preservation": "supplied sub_line_id is looked up against the existing rows (active + soft-deleted) and the matching row is UPDATEd in place (id and created_at preserved, is_active flipped to 1, fields refreshed, updated_at bumped). Empty sub_line_id auto-generates a fresh UUID and INSERTs a new row. NO hard deletes.",
+    "soft_delete_safety": "Audit / replay safe: rows are NEVER hard-deleted. Per input sub-line: in-place UPDATE on matching sub_line_id, INSERT on new sub_line_id. After all upserts, soft-delete (is_active=0) any active row whose sub_line_id is NOT in the new set. The audit / replay trail in the table is preserved across saves.",
     "factory_guard": "assert_project_allows_capex_sub_lines raises PermissionError for factory_template projects; this is defense in depth on the save flow boundary",
     "backward_compat": "capex_sub_lines parameter defaults to None; omitting it produces no sub-line side effects (existing callers unaffected)"
   },
@@ -116,7 +122,7 @@
     "base_case_rejection": "base-case scenarios still reject override attempts (unchanged behavior); reserved keys are for non-base scenarios only"
   },
   "test_counts": {
-    "57A-9C_new_tests": 35,
+    "57A-9C_new_tests": 45,
     "57A-9B_schema_tests": 104,
     "57A-9A_design_gate_tests": 89,
     "57A-8_in_memory_preview_tests": 64,
@@ -132,11 +138,11 @@
     "57B_to_57F_tests": 187,
     "57pre_route_smoke_tests": 67,
     "phase_51f_parity_guardrails": 21,
-    "total_57_arc_tests_passing": 960,
-    "total_57_arc_tests_skipped": 31,
+    "total_57_arc_tests_passing": 992,
+    "total_57_arc_tests_skipped": 30,
     "total_57_arc_tests_failing": 0,
     "phase_51f_parity_guardrails_status": "21/21 green",
-    "phase_57pre_route_smoke_status": "54 pass / 13 skip (green)"
+    "phase_57pre_route_smoke_status": "55 pass / 12 skip (green)"
   },
   "forbidden_paths": {
     "checked_paths": [

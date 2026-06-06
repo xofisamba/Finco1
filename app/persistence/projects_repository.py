@@ -230,8 +230,11 @@ def save_project(
         # Phase 57A-9C: optionally replace the project's
         # user-added CAPEX sub-lines. This happens in the
         # same transaction as the project row write so a
-        # partial failure rolls back both. Soft-delete +
-        # re-insert preserves UUIDs for round-trips.
+        # partial failure rolls back both. The sub-line
+        # upsert is audit-friendly: rows are never
+        # hard-deleted, only soft-deleted. See
+        # replace_sub_lines_for_project for the full
+        # upsert + soft-delete semantic.
         if capex_sub_lines is not None:
             from app.persistence.records import ProjectRecord
             from app.persistence.capex_sub_lines import (

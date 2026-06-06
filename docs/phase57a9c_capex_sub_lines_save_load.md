@@ -53,17 +53,38 @@ def replace_sub_lines_for_project(
     project_id: str,
     sub_lines: Sequence[CapexSubLine],
 ) -> list[CapexSubLine]:
-    """Soft-delete existing active rows, then insert the new
-    set. UUID identity is preserved for round-trips.
-    business_code is auto-computed for new lines (C.NN.U###
-    format, gap-preserving on soft-delete) but reused when
-    supplied."""
+    """Replace the project's active sub-lines with the given
+    set. Audit-replay safe: rows are NEVER hard-deleted.
+
+    Per input sub-line:
+    1. If sub_line_id matches an existing row (active OR
+       soft-deleted), UPDATE that row in place: set
+       is_active=1, refresh fields, bump updated_at.
+       Preserve id and created_at.
+    2. If no row with that sub_line_id exists, INSERT a
+       new row.
+    3. If sub_line_id is empty, generate a fresh UUID and
+       INSERT.
+
+    After all upserts, soft-delete any active row whose
+    sub_line_id is NOT in the new set. The audit / replay
+    trail is preserved.
+
+    The function takes an explicit cursor so the caller
+    controls the transaction. In save_project, the cursor
+    is the same get_cursor() context as the project row
+    INSERT, so a partial failure rolls back both writes
+    atomically.
+    """
 ```
 
-The function takes an explicit cursor so the caller controls
-the transaction. In `save_project`, the cursor is the same
-`get_cursor()` context as the project row INSERT, so a
-partial failure rolls back both writes atomically.
+**Audit-replay safety contract (Phase 57A-9C review fix,
+Option A):** the function does NOT contain a
+`DELETE FROM capex_sub_lines` statement anywhere.
+`TestAuditReplaySafetyInPlaceUpdate::test_replace_helper_has_no_hard_delete_statement`
+pins this contract via static source inspection. Every
+removal is a soft-delete (`is_active = 0`); every "re-add"
+reactivates the existing row.
 
 ### 2.2 Extended function: `save_project`
 
@@ -90,13 +111,16 @@ callers.
 When a list is provided:
 
 1. The project row is INSERT/UPDATEd (unchanged).
-2. The active sub-lines for the project are soft-deleted
-   (`is_active = 0`, `business_code` slot preserved).
-3. Any sub-lines that share a `sub_line_id` with the new
-   set are permanently deleted (so the UNIQUE constraint
-   does not block the re-insert).
-4. The new set is INSERTed in canonical
-   `(parent_category_code, display_order)` order.
+2. Each input sub-line is upserted (in-place update if
+   the sub_line_id matches an existing row, INSERT if
+   not). The id and created_at are preserved on update;
+   is_active is flipped back to 1; fields are refreshed;
+   updated_at is bumped.
+3. Any active sub-line whose sub_line_id is NOT in the
+   new set is soft-deleted (`is_active = 0`).
+4. If the input list is empty (`capex_sub_lines=[]`),
+   step 2 is a no-op and step 3 soft-deletes every
+   active row for the project. No hard deletes.
 5. The factory-template guard is enforced:
    `assert_project_allows_capex_sub_lines` raises
    `PermissionError` for `factory_template` projects.
@@ -108,13 +132,16 @@ save.
 ### 2.3 UUID identity preservation
 
 If the caller supplies a `sub_line_id` on the input
-sub-line (a UUID string), the inserted row reuses that UUID
-exactly. This is the safety property the design gate
-promised: scenario overrides keyed by UUID survive a save.
+sub-line (a UUID string), the row at that UUID is updated
+in place. The id and created_at columns are preserved;
+updated_at is bumped. This is the safety property the
+design gate promised: scenario overrides keyed by UUID
+survive a save, and the audit trail in the table is
+preserved.
 
 If the input `sub_line_id` is empty, the helper generates a
-fresh UUID. Different calls yield different UUIDs
-(no collisions).
+fresh UUID and INSERTs a new row. Different calls yield
+different UUIDs (no collisions).
 
 `TestUUIDStabilityAcrossRoundTrip` pins the contract:
 - `test_supplied_sub_line_id_preserved` — caller UUID
@@ -126,17 +153,50 @@ fresh UUID. Different calls yield different UUIDs
   the same project twice with the same input UUID keeps
   the UUID stable.
 
+`TestAuditReplaySafetyInPlaceUpdate` adds the audit-replay
+contract:
+- `test_second_save_with_same_uuid_updates_in_place` —
+  the row count stays 1; the second save UPDATEd the
+  existing row rather than creating a second one.
+- `test_inactive_rows_are_not_hard_deleted` — a previously
+  soft-deleted row is re-activated (not duplicated) when
+  the same UUID is re-saved.
+- `test_id_and_created_at_preserved_on_in_place_update` —
+  the `id` (autoincrement PK) and `created_at` columns
+  survive a round-trip; only `updated_at` and the
+  user-editable fields change.
+- `test_removed_line_soft_deleted_not_hard_deleted` — a
+  line in v1 but not v2 is soft-deleted and remains in
+  the table for audit.
+- `test_replace_helper_has_no_hard_delete_statement` —
+  static guard; the function source contains no
+  `DELETE FROM capex_sub_lines` statement.
+
 ### 2.4 Display order preservation
 
 If the caller supplies a non-zero `display_order`, it is
-reused on insert (round-trip preservation). If it is zero
-or unset, the helper auto-computes
+reused on update / insert (round-trip preservation). If it
+is zero or unset, the helper auto-computes
 `MAX(display_order) + 1` for the `(project_id,
 parent_category_code)` pair.
 
 `TestCanonicalOrder` pins the contract: sub-lines inserted
 out of order are loaded back in canonical
 `(parent_category_code ASC, display_order ASC)` order.
+
+### 2.5 capex_sub_lines semantics
+
+Three explicit cases:
+
+| Input | Behavior |
+|---|---|
+| `capex_sub_lines=None` (default) | Do not touch sub-lines. Existing rows are not soft-deleted. Backward-compat path. |
+| `capex_sub_lines=[]` (empty list) | Soft-delete every active row for the project (no hard deletes). Caller is explicitly saying "remove all sub-lines". |
+| `capex_sub_lines=[sub, ...]` (non-empty) | Upsert each (in-place update if UUID matches, INSERT otherwise). Soft-delete any active row whose UUID is not in the new set. |
+
+`TestAuditReplaySafetyInPlaceUpdate::test_empty_list_soft_deletes_all_active_only`
+and `test_none_means_do_not_touch` pin the empty-list and
+None semantics.
 
 ## 3. Load flow
 
@@ -236,11 +296,20 @@ pins the contract.
 
 ## 5. Test coverage
 
-35 new tests pin the save/load + scenario override
-contracts:
+45 new tests pin the save/load + scenario override
+contracts (35 original + 10 added in the review fix to
+enforce the audit-replay safety contract):
 
 - **TestSaveProjectAcceptsSubLines** (4 tests): signature,
   no-op backward compat, persist, replace.
+- **TestAuditReplaySafetyInPlaceUpdate** (10 tests,
+  review-fix): in-place update on re-save, soft-deleted
+  rows are not hard-deleted, id/created_at preserved,
+  empty list soft-deletes all active, None leaves rows
+  alone, removed line soft-deleted (not hard-deleted),
+  factory guard still works, static
+  `test_replace_helper_has_no_hard_delete_statement`,
+  soft_delete_sub_line helper still works.
 - **TestUUIDStabilityAcrossRoundTrip** (3 tests):
   supplied UUID preserved, auto-generated, two round-trips.
 - **TestLoadHelpers** (6 tests): pair return, no subs,
