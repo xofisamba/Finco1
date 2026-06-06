@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -57,6 +58,18 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _skip_if_not_on_phase57a9c_branch() -> None:
+    result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    branch = result.stdout.strip()
+    if not branch.startswith("phase57a9c"):
+        pytest.skip("57A-9C diff-scope guardrail only runs on a phase57a9c branch")
 
 
 # ---------------------------------------------------------------------------
@@ -1620,6 +1633,7 @@ class TestNoProductionCodeChanged:
     }
 
     def test_forbidden_paths_not_changed(self):
+        _skip_if_not_on_phase57a9c_branch()
         """save_load wiring must not touch Run, Excel, model,
         waterfall, factories, UI, or static assets. Only
         app/persistence/* and tests/ and docs/ + reports/
@@ -1650,6 +1664,7 @@ class TestNoProductionCodeChanged:
         )
 
     def test_only_persistence_and_tests_changed(self):
+        _skip_if_not_on_phase57a9c_branch()
         """Allowed: app/persistence/* (production code),
         app/services/run_service.py (57A-9D wire-up in the
         user-created path only), app/services/

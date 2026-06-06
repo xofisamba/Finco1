@@ -52,6 +52,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -59,6 +60,18 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _skip_if_not_on_phase57a9d_branch() -> None:
+    result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    branch = result.stdout.strip()
+    if not branch.startswith("phase57a9d"):
+        pytest.skip("57A-9D diff-scope guardrail only runs on a phase57a9d branch")
 
 
 # ---------------------------------------------------------------------------
@@ -857,6 +870,7 @@ class TestNoForbiddenChanges:
     )
 
     def test_forbidden_paths_not_changed(self):
+        _skip_if_not_on_phase57a9d_branch()
         """57A-9D must NOT touch the model formula path,
         the Excel export path, the UI templates, the
         static assets, or any other forbidden production
@@ -887,6 +901,7 @@ class TestNoForbiddenChanges:
         )
 
     def test_only_persistence_services_tests_changed(self):
+        _skip_if_not_on_phase57a9d_branch()
         """Allowed: app/persistence/*, app/services/
         run_service.py, app/services/
         capex_sub_lines_integration.py, tests/*, docs/*,

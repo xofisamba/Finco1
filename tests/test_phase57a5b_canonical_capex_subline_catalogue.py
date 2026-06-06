@@ -531,6 +531,21 @@ class TestAddLineHookOnlyC01ToC16:
 
 
 class TestNoBackendChanges:
+    def _skip_if_not_on_phase57a5b_branch(self):
+        r_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r_branch.returncode == 0:
+            branch = r_branch.stdout.strip().lower()
+            if not branch.startswith("phase57a5b"):
+                pytest.skip(
+                    f"57A-5B diff-scope guardrail only runs on a phase57a5b branch "
+                    f"(current: {branch!r})."
+                )
+
     def test_main_web_unchanged(self):
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",
@@ -575,6 +590,7 @@ class TestNoBackendChanges:
 
     def test_no_services_changes(self):
         import subprocess
+        self._skip_if_not_on_phase57a5b_branch()
         # Skip on 57A-9X branches: 57A-9D Run integration
         # wire-up legitimately lives in
         # app/services/run_service.py and the new

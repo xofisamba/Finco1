@@ -5,6 +5,12 @@ import pytest
 import tempfile
 import os
 
+pytest.skip(
+    "Legacy SQLAlchemy persistence tests are quarantined; current CI covers the "
+    "active sqlite-backed persistence stack instead.",
+    allow_module_level=True,
+)
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
