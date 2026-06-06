@@ -2,6 +2,7 @@
 from __future__ import annotations
 import pandas as pd
 from io import BytesIO
+import json
 
 from app.portfolio_ui import (
     build_portfolio_summary_table,
@@ -178,6 +179,10 @@ def build_excel_export(
                      number_format={"kEUR": "#,##0"})
         _write_sheet(writer, "CapEx_Items", build_capex_items_table(project_inputs),
                      number_format={"Amount": "#,##0"})
+        _write_capex_sub_lines_audit_sheet(
+            writer,
+            provenance_metadata=provenance_metadata,
+        )
 
         # ── OPEX Detail (Advanced OPEX only) ───────────────────────────────
         if advanced_opex_line_items:
@@ -874,6 +879,171 @@ def _write_book_depreciation_sheet(writer, tax_schedule, book_schedule) -> None:
     _write_sheet(writer, "Book Depreciation", df, number_format={"kEUR": "#,##0"})
     ws = writer.sheets["Book Depreciation"]
     ws.freeze_panes = "B2"
+
+
+def _capex_sub_line_export_bundle(provenance_metadata: dict | None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Build CAPEX sub-line audit tables for user-project export transparency."""
+    if not provenance_metadata:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    project_id = provenance_metadata.get("project_id")
+    if not project_id:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    from app.persistence.capex_sub_lines import (
+        CAPEX_CATEGORY_TO_FIELD,
+        list_sub_lines_for_project,
+        resolve_effective_sub_line_amount,
+    )
+    from app.persistence.db import get_cursor
+
+    include_inactive = (
+        provenance_metadata.get("capex_sub_lines_audit_mode") == "include_inactive"
+    )
+
+    with get_cursor() as cur:
+        sub_lines = list_sub_lines_for_project(
+            cur,
+            project_id,
+            include_inactive=include_inactive,
+        )
+
+        scenario_name = provenance_metadata.get("active_scenario_name")
+        scenario_id = provenance_metadata.get("active_scenario_id")
+        scenario_overrides: dict[str, float] = {}
+        if scenario_id and scenario_id != "not_applicable":
+            cur.execute(
+                "SELECT overrides_json FROM scenarios WHERE scenario_id=? LIMIT 1",
+                (scenario_id,),
+            )
+            row = cur.fetchone()
+            if row is not None:
+                try:
+                    raw_overrides = json.loads(row["overrides_json"] or "{}")
+                except Exception:
+                    raw_overrides = {}
+                if isinstance(raw_overrides, dict):
+                    maybe_map = raw_overrides.get("_capex_sub_line_overrides")
+                    if isinstance(maybe_map, dict):
+                        for key, value in maybe_map.items():
+                            if isinstance(value, (int, float)):
+                                scenario_overrides[str(key)] = float(value)
+
+    exported_ids = {sub.sub_line_id for sub in sub_lines}
+    stale_override_ids = sorted(set(scenario_overrides) - exported_ids)
+    if not sub_lines and not stale_override_ids:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    rows: list[dict[str, object]] = []
+    for sub in sub_lines:
+        if sub.parent_category_code not in CAPEX_CATEGORY_TO_FIELD:
+            continue
+        override_amount = scenario_overrides.get(sub.sub_line_id)
+        row = {
+            "Parent Category": sub.parent_category_code,
+            "Business Code": sub.business_code,
+            "Label": sub.label,
+            "Default Amount (kEUR)": float(sub.amount_keur),
+            "Effective Amount (kEUR)": resolve_effective_sub_line_amount(
+                float(sub.amount_keur),
+                override_amount,
+            ),
+            "Scenario Override Applied": override_amount is not None,
+            "Scenario Override Amount (kEUR)": (
+                float(override_amount) if override_amount is not None else ""
+            ),
+            "Source": "user_added",
+            "Sub Line ID": sub.sub_line_id,
+            "Mapped Capex Field": CAPEX_CATEGORY_TO_FIELD[sub.parent_category_code],
+            "Comments": sub.comments or "",
+        }
+        if include_inactive:
+            row["Status"] = "active" if sub.is_active else "inactive"
+        rows.append(row)
+
+    notes_df = pd.DataFrame(
+        [
+            ("Project ID", project_id),
+            (
+                "Scenario Name",
+                scenario_name or provenance_metadata.get("scenario_name") or "Base",
+            ),
+            ("Audit Mode", "include_inactive" if include_inactive else "active_only"),
+            (
+                "Override Semantics",
+                "Scenario override amount REPLACES default amount (not delta).",
+            ),
+            (
+                "Soft Delete Policy",
+                "Soft-deleted rows are excluded from default export.",
+            ),
+            ("Read-only Categories", "No C.17/C.18 user-added rows are exported."),
+            ("Special Mapping", "C.08 and C.11 both map to audit_legal."),
+            (
+                "Stale Override Handling",
+                (
+                    f"Ignored stale override IDs: {', '.join(stale_override_ids)}"
+                    if stale_override_ids
+                    else "No stale override IDs detected."
+                ),
+            ),
+        ],
+        columns=["Audit Field", "Value"],
+    )
+    mapping_df = pd.DataFrame(
+        [
+            {"Parent Category": code, "Mapped Capex Field": field}
+            for code, field in CAPEX_CATEGORY_TO_FIELD.items()
+        ]
+    )
+    return notes_df, mapping_df, pd.DataFrame(rows)
+
+
+def _write_capex_sub_lines_audit_sheet(writer, provenance_metadata: dict | None) -> None:
+    """Write persisted CAPEX sub-lines into a dedicated audit sheet.
+
+    Insertion point: immediately after CapEx / CapEx_Items in build_excel_export.
+    """
+    notes_df, mapping_df, rows_df = _capex_sub_line_export_bundle(provenance_metadata)
+    if notes_df.empty and mapping_df.empty and rows_df.empty:
+        return
+
+    sheet_name = "CapEx_SubLines_Audit"
+    notes_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=0)
+    mapping_start = len(notes_df) + 3
+    mapping_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=mapping_start)
+    rows_start = mapping_start + len(mapping_df) + 3
+    if rows_df.empty:
+        rows_df = pd.DataFrame(
+            [{"Note": "No active persisted CAPEX sub-lines matched this export context."}]
+        )
+    rows_df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=rows_start)
+
+    ws = writer.sheets[sheet_name]
+    for header_row in (1, mapping_start + 1, rows_start + 1):
+        for cell in ws[header_row]:
+            cell.font = Font(bold=True)
+    ws.freeze_panes = f"A{rows_start + 2}"
+    ws.sheet_state = "visible"
+
+    numeric_headers = {
+        "Default Amount (kEUR)",
+        "Effective Amount (kEUR)",
+        "Scenario Override Amount (kEUR)",
+    }
+    for row in ws.iter_rows(min_row=rows_start + 2, max_row=ws.max_row):
+        for cell in row:
+            header = ws.cell(row=rows_start + 1, column=cell.column).value
+            if header in numeric_headers and isinstance(cell.value, (int, float)):
+                cell.number_format = "#,##0.0"
+
+    for col_idx in range(1, ws.max_column + 1):
+        max_length = 0
+        for row in ws.iter_rows(min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                if cell.value is not None:
+                    max_length = max(max_length, len(str(cell.value)))
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max_length + 3, 42)
 
 
 def _write_tax_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type: str = "Solar") -> None:
