@@ -1,0 +1,178 @@
+{
+  "phase": "57A-10D",
+  "title": "CAPEX VAT / WHT / depreciation basis design",
+  "type": "docs/report/test-only",
+  "branch": "phase57a10d-capex-vat-wht-depreciation-basis-design",
+  "requested_base": "latest main after PR #517 merge",
+  "prior_merge_anchor": "fe63fe16d1bfe133a47bbbd2b47801906fd59746",
+  "status": "design_only",
+  "reviewed_inputs": [
+    "docs/phase57a7_capex_advanced_columns_design.md",
+    "docs/phase57a10_capex_advanced_columns_foundation_design.md",
+    "docs/phase57a10b_capex_cost_per_mw_derived_design.md",
+    "docs/phase57a10c_capex_contingency_design.md",
+    "docs/pre_depreciation_merge_review.md",
+    "docs/runtime_wiring_plan.md",
+    "docs/phase9_r99_r102_audit_gate_validation.md",
+    "docs/v1_3_bankable_framework_checkpoint.md",
+    "app/ui/project_context.py",
+    "app/excel_export.py"
+  ],
+  "vat_basis": {
+    "default_basis_recommendation": "explicit_basis_mode_defaulting_to_base_plus_taxable_contingency_when_applicable",
+    "supported_basis_modes": [
+      "base_only",
+      "base_plus_contingency"
+    ],
+    "recoverability_required": true,
+    "recoverable_vat_not_automatically_economic_capex": true,
+    "nonrecoverable_vat_may_become_economic_capex": true,
+    "vat_belongs_in": [
+      "capex_line_metadata",
+      "future_tax_module",
+      "audit_export_layer"
+    ]
+  },
+  "wht_basis": {
+    "line_level_metadata": true,
+    "supplier_or_jurisdiction_dependent": true,
+    "primary_nature": "tax_or_cash_timing_treatment",
+    "supported_basis_modes": [
+      "none",
+      "base_only",
+      "base_plus_contingency"
+    ],
+    "supported_gross_up_modes": [
+      "withheld_from_payment",
+      "grossed_up_by_payer"
+    ],
+    "does_not_automatically_redefine_capex_total": true
+  },
+  "depreciation_basis": {
+    "required_fields": [
+      "depreciable_flag",
+      "depreciation_category",
+      "useful_life_years",
+      "depreciation_basis_mode"
+    ],
+    "supported_basis_modes": [
+      "base_only",
+      "base_plus_nonrecoverable_vat",
+      "base_plus_contingency",
+      "base_plus_contingency_plus_nonrecoverable_vat"
+    ],
+    "separate_from_current_runtime_tax_book_engine": true
+  },
+  "scenario_semantics": {
+    "override_keying": "sub_line_id",
+    "override_rule": "replace_not_delta",
+    "duplicated_scenarios_preserve_overrides": true,
+    "deleted_readded_lines_require_new_identity_semantics": true,
+    "derived_tax_or_depreciation_amounts_direct_overrideable": false
+  },
+  "user_added_sub_lines": {
+    "supported": true,
+    "ownership": "project_owned_baseline_plus_scenario_override_by_sub_line_id",
+    "exports_basis_metadata": true
+  },
+  "export_strategy": {
+    "CapEx": "compact_indicator_only_if_needed_later",
+    "CapEx_Items": "future_read_only_line_metadata_columns",
+    "CapEx_SubLines_Audit": "preferred_first_location_for_detailed_basis_evidence",
+    "tax_depreciation_audit_sheets": "separate_output_sheets_linked_by_basis_labels",
+    "reconciliation_sheets": "basis_evidence_not_hidden_math"
+  },
+  "generic_compatibility": {
+    "supported_paths": ["TUHO", "Oborovo", "Generic Solar", "Generic Wind"],
+    "no_template_specific_assumptions": true,
+    "generic_governance_note": "generic paths remain exploratory/unvalidated unless separately validated"
+  },
+  "implementation_options": {
+    "A_widen_capex_sub_lines": {
+      "pros": ["simple_query_path", "easy_export_joins", "clear_scalar_validation"],
+      "cons": ["many_nullable_columns", "early_schema_commitment", "weaker_future_detail_flexibility"],
+      "migration_impact": "medium",
+      "validation_complexity": "low_to_medium",
+      "export_compatibility": "high",
+      "rollback_risk": "medium"
+    },
+    "B_capex_sub_line_tax_details_table": {
+      "pros": ["strong_separation_of_concerns", "future_normalization_support"],
+      "cons": ["more_joins", "larger_migration_surface", "heavier_for_simple_fields"],
+      "migration_impact": "medium_to_high",
+      "validation_complexity": "medium",
+      "export_compatibility": "medium",
+      "rollback_risk": "medium"
+    },
+    "C_json_metadata_on_sub_line": {
+      "pros": ["flexible", "low_schema_churn"],
+      "cons": ["weaker_validation", "harder_auditability", "weaker_reporting_discipline"],
+      "migration_impact": "low",
+      "validation_complexity": "high",
+      "export_compatibility": "medium_to_low",
+      "rollback_risk": "low_to_medium"
+    },
+    "D_hybrid_scalar_columns_plus_detail_tables": {
+      "pros": ["stable_scalar_basis_fields", "future_detail_flexibility", "strong_export_audit_fit"],
+      "cons": ["higher_upfront_architecture_discipline", "more_moving_parts"],
+      "migration_impact": "medium",
+      "validation_complexity": "medium",
+      "export_compatibility": "high",
+      "rollback_risk": "medium"
+    }
+  },
+  "preferred_architecture": "D_hybrid_scalar_columns_plus_detail_tables",
+  "rejected_alternatives": [
+    "A_as_full_default",
+    "B_as_full_default",
+    "C_as_full_default"
+  ],
+  "implementation_sequence": [
+    "57A-10E_persistence_field_shortlist_and_validation_rules",
+    "57A-10F_audit_export_evidence_only",
+    "57A-10G_safe_persistence_and_scenario_override_support",
+    "57A-10H_tax_and_depreciation_engine_wiring_if_separately_approved"
+  ],
+  "risk_framing": {
+    "parity_risk": "low_if_audit_only_first_medium_if_runtime_too_early",
+    "tax_risk": "high_if_basis_or_recoverability_hardcoded_prematurely",
+    "excel_replacement_value": "high",
+    "rollback_strategy": "remove_basis_evidence_without_redefining_capex_amount_semantics"
+  },
+  "documented_topics": [
+    "vat_basis",
+    "wht_basis",
+    "depreciation_basis",
+    "scenario_semantics",
+    "user_added_line_behavior",
+    "export_audit_strategy",
+    "Generic Solar/Wind compatibility",
+    "implementation_options",
+    "preferred_architecture"
+  ],
+  "files_not_changed": [
+    "app/waterfall_core.py",
+    "app/services/run_service.py",
+    "app/services/capex_sub_lines_integration.py",
+    "app/excel_export.py",
+    "app/persistence",
+    "app/project_factories.py",
+    "schema",
+    "migrations",
+    "app/templates",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "design_only_boundaries": [
+    "no_runtime_implementation",
+    "no_schema_changes",
+    "no_export_changes",
+    "no_run_changes",
+    "no_financial_formula_changes",
+    "no_tax_engine_wiring",
+    "no_depreciation_engine_wiring",
+    "no_idc_wiring"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "recommendation": "PASS"
+}
