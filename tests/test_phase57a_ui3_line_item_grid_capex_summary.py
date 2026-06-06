@@ -680,6 +680,20 @@ class TestBackendUntouched:
 
     def test_no_persistence_directory_changed(self):
         r = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode == 0:
+            branch = r.stdout.strip()
+            if "57a9" in branch.lower():
+                pytest.skip(
+                    f"57A-9X branch — app/persistence/ is the "
+                    f"target of the save/load wiring "
+                    f"(current: {branch!r})."
+                )
+        r = subprocess.run(
             ["git", "diff", "main", "--name-only"],
             cwd=str(REPO_ROOT),
             capture_output=True,

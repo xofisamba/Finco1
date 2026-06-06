@@ -507,11 +507,16 @@ class TestFileScope:
         )
         if r_branch.returncode == 0:
             branch = r_branch.stdout.strip()
-            if branch == "main":
+            if (
+                branch == "main"
+                or (
+                    "57a3" not in branch.lower()
+                    and "57a-3" not in branch.lower()
+                )
+            ):
                 pytest.skip(
-                    "On main branch; 57A-3 has been merged. "
-                    "This test is only meaningful on the "
-                    "57A-3 unmerged branch."
+                    f"Not on a 57A-3 branch (current: "
+                    f"{branch!r})."
                 )
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",

@@ -141,6 +141,7 @@ def save_project(
     governance_state: Optional[dict[str, Any]] = None,
     last_run_summary: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
+    capex_sub_lines: Optional[list] = None,
 ) -> "ProjectRecord":
     now = _now_utc()
     governance_state = governance_state or {}
@@ -224,6 +225,52 @@ def save_project(
                     created_at.isoformat(),
                     now.isoformat(),
                 ),
+            )
+
+        # Phase 57A-9C: optionally replace the project's
+        # user-added CAPEX sub-lines. This happens in the
+        # same transaction as the project row write so a
+        # partial failure rolls back both. The sub-line
+        # upsert is audit-friendly: rows are never
+        # hard-deleted, only soft-deleted. See
+        # replace_sub_lines_for_project for the full
+        # upsert + soft-delete semantic.
+        if capex_sub_lines is not None:
+            from app.persistence.records import ProjectRecord
+            from app.persistence.capex_sub_lines import (
+                assert_project_allows_capex_sub_lines,
+                replace_sub_lines_for_project,
+            )
+            # Defense in depth: factory_template projects
+            # cannot have sub-lines. The helper below is the
+            # single source of truth for this invariant.
+            project_record_for_guard = ProjectRecord(
+                project_id=project_id,
+                user_id=user_id,
+                project_code=project_code,
+                project_name=project_name,
+                project_type=project_type,
+                project_origin=project_origin,
+                source_project_template=source_project_template,
+                template_source=effective_template_source,
+                baseline_snapshot=baseline_snapshot,
+                archived=bool(archived),
+                is_readonly=bool(is_readonly),
+                governance_state=governance_state,
+                last_run_summary=last_run_summary,
+                replay_metadata=replay_metadata,
+                created_at=created_at,
+                updated_at=now,
+            )
+            from app.persistence.capex_sub_lines import (
+                assert_project_allows_capex_sub_lines,
+                replace_sub_lines_for_project,
+            )
+            assert_project_allows_capex_sub_lines(project_record_for_guard)
+            replace_sub_lines_for_project(
+                cur,
+                project_id=project_id,
+                sub_lines=capex_sub_lines,
             )
 
     from app.persistence.records import ProjectRecord
@@ -492,3 +539,73 @@ def _fill_missing_defaults(snapshot: dict[str, Any]) -> None:
     for k, v in defaults.items():
         if k not in snapshot:
             snapshot[k] = v
+
+
+# ============================================================
+# Phase 57A-9C: CAPEX sub-lines load wiring
+# ============================================================
+
+
+def get_project_with_sub_lines(
+    user_id: str,
+    project_code: str,
+    include_inactive_sub_lines: bool = False,
+) -> "tuple[Optional[ProjectRecord], tuple[Any, ...]]":
+    """Load a project and its CAPEX sub-lines in one call.
+
+    Returns a ``(project_record, sub_lines)`` tuple. ``project_record``
+    is ``None`` if no project exists for the given
+    (user_id, project_code). The ``sub_lines`` tuple is empty
+    for projects that have no user-added sub-lines (the
+    typical case for factory-template projects).
+
+    Soft-deleted sub-lines are excluded by default; pass
+    ``include_inactive_sub_lines=True`` to include them (for
+    audit / replay).
+
+    The sub-lines are returned in the canonical order
+    ``(parent_category_code ASC, display_order ASC)`` — the
+    same order used by the LineItemGrid render path. The
+    caller can use this order directly without re-sorting.
+    """
+    project_record = get_project_by_code(user_id, project_code)
+    if project_record is None:
+        return None, ()
+    from app.persistence.capex_sub_lines import (
+        list_sub_lines_for_project,
+    )
+    with get_cursor() as cur:
+        sub_lines = list_sub_lines_for_project(
+            cur,
+            project_record.project_id,
+            include_inactive=include_inactive_sub_lines,
+        )
+    return project_record, sub_lines
+
+
+def get_project_by_id_with_sub_lines(
+    project_id: str,
+    user_id: str,
+    include_inactive_sub_lines: bool = False,
+) -> "tuple[Optional[Any], tuple[Any, ...]]":
+    """Same as ``get_project_with_sub_lines`` but by ``project_id``."""
+    from app.persistence.capex_sub_lines import (
+        list_sub_lines_for_project,
+    )
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM projects WHERE project_id=? AND user_id=?",
+            (project_id, user_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None, ()
+    from app.persistence.records import ProjectRecord
+    project_record = ProjectRecord.from_row(row)
+    with get_cursor() as cur:
+        sub_lines = list_sub_lines_for_project(
+            cur,
+            project_id,
+            include_inactive=include_inactive_sub_lines,
+        )
+    return project_record, sub_lines

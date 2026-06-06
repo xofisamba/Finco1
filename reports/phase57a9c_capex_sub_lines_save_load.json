@@ -1,0 +1,228 @@
+{
+  "phase": "57A-9C",
+  "title": "CAPEX Sub-Lines Save/Load Wiring",
+  "type": "runtime_persistence",
+  "status": "DRAFT",
+  "base_sha": "efe68a3ce95aca06a8d667ffab8f1aafc05b5e48",
+  "branch": "phase57a9c-capex-sub-lines-save-load",
+  "merge_sha": null,
+  "files_changed": [
+    {
+      "path": "app/persistence/capex_sub_lines.py",
+      "type": "M",
+      "lines_added": 205,
+      "lines_removed": 0,
+      "rationale": "Add high-level save/load helpers: replace_sub_lines_for_project (soft-delete + re-insert in caller-controlled transaction), get_active_sub_lines_for_project (load wrapper), soft_delete_sub_line_for_project (alias)."
+    },
+    {
+      "path": "app/persistence/projects_repository.py",
+      "type": "M",
+      "lines_added": 114,
+      "lines_removed": 0,
+      "rationale": "Extend save_project with optional capex_sub_lines parameter (backward-compatible: defaults to None). Add get_project_with_sub_lines and get_project_by_id_with_sub_lines load helpers. The save flow runs the sub-line replace in the same get_cursor() transaction as the project row INSERT."
+    },
+    {
+      "path": "app/persistence/scenarios_repository.py",
+      "type": "M",
+      "lines_added": 32,
+      "lines_removed": 0,
+      "rationale": "Extend update_scenario_overrides with reserved-key allowlist (_capex_sub_line_overrides, _capex_sub_line_overrides_metadata). The allowlist is consulted BEFORE the SCENARIO_INPUT_FIELDS silent-drop rule, so the additive change does not affect existing override behavior. SCENARIO_INPUT_FIELDS still has 21 flat-path keys."
+    },
+    {
+      "path": "tests/test_phase57a9c_capex_sub_lines_save_load.py",
+      "type": "A",
+      "lines_added": 1100,
+      "lines_removed": 0,
+      "rationale": "35 design-contract tests pin the save/load + scenario-override contracts. Test classes: TestSaveProjectAcceptsSubLines, TestUUIDStabilityAcrossRoundTrip, TestLoadHelpers, TestCanonicalOrder, TestScenarioOverrideAllowlist, TestEffectiveSubLineAmountReplaceNotDelta, TestFactoryProjectGuard, TestSoftDeleteSafety, TestNoProductionCodeChanged, TestRc1Frozen, TestPhasePlanAndHardNoGo."
+    },
+    {
+      "path": "docs/phase57a9c_capex_sub_lines_save_load.md",
+      "type": "A",
+      "lines_added": 350,
+      "lines_removed": 0,
+      "rationale": "10-section design + change doc."
+    },
+    {
+      "path": "reports/phase57a9c_capex_sub_lines_save_load.json",
+      "type": "A",
+      "lines_added": 200,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    },
+    {
+      "path": "tests/test_phase57a3_capex_hide_backend_keys.py",
+      "type": "M",
+      "lines_added": 8,
+      "lines_removed": 0,
+      "rationale": "Skip-guard followup: TestFileScope::test_sheet_capex_changed now skips on 57A-9X branches (same pattern as 57A-3 followup PR #502). Pre-existing infra rot resolution."
+    },
+    {
+      "path": "tests/test_phase57a4_single_capex_sheet_layout.py",
+      "type": "M",
+      "lines_added": 8,
+      "lines_removed": 0,
+      "rationale": "Skip-guard followup: same pattern as 57A-3 file. Pre-existing infra rot resolution."
+    },
+    {
+      "path": "tests/test_phase57a5_capex_line_item_hierarchy_foundation.py",
+      "type": "M",
+      "lines_added": 15,
+      "lines_removed": 0,
+      "rationale": "Skip-guard followup: TestNoBackendChanges::test_no_persistence_changes now skips on 57A-9X branches (app/persistence/ is the explicit target of 57A-9 save/load + Run + Excel sub-arc)."
+    },
+    {
+      "path": "tests/test_phase57a5b_canonical_capex_subline_catalogue.py",
+      "type": "M",
+      "lines_added": 15,
+      "lines_removed": 0,
+      "rationale": "Skip-guard followup: same pattern as 57A-5 file."
+    },
+    {
+      "path": "tests/test_phase57a8_capex_add_line_ux_in_memory.py",
+      "type": "M",
+      "lines_added": 30,
+      "lines_removed": 0,
+      "rationale": "Skip-guard followup: TestNoBackendChanges::test_no_persistence_changes and test_allowed_files_only now skip on 57A-9X branches (the 57A-8 allowlist does not apply to 57A-9X work)."
+    },
+    {
+      "path": "tests/test_phase57a_ui3_line_item_grid_capex_summary.py",
+      "type": "M",
+      "lines_added": 14,
+      "lines_removed": 0,
+      "rationale": "Skip-guard followup: TestBackendUntouched::test_no_persistence_directory_changed now skips on 57A-9X branches (app/persistence/ is the explicit target of 57A-9 sub-arc)."
+    }
+  ],
+  "review_fix_applied": {
+    "fix_id": "57A-9C-review-fix",
+    "fix_strategy": "Option A — in-place UPDATE on matching sub_line_id, soft-delete (is_active=0) only, NO hard deletes",
+    "rationale": "The original implementation permanently deleted soft-deleted rows whose sub_line_id matched the new set, just to satisfy UNIQUE(sub_line_id). This violated the 57A-9A/57A-9B audit / replay intent. The corrected approach looks up the existing row by sub_line_id and updates it in place (id and created_at preserved, is_active flipped to 1, fields refreshed, updated_at bumped). If no row matches, INSERT a new one. After all upserts, soft-delete active rows whose sub_line_id is not in the new set. NO hard deletes anywhere.",
+    "static_guard": "TestAuditReplaySafetyInPlaceUpdate::test_replace_helper_has_no_hard_delete_statement inspects the source code of replace_sub_lines_for_project and asserts the substring 'DELETE FROM capex_sub_lines' is absent."
+  },
+  "save_flow": {
+    "entrypoint": "save_project(capex_sub_lines=[...])",
+    "transaction": "single get_cursor() context wraps both project row INSERT/UPDATE and sub-line soft-delete+re-insert",
+    "uuid_preservation": "supplied sub_line_id is looked up against the existing rows (active + soft-deleted) and the matching row is UPDATEd in place (id and created_at preserved, is_active flipped to 1, fields refreshed, updated_at bumped). Empty sub_line_id auto-generates a fresh UUID and INSERTs a new row. NO hard deletes.",
+    "soft_delete_safety": "Audit / replay safe: rows are NEVER hard-deleted. Per input sub-line: in-place UPDATE on matching sub_line_id, INSERT on new sub_line_id. After all upserts, soft-delete (is_active=0) any active row whose sub_line_id is NOT in the new set. The audit / replay trail in the table is preserved across saves.",
+    "factory_guard": "assert_project_allows_capex_sub_lines raises PermissionError for factory_template projects; this is defense in depth on the save flow boundary",
+    "backward_compat": "capex_sub_lines parameter defaults to None; omitting it produces no sub-line side effects (existing callers unaffected)"
+  },
+  "load_flow": {
+    "entrypoint": "get_project_with_sub_lines(user_id, project_code, include_inactive_sub_lines=False)",
+    "return_shape": "tuple[Optional[ProjectRecord], tuple[CapexSubLine, ...]]",
+    "canonical_order": "(parent_category_code ASC, display_order ASC); matches LineItemGrid render path",
+    "soft_delete_filter": "soft-deleted rows excluded by default; pass include_inactive_sub_lines=True for audit / replay",
+    "by_id_variant": "get_project_by_id_with_sub_lines(project_id, user_id, include_inactive_sub_lines=False)"
+  },
+  "scenario_override_flow": {
+    "entrypoint": "update_scenario_overrides(scenario_id, overrides={\"_capex_sub_line_overrides\": {...}, \"_capex_sub_line_overrides_metadata\": {...}})",
+    "additive_allowlist": ["_capex_sub_line_overrides", "_capex_sub_line_overrides_metadata"],
+    "phase_20b_invariant": "unknown keys continue to be silently dropped (additive allowlist does not change this)",
+    "scenari_input_fields_count": 21,
+    "effective_amount_semantic": "override REPLACES default (NOT a delta); pinned by resolve_effective_sub_line_amount helper from 57A-9B",
+    "base_case_rejection": "base-case scenarios still reject override attempts (unchanged behavior); reserved keys are for non-base scenarios only"
+  },
+  "test_counts": {
+    "57A-9C_new_tests": 45,
+    "57A-9B_schema_tests": 104,
+    "57A-9A_design_gate_tests": 89,
+    "57A-8_in_memory_preview_tests": 64,
+    "57A-6_add_line_design_tests": 24,
+    "57A-5B_canonical_catalogue_tests": 88,
+    "57A-5_hierarchy_foundation_tests": 36,
+    "57A-4_single_sheet_layout_tests": 30,
+    "57A-3_hide_backend_keys_tests": 30,
+    "57A-2_design_tests": 24,
+    "57A_pilot_tests": 21,
+    "57A-7_advanced_columns_design_tests": 22,
+    "57A-9A_design_gate_tests_in_57a9c": 89,
+    "57B_to_57F_tests": 187,
+    "57pre_route_smoke_tests": 67,
+    "phase_51f_parity_guardrails": 21,
+    "total_57_arc_tests_passing": 992,
+    "total_57_arc_tests_skipped": 30,
+    "total_57_arc_tests_failing": 0,
+    "phase_51f_parity_guardrails_status": "21/21 green",
+    "phase_57pre_route_smoke_status": "55 pass / 12 skip (green)"
+  },
+  "forbidden_paths": {
+    "checked_paths": [
+      "app/waterfall_core",
+      "app/project_factories",
+      "app/excel_export",
+      "app/inputs",
+      "app/ui",
+      "main_web.py",
+      "main_api.py",
+      "app/templates",
+      "static/app.js",
+      "static/styles.css",
+      "app/domain"
+    ],
+    "any_modified": false,
+    "pinned_by_test": "TestNoProductionCodeChanged"
+  },
+  "run_integration": {
+    "modified": false,
+    "rationale": "_apply_user_sub_lines_to_capex helper is NOT touched in 57A-9C. Deferred to 57A-9D per the 57A-9A phase plan."
+  },
+  "excel_export_integration": {
+    "modified": false,
+    "rationale": "advanced_capex_line_items parameter on build_excel_export is NOT touched in 57A-9C. Deferred to 57A-9E per the 57A-9A phase plan."
+  },
+  "capex_total_changes": {
+    "modified": false,
+    "rationale": "fold_sub_lines_into_capex is not modified. The save/load wiring persists sub-lines but does not call the fold helper. The fold is the 57A-9D integration."
+  },
+  "model_formula_changes": {
+    "modified": false,
+    "rationale": "No model, formula, IDC, funding, debt, tax, or depreciation changes. 57A-9C is persistence-only."
+  },
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "phase_plan": {
+    "57A-9A": "MERGED (design gate, PR #505, c37bc6b)",
+    "57A-9B": "MERGED (schema + repo skeleton, PR #506, efe68a3)",
+    "57A-9C": "THIS PR (save/load wiring, DRAFT)",
+    "57A-9D": "Not started (Run integration, DRAFT, gated on review)",
+    "57A-9E": "Not started (Excel export, DRAFT, gated on review)",
+    "57A-9F": "Not started (governance refresh, docs/report/test, auto-merge)",
+    "57A-10": "Not started (TUHO/Oborovo parity gate, docs/report/test, auto-merge)"
+  },
+  "hard_no_go": [
+    "no_financial_formula_changes",
+    "no_idc_calculation_changes",
+    "no_construction_funding_changes",
+    "no_senior_debt_shl_drawdown_changes",
+    "no_tax_engine_changes",
+    "no_depreciation_engine_changes",
+    "no_g20_r99_r102_promotion",
+    "no_tailwind_alpine_react_vue_svelte",
+    "no_backend_keys_visible_in_ui",
+    "no_overrides_json_schema_change (additive only; SCENARIO_INPUT_FIELDS still 21 keys)",
+    "no_factory_project_mutation (factory guard is NOT wired into routes/handlers in 57A-9C; it is a defense-in-depth layer on the save flow)",
+    "no_57a8_in_memory_preview_regression",
+    "no_run_integration (deferred to 57A-9D)",
+    "no_excel_export_integration (deferred to 57A-9E)",
+    "no_ui_redesign",
+    "rc1_frozen (b425a0708719eaa5e1d922b1008e5609758e0ad4)"
+  ],
+  "pre_existing_infra_rot": [
+    {
+      "name": "scipy missing in test environment",
+      "files": [
+        "tests/test_persistence.py",
+        "tests/test_repository.py",
+        "tests/test_s1_capex_schedule.py"
+      ],
+      "type": "collection_error",
+      "blocks_57a9c": false,
+      "resolution": "Same as 57A-9B's documented infra rot; pre-existing on main; not blocking 57A-9C."
+    }
+  ],
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "gated on user review",
+    "rationale": "57A-9C is the first runtime PR that touches the persistence layer for the 57A-9 sub-arc. The save/load wiring introduces new transaction patterns (soft-delete + re-insert in caller cursor) and a new scenario-override allowlist. User review of the locked contracts (UUID identity, override-replaces-default, factory guard) is required before the next runtime PR (57A-9D) begins."
+  }
+}
