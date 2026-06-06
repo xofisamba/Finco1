@@ -229,22 +229,80 @@ def promote_scenario_to_base_case(user_id: str, scenario_id: str) -> "Optional[S
 
 
 def duplicate_scenario(user_id: str, scenario_id: str, new_name: Optional[str] = None) -> "Optional[ScenarioRecord]":
-    from app.persistence.repository import save_scenario
+    from app.persistence.records import ScenarioRecord
+    import copy
     record = get_scenario(scenario_id, user_id)
     if record is None:
         return None
     copy_name = new_name or f"{record.scenario_name} Copy"
-    return save_scenario(
-        user_id=user_id,
+    new_scenario_id = uuid.uuid4().hex[:16]
+    now = _now_utc()
+    replay_metadata = copy.deepcopy(record.replay_metadata or {})
+    replay_metadata.setdefault("project_id", record.project_id)
+    replay_metadata["scenario_id"] = new_scenario_id
+
+    # Duplicate preserves scenario payload integrity (snapshot, base_input_set,
+    # and overrides) while still creating a fresh non-base scenario shell with
+    # a new scenario_id / name / timestamps and copied_from_scenario_id lineage.
+    snapshot = copy.deepcopy(record.snapshot or {})
+    governance_state = copy.deepcopy(record.governance_state or {})
+    last_run_summary = copy.deepcopy(record.last_run_summary or {})
+    base_input_set = copy.deepcopy(record.base_input_set or {})
+    overrides = copy.deepcopy(record.overrides or {})
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scenarios (
+                scenario_id, project_id, user_id, scenario_name, project_code,
+                source_project_template, copied_from_scenario_id, archived,
+                is_base_case, parent_scenario_id,
+                base_input_set_json, overrides_json,
+                snapshot_json, governance_state_json,
+                last_run_summary_json, replay_metadata_json,
+                schema_version, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_scenario_id,
+                record.project_id,
+                user_id,
+                copy_name,
+                record.project_code,
+                record.source_project_template,
+                record.scenario_id,
+                _to_json(base_input_set),
+                _to_json(overrides),
+                _to_json(snapshot),
+                _to_json(governance_state),
+                _to_json(last_run_summary),
+                _to_json(replay_metadata),
+                record.schema_version or "1.0",
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+
+    return ScenarioRecord(
+        scenario_id=new_scenario_id,
         project_id=record.project_id,
+        user_id=user_id,
         scenario_name=copy_name,
         project_code=record.project_code,
         source_project_template=record.source_project_template,
-        snapshot=record.snapshot,
-        governance_state=record.governance_state,
-        last_run_summary=record.last_run_summary,
         copied_from_scenario_id=record.scenario_id,
-        replay_metadata=record.replay_metadata,
+        archived=False,
+        is_base_case=False,
+        parent_scenario_id=None,
+        base_input_set=base_input_set,
+        overrides=overrides,
+        schema_version=record.schema_version or "1.0",
+        snapshot=snapshot,
+        governance_state=governance_state,
+        last_run_summary=last_run_summary,
+        replay_metadata=replay_metadata,
+        created_at=now,
+        updated_at=now,
     )
 
 
