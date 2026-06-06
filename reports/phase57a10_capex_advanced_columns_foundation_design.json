@@ -1,0 +1,191 @@
+{
+  "phase": "57A-10",
+  "title": "CAPEX advanced columns foundation design",
+  "type": "docs/report/test-only",
+  "branch": "phase57a10-capex-advanced-columns-foundation-design",
+  "requested_base_sha": "9a37b5ec79369e64d8c1acf0838f247f7b3872d5",
+  "status": "foundation_design_only",
+  "reviewed_inputs": [
+    "docs/phase57a2_capex_2_design_characterization.md",
+    "docs/phase57a7_capex_advanced_columns_design.md",
+    "docs/phase57a9a_capex_add_line_persistence_design_gate.md",
+    "docs/phase57a9b_capex_sub_lines_schema.md",
+    "docs/phase57a9c_capex_sub_lines_save_load.md",
+    "docs/phase57a9d_capex_sub_lines_run_integration.md",
+    "docs/phase57a9e_capex_sub_lines_excel_export_audit_integration.md",
+    "app/persistence/capex_sub_lines.py",
+    "app/persistence/scenarios_repository.py",
+    "app/ui/project_context.py",
+    "app/excel_export.py"
+  ],
+  "required_columns": [
+    {
+      "name": "label",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "not_required_now",
+      "calculation_authority": "display_only"
+    },
+    {
+      "name": "amount_keur",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_not_delta",
+      "calculation_authority": "run_and_export"
+    },
+    {
+      "name": "cost_per_mw",
+      "ownership": "derived",
+      "scenario_override_semantics": "derived_from_effective_amount",
+      "calculation_authority": "derived_display"
+    },
+    {
+      "name": "contingency_pct",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_not_delta_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    },
+    {
+      "name": "vat_applicability",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_not_delta_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    },
+    {
+      "name": "vat_rate_pct",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_not_delta_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    },
+    {
+      "name": "wht_rate_pct",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_not_delta_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    },
+    {
+      "name": "depreciation_category",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_not_delta_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    },
+    {
+      "name": "depreciation_life_years",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_not_delta_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    },
+    {
+      "name": "comments",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "optional_later_descriptive_only",
+      "calculation_authority": "display_only"
+    },
+    {
+      "name": "payment_schedule",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_entire_schedule_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    },
+    {
+      "name": "utilisation",
+      "ownership": "project_baseline",
+      "scenario_override_semantics": "replace_entire_schedule_if_enabled",
+      "calculation_authority": "future_runtime_only"
+    }
+  ],
+  "ownership_model": {
+    "sub_line_id_identity": "project_level_uuid",
+    "scenario_role": "override_state_only",
+    "factory_projects": "read_only_no_user_owned_advanced_rows",
+    "source_invariant": "scenario_copy_preserves_same_project_level_sub_line_id_reference"
+  },
+  "scenario_override_semantics": {
+    "core_rule": "override_replaces_baseline_not_delta",
+    "metadata_copy_rule": "override_metadata_must_travel_with_override_values",
+    "unknown_override_keys": "phase20b_silent_drop_preserved"
+  },
+  "excel_compatibility": {
+    "factory_parity_default": "unchanged",
+    "future_advanced_column_export_location": "dedicated_audit_detail_sheets",
+    "generic_projects": "must_not_be_presented_as_tuho_oborovo_parity_evidence"
+  },
+  "strategy_options": [
+    {
+      "option": "A",
+      "name": "widen_capex_sub_lines_table",
+      "summary": "simple_queries_but_large_nullable_schema_surface"
+    },
+    {
+      "option": "B",
+      "name": "json_blob_per_sub_line",
+      "summary": "flexible_but_weaker_validation_and_auditability"
+    },
+    {
+      "option": "C",
+      "name": "hybrid_core_columns_plus_json_extension",
+      "summary": "balanced_but_more_complex"
+    },
+    {
+      "option": "D",
+      "name": "scenario_owned_advanced_column_table",
+      "summary": "misaligned_with_project_level_uuid_ownership"
+    },
+    {
+      "option": "E",
+      "name": "project_owned_baseline_plus_reserved_scenario_override_keys",
+      "summary": "preferred_continuation_of_57a9a_to_57a9h"
+    }
+  ],
+  "preferred_strategy": "E",
+  "validation_rules": [
+    "comments_bounded_length",
+    "contingency_pct_0_to_100",
+    "vat_rate_pct_0_to_100",
+    "wht_rate_pct_0_to_100",
+    "depreciation_life_years_positive_if_present",
+    "payment_schedule_length_matches_horizon",
+    "payment_schedule_sums_to_1_0",
+    "utilisation_length_matches_horizon",
+    "utilisation_non_negative"
+  ],
+  "phase_plan": [
+    "57A-10A_metadata_safe_columns",
+    "57A-10B_descriptive_baseline_persistence",
+    "57A-10C_scenario_override_extension",
+    "57A-10D_export_evidence",
+    "57A-10E_high_risk_runtime_wiring"
+  ],
+  "design_only_boundaries": [
+    "vat_wht_depreciation_payment_schedule_utilisation_are_design_only",
+    "no_runtime_changes",
+    "no_schema_changes",
+    "no_ui_changes",
+    "no_formula_changes",
+    "no_excel_export_changes",
+    "no_idc_runtime_wiring"
+  ],
+  "files_not_changed": [
+    "app/waterfall_core.py",
+    "app/services/run_service.py",
+    "app/services/capex_sub_lines_integration.py",
+    "app/persistence/capex_sub_lines.py",
+    "app/excel_export.py",
+    "app/project_factories.py",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "schema_files_not_changed": [
+    "schema",
+    "migrations"
+  ],
+  "ui_files_not_changed": [
+    "app/templates/partials/sheet_capex.html",
+    "app/templates/partials/workspace_shell.html",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "formula_files_not_changed": [
+    "app/waterfall_core.py"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "recommendation": "PASS"
+}
