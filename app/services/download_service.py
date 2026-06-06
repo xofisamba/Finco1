@@ -388,6 +388,9 @@ async def execute_post_download_route(
             scenario_provenance=scenario_provenance,
             warning_note=runtime_warning,
         )
+        if project_record:
+            replay_metadata["project_origin"] = project_record.project_origin
+        replay_metadata.setdefault("capex_sub_lines_audit_mode", "active_only")
         if project_record and project_record.project_origin == "saved_baseline":
             replay_metadata["baseline_source"] = True
 

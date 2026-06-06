@@ -9,7 +9,12 @@ from pathlib import Path
 
 import openpyxl
 import pytest
+try:
+    from fastapi.testclient import TestClient
+except ModuleNotFoundError:  # pragma: no cover - environment-dependent
+    TestClient = None
 
+from app.auth import COOKIE_NAME, create_session_token
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,6 +37,17 @@ def test_db(monkeypatch):
                 (Path(str(db_file) + suffix)).unlink(missing_ok=True)
             except PermissionError:
                 pass
+
+
+@pytest.fixture
+def client(test_db):
+    if TestClient is None:
+        pytest.skip("FastAPI/TestClient not installed in this environment")
+    import main_web
+
+    tc = TestClient(main_web.app)
+    tc.cookies.set(COOKIE_NAME, create_session_token())
+    return tc
 
 
 def _load_wb(excel_bytes: bytes):
@@ -102,15 +118,17 @@ def _mapping_rows(ws) -> list[tuple[str, str]]:
 
 
 def _make_user_project_with_sub_lines(user_id: str = "u57a9e"):
-    from app.persistence.projects_repository import save_project
+    from app.persistence.repository import create_project_record
 
-    return save_project(
+    return create_project_record(
         user_id=user_id,
-        project_code="PRJ-CAPEX-AUDIT",
+        project_code="pilot-capex-audit",
         project_name="Capex Audit Project",
-        source_project_template="Generic",
+        project_type="Solar",
         project_origin="user_project",
-        is_readonly=False,
+        template_source="generic_solar",
+        baseline_snapshot=_snapshot(),
+        governance_state={"g20_status": "BLOCKED", "r99_r102_status": "NOT_APPROVED"},
     )
 
 
@@ -145,27 +163,56 @@ def _soft_delete(project_id: str, sub_line_id: str):
 
 
 def _make_non_base_scenario(project, user_id: str, overrides: dict):
-    from app.persistence.scenarios_repository import add_scenario, get_or_create_base_case_scenario
+    from app.persistence.repository import add_scenario, seed_scenarios_if_needed
 
-    base = get_or_create_base_case_scenario(
+    baseline = _snapshot()
+    base = seed_scenarios_if_needed(
         user_id=user_id,
         project_id=project.project_id,
         project_code=project.project_code,
-        project_name=project.project_name,
         project_type="Solar",
-        source_project_template="Generic",
-        base_input_set={"capacity_mw": 50.0, "tariff_eur_mwh": 60.0},
-        governance_state={},
+        source_project_template="generic_solar",
+        baseline_snapshot=baseline,
+        governance_state={"g20_status": "BLOCKED", "r99_r102_status": "NOT_APPROVED"},
+        template_origin="generic_solar",
     )
-    return add_scenario(
+    scenario = add_scenario(
         user_id=user_id,
         project_id=project.project_id,
         project_code=project.project_code,
         scenario_name="Capex Override",
         parent_scenario_id=base.scenario_id,
-        base_input_set={"capacity_mw": 50.0, "tariff_eur_mwh": 60.0},
+        base_input_set=base.base_input_set,
         overrides=overrides,
     )
+    return base, scenario
+
+
+def _snapshot(**overrides):
+    data = {
+        "active_project": "pilot-capex-audit",
+        "project_name": "Capex Audit Project",
+        "project_type": "Solar",
+        "project_origin": "user_created",
+        "template_source": "generic_solar",
+        "country_market": "Croatia",
+        "scenario": "Base",
+        "capacity_mw": "50",
+        "cod_date": "2027-01-01",
+        "construction_months": "12",
+        "horizon_years": "25",
+        "tariff_eur_mwh": "60",
+        "ppa_term_years": "15",
+        "p50_hours": "1400",
+        "opex_y1_keur": "1000",
+        "total_capex_keur": "50000",
+        "gearing_pct": "70",
+        "interest_rate_pct": "5",
+        "tenor_years": "15",
+        "target_dscr": "1.30",
+    }
+    data.update(overrides)
+    return data
 
 
 class TestPhase57A9EExcelExport:
@@ -249,7 +296,7 @@ class TestPhase57A9EExcelExport:
 
         project = _make_user_project_with_sub_lines()
         sub = _create_sub_line(project.project_id, parent="C.02", label="Override EPC", amount=1000.0)
-        scenario = _make_non_base_scenario(
+        _base, scenario = _make_non_base_scenario(
             project,
             "u57a9e",
             {"_capex_sub_line_overrides": {sub.sub_line_id: 1750.0}},
@@ -280,7 +327,7 @@ class TestPhase57A9EExcelExport:
 
         project = _make_user_project_with_sub_lines()
         sub = _create_sub_line(project.project_id, parent="C.02", label="Replace Me", amount=1200.0)
-        scenario = _make_non_base_scenario(
+        _base, scenario = _make_non_base_scenario(
             project,
             "u57a9e",
             {"_capex_sub_line_overrides": {sub.sub_line_id: 300.0}},
@@ -355,7 +402,7 @@ class TestPhase57A9EExcelExport:
 
         project = _make_user_project_with_sub_lines()
         _create_sub_line(project.project_id, parent="C.02", label="Live", amount=100.0)
-        scenario = _make_non_base_scenario(
+        _base, scenario = _make_non_base_scenario(
             project,
             "u57a9e",
             {"_capex_sub_line_overrides": {"stale-uuid-1": 999.0}},
@@ -375,6 +422,78 @@ class TestPhase57A9EExcelExport:
         )
         notes = _notes_dict(wb["CapEx_SubLines_Audit"])
         assert "stale-uuid-1" in notes["Stale Override Handling"]
+
+    def test_download_route_user_project_export_includes_audit_sheet(self, client, test_db):
+        from app.persistence.repository import bind_workspace_to_scenario
+
+        user_id = "1"
+        project = _make_user_project_with_sub_lines(user_id=user_id)
+        _create_sub_line(project.project_id, parent="C.02", label="Extra EPC", amount=1000.0)
+        base_case, _scenario = _make_non_base_scenario(project, user_id, {})
+        bind_workspace_to_scenario(
+            user_id,
+            project.project_id,
+            project.project_code,
+            base_case,
+            governance_state={"g20_status": "BLOCKED", "r99_r102_status": "NOT_APPROVED"},
+        )
+
+        response = client.post("/download", data=_snapshot(active_project=project.project_code))
+        assert response.status_code == 200
+        wb = _load_wb(response.content)
+        assert "CapEx_SubLines_Audit" in wb.sheetnames
+        notes = _notes_dict(wb["CapEx_SubLines_Audit"])
+        assert notes["Project ID"] == project.project_id
+        assert notes["Audit Mode"] == "active_only"
+
+    def test_download_route_factory_exports_do_not_include_audit_sheet(self, client):
+        tuho = client.post("/download", data={"project_type": "Wind", "scenario": "Base"})
+        oborovo = client.post("/download", data={"project_type": "Solar", "scenario": "Base", "active_project": "oborovo"})
+
+        assert tuho.status_code == 200
+        assert oborovo.status_code == 200
+        assert "CapEx_SubLines_Audit" not in _load_wb(tuho.content).sheetnames
+        assert "CapEx_SubLines_Audit" not in _load_wb(oborovo.content).sheetnames
+
+    def test_download_route_propagates_active_scenario_override_metadata(self, client, test_db):
+        from app.persistence.repository import bind_workspace_to_scenario, list_exports, select_scenario
+
+        user_id = "1"
+        project = _make_user_project_with_sub_lines(user_id=user_id)
+        sub = _create_sub_line(project.project_id, parent="C.02", label="Override EPC", amount=1000.0)
+        base_case, scenario = _make_non_base_scenario(
+            project,
+            user_id,
+            {"_capex_sub_line_overrides": {sub.sub_line_id: 1750.0}},
+        )
+        bind_workspace_to_scenario(
+            user_id,
+            project.project_id,
+            project.project_code,
+            base_case,
+            governance_state={"g20_status": "BLOCKED", "r99_r102_status": "NOT_APPROVED"},
+        )
+        assert select_scenario(user_id, project.project_id, scenario.scenario_id) is True
+
+        response = client.post("/download", data=_snapshot(active_project=project.project_code))
+        assert response.status_code == 200
+
+        wb = _load_wb(response.content)
+        row = next(
+            r for r in _sheet_rows_by_business_code(wb["CapEx_SubLines_Audit"])
+            if r["Business Code"] == sub.business_code
+        )
+        assert row["Default Amount (kEUR)"] == 1000
+        assert row["Effective Amount (kEUR)"] == 1750
+        assert row["Scenario Override Applied"] is True
+
+        export = list_exports(user_id, project_id=project.project_id, limit=1)[0]
+        replay = export.replay_metadata
+        assert replay["project_id"] == project.project_id
+        assert replay["active_scenario_id"] == scenario.scenario_id
+        assert replay["active_scenario_name"] == scenario.scenario_name
+        assert replay["project_origin"] == project.project_origin
+        assert replay["capex_sub_lines_audit_mode"] == "active_only"
 
 
 class TestGuardrails:
