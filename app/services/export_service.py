@@ -282,6 +282,7 @@ def build_excel_export_for_post_request(
     # Ensure runtime_origin is in metadata (build_excel_export expects it)
     metadata = dict(replay_metadata)
     metadata["runtime_origin"] = runtime_origin
+    metadata.setdefault("capex_sub_lines_audit_mode", "active_only")
 
     filename = f"fincogpt_{project_type.lower()}_{scenario.lower()}.xlsx"
 
