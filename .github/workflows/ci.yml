@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [main, industry-engine-refactor]
 
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
 jobs:
-  test:
+  core-model-tests:
+    name: Core model tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,9 +25,83 @@ jobs:
       - name: Run tests
         run: |
           python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-core-model \
             tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py \
             tests/test_phase23a_frozen_excel_senior_debt_schedule_runtime_wiring.py \
             tests/test_shl_waterfall_priority.py \
             tests/test_tuho_shl_calibration.py \
             tests/test_revenue.py \
             tests/test_opex.py
+
+  capex-persistence-and-route-smoke:
+    name: CAPEX persistence and route smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies (reproducible via constraints.txt)
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: Run route smoke and CAPEX persistence stack
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-route-smoke \
+            tests/test_phase57pre_route_render_smoke.py
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-capex-hierarchy \
+            tests/test_phase57a5_capex_line_item_hierarchy_foundation.py \
+            tests/test_phase57a5b_canonical_capex_subline_catalogue.py \
+            tests/test_phase57a8_capex_add_line_ux_in_memory.py
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-capex-persistence \
+            tests/test_phase57a9b_capex_sub_lines_schema.py \
+            tests/test_phase57a9c_capex_sub_lines_save_load.py \
+            tests/test_phase57a9d_capex_sub_lines_run_integration.py \
+            tests/test_phase57a9e_capex_sub_lines_excel_export.py
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-capex-download \
+            tests/test_htmx_internal_demo.py -k download
+
+  persistence-and-records-guardrails:
+    name: Persistence and records guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies (reproducible via constraints.txt)
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: Run persistence and records guardrails
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-persistence-guardrails \
+            tests/test_phase52f_persistence_guardrail_specifications.py \
+            tests/test_phase52f_persistence_guardrail_regression.py \
+            tests/test_phase53i1_records_field_shape_import_pins.py \
+            tests/test_phase53i2_records_module_relocation.py \
+            tests/test_phase53i3_no_record_lazy_imports.py \
+            tests/test_phase53i4_records_relocation_closeout.py
+
+  legacy-quarantined-sentinels:
+    name: Legacy quarantined sentinels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies (reproducible via constraints.txt)
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: Verify quarantined legacy tests stay explicitly quarantined
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-legacy-quarantined \
+            tests/test_phase57f_legacy_quarantine.py

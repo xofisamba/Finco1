@@ -18,6 +18,9 @@ on:
   push:
     branches: [main]
 
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
 jobs:
   parity-guardrails:
     name: Parity Guardrails (Phase 51F)
@@ -35,4 +38,5 @@ jobs:
       - name: Run Phase 51F guardrails
         run: |
           python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-parity-guardrails \
             tests/test_phase51f_parallel_work_guardrails.py
