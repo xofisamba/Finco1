@@ -1651,6 +1651,9 @@ class TestNoProductionCodeChanged:
 
     def test_only_persistence_and_tests_changed(self):
         """Allowed: app/persistence/* (production code),
+        app/services/run_service.py (57A-9D wire-up in the
+        user-created path only), app/services/
+        capex_sub_lines_integration.py (57A-9D new helper),
         tests/* (tests), docs/* (docs), reports/* (machine
         reports). Anything else is suspicious."""
         import subprocess
@@ -1668,6 +1671,8 @@ class TestNoProductionCodeChanged:
         )
         allowed_prefixes = (
             "app/persistence/",
+            "app/services/run_service.py",
+            "app/services/capex_sub_lines_integration.py",
             "tests/",
             "docs/",
             "reports/",
