@@ -1,0 +1,175 @@
+{
+  "phase": "57A-10E",
+  "title": "CAPEX tax metadata persistence design",
+  "type": "docs/report/test-only",
+  "branch": "phase57a10e-capex-tax-metadata-persistence-design",
+  "requested_base_sha": "61650d50be0468c4305275668b289b3e462f384e",
+  "status": "persistence_design_only",
+  "reviewed_inputs": [
+    "docs/phase57a10_capex_advanced_columns_foundation_design.md",
+    "docs/phase57a10d_capex_vat_wht_depreciation_basis_design.md",
+    "docs/phase57a7_capex_advanced_columns_design.md",
+    "app/persistence/capex_sub_lines.py",
+    "app/persistence/scenarios_repository.py",
+    "app/excel_export.py",
+    "app/ui/project_context.py"
+  ],
+  "preferred_persistence_architecture": {
+    "option": "C",
+    "name": "hybrid",
+    "summary": "stable_scalar_metadata_on_project_owned_capex_line_plus_detail_tables_only_when_needed"
+  },
+  "ownership_model": {
+    "sub_line_id_identity": "project_level_uuid",
+    "baseline_owner": "project_owned_capex_sub_line",
+    "scenario_role": "override_state_only",
+    "audit_binding": "sub_line_id",
+    "export_binding": "sub_line_id"
+  },
+  "field_shortlist": {
+    "vat": {
+      "required": [
+        "vat_recoverable_flag",
+        "vat_rate_pct",
+        "vat_basis_mode"
+      ],
+      "optional": [
+        "vat_jurisdiction_code"
+      ],
+      "future_only": [
+        "vat_note"
+      ]
+    },
+    "wht": {
+      "required": [
+        "wht_rate_pct",
+        "wht_treatment_mode",
+        "wht_gross_up_flag"
+      ],
+      "optional": [
+        "wht_jurisdiction_code"
+      ],
+      "future_only": [
+        "wht_supplier_reference"
+      ]
+    },
+    "depreciation": {
+      "required": [
+        "depreciation_asset_class",
+        "depreciation_useful_life_years",
+        "depreciable_flag",
+        "depreciation_basis_mode"
+      ],
+      "optional": [],
+      "future_only": [
+        "depreciation_method_code",
+        "depreciation_note"
+      ]
+    }
+  },
+  "scenario_semantics": {
+    "binding_key": "sub_line_id",
+    "override_rule": "replace_not_delta",
+    "overrideable_fields": [
+      "vat_recoverable_flag",
+      "vat_rate_pct",
+      "vat_basis_mode",
+      "wht_rate_pct",
+      "wht_treatment_mode",
+      "wht_gross_up_flag",
+      "depreciation_asset_class",
+      "depreciation_useful_life_years",
+      "depreciable_flag",
+      "depreciation_basis_mode"
+    ],
+    "non_overrideable_fields_by_default": [
+      "vat_jurisdiction_code",
+      "wht_jurisdiction_code",
+      "vat_note",
+      "wht_supplier_reference",
+      "depreciation_note"
+    ],
+    "duplicate_scenario_behavior": "preserve_same_project_level_sub_line_id_references_and_copy_override_payload",
+    "deleted_readded_behavior": "new_line_gets_new_sub_line_id_and_stale_override_ids_must_not_rebind"
+  },
+  "validation_rules": {
+    "allowed_ranges": {
+      "vat_rate_pct": "0_to_100",
+      "wht_rate_pct": "0_to_100",
+      "depreciation_useful_life_years": "positive_integer_gt_0"
+    },
+    "required_combinations": [
+      "vat_recoverable_flag_requires_vat_rate_pct_and_vat_basis_mode",
+      "wht_rate_pct_requires_wht_treatment_mode_and_wht_gross_up_flag",
+      "depreciable_flag_true_requires_asset_class_useful_life_and_basis_mode"
+    ],
+    "invalid_combinations": [
+      "non_depreciable_with_non_empty_useful_life",
+      "gross_up_flag_true_with_non_gross_up_treatment_mode",
+      "tax_rate_without_basis_mode",
+      "unknown_basis_mode_values"
+    ]
+  },
+  "export_authority": {
+    "CapEx": "summary_evidence_only",
+    "CapEx_Items": "per_line_scalar_evidence_where_useful",
+    "CapEx_SubLines_Audit": "canonical_per_line_evidence_surface",
+    "Tax_Audit_Sheets": "future_vat_wht_deep_audit_surface",
+    "Depreciation_Audit_Sheets": "future_depreciation_deep_audit_surface"
+  },
+  "generic_compatibility": {
+    "supported_project_families": [
+      "TUHO",
+      "Oborovo",
+      "Generic Solar",
+      "Generic Wind"
+    ],
+    "parity_note": "generic_solar_and_wind_remain_exploratory_unvalidated_unless_separately_validated"
+  },
+  "migration_plan": [
+    "57A-10F_scalar_baseline_persistence_and_validation_only",
+    "57A-10G_export_audit_evidence_and_allowlisted_metadata_overrides",
+    "57A-10H_tax_depreciation_runtime_wiring_if_separately_approved"
+  ],
+  "rejected_alternatives": [
+    {
+      "option": "A",
+      "name": "all_metadata_on_capex_sub_lines",
+      "reason": "overcommits_schema_too_early"
+    },
+    {
+      "option": "B",
+      "name": "all_metadata_in_detail_tables",
+      "reason": "too_heavy_for_simple_line_owned_scalar_facts"
+    },
+    {
+      "option": "JSON",
+      "name": "json_only_metadata",
+      "reason": "weakens_validation_and_export_clarity"
+    }
+  ],
+  "design_only_boundaries": [
+    "no_runtime_changes",
+    "no_schema_changes",
+    "no_export_changes",
+    "no_run_changes",
+    "no_formula_changes",
+    "no_tax_engine_wiring",
+    "no_depreciation_engine_wiring",
+    "no_idc_wiring",
+    "no_ui_static_changes"
+  ],
+  "files_not_changed": [
+    "app/waterfall_core.py",
+    "app/services/run_service.py",
+    "app/services/capex_sub_lines_integration.py",
+    "app/excel_export.py",
+    "app/persistence/*",
+    "app/project_factories.py",
+    "app/templates/*",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "recommendation": "PASS"
+}
