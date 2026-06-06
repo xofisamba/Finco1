@@ -19,7 +19,7 @@ All calculations are performed by a Python backend engine. The browser shows res
 
 ## Quick Start
 
-1. **Open a project** - Use TUHO Wind or Oborovo Solar for validated results
+1. **Open a project** - Use TUHO Wind or Oborovo Solar for frozen-template reference results
 2. **Review inputs** - Check capacity, tariff, CAPEX, OPEX in the sidebar
 3. **Save a scenario** - Give it a name before changing anything
 4. **Run the model** - Click Run; wait for backend to finish
@@ -33,8 +33,8 @@ All calculations are performed by a Python backend engine. The browser shows res
 
 | Project | Status |
 |---------|--------|
-| TUHO Wind (72 MW, Croatia) | [Validated] Parity-validated |
-| Oborovo Solar (53.63 MW, Croatia) | [Validated] Parity-validated |
+| TUHO Wind (72 MW, Croatia) | [Reference] Has parity evidence against Excel |
+| Oborovo Solar (53.63 MW, Croatia) | [Reference] Has parity evidence against Excel |
 | Generic / new projects | [Warning] Unvalidated - review independently |
 
 TUHO and Oborovo are frozen-templates verified against Excel. Their outputs (senior debt, SHL opening, distributions, CO2 revenue) are considered reliable within tolerance.
@@ -76,7 +76,7 @@ Available exports:
 - **Values-only Excel** - spreadsheet copy of submitted values with provenance notes for reviewer handoff
 - **Runtime Summary CSV** - compact backend-run KPI snapshot with provenance and governance posture
 - **Institutional Workbook** - reviewer-facing workbook with runtime summary, cover notes, and trust-surface context
-- **Parity Workbook** - validated frozen-template parity evidence for TUHO/Oborovo review
+- **Parity Workbook** - frozen-template parity evidence for TUHO/Oborovo review
 - **Gap Register** - pending items, open gaps, and out-of-scope rows that still require judgement
 - **Source Map** - column-by-column provenance showing where reviewed figures came from
 

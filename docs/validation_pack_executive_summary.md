@@ -18,8 +18,8 @@ All calculations are performed by a Python backend engine. Browser-side JS is di
 
 | Project | Type | Capacity | Status |
 |---------|------|----------|--------|
-| **TUHO Wind** | Frozen-template | 72 MW (Croatia) | [Validated] Parity-validated against Excel |
-| **Oborovo Solar** | Frozen-template | 53.63 MW (Croatia) | [Validated] Parity-validated against Excel |
+| **TUHO Wind** | Frozen-template | 72 MW (Croatia) | [Reference] Frozen-template parity evidence against Excel |
+| **Oborovo Solar** | Frozen-template | 53.63 MW (Croatia) | [Reference] Frozen-template parity evidence against Excel |
 | Generic / new projects | Any | Any | [Warning] **Not validated** - review independently |
 
 TUHO and Oborovo are frozen-template paths where the senior debt service schedule is fixture-backed from validated Excel workbooks. Their outputs are considered reliable within documented tolerances.
@@ -32,21 +32,21 @@ TUHO and Oborovo are frozen-template paths where the senior debt service schedul
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Senior debt amount | 43,359.0 kEUR | [Validated] Exact match vs Excel |
-| Senior DS fixture parity | op_idx 0-13, diff < 0.5 kEUR | [Validated] Validated |
+| Senior debt amount | 43,359.0 kEUR | [Reference] Exact match vs Excel parity evidence |
+| Senior DS fixture parity | op_idx 0-13, diff < 0.5 kEUR | [Reference] Frozen-template parity evidence |
 | DSCR trajectory | 1.16-1.46x (target 1.20x) | [Info] Expected inflation - frozen DS path |
-| Equity IRR (with CO2) | 11.81% vs Excel 11.61% | [Validated] Within +/-1.0 pp |
-| CO2 revenue (Y1) | ~611 kEUR | [Validated] Calibrated |
+| Equity IRR (with CO2) | 11.81% vs Excel 11.61% | [Reference] Within +/-1.0 pp of Excel parity evidence |
+| CO2 revenue (Y1) | ~611 kEUR | [Reference] Calibrated against frozen-template parity evidence |
 
 ### Oborovo Solar
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Senior debt amount | 42,852.27 kEUR | [Validated] (+0.27 kEUR rounding) |
-| Senior DS fixture parity | op_idx 0-26, diff ~0 | [Validated] Validated |
-| op_idx 27 residual | +16.84 kEUR | [Validated] Within 20 kEUR tolerance |
-| SHL opening balance | ~15,790 kEUR (14,621 + 1,169 IDC) | [Validated] Validated |
-| First valid distribution | op_idx 39 / 2050-06-30 | [Validated] After SHL cleared at op_idx 38 |
+| Senior debt amount | 42,852.27 kEUR | [Reference] (+0.27 kEUR rounding) vs Excel parity evidence |
+| Senior DS fixture parity | op_idx 0-26, diff ~0 | [Reference] Frozen-template parity evidence |
+| op_idx 27 residual | +16.84 kEUR | [Reference] Within 20 kEUR tolerance of Excel parity evidence |
+| SHL opening balance | ~15,790 kEUR (14,621 + 1,169 IDC) | [Reference] Frozen-template parity evidence |
+| First valid distribution | op_idx 39 / 2050-06-30 | [Reference] After SHL cleared at op_idx 38 in parity evidence |
 | DSCR trajectory | 1.15-2.37x (target 1.15/1.35x) | [Info] Expected inflation - frozen DS path |
 
 ---
