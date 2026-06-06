@@ -1,0 +1,131 @@
+{
+  "phase": "57A-10B",
+  "title": "CAPEX cost-per-MW derived design",
+  "type": "docs/report/test-only",
+  "branch": "phase57a10b-capex-cost-per-mw-derived-design",
+  "requested_base": "latest main after PR #515 merge",
+  "prior_merge_anchor": "660fe4eb4d8bd7e3735e9120e353cf40c9c1abeb",
+  "status": "design_only",
+  "reviewed_inputs": [
+    "docs/phase57a10_capex_advanced_columns_foundation_design.md",
+    "reports/phase57a10_capex_advanced_columns_foundation_design.json",
+    "docs/phase57a7_capex_advanced_columns_design.md",
+    "docs/phase57a2_capex_single_sheet_direction_characterization.md",
+    "docs/phase57a3_capex_single_sheet_runtime.md",
+    "app/templates/partials/sheet_capex.html",
+    "app/excel_export.py",
+    "app/persistence/capex_sub_lines.py",
+    "app/persistence/scenarios_repository.py",
+    "app/ui/project_context.py"
+  ],
+  "source_of_truth_options": [
+    {
+      "option": "A",
+      "amount_keur": "authoritative",
+      "cost_per_mw": "derived"
+    },
+    {
+      "option": "B",
+      "amount_keur": "derived",
+      "cost_per_mw": "authoritative"
+    },
+    {
+      "option": "C",
+      "amount_keur": "dual_entry",
+      "cost_per_mw": "dual_entry"
+    }
+  ],
+  "preferred_option": "A",
+  "rejected_options": ["B", "C"],
+  "preferred_architecture": {
+    "authoritative_field": "amount_keur",
+    "derived_field": "cost_per_mw",
+    "formula": "effective_amount_keur / capacity_mw",
+    "capacity_source": "project technical capacity_mw field",
+    "persist_cost_per_mw": false,
+    "scenario_overrideable_cost_per_mw": false
+  },
+  "scenario_semantics": {
+    "amount_override_rule": "replace_not_delta",
+    "cost_per_mw_behavior": "auto_updates_from_effective_amount",
+    "cost_per_mw_override_key": "not_allowed"
+  },
+  "user_added_sub_lines": {
+    "display": "future_read_only_derived_value",
+    "export": "future_derived_audit_evidence",
+    "persistence": "not_persisted"
+  },
+  "capacity_dependency": {
+    "selected_source": "capacity_mw",
+    "rejected_sources": ["net_mw", "export_capacity", "template_specific_capacity"],
+    "blank_when_missing_or_non_positive": true
+  },
+  "generic_compatibility": {
+    "supported_paths": ["TUHO", "Oborovo", "Generic Solar", "Generic Wind"],
+    "no_template_specific_assumptions": true,
+    "generic_governance_note": "generic paths remain exploratory/unvalidated unless separately validated"
+  },
+  "export_strategy": {
+    "CapEx": "derived total-level evidence only if shown later",
+    "CapEx_Items": "future_read_only_derived_column_if_added",
+    "CapEx_SubLines_Audit": "preferred_first_location_for_detailed_derived_cost_per_mw",
+    "reconciliation_sheets": "evidence_only_not_authoritative"
+  },
+  "future_interactions": {
+    "contingency": "derived cost_per_mw should follow whichever effective amount is being shown",
+    "vat_wht": "must not silently redefine cost_per_mw semantics",
+    "depreciation": "no effect on cost_per_mw derivation",
+    "payment_schedule": "timing-only no direct effect on static cost_per_mw",
+    "utilisation": "timing-only no direct effect on static cost_per_mw"
+  },
+  "recommendation_section": {
+    "preferred_option": "A",
+    "reasoning": [
+      "matches current runtime reality",
+      "avoids dual-entry drift",
+      "keeps scenario semantics consistent",
+      "minimizes migration risk",
+      "supports easy rollback"
+    ],
+    "implementation_complexity": "low_for_display_only medium_for_export_evidence",
+    "migration_impact": "none_if_kept_derived",
+    "parity_impact": "stable_for_tuho_oborovo_if_derived_from_authoritative_values",
+    "export_impact": "safe_if_read_only_derived_evidence_only",
+    "rollback_strategy": "remove_display_or_export_evidence_without_data_migration"
+  },
+  "estimated_future_implementation_sequence": [
+    "57A-10C_display_strategy_if_needed",
+    "57A-10D_export_evidence",
+    "57A-10E_optional_read_only_per_line_ui_display"
+  ],
+  "documented_topics": [
+    "preferred architecture",
+    "scenario semantics",
+    "capacity source",
+    "export strategy",
+    "Generic Solar/Wind compatibility",
+    "future advanced-column interaction"
+  ],
+  "files_not_changed": [
+    "app/waterfall_core.py",
+    "app/services/run_service.py",
+    "app/services/capex_sub_lines_integration.py",
+    "app/excel_export.py",
+    "app/persistence",
+    "app/project_factories.py",
+    "schema",
+    "migrations",
+    "app/templates",
+    "static/app.js",
+    "static/styles.css"
+  ],
+  "design_only_boundaries": [
+    "no_runtime_implementation",
+    "no_schema_changes",
+    "no_export_changes",
+    "no_run_changes",
+    "no_financial_formula_changes"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "recommendation": "PASS"
+}
