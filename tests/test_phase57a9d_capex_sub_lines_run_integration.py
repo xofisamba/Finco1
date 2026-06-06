@@ -114,6 +114,35 @@ def make_sub_line():
     return _make
 
 
+@pytest.fixture
+def save_user_project(test_db):
+    """Factory that persists a user-created project
+    row. Returns the persisted ProjectRecord.
+
+    Used by the persistence-helper-contract tests to set
+    up a real project that the helper can load sub-lines
+    for.
+    """
+    from app.persistence.projects_repository import save_project
+
+    persisted = []
+
+    def _save(project_code: str = "PRJ-USER-1") -> object:
+        proj = save_project(
+            user_id="u-helper-1",
+            project_code=project_code,
+            project_name=project_code,
+            source_project_template="Generic",
+            project_origin="user_project",
+            is_readonly=False,
+            capex_sub_lines=[],
+        )
+        persisted.append(proj)
+        return proj
+
+    return _save
+
+
 # ---------------------------------------------------------------------------
 # 1. Factory / template-seeded projects: no-op, parity preserved
 # ---------------------------------------------------------------------------
@@ -128,15 +157,17 @@ class TestFactoryNoOpParity:
     These are the canonical parity references.
     """
 
-    def test_tuho_factory_total_capex_unchanged(self, monkeypatch):
+    def test_tuho_factory_total_capex_unchanged(self, test_db, monkeypatch):
         """TUHO factory project: 57A-9D integration helper
         returns capex unchanged. The factory total is
         bit-for-bit identical to the pre-57A-9D baseline.
         """
-        # Force the integration helper to use a DB that has
-        # NO sub-lines for TUHO's project_id (which is the
-        # factory case).
-        monkeypatch.setenv("FINCO_DB_PATH", "/nonexistent/test_db.db")
+        # The test_db fixture gives us an empty persistence
+        # DB (schema migrated, no rows). The integration
+        # helper reads via the persistence layer's
+        # get_active_sub_lines_for_project, which uses
+        # get_cursor() (Phase 53). The factory project has
+        # no user sub-lines, so the fold is a no-op.
         from app.ui_runner import run_demo_project
         from app.services.capex_sub_lines_integration import (
             _apply_user_sub_lines_to_capex,
@@ -184,13 +215,18 @@ class TestFactoryNoOpParity:
         )
 
     def test_oborovo_factory_total_capex_unchanged(
-        self, monkeypatch
+        self, test_db, monkeypatch
     ):
         """Oborovo factory project: 57A-9D integration helper
         returns capex unchanged. The factory total is
         bit-for-bit identical to the pre-57A-9D baseline.
         """
-        monkeypatch.setenv("FINCO_DB_PATH", "/nonexistent/test_db.db")
+        # The test_db fixture gives us an empty persistence
+        # DB (schema migrated, no rows). The integration
+        # helper reads via the persistence layer's
+        # get_active_sub_lines_for_project, which uses
+        # get_cursor() (Phase 53). The factory project has
+        # no user sub-lines, so the fold is a no-op.
         from app.ui_runner import run_demo_project
         from app.services.capex_sub_lines_integration import (
             _apply_user_sub_lines_to_capex,
@@ -921,6 +957,170 @@ class TestNoForbiddenChanges:
         assert not formula_hits, (
             f"57A-9D must not modify formula paths: "
             f"{sorted(formula_hits)}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 6.5. Persistence helper contract (review fix)
+# ---------------------------------------------------------------------------
+
+
+class TestPersistenceHelperContract:
+    """The Run/integration helper must delegate DB I/O to
+    the persistence layer (``get_active_sub_lines_for_project``
+    backed by ``get_cursor()``). It must NOT manually
+    construct the SQLite path or open its own
+    ``sqlite3.connect(...)``. The rationale is documented
+    in the module docstring of
+    ``app.services.capex_sub_lines_integration`` and
+    pinned by the 57A-9D review fix.
+    """
+
+    def test_helper_does_not_construct_sqlite_path_manually(
+        self,
+    ):
+        """Static guard: the production helper must not
+        import ``sqlite3`` directly or compute a manual
+        DB path. The whole point of the review fix is
+        that the integration module delegates to
+        ``app.persistence.capex_sub_lines`` and uses
+        ``get_cursor()`` consistently."""
+        from pathlib import Path
+        helper_path = (
+            REPO_ROOT
+            / "app"
+            / "services"
+            / "capex_sub_lines_integration.py"
+        )
+        source = helper_path.read_text()
+        # No direct sqlite3 import.
+        assert "import sqlite3" not in source, (
+            "57A-9D review fix: integration helper must "
+            "not import sqlite3 directly. Delegate to "
+            "app.persistence.capex_sub_lines."
+        )
+        # No manual path-relative DB construction.
+        assert "Path(__file__).resolve().parents" not in source, (
+            "57A-9D review fix: integration helper must "
+            "not compute the DB path manually. Use "
+            "get_active_sub_lines_for_project + get_cursor()."
+        )
+        assert "finco_runs.db" not in source, (
+            "57A-9D review fix: integration helper must "
+            "not hard-code a DB filename. The persistence "
+            "layer (db.DB_PATH) is the single source of "
+            "truth for the DB path."
+        )
+
+    def test_helper_delegates_to_persistence_layer(
+        self,
+    ):
+        """Static guard: the helper must call
+        ``get_active_sub_lines_for_project`` (which uses
+        ``get_cursor()``) instead of opening a connection
+        on its own."""
+        from pathlib import Path
+        helper_path = (
+            REPO_ROOT
+            / "app"
+            / "services"
+            / "capex_sub_lines_integration.py"
+        )
+        source = helper_path.read_text()
+        assert (
+            "get_active_sub_lines_for_project" in source
+        ), (
+            "57A-9D review fix: integration helper must "
+            "delegate to get_active_sub_lines_for_project "
+            "from app.persistence.capex_sub_lines."
+        )
+
+    def test_helper_uses_get_cursor_under_the_hood(
+        self, test_db, make_sub_line
+    ):
+        """Behavior contract: the helper works correctly
+        with a FINCO_DB_PATH monkeypatch (which is what
+        deployment / multi-tenant configurations will
+        use). The persistence layer's ``get_cursor()``
+        reads ``db.DB_PATH``, which the test fixture
+        patches. The helper must follow the same path
+        — no hidden divergence via a manually-constructed
+        DB path.
+        """
+        from app.persistence.db import DB_PATH
+        from app.services.capex_sub_lines_integration import (
+            _load_active_sub_lines,
+        )
+
+        # The test_db fixture has already patched
+        # db.DB_PATH. Sanity-check that we are on the
+        # test DB, not the production DB.
+        assert "phase57a9d_" in DB_PATH
+        # Empty project: helper returns empty tuple.
+        assert _load_active_sub_lines("nonexistent-proj") == ()
+
+    def test_helper_returns_empty_tuple_for_empty_db(
+        self, test_db
+    ):
+        """Behavioral equivalence: the helper returns an
+        empty tuple (not None, not a list) when the
+        project has no sub-lines. The persistence layer
+        returns a list; the helper coerces to tuple for
+        the canonical return type."""
+        from app.services.capex_sub_lines_integration import (
+            _load_active_sub_lines,
+        )
+        result = _load_active_sub_lines("nonexistent-proj")
+        assert isinstance(result, tuple)
+        assert result == ()
+
+    def test_helper_returns_active_sub_lines_only(
+        self, test_db, save_user_project
+    ):
+        """The helper uses get_active_sub_lines_for_project
+        which excludes soft-deleted rows (is_active=0).
+        This is the same exclusion rule as the persistence
+        layer's load flow."""
+        from app.services.capex_sub_lines_integration import (
+            _load_active_sub_lines,
+        )
+        from app.persistence.capex_sub_lines import (
+            create_sub_line,
+            soft_delete_sub_line_for_project,
+        )
+        import os, sqlite3
+        from pathlib import Path
+        # The test_db fixture sets FINCO_DB_PATH to a
+        # tmp_path file. Use the persistence layer's
+        # create_sub_line to insert a real row.
+        db_path = os.environ["FINCO_DB_PATH"]
+        project = save_user_project("PRJ-PERS-1")
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            sub_line = create_sub_line(
+                conn.cursor(),
+                project_id=project.project_id,
+                parent_category_code="C.02",
+                label="Pers helper test",
+                amount_keur=1000.0,
+            )
+            conn.commit()
+        sub_line_id = sub_line.sub_line_id
+        # Active line: present in the helper output.
+        loaded = _load_active_sub_lines(project.project_id)
+        assert any(s.sub_line_id == sub_line_id for s in loaded)
+        # Soft-delete the line: helper must exclude it.
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            soft_delete_sub_line_for_project(
+                conn.cursor(),
+                project_id=project.project_id,
+                sub_line_id=sub_line_id,
+            )
+            conn.commit()
+        loaded_after = _load_active_sub_lines(project.project_id)
+        assert not any(
+            s.sub_line_id == sub_line_id for s in loaded_after
         )
 
 

@@ -56,14 +56,12 @@ Type: runtime model-input integration, DRAFT PR (57A-9D).
 from __future__ import annotations
 
 import logging
-import sqlite3
-from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from app.persistence.capex_sub_lines import (
     CapexSubLine,
     fold_sub_lines_into_capex,
-    list_sub_lines_for_project,
+    get_active_sub_lines_for_project,
 )
 
 
@@ -112,11 +110,23 @@ def _extract_sub_line_overrides(
 def _load_active_sub_lines(project_id: str) -> tuple[CapexSubLine, ...]:
     """Load active (is_active=1) sub-lines for a project.
 
-    Uses a fresh SQLite connection (not a shared cursor)
-    so this helper can be called from any context without
-    forcing the caller to manage a cursor lifecycle. The
-    DB path is read from the environment (the same path
-    the persistence layer uses).
+    Delegates to the persistence layer's
+    ``get_active_sub_lines_for_project`` helper, which
+    uses the canonical ``get_cursor()`` context manager
+    (Phase 53 persistence architecture). This guarantees:
+
+    - One authoritative DB path source (``db.DB_PATH``
+      / ``FINCO_DB_PATH`` env). No manual
+      ``Path(__file__).parents[N]`` computation here.
+    - Service runtime and persistence runtime stay
+      aligned: if a future deployment overrides the DB
+      path (env var, config, multi-tenant shim), the
+      Run path sees the same DB the persistence layer
+      does. No hidden divergence.
+    - No hidden bug from a future refactor that moves
+      the helper module (the manual path-relative
+      construction was fragile to repo-relative path
+      changes).
 
     Returns:
         A tuple of ``CapexSubLine`` records ordered by
@@ -126,30 +136,19 @@ def _load_active_sub_lines(project_id: str) -> tuple[CapexSubLine, ...]:
         project does not exist in the DB.
 
     Notes:
-        Soft-deleted rows (is_active=0) are excluded. The
-        audit / replay trail remains in the table; this
-        helper just does not surface them.
+        Soft-deleted rows (is_active=0) are excluded.
+        The audit / replay trail remains in the table;
+        this helper just does not surface them.
     """
-    db_path = Path(
-        __import__("os").environ.get(
-            "FINCO_DB_PATH",
-            str(Path(__file__).resolve().parents[1] / "data" / "finco_runs.db"),
-        )
-    )
-    if not db_path.exists():
-        # The DB does not exist (test environment or
-        # pre-init state). Return empty — this is the
-        # factory no-op case.
-        return ()
-    with sqlite3.connect(str(db_path)) as conn:
-        # list_sub_lines_for_project uses CapexSubLine.from_row
-        # which expects row[...] dict-style access. We must
-        # set row_factory=Row on the connection.
-        conn.row_factory = sqlite3.Row
-        rows = list_sub_lines_for_project(
-            conn.cursor(), project_id, include_inactive=False,
-        )
-    return rows
+    # get_active_sub_lines_for_project opens a cursor via
+    # get_cursor(), runs list_sub_lines_for_project with
+    # include_inactive=False, and returns a list. We
+    # coerce to tuple to preserve the prior return shape
+    # (the integration helper treats this as an
+    # immutable sequence — see the empty-tuple early
+    # return above).
+    rows = get_active_sub_lines_for_project(project_id)
+    return tuple(rows)
 
 
 def _apply_user_sub_lines_to_capex(
