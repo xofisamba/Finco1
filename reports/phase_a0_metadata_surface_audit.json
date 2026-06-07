@@ -1,0 +1,488 @@
+{
+  "phase": "A0",
+  "title": "Metadata surface audit",
+  "type": "analysis_only_docs_report_test",
+  "branch": "phase-a0-metadata-surface-audit",
+  "requested_base_sha": "f54dbd7d12ffc2c03980c59c5e73677e6e0fbbaa",
+  "status": "analysis_only",
+  "reviewed_surfaces": [
+    "domain/waterfall/waterfall_engine.py",
+    "app/api/project_runner.py",
+    "app/ui/runtime_summary.py",
+    "app/output_tables.py",
+    "app/export/runtime_summary.py",
+    "app/excel_export.py",
+    "domain/reporting/financial_statements.py",
+    "app/persistence/exports_repository.py"
+  ],
+  "source_hierarchy": [
+    "runtime_result",
+    "output_table_builders",
+    "audit_and_export_evidence",
+    "persistence_only_for_baseline_non_runtime_metrics"
+  ],
+  "frontend_calculation_policy": "rejected",
+  "priority_metrics": [
+    {
+      "metric": "Revenue",
+      "displayed_metric": "Total Revenue",
+      "runtime_source": [
+        "WaterfallResult.total_revenue_keur",
+        "WaterfallPeriod.revenue_keur",
+        "build_revenue_table(result)"
+      ],
+      "audit_source": [
+        "Waterfall sheet Revenue row",
+        "Revenue sheet",
+        "runtime summary CSV"
+      ],
+      "export_source": [
+        "Excel Revenue sheet",
+        "Institutional workbook Revenue section"
+      ],
+      "available_components": [
+        "total_revenue_keur",
+        "period revenue_keur",
+        "generation_mwh",
+        "optional bess_revenue_keur",
+        "optional hybrid_revenue_keur"
+      ],
+      "missing_components": [
+        "price_stack_breakdown",
+        "ppa_vs_merchant_split",
+        "co2_and_balancing_split"
+      ],
+      "derivation_ready": "PARTIAL",
+      "risk_level": "medium",
+      "recommended_action": "conservative_total_only_derivation_after_small_read_only_exposure"
+    },
+    {
+      "metric": "EBITDA",
+      "displayed_metric": "EBITDA",
+      "runtime_source": [
+        "WaterfallResult.total_ebitda_keur",
+        "WaterfallPeriod.ebitda_keur",
+        "build_waterfall_table(result)",
+        "build_tax_depreciation_table(result)"
+      ],
+      "audit_source": [
+        "Waterfall sheet EBITDA row",
+        "Tax_Depreciation sheet EBITDA row",
+        "runtime summary CSV"
+      ],
+      "export_source": [
+        "Excel Waterfall sheet",
+        "Excel Tax_Depreciation sheet",
+        "Institutional workbook runtime summary"
+      ],
+      "available_components": [
+        "revenue_keur",
+        "opex_keur",
+        "ebitda_keur",
+        "total_ebitda_keur"
+      ],
+      "missing_components": [],
+      "derivation_ready": "READY",
+      "risk_level": "low",
+      "recommended_action": "implement_first_in_a2"
+    },
+    {
+      "metric": "OPEX",
+      "displayed_metric": "Total OPEX",
+      "runtime_source": [
+        "WaterfallResult.total_opex_keur",
+        "WaterfallPeriod.opex_keur",
+        "build_waterfall_table(result)"
+      ],
+      "audit_source": [
+        "Waterfall sheet OpEx row",
+        "runtime summary CSV"
+      ],
+      "export_source": [
+        "Excel Waterfall sheet",
+        "Institutional workbook runtime summary"
+      ],
+      "available_components": [
+        "total_opex_keur",
+        "period opex_keur"
+      ],
+      "missing_components": [
+        "line_item_opex_breakdown"
+      ],
+      "derivation_ready": "PARTIAL",
+      "risk_level": "medium",
+      "recommended_action": "safe_total_only_derivation_later"
+    },
+    {
+      "metric": "CAPEX Total",
+      "displayed_metric": "Total CapEx",
+      "runtime_source": [
+        "project_inputs.capex.total_capex_keur",
+        "build_capex_summary_table(project_inputs)",
+        "build_capex_items_table(project_inputs)"
+      ],
+      "audit_source": [
+        "CapEx sheet",
+        "CapEx_Items sheet",
+        "CapEx_SubLines_Audit"
+      ],
+      "export_source": [
+        "Excel CapEx sheet",
+        "Excel CapEx_Items sheet",
+        "Excel CapEx_SubLines_Audit"
+      ],
+      "available_components": [
+        "total_capex_keur",
+        "sculpt_capex_keur",
+        "capex_items",
+        "capex_sub_lines_audit"
+      ],
+      "missing_components": [
+        "runtime_result_owned_capex_derivation_payload",
+        "explicit_baseline_vs_runtime_wording"
+      ],
+      "derivation_ready": "PARTIAL",
+      "risk_level": "medium",
+      "recommended_action": "treat_as_input_evidence_not_runtime_cashflow_formula"
+    },
+    {
+      "metric": "Senior Debt",
+      "displayed_metric": "Senior Debt",
+      "runtime_source": [
+        "WaterfallResult.total_senior_ds_keur",
+        "WaterfallPeriod.senior_interest_keur",
+        "WaterfallPeriod.senior_principal_keur",
+        "WaterfallPeriod.senior_ds_keur",
+        "WaterfallPeriod.senior_balance_keur",
+        "build_debt_table(result)"
+      ],
+      "audit_source": [
+        "Debt sheet",
+        "Waterfall sheet Senior Debt Service row"
+      ],
+      "export_source": [
+        "Excel Debt sheet",
+        "Institutional workbook debt section"
+      ],
+      "available_components": [
+        "interest",
+        "principal",
+        "debt_service",
+        "balance",
+        "total_senior_ds_keur"
+      ],
+      "missing_components": [
+        "authoritative_runtime_summary_opening_debt_anchor"
+      ],
+      "derivation_ready": "PARTIAL",
+      "risk_level": "medium",
+      "recommended_action": "add_small_read_only_opening_balance_exposure_before_popover"
+    },
+    {
+      "metric": "DSCR",
+      "displayed_metric": "Avg DSCR",
+      "runtime_source": [
+        "WaterfallResult.actual_avg_dscr",
+        "WaterfallPeriod.dscr",
+        "WaterfallPeriod.cf_after_tax_keur",
+        "WaterfallPeriod.senior_ds_keur"
+      ],
+      "audit_source": [
+        "A1 derivation_evidence.dscr",
+        "Waterfall sheet CFADS and Senior Debt Service rows",
+        "Debt sheet DSCR row"
+      ],
+      "export_source": [
+        "Excel DSCR Summary",
+        "Excel Debt sheet",
+        "Excel Waterfall sheet"
+      ],
+      "available_components": [
+        "displayed avg dscr",
+        "period dscr",
+        "cf_after_tax_keur",
+        "senior_ds_keur",
+        "supporting totals"
+      ],
+      "missing_components": [],
+      "derivation_ready": "READY",
+      "risk_level": "low",
+      "recommended_action": "already_delivered_in_a1"
+    },
+    {
+      "metric": "CFADS",
+      "displayed_metric": "CFADS (Total)",
+      "runtime_source": [
+        "WaterfallPeriod.cf_after_tax_keur",
+        "WaterfallPeriod.ebitda_keur",
+        "WaterfallPeriod.tax_keur",
+        "A1 derivation_evidence.cfads"
+      ],
+      "audit_source": [
+        "A1 derivation_evidence.cfads",
+        "Waterfall sheet CFADS row"
+      ],
+      "export_source": [
+        "Excel Waterfall sheet",
+        "Institutional workbook runtime summary"
+      ],
+      "available_components": [
+        "cf_after_tax_keur",
+        "total cfads",
+        "supporting ebitda_keur",
+        "supporting tax_keur"
+      ],
+      "missing_components": [
+        "formal_full_engine_level_cfads_bridge"
+      ],
+      "derivation_ready": "READY",
+      "risk_level": "low",
+      "recommended_action": "already_delivered_in_a1_using_backend_field_identity"
+    },
+    {
+      "metric": "Tax",
+      "displayed_metric": "Total Tax",
+      "runtime_source": [
+        "WaterfallResult.total_tax_keur",
+        "WaterfallPeriod.tax_keur",
+        "WaterfallPeriod.taxable_profit_keur",
+        "WaterfallPeriod.depreciation_keur",
+        "WaterfallPeriod.senior_interest_keur",
+        "WaterfallPeriod.shl_interest_keur",
+        "build_tax_depreciation_table(result)"
+      ],
+      "audit_source": [
+        "Tax_Depreciation sheet",
+        "audit-only tax fields on WaterfallPeriod"
+      ],
+      "export_source": [
+        "Excel Tax_Depreciation sheet",
+        "tax audit sheets when available"
+      ],
+      "available_components": [
+        "total_tax_keur",
+        "tax_keur",
+        "taxable_profit_keur",
+        "depreciation_keur",
+        "interest inputs"
+      ],
+      "missing_components": [
+        "curated_runtime_tax_bridge_payload",
+        "cash_vs_accrual_explanation_surface",
+        "loss_timing_surface"
+      ],
+      "derivation_ready": "PARTIAL",
+      "risk_level": "high",
+      "recommended_action": "defer_until_curated_read_only_tax_bridge_exists"
+    },
+    {
+      "metric": "Distributions",
+      "displayed_metric": "Distributions",
+      "runtime_source": [
+        "WaterfallResult.total_distribution_keur",
+        "WaterfallPeriod.distribution_keur",
+        "WaterfallPeriod.lockup_active",
+        "audit-only R99/R102 bridge fields on WaterfallPeriod"
+      ],
+      "audit_source": [
+        "Waterfall sheet Distributions row",
+        "distribution-account audit fields when enabled"
+      ],
+      "export_source": [
+        "Excel Waterfall sheet",
+        "distribution-related audit exports"
+      ],
+      "available_components": [
+        "total_distribution_keur",
+        "period distribution_keur",
+        "lockup_active",
+        "audit-only distribution bridge fields"
+      ],
+      "missing_components": [
+        "safe_compact_gating_explanation",
+        "runtime_ready_distribution_chain_payload"
+      ],
+      "derivation_ready": "NOT_READY",
+      "risk_level": "high",
+      "recommended_action": "avoid_for_now"
+    },
+    {
+      "metric": "Sponsor returns",
+      "displayed_metric": "Sponsor IRR",
+      "runtime_source": [
+        "WaterfallResult.sponsor_irr",
+        "build_returns_table(result)"
+      ],
+      "audit_source": [
+        "sponsor waterfall audit exports"
+      ],
+      "export_source": [
+        "sponsor waterfall audit sheets",
+        "institutional workbook review packs"
+      ],
+      "available_components": [
+        "sponsor_irr scalar",
+        "export-side sponsor audit artifacts"
+      ],
+      "missing_components": [
+        "runtime_summary_sponsor_cashflow_series",
+        "runtime_safe_sponsor_derivation_payload"
+      ],
+      "derivation_ready": "NOT_READY",
+      "risk_level": "high",
+      "recommended_action": "avoid_for_now"
+    }
+  ],
+  "low_risk_derivations": [
+    "EBITDA",
+    "Revenue_total_only_conservative_version",
+    "DSCR_existing_A1",
+    "CFADS_existing_A1"
+  ],
+  "medium_risk_derivations": [
+    "OPEX",
+    "CAPEX Total",
+    "Senior Debt"
+  ],
+  "high_risk_derivations": [
+    "Tax",
+    "Distributions",
+    "Sponsor returns"
+  ],
+  "future_source_recommendations": {
+    "runtime_result": [
+      "DSCR",
+      "CFADS",
+      "EBITDA",
+      "Revenue",
+      "OPEX",
+      "Senior Debt",
+      "Tax",
+      "Distributions"
+    ],
+    "audit_metadata": [
+      "DSCR supporting totals",
+      "CFADS supporting fields",
+      "Tax bridge evidence",
+      "Distribution-account bridge evidence"
+    ],
+    "export_sheet": [
+      "CAPEX total evidence",
+      "Debt schedule evidence",
+      "Tax/depreciation evidence",
+      "Sponsor waterfall review evidence"
+    ],
+    "persistence_layer": [
+      "CAPEX baseline context only",
+      "never_as_frontend_financial_calculation_source"
+    ]
+  },
+  "additional_read_only_context_keys": {
+    "Revenue": [
+      "revenue_derivation.display_value_keur",
+      "revenue_derivation.period_count",
+      "revenue_derivation.sample_generation_mwh",
+      "revenue_derivation.sample_revenue_keur"
+    ],
+    "EBITDA": [
+      "ebitda_derivation.display_value_keur",
+      "ebitda_derivation.sample_revenue_keur",
+      "ebitda_derivation.sample_opex_keur",
+      "ebitda_derivation.sample_ebitda_keur"
+    ],
+    "OPEX": [
+      "opex_derivation.display_value_keur",
+      "opex_derivation.sample_opex_keur"
+    ],
+    "CAPEX Total": [
+      "capex_derivation.total_capex_keur",
+      "capex_derivation.sculpt_capex_keur",
+      "capex_derivation.capex_items_source"
+    ],
+    "Senior Debt": [
+      "senior_debt_derivation.opening_debt_keur",
+      "senior_debt_derivation.total_debt_service_keur",
+      "senior_debt_derivation.sample_interest_keur",
+      "senior_debt_derivation.sample_principal_keur",
+      "senior_debt_derivation.sample_balance_keur"
+    ],
+    "Tax": [
+      "tax_derivation.display_value_keur",
+      "tax_derivation.sample_taxable_profit_keur",
+      "tax_derivation.sample_depreciation_keur",
+      "tax_derivation.sample_cash_tax_keur"
+    ]
+  },
+  "recommended_a2_sequence": [
+    {
+      "phase": "A2-1",
+      "metric": "EBITDA",
+      "classification": "READY",
+      "estimated_effort": "low",
+      "ux_win": "high"
+    },
+    {
+      "phase": "A2-2",
+      "metric": "Revenue",
+      "classification": "PARTIAL",
+      "estimated_effort": "low_to_medium",
+      "ux_win": "high"
+    },
+    {
+      "phase": "A2-3",
+      "metric": "OPEX",
+      "classification": "PARTIAL",
+      "estimated_effort": "low",
+      "ux_win": "medium"
+    },
+    {
+      "phase": "A2-4",
+      "metric": "CAPEX Total",
+      "classification": "PARTIAL",
+      "estimated_effort": "medium",
+      "ux_win": "high"
+    },
+    {
+      "phase": "A2-5",
+      "metric": "Senior Debt",
+      "classification": "PARTIAL",
+      "estimated_effort": "medium",
+      "ux_win": "high"
+    },
+    {
+      "phase": "A2-6",
+      "metric": "Tax",
+      "classification": "PARTIAL",
+      "estimated_effort": "medium_to_high",
+      "ux_win": "medium"
+    }
+  ],
+  "metrics_to_avoid_for_now": [
+    "Distributions",
+    "Sponsor returns"
+  ],
+  "biggest_ux_wins": [
+    "EBITDA",
+    "Revenue",
+    "CAPEX Total",
+    "Senior Debt"
+  ],
+  "biggest_technical_risks": [
+    "confusing_totals_with_formula_claims",
+    "mixing_runtime_truth_with_export_only_evidence",
+    "using_persistence_as_if_it_were_runtime_output",
+    "over_simplifying_governance_sensitive_distribution_flows"
+  ],
+  "boundaries": [
+    "no_runtime_changes",
+    "no_ui_changes",
+    "no_model_changes",
+    "no_persistence_changes",
+    "no_export_changes",
+    "no_schema_changes",
+    "no_formula_changes",
+    "no_frontend_financial_calculation"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "recommendation": "PASS"
+}
