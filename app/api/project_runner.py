@@ -17,57 +17,79 @@ def _period_label(period) -> str:
 
 
 def _build_runtime_derivation_evidence(result):
-    """Return read-only DSCR / CFADS / EBITDA evidence sourced from WaterfallResult."""
-    periods = [
+    """Return read-only derivation evidence sourced from WaterfallResult."""
+    operation_periods = [
+        period
+        for period in getattr(result, "periods", [])
+        if getattr(period, "is_operation", False)
+    ]
+    dscr_periods = [
         period
         for period in getattr(result, "periods", [])
         if getattr(period, "is_operation", False) and float(getattr(period, "senior_ds_keur", 0.0) or 0.0) > 0.0
     ]
-    if not periods:
+    if not operation_periods:
         return {}
 
-    period_count = len(periods)
-    representative_period = min(periods, key=lambda period: getattr(period, "period", 0))
-    total_cfads = sum(float(getattr(period, "cf_after_tax_keur", 0.0) or 0.0) for period in periods)
-    total_senior_ds = sum(float(getattr(period, "senior_ds_keur", 0.0) or 0.0) for period in periods)
+    operation_period_count = len(operation_periods)
+    representative_operation_period = min(operation_periods, key=lambda period: getattr(period, "period", 0))
+    total_cfads = sum(float(getattr(period, "cf_after_tax_keur", 0.0) or 0.0) for period in dscr_periods)
+    total_senior_ds = sum(float(getattr(period, "senior_ds_keur", 0.0) or 0.0) for period in dscr_periods)
 
-    return {
+    evidence = {
+        "revenue": {
+            "display_value_keur": getattr(result, "total_revenue_keur", None),
+            "summary_method": "Total revenue from backend operating periods.",
+            "period_formula": "Revenue_t = WaterfallPeriod.revenue_keur",
+            "period_count": operation_period_count,
+            "sample_period_label": _period_label(representative_operation_period),
+            "sample_generation_mwh": getattr(representative_operation_period, "generation_mwh", None),
+            "sample_revenue_keur": getattr(representative_operation_period, "revenue_keur", None),
+            "audit_source": "WaterfallResult.total_revenue_keur and WaterfallResult.periods[].revenue_keur, generation_mwh",
+        },
+        "ebitda": {
+            "display_value_keur": getattr(result, "total_ebitda_keur", None),
+            "summary_method": "Total EBITDA from backend operating periods.",
+            "period_formula": "EBITDA_t = Revenue_t - OPEX_t",
+            "period_count": operation_period_count,
+            "sample_period_label": _period_label(representative_operation_period),
+            "sample_revenue_keur": getattr(representative_operation_period, "revenue_keur", None),
+            "sample_opex_keur": getattr(representative_operation_period, "opex_keur", None),
+            "sample_ebitda_keur": getattr(representative_operation_period, "ebitda_keur", None),
+            "audit_source": "WaterfallResult.total_ebitda_keur and WaterfallResult.periods[].revenue_keur, opex_keur, ebitda_keur",
+        },
+    }
+    if not dscr_periods:
+        return evidence
+
+    representative_dscr_period = min(dscr_periods, key=lambda period: getattr(period, "period", 0))
+    evidence.update({
         "dscr": {
             "display_value": getattr(result, "actual_avg_dscr", None),
             "summary_method": "Average of operating-period DSCR values with positive senior debt service.",
             "period_formula": "DSCR_t = CFADS_t / Senior Debt Service_t",
-            "period_count": period_count,
+            "period_count": len(dscr_periods),
             "total_cfads_keur": total_cfads,
             "total_senior_debt_service_keur": total_senior_ds,
-            "sample_period_label": _period_label(representative_period),
-            "sample_cfads_keur": getattr(representative_period, "cf_after_tax_keur", None),
-            "sample_senior_debt_service_keur": getattr(representative_period, "senior_ds_keur", None),
-            "sample_dscr": getattr(representative_period, "dscr", None),
+            "sample_period_label": _period_label(representative_dscr_period),
+            "sample_cfads_keur": getattr(representative_dscr_period, "cf_after_tax_keur", None),
+            "sample_senior_debt_service_keur": getattr(representative_dscr_period, "senior_ds_keur", None),
+            "sample_dscr": getattr(representative_dscr_period, "dscr", None),
             "audit_source": "WaterfallResult.periods[].cf_after_tax_keur, senior_ds_keur, dscr",
         },
         "cfads": {
             "display_value_keur": total_cfads,
             "summary_method": "Total CFADS across operating periods with positive senior debt service.",
             "period_formula": "CFADS_t = WaterfallPeriod.cf_after_tax_keur",
-            "period_count": period_count,
-            "sample_period_label": _period_label(representative_period),
-            "sample_ebitda_keur": getattr(representative_period, "ebitda_keur", None),
-            "sample_tax_keur": getattr(representative_period, "tax_keur", None),
-            "sample_cfads_keur": getattr(representative_period, "cf_after_tax_keur", None),
+            "period_count": len(dscr_periods),
+            "sample_period_label": _period_label(representative_dscr_period),
+            "sample_ebitda_keur": getattr(representative_dscr_period, "ebitda_keur", None),
+            "sample_tax_keur": getattr(representative_dscr_period, "tax_keur", None),
+            "sample_cfads_keur": getattr(representative_dscr_period, "cf_after_tax_keur", None),
             "audit_source": "WaterfallResult.periods[].cf_after_tax_keur (supporting fields shown: ebitda_keur, tax_keur)",
         },
-        "ebitda": {
-            "display_value_keur": getattr(result, "total_ebitda_keur", None),
-            "summary_method": "Total EBITDA from backend operating periods.",
-            "period_formula": "EBITDA_t = Revenue_t - OPEX_t",
-            "period_count": period_count,
-            "sample_period_label": _period_label(representative_period),
-            "sample_revenue_keur": getattr(representative_period, "revenue_keur", None),
-            "sample_opex_keur": getattr(representative_period, "opex_keur", None),
-            "sample_ebitda_keur": getattr(representative_period, "ebitda_keur", None),
-            "audit_source": "WaterfallResult.total_ebitda_keur and WaterfallResult.periods[].revenue_keur, opex_keur, ebitda_keur",
-        },
-    }
+    })
+    return evidence
 
 
 def _sanitize_df(df):
