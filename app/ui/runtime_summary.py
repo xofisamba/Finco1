@@ -49,6 +49,7 @@ class RuntimeSummary:
 
     dscr_derivation: dict[str, Any] = field(default_factory=dict)
     cfads_derivation: dict[str, Any] = field(default_factory=dict)
+    ebitda_derivation: dict[str, Any] = field(default_factory=dict)
 
     error_message: str = ""
 
@@ -71,6 +72,7 @@ class RuntimeSummary:
             "total_cfads_keur": self.total_cfads_keur,
             "dscr_derivation": self.dscr_derivation,
             "cfads_derivation": self.cfads_derivation,
+            "ebitda_derivation": self.ebitda_derivation,
             "error_message": self.error_message,
         }
 
@@ -145,6 +147,23 @@ def _format_cfads_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_ebitda_derivation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format EBITDA derivation evidence for direct template rendering."""
+    if not raw:
+        return {}
+    return {
+        "display_value_keur": _keur(raw.get("display_value_keur")),
+        "summary_method": raw.get("summary_method", ""),
+        "period_formula": raw.get("period_formula", ""),
+        "period_count": raw.get("period_count", 0),
+        "sample_period_label": raw.get("sample_period_label", ""),
+        "sample_revenue_keur": _keur(raw.get("sample_revenue_keur")),
+        "sample_opex_keur": _keur(raw.get("sample_opex_keur")),
+        "sample_ebitda_keur": _keur(raw.get("sample_ebitda_keur")),
+        "audit_source": raw.get("audit_source", ""),
+    }
+
+
 def _find_debt_balance(wf_rows: list[dict], label_needle: str) -> str:
     """Search waterfall rows for a balance row matching label_needle.
 
@@ -204,6 +223,7 @@ def build_runtime_summary(
     derivation_evidence = result.get("derivation_evidence", {})
     dscr_derivation = _format_dscr_derivation(derivation_evidence.get("dscr", {}))
     cfads_derivation = _format_cfads_derivation(derivation_evidence.get("cfads", {}))
+    ebitda_derivation = _format_ebitda_derivation(derivation_evidence.get("ebitda", {}))
     if cfads_derivation:
         total_cfads = cfads_derivation.get("display_value_keur", NOT_AVAILABLE)
 
@@ -242,6 +262,7 @@ def build_runtime_summary(
         total_cfads_keur=total_cfads,
         dscr_derivation=dscr_derivation,
         cfads_derivation=cfads_derivation,
+        ebitda_derivation=ebitda_derivation,
         error_message="",
     )
 

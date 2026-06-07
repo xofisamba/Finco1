@@ -71,14 +71,16 @@ def authenticated_client():
 
 
 class TestRuntimeSummaryContextContract:
-    def test_runtime_summary_includes_dscr_and_cfads_derivation_keys(self):
+    def test_runtime_summary_includes_dscr_cfads_and_ebitda_derivation_keys(self):
         result = run_project("TUHO", "Base")
         summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
 
         assert "dscr_derivation" in summary
         assert "cfads_derivation" in summary
+        assert "ebitda_derivation" in summary
         assert summary["dscr_derivation"]["display_value"] != "NOT_AVAILABLE"
         assert summary["cfads_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
+        assert summary["ebitda_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
 
     def test_derivation_values_match_backend_waterfall_result(self):
         demo = run_demo_project("TUHO", "Base")
@@ -94,6 +96,9 @@ class TestRuntimeSummaryContextContract:
         assert summary["cfads_derivation"]["sample_ebitda_keur"] == f"{sample.ebitda_keur:,.0f} kEUR"
         assert summary["cfads_derivation"]["sample_tax_keur"] == f"{sample.tax_keur:,.0f} kEUR"
         assert summary["cfads_derivation"]["sample_cfads_keur"] == f"{sample.cf_after_tax_keur:,.0f} kEUR"
+        assert summary["ebitda_derivation"]["sample_revenue_keur"] == f"{sample.revenue_keur:,.0f} kEUR"
+        assert summary["ebitda_derivation"]["sample_opex_keur"] == f"{sample.opex_keur:,.0f} kEUR"
+        assert summary["ebitda_derivation"]["sample_ebitda_keur"] == f"{sample.ebitda_keur:,.0f} kEUR"
 
 
 class TestRuntimeSummaryPartialRendering:
@@ -137,6 +142,19 @@ class TestRuntimeSummaryPartialRendering:
         assert summary["cfads_derivation"]["sample_tax_keur"] in html
         assert summary["cfads_derivation"]["sample_cfads_keur"] in html
 
+    def test_ebitda_derivation_renders_from_backend_values(self):
+        result = run_project("TUHO", "Base")
+        summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
+        html = _render_runtime_summary_partial({"runtime_summary": summary, "messages": []})
+
+        assert 'id="kpi-ebitda-derivation"' in html
+        assert "EBITDA_t = Revenue_t - OPEX_t" in html
+        assert "Backend-authoritative runtime result." in html
+        assert summary["ebitda_derivation"]["display_value_keur"] in html
+        assert summary["ebitda_derivation"]["sample_revenue_keur"] in html
+        assert summary["ebitda_derivation"]["sample_opex_keur"] in html
+        assert summary["ebitda_derivation"]["sample_ebitda_keur"] in html
+
     def test_partial_contains_no_javascript_financial_calculation(self):
         text = RUNTIME_SUMMARY_PARTIAL.read_text(encoding="utf-8")
         assert "<script" not in text.lower()
@@ -176,3 +194,18 @@ class TestRunRouteRendering:
         assert runtime_summary["cfads_derivation"]["display_value_keur"] in html
         assert runtime_summary["cfads_derivation"]["sample_cfads_keur"] in html
         assert runtime_summary["cfads_derivation"]["audit_source"] in html
+
+    def test_run_route_renders_ebitda_derivation_popover(self, authenticated_client):
+        form_data = _build_run_form_data(authenticated_client, "tuho")
+        response = authenticated_client.post(
+            "/run",
+            data=form_data,
+        )
+        assert response.status_code == 200
+        html = response.text
+        runtime_summary = _extract_runtime_summary_json(html)
+
+        assert 'id="kpi-ebitda-derivation"' in html
+        assert runtime_summary["ebitda_derivation"]["display_value_keur"] in html
+        assert runtime_summary["ebitda_derivation"]["sample_ebitda_keur"] in html
+        assert runtime_summary["ebitda_derivation"]["audit_source"] in html

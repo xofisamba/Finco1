@@ -17,7 +17,7 @@ def _period_label(period) -> str:
 
 
 def _build_runtime_derivation_evidence(result):
-    """Return read-only DSCR / CFADS evidence sourced from WaterfallResult."""
+    """Return read-only DSCR / CFADS / EBITDA evidence sourced from WaterfallResult."""
     periods = [
         period
         for period in getattr(result, "periods", [])
@@ -55,6 +55,17 @@ def _build_runtime_derivation_evidence(result):
             "sample_tax_keur": getattr(representative_period, "tax_keur", None),
             "sample_cfads_keur": getattr(representative_period, "cf_after_tax_keur", None),
             "audit_source": "WaterfallResult.periods[].cf_after_tax_keur (supporting fields shown: ebitda_keur, tax_keur)",
+        },
+        "ebitda": {
+            "display_value_keur": getattr(result, "total_ebitda_keur", None),
+            "summary_method": "Total EBITDA from backend operating periods.",
+            "period_formula": "EBITDA_t = Revenue_t - OPEX_t",
+            "period_count": period_count,
+            "sample_period_label": _period_label(representative_period),
+            "sample_revenue_keur": getattr(representative_period, "revenue_keur", None),
+            "sample_opex_keur": getattr(representative_period, "opex_keur", None),
+            "sample_ebitda_keur": getattr(representative_period, "ebitda_keur", None),
+            "audit_source": "WaterfallResult.total_ebitda_keur and WaterfallResult.periods[].revenue_keur, opex_keur, ebitda_keur",
         },
     }
 

@@ -160,6 +160,53 @@
         <div class="rs-kpi-label">EBITDA</div>
         <div class="rs-kpi-value {% if runtime_summary.total_ebitda_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
              id="kpi-ebitda">{{ runtime_summary.total_ebitda_keur }}</div>
+        {% if runtime_summary.ebitda_derivation %}
+        <details class="rs-derivation" id="kpi-ebitda-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">EBITDA</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.ebitda_derivation.period_formula }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example period</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example Revenue</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_revenue_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example OPEX</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_opex_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example EBITDA</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_ebitda_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Source note</dt>
+                <dd>Backend-authoritative runtime result.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
       </div>
       <div class="rs-kpi-card">
         <div class="rs-kpi-label">Total OPEX</div>
