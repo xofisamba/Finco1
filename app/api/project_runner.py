@@ -58,6 +58,15 @@ def _build_runtime_derivation_evidence(result):
             "sample_ebitda_keur": getattr(representative_operation_period, "ebitda_keur", None),
             "audit_source": "WaterfallResult.total_ebitda_keur and WaterfallResult.periods[].revenue_keur, opex_keur, ebitda_keur",
         },
+        "opex": {
+            "display_value_keur": getattr(result, "total_opex_keur", None),
+            "summary_method": "Total OPEX from backend operating periods.",
+            "period_formula": "OPEX_t = WaterfallPeriod.opex_keur",
+            "period_count": operation_period_count,
+            "sample_period_label": _period_label(representative_operation_period),
+            "sample_opex_keur": getattr(representative_operation_period, "opex_keur", None),
+            "audit_source": "WaterfallResult.total_opex_keur and WaterfallResult.periods[].opex_keur",
+        },
     }
     if not dscr_periods:
         return evidence

@@ -51,6 +51,7 @@ class RuntimeSummary:
     dscr_derivation: dict[str, Any] = field(default_factory=dict)
     cfads_derivation: dict[str, Any] = field(default_factory=dict)
     ebitda_derivation: dict[str, Any] = field(default_factory=dict)
+    opex_derivation: dict[str, Any] = field(default_factory=dict)
 
     error_message: str = ""
 
@@ -75,6 +76,7 @@ class RuntimeSummary:
             "dscr_derivation": self.dscr_derivation,
             "cfads_derivation": self.cfads_derivation,
             "ebitda_derivation": self.ebitda_derivation,
+            "opex_derivation": self.opex_derivation,
             "error_message": self.error_message,
         }
 
@@ -166,6 +168,21 @@ def _format_ebitda_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_opex_derivation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format OPEX derivation evidence for direct template rendering."""
+    if not raw:
+        return {}
+    return {
+        "display_value_keur": _keur(raw.get("display_value_keur")),
+        "summary_method": raw.get("summary_method", ""),
+        "period_formula": raw.get("period_formula", ""),
+        "period_count": raw.get("period_count", NOT_AVAILABLE),
+        "sample_period_label": raw.get("sample_period_label", NOT_AVAILABLE),
+        "sample_opex_keur": _keur(raw.get("sample_opex_keur")),
+        "audit_source": raw.get("audit_source", ""),
+    }
+
+
 def _format_revenue_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     """Format revenue derivation evidence for direct template rendering."""
     if not raw:
@@ -250,6 +267,7 @@ def build_runtime_summary(
     dscr_derivation = _format_dscr_derivation(derivation_evidence.get("dscr", {}))
     cfads_derivation = _format_cfads_derivation(derivation_evidence.get("cfads", {}))
     ebitda_derivation = _format_ebitda_derivation(derivation_evidence.get("ebitda", {}))
+    opex_derivation = _format_opex_derivation(derivation_evidence.get("opex", {}))
     if cfads_derivation:
         total_cfads = cfads_derivation.get("display_value_keur", NOT_AVAILABLE)
 
@@ -290,6 +308,7 @@ def build_runtime_summary(
         dscr_derivation=dscr_derivation,
         cfads_derivation=cfads_derivation,
         ebitda_derivation=ebitda_derivation,
+        opex_derivation=opex_derivation,
         error_message="",
     )
 

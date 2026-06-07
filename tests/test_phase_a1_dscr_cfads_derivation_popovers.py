@@ -71,7 +71,7 @@ def authenticated_client():
 
 
 class TestRuntimeSummaryContextContract:
-    def test_runtime_summary_includes_revenue_dscr_cfads_and_ebitda_derivation_keys(self):
+    def test_runtime_summary_includes_revenue_dscr_cfads_ebitda_and_opex_derivation_keys(self):
         result = run_project("TUHO", "Base")
         summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
 
@@ -79,10 +79,12 @@ class TestRuntimeSummaryContextContract:
         assert "dscr_derivation" in summary
         assert "cfads_derivation" in summary
         assert "ebitda_derivation" in summary
+        assert "opex_derivation" in summary
         assert summary["revenue_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
         assert summary["dscr_derivation"]["display_value"] != "NOT_AVAILABLE"
         assert summary["cfads_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
         assert summary["ebitda_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
+        assert summary["opex_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
 
     def test_derivation_values_match_backend_waterfall_result(self):
         demo = run_demo_project("TUHO", "Base")
@@ -105,6 +107,7 @@ class TestRuntimeSummaryContextContract:
         assert summary["ebitda_derivation"]["sample_revenue_keur"] == f"{sample_operation.revenue_keur:,.0f} kEUR"
         assert summary["ebitda_derivation"]["sample_opex_keur"] == f"{sample_operation.opex_keur:,.0f} kEUR"
         assert summary["ebitda_derivation"]["sample_ebitda_keur"] == f"{sample_operation.ebitda_keur:,.0f} kEUR"
+        assert summary["opex_derivation"]["sample_opex_keur"] == f"{sample_operation.opex_keur:,.0f} kEUR"
 
 
 class TestRuntimeSummaryPartialRendering:
@@ -183,6 +186,30 @@ class TestRuntimeSummaryPartialRendering:
         assert summary["ebitda_derivation"]["sample_opex_keur"] in html
         assert summary["ebitda_derivation"]["sample_ebitda_keur"] in html
 
+    def test_opex_derivation_renders_from_backend_values_with_limitation_copy(self):
+        result = run_project("TUHO", "Base")
+        summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
+        html = _render_runtime_summary_partial({"runtime_summary": summary, "messages": []})
+
+        assert 'id="kpi-opex-derivation"' in html
+        assert "OPEX_t = WaterfallPeriod.opex_keur" in html
+        assert "Only backend-authoritative runtime OPEX evidence is displayed." in html
+        assert "Line-item OPEX breakdown is not exposed in this runtime view yet." in html
+        assert summary["opex_derivation"]["display_value_keur"] in html
+        assert summary["opex_derivation"]["sample_opex_keur"] in html
+
+    def test_opex_derivation_does_not_claim_line_item_breakdown(self):
+        result = run_project("TUHO", "Base")
+        summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
+        html = _render_runtime_summary_partial({"runtime_summary": summary, "messages": []})
+
+        assert "O&M" not in html
+        assert "land lease" not in html.lower()
+        assert "insurance" not in html.lower()
+        assert "grid fees" not in html.lower()
+        assert "asset management" not in html.lower()
+        assert "escalation breakdown" not in html.lower()
+
     def test_partial_contains_no_javascript_financial_calculation(self):
         text = RUNTIME_SUMMARY_PARTIAL.read_text(encoding="utf-8")
         assert "<script" not in text.lower()
@@ -252,3 +279,19 @@ class TestRunRouteRendering:
         assert runtime_summary["ebitda_derivation"]["display_value_keur"] in html
         assert runtime_summary["ebitda_derivation"]["sample_ebitda_keur"] in html
         assert runtime_summary["ebitda_derivation"]["audit_source"] in html
+
+    def test_run_route_renders_opex_derivation_popover(self, authenticated_client):
+        form_data = _build_run_form_data(authenticated_client, "oborovo")
+        response = authenticated_client.post(
+            "/run",
+            data=form_data,
+        )
+        assert response.status_code == 200
+        html = response.text
+        runtime_summary = _extract_runtime_summary_json(html)
+
+        assert 'id="kpi-opex-derivation"' in html
+        assert runtime_summary["opex_derivation"]["display_value_keur"] in html
+        assert runtime_summary["opex_derivation"]["sample_opex_keur"] in html
+        assert runtime_summary["opex_derivation"]["audit_source"] in html
+        assert "Line-item OPEX breakdown is not exposed in this runtime view yet." in html
