@@ -168,14 +168,12 @@ def test_no_invalid_format_patterns():
     """
     failures = []
     for pattern in INVALID_PATTERNS:
-        r = subprocess.run(
-            [sys.executable, '-m', 'grep', '-rSn', pattern, str(PARTIALS)],
-            capture_output=True, text=True
-        )
-        bad = [
-            l for l in r.stdout.splitlines()
-            if '.bak' not in l and 'test_' not in l
-        ]
+        bad = []
+        for path in PARTIALS.rglob("*.html"):
+            text = path.read_text(encoding="utf-8")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if pattern in line and ".bak" not in str(path) and "test_" not in str(path):
+                    bad.append(f"{path}:{lineno}:{line.strip()}")
         if bad:
             failures.append(
                 f"  Pattern {pattern!r} ({len(bad)} matches):\n    " + "\n    ".join(bad[:5])

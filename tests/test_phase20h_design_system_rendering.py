@@ -25,6 +25,10 @@ RUNTIME_SUMMARY = PROJECT_ROOT / "app" / "templates" / "partials" / "runtime_sum
 SCENARIO_COMPARE = PROJECT_ROOT / "templates" / "partials" / "scenario_compare.html"
 
 
+def _read_text_utf8(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
 class TestCSSDesignSystem:
     """Verify fc-* design system classes exist in styles.css."""
 
@@ -94,7 +98,7 @@ class TestCSSDesignSystem:
     @pytest.fixture(autouse=True)
     def _load_css(self):
         """Load styles.css content once per test class."""
-        self.css_content = STYLES_CSS.read_text()
+        self.css_content = _read_text_utf8(STYLES_CSS)
 
     def test_css_file_exists(self):
         assert STYLES_CSS.exists(), f"styles.css not found at {STYLES_CSS}"
@@ -160,7 +164,7 @@ class TestLegacyAliases:
 
     @pytest.fixture(autouse=True)
     def _load_css(self):
-        self.css_content = STYLES_CSS.read_text()
+        self.css_content = _read_text_utf8(STYLES_CSS)
 
     def test_legacy_sc_aliases_present(self):
         """Verify sc-* aliases for scenario matrix backward compat."""
@@ -177,7 +181,7 @@ class TestInlineStylesRemoved:
 
     def test_scenario_tab_no_inline_style(self):
         """scenario_tab.html should not have inline <style> blocks."""
-        content = SCENARIO_TAB.read_text()
+        content = _read_text_utf8(SCENARIO_TAB)
         # Check for inline style tags
         inline_styles = re.findall(r"<style[^>]*>", content, re.IGNORECASE)
         assert not inline_styles, \
@@ -185,14 +189,14 @@ class TestInlineStylesRemoved:
 
     def test_runtime_summary_no_inline_style(self):
         """runtime_summary.html should not have inline <style> blocks."""
-        content = RUNTIME_SUMMARY.read_text()
+        content = _read_text_utf8(RUNTIME_SUMMARY)
         inline_styles = re.findall(r"<style[^>]*>", content, re.IGNORECASE)
         assert not inline_styles, \
             f"Inline <style> blocks still present in runtime_summary.html: {inline_styles}"
 
     def test_scenario_tab_still_has_sc_classes(self):
         """scenario_tab.html should still use sc-* classes (now aliased in CSS)."""
-        content = SCENARIO_TAB.read_text()
+        content = _read_text_utf8(SCENARIO_TAB)
         # Template should still have sc-matrix, sc-row, sc-th etc.
         assert "sc-matrix" in content, "sc-matrix class should still be in template"
         assert "sc-row" in content, "sc-row class should still be in template"
@@ -200,7 +204,7 @@ class TestInlineStylesRemoved:
 
     def test_runtime_summary_still_has_run_classes(self):
         """runtime_summary.html should still use run-* classes (now aliased in CSS)."""
-        content = RUNTIME_SUMMARY.read_text()
+        content = _read_text_utf8(RUNTIME_SUMMARY)
         assert "run-banner" in content, "run-banner class should still be in template"
         assert "kpi-grid" in content, "kpi-grid class should still be in template"
 
@@ -215,7 +219,7 @@ class TestTemplateRendering:
 
     def test_scenario_tab_valid_html_structure(self):
         """scenario_tab.html should have valid HTML structure."""
-        content = SCENARIO_TAB.read_text()
+        content = _read_text_utf8(SCENARIO_TAB)
         # Check key structural elements exist
         assert '<div id="scenario-tab"' in content, "Missing scenario-tab div"
         assert '<table' in content, "Missing table element"
@@ -227,7 +231,7 @@ class TestTemplateRendering:
 
     def test_runtime_summary_valid_html_structure(self):
         """runtime_summary.html should have valid HTML structure."""
-        content = RUNTIME_SUMMARY.read_text()
+        content = _read_text_utf8(RUNTIME_SUMMARY)
         assert '<div class="runtime-summary"' in content or 'id="runtime-summary"' in content, \
             "Missing runtime-summary wrapper"
         assert '<div class="kpi-grid"' in content or 'class="kpi-grid"' in content, \
@@ -238,7 +242,7 @@ class TestTemplateRendering:
         """scenario_compare.html should have valid HTML structure."""
         if not SCENARIO_COMPARE.exists():
             pytest.skip("scenario_compare.html not in expected location")
-        content = SCENARIO_COMPARE.read_text()
+        content = _read_text_utf8(SCENARIO_COMPARE)
         assert 'ps-compare-results' in content, "Missing ps-compare-results wrapper"
         assert 'ps-compare-table' in content, "Missing ps-compare-table element"
 
@@ -262,20 +266,18 @@ class TestNoFunctionalChanges:
 
     def test_scenario_tab_line_count_reduced(self):
         """scenario_tab.html should be shorter (inline CSS removed)."""
-        line_count = SCENARIO_TAB.read_text().count("\n")
+        line_count = _read_text_utf8(SCENARIO_TAB).count("\n")
         # Pre-Phase 20H: 571 lines (with ~300 line inline <style>)
         # Post-Phase 20H: ~288 lines (inline CSS removed)
         assert line_count < 400, \
             f"scenario_tab.html still has {line_count} lines — inline CSS may not have been removed"
 
     def test_runtime_summary_line_count_reduced(self):
-        """runtime_summary.html should be shorter (inline CSS removed)."""
-        content = RUNTIME_SUMMARY.read_text()
+        """runtime_summary.html should stay free of inline CSS after later UX additions."""
+        content = _read_text_utf8(RUNTIME_SUMMARY)
         line_count = content.count("\n")
-        # Pre-Phase 20H: had inline <style> block
-        # Post-Phase 20H: inline <style> removed
-        assert line_count < 120, \
-            f"runtime_summary.html still has {line_count} lines — inline CSS may not have been removed"
+        assert "<style" not in content.lower(), "runtime_summary.html must not reintroduce inline CSS"
+        assert line_count < 800,             f"runtime_summary.html grew unexpectedly large ({line_count} lines)"
 
 
 class TestGuardrails:
@@ -283,7 +285,7 @@ class TestGuardrails:
 
     def test_no_tailwind_classes(self):
         """No Tailwind CSS classes should be present."""
-        css_content = STYLES_CSS.read_text()
+        css_content = _read_text_utf8(STYLES_CSS)
         # Check for actual Tailwind indicators: @tailwind directive, tw- prefix
         tailwind_patterns = [r"@tailwind", r"\btw-", r"tailwindcss"]
         found = []
@@ -294,7 +296,7 @@ class TestGuardrails:
 
     def test_no_alpine_references(self):
         """No Alpine.js references should be present."""
-        css_content = STYLES_CSS.read_text()
+        css_content = _read_text_utf8(STYLES_CSS)
         # Check for actual Alpine.js indicators: alpinejs, x-data, x-bind, @click.alpine
         alpine_patterns = [r"alpine\.js", r"x-data", r"x-bind:", r"@click\.alpine"]
         found = []
@@ -305,7 +307,7 @@ class TestGuardrails:
 
     def test_no_js_financial_calculations(self):
         """Verify no JS financial calculation patterns in scenario_tab.html."""
-        content = SCENARIO_TAB.read_text()
+        content = _read_text_utf8(SCENARIO_TAB)
         js_calc_patterns = [
             "Math.pow",
             "parseFloat",
@@ -327,7 +329,7 @@ class TestInputsSectionUnchanged:
         inputs_section = PROJECT_ROOT / "app" / "templates" / "partials" / "inputs_section.html"
         if not inputs_section.exists():
             pytest.skip("inputs_section.html not found")
-        content = inputs_section.read_text()
+        content = _read_text_utf8(inputs_section)
         # inp-* classes should still be used
         assert "inp-row" in content, "inp-row class should still be used"
         assert "inp-input" in content, "inp-input class should still be used"
@@ -338,7 +340,7 @@ class TestInputsSectionUnchanged:
 
 def test_css_has_valid_syntax():
     """Basic CSS syntax sanity — no unclosed braces."""
-    content = STYLES_CSS.read_text()
+    content = _read_text_utf8(STYLES_CSS)
     open_braces = content.count("{")
     close_braces = content.count("}")
     assert open_braces == close_braces, \
@@ -347,7 +349,7 @@ def test_css_has_valid_syntax():
 
 def test_css_design_system_section_marker():
     """Verify Phase 20H section marker comment is present."""
-    content = STYLES_CSS.read_text()
+    content = _read_text_utf8(STYLES_CSS)
     assert "PHASE 20H" in content, "Phase 20H section marker should be in styles.css"
     assert "FINCO CELL DESIGN SYSTEM" in content, \
         "Finco Cell Design System marker should be in styles.css"

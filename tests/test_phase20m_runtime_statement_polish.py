@@ -177,7 +177,7 @@ class TestRuntimeSummaryRendering:
     def test_runtime_summary_compiles_in_context(self):
         """runtime_summary.html references expected runtime_summary fields."""
         # Verify the template references runtime_summary object
-        with open(os.path.join(PROJECT_ROOT, "app/templates/partials/runtime_summary.html")) as f:
+        with open(os.path.join(PROJECT_ROOT, "app/templates/partials/runtime_summary.html"), encoding="utf-8") as f:
             content = f.read()
         assert "runtime_summary.project_name" in content
         assert "runtime_summary.ran_at" in content
@@ -292,7 +292,7 @@ class TestPhase20MNoRegression:
         """All three templates have valid HTML structure."""
         for name in ["runtime_summary", "sheet_financials", "scenario_compare"]:
             path = os.path.join(PROJECT_ROOT, f"app/templates/partials/{name}.html")
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             assert "<div" in content
             assert "</div>" in content

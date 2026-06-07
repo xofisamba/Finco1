@@ -128,7 +128,7 @@ class TestRevenueGridRendering:
     def test_sheet_revenue_grew_significantly(self):
         """sheet_revenue.html grew substantially (proves new content)."""
         path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_revenue.html")
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
         # Original was ~110 lines; Phase 20K should make it 300+
         assert len(lines) > 200, f"sheet_revenue.html should be much larger now (got {len(lines)} lines)"
