@@ -47,6 +47,7 @@ class RuntimeSummary:
     shl_opening_keur: str = NOT_AVAILABLE
     total_cfads_keur: str = NOT_AVAILABLE
 
+    revenue_derivation: dict[str, Any] = field(default_factory=dict)
     dscr_derivation: dict[str, Any] = field(default_factory=dict)
     cfads_derivation: dict[str, Any] = field(default_factory=dict)
     ebitda_derivation: dict[str, Any] = field(default_factory=dict)
@@ -70,6 +71,7 @@ class RuntimeSummary:
             "senior_debt_keur": self.senior_debt_keur,
             "shl_opening_keur": self.shl_opening_keur,
             "total_cfads_keur": self.total_cfads_keur,
+            "revenue_derivation": self.revenue_derivation,
             "dscr_derivation": self.dscr_derivation,
             "cfads_derivation": self.cfads_derivation,
             "ebitda_derivation": self.ebitda_derivation,
@@ -164,6 +166,29 @@ def _format_ebitda_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_revenue_derivation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format revenue derivation evidence for direct template rendering."""
+    if not raw:
+        return {}
+    generation = raw.get("sample_generation_mwh")
+    sample_generation = NOT_AVAILABLE
+    if generation is not None:
+        try:
+            sample_generation = f"{float(generation):,.0f} MWh"
+        except (TypeError, ValueError):
+            sample_generation = NOT_AVAILABLE
+    return {
+        "display_value_keur": _keur(raw.get("display_value_keur")),
+        "summary_method": raw.get("summary_method", ""),
+        "period_formula": raw.get("period_formula", ""),
+        "period_count": raw.get("period_count", 0),
+        "sample_period_label": raw.get("sample_period_label", ""),
+        "sample_generation_mwh": sample_generation,
+        "sample_revenue_keur": _keur(raw.get("sample_revenue_keur")),
+        "audit_source": raw.get("audit_source", ""),
+    }
+
+
 def _find_debt_balance(wf_rows: list[dict], label_needle: str) -> str:
     """Search waterfall rows for a balance row matching label_needle.
 
@@ -221,6 +246,7 @@ def build_runtime_summary(
     total_cfads = NOT_AVAILABLE
 
     derivation_evidence = result.get("derivation_evidence", {})
+    revenue_derivation = _format_revenue_derivation(derivation_evidence.get("revenue", {}))
     dscr_derivation = _format_dscr_derivation(derivation_evidence.get("dscr", {}))
     cfads_derivation = _format_cfads_derivation(derivation_evidence.get("cfads", {}))
     ebitda_derivation = _format_ebitda_derivation(derivation_evidence.get("ebitda", {}))
@@ -260,6 +286,7 @@ def build_runtime_summary(
         senior_debt_keur=senior_debt_str,
         shl_opening_keur=shl_opening_str,
         total_cfads_keur=total_cfads,
+        revenue_derivation=revenue_derivation,
         dscr_derivation=dscr_derivation,
         cfads_derivation=cfads_derivation,
         ebitda_derivation=ebitda_derivation,
