@@ -1,4 +1,4 @@
-"""Phase A1 - DSCR / CFADS derivation popovers.
+"""Runtime summary derivation popovers.
 
 Read-only transparency UX:
 - no model calculation changes
