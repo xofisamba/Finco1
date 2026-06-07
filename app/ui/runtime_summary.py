@@ -41,6 +41,7 @@ class RuntimeSummary:
     total_revenue_keur: str = NOT_AVAILABLE
     total_ebitda_keur: str = NOT_AVAILABLE
     total_opex_keur: str = NOT_AVAILABLE
+    total_capex_keur: str = NOT_AVAILABLE
     total_distributions_keur: str = NOT_AVAILABLE
 
     senior_debt_keur: str = NOT_AVAILABLE
@@ -52,6 +53,7 @@ class RuntimeSummary:
     cfads_derivation: dict[str, Any] = field(default_factory=dict)
     ebitda_derivation: dict[str, Any] = field(default_factory=dict)
     opex_derivation: dict[str, Any] = field(default_factory=dict)
+    capex_derivation: dict[str, Any] = field(default_factory=dict)
 
     error_message: str = ""
 
@@ -68,6 +70,7 @@ class RuntimeSummary:
             "total_revenue_keur": self.total_revenue_keur,
             "total_ebitda_keur": self.total_ebitda_keur,
             "total_opex_keur": self.total_opex_keur,
+            "total_capex_keur": self.total_capex_keur,
             "total_distributions_keur": self.total_distributions_keur,
             "senior_debt_keur": self.senior_debt_keur,
             "shl_opening_keur": self.shl_opening_keur,
@@ -77,6 +80,7 @@ class RuntimeSummary:
             "cfads_derivation": self.cfads_derivation,
             "ebitda_derivation": self.ebitda_derivation,
             "opex_derivation": self.opex_derivation,
+            "capex_derivation": self.capex_derivation,
             "error_message": self.error_message,
         }
 
@@ -183,6 +187,20 @@ def _format_opex_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_capex_derivation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format CAPEX derivation evidence for direct template rendering."""
+    if not raw:
+        return {}
+    return {
+        "display_value_keur": _keur(raw.get("display_value_keur")),
+        "summary_method": raw.get("summary_method", ""),
+        "authoritative_source": raw.get("authoritative_source", ""),
+        "category_count": raw.get("category_count", NOT_AVAILABLE),
+        "hierarchy_source": raw.get("hierarchy_source", ""),
+        "audit_source": raw.get("audit_source", ""),
+    }
+
+
 def _format_revenue_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     """Format revenue derivation evidence for direct template rendering."""
     if not raw:
@@ -259,6 +277,7 @@ def build_runtime_summary(
     total_revenue = _keur(kpis.get("total_revenue_keur"))
     total_ebitda = _keur(kpis.get("total_ebitda_keur"))
     total_opex = _keur(kpis.get("total_opex_keur"))
+    total_capex = _keur(kpis.get("total_capex_keur"))
     total_dist = _keur(kpis.get("total_distributions_keur"))
     total_cfads = NOT_AVAILABLE
 
@@ -268,6 +287,7 @@ def build_runtime_summary(
     cfads_derivation = _format_cfads_derivation(derivation_evidence.get("cfads", {}))
     ebitda_derivation = _format_ebitda_derivation(derivation_evidence.get("ebitda", {}))
     opex_derivation = _format_opex_derivation(derivation_evidence.get("opex", {}))
+    capex_derivation = _format_capex_derivation(derivation_evidence.get("capex", {}))
     if cfads_derivation:
         total_cfads = cfads_derivation.get("display_value_keur", NOT_AVAILABLE)
 
@@ -300,6 +320,7 @@ def build_runtime_summary(
         total_revenue_keur=total_revenue,
         total_ebitda_keur=total_ebitda,
         total_opex_keur=total_opex,
+        total_capex_keur=total_capex,
         total_distributions_keur=total_dist,
         senior_debt_keur=senior_debt_str,
         shl_opening_keur=shl_opening_str,
@@ -309,6 +330,7 @@ def build_runtime_summary(
         cfads_derivation=cfads_derivation,
         ebitda_derivation=ebitda_derivation,
         opex_derivation=opex_derivation,
+        capex_derivation=capex_derivation,
         error_message="",
     )
 
