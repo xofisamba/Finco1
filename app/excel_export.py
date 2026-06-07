@@ -4,6 +4,8 @@ import pandas as pd
 from io import BytesIO
 import json
 
+from app.depreciation_audit_visibility import build_depreciation_audit_dataframe
+
 from app.portfolio_ui import (
     build_portfolio_summary_table,
     build_portfolio_spv_table,
@@ -240,6 +242,13 @@ def build_excel_export(
 
         # ── Book Depreciation Disclosure ──────────────────────────────────
         _write_book_depreciation_sheet_for_project(writer, project_inputs, advanced_capex_line_items, project_type)
+
+        # ── Phase D1: Depreciation Audit (visibility only) ──────────────────
+        _write_depreciation_audit_sheet(
+            writer,
+            project_inputs=project_inputs,
+            provenance_metadata=provenance_metadata,
+        )
 
         # ── Phase 5D: Overlay Sheets (optional) ─────────────────────────
         _write_overlay_sheets(
@@ -765,6 +774,25 @@ def _write_depreciation_assumptions_sheet(writer, profile_name: str) -> None:
     df = pd.DataFrame(rows[1:], columns=rows[0])
     _write_sheet(writer, "Depreciation Assumptions", df)
     ws = writer.sheets["Depreciation Assumptions"]
+    ws.freeze_panes = "A2"
+
+
+def _write_depreciation_audit_sheet(
+    writer,
+    project_inputs=None,
+    provenance_metadata=None,
+) -> None:
+    """Write the Depreciation Audit sheet (Phase D1).
+
+    Audit visibility only. All values are text. No
+    numeric depreciation values appear on this sheet.
+    """
+    df = build_depreciation_audit_dataframe(
+        project_inputs=project_inputs,
+        provenance_metadata=provenance_metadata,
+    )
+    _write_sheet(writer, "Depreciation Audit", df)
+    ws = writer.sheets["Depreciation Audit"]
     ws.freeze_panes = "A2"
 
 

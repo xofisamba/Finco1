@@ -1,0 +1,174 @@
+{
+  "phase": "D1",
+  "title": "Depreciation Export / Audit Visibility Hardening",
+  "type": "docs_and_export_audit_visibility",
+  "status": "DRAFT",
+  "base_sha": "22d816277c494dd1926f133b15dad5bf2f10d173",
+  "branch": "phase-depreciation-d1-export-audit-visibility",
+  "merge_sha": null,
+  "scope": {
+    "allowed": [
+      "export_audit_sheets",
+      "export_notes",
+      "provenance_metadata",
+      "disclosure_tables",
+      "depreciation_audit_summary",
+      "tests",
+      "docs"
+    ],
+    "not_allowed": [
+      "runtime_depreciation_enablement",
+      "feature_flag_enablement",
+      "formula_changes",
+      "depreciation_schedule_changes",
+      "tax_calculation_changes",
+      "pnl_calculation_changes",
+      "cfads_changes",
+      "persistence_changes",
+      "schema_changes",
+      "ui_workflow_changes_unless_readonly_label",
+      "generic_project_depreciation_claims"
+    ]
+  },
+  "files_changed": [
+    {
+      "path": "app/depreciation_audit_visibility.py",
+      "type": "A",
+      "lines_added": 175,
+      "lines_removed": 0,
+      "rationale": "New module: _resolve_depreciation_runtime_authority (reads flag snapshot from provenance_metadata or live project_inputs via app.persistence.provenance.runtime_flag_snapshot) and build_depreciation_audit_dataframe (builds the (Field, Value) DataFrame for the new sheet). Pure read-side / disclosure code. No write to model / runtime."
+    },
+    {
+      "path": "app/excel_export.py",
+      "type": "M",
+      "lines_added": 28,
+      "lines_removed": 0,
+      "rationale": "Three small additions: (1) from app.depreciation_audit_visibility import build_depreciation_audit_dataframe import. (2) New _write_depreciation_audit_sheet(writer, project_inputs, provenance_metadata) helper that writes a text-only Depreciation Audit sheet. (3) Wire-up call in build_excel_export immediately after the existing Book Depreciation Disclosure call. CRLF / LF line endings preserved (the file uses a mixed convention on main)."
+    },
+    {
+      "path": "tests/test_phase_d1_depreciation_export_audit_visibility.py",
+      "type": "A",
+      "lines_added": 650,
+      "lines_removed": 0,
+      "rationale": "23 new design-contract tests pinning: sheet existence in both factory exports (TUHO, Oborovo); required disclosure fields; flag status disclosure; helper-text-only invariant; numeric invariance (TUHO and Oborovo existing sheet sums unchanged); existing sheets still present; no feature flag enabled; rc1 frozen; phase plan + hard no-go."
+    },
+    {
+      "path": "docs/phase_d1_depreciation_export_audit_visibility.md",
+      "type": "A",
+      "lines_added": 290,
+      "lines_removed": 0,
+      "rationale": "7-section design + change doc with full sheet wording table and pre-merge audit summary."
+    },
+    {
+      "path": "reports/phase_d1_depreciation_export_audit_visibility.json",
+      "type": "A",
+      "lines_added": 110,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "new_export_sheet": {
+    "name": "Depreciation Audit",
+    "rows": 14,
+    "format": "(Field, Value) — text only",
+    "location_in_export": "Immediately after Book Depreciation sheet, before Phase 5D overlay sheets"
+  },
+  "exact_disclosure_wording": {
+    "Phase": "D1 — Depreciation Export / Audit Visibility Hardening",
+    "Scope": "Audit visibility only. NO runtime enablement. NO formula / schedule / tax / P&L / CFADS change.",
+    "Notice": "Depreciation export visibility only — no runtime authority change.",
+    "Active_Depreciation_Path": "legacy_depreciation_runtime (baseline TUHO/Oborovo; canonical_depreciation_engine iff use_depreciation_canonical_engine=True)",
+    "Runtime_Authority_Source": "waterfall_core.LegacyDepreciationPath (or domain.depreciation.engine.DepreciationEngine if canonical on)",
+    "Canonical_Depreciation_Engine_Enabled": "NO (baseline TUHO/Oborovo)",
+    "Canonical_Tax_Bridge_Enabled": "NO",
+    "Tax_Bridge_Engine_Enabled": "NO",
+    "Book_Depreciation_PnL_Bridge_Enabled": "NO",
+    "Values_Reflect": "Current active backend runtime path (NOT a canonical-promotion simulation).",
+    "Audit_Only_Surfaces": "Depreciation Assumptions; Depreciation Audit (this sheet); canonical audit rows when present in result._canonical_depreciation_wiring (advisory only, not runtime authority).",
+    "Runtime_Surfaces": "Tax_Depreciation; Tax Depreciation; Book Depreciation; waterfall period.depreciation_keur (when produced by the active runtime path).",
+    "Known_Limitations": "Canonical DepreciationEngine is not runtime-authoritative unless explicitly enabled. Audit values from the canonical engine, when present, are advisory and do NOT change the waterfall output. Generic-project depreciation claims are NOT supported. Depreciation visibility is consolidated only for the active runtime path.",
+    "Generic_Project_Support": "NO — depreciation runtime authority for generic (non-TUHO, non-Oborovo) projects is out of scope for the active runtime path. This audit sheet applies to the current active path only."
+  },
+  "numeric_invariance": {
+    "TUHO": {
+      "CapEx": 145988.42,
+      "CapEx_Items": 70706.54,
+      "Inputs": 79580.2375,
+      "Depreciation_Assumptions": 45.0,
+      "Tax_Depreciation": 0.0,
+      "Tax_Depreciation_title": 0.0,
+      "Book_Depreciation": 0.0
+    },
+    "Oborovo": {
+      "CapEx": 115758.5053,
+      "CapEx_Items": 56104.09,
+      "Inputs": 61272.8532,
+      "Depreciation_Assumptions": 45.0,
+      "Tax_Depreciation": 0.0,
+      "Tax_Depreciation_title": 0.0,
+      "Book_Depreciation": 0.0
+    },
+    "Depreciation_Audit_new_sheet": "text-only (auto-index column only, no financial value)",
+    "all_pre_D1_numerics_unchanged": true
+  },
+  "existing_sheets_preserved": {
+    "TUHO": 14,
+    "Oborovo": 14,
+    "list": [
+      "Dashboard",
+      "Returns",
+      "Waterfall",
+      "Revenue",
+      "Debt",
+      "Tax_Depreciation",
+      "Notes",
+      "Inputs",
+      "CapEx",
+      "CapEx_Items",
+      "Validation",
+      "Depreciation Assumptions",
+      "Tax Depreciation",
+      "Book Depreciation"
+    ]
+  },
+  "test_counts": {
+    "D1_new_tests": 23,
+    "57A-9E_excel_export_tests_isolated": "13/13 PASS",
+    "Phase_51F_Parity_Guardrails": "21/21 PASS (green)",
+    "Phase_57pre_route_smoke": "55 pass / 12 skip (green)",
+    "pre_existing_failures_on_main": [
+      "tests/test_depreciation_canonical_wiring.py::TestOborovoDepreciationCanonicalRegression::test_oborovo_equity_irr_within_tolerance_dep_canonical (also fails on main — pre-existing infra rot, not a D1 regression)",
+      "tests/test_phase57a9e_capex_sub_lines_excel_export.py::TestPhase57A9EExcelExport::test_download_route_user_project_export_includes_audit_sheet (also fails on main when run in full suite — pre-existing test pollution, not a D1 regression; passes in isolated run)",
+      "tests/test_phase57a9e_capex_sub_lines_excel_export.py::TestPhase57A9EExcelExport::test_download_route_propagates_active_scenario_override_metadata (also fails on main when run in full suite — pre-existing test pollution, not a D1 regression; passes in isolated run)"
+    ]
+  },
+  "no_runtime_enablement_verification": {
+    "use_depreciation_canonical_engine_after_D1": false,
+    "use_canonical_tax_depreciation_bridge_after_D1": false,
+    "use_book_depreciation_for_pnl_after_D1": false,
+    "audit_sheet_correctly_reports_NO_for_canonical_flags": true
+  },
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "hard_no_go": [
+    "no_runtime_depreciation_enablement (D1 is visibility only)",
+    "no_feature_flag_enablement",
+    "no_formula_changes",
+    "no_depreciation_schedule_changes",
+    "no_tax_calculation_changes",
+    "no_pnl_calculation_changes",
+    "no_cfads_changes",
+    "no_persistence_changes",
+    "no_schema_changes",
+    "no_ui_workflow_changes_unless_readonly_label",
+    "no_generic_project_depreciation_claims",
+    "rc1_frozen (b425a0708719eaa5e1d922b1008e5609758e0ad4)"
+  ],
+  "recommended_next_step": "Phase D2 (flag discipline hardening) or Phase D3 (shadow validation), gated on D1 review. Or alternative tracks: pause and review the depreciation arc, defer until TUHO/Oborovo G20/R99/R102 posture changes, or focus on a different governance arc.",
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "gated on user review",
+    "rationale": "D1 is the first of three safe next steps recommended by PR #530 (depreciation enablement readiness review). D1 is purely audit visibility; no runtime enablement. User review of the disclosure wording and the no-runtime-change guarantees is required before any further depreciation work begins."
+  }
+}
