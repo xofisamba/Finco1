@@ -41,6 +41,7 @@ def _build_runtime_derivation_evidence(result, project_inputs=None):
     capex_items = capex_items_attr() if callable(capex_items_attr) else ()
 
     evidence = {
+        "senior_debt": {},
         "capex": {
             "display_value_keur": getattr(capex, "total_capex", None),
             "summary_method": (
@@ -84,6 +85,28 @@ def _build_runtime_derivation_evidence(result, project_inputs=None):
             "audit_source": "WaterfallResult.total_opex_keur and WaterfallResult.periods[].opex_keur",
         },
     }
+
+    sample_senior_balance = getattr(representative_operation_period, "senior_balance_keur", None)
+    sample_senior_principal = getattr(representative_operation_period, "senior_principal_keur", None)
+    sample_senior_interest = getattr(representative_operation_period, "senior_interest_keur", None)
+    sample_senior_ds = getattr(representative_operation_period, "senior_ds_keur", None)
+    if sample_senior_balance is not None and sample_senior_principal is not None:
+        evidence["senior_debt"] = {
+            "display_value_keur": float(sample_senior_balance or 0.0) + float(sample_senior_principal or 0.0),
+            "summary_method": (
+                "Opening senior debt amount from backend operating-period debt schedule evidence. "
+                "The displayed amount is anchored to the first operating-period senior balance and principal repayment fields."
+            ),
+            "period_count": operation_period_count,
+            "sample_period_label": _period_label(representative_operation_period),
+            "sample_senior_interest_keur": sample_senior_interest,
+            "sample_senior_principal_keur": sample_senior_principal,
+            "sample_senior_debt_service_keur": sample_senior_ds,
+            "audit_source": (
+                "WaterfallResult.periods[].senior_balance_keur, senior_principal_keur, "
+                "senior_interest_keur, senior_ds_keur"
+            ),
+        }
     if not dscr_periods:
         return evidence
 

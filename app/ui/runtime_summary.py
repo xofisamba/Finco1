@@ -54,6 +54,7 @@ class RuntimeSummary:
     ebitda_derivation: dict[str, Any] = field(default_factory=dict)
     opex_derivation: dict[str, Any] = field(default_factory=dict)
     capex_derivation: dict[str, Any] = field(default_factory=dict)
+    senior_debt_derivation: dict[str, Any] = field(default_factory=dict)
 
     error_message: str = ""
 
@@ -81,6 +82,7 @@ class RuntimeSummary:
             "ebitda_derivation": self.ebitda_derivation,
             "opex_derivation": self.opex_derivation,
             "capex_derivation": self.capex_derivation,
+            "senior_debt_derivation": self.senior_debt_derivation,
             "error_message": self.error_message,
         }
 
@@ -201,6 +203,22 @@ def _format_capex_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_senior_debt_derivation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format senior debt derivation evidence for direct template rendering."""
+    if not raw:
+        return {}
+    return {
+        "display_value_keur": _keur(raw.get("display_value_keur")),
+        "summary_method": raw.get("summary_method", ""),
+        "period_count": raw.get("period_count", NOT_AVAILABLE),
+        "sample_period_label": raw.get("sample_period_label", NOT_AVAILABLE),
+        "sample_senior_interest_keur": _keur(raw.get("sample_senior_interest_keur")),
+        "sample_senior_principal_keur": _keur(raw.get("sample_senior_principal_keur")),
+        "sample_senior_debt_service_keur": _keur(raw.get("sample_senior_debt_service_keur")),
+        "audit_source": raw.get("audit_source", ""),
+    }
+
+
 def _format_revenue_derivation(raw: dict[str, Any]) -> dict[str, Any]:
     """Format revenue derivation evidence for direct template rendering."""
     if not raw:
@@ -288,6 +306,7 @@ def build_runtime_summary(
     ebitda_derivation = _format_ebitda_derivation(derivation_evidence.get("ebitda", {}))
     opex_derivation = _format_opex_derivation(derivation_evidence.get("opex", {}))
     capex_derivation = _format_capex_derivation(derivation_evidence.get("capex", {}))
+    senior_debt_derivation = _format_senior_debt_derivation(derivation_evidence.get("senior_debt", {}))
     if cfads_derivation:
         total_cfads = cfads_derivation.get("display_value_keur", NOT_AVAILABLE)
 
@@ -297,13 +316,13 @@ def build_runtime_summary(
     tables = result.get("tables", {})
     wf_rows = tables.get("waterfall", [])
 
-    senior_debt_str = NOT_AVAILABLE
+    senior_debt_str = senior_debt_derivation.get("display_value_keur", NOT_AVAILABLE)
     shl_opening_str = NOT_AVAILABLE
 
     # TUHO / Oborovo factory defaults for senior debt and SHL
     from app.ui.project_context import get_project_context
     ctx = get_project_context(project_id)
-    if ctx.senior_debt_keur:
+    if senior_debt_str == NOT_AVAILABLE and ctx.senior_debt_keur:
         senior_debt_str = _keur(ctx.senior_debt_keur)
     if ctx.shl_amount_keur:
         shl_opening_str = _keur(ctx.shl_amount_keur + ctx.shl_idc_keur)
@@ -331,6 +350,7 @@ def build_runtime_summary(
         ebitda_derivation=ebitda_derivation,
         opex_derivation=opex_derivation,
         capex_derivation=capex_derivation,
+        senior_debt_derivation=senior_debt_derivation,
         error_message="",
     )
 
