@@ -48,13 +48,13 @@ def _build_runtime_derivation_evidence(result):
         "cfads": {
             "display_value_keur": total_cfads,
             "summary_method": "Total CFADS across operating periods with positive senior debt service.",
-            "period_formula": "CFADS_t = EBITDA_t - Tax_t",
+            "period_formula": "CFADS_t = WaterfallPeriod.cf_after_tax_keur",
             "period_count": period_count,
             "sample_period_label": _period_label(representative_period),
             "sample_ebitda_keur": getattr(representative_period, "ebitda_keur", None),
             "sample_tax_keur": getattr(representative_period, "tax_keur", None),
             "sample_cfads_keur": getattr(representative_period, "cf_after_tax_keur", None),
-            "audit_source": "WaterfallResult.periods[].ebitda_keur, tax_keur, cf_after_tax_keur",
+            "audit_source": "WaterfallResult.periods[].cf_after_tax_keur (supporting fields shown: ebitda_keur, tax_keur)",
         },
     }
 
