@@ -108,6 +108,19 @@ class TestRuntimeSummaryPartialRendering:
         assert summary["dscr_derivation"]["display_value"] in html
         assert summary["dscr_derivation"]["total_cfads_keur"] in html
         assert summary["dscr_derivation"]["total_senior_debt_service_keur"] in html
+        assert "Calculation method" in html
+        assert "Supporting totals (not the displayed average formula)" in html
+
+    def test_dscr_derivation_copy_distinguishes_average_from_supporting_totals(self):
+        result = run_project("TUHO", "Base")
+        summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
+        html = _render_runtime_summary_partial({"runtime_summary": summary, "messages": []})
+
+        assert "Avg DSCR" in html
+        assert "Average of operating-period DSCR values with positive senior debt service." in html
+        assert "DSCR_t = CFADS_t / Senior Debt Service_t" in html
+        assert "Supporting totals (not the displayed average formula): CFADS" in html
+        assert "Supporting totals (not the displayed average formula): Senior Debt Service" in html
 
     def test_cfads_derivation_renders_from_backend_values(self):
         result = run_project("TUHO", "Base")
@@ -117,6 +130,9 @@ class TestRuntimeSummaryPartialRendering:
         assert 'id="kpi-cfads-derivation"' in html
         assert "CFADS (Total)" in html
         assert summary["total_cfads_keur"] in html
+        assert "CFADS_t = WaterfallPeriod.cf_after_tax_keur" in html
+        assert "Selected supporting EBITDA" in html
+        assert "Selected supporting Tax" in html
         assert summary["cfads_derivation"]["sample_ebitda_keur"] in html
         assert summary["cfads_derivation"]["sample_tax_keur"] in html
         assert summary["cfads_derivation"]["sample_cfads_keur"] in html
