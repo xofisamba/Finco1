@@ -2206,6 +2206,68 @@ body {
   margin-bottom: 1rem;
 }
 
+.workspace-lifecycle-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.workspace-lifecycle-panel__header {
+  margin-bottom: 0.75rem;
+}
+
+.workspace-lifecycle-panel__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.workspace-lifecycle-panel__desc {
+  margin-top: 0.18rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.workspace-lifecycle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.65rem;
+}
+
+.workspace-lifecycle-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 0.75rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.workspace-lifecycle-card__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.workspace-lifecycle-card__value {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.workspace-lifecycle-card__meta {
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .export-lineage-panel,
 .export-lineage-history {
   border: 1px solid var(--border);
@@ -4061,6 +4123,17 @@ body {
   border-radius: 6px;
   margin-bottom: 0.75rem;
   gap: 1rem;
+}
+
+.rs-lifecycle-note {
+  margin-bottom: 0.85rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text-2, #4b5563);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  padding: 0.75rem 0.85rem;
 }
 
 .rs-provenance-left {

@@ -255,6 +255,50 @@
     Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
   </div>
 
+  {% set _lifecycle_project_label = "User-created project" if is_user_project else "Factory reference" %}
+  {% set _lifecycle_project_note = "Factory references are read-only. Duplicate or Save As before editing controlled assumptions." if not is_user_project else "Saved project inputs remain editable here. Runtime outputs still stay tied to the last completed run until you save and run again." %}
+  {% set _lifecycle_runtime_project = runtime_summary.project_name if runtime_summary and runtime_summary.project_name else export_lineage_ui.current_context.project_label %}
+  {% set _lifecycle_runtime_scenario = runtime_summary.active_scenario_name if runtime_summary and runtime_summary.active_scenario_name else export_lineage_ui.current_context.active_scenario_name %}
+  <div class="workspace-lifecycle-panel" id="workspace-lifecycle-panel" aria-label="Model lifecycle clarity">
+    <div class="workspace-lifecycle-panel__header">
+      <div>
+        <div class="workspace-lifecycle-panel__title">Lifecycle Clarity</div>
+        <div class="workspace-lifecycle-panel__desc">
+          Follow the modelling boundary in order: edit inputs, save the project or scenario, run the model, review runtime outputs, then export reviewer-facing workbooks.
+        </div>
+      </div>
+    </div>
+    <div class="workspace-lifecycle-grid">
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Project state</div>
+        <div class="workspace-lifecycle-card__value">{{ _lifecycle_project_label }}</div>
+        <div class="workspace-lifecycle-card__meta">{{ _lifecycle_project_note }}</div>
+        <div class="workspace-lifecycle-card__meta">
+          {% if workspace_state and workspace_state.dirty %}
+          Unsaved changes may require Save/Run before outputs are current.
+          {% else %}
+          Current draft is aligned with the saved project boundary shown in this workspace.
+          {% endif %}
+        </div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Runtime state</div>
+        <div class="workspace-lifecycle-card__value">Last completed run</div>
+        <div class="workspace-lifecycle-card__meta">Runtime summary reflects the last completed run.</div>
+        <div class="workspace-lifecycle-card__meta">Project: {{ _lifecycle_runtime_project }}</div>
+        <div class="workspace-lifecycle-card__meta">Scenario: {{ _lifecycle_runtime_scenario }}</div>
+        <div class="workspace-lifecycle-card__meta">{{ workspace_state_meta.last_runtime_origin_label if workspace_state_meta else "No runtime bound yet" }}</div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Export state</div>
+        <div class="workspace-lifecycle-card__value">Backend-authored audit output</div>
+        <div class="workspace-lifecycle-card__meta">Export workbook is generated from backend-authoritative saved/run state.</div>
+        <div class="workspace-lifecycle-card__meta">Export is an audit output, not a free-form Excel model.</div>
+        <div class="workspace-lifecycle-card__meta">{{ export_lineage_ui.current_context.action_note }}</div>
+      </div>
+    </div>
+  </div>
+
   <div class="export-lineage-panel" id="export-lineage-panel" aria-label="Export lineage summary">
     <div class="export-lineage-panel__header">
       <div>
@@ -605,6 +649,9 @@
       <div class="export-lineage-history__title">Current Export Context</div>
       <div class="export-lineage-history__desc" id="export-lineage-guidance">
         {{ export_lineage_ui.current_context.action_note }}
+      </div>
+      <div class="export-lineage-history__desc">
+        Export workbook is generated from backend-authoritative saved/run state. It remains a reviewer-facing audit output, not a free-form Excel model.
       </div>
       <div class="export-lineage-history__desc">
         Trusted pilot evidence is limited to TUHO and Oborovo frozen-template paths. Generic projects remain exploratory and unvalidated.
