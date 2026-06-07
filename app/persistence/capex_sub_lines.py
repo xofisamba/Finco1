@@ -96,6 +96,44 @@ ALLOWED_PARENT_CATEGORIES: frozenset[str] = frozenset(
 
 REJECTED_PARENT_CATEGORIES: frozenset[str] = frozenset({"C.17", "C.18"})
 
+SCALAR_CAPEX_METADATA_REPLAY_KEY = "_scalar_capex_metadata"
+
+APPROVED_SCALAR_CAPEX_METADATA_KEYS: frozenset[str] = frozenset(
+    {
+        "contingency_pct",
+        "vat_recoverable_flag",
+        "vat_rate_pct",
+        "vat_basis_mode",
+        "vat_jurisdiction_code",
+        "wht_rate_pct",
+        "wht_treatment_mode",
+        "wht_gross_up_flag",
+        "wht_jurisdiction_code",
+        "depreciation_asset_class",
+        "depreciation_useful_life_years",
+        "depreciable_flag",
+        "depreciation_basis_mode",
+    }
+)
+
+NON_PERSISTED_APPROVED_METADATA_KEYS: frozenset[str] = frozenset({"cost_per_mw"})
+
+SCALAR_CAPEX_METADATA_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("contingency_pct", "Contingency %"),
+    ("vat_recoverable_flag", "VAT Recoverable Flag"),
+    ("vat_rate_pct", "VAT Rate %"),
+    ("vat_basis_mode", "VAT Basis Mode"),
+    ("vat_jurisdiction_code", "VAT Jurisdiction"),
+    ("wht_rate_pct", "WHT Rate %"),
+    ("wht_treatment_mode", "WHT Treatment Mode"),
+    ("wht_gross_up_flag", "WHT Gross-up Flag"),
+    ("wht_jurisdiction_code", "WHT Jurisdiction"),
+    ("depreciation_asset_class", "Depreciation Asset Class"),
+    ("depreciation_useful_life_years", "Depreciation Useful Life (Years)"),
+    ("depreciable_flag", "Depreciable Flag"),
+    ("depreciation_basis_mode", "Depreciation Basis Mode"),
+)
+
 
 # ---------------------------------------------------------------------------
 # Business code format: C.NN.U### (U prefix marks user-added).
@@ -129,6 +167,7 @@ class CapexSubLine:
     amount_keur: float = 0.0
     comments: str = ""
     schedule_json: str = "{}"
+    scalar_metadata: dict[str, Any] = field(default_factory=dict)
     source: str = "user"
     is_active: bool = True
     governance_state: dict[str, Any] = field(default_factory=dict)
@@ -150,6 +189,13 @@ class CapexSubLine:
 
         import json as _json
 
+        raw_replay_metadata = _json.loads(
+            _get("replay_metadata_json", "{}") or "{}"
+        )
+        replay_metadata, scalar_metadata = _split_scalar_metadata_payload(
+            raw_replay_metadata
+        )
+
         return cls(
             id=_get("id"),
             sub_line_id=_get("sub_line_id"),
@@ -161,13 +207,95 @@ class CapexSubLine:
             amount_keur=float(_get("amount_keur", 0.0) or 0.0),
             comments=_get("comments", "") or "",
             schedule_json=_get("schedule_json", "{}") or "{}",
+            scalar_metadata=scalar_metadata,
             source=_get("source", "user") or "user",
             is_active=bool(_get("is_active", 0)),
             governance_state=_json.loads(_get("governance_state_json", "{}") or "{}"),
-            replay_metadata=_json.loads(_get("replay_metadata_json", "{}") or "{}"),
+            replay_metadata=replay_metadata,
             created_at=_get("created_at"),
             updated_at=_get("updated_at"),
         )
+
+
+def sanitize_scalar_capex_metadata(
+    scalar_metadata: Optional[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Validate and normalize persisted scalar CAPEX metadata."""
+    if not scalar_metadata:
+        return {}
+    if not isinstance(scalar_metadata, Mapping):
+        raise ValueError("scalar_metadata must be a mapping when provided")
+
+    metadata = dict(scalar_metadata)
+    unknown = sorted(
+        key
+        for key in metadata.keys()
+        if key not in APPROVED_SCALAR_CAPEX_METADATA_KEYS
+        and key not in NON_PERSISTED_APPROVED_METADATA_KEYS
+    )
+    if unknown:
+        raise ValueError(
+            f"Unsupported scalar CAPEX metadata keys: {unknown}. "
+            f"Approved keys are {sorted(APPROVED_SCALAR_CAPEX_METADATA_KEYS)}"
+        )
+
+    blocked = sorted(
+        key for key in metadata.keys() if key in NON_PERSISTED_APPROVED_METADATA_KEYS
+    )
+    if blocked:
+        raise ValueError(
+            f"Derived-only CAPEX metadata keys cannot be persisted: {blocked}"
+        )
+
+    normalized: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if value is None or value == "":
+            continue
+        if key in {"vat_recoverable_flag", "wht_gross_up_flag", "depreciable_flag"}:
+            if not isinstance(value, bool):
+                raise ValueError(f"{key} must be a boolean")
+            normalized[key] = value
+        elif key in {"contingency_pct", "vat_rate_pct", "wht_rate_pct"}:
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"{key} must be numeric")
+            value = float(value)
+            if value < 0 or value > 100:
+                raise ValueError(f"{key} must be between 0 and 100")
+            normalized[key] = value
+        elif key == "depreciation_useful_life_years":
+            if not isinstance(value, (int, float)) or int(value) != value or int(value) <= 0:
+                raise ValueError(
+                    "depreciation_useful_life_years must be a positive integer"
+                )
+            normalized[key] = int(value)
+        else:
+            if not isinstance(value, str):
+                raise ValueError(f"{key} must be a string")
+            normalized[key] = value.strip()
+    return normalized
+
+
+def _split_scalar_metadata_payload(
+    replay_metadata: Optional[Mapping[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    replay = dict(replay_metadata or {})
+    raw_scalar = replay.pop(SCALAR_CAPEX_METADATA_REPLAY_KEY, {})
+    if not isinstance(raw_scalar, Mapping):
+        raw_scalar = {}
+    return replay, sanitize_scalar_capex_metadata(raw_scalar)
+
+
+def _pack_scalar_metadata_payload(
+    replay_metadata: Optional[Mapping[str, Any]],
+    scalar_metadata: Optional[Mapping[str, Any]],
+) -> dict[str, Any]:
+    replay = dict(replay_metadata or {})
+    clean_scalar = sanitize_scalar_capex_metadata(scalar_metadata)
+    if clean_scalar:
+        replay[SCALAR_CAPEX_METADATA_REPLAY_KEY] = clean_scalar
+    else:
+        replay.pop(SCALAR_CAPEX_METADATA_REPLAY_KEY, None)
+    return replay
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +699,7 @@ def create_sub_line(
     business_code: Optional[str] = None,
     comments: str = "",
     schedule_json: str = "{}",
+    scalar_metadata: Optional[Mapping[str, Any]] = None,
     source: str = "user",
     replay_metadata: Optional[dict] = None,
     governance_state: Optional[dict] = None,
@@ -625,6 +754,10 @@ def create_sub_line(
     now = datetime.now(timezone.utc).isoformat()
 
     import json as _json
+    clean_scalar_metadata = sanitize_scalar_capex_metadata(scalar_metadata)
+    packed_replay_metadata = _pack_scalar_metadata_payload(
+        replay_metadata, clean_scalar_metadata
+    )
     cur.execute(
         """
         INSERT INTO capex_sub_lines (
@@ -646,7 +779,7 @@ def create_sub_line(
             schedule_json,
             source,
             _json.dumps(governance_state or {}),
-            _json.dumps(replay_metadata or {}),
+            _json.dumps(packed_replay_metadata),
             now,
             now,
         ),
@@ -663,10 +796,11 @@ def create_sub_line(
         amount_keur=float(amount_keur),
         comments=comments,
         schedule_json=schedule_json,
+        scalar_metadata=clean_scalar_metadata,
         source=source,
         is_active=True,
         governance_state=governance_state or {},
-        replay_metadata=replay_metadata or {},
+        replay_metadata=dict(replay_metadata or {}),
         created_at=now,
         updated_at=now,
     )
@@ -785,6 +919,10 @@ def replace_sub_lines_for_project(
             business_code = generate_next_business_code(
                 existing, sub.parent_category_code,
             )
+        clean_scalar_metadata = sanitize_scalar_capex_metadata(sub.scalar_metadata)
+        packed_replay_metadata = _pack_scalar_metadata_payload(
+            sub.replay_metadata, clean_scalar_metadata
+        )
 
         # Determine the target display_order: caller-supplied
         # or auto-computed. The auto-compute uses the max
@@ -853,7 +991,7 @@ def replace_sub_lines_for_project(
                     sub.schedule_json or "{}",
                     sub.source or "user",
                     _json.dumps(sub.governance_state or {}),
-                    _json.dumps(sub.replay_metadata or {}),
+                    _json.dumps(packed_replay_metadata),
                     now_iso,
                     project_id,
                     target_id,
@@ -870,10 +1008,11 @@ def replace_sub_lines_for_project(
                 amount_keur=float(sub.amount_keur),
                 comments=sub.comments or "",
                 schedule_json=sub.schedule_json or "{}",
+                scalar_metadata=clean_scalar_metadata,
                 source=sub.source or "user",
                 is_active=True,
                 governance_state=sub.governance_state or {},
-                replay_metadata=sub.replay_metadata or {},
+                replay_metadata=dict(sub.replay_metadata or {}),
                 created_at=existing_created_at,
                 updated_at=now_iso,
             )
@@ -901,7 +1040,7 @@ def replace_sub_lines_for_project(
                     sub.schedule_json or "{}",
                     sub.source or "user",
                     _json.dumps(sub.governance_state or {}),
-                    _json.dumps(sub.replay_metadata or {}),
+                    _json.dumps(packed_replay_metadata),
                     now_iso,
                     now_iso,
                 ),
@@ -918,10 +1057,11 @@ def replace_sub_lines_for_project(
                 amount_keur=float(sub.amount_keur),
                 comments=sub.comments or "",
                 schedule_json=sub.schedule_json or "{}",
+                scalar_metadata=clean_scalar_metadata,
                 source=sub.source or "user",
                 is_active=True,
                 governance_state=sub.governance_state or {},
-                replay_metadata=sub.replay_metadata or {},
+                replay_metadata=dict(sub.replay_metadata or {}),
                 created_at=now_iso,
                 updated_at=now_iso,
             )
@@ -997,9 +1137,12 @@ def get_active_sub_lines_for_project(
 
 __all__ = [
     "ALLOWED_PARENT_CATEGORIES",
+    "APPROVED_SCALAR_CAPEX_METADATA_KEYS",
     "CAPEX_CATEGORY_TO_FIELD",
     "CapexSubLine",
+    "NON_PERSISTED_APPROVED_METADATA_KEYS",
     "REJECTED_PARENT_CATEGORIES",
+    "SCALAR_CAPEX_METADATA_EXPORT_COLUMNS",
     "assert_project_allows_capex_sub_lines",
     "category_for_field_name",
     "create_sub_line",
@@ -1010,6 +1153,7 @@ __all__ = [
     "list_sub_lines_for_project",
     "replace_sub_lines_for_project",
     "resolve_effective_sub_line_amount",
+    "sanitize_scalar_capex_metadata",
     "soft_delete_sub_line",
     "soft_delete_sub_line_for_project",
     "validate_business_code",

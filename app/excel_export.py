@@ -892,6 +892,7 @@ def _capex_sub_line_export_bundle(provenance_metadata: dict | None) -> tuple[pd.
 
     from app.persistence.capex_sub_lines import (
         CAPEX_CATEGORY_TO_FIELD,
+        SCALAR_CAPEX_METADATA_EXPORT_COLUMNS,
         list_sub_lines_for_project,
         resolve_effective_sub_line_amount,
     )
@@ -956,7 +957,10 @@ def _capex_sub_line_export_bundle(provenance_metadata: dict | None) -> tuple[pd.
             "Sub Line ID": sub.sub_line_id,
             "Mapped Capex Field": CAPEX_CATEGORY_TO_FIELD[sub.parent_category_code],
             "Comments": sub.comments or "",
+            "Metadata Runtime Used": "NO",
         }
+        for metadata_key, header in SCALAR_CAPEX_METADATA_EXPORT_COLUMNS:
+            row[header] = sub.scalar_metadata.get(metadata_key, "")
         if include_inactive:
             row["Status"] = "active" if sub.is_active else "inactive"
         rows.append(row)
@@ -987,6 +991,7 @@ def _capex_sub_line_export_bundle(provenance_metadata: dict | None) -> tuple[pd.
                     else "No stale override IDs detected."
                 ),
             ),
+            ("Metadata Scope", "Metadata only - does not affect Run."),
         ],
         columns=["Audit Field", "Value"],
     )
