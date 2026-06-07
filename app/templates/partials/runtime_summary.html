@@ -150,6 +150,56 @@
         <div class="rs-kpi-label">Senior Debt</div>
         <div class="rs-kpi-value {% if runtime_summary.senior_debt_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
              id="kpi-senior-debt">{{ runtime_summary.senior_debt_keur }}</div>
+        {% if runtime_summary.senior_debt_derivation %}
+        <details class="rs-derivation" id="kpi-senior-debt-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">Senior Debt</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example operating period</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example interest</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_senior_interest_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example principal repayment</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_senior_principal_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example debt service</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_senior_debt_service_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Source note</dt>
+                <dd>Only backend-authoritative senior debt evidence is displayed.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Limitation</dt>
+                <dd>Debt sizing methodology, sculpting logic, and lender assumptions are not exposed in this runtime view yet.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
       </div>
       <div class="rs-kpi-card">
         <div class="rs-kpi-label">Total CAPEX</div>

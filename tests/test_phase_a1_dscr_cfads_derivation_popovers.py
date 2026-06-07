@@ -71,16 +71,18 @@ def authenticated_client():
 
 
 class TestRuntimeSummaryContextContract:
-    def test_runtime_summary_includes_revenue_dscr_cfads_ebitda_opex_and_capex_derivation_keys(self):
+    def test_runtime_summary_includes_revenue_dscr_cfads_ebitda_opex_capex_and_senior_debt_derivation_keys(self):
         result = run_project("TUHO", "Base")
         summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
 
+        assert "senior_debt_derivation" in summary
         assert "capex_derivation" in summary
         assert "revenue_derivation" in summary
         assert "dscr_derivation" in summary
         assert "cfads_derivation" in summary
         assert "ebitda_derivation" in summary
         assert "opex_derivation" in summary
+        assert summary["senior_debt_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
         assert summary["capex_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
         assert summary["revenue_derivation"]["display_value_keur"] != "NOT_AVAILABLE"
         assert summary["dscr_derivation"]["display_value"] != "NOT_AVAILABLE"
@@ -110,6 +112,10 @@ class TestRuntimeSummaryContextContract:
         assert summary["ebitda_derivation"]["sample_opex_keur"] == f"{sample_operation.opex_keur:,.0f} kEUR"
         assert summary["ebitda_derivation"]["sample_ebitda_keur"] == f"{sample_operation.ebitda_keur:,.0f} kEUR"
         assert summary["opex_derivation"]["sample_opex_keur"] == f"{sample_operation.opex_keur:,.0f} kEUR"
+        assert summary["senior_debt_derivation"]["sample_senior_interest_keur"] == f"{sample_operation.senior_interest_keur:,.0f} kEUR"
+        assert summary["senior_debt_derivation"]["sample_senior_principal_keur"] == f"{sample_operation.senior_principal_keur:,.0f} kEUR"
+        assert summary["senior_debt_derivation"]["sample_senior_debt_service_keur"] == f"{sample_operation.senior_ds_keur:,.0f} kEUR"
+        assert summary["senior_debt_derivation"]["display_value_keur"] == f"{(sample_operation.senior_balance_keur + sample_operation.senior_principal_keur):,.0f} kEUR"
         assert summary["capex_derivation"]["display_value_keur"] == summary["total_capex_keur"]
         assert summary["capex_derivation"]["category_count"] == len(demo.project_inputs.capex.capex_items())
 
@@ -148,6 +154,28 @@ class TestRuntimeSummaryPartialRendering:
         assert "CAPEX Total = Σ displayed rows" not in html
         assert "deleted categories" not in html.lower()
         assert "grid fees" not in html.lower()
+
+    def test_senior_debt_derivation_renders_from_backend_values_with_limitation_copy(self):
+        result = run_project("TUHO", "Base")
+        summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
+        html = _render_runtime_summary_partial({"runtime_summary": summary, "messages": []})
+
+        assert 'id="kpi-senior-debt-derivation"' in html
+        assert "Only backend-authoritative senior debt evidence is displayed." in html
+        assert "Debt sizing methodology, sculpting logic, and lender assumptions are not exposed in this runtime view yet." in html
+        assert summary["senior_debt_derivation"]["display_value_keur"] in html
+        assert summary["senior_debt_derivation"]["sample_senior_interest_keur"] in html
+        assert summary["senior_debt_derivation"]["sample_senior_principal_keur"] in html
+        assert summary["senior_debt_derivation"]["sample_senior_debt_service_keur"] in html
+
+    def test_senior_debt_derivation_does_not_claim_debt_sizing_reconstruction(self):
+        result = run_project("TUHO", "Base")
+        summary = runtime_summary_to_dict(result, "tuho", "TUHO Wind 1")
+        html = _render_runtime_summary_partial({"runtime_summary": summary, "messages": []})
+
+        assert "CAPEX × leverage" not in html
+        assert "DSCR sizing formula" not in html
+        assert "Debt = CAPEX" not in html
 
     def test_revenue_derivation_does_not_imply_unexposed_price_formula(self):
         result = run_project("TUHO", "Base")
@@ -274,6 +302,22 @@ class TestRunRouteRendering:
         assert runtime_summary["capex_derivation"]["display_value_keur"] in html
         assert str(runtime_summary["capex_derivation"]["category_count"]) in html
         assert runtime_summary["capex_derivation"]["audit_source"] in html
+
+    def test_run_route_renders_senior_debt_derivation_popover(self, authenticated_client):
+        form_data = _build_run_form_data(authenticated_client, "tuho")
+        response = authenticated_client.post(
+            "/run",
+            data=form_data,
+        )
+        assert response.status_code == 200
+        html = response.text
+        runtime_summary = _extract_runtime_summary_json(html)
+
+        assert 'id="kpi-senior-debt-derivation"' in html
+        assert runtime_summary["senior_debt_derivation"]["display_value_keur"] in html
+        assert runtime_summary["senior_debt_derivation"]["sample_senior_debt_service_keur"] in html
+        assert runtime_summary["senior_debt_derivation"]["audit_source"] in html
+        assert "Debt sizing methodology, sculpting logic, and lender assumptions are not exposed in this runtime view yet." in html
 
     def test_run_route_renders_dscr_derivation_popover(self, authenticated_client):
         form_data = _build_run_form_data(authenticated_client, "tuho")
