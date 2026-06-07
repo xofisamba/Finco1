@@ -3,6 +3,62 @@ from app.ui_runner import run_demo_project
 from app.output_tables import build_waterfall_table, build_revenue_table, build_debt_table, build_returns_table, aggregate_period_table_annual
 
 
+def _period_label(period) -> str:
+    """Build a human-readable period label from the backend period object."""
+    year_index = getattr(period, "year_index", None)
+    period_in_year = getattr(period, "period_in_year", None)
+    period_number = getattr(period, "period", None)
+
+    if year_index is not None and period_in_year is not None:
+        return f"Y{int(year_index)}-H{int(period_in_year)}"
+    if period_number is not None:
+        return f"P{int(period_number)}"
+    return "Selected period"
+
+
+def _build_runtime_derivation_evidence(result):
+    """Return read-only DSCR / CFADS evidence sourced from WaterfallResult."""
+    periods = [
+        period
+        for period in getattr(result, "periods", [])
+        if getattr(period, "is_operation", False) and float(getattr(period, "senior_ds_keur", 0.0) or 0.0) > 0.0
+    ]
+    if not periods:
+        return {}
+
+    period_count = len(periods)
+    representative_period = min(periods, key=lambda period: getattr(period, "period", 0))
+    total_cfads = sum(float(getattr(period, "cf_after_tax_keur", 0.0) or 0.0) for period in periods)
+    total_senior_ds = sum(float(getattr(period, "senior_ds_keur", 0.0) or 0.0) for period in periods)
+
+    return {
+        "dscr": {
+            "display_value": getattr(result, "actual_avg_dscr", None),
+            "summary_method": "Average of operating-period DSCR values with positive senior debt service.",
+            "period_formula": "DSCR_t = CFADS_t / Senior Debt Service_t",
+            "period_count": period_count,
+            "total_cfads_keur": total_cfads,
+            "total_senior_debt_service_keur": total_senior_ds,
+            "sample_period_label": _period_label(representative_period),
+            "sample_cfads_keur": getattr(representative_period, "cf_after_tax_keur", None),
+            "sample_senior_debt_service_keur": getattr(representative_period, "senior_ds_keur", None),
+            "sample_dscr": getattr(representative_period, "dscr", None),
+            "audit_source": "WaterfallResult.periods[].cf_after_tax_keur, senior_ds_keur, dscr",
+        },
+        "cfads": {
+            "display_value_keur": total_cfads,
+            "summary_method": "Total CFADS across operating periods with positive senior debt service.",
+            "period_formula": "CFADS_t = EBITDA_t - Tax_t",
+            "period_count": period_count,
+            "sample_period_label": _period_label(representative_period),
+            "sample_ebitda_keur": getattr(representative_period, "ebitda_keur", None),
+            "sample_tax_keur": getattr(representative_period, "tax_keur", None),
+            "sample_cfads_keur": getattr(representative_period, "cf_after_tax_keur", None),
+            "audit_source": "WaterfallResult.periods[].ebitda_keur, tax_keur, cf_after_tax_keur",
+        },
+    }
+
+
 def _sanitize_df(df):
     """Replace inf/nan floats in a DataFrame with None for JSON safety.
 
@@ -55,6 +111,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
             "avg_dscr": result.actual_avg_dscr,
         },
         "dualrun_validation": getattr(result, '_dualrun_validation', None),
+        "derivation_evidence": _build_runtime_derivation_evidence(result),
         "tables": {
             "waterfall": wf.to_dict(orient="records"),
             "revenue": rev.to_dict(orient="records"),

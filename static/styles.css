@@ -4139,6 +4139,74 @@ body {
   color: var(--text-1, #1a1a1a);
 }
 
+.rs-derivation {
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding-top: 0.45rem;
+}
+
+.rs-derivation-summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  list-style: none;
+}
+
+.rs-derivation-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rs-derivation-body {
+  margin-top: 0.45rem;
+  background: var(--surface-1, #f8fafc);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.6rem;
+}
+
+.rs-derivation-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-2, #6b7280);
+  margin-bottom: 0.25rem;
+}
+
+.rs-derivation-formula {
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1, #111827);
+  margin-bottom: 0.5rem;
+}
+
+.rs-derivation-list {
+  margin: 0;
+}
+
+.rs-derivation-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.18rem 0;
+}
+
+.rs-derivation-row dt {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-2, #6b7280);
+}
+
+.rs-derivation-row dd {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-1, #111827);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .rs-kpi-missing {
   color: var(--muted, #9ca3af);
   font-style: italic;

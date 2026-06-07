@@ -46,6 +46,105 @@
         <div class="rs-kpi-label">Avg DSCR</div>
         <div class="rs-kpi-value {% if runtime_summary.avg_dscr == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
              id="kpi-avg-dscr">{{ runtime_summary.avg_dscr }}</div>
+        {% if runtime_summary.dscr_derivation %}
+        <details class="rs-derivation" id="kpi-avg-dscr-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">DSCR</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.dscr_derivation.period_formula }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.dscr_derivation.display_value }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Summary method</dt>
+                <dd>{{ runtime_summary.dscr_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.dscr_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Total CFADS</dt>
+                <dd>{{ runtime_summary.dscr_derivation.total_cfads_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Total Senior Debt Service</dt>
+                <dd>{{ runtime_summary.dscr_derivation.total_senior_debt_service_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example period</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example CFADS</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_cfads_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example Senior Debt Service</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_senior_debt_service_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example DSCR</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_dscr }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.dscr_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">CFADS (Total)</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_cfads_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-total-cfads">{{ runtime_summary.total_cfads_keur }}</div>
+        {% if runtime_summary.cfads_derivation %}
+        <details class="rs-derivation" id="kpi-cfads-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">CFADS</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.cfads_derivation.period_formula }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.cfads_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Summary method</dt>
+                <dd>{{ runtime_summary.cfads_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.cfads_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example period</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example EBITDA</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_ebitda_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example Tax</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_tax_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example CFADS</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_cfads_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.cfads_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
       </div>
       <div class="rs-kpi-card">
         <div class="rs-kpi-label">Senior Debt</div>

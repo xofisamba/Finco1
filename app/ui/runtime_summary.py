@@ -45,6 +45,10 @@ class RuntimeSummary:
 
     senior_debt_keur: str = NOT_AVAILABLE
     shl_opening_keur: str = NOT_AVAILABLE
+    total_cfads_keur: str = NOT_AVAILABLE
+
+    dscr_derivation: dict[str, Any] = field(default_factory=dict)
+    cfads_derivation: dict[str, Any] = field(default_factory=dict)
 
     error_message: str = ""
 
@@ -64,6 +68,9 @@ class RuntimeSummary:
             "total_distributions_keur": self.total_distributions_keur,
             "senior_debt_keur": self.senior_debt_keur,
             "shl_opening_keur": self.shl_opening_keur,
+            "total_cfads_keur": self.total_cfads_keur,
+            "dscr_derivation": self.dscr_derivation,
+            "cfads_derivation": self.cfads_derivation,
             "error_message": self.error_message,
         }
 
@@ -100,6 +107,42 @@ def _keur(v: Any) -> str:
         return f"{f:,.0f} kEUR"
     except (TypeError, ValueError):
         return NOT_AVAILABLE
+
+
+def _format_dscr_derivation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format DSCR derivation evidence for direct template rendering."""
+    if not raw:
+        return {}
+    return {
+        "display_value": _fmt(raw.get("display_value"), suffix="x", decimal_places=4),
+        "summary_method": raw.get("summary_method", ""),
+        "period_formula": raw.get("period_formula", ""),
+        "period_count": raw.get("period_count", 0),
+        "total_cfads_keur": _keur(raw.get("total_cfads_keur")),
+        "total_senior_debt_service_keur": _keur(raw.get("total_senior_debt_service_keur")),
+        "sample_period_label": raw.get("sample_period_label", ""),
+        "sample_cfads_keur": _keur(raw.get("sample_cfads_keur")),
+        "sample_senior_debt_service_keur": _keur(raw.get("sample_senior_debt_service_keur")),
+        "sample_dscr": _fmt(raw.get("sample_dscr"), suffix="x", decimal_places=4),
+        "audit_source": raw.get("audit_source", ""),
+    }
+
+
+def _format_cfads_derivation(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format CFADS derivation evidence for direct template rendering."""
+    if not raw:
+        return {}
+    return {
+        "display_value_keur": _keur(raw.get("display_value_keur")),
+        "summary_method": raw.get("summary_method", ""),
+        "period_formula": raw.get("period_formula", ""),
+        "period_count": raw.get("period_count", 0),
+        "sample_period_label": raw.get("sample_period_label", ""),
+        "sample_ebitda_keur": _keur(raw.get("sample_ebitda_keur")),
+        "sample_tax_keur": _keur(raw.get("sample_tax_keur")),
+        "sample_cfads_keur": _keur(raw.get("sample_cfads_keur")),
+        "audit_source": raw.get("audit_source", ""),
+    }
 
 
 def _find_debt_balance(wf_rows: list[dict], label_needle: str) -> str:
@@ -156,6 +199,13 @@ def build_runtime_summary(
     total_ebitda = _keur(kpis.get("total_ebitda_keur"))
     total_opex = _keur(kpis.get("total_opex_keur"))
     total_dist = _keur(kpis.get("total_distributions_keur"))
+    total_cfads = NOT_AVAILABLE
+
+    derivation_evidence = result.get("derivation_evidence", {})
+    dscr_derivation = _format_dscr_derivation(derivation_evidence.get("dscr", {}))
+    cfads_derivation = _format_cfads_derivation(derivation_evidence.get("cfads", {}))
+    if cfads_derivation:
+        total_cfads = cfads_derivation.get("display_value_keur", NOT_AVAILABLE)
 
     # ── Balance-sheet anchors ───────────────────────────────────────
     # These are best-effort from factory defaults since waterfall table
@@ -189,6 +239,9 @@ def build_runtime_summary(
         total_distributions_keur=total_dist,
         senior_debt_keur=senior_debt_str,
         shl_opening_keur=shl_opening_str,
+        total_cfads_keur=total_cfads,
+        dscr_derivation=dscr_derivation,
+        cfads_derivation=cfads_derivation,
         error_message="",
     )
 
