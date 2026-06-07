@@ -31,11 +31,12 @@ def test_no_invalid_format_patterns():
     partials = PROJECT_ROOT / "app/templates/partials"
     failures = []
     for pattern in REQUIRED_GREP_PATTERNS:
-        r = subprocess.run(
-            ['grep', '-rSn', pattern, str(partials)],
-            capture_output=True, text=True
-        )
-        bad = [l for l in r.stdout.splitlines() if '.bak' not in l and 'test_' not in l]
+        bad = []
+        for path in partials.rglob("*.html"):
+            text = path.read_text(encoding="utf-8")
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if pattern in line and ".bak" not in str(path) and "test_" not in str(path):
+                    bad.append(f"{path}:{lineno}:{line.strip()}")
         if bad:
             failures.append(f"  Pattern {pattern!r} found ({len(bad)} matches):\n    " + "\n    ".join(bad[:5]))
     assert not failures, "Invalid |format patterns still present:\n" + "\n".join(failures)
@@ -48,7 +49,7 @@ def test_template_construction_renders():
     from jinja2 import Environment
 
     path = PROJECT_ROOT / "app/templates/partials/sheet_construction.html"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         source = f.read()
 
     env = Environment()
@@ -83,7 +84,7 @@ def test_template_idc_renders():
     from jinja2 import Environment
 
     path = PROJECT_ROOT / "app/templates/partials/sheet_idc.html"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         source = f.read()
 
     env = Environment()
@@ -104,7 +105,7 @@ def test_template_revenue_renders():
     from jinja2 import Environment
 
     path = PROJECT_ROOT / "app/templates/partials/sheet_revenue.html"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         source = f.read()
 
     env = Environment()

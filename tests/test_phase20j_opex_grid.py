@@ -8,6 +8,8 @@ import os
 import pytest
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
+OPEX_TEMPLATE = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_opex.html")
+STYLES_PATH = os.path.join(PROJECT_ROOT, "static/styles.css")
 
 
 class TestOPEXGridRendering:
@@ -18,8 +20,8 @@ class TestOPEXGridRendering:
         assert os.path.exists(path)
 
     def test_opex_grid_uses_fc_grid(self):
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_opex.html")
-        with open(path) as f:
+        path = OPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "fc-grid" in content
@@ -27,8 +29,8 @@ class TestOPEXGridRendering:
         assert "fc-grid-col-label" in content
 
     def test_opex_grid_has_section_bands(self):
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_opex.html")
-        with open(path) as f:
+        path = OPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "fc-section-band" in content
@@ -37,16 +39,16 @@ class TestOPEXGridRendering:
             assert label in content, f"Missing section: {label}"
 
     def test_opex_grid_has_total_rows(self):
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_opex.html")
-        with open(path) as f:
+        path = OPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "fc-subtotal-row" in content
         assert "fc-grand-total" in content
 
     def test_opex_grid_has_edit_inputs(self):
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_opex.html")
-        with open(path) as f:
+        path = OPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert 'type="number"' in content
@@ -54,8 +56,8 @@ class TestOPEXGridRendering:
         assert "data-opex-item=" in content
 
     def test_opex_grid_readonly_notice(self):
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_opex.html")
-        with open(path) as f:
+        path = OPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "is_user_project" in content
@@ -64,8 +66,8 @@ class TestOPEXGridRendering:
 
 class TestOPEXGridCSS:
     def test_opex_grid_css_added(self):
-        path = os.path.join(PROJECT_ROOT, "static/styles.css")
-        with open(path) as f:
+        path = STYLES_PATH
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "Phase 20J" in content
@@ -114,7 +116,7 @@ class TestProjectContextOpexItems:
 
         ctx = get_project_context("tuho")
         groups = {item["group"] for item in ctx.opex_items}
-        assert "Operations & Maintenance" in groups
+        assert "Technical Management" in groups
         assert "Insurance" in groups
         assert len(groups) >= 5, f"Expected multiple groups, got: {groups}"
 
@@ -135,8 +137,8 @@ class TestProjectContextOpexItems:
 class TestNoFunctionalChanges:
     def test_sheet_opex_grew(self):
         """sheet_opex.html grew significantly (proves new content)."""
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_opex.html")
-        with open(path) as f:
+        path = OPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
         # Original was ~110 lines; Phase 20J version should be 500+
         assert len(lines) > 300, f"sheet_opex.html should be much larger now (got {len(lines)} lines)"

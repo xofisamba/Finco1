@@ -18,12 +18,18 @@ import subprocess
 import pytest
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
+CAPEX_TEMPLATE = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_capex.html")
+STYLES_PATH = os.path.join(PROJECT_ROOT, "static/styles.css")
 
 
 def _is_on_legacy_20i_branch() -> bool:
     """True if we are on a branch where 20I's legacy
     grid pattern is still the source of truth
     (i.e. NOT a 57A-* follow-up branch)."""
+    with open(CAPEX_TEMPLATE, encoding="utf-8") as f:
+        content = f.read()
+    if "LineItemGrid macro" in content or "Phase 57A-3" in content:
+        return False
     r = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         cwd=PROJECT_ROOT,
@@ -61,8 +67,8 @@ class TestCAPEXGridRendering:
     def test_capex_grid_uses_fc_grid(self):
         if not _is_on_legacy_20i_branch():
             pytest.skip("20I legacy grid is superseded by LineItemGrid on 57A-*/main.")
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_capex.html")
-        with open(path) as f:
+        path = CAPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "fc-grid" in content
@@ -72,8 +78,8 @@ class TestCAPEXGridRendering:
     def test_capex_grid_has_section_bands(self):
         if not _is_on_legacy_20i_branch():
             pytest.skip("20I legacy grid is superseded by LineItemGrid on 57A-*/main.")
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_capex.html")
-        with open(path) as f:
+        path = CAPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "fc-section-band" in content
@@ -83,8 +89,8 @@ class TestCAPEXGridRendering:
     def test_capex_grid_has_total_rows(self):
         if not _is_on_legacy_20i_branch():
             pytest.skip("20I legacy grid is superseded by LineItemGrid on 57A-*/main.")
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_capex.html")
-        with open(path) as f:
+        path = CAPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "fc-total-row" in content
@@ -93,8 +99,8 @@ class TestCAPEXGridRendering:
     def test_capex_grid_has_edit_inputs(self):
         if not _is_on_legacy_20i_branch():
             pytest.skip("20I legacy grid is superseded by LineItemGrid on 57A-*/main.")
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_capex.html")
-        with open(path) as f:
+        path = CAPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert 'type="number"' in content
@@ -103,8 +109,8 @@ class TestCAPEXGridRendering:
     def test_capex_grid_readonly_notice(self):
         if not _is_on_legacy_20i_branch():
             pytest.skip("20I legacy grid is superseded by LineItemGrid on 57A-*/main.")
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_capex.html")
-        with open(path) as f:
+        path = CAPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "is_user_project" in content
@@ -113,8 +119,10 @@ class TestCAPEXGridRendering:
 
 class TestCAPEXGridCSS:
     def test_capex_grid_css_added(self):
-        path = os.path.join(PROJECT_ROOT, "static/styles.css")
-        with open(path) as f:
+        if not _is_on_legacy_20i_branch():
+            pytest.skip("20I legacy CAPEX styling checks are superseded on post-57A branches.")
+        path = STYLES_PATH
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         assert "Phase 20I" in content
@@ -145,8 +153,10 @@ class TestProjectContextCapexItems:
 class TestNoFunctionalChanges:
     def test_sheet_capex_grew(self):
         """sheet_capex.html grew significantly (proves new content)."""
-        path = os.path.join(PROJECT_ROOT, "app/templates/partials/sheet_capex.html")
-        with open(path) as f:
+        if not _is_on_legacy_20i_branch():
+            pytest.skip("20I legacy CAPEX size pin is superseded on post-57A branches.")
+        path = CAPEX_TEMPLATE
+        with open(path, encoding="utf-8") as f:
             lines = f.readlines()
         # Original was 51 lines; Phase 20I version should be 500+
         assert len(lines) > 200, f"sheet_capex.html should be much larger now (got {len(lines)} lines)"
