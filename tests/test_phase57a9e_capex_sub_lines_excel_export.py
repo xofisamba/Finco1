@@ -498,16 +498,19 @@ class TestPhase57A9EExcelExport:
 
 class TestGuardrails:
     def test_no_run_path_changes(self):
+        _skip_if_not_on_phase57a9e_branch()
         changed = _changed_files()
         assert "app/services/run_service.py" not in changed
 
     def test_no_ui_or_static_changes(self):
+        _skip_if_not_on_phase57a9e_branch()
         changed = _changed_files()
         assert not any(path.startswith("app/templates/") for path in changed)
         assert "static/app.js" not in changed
         assert "static/styles.css" not in changed
 
     def test_no_schema_or_persistence_changes(self):
+        _skip_if_not_on_phase57a9e_branch()
         changed = _changed_files()
         assert not any(path.startswith("app/persistence/") for path in changed)
 
@@ -529,3 +532,15 @@ def _changed_files() -> set[str]:
         text=True,
     )
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def _skip_if_not_on_phase57a9e_branch() -> None:
+    result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    branch = result.stdout.strip()
+    if not branch.startswith("phase57a9e"):
+        pytest.skip("57A-9E diff-scope guardrails only run on a phase57a9e branch")
