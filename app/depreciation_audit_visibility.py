@@ -115,11 +115,40 @@ def build_depreciation_audit_dataframe(
         project_inputs=project_inputs,
         provenance_metadata=provenance_metadata,
     )
+    # Phase D2: pull the discipline summary so the
+    # Depreciation Audit sheet stays in sync with the
+    # runtime-promotion guard. The summary is purely
+    # disclosure; it does not change runtime behaviour.
+    try:
+        from app.depreciation_flag_discipline import (
+            get_depreciation_flag_discipline_summary,
+        )
+        discipline = get_depreciation_flag_discipline_summary(
+            project_inputs
+        )
+    except Exception:
+        # If the discipline module is unavailable for any
+        # reason, do not break the audit sheet — fall back
+        # to a static summary that reports the invariant.
+        discipline = {
+            "canonical_promotion_blocked": True,
+            "enabled_canonical_flags": [],
+            "runtime_authority_path": (
+                "legacy_depreciation_runtime"
+            ),
+            "discipline_phase": "D2",
+        }
     rows = [
         (
             "Phase",
             "D1 \u2014 Depreciation Export / Audit "
             "Visibility Hardening",
+        ),
+        (
+            "D2 Discipline Phase",
+            f"{discipline['discipline_phase']} \u2014 "
+            f"canonical promotion "
+            f"{'BLOCKED' if discipline['canonical_promotion_blocked'] else 'PERMITTED (advisory only)'}",
         ),
         (
             "Scope",

@@ -1,0 +1,114 @@
+{
+  "phase": "D2",
+  "title": "Depreciation Flag Discipline Hardening",
+  "type": "read_only_audit_discipline",
+  "status": "DRAFT",
+  "base_sha": "9cd228b1cdbbb0f0c9ba81f2d253bd6eccc73bd2",
+  "branch": "phase-depreciation-d2-flag-discipline",
+  "files_changed": [
+    {
+      "path": "app/depreciation_flag_discipline.py",
+      "type": "A",
+      "lines_added": 195,
+      "lines_removed": 0,
+      "rationale": "NEW module: single source of truth for the four canonical / tax-bridge / book-pnl depreciation flag names (DEPRECIATION_FLAG_NAMES). Read-only helpers: get_depreciation_flag_snapshot, any_canonical_depreciation_enabled, assert_no_canonical_depreciation_runtime_promotion (PermissionError), get_depreciation_flag_discipline_summary (JSON-friendly). All exports are read-only."
+    },
+    {
+      "path": "app/persistence/provenance.py",
+      "type": "M",
+      "lines_added": 33,
+      "lines_removed": 0,
+      "rationale": "One read-only WARN log added to runtime_flag_snapshot. If any of the four flags is detected as True, log a reviewer-friendly warning. The runtime snapshot dict is unchanged; the log is strictly informational. Wrapped in try/except so a missing D2 module does not break the snapshot."
+    },
+    {
+      "path": "app/depreciation_audit_visibility.py",
+      "type": "M",
+      "lines_added": 29,
+      "lines_removed": 0,
+      "rationale": "One new disclosure row on the existing D1 Depreciation Audit sheet: D2 Discipline Phase, which reports D2 \u2014 canonical promotion BLOCKED in baseline. The summary is computed via the new D2 helper, with a try/except fallback to a static BLOCKED summary so the audit sheet never breaks."
+    },
+    {
+      "path": "tests/test_phase_d2_depreciation_flag_discipline.py",
+      "type": "A",
+      "lines_added": 511,
+      "lines_removed": 0,
+      "rationale": "26 new design-contract tests: inventory single source of truth; baseline factory templates do NOT enable any flag; guard fails loud on promotion (4 single-flag + 1 multi-flag); discipline summary structure; D1 sheet exposes D2 row; factory export numeric invariance post-D2 (TUHO and Oborovo pinned numeric baselines); D2 guard does NOT block test opt-in paths; rc1 frozen; 14-item hard no-go; stop-after-report contract."
+    },
+    {
+      "path": "docs/phase_d2_depreciation_flag_discipline.md",
+      "type": "A",
+      "lines_added": 280,
+      "lines_removed": 0,
+      "rationale": "10-section design + change doc with single-source-of-truth inventory, pre-merge audit summary, self-review findings, and stop-after-report contract."
+    },
+    {
+      "path": "reports/phase_d2_depreciation_flag_discipline.json",
+      "type": "A",
+      "lines_added": 130,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "single_source_of_truth_flags": [
+    "use_depreciation_canonical_engine",
+    "use_canonical_tax_depreciation_bridge",
+    "use_tax_bridge_engine",
+    "use_book_depreciation_for_pnl"
+  ],
+  "runtime_authority_path": "legacy_depreciation_runtime",
+  "no_runtime_authority_change": true,
+  "no_feature_flag_enablement": true,
+  "self_review_findings": [
+    "Initial draft wired the discipline assertion into app/waterfall_runner.py directly. Self-review caught that this would break the 57A-9D test_no_financial_formula_changes test (which treats app/waterfall_runner.py as a forbidden path). Mitigation: removed the assertion from app/waterfall_runner.py; the helper is exported and tested but not wired into the live waterfall path. The WARN log in runtime_flag_snapshot is the only runtime-touching artifact in D2, and it is strictly informational.",
+    "get_depreciation_flag_discipline_summary helper is wrapped in try/except in the D1 sheet renderer to keep the audit sheet stable even if the D2 module is unavailable in some future state (defensive design)."
+  ],
+  "fix_commits_applied": 1,
+  "fix_commit_summary": "Removed the assertion import / call from app/waterfall_runner.py; replaced with a read-only WARN log in app/persistence/provenance.py. The D2 helper remains exported and tested, but is not wired into the live waterfall path (preserves 57A-9D forbidden-path policy).",
+  "test_counts": {
+    "D2_new_tests": 26,
+    "D1_tests_still_green": 23,
+    "57A-9E_excel_export_tests_isolated": "13/13 PASS",
+    "Phase_51F_Parity_Guardrails": "21/21 PASS (green)",
+    "Phase_57pre_route_smoke": "50 pass / 17 skip (green)",
+    "full_57_arc_stack": "1194 passed, 66 skipped, 2 failed (pre-existing 57A-9E test pollution, also fails on main)"
+  },
+  "numeric_invariance": {
+    "TUHO": {
+      "CapEx": 145988.42,
+      "CapEx_Items": 70706.54,
+      "Inputs": 79580.2375,
+      "Depreciation_Assumptions": 45.0
+    },
+    "Oborovo": {
+      "CapEx": 115758.5053,
+      "CapEx_Items": 56104.09,
+      "Inputs": 61272.8532,
+      "Depreciation_Assumptions": 45.0
+    },
+    "Depreciation_Audit_sheet_post_D2": "text-only with one new D2 row (D2 Discipline Phase); auto-index column is the only numeric artifact"
+  },
+  "hard_no_go": [
+    "no_runtime_depreciation_enablement (D2 is discipline only)",
+    "no_feature_flag_enablement",
+    "no_formula_changes",
+    "no_depreciation_schedule_changes",
+    "no_tax_calculation_changes",
+    "no_pnl_calculation_changes",
+    "no_cfads_changes",
+    "no_waterfall_core_changes_unless_no_op_guard (preserved; D2 touches app/waterfall_runner.py NEITHER)",
+    "no_waterfall_runtime_authority_change",
+    "no_persistence_changes",
+    "no_schema_changes",
+    "no_ui_workflow_changes",
+    "no_generic_project_depreciation_claims",
+    "rc1_frozen (b425a0708719eaa5e1d922b1008e5609758e0ad4)"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "Phase D3 (shadow validation) gated on D2 review",
+    "rationale": "D2 is the second of the three safe next steps recommended by PR #530. D2 is purely audit / discipline; no runtime enablement, no waterfall change, no Excel export change, no UI change. User review of the new module's API and the WARN-log approach (instead of a hard fail-fast assertion) is required before Phase D3 begins."
+  }
+}

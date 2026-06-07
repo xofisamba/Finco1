@@ -82,6 +82,39 @@ def runtime_flag_snapshot(project_inputs: Any) -> dict[str, bool]:
         snapshot[name] = bool(getattr(info, name, False))
     for name in _FINANCING_FLAG_NAMES:
         snapshot[name] = bool(getattr(financing, name, False))
+
+    # Phase D2: read-only discipline WARN. The factory
+    # templates (TUHO, Oborovo, Generic Solar, Generic
+    # Wind) do NOT enable any canonical / tax-bridge /
+    # book-pnl depreciation flag. If any of those four
+    # flags is detected as True in the runtime snapshot,
+    # log a reviewer-friendly warning so the discipline
+    # violation is visible without changing any runtime
+    # value. The warning is strictly informational; the
+    # runtime path is unchanged.
+    try:
+        from app.depreciation_flag_discipline import (
+            DEPRECIATION_FLAG_NAMES,
+        )
+        for name in DEPRECIATION_FLAG_NAMES:
+            if snapshot.get(name, False):
+                import logging
+                _logger = logging.getLogger(__name__)
+                _logger.warning(
+                    "Phase D2 discipline: runtime flag "
+                    "snapshot has %s=True. The active "
+                    "runtime path is still the legacy "
+                    "depreciation path; canonical "
+                    "promotion requires a future "
+                    "controlled-enablement PR.",
+                    name,
+                )
+    except Exception:
+        # If the D2 module is unavailable, do not break
+        # the runtime flag snapshot — just skip the
+        # informational warning.
+        pass
+
     return snapshot
 
 
