@@ -16,7 +16,7 @@ def _period_label(period) -> str:
     return "Selected period"
 
 
-def _build_runtime_derivation_evidence(result):
+def _build_runtime_derivation_evidence(result, project_inputs=None):
     """Return read-only derivation evidence sourced from WaterfallResult."""
     operation_periods = [
         period
@@ -36,7 +36,23 @@ def _build_runtime_derivation_evidence(result):
     total_cfads = sum(float(getattr(period, "cf_after_tax_keur", 0.0) or 0.0) for period in dscr_periods)
     total_senior_ds = sum(float(getattr(period, "senior_ds_keur", 0.0) or 0.0) for period in dscr_periods)
 
+    capex = getattr(project_inputs, "capex", None)
+    capex_items_attr = getattr(capex, "capex_items", None)
+    capex_items = capex_items_attr() if callable(capex_items_attr) else ()
+
     evidence = {
+        "capex": {
+            "display_value_keur": getattr(capex, "total_capex", None),
+            "summary_method": (
+                "CAPEX Total is sourced from the authoritative CAPEX structure used by the backend run. "
+                "When upstream user sub-line materialization or scenario overrides are present, this displayed total "
+                "reflects that authoritative structure."
+            ),
+            "authoritative_source": "CapexStructure.total_capex",
+            "category_count": len(capex_items),
+            "hierarchy_source": "CapexStructure named fields surfaced through capex.capex_items().",
+            "audit_source": "ProjectInputs.capex.total_capex and ProjectInputs.capex.capex_items()",
+        },
         "revenue": {
             "display_value_keur": getattr(result, "total_revenue_keur", None),
             "summary_method": "Total revenue from backend operating periods.",
@@ -143,6 +159,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         "integration_note": getattr(demo, 'integration_note', None),
         "messages": getattr(demo, 'messages', []),
         "kpis": {
+            "total_capex_keur": getattr(getattr(demo, "project_inputs", None), "capex", None).total_capex if getattr(getattr(demo, "project_inputs", None), "capex", None) is not None else None,
             "total_revenue_keur": result.total_revenue_keur,
             "total_ebitda_keur": result.total_ebitda_keur,
             "total_opex_keur": getattr(result, 'total_opex_keur', None),
@@ -153,7 +170,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
             "avg_dscr": result.actual_avg_dscr,
         },
         "dualrun_validation": getattr(result, '_dualrun_validation', None),
-        "derivation_evidence": _build_runtime_derivation_evidence(result),
+        "derivation_evidence": _build_runtime_derivation_evidence(result, demo.project_inputs),
         "tables": {
             "waterfall": wf.to_dict(orient="records"),
             "revenue": rev.to_dict(orient="records"),

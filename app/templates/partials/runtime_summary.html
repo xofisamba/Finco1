@@ -152,6 +152,50 @@
              id="kpi-senior-debt">{{ runtime_summary.senior_debt_keur }}</div>
       </div>
       <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Total CAPEX</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_capex_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-capex">{{ runtime_summary.total_capex_keur }}</div>
+        {% if runtime_summary.capex_derivation %}
+        <details class="rs-derivation" id="kpi-capex-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">CAPEX Total</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.capex_derivation.authoritative_source }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.capex_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.capex_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Category count</dt>
+                <dd>{{ runtime_summary.capex_derivation.category_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Hierarchy source</dt>
+                <dd>{{ runtime_summary.capex_derivation.hierarchy_source }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Source note</dt>
+                <dd>Only backend-authoritative CAPEX audit evidence is displayed.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Limitation</dt>
+                <dd>User-added sub-line count and CAPEX-specific scenario override count are not exposed in this runtime view yet.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.capex_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+      <div class="rs-kpi-card">
         <div class="rs-kpi-label">Total Revenue</div>
         <div class="rs-kpi-value {% if runtime_summary.total_revenue_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
              id="kpi-revenue">{{ runtime_summary.total_revenue_keur }}</div>
