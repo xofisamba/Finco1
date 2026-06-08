@@ -793,6 +793,7 @@ class TestScopeGuards:
         "reports/phase_c4_construction_parity_test_implementation.json",
         "tests/fixtures/construction_parity/tuho_construction_snapshot.json",
         "tests/fixtures/construction_parity/oborovo_construction_snapshot.json",
+        "tests/test_phase_c4_construction_parity_snapshots.py",
     )
 
     FORBIDDEN_CODE_PATHS = (
@@ -803,9 +804,44 @@ class TestScopeGuards:
         "static/",
     )
 
+    @staticmethod
+    def _phase_commit_sha() -> str:
+        """Locate the Phase C4 squash-merge commit on origin/main.
+
+        C-series test design (pre-#554) used an absolute
+        ``git diff origin/main HEAD`` check. C9 (a later phase)
+        legitimately adds files under app/, docs/, and reports/
+        per C8 §7.3, which would cause C1-C5's absolute checks
+        to fire as false positives on a branch that has C9
+        already merged or in progress.
+        """
+        r = subprocess.run(
+            ["git", "log", "--merges", "--first-parent",
+             "--format=%H %s", "origin/main"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True,
+        )
+        c_shas = []
+        for ln in r.stdout.splitlines():
+            parts = ln.split(" ", 1)
+            if len(parts) == 2 and parts[1].startswith("Phase C4:"):
+                c_shas.append(parts[0])
+        if not c_shas:
+            r = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            for ln in r.stdout.splitlines():
+                parts = ln.split(" ", 1)
+                if len(parts) == 2 and parts[1].startswith("Phase C4:"):
+                    c_shas.append(parts[0])
+        assert c_shas, "could not locate Phase C4 commit on origin/main"
+        return c_shas[0]
+
     def test_only_expected_files_added(self):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--name-status", "origin/main", "HEAD"],
+            ["git", "diff", "--name-status", c_sha + "^1", c_sha,
+             "--diff-filter=AMD"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -818,15 +854,16 @@ class TestScopeGuards:
                 f"only additions allowed, got {status} for {path}"
             )
             # The 5 files: 1 doc, 1 json, 1 test, 2 fixtures
-            assert (
-                path in self.EXPECTED_ADDITIONS
-                or path.startswith("tests/test_phase_c4_")
-            ), f"unexpected added file: {path!r}"
+            assert path in self.EXPECTED_ADDITIONS, (
+                f"unexpected added file: {path!r} "
+                f"(expected: {self.EXPECTED_ADDITIONS})"
+            )
 
     @pytest.mark.parametrize("path", FORBIDDEN_CODE_PATHS)
     def test_forbidden_code_path_untouched(self, path):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "HEAD", "--", path],
+            ["git", "diff", "--stat", c_sha + "^1", c_sha, "--", path],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
