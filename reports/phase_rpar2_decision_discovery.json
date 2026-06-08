@@ -1,0 +1,117 @@
+{
+  "phase": "R-PAR-2-decision-discovery",
+  "title": "R-PAR-2 Decision Discovery: Senior IDC Caveat (docs/tests only)",
+  "type": "discovery",
+  "status": "DRAFT",
+  "scope_label": "DISCOVERY. DOCS + TESTS ONLY. NO IMPLEMENTATION. NO MODEL CHANGE. NO FORMULA CHANGE. NO DEPLOYMENT. NO PROMOTION.",
+  "date": "2026-06-09",
+  "base_sha": "d55a900",
+  "branch": "rpar2-decision-discovery",
+  "caveat_origin": {
+    "phase": "C1",
+    "pr": "#543",
+    "sha": "5fccc3a",
+    "title": "Construction Schedule / IDC Design Gate",
+    "discovered_as": "R-PAR-2"
+  },
+  "current_state": {
+    "senior_idc_keur_policy": "frozen",
+    "senior_opening_balance_keur_policy": "frozen",
+    "rationale": "The model's effective-rate method does not match the contractual base-rate method that senior lenders expect for covenant compliance. Until the project decides how to handle this, the bridge marks these fields as frozen and the waterfall uses the legacy calculation.",
+    "c9_enforcement": "assert_no_construction_runtime_promotion() blocks promotion of senior_idc_keur unless rpar2_resolved=True AND promotion_requested=True. Defaults are rpar2_resolved=False, parity_ok=False (fail-closed).",
+    "c9_test_count": 95
+  },
+  "decision_options": {
+    "A": {
+      "name": "Model base-rate senior IDC properly",
+      "description": "Replace the model's effective-rate method with the contractual base-rate method. Interest is accrued at the contractual rate x outstanding balance x time. The effective-rate method is removed (or retained only for diagnostic / non-covenant purposes).",
+      "trade_offs": {
+        "pro": "Aligns with the senior lender's covenant requirements. Senior opening balance and senior IDC can be promoted.",
+        "con": "Requires a non-trivial modelling change. The base-rate method may produce a different waterfall result. All parity tests will need to be re-baselined.",
+        "con": "Most expensive option in modelling effort. The base-rate method may not be available without extending the data inputs."
+      },
+      "prerequisites": [
+        "Drawdown schedule available",
+        "Senior lender's contractual base rate specified",
+        "Excel calibration reference re-validated"
+      ],
+      "scope": "New C-phase workstream (TBD, e.g. C12)"
+    },
+    "B": {
+      "name": "Permanently freeze senior opening balance / formally accept caveat",
+      "description": "The project formally accepts the effective-rate method as the project's long-term modelling assumption for senior IDC. The senior opening balance and senior IDC remain frozen forever. The waterfall uses the legacy calculation. The caveat is documented in the project's modelling policy.",
+      "trade_offs": {
+        "pro": "Cheapest option. No modelling change required.",
+        "con": "The senior lender's covenant compliance depends on the effective-rate method being acceptable. Typically not the case for senior lenders.",
+        "con": "The waterfall and bridge values will diverge for senior IDC. Audit team will need to document the divergence."
+      },
+      "prerequisites": [
+        "Senior lender's written acceptance of the effective-rate method",
+        "Modelling governance board sign-off",
+        "Audit team's documentation of the divergence"
+      ],
+      "scope": "Governance decision (no modelling change)"
+    },
+    "C": {
+      "name": "Defer",
+      "description": "The project defers the decision. The C9 guard remains the enforcement point. The R-PAR-2 caveat remains open. No promotion of senior IDC happens. The project revisits the decision at a later date.",
+      "trade_offs": {
+        "pro": "No modelling or governance work required now.",
+        "con": "Senior IDC is permanently frozen in the runtime waterfall. The bridge value is never promoted. The waterfall uses the legacy calculation indefinitely.",
+        "con": "Any future modelling change (e.g. an interest-rate model upgrade) will need to consider the R-PAR-2 caveat."
+      },
+      "prerequisites": [],
+      "scope": "Default. No action required.",
+      "default": true
+    }
+  },
+  "c10_interaction": {
+    "C10_excludes_senior_idc_keur": true,
+    "C10_allowed_fields_when_RPAR2_open": [
+      "shl_idc_keur (replaced, no R-PAR-2)",
+      "shl_amount_keur (replaced, no R-PAR-2)",
+      "shl_opening_balance_keur (replaced, no R-PAR-2)",
+      "equity_total_keur (derived, parity-required)"
+    ],
+    "c10_readiness_design_pr": "#557 (C10 readiness design, docs/tests only)"
+  },
+  "tests_added": {
+    "path": "tests/test_phase_rpar2_decision_discovery.py",
+    "type": "test-only",
+    "verifies": [
+      "R-PAR-2 caveat is referenced in C1 design doc",
+      "R-PAR-2 caveat is referenced in C9 guard",
+      "C9 guard's senior_idc_keur block behaviour is fail-closed (AST inspection)",
+      "C9 guard's rpar2_resolved=False default is enforced",
+      "C9 guard's parity_ok=False default is enforced",
+      "Decision options A, B, C are documented in this PR's discovery doc",
+      "C10 readiness design (PR #557) explicitly excludes senior_idc_keur from allowed fields"
+    ]
+  },
+  "files_added": [
+    {
+      "path": "docs/phase_rpar2_decision_discovery.md",
+      "purpose": "R-PAR-2 decision discovery doc (this file)"
+    },
+    {
+      "path": "reports/phase_rpar2_decision_discovery.json",
+      "purpose": "Machine-readable R-PAR-2 report"
+    },
+    {
+      "path": "tests/test_phase_rpar2_decision_discovery.py",
+      "purpose": "R-PAR-2 decision discovery tests (test-only)"
+    }
+  ],
+  "files_modified": [],
+  "hard_rules_confirmed": {
+    "rc1_untouched": true,
+    "no_global_construction_flag_enablement": true,
+    "no_waterfall_routing": true,
+    "no_runtime_promotion": true,
+    "no_senior_idc_promotion_without_rpar2": true,
+    "no_oborovo_before_tuho": true,
+    "all_prs_draft_until_reviewed": true,
+    "all_phases_self_reviewed_with_tests": true
+  },
+  "stop_after_report": true
+}
