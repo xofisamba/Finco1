@@ -1,0 +1,323 @@
+{
+  "phase": "C1",
+  "title": "Construction Schedule / IDC Design Gate",
+  "type": "DESIGN_ONLY_DOCS_ONLY_NO_IMPLEMENTATION",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "base_sha": "fe741b6583b1a8c81f0a6854ebdd353371b90419",
+  "branch": "phase-c1-construction-idc-design-gate",
+  "hard_constraints": {
+    "no_code": true,
+    "no_runtime_changes": true,
+    "no_schema_changes": true,
+    "no_persistence_changes": true,
+    "no_feature_flags": true,
+    "no_capex_formula_changes": true,
+    "no_debt_changes": true,
+    "no_tax_changes": true,
+    "no_depreciation_changes": true,
+    "no_idc_implementation": true,
+    "no_project_status_changes": true
+  },
+  "files_added": [
+    {
+      "path": "docs/phase_c1_construction_idc_design_gate.md",
+      "type": "A",
+      "size_bytes": 34727,
+      "rationale": "Design gate document. 8 sections: Current State, Excel Gap Analysis, Architecture Review, Proposed Layering, Risk Review, Promotion Gates, Recommendation, Roadmap Position. No implementation detail, no code, no formulas beyond naming what exists."
+    },
+    {
+      "path": "reports/phase_c1_construction_idc_design_gate.json",
+      "type": "A",
+      "rationale": "Machine-readable report of this gate."
+    }
+  ],
+  "current_state_summary": {
+    "construction_schedule": "ABSENT (audit-only offline engine in domain/construction/)",
+    "construction_capex_profile": "ABSENT (5 profile types designed in Phase 7F, only linear+custom shipped in 7I)",
+    "funding_drawdown": "ABSENT (audit-only offline engine, source-waterfall logic)",
+    "senior_idc": "NOT_MODELED (target 1519.564 kEUR TUHO exists in template only, effective-rate based)",
+    "shl_idc": "MANUAL_INPUT (Project.shl_idc_keur, TUHO=1169, Oborovo=0; computed value 3568.688/1169.662 NOT wired)",
+    "senior_opening_balance": "MANUAL_INPUT (Project.senior_opening_balance_keur, hardcoded project factory)",
+    "shl_opening_balance": "MANUAL_INPUT (Project.shl_opening_balance_keur, hardcoded project factory)",
+    "asset_in_service_date": "NOT_MODELED (Asset keyed by class, no temporal concept)",
+    "construction_cash_account": "NOT_MODELED"
+  },
+  "excel_gaps": [
+    "Construction schedule",
+    "Construction CAPEX spend profile (linear/S-curve/custom)",
+    "Funding drawdown waterfall (equity -> SHL -> junior -> senior)",
+    "Senior IDC (monthly cumulative-balance method)",
+    "SHL IDC (full-source elapsed compound method, Excel convention)",
+    "Senior opening balance bridge",
+    "SHL opening balance bridge",
+    "Asset in-service date",
+    "Depreciation base for IDC",
+    "Construction cash management"
+  ],
+  "architecture_review": {
+    "phase_7f": {
+      "status": "SUPERSEDED_BY_7I",
+      "remains_valid": [
+        "5-attribute dataclass structure",
+        "5 profile type list",
+        "opt-in design (config is None by default)",
+        "backward compatibility principle"
+      ],
+      "should_change": [
+        "Interest method naming (Phase 7F used free strings; need explicit typed enum)",
+        "Package location (Phase 7F proposed app/construction/, shipped in domain/construction/)",
+        "Dataclass name collision review with Phase 7I"
+      ],
+      "should_defer": [
+        "VAT bridge and grants (not in current Excel scope)",
+        "Multi-phase construction (phased COD)"
+      ]
+    },
+    "phase_7i": {
+      "status": "ACTIVE_AUDIT_ONLY",
+      "remains_valid": [
+        "Three-step engine (uses -> funding -> IDC)",
+        "Source-waterfall funding logic",
+        "Custom profile generator (TUHO+Oborovo use custom)",
+        "Parity table (TUHO 18 months, Oborovo 12 months, exact target numbers)"
+      ],
+      "should_change": [
+        "Senior IDC method is effective-rate based, not modelling-correct",
+        "Runtime flag semantics need second design pass if wiring to waterfall"
+      ],
+      "should_defer": [
+        "Linear / S-curve / front-loaded / back-loaded profile generators beyond linear+custom"
+      ]
+    },
+    "phase_20l": {
+      "status": "ACTIVE_UX_LAYER",
+      "remains_valid": [
+        "Display format (financial close, COD, construction period, monthly drawdown)",
+        "Audit / Preview badge semantics",
+        "fc-grid design system alignment"
+      ],
+      "should_change": [
+        "Badge should switch from Audit/Preview to Live/Runtime once engine becomes authoritative (future)"
+      ],
+      "should_defer": [
+        "Editing the construction schedule in the UI"
+      ]
+    }
+  },
+  "proposed_layering": {
+    "layer_1_construction_schedule": {
+      "owner": "domain/construction/capex_schedule.py",
+      "responsibility": "Produce monthly construction cash requirements",
+      "status_today": "EXISTS (linear + custom)",
+      "status_required": "EXISTS",
+      "authority": "audit-only"
+    },
+    "layer_2_funding_allocation": {
+      "owner": "domain/construction/funding_allocation.py",
+      "responsibility": "Allocate monthly uses to funding sources in waterfall order",
+      "status_today": "EXISTS",
+      "status_required": "EXISTS",
+      "authority": "audit-only"
+    },
+    "layer_3_idc_calculation": {
+      "owner": "domain/construction/idc_calculator.py",
+      "responsibility": "Compute monthly interest per source with named convention",
+      "status_today": "EXISTS (full-source elapsed compound for SHL, monthly cumulative-balance for senior)",
+      "status_required": "EXISTS",
+      "authority": "audit-only"
+    },
+    "layer_4_opening_balance_bridge": {
+      "owner": "domain/construction/opening_bridge.py (MISSING)",
+      "responsibility": "Produce opening balances at COD (senior, SHL, equity, asset book values)",
+      "status_today": "MISSING",
+      "status_required": "MISSING",
+      "authority": "candidate runtime input"
+    },
+    "layer_5_runtime_integration": {
+      "owner": "NEW SEAM (MISSING)",
+      "responsibility": "Decide which manual fields are replaced; feed construction result into operating waterfall through auditable seam; enforce double-counting guard",
+      "status_today": "MISSING",
+      "status_required": "MISSING",
+      "authority": "runtime seam"
+    }
+  },
+  "risks": {
+    "critical": [
+      {
+        "id": "R-PAR-1",
+        "name": "SHL IDC convention mismatch",
+        "description": "Excel uses full-source elapsed compound (TUHO 3,568.688). Runtime consumes Project.shl_idc_keur as manual (TUHO 1,169). Wiring the engine produces a different number than the current waterfall. Which is authoritative?"
+      },
+      {
+        "id": "R-PAR-3",
+        "name": "Opening balance double-counting",
+        "description": "If the runtime consumes both the manual senior_opening_balance_keur (or shl_opening_balance_keur) AND the construction-engine output, the operating waterfall will pay interest on interest. Single most dangerous failure mode."
+      },
+      {
+        "id": "R-AUD-2",
+        "name": "Double-counting hidden in waterfall",
+        "description": "The operating waterfall reads Project.shl_opening_balance_keur and Project.shl_idc_keur. If the construction engine is wired AND also writes to those fields, the audit trail will not show whether values came from construction or project factory unless recorded explicitly."
+      }
+    ],
+    "high": [
+      {
+        "id": "R-PAR-2",
+        "name": "Senior IDC effective rate brittleness",
+        "description": "Senior IDC target calibrated to effective rate. Excel base rates and day-count not yet modeled. Any change to construction period (e.g. COD shift) invalidates the effective rate."
+      },
+      {
+        "id": "R-GOV-1",
+        "name": "Project status drift",
+        "description": "Wiring construction into waterfall risks silently moving TUHO and Oborovo from Level 2 (Reference) to Level 3 (Runtime-Authoritative Construction) without explicit promotion gate."
+      },
+      {
+        "id": "R-GOV-2",
+        "name": "Manual override policy",
+        "description": "Runtime currently trusts manual project factory inputs. If construction engine is enabled, seam must be explicit about which fields are replaced and which are not."
+      },
+      {
+        "id": "R-AUD-1",
+        "name": "No replay of construction decision",
+        "description": "Audit trail must include enough information to reconstruct the construction result from project factory inputs alone."
+      },
+      {
+        "id": "R-VAL-1",
+        "name": "No regression test for parity drift",
+        "description": "Phase 9 (TUHO) and Phase 23N (Oborovo) parity snapshots are operating-period only. No construction-period parity snapshot. Wiring engine without one is wiring blind."
+      },
+      {
+        "id": "R-VAL-3",
+        "name": "Generic project coverage",
+        "description": "Generic Wind and Generic Solar do not have construction templates. Wiring engine to 'support Generic' without validation is a risk."
+      }
+    ],
+    "medium": [
+      {
+        "id": "R-PAR-4",
+        "name": "Asset class allocation at COD",
+        "description": "Excel assigns IDC to specific asset classes for depreciation. FincoGPT depreciation has no in-service date concept. Depreciation base at COD implicitly 'CAPEX + IDC lumped into one class'."
+      },
+      {
+        "id": "R-PAR-5",
+        "name": "Equity invested vs CAPEX equity",
+        "description": "Excel has 500 kEUR equity line for TUHO. Runtime treats operating CAPEX equity as 0. Different concepts."
+      },
+      {
+        "id": "R-GOV-3",
+        "name": "Audit trail completeness",
+        "description": "Diagnostic must include the decision (which field was replaced, which was kept, why) - not just raw numbers."
+      },
+      {
+        "id": "R-AUD-3",
+        "name": "Asset register changes",
+        "description": "Asset register rebuilt from project factory inputs. If Layer 4 produces asset book values, register must record source."
+      },
+      {
+        "id": "R-VAL-2",
+        "name": "Test data coverage",
+        "description": "Engine has 2 project templates. Wiring without additional test data risks hardcoding assumptions to these two."
+      }
+    ]
+  },
+  "risk_top_5": [
+    "R-PAR-3: Opening balance double-counting (Critical)",
+    "R-PAR-1: SHL IDC convention mismatch (Critical)",
+    "R-AUD-2: Double-counting hidden in waterfall (Critical)",
+    "R-GOV-2: Manual override policy (High)",
+    "R-PAR-2: Senior IDC effective rate brittleness (High)"
+  ],
+  "promotion_gates": {
+    "before_implementation": [
+      "Design gate (Phase C1) reviewed and merged",
+      "SHL IDC convention question answered in writing",
+      "Senior IDC method is modelling-correct (not effective-rate)",
+      "Construction-period parity snapshot test exists for at least TUHO",
+      "Double-counting guard spec exists",
+      "Manual override precedence spec exists"
+    ],
+    "before_runtime_wiring": [
+      "Layer 4 (opening_bridge.py) implemented and unit-tested",
+      "Audit trail records construction decision (which fields replaced, which kept, why)",
+      "Operating waterfall opening balance reads routed through seam, not Project field directly",
+      "Double-counting guard has test for every opening balance the waterfall reads",
+      "Construction-period parity snapshot exists for each promoted project",
+      "Project status explicitly updated to indicate 'construction runtime authoritative'"
+    ],
+    "before_promotion": [
+      "All parity snapshots pass within tolerance for construction period",
+      "Audit trail is queryable end-to-end",
+      "Project reviewed by second pair of eyes (governance review)",
+      "Change documented in project-specific changelog"
+    ]
+  },
+  "recommendation": {
+    "choice": "B. More discovery needed",
+    "rationale": [
+      "Shape is right but seam is missing (Layers 4 and 5)",
+      "SHL IDC convention question is unresolved (Excel 3,568.688 vs manual 1,169 for TUHO)",
+      "No construction-period parity snapshot exists",
+      "Senior IDC method is not modelling-correct (effective-rate brittleness)",
+      "Two project templates is not enough coverage (Generic Wind/Solar lack templates)"
+    ],
+    "would_unblock_A": [
+      "SHL IDC convention decided in writing",
+      "Construction-period parity snapshot test for TUHO",
+      "Double-counting guard specified",
+      "Layer 4 (opening balance bridge) design note with explicit responsibilities"
+    ],
+    "would_unblock_C_defer": [
+      "Generic program priorities shift away from construction",
+      "Excel reference becomes unavailable or is replaced",
+      "New project type without construction (e.g. battery storage) becomes the pilot"
+    ],
+    "defer_signals_present_today": false
+  },
+  "roadmap_position": {
+    "depreciation_enablement": {
+      "status": "CLOSED (D-arc, Phase 535, 647818f)",
+      "construction_dependency": "PREREQUISITE (IDC capitalized into asset base)"
+    },
+    "generic_program": {
+      "status": "F1-F2-C DONE, Level 1 (Phase 539, 93cd981)",
+      "construction_dependency": "COMES_AFTER (no Generic templates yet)"
+    },
+    "opex_2_0": {
+      "status": "DISCOVERED (Phase 20N)",
+      "construction_dependency": "INDEPENDENT_PARALLEL"
+    },
+    "formula_transparency": {
+      "status": "ESTABLISHED (Phase 50C, 50D)",
+      "construction_dependency": "PRECONDITION (seam is auditable)"
+    },
+    "capex_evolution": {
+      "status": "57A-10F/G/H DONE (Phase 542, fe741b6)",
+      "construction_dependency": "INDEPENDENT_PARALLEL"
+    }
+  },
+  "suggested_follow_up_phases_NOT_IN_SCOPE": [
+    {"id": "C2", "purpose": "Discovery: answer D-Q1..D-Q5"},
+    {"id": "C3", "purpose": "Layer 4 design: opening_bridge.py responsibilities and dataclasses"},
+    {"id": "C4", "purpose": "Layer 5 design: runtime seam spec"},
+    {"id": "C5", "purpose": "Construction-period parity snapshot: TUHO first, Oborovo second, Generic last"},
+    {"id": "C6", "purpose": "Layer 4 implementation: opening_bridge.py with unit tests, audit-only"},
+    {"id": "C7", "purpose": "Layer 5 implementation: runtime seam, opt-in per project, default off"},
+    {"id": "C8", "purpose": "Runtime wiring for TUHO: first promoted project"},
+    {"id": "C9", "purpose": "Runtime wiring for Oborovo: second promoted project"},
+    {"id": "C10", "purpose": "Generic templates: Generic Wind and Generic Solar construction templates"},
+    {"id": "C11", "purpose": "Promotion: explicit project status change from Reference (operating) to Reference (construction runtime authoritative)"}
+  ],
+  "discovery_questions_NOT_IN_SCOPE": [
+    "D-Q1: Which SHL IDC convention is authoritative?",
+    "D-Q2: How should the asset register at COD be constructed?",
+    "D-Q3: What is the canonical answer to 'what is the construction period for a given project?'",
+    "D-Q4: How does the equity invested line at COD interact with the operating CAPEX equity line?",
+    "D-Q5: How should the runtime seam handle a partial configuration?"
+  ],
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase": "Phase C1 is a design gate. Implementation phases (C2-C11) are NOT planned in this document and are subject to revision once the discovery answers are in.",
+    "rationale": "Phase C1 is a design gate. No code, no runtime changes, no schema changes, no persistence changes, no feature flags, no formula changes, no project status changes."
+  }
+}
