@@ -1,0 +1,143 @@
+{
+  "project_code": "TUHO-WIND-1",
+  "schema_version": "C3-1.0",
+  "tolerance_policy": "exact_0.001_keur",
+  "field_count_expected": 207,
+  "calendar": {
+    "construction_start_date": "2028-06-30",
+    "cod_date": "2029-12-30",
+    "shl_investment_date": "2028-06-30",
+    "construction_months": 18
+  },
+  "totals_keur": {
+    "total_uses": 72994.450,
+    "total_equity_draw": 500.000,
+    "total_shl_draw": 29135.176,
+    "total_junior_draw": 0.000,
+    "total_senior_draw": 43359.274,
+    "total_shl_idc": 3568.688,
+    "total_senior_idc": 1519.564
+  },
+  "opening_balances_keur": {
+    "opening_senior_balance": 44878.838,
+    "opening_shl_balance": 32703.864,
+    "equity_contribution_at_cod": 500.000
+  },
+  "monthly_grid": [
+    {
+      "month_index": 1,
+      "monthly_uses_keur": 24226.729,
+      "cumulative_uses_keur": 24226.729
+    },
+    {
+      "month_index": 2,
+      "monthly_uses_keur": 2785.808,
+      "cumulative_uses_keur": 27012.537
+    },
+    {
+      "month_index": 3,
+      "monthly_uses_keur": 2803.874,
+      "cumulative_uses_keur": 29816.411
+    },
+    {
+      "month_index": 4,
+      "monthly_uses_keur": 2804.725,
+      "cumulative_uses_keur": 32621.136
+    },
+    {
+      "month_index": 5,
+      "monthly_uses_keur": 2816.833,
+      "cumulative_uses_keur": 35437.969
+    },
+    {
+      "month_index": 6,
+      "monthly_uses_keur": 2831.107,
+      "cumulative_uses_keur": 38269.076
+    },
+    {
+      "month_index": 7,
+      "monthly_uses_keur": 2820.167,
+      "cumulative_uses_keur": 41089.243
+    },
+    {
+      "month_index": 8,
+      "monthly_uses_keur": 2835.312,
+      "cumulative_uses_keur": 43924.555
+    },
+    {
+      "month_index": 9,
+      "monthly_uses_keur": 2848.618,
+      "cumulative_uses_keur": 46773.173
+    },
+    {
+      "month_index": 10,
+      "monthly_uses_keur": 2852.397,
+      "cumulative_uses_keur": 49625.570
+    },
+    {
+      "month_index": 11,
+      "monthly_uses_keur": 2875.373,
+      "cumulative_uses_keur": 52500.943
+    },
+    {
+      "month_index": 12,
+      "monthly_uses_keur": 2884.804,
+      "cumulative_uses_keur": 55385.747
+    },
+    {
+      "month_index": 13,
+      "monthly_uses_keur": 2902.406,
+      "cumulative_uses_keur": 58288.153
+    },
+    {
+      "month_index": 14,
+      "monthly_uses_keur": 2911.087,
+      "cumulative_uses_keur": 61199.240
+    },
+    {
+      "month_index": 15,
+      "monthly_uses_keur": 2929.689,
+      "cumulative_uses_keur": 64128.929
+    },
+    {
+      "month_index": 16,
+      "monthly_uses_keur": 2943.438,
+      "cumulative_uses_keur": 67072.367
+    },
+    {
+      "month_index": 17,
+      "monthly_uses_keur": 2950.982,
+      "cumulative_uses_keur": 70023.349
+    },
+    {
+      "month_index": 18,
+      "monthly_uses_keur": 2971.101,
+      "cumulative_uses_keur": 72994.450
+    }
+  ],
+  "funding_caps_keur": {
+    "equity_shares": 500.000,
+    "shl": 29135.176,
+    "junior": 0.000,
+    "senior_debt": 43359.274
+  },
+  "rates": {
+    "shl_interest_rate": 0.08,
+    "senior_interest_rate_effective": 0.060454449320244484
+  },
+  "caveats": {
+    "senior_idc_effective_rate_caveat_applies": true,
+    "senior_idc_effective_rate": 0.060454449320244484,
+    "senior_idc_target_keur": 1519.564,
+    "senior_idc_source": "tuho.py:senior_interest_rate (calibrated to Excel IDC!D57)",
+    "policy_reference": "C1 R-PAR-2, C2 §2.1 freeze, C3 §6.3",
+    "shl_idc_convention": "Excel full-source elapsed compound (C2 Convention B)",
+    "shl_idc_convention_reference": "C2 §1.2 Convention B",
+    "equity_idc_capitalized": false
+  },
+  "source_documents": {
+    "monthly_uses_source": "tuho.py:TUHO_MONTHLY_USES_KEUR",
+    "funding_caps_source": "tuho.py:build_tuho_construction_config()",
+    "totals_source": "Excel reference (Phase 7F / 7I discovery)"
+  }
+}

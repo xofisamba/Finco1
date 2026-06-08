@@ -1,0 +1,113 @@
+{
+  "project_code": "OBOROVO",
+  "schema_version": "C3-1.0",
+  "tolerance_policy": "exact_0.001_keur",
+  "field_count_expected": 142,
+  "calendar": {
+    "construction_start_date": "2029-06-29",
+    "cod_date": "2030-06-29",
+    "shl_investment_date": "2029-06-29",
+    "construction_months": 12
+  },
+  "totals_keur": {
+    "total_uses": 57973.041,
+    "total_equity_draw": 500.000,
+    "total_shl_draw": 14620.774,
+    "total_junior_draw": 0.000,
+    "total_senior_draw": 42852.267,
+    "total_shl_idc": 1169.662,
+    "total_senior_idc": 1086.032
+  },
+  "opening_balances_keur": {
+    "opening_senior_balance": 43938.299,
+    "opening_shl_balance": 15790.436,
+    "equity_contribution_at_cod": 500.000
+  },
+  "monthly_grid": [
+    {
+      "month_index": 1,
+      "monthly_uses_keur": 16505.437,
+      "cumulative_uses_keur": 16505.437
+    },
+    {
+      "month_index": 2,
+      "monthly_uses_keur": 3671.747,
+      "cumulative_uses_keur": 20177.184
+    },
+    {
+      "month_index": 3,
+      "monthly_uses_keur": 3728.964,
+      "cumulative_uses_keur": 23906.148
+    },
+    {
+      "month_index": 4,
+      "monthly_uses_keur": 3744.590,
+      "cumulative_uses_keur": 27650.738
+    },
+    {
+      "month_index": 5,
+      "monthly_uses_keur": 3757.251,
+      "cumulative_uses_keur": 31407.989
+    },
+    {
+      "month_index": 6,
+      "monthly_uses_keur": 3775.776,
+      "cumulative_uses_keur": 35183.765
+    },
+    {
+      "month_index": 7,
+      "monthly_uses_keur": 3754.109,
+      "cumulative_uses_keur": 38937.874
+    },
+    {
+      "month_index": 8,
+      "monthly_uses_keur": 3773.506,
+      "cumulative_uses_keur": 42711.380
+    },
+    {
+      "month_index": 9,
+      "monthly_uses_keur": 3788.984,
+      "cumulative_uses_keur": 46500.364
+    },
+    {
+      "month_index": 10,
+      "monthly_uses_keur": 3805.144,
+      "cumulative_uses_keur": 50305.508
+    },
+    {
+      "month_index": 11,
+      "monthly_uses_keur": 3820.040,
+      "cumulative_uses_keur": 54125.548
+    },
+    {
+      "month_index": 12,
+      "monthly_uses_keur": 3847.494,
+      "cumulative_uses_keur": 57973.042
+    }
+  ],
+  "funding_caps_keur": {
+    "equity_shares": 500.000,
+    "shl": 14620.774,
+    "junior": 0.000,
+    "senior_debt": 42852.267
+  },
+  "rates": {
+    "shl_interest_rate": 0.08,
+    "senior_interest_rate_effective": 0.058947812283038616
+  },
+  "caveats": {
+    "senior_idc_effective_rate_caveat_applies": true,
+    "senior_idc_effective_rate": 0.058947812283038616,
+    "senior_idc_target_keur": 1086.032,
+    "senior_idc_source": "oborovo.py:senior_interest_rate (calibrated to Excel IDC!D57)",
+    "policy_reference": "C1 R-PAR-2, C2 §2.1 freeze, C3 §6.3",
+    "shl_idc_convention": "Excel full-source elapsed compound (C2 Convention B)",
+    "shl_idc_convention_reference": "C2 §1.2 Convention B",
+    "equity_idc_capitalized": false
+  },
+  "source_documents": {
+    "monthly_uses_source": "oborovo.py:OBOROVO_MONTHLY_USES_KEUR",
+    "funding_caps_source": "oborovo.py:build_oborovo_construction_config()",
+    "totals_source": "Excel reference (Phase 7F / 7I discovery)"
+  }
+}

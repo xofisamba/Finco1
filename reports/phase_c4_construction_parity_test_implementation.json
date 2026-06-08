@@ -1,0 +1,167 @@
+{
+  "phase": "C4",
+  "title": "Construction Period Parity Test Implementation",
+  "scope_label": "Snapshot structure validation only — no runtime construction engine comparison yet.",
+  "type": "TEST / VALIDATION IMPLEMENTATION",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "branch": "phase-c4-construction-parity-test-implementation",
+  "base_sha": "aa800a5",
+  "addresses_c1_blockers": [3, 4],
+  "deferred_c1_blockers": [5],
+  "addresses_c3_items": [
+    "tuho_construction_period_parity_snapshot_implemented",
+    "oborovo_construction_period_parity_snapshot_implemented",
+    "manual_vs_derived_reconciliation_partial",
+    "cod_opening_balance_reconciliation_partial",
+    "idc_by_source_reconciliation_partial",
+    "no_double_counting_test_plan_partial",
+    "senior_idc_caveat_in_docstring_implemented"
+  ],
+  "deferred_c3_items": [
+    "second_pair_of_eyes_review"
+  ],
+  "hard_constraints": {
+    "no_app_runtime_changes": true,
+    "no_domain_model_changes": true,
+    "no_waterfall_changes": true,
+    "no_capex_formula_changes": true,
+    "no_debt_changes": true,
+    "no_shl_runtime_changes": true,
+    "no_idc_runtime_implementation": true,
+    "no_tax_changes": true,
+    "no_depreciation_changes": true,
+    "no_schema_persistence_changes": true,
+    "no_feature_flags": true,
+    "no_project_status_changes": true,
+    "rc1_untouched": true,
+    "use_construction_schedule_engine_default_off": true
+  },
+  "scope": {
+    "implemented": [
+      "frozen golden snapshot files (TUHO + Oborovo)",
+      "structural validation tests (schema, fields, monthly grid, identities)",
+      "caveat documentation in snapshots",
+      "reference consistency checks (snapshot vs source code)"
+    ],
+    "not_implemented": [
+      "engine comparison (deferred to C5+)",
+      "CI workflow (deferred to C5+)",
+      "Layer 4 bridge implementation (deferred to C5+)",
+      "Layer 5 seam implementation (deferred to C6+)",
+      "runtime opt-in flag flip (deferred to C7+)",
+      "senior IDC base-rate modelling (separate workstream)"
+    ]
+  },
+  "tuho_snapshot": {
+    "path": "tests/fixtures/construction_parity/tuho_construction_snapshot.json",
+    "project_code": "TUHO-WIND-1",
+    "schema_version": "C3-1.0",
+    "tolerance_policy": "exact_0.001_keur",
+    "field_count_expected": 207,
+    "construction_months": 18,
+    "construction_start_date": "2028-06-30",
+    "cod_date": "2029-12-30",
+    "total_uses_keur": 72994.450,
+    "total_shl_idc_keur": 3568.688,
+    "total_senior_idc_keur": 1519.564,
+    "opening_senior_balance_keur": 44878.838,
+    "opening_shl_balance_keur": 32703.864,
+    "equity_contribution_at_cod_keur": 500.000,
+    "senior_idc_effective_rate": 0.060454449320244484,
+    "senior_idc_target_keur": 1519.564
+  },
+  "oborovo_snapshot": {
+    "path": "tests/fixtures/construction_parity/oborovo_construction_snapshot.json",
+    "project_code": "OBOROVO",
+    "schema_version": "C3-1.0",
+    "tolerance_policy": "exact_0.001_keur",
+    "field_count_expected": 142,
+    "construction_months": 12,
+    "construction_start_date": "2029-06-29",
+    "cod_date": "2030-06-29",
+    "total_uses_keur": 57973.041,
+    "total_shl_idc_keur": 1169.662,
+    "total_senior_idc_keur": 1086.032,
+    "opening_senior_balance_keur": 43938.299,
+    "opening_shl_balance_keur": 15790.436,
+    "equity_contribution_at_cod_keur": 500.000,
+    "senior_idc_effective_rate": 0.058947812283038616,
+    "senior_idc_target_keur": 1086.032
+  },
+  "test_categories": {
+    "file_existence": 2,
+    "schema_version": 2,
+    "project_codes": 2,
+    "tolerance_policy": 2,
+    "field_count": 3,
+    "monthly_grid_length": 2,
+    "monthly_sum": 2,
+    "cumulative_monotonicity": 2,
+    "cumulative_identity": 36,
+    "calendar_dates": 6,
+    "totals_present": 14,
+    "opening_balances_present": 6,
+    "opening_identity": 6,
+    "caveats": 6,
+    "failure_modes": 10,
+    "cross_snapshot": 3,
+    "reference_consistency": 4,
+    "estimated_total_tests": 120
+  },
+  "failure_modes_covered": [
+    "missing_top_level_field",
+    "schema_version_mismatch",
+    "tolerance_policy_mismatch",
+    "opening_balance_identity_violation",
+    "snapshot_vs_source_drift"
+  ],
+  "c3_readiness_checklist_status": {
+    "tuho_snapshot_implemented": true,
+    "oborovo_snapshot_implemented": true,
+    "manual_vs_derived_reconciliation_implemented": "partial",
+    "cod_opening_balance_reconciliation_implemented": "partial",
+    "idc_by_source_reconciliation_implemented": "partial",
+    "no_double_counting_test_plan_implemented": "partial",
+    "senior_idc_caveat_in_docstring_implemented": true,
+    "second_pair_of_eyes_review_implemented": false,
+    "items_fully_implemented": 3,
+    "items_partially_implemented": 4,
+    "items_not_implemented": 1,
+    "items_total": 8
+  },
+  "multi_phase_path": [
+    {"phase": "C1", "scope": "Design gate", "status": "merged", "sha": "5fccc3a"},
+    {"phase": "C2", "scope": "SHL IDC convention + Layer 4 bridge design", "status": "merged", "sha": "59f9e3d"},
+    {"phase": "C3", "scope": "Construction parity framework design", "status": "merged", "sha": "aa800a5"},
+    {"phase": "C4", "scope": "Snapshot scaffolding + structure tests", "status": "DRAFT"},
+    {"phase": "C5", "scope": "Layer 4 bridge implementation + engine comparison", "status": "future"},
+    {"phase": "C6", "scope": "Layer 5 seam implementation", "status": "future"},
+    {"phase": "C7", "scope": "Opt-in flag flip", "status": "future"},
+    {"phase": "C8+", "scope": "Other C1-listed work", "status": "future"}
+  ],
+  "recommendation": {
+    "choice": "B. More validation needed",
+    "rationale_count": 5,
+    "rationale_points": [
+      "C4 implements the snapshot scaffolding, not the engine comparison.",
+      "The Layer 4 bridge is not implemented (C5+ prerequisite for engine comparison).",
+      "The senior IDC effective-rate caveat is preserved in both snapshots.",
+      "C4 is the right scope for the current C-series state (design-implementation spiral).",
+      "C1 blocker 5 (senior IDC base-rate) is not addressed in any new way; separate workstream."
+    ],
+    "would_unblock_a": [
+      "C5 design note that implements the Layer 4 bridge (C2 design → code).",
+      "C5 implementation PR that adds engine comparison test (C4 snapshot + engine output).",
+      "C5 implementation PR that adds the CI workflow that runs the parity tests."
+    ],
+    "remains_open_after_c4": [
+      "Engine comparison (C5+)",
+      "Layer 4 bridge implementation (C5+)",
+      "CI workflow (C5+)",
+      "Layer 5 seam implementation (C6+)",
+      "Opt-in flag flip (C7+)",
+      "Senior IDC base-rate modelling (separate workstream)"
+    ]
+  }
+}
