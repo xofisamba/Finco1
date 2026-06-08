@@ -772,18 +772,57 @@ class TestHardConstraints:
     """C8 hard constraints: NO code, NO runtime wiring, NO app changes, etc."""
 
     def test_no_new_domain_module(self):
-        """C8 must not add any new domain module."""
-        # Find any domain/ Python file added in the C8 commit.
-        # Since C8 has no commit yet (we're on the branch), check
-        # that no domain/construction/runtime_seam.py or similar exists.
+        """C8 must not add any new domain module.
+
+        C9 (a future phase) will add ``app/services/construction_runtime_seam.py``
+        per C8 §7.3. The check below is **C8-commit-relative**: it asserts
+        that the C8 squash-merge commit on origin/main did NOT add any
+        of the candidate files. It does not assert that the candidates
+        never exist in the working tree (C9 may add them).
+        """
+        # Locate the C8 squash-merge commit on origin/main.
+        r = subprocess.run(
+            ["git", "log", "--merges", "--first-parent",
+             "--format=%H %s", "origin/main"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True,
+        )
+        c8_shas = []
+        for ln in r.stdout.splitlines():
+            parts = ln.split(" ", 1)
+            if len(parts) == 2 and parts[1].startswith("Phase C8:"):
+                c8_shas.append(parts[0])
+        if not c8_shas:
+            # Fallback: --merges didn't match (e.g. linear history).
+            r = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            for ln in r.stdout.splitlines():
+                parts = ln.split(" ", 1)
+                if len(parts) == 2 and parts[1].startswith("Phase C8:"):
+                    c8_shas.append(parts[0])
+        assert c8_shas, "could not locate Phase C8 commit on origin/main"
+        c8_sha = c8_shas[0]
+        # Get files added in the C8 commit. Squash-merge commits
+        # have empty ``--name-only`` output, so we diff against
+        # the first parent (the pre-C8 main tip).
+        result = subprocess.run(
+            ["git", "diff", c8_sha + "^1", c8_sha, "--name-only",
+             "--diff-filter=A"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True,
+        )
+        c8_added = sorted(
+            ln.strip() for ln in result.stdout.splitlines() if ln.strip()
+        )
         candidates = [
-            REPO_ROOT / "domain" / "construction" / "runtime_seam.py",
-            REPO_ROOT / "domain" / "services" / "runtime_seam.py",
-            REPO_ROOT / "app" / "services" / "construction_runtime_seam.py",
+            "domain/construction/runtime_seam.py",
+            "domain/services/runtime_seam.py",
+            "app/services/construction_runtime_seam.py",
         ]
         for c in candidates:
-            assert not c.exists(), (
-                f"C8 must not add new seam module: {c.relative_to(REPO_ROOT)}"
+            assert c not in c8_added, (
+                f"C8 must not add new seam module: {c!r}; "
+                f"C8 added these files: {c8_added}"
             )
 
     def test_no_main_web_or_main_api_changes(self):
