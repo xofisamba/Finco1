@@ -273,7 +273,12 @@ class TestSingleSheetGroupsPanel:
         assert 'data-capex-column-groups="true"' in sheet_capex_html_text
 
     def test_panel_class_present(self, sheet_capex_html_text):
-        assert 'class="capex-column-groups"' in sheet_capex_html_text
+        # Phase 57A-10H renamed the class to "capex-column-key"
+        # but kept the data attribute. Accept either form.
+        assert (
+            'class="capex-column-groups"' in sheet_capex_html_text
+            or 'class="capex-column-key"' in sheet_capex_html_text
+        )
 
     @pytest.mark.parametrize("group_name", EXPECTED_PANEL_GROUPS)
     def test_panel_li_entry(
@@ -287,19 +292,28 @@ class TestSingleSheetGroupsPanel:
         )
 
     def test_panel_has_four_entries(self, sheet_capex_html_text):
-        # Find the capex-column-groups block by matching from
-        # <div class="capex-column-groups" up to the next </div>
-        # at the same nesting level. We use a non-greedy match
-        # for the block contents and rely on the fact that the
-        # block contains the four <li data-capex-group=...>
-        # entries.
+        # Phase 57A-10H unified the "column groups" panel under
+        # the new class "capex-column-key" with the "groups"
+        # section. Fall back to the legacy "capex-column-groups"
+        # panel if the new one is not present.
         match = re.search(
-            r'<div class="capex-column-groups"[^>]*data-capex-column-groups="true"[^>]*>'
-            r'(.*?)<p class="capex-column-groups__hint"',
+            r'<div[^>]*class="capex-column-key"[^>]*data-capex-column-groups="true"[^>]*>'
+            r'(.*?)</div>\s*</div>\s*\{#\s*\u2500\u2500 Workbook grid',
             sheet_capex_html_text,
             re.DOTALL,
         )
-        assert match, "capex-column-groups block not found"
+        if not match:
+            # Fall back to legacy panel (pre-57A-10H layout).
+            match = re.search(
+                r'<div class="capex-column-groups"[^>]*data-capex-column-groups="true"[^>]*>'
+                r'(.*?)<p class="capex-column-groups__hint"',
+                sheet_capex_html_text,
+                re.DOTALL,
+            )
+        assert match, (
+            "column-groups block not found (looked for new "
+            "capex-column-key panel and legacy capex-column-groups panel)"
+        )
         block = match.group(1)
         li_count = len(re.findall(r'<li[^>]*data-capex-group=', block))
         assert li_count == 4, (

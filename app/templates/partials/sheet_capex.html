@@ -120,19 +120,34 @@
 -->
 
 <style>
-  /* ── Phase 57A-10G: Column groups semantic guide (visual only) ─── */
-  .capex-column-groups {
+  /* ── Phase 57A-10H: Unified CAPEX column key panel ─────────────────── */
+  .capex-column-key {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.6rem;
     margin: 0.75rem 0;
-    padding: 0.6rem 0.85rem;
+    padding: 0.75rem 1rem;
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
   }
-  .capex-column-groups__title { margin: 0; font-size: 0.85rem; }
-  .capex-column-groups__list {
+  .capex-column-key__title { margin: 0; font-size: 0.95rem; }
+  .capex-column-key__lead {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .capex-column-key__section { display: flex; flex-direction: column; gap: 0.35rem; }
+  .capex-column-key__section-title {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .capex-column-key__chips {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -140,21 +155,81 @@
     flex-direction: column;
     gap: 0.3rem;
   }
-  .capex-column-groups__list li {
+  .capex-column-key__chips li {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.8rem;
+    flex-wrap: wrap;
   }
-  .capex-column-groups__hint {
-    margin: 0;
-    font-size: 0.72rem;
+  .capex-column-key__chip-desc {
+    font-size: 0.78rem;
     color: var(--muted);
   }
-  .capex-column-groups [data-capex-group="core"]      { color: #1f4d7a; }
-  .capex-column-groups [data-capex-group="costing"]   { color: #5a3a8a; }
-  .capex-column-groups [data-capex-group="tax"]       { color: #8a4a1f; }
-  .capex-column-groups [data-capex-group="schedule"]  { color: #7a6a1f; }
+  .capex-column-key__group-dot {
+    display: inline-block;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="core"] {
+    background: #6f9fc8; /* softened blue */
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="costing"] {
+    background: #a18ec8; /* softened purple */
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="tax"] {
+    background: #c89a78; /* softened orange */
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="schedule"] {
+    background: #c8b86f; /* softened yellow */
+  }
+  .capex-column-key [data-capex-group="core"]     { color: #2c5b85; }
+  .capex-column-key [data-capex-group="costing"]  { color: #6b4d96; }
+  .capex-column-key [data-capex-group="tax"]      { color: #955c2a; }
+  .capex-column-key [data-capex-group="schedule"] { color: #856a18; }
+
+  /* ── Phase 57A-10H: Tighten the deferred-note disclaimer ──────────── */
+  .capex-deferred-note .capex-metadata-disclaimer {
+    margin: 0 0 0.6rem 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .capex-deferred-note .capex-metadata-disclaimer .badge {
+    margin-right: 0.4rem;
+  }
+  .capex-deferred-note ul {
+    margin: 0.3rem 0 0 0;
+    padding-left: 1.2rem;
+  }
+  .capex-deferred-note li {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    margin-bottom: 0.25rem;
+  }
+
+  /* ── Phase 57A-10H: Compact status legend ─────────────────────────── */
+  .capex-status-legend {
+    margin: 0.5rem 0 0.75rem 0;
+    padding: 0.5rem 0.85rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .capex-status-legend p { margin: 0 0 0.3rem 0; font-size: 0.78rem; }
+  .capex-status-legend ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .capex-status-legend li { display: flex; align-items: center; gap: 0.35rem; }
 </style>
 
 {% from "partials/_line_item_grid.html" import lig_render %}
@@ -659,35 +734,84 @@
   </p>
 </div>
 
-{# ── Phase 57A-10G: Column groups semantic guide (visual / semantic only) #}
-<div class="capex-column-groups" data-capex-column-groups="true"
-     aria-label="CAPEX column groups">
-  <p class="capex-column-groups__title">
-    <strong>CAPEX column groups:</strong>
+{# ── Phase 57A-10H: Unified CAPEX column key (status + groups) ─── #}
+<div class="capex-column-key" data-capex-column-key="true"
+     data-capex-column-groups="true"
+     aria-label="CAPEX column key">
+  <p class="capex-column-key__title">
+    <strong>CAPEX column key</strong>
   </p>
-  <ul class="capex-column-groups__list">
-    <li data-capex-group="core">
-      <span class="badge badge-runtime-used">Runtime-used</span>
-      <strong>Core</strong> — Line Item, Code, Amount
-    </li>
-    <li data-capex-group="costing">
-      <span class="badge badge-metadata-only">Metadata-only</span>
-      <strong>Costing</strong> — Contingency %, Per MW
-    </li>
-    <li data-capex-group="tax">
-      <span class="badge badge-metadata-only">Metadata-only</span>
-      <strong>Tax</strong> — VAT %, WHT %
-    </li>
-    <li data-capex-group="schedule">
-      <span class="badge badge-runtime-used">Runtime-used</span>
-      <strong>Schedule</strong> — Monthly payment schedule M1–M18
-      (Spending profile, construction utilisation)
-    </li>
-  </ul>
-  <p class="capex-column-groups__hint">
-    These groups mirror the column groups shown in the CAPEX detail
-    grid. Status chips indicate whether the columns affect Run.
+  <p class="capex-column-key__lead">
+    Each column in the detail grid belongs to one of these groups
+    and carries one of these status labels. Status is the source of
+    truth for whether a column affects Run.
   </p>
+
+  <div class="capex-column-key__section"
+       data-capex-column-key-section="status">
+    <p class="capex-column-key__section-title">Status labels</p>
+    <ul class="capex-column-key__chips">
+      <li><span class="badge badge-runtime-used">Runtime-used</span>
+          <span class="capex-column-key__chip-desc">
+            feeds the model
+          </span></li>
+      <li><span class="badge badge-metadata-only">Metadata-only</span>
+          <span class="capex-column-key__chip-desc">
+            captured for audit; does not affect Run
+          </span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <span class="capex-column-key__chip-desc">
+            designed for a future phase; not yet wired
+          </span></li>
+      <li><span class="badge badge-export-only">Export-only</span>
+          <span class="capex-column-key__chip-desc">
+            surfaced in export / audit artefacts only
+          </span></li>
+    </ul>
+  </div>
+
+  <div class="capex-column-key__section"
+       data-capex-column-key-section="groups">
+    <p class="capex-column-key__section-title">Column groups</p>
+    <ul class="capex-column-key__chips">
+      <li data-capex-group="core">
+        <span class="capex-column-key__group-dot"
+              data-capex-group-dot="core" aria-hidden="true"></span>
+        <strong>Core</strong>
+        <span class="capex-column-key__chip-desc">
+          Line Item, Code, Amount
+        </span>
+        <span class="badge badge-runtime-used">Runtime-used</span>
+      </li>
+      <li data-capex-group="costing">
+        <span class="capex-column-key__group-dot"
+              data-capex-group-dot="costing" aria-hidden="true"></span>
+        <strong>Costing</strong>
+        <span class="capex-column-key__chip-desc">
+          Contingency %, Per MW
+        </span>
+        <span class="badge badge-metadata-only">Metadata-only</span>
+      </li>
+      <li data-capex-group="tax">
+        <span class="capex-column-key__group-dot"
+              data-capex-group-dot="tax" aria-hidden="true"></span>
+        <strong>Tax</strong>
+        <span class="capex-column-key__chip-desc">
+          VAT %, WHT %
+        </span>
+        <span class="badge badge-metadata-only">Metadata-only</span>
+      </li>
+      <li data-capex-group="schedule">
+        <span class="capex-column-key__group-dot"
+              data-capex-group-dot="schedule" aria-hidden="true"></span>
+        <strong>Schedule</strong>
+        <span class="capex-column-key__chip-desc">
+          M1–M18 (spending profile, construction utilisation)
+        </span>
+        <span class="badge badge-runtime-used">Runtime-used</span>
+      </li>
+    </ul>
+  </div>
 </div>
 
 {# ── Workbook grid (rendered via shared LineItemGrid) ────────────── #}
@@ -712,7 +836,7 @@
   <ul>
     <li><span class="badge badge-runtime-used">Runtime-used</span> — feeds the model</li>
     <li><span class="badge badge-metadata-only">Metadata-only</span> — captured for audit; does not affect Run</li>
-    <li><span class="badge badge-design-only">Design-only</span> — designed for a future phase; not yet implemented</li>
+    <li><span class="badge badge-design-only">Design-only</span> — designed for a future phase; not yet wired</li>
     <li><span class="badge badge-export-only">Export-only</span> — surfaced in export / audit artefacts only</li>
   </ul>
 </div>
@@ -721,22 +845,14 @@
 <div class="capex-deferred-note" data-capex-deferred="true">
   <p class="capex-metadata-disclaimer" data-capex-metadata-disclaimer="true">
     <span class="badge badge-metadata-only">Metadata only — does not affect Run.</span>
-    These columns are placeholders; they are visible for
-    design / planning but they do not affect the current
-    model calculations.
-  </p>
-  <p>
-    <strong>Future model inputs (not yet wired):</strong>
-    The columns below are placeholders for now; detailed
-    logic will be wired in a follow-up phase that does not
-    change financial outputs:
+    The placeholders below are visible for design / planning but
+    they do not affect the current model calculations.
   </p>
   <ul>
     <li><span class="badge badge-metadata-only">Metadata-only</span>
         <strong>VAT % / WHT % / Contingency %</strong> —
         captured in CAPEX detail columns; not yet fed to
-        tax / model. See
-        <code>sheet_capex_detail.html</code> column headers.</li>
+        tax / model.</li>
     <li><span class="badge badge-design-only">Design-only</span>
         <strong>Payment schedule by construction month</strong> —
         future input → equity drawdown, SHL drawdown, senior
