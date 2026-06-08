@@ -353,11 +353,53 @@ class TestScopeGuards:
     EXPECTED_ADDITIONS = (
         "docs/phase_c1_construction_idc_design_gate.md",
         "reports/phase_c1_construction_idc_design_gate.json",
+        "tests/test_phase_c1_construction_idc_design_gate.py",
     )
 
+    @staticmethod
+    def _phase_commit_sha() -> str:
+        """Locate the Phase C1 squash-merge commit on origin/main.
+
+        C-series test design (pre-#554) used an absolute
+        ``git diff origin/main HEAD`` check. C9 (a later phase)
+        legitimately adds files under app/, docs/, and reports/
+        per C8 §7.3, which would cause C1-C5's absolute checks
+        to fire as false positives on a branch that has C9
+        already merged or in progress.
+
+        To make C1-C5's scope guards robust against future C-phases
+        (C9, C10, C11) that legitimately add files in the same
+        directories, this helper locates the C1 commit on
+        ``origin/main`` and the C1 test methods below diff
+        against the C1 commit's first parent (the pre-C1 main tip).
+        """
+        r = subprocess.run(
+            ["git", "log", "--merges", "--first-parent",
+             "--format=%H %s", "origin/main"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True,
+        )
+        c_shas = []
+        for ln in r.stdout.splitlines():
+            parts = ln.split(" ", 1)
+            if len(parts) == 2 and parts[1].startswith("Phase C1:"):
+                c_shas.append(parts[0])
+        if not c_shas:
+            r = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            for ln in r.stdout.splitlines():
+                parts = ln.split(" ", 1)
+                if len(parts) == 2 and parts[1].startswith("Phase C1:"):
+                    c_shas.append(parts[0])
+        assert c_shas, "could not locate Phase C1 commit on origin/main"
+        return c_shas[0]
+
     def test_only_expected_files_added(self):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--name-status", "origin/main", "HEAD"],
+            ["git", "diff", c_sha + "^1", c_sha, "--name-status",
+             "--diff-filter=AMD"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -380,8 +422,9 @@ class TestScopeGuards:
 
     @pytest.mark.parametrize("path", FORBIDDEN_CODE_PATHS)
     def test_forbidden_code_path_untouched(self, path):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "HEAD", "--", path],
+            ["git", "diff", "--stat", c_sha + "^1", c_sha, "--", path],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -400,8 +443,9 @@ class TestScopeGuards:
         # docs/phase_* or reports/phase_* was added EXCEPT our 2.
         # We allow path = 'docs/phase_' which would match 'docs/phase_c1_...'
         # so instead, check via name filtering.
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main", "HEAD", "--", path],
+            ["git", "diff", "--name-only", c_sha + "^1", c_sha, "--", path],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -418,8 +462,9 @@ class TestScopeGuards:
         )
 
     def test_no_main_web_changes(self):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "HEAD", "--", "main_web.py"],
+            ["git", "diff", "--stat", c_sha + "^1", c_sha, "--", "main_web.py"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -427,8 +472,9 @@ class TestScopeGuards:
         assert result.stdout.strip() == ""
 
     def test_no_main_api_changes(self):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "HEAD", "--", "main_api.py"],
+            ["git", "diff", "--stat", c_sha + "^1", c_sha, "--", "main_api.py"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -436,8 +482,9 @@ class TestScopeGuards:
         assert result.stdout.strip() == ""
 
     def test_no_app_changes(self):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "HEAD", "--", "app/"],
+            ["git", "diff", "--stat", c_sha + "^1", c_sha, "--", "app/"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -445,8 +492,9 @@ class TestScopeGuards:
         assert result.stdout.strip() == ""
 
     def test_no_domain_changes(self):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "HEAD", "--", "domain/"],
+            ["git", "diff", "--stat", c_sha + "^1", c_sha, "--", "domain/"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,

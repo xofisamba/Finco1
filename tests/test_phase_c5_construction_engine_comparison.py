@@ -1050,9 +1050,44 @@ class TestScopeGuards:
         "static/",
     )
 
+    @staticmethod
+    def _phase_commit_sha() -> str:
+        """Locate the Phase C5 squash-merge commit on origin/main.
+
+        C-series test design (pre-#554) used an absolute
+        ``git diff origin/main HEAD`` check. C9 (a later phase)
+        legitimately adds files under app/, docs/, and reports/
+        per C8 §7.3, which would cause C1-C5's absolute checks
+        to fire as false positives on a branch that has C9
+        already merged or in progress.
+        """
+        r = subprocess.run(
+            ["git", "log", "--merges", "--first-parent",
+             "--format=%H %s", "origin/main"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True,
+        )
+        c_shas = []
+        for ln in r.stdout.splitlines():
+            parts = ln.split(" ", 1)
+            if len(parts) == 2 and parts[1].startswith("Phase C5:"):
+                c_shas.append(parts[0])
+        if not c_shas:
+            r = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            for ln in r.stdout.splitlines():
+                parts = ln.split(" ", 1)
+                if len(parts) == 2 and parts[1].startswith("Phase C5:"):
+                    c_shas.append(parts[0])
+        assert c_shas, "could not locate Phase C5 commit on origin/main"
+        return c_shas[0]
+
     def test_only_expected_files_added(self):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--name-status", "origin/main", "HEAD"],
+            ["git", "diff", "--name-status", c_sha + "^1", c_sha,
+             "--diff-filter=AMD"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
@@ -1070,8 +1105,9 @@ class TestScopeGuards:
 
     @pytest.mark.parametrize("path", FORBIDDEN_CODE_PATHS)
     def test_forbidden_code_path_untouched(self, path):
+        c_sha = self._phase_commit_sha()
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "HEAD", "--", path],
+            ["git", "diff", "--stat", c_sha + "^1", c_sha, "--", path],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
