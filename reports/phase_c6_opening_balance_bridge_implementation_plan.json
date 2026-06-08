@@ -1,0 +1,240 @@
+{
+  "phase": "C6",
+  "title": "Layer 4 Opening Balance Bridge Implementation Plan",
+  "scope_label": "DESIGN / IMPLEMENTATION PLAN ONLY. DOCS ONLY. NO CODE. NO RUNTIME. NO DOMAIN. NO FORMULA CHANGES.",
+  "type": "DESIGN / IMPLEMENTATION PLAN",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "branch": "phase-c6-opening-balance-bridge-implementation-plan",
+  "base_sha": "2d8a91c",
+  "previous_phases": {
+    "C1": {"sha": "5fccc3a", "scope": "Design gate", "status": "merged"},
+    "C2": {"sha": "59f9e3d", "scope": "SHL IDC convention + Layer 4 bridge design", "status": "merged"},
+    "C3": {"sha": "aa800a5", "scope": "Construction parity framework design", "status": "merged"},
+    "C4": {"sha": "dcc30b6", "scope": "Snapshot scaffolding + structure tests", "status": "merged"},
+    "C5": {"sha": "2d8a91c", "scope": "Engine-comparison tests (no bridge)", "status": "merged"}
+  },
+  "hard_constraints": {
+    "no_code": true,
+    "no_runtime_changes": true,
+    "no_domain_changes": true,
+    "no_new_domain_modules": true,
+    "no_schema_changes": true,
+    "no_persistence_changes": true,
+    "no_feature_flags": true,
+    "no_formula_changes": true,
+    "no_capex_changes": true,
+    "no_debt_changes": true,
+    "no_tax_changes": true,
+    "no_depreciation_changes": true,
+    "no_idc_implementation": true,
+    "no_project_status_changes": true,
+    "no_waterfall_changes": true,
+    "rc1_untouched": true,
+    "use_construction_schedule_engine_default_off": true,
+    "c4_snapshots_read_only": true
+  },
+  "stack_verification": {
+    "C1_blockers_closed_or_planned": 4,
+    "C1_blockers_total": 5,
+    "C1_blockers_deferred_separate_workstream": 1,
+    "C2_design_complete": true,
+    "C3_design_implemented": true,
+    "C4_snapshot_scaffolding_complete": true,
+    "C5_engine_parity_baseline_complete": true,
+    "C2_section_6_7_readiness": {
+      "items_fully_implemented": 4,
+      "items_deferred_to_C6_plus": 3,
+      "items_always_deferred": 1,
+      "items_total": 8
+    },
+    "preconditions_for_C6_met": true
+  },
+  "scope": {
+    "implemented_in_c6_docs": [
+      "stack verification (C1-C5)",
+      "exact Layer 4 implementation scope",
+      "explicit non-scope",
+      "proposed file list for C7",
+      "API / dataclass shape",
+      "double-counting guard rules",
+      "validation plan for C7",
+      "recommendation (B)"
+    ],
+    "not_implemented_in_c6": [
+      "domain/construction/opening_bridge.py module",
+      "OpeningBalanceBridgeInput dataclass",
+      "OpeningBalanceBridgeResult dataclass",
+      "BridgeAuditRow dataclass",
+      "BridgeMetadata dataclass",
+      "ManualOverrideRow dataclass",
+      "BridgeFieldPolicy dataclass",
+      "ParityReferenceRow dataclass",
+      "ProjectAssumptions dataclass",
+      "BridgeIdentityError exception",
+      "POLICY_TABLE constant",
+      "build_opening_balance_bridge() function",
+      "C2 §6.4 COD opening balance reconciliation test",
+      "C2 §6.5 IDC by source reconciliation test",
+      "C2 §6.6 no double-counting test plan"
+    ]
+  },
+  "non_scope": {
+    "no_waterfall_wiring": true,
+    "no_runtime_wiring": true,
+    "no_feature_flag_flip": true,
+    "no_manual_field_replacement": true,
+    "no_capex_total_change": true,
+    "no_debt_service_change": true,
+    "no_tax_change": true,
+    "no_depreciation_change": true,
+    "no_cfads_change": true,
+    "no_project_status_change": true,
+    "no_persistence_writes": true,
+    "no_ui_rendering": true,
+    "no_forbidden_imports": [
+      "domain/inputs.py",
+      "domain/waterfall*",
+      "app/*",
+      "main_web.py",
+      "main_api.py",
+      "static/*"
+    ],
+    "no_engine_call": true,
+    "no_formula_introduction": true
+  },
+  "proposed_files_for_c7": {
+    "new_files_count": 4,
+    "new_files": [
+      {
+        "path": "domain/construction/opening_bridge.py",
+        "lines_estimated": "250-350",
+        "purpose": "The bridge module (pure function + dataclasses)"
+      },
+      {
+        "path": "tests/test_phase_c7_opening_balance_bridge.py",
+        "lines_estimated": "500-700",
+        "purpose": "The bridge test file (C2 §6.4, §6.5, §6.6)"
+      },
+      {
+        "path": "docs/phase_c7_opening_balance_bridge_implementation.md",
+        "lines_estimated": "300-500",
+        "purpose": "The C7 implementation report"
+      },
+      {
+        "path": "reports/phase_c7_opening_balance_bridge_implementation.json",
+        "lines_estimated": "50-100",
+        "purpose": "The C7 machine-readable report"
+      }
+    ],
+    "modified_files_count": 0
+  },
+  "api_dataclass_shape": {
+    "input_dataclasses": [
+      "OpeningBalanceBridgeInput (frozen)",
+      "ManualOverrideRow (frozen)",
+      "BridgeFieldPolicy (frozen)",
+      "ParityReferenceRow (frozen)",
+      "ProjectAssumptions (frozen)"
+    ],
+    "output_dataclasses": [
+      "OpeningBalanceBridgeResult (frozen)",
+      "BridgeAuditRow (frozen)",
+      "BridgeMetadata (frozen)"
+    ],
+    "exception": "BridgeIdentityError(ValueError)",
+    "function": "build_opening_balance_bridge(input) -> OpeningBalanceBridgeResult",
+    "module_constant": "POLICY_TABLE (tuple of 11 BridgeFieldPolicy entries)"
+  },
+  "double_counting_guards": {
+    "guarded_single_source_fields": [
+      "shl_idc_keur",
+      "shl_amount_keur",
+      "shl_opening_balance_keur",
+      "senior_opening_balance_keur",
+      "senior_idc_keur",
+      "capex_keur",
+      "reserves_keur",
+      "vat_operating",
+      "financing_fees_keur",
+      "commitment_fee_keur"
+    ],
+    "guarded_composite_fields": [
+      "equity_total_keur"
+    ],
+    "not_applicable_fields": [],
+    "invariant": "every policy field has exactly one row in the audit table; no field is missing or duplicated"
+  },
+  "validation_plan_for_c7": {
+    "estimated_test_count": 89,
+    "categories": {
+      "file_existence": 4,
+      "api_dataclass_shape": 10,
+      "C2_6_4_cod_opening_balance_reconciliation": 5,
+      "C2_6_5_idc_by_source_reconciliation": 4,
+      "C2_6_6_no_double_counting": 8,
+      "mutation_guard": 1,
+      "no_engine_call_guard": 1,
+      "no_runtime_wiring_guard": 1,
+      "no_feature_flag_flips_guard": 1,
+      "senior_idc_caveat": 4,
+      "policy_table_mirror": 11,
+      "frozen_replaced_retained_derived": 22,
+      "audit_row_invariants": 5,
+      "forbidden_path_guard": 5,
+      "rc1_sha_reachable": 1,
+      "project_statuses_unchanged": 4,
+      "C5_dependency": 1,
+      "C4_dependency": 1
+    }
+  },
+  "senior_idc_caveat": {
+    "blocker": "C1 R-PAR-2",
+    "tuho_effective_rate": 0.060454449320244484,
+    "tuho_senior_idc_keur": 1519.564,
+    "oborovo_effective_rate": 0.058947812283038616,
+    "oborovo_senior_idc_keur": 1086.032,
+    "policy": "calibrated to effective rate, not modelled from rate × elapsed period",
+    "fix_status": "separate workstream (C1 blocker 5, deferred from C-series)"
+  },
+  "multi_phase_path": [
+    {"phase": "C1", "scope": "Design gate", "status": "merged", "sha": "5fccc3a"},
+    {"phase": "C2", "scope": "SHL IDC convention + Layer 4 bridge design", "status": "merged", "sha": "59f9e3d"},
+    {"phase": "C3", "scope": "Construction parity framework design", "status": "merged", "sha": "aa800a5"},
+    {"phase": "C4", "scope": "Snapshot scaffolding + structure tests", "status": "merged", "sha": "dcc30b6"},
+    {"phase": "C5", "scope": "Engine-comparison tests (no bridge)", "status": "merged", "sha": "2d8a91c"},
+    {"phase": "C6", "scope": "Layer 4 bridge implementation plan (docs only)", "status": "DRAFT"},
+    {"phase": "C7", "scope": "Layer 4 bridge module + C2 §6.4/§6.5/§6.6 tests", "status": "future"},
+    {"phase": "C8", "scope": "Layer 5 runtime seam design", "status": "future"},
+    {"phase": "C9", "scope": "Layer 5 runtime seam implementation (default-off)", "status": "future"},
+    {"phase": "C10", "scope": "Opt-in flag flip + TUHO promotion", "status": "future"},
+    {"phase": "C11", "scope": "Oborovo promotion", "status": "future"}
+  ],
+  "recommendation": {
+    "choice": "B. More design needed",
+    "rationale_count": 6,
+    "rationale_points": [
+      "C5 explicitly deferred Layer 4 to C6+; C6 is the first C6+ phase and is itself a design plan, not an implementation.",
+      "The bridge has a non-trivial API surface (5 dataclasses, 1 function, 1 exception, 1 policy table) — each needs separate design review.",
+      "The bridge introduces a new layer of trust — C6 plans it, C7 implements it, C8 plans Layer 5, C9 implements Layer 5, C10 flips the flag. A 5-phase rollout for a single feature.",
+      "The senior IDC effective-rate caveat (C1 R-PAR-2) is still unresolved and is a separate workstream, not in C-series scope.",
+      "C6 implements 0 of 3 deferred C2 §6.7 items (COD opening balance, IDC by source, no double-counting) — these are C7+.",
+      "C6 is the right scope for the current C-series state (design-implementation spiral)."
+    ],
+    "would_unblock_a": [
+      "C6 implementation plan (this PR) includes exact scope, non-scope, file list, API shape, guards, validation, recommendation.",
+      "C7 implementation PR that adds domain/construction/opening_bridge.py and C2 §6.4/§6.5/§6.6 tests.",
+      "C7 implementation PR that adds the mutation guard, no-engine-call guard, no-runtime-wiring guard, no-feature-flag-flips guard, forbidden-path guards."
+    ],
+    "remains_open_after_c6": [
+      "Bridge module (C7+)",
+      "C2 §6.4 COD opening balance reconciliation (C7+)",
+      "C2 §6.5 IDC by source reconciliation (C7+)",
+      "C2 §6.6 no double-counting test plan (C7+)",
+      "Layer 5 runtime seam (C8 design, C9 implementation)",
+      "Opt-in flag flip (C10+)",
+      "Senior IDC base-rate modelling (separate workstream)",
+      "Second pair of eyes review (C7+ when bridge is implemented)"
+    ]
+  }
+}
