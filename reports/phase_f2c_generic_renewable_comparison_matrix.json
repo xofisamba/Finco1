@@ -1,0 +1,214 @@
+{
+  "phase": "F2-C",
+  "title": "Generic Renewable Comparison Matrix",
+  "type": "docs_comparison_critical_path",
+  "status": "DRAFT",
+  "base_sha": "eb3c20cdfe9c8c66f683cc43fb4bf3ac0fb7ef4d",
+  "branch": "phase-f2c-generic-renewable-comparison-matrix",
+  "files_changed": [
+    {
+      "path": "docs/phase_f2c_generic_renewable_comparison_matrix.md",
+      "type": "A",
+      "lines_added": 530,
+      "lines_removed": 0,
+      "rationale": "13-section comparison matrix: side-by-side matrix (Generic Wind vs Generic Solar across 12 dependency areas + tests + governance); gap comparison (shared / Wind-only / Solar-only); reference comparison (Generics vs TUHO/Oborovo); critical-path analysis (15 blockers ranked by impact); fastest promotion path (Wind 5 steps, Solar 4 steps); portfolio recommendation (Parallel); readiness ranking; strategic recommendation; hard no-go; forbidden paths; stop-after-report contract; glossary; F2-C vs F1/F2-A/F2-B comparison."
+    },
+    {
+      "path": "reports/phase_f2c_generic_renewable_comparison_matrix.json",
+      "type": "A",
+      "lines_added": 100,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "side_by_side_matrix": {
+    "dependency_areas_12": {
+      "Generic_Wind": {"READY": 0, "PARTIAL": 10, "MISSING": 2},
+      "Generic_Solar": {"READY": 0, "PARTIAL": 10, "MISSING": 2}
+    },
+    "test_coverage": {
+      "Generic_Wind": "18 incidental test references, 0 dedicated",
+      "Generic_Solar": "8+ incidental test references, 0 dedicated"
+    },
+    "governance_score": {
+      "Generic_Wind": "PARTIAL 87/100",
+      "Generic_Solar": "PARTIAL 87/100"
+    }
+  },
+  "gap_comparison": {
+    "shared_gaps_count": 13,
+    "wind_only_gaps_count": 4,
+    "solar_only_gaps_count": 2,
+    "shared_gaps": [
+      "No Excel reference workbook",
+      "No parity computation",
+      "No KNOWN_LIMITATIONS.md",
+      "No dedicated test pack",
+      "No per-project D1/D2 redo/D3 redo audit posture",
+      "Sponsor modeling MISSING",
+      "Depreciation MISSING",
+      "Live sculpting without frozen-path validation",
+      "Synthetic market price curve",
+      "No validation pack directory",
+      "No excel_reference/parity/test_pack/golden_dataset/reviewer_signoff subdirs",
+      "No Phase 51F parity green",
+      "Generic wind/solar inherits TUHO/Oborovo parity guardrails by accident risk"
+    ],
+    "wind_only_gaps": [
+      "Three data discrepancies (PPA 60 vs 55, CO2 True vs False, SHL 6000 vs 5000)",
+      "No Wind CO2 treatment decision",
+      "Wind-specific balancing cost line not validated",
+      "OPEX coverage higher than Solar (~550 vs ~380 kEUR Y1)"
+    ],
+    "solar_only_gaps": [
+      "PV degradation handling (factory 0.4% / year; legacy module does not handle natively; no shadow validation)",
+      "CAPEX asset class distribution (SOLAR_PANELS / CIVIL_GRID / SOFT_COSTS; real Excel may differ)"
+    ]
+  },
+  "reference_comparison": {
+    "what_Reference_projects_have_that_Generics_dont": {
+      "TUHO_Wind": [
+        "Excel reference workbook (tuho_excel_1.xlsm)",
+        "Parity extraction CSV (phase7_tuho_senior_debt_sizing_extraction.csv)",
+        "Golden dataset (tests/golden/fixtures/tuho_golden.py)",
+        "Frozen senior debt schedule (Phase 23 series)",
+        "Phase 51F parity green (covered by parity_guardrails.yml)",
+        "D1 audit sheet per-project row",
+        "D2 redo discipline per-project row",
+        "D3 redo shadow validation",
+        "12 OPEX line items (Y1 ~1,998 kEUR)",
+        "CO2 calibrated (Y1 ~611 kEUR)",
+        "310 test files",
+        "PPA calibrated to Excel"
+      ],
+      "Oborovo_Solar": [
+        "Excel reference workbook (excel_oborovo.xlsx)",
+        "Parity extraction CSV (phase23q_oborovo_senior_debt_sizing_extraction.csv)",
+        "Golden dataset (tests/golden/fixtures/oborovo_golden.py)",
+        "Frozen senior debt schedule (Phase 31 series)",
+        "Phase 51F parity green",
+        "D1 audit sheet per-project row",
+        "D2 redo discipline per-project row",
+        "D3 redo shadow validation",
+        "15 OPEX line items (Y1 ~1,338 kEUR)",
+        "243 test files",
+        "PPA calibrated to Excel"
+      ]
+    },
+    "gap_magnitude": {
+      "Wind_gap_TUHO_minus_Wind": "~10 large, ~2 medium, ~300 small",
+      "Solar_gap_Oborovo_minus_Solar": "~10 large, ~2 medium, ~240 small",
+      "dominant_gap_categories_for_both": [
+        "Excel reference workbook",
+        "Frozen senior debt schedule",
+        "Parity pack",
+        "Dedicated test pack"
+      ]
+    }
+  },
+  "critical_path_analysis": {
+    "high_impact_blockers": [
+      {"id": 1, "blocker": "Excel reference workbook", "impact": "HIGH", "effort": "HIGH"},
+      {"id": 2, "blocker": "Parity computation", "impact": "HIGH", "effort": "MEDIUM"},
+      {"id": 3, "blocker": "Frozen senior debt schedule", "impact": "HIGH", "effort": "MEDIUM"},
+      {"id": 4, "blocker": "Dedicated test pack", "impact": "HIGH", "effort": "MEDIUM"}
+    ],
+    "medium_impact_blockers": [
+      {"id": 5, "blocker": "KNOWN_LIMITATIONS.md", "impact": "MEDIUM", "effort": "LOW"},
+      {"id": 6, "blocker": "Per-project D1 audit sheet row", "impact": "MEDIUM", "effort": "LOW"},
+      {"id": 7, "blocker": "Per-project D2 redo discipline row", "impact": "MEDIUM", "effort": "LOW"},
+      {"id": 8, "blocker": "Per-project D3 redo shadow validation", "impact": "MEDIUM", "effort": "MEDIUM"},
+      {"id": 9, "blocker": "Wind data discrepancies (3)", "impact": "MEDIUM", "effort": "LOW"}
+    ],
+    "lower_impact_blockers": [
+      {"id": 10, "blocker": "Sponsor modeling", "impact": "MEDIUM", "effort": "MEDIUM", "out_of_scope": true},
+      {"id": 11, "blocker": "Depreciation handling for Generics", "impact": "MEDIUM", "effort": "MEDIUM", "out_of_scope": true},
+      {"id": 12, "blocker": "Phase 51F parity workflow scope", "impact": "LOW", "effort": "LOW"},
+      {"id": 13, "blocker": "Pilot RC scope matrix CI guard", "impact": "LOW", "effort": "LOW"},
+      {"id": 14, "blocker": "PV degradation handling (Solar)", "impact": "MEDIUM", "effort": "MEDIUM"},
+      {"id": 15, "blocker": "CAPEX asset class distribution (Solar)", "impact": "LOW", "effort": "LOW"}
+    ]
+  },
+  "fastest_promotion_path": {
+    "Generic_Wind": {
+      "step_count": 5,
+      "steps": [
+        "Resolve 3 data discrepancies (PPA, CO2, SHL) by updating Phase 34 doc to match factory",
+        "Acquire/build Excel reference workbook for Wind under docs/validation/generic_wind/excel_reference/",
+        "Compute parity; commit docs/validation/generic_wind/parity/",
+        "Create dedicated test pack at docs/validation/generic_wind/test_pack/ with frozen-vs-derived test",
+        "Create KNOWN_LIMITATIONS.md and per-project D1/D2 redo/D3 redo rows"
+      ],
+      "post_step_5": "Run F1 §10.1 promotion gate; promote to Level 2 if criteria satisfied"
+    },
+    "Generic_Solar": {
+      "step_count": 4,
+      "steps": [
+        "Skip data discrepancy resolution (no discrepancies)",
+        "Acquire/build Excel reference workbook for Solar under docs/validation/generic_solar/excel_reference/",
+        "Compute parity; commit docs/validation/generic_solar/parity/",
+        "Create dedicated test pack at docs/validation/generic_solar/test_pack/ with frozen-vs-derived test; create KNOWN_LIMITATIONS.md + D1/D2 redo/D3 redo rows"
+      ],
+      "post_step_4": "Run F1 §10.1 promotion gate; promote to Level 2 if criteria satisfied"
+    },
+    "solar_faster_because": "0 data discrepancies to resolve (LOW effort step skipped)"
+  },
+  "portfolio_recommendation": {
+    "choice": "C",
+    "rationale": "Shared methodology dominates the critical path. Excel reference acquisition and parity computation are the same effort for both generics. Doing them in parallel halves calendar time. Per-project work is small relative to shared work. Governance is symmetric. Wind's 3 data discrepancies are LOW effort, not HIGH. Solar's 0 data discrepancies are a free simplification, not a strategic advantage. Sequential approaches risk perpetually deprioritizing the second generic.",
+    "why_not_A_wind_first": "Wind has 3 LOW effort data discrepancies; this is the only 'extra' work for Wind, not enough to justify Wind-first sequencing.",
+    "why_not_B_solar_first": "Solar has 0 data discrepancies; this is the only 'fewer steps' argument, symmetric to Wind-first. Neither is recommended over parallel.",
+    "why_C_parallel_strongest": "Dominant cost (Excel reference + parity) is shared. Per-project costs are MEDIUM effort and can be done in parallel. Governance boundary is symmetric.",
+    "caveat": "If capacity is constrained, A (Wind-first) is the next-best alternative because Wind's 3 discrepancies are a real work argument."
+  },
+  "readiness_ranking": {
+    "1st": {"project": "Oborovo Solar", "level": "Level 2 (Reference)", "rationale": "Already at Level 2. No promotion work needed."},
+    "2nd": {"project": "TUHO Wind", "level": "Level 2 (Reference)", "rationale": "Already at Level 2. No promotion work needed."},
+    "3rd": {"project": "Generic Wind", "level": "Level 1 (Exploratory)", "readiness": "39/100", "rationale": "Closer to Reference than Solar in terms of test coverage (18 vs 8+) and factory granularity. 3 data discrepancies to resolve."},
+    "4th": {"project": "Generic Solar", "level": "Level 1 (Exploratory)", "readiness": "39/100", "rationale": "Same readiness as Wind. Lower test coverage (8+). 0 data discrepancies to resolve."},
+    "tie_breaker_Wind_vs_Solar": "Generic Wind ranks 3rd, Generic Solar ranks 4th, based on test coverage. Wind has 18 incidental test references; Solar has 8+. The 10-file delta suggests Wind has more existing test surface to build a dedicated test pack on, which is a soft advantage for migration."
+  },
+  "strategic_recommendation": {
+    "answer": "Both together (parallel)",
+    "rationale": [
+      "Shared methodology dominates the critical path. Excel reference acquisition and parity computation are the same effort for both generics. Doing them in parallel halves calendar time and reduces methodology risk.",
+      "Per-project work is small relative to shared work. Test pack, KNOWN_LIMITATIONS.md, and D1/D2 redo/D3 redo rows must be done twice, but each is MEDIUM effort, not HIGH.",
+      "Governance is symmetric. Both generics are excluded from Pilot RC with the same wording (docs/pilot_rc_scope_matrix.md:27-28). The migration should be symmetric.",
+      "Wind's 3 data discrepancies are LOW effort, not HIGH. They do not justify a Wind-first sequencing.",
+      "Solar's 0 data discrepancies are a 'free' simplification, not a strategic advantage. They simply skip one LOW effort step.",
+      "Sequential approaches (Wind-first or Solar-first) risk perpetually deprioritizing the second generic. Parallel prevents this."
+    ],
+    "suggested_roadmap": {
+      "F2-D": "Excel reference acquisition + parity computation for BOTH Generic Wind and Generic Solar in parallel. For Wind, includes data discrepancy resolution. For Solar, just Excel reference + parity.",
+      "F2-E": "Test pack + KNOWN_LIMITATIONS.md + D1/D2 redo/D3 redo rows for BOTH generics in parallel.",
+      "F2-F": "Phase 51F parity green + Pilot RC scope matrix CI guard for BOTH generics in parallel.",
+      "F2-G": "Promotion gate evaluation for BOTH generics, run independently. Generic Wind and Generic Solar can be promoted to Level 2 in the same F-phase or in separate F-phases, depending on the gate outcome."
+    }
+  },
+  "no_code_changes": true,
+  "no_runtime_changes": true,
+  "no_ui_implementation": true,
+  "no_schema_changes": true,
+  "no_persistence_changes": true,
+  "no_formula_changes": true,
+  "no_parity_changes": true,
+  "no_feature_flags": true,
+  "no_validation_status_changes": true,
+  "no_project_promotions": true,
+  "no_F2_D_E_F_G_start": true,
+  "no_D1_D2_D3_arc_extension": true,
+  "no_implementation_roadmap_beyond_comparison": true,
+  "no_F1_F2_A_F2_B_modifications": true,
+  "Generic_Solar_unchanged": true,
+  "Generic_Wind_unchanged": true,
+  "TUHO_unchanged": true,
+  "Oborovo_unchanged": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "F2-D (Excel reference + parity, both generics in parallel). F2-E, F2-F, F2-G follow in their own follow-up prompts.",
+    "rationale": "F2-C is a comparison + critical-path analysis only. F2-D begins the actual preparation work, gated on F2-C review."
+  }
+}
