@@ -1,0 +1,342 @@
+{
+  "phase": "F2-B",
+  "title": "Generic Solar Reference Candidate Inventory",
+  "type": "docs_inventory_gap_analysis",
+  "status": "DRAFT",
+  "base_sha": "cd82f4e94fa9387155609869e6cbd944d756b4b4",
+  "branch": "phase-f2b-generic-solar-reference-inventory",
+  "files_changed": [
+    {
+      "path": "docs/phase_f2b_generic_solar_reference_inventory.md",
+      "type": "A",
+      "lines_added": 760,
+      "lines_removed": 0,
+      "rationale": "14-section inventory and gap analysis: current inventory (factory, context, exports, audit, tests, validation assets); dependency mapping (12 areas); F1 Reference requirements mapping; missing evidence inventory; validation risks; high-level Generic Solar roadmap (F2-C / F2-D / F2-E); readiness score (technical, validation, governance); recommendation; hard no-go; forbidden paths; stop-after-report contract; top gaps and risks appendices; Generic Wind vs Generic Solar delta."
+    },
+    {
+      "path": "reports/phase_f2b_generic_solar_reference_inventory.json",
+      "type": "A",
+      "lines_added": 130,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "current_inventory": {
+    "factory": {
+      "location": "app/project_factories.py:460-509",
+      "function": "create_default_solar_project(capacity_mw=50.0, horizon_years=25, construction_months=12)",
+      "info": {
+        "name": "Generic Solar PV",
+        "company": "SolarCo",
+        "code": "SOLAR-001",
+        "country_iso": "DE",
+        "financial_close": "2030-01-01",
+        "construction_months": 12,
+        "cod_date": "2031-01-01",
+        "horizon_years": 25,
+        "period_frequency": "SEMESTRIAL"
+      },
+      "technical": {
+        "capacity_mw": 50.0,
+        "yield_scenario": "P_50",
+        "operating_hours_p50": 1500.0,
+        "operating_hours_p90_10y": 1400.0,
+        "pv_degradation": 0.004,
+        "bess_enabled": false
+      },
+      "revenue": {
+        "ppa_base_tariff": 55.0,
+        "ppa_term_years": 10,
+        "ppa_index": 0.02,
+        "market_scenario": "Central",
+        "market_prices_curve": "synthetic linear ramp (60 + i for i in 0..29)",
+        "market_inflation": 0.02,
+        "co2_enabled": false,
+        "balancing_cost_wind_eur_mwh": null
+      },
+      "financing": {
+        "share_capital_keur": 500.0,
+        "shl_amount_keur": 5000.0,
+        "shl_rate": 0.08,
+        "gearing_ratio": 0.75,
+        "senior_tenor_years": 15,
+        "base_rate": 0.03,
+        "margin_bps": 250,
+        "floating_share": 0.3,
+        "fixed_share": 0.7,
+        "hedge_coverage": 0.8,
+        "target_dscr": 1.20,
+        "lockup_dscr": 1.10,
+        "dsra_months": 6,
+        "equity_irr_method": "EQUITY_ONLY",
+        "debt_sizing_method": "DSCR_SCULPT"
+      },
+      "tax": {
+        "corporate_rate": 0.25,
+        "loss_carryforward_years": 5,
+        "loss_carryforward_cap": 1.0,
+        "atad_ebitda_limit": 0.30,
+        "atad_min_interest_keur": 3000.0
+      },
+      "capex": {
+        "named_items": 5,
+        "items": [
+          {"name": "Solar Modules", "amount_keur": 20000.0, "y0_share": 0.0, "profile": [0.5, 0.5], "asset_class": "SOLAR_PANELS"},
+          {"name": "Inverters", "amount_keur": 3000.0, "y0_share": 0.0, "profile": [0.5, 0.5], "asset_class": "SOLAR_PANELS"},
+          {"name": "Civil Works", "amount_keur": 5000.0, "y0_share": 0.3, "profile": [0.4, 0.3], "asset_class": "CIVIL_GRID"},
+          {"name": "Grid Connection", "amount_keur": 2000.0, "y0_share": 0.5, "profile": [0.5], "asset_class": "CIVIL_GRID"},
+          {"name": "Soft Costs", "amount_keur": 3000.0, "y0_share": 1.0, "profile": null, "asset_class": "SOFT_COSTS"}
+        ],
+        "idc_keur": 500.0,
+        "bank_fees_keur": 200.0,
+        "zero_valued_placeholders": 12,
+        "total_named_keur_indicative": 30000.0
+      },
+      "opex": {
+        "item_count": 4,
+        "items": [
+          {"name": "Technical Management", "y1_amount_keur": 150.0, "annual_inflation": 0.02},
+          {"name": "Insurance", "y1_amount_keur": 100.0, "annual_inflation": 0.02},
+          {"name": "Maintenance", "y1_amount_keur": 80.0, "annual_inflation": 0.02},
+          {"name": "Lease & Tax", "y1_amount_keur": 50.0, "annual_inflation": 0.02}
+        ],
+        "total_y1_keur_indicative": 380.0
+      }
+    },
+    "project_context": {
+      "location": "app/ui/project_context.py:2347-2356",
+      "code": "GENERIC_SOLAR",
+      "technology": "Solar",
+      "opex_contingency_method": "percentage_of_opex",
+      "opex_contingency_pct": 0.0,
+      "parity_status_string": "ACCEPTED_CONVENTION (current state label, not validation-pack label)",
+      "data_source": "Generic solar template - user-project starter defaults"
+    }
+  },
+  "existing_surfaces": {
+    "factory": "PRESENT (app/project_factories.py:460)",
+    "project_context": "PRESENT (app/ui/project_context.py:2347)",
+    "_CONTEXTS_entry": "PRESENT (app/ui/project_context.py:2363)",
+    "excel_reference_workbook": "MISSING",
+    "parity_extraction_csv": "MISSING (only tuho and oborovo CSVs exist)",
+    "golden_dataset": "MISSING (only tuho_golden.py and oborovo_golden.py in tests/golden/fixtures/)",
+    "frozen_senior_debt_schedule": "MISSING (debt sizing is DSCR_SCULPT, live sculpting)",
+    "validation_pack_directory": "MISSING (no docs/validation/generic_solar/)",
+    "KNOWN_LIMITATIONS_md": "MISSING",
+    "D1_audit_sheet_per_project_row": "MISSING (only a generic-project disclosure row exists)",
+    "D2_redo_discipline_per_project_row": "MISSING (Generic Solar named only in module docstring as default-False)",
+    "D3_redo_shadow_validation": "MISSING (TUHO and Oborovo only)",
+    "excel_export_generic_fallback": "PRESENT (app/excel_export.py:413-417 — Screening-grade / For internal scenario review only / Not a substitute for lender due diligence)",
+    "user_facing_warning_label": "PRESENT (main_web.py:191 — '⚠️ Unvalidated · Derived path')",
+    "pilot_rc_scope_matrix_exclusion": "PRESENT (docs/pilot_rc_scope_matrix.md:27-28)",
+    "phase_34_doc": "PRESENT (docs/phase34_generic_project_path_validation_boundary.md)",
+    "phase_34_requirements_matrix": "PRESENT (docs/phase34_generic_validation_requirements_matrix.md)"
+  },
+  "test_coverage": {
+    "files_referencing_generic_solar": 8,
+    "tuho_files_for_comparison": 310,
+    "oborovo_files_for_comparison": 243,
+    "generic_wind_files_for_comparison": 18,
+    "dedicated_generic_solar_test_pack": "MISSING",
+    "closest_test_to_validation": "tests/test_reconciliation_export.py (2 references; reconciliation smoke test, not parity test)"
+  },
+  "data_discrepancies_factory_vs_phase34_doc": [],
+  "dependency_mapping": {
+    "CAPEX": "PARTIAL (5 of 17 fields populated; round numbers; no Excel reference)",
+    "Revenue": "PARTIAL (round numbers; CO2 disabled; no Excel reference)",
+    "Production": "PARTIAL (P50 1500h, P90 1400h, pv_degradation 0.4%; no Excel reference)",
+    "OPEX": "PARTIAL (4 items vs 12-15 for TUHO/Oborovo; round; no Excel reference)",
+    "Senior_Debt": "PARTIAL (parameters set; debt amount NOT pinned; DSCR_SCULPT live sculpting)",
+    "SHL": "PARTIAL (amount 5000 kEUR, rate 8%; no frozen schedule)",
+    "Tax": "PARTIAL (parameters set; no Excel reference)",
+    "Sponsor": "MISSING (no sponsor-specific fields in factory)",
+    "Construction": "PARTIAL (12 months; no construction-period cost detail; no Excel reference)",
+    "Depreciation": "MISSING (no Generic-Solar-specific depreciation; D1/D2 redo/D3 redo arc covers TUHO/Oborovo only)",
+    "Exports": "PARTIAL (Generic Solar/Wind fallback in app/excel_export.py:413-417; no D1 per-project row)",
+    "Audit_sheets": "PARTIAL (UI warning present; pilot_rc_scope_matrix present; no per-project D1/D2 redo/D3 redo row)",
+    "summary": {
+      "READY": 0,
+      "PARTIAL": 10,
+      "MISSING": 2,
+      "total": 12
+    }
+  },
+  "f1_reference_requirements_mapping": {
+    "criterion_1_excel_reference": "NOT SATISFIED (no Generic Solar workbook)",
+    "criterion_2_phase51f_parity_green": "NOT SATISFIED (parity workflow does not include Generic Solar)",
+    "criterion_3_outputs_within_tolerance": "NOT SATISFIED (depends on 1 and 2)",
+    "criterion_4_known_limitations_md": "NOT SATISFIED (no docs/validation/generic_solar/KNOWN_LIMITATIONS.md)",
+    "criterion_5_dedicated_test_pack": "NOT SATISFIED (8+ incidental references; no dedicated pack)",
+    "criterion_6_closure_review_audit_posture": "NOT SATISFIED (D1/D2 redo/D3 redo do not include Generic Solar)",
+    "criterion_7_no_external_signoff": "SATISFIED (trivially; sign-off N/A at Level 1)",
+    "summary": {
+      "satisfied": 1,
+      "partially_satisfied": 0,
+      "not_satisfied": 6,
+      "total": 7
+    }
+  },
+  "missing_evidence_inventory": {
+    "excel_reference": [
+      "docs/validation/generic_solar/excel_reference/README.md",
+      "docs/validation/generic_solar/excel_reference/<workbook>.xlsx"
+    ],
+    "parity_pack": [
+      "docs/validation/generic_solar/parity/README.md",
+      "docs/validation/generic_solar/parity/extraction.csv",
+      "docs/validation/generic_solar/parity/results.json"
+    ],
+    "test_pack": [
+      "docs/validation/generic_solar/test_pack/README.md",
+      "docs/validation/generic_solar/test_pack/test_generic_solar_*.py"
+    ],
+    "limitations_documentation": [
+      "docs/validation/generic_solar/KNOWN_LIMITATIONS.md"
+    ],
+    "audit_documentation": [
+      "D1 audit sheet per-project row for Generic Solar",
+      "D2 redo discipline per-project row for Generic Solar",
+      "D3 redo shadow validation for Generic Solar"
+    ],
+    "golden_dataset_level_3_only": [
+      "docs/validation/generic_solar/golden_dataset/inputs.json",
+      "docs/validation/generic_solar/golden_dataset/expected_outputs.json",
+      "docs/validation/generic_solar/golden_dataset/README.md"
+    ],
+    "reviewer_material_level_3_only": [
+      "docs/validation/generic_solar/reviewer_signoff/README.md",
+      "docs/validation/generic_solar/reviewer_signoff/<reviewer>_<date>.md"
+    ]
+  },
+  "validation_risks": {
+    "parity_risks": [
+      "No Excel reference (dominant; blocks all parity)",
+      "Live sculpting vs frozen path (DSCR_SCULPT, no frozen-path reference)",
+      "Synthetic market price curve (unbounded revenue-parity delta)",
+      "PV degradation handling (factory 0.4% / year; legacy module does not handle PV degradation natively; no shadow validation)",
+      "CAPEX asset class distribution (factory uses SOLAR_PANELS / CIVIL_GRID / SOFT_COSTS; real Excel reference may differ)"
+    ],
+    "modeling_risks": [
+      "Sponsor modeling MISSING (no sponsor-specific fields)",
+      "Depreciation MISSING for Generic Solar (no shadow validation)",
+      "OPEX coverage (4 items vs 12-15 for TUHO/Oborovo; deliberate simplification)",
+      "CAPEX coverage (5 named items + IDC + fees = 7 of 17 fields)",
+      "No construction-period cost detail"
+    ],
+    "governance_risks": [
+      "Generic Solar inherits TUHO/Oborovo parity guardrails by accident (CI risk)",
+      "No KNOWN_LIMITATIONS.md (no authoritative risk register)",
+      "No external review process defined for Generic Solar",
+      "Pilot RC scope matrix exclusion is manual (no CI guard)"
+    ]
+  },
+  "generic_solar_roadmap": {
+    "F2-C": {
+      "goal": "Acquire/build Excel reference workbook for Generic Solar (no data discrepancies to resolve)",
+      "scope": "Decide on Excel reference source; commit excel_reference/ directory",
+      "does_not_include": "Parity computation; test pack; audit updates"
+    },
+    "F2-D": {
+      "goal": "Parity comparison + audit posture",
+      "scope": "Compute parity; add D1/D2 redo/D3 redo per-project rows; update parity workflow",
+      "does_not_include": "Test pack; KNOWN_LIMITATIONS.md"
+    },
+    "F2-E": {
+      "goal": "Test pack + KNOWN_LIMITATIONS.md + CI guard",
+      "scope": "Dedicated test pack; KNOWN_LIMITATIONS.md; CI guard for pilot RC scope",
+      "does_not_include": "Promotion to Level 2 (separate F-phase)"
+    },
+    "F2-F_post_e": {
+      "goal": "Promotion gate evaluation",
+      "scope": "Run F1 §10.1 promotion gate; promote Generic Solar to Level 2 if criteria met",
+      "does_not_include": "External review (Level 3 only)"
+    }
+  },
+  "readiness_score": {
+    "technical_readiness": {
+      "category": "NOT READY",
+      "score": 30,
+      "max": 100,
+      "components": {
+        "factory_inputs_populated": {"status": "YES", "weight": 30, "score": 30},
+        "excel_reference": {"status": "NO", "weight": 30, "score": 0},
+        "parity_computed": {"status": "NO", "weight": 20, "score": 0},
+        "test_pack": {"status": "NO", "weight": 10, "score": 0},
+        "audit_posture_D1_D2_D3": {"status": "NO", "weight": 10, "score": 0}
+      }
+    },
+    "validation_readiness": {
+      "category": "NOT READY",
+      "score": 0,
+      "max": 100,
+      "components": {
+        "validation_pack_directory": {"status": "NO", "weight": 25, "score": 0},
+        "KNOWN_LIMITATIONS_md": {"status": "NO", "weight": 25, "score": 0},
+        "parity_pack": {"status": "NO", "weight": 20, "score": 0},
+        "dedicated_test_pack": {"status": "NO", "weight": 15, "score": 0},
+        "phase51f_parity_green": {"status": "NO", "weight": 10, "score": 0},
+        "per_project_audit_posture": {"status": "NO", "weight": 5, "score": 0}
+      }
+    },
+    "governance_readiness": {
+      "category": "PARTIAL",
+      "score": 87,
+      "max": 100,
+      "components": {
+        "pilot_rc_scope_matrix_exclusion": {"status": "YES", "weight": 25, "score": 25},
+        "user_facing_warning_label": {"status": "YES", "weight": 20, "score": 20},
+        "phase_34_doc": {"status": "YES", "weight": 20, "score": 20},
+        "phase_34_requirements_matrix": {"status": "YES", "weight": 15, "score": 15},
+        "D1_sheet_generic_project_row": {"status": "PARTIAL", "weight": 10, "score": 5},
+        "D2_redo_discipline_naming": {"status": "PARTIAL", "weight": 5, "score": 2},
+        "D3_redo_shadow_validation": {"status": "NO", "weight": 5, "score": 0}
+      }
+    },
+    "combined": {
+      "category": "NOT READY",
+      "score": 39,
+      "max": 100,
+      "average": true
+    }
+  },
+  "generic_wind_vs_generic_solar_delta": {
+    "OPEX_coverage": "Generic Wind 4 items (~550 kEUR Y1); Generic Solar 4 items (~380 kEUR Y1)",
+    "CAPEX_coverage": "Generic Wind 4 named items; Generic Solar 5 named items (adds Inverters)",
+    "construction_period": "Generic Wind 18 months; Generic Solar 12 months",
+    "data_discrepancies": "Generic Wind has 3 (PPA, CO2, SHL); Generic Solar has 0",
+    "test_file_references": "Generic Wind 18; Generic Solar 8+",
+    "implication": "Same readiness profile (39/100 combined); same governance boundary (87/100); same validation gaps. Generic Solar has fewer internal inconsistencies.",
+    "f2_c_process_decision": "Consider batching the Generic Wind and Generic Solar Excel reference acquisition into a single effort (decision for F2-C, not F2-B)"
+  },
+  "recommendation": {
+    "choice": "A",
+    "rationale": "Generic Solar is missing 6 of 7 F1 Reference criteria. Dominant gaps: no Excel reference; no parity computation; no KNOWN_LIMITATIONS.md; no dedicated test pack; no per-project D1/D2 redo/D3 redo audit posture. Technical 30/100 (NOT READY); Validation 0/100 (NOT READY); Governance 87/100 (PARTIAL — strong for an exploratory project). Generic Solar should remain at Level 1 (Exploratory / Unvalidated). F2-C / F2-D / F2-E is the right next step. Note: Generic Solar has 0 data discrepancies between factory and Phase 34 doc (positive finding relative to Generic Wind which has 3). Option B (limited preparation) and Option C (controlled Reference program) are not appropriate at this time."
+  },
+  "no_code_changes": true,
+  "no_runtime_changes": true,
+  "no_ui_implementation": true,
+  "no_schema_changes": true,
+  "no_persistence_changes": true,
+  "no_formula_changes": true,
+  "no_parity_changes": true,
+  "no_feature_flags": true,
+  "no_validation_status_changes": true,
+  "no_generic_solar_promotion": true,
+  "no_generic_wind_work": true,
+  "no_D1_D2_D3_arc_extension": true,
+  "no_implementation_roadmap_beyond_inventory": true,
+  "no_F2_A_modifications": true,
+  "no_F1_modifications": true,
+  "generic_solar_unchanged": true,
+  "generic_wind_unchanged": true,
+  "TUHO_unchanged": true,
+  "Oborovo_unchanged": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "F2-C (Excel reference acquisition for Generic Solar). F2-D, F2-E, F2-F follow in their own follow-up prompts.",
+    "rationale": "F2-B is an inventory and gap analysis only. F2-C begins the actual preparation work, gated on F2-B review."
+  }
+}
