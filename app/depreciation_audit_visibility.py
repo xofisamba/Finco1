@@ -191,6 +191,26 @@ def build_depreciation_audit_dataframe(
             "of scope for the active runtime path. This audit "
             "sheet applies to the current active path only.",
         ),
+        # ------------------------------------------------------------------
+        # Phase D2 — Depreciation Flag Discipline disclosure row
+        # ------------------------------------------------------------------
+        # Discipline-only disclosure. D2 does not enable any
+        # canonical / tax-bridge / book-pnl depreciation flag;
+        # D2 is read-only. The four-flag inventory is owned by
+        # ``app.depreciation_flag_discipline``; this row
+        # confirms the discipline phase is in place and the
+        # canonical promotion is BLOCKED.
+        (
+            "D2 Discipline Phase",
+            "D2 \u2014 canonical promotion BLOCKED. The four "
+            "flag names (use_depreciation_canonical_engine, "
+            "use_canonical_tax_depreciation_bridge, "
+            "use_tax_bridge_engine, "
+            "use_book_depreciation_for_pnl) are all False on "
+            "the active runtime path. D2 is discipline-only: "
+            "no runtime enablement, no waterfall change, no "
+            "formula / schedule / tax / P&L / CFADS change.",
+        ),
     ]
     return pd.DataFrame(rows, columns=["Field", "Value"])
 
