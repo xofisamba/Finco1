@@ -1,0 +1,318 @@
+{
+  "phase": "C9",
+  "title": "Phase C9: Layer 5 Runtime Seam Scaffolding (NO runtime promotion)",
+  "type": "structural_scaffolding",
+  "status": "DRAFT",
+  "scope_label": "SCAFFOLDING ONLY. STRUCTURAL ONLY. NO RUNTIME PROMOTION. NO WATERFALL ROUTING. NO FEATURE-FLAG ENABLEMENT.",
+  "date": "2026-06-08",
+  "base_sha": "deeee42",
+  "branch": "phase-c9-construction-runtime-seam-scaffolding",
+  "seam_version": "C9-1.0",
+  "seam_module": "app/services/construction_runtime_seam.py",
+  "guard_function": "assert_no_construction_runtime_promotion",
+  "guard_signature": {
+    "field_code": "str (kw-only, required)",
+    "policy": "str (kw-only, required, one of frozen|replaced|retained|derived)",
+    "promotion_requested": "bool (kw-only, required)",
+    "rpar2_resolved": "bool (kw-only, default False, fail-closed)",
+    "parity_ok": "bool (kw-only, default False, fail-closed)",
+    "returns": "None on success, raises PromotionBlockedError on block"
+  },
+  "guard_behavior_table": [
+    {
+      "field": "senior_opening_balance_keur",
+      "policy": "frozen",
+      "promotion_requested": "*",
+      "rpar2_resolved": "*",
+      "parity_ok": "*",
+      "expected": "RAISE PermissionError"
+    },
+    {
+      "field": "capex_keur",
+      "policy": "frozen",
+      "promotion_requested": "*",
+      "rpar2_resolved": "*",
+      "parity_ok": "*",
+      "expected": "RAISE PermissionError"
+    },
+    {
+      "field": "senior_idc_keur",
+      "policy": "replaced",
+      "promotion_requested": "True",
+      "rpar2_resolved": "False",
+      "parity_ok": "*",
+      "expected": "RAISE (R-PAR-2 blocking)"
+    },
+    {
+      "field": "senior_idc_keur",
+      "policy": "replaced",
+      "promotion_requested": "True",
+      "rpar2_resolved": "True",
+      "parity_ok": "*",
+      "expected": "OK (pass)"
+    },
+    {
+      "field": "senior_idc_keur",
+      "policy": "replaced",
+      "promotion_requested": "False",
+      "rpar2_resolved": "*",
+      "parity_ok": "*",
+      "expected": "RAISE"
+    },
+    {
+      "field": "shl_idc_keur",
+      "policy": "replaced",
+      "promotion_requested": "True",
+      "rpar2_resolved": "n/a",
+      "parity_ok": "*",
+      "expected": "OK (pass)"
+    },
+    {
+      "field": "shl_idc_keur",
+      "policy": "replaced",
+      "promotion_requested": "False",
+      "rpar2_resolved": "n/a",
+      "parity_ok": "*",
+      "expected": "RAISE"
+    },
+    {
+      "field": "shl_amount_keur",
+      "policy": "replaced",
+      "promotion_requested": "True",
+      "rpar2_resolved": "n/a",
+      "parity_ok": "*",
+      "expected": "OK"
+    },
+    {
+      "field": "shl_opening_balance_keur",
+      "policy": "replaced",
+      "promotion_requested": "True",
+      "rpar2_resolved": "n/a",
+      "parity_ok": "*",
+      "expected": "OK"
+    },
+    {
+      "field": "equity_total_keur",
+      "policy": "derived",
+      "promotion_requested": "True",
+      "rpar2_resolved": "n/a",
+      "parity_ok": "True",
+      "expected": "OK (parity assumed)"
+    },
+    {
+      "field": "equity_total_keur",
+      "policy": "derived",
+      "promotion_requested": "True",
+      "rpar2_resolved": "n/a",
+      "parity_ok": "False",
+      "expected": "RAISE"
+    },
+    {
+      "field": "equity_total_keur",
+      "policy": "derived",
+      "promotion_requested": "False",
+      "rpar2_resolved": "n/a",
+      "parity_ok": "*",
+      "expected": "RAISE"
+    },
+    {
+      "field": "reserves_keur",
+      "policy": "retained",
+      "promotion_requested": "*",
+      "rpar2_resolved": "*",
+      "parity_ok": "*",
+      "expected": "OK (pass-through)"
+    },
+    {
+      "field": "vat_operating",
+      "policy": "retained",
+      "promotion_requested": "*",
+      "rpar2_resolved": "*",
+      "parity_ok": "*",
+      "expected": "OK"
+    },
+    {
+      "field": "financing_fees_keur",
+      "policy": "retained",
+      "promotion_requested": "*",
+      "rpar2_resolved": "*",
+      "parity_ok": "*",
+      "expected": "OK"
+    },
+    {
+      "field": "commitment_fee_keur",
+      "policy": "retained",
+      "promotion_requested": "*",
+      "rpar2_resolved": "*",
+      "parity_ok": "*",
+      "expected": "OK"
+    }
+  ],
+  "exceptions": {
+    "PromotionBlockedError": {
+      "bases": ["PermissionError", "ConstructionSeamError"],
+      "raised_when": "promotion is structurally blocked by policy+rpar2+parity combination",
+      "c8_spec_reference": "C8 §5.1 specified PermissionError; C9 subclasses it for caller compatibility"
+    },
+    "InvalidPolicyError": {
+      "bases": ["ValueError", "ConstructionSeamError"],
+      "raised_when": "policy literal invalid OR policy mismatch with C7 POLICY_TABLE"
+    },
+    "UnknownFieldError": {
+      "bases": ["ValueError", "ConstructionSeamError"],
+      "raised_when": "field_code not in SEAM_KNOWN_FIELDS"
+    }
+  },
+  "rpar2_fields": ["senior_idc_keur"],
+  "rpar2_treatment": {
+    "fail_closed_default": true,
+    "senior_idc_keur_blocked_until": "rpar2_resolved=True AND promotion_requested=True",
+    "resolution_paths_per_c8_4_4": [
+      "R-PAR-2 closed (modelling-correct rate) -> senior_opening_balance_keur may transition from frozen to replaced (separate workstream)",
+      "R-PAR-2 formally accepted (long-term caveat) -> field remains frozen forever",
+      "No third path"
+    ],
+    "c9_implementation": "C9 implements the guard; C9 does NOT implement the resolution workstream"
+  },
+  "import_contract_exemption": {
+    "c8_section": "C8 §6.4",
+    "exempted_module": "app/services/construction_runtime_seam.py",
+    "imports_allowed": ["POLICY_TABLE", "BridgeFieldPolicy"],
+    "imports_forbidden": [
+      "build_opening_balance_bridge",
+      "OpeningBalanceBridgeInput",
+      "OpeningBalanceBridgeResult",
+      "BridgeAuditRow",
+      "BridgeMetadata",
+      "ManualOverrideRow",
+      "ParityReferenceRow",
+      "ProjectAssumptions",
+      "BridgeIdentityError"
+    ],
+    "verified_by_test": "TestBridgeImportContract::test_only_seam_module_imports_bridge"
+  },
+  "seam_module_imports": {
+    "allowed": [
+      "__future__",
+      "dataclasses",
+      "typing",
+      "domain.construction.opening_bridge (POLICY_TABLE + BridgeFieldPolicy only)"
+    ],
+    "forbidden": [
+      "main_web",
+      "main_api",
+      "app.waterfall",
+      "app.persistence",
+      "domain.waterfall",
+      "domain.inputs",
+      "domain.financing",
+      "domain.tax",
+      "domain.depreciation",
+      "domain.debt",
+      "domain.capex",
+      "app.excel_export",
+      "static."
+    ]
+  },
+  "files_added": [
+    {
+      "path": "app/services/construction_runtime_seam.py",
+      "lines": 650,
+      "purpose": "Seam module with guard + audit helper + seam class"
+    },
+    {
+      "path": "tests/test_phase_c9_construction_runtime_seam.py",
+      "lines": 1167,
+      "purpose": "C9 test suite (95 tests)"
+    },
+    {
+      "path": "docs/phase_c9_construction_runtime_seam_scaffolding.md",
+      "lines": 350,
+      "purpose": "C9 design and scope documentation"
+    },
+    {
+      "path": "reports/phase_c9_construction_runtime_seam_scaffolding.json",
+      "lines": 314,
+      "purpose": "C9 machine-readable report (this file)"
+    }
+  ],
+  "files_modified": [],
+  "forbidden_paths_unchanged": [
+    "main_web.py",
+    "main_api.py",
+    "app/waterfall_core.py",
+    "app/waterfall_runner.py",
+    "app/persistence/",
+    "static/",
+    "domain/waterfall*",
+    "domain/inputs.py",
+    "domain/financing/",
+    "domain/tax/",
+    "domain/depreciation/",
+    "domain/debt/",
+    "domain/capex/",
+    "app/excel_export.py"
+  ],
+  "use_construction_schedule_engine_default_off": true,
+  "use_construction_schedule_engine_source": "domain/inputs.py:147 (bool = False)",
+  "rc1_reachable": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "c7_invariants_preserved": {
+    "bridge_module_path_unchanged": true,
+    "bridge_module_is_offline_only": true,
+    "seam_does_not_re_export_bridge_symbols": true,
+    "seam_does_not_call_bridge_build_function": true,
+    "seam_does_not_call_construction_engine": true
+  },
+  "c4_c5_fixtures_unchanged": true,
+  "project_statuses_unchanged": {
+    "TUHO": "Level 2",
+    "Oborovo": "Level 2",
+    "Generic Wind": "Level 1",
+    "Generic Solar": "Level 1"
+  },
+  "promotion_gate_status": {
+    "c8_review_approved": true,
+    "c7_review_approved": true,
+    "c1_through_c7_tests_pass": true,
+    "c9_merged": false,
+    "c9_tests_pass": true,
+    "use_construction_schedule_engine_default_off_confirmed": true,
+    "next_gate": "C10 (TUHO controlled promotion) cannot open until C9 merged",
+    "known_followups_at_c9_pr_open": [
+      "C8 test_no_new_domain_module is pre-existing C8-side absolute check; it will need a C8-fix PR (separate, C9-blocker-followup) to be C8-commit-relative. C9 PR opens in parallel; reviewer should review both. See open_follow_ups[5]."
+    ]
+  },
+  "c_series_chain": {
+    "C1": {"status": "merged", "sha": "5fccc3a", "pr": "#543"},
+    "C2": {"status": "merged", "sha": "59f9e3d", "pr": "#544"},
+    "C3": {"status": "merged", "sha": "aa800a5", "pr": "#545"},
+    "C4": {"status": "merged", "sha": "dcc30b6", "pr": "#546"},
+    "C5": {"status": "merged", "sha": "2d8a91c", "pr": "#547"},
+    "C6": {"status": "closed_superseded", "sha": null, "pr": "#548"},
+    "C7": {"status": "merged", "sha": "b28723b", "pr": "#549"},
+    "C7_fix": {"status": "merged", "sha": "4ccf1f5", "pr": "#550"},
+    "C8": {"status": "merged", "sha": "deeee42", "pr": "#551"},
+    "C9": {"status": "draft", "sha": null, "pr": "(this PR)"},
+    "C10": {"status": "future", "sha": null, "pr": null},
+    "C11": {"status": "future", "sha": null, "pr": null}
+  },
+  "test_counts": {
+    "c9_alone": 95,
+    "c9_alone_pass": 95,
+    "c9_alone_status": "all_pass",
+    "c7_alone": 118,
+    "c8_alone": 134,
+    "combined_c1_c9_plus_57A_10F_G_H_plus_parity_with_pre_existing_pattern_bug_excluded": "TBD_at_pr_open_time",
+    "note": "combined C1-C9 + 57A-10F/G/H + parity run at PR-open time; C1-C5 TestScopeGuards::test_only_expected_files_added excluded due to pre-existing pattern bug (same as C7 pre-#550); same 5 deselections as C8 PR #551"
+  },
+  "open_follow_ups": [
+    "C10: TUHO controlled promotion (per-project opt-in for 4 replaced + 1 derived fields)",
+    "C11: Oborovo controlled promotion (mirror of C10)",
+    "R-PAR-2 resolution: separate workstream (not C9)",
+    "Audit endpoint: future phase wiring build_construction_seam_audit_view to a read-only HTTP endpoint",
+    "TestScopeGuards fix: 5 C1-C5 tests with pre-existing pattern bug (same root cause as C7 pre-#550)",
+    "C8 test_no_new_domain_module needs to be refactored to be C8-commit-relative (was absolute check on working tree). Required because C9 legitimately adds app/services/construction_runtime_seam.py per C8 §7.3. Will be a separate C8-fix PR (NOT in C9 scope) — to be opened and merged before or at the same time as C9."
+  ],
+  "stop_after_report": true
+}
