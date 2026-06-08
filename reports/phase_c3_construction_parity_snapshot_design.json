@@ -1,0 +1,268 @@
+{
+  "phase": "C3",
+  "title": "Construction Period Parity Snapshot Design",
+  "type": "DESIGN ONLY",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "branch": "phase-c3-construction-parity-snapshot-design",
+  "base_sha": "59f9e3d",
+  "addresses_c1_blockers": [3, 4],
+  "deferred_c1_blockers": [5],
+  "addresses_c2_readiness_checklist": [1, 2, 3, 4, 5, 6, 7],
+  "hard_constraints": {
+    "no_code": true,
+    "no_runtime_changes": true,
+    "no_schema_changes": true,
+    "no_persistence_changes": true,
+    "no_feature_flags": true,
+    "no_formula_changes": true,
+    "no_capex_changes": true,
+    "no_debt_changes": true,
+    "no_tax_changes": true,
+    "no_depreciation_changes": true,
+    "no_idc_implementation": true,
+    "no_project_status_changes": true,
+    "rc1_untouched": true
+  },
+  "parity_framework": {
+    "definition": "Boundary parity at the COD opening balance + internal monthly flow parity at the construction grid.",
+    "three_layers": [
+      {
+        "name": "funding_parity",
+        "scope": "monthly_uses, equity_draw, shl_draw, junior_draw, senior_draw, totals",
+        "tolerance_keur": 0.001,
+        "status_if_missing": "MISSING_EVIDENCE"
+      },
+      {
+        "name": "idc_parity",
+        "scope": "shl_idc_per_month, senior_idc_per_month, total_shl_idc, total_senior_idc",
+        "tolerance_keur": 0.001,
+        "status_if_missing": "MISSING_EVIDENCE"
+      },
+      {
+        "name": "opening_balance_parity",
+        "scope": "opening_senior_balance, opening_shl_balance, equity_contribution_at_cod",
+        "tolerance_keur": 0.001,
+        "status_if_missing": "BLOCKED"
+      }
+    ],
+    "excludes_runtime_contract": true,
+    "flag_state": "use_construction_schedule_engine remains default-off"
+  },
+  "tuho_dataset": {
+    "project_code": "TUHO-WIND-1",
+    "field_count": 207,
+    "construction_months": 18,
+    "calendar": {
+      "construction_start_date": "2028-06-30",
+      "cod_date": "2029-12-30",
+      "shl_investment_date": "2028-06-30"
+    },
+    "totals_keur": {
+      "total_uses": 72994.450,
+      "total_equity_draw": 500.000,
+      "total_shl_draw": 29135.176,
+      "total_junior_draw": 0.000,
+      "total_senior_draw": 43359.274,
+      "total_shl_idc": 3568.688,
+      "total_senior_idc": 1519.564
+    },
+    "opening_balances_keur": {
+      "opening_senior_balance": 44878.838,
+      "opening_shl_balance": 32703.864,
+      "equity_contribution_at_cod": 500.000
+    },
+    "monthly_grid_size": 18,
+    "monthly_grid_fields": [
+      "monthly_uses_keur",
+      "equity_draw_keur",
+      "shl_draw_keur",
+      "junior_draw_keur",
+      "senior_draw_keur",
+      "shl_idc_keur",
+      "senior_idc_keur",
+      "cumulative_uses_keur",
+      "cumulative_equity_keur",
+      "cumulative_shl_keur",
+      "cumulative_junior_keur",
+      "cumulative_senior_keur",
+      "cumulative_shl_idc_keur",
+      "cumulative_senior_idc_keur"
+    ],
+    "monthly_field_count_per_month": 14,
+    "tolerance_keur": 0.001,
+    "caveats": {
+      "senior_idc_effective_rate_caveat_applies": true,
+      "effective_rate_value": 0.060454449320244484,
+      "policy_reference": "C1 R-PAR-2, C2 §2.1 freeze"
+    }
+  },
+  "oborovo_dataset": {
+    "project_code": "OBOROVO",
+    "field_count": 142,
+    "construction_months": 12,
+    "calendar": {
+      "construction_start_date": "2029-06-29",
+      "cod_date": "2030-06-29",
+      "shl_investment_date": "2029-06-29"
+    },
+    "totals_keur": {
+      "total_uses": 57973.041,
+      "total_equity_draw": 500.000,
+      "total_shl_draw": 14620.774,
+      "total_junior_draw": 0.000,
+      "total_senior_draw": 42852.267,
+      "total_shl_idc": 1169.662,
+      "total_senior_idc": 1086.032
+    },
+    "opening_balances_keur": {
+      "opening_senior_balance": 43938.299,
+      "opening_shl_balance": 15790.436,
+      "equity_contribution_at_cod": 500.000
+    },
+    "monthly_grid_size": 12,
+    "monthly_grid_fields": [
+      "monthly_uses_keur",
+      "equity_draw_keur",
+      "shl_draw_keur",
+      "junior_draw_keur",
+      "senior_draw_keur",
+      "shl_idc_keur",
+      "senior_idc_keur",
+      "cumulative_uses_keur",
+      "cumulative_equity_keur",
+      "cumulative_shl_keur",
+      "cumulative_junior_keur",
+      "cumulative_senior_keur",
+      "cumulative_shl_idc_keur",
+      "cumulative_senior_idc_keur"
+    ],
+    "monthly_field_count_per_month": 14,
+    "tolerance_keur": 0.001,
+    "caveats": {
+      "senior_idc_effective_rate_caveat_applies": true,
+      "effective_rate_value": 0.058947812283038616,
+      "policy_reference": "C1 R-PAR-2, C2 §2.1 freeze"
+    }
+  },
+  "field_code_convention": {
+    "format": "<project>_<category>_<subcategory>_<field>",
+    "project_values": ["tuho", "oborovo", "generic_wind", "generic_solar"],
+    "category_values": ["mflow", "cum", "tot", "cal", "ob", "meta"],
+    "subcategory_values": ["use", "eq", "shl", "sen", "idc", "jun", "n_a"],
+    "month_index_pattern": "_m<n>_<unit>",
+    "tolerance_unit_keur": 0.001,
+    "schema_version": "C3-1.0",
+    "not_python_enums": true
+  },
+  "canonical_field_count": {
+    "tuho": 207,
+    "oborovo": 142,
+    "total": 349
+  },
+  "funding_parity": {
+    "test_designed": true,
+    "test_implemented": false,
+    "test_implementation_phase": "C4+",
+    "identity": "sum(monthly_uses_keur) == total_uses_keur; sum(source_draw_keur) == total_<source>_draw_keur",
+    "failure_mode": "BLOCKED",
+    "scope": "funding parity + per-source accounting identity"
+  },
+  "idc_parity": {
+    "test_designed": true,
+    "test_implemented": false,
+    "test_implementation_phase": "C4+",
+    "identity": "sum(shl_idc_keur) == total_shl_idc_keur; sum(senior_idc_keur) == total_senior_idc_keur",
+    "shl_idc_convention": "C2 Convention B (Excel full-source elapsed compound)",
+    "senior_idc_convention": "Effective-rate calibrated (C1 R-PAR-2 caveat)",
+    "caveat_docstring_required": true,
+    "caveat_docstring_reference": "C1 R-PAR-2, C2 §2.1, C3 §6.3",
+    "failure_mode": "BLOCKED"
+  },
+  "opening_balance_parity": {
+    "test_designed": true,
+    "test_implemented": false,
+    "test_implementation_phase": "C4+",
+    "shl_opening_balance_identity": "opening_shl_balance_keur == total_shl_draw_keur + total_shl_idc_keur",
+    "senior_opening_balance_policy": "frozen until senior IDC is modelling-correct (C2 §2.1)",
+    "senior_opening_balance_caveat": "Calibrated parity, not modelled parity, while effective-rate caveat applies",
+    "failure_mode": "BLOCKED"
+  },
+  "golden_dataset": {
+    "tuho_path": "reports/phase_c3_tuho_construction_parity_golden.json",
+    "oborovo_path": "reports/phase_c3_oborovo_construction_parity_golden.json",
+    "tuho_field_count": 207,
+    "oborovo_field_count": 142,
+    "schema_version": "C3-1.0",
+    "versioning_rule": "schema/tolerance/field change requires C-phase and schema version bump",
+    "contract_authority": "Engine + dataset is upstream contract; operating waterfall is downstream consumer",
+    "checked_into_repo": true,
+    "generated_at_test_time": false
+  },
+  "ci_governance": {
+    "c3_designs_workflow": true,
+    "c3_implements_workflow": false,
+    "workflow_implementation_phase": "C4+",
+    "schema_freeze_rule": "Schema/tolerance/field change requires C-phase",
+    "audit_trail": [
+      "design doc (this PR)",
+      "field code schema (§4)",
+      "TUHO golden dataset (C3+ golden JSON)",
+      "Oborovo golden dataset (C3+ golden JSON)",
+      "design test file (this PR)"
+    ]
+  },
+  "c3_readiness_checklist_status": {
+    "tuho_construction_parity_snapshot_designed": true,
+    "tuho_construction_parity_snapshot_implemented": false,
+    "oborovo_construction_parity_snapshot_designed": true,
+    "oborovo_construction_parity_snapshot_implemented": false,
+    "manual_vs_derived_reconciliation_designed": true,
+    "manual_vs_derived_reconciliation_implemented": false,
+    "cod_opening_balance_reconciliation_designed": true,
+    "cod_opening_balance_reconciliation_implemented": false,
+    "idc_by_source_reconciliation_designed": true,
+    "idc_by_source_reconciliation_implemented": false,
+    "no_double_counting_test_plan_designed": true,
+    "no_double_counting_test_plan_implemented": false,
+    "senior_idc_caveat_in_docstring_designed": true,
+    "senior_idc_caveat_in_docstring_implemented": false,
+    "second_pair_of_eyes_review": false,
+    "items_designed": 7,
+    "items_implemented": 0,
+    "items_total": 8
+  },
+  "multi_phase_path": [
+    {"phase": "C1", "scope": "Design gate", "status": "merged", "sha": "5fccc3a"},
+    {"phase": "C2", "scope": "SHL IDC convention + Layer 4 bridge design", "status": "merged", "sha": "59f9e3d"},
+    {"phase": "C3", "scope": "Construction parity framework design", "status": "DRAFT"},
+    {"phase": "C4", "scope": "Parity test implementation + CI gate", "status": "future"},
+    {"phase": "C5", "scope": "Layer 4 bridge implementation", "status": "future"},
+    {"phase": "C6", "scope": "Layer 5 seam implementation + opt-in flag flip", "status": "future"},
+    {"phase": "C7", "scope": "Promotion of TUHO/Oborovo to construction-runtime-authoritative", "status": "future"},
+    {"phase": "C8-C11", "scope": "Other C1-listed work", "status": "future"}
+  ],
+  "recommendation": {
+    "choice": "B. More discovery needed",
+    "rationale_count": 5,
+    "rationale_points": [
+      "C1 blockers 3 and 4 are now addressed by the parity framework design.",
+      "C3 readiness checklist is partially satisfied (8 of 9 designed, 0 of 9 implemented).",
+      "Senior IDC effective-rate caveat is preserved.",
+      "C1 blocker 5 is not addressed in any new way; the senior IDC fix is a separate workstream.",
+      "C3 is a framework, not a test; the actual parity test is C4+."
+    ],
+    "would_unblock_a": [
+      "C4 design note that implements the parity test scaffolding",
+      "C4 implementation PR with parity tests, CI workflow, and senior IDC caveat in test docstring",
+      "C4 design note for senior IDC base-rate modelling (out of C-series scope)"
+    ],
+    "remains_open_after_c3": [
+      "Parity test implementation (C4+)",
+      "Layer 4 bridge implementation (C5+)",
+      "Layer 5 seam implementation (C6+)",
+      "Senior IDC base-rate modelling (separate workstream)",
+      "Runtime opt-in flag flip (C6+)"
+    ]
+  }
+}
