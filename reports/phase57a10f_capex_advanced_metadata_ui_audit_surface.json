@@ -1,0 +1,132 @@
+{
+  "phase": "57A-10F",
+  "title": "CAPEX Advanced Metadata UI / Audit Surface",
+  "type": "low_risk_implementation_ui_export_audit_only",
+  "status": "DRAFT",
+  "base_sha": "93cd981adb39c55b446d10d34651f66bce1cf618",
+  "branch": "phase57a10f-capex-advanced-metadata-ui-audit-surface",
+  "files_changed": [
+    {
+      "path": "app/templates/partials/sheet_capex.html",
+      "type": "M",
+      "rationale": "Add status legend (4 chip categories) and metadata disclaimer badge in deferred-placeholder block; add per-line status chips to deferred-placeholder list."
+    },
+    {
+      "path": "app/templates/partials/sheet_capex_detail.html",
+      "type": "M",
+      "rationale": "Add Metadata-only chip to VAT %, WHT %, Contingency % column headers."
+    },
+    {
+      "path": "app/excel_export.py",
+      "type": "M",
+      "rationale": "Extend the 'Metadata Scope' line in CapEx_SubLines_Audit notes block to enumerate runtime-used, metadata-only, and design-only CAPEX fields."
+    },
+    {
+      "path": "tests/test_phase57a10f_capex_advanced_metadata_ui_audit_surface.py",
+      "type": "A",
+      "rationale": "Render / context / export safety tests: status legend, disclaimer, column header chips, Metadata Scope extension, no domain/persistence/main_web/main_api/static change, rc1 reachable, no formula/runtime/tax/depreciation/IDC/debt change."
+    },
+    {
+      "path": "docs/phase57a10f_capex_advanced_metadata_ui_audit_surface.md",
+      "type": "A",
+      "rationale": "Design document."
+    },
+    {
+      "path": "reports/phase57a10f_capex_advanced_metadata_ui_audit_surface.json",
+      "type": "A",
+      "rationale": "Machine-readable report."
+    }
+  ],
+  "field_classification": {
+    "runtime_used": [
+      "amount_keur",
+      "y0_share",
+      "spending_profile",
+      "asset_class",
+      "idc_keur",
+      "bank_fees_keur",
+      "commitment_fees_keur",
+      "other_financial_keur",
+      "vat_costs_keur",
+      "reserve_accounts_keur"
+    ],
+    "metadata_only": [
+      "useful_life_override",
+      "VAT %",
+      "WHT %",
+      "Contingency %"
+    ],
+    "design_only": [
+      "Payment schedule by construction month",
+      "Depreciation category / useful life / flag",
+      "VAT applicability / rate / cost",
+      "WHT rate / cost",
+      "Utilisation of funds during construction"
+    ],
+    "export_only": [
+      "CAPEX sub-lines persisted",
+      "CAPEX category -> field mapping"
+    ]
+  },
+  "visible_ui_changes": [
+    "sheet_capex.html: status legend (Runtime-used / Metadata-only / Design-only / Export-only) added above deferred-placeholder block",
+    "sheet_capex.html: 'Metadata only - does not affect Run.' disclaimer badge added inside deferred-placeholder block",
+    "sheet_capex.html: each deferred-placeholder line now carries a status chip (Metadata-only or Design-only)",
+    "sheet_capex_detail.html: VAT % column header now carries a Metadata-only chip",
+    "sheet_capex_detail.html: WHT % column header now carries a Metadata-only chip",
+    "sheet_capex_detail.html: Contingency % column header now carries a Metadata-only chip"
+  ],
+  "export_audit_changes": [
+    "app/excel_export.py: 'Metadata Scope' line in CapEx_SubLines_Audit notes block extended to enumerate runtime-used, metadata-only, and design-only CAPEX fields"
+  ],
+  "no_runtime_changes": true,
+  "no_model_changes": true,
+  "no_formula_changes": true,
+  "no_tax_changes": true,
+  "no_depreciation_changes": true,
+  "no_idc_changes": true,
+  "no_debt_changes": true,
+  "no_persistence_schema_changes": true,
+  "no_new_capex_logic": true,
+  "no_generic_project_promotion": true,
+  "no_tailwind_alpine": true,
+  "no_static_changes": true,
+  "test_count_estimate": 25,
+  "test_categories": [
+    "file existence (6 tests)",
+    "status legend chip labels (4 tests)",
+    "status legend data attribute (1 test)",
+    "disclaimer text present (1 test)",
+    "disclaimer block attribute (1 test)",
+    "deferred-placeholder chips (5 tests)",
+    "detail column header chips (3 tests)",
+    "detail Metadata-only chip count (1 test)",
+    "Metadata Scope line present (1 test)",
+    "runtime-used fields named (10 fields in 1 test)",
+    "metadata-only fields named (4 fields in 1 test)",
+    "design-only fields named (5 fields in 1 test)",
+    "Metadata disclaimer in export (1 test)",
+    "no CAPEX structure change (2 tests)",
+    "no runtime materialization change (8 forbidden-path tests)",
+    "rc1 frozen (1 test)",
+    "documented scope (3 tests)"
+  ],
+  "no_code_changes": false,
+  "code_changes_limited_to": [
+    "app/templates/partials/sheet_capex.html (UI)",
+    "app/templates/partials/sheet_capex_detail.html (UI)",
+    "app/excel_export.py (export text only)"
+  ],
+  "TUHO_unchanged": true,
+  "Oborovo_unchanged": true,
+  "Generic_Solar_unchanged": true,
+  "Generic_Wind_unchanged": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "Phase 57A-10F is a one-shot low-risk UI / export / audit surface PR. No further F-phases implied by 57A-10F. The next F-phase (if any) would be F2-D (Excel reference + parity for generics), which is a separate scope.",
+    "rationale": "57A-10F is a single low-risk PR. No further phases are implied."
+  }
+}

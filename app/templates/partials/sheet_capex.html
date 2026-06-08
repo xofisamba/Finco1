@@ -637,8 +637,25 @@
      ) }}
 </div>
 
+{# ── CAPEX column status legend (Phase 57A-10F) ─────────────── #}
+<div class="capex-status-legend" data-capex-status-legend="true">
+  <p><strong>CAPEX column status legend:</strong></p>
+  <ul>
+    <li><span class="badge badge-runtime-used">Runtime-used</span> — feeds the model</li>
+    <li><span class="badge badge-metadata-only">Metadata-only</span> — captured for audit; does not affect Run</li>
+    <li><span class="badge badge-design-only">Design-only</span> — designed for a future phase; not yet implemented</li>
+    <li><span class="badge badge-export-only">Export-only</span> — surfaced in export / audit artefacts only</li>
+  </ul>
+</div>
+
 {# ── Deferred placeholders / future model inputs ─────────────── #}
 <div class="capex-deferred-note" data-capex-deferred="true">
+  <p class="capex-metadata-disclaimer" data-capex-metadata-disclaimer="true">
+    <span class="badge badge-metadata-only">Metadata only — does not affect Run.</span>
+    These columns are placeholders; they are visible for
+    design / planning but they do not affect the current
+    model calculations.
+  </p>
   <p>
     <strong>Future model inputs (not yet wired):</strong>
     The columns below are placeholders for now; detailed
@@ -646,20 +663,28 @@
     change financial outputs:
   </p>
   <ul>
-    <li><strong>VAT applicability / rate / cost</strong> —
-      future input → cash flow / balance sheet / working
-      capital / tax receivable logic.</li>
-    <li><strong>WHT rate / cost</strong> — future input →
-      tax / cash flow treatment.</li>
-    <li><strong>Depreciation category / useful life / flag</strong>
-      — future input → P&amp;L and fixed asset schedule.</li>
-    <li><strong>Payment schedule by construction month</strong>
-      — future input → equity drawdown, SHL drawdown,
-      senior debt drawdown, IDC, opening balances at COD.
-      See "Sources &amp; Uses bridge" below.</li>
-    <li><strong>Utilisation of funds during construction</strong>
-      — derived from the payment schedule, feeds the same
-      drawdown / IDC chain as the payment schedule.</li>
+    <li><span class="badge badge-metadata-only">Metadata-only</span>
+        <strong>VAT % / WHT % / Contingency %</strong> —
+        captured in CAPEX detail columns; not yet fed to
+        tax / model. See
+        <code>sheet_capex_detail.html</code> column headers.</li>
+    <li><span class="badge badge-design-only">Design-only</span>
+        <strong>Payment schedule by construction month</strong> —
+        future input → equity drawdown, SHL drawdown, senior
+        debt drawdown, IDC, opening balances at COD.</li>
+    <li><span class="badge badge-design-only">Design-only</span>
+        <strong>Depreciation category / useful life / flag</strong>
+        — future input → P&amp;L and fixed asset schedule.</li>
+    <li><span class="badge badge-design-only">Design-only</span>
+        <strong>VAT applicability / rate / cost</strong> —
+        future input → cash flow / balance sheet / working
+        capital / tax receivable logic.</li>
+    <li><span class="badge badge-design-only">Design-only</span>
+        <strong>WHT rate / cost</strong> — future input → tax /
+        cash flow treatment.</li>
+    <li><span class="badge badge-design-only">Design-only</span>
+        <strong>Utilisation of funds during construction</strong>
+        — derived from the payment schedule.</li>
   </ul>
 </div>
 
