@@ -1052,130 +1052,232 @@ class TestForbiddenPaths:
     )
 
     def test_only_4_files_added(self):
-        # Get untracked + tracked-changes files via git status --porcelain
+        # Locate the Phase C7 commit on origin/main (works in both
+        # branch-state and post-merge state). Branch-state used
+        # `git diff origin/main` which is empty once merged; the C7
+        # commit itself is the source of truth in either case.
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
+            [
+                "git", "log", "--merges", "--first-parent",
+                "--format=%H %s", "origin/main",
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        assert result.returncode == 0
-        # Filter: only untracked (??) and added (A) and modified (M) are relevant
-        # The 4 expected files should all be present
-        # We use ls-files --others to also include untracked
-        result2 = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        untracked = [
-            ln.strip() for ln in result2.stdout.strip().splitlines() if ln
+        c7_shas = [
+            parts[0] for ln in result.stdout.splitlines()
+            if (parts := ln.split(" ", 1)) and len(parts) == 2
+            and parts[1].startswith("Phase C7:")
         ]
-        result3 = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main"],
+        if not c7_shas:
+            result = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            c7_shas = [
+                ln.split(" ", 1)[0] for ln in result.stdout.splitlines()
+                if ln.startswith("Phase C7:")
+            ]
+        assert c7_shas, "could not locate Phase C7 commit on origin/main"
+        c7_sha = c7_shas[0]
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{c7_sha}^1", c7_sha],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        modified = [
-            ln.strip() for ln in result3.stdout.strip().splitlines() if ln
-        ]
-        all_changed = sorted(set(untracked) | set(modified))
+        all_changed = sorted(
+            ln.strip() for ln in result.stdout.splitlines() if ln.strip()
+        )
         assert len(all_changed) == 4, (
             f"C7 must add exactly 4 files, got {len(all_changed)}: "
             f"{all_changed}"
         )
 
     def test_all_files_added(self):
+        # Use the C7 commit on origin/main (see test_only_4_files_added).
         result = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
+            [
+                "git", "log", "--merges", "--first-parent",
+                "--format=%H %s", "origin/main",
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        untracked = [
-            ln.strip() for ln in result.stdout.strip().splitlines() if ln
+        c7_shas = [
+            parts[0] for ln in result.stdout.splitlines()
+            if (parts := ln.split(" ", 1)) and len(parts) == 2
+            and parts[1].startswith("Phase C7:")
         ]
-        result2 = subprocess.run(
-            ["git", "diff", "--name-status", "origin/main"],
+        if not c7_shas:
+            result = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            c7_shas = [
+                ln.split(" ", 1)[0] for ln in result.stdout.splitlines()
+                if ln.startswith("Phase C7:")
+            ]
+        assert c7_shas
+        c7_sha = c7_shas[0]
+        result = subprocess.run(
+            ["git", "diff", "--name-status", f"{c7_sha}^1", c7_sha],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        for line in result2.stdout.strip().splitlines():
-            status, path = line.split("\t")
-            assert status == "A", f"only additions allowed: {line}"
-        # All untracked files must be part of C7 (not pre-existing)
-        # The 4 expected files are the test of this
-        for path in untracked:
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            status, path = line.split("\t", 1)
+            assert status == "A", (
+                f"only additions allowed in C7 commit: {line!r}"
+            )
             assert path in (
                 "domain/construction/opening_bridge.py",
                 "tests/test_phase_c7_opening_balance_bridge.py",
                 "docs/phase_c7_opening_balance_bridge_implementation.md",
                 "reports/phase_c7_opening_balance_bridge_implementation.json",
-            ), f"untracked file {path!r} is not part of C7's 4 expected files"
+            ), f"file {path!r} is not part of C7's 4 expected files"
 
     def test_no_modifications_to_existing(self):
-        # No 'M' (modified) status in tracked files
+        # No 'M' (modified) status in the C7 commit.
         result = subprocess.run(
-            ["git", "diff", "--name-status", "origin/main"],
+            [
+                "git", "log", "--merges", "--first-parent",
+                "--format=%H %s", "origin/main",
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        for line in result.stdout.strip().splitlines():
-            status, _ = line.split("\t")
-            assert status in ("A",), f"no modifications allowed: {line}"
+        c7_shas = [
+            parts[0] for ln in result.stdout.splitlines()
+            if (parts := ln.split(" ", 1)) and len(parts) == 2
+            and parts[1].startswith("Phase C7:")
+        ]
+        if not c7_shas:
+            result = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            c7_shas = [
+                ln.split(" ", 1)[0] for ln in result.stdout.splitlines()
+                if ln.startswith("Phase C7:")
+            ]
+        assert c7_shas
+        c7_sha = c7_shas[0]
+        result = subprocess.run(
+            ["git", "show", "--name-status", "--format=", c7_sha],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            status, _ = line.split("\t", 1)
+            assert status == "A", f"no modifications allowed: {line!r}"
 
     @pytest.mark.parametrize("forbidden", FORBIDDEN_PATHS)
     def test_forbidden_path_untouched(self, forbidden):
-        # Check untracked
+        # The C7 commit must not add or modify any forbidden path.
         result = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
+            [
+                "git", "log", "--merges", "--first-parent",
+                "--format=%H %s", "origin/main",
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        untracked_in_path = [
-            p for p in result.stdout.strip().splitlines()
-            if p.startswith(forbidden)
+        c7_shas = [
+            parts[0] for ln in result.stdout.splitlines()
+            if (parts := ln.split(" ", 1)) and len(parts) == 2
+            and parts[1].startswith("Phase C7:")
         ]
-        # Check diff
+        if not c7_shas:
+            result = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            c7_shas = [
+                ln.split(" ", 1)[0] for ln in result.stdout.splitlines()
+                if ln.startswith("Phase C7:")
+            ]
+        assert c7_shas
+        c7_sha = c7_shas[0]
         result2 = subprocess.run(
-            ["git", "diff", "--stat", "origin/main", "--", forbidden],
+            [
+                "git", "show", "--name-only", "--format=", c7_sha,
+                "--", forbidden,
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        assert result2.stdout.strip() == "" and not untracked_in_path, (
-            f"Phase C7 must not touch {forbidden}: "
-            f"untracked={untracked_in_path}, diff=\n{result2.stdout}"
+        touched = [
+            ln.strip() for ln in result2.stdout.splitlines() if ln.strip()
+        ]
+        assert not touched, (
+            f"Phase C7 must not touch {forbidden}: {touched}"
         )
 
     def test_only_domain_opening_bridge_touched(self):
         """The only domain change allowed is opening_bridge.py."""
-        # Get untracked + diff
+        # Locate the Phase C7 commit on origin/main (see
+        # test_only_4_files_added for rationale on the approach).
         result = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
+            [
+                "git", "log", "--merges", "--first-parent",
+                "--format=%H %s", "origin/main",
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        untracked_domain = [
-            p for p in result.stdout.strip().splitlines()
-            if p.startswith("domain/")
+        c7_shas = [
+            parts[0] for ln in result.stdout.splitlines()
+            if (parts := ln.split(" ", 1)) and len(parts) == 2
+            and parts[1].startswith("Phase C7:")
         ]
-        result2 = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main", "--", "domain/"],
+        if not c7_shas:
+            result = subprocess.run(
+                ["git", "log", "--format=%H %s", "origin/main"],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            c7_shas = [
+                ln.split(" ", 1)[0] for ln in result.stdout.splitlines()
+                if ln.startswith("Phase C7:")
+            ]
+        assert c7_shas, "could not locate Phase C7 commit on origin/main"
+        c7_sha = c7_shas[0]
+        result = subprocess.run(
+            [
+                "git", "diff", "--name-only", f"{c7_sha}^1", c7_sha,
+                "--", "domain/",
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        modified_domain = [
-            p for p in result2.stdout.strip().splitlines() if p
-        ]
-        all_domain = sorted(set(untracked_domain) | set(modified_domain))
+        all_domain = sorted(
+            ln.strip() for ln in result.stdout.splitlines() if ln.strip()
+        )
         assert all_domain == ["domain/construction/opening_bridge.py"], (
             f"Only domain/construction/opening_bridge.py allowed, got: {all_domain}"
         )
