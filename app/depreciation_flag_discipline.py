@@ -127,13 +127,13 @@ def assert_no_canonical_depreciation_runtime_promotion(
     the four canonical / tax-bridge / book-pnl depreciation
     flags is True on the project inputs.
 
-    This helper is NOT wired into the live waterfall path.
-    It is exported for tests and for future
-    controlled-enablement PRs to call explicitly. The
-    D2 sheet disclosure and the WARN log in the live
-    ``runtime_flag_snapshot`` are the only runtime-touching
-    artifacts in D2; this guard is not currently called from
-    production code.
+    This helper is NOT wired into production runtime. It
+    is exported for tests and for future
+    controlled-enablement PRs to call explicitly. The D2
+    sheet disclosure is the only export/audit surface
+    addition in this phase; there is no
+    ``runtime_flag_snapshot`` WARN log in this redo and
+    ``app/persistence/`` remains untouched.
     """
     enabled = [
         name
