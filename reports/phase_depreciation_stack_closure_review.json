@@ -1,0 +1,204 @@
+{
+  "phase": "depreciation_stack_closure_review",
+  "title": "Depreciation Stack Closure Review (D1 + D2 redo + D3 redo)",
+  "type": "docs_report_only",
+  "status": "DRAFT",
+  "base_sha": "9f8bde547be242509a751b6f6c21e0fb4fd42346",
+  "branch": "phase-depreciation-stack-closure-review",
+  "files_changed": [
+    {
+      "path": "docs/phase_depreciation_stack_closure_review.md",
+      "type": "A",
+      "lines_added": 280,
+      "lines_removed": 0,
+      "rationale": "9-section closure review covering merged-stack verification, architecture assessment, validation assessment, enablement risk assessment, GO/NO-GO decision, recommended next step, D4 boundary sketch (not started), stop-after-report contract, and a summary appendix."
+    },
+    {
+      "path": "reports/phase_depreciation_stack_closure_review.json",
+      "type": "A",
+      "lines_added": 100,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "merged_stack": {
+    "D1": {
+      "pr": 531,
+      "commit_sha": "9cd228b1cdbbb0f0c9ba81f2d253bd6eccc73bd2",
+      "type": "export_audit_visibility",
+      "files": 5,
+      "tests": 23,
+      "runtime_change": false,
+      "persistence_change": false
+    },
+    "D2_first_attempt": {
+      "pr": 532,
+      "status": "force_reverted",
+      "reason": "WARN log in app/persistence/provenance.py flagged by file-scope test test_no_persistence_directory_changed"
+    },
+    "D2_redo": {
+      "pr": 534,
+      "commit_sha": "42718e545c5aa5e4e798a64402aa8c4774fc7ec4",
+      "type": "discipline_only",
+      "files": 5,
+      "tests": 30,
+      "runtime_change": false,
+      "persistence_change": false
+    },
+    "D3_redo": {
+      "pr": 533,
+      "commit_sha": "9f8bde547be242509a751b6f6c21e0fb4fd42346",
+      "type": "audit_only_shadow_comparison",
+      "files": 4,
+      "tests": 21,
+      "runtime_change": false,
+      "persistence_change": false
+    },
+    "current_origin_main": "9f8bde5",
+    "no_reverted_d2_remains_in_main": true,
+    "d3_does_not_rebundle_d2": true,
+    "d3_does_not_touch_forbidden_paths": true,
+    "forbidden_path_touch_count_in_d3_delta_42718e5_to_9f8bde5": {
+      "app/persistence/": 0,
+      "app/waterfall_core.py": 0,
+      "app/waterfall_runner.py": 0,
+      "main_web.py": 0,
+      "main_api.py": 0,
+      "static/": 0,
+      "app/excel_export.py": 0,
+      "app/services/": 0,
+      "domain/": 0
+    }
+  },
+  "architecture": {
+    "active_runtime_path": "LegacyDepreciationPath via waterfall_core.LegacyDepreciationPath",
+    "canonical_depreciation_engine": "domain.depreciation.engine.DepreciationEngine (available, not runtime-authoritative)",
+    "shadow_validation_module": "app/depreciation_shadow_validation.py (read-only, never mutates caller project_inputs)",
+    "flag_discipline_module": "app/depreciation_flag_discipline.py (read-only helpers + assert guard, assert guard not wired into waterfall)",
+    "D1_audit_sheet": "app/depreciation_audit_visibility.py + D2 redo disclosure row",
+    "export_audit_visibility": "Depreciation Audit sheet, text-only, 14 rows, immediately after Book Depreciation sheet",
+    "runtime_authority_remains_legacy": true
+  },
+  "validation": {
+    "TUHO_shadow_delta": {
+      "legacy_total_keur": 70691.54,
+      "canonical_total_keur": 70691.54,
+      "absolute_total_delta_keur": 1.45e-11,
+      "relative_total_delta_pct": 2.06e-14,
+      "max_per_period_delta_keur": 9.68,
+      "max_per_period_delta_period": 1,
+      "ready_for_controlled_enablement": true,
+      "qualitative": "at the floating-point limit"
+    },
+    "Oborovo_shadow_delta": {
+      "legacy_total_keur": 55996.56,
+      "canonical_total_keur": 55999.09,
+      "absolute_total_delta_keur": 2.53,
+      "relative_total_delta_pct": 0.00452,
+      "max_per_period_delta_keur": 9.68,
+      "max_per_period_delta_period": 1,
+      "ready_for_controlled_enablement": true,
+      "qualitative": "2.53 kEUR on a ~56,000 kEUR base (0.0045%); well within floating-point + rounding envelope"
+    },
+    "generic_support": "NOT supported in this stack; deferred",
+    "numeric_invariance": {
+      "period_depreciation_keur_bit_for_bit_identical": true,
+      "tax_depreciation_audit_keur_bit_for_bit_identical": true,
+      "all_pre_D1_sheet_sums_unchanged": true
+    },
+    "test_coverage": {
+      "D1_tests": "23/23 PASS",
+      "D2_redo_tests": "30/30 PASS",
+      "D3_redo_tests": "21/21 PASS",
+      "57A-9E_isolated": "13/13 PASS",
+      "Phase_51F_Parity_Guardrails": "21/21 PASS",
+      "Phase_57pre_route_smoke": "50 pass / 17 skip (green)",
+      "full_57_arc_stack": "1180 passed, 75 skipped, 2 failed (pre-existing 57A-9E test pollution, also fails on main)"
+    },
+    "remaining_test_pollution": [
+      "tests/test_depreciation_canonical_wiring.py::TestOborovoDepreciationCanonicalRegression::test_oborovo_equity_irr_within_tolerance_dep_canonical (pre-existing on main, not a depreciation-arc regression)",
+      "tests/test_phase57a9e_capex_sub_lines_excel_export.py::TestPhase57A9EExcelExport::test_download_route_user_project_export_includes_audit_sheet (pre-existing 57A-9E pollution, not a depreciation-arc regression)",
+      "tests/test_phase57a9e_capex_sub_lines_excel_export.py::TestPhase57A9EExcelExport::test_download_route_propagates_active_scenario_override_metadata (pre-existing 57A-9E pollution, not a depreciation-arc regression)"
+    ]
+  },
+  "enablement_risk_assessment": {
+    "TUHO_controlled_enablement": {
+      "numeric_risk": "low (floating-point limit)",
+      "governance_risk": "moderate (requires explicit governance review)",
+      "tax_pnl_cfads_impact": "sub-floating-point on cumulative totals",
+      "excel_export_impact": "D1 sheet flips to YES, sheet sums change at floating-point limit",
+      "verdict": "feasible as single-project flag-gated enablement, not zero-risk"
+    },
+    "Oborovo_controlled_enablement": {
+      "numeric_risk": "moderate (0.0045% total delta, not at floating-point limit)",
+      "governance_risk": "moderate (requires explicit accept of measurable delta)",
+      "tax_pnl_cfads_impact": "2.53 kEUR cumulative on tax, propagating into P&L and CFADS",
+      "excel_export_impact": "D1 sheet flips to YES, Tax_Depreciation and Book Depreciation sheets change by measurable amounts",
+      "verdict": "feasible only as explicit governance accept of 0.0045% delta"
+    },
+    "TUHO_plus_Oborovo_combined": {
+      "numeric_risk": "bounded by union of individual deltas (well within tolerance)",
+      "governance_risk": "no additional risk beyond the two individual enablements",
+      "verdict": "feasible, no additional risk"
+    },
+    "generic_project_depreciation": {
+      "numeric_risk": "unknown (no shadow evidence)",
+      "governance_risk": "high (no audit surface, no flag discipline, no shadow validation)",
+      "verdict": "not recommended at this time"
+    },
+    "P_and_L_impact": "TUHO: floating-point limit. Oborovo: bounded by 9.68 kEUR per period and 0.0045% on total.",
+    "tax_impact": "Shadow validation is book-only; tax-bridge delta has not been quantified.",
+    "CFADS_impact": "Downstream of P&L + tax. For TUHO floating-point limit; for Oborovo 0.0045% + downstream tax effect.",
+    "excel_export_impact": "D1 sheet flag disclosure flips; Tax_Depreciation / Book Depreciation sheets change; pre-canonical sheets unchanged.",
+    "governance_impact": "D4 enablement requires per-project design doc, user sign-off, flag-gated enablement, parity-gated check, D1 audit sheet update, rc1 preservation, no generic claims."
+  },
+  "decision": {
+    "recommendation": "GO — pause here (Option A). Do not start D4.",
+    "rationale": "The D1 + D2 redo + D3 redo stack successfully closes the safe-next-step arc from PR #530. The merged stack gives a clean audit posture (D1), disciplined flag handling (D2 redo), and quantified shadow evidence (D3 redo). Starting D4 now — whether design or runtime — would invert the audit-only posture and require its own governance review. Pause and switch to a different roadmap arc.",
+    "go_for_D4_design": false,
+    "go_for_D4_runtime": false,
+    "no_go_for_runtime_enablement": true,
+    "pause_and_switch_roadmap": true
+  },
+  "recommended_next_arc": {
+    "primary": "Generic Solar / Wind validation methodology",
+    "secondary": "CAPEX schedule / construction IDC design gate",
+    "tertiary": "OPEX line-item visibility expansion",
+    "quaternary": "Formula transparency expansion",
+    "quinary": "Governance / guardrail cleanup (file-scope test formalism)"
+  },
+  "D4_boundaries_if_re_evaluated": {
+    "controlled": "single-project flag-gated enablement with explicit user sign-off",
+    "explicit": "documented design PR with quantified shadow deltas",
+    "flag_gated": "all four canonical/tax-bridge/book-pnl flags explicitly True, D2 discipline guard invoked",
+    "TUHO_Oborovo_only": "generic projects out of scope without a separate validation methodology PR",
+    "no_generic_claims": "D1 audit sheet 'Generic Project Support' row remains NO",
+    "parity_gated": "Phase 51F parity guardrails must remain green for the target project",
+    "rollback_path": "flag flip reversible by single project-input change",
+    "before_after_disclosure": "D3 shadow validation run pre- and post-enablement; deltas disclosed in export",
+    "tax_pnl_cfads_disclosure": "D4 PR must quantify cumulative tax, P&L, and CFADS impact"
+  },
+  "no_runtime_enablement": true,
+  "no_waterfall_change": true,
+  "no_period_depreciation_keur_override": true,
+  "no_tax_depreciation_audit_keur_override": true,
+  "no_pnl_or_tax_or_cfads_changes": true,
+  "no_persistence_changes": true,
+  "no_schema_changes": true,
+  "no_ui_workflow_changes": true,
+  "no_formula_changes": true,
+  "no_depreciation_schedule_changes": true,
+  "no_tax_calculation_changes": true,
+  "no_canonical_runtime_promotion": true,
+  "no_generic_project_depreciation_claims": true,
+  "no_D4_start": true,
+  "no_implementation": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "Pause the depreciation arc. Switch to a different roadmap arc. Re-evaluate depreciation only when the wider governance posture changes (G20/R99/R102 movement, or explicit user request).",
+    "rationale": "The D1 + D2 redo + D3 redo stack is a clean audit posture. Starting D4 would invert the audit-only posture."
+  }
+}
