@@ -1,0 +1,131 @@
+{
+  "phase": "57A-10H",
+  "title": "CAPEX UX Polish / Visual Review Cleanup",
+  "type": "low_risk_ui_polish_capex_ui_only",
+  "status": "DRAFT",
+  "base_sha": "65fb12de105091aea5768569aca4bb87263c111c",
+  "branch": "phase57a10h-capex-ux-polish-visual-review-cleanup",
+  "files_changed": [
+    {
+      "path": "app/templates/partials/sheet_capex.html",
+      "type": "M",
+      "rationale": "Replace the separate 'Column groups guide' panel with a unified 'CAPEX column key' panel (status + groups, 2 sections). Tighten the deferred-note disclaimer to a single sentence. Compact the status legend to a horizontal pill list. Add narrowly scoped inline CSS for the new panel and softened colours."
+    },
+    {
+      "path": "app/templates/partials/sheet_capex_detail.html",
+      "type": "M",
+      "rationale": "Soften the column group header palette (lighter backgrounds). Improve spacing/typography (slightly smaller font, tighter line-height, 1px border instead of 2px). No structural HTML change."
+    },
+    {
+      "path": "tests/test_phase57a10h_capex_ux_polish_visual_review_cleanup.py",
+      "type": "A",
+      "rationale": "Render / context / safety tests: status legend visible, metadata-only disclaimer visible, column groups visible, unified column key panel present, no duplicate disclaimer, no template syntax error, no domain/persistence/main_web/main_api/static/tax/depreciation/debt changes, rc1 reachable, no CAPEX total change, 57A-10F/57A-10G tests still pass."
+    },
+    {
+      "path": "docs/phase57a10h_capex_ux_polish_visual_review_cleanup.md",
+      "type": "A",
+      "rationale": "Design document with before/after UX summary."
+    },
+    {
+      "path": "reports/phase57a10h_capex_ux_polish_visual_review_cleanup.json",
+      "type": "A",
+      "rationale": "Machine-readable report."
+    }
+  ],
+  "before_after_summary": {
+    "before": {
+      "explanatory_blocks": 5,
+      "redundant_copy": true,
+      "strong_colours": true,
+      "visual_hierarchy": "unclear",
+      "meta_group_colour_conflict": true,
+      "disclaimer_sentence_count": 2
+    },
+    "after": {
+      "explanatory_blocks": 4,
+      "redundant_copy": false,
+      "strong_colours": false,
+      "visual_hierarchy": "clear (2-section column key panel + compact legend)",
+      "meta_group_colour_conflict": false,
+      "disclaimer_sentence_count": 1
+    }
+  },
+  "ui_changes": {
+    "new_unified_panel": {
+      "selector": ".capex-column-key",
+      "data_attribute": "data-capex-column-key=\"true\"",
+      "sections": ["status", "groups"],
+      "total_entries": 8,
+      "carries_legacy_data_attribute": "data-capex-column-groups=\"true\" (for backward compat with 57A-10G tests)"
+    },
+    "softened_palette": {
+      "detail_group_headers": {
+        "core": "#e6eff7 (was #eef4fb)",
+        "costing": "#ece4f4 (was #f3eefb)",
+        "tax": "#f5e7da (was #fbf3ee)",
+        "meta": "#e4ede6 (was #eefbf0)",
+        "schedule": "#f4eed4 (was #fbfbee)"
+      },
+      "key_panel_dots": {
+        "core": "#6f9fc8",
+        "costing": "#a18ec8",
+        "tax": "#c89a78",
+        "schedule": "#c8b86f"
+      }
+    },
+    "disclaimer_shortened": "Single sentence: 'The placeholders below are visible for design / planning but they do not affect the current model calculations.' (was 2 sentences, one inside the badge and one in the body.)",
+    "legend_compact": "Status legend is now a horizontal pill list with 4 chips in a row, smaller font (0.75rem)."
+  },
+  "no_new_concepts": true,
+  "no_new_columns": true,
+  "no_new_metadata_fields": true,
+  "no_status_taxonomy_changes": true,
+  "no_runtime_changes": true,
+  "no_model_changes": true,
+  "no_formula_changes": true,
+  "no_tax_changes": true,
+  "no_depreciation_changes": true,
+  "no_idc_changes": true,
+  "no_debt_changes": true,
+  "no_persistence_schema_changes": true,
+  "no_main_web_changes": true,
+  "no_main_api_changes": true,
+  "no_static_changes": true,
+  "no_excel_export_changes": true,
+  "no_generic_project_promotion": true,
+  "no_tailwind_alpine": true,
+  "test_count_estimate": 22,
+  "test_categories": [
+    "file existence (3 tests)",
+    "status legend visible (1 test)",
+    "metadata-only disclaimer visible (1 test)",
+    "metadata-only disclaimer shortened to single sentence (1 test)",
+    "column groups guide still present (data-capex-column-groups) (1 test)",
+    "unified column key panel present (data-capex-column-key) (1 test)",
+    "column key has 2 sections: status + groups (2 tests)",
+    "column key section entries: 4 status + 4 groups (2 tests)",
+    "detail grid: status chips still visible (3 tests: Cont, VAT, WHT)",
+    "detail grid: column group header row still visible (1 test)",
+    "softened palette: lighter background hex codes (1 test)",
+    "softened palette: meta group no longer pure green (1 test)",
+    "no template syntax error (2 tests)",
+    "no CAPEX total change: _CAPEX_ITEM_FIELDS tuple unchanged (1 test)",
+    "no domain/persistence/main_web/main_api/static changes (5 forbidden-path tests)",
+    "no tax/depreciation/IDC/debt changes (4 tests)",
+    "no app/excel_export.py changes (1 test)",
+    "rc1 frozen (1 test)",
+    "documented scope (3 tests)"
+  ],
+  "TUHO_unchanged": true,
+  "Oborovo_unchanged": true,
+  "Generic_Solar_unchanged": true,
+  "Generic_Wind_unchanged": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "Phase 57A-10H is a single low-risk UI polish PR. No further phases implied. A potential 57A-10I could revisit other sheets (OPEX, debt detail) for similar UX polish, but is out of scope.",
+    "rationale": "57A-10H is a single low-risk PR. No further phases are implied."
+  }
+}

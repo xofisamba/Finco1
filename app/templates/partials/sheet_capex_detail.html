@@ -822,33 +822,34 @@
   }
   .inp-readonly-notice__hint { margin-top: 0.5rem; font-size: 0.8rem; color: #666; }
 
-  /* ── Phase 57A-10G: Column group header strip ─────────────────────────── */
+  /* ── Phase 57A-10H: Column group header strip (softened colours) ────── */
   .fc-grid-header--groups .fc-capex-group-header {
     text-align: center;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    padding: 0.4rem 0.5rem;
-    border-bottom: 2px solid var(--border);
+    padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid var(--border);
     border-top: 1px solid var(--border);
     background: var(--surface-2);
     color: var(--muted);
   }
+  /* Softened palette: lighter backgrounds, darker text for legibility */
   .fc-capex-group-header[data-capex-group="core"] {
-    background: #eef4fb; color: #1f4d7a;
+    background: #e6eff7; color: #1f4d7a;
   }
   .fc-capex-group-header[data-capex-group="costing"] {
-    background: #f3eefb; color: #5a3a8a;
+    background: #ece4f4; color: #5a3a8a;
   }
   .fc-capex-group-header[data-capex-group="tax"] {
-    background: #fbf3ee; color: #8a4a1f;
+    background: #f5e7da; color: #8a4a1f;
   }
   .fc-capex-group-header[data-capex-group="meta"] {
-    background: #eefbf0; color: #2a6a3a;
+    background: #e4ede6; color: #2a6a3a;
   }
   .fc-capex-group-header[data-capex-group="schedule"] {
-    background: #fbfbee; color: #7a6a1f;
+    background: #f4eed4; color: #7a6a1f;
   }
 </style>
 
