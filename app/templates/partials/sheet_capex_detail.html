@@ -152,6 +152,28 @@
 
       {# ── Sticky Header ────────────────────────────────────────────────────── #}
       <thead>
+        {# Row 0: Phase 57A-10G column group headers (visual / semantic only) #}
+        <tr class="fc-grid-header fc-grid-header--groups"
+            data-capex-column-groups="true">
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="core" colspan="5"
+              scope="colgroup">Core</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="costing" colspan="2"
+              scope="colgroup">Costing</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="tax" colspan="2"
+              scope="colgroup">Tax</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="meta" colspan="1"
+              scope="colgroup">Status</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="schedule" colspan="18"
+              scope="colgroup">Schedule</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="meta" colspan="1"
+              scope="colgroup">Notes</th>
+        </tr>
         {# Row 1: top-level column headers #}
         <tr class="fc-grid-header">
           <th class="fc-th fc-grid-col-label fc-th--sticky" data-col="1" rowspan="2">Line Item</th>
@@ -799,6 +821,35 @@
     border-top: 1px solid #eee;
   }
   .inp-readonly-notice__hint { margin-top: 0.5rem; font-size: 0.8rem; color: #666; }
+
+  /* ── Phase 57A-10G: Column group header strip ─────────────────────────── */
+  .fc-grid-header--groups .fc-capex-group-header {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 2px solid var(--border);
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .fc-capex-group-header[data-capex-group="core"] {
+    background: #eef4fb; color: #1f4d7a;
+  }
+  .fc-capex-group-header[data-capex-group="costing"] {
+    background: #f3eefb; color: #5a3a8a;
+  }
+  .fc-capex-group-header[data-capex-group="tax"] {
+    background: #fbf3ee; color: #8a4a1f;
+  }
+  .fc-capex-group-header[data-capex-group="meta"] {
+    background: #eefbf0; color: #2a6a3a;
+  }
+  .fc-capex-group-header[data-capex-group="schedule"] {
+    background: #fbfbee; color: #7a6a1f;
+  }
 </style>
 
 <script>

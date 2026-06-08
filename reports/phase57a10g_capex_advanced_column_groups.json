@@ -1,0 +1,127 @@
+{
+  "phase": "57A-10G",
+  "title": "CAPEX Advanced Column Groups",
+  "type": "low_risk_ui_implementation_capex_ui_only",
+  "status": "DRAFT",
+  "base_sha": "8a0eb1495f8244c046fdbbe6fe897db40a007b0a",
+  "branch": "phase57a10g-capex-advanced-column-groups",
+  "files_changed": [
+    {
+      "path": "app/templates/partials/sheet_capex.html",
+      "type": "M",
+      "rationale": "Add column-groups semantic guide panel (Core / Costing / Tax / Schedule) above workbook grid. Inline <style> block with narrowly scoped CSS for group colour hints. No template variable changes."
+    },
+    {
+      "path": "app/templates/partials/sheet_capex_detail.html",
+      "type": "M",
+      "rationale": "Add new <tr class='fc-grid-header--groups'> row at top of <thead> with 6 column group headers (Core colspan=5, Costing colspan=2, Tax colspan=2, Status colspan=1, Schedule colspan=18, Notes colspan=1). Inline CSS in existing <style> block with 5 colour-coded backgrounds. No template variable changes."
+    },
+    {
+      "path": "tests/test_phase57a10g_capex_advanced_column_groups.py",
+      "type": "A",
+      "rationale": "Render / context / safety tests: group header cells present, colspans sum to 29, 5 distinct group names, data-capex-column-groups panel present, 4 group entries in panel, status chips still visible, disclaimer still visible, no template syntax error, no domain/persistence/main_web/main_api/static/tax/depreciation/debt changes, rc1 reachable, no CAPEX total change."
+    },
+    {
+      "path": "docs/phase57a10g_capex_advanced_column_groups.md",
+      "type": "A",
+      "rationale": "Design document."
+    },
+    {
+      "path": "reports/phase57a10g_capex_advanced_column_groups.json",
+      "type": "A",
+      "rationale": "Machine-readable report."
+    }
+  ],
+  "column_groups": {
+    "core": {
+      "data_cols": "1-5",
+      "colspan": 5,
+      "columns": ["Line Item", "Code", "Excel kEUR", "App kEUR", "Delta kEUR"],
+      "status": "Runtime-used"
+    },
+    "costing": {
+      "data_cols": "6, 9",
+      "colspan": 2,
+      "columns": ["Cont. %", "Per MW"],
+      "status": "Metadata-only"
+    },
+    "tax": {
+      "data_cols": "7-8",
+      "colspan": 2,
+      "columns": ["VAT %", "WHT %"],
+      "status": "Metadata-only"
+    },
+    "meta_status": {
+      "data_cols": "10",
+      "colspan": 1,
+      "columns": ["Status"],
+      "status": "non-financial-control"
+    },
+    "schedule": {
+      "data_cols": "11-28",
+      "colspan": 18,
+      "columns": ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14", "M15", "M16", "M17", "M18"],
+      "status": "Runtime-used"
+    },
+    "meta_notes": {
+      "data_cols": "29",
+      "colspan": 1,
+      "columns": ["Notes"],
+      "status": "non-financial-control"
+    }
+  },
+  "colspan_total": 29,
+  "visible_ui_changes": [
+    "sheet_capex_detail.html: new top-of-thead row with 6 colour-coded column group headers (Core, Costing, Tax, Status, Schedule, Notes)",
+    "sheet_capex_detail.html: status chips on Cont. %, VAT %, WHT % column headers remain visible (Phase 57A-10F preserved)",
+    "sheet_capex.html: new column-groups semantic guide panel above workbook grid (4 <li> entries: Core, Costing, Tax, Schedule)"
+  ],
+  "no_runtime_changes": true,
+  "no_model_changes": true,
+  "no_formula_changes": true,
+  "no_tax_changes": true,
+  "no_depreciation_changes": true,
+  "no_idc_changes": true,
+  "no_debt_changes": true,
+  "no_persistence_schema_changes": true,
+  "no_main_web_changes": true,
+  "no_main_api_changes": true,
+  "no_static_changes": true,
+  "no_excel_export_changes": true,
+  "no_generic_project_promotion": true,
+  "no_tailwind_alpine": true,
+  "test_count_estimate": 24,
+  "test_categories": [
+    "file existence (3 tests)",
+    "detail grid: 6 group header cells present (1 test)",
+    "detail grid: colspans sum to 29 (1 test)",
+    "detail grid: 5 distinct group names (1 test)",
+    "detail grid: data-capex-group attribute on each header (1 test)",
+    "detail grid: scope='colgroup' on each header (1 test)",
+    "detail grid: row position (top of thead) (1 test)",
+    "detail grid: existing status chips still visible (3 tests: Cont, VAT, WHT)",
+    "detail grid: existing disclaimer still visible (1 test)",
+    "single sheet: data-capex-column-groups panel present (1 test)",
+    "single sheet: 4 group <li> entries (1 test)",
+    "single sheet: status chip on each group entry (1 test)",
+    "template syntax: no UndefinedError / NameError (1 test)",
+    "no CAPEX total change: _CAPEX_ITEM_FIELDS tuple unchanged (1 test)",
+    "no domain/persistence/main_web/main_api/static changes (5 forbidden-path tests)",
+    "no tax/depreciation/IDC/debt changes (4 tests)",
+    "rc1 frozen (1 test)",
+    "TUHO parity unchanged (1 sentinel test)",
+    "Oborovo parity unchanged (1 sentinel test)"
+  ],
+  "TUHO_unchanged": true,
+  "Oborovo_unchanged": true,
+  "Generic_Solar_unchanged": true,
+  "Generic_Wind_unchanged": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "Phase 57A-10G is a single low-risk UI PR. No further phases implied. A potential 57A-10H would be a future read-only rendering of metadata-only fields in per-line rows, but is out of scope for this PR.",
+    "rationale": "57A-10G is a single low-risk PR. No further phases are implied."
+  }
+}
