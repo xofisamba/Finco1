@@ -1,0 +1,201 @@
+{
+  "phase": "F1",
+  "title": "Generic Solar / Wind Validation Methodology (Framework + Migration Sketch)",
+  "type": "docs_design_only",
+  "status": "DRAFT",
+  "base_sha": "647818f66de00a35605f0609e1450883f29ae5f2",
+  "branch": "phase-f1-generic-validation-methodology",
+  "files_changed": [
+    {
+      "path": "docs/phase_f1_generic_validation_methodology.md",
+      "type": "A",
+      "lines_added": 470,
+      "lines_removed": 0,
+      "rationale": "17-section framework document: terminology inheritance from existing codebase; 'Validated' definition with 6 objective criteria; 4-level maturity ladder (Concept / Exploratory / Reference / Validated); validation pack contents; reference projects today; migration sketch for Generic Wind; migration sketch for Generic Solar; UI / export / audit labeling; forbidden claims; governance gates; relationship to existing roadmap; recommended sequence (F1-F5+); hard no-go; forbidden paths; stop-after-report contract; appendix."
+    },
+    {
+      "path": "reports/phase_f1_generic_validation_methodology.json",
+      "type": "A",
+      "lines_added": 110,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "terminology_inheritance": {
+    "Validated": "inherited from docs/external_review/model_scope_and_limitations.md (Level 3)",
+    "Reference": "inherited from D1 audit sheet 'Reference-status only' (Level 2)",
+    "Exploratory_Unvalidated": "inherited from D1 audit sheet 'EXPLORATORY / UNVALIDATED' (Level 1)",
+    "Concept": "new in F1 (Level 0)",
+    "Production_Ready": "explicitly NOT used in F1 — would overclaim commercial / bankability status",
+    "Bankable_Lender_grade": "inherited from docs/external_review/no_go_claims.md as forbidden at all levels"
+  },
+  "maturity_ladder": [
+    {"level": 0, "name": "Concept", "definition": "A project idea exists; no input pack, no Excel reference, no test pack."},
+    {"level": 1, "name": "Exploratory / Unvalidated", "definition": "An input pack exists; the model can run the project; no parity, no test pack, no known-limitation doc."},
+    {"level": 2, "name": "Reference", "definition": "Excel parity achieved and pinned; audit exports available; known limitations documented; test pack exists and passes; rc1-level freeze applies."},
+    {"level": 3, "name": "Validated", "definition": "All six 'Validated' criteria met, including external reviewer sign-off and a golden dataset."}
+  ],
+  "validated_criteria": [
+    "Excel parity achieved (Phase 51F parity guardrails green)",
+    "Test coverage threshold (per-feature test pack exists; passes in isolation and full stack)",
+    "Audit exports available (D1 Depreciation Audit sheet, full parity-validated export)",
+    "Known limitations documented (KNOWN_LIMITATIONS.md committed)",
+    "Reviewer sign-off completed (external reviewer, closure-review format)",
+    "Golden dataset exists (frozen input + frozen expected output, both committed and versioned)"
+  ],
+  "validation_pack_structure": {
+    "Level_2": [
+      "README.md",
+      "KNOWN_LIMITATIONS.md",
+      "excel_reference/README.md",
+      "excel_reference/<workbook>.xlsx",
+      "parity/README.md",
+      "parity/extraction.csv",
+      "parity/results.json",
+      "test_pack/README.md",
+      "test_pack/test_<project>_<feature>.py"
+    ],
+    "Level_3_additional": [
+      "golden_dataset/inputs.json",
+      "golden_dataset/expected_outputs.json",
+      "golden_dataset/README.md",
+      "reviewer_signoff/README.md",
+      "reviewer_signoff/<reviewer>_<date>.md"
+    ]
+  },
+  "reference_projects_today": [
+    {"project": "TUHO Wind 1", "level": 2, "reference_workbook": "tuho_excel_1.xlsm", "parity_status": "within tolerance", "test_pack": "exists", "sign_off": "pending"},
+    {"project": "Oborovo Solar PV", "level": 2, "reference_workbook": "excel_oborovo.xlsx", "parity_status": "within tolerance", "test_pack": "exists", "sign_off": "pending"}
+  ],
+  "generic_projects_today": [
+    {"project": "Generic Wind", "level": 1, "excel_reference": null, "parity_status": "no parity evidence", "test_pack": "smoke-only or none", "F1_status": "unchanged, remains at Level 1"},
+    {"project": "Generic Solar", "level": 1, "excel_reference": null, "parity_status": "no parity evidence", "test_pack": "smoke-only or none", "F1_status": "unchanged, remains at Level 1"}
+  ],
+  "migration_sketch_generic_wind": {
+    "current_level": 1,
+    "target_level": 2,
+    "execution_phase": "F2 (not in F1)",
+    "requirements_for_level_2": [
+      "Excel reference workbook (acquire / build / synthesize)",
+      "Parity comparison (Phase 51F parity workflow gate)",
+      "Known-limitations doc",
+      "Dedicated test pack",
+      "D1 audit sheet update to REFERENCE (part of F2 PR)"
+    ],
+    "requirements_for_level_3": [
+      "Golden dataset (frozen input + frozen expected output)",
+      "External reviewer sign-off (closure-review format)",
+      "model_scope_and_limitations doc column update"
+    ]
+  },
+  "migration_sketch_generic_solar": {
+    "current_level": 1,
+    "target_level": 2,
+    "execution_phase": "F3 (not in F1)",
+    "requirements_for_level_2": [
+      "Solar Excel reference workbook",
+      "Parity comparison (Phase 51F parity workflow gate)",
+      "Solar-specific known-limitations doc (DC/AC ratio, tracker, albedo, tax)",
+      "Solar-specific dedicated test pack",
+      "D1 audit sheet update to REFERENCE (part of F3 PR)"
+    ],
+    "requirements_for_level_3": [
+      "Golden dataset",
+      "External reviewer sign-off",
+      "model_scope_and_limitations doc column update"
+    ]
+  },
+  "ui_labeling": {
+    "project_selector": {
+      "TUHO Wind 1": "REFERENCE",
+      "Oborovo Solar PV": "REFERENCE",
+      "Generic Wind": "EXPLORATORY / UNVALIDATED",
+      "Generic Solar": "EXPLORATORY / UNVALIDATED"
+    },
+    "run_banner": "shows project level (REFERENCE or EXPLORATORY / UNVALIDATED); does NOT show VALIDATED for any project today",
+    "exports": "Depreciation Audit sheet shows project level as REFERENCE or EXPLORATORY / UNVALIDATED",
+    "audit_sheets": "existing D1 sheet wording preserved; future rename to Generic_Project_Validation_Status is out of scope for F1",
+    "runtime_summary": "preserved wording 'Governance / Feature Guards'"
+  },
+  "forbidden_claims_at_all_levels": [
+    "BANKABLE",
+    "BANK-GRADE",
+    "LENDER-APPROVED",
+    "LENDER-GRADE",
+    "AUDITED",
+    "CERTIFIED",
+    "ACCREDITED",
+    "PRODUCTION-READY (for commercial / customer use)",
+    "REGULATORY-COMPLIANT",
+    "INVESTMENT-GRADE",
+    "IFRS-COMPLIANT",
+    "US-GAAP-COMPLIANT (as a representation of compliance)"
+  ],
+  "forbidden_claims_at_level_0_and_level_1": [
+    "VALIDATED (the level name itself)",
+    "REFERENCE (the level name itself)",
+    "PARITY ACHIEVED",
+    "PARITY-LOCKED",
+    "TRUSTED OUTPUT"
+  ],
+  "governance_gates": {
+    "promotion_to_level_2": [
+      "Validation pack complete for Level 2",
+      "All dedicated tests pass in isolation and in full 57-arc stack",
+      "Phase 51F parity guardrails green",
+      "D1 audit sheet row updated to REFERENCE",
+      "User sign-off (human driving project) approves promotion"
+    ],
+    "promotion_to_level_3": [
+      "All Level 2 criteria met",
+      "Golden dataset exists and is referenced by test pack",
+      "External reviewer sign-off exists",
+      "model_scope_and_limitations doc column updated",
+      "User sign-off (human driving project) approves promotion"
+    ],
+    "demotion_triggers": [
+      "Parity regression in Phase 51F parity guardrails",
+      "Dedicated test failure that cannot be fixed within one sprint",
+      "KNOWN_LIMITATIONS.md not updated for more than 90 days while project in active use",
+      "External reviewer revokes sign-off (Level 3 only)"
+    ],
+    "demotion_process": "separate PR that updates audit-sheet row back to EXPLORATORY / UNVALIDATED; must include written rationale"
+  },
+  "relationship_to_existing_roadmap": {
+    "CAPEX_2_0_sub_lines": "runtime-orthogonal to F1; F2/F3 should include CAPEX sub-line coverage in dedicated test pack",
+    "depreciation_enablement": "runtime-orthogonal to F1; F2/F3 must keep Generic_Project_Support: NO or extend deprecation arc in future governance review",
+    "IDC_schedule_work": "F1 is independent; F2/F3 should re-evaluate after IDC design gate is settled",
+    "OPEX_runtime": "F1 is independent; F2/F3 should re-evaluate after OPEX runtime is settled",
+    "formula_transparency": "F1 is independent; will likely help F2/F3 (KNOWN_LIMITATIONS.md)"
+  },
+  "recommended_sequence": [
+    {"phase": "F1", "scope": "framework + migration sketch (this PR)", "status": "draft, do not merge"},
+    {"phase": "F2", "scope": "Generic Wind → Reference (multi-PR)", "status": "not started"},
+    {"phase": "F3", "scope": "Generic Solar → Reference (multi-PR, can run parallel to F2)", "status": "not started"},
+    {"phase": "F4", "scope": "TUHO / Oborovo → Validated (external sign-off)", "status": "not started"},
+    {"phase": "F5+", "scope": "use F1 framework end-to-end", "status": "not started"}
+  ],
+  "no_code_changes": true,
+  "no_runtime_changes": true,
+  "no_ui_implementation": true,
+  "no_schema_changes": true,
+  "no_persistence_changes": true,
+  "no_formula_changes": true,
+  "no_parity_changes": true,
+  "no_feature_flags": true,
+  "no_generic_project_promotion": true,
+  "no_bankable_claims": true,
+  "no_modification_of_existing_validation_status": true,
+  "generic_wind_unchanged": true,
+  "generic_solar_unchanged": true,
+  "TUHO_unchanged": true,
+  "Oborovo_unchanged": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "F2 (Generic Wind → Reference) and F3 (Generic Solar → Reference), each in its own follow-up prompt",
+    "rationale": "F1 is framework definition only. F2 / F3 are detailed execution. F1 explicitly does NOT start F2 or F3."
+  }
+}
