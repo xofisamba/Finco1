@@ -1019,7 +1019,17 @@ def _capex_sub_line_export_bundle(provenance_metadata: dict | None) -> tuple[pd.
                     else "No stale override IDs detected."
                 ),
             ),
-            ("Metadata Scope", "Metadata only - does not affect Run."),
+            ("Metadata Scope", (
+                "Metadata only - does not affect Run. "
+                "CAPEX runtime-used fields: amount, y0_share, spending_profile, "
+                "asset_class, idc, bank_fees, commitment_fees, other_financial, "
+                "vat_costs, reserve_accounts. "
+                "CAPEX metadata-only fields: useful_life_override, VAT %, WHT %, "
+                "contingency %. "
+                "CAPEX design-only fields: payment schedule, depreciation "
+                "category / useful life / flag, VAT applicability, WHT rate, "
+                "utilisation of funds."
+            )),
         ],
         columns=["Audit Field", "Value"],
     )
