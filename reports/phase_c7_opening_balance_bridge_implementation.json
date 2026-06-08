@@ -1,0 +1,267 @@
+{
+  "phase": "C7",
+  "title": "Layer 4 Opening Balance Bridge Offline Implementation",
+  "scope_label": "OFFLINE DOMAIN IMPLEMENTATION. NO RUNTIME WIRING. NO WATERFALL CHANGES.",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "base_sha": "2d8a91c",
+  "branch": "phase-c7-opening-balance-bridge-offline-implementation",
+  "c_series_chain": {
+    "C1": {
+      "pr": 543,
+      "sha": "5fccc3a",
+      "status": "merged"
+    },
+    "C2": {
+      "pr": 544,
+      "sha": "59f9e3d",
+      "status": "merged"
+    },
+    "C3": {
+      "pr": 545,
+      "sha": "aa800a5",
+      "status": "merged"
+    },
+    "C4": {
+      "pr": 546,
+      "sha": "dcc30b6",
+      "status": "merged"
+    },
+    "C5": {
+      "pr": 547,
+      "sha": "2d8a91c",
+      "status": "merged"
+    },
+    "C6": {
+      "sha": "DRAFT",
+      "status": "draft",
+      "branch": "phase-c6-opening-balance-bridge-implementation-plan"
+    },
+    "C7": {
+      "sha": "DRAFT",
+      "status": "draft",
+      "branch": "phase-c7-opening-balance-bridge-offline-implementation"
+    }
+  },
+  "bridge_metadata": {
+    "policy_version": "C2-1.0",
+    "bridge_version": "C7-1.0",
+    "module_path": "domain/construction/opening_bridge.py",
+    "module_lines": 567,
+    "policy_table_entries": 11,
+    "dataclasses_count": 8,
+    "exceptions_count": 1,
+    "public_functions_count": 1
+  },
+  "policy_table": [
+    {
+      "field_code": "shl_idc_keur",
+      "current_source_label": "manual_shl_idc",
+      "construction_source_field": "total_shl_idc_keur",
+      "policy": "replaced",
+      "c1_blocker_reference": "blocker_1_R-PAR-1"
+    },
+    {
+      "field_code": "shl_amount_keur",
+      "current_source_label": "manual_shl_amount",
+      "construction_source_field": "total_shl_draw_keur",
+      "policy": "replaced",
+      "c1_blocker_reference": ""
+    },
+    {
+      "field_code": "shl_opening_balance_keur",
+      "current_source_label": "manual_shl_opening_balance",
+      "construction_source_field": "opening_shl_balance_keur",
+      "policy": "replaced",
+      "c1_blocker_reference": ""
+    },
+    {
+      "field_code": "senior_opening_balance_keur",
+      "current_source_label": "manual_senior_opening_balance",
+      "construction_source_field": "opening_senior_balance_keur",
+      "policy": "frozen",
+      "c1_blocker_reference": "blocker_5_R-PAR-2"
+    },
+    {
+      "field_code": "senior_idc_keur",
+      "current_source_label": "manual_senior_idc",
+      "construction_source_field": "total_senior_idc_keur",
+      "policy": "replaced",
+      "c1_blocker_reference": "blocker_5_R-PAR-2"
+    },
+    {
+      "field_code": "capex_keur",
+      "current_source_label": "manual_capex",
+      "construction_source_field": "total_uses_keur",
+      "policy": "frozen",
+      "c1_blocker_reference": ""
+    },
+    {
+      "field_code": "reserves_keur",
+      "current_source_label": "manual_reserves",
+      "construction_source_field": "",
+      "policy": "retained",
+      "c1_blocker_reference": ""
+    },
+    {
+      "field_code": "vat_operating",
+      "current_source_label": "manual_vat",
+      "construction_source_field": "",
+      "policy": "retained",
+      "c1_blocker_reference": ""
+    },
+    {
+      "field_code": "financing_fees_keur",
+      "current_source_label": "manual_financing_fees",
+      "construction_source_field": "",
+      "policy": "retained",
+      "c1_blocker_reference": ""
+    },
+    {
+      "field_code": "commitment_fee_keur",
+      "current_source_label": "manual_commitment_fee",
+      "construction_source_field": "",
+      "policy": "retained",
+      "c1_blocker_reference": ""
+    },
+    {
+      "field_code": "equity_total_keur",
+      "current_source_label": "manual_equity_total",
+      "construction_source_field": "total_equity_draw_keur",
+      "policy": "derived",
+      "c1_blocker_reference": "blocker_5_R-PAR-5"
+    }
+  ],
+  "tuho_bridge_output": {
+    "opening_senior_balance_at_cod_keur": 43359.274,
+    "opening_shl_balance_at_cod_keur": 32703.864,
+    "equity_contribution_at_cod_keur": 500.0,
+    "capitalized_senior_idc_keur": 1519.564,
+    "capitalized_shl_idc_keur": 3568.688,
+    "financing_fee_treatment_keur": 0.0,
+    "audit_rows": 11,
+    "policy_breakdown": {
+      "replaced": 4,
+      "frozen": 2,
+      "retained": 4,
+      "derived": 1
+    },
+    "parity_breakdown": {
+      "parity_ok": 6,
+      "parity_drift": 1,
+      "parity_unknown": 0,
+      "parity_not_applicable": 4
+    }
+  },
+  "oborovo_bridge_output": {
+    "opening_senior_balance_at_cod_keur": 42852.267,
+    "opening_shl_balance_at_cod_keur": 15790.436,
+    "equity_contribution_at_cod_keur": 500.0,
+    "capitalized_senior_idc_keur": 1086.032,
+    "capitalized_shl_idc_keur": 1169.662,
+    "financing_fee_treatment_keur": 0.0,
+    "audit_rows": 11,
+    "policy_breakdown": {
+      "replaced": 4,
+      "frozen": 2,
+      "retained": 4,
+      "derived": 1
+    },
+    "parity_breakdown": {
+      "parity_ok": 6,
+      "parity_drift": 1,
+      "parity_unknown": 0,
+      "parity_not_applicable": 4
+    }
+  },
+  "senior_idc_asymmetry": {
+    "tuho": {
+      "senior_idc_policy": "replaced",
+      "senior_idc_parity_status": "parity_ok",
+      "senior_opening_balance_policy": "frozen",
+      "senior_opening_balance_parity_status": "parity_drift",
+      "drift_keur": -1519.564
+    },
+    "oborovo": {
+      "senior_idc_policy": "replaced",
+      "senior_idc_parity_status": "parity_ok",
+      "senior_opening_balance_policy": "frozen",
+      "senior_opening_balance_parity_status": "parity_drift",
+      "drift_keur": -1086.032
+    }
+  },
+  "forbidden_imports_verified": true,
+  "no_engine_call_verified": true,
+  "no_caller_mutation_verified": true,
+  "no_waterfall_imports_verified": true,
+  "no_runtime_wiring_verified": true,
+  "no_feature_flag_flip_verified": true,
+  "no_project_status_changes_verified": true,
+  "no_capex_debt_tax_depreciation_idc_changes_verified": true,
+  "test_counts": {
+    "c7_only": 118,
+    "c1_through_c7_combined": 966,
+    "test_files_added": 1,
+    "test_file": "tests/test_phase_c7_opening_balance_bridge.py",
+    "test_file_lines": 1300
+  },
+  "files_added": [
+    {
+      "path": "domain/construction/opening_bridge.py",
+      "lines": 567,
+      "kind": "domain_module"
+    },
+    {
+      "path": "tests/test_phase_c7_opening_balance_bridge.py",
+      "lines": 1300,
+      "kind": "test_file"
+    },
+    {
+      "path": "docs/phase_c7_opening_balance_bridge_implementation.md",
+      "lines": 580,
+      "kind": "implementation_doc"
+    },
+    {
+      "path": "reports/phase_c7_opening_balance_bridge_implementation.json",
+      "lines": 1,
+      "kind": "implementation_report"
+    }
+  ],
+  "files_modified": [],
+  "forbidden_paths_unchanged": [
+    "app/",
+    "main_web.py",
+    "main_api.py",
+    "static/",
+    "domain/inputs.py",
+    "domain/waterfall/",
+    "domain/construction/engine.py",
+    "domain/construction/config.py",
+    "domain/construction/templates/"
+  ],
+  "rc1_reachable": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "use_construction_schedule_engine_default_off": true,
+  "project_statuses_unchanged": {
+    "TUHO": "Level 2 (unchanged)",
+    "Oborovo": "Level 2 (unchanged)",
+    "Generic Wind": "Level 1 (unchanged)",
+    "Generic Solar": "Level 1 (unchanged)"
+  },
+  "recommendation": {
+    "choice": "B. More bridge validation needed",
+    "rationale": [
+      "C7 implements exactly what C6 designed. No deviation. No new design surface area.",
+      "The audit table and the double-counting guard are enforced.",
+      "The forbidden-imports / no-engine-call / no-mutation guards are all in place.",
+      "Layer 5 (runtime integration seam) is the next step (C8 design, C9 implementation).",
+      "The senior IDC effective-rate caveat (C1 R-PAR-2) is a separate workstream."
+    ],
+    "unblock_a_requires": [
+      "A second pair of eyes review of the bridge code (C2 \u00a76.7 item 8).",
+      "A formal decision on the senior IDC method (C1 R-PAR-2, separate workstream).",
+      "A Layer 5 (runtime integration seam) design document (C8 deliverable)."
+    ]
+  },
+  "stop_after_report": true
+}
