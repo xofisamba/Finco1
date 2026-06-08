@@ -1,0 +1,196 @@
+{
+  "phase": "C5",
+  "title": "Construction Engine Comparison Tests",
+  "scope_label": "Engine-comparison only — no Layer 4 bridge module, no Layer 5 runtime wiring.",
+  "type": "TEST / VALIDATION IMPLEMENTATION",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "branch": "phase-c5-construction-engine-comparison",
+  "base_sha": "dcc30b6",
+  "addresses_c1_blockers": [3, 4],
+  "deferred_c1_blockers": [5],
+  "addresses_c2_items": [
+    "tuho_construction_period_parity_snapshot_fully_implemented",
+    "oborovo_construction_period_parity_snapshot_fully_implemented",
+    "manual_vs_derived_reconciliation_fully_implemented",
+    "senior_idc_caveat_in_docstring_fully_implemented"
+  ],
+  "deferred_c2_items": [
+    "cod_opening_balance_reconciliation",
+    "idc_by_source_reconciliation",
+    "no_double_counting_test_plan",
+    "second_pair_of_eyes_review"
+  ],
+  "hard_constraints": {
+    "no_app_runtime_changes": true,
+    "no_domain_model_changes": true,
+    "no_waterfall_changes": true,
+    "no_capex_formula_changes": true,
+    "no_debt_changes": true,
+    "no_shl_runtime_changes": true,
+    "no_idc_runtime_implementation": true,
+    "no_tax_changes": true,
+    "no_depreciation_changes": true,
+    "no_schema_persistence_changes": true,
+    "no_feature_flags": true,
+    "no_project_status_changes": true,
+    "no_new_domain_modules": true,
+    "rc1_untouched": true,
+    "use_construction_schedule_engine_default_off": true,
+    "c4_snapshots_read_only": true
+  },
+  "scope": {
+    "implemented": [
+      "engine-comparison tests (TUHO + Oborovo)",
+      "manual-vs-derived reconciliation (C2 §6.3, 11 policy fields from C2 §2.1)",
+      "C2 §6.1 + §6.2 parity assertions (engine vs snapshot)",
+      "senior IDC effective-rate caveat assertion (C1 R-PAR-2)",
+      "engine failure mode tests (raises on bad config)",
+      "docstring cross-check test (policy table mirrors C2 §2.1)"
+    ],
+    "not_implemented": [
+      "bridge module (domain/construction/opening_bridge.py) — deferred to C6+",
+      "OpeningBalanceBridgeResult dataclass — deferred to C6+",
+      "audit table schema — deferred to C6+",
+      "C2 §6.4 COD opening balance reconciliation — deferred to C6+",
+      "C2 §6.5 IDC by source reconciliation — deferred to C6+",
+      "C2 §6.6 no double-counting test plan — deferred to C6+",
+      "Layer 5 runtime seam — deferred to C7+",
+      "opt-in flag flip — deferred to C7+",
+      "senior IDC base-rate modelling — separate workstream"
+    ]
+  },
+  "engine_invocation": {
+    "function": "domain.construction.engine.compute_construction_schedule",
+    "tuho_config": "domain.construction.templates.tuho.build_tuho_construction_config()",
+    "oborovo_config": "domain.construction.templates.oborovo.build_oborovo_construction_config()",
+    "result_dataclass": "domain.construction.result.ConstructionScheduleResult",
+    "fields_compared": [
+      "total_uses_keur",
+      "total_equity_draw_keur",
+      "total_shl_draw_keur",
+      "total_junior_draw_keur",
+      "total_senior_draw_keur",
+      "total_shl_idc_keur",
+      "total_senior_idc_keur",
+      "opening_senior_balance_keur",
+      "opening_shl_balance_keur",
+      "equity_contribution_at_cod_keur"
+    ]
+  },
+  "policy_table": {
+    "source": "C2 §2.1",
+    "field_count": 11,
+    "fields": [
+      {"field_code": "shl_idc_keur", "policy": "replaced", "c1_blocker": "blocker_1_R-PAR-1"},
+      {"field_code": "shl_amount_keur", "policy": "replaced", "c1_blocker": "blocker_1_R-PAR-1"},
+      {"field_code": "shl_opening_balance_keur", "policy": "replaced", "c1_blocker": "blocker_1_R-PAR-1"},
+      {"field_code": "senior_opening_balance_keur", "policy": "frozen", "c1_blocker": "blocker_5_R-PAR-2"},
+      {"field_code": "senior_idc_keur", "policy": "replaced", "c1_blocker": "blocker_5_R-PAR-2"},
+      {"field_code": "capex_keur", "policy": "frozen", "c1_blocker": "blocker_2_R-PAR-5"},
+      {"field_code": "reserves_keur", "policy": "retained", "c1_blocker": "n/a"},
+      {"field_code": "vat_operating", "policy": "retained", "c1_blocker": "n/a"},
+      {"field_code": "financing_fees_keur", "policy": "retained", "c1_blocker": "n/a"},
+      {"field_code": "commitment_fee_keur", "policy": "retained", "c1_blocker": "n/a"},
+      {"field_code": "equity_total_keur", "policy": "derived", "c1_blocker": "blocker_2_R-PAR-5"}
+    ],
+    "policy_counts": {
+      "replaced": 4,
+      "frozen": 2,
+      "retained": 4,
+      "derived": 1
+    }
+  },
+  "senior_idc_caveat": {
+    "blocker": "C1 R-PAR-2",
+    "tuho_effective_rate": 0.060454449320244484,
+    "tuho_senior_idc_keur": 1519.564,
+    "oborovo_effective_rate": 0.058947812283038616,
+    "oborovo_senior_idc_keur": 1086.032,
+    "policy": "calibrated to effective rate, not modelled from rate × elapsed period",
+    "fix_status": "separate workstream (C1 blocker 5)"
+  },
+  "test_categories": {
+    "file_existence": 4,
+    "engine_invocation": 2,
+    "field_count": 2,
+    "engine_field_parity": 20,
+    "engine_opening_identity": 4,
+    "engine_monthly_grid": 4,
+    "engine_caveats": 4,
+    "policy_table_mirror": 11,
+    "replaced_fields": 8,
+    "frozen_fields": 4,
+    "retained_fields": 4,
+    "derived_fields": 4,
+    "senior_idc_caveat": 4,
+    "cross_snapshot": 2,
+    "engine_failure_modes": 4,
+    "hard_constraints": 4,
+    "rc1_frozen": 1,
+    "c4_dependency": 1,
+    "project_statuses": 4,
+    "estimated_total_tests": 87
+  },
+  "failure_modes_covered": [
+    "engine_produces_wrong_value",
+    "engine_does_not_produce_value",
+    "policy_table_drifts_from_c2_section_2_1",
+    "engine_raises_on_bad_config"
+  ],
+  "c2_section_6_7_readiness_checklist": {
+    "tuho_snapshot_fully_implemented": true,
+    "oborovo_snapshot_fully_implemented": true,
+    "manual_vs_derived_reconciliation_fully_implemented": true,
+    "cod_opening_balance_reconciliation_implemented": false,
+    "idc_by_source_reconciliation_implemented": false,
+    "no_double_counting_test_plan_implemented": false,
+    "senior_idc_caveat_in_docstring_fully_implemented": true,
+    "second_pair_of_eyes_review_implemented": false,
+    "items_fully_implemented": 4,
+    "items_deferred_to_c6_plus": 3,
+    "items_always_deferred": 1,
+    "items_total": 8
+  },
+  "multi_phase_path": [
+    {"phase": "C1", "scope": "Design gate", "status": "merged", "sha": "5fccc3a"},
+    {"phase": "C2", "scope": "SHL IDC convention + Layer 4 bridge design", "status": "merged", "sha": "59f9e3d"},
+    {"phase": "C3", "scope": "Construction parity framework design", "status": "merged", "sha": "aa800a5"},
+    {"phase": "C4", "scope": "Snapshot scaffolding + structure tests", "status": "merged", "sha": "dcc30b6"},
+    {"phase": "C5", "scope": "Engine-comparison tests (no bridge)", "status": "DRAFT"},
+    {"phase": "C6", "scope": "Layer 4 bridge module + audit table", "status": "future"},
+    {"phase": "C7", "scope": "Layer 5 runtime seam (default-off)", "status": "future"},
+    {"phase": "C8", "scope": "Opt-in flag flip + TUHO promotion", "status": "future"},
+    {"phase": "C9", "scope": "Oborovo promotion", "status": "future"}
+  ],
+  "recommendation": {
+    "choice": "B. More validation needed",
+    "rationale_count": 6,
+    "rationale_points": [
+      "C5 implements engine-comparison tests, not the bridge module.",
+      "The bridge is not implemented (C6+ prerequisite for COD opening balance, IDC by source, no double-counting).",
+      "The senior IDC effective-rate caveat is preserved in test docstring and snapshot.",
+      "C5 is the right scope for current C-series state (engine-comparison phase, not bridge phase).",
+      "C1 blocker 5 (senior IDC base-rate) is not addressed in any new way.",
+      "C5 implements 4 of 8 C2 §6.7 readiness items at the engine-comparison level."
+    ],
+    "would_unblock_a": [
+      "C5 design note (this PR) implements engine-comparison tests.",
+      "C5 design note (this PR) verifies senior IDC caveat is in test docstring.",
+      "C5 design note (this PR) documents the policy table from C2 §2.1.",
+      "C6 design note that implements the bridge module (C2 §3.5).",
+      "C6 implementation that adds C2 §6.4 / §6.5 / §6.6 tests.",
+      "C6 CI workflow that runs the parity tests."
+    ],
+    "remains_open_after_c5": [
+      "Bridge module (C6+)",
+      "COD opening balance reconciliation (C2 §6.4, C6+)",
+      "IDC by source reconciliation (C2 §6.5, C6+)",
+      "No double-counting test plan (C2 §6.6, C6+)",
+      "Layer 5 runtime seam (C7+)",
+      "Opt-in flag flip (C7+)",
+      "Senior IDC base-rate modelling (separate workstream)",
+      "Second pair of eyes review (always deferred to C6+)"
+    ]
+  }
+}
