@@ -1,0 +1,334 @@
+{
+  "phase": "F2-A",
+  "title": "Generic Wind Reference Candidate Inventory",
+  "type": "docs_inventory_gap_analysis",
+  "status": "DRAFT",
+  "base_sha": "c8471f3bd2ef150237d7bd779360ba2af538330e",
+  "branch": "phase-f2a-generic-wind-reference-inventory",
+  "files_changed": [
+    {
+      "path": "docs/phase_f2a_generic_wind_reference_inventory.md",
+      "type": "A",
+      "lines_added": 750,
+      "lines_removed": 0,
+      "rationale": "13-section inventory and gap analysis: current inventory (factory, context, exports, audit, tests, validation assets); dependency mapping (12 areas); F1 Reference requirements mapping; missing evidence inventory; validation risks; high-level Generic Wind roadmap (F2-B / F2-C / F2-D); readiness score (technical, validation, governance); recommendation; hard no-go; forbidden paths; stop-after-report contract; top gaps and risks appendices."
+    },
+    {
+      "path": "reports/phase_f2a_generic_wind_reference_inventory.json",
+      "type": "A",
+      "lines_added": 130,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "current_inventory": {
+    "factory": {
+      "location": "app/project_factories.py:517-572",
+      "function": "create_default_wind_project(capacity_mw=50.0, horizon_years=25, construction_months=18)",
+      "info": {
+        "name": "Generic Wind Farm",
+        "company": "WindCo",
+        "code": "WIND-001",
+        "country_iso": "DE",
+        "financial_close": "2030-01-01",
+        "construction_months": 18,
+        "cod_date": "2031-07-01",
+        "horizon_years": 25,
+        "period_frequency": "SEMESTRIAL"
+      },
+      "technical": {
+        "capacity_mw": 50.0,
+        "yield_scenario": "P_50",
+        "operating_hours_p50": 3000.0,
+        "operating_hours_p90_10y": 2700.0,
+        "pv_degradation": 0.0,
+        "bess_enabled": false
+      },
+      "revenue": {
+        "ppa_base_tariff": 60.0,
+        "ppa_term_years": 12,
+        "ppa_index": 0.02,
+        "market_scenario": "Central",
+        "market_prices_curve": "synthetic linear ramp (65 + 1.2 * i for i in 0..29)",
+        "market_inflation": 0.02,
+        "balancing_cost_wind_eur_mwh": 8.0,
+        "co2_enabled": true,
+        "co2_price_eur": 5.0
+      },
+      "financing": {
+        "share_capital_keur": 500.0,
+        "shl_amount_keur": 6000.0,
+        "shl_rate": 0.08,
+        "gearing_ratio": 0.75,
+        "senior_tenor_years": 15,
+        "base_rate": 0.03,
+        "margin_bps": 250,
+        "floating_share": 0.3,
+        "fixed_share": 0.7,
+        "hedge_coverage": 0.8,
+        "target_dscr": 1.20,
+        "lockup_dscr": 1.10,
+        "dsra_months": 6,
+        "equity_irr_method": "EQUITY_ONLY",
+        "debt_sizing_method": "DSCR_SCULPT"
+      },
+      "tax": {
+        "corporate_rate": 0.25,
+        "loss_carryforward_years": 5,
+        "loss_carryforward_cap": 1.0,
+        "atad_ebitda_limit": 0.30,
+        "atad_min_interest_keur": 3000.0
+      },
+      "capex": {
+        "named_items": 4,
+        "items": [
+          {"name": "Wind Turbines", "amount_keur": 30000.0, "y0_share": 0.4, "profile": [0.6]},
+          {"name": "Civil Works", "amount_keur": 6000.0, "y0_share": 0.3, "profile": [0.4, 0.3]},
+          {"name": "Grid Connection", "amount_keur": 3000.0, "y0_share": 0.5, "profile": [0.5]},
+          {"name": "Soft Costs", "amount_keur": 4000.0, "y0_share": 1.0, "profile": null}
+        ],
+        "idc_keur": 800.0,
+        "bank_fees_keur": 300.0,
+        "zero_valued_placeholders": 13,
+        "total_named_keur_indicative": 43300.0
+      },
+      "opex": {
+        "item_count": 4,
+        "items": [
+          {"name": "Technical Management", "y1_amount_keur": 200.0, "annual_inflation": 0.02},
+          {"name": "Insurance", "y1_amount_keur": 150.0, "annual_inflation": 0.02},
+          {"name": "Maintenance", "y1_amount_keur": 120.0, "annual_inflation": 0.02},
+          {"name": "Lease & Tax", "y1_amount_keur": 80.0, "annual_inflation": 0.02}
+        ],
+        "total_y1_keur_indicative": 550.0
+      }
+    },
+    "project_context": {
+      "location": "app/ui/project_context.py:2335-2344",
+      "code": "GENERIC_WIND",
+      "technology": "Wind",
+      "opex_contingency_method": "percentage_of_opex",
+      "opex_contingency_pct": 0.0,
+      "parity_status_string": "ACCEPTED_CONVENTION (current state label, not validation-pack label)",
+      "data_source": "Generic wind template - user-project starter defaults"
+    }
+  },
+  "existing_surfaces": {
+    "factory": "PRESENT (app/project_factories.py:517)",
+    "project_context": "PRESENT (app/ui/project_context.py:2335)",
+    "_CONTEXTS_entry": "PRESENT (app/ui/project_context.py:2362)",
+    "excel_reference_workbook": "MISSING",
+    "parity_extraction_csv": "MISSING (only tuho and oborovo CSVs exist)",
+    "golden_dataset": "MISSING (only tuho_golden.py and oborovo_golden.py in tests/golden/fixtures/)",
+    "frozen_senior_debt_schedule": "MISSING (debt sizing is DSCR_SCULPT, live sculpting)",
+    "validation_pack_directory": "MISSING (no docs/validation/generic_wind/)",
+    "KNOWN_LIMITATIONS_md": "MISSING",
+    "D1_audit_sheet_per_project_row": "MISSING (only a generic-project disclosure row exists)",
+    "D2_redo_discipline_per_project_row": "MISSING (Generic Wind named only in module docstring as default-False)",
+    "D3_redo_shadow_validation": "MISSING (TUHO and Oborovo only)",
+    "excel_export_generic_fallback": "PRESENT (app/excel_export.py:413-417 — Screening-grade / For internal scenario review only / Not a substitute for lender due diligence)",
+    "user_facing_warning_label": "PRESENT (main_web.py:191 — '⚠️ Unvalidated · Derived path')",
+    "pilot_rc_scope_matrix_exclusion": "PRESENT (docs/pilot_rc_scope_matrix.md)",
+    "phase_34_doc": "PRESENT (docs/phase34_generic_project_path_validation_boundary.md)",
+    "phase_34_requirements_matrix": "PRESENT (docs/phase34_generic_validation_requirements_matrix.md)"
+  },
+  "test_coverage": {
+    "files_referencing_generic_wind": 18,
+    "tuho_files_for_comparison": 310,
+    "oborovo_files_for_comparison": 243,
+    "dedicated_generic_wind_test_pack": "MISSING",
+    "closest_test_to_validation": "tests/test_phase34_generic_project_path_validation_boundary.py (5 references; boundary test, not parity test)"
+  },
+  "data_discrepancies_factory_vs_phase34_doc": [
+    {"field": "ppa_base_tariff", "factory": 60.0, "phase34_doc": 55.0, "unit": "EUR/MWh"},
+    {"field": "co2_enabled", "factory": true, "phase34_doc": false, "unit": "bool"},
+    {"field": "shl_amount_keur", "factory": 6000.0, "phase34_doc": 5000.0, "unit": "kEUR"}
+  ],
+  "dependency_mapping": {
+    "CAPEX": "PARTIAL (4 of 17 fields populated; round numbers; no Excel reference)",
+    "Revenue": "PARTIAL (round numbers; PPA 60 vs Phase 34 doc 55; no Excel reference)",
+    "Production": "PARTIAL (P50 3000h, P90 2700h; round; no Excel reference)",
+    "OPEX": "PARTIAL (4 items vs 12-15 for TUHO/Oborovo; round; no Excel reference)",
+    "Senior_Debt": "PARTIAL (parameters set; debt amount NOT pinned; DSCR_SCULPT live sculpting)",
+    "SHL": "PARTIAL (amount 6000 factory vs 5000 Phase 34; rate 8%; no frozen schedule)",
+    "Tax": "PARTIAL (parameters set; no Excel reference)",
+    "Sponsor": "MISSING (no sponsor-specific fields in factory)",
+    "Construction": "PARTIAL (18 months; no construction-period cost detail; no Excel reference)",
+    "Depreciation": "MISSING (no Generic-Wind-specific depreciation; D1/D2/D3 arc covers TUHO/Oborovo only)",
+    "Exports": "PARTIAL (Generic Solar/Wind fallback in app/excel_export.py:413-417; no D1 per-project row)",
+    "Audit_sheets": "PARTIAL (UI warning present; pilot_rc_scope_matrix present; no per-project D1/D2/D3 row)",
+    "summary": {
+      "READY": 0,
+      "PARTIAL": 10,
+      "MISSING": 2,
+      "total": 12
+    }
+  },
+  "f1_reference_requirements_mapping": {
+    "criterion_1_excel_reference": "NOT SATISFIED (no Generic Wind workbook)",
+    "criterion_2_phase51f_parity_green": "NOT SATISFIED (parity workflow does not include Generic Wind)",
+    "criterion_3_outputs_within_tolerance": "NOT SATISFIED (depends on 1 and 2)",
+    "criterion_4_known_limitations_md": "NOT SATISFIED (no docs/validation/generic_wind/KNOWN_LIMITATIONS.md)",
+    "criterion_5_dedicated_test_pack": "NOT SATISFIED (18 incidental references; no dedicated pack)",
+    "criterion_6_closure_review_audit_posture": "NOT SATISFIED (D1/D2 redo/D3 redo do not include Generic Wind)",
+    "criterion_7_no_external_signoff": "SATISFIED (trivially; sign-off N/A at Level 1)",
+    "summary": {
+      "satisfied": 1,
+      "partially_satisfied": 0,
+      "not_satisfied": 6,
+      "total": 7
+    }
+  },
+  "missing_evidence_inventory": {
+    "excel_reference": [
+      "docs/validation/generic_wind/excel_reference/README.md",
+      "docs/validation/generic_wind/excel_reference/<workbook>.xlsx"
+    ],
+    "parity_pack": [
+      "docs/validation/generic_wind/parity/README.md",
+      "docs/validation/generic_wind/parity/extraction.csv",
+      "docs/validation/generic_wind/parity/results.json"
+    ],
+    "test_pack": [
+      "docs/validation/generic_wind/test_pack/README.md",
+      "docs/validation/generic_wind/test_pack/test_generic_wind_*.py"
+    ],
+    "limitations_documentation": [
+      "docs/validation/generic_wind/KNOWN_LIMITATIONS.md"
+    ],
+    "audit_documentation": [
+      "D1 audit sheet per-project row for Generic Wind",
+      "D2 redo discipline per-project row for Generic Wind",
+      "D3 redo shadow validation for Generic Wind"
+    ],
+    "golden_dataset_level_3_only": [
+      "docs/validation/generic_wind/golden_dataset/inputs.json",
+      "docs/validation/generic_wind/golden_dataset/expected_outputs.json",
+      "docs/validation/generic_wind/golden_dataset/README.md"
+    ],
+    "reviewer_material_level_3_only": [
+      "docs/validation/generic_wind/reviewer_signoff/README.md",
+      "docs/validation/generic_wind/reviewer_signoff/<reviewer>_<date>.md"
+    ]
+  },
+  "validation_risks": {
+    "parity_risks": [
+      "No Excel reference (dominant; blocks all parity)",
+      "Live sculpting vs frozen path (DSCR_SCULPT, no frozen-path reference)",
+      "Synthetic market price curve (unbounded revenue-parity delta)",
+      "CO2 treatment discrepancy (factory True vs Phase 34 doc False)",
+      "Three unresolved data discrepancies (PPA, CO2, SHL)"
+    ],
+    "modeling_risks": [
+      "Sponsor modeling MISSING (no sponsor-specific fields)",
+      "Depreciation MISSING for Generic Wind (no shadow validation)",
+      "OPEX coverage (4 items vs 12-15 for TUHO/Oborovo; deliberate simplification)",
+      "CAPEX coverage (4 named items + IDC + fees = 6 of 17 fields)",
+      "No construction-period cost detail"
+    ],
+    "governance_risks": [
+      "Generic Wind inherits TUHO/Oborovo parity guardrails by accident (CI risk)",
+      "No KNOWN_LIMITATIONS.md (no authoritative risk register)",
+      "No external review process defined for Generic Wind",
+      "Pilot RC scope matrix exclusion is manual (no CI guard)"
+    ]
+  },
+  "generic_wind_roadmap": {
+    "F2-B": {
+      "goal": "Resolve data discrepancies + acquire/build Excel reference workbook",
+      "scope": "Update Phase 34 doc to match factory; commit excel_reference/ directory",
+      "does_not_include": "Parity computation; test pack; audit updates"
+    },
+    "F2-C": {
+      "goal": "Parity comparison + audit posture",
+      "scope": "Compute parity; add D1/D2 redo/D3 redo per-project rows; update parity workflow",
+      "does_not_include": "Test pack; KNOWN_LIMITATIONS.md"
+    },
+    "F2-D": {
+      "goal": "Test pack + KNOWN_LIMITATIONS.md + CI guard",
+      "scope": "Dedicated test pack; KNOWN_LIMITATIONS.md; CI guard for pilot RC scope",
+      "does_not_include": "Promotion to Level 2 (separate F-phase)"
+    },
+    "F2-E_post_d": {
+      "goal": "Promotion gate evaluation",
+      "scope": "Run F1 §10.1 promotion gate; promote Generic Wind to Level 2 if criteria met",
+      "does_not_include": "External review (Level 3 only)"
+    }
+  },
+  "readiness_score": {
+    "technical_readiness": {
+      "category": "NOT READY",
+      "score": 30,
+      "max": 100,
+      "components": {
+        "factory_inputs_populated": {"status": "YES", "weight": 30, "score": 30},
+        "excel_reference": {"status": "NO", "weight": 30, "score": 0},
+        "parity_computed": {"status": "NO", "weight": 20, "score": 0},
+        "test_pack": {"status": "NO", "weight": 10, "score": 0},
+        "audit_posture_D1_D2_D3": {"status": "NO", "weight": 10, "score": 0}
+      }
+    },
+    "validation_readiness": {
+      "category": "NOT READY",
+      "score": 0,
+      "max": 100,
+      "components": {
+        "validation_pack_directory": {"status": "NO", "weight": 25, "score": 0},
+        "KNOWN_LIMITATIONS_md": {"status": "NO", "weight": 25, "score": 0},
+        "parity_pack": {"status": "NO", "weight": 20, "score": 0},
+        "dedicated_test_pack": {"status": "NO", "weight": 15, "score": 0},
+        "phase51f_parity_green": {"status": "NO", "weight": 10, "score": 0},
+        "per_project_audit_posture": {"status": "NO", "weight": 5, "score": 0}
+      }
+    },
+    "governance_readiness": {
+      "category": "PARTIAL",
+      "score": 87,
+      "max": 100,
+      "components": {
+        "pilot_rc_scope_matrix_exclusion": {"status": "YES", "weight": 25, "score": 25},
+        "user_facing_warning_label": {"status": "YES", "weight": 20, "score": 20},
+        "phase_34_doc": {"status": "YES", "weight": 20, "score": 20},
+        "phase_34_requirements_matrix": {"status": "YES", "weight": 15, "score": 15},
+        "D1_sheet_generic_project_row": {"status": "PARTIAL", "weight": 10, "score": 5},
+        "D2_redo_discipline_naming": {"status": "PARTIAL", "weight": 5, "score": 2},
+        "D3_redo_shadow_validation": {"status": "NO", "weight": 5, "score": 0}
+      }
+    },
+    "combined": {
+      "category": "NOT READY",
+      "score": 39,
+      "max": 100,
+      "average": true
+    }
+  },
+  "recommendation": {
+    "choice": "A",
+    "rationale": "Generic Wind is missing 6 of 7 F1 Reference criteria. Dominant gaps: no Excel reference; no parity computation; three unresolved data discrepancies; no KNOWN_LIMITATIONS.md; no dedicated test pack; no per-project D1/D2/D3 audit posture. Technical 30/100 (NOT READY); Validation 0/100 (NOT READY); Governance 87/100 (PARTIAL — strong for an exploratory project). Generic Wind should remain at Level 1 (Exploratory / Unvalidated). F2-B / F2-C / F2-D is the right next step. Option B (limited preparation) and Option C (controlled Reference program) are not appropriate at this time."
+  },
+  "no_code_changes": true,
+  "no_runtime_changes": true,
+  "no_ui_implementation": true,
+  "no_schema_changes": true,
+  "no_persistence_changes": true,
+  "no_formula_changes": true,
+  "no_parity_changes": true,
+  "no_feature_flags": true,
+  "no_validation_status_changes": true,
+  "no_generic_wind_promotion": true,
+  "no_generic_solar_work": true,
+  "no_D1_D2_D3_arc_extension": true,
+  "no_implementation_roadmap_beyond_inventory": true,
+  "generic_wind_unchanged": true,
+  "generic_solar_unchanged": true,
+  "TUHO_unchanged": true,
+  "Oborovo_unchanged": true,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "F2-B (data discrepancy resolution + Excel reference). F2-C, F2-D, F2-E follow in their own follow-up prompts.",
+    "rationale": "F2-A is an inventory and gap analysis only. F2-B begins the actual preparation work, gated on F2-A review."
+  }
+}
