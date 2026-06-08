@@ -1,0 +1,292 @@
+{
+  "phase": "C8",
+  "title": "Layer 5 Runtime Seam Design Gate",
+  "scope_label": "DESIGN ONLY. DOCS / TESTS ONLY. NO IMPLEMENTATION. NO RUNTIME WIRING.",
+  "type": "design_gate",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "base_sha": "b28723b",
+  "branch": "phase-c8-layer5-runtime-seam-design-gate",
+  "c_series_chain": {
+    "C1": {"pr": 543, "sha": "5fccc3a", "status": "merged"},
+    "C2": {"pr": 544, "sha": "59f9e3d", "status": "merged"},
+    "C3": {"pr": 545, "sha": "aa800a5", "status": "merged"},
+    "C4": {"pr": 546, "sha": "dcc30b6", "status": "merged"},
+    "C5": {"pr": 547, "sha": "2d8a91c", "status": "merged"},
+    "C6": {"sha": "c72bc94", "status": "draft", "branch": "phase-c6-opening-balance-bridge-implementation-plan"},
+    "C7": {"pr": 549, "sha": "b28723b", "status": "merged"},
+    "C8": {"sha": "DRAFT", "status": "draft", "branch": "phase-c8-layer5-runtime-seam-design-gate"}
+  },
+  "design_summary": {
+    "layer5_purpose": "Structural seam between Layer 4 bridge output and runtime waterfall. Enforces POLICY_TABLE discipline and gates promotion. Read-only adapter. No waterfall logic, no persistence, no feature flag flip, no formula changes.",
+    "layer5_owns": [
+      "POLICY_TABLE enforcement at the structural level",
+      "Read-only bridge-consumer interface",
+      "No-promotion guard (assert_no_construction_runtime_promotion)",
+      "Import-contract test surface"
+    ],
+    "layer5_must_not_own": [
+      "Runtime waterfall logic",
+      "Persistence or schema",
+      "Feature flags",
+      "Formula changes",
+      "UI changes"
+    ],
+    "differs_from_layer4_bridge": "Layer 4 is a pure domain function; Layer 5 is a structural adapter. Layer 4 produces OpeningBalanceBridgeResult; Layer 5 enforces policy and gates promotion.",
+    "differs_from_waterfall_runtime": "Waterfall owns CFADS, debt service, tax, depreciation, P&L, balance sheet. Layer 5 owns policy enforcement only."
+  },
+  "policy_table_enforcement": {
+    "replaced_fields": {
+      "shl_idc_keur": {
+        "c1_blocker": "blocker_1_R-PAR-1",
+        "c8_seam_behavior": "Read-only exposed; not auto-routed; per-field promotion required",
+        "c10_promotion_eligible": true,
+        "c11_promotion_eligible": true
+      },
+      "shl_amount_keur": {
+        "c1_blocker": null,
+        "c8_seam_behavior": "Read-only exposed; not auto-routed; per-field promotion required",
+        "c10_promotion_eligible": true,
+        "c11_promotion_eligible": true
+      },
+      "shl_opening_balance_keur": {
+        "c1_blocker": null,
+        "c8_seam_behavior": "Read-only exposed; not auto-routed; per-field promotion required",
+        "c10_promotion_eligible": true,
+        "c11_promotion_eligible": true
+      },
+      "senior_idc_keur": {
+        "c1_blocker": "blocker_5_R-PAR-2",
+        "c8_seam_behavior": "Read-only exposed; R-PAR-2 blocks promotion; guard rpar2_resolved default False",
+        "c10_promotion_eligible": "conditional_on_R_PAR_2",
+        "c11_promotion_eligible": "conditional_on_R_PAR_2"
+      }
+    },
+    "frozen_fields": {
+      "senior_opening_balance_keur": {
+        "c1_blocker": "blocker_5_R-PAR-2",
+        "c8_seam_behavior": "REJECTED at seam. Hard rule: frozen fields cannot be promoted by Layer 5.",
+        "c10_promotion_eligible": false,
+        "c11_promotion_eligible": false
+      },
+      "capex_keur": {
+        "c1_blocker": null,
+        "c8_seam_behavior": "REJECTED at seam. Hard rule: frozen fields cannot be promoted by Layer 5.",
+        "c10_promotion_eligible": false,
+        "c11_promotion_eligible": false
+      }
+    },
+    "retained_fields": {
+      "reserves_keur": {"c8_seam_behavior": "Pass-through; no bridge source"},
+      "vat_operating": {"c8_seam_behavior": "Pass-through; no bridge source"},
+      "financing_fees_keur": {"c8_seam_behavior": "Pass-through; no bridge source"},
+      "commitment_fee_keur": {"c8_seam_behavior": "Pass-through; no bridge source"}
+    },
+    "derived_fields": {
+      "equity_total_keur": {
+        "c1_blocker": "blocker_5_R-PAR-5",
+        "c8_seam_behavior": "Composite verified; promotion only when parity_ok AND promotion_requested"
+      }
+    }
+  },
+  "rpar2_constraint": {
+    "blocker_id": "blocker_5_R-PAR-2",
+    "description": "Senior IDC is computed using an effective rate, not a modelling-correct rate. C1, C2, C7 all treat this as unresolved.",
+    "senior_idc_keur_status": "replaced for parity tracking, but seam blocks runtime promotion",
+    "senior_opening_balance_keur_status": "frozen; bridge value differs by +capitalized_senior_idc (TUHO: +1519.564; Oborovo: +1086.032)",
+    "parity_drift_treatment": "Audit-only; preserved as evidence of asymmetry, not consumed by runtime",
+    "promotion_blocked_until": "R-PAR-2 closed (modelling-correct rate) OR formally accepted (long-term caveat)",
+    "guard_default": "rpar2_resolved: bool = False (fail-closed)"
+  },
+  "no_promotion_guard": {
+    "function_signature": "assert_no_construction_runtime_promotion(*, field_code: str, policy: str, promotion_requested: bool, rpar2_resolved: bool = False) -> None",
+    "exception_type": "PermissionError",
+    "c8_implementation": "DESIGN ONLY. Function not implemented in C8.",
+    "c9_implementation_path": "app/services/construction_runtime_seam.py",
+    "wired_into_live_waterfall": false,
+    "expected_behavior": {
+      "frozen_fields": "ALWAYS raise PermissionError (frozen is structural)",
+      "senior_idc_keur": "raise unless rpar2_resolved=True",
+      "other_replaced_fields": "raise unless promotion_requested=True",
+      "derived_fields": "raise unless parity_ok AND promotion_requested=True",
+      "retained_fields": "never raise (no bridge source)"
+    }
+  },
+  "import_contract": {
+    "forbidden_importers": [
+      "app/",
+      "main_web.py",
+      "main_api.py",
+      "app/services/ (runtime service modules)",
+      "app/waterfall_core.py",
+      "app/waterfall_runner.py",
+      "domain/waterfall*",
+      "app/persistence/",
+      "static/"
+    ],
+    "forbidden_imports": [
+      "domain.construction.opening_bridge",
+      "domain.construction.opening_bridge.POLICY_TABLE",
+      "domain.construction.opening_bridge.build_opening_balance_bridge",
+      "domain.construction.opening_bridge.OpeningBalanceBridgeResult",
+      "domain.construction.opening_bridge.BridgeAuditRow",
+      "domain.construction.opening_bridge.BridgeIdentityError"
+    ],
+    "test_kind": "static-AST (ast.parse + ast.walk + ast.Import / ast.ImportFrom inspection)",
+    "c8_test_implementation": "in tests/test_phase_c8_layer5_runtime_seam_design_gate.py",
+    "test_scope": "all files in forbidden-importer list at the time C8 is merged",
+    "c9_relaxation": "C9 will add an exception for the seam module itself (app/services/construction_runtime_seam.py)"
+  },
+  "c9_boundaries": {
+    "c9_may_implement": [
+      "Seam module skeleton (app/services/construction_runtime_seam.py)",
+      "No-promotion guard function (assert_no_construction_runtime_promotion)",
+      "Audit-only visibility helper (read-only consumer of bridge output)",
+      "Tests for seam module and guard",
+      "Import-contract test (per C8 §6) plus any updates for the seam module exemption"
+    ],
+    "c9_must_not": [
+      "Flip feature flags (use_construction_schedule_engine remains False)",
+      "Route values into the waterfall",
+      "Change runtime outputs",
+      "Change tax, debt, depreciation, CFADS, or any formula",
+      "Change persistence or schema",
+      "Change UI",
+      "Mutate use_construction_schedule_engine to True for any project"
+    ],
+    "c9_deliverable_count": 4,
+    "c9_files": [
+      "app/services/construction_runtime_seam.py",
+      "tests/test_phase_c9_construction_runtime_seam.py",
+      "docs/phase_c9_construction_runtime_seam_scaffolding.md",
+      "reports/phase_c9_construction_runtime_seam_scaffolding.json"
+    ]
+  },
+  "promotion_path": {
+    "c9_seam_scaffolding": "Seam module + guard. All 11 fields non-promoted. use_construction_schedule_engine=False.",
+    "c10_tuho_controlled_promotion": "Per-project opt-in for TUHO only. Routes 4 replaced fields (conditional on R-PAR-2 for senior_idc) + 1 derived field. 2 frozen fields explicitly not promoted. TUHO parity baseline unchanged after C10.",
+    "c11_oborovo_controlled_promotion": "Per-project opt-in for Oborovo only. Same fields as C10. Oborovo parity baseline unchanged after C11.",
+    "c10_c11_separation_rationale": [
+      "Risk isolation (one project per PR)",
+      "Cleaner rollback (failed C10 does not affect C11)",
+      "Sequential learning (TUHO patterns inform Oborovo)",
+      "Reviewer burden (smaller PRs)"
+    ],
+    "promotion_gate_criteria": {
+      "before_c10": [
+        "C9 merged",
+        "C8 review approved",
+        "C7 review approved",
+        "All C1-C7 tests pass",
+        "C9 tests pass",
+        "use_construction_schedule_engine default-off confirmed"
+      ],
+      "before_c11": [
+        "C10 merged",
+        "TUHO parity baseline unchanged after C10",
+        "All C1-C9 tests pass",
+        "C10 tests pass"
+      ]
+    }
+  },
+  "risk_register": [
+    {
+      "id": "R-01",
+      "name": "double-counting",
+      "severity": "high",
+      "likelihood": "medium",
+      "mitigation": "POLICY_TABLE + no-promotion guard. Seam routes bridge output as replacement, never addition."
+    },
+    {
+      "id": "R-02",
+      "name": "frozen_field_promotion",
+      "severity": "high",
+      "likelihood": "low",
+      "mitigation": "C8 §3.2 hard rule + guard raises PermissionError unconditionally for frozen fields."
+    },
+    {
+      "id": "R-03",
+      "name": "rpar2_leakage",
+      "severity": "high",
+      "likelihood": "medium",
+      "mitigation": "C8 §4.5 fail-closed default (rpar2_resolved=False). Process gate: R-PAR-2 resolution requires separate workstream PR."
+    },
+    {
+      "id": "R-04",
+      "name": "hidden_runtime_import",
+      "severity": "high",
+      "likelihood": "low",
+      "mitigation": "C8 §6 import-contract test (static-AST walk of forbidden-importer files)."
+    },
+    {
+      "id": "R-05",
+      "name": "feature_flag_misuse",
+      "severity": "medium",
+      "likelihood": "low",
+      "mitigation": "C8 §7.2 hard rule + C8 §8.5 per-project opt-in (not global flag flip)."
+    },
+    {
+      "id": "R-06",
+      "name": "tax_depreciation_downstream",
+      "severity": "high",
+      "likelihood": "medium",
+      "mitigation": "C8 §8 promotion gate criteria require parity unchanged (within rounding tolerance)."
+    }
+  ],
+  "recommendation": {
+    "choice": "B. More design needed",
+    "rationale": [
+      "C8 is a design gate, not an implementation. C8 produces 3 files (doc + report + test file).",
+      "POLICY_TABLE enforcement is structurally specified. Frozen fields are explicitly blocked from promotion.",
+      "R-PAR-2 is preserved as a blocking constraint with fail-closed default in the guard.",
+      "Import-contract test is specified as static-AST, implementable without runtime changes.",
+      "Promotion path is strict and separated (C9 scaffolding -> C10 TUHO -> C11 Oborovo)."
+    ],
+    "unblock_a_requires": [
+      "Reviewer sign-off on C8 §3 POLICY_TABLE enforcement",
+      "Reviewer sign-off on C8 §5.1 guard signature and C8 §5.2 expected behavior",
+      "Reviewer sign-off on C8 §8 promotion path",
+      "Confirmation that C8 §6 import-contract test is implementable as static-AST"
+    ]
+  },
+  "files_added": [
+    {
+      "path": "docs/phase_c8_layer5_runtime_seam_design_gate.md",
+      "lines": 730,
+      "kind": "design_document"
+    },
+    {
+      "path": "reports/phase_c8_layer5_runtime_seam_design_gate.json",
+      "lines": 1,
+      "kind": "design_report"
+    },
+    {
+      "path": "tests/test_phase_c8_layer5_runtime_seam_design_gate.py",
+      "lines": 800,
+      "kind": "design_contract_test"
+    }
+  ],
+  "files_modified": [],
+  "forbidden_paths_unchanged": [
+    "app/",
+    "main_web.py",
+    "main_api.py",
+    "static/",
+    "domain/construction/opening_bridge.py",
+    "domain/construction/engine.py",
+    "domain/waterfall/",
+    "app/waterfall_core.py",
+    "app/waterfall_runner.py",
+    "app/persistence/"
+  ],
+  "rc1_reachable": true,
+  "rc1_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "use_construction_schedule_engine_default_off": true,
+  "project_statuses_unchanged": {
+    "TUHO": "Level 2 (unchanged)",
+    "Oborovo": "Level 2 (unchanged)",
+    "Generic Wind": "Level 1 (unchanged)",
+    "Generic Solar": "Level 1 (unchanged)"
+  },
+  "stop_after_report": true
+}
