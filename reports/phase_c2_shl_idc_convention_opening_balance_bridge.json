@@ -1,0 +1,322 @@
+{
+  "phase": "C2",
+  "title": "SHL IDC Convention Decision + Opening Balance Bridge Design",
+  "type": "DESIGN_ONLY_DOCS_ONLY_NO_IMPLEMENTATION",
+  "status": "DRAFT",
+  "date": "2026-06-08",
+  "base_sha": "5fccc3a3accb95c2f365015c7ceb87eadae87d5c",
+  "branch": "phase-c2-shl-idc-convention-opening-balance-bridge",
+  "addresses_c1_blockers": [1, 2],
+  "c1_blockers_status": {
+    "blocker_1": {
+      "id": "R-PAR-1: SHL IDC convention mismatch",
+      "status": "RESOLVED_BY_C2",
+      "decision": "Convention B (Excel full-source elapsed compound) is authoritative for future construction runtime. Convention A is current; Convention C is the bridge."
+    },
+    "blocker_2": {
+      "id": "Layer 4 Opening Balance Bridge missing",
+      "status": "DESIGNED_BY_C2",
+      "summary": "Layer 4 is a pure function: result + manual + policy -> bridge output + audit table. Lives in domain/construction/opening_bridge.py. Does not import the waterfall domain."
+    },
+    "blocker_3": {
+      "id": "Layer 5 Runtime Integration seam missing",
+      "status": "DEFERRED",
+      "deferred_to": "C3 or later (C2 section 5 defines the boundary only)"
+    },
+    "blocker_4": {
+      "id": "No construction-period parity snapshot",
+      "status": "DEFERRED",
+      "deferred_to": "C3 (C2 section 6 defines the evidence required)"
+    },
+    "blocker_5": {
+      "id": "Senior IDC effective-rate brittleness",
+      "status": "DEFERRED",
+      "deferred_to": "C3 (C2 bridge design has the senior opening balance as 'frozen' until senior IDC is modelling-correct)"
+    }
+  },
+  "hard_constraints": {
+    "no_code": true,
+    "no_runtime_changes": true,
+    "no_schema_changes": true,
+    "no_persistence_changes": true,
+    "no_feature_flags": true,
+    "no_formula_changes": true,
+    "no_capex_changes": true,
+    "no_debt_changes": true,
+    "no_tax_changes": true,
+    "no_depreciation_changes": true,
+    "no_idc_implementation": true,
+    "no_project_status_changes": true
+  },
+  "files_added": [
+    {
+      "path": "docs/phase_c2_shl_idc_convention_opening_balance_bridge.md",
+      "type": "A",
+      "size_bytes": 40270,
+      "rationale": "Design and decision document. 7 sections: SHL IDC Convention Decision (with 3-convention comparison + recommendation), Double-Counting Policy (11 fields with replacement decisions), Opening Balance Bridge Design (Layer 4), Bridge Audit Table (14 columns), Runtime Integration Boundary (Layer 5 design-level only), Validation Requirements (6 evidence items), Recommendation (B)."
+    },
+    {
+      "path": "reports/phase_c2_shl_idc_convention_opening_balance_bridge.json",
+      "type": "A",
+      "rationale": "Machine-readable report of this gate."
+    }
+  ],
+  "shl_idc_conventions": {
+    "convention_a_manual": {
+      "name": "Manual / runtime",
+      "source_of_truth": "Project.shl_idc_keur (project factory)",
+      "definition": "Manual hardcoded input. TUHO: 1169; Oborovo: 0.",
+      "used_by": "Operating waterfall directly (waterfall/waterfall_engine.py:852)",
+      "tuho_value_keur": 1169,
+      "oborovo_value_keur": 0,
+      "authoritative_today": true,
+      "modelling_correct": false,
+      "excel_parity_construction_level": false,
+      "implementation_risk": "zero",
+      "audit_trail": "manual value only"
+    },
+    "convention_b_excel_engine": {
+      "name": "Excel full-source elapsed compound",
+      "source_of_truth": "Construction engine (domain/construction/idc_calculator.py)",
+      "definition": "SHL IDC = SHL draw * ((1 + SHL rate) ^ elapsed_years - 1)",
+      "used_by": "Offline construction engine only; not yet wired to waterfall",
+      "tuho_value_keur": 3568.688,
+      "oborovo_value_keur": 1169.662,
+      "authoritative_today": false,
+      "authoritative_for_future_construction_runtime": true,
+      "modelling_correct": true,
+      "excel_parity_construction_level": true,
+      "implementation_risk": "high (L4+L5 missing)",
+      "audit_trail": "would record config + result + substitution"
+    },
+    "convention_c_phase7i_diagnostic": {
+      "name": "Phase 7I construction engine (audit-only)",
+      "source_of_truth": "domain/construction/runtime_adapter.py",
+      "definition": "Same engine as Convention B, wrapped in a diagnostic-only runtime adapter",
+      "used_by": "Offline engine, workbook UI (Phase 20L), senior debt diagnostic, validation notes. NOT operating waterfall.",
+      "authoritative_today": false,
+      "authoritative_for_future_construction_runtime": false,
+      "modelling_correct": true,
+      "excel_parity_construction_level": true,
+      "implementation_risk": "zero (shipped)",
+      "audit_trail": "records manual + computed + mismatch"
+    },
+    "recommendation": {
+      "choice": "B (Excel full-source elapsed compound)",
+      "rationale": [
+        "Modelling-correctness (depends on construction period; Convention A does not)",
+        "Excel parity at the construction level (closes R-PAR-1)",
+        "Cross-project consistency (single formula, not magic numbers)",
+        "Audit completeness (records decision, not disagreement)",
+        "C1 already pointed here (R-PAR-1 is Critical, blocker 1)"
+      ],
+      "why_not_a": [
+        "Construction-period changes do not propagate to waterfall",
+        "New projects require new magic numbers",
+        "Excel reference remains unreachable",
+        "Audit trail cannot reconcile manual vs computed"
+      ],
+      "why_not_c": [
+        "C is the bridge for today, not the final answer for tomorrow",
+        "Leaves operating waterfall disconnected from construction engine"
+      ],
+      "migration_path": [
+        "Today (A + C diagnostic): A is authoritative, C reports mismatch",
+        "C3: parity snapshot design",
+        "C4-C6: L4 implementation + parity snapshot for TUHO",
+        "C7: L5 implementation (default-off)",
+        "C8: TUHO promotion (A -> B; Phase 9 re-calibrated)",
+        "C9: Oborovo promotion (0 -> 1169.662; Phase 23N re-calibrated)"
+      ]
+    }
+  },
+  "double_counting_policy": {
+    "fields": [
+      {"field": "shl_idc_keur", "policy": "replaced", "rationale": "Convention B authoritative; engine value replaces manual at COD"},
+      {"field": "shl_amount_keur", "policy": "replaced", "rationale": "SHL principal draw is function of funding allocation; engine is authoritative"},
+      {"field": "shl_opening_balance_keur", "policy": "replaced", "rationale": "Principal + IDC; both inputs replaced"},
+      {"field": "senior_opening_balance_keur", "policy": "frozen", "rationale": "Senior IDC is still effective-rate based (C1 blocker 5); promote to 'replaced' after C3 demonstrates modelling correctness"},
+      {"field": "senior_idc_keur", "policy": "replaced", "rationale": "Engine produces senior IDC; audit currently flags delta"},
+      {"field": "capex_keur", "policy": "frozen", "rationale": "Operating CAPEX total is different concept from construction CAPEX; not additive"},
+      {"field": "reserves_keur", "policy": "retained", "rationale": "Operating-period concept; engine does not compute"},
+      {"field": "vat_costs", "policy": "retained", "rationale": "Operating-period concept; construction VAT is out of scope"},
+      {"field": "financing_fees_keur", "policy": "retained", "rationale": "Upfront at financial close, not construction-period"},
+      {"field": "commitment_fee_keur", "policy": "retained", "rationale": "Operating-period concept"},
+      {"field": "equity_total_keur", "policy": "derived", "rationale": "Runtime total is function of replaced fields; engine equity draw is construction-period equity (different concept)"}
+    ],
+    "replacement_semantics": {
+      "replaced": "construction engine output overwrites manual at seam; audit records substitution",
+      "frozen": "engine output computed and reported, manual value wins; audit records disagreement",
+      "retained": "engine does not produce value; manual unchanged",
+      "derived": "runtime total from manual inputs; engine value is separate diagnostic"
+    },
+    "double_counting_guard_location": "Layer 5 (runtime integration seam)",
+    "guard_invariant": "Operating waterfall reads exactly one of {manual, construction-derived} for each opening balance. Choice recorded in audit trail. Reading both is a guard failure."
+  },
+  "opening_balance_bridge_layer_4": {
+    "responsibility": "Produce opening balances at COD from construction result with explicit per-field decisions about whether each value is construction-derived, manual, or composite.",
+    "owner_module": "domain/construction/opening_bridge.py (NEW)",
+    "inputs": [
+      "ConstructionScheduleResult (from Layer 1+2+3)",
+      "Manual override table (from project factory)",
+      "Project assumptions (rates, dates)",
+      "Replacement policy (from Layer 5 config or fixed)",
+      "Parity reference (Phase 7I template, audit-only)"
+    ],
+    "outputs": {
+      "opening_senior_balance_at_cod_keur": "float",
+      "opening_shl_balance_at_cod_keur": "float",
+      "equity_contribution_at_cod_keur": "float",
+      "capitalized_senior_idc_keur": "float (zero if senior IDC not modelling-correct)",
+      "capitalized_shl_idc_keur": "float",
+      "financing_fee_treatment_keur": "float (zero if not provided)",
+      "audit_reconciliation_table": "list[AuditRow]",
+      "source_construction_result": "ConstructionScheduleResult",
+      "manual_overrides": "list[ManualOverrideRow]",
+      "bridge_metadata": "BridgeMetadata (policy_version, bridge_version, bridge_run_timestamp)"
+    },
+    "algorithm_steps": [
+      "Receive inputs",
+      "Apply per-field policy (replaced / frozen / retained / derived)",
+      "Compute composite fields (derived policy)",
+      "Build audit table (one row per policy field)",
+      "Return bridge output (frozen dataclass)"
+    ],
+    "is_not": [
+      "not a runtime mutation",
+      "not a UI component",
+      "not a policy engine",
+      "not a parity snapshot"
+    ],
+    "imports_boundary": "does not import waterfall, finance, project factory, or UI"
+  },
+  "bridge_audit_table": {
+    "required_columns": [
+      "field_code (str)",
+      "manual_value_keur (float or None)",
+      "construction_derived_value_keur (float or None)",
+      "selected_runtime_value_keur (float)",
+      "selection_reason (str: replaced|frozen|retained|derived)",
+      "override_status (str: no_override|manual_override_active|construction_override_active|composite_no_override)",
+      "double_counting_guard (str: guarded_single_source|guarded_composite|not_applicable)",
+      "parity_reference_keur (float or None)",
+      "parity_delta_keur (float or None)",
+      "parity_status (str: parity_ok|parity_drift|parity_unknown|parity_not_applicable)",
+      "c1_blocker_reference (str)",
+      "audit_timestamp (str ISO-8601)",
+      "bridge_version (str)",
+      "policy_version (str)"
+    ],
+    "invariants": [
+      "Every policy field has exactly one row",
+      "selected_runtime_value is one of manual or construction (not a third number) for non-derived fields",
+      "selection_reason matches the policy (no silent override)",
+      "double_counting_guard is never not_applicable for opening balance fields",
+      "parity_reference is None for fields with no Excel target"
+    ]
+  },
+  "runtime_integration_boundary_layer_5": {
+    "implemented_in_c2": false,
+    "what_layer_5_must_consume": [
+      "opening_senior_balance_at_cod_keur",
+      "opening_shl_balance_at_cod_keur",
+      "equity_contribution_at_cod_keur",
+      "capitalized_senior_idc_keur",
+      "capitalized_shl_idc_keur",
+      "financing_fee_treatment_keur",
+      "audit_reconciliation_table"
+    ],
+    "what_layer_5_must_not_consume": [
+      "ConstructionScheduleResult directly (bridge is the only legal interface)",
+      "manual override table directly (bridge has applied policy)",
+      "parity reference (test concern, not runtime concern)"
+    ],
+    "what_layer_5_must_enforce": [
+      "Single source per opening balance (double-counting guard)",
+      "Audit trail completeness (bridge result, version, policy, timestamp)",
+      "Per-project opt-in (use_construction_schedule_engine flag, default off)"
+    ],
+    "what_layer_5_is_not": [
+      "not a policy engine (policy is fixed at bridge level)",
+      "not a parity test (parity is separate test layer)",
+      "not a UI component"
+    ]
+  },
+  "validation_requirements_for_c3": {
+    "tuho_construction_period_parity_snapshot": {
+      "test_type": "pytest",
+      "config": "TUHO",
+      "targets": {
+        "construction_months": 18,
+        "total_uses_keur": 72994.450,
+        "equity_draw_keur": 500.000,
+        "shl_draw_keur": 29135.176,
+        "senior_draw_keur": 43359.274,
+        "shl_idc_keur": 3568.688,
+        "opening_shl_keur": 32703.864,
+        "senior_idc_keur": 1519.564
+      },
+      "tolerance": "kEUR as listed (e.g. 0.001 for IDC)",
+      "must_document": "senior IDC effective-rate caveat (C1 R-PAR-2)"
+    },
+    "oborovo_construction_period_parity_snapshot": {
+      "test_type": "pytest",
+      "config": "Oborovo",
+      "targets": {
+        "construction_months": 12,
+        "total_uses_keur": 57973.041,
+        "equity_draw_keur": 500.000,
+        "shl_draw_keur": 14620.774,
+        "senior_draw_keur": 42852.267,
+        "shl_idc_keur": 1169.662,
+        "opening_shl_keur": 15790.436,
+        "senior_idc_keur": 1086.032
+      },
+      "tolerance": "kEUR as listed"
+    },
+    "manual_vs_derived_reconciliation_test": {
+      "test_type": "pytest",
+      "covers": "audit table integrity, selection_reason consistency, double_counting_guard, parity_status"
+    },
+    "cod_opening_balance_reconciliation_test": {
+      "test_type": "pytest",
+      "covers": "bridge output contains all 6 numeric fields, audit table has 11 rows, selected_runtime_value is from manual or construction for non-derived fields, bridge_metadata complete"
+    },
+    "idc_by_source_reconciliation_test": {
+      "test_type": "pytest",
+      "covers": "capitalized_senior_idc_keur + capitalized_shl_idc_keur == total IDC (within 0.001 kEUR per source), senior IDC is 0 if effective-rate based"
+    },
+    "no_double_counting_test_plan": {
+      "test_type": "pytest (executable, not just documented)",
+      "covers": "waterfall reads exactly one of {manual, construction} for each opening balance; guard satisfied for every opening balance; composite fields derived from manual inputs"
+    }
+  },
+  "recommendation": {
+    "choice": "B. More discovery needed",
+    "rationale": [
+      "C1 blockers 1 and 2 are addressed by this document (decision recorded, bridge designed)",
+      "C1 blockers 3, 4, 5 are not addressed (Layer 5, parity snapshot, senior IDC)",
+      "Migration path from A to B is multi-phase (C2 is the 2nd of 10+ phases)",
+      "Oborovo SHL IDC promotion is dramatic (0 -> 1169.662 kEUR)",
+      "Senior IDC is still effective-rate based (senior opening balance must be frozen)"
+    ],
+    "would_unblock_A": [
+      "C3 design note includes construction-period parity snapshot test design",
+      "C3 design note addresses senior IDC effective-rate issue",
+      "C3 design note includes Layer 5 (runtime seam) interface design"
+    ],
+    "would_unblock_C_defer": [
+      "Generic program priorities shift away from construction",
+      "Excel reference becomes unavailable or is replaced",
+      "New project type without construction becomes the pilot"
+    ],
+    "defer_signals_present_today": false,
+    "suggested_c3_scope": "Single design document for construction-period parity snapshot, addressing: pytest test design for parity snapshot, senior IDC effective-rate issue, Layer 5 interface design, C4-C7 implementation sequencing, C8-C11 promotion sequencing"
+  },
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase": "Phase C2 is a design and decision phase. C3 is the next design phase (parity snapshot design, senior IDC, Layer 5 interface). Implementation phases C4-C11 are NOT planned in this document.",
+    "rationale": "Phase C2 addresses C1 blockers 1 and 2 only. Blockers 3, 4, 5 require C3 or later."
+  }
+}
