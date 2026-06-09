@@ -6069,3 +6069,163 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   color: var(--text-muted, #6b7280);
   font-style: italic;
 }
+
+/* Phase 25B-2.1 — Multi-Compare Picker (selection entry point)
+ * Read-only UI; matches .svh-* and .scm-* conventions; no Tailwind/Alpine. */
+.scm-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.45rem 0.5rem;
+  background: var(--sidebar-card-bg, #fafafa);
+  border: 1px solid var(--sidebar-border, #e5e7eb);
+  border-radius: 6px;
+}
+
+.scm-pick-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.scm-pick-title {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--text-strong, #111827);
+}
+
+.scm-pick-subtitle {
+  font-size: 0.7rem;
+  color: var(--sidebar-muted, #6b7280);
+}
+
+.scm-pick-banner,
+.scm-pick-exploratory-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  padding: 0.3rem 0.45rem;
+  border-radius: 4px;
+  background: var(--info-bg, #eff6ff);
+  color: var(--text-strong, #111827);
+}
+
+.scm-pick-exploratory-banner {
+  background: var(--warn-bg, #fff7ed);
+  border-left: 3px solid var(--warn-fg, #b45309);
+}
+
+.scm-pick-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.scm-pick-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+}
+
+.scm-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  max-height: 11rem;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.scm-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  padding: 0.22rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--sidebar-row-bg, transparent);
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.scm-pick-row:hover {
+  background: var(--sidebar-row-hover, #f3f4f6);
+}
+
+.scm-pick-row--disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.scm-pick-cb {
+  margin: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.scm-pick-row-name {
+  font-weight: 500;
+  color: var(--text-strong, #111827);
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scm-pick-row-active {
+  font-size: 0.6rem;
+  padding: 0.05rem 0.3rem;
+}
+
+.scm-pick-row-meta {
+  font-size: 0.65rem;
+  color: var(--sidebar-muted, #6b7280);
+  flex: 0 0 auto;
+}
+
+.scm-pick-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+  flex-wrap: wrap;
+}
+
+.scm-pick-count {
+  font-size: 0.68rem;
+  color: var(--sidebar-muted, #6b7280);
+  flex: 1 1 auto;
+}
+
+.scm-pick-compare-btn,
+.scm-pick-compare-btn-fallback {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
+  background: var(--accent-bg, #1d4ed8);
+  color: var(--accent-fg, #ffffff);
+  text-decoration: none;
+  border: 1px solid var(--accent-bg, #1d4ed8);
+  cursor: pointer;
+  transition: opacity 0.1s ease, background-color 0.1s ease;
+}
+
+.scm-pick-compare-btn:hover,
+.scm-pick-compare-btn-fallback:hover {
+  opacity: 0.92;
+}
+
+.scm-pick-compare-btn--disabled,
+.scm-pick-compare-btn[aria-disabled="true"] {
+  background: var(--text-muted, #9ca3af);
+  border-color: var(--text-muted, #9ca3af);
+  cursor: not-allowed;
+  pointer-events: none;
+}
