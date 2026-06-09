@@ -1,0 +1,216 @@
+{
+  "package": {
+    "name": "Finco1 Controlled Generic Scenario Pilot Runbook",
+    "workstream": "B45",
+    "branch": "parallel-b41-b47-generic-modelling-governance-pack",
+    "branch_base_sha_at_creation": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
+    "package_base_sha_at_creation": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
+    "runbook_version": "0.1.0",
+    "runbook_status": "initial_draft_generic_scenario_focused",
+    "intended_use": "internal_controlled_generic_scenario_pilot_governance_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/pilot/controlled_generic_scenario_pilot_runbook.md",
+  "b41_post_phase25b_pointer": "docs/governance/post_phase25b_generic_modelling_governance_refresh.md",
+  "b42_scenario_loop_evidence_pointer": "docs/validation/generic_scenario_loop_evidence_matrix.md",
+  "b43_what_changed_pointer": "docs/governance/what_changed_delta_indicator_governance_review.md",
+  "b44_generic_solar_wind_pointer": "docs/commercial/generic_solar_wind_demo_guardrail_refresh.md",
+  "b46_compare_export_register_pointer": "docs/validation/scenario_compare_export_evidence_register.md",
+  "b47_readiness_delta_cadence_pointer": "docs/governance/post25b_readiness_delta_refresh_cadence.md",
+  "b18_pilot_runbook_pointer": "docs/pilot/controlled_pilot_runbook.md",
+  "b39_controlled_pilot_ux_pointer": "docs/pilot/controlled_pilot_ux_runbook.md",
+  "b20_pilot_issue_log_pointer": "docs/pilot/pilot_issue_log_process.md",
+  "b21_pilot_ack_pointer": "docs/pilot/pilot_user_acknowledgement.md",
+  "b22_qa_pointer": "docs/commercial/demo_qa_guardrail.md",
+  "b23_qbank_pointer": "docs/external_review/reviewer_question_bank.md",
+  "disclaimers": {
+    "controlled_pilot_is_internal_not_external": true,
+    "controlled_pilot_is_not_customer_reference": true,
+    "controlled_pilot_does_not_authorize_paid_pilot": true,
+    "controlled_pilot_is_not_external_review": true,
+    "generic_solar_remain_exploratory_and_unvalidated": true,
+    "generic_wind_remain_exploratory_and_unvalidated": true,
+    "exploratory_banner_required_for_generic_solar_wind": true,
+    "what_changed_deltas_are_explanatory_not_guaranteed": true,
+    "b18_b20_b21_b22_b23_b39_remain_primary_pilot_governance": true,
+    "b45_supplements_not_replaces": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_template_or_static_changes_by_agent_b": true,
+    "no_app_code_changes_by_agent_b": true,
+    "no_route_or_service_changes_by_agent_b": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_schema_migration_changes": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "no_production_ready_claim": true,
+    "no_enterprise_saas_ready_claim": true,
+    "no_lender_bank_audit_certification_regulatory_saas_claim": true,
+    "no_investment_advice": true,
+    "no_guaranteed_returns": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "pilot_ux_objective": {
+    "ux_clarity": "are the Generic Modelling UI changes clear and understandable?",
+    "task_efficiency": "can users complete their Generic Modelling tasks faster or with fewer errors?",
+    "visual_consistency": "are the visual changes consistent across the app?",
+    "no_regression": "do the UI changes break any existing user task?",
+    "exploratory_banner_visibility": "is the exploratory banner visible for Generic Solar / Generic Wind?",
+    "what_changed_panel_validation": "does the What Changed panel render correctly for Generic Solar / Wind scenarios with at least 2 runs?",
+    "what_validation_is_not": [
+      "model validation",
+      "financial formula validation",
+      "parity-core lock validation",
+      "engine-output golden validation",
+      "customer reference",
+      "paid pilot authorization",
+      "external validation",
+      "production readiness or enterprise SaaS readiness claim",
+      "Excel-parity validation for Generic Solar / Wind"
+    ]
+  },
+  "user_task_list": [
+    {"task_id": "T1", "task_name": "Open the index page. Verify that the runtime summary, validation summary, and banner context are visible."},
+    {"task_id": "T2", "task_name": "Create a Generic Solar project. Verify that the project creation flow is functional and the exploratory banner is visible."},
+    {"task_id": "T3", "task_name": "Generic Solar task: edit a Generic Solar scenario, save it, run it, and verify that the output is generated."},
+    {"task_id": "T4", "task_name": "Generic Wind task: edit a Generic Wind scenario, save it, run it, and verify that the output is generated."},
+    {"task_id": "T5", "task_name": "Scenario duplicate / edit / save / run task: duplicate a scenario, edit it, save it, run it, and verify that the output is generated."},
+    {"task_id": "T6", "task_name": "Compare task: open the scenario compare and verify that the 2-way compare is functional."},
+    {"task_id": "T7", "task_name": "3-way / 4-way compare task: open the 3-way / 4-way compare and verify that it is functional."},
+    {"task_id": "T8", "task_name": "Multi-compare task: open the multi-compare picker and verify that the picker is functional."},
+    {"task_id": "T9", "task_name": "Export / download task: export a Generic scenario as a downloadable artifact and verify that the artifact is generated correctly."},
+    {"task_id": "T10", "task_name": "What Changed panel task: edit a Generic Solar scenario, re-run it, and verify that the What Changed panel renders the deltas correctly."},
+    {"task_id": "T11", "task_name": "Exploratory banner task: verify that the exploratory banner is visible for Generic Solar / Generic Wind scenarios."},
+    {"task_id": "T12", "task_name": "Factory project safety task: open a factory project (TUHO / Oborovo), verify that the What Changed panel is NOT rendered, and verify that the run summary output is unchanged."}
+  ],
+  "allowed_data": {
+    "canonical_reference_projects": ["TUHO", "Oborovo"],
+    "generic_solar_wind_projects": true,
+    "sample_project_from_creation_flow": true,
+    "what_is_not_allowed": [
+      "Any project that is not in the canonical reference set.",
+      "Any production customer data. No production customer data is available; the controlled pilot uses only the canonical reference projects and the Generic Solar / Generic Wind projects."
+    ]
+  },
+  "prohibited_data": [
+    "Production customer data (not available; canonical reference projects and Generic Solar / Wind only).",
+    "Any data that is not in the canonical reference set or the Generic Solar / Wind projects.",
+    "Any data that is restricted by the project's security / privacy policy."
+  ],
+  "setup_checklist": [
+    {"item": "The pilot environment is configured.", "description": "The controlled pilot uses a local or staging environment with the canonical reference projects and the Generic Solar / Generic Wind projects loaded."},
+    {"item": "The pilot user is assigned.", "description": "A designated internal user is assigned to the controlled pilot. The pilot user is internal, not external."},
+    {"item": "The pilot user acknowledgement is signed.", "description": "The B21 pilot user acknowledgement checklist is completed by the pilot user. The acknowledgement is internal governance, not a legal contract."},
+    {"item": "The pilot evidence register is initialized.", "description": "The B20 pilot evidence register template is initialized with the pilot start date, the pilot end date, the pilot user, the canonical reference projects, and the Generic Solar / Generic Wind projects."},
+    {"item": "The pilot issue log is initialized.", "description": "The B20 pilot issue log template is initialized."},
+    {"item": "The pilot friction log is initialized.", "description": "The B45 friction log (in this runbook) is initialized."},
+    {"item": "The pilot confusion log is initialized.", "description": "The B45 confusion log (in this runbook) is initialized."}
+  ],
+  "run_checklist": [
+    {"item": "The pilot user opens the index page.", "description": "The pilot user records the screenshot, the console log, the network log, and the tab navigation trace."},
+    {"item": "The pilot user runs through tasks T1-T12.", "description": "The pilot user records the screenshot, the console log, the network log, and the tab navigation trace for each task."},
+    {"item": "The pilot user records friction points.", "description": "The pilot user records any friction point in the B45 friction log."},
+    {"item": "The pilot user records confusion points.", "description": "The pilot user records any confusion point in the B45 confusion log."},
+    {"item": "The pilot user records issues.", "description": "The pilot user records any issue in the B20 pilot issue log."},
+    {"item": "The pilot user records evidence.", "description": "The pilot user records any evidence in the B20 pilot evidence register."}
+  ],
+  "evidence_to_collect": [
+    "Screenshots of the UI for each task.",
+    "Browser console logs for each task.",
+    "Browser network logs for each task.",
+    "Tab navigation traces for each task.",
+    "Friction log entries (per task).",
+    "Confusion log entries (per task).",
+    "Issue log entries (per issue).",
+    "Evidence register entries (per evidence).",
+    "Export / download artifacts (per task T9)."
+  ],
+  "friction_log_template": {
+    "log_id": "FL-###",
+    "fields": ["task_id", "severity", "description", "screenshot", "pilot_user", "date_time"],
+    "severity_values": ["low", "medium", "high"]
+  },
+  "confusion_log_template": {
+    "log_id": "CL-###",
+    "fields": ["task_id", "severity", "description", "screenshot", "pilot_user", "date_time"],
+    "severity_values": ["low", "medium", "high"]
+  },
+  "issue_severity_definitions": {
+    "low": "cosmetic or minor UX issue. Does not block the controlled pilot.",
+    "medium": "functional issue that the pilot user can work around. Does not block the controlled pilot but should be fixed in a follow-up PR.",
+    "high": "functional issue that blocks one or more tasks. Blocks the controlled pilot until fixed."
+  },
+  "stop_criteria": [
+    "High-severity issue is identified that blocks one or more tasks.",
+    "Critical data integrity issue is identified.",
+    "The pilot user is unable to complete any task due to a UI or persistence issue.",
+    "The pilot user requests a stop."
+  ],
+  "rollback_escalation_criteria": [
+    "A financial output drift is detected on TUHO or Oborovo.",
+    "A parity-core lock drift is detected.",
+    "An engine-output golden drift is detected on TUHO or Oborovo.",
+    "A model output drift is detected on TUHO or Oborovo.",
+    "A schema / migration drift is detected.",
+    "A persistence / repository drift is detected.",
+    "The factory project run summary output is NOT byte-identical to the pre-Phase-25B-3 path.",
+    "The exploratory banner is missing for Generic Solar / Generic Wind scenarios."
+  ],
+  "post_run_evidence_update": [
+    "B20 pilot issue log (per-issue entries)",
+    "B20 pilot evidence register (per-evidence entries)",
+    "B21 pilot user acknowledgement (per-item sign-off entries)",
+    "B22 Q&A matrix (per-Q&A entries)",
+    "B23 reviewer question bank (per-question answers)",
+    "B45 friction log (per-friction entries)",
+    "B45 confusion log (per-confusion entries)"
+  ],
+  "what_blocks_controlled_pilot": [
+    "High-severity UX issue that blocks one or more tasks.",
+    "Critical data integrity issue.",
+    "Financial output drift on TUHO or Oborovo.",
+    "Parity-core lock drift.",
+    "Engine-output golden drift on TUHO or Oborovo.",
+    "Model output drift on TUHO or Oborovo.",
+    "Schema / migration drift.",
+    "Persistence / repository drift.",
+    "Factory project run summary output is NOT byte-identical to the pre-Phase-25B-3 path.",
+    "Exploratory banner is missing for Generic Solar / Generic Wind scenarios.",
+    "Any hard-stop condition from the B25 / B33 / B35 stop / go checklists.",
+    "Any prohibited no-go claim scenario."
+  ],
+  "what_can_be_fixed_later": [
+    "Low-severity UX issues.",
+    "Medium-severity UX issues that the pilot user can work around.",
+    "Cosmetic issues.",
+    "Minor color contrast improvements.",
+    "Minor wording improvements.",
+    "Minor visual polish."
+  ],
+  "no_claim_categories": {
+    "controlled_pilot_is_customer_reference": false,
+    "controlled_pilot_authorizes_paid_pilot": false,
+    "controlled_pilot_approves_production_rollout": false,
+    "controlled_pilot_approves_enterprise_saas_rollout": false,
+    "controlled_pilot_approves_marketing_launch": false,
+    "controlled_pilot_claims_external_validation": false,
+    "controlled_pilot_makes_lender_claim": false,
+    "controlled_pilot_makes_investment_advice_claim": false,
+    "controlled_pilot_makes_guaranteed_returns_claim": false,
+    "controlled_pilot_validates_generic_solar_wind": false,
+    "controlled_pilot_validates_excel_parity_for_generic": false
+  },
+  "generic_solar_wind_status": "exploratory_and_unvalidated",
+  "g20_status": "BLOCKED",
+  "r99_r102_status": "NOT_APPROVED",
+  "global_notes": [
+    "The controlled pilot is internal, not external. It is not a customer reference. It does not authorize paid pilot.",
+    "The controlled pilot is not the external review. The external review is a separate workstream.",
+    "B18, B20, B21, B22, B23, B39 are the B-track governance artifacts that govern the controlled pilot. B45 is a Generic-Scenario-focused runbook that supplements the B18 / B20 / B21 / B22 / B23 / B39 artifacts.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}
