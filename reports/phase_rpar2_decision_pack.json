@@ -1,0 +1,69 @@
+{
+  "phase": "rpar2-decision-pack",
+  "date": "2026-06-09",
+  "type": "report-only",
+  "base_sha": "233981e4",
+  "status": "DRAFT",
+  "options": [
+    {
+      "code": "A",
+      "name": "Model senior IDC base-rate properly",
+      "goal": "Replace effective-rate with contractual base-rate method, re-baseline senior opening balance at COD",
+      "accounting_impact": "Higher senior IDC, lower DSCR, more SHL PIK potential, higher tax shield, lower equity IRR",
+      "lender_audit_impact": "Clean covenant compliance, no carve-out needed, R99/R102 chain closes",
+      "implementation_effort": "L (multi-quarter, multi-sprint, multi-PR, both projects)",
+      "parity_impact": "Expected -10 failures (R-PAR-2 family closes); ~78 remain",
+      "risk": "Medium-High",
+      "pilot_unlock": true,
+      "paid_unlock": true,
+      "enterprise_unlock": true
+    },
+    {
+      "code": "B",
+      "name": "Formally accept / freeze the caveat",
+      "goal": "Document effective-rate as long-term assumption, reclassify or keep frozen with carve-out",
+      "accounting_impact": "Unchanged (effective-rate continues)",
+      "lender_audit_impact": "Deviation requires lender signoff; documented carve-out closes R99/R102",
+      "implementation_effort": "S (sub-sprint, governance memo + lender signoff)",
+      "parity_impact": "Unchanged (88 failures remain)",
+      "risk": "Low",
+      "pilot_unlock": "partial (with memo)",
+      "paid_unlock": "partial (with memo)",
+      "enterprise_unlock": false
+    },
+    {
+      "code": "C",
+      "name": "Defer",
+      "goal": "Keep C9 guard fail-closed, no promotion, re-evaluate later",
+      "accounting_impact": "Unchanged",
+      "lender_audit_impact": "Deviation noted as known gap; R99/R102 stay OPEN",
+      "implementation_effort": "S (sub-sprint, governance memo)",
+      "parity_impact": "Unchanged (88 failures remain)",
+      "risk": "None",
+      "pilot_unlock": false,
+      "paid_unlock": false,
+      "enterprise_unlock": false
+    }
+  ],
+  "recommendation": "B",
+  "recommendation_rationale": "Unblocks C10 implementation immediately, closes R99/R102 audit chain with carve-out, preserves option A for future. Right strategic answer is A but wrong sprint for current pilot window.",
+  "fallback": "C if B conditions cannot be met",
+  "deferred_A_sprint": "Sprint 25-D (Senior IDC Re-baseline, parallel track)",
+  "conditions_for_B": [
+    "Governance board signoff",
+    "Senior lender signoff (or formal project-level decision)",
+    "Audit team signoff on carve-out",
+    "Documented re-evaluation trigger"
+  ],
+  "nogo_list_immediate": [
+    "Option A implementation in current sprint (multi-quarter work)",
+    "Promoting senior_idc_keur before B is ratified",
+    "Promoting senior_idc_keur in C9 promotion path before rpar2_resolved=True"
+  ],
+  "hard_rules_respected": true,
+  "no_production_code_change": true,
+  "no_promotion": true,
+  "no_runtime_change": true,
+  "no_model_change": true,
+  "rc1_untouched": true
+}
