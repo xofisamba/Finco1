@@ -1,0 +1,175 @@
+{
+  "phase": "next-sprint-decision-matrix",
+  "date": "2026-06-09",
+  "type": "report-only",
+  "base_sha": "72f3ab6",
+  "status": "DRAFT",
+  "candidates": [
+    {
+      "code": "A",
+      "name": "C10 TUHO controlled promotion",
+      "product_value": 5,
+      "implementation_risk": 4,
+      "parity_risk": 4,
+      "effort": "L",
+      "dependency_blockers": [
+        "R-PAR-2 (B)",
+        "R-PAR-5",
+        "R99",
+        "governance approvals"
+      ],
+      "recommended_order": 4,
+      "post_B": true
+    },
+    {
+      "code": "B",
+      "name": "R-PAR-2 senior IDC resolution",
+      "product_value": 5,
+      "implementation_risk": 1,
+      "parity_risk": 0,
+      "effort": "S",
+      "dependency_blockers": [
+        "governance board availability",
+        "modelling lead review"
+      ],
+      "recommended_order": 1,
+      "post_B": false
+    },
+    {
+      "code": "C",
+      "name": "CAPEX 2.0 continuation",
+      "product_value": 2,
+      "implementation_risk": 2,
+      "parity_risk": 1,
+      "effort": "M",
+      "dependency_blockers": [
+        "none"
+      ],
+      "recommended_order": 6,
+      "post_B": false
+    },
+    {
+      "code": "D",
+      "name": "OPEX line-item visibility",
+      "product_value": 3,
+      "implementation_risk": 2,
+      "parity_risk": 2,
+      "effort": "M",
+      "dependency_blockers": [
+        "Phase 20N discovery (done)"
+      ],
+      "recommended_order": 5,
+      "post_B": false
+    },
+    {
+      "code": "E",
+      "name": "Depreciation enablement",
+      "product_value": 3,
+      "implementation_risk": 3,
+      "parity_risk": 3,
+      "effort": "M",
+      "dependency_blockers": [
+        "R99",
+        "R102 audit chain",
+        "tax model review"
+      ],
+      "recommended_order": 7,
+      "post_B": false
+    },
+    {
+      "code": "F",
+      "name": "Generic Wind/Solar reference journey",
+      "product_value": 4,
+      "implementation_risk": 3,
+      "parity_risk": 4,
+      "effort": "L",
+      "dependency_blockers": [
+        "F-series inventory (done)",
+        "partner reference projects"
+      ],
+      "recommended_order": 3,
+      "post_B": false
+    },
+    {
+      "code": "G",
+      "name": "Pilot UX hardening",
+      "product_value": 4,
+      "implementation_risk": 1,
+      "parity_risk": 0,
+      "effort": "M",
+      "dependency_blockers": [
+        "none"
+      ],
+      "recommended_order": 2,
+      "post_B": false
+    }
+  ],
+  "primary_recommendation": "B",
+  "primary_recommendation_name": "R-PAR-2 senior IDC resolution",
+  "parallel_recommendation": "G",
+  "parallel_recommendation_name": "Pilot UX hardening",
+  "nogo_list": [
+    "C10 implementation (blocked on B)",
+    "Oborovo promotion (hard rule)",
+    "Senior IDC runtime change (blocked on B)",
+    "Live sculpting / debt re-sizing (blocked on C10 + governance)",
+    "Multi-user / RBAC / SSO (strategic track)",
+    "Bank / lender / external audit certification (out of scope claim)",
+    "Replay engine (strategic track)",
+    "Generic wind/solar for external decisions (needs F3 validation)",
+    "CAPEX 2.0 as primary (too incremental)",
+    "Depreciation enablement as primary (blocked on R99/R102 chain)"
+  ],
+  "suggested_sequencing": [
+    {
+      "sprint": "24-A",
+      "primary": "B",
+      "parallel": "G-part1"
+    },
+    {
+      "sprint": "24-B",
+      "primary": "R67",
+      "parallel": "G-part2"
+    },
+    {
+      "sprint": "24-C",
+      "primary": "R99/R102 audit chain",
+      "parallel": "G-part3"
+    },
+    {
+      "sprint": "24-D",
+      "primary": "DEBT sculpting (TUHO)",
+      "parallel": "F3 design"
+    },
+    {
+      "sprint": "24-E",
+      "primary": "DEP shadow (Oborovo, after TUHO)",
+      "parallel": "F3 validation"
+    },
+    {
+      "sprint": "24-F",
+      "primary": "A (C10 promotion)",
+      "parallel": "OB-DIST-LOCKUP"
+    },
+    {
+      "sprint": "25-A",
+      "primary": "F3 validation",
+      "parallel": "D (OPEX sub-lines)"
+    },
+    {
+      "sprint": "25-B",
+      "primary": "D (OPEX)",
+      "parallel": "C (CAPEX 2.0)"
+    },
+    {
+      "sprint": "25-C",
+      "primary": "E (depreciation)",
+      "parallel": "C (CAPEX 2.0 cont.)"
+    }
+  ],
+  "hard_rules_respected": true,
+  "no_production_code_change": true,
+  "no_promotion": true,
+  "no_runtime_change": true,
+  "rc1_untouched": true
+}
