@@ -6229,3 +6229,165 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   cursor: not-allowed;
   pointer-events: none;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Phase 25B-3 — "What changed since previous run?" delta panel
+   Read-only UI. Shows deltas between the current run summary and
+   the previous run summary (when available). No new colors — uses
+   existing CSS variables only.
+   ───────────────────────────────────────────────────────────────────── */
+
+.wc-panel {
+  margin-top: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--sidebar-border, var(--text-muted, #d0d7de));
+  border-radius: 6px;
+  background: var(--info-bg, #f6f8fa);
+  font-size: 0.85rem;
+}
+
+.wc-panel[data-state="no-previous"] {
+  background: var(--warn-bg, #fff8e1);
+}
+
+.wc-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.wc-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-strong, #24292f);
+}
+
+.wc-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted, #57606a);
+}
+
+.wc-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.wc-banner--exploratory {
+  background: var(--warn-bg, #fff8e1);
+  color: var(--warn-fg, #6a4500);
+  border-left: 3px solid var(--warn-accent, #b08800);
+}
+
+.wc-banner--descriptive {
+  background: var(--info-bg, #eef5fb);
+  color: var(--text-muted, #24292f);
+  border-left: 3px solid var(--accent, #0969da);
+}
+
+.wc-banner-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: var(--warn-fg, #b08800);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.wc-banner-text {
+  flex: 1;
+}
+
+.wc-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  color: var(--text-muted, #57606a);
+  font-size: 0.85rem;
+}
+
+.wc-empty-icon {
+  font-size: 1.2rem;
+  color: var(--text-muted, #57606a);
+}
+
+.wc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.4rem;
+}
+
+.wc-table th,
+.wc-table td {
+  padding: 0.25rem 0.4rem;
+  text-align: left;
+  border-bottom: 1px solid var(--sidebar-border, #d8dee4);
+  font-size: 0.8rem;
+}
+
+.wc-th-metric,
+.wc-td-label {
+  font-weight: 600;
+  color: var(--text-strong, #24292f);
+}
+
+.wc-th-current,
+.wc-td-current {
+  text-align: right;
+}
+
+.wc-th-previous,
+.wc-td-previous {
+  text-align: right;
+  color: var(--text-muted, #57606a);
+}
+
+.wc-th-delta,
+.wc-td-delta {
+  text-align: right;
+  font-weight: 600;
+}
+
+.wc-th-percent,
+.wc-td-percent {
+  text-align: right;
+  color: var(--text-muted, #57606a);
+}
+
+.wc-row--positive .wc-td-delta {
+  color: var(--pass-fg, #1a7f37);
+}
+
+.wc-row--negative .wc-td-delta {
+  color: var(--warn-fg, #b08800);
+}
+
+.wc-row--zero .wc-td-delta {
+  color: var(--text-muted, #57606a);
+}
+
+.wc-row--n_a {
+  opacity: 0.6;
+}
+
+.wc-footer {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--sidebar-border, #d8dee4);
+  font-size: 0.7rem;
+  color: var(--text-muted, #57606a);
+}
+
+.wc-footer-note {
+  font-style: italic;
+}

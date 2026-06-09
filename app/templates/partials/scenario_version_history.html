@@ -57,6 +57,26 @@
         </div>
       {% endif %}
 
+      <!-- Phase 25B-3 — What changed since previous run? panel
+           Gated on user_created projects (generic exploratory path).
+           Hidden for factory projects (TUHO/Oborovo) and for cards with
+           no previous run summary recorded yet.
+
+           Note: Jinja2 `include` does NOT scope local variables from the
+           surrounding `for` loop, so we must pass the per-card context
+           to the partial explicitly. -->
+      {% if card.is_user_project %}
+        {% with
+            panel_rows=card.panel_rows or [],
+            has_previous_run=card.has_previous_run or false,
+            project_origin=card.is_user_project and "user_created" or "factory_template",
+            template_source=card.template_source or "",
+            scenario_name=card.scenario_name
+        %}
+          {% include "partials/what_changed_panel.html" %}
+        {% endwith %}
+      {% endif %}
+
     </div>
     {% endfor %}
 
