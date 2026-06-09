@@ -38,6 +38,13 @@
   </div>
   {% endif %}
 
+  <!-- Phase 25B-2.1: Multi-Compare Picker (selection entry point) — user projects only -->
+  {% if is_user_project and not (multi_compare_result or multi_compare_error) %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_multi_compare_picker.html" %}
+  </div>
+  {% endif %}
+
   <!-- Phase 25B-2: Multi-scenario compare (2-4 scenarios) -->
   {% if multi_compare_result or multi_compare_error %}
   <div class="ps-section" style="margin-top:0.75rem;">

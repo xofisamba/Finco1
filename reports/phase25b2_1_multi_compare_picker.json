@@ -1,0 +1,186 @@
+{
+  "phase": "25B-2.1",
+  "title": "Multi-Compare Button / Scenario Selection Entry Point",
+  "type": "ui/navigation only (no new backend, no new financial logic)",
+  "status": "DRAFT (awaiting review)",
+  "date": "2026-06-09",
+  "branch": "phase25b2-1-multi-compare-picker",
+  "base_sha": "aba8805 (post-25B-2-merge main)",
+  "head_sha": "PENDING (commit pending)",
+  "primary_user_story": "As a user, I can open the Scenario workspace, select 2-4 saved Generic scenarios, and click 'Compare selected scenarios' to open the multi-compare table.",
+  "scope": "Generic exploratory path first. UI/navigation only.",
+  "what_was_delivered": {
+    "new_template": {
+      "file": "app/templates/partials/scenario_multi_compare_picker.html",
+      "type": "new",
+      "lines_added": 247,
+      "notes": "Picker UI (heading + banner + checkbox list + Compare button + counter) + inline vanilla JS (no Alpine, no Tailwind, no jQuery, no HTMX for picker logic). <noscript> fallback <button type=\"submit\"> for no-JS users."
+    },
+    "workspace_wire": {
+      "file": "app/templates/partials/scenario_workspace.html",
+      "type": "modified",
+      "lines_added": 9,
+      "notes": "Conditional include of the new partial, gated on {% if is_user_project and not (multi_compare_result or multi_compare_error) %}. Picker is hidden when the multi-compare table is already shown (no duplication). Hidden for factory projects (TUHO / Oborovo)."
+    },
+    "css": {
+      "file": "static/styles.css",
+      "type": "modified",
+      "lines_added": 129,
+      "notes": "New .scm-pick-* classes (additive; :root count = 3 preserved). All colors via CSS variables (var(--sidebar-*, var(--text-*, var(--accent-*, etc.). No Tailwind @apply, no Alpine x-data."
+    },
+    "javascript": {
+      "location": "inline in scenario_multi_compare_picker.html",
+      "lines": 35,
+      "notes": "Vanilla JS, no dependencies. Listens to checkbox change events, enforces 2-4 cap (un-checks the 5th), updates Compare button href + aria-disabled. Isolated to the picker root (queries [data-testid='multi-compare-picker']). No global state mutation."
+    }
+  },
+  "empty_and_partial_states": {
+    "0_scenarios": "Empty state: 'No saved scenarios. Save at least 2 scenarios to enable multi-compare.' No form.",
+    "1_scenario": "Partial state: 'Only 1 saved scenario. Save at least 1 more scenario to enable multi-compare.' + locked, checked, disabled checkbox for the existing scenario. No form.",
+    "2_to_4_scenarios": "Happy path: form + checkboxes + counter + Compare button. Counter starts at '0 of 2-4 selected'. Compare button starts aria-disabled.",
+    "5_plus_selections": "JS un-checks the (5th) checkbox. User cannot submit with >4.",
+    "no_run_output": "Picker renders the row (IRR meta is hidden if no last_run_summary); Compare button still works. Multi-compare table handles missing values (from 25B-2 endpoint).",
+    "missing_scenario_id": "Cannot happen via picker (all checkboxes are server-rendered). Direct URL hit returns 'could not be resolved' error message (from 25B-2 endpoint)."
+  },
+  "exploratory_safety": {
+    "generic_solar_or_generic_wind": "Shows EXPLORATORY banner with safety copy 'Generic project. Multi-compare is exploratory / not Excel-parity validated.'",
+    "non_generic_user_projects": "Shows descriptive banner 'Multi-compare is descriptive only. The first scenario you pick is the Base reference for deltas.'",
+    "no_reference_or_validated_claim": "The picker NEVER shows 'Reference' or 'Validated' badges — only the EXPLORATORY warning for generic projects."
+  },
+  "test_coverage": {
+    "total": 38,
+    "blocks": [
+      {
+        "block": 1,
+        "name": "Template exists and content",
+        "tests": 9,
+        "covers": ["file exists", "testid root", "min/max attributes", "endpoint href", "form GET fallback", "existing data reuse", "button aria-disabled", "count indicator", "minimal JS"]
+      },
+      {
+        "block": 2,
+        "name": "Conditional rendering",
+        "tests": 5,
+        "covers": ["shown for generic_solar", "shown for test template", "hidden for factory project (TUHO)", "hidden when multi_compare_result set", "unauthenticated redirects"]
+      },
+      {
+        "block": 3,
+        "name": "Empty and partial states",
+        "tests": 5,
+        "covers": ["0 scenarios empty state", "1 scenario partial state with locked checkbox", "2 scenarios form + 2 checkboxes", "4 scenarios form + 4 checkboxes"]
+      },
+      {
+        "block": 4,
+        "name": "End-to-end integration",
+        "tests": 5,
+        "covers": ["button href well-formed", "form GET submission works without JS", "1 scenario error state", "5+ scenario error state", "missing run_output handled"]
+      },
+      {
+        "block": 5,
+        "name": "Safety constraints",
+        "tests": 11,
+        "covers": ["no new financial formulas", "no DB writes", "factory paths zero diff", "waterfall_core zero diff", "no construction flag flips", ":root count = 3", "no Tailwind", "no Alpine", "no rc1", "route read-only", "2-way compare still works"]
+      },
+      {
+        "block": 6,
+        "name": "CSS style guard",
+        "tests": 4,
+        "covers": ["pick root classes", "banner styles", "disabled state", "CSS variables for colors"]
+      }
+    ]
+  },
+  "regression_tests": {
+    "total_phase_targeted": 593,
+    "all_passing": true,
+    "suites": {
+      "25B-2.1_new": 38,
+      "25B-2_regression": 53,
+      "25B-1_regression": 52,
+      "24H_closure_regression": 34,
+      "24H-4_regression": 58,
+      "24H-3_regression": 53,
+      "24H-2_regression": 55,
+      "24H_regression": 29,
+      "24G_closure_regression": 30,
+      "24G-1_regression": 47,
+      "24G-2_regression": 75,
+      "24G-3_regression": 69
+    }
+  },
+  "hard_constraints_honored": {
+    "no_new_financial_formulas": true,
+    "no_formula_refactor": true,
+    "no_construction_promotion": true,
+    "no_c10_rpar_work": true,
+    "no_senior_idc_changes": true,
+    "no_schema_migration": true,
+    "no_tailwind_or_alpine": true,
+    "no_fake_outputs": true,
+    "no_fake_runtime_ids": true,
+    "no_db_writes": true,
+    "no_new_backend_route": true,
+    "no_new_helper": true,
+    "no_new_persistence_changes": true,
+    "rc1_untouched": true,
+    "factory_paths_preserved": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "css_root_count_unchanged": 3,
+    "project_factories_unchanged": true,
+    "waterfall_core_unchanged": true,
+    "compare_service_2way_unchanged": true,
+    "scenario_workspace_layout_preserved": true,
+    "is_read_only": true,
+    "is_form_get_not_post": true
+  },
+  "files_changed": {
+    "implementation": [
+      {"path": "app/templates/partials/scenario_multi_compare_picker.html", "change_type": "new", "lines_added": 247, "notes": "Picker UI + inline JS"},
+      {"path": "app/templates/partials/scenario_workspace.html", "change_type": "modified", "lines_added": 9, "notes": "Conditional include of new partial"},
+      {"path": "static/styles.css", "change_type": "modified", "lines_added": 129, "notes": "New .scm-pick-* classes (additive)"}
+    ],
+    "tests": [
+      {"path": "tests/test_phase25b2_1_multi_compare_picker.py", "change_type": "new", "lines_added": 954, "tests": 38, "test_blocks": 6}
+    ],
+    "docs": [
+      {"path": "docs/phase25b2_1_multi_compare_picker.md", "change_type": "new", "lines_added": 670}
+    ],
+    "reports": [
+      {"path": "reports/phase25b2_1_multi_compare_picker.json", "change_type": "new"}
+    ],
+    "unchanged_but_referenced": [
+      "app/project_factories.py (zero diff)",
+      "app/waterfall_core.py (zero diff)",
+      "app/persistence/exports_repository.py (compare_multi_scenarios helper reused, not modified)",
+      "main_web.py (/scenarios/compare-multi route unchanged; picker just navigates to it)",
+      "app/services/compare_service.py (2-way compare flow preserved)"
+    ]
+  },
+  "user_flow": {
+    "before_25b2_1": [
+      "Open DevTools or right-click 'Inspect' on the saved scenarios.",
+      "Copy the data-scenario-id attribute from each scenario row.",
+      "Manually construct /scenarios/compare-multi?project=...&scenario_ids=base,downside,upside",
+      "Paste it into the address bar."
+    ],
+    "after_25b2_1": [
+      "Open the Scenarios workspace.",
+      "Below the existing 'Saved Versions' list, a new 'Multi-Compare' section appears with checkboxes.",
+      "Check 2-4 scenarios. The '0 of 2-4 selected' counter updates. The Compare button enables.",
+      "Click 'Compare selected scenarios'. The browser navigates to the multi-compare URL and the table renders.",
+      "If the project is generic_solar or generic_wind, the EXPLORATORY warning is visible at the top."
+    ]
+  },
+  "what_is_NOT_in_this_phase": [
+    "No 'Select All' / 'Deselect All' buttons (follow-up)",
+    "No 'Move to top' / re-order for Base scenario (follow-up)",
+    "No persistent selection state (follow-up)",
+    "No keyboard shortcuts beyond standard browser tab navigation",
+    "No drag-to-reorder for Base scenario",
+    "No scenario search / filter for 50+ scenarios (follow-up)",
+    "No bulk delete / archive from the picker",
+    "No link from the multi-compare table back to the picker ('Edit selection') (follow-up)",
+    "No live preview of the multi-compare table as the user toggles checkboxes (follow-up)"
+  ],
+  "recommended_next_phase": "25B-2.2 ('Edit selection' link from multi-compare table back to picker) or 25B-3 ('What changed' delta indicator).",
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}
