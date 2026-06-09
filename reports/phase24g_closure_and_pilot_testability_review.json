@@ -1,0 +1,259 @@
+{
+  "phase": "24-G Closure",
+  "title": "Phase 24-G Closure Review + Pilot Testability Assessment",
+  "type": "REPORT ONLY, DOCS ONLY, SHAPE TESTS ONLY",
+  "status": "DRAFT (review-only; not merged)",
+  "date": "2026-06-09",
+  "branch": "phase24g-closure-pilot-testability-review",
+  "base_sha": "f69e9e4ede0062eb78dfe6b543bac86cecfd71ab",
+  "head_sha": "PENDING (commit pending)",
+  "builds_on": [
+    "PR #564 (pilot-ux-safe-track-inventory)",
+    "PR #567 (24-G-1 stale run warning + validation summary clarity)",
+    "PR #568 (24-G-2 run status clarity + validation summary completion)",
+    "PR #570 (24-G-3 CAPEX sheet readability + export/download clarity)"
+  ],
+  "deliverables": {
+    "docs": [
+      "docs/phase24g_closure_and_pilot_testability_review.md"
+    ],
+    "reports": [
+      "reports/phase24g_closure_and_pilot_testability_review.json"
+    ],
+    "tests": [
+      "tests/test_phase24g_closure_pilot_testability_review.py"
+    ]
+  },
+  "delivered_across_g_track": {
+    "pr_564": {
+      "title": "Pilot UX Safe Track Inventory",
+      "status": "MERGED",
+      "head_sha": "a421ab5",
+      "type": "docs + report + shape tests",
+      "items_ranked": 5
+    },
+    "pr_566_567_24g1": {
+      "title": "Phase 24-G-1 — Stale Run Warning + Validation Summary Clarity",
+      "status": "MERGED (#567 supersedes DRAFT #566)",
+      "head_sha": "56e81cc",
+      "type": "UI-only",
+      "tests": 47
+    },
+    "pr_565_568_24g2": {
+      "title": "Phase 24-G-2 — Run Status Clarity + Validation Summary Completion",
+      "status": "MERGED (#568 supersedes DRAFT #565)",
+      "head_sha": "d1dbe87",
+      "type": "UI-only",
+      "tests": 75
+    },
+    "pr_569_570_24g3": {
+      "title": "Phase 24-G-3 — CAPEX Sheet Readability + Export / Download Clarity",
+      "status": "MERGED (#570 supersedes DRAFT #569)",
+      "head_sha": "a43ba3e",
+      "type": "UI-only",
+      "tests": 69
+    },
+    "total_g_track_tests": 208,
+    "all_passing_on_main": true
+  },
+  "user_can_do_today": {
+    "project_workflow": [
+      "browse TUHO/Oborovo/generic projects",
+      "create new project with form",
+      "edit draft inputs",
+      "save named scenario",
+      "run model from clean boundary",
+      "inspect runtime summary",
+      "compare saved scenarios",
+      "download CSV / XLSX artefacts"
+    ],
+    "run_status_24g2": [
+      "see OK/ERROR/BLOCKED/— status badge",
+      "see project + scenario association",
+      "see inline stale/fresh indicator",
+      "see Last run error row on failure"
+    ],
+    "validation_24g1_24g2": [
+      "see plain-language error messages",
+      "see grouped, severity-ordered messages",
+      "see distinct visual cues for blockers vs warnings",
+      "see validation status on save button"
+    ],
+    "capex_24g3": [
+      "see all 18 C-band categories",
+      "see editable CAPEX line inputs",
+      "see summary strip (Hard CAPEX, Financing/Reserve, Total CAPEX, CAPEX/MW)",
+      "read status legend with 1-line intro",
+      "read deferred placeholders with per-item descriptors",
+      "read compact Sources & Uses bridge"
+    ],
+    "export_24g3": [
+      "see empty-state block when no exports",
+      "see 1-line intro lead explaining each export",
+      "see per-card lineage row",
+      "see G20/R99/R102 status badges"
+    ],
+    "audit_24e_pre_g": [
+      "locate Audit / Parity tab",
+      "see parity status across Revenue/OPEX/CAPEX/Debt/SHL/Validation",
+      "distinguish validated TUHO/Oborovo evidence from generic/pending"
+    ],
+    "data_safety_24f_pre_g": [
+      "trigger on-demand SQLite backup",
+      "restore from backup with safety protections"
+    ]
+  },
+  "user_cannot_do_today": {
+    "architectural": [
+      "use generic wind/solar templates and trust the output (unvalidated)",
+      "change senior debt assumptions and see re-sculpted debt service (frozen)",
+      "run construction-period scenarios with the runtime engine (C10 not wired)",
+      "change assumptions and see CAPEX per-line runtime impact (display only)"
+    ],
+    "ux": [
+      "see Last backup age in the project header",
+      "see export history in the sidebar",
+      "see export progress for long-running exports",
+      "search/quick-filter CAPEX sub-lines",
+      "pin total CAPEX row at top of grid"
+    ],
+    "governance": [
+      "produce a fully signed-off audit pack (R99/R102 chain not green)",
+      "use approval/signoff orchestration",
+      "claim bank/lender/external audit certification (out of scope by claim)"
+    ],
+    "commercial": [
+      "buy the product on a SaaS basis with SLA",
+      "use multi-user / RBAC / SSO",
+      "use data residency / GDPR controls"
+    ]
+  },
+  "biggest_blockers_pilot_testing": {
+    "ranked": [
+      {"rank": 1, "blocker": "R-PAR-2 senior IDC effective-rate", "impact": "High", "parity_risk": "High", "effort": "M"},
+      {"rank": 2, "blocker": "R-PAR-5 equity_total_keur derived", "impact": "High", "parity_risk": "High", "effort": "M"},
+      {"rank": 3, "blocker": "Debt sculpting parity (TUHO/Oborovo)", "impact": "High", "parity_risk": "High", "effort": "M"},
+      {"rank": 4, "blocker": "C10 not wired into waterfall", "impact": "High", "parity_risk": "High", "effort": "L"},
+      {"rank": 5, "blocker": "Generic wind/solar not validated", "impact": "High", "parity_risk": "High", "effort": "L"},
+      {"rank": 6, "blocker": "R99/R102 audit chain not green", "impact": "Medium", "parity_risk": "Medium", "effort": "M"},
+      {"rank": 7, "blocker": "R67 cash-tax bridge residual (TUHO)", "impact": "Medium", "parity_risk": "Medium", "effort": "M"},
+      {"rank": 8, "blocker": "Oborovo distribution lockup residual", "impact": "Medium", "parity_risk": "Medium", "effort": "S"},
+      {"rank": 9, "blocker": "CAPEX per-line runtime not wired", "impact": "Medium", "parity_risk": "Low", "effort": "M"},
+      {"rank": 10, "blocker": "Oborovo SHL/CFADS waterfall residuals", "impact": "Medium", "parity_risk": "Medium", "effort": "M"}
+    ],
+    "first_30_minutes_user_journey": {
+      "passes": [
+        "select TUHO (validated)",
+        "see status legend and S&U bridge",
+        "edit draft input (e.g. PPA price)",
+        "save scenario",
+        "run model from clean boundary",
+        "see runtime summary with status badge",
+        "see stale/fresh indicator"
+      ],
+      "cliff_items": [
+        "senior IDC number disagrees with Excel reference (R-PAR-2)",
+        "equity total disagrees with Excel reference (R-PAR-5)",
+        "cannot re-sculpt senior debt (debt sculpting is frozen)",
+        "cannot run construction-period with runtime engine (C10 not wired)",
+        "cannot sign off audit pack (R99/R102 chain not green)"
+      ]
+    }
+  },
+  "biggest_blockers_pilot_rollout": {
+    "ranked": [
+      {"rank": 1, "blocker": "all P-blockers in §4.1", "impact": "High"},
+      {"rank": 2, "blocker": "no user onboarding guide tied to new UX", "impact": "Medium"},
+      {"rank": 3, "blocker": "no audit log UI for pilot actions", "impact": "Medium"},
+      {"rank": 4, "blocker": "no per-project reproducibility", "impact": "Medium"},
+      {"rank": 5, "blocker": "no 'report a bug' surface in app", "impact": "Medium"},
+      {"rank": 6, "blocker": "no session timeout UX", "impact": "Low"}
+    ],
+    "single_user_vs_rollout_gap": "single trusted pilot user is achievable today; rollout (3-5 users, multi-project, no cofi19-in-the-loop) needs all §5.1 items closed plus a documented 'what is validated, what is not' matrix"
+  },
+  "biggest_blockers_paid_product": {
+    "ranked": [
+      {"rank": 1, "blocker": "all P-blockers in §4.1", "impact": "High"},
+      {"rank": 2, "blocker": "Multi-user / RBAC / SSO", "impact": "High"},
+      {"rank": 3, "blocker": "Approval / signoff orchestration", "impact": "High"},
+      {"rank": 4, "blocker": "Audit-export package for paid tier", "impact": "High"},
+      {"rank": 5, "blocker": "Commercial packaging (pricing, claim scope)", "impact": "High"},
+      {"rank": 6, "blocker": "Replay-engine behavior", "impact": "Medium"},
+      {"rank": 7, "blocker": "External-model-review package", "impact": "High"},
+      {"rank": 8, "blocker": "SLA / support / on-call", "impact": "High"},
+      {"rank": 9, "blocker": "Data residency / GDPR", "impact": "High"},
+      {"rank": 10, "blocker": "Enterprise billing / contract", "impact": "High"}
+    ],
+    "pilot_rollout_vs_paid_gap": "pilot rollout is internal-trusted-user; paid product needs multi-user, replay, audit-pack, signoff, pricing/SLA/contract, data-residency. Gap is architectural + commercial, not primarily parity."
+  },
+  "remaining_blockers_ranked": {
+    "scoring": "composite = user_impact * 2 - parity_risk - implementation_effort",
+    "top_15": [
+      {"rank": 1, "blocker": "R-PAR-2 senior IDC effective-rate", "impact": 5, "parity": 5, "effort": 3, "composite": 2, "horizon": "P,$"},
+      {"rank": 2, "blocker": "R-PAR-5 equity_total_keur derived", "impact": 5, "parity": 5, "effort": 3, "composite": 2, "horizon": "P,$"},
+      {"rank": 3, "blocker": "Multi-user / RBAC / SSO", "impact": 5, "parity": 0, "effort": 4, "composite": 6, "horizon": "$,E"},
+      {"rank": 4, "blocker": "C10 implementation not started", "impact": 5, "parity": 4, "effort": 4, "composite": 2, "horizon": "P,$"},
+      {"rank": 5, "blocker": "Debt sculpting parity", "impact": 5, "parity": 4, "effort": 3, "composite": 3, "horizon": "P,$"},
+      {"rank": 6, "blocker": "Generic wind/solar validation", "impact": 4, "parity": 4, "effort": 4, "composite": 0, "horizon": "P,$"},
+      {"rank": 7, "blocker": "Approval / signoff orchestration", "impact": 4, "parity": 0, "effort": 3, "composite": 5, "horizon": "$,E"},
+      {"rank": 8, "blocker": "Audit-export package for paid tier", "impact": 4, "parity": 0, "effort": 3, "composite": 5, "horizon": "$"},
+      {"rank": 9, "blocker": "R99/R102 audit chain closure", "impact": 4, "parity": 3, "effort": 3, "composite": 2, "horizon": "P,$"},
+      {"rank": 10, "blocker": "R67 cash-tax bridge residual", "impact": 3, "parity": 3, "effort": 3, "composite": 0, "horizon": "P,$"},
+      {"rank": 11, "blocker": "Oborovo distribution lockup residual", "impact": 3, "parity": 3, "effort": 2, "composite": 1, "horizon": "P"},
+      {"rank": 12, "blocker": "Oborovo SHL/CFADS waterfall residuals", "impact": 3, "parity": 3, "effort": 3, "composite": 0, "horizon": "P"},
+      {"rank": 13, "blocker": "CAPEX per-line runtime not wired", "impact": 3, "parity": 1, "effort": 3, "composite": 2, "horizon": "P"},
+      {"rank": 14, "blocker": "Auto-backup observability (logs only)", "impact": 2, "parity": 0, "effort": 1, "composite": 3, "horizon": "P"},
+      {"rank": 15, "blocker": "Replay-engine behavior", "impact": 3, "parity": 0, "effort": 3, "composite": 3, "horizon": "$,E"}
+    ],
+    "pilot_critical_path": "R-PAR-2 -> R-PAR-5 -> C10 (runtime seam) -> C10 (sculpting) -> Generic F3",
+    "paid_critical_path": "Multi-user/RBAC/SSO -> Audit-export package -> Signoff -> Replay -> Pricing/SLA/Contract"
+  },
+  "explicit_answers": {
+    "A_can_finance_user_build_and_test": {
+      "answer": "Yes, with caveats",
+      "tuho_or_oberovo_verdict": "Yes — can build, run, inspect, compare, download; cannot rely on numbers for lender review or external audit signoff",
+      "generic_verdict": "No — should not build a generic project and rely on the numbers, because the generic path is not validated"
+    },
+    "B_can_renewable_developer_build_and_test": {
+      "answer": "No, not in the way a renewable developer would expect",
+      "reason": "Generic templates are unvalidated; senior debt does not re-sculpt on assumption change; construction-period engine is not wired; CAPEX per-line runtime is not exposed",
+      "verdict": "Product is a 'reproduce a validated TUHO/Oborovo from a frozen Excel reference' tool, not a 'sketch a project and see the IRR respond' tool"
+    },
+    "C_highest_value_feature_missing": {
+      "answer": "the ability to edit assumptions and see the senior debt re-sculpt in real time",
+      "rationale": "When a pilot user changes the PPA price, IRR/DSCR/cash flow re-compute, but senior debt service stays frozen from Excel. Result is inconsistent cash-flow waterfall that confuses pilot user.",
+      "three_layers": [
+        "Layer 1 (UX, low risk): surface 'frozen senior DS path' warning in runtime summary (24-G-2 partly done)",
+        "Layer 2 (architecture, medium risk): wire sculpting solver into runtime waterfall (C10 work)",
+        "Layer 3 (parity, high risk): validate sculpting solver against Excel across TUHO/Oborovo (R-PAR-2/R-PAR-5)"
+      ]
+    },
+    "D_sprint_24h_recommendation": {
+      "answer": "Live Sculpting / In-app Debt Re-sizing sprint",
+      "track_a_runtime_seam": "Wire construction_runtime_seam.py into waterfall; add use_sculpting_solver flag (default False); add live-sculpting toggle in project header; add sculpting-parity badge",
+      "track_b_senior_idc": "Resolve R-PAR-2 senior IDC effective-rate caveat; implement chosen option (likely B); add fixture-backed ±1% test; add parity guardrail",
+      "track_c_ux_followups": "Auto-backup observability; per-project reproducibility; report-a-bug surface in runtime summary",
+      "why_this": "unblocks pilot critical path; respects G-track discipline; feature-flagged; clear 'done' definition"
+    }
+  },
+  "hard_constraints_honored": {
+    "no_implementation": true,
+    "no_runtime_changes": true,
+    "no_ui_changes": true,
+    "no_model_changes": true,
+    "no_persistence_changes": true,
+    "no_c10_work": true,
+    "no_rpar_work": true,
+    "rc1_untouched": true,
+    "no_feature_flag_changes": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "no_main_web_py_changes": true,
+    "no_app_services_changes": true,
+    "no_app_persistence_changes": true,
+    "no_app_domain_changes": true,
+    "no_app_api_changes": true,
+    "no_waterfall_core_changes": true,
+    "no_static_app_js_changes": true
+  },
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}
