@@ -142,3 +142,22 @@
   <span>Factory baseline — use <strong>Duplicate</strong> or <strong>Save As</strong> to create an editable copy before modifying.</span>
 </div>
 {% endif %}
+
+{# ── Phase 24-H: Exploratory warning (user_created + generic) ────────── #}
+{% if is_exploratory_project|default(false) %}
+<div class="inp-exploratory-notice"
+     role="note"
+     aria-label="Exploratory / not Excel-parity validated"
+     data-exploratory-warning="true"
+     data-exploration-source="inputs-section">
+  <span class="badge badge-warn">EXPLORATORY</span>
+  <span>
+    <strong>Exploratory / not Excel-parity validated.</strong>
+    This Generic {{ project_ctx.technology or 'project' }} is editable for
+    sketching scenarios, but the runtime output has not been validated
+    against an Excel reference. Outputs are <em>not</em>
+    lender-ready, audit-ready, or bank-approved. Use only for
+    exploratory analysis.
+  </span>
+</div>
+{% endif %}
