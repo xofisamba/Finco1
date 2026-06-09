@@ -1,0 +1,81 @@
+{
+  "phase": "24-G-1",
+  "title": "Stale Run Warning + Validation Summary Clarity",
+  "date": "2026-06-09",
+  "type": "ui-only-implementation",
+  "base_sha": "a421ab5",
+  "status": "DRAFT",
+  "source_inventory": "PR #564 (pilot-ux-safe-track-inventory)",
+  "sprint_position": "24-G-1 (G-track, parallel to C10/R-PAR-2 chain, per PR #561 \u00a74.2)",
+  "items_implemented": [
+    {
+      "id": 1,
+      "name": "stale_run_warning",
+      "composite_score": 9,
+      "user_value": 5,
+      "parity_risk": 0,
+      "changes": [
+        "Macro stale_run() now accepts optional workspace_state_meta keyword arg",
+        "Visible 'STALE' badge replaces the small \u23f1\ufe0f emoji",
+        "Re-run anchor link to #btn-run-model-sidebar (no JS, no fetch, no form)",
+        "Optional what-changed hint from workspace_state_meta.dirty_label",
+        "index.html call site updated to pass workspace_state_meta"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "validation_summary_clarity",
+      "composite_score": 9,
+      "user_value": 5,
+      "parity_risk": 0,
+      "changes": [
+        "validation.html groups messages by severity: Error / Warning / Information",
+        "Backward-compatible: plain string errors treated as Error; dict errors honored",
+        "Error group deduplicates repeated wording with count badge (\u00d7N)",
+        "Group structure: icon, title, count badge per group",
+        "Original 'Validation failed' / 'Input checks passed' copy preserved"
+      ]
+    }
+  ],
+  "files_changed": [
+    "app/templates/partials/empty_states_notice.html",
+    "app/templates/partials/validation.html",
+    "app/templates/index.html",
+    "static/styles.css",
+    "tests/test_ui2_5_stale_result_warning.py",
+    "tests/test_phase24g1_stale_run_warning.py",
+    "tests/test_phase24g1_validation_summary_clarity.py",
+    "docs/phase24g1_stale_run_warning_validation_summary_clarity.md",
+    "reports/phase24g1_stale_run_warning_validation_summary_clarity.json"
+  ],
+  "production_code_change": false,
+  "files_untouched": [
+    "main_web.py",
+    "app/services/",
+    "app/persistence/",
+    "app/api/",
+    "domain/",
+    "tax_bridge/",
+    "waterfall_core.py",
+    "static/app.js"
+  ],
+  "use_construction_schedule_engine": false,
+  "no_promotion": true,
+  "no_runtime_change": true,
+  "no_model_change": true,
+  "no_formula_change": true,
+  "no_persistence_change": true,
+  "tuho_parity_unchanged": true,
+  "oborovo_parity_unchanged": true,
+  "test_counts": {
+    "phase24g1_stale_run_warning": 19,
+    "phase24g1_validation_summary_clarity": 28,
+    "ui2_5_stale_result_warning": 48,
+    "ui2_3_validation_summary_bar": 38,
+    "ui2_1_state_banner_partial": 39,
+    "other_ui2_x": 153,
+    "total": 325
+  },
+  "hard_rules_respected": true,
+  "rc1_untouched": true
+}
