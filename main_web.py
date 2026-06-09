@@ -1502,6 +1502,12 @@ def _render_scenario_workspace(
             "workspace_message": message,
             "compare_result": compare_result,
             "is_user_project": project_record.project_origin == "user_created",
+            # Phase 24-H: exploratory warning flag (user_created + generic)
+            "is_exploratory_project": (
+                project_record.project_origin == "user_created"
+                and (project_record.template_source or "").strip().lower()
+                in {"generic_solar", "generic_wind"}
+            ),
         },
     )
 
@@ -1844,6 +1850,12 @@ async def index(request: Request, project: str | None = None):
             "compare_result": None,
             "workspace_message": None,
             "is_user_project": project_record.project_origin == "user_created",
+            # Phase 24-H: exploratory warning flag (user_created + generic)
+            "is_exploratory_project": (
+                project_record.project_origin == "user_created"
+                and (project_record.template_source or "").strip().lower()
+                in {"generic_solar", "generic_wind"}
+            ),
             # Phase 20E: scenario tab context
             "base_case_record": next((s for s in scenario_records if s.is_base_case), None),
             "non_base_scenarios": [s for s in scenario_records if not s.is_base_case],
@@ -2708,6 +2720,12 @@ def _build_scenario_tab_context(user, project_record, scenarios, workspace_state
         "base_case_record": base_case_record,
         "non_base_scenarios": non_base_scenarios,
         "is_user_project": project_record.project_origin == "user_created",
+        # Phase 24-H: exploratory warning flag (user_created + generic)
+        "is_exploratory_project": (
+            project_record.project_origin == "user_created"
+            and (project_record.template_source or "").strip().lower()
+            in {"generic_solar", "generic_wind"}
+        ),
     }
 
 

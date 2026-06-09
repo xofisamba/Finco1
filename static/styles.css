@@ -5773,3 +5773,80 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   line-height: 1.4;
   margin: 0;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Phase 24-H — Exploratory Project Warning
+   UI-only. No :root mods. Applied to:
+   - .inp-exploratory-notice  (inputs_section.html)
+   - .last-run-indicator__row--exploratory + children  (_last_run_indicator.html)
+   - .export-explorer-warning  (export_registry.html)
+   The badge is amber (badge-warn) to match the existing G20 / R99/R102
+   "unvalidated" tone, and the body copy uses the standard muted foreground
+   so it sits in the same hierarchy as other notices.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.inp-exploratory-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  margin: 0.5rem 0 1rem 0;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-left: 3px solid #f59e0b;
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text, #111827);
+}
+
+.inp-exploratory-notice .badge {
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.last-run-indicator__row--exploratory {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 3px solid #f59e0b;
+  padding-left: 0.5rem;
+  margin-top: 0.25rem;
+  border-radius: 0 4px 4px 0;
+}
+
+.last-run-indicator__exploratory-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  background: #f59e0b;
+  color: #1f2937;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-right: 0.5rem;
+}
+
+.last-run-indicator__exploratory-hint {
+  font-size: 0.78rem;
+  color: var(--muted, #6b7280);
+  line-height: 1.4;
+}
+
+.export-explorer-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0 1rem 0;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-left: 3px solid #f59e0b;
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text, #111827);
+}
+
+.export-explorer-warning .badge {
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}

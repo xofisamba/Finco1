@@ -1,0 +1,99 @@
+{
+  "phase": "24-H",
+  "title": "Editable Generic Project Run Loop",
+  "type": "UI + minimal-orchestration (3 lines x 3 places in main_web.py + 3 template additions + 5 CSS classes + tests + docs)",
+  "status": "DRAFT (review-only; not merged)",
+  "date": "2026-06-09",
+  "branch": "phase24h-editable-generic-project-run-loop",
+  "base_sha": "f53fd6db45c87feb0d1da1faa035c65c1cd6cf97",
+  "head_sha": "PENDING (commit pending)",
+  "builds_on": [
+    "PR #572 (24-G closure review, sprint planning input)",
+    "PR #567 (24-G-1)",
+    "PR #568 (24-G-2)",
+    "PR #570 (24-G-3)"
+  ],
+  "deliverables": {
+    "implementation": [
+      "main_web.py (3 lines added at 3 sites, no logic change)",
+      "app/templates/partials/inputs_section.html (new warning block, additive)",
+      "app/templates/partials/_last_run_indicator.html (new warning row, additive)",
+      "app/templates/partials/export_registry.html (new warning block, additive)",
+      "static/styles.css (5 new classes, additive; no :root mods)"
+    ],
+    "tests": [
+      "tests/test_phase24h_editable_generic_run_loop.py (29 tests, all passing)"
+    ],
+    "docs": [
+      "docs/phase24h_editable_generic_project_run_loop.md"
+    ],
+    "reports": [
+      "reports/phase24h_editable_generic_project_run_loop.json"
+    ]
+  },
+  "user_story_fulfilled": {
+    "user": "finance user",
+    "loop": [
+      "open /projects/new",
+      "create a Generic Solar or Generic Wind user_created project",
+      "edit safe assumptions (project name, capacity MW, COD, total CAPEX, P50, tariff, OPEX Y1, gearing, interest rate, tenor, etc.)",
+      "save scenario",
+      "run model",
+      "see financial outputs respond (via pre-existing _execute_user_created_path)",
+      "see EXPLORATORY warning in inputs section + run indicator + export registry"
+    ],
+    "scope": "Generic exploratory path only"
+  },
+  "hard_constraints_honored": {
+    "generic_exploratory_path_only": true,
+    "no_tuho_oberovo_reference_parity_drift": true,
+    "no_new_financial_formulas": true,
+    "no_fake_outputs": true,
+    "no_fake_runtime_ids": true,
+    "no_fake_validation_status": true,
+    "no_fake_timestamps": true,
+    "no_model_formula_tax_debt_depreciation_idc_changes": true,
+    "no_c10_rpar_construction_promotion": true,
+    "no_schema_migration": true,
+    "no_tailwind_alpine": true,
+    "no_construction_flag_changes": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "rc1_untouched": true,
+    "no_main_web_py_logic_change": "only added a context flag (3 lines x 3 places); no route, no service, no form-parsing, no persistence, no dependency-bundle change",
+    "no_factory_project_mutation": true,
+    "css_root_count_unchanged": 3,
+    "css_additive_only": true
+  },
+  "files_changed": {
+    "production": [
+      {"path": "main_web.py", "lines_added": 9, "lines_removed": 0, "change_type": "additive context flag"},
+      {"path": "app/templates/partials/inputs_section.html", "lines_added": 18, "lines_removed": 0, "change_type": "additive warning block"},
+      {"path": "app/templates/partials/_last_run_indicator.html", "lines_added": 15, "lines_removed": 0, "change_type": "additive warning row"},
+      {"path": "app/templates/partials/export_registry.html", "lines_added": 17, "lines_removed": 0, "change_type": "additive warning block"},
+      {"path": "static/styles.css", "lines_added": 60, "lines_removed": 0, "change_type": "additive CSS (5 classes)"}
+    ],
+    "tests": [
+      {"path": "tests/test_phase24h_editable_generic_run_loop.py", "lines_added": 600, "change_type": "new test file", "tests": 29}
+    ],
+    "docs": [
+      {"path": "docs/phase24h_editable_generic_project_run_loop.md", "change_type": "new doc"}
+    ],
+    "reports": [
+      {"path": "reports/phase24h_editable_generic_project_run_loop.json", "change_type": "new report"}
+    ]
+  },
+  "exploratory_warning_copy": "EXPLORATORY: Exploratory / not Excel-parity validated. Outputs are not lender-ready, audit-ready, or bank-approved. Use only for exploratory analysis.",
+  "exploratory_warning_sites": [
+    "app/templates/partials/inputs_section.html (data-exploration-source=\"inputs-section\")",
+    "app/templates/partials/_last_run_indicator.html (data-exploration-source=\"runtime-summary\")",
+    "app/templates/partials/export_registry.html (data-exploration-source=\"export-registry\")"
+  ],
+  "tests": {
+    "new": 29,
+    "regression": 238,
+    "total": 267,
+    "all_passing": true
+  },
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}

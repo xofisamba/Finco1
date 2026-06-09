@@ -1,5 +1,22 @@
 ﻿<div class="export-registry-panel" data-testid="export-registry"
      data-export-registry-phase24g3="true">
+  {# ── Phase 24-H: Exploratory warning (user_created + generic) ──────── #}
+  {% if is_exploratory_project|default(false) %}
+  <div class="export-explorer-warning"
+       role="note"
+       aria-label="Exploratory project / not Excel-parity validated"
+       data-exploratory-warning="true"
+       data-exploration-source="export-registry">
+    <span class="badge badge-warn">EXPLORATORY</span>
+    <span>
+      <strong>Exploratory / not Excel-parity validated.</strong>
+      This export registry is for an exploratory Generic
+      project. Artefacts generated for exploratory projects are
+      <em>not</em> lender-ready, audit-ready, or bank-approved.
+      They are for internal sketching and review only.
+    </span>
+  </div>
+  {% endif %}
   <div class="card-header">
     <div>
       <div class="card-title">Phase 10 Export Registry</div>

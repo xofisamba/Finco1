@@ -39,6 +39,8 @@
 {% set _is_dirty = (workspace_state is defined and workspace_state and workspace_state.dirty) %}
 {% set _has_prior_run = (_rs_run_id|length > 0) or (_rs_last_run_at|length > 0) %}
 {% set _is_stale = (_is_dirty and (workspace_state.last_runtime_snapshot_id|default('') if workspace_state is defined and workspace_state else '')) %}
+{# Phase 24-H: Exploratory warning for user_created generic projects. #}
+{% set _is_exploratory = (is_exploratory_project|default(false)) %}
 {# Decide status: real only; never invent. #}
 {% if _rs_status == 'ok' %}
   {% set _status_label = 'OK' %}
@@ -75,6 +77,21 @@
       <span class="last-run-indicator__stale-hint">
         Draft has unsaved changes; outputs reflect a previous run.
         Run again to reflect the current draft.
+      </span>
+    </div>
+    {% endif %}
+
+    {% if _is_exploratory %}
+    <div class="last-run-indicator__row last-run-indicator__row--exploratory"
+         role="note" aria-label="Exploratory / not Excel-parity validated"
+         data-exploratory-warning="true"
+         data-exploration-source="runtime-summary">
+      <span class="last-run-indicator__exploratory-badge"
+            title="This project is exploratory / not Excel-parity validated">EXPLORATORY</span>
+      <span class="last-run-indicator__exploratory-hint">
+        Exploratory / not Excel-parity validated. Outputs are not
+        lender-ready, audit-ready, or bank-approved. Do not use for
+        external signoff.
       </span>
     </div>
     {% endif %}
