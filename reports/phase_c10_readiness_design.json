@@ -1,0 +1,145 @@
+{
+  "phase": "C10-readiness-design",
+  "title": "Phase C10 Readiness Design: TUHO Controlled Promotion Gate (docs/tests only)",
+  "type": "design",
+  "status": "DRAFT",
+  "scope_label": "DESIGN ONLY. NO IMPLEMENTATION. NO PROMOTION. NO WATERFALL ROUTING. NO FLAG FLIP. NO RUNTIME WIRING. NO SENIOR IDC PROMOTION. NO OBOROVO.",
+  "date": "2026-06-09",
+  "base_sha": "d55a900",
+  "branch": "c10-readiness-design",
+  "allowed_fields": {
+    "shl_idc_keur": {
+      "policy": "replaced",
+      "c10_eligible": true,
+      "rationale": "No R-PAR-2; SHL is non-senior, no covenant concern.",
+      "parity_tolerance_pct": 1.0,
+      "parity_baseline": "rc1 b425a0708719eaa5e1d922b1008e5609758e0ad4"
+    },
+    "shl_amount_keur": {
+      "policy": "replaced",
+      "c10_eligible": true,
+      "rationale": "No R-PAR-2; SHL is non-senior.",
+      "parity_tolerance_pct": 1.0,
+      "parity_baseline": "rc1"
+    },
+    "shl_opening_balance_keur": {
+      "policy": "replaced",
+      "c10_eligible": true,
+      "rationale": "No R-PAR-2; SHL is non-senior.",
+      "parity_tolerance_pct": 1.0,
+      "parity_baseline": "rc1"
+    },
+    "equity_total_keur": {
+      "policy": "derived",
+      "c10_eligible": true,
+      "rationale": "Parity baseline against rc1 must be green; parity_ok=True required by C9 guard.",
+      "parity_tolerance_pct": 0.5,
+      "parity_baseline": "rc1",
+      "note": "Stricter tolerance for derived/aggregate fields."
+    }
+  },
+  "blocked_fields": {
+    "senior_idc_keur": {
+      "policy": "replaced (R-PAR-2)",
+      "c10_eligible": false,
+      "rationale": "R-PAR-2 is OPEN. C9 guard blocks promotion. Excluded until governance decision A/B/C.",
+      "discovery_pr": "#556"
+    },
+    "senior_opening_balance_keur": {
+      "policy": "frozen",
+      "c10_eligible": false,
+      "rationale": "Always frozen. C9 guard always RAISE for frozen fields."
+    },
+    "capex_keur": {
+      "policy": "frozen",
+      "c10_eligible": false,
+      "rationale": "Always frozen."
+    }
+  },
+  "pass_through_fields_not_promoted": [
+    "reserves_keur (retained)",
+    "vat_operating (retained)",
+    "financing_fees_keur (retained)",
+    "commitment_fee_keur (retained)"
+  ],
+  "tuho_only_not_oborovo": {
+    "oborovo_in_scope_c10": false,
+    "oborovo_phase": "C11 (after C10 proven)",
+    "enforcement": "C9 guard + per-project opt-in flag (tuho=False, oborovo=False by default)"
+  },
+  "parity_gates": {
+    "baseline": "rc1 b425a0708719eaa5e1d922b1008e5609758e0ad4",
+    "snapshot_path": "tests/fixtures/construction_parity/tuho_construction_snapshot.json",
+    "tolerances_pct": {
+      "shl_idc_keur": 1.0,
+      "shl_amount_keur": 1.0,
+      "shl_opening_balance_keur": 1.0,
+      "equity_total_keur": 0.5
+    },
+    "atomic_semantics": "All 4 fields promoted together or none. Partial promotion is a fail."
+  },
+  "rollback_plan": {
+    "cache_pre_promotion_values": true,
+    "rollback_call": "rollback_c10_promotion()",
+    "idempotent": true,
+    "triggers": [
+      "Parity regression detected post-promotion within 24h",
+      "Senior lender notifies of covenant discrepancy",
+      "Modelling governance board issues a halt",
+      "Audit team flags a defect"
+    ],
+    "procedure": [
+      "Call rollback_c10_promotion()",
+      "Verify post-rollback snapshot matches pre-promotion snapshot",
+      "Run Phase 9 parity pack; assert all parity tests pass",
+      "Notify stakeholders"
+    ]
+  },
+  "no_go_checks": [
+    {"id": 1, "check": "C10 readiness design PR (#557) merged", "owner": "PR review"},
+    {"id": 2, "check": "R-PAR-2 decision (A/B/C) recorded", "owner": "Governance"},
+    {"id": 3, "check": "use_construction_schedule_engine is False (default-off)", "owner": "C9 already enforces"},
+    {"id": 4, "check": "senior_idc_keur is EXCLUDED from C10 allowed fields", "owner": "C9 guard enforces"},
+    {"id": 5, "check": "All C1-C9 tests pass on main", "owner": "CI"},
+    {"id": 6, "check": "TUHO's rc1 parity snapshot is within tolerance (SHL \u00b11%, equity \u00b10.5%)", "owner": "Parity test"},
+    {"id": 7, "check": "Senior lender representative notified of C10 plan", "owner": "Communication"},
+    {"id": 8, "check": "Modelling governance board approved C10 plan", "owner": "Governance"},
+    {"id": 9, "check": "Audit team reviewed C10 design", "owner": "Audit"},
+    {"id": 10, "check": "Oborovo is NOT in scope of C10", "owner": "C9 guard enforces"}
+  ],
+  "required_approvals": [
+    {"approver": "Modelling governance board", "approves": "Promotion of 4 allowed fields, parity gates, rollback plan, no-go checks"},
+    {"approver": "Senior lender representative", "approves": "Acknowledgement that senior opening balance and senior IDC remain frozen (not promoted in C10)"},
+    {"approver": "Audit team", "approves": "Pre-promotion snapshot, parity baseline, rollback plan, audit trail"},
+    {"approver": "Project lead", "approves": "Final go/no-go decision"}
+  ],
+  "tests_needed_for_c10_impl": [
+    "TestC10AllowedFieldsList",
+    "TestC10PerFieldParityVsRc1 (test_shl_idc_parity, test_shl_amount_parity, test_shl_opening_balance_parity, test_equity_total_parity)",
+    "TestC10AtomicPromotion",
+    "TestC10Rollback",
+    "TestC10ExcludesOborovo",
+    "TestC10NoGoChecks",
+    "TestC10Rpar2Exclusion",
+    "TestC10ScopeGuards (commit-relative per PR #554 pattern)",
+    "TestC10FeatureFlagUnchanged",
+    "TestC10Rc1Untouched"
+  ],
+  "files_added": [
+    {"path": "docs/phase_c10_readiness_design.md", "purpose": "C10 readiness design (this file)"},
+    {"path": "reports/phase_c10_readiness_design.json", "purpose": "Machine-readable C10 readiness report"},
+    {"path": "tests/test_phase_c10_readiness_design.py", "purpose": "C10 readiness design tests (test-only)"}
+  ],
+  "files_modified": [],
+  "hard_rules_confirmed": {
+    "rc1_untouched": true,
+    "no_global_construction_flag_enablement": true,
+    "no_waterfall_routing": true,
+    "no_runtime_promotion": true,
+    "no_senior_idc_promotion_without_rpar2": true,
+    "no_oborovo_before_tuho": true,
+    "all_prs_draft_until_reviewed": true,
+    "all_phases_self_reviewed_with_tests": true
+  },
+  "stop_after_report": true
+}
