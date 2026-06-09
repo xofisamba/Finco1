@@ -5894,3 +5894,178 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   background: var(--surface-2, #f3f4f6);
   border-radius: var(--radius-sm, 4px);
 }
+
+/* ── Phase 25B-2 — Multi-scenario compare (2-4 scenarios) ─────────────── */
+.scm-multi-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--surface-2, #e5e7eb);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface-1, #fff);
+}
+
+.scm-multi-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+
+.scm-multi-heading-label {
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+
+.scm-multi-empty {
+  padding: 0.5rem 0.25rem;
+}
+
+.scm-multi-banner,
+.scm-multi-exploratory-banner {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface-2, #f3f4f6);
+  color: var(--text-muted, #6b7280);
+}
+
+.scm-multi-exploratory-banner {
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-primary, #111827);
+  border-left: 3px solid var(--color-warn, #f59e0b);
+}
+
+.scm-multi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+}
+
+.scm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--surface-2, #e5e7eb);
+  border-radius: 999px;
+  background: var(--surface-1, #fff);
+  color: var(--text-primary, #111827);
+}
+
+.scm-chip--base {
+  border-color: var(--color-accent, #2563eb);
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.scm-chip-name {
+  font-weight: 500;
+  font-size: 0.74rem;
+}
+
+.scm-chip-vs {
+  color: var(--text-muted, #6b7280);
+  font-size: 0.7rem;
+  font-style: italic;
+}
+
+.scm-multi-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--surface-2, #e5e7eb);
+  border-radius: var(--radius-sm, 4px);
+  overflow-x: auto;
+  font-size: 0.72rem;
+}
+
+.scm-multi-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.2fr) repeat(4, minmax(80px, 1fr)) minmax(140px, 1.4fr);
+  gap: 0.25rem;
+  padding: 0.3rem 0.4rem;
+  align-items: center;
+  border-bottom: 1px solid var(--surface-2, #f3f4f6);
+}
+
+.scm-multi-row--head {
+  font-weight: 600;
+  background: var(--surface-2, #f3f4f6);
+  color: var(--text-primary, #111827);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.scm-multi-row--gov {
+  background: var(--surface-2, #f3f4f6);
+  font-style: italic;
+  color: var(--text-muted, #6b7280);
+}
+
+.scm-multi-row:last-child {
+  border-bottom: none;
+}
+
+.scm-multi-metric {
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+}
+
+.scm-multi-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-primary, #111827);
+}
+
+.scm-col-base {
+  font-weight: 600;
+  color: var(--color-accent, #2563eb);
+}
+
+.scm-multi-deltas {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: 0.7rem;
+}
+
+.scm-delta-token {
+  display: inline-block;
+  padding: 0.05rem 0.25rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.scm-delta--pos {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.scm-delta--neg {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.scm-delta--zero {
+  color: var(--text-muted, #6b7280);
+  background: transparent;
+}
+
+.scm-delta--na {
+  color: var(--text-muted, #6b7280);
+  background: transparent;
+  font-style: italic;
+}
+
+.scm-multi-soft-note {
+  font-size: 0.7rem;
+  line-height: 1.4;
+  padding: 0.3rem 0.4rem;
+  color: var(--text-muted, #6b7280);
+  font-style: italic;
+}
