@@ -1,0 +1,222 @@
+{
+  "phase": "24-H-4",
+  "title": "Generic Export / Download Pack With Exploratory Banner",
+  "type": "tests-only + docs + report (no production code change)",
+  "status": "DRAFT (review-only; not merged)",
+  "date": "2026-06-09",
+  "branch": "phase24h4-generic-export-download-pack",
+  "base_sha": "76d4d148654a1665e35a92ecd162706057682ec4",
+  "head_sha": "PENDING (commit pending)",
+  "builds_on": [
+    "PR #578 (Phase 24-H-3, merged at 76d4d14, scenario loop)",
+    "PR #575 (Phase 24-H-2, merged at e8fca68, delta proof)",
+    "PR #573 (Phase 24-H, merged at eb1a132, labeling)",
+    "PR #572 (Phase 24-G closure review, merged at f53fd6d, sprint planning input)"
+  ],
+  "primary_objective": "Make the Generic Solar / Generic Wind export / download surface safe for internal screening by ensuring the EXPLORATORY banner, scenario identification, and safety copy are present on every artefact.",
+  "user_story": "As a finance user, I can create Generic Base / Downside / Upside scenarios, run them, and export/download a package that clearly shows inputs, outputs, scenario deltas, and the 'exploratory / not Excel-parity validated' status.",
+  "proofs_delivered": {
+    "export_registry_banner": {
+      "partial_path": "app/templates/partials/export_registry.html",
+      "warning_class": "export-explorer-warning",
+      "data_attributes": [
+        'data-exploratory-warning="true"',
+        'data-exploration-source="export-registry"',
+        'aria-label="Exploratory project / not Excel-parity validated"'
+      ],
+      "gated_by": "{% if is_exploratory_project|default(false) %}",
+      "safety_copy_keywords_verified": [
+        "EXPLORATORY",
+        "Excel-parity validated",
+        "lender-ready",
+        "audit-ready",
+        "bank-approved",
+        "artefact",
+        "internal sketching",
+        "review only"
+      ],
+      "badge_style": "badge-warn (NOT badge-blocked, NOT badge-convention)",
+      "tests": 10
+    },
+    "export_infrastructure_factory_bound": {
+      "factory_only_routes": [
+        "/exports/runtime-summary.csv",
+        "/exports/institutional-workbook.xlsx"
+      ],
+      "factory_projects_supported": ["tuho", "oborovo"],
+      "non_factory_projects_rejected": ["generic_solar", "generic_wind", "user_test"],
+      "rejection_status": 400,
+      "rejection_content": "HTMLResponse with error_content ('project must be one of: tuho, oborovo')",
+      "user_created_path": "POST /download (build_excel_export_for_post_request, no factory requirement)",
+      "tests": 9
+    },
+    "scenario_identification_in_export": {
+      "schema_path": "app.export.runtime_summary.RUNTIME_SUMMARY_COLUMNS",
+      "scenario_identification_keys": [
+        "scenario_id",
+        "scenario_name",
+        "scenario_revision",
+        "template_origin",
+        "template_revision",
+        "export_template_version"
+      ],
+      "runtime_provenance_keys": [
+        "runtime_origin",
+        "runtime_snapshot_id",
+        "runtime_generated_at",
+        "runtime_flag_count",
+        "runtime_flags_json"
+      ],
+      "governance_keys": [
+        "governance_posture_summary",
+        "replay_limitations"
+      ],
+      "tests": 8
+    },
+    "compare_scenarios_export_structure": {
+      "function_path": "app.persistence.exports_repository.compare_scenarios",
+      "metric_labels": [
+        "Revenue", "OPEX", "EBITDA", "Senior Debt", "SHL",
+        "DSCR", "Project IRR", "Equity IRR", "CAPEX", "Distributions"
+      ],
+      "metric_count": 10,
+      "governance_rows": ["G20", "R99/R102"],
+      "governance_row_count": 2,
+      "delta_computation": "right - left",
+      "result_keys": ["left", "right", "metrics", "governance_rows"],
+      "tests": 5
+    },
+    "scenario_export_delta_proof": {
+      "scenarios": ["Base", "Downside", "Upside"],
+      "kpi_vectors_observed": {
+        "base": {
+          "total_revenue_keur": 201550,
+          "total_opex_keur": 25621,
+          "total_ebitda_keur": 175930,
+          "project_irr": 0.1101,
+          "equity_irr": 0.0455,
+          "min_dscr": 2.33,
+          "avg_dscr": 2.44
+        },
+        "downside_tariff_70_opex_1500_p50_1500": {
+          "total_revenue_keur": 149297,
+          "total_opex_keur": 38431,
+          "total_ebitda_keur": 110865,
+          "project_irr": 0.0634,
+          "equity_irr": 0.0228,
+          "min_dscr": 1.53,
+          "avg_dscr": 1.59
+        },
+        "upside_tariff_130_opex_500_p50_2300": {
+          "total_revenue_keur": 328452,
+          "total_opex_keur": 19216,
+          "total_ebitda_keur": 309237,
+          "project_irr": 0.1854,
+          "equity_irr": 0.0747,
+          "min_dscr": 4.00,
+          "avg_dscr": 4.20
+        }
+      },
+      "all_three_different_on_every_dimension": true,
+      "tests": 5
+    },
+    "factory_reference_guard": {
+      "factory_origin_intact": true,
+      "factory_runs_deterministic": true,
+      "user_snapshot_does_not_change_factory_inputs": true,
+      "factory_export_unchanged_after_generic_run": true,
+      "factory_excel_export_uses_create_default": true,
+      "user_created_path_blocked_for_factory": true,
+      "construction_flag_still_default_false": true,
+      "generic_export_cannot_claim_reference_validated": true,
+      "factory_runtime_summary_distinct_from_generic": true,
+      "tests": 9
+    },
+    "css_additive": {
+      "root_count_unchanged": 3,
+      "tests": 1
+    },
+    "hard_constraints": {
+      "rc1_untouched": true,
+      "no_construction_flag_flips": true,
+      "waterfall_gate_still_defaults_false": true,
+      "no_production_code_changed": true,
+      "24h_labeling_preserved": true,
+      "24h2_delta_proof_preserved": true,
+      "24h3_scenario_loop_preserved": true,
+      "no_new_export_routes": true,
+      "tests": 8
+    },
+    "end_to_end_scenario_export_content": {
+      "full_loop_test": "Base + Downside + Upside produce kpis in the expected order (revenue: up > base > down; opex: down > base > up; ebitda: up > base > down; irr: up > base > down)",
+      "scenario_identification_test": "Export content contains project_name, project_type, scenario, and kpi vector",
+      "base_export_unchanged_test": "Two runs of the Base case produce identical kpis (deterministic, no scenario interference)",
+      "tests": 3
+    }
+  },
+  "deliverables": {
+    "implementation": [],
+    "tests": [
+      "tests/test_phase24h4_generic_export_download_pack.py (58 tests, all passing)"
+    ],
+    "docs": [
+      "docs/phase24h4_generic_export_download_pack.md"
+    ],
+    "reports": [
+      "reports/phase24h4_generic_export_download_pack.json"
+    ]
+  },
+  "hard_constraints_honored": {
+    "tests_only": true,
+    "no_production_code_change": true,
+    "no_new_export_routes": true,
+    "generic_exploratory_path_only": true,
+    "no_tuho_oberovo_reference_parity_drift": true,
+    "no_new_financial_formulas": true,
+    "no_fake_outputs": true,
+    "no_fake_runtime_ids": true,
+    "no_fake_validation_status": true,
+    "no_fake_timestamps": true,
+    "no_model_formula_tax_debt_depreciation_idc_changes": true,
+    "no_c10_rpar_construction_promotion": true,
+    "no_schema_migration": true,
+    "no_app_js_changes": true,
+    "no_tailwind_alpine": true,
+    "no_construction_flag_changes": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "rc1_untouched": true,
+    "css_root_count_unchanged": 3,
+    "no_24h_labeling_changes": true,
+    "no_24h2_delta_proof_changes": true,
+    "no_24h3_scenario_loop_changes": true,
+    "no_factory_project_mutation": true
+  },
+  "files_changed": {
+    "tests": [
+      {"path": "tests/test_phase24h4_generic_export_download_pack.py", "lines_added": 1132, "change_type": "new test file", "tests": 58}
+    ],
+    "docs": [
+      {"path": "docs/phase24h4_generic_export_download_pack.md", "change_type": "new doc"}
+    ],
+    "reports": [
+      {"path": "reports/phase24h4_generic_export_download_pack.json", "change_type": "new report"}
+    ]
+  },
+  "tests": {
+    "new": 58,
+    "regression_24h3": 53,
+    "regression_24h2": 55,
+    "regression_24h": 29,
+    "regression_24g_closure": 30,
+    "regression_24g1_stale": 19,
+    "regression_24g1_validation": 28,
+    "regression_24g2_status": 40,
+    "regression_24g2_completion": 35,
+    "regression_24g3_capex": 37,
+    "regression_24g3_export": 32,
+    "total_phase_targeted": 416,
+    "all_passing": true
+  },
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}
