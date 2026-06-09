@@ -2,7 +2,7 @@
   "phase": "25B-4",
   "title": "Dirty State + Unsaved Changes (visual only)",
   "branch": "phase25b4-dirty-state-unsaved-changes",
-  "head_sha": "to-be-filled-after-final-commit",
+  "head_sha": "25b105b29fa586cf2851d7cf59525cf582526cf7",
   "base_sha": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
   "pr_number": null,
   "pr_state": "draft-pending",
