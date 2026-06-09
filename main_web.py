@@ -1560,6 +1560,9 @@ def _render_scenario_workspace(
     scenario_summary_cards,
     message: str | None = None,
     compare_result: dict | None = None,
+    multi_compare_result: dict | None = None,
+    multi_compare_error: str | None = None,
+    multi_compare_parsed_ids: list | None = None,
 ):
     return templates.TemplateResponse(
         request=request,
@@ -1577,6 +1580,9 @@ def _render_scenario_workspace(
             "scenario_summary_cards": scenario_summary_cards,
             "workspace_message": message,
             "compare_result": compare_result,
+            "multi_compare_result": multi_compare_result,
+            "multi_compare_error": multi_compare_error,
+            "multi_compare_parsed_ids": multi_compare_parsed_ids or [],
             "is_user_project": project_record.project_origin == "user_created",
             # Phase 24-H: exploratory warning flag (user_created + generic)
             "is_exploratory_project": (
@@ -2704,6 +2710,95 @@ async def scenario_compare_endpoint(
         scenario_summary_cards,
         message=message,
         compare_result=compare_result,
+    )
+
+
+# ── Phase 25B-2 — Multi-scenario compare (2-4 scenarios) ────────────────
+@app.get("/scenarios/compare-multi")
+async def scenario_compare_multi_endpoint(
+    request: Request,
+    project: str = "tuho",
+    scenario_ids: str = "",
+):
+    """Render a multi-scenario comparison (Base / Downside / Upside / Custom).
+
+    Phase 25B-2. Read-only. Accepts a comma-separated list of 2-4
+    scenario_ids via the ``scenario_ids`` query string parameter. The
+    first scenario in the list is treated as the base reference for
+    deltas. Soft-error semantics: invalid input (empty / <2 / >4 /
+    unresolved ids) returns a 200 response with an explicit
+    ``error_state`` so the UI can show a clear message instead of
+    a 500.
+    """
+    from app.persistence.exports_repository import (
+        compare_multi_scenarios,
+        MULTI_COMPARE_MIN_SCENARIOS,
+        MULTI_COMPARE_MAX_SCENARIOS,
+    )
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+
+    # Parse scenario_ids (comma-separated)
+    parsed_ids: list[str] = []
+    if scenario_ids:
+        for piece in scenario_ids.split(","):
+            piece = piece.strip()
+            if piece:
+                parsed_ids.append(piece)
+
+    error_state: Optional[str] = None
+    if not parsed_ids:
+        error_state = (
+            f"Select between {MULTI_COMPARE_MIN_SCENARIOS} and "
+            f"{MULTI_COMPARE_MAX_SCENARIOS} saved scenarios to compare."
+        )
+    elif len(parsed_ids) < MULTI_COMPARE_MIN_SCENARIOS:
+        error_state = (
+            f"Multi-compare needs at least {MULTI_COMPARE_MIN_SCENARIOS} "
+            f"scenarios; you provided {len(parsed_ids)}."
+        )
+    elif len(parsed_ids) > MULTI_COMPARE_MAX_SCENARIOS:
+        error_state = (
+            f"Multi-compare supports at most {MULTI_COMPARE_MAX_SCENARIOS} "
+            f"scenarios; you provided {len(parsed_ids)}."
+        )
+    elif len(set(parsed_ids)) != len(parsed_ids):
+        error_state = "Multi-compare does not allow duplicate scenario_ids."
+
+    multi_compare_result = None
+    if not error_state:
+        multi_compare_result = compare_multi_scenarios(user.user_id, parsed_ids)
+        if multi_compare_result is None:
+            error_state = (
+                "One or more scenario_ids could not be resolved for the "
+                "current user. Check that the scenarios exist and belong "
+                "to the same project."
+            )
+
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        workspace_state,
+        scenarios,
+        history,
+        exports,
+        export_lineage,
+        scenario_summary_cards,
+        message=error_state or (
+            f"Multi-scenario compare ready across {len(parsed_ids)} scenarios. "
+            "Review numeric deltas together with governance posture."
+        ),
+        multi_compare_result=multi_compare_result,
+        multi_compare_error=error_state,
+        multi_compare_parsed_ids=parsed_ids,
     )
 
 

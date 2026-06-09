@@ -1,0 +1,257 @@
+{
+  "phase": "25B-2",
+  "title": "3-Way / 4-Way Generic Scenario Compare",
+  "type": "implementation + docs + report + tests",
+  "status": "DRAFT (awaiting review)",
+  "date": "2026-06-09",
+  "branch": "phase25b2-multi-scenario-compare",
+  "base_sha": "263484790ed127f05174c0f207d35821c33e7bb2",
+  "head_sha": "PENDING (commit pending)",
+  "primary_user_story": "As a user, I can create Generic Base, Downside, Upside and optional Custom scenarios, then see all key KPIs side-by-side instead of comparing only two scenarios at a time.",
+  "scope": "Generic exploratory path only. TUHO / Oborovo factory paths preserved.",
+  "what_was_delivered": {
+    "helper": {
+      "name": "compare_multi_scenarios",
+      "location": "app/persistence/exports_repository.py",
+      "purpose": "Pure read-only helper: returns comparison matrix for 2-4 saved scenarios, with deltas vs Base (first scenario).",
+      "depends_on": [
+        "get_scenario (existing, app/persistence/scenarios_repository.py)",
+        "_metric_value (existing, app/persistence/_helpers.py)",
+        "_safe_number (existing, app/persistence/_helpers.py)"
+      ],
+      "mutates_db": false,
+      "executes_model": false,
+      "returns_none_for": [
+        "fewer than 2 scenarios",
+        "more than 4 scenarios",
+        "duplicate scenario_ids",
+        "any scenario_id that cannot be resolved for the user"
+      ]
+    },
+    "constants": {
+      "MULTI_COMPARE_MIN_SCENARIOS": 2,
+      "MULTI_COMPARE_MAX_SCENARIOS": 4,
+      "MULTI_COMPARE_METRIC_ORDER": [
+        "Revenue", "OPEX", "EBITDA", "CAPEX",
+        "Senior Debt", "SHL", "DSCR",
+        "Project IRR", "Equity IRR", "Distributions"
+      ]
+    },
+    "route": {
+      "method": "GET",
+      "path": "/scenarios/compare-multi",
+      "params": {
+        "project": "project code (default 'tuho')",
+        "scenario_ids": "comma-separated 2-4 scenario IDs"
+      },
+      "auth": "Required (302 if not authenticated)",
+      "soft_error_semantics": "all error states return 200 with a clear message instead of 500",
+      "is_read_only": true
+    },
+    "ui": [
+      {
+        "file": "app/templates/partials/scenario_compare_multi.html",
+        "type": "new",
+        "lines": 119,
+        "notes": "Multi-compare table + EXPLORATORY banner + scenario chips + governance rows; uses bracket access row['values'] to avoid Jinja2 dict.values() confusion"
+      },
+      {
+        "file": "app/templates/partials/scenario_workspace.html",
+        "type": "modified",
+        "lines_added": 5,
+        "notes": "Conditional include of scenario_compare_multi.html at the bottom when multi_compare_result or multi_compare_error is set"
+      },
+      {
+        "file": "static/styles.css",
+        "type": "modified",
+        "lines_added": 150,
+        "notes": "New .scm-* classes (additive, :root count = 3 preserved)"
+      }
+    ],
+    "main_web_changes": {
+      "file": "main_web.py",
+      "type": "modified",
+      "lines_added": 80,
+      "notes": [
+        "New route GET /scenarios/compare-multi",
+        "_render_scenario_workspace() extended with 3 optional kwargs: multi_compare_result, multi_compare_error, multi_compare_parsed_ids"
+      ]
+    }
+  },
+  "test_coverage": {
+    "total": 53,
+    "blocks": [
+      {
+        "block": 1,
+        "name": "Helper (Pure Unit)",
+        "tests": 12,
+        "covers": [
+          "constants (MIN=2, MAX=4, 10 metrics, labels match)",
+          "rejection of too-few, too-many, duplicates, unresolved",
+          "returns dict shape (scenarios, base_scenario_id, metrics, governance_rows)",
+          "metrics have parallel values[] + deltas[] + sign_classes[]",
+          "base column has delta=0 + sign_class=zero (or n/a if base missing)",
+          "all sign_classes in {pos, neg, zero, na}"
+        ]
+      },
+      {
+        "block": 2,
+        "name": "Route (GET /scenarios/compare-multi)",
+        "tests": 12,
+        "covers": [
+          "route registered",
+          "unauthenticated -> 302",
+          "empty / 1 / 5+ / duplicates / unresolved -> 200 with clear error message",
+          "2 / 4 scenarios -> 200 with full table",
+          "all 10 metric labels present",
+          "governance rows (g20 + r99/r102) present",
+          "Base chip with scm-chip--base class"
+        ]
+      },
+      {
+        "block": 3,
+        "name": "UI Template",
+        "tests": 9,
+        "covers": [
+          "file exists",
+          "data-testid='multi-scenario-compare' root",
+          "empty state message",
+          "EXPLORATORY banner + badge + safety copy",
+          "descriptive banner",
+          "Base + variant chips with testids",
+          "metric table + head row + Deltas vs Base column",
+          "governance row class",
+          "bracket access (row['values']) not bare row.values"
+        ]
+      },
+      {
+        "block": 4,
+        "name": "Safety Constraints",
+        "tests": 8,
+        "covers": [
+          "no factory leakage in helper output",
+          "unrelated user scenarios rejected",
+          "use_construction_schedule_engine still False",
+          "no rc1 in route or helper code",
+          ":root count = 3",
+          "no new financial formulas (.irr(, npv(, numpy, pandas, atad_*, corporate_rate)",
+          "no construction flag flips in diff",
+          "app/project_factories.py zero diff"
+        ]
+      },
+      {
+        "block": 5,
+        "name": "End-to-End Integration",
+        "tests": 8,
+        "covers": [
+          "EXPLORATORY banner for generic_solar / generic_wind",
+          "descriptive banner for non-generic projects",
+          "3 scenarios render",
+          "missing run_output handled gracefully",
+          "deltas have correct signs",
+          "4 scenarios produce 1 base + 3 variant chips + 3 'vs' separators",
+          "route is read-only (updated_at and last_run_summary unchanged)",
+          "empty last_run_summary + empty governance_state does not crash"
+        ]
+      },
+      {
+        "block": 6,
+        "name": "CSS Style Guard",
+        "tests": 4,
+        "covers": [
+          ".scm-multi-* root classes present",
+          ".scm-chip* classes present",
+          ".scm-delta--{pos,neg,zero,na} classes present",
+          "no Tailwind @apply or Alpine x-data in the multi-compare CSS block"
+        ]
+      }
+    ]
+  },
+  "regression_tests": {
+    "total_phase_targeted": 555,
+    "all_passing": true,
+    "suites": {
+      "25B-2_new": 53,
+      "25B-1_regression": 52,
+      "24H_closure_regression": 34,
+      "24H4_regression": 58,
+      "24H3_regression": 53,
+      "24H2_regression": 55,
+      "24H_regression": 29,
+      "24G_closure_regression": 30,
+      "24G1_regression": 47,
+      "24G2_regression": 75,
+      "24G3_regression": 69
+    }
+  },
+  "hard_constraints_honored": {
+    "no_new_financial_formulas": true,
+    "no_formula_refactor": true,
+    "no_construction_promotion": true,
+    "no_c10_rpar_work": true,
+    "no_senior_idc_changes": true,
+    "no_schema_migration": true,
+    "no_tailwind_or_alpine": true,
+    "no_fake_outputs": true,
+    "no_fake_runtime_ids": true,
+    "no_persistence_changes": true,
+    "rc1_untouched": true,
+    "factory_paths_preserved": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "css_root_count_unchanged": 3,
+    "project_factories_unchanged": true,
+    "waterfall_core_unchanged": true,
+    "compare_service_2way_unchanged": true,
+    "is_read_only": true
+  },
+  "files_changed": {
+    "implementation": [
+      {"path": "app/persistence/exports_repository.py", "change_type": "modified", "lines_added": 120, "notes": "New helper compare_multi_scenarios() + 4 constants"},
+      {"path": "main_web.py", "change_type": "modified", "lines_added": 80, "notes": "New route + _render_scenario_workspace() extension with 3 kwargs"},
+      {"path": "app/templates/partials/scenario_compare_multi.html", "change_type": "new", "lines_added": 119, "notes": "Multi-compare table + EXPLORATORY banner + chips"},
+      {"path": "app/templates/partials/scenario_workspace.html", "change_type": "modified", "lines_added": 5, "notes": "Conditional include of new partial"},
+      {"path": "static/styles.css", "change_type": "modified", "lines_added": 150, "notes": "New .scm-* classes (additive)"}
+    ],
+    "tests": [
+      {"path": "tests/test_phase25b2_multi_scenario_compare.py", "change_type": "new", "lines_added": 920, "tests": 53, "test_blocks": 6}
+    ],
+    "docs": [
+      {"path": "docs/phase25b2_multi_scenario_compare.md", "change_type": "new", "lines_added": 670}
+    ],
+    "reports": [
+      {"path": "reports/phase25b2_multi_scenario_compare.json", "change_type": "new"}
+    ],
+    "unchanged_but_referenced": [
+      "app/project_factories.py (zero diff)",
+      "app/waterfall_core.py (zero diff)",
+      "app/services/compare_service.py (untouched — 2-way compare flow preserved)",
+      "app/persistence/_helpers.py (_metric_value + _safe_number reused, not modified)"
+    ]
+  },
+  "user_flow": {
+    "before_25B2": [
+      "Save 2-4 scenarios (Base / Downside / Upside / Custom).",
+      "Open three separate 2-way compares or copy numbers into a spreadsheet."
+    ],
+    "after_25B2": [
+      "Save 2-4 scenarios (Base / Downside / Upside / Custom).",
+      "Open GET /scenarios/compare-multi?project=...&scenario_ids=base_id,downside_id,upside_id,custom_id",
+      "See single table with 10 metrics x N scenarios + deltas vs Base",
+      "EXPLORATORY banner visible if project is generic_solar / generic_wind",
+      "Governance rows (G20 + R99/R102) at the bottom"
+    ]
+  },
+  "what_is_NOT_in_this_phase": [
+    "No percentage deltas (deferred; absolute deltas are the meaningful ones for IRR metrics)",
+    "No Min DSCR as a separate row (Avg DSCR used to match the existing pair-compare convention)",
+    "No interactive selection UI (route accepts scenario_ids as query string; checkbox UI is follow-up)",
+    "No model re-execution (compare only reads existing last_run_summary values)",
+    "No historical compare (only current saved snapshot of each scenario)",
+    "No PDF export (deferred to Phase 25B-6)",
+    "No Excel export (deferred to Phase 25B-5)",
+    "No link from the existing Compare workspace tab (small follow-up)"
+  ],
+  "recommended_next_phase": "25B-3 ('What changed' delta indicator) or 25B-4 (auto-save on dirty). Or a 25B-2.1 follow-up: 'Open Multi-Compare' button in the existing Compare workspace tab.",
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}

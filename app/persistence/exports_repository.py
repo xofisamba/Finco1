@@ -205,6 +205,130 @@ def compare_scenarios(
     }
 
 
+# Phase 25B-2 — Multi-scenario compare (2-4 scenarios)
+MULTI_COMPARE_MIN_SCENARIOS = 2
+MULTI_COMPARE_MAX_SCENARIOS = 4
+MULTI_COMPARE_METRIC_ORDER = [
+    "Revenue",
+    "OPEX",
+    "EBITDA",
+    "CAPEX",
+    "Senior Debt",
+    "SHL",
+    "DSCR",
+    "Project IRR",
+    "Equity IRR",
+    "Distributions",
+]
+MULTI_COMPARE_METRIC_LABELS = {
+    "Revenue": "Revenue",
+    "OPEX": "OPEX",
+    "EBITDA": "EBITDA",
+    "CAPEX": "CAPEX",
+    "Senior Debt": "Senior Debt",
+    "SHL": "SHL",
+    "DSCR": "Avg DSCR",
+    "Project IRR": "Project IRR",
+    "Equity IRR": "Equity IRR",
+    "Distributions": "Distributions",
+}
+
+
+def compare_multi_scenarios(
+    user_id: str,
+    scenario_ids: list[str],
+) -> Optional[dict[str, Any]]:
+    """Build a comparison matrix for 2-4 saved scenarios.
+
+    Phase 25B-2 (Multi-Scenario Compare). The first scenario in
+    ``scenario_ids`` is treated as the base reference for deltas.
+
+    Returns a dict with:
+      - scenarios: list[ScenarioRecord] (in input order)
+      - metrics: list[dict] (per metric: values[] + deltas[] + sign_classes[])
+      - governance_rows: list[dict] (G20 + R99/R102 per scenario)
+
+    Returns None if:
+      - fewer than MULTI_COMPARE_MIN_SCENARIOS (2) scenarios
+      - more than MULTI_COMPARE_MAX_SCENARIOS (4) scenarios
+      - any of the scenario_ids cannot be resolved for the user
+      - duplicate scenario_ids in the input
+
+    Pure read-only: no persistence side effects, no model execution.
+    """
+    # Validate input shape
+    if not isinstance(scenario_ids, list):
+        return None
+    if len(scenario_ids) < MULTI_COMPARE_MIN_SCENARIOS:
+        return None
+    if len(scenario_ids) > MULTI_COMPARE_MAX_SCENARIOS:
+        return None
+    # Reject duplicates (defensive)
+    if len(set(scenario_ids)) != len(scenario_ids):
+        return None
+
+    from app.persistence.repository import get_scenario
+    from app.persistence._helpers import _metric_value, _safe_number
+
+    records: list[Any] = []
+    for sid in scenario_ids:
+        rec = get_scenario(sid, user_id)
+        if rec is None:
+            return None
+        records.append(rec)
+
+    base_record = records[0]
+
+    metrics: list[dict[str, Any]] = []
+    for metric_key in MULTI_COMPARE_METRIC_ORDER:
+        values: list[Any] = []
+        deltas: list[Optional[float]] = []
+        sign_classes: list[str] = []
+        for rec in records:
+            raw = _metric_value(rec, metric_key)
+            values.append(raw)
+            num = _safe_number(raw)
+            if num is None or _safe_number(_metric_value(base_record, metric_key)) is None:
+                deltas.append(None)
+                sign_classes.append("scm-delta--na")
+            else:
+                base_num = _safe_number(_metric_value(base_record, metric_key))
+                delta = num - base_num
+                deltas.append(delta)
+                if delta > 0:
+                    sign_classes.append("scm-delta--pos")
+                elif delta < 0:
+                    sign_classes.append("scm-delta--neg")
+                else:
+                    sign_classes.append("scm-delta--zero")
+        metrics.append(
+            {
+                "metric": metric_key,
+                "label": MULTI_COMPARE_METRIC_LABELS[metric_key],
+                "values": values,
+                "deltas": deltas,
+                "sign_classes": sign_classes,
+            }
+        )
+
+    governance_rows: list[dict[str, Any]] = []
+    for gov_key, default_val in (
+        ("g20_status", "BLOCKED"),
+        ("r99_r102_status", "NOT APPROVED"),
+    ):
+        values: list[str] = []
+        for rec in records:
+            values.append(rec.governance_state.get(gov_key, default_val))
+        governance_rows.append({"label": gov_key, "values": values})
+
+    return {
+        "scenarios": records,
+        "base_scenario_id": base_record.scenario_id,
+        "metrics": metrics,
+        "governance_rows": governance_rows,
+    }
+
+
 def build_export_lineage(
     user_id: str,
     project_id: Optional[str] = None,
