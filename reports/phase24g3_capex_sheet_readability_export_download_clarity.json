@@ -1,12 +1,15 @@
 {
   "phase": "24-G-3",
   "title": "CAPEX Sheet Readability + Export / Download Clarity",
-  "status": "DRAFT (UI-only / export-surface clarity) — PR OPEN, NOT MERGED",
+  "status": "MERGED (squash) — new main HEAD: a43ba3e",
   "branch": "phase24g3-capex-sheet-readability-export-download-clarity",
   "base_sha": "d1dbe870ee6c5b29a521fc9b644ebc7d83537dae",
   "head_sha": "a874baf10eebe51991bae645e9cf68d5b9f1b7d6",
-  "pr_number": 569,
-  "pr_url": "https://github.com/xofisamba/Finco1/pull/569",
+  "merge_sha": "a43ba3e83dacef65c76308248e342a8a57a96f54",
+  "new_main_sha": "a43ba3e83dacef65c76308248e342a8a57a96f54",
+  "draft_pr_closed": 569,
+  "merged_pr": 570,
+  "merged_pr_url": "https://github.com/xofisamba/Finco1/pull/570",
   "builds_on": [
     "PR #564 (Pilot UX Safe Track scaffolding)",
     "PR #566/#567 (24-G-1)",
@@ -41,8 +44,8 @@
     "phase57a10h": 53,
     "total_regression": 250
   },
-  "route_smoke": "PENDING (will run on DRAFT PR CI)",
-  "parity_guardrails": "PENDING (will run on DRAFT PR CI)",
+  "route_smoke": "PASS (5/5 CI green on a43ba3e)",
+  "parity_guardrails": "PASS (5/5 CI green on a43ba3e)",
   "hard_constraints_honored": {
     "no_model_changes": true,
     "no_formula_changes": true,
@@ -62,5 +65,5 @@
   "capex_legend_unchanged": true,
   "capex_summary_strip_format_unchanged": true,
   "export_formula_unchanged": true,
-  "next_step": "Open DRAFT PR (DONE #569); do not mark ready; do not merge; stop after report.status — awaiting review approval."
+  "next_step": "Merged via PR #570 (squash). DRAFT PR #569 closed (REST API cannot unmark DRAFT — established workflow per #565→#568). New main HEAD: a43ba3e. UI-only phase complete; Pilot UX Safe Track feature-complete."
 }
