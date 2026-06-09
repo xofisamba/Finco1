@@ -1,0 +1,136 @@
+{
+  "phase": "C9-closure-review",
+  "title": "Phase C9 Closure Review: C1-C9 (docs/report-only)",
+  "type": "closure_review",
+  "status": "DRAFT",
+  "scope_label": "CLOSURE REVIEW. DOCS + REPORT ONLY. NO IMPLEMENTATION. NO PROMOTION. NO WATERFALL ROUTING. NO FLAG FLIP. NO RUNTIME WIRING.",
+  "date": "2026-06-09",
+  "base_sha": "d55a900",
+  "branch": "c9-closure-review-c1-c9",
+  "c_series_chain": {
+    "C1": {"status": "merged", "sha": "5fccc3a", "pr": "#543", "title": "Construction Schedule / IDC Design Gate"},
+    "C2": {"status": "merged", "sha": "59f9e3d", "pr": "#544", "title": "SHL IDC Convention + Opening Balance Bridge Design"},
+    "C3": {"status": "merged", "sha": "aa800a5", "pr": "#545", "title": "Construction Period Parity Snapshot Design"},
+    "C4": {"status": "merged", "sha": "dcc30b6", "pr": "#546", "title": "Construction Period Parity Snapshot Scaffolding"},
+    "C5": {"status": "merged", "sha": "2d8a91c", "pr": "#547", "title": "Construction Engine Comparison Tests"},
+    "C6": {"status": "closed_superseded", "sha": null, "pr": "#548", "title": "Superseded by C7 implementation"},
+    "C7": {"status": "merged", "sha": "b28723b", "pr": "#549", "title": "Layer 4 Opening Balance Bridge Offline Implementation"},
+    "C7_fix": {"status": "merged", "sha": "4ccf1f5", "pr": "#550", "title": "Post-merge test fix"},
+    "C8": {"status": "merged", "sha": "deeee42", "pr": "#551", "title": "Layer 5 Runtime Seam Design Gate"},
+    "C8_fix": {"status": "merged", "sha": "8921031", "pr": "#553", "title": "Make C8 test_no_new_domain_module commit-relative"},
+    "C_series_cleanup": {"status": "merged", "sha": "2bbf711", "pr": "#554", "title": "Make C1-C5 TestScopeGuards commit-relative"},
+    "C9": {"status": "merged", "sha": "d55a900", "pr": "#552", "title": "Layer 5 Runtime Seam Scaffolding"}
+  },
+  "cumulative_test_counts": {
+    "test_phase_c1_construction_idc_design_gate.py": 60,
+    "test_phase_c2_shl_idc_convention_opening_balance_bridge.py": 99,
+    "test_phase_c3_construction_parity_snapshot_design.py": 122,
+    "test_phase_c4_construction_parity_snapshots.py": 131,
+    "test_phase_c5_construction_engine_comparison.py": 93,
+    "test_phase_c7_opening_balance_bridge.py": 118,
+    "test_phase_c8_layer5_runtime_seam_design_gate.py": 134,
+    "test_phase_c9_construction_runtime_seam.py": 95,
+    "combined_c1_c9_plus_57a10f_g_h_plus_parity": 1067,
+    "deselected": 0,
+    "all_pass": true
+  },
+  "c9_active_guard": {
+    "function": "assert_no_construction_runtime_promotion",
+    "location": "app/services/construction_runtime_seam.py",
+    "behavior_table": [
+      {"field_class": "frozen", "fields": ["senior_opening_balance_keur", "capex_keur"], "behavior": "RAISE always"},
+      {"field_class": "replaced", "fields": ["senior_idc_keur"], "promotion_requested": true, "rpar2_resolved": false, "behavior": "RAISE (R-PAR-2 blocking)"},
+      {"field_class": "replaced", "fields": ["senior_idc_keur"], "promotion_requested": true, "rpar2_resolved": true, "behavior": "OK"},
+      {"field_class": "replaced", "fields": ["senior_idc_keur", "shl_idc_keur", "shl_amount_keur", "shl_opening_balance_keur"], "promotion_requested": false, "behavior": "RAISE"},
+      {"field_class": "derived", "fields": ["equity_total_keur"], "promotion_requested": true, "parity_ok": false, "behavior": "RAISE"},
+      {"field_class": "derived", "fields": ["equity_total_keur"], "promotion_requested": true, "parity_ok": true, "behavior": "OK"},
+      {"field_class": "derived", "fields": ["equity_total_keur"], "promotion_requested": false, "behavior": "RAISE"},
+      {"field_class": "retained", "fields": ["reserves_keur", "vat_operating", "financing_fees_keur", "commitment_fee_keur"], "behavior": "OK (pass-through)"}
+    ],
+    "exception_type": "PromotionBlockedError (subclasses PermissionError and ConstructionSeamError)",
+    "test_count": 95,
+    "all_pass": true
+  },
+  "c9_import_contract": {
+    "seam_module_path": "app/services/construction_runtime_seam.py",
+    "allowed_bridge_imports": ["POLICY_TABLE", "BridgeFieldPolicy"],
+    "forbidden_bridge_imports": ["build_opening_balance_bridge", "OpeningBalanceBridgeInput", "OpeningBalanceBridgeResult", "BridgeAuditRow", "BridgeMetadata", "ManualOverrideRow", "ParityReferenceRow", "ProjectAssumptions", "BridgeIdentityError"],
+    "forbidden_runtime_imports": ["main_web", "main_api", "app.waterfall", "app.persistence", "app.excel_export", "domain.waterfall", "domain.inputs", "domain.financing", "domain.tax", "domain.depreciation", "domain.debt", "domain.capex", "static.*"],
+    "verified_by_tests": [
+      "TestBridgeImportContract::test_only_seam_module_imports_bridge",
+      "TestSeamModuleDependencies",
+      "TestSeamImportContract::test_seam_module_does_not_call_construction_engine",
+      "TestSeamImportContract::test_seam_module_does_not_mutate_feature_flag",
+      "TestSeamImportContract::test_seam_does_not_re_export_bridge_symbols"
+    ]
+  },
+  "no_promotion_confirmed": {
+    "TUHO": "Level 2 unchanged",
+    "Oborovo": "Level 2 unchanged",
+    "Generic Wind": "Level 1 unchanged",
+    "Generic Solar": "Level 1 unchanged",
+    "rationale": "C9 provides the mechanism (guard) that will gate future promotion. C9 does not provide the path. The path is C10 (TUHO) and C11 (Oborovo), each of which is explicitly allowed to do controlled promotion, and each of which must satisfy the blockers in section 6 before opening."
+  },
+  "remaining_blockers_before_c10": [
+    {
+      "id": "BLOCKER-1",
+      "name": "R-PAR-2 decision",
+      "severity": "BLOCKER",
+      "description": "Senior IDC has an effective-rate caveat (C1 R-PAR-2). C9 guards promotion of senior_idc_keur behind rpar2_resolved=True. A decision must be made: A) model base-rate properly, B) formally accept caveat, C) defer.",
+      "discovery_pr": "#556 (R-PAR-2 decision discovery, docs/tests only)"
+    },
+    {
+      "id": "BLOCKER-2",
+      "severity": "BLOCKER",
+      "name": "Parity baseline for derived field equity_total_keur",
+      "description": "C9 guard blocks promotion of equity_total_keur unless parity_ok=True. The parity baseline is the rc1 baseline (b425a07...) for the post-correction snapshots. C10 must establish a per-project parity baseline against rc1 for the project being promoted (TUHO first, Oborovo second)."
+    },
+    {
+      "id": "BLOCKER-3",
+      "severity": "soft",
+      "name": "Audit endpoint",
+      "description": "The seam provides build_construction_seam_audit_view but the HTTP audit endpoint is not yet implemented. C10 can proceed without it (audit view is callable from Python). The endpoint is a separate workstream."
+    },
+    {
+      "id": "BLOCKER-4",
+      "severity": "soft",
+      "name": "TestScopeGuards for C10/C11",
+      "description": "PR #554 made C1-C5 commit-relative. C10 and C11 will need their own TestScopeGuards (commit-relative) when they are opened. This is a per-phase setup task."
+    }
+  ],
+  "rpar2_status": {
+    "caveat": "C1 R-PAR-2: senior IDC effective-rate caveat",
+    "discovered_in": "C1 design (PR #543)",
+    "decision": "OPEN (no decision yet)",
+    "resolution_options": {
+      "A": "Model base-rate senior IDC properly (C-phase workstream, TBD)",
+      "B": "Permanently freeze senior opening balance / formally accept caveat (governance decision)",
+      "C": "Defer promotion (keep guard active, revisit later)"
+    },
+    "c9_enforcement": "senior_idc_keur promotion blocked unless rpar2_resolved=True AND promotion_requested=True",
+    "default": "rpar2_resolved=False (fail-closed)",
+    "discovery_pr": "#556 (R-PAR-2 decision discovery)"
+  },
+  "hard_rules_confirmed": {
+    "rc1_untouched": true,
+    "no_global_construction_flag_enablement": true,
+    "no_waterfall_routing": true,
+    "no_runtime_promotion": true,
+    "no_senior_idc_promotion_without_rpar2": true,
+    "no_oborovo_before_tuho": true,
+    "all_prs_draft_until_reviewed": true,
+    "all_phases_self_reviewed_with_tests": true
+  },
+  "files_added": [
+    {
+      "path": "docs/phase_c9_closure_review_c1_c9.md",
+      "purpose": "C1-C9 closure review document (this PR)"
+    },
+    {
+      "path": "reports/phase_c9_closure_review_c1_c9.json",
+      "purpose": "C1-C9 closure review machine-readable report (this file)"
+    }
+  ],
+  "files_modified": [],
+  "stop_after_report": true
+}
