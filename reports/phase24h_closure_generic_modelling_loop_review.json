@@ -1,0 +1,296 @@
+{
+  "phase": "24-H-closure",
+  "title": "Generic Modelling Loop Testability Review",
+  "type": "docs + report + tests only (no implementation, no runtime/model/persistence changes)",
+  "status": "DRAFT (review-only; not merged)",
+  "date": "2026-06-09",
+  "branch": "phase24h-closure-generic-modelling-loop-review",
+  "base_sha": "1791f32b834db182746140b379e79f3c25193466",
+  "head_sha": "PENDING (commit pending)",
+  "review_of_phases": {
+    "24-H-1_labeling": {
+      "pr": 573,
+      "sha": "eb1a132",
+      "tests": 29,
+      "deliverable": "Editable Generic Project Run Loop (Phase 1, UI + minimal-orchestration)"
+    },
+    "24-H-2_delta_proof": {
+      "pr": 575,
+      "squash_merge_sha": "e8fca68",
+      "tests": 55,
+      "deliverable": "Generic Edit→Save→Run→Output Delta Proof (tests-only + docs + report)"
+    },
+    "24-H-3_scenario_loop": {
+      "pr": 578,
+      "squash_merge_sha": "76d4d14",
+      "tests": 53,
+      "deliverable": "Generic Scenario Loop + Compare (tests-only + docs + report)"
+    },
+    "24-H-4_export_pack": {
+      "pr": 580,
+      "squash_merge_sha": "1791f32",
+      "tests": 58,
+      "deliverable": "Generic Export / Download Pack With Exploratory Banner (tests-only + docs + report)"
+    }
+  },
+  "primary_question": "Is FincoGPT now meaningfully testable by another internal finance user as an exploratory modelling tool for Generic Solar / Generic Wind projects?",
+  "answer": "YES, with 6 documented gaps.",
+  "ten_questions_audit": {
+    "q1_create_open_generic_solar_or_wind": {
+      "answer": "YES (UI + service-level proof)",
+      "evidence": [
+        "NEW_PROJECT_TEMPLATE_OPTIONS exposes generic_solar and generic_wind (main_web.py:194-195)",
+        "/projects/new renders the form (app/templates/partials/new_project_form.html)",
+        "/projects/create accepts template_source (main_web.py:2280)",
+        "creates user_created project_record"
+      ],
+      "test": "TestAuditBlock1_Capability1_Creation (3 tests)"
+    },
+    "q2_edit_key_assumptions": {
+      "answer": "YES (UI + service-level proof)",
+      "evidence": [
+        "inputs_section.html is editable for is_user_project=True",
+        "16 input fields exposed (project name, technology, capacity MW, COD, construction months, horizon years, total CAPEX, P50 hours, PPA tariff, PPA term, OPEX Y1, gearing, interest rate, tenor, target DSCR, country_market)",
+        "build_projectinputs_from_snapshot accepts all 16 fields (app/input_adapter.py)",
+        "run_project honors the snapshot (app/api/project_runner.py)"
+      ],
+      "test": "TestAuditBlock2_Capability2_3_EditingAndSaving (4 tests)"
+    },
+    "q3_save_and_rerun": {
+      "answer": "YES (UI + service-level proof)",
+      "evidence": [
+        "/scenarios/state/draft route (main_web.py:2418)",
+        "/scenarios/save route (main_web.py:2563)",
+        "/run route (main_web.py:1924-1925)",
+        "/save-run route (main_web.py:3111)",
+        "resolve_scenario_snapshot links save to rerun (app/persistence/scenarios_repository.py)"
+      ],
+      "test": "TestAuditBlock2_Capability2_3_EditingAndSaving (4 tests)"
+    },
+    "q4_outputs_demonstrably_change": {
+      "answer": "YES (service-level proof; UI verified by 24-H-2)",
+      "evidence": [
+        "tariff 90 -> 150 raises revenue by ~67%",
+        "opex 800 -> 1500 raises OPEX by ~88%",
+        "capex 50,000 -> 80,000 lowers IRR",
+        "financial outputs change proportionally to the edits"
+      ],
+      "test": "TestAuditBlock3_Capability4_5_OutputDeltaAndScenarios (4 tests)"
+    },
+    "q5_create_base_downside_upside": {
+      "answer": "YES (UI + service-level proof)",
+      "evidence": [
+        "/scenarios/add route (main_web.py:2732, 403 for non-user_created)",
+        "/scenarios/{id}/duplicate route (main_web.py:2648)",
+        "/scenarios/{id}/update-overrides route (main_web.py:2829)",
+        "resolve_scenario_snapshot(base, overrides) -> effective snapshot"
+      ],
+      "test": "TestAuditBlock3_Capability4_5_OutputDeltaAndScenarios (4 tests)"
+    },
+    "q6_compare_scenario_outputs": {
+      "answer": "YES (UI + service-level proof)",
+      "evidence": [
+        "Compare tab in workspace_shell (app/templates/partials/workspace_shell.html:744)",
+        "scenario_compare.html has 3 states (empty, base-only, full)",
+        "Metrics table with delta column",
+        "/scenarios/compare route (main_web.py:2522)",
+        "/compare (POST) route (main_web.py:2000-2001)",
+        "compare_scenarios builds 10 metric rows + 2 governance rows with delta"
+      ],
+      "test": "TestAuditBlock4_Capability6_Compare (3 tests)"
+    },
+    "q7_export_or_download_exploratory_package": {
+      "answer": "YES (UI + service-level proof)",
+      "evidence": [
+        "Export registry partial (app/templates/partials/export_registry.html)",
+        "5+ export cards visible (workbook, calibration, runtime, parity, gap, source, governance)",
+        "EXPLORATORY banner on export registry",
+        "/download route (POST + GET) (main_web.py:2039, 2091)",
+        "/exports/runtime-summary.csv (factory-only by design)",
+        "/exports/institutional-workbook.xlsx (factory-only by design)",
+        "build_excel_export_for_post_request for user_created (app/services/export_service.py)"
+      ],
+      "test": "TestAuditBlock5_Capability7_Export (3 tests)"
+    },
+    "q8_outputs_labeled_exploratory": {
+      "answer": "YES (UI + 3 sites + safety copy)",
+      "evidence": [
+        "inputs_section.html has inp-exploratory-notice with EXPLORATORY badge + safety copy",
+        "_last_run_indicator.html has last-run-indicator__row--exploratory",
+        "export_registry.html has export-explorer-warning",
+        "pilot_limitations_notice.html lists Generic projects as 'not yet validated against Excel'",
+        "pilot_workflow_guide.html Step 1 says 'generic is exploratory only'",
+        "safety copy is complete: lender-ready / audit-ready / bank-approved / Excel-parity / artefact / internal sketching",
+        "badge style is badge-warn (not blocked, not convention)"
+      ],
+      "test": "TestAuditBlock6_Capability8_9_10_SafetyAndGaps (10 tests)"
+    },
+    "q9_tuho_oberovo_reference_paths_protected": {
+      "answer": "YES (UI + service-level proof)",
+      "evidence": [
+        "factory read-only notice in inputs_section (inp-readonly-notice + {% if not is_user_project %})",
+        "editable=False for factory projects (editable=is_user_project)",
+        "/scenarios/add returns 403 for non-user_created (app/services/scenarios_add_service.py)",
+        "factory seeded path uses create_default_tuho_wind1 / create_default_oborovo (app/services/run_service.py)",
+        "construction flag still defaults to False (app/waterfall_core.py)"
+      ],
+      "test": "TestAuditBlock6_Capability8_9_10_SafetyAndGaps (10 tests)"
+    },
+    "q10_what_still_prevents_fully_working_internal_tool": {
+      "answer": "6 documented gaps: (1) no Excel-parity validation for generic, (2) no CO2 / certificates / balancing parity, (3) no sculpting / live debt-sizing, (4) no senior IDC resolution, (5) no construction runtime / C10, (6) no PDF export.",
+      "evidence": [
+        "24-H hard constraints explicitly exclude C10 / R-PAR / construction promotion",
+        "Generic projects use the same waterfall as TUHO / Oborovo (fixture-backed)",
+        "Generic projects do not include CO2 / certificates / balancing parity",
+        "Generic projects use fixed-shape debt schedule (not min_DSCR-sized)",
+        "Generic projects use simplified IDC (not R-PAR-2)",
+        "Generic projects use fixture-backed waterfall (not live construction)",
+        "No PDF export route"
+      ],
+      "test": "TestAuditBlock6_Capability8_9_10_SafetyAndGaps (10 tests)"
+    }
+  },
+  "user_testable_today": [
+    "Create a Generic Solar / Wind project",
+    "Open an existing Generic project",
+    "Edit the project's inputs",
+    "Save a Base case",
+    "Run the model",
+    "Create a Downside scenario",
+    "Create an Upside scenario",
+    "Run Downside / Upside",
+    "Compare Base vs Downside (or Base vs Upside)",
+    "Export / download an XLSX",
+    "See EXPLORATORY warning everywhere",
+    "Cannot accidentally edit a factory project",
+    "Cannot add a scenario to a factory project",
+    "Cannot mistake generic for Reference / Validated"
+  ],
+  "test_proven_but_not_ux_polished": [
+    "No 'Use generic defaults' pre-fill button on /projects/new",
+    "No Downside / Upside / Custom scenario preset dropdown",
+    "No 3-way / 4-way scenario compare table",
+    "No 'What changed' delta indicator in runtime summary",
+    "Factory export routes are factory-only (no generic runtime-summary.csv)",
+    "No auto-save on dirty",
+    "No 'what changed' badge in runtime summary"
+  ],
+  "requires_manual_user_guidance": [
+    "Generic template Excel validation (no reference workbook)",
+    "CO2 / certificates / balancing (no parity for generic)",
+    "Sculpting / live debt-sizing (fixed-shape debt schedule)",
+    "Senior IDC resolution (no R-PAR-2)",
+    "Construction runtime / C10 (fixture-backed waterfall)",
+    "PDF export (no PDF route)"
+  ],
+  "top_remaining_blockers": [
+    {"rank": 1, "blocker": "No Excel-parity validation for generic", "user_impact": 5, "parity_risk": 5, "impl_risk": 5, "effort": "XL"},
+    {"rank": 2, "blocker": "No CO2 / certificates / balancing parity", "user_impact": 4, "parity_risk": 4, "impl_risk": 3, "effort": "L"},
+    {"rank": 3, "blocker": "No sculpting / live debt-sizing", "user_impact": 4, "parity_risk": 4, "impl_risk": 5, "effort": "XL"},
+    {"rank": 4, "blocker": "No senior IDC resolution (R-PAR-2)", "user_impact": 3, "parity_risk": 3, "impl_risk": 3, "effort": "L"},
+    {"rank": 5, "blocker": "No construction runtime / C10", "user_impact": 3, "parity_risk": 3, "impl_risk": 5, "effort": "XL"},
+    {"rank": 6, "blocker": "No PDF export", "user_impact": 2, "parity_risk": 0, "impl_risk": 1, "effort": "S"},
+    {"rank": 7, "blocker": "No auto-save on dirty", "user_impact": 2, "parity_risk": 0, "impl_risk": 1, "effort": "S"},
+    {"rank": 8, "blocker": "No 3-way scenario compare", "user_impact": 2, "parity_risk": 0, "impl_risk": 2, "effort": "M"},
+    {"rank": 9, "blocker": "No 'what changed' delta indicator", "user_impact": 2, "parity_risk": 0, "impl_risk": 1, "effort": "S"},
+    {"rank": 10, "blocker": "No 'Use generic defaults' pre-fill", "user_impact": 1, "parity_risk": 0, "impl_risk": 1, "effort": "S"}
+  ],
+  "recommended_next_sprint": {
+    "name": "Phase 25B — Generic UX Polish",
+    "scope": [
+      {"item": "'Use generic defaults' pre-fill button on /projects/new", "effort": "S", "phase": "25B-1"},
+      {"item": "3-way / 4-way scenario compare table", "effort": "M", "phase": "25B-2"},
+      {"item": "'What changed' delta indicator in runtime summary", "effort": "S", "phase": "25B-3"},
+      {"item": "Auto-save indicator on dirty", "effort": "S", "phase": "25B-4"},
+      {"item": "Extend factory export routes to generic (with EXPLORATORY banner)", "effort": "M", "phase": "25B-5"},
+      {"item": "PDF export (route + library)", "effort": "M", "phase": "25B-6"}
+    ],
+    "out_of_scope": [
+      "Excel-parity validation (requires an Excel reference workbook)",
+      "CO2 / certificates / balancing parity",
+      "Sculpting / live debt-sizing",
+      "R-PAR-2 senior IDC resolution",
+      "Construction runtime / C10"
+    ],
+    "hard_constraints_preserved": [
+      "No model / formula / tax / debt / IDC changes",
+      "No construction promotion",
+      "No C10 / R-PAR work in this sprint",
+      "rc1 untouched",
+      "TUHO / Oborovo factory paths preserved",
+      "All 24-H proofs preserved (29 + 55 + 53 + 58 = 195 tests)"
+    ]
+  },
+  "honest_summary": {
+    "achieved": "FincoGPT is now meaningfully testable as a Generic Solar / Generic Wind exploratory modelling tool. A finance user can create a Generic project, edit inputs, save a Base case, add Downside / Upside scenarios, run all three, compare any two, and export / download an XLSX.",
+    "not_achieved": "Generic outputs are not Excel-parity validated. The senior debt schedule, CO2 / certificates / balancing, IDC, and construction runtime are still fixture-backed from the TUHO / Oborovo reference. A user who treats a generic project output as a 'bank-ready' result will be misled -- the EXPLORATORY warning exists precisely to prevent that.",
+    "can_confidently_use_for_today": [
+      "Internal screening ('if the tariff is 90 vs 130, what's the IRR?')",
+      "Capacity / sizing sketches ('if we go from 50 MW to 75 MW, what's the impact on DSCR?')",
+      "Sensitivity tables ('if opex rises 20%, what happens to distributions?')"
+    ],
+    "cannot_confidently_use_for_today": [
+      "Lender / bank / external audit pack",
+      "Excel-parity validation",
+      "Live debt sculpting",
+      "Construction-cost sculpting"
+    ]
+  },
+  "deliverables": {
+    "implementation": [],
+    "tests": [
+      "tests/test_phase24h_closure_generic_modelling_loop_review.py (34 tests, all passing)"
+    ],
+    "docs": [
+      "docs/phase24h_closure_generic_modelling_loop_review.md"
+    ],
+    "reports": [
+      "reports/phase24h_closure_generic_modelling_loop_review.json"
+    ]
+  },
+  "hard_constraints_honored": {
+    "docs_report_tests_only": true,
+    "no_runtime_changes": true,
+    "no_model_formula_changes": true,
+    "no_persistence_schema_changes": true,
+    "no_c10_rpar_work": true,
+    "no_construction_promotion": true,
+    "rc1_untouched": true,
+    "tuho_oberovo_factory_paths_preserved": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "css_root_count_unchanged": 3,
+    "no_24h_labeling_changes": true,
+    "no_24h2_delta_proof_changes": true,
+    "no_24h3_scenario_loop_changes": true,
+    "no_24h4_export_pack_changes": true
+  },
+  "files_changed": {
+    "tests": [
+      {"path": "tests/test_phase24h_closure_generic_modelling_loop_review.py", "lines_added": 768, "change_type": "new test file", "tests": 34}
+    ],
+    "docs": [
+      {"path": "docs/phase24h_closure_generic_modelling_loop_review.md", "change_type": "new doc"}
+    ],
+    "reports": [
+      {"path": "reports/phase24h_closure_generic_modelling_loop_review.json", "change_type": "new report"}
+    ]
+  },
+  "tests": {
+    "new": 34,
+    "regression_24h4": 58,
+    "regression_24h3": 53,
+    "regression_24h2": 55,
+    "regression_24h": 29,
+    "regression_24g_closure": 30,
+    "regression_24g1_stale": 19,
+    "regression_24g1_validation": 28,
+    "regression_24g2_status": 40,
+    "regression_24g2_completion": 35,
+    "regression_24g3_capex": 37,
+    "regression_24g3_export": 32,
+    "total_phase_targeted": 450,
+    "all_passing": true
+  },
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}
