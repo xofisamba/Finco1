@@ -832,7 +832,11 @@
 
 {# ── CAPEX column status legend (Phase 57A-10F) ─────────────── #}
 <div class="capex-status-legend" data-capex-status-legend="true">
-  <p><strong>CAPEX column status legend:</strong></p>
+  <p class="capex-legend-lead" data-capex-legend-lead="true">
+    <strong>Quick reference:</strong> status labels below mirror the
+    column-key panel above. Use this list as a fast lookup after
+    scrolling through the grid.
+  </p>
   <ul>
     <li><span class="badge badge-runtime-used">Runtime-used</span> — feeds the model</li>
     <li><span class="badge badge-metadata-only">Metadata-only</span> — captured for audit; does not affect Run</li>
@@ -848,70 +852,66 @@
     The placeholders below are visible for design / planning but
     they do not affect the current model calculations.
   </p>
+  <p class="capex-deferred-lead" data-capex-deferred-lead="true">
+    These six items are CAPEX detail columns that the
+    current runtime does not yet consume. They are captured
+    for design / planning, will be visible in audit exports,
+    and are documented here as a forward-looking contract.
+  </p>
   <ul>
     <li><span class="badge badge-metadata-only">Metadata-only</span>
-        <strong>VAT % / WHT % / Contingency %</strong> —
-        captured in CAPEX detail columns; not yet fed to
-        tax / model.</li>
+        <strong>VAT % / WHT % / Contingency %</strong>
+        <span class="capex-deferred-detail">— captured in CAPEX
+        detail columns; not yet fed to tax / model.</span></li>
     <li><span class="badge badge-design-only">Design-only</span>
-        <strong>Payment schedule by construction month</strong> —
-        future input → equity drawdown, SHL drawdown, senior
-        debt drawdown, IDC, opening balances at COD.</li>
+        <strong>Payment schedule by construction month</strong>
+        <span class="capex-deferred-detail">— equity / senior /
+        SHL drawdown, IDC, opening balances at COD.</span></li>
     <li><span class="badge badge-design-only">Design-only</span>
         <strong>Depreciation category / useful life / flag</strong>
-        — future input → P&amp;L and fixed asset schedule.</li>
+        <span class="capex-deferred-detail">— P&amp;L and fixed
+        asset schedule.</span></li>
     <li><span class="badge badge-design-only">Design-only</span>
-        <strong>VAT applicability / rate / cost</strong> —
-        future input → cash flow / balance sheet / working
-        capital / tax receivable logic.</li>
+        <strong>VAT applicability / rate / cost</strong>
+        <span class="capex-deferred-detail">— cash flow /
+        balance sheet / working capital / tax receivable.</span></li>
     <li><span class="badge badge-design-only">Design-only</span>
-        <strong>WHT rate / cost</strong> — future input → tax /
-        cash flow treatment.</li>
+        <strong>WHT rate / cost</strong>
+        <span class="capex-deferred-detail">— tax / cash flow
+        treatment.</span></li>
     <li><span class="badge badge-design-only">Design-only</span>
         <strong>Utilisation of funds during construction</strong>
-        — derived from the payment schedule.</li>
+        <span class="capex-deferred-detail">— derived from the
+        payment schedule.</span></li>
   </ul>
 </div>
 
 {# ── Sources & Uses bridge (future model wiring) ─────────────── #}
 <div class="capex-sources-uses-bridge" data-capex-su-bridge="true">
-  <p><strong>Sources &amp; Uses bridge (future model wiring):</strong>
-  this CAPEX sheet is one of the core input engines. Once
-  VAT / WHT / depreciation / payment schedule are wired, the
-  CAPEX inputs will feed:</p>
-  <ul>
-    <li><strong>Sources &amp; Uses</strong> — line items + payment
-      schedule + funding allocation.</li>
-    <li><strong>Equity drawdown</strong> — from the payment
-      schedule (equity-funded portion).</li>
-    <li><strong>Senior loan drawdown</strong> — from the
-      payment schedule (senior-debt-funded portion).</li>
-    <li><strong>SHL drawdown</strong> — from the payment
-      schedule (SHL-funded portion).</li>
-    <li><strong>Senior IDC + SHL IDC</strong> — derived from
-      the payment schedule and outstanding balances.</li>
-    <li><strong>Opening senior debt balance at COD</strong> —
-      cumulative senior drawdowns.</li>
-    <li><strong>Opening SHL balance at COD</strong> —
-      cumulative SHL drawdowns.</li>
-    <li><strong>Fixed asset base</strong> — total CAPEX
-      net of VAT (where applicable).</li>
-    <li><strong>VAT receivable / payable</strong> — from
-      the VAT rate / cost column.</li>
-    <li><strong>WHT payable / cash</strong> — from the
-      WHT rate / cost column.</li>
-    <li><strong>Depreciation in P&amp;L</strong> — from the
-      depreciation category / useful life / flag column.</li>
-    <li><strong>Balance Sheet</strong> — fixed asset base,
-      VAT receivable, opening debt balances.</li>
-    <li><strong>Cash Flow</strong> — equity / senior debt /
-      SHL drawdowns, IDC, VAT, WHT, opening balances at
-      COD.</li>
-  </ul>
-  <p><em>This PR does not implement any of the above. The
-  CAPEX sheet is a UI input surface; the backend model
-  changes are a separate, larger effort that does not
-  happen in this PR.</em></p>
+  <p class="capex-su-lead" data-capex-su-lead="true">
+    <strong>Sources &amp; Uses bridge (future model wiring):</strong>
+    this CAPEX sheet is one of the core input engines. Once
+    VAT / WHT / depreciation / payment schedule are wired, the
+    CAPEX inputs will feed drawdowns (equity / senior / SHL),
+    IDC, opening debt balances at COD, fixed asset base, tax
+    and cash flow.
+  </p>
+  <p class="capex-su-summary" data-capex-su-summary="true">
+    <strong>What feeds what:</strong>
+    <span class="capex-su-tag">Payment schedule</span> →
+    Sources &amp; Uses, equity / senior / SHL drawdown, IDC.
+    <span class="capex-su-tag">VAT / WHT rates</span> →
+    cash flow, balance sheet, tax receivable / payable.
+    <span class="capex-su-tag">Depreciation flags</span> →
+    P&amp;L, fixed asset schedule.
+    <span class="capex-su-tag">Cumulative drawdowns</span> →
+    opening senior and SHL balances at COD.
+  </p>
+  <p class="capex-su-note" data-capex-su-note="true">
+    <em>This sheet is a UI input surface; the backend model
+    wiring above is a separate, larger effort and is not
+    implemented in this UI phase.</em>
+  </p>
 </div>
 
 {# ── Read-only notice (footer) ─────────────────────────────────── #}
