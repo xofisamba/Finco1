@@ -81,6 +81,7 @@ from app.persistence.repository import (
 from app.persistence.provenance import build_replay_metadata, utc_now_iso
 from app.ui.project_context import build_project_context_for_record, get_project_context
 from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
+from app.ui.what_changed import build_scenario_card_deltas
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
@@ -1529,22 +1530,32 @@ def _current_project_workspace(user, project_record):
     export_counts: dict[str, int] = {}
     for entry in export_lineage:
         export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
+    is_user_project_flag = project_record.project_origin == "user_created"
+    template_source_str = (project_record.template_source or "").strip().lower()
     for item in scenarios:
         summary = item.last_run_summary or {}
-        scenario_summary_cards.append(
-            {
-                "scenario_id": item.scenario_id,
-                "scenario_name": item.scenario_name,
-                "project_code": item.project_code,
-                "updated_at": item.updated_at,
-                "copied_from_scenario_id": item.copied_from_scenario_id,
-                "project_irr": summary.get("project_irr"),
-                "equity_irr": summary.get("equity_irr"),
-                "avg_dscr": summary.get("avg_dscr"),
-                "export_count": export_counts.get(item.scenario_name, 0),
-                "governance_state": item.governance_state,
-            }
-        )
+        # Phase 25B-3 — read the previous run summary that
+        # update_scenario_last_run_summary() preserves in replay_metadata
+        # before the new last_run_summary overwrites it.
+        previous_summary = (item.replay_metadata or {}).get("previous_run_summary") or {}
+        card = {
+            "scenario_id": item.scenario_id,
+            "scenario_name": item.scenario_name,
+            "project_code": item.project_code,
+            "updated_at": item.updated_at,
+            "copied_from_scenario_id": item.copied_from_scenario_id,
+            "project_irr": summary.get("project_irr"),
+            "equity_irr": summary.get("equity_irr"),
+            "avg_dscr": summary.get("avg_dscr"),
+            "export_count": export_counts.get(item.scenario_name, 0),
+            "governance_state": item.governance_state,
+            "previous_run_summary": previous_summary,
+            "is_user_project": is_user_project_flag,
+            "template_source": template_source_str,
+        }
+        # Enrich with delta panel rows (pure helper, no I/O)
+        card = build_scenario_card_deltas(card)
+        scenario_summary_cards.append(card)
     return project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards
 
 
@@ -1603,22 +1614,28 @@ def _workspace_refresh_payload(user, project_record):
     for entry in export_lineage:
         export_counts[entry["scenario_name"]] = export_counts.get(entry["scenario_name"], 0) + 1
     scenario_summary_cards = []
+    is_user_project_flag = project_record.project_origin == "user_created"
+    template_source_str = (project_record.template_source or "").strip().lower()
     for item in scenarios:
         summary = item.last_run_summary or {}
-        scenario_summary_cards.append(
-            {
-                "scenario_id": item.scenario_id,
-                "scenario_name": item.scenario_name,
-                "project_code": item.project_code,
-                "updated_at": item.updated_at,
-                "copied_from_scenario_id": item.copied_from_scenario_id,
-                "project_irr": summary.get("project_irr"),
-                "equity_irr": summary.get("equity_irr"),
-                "avg_dscr": summary.get("avg_dscr"),
-                "export_count": export_counts.get(item.scenario_name, 0),
-                "governance_state": item.governance_state,
-            }
-        )
+        previous_summary = (item.replay_metadata or {}).get("previous_run_summary") or {}
+        card = {
+            "scenario_id": item.scenario_id,
+            "scenario_name": item.scenario_name,
+            "project_code": item.project_code,
+            "updated_at": item.updated_at,
+            "copied_from_scenario_id": item.copied_from_scenario_id,
+            "project_irr": summary.get("project_irr"),
+            "equity_irr": summary.get("equity_irr"),
+            "avg_dscr": summary.get("avg_dscr"),
+            "export_count": export_counts.get(item.scenario_name, 0),
+            "governance_state": item.governance_state,
+            "previous_run_summary": previous_summary,
+            "is_user_project": is_user_project_flag,
+            "template_source": template_source_str,
+        }
+        card = build_scenario_card_deltas(card)
+        scenario_summary_cards.append(card)
     return scenarios, history, exports, export_lineage, scenario_summary_cards
 
 # -- Helpers ------------------------------------------------------------------

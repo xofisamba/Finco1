@@ -1,0 +1,109 @@
+{
+  "phase": "25B-3",
+  "title": "Runtime \"What Changed\" Delta Indicator",
+  "branch": "phase25b3-what-changed-delta-indicator",
+  "base_sha": "92c5a33f03a3c49ad37f5b8ea9f0900c58d90920",
+  "head_sha": "<to-be-filled-after-commit>",
+  "status": "DRAFT",
+  "created_at": "2026-06-09T19:23:49+02:00",
+  "deliverables": {
+    "implementation": {
+      "app/ui/what_changed.py": "6458 bytes (pure helpers: WHAT_CHANGED_METRICS, compute_metric_delta, compute_what_changed, has_any_comparable_delta, build_scenario_card_deltas)",
+      "app/templates/partials/what_changed_panel.html": "3694 bytes (compact read-only panel with EXPLORATORY/descriptive banners, state classes, n/a state)",
+      "app/templates/partials/scenario_version_history.html": "+30 lines (added {% include %} per card, gated on is_user_project, wrapped in {% with %} for per-card context)",
+      "main_web.py": "modified _workspace_refresh_payload to populate per-card delta data (is_user_project, template_source, previous_run_summary, panel_rows, has_previous_run)",
+      "static/styles.css": "+162 lines, all additive .wc-* classes, no :root mods, no removals",
+      "app/persistence/repository.py": "no change (replay_metadata['previous_run_summary'] was already written by Phase 24-H; Phase 25B-3 reads it)"
+    },
+    "tests": {
+      "tests/test_phase25b3_panel_helpers.py": {
+        "tests": 30,
+        "classes": [
+          "TestWhatChangedMetricOrdering",
+          "TestComputeMetricDelta",
+          "TestComputeWhatChanged",
+          "TestHasAnyComparableDelta",
+          "TestBuildScenarioCardDeltas"
+        ]
+      },
+      "tests/test_phase25b3_panel_rendering.py": {
+        "tests": 13,
+        "classes": [
+          "TestPanelEmptyState",
+          "TestPanelWithPreviousRun",
+          "TestPanelNegativeAndZeroStates"
+        ]
+      },
+      "tests/test_phase25b3_exploratory_banner.py": {
+        "tests": 3,
+        "classes": ["TestExploratoryBanner"]
+      },
+      "tests/test_phase25b3_factory_safety.py": {
+        "tests": 20,
+        "classes": [
+          "TestFactorySafety",
+          "TestVersionHistoryWiring",
+          "TestSafetyConstraints",
+          "TestRC1Untouched",
+          "TestCSSStyleGuard",
+          "TestDisplayHelperDoesNotWrite"
+        ]
+      },
+      "total_tests": 66,
+      "total_passing": 66,
+      "total_failing": 0
+    },
+    "docs": {
+      "docs/phase25b3_what_changed_delta_indicator.md": "6308 bytes (design, scope, safety, deliverables)"
+    },
+    "report": "reports/phase25b3_what_changed_delta_indicator.json (this file)"
+  },
+  "metrics_tracked": [
+    "project_irr (pct)",
+    "equity_irr (pct)",
+    "avg_dscr (x)",
+    "min_dscr (x)",
+    "total_revenue_keur (keur)",
+    "total_opex_keur (keur)",
+    "total_ebitda_keur (keur)",
+    "total_capex_keur (keur)",
+    "total_distributions_keur (keur)",
+    "senior_debt_keur (keur)"
+  ],
+  "banners": {
+    "exploratory": "generic_solar, generic_wind (yellow, EXPLORATORY badge)",
+    "descriptive": "all other templates (blue, no badge)"
+  },
+  "panel_states": ["with-previous", "no-previous", "no-current (defensive)"],
+  "row_states": ["positive", "negative", "zero", "n_a"],
+  "safety_constraints": {
+    "no_construction_promotion": true,
+    "no_senior_idc_changes": true,
+    "no_schema_migration": true,
+    "no_tailwind": true,
+    "no_alpine": true,
+    "no_financial_formulas_added": true,
+    "no_factory_mutation": true,
+    "rc1_untouched": true,
+    "root_count_preserved": 3,
+    "root_count_preserved_total": 5,
+    "root_count_note": "3 base :root + 2 nested inside @media (pre-existing since Phase 24-G-2)"
+  },
+  "regression_status": {
+    "phase_25b2_1": "38/38 passing",
+    "phase_25b2": "53/53 passing",
+    "phase_25b1": "52/52 passing",
+    "phase_24h_closure": "34/34 passing",
+    "phase_24h_4": "58/58 passing",
+    "phase_24h_3": "53/53 passing",
+    "phase_24h_2": "55/55 passing",
+    "phase_24h": "29/29 passing",
+    "phase_24g_closure": "30/30 passing",
+    "phase_24g_1": "47/47 passing",
+    "phase_24g_2": "75/75 passing",
+    "phase_24g_3": "69/69 passing",
+    "phase_25b3": "66/66 passing",
+    "total": "659/659 passing (0 regressions)"
+  },
+  "next_action": "Open DRAFT PR. Do not mark ready. Do not merge. Stop after report."
+}

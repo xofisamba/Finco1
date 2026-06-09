@@ -246,6 +246,25 @@ def update_scenario_last_run_summary(
     merged_replay_metadata = dict(record.replay_metadata or {})
     if replay_metadata:
         merged_replay_metadata.update(replay_metadata)
+    # Phase 25B-3 — preserve the previous run summary inside replay_metadata
+    # before it is overwritten by the new last_run_summary. This enables the
+    # read-only "What changed since previous run?" delta panel (UI only).
+    # Behavioural notes:
+    # - Only acts when the *current* (about-to-be-overwritten) summary is
+    #   non-empty (a real prior run exists).
+    # - The stored value lives only in replay_metadata; the new
+    #   last_run_summary still becomes the authoritative current run.
+    # - second_last_run_summary keeps the older "previous" so the UI can
+    #   still show a chain (run N-2 -> run N-1) if needed. UI side may
+    #   ignore it for now.
+    if record.last_run_summary:
+        if "previous_run_summary" in merged_replay_metadata:
+            merged_replay_metadata["second_last_run_summary"] = (
+                merged_replay_metadata["previous_run_summary"]
+            )
+        merged_replay_metadata["previous_run_summary"] = dict(record.last_run_summary)
+        if record.updated_at is not None:
+            merged_replay_metadata["previous_run_at"] = record.updated_at.isoformat()
     with get_cursor() as cur:
         cur.execute(
             """
