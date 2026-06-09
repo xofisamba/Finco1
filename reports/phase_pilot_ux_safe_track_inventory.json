@@ -1,0 +1,93 @@
+{
+  "phase": "pilot-ux-safe-track-inventory",
+  "date": "2026-06-09",
+  "type": "report-only",
+  "base_sha": "233981e4",
+  "status": "DRAFT",
+  "independence_rule": "All items implementable independently of R-PAR-2 and C10",
+  "items": [
+    {
+      "rank": 1,
+      "category": "validation_summary_clarity",
+      "user_value": 5,
+      "parity_risk": 0,
+      "implementation_risk": 1,
+      "effort": "M",
+      "composite_score": 9,
+      "independence": true
+    },
+    {
+      "rank": 2,
+      "category": "stale_run_warning",
+      "user_value": 5,
+      "parity_risk": 0,
+      "implementation_risk": 1,
+      "effort": "S",
+      "composite_score": 9,
+      "independence": true
+    },
+    {
+      "rank": 3,
+      "category": "run_status_clarity",
+      "user_value": 4,
+      "parity_risk": 0,
+      "implementation_risk": 1,
+      "effort": "M",
+      "composite_score": 7,
+      "independence": true
+    },
+    {
+      "rank": 4,
+      "category": "capex_sheet_readability",
+      "user_value": 4,
+      "parity_risk": 0,
+      "implementation_risk": 2,
+      "effort": "M",
+      "composite_score": 6,
+      "independence": true
+    },
+    {
+      "rank": 5,
+      "category": "export_download_clarity",
+      "user_value": 3,
+      "parity_risk": 0,
+      "implementation_risk": 1,
+      "effort": "S",
+      "composite_score": 5,
+      "independence": true
+    }
+  ],
+  "sprint_plan": [
+    {
+      "sprint": "24-G-1",
+      "items": [
+        "validation_summary (partial)",
+        "stale_run_warning (full)"
+      ]
+    },
+    {
+      "sprint": "24-G-2",
+      "items": [
+        "validation_summary (completion)",
+        "run_status_clarity (full)"
+      ]
+    },
+    {
+      "sprint": "24-G-3",
+      "items": [
+        "capex_sheet_readability (full)",
+        "export_download_clarity (full)"
+      ]
+    }
+  ],
+  "all_parity_risk_zero": true,
+  "all_independent_of_rpar2_c10": true,
+  "hard_rules_respected": true,
+  "no_production_code_change": true,
+  "no_promotion": true,
+  "no_runtime_change": true,
+  "no_model_change": true,
+  "no_formula_change": true,
+  "no_persistence_schema_change": true,
+  "rc1_untouched": true
+}
