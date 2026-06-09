@@ -90,7 +90,7 @@ def auth_client():
 @pytest.fixture
 def four_scenarios():
     """Create a project + 4 scenarios for the auth user, return scenario IDs."""
-    from app.persistence.db import init_db
+    from app.persistence.db import init_db, get_cursor
     init_db()
     from app.persistence.projects_repository import save_project, get_project_by_code
     from app.persistence.scenarios_repository import save_scenario, list_scenarios
@@ -110,6 +110,15 @@ def four_scenarios():
             baseline_snapshot={"tariff_eur_mwh": "50"},
         )
     PROJECT_ID = rec.project_id
+
+    # Always clear stale scenarios from this user + project so the fixture
+    # is deterministic and self-contained. Other suites may have left
+    # empty / "No Summary" / "Empty Metadata" rows in the same DB.
+    with get_cursor() as cur:
+        cur.execute(
+            "DELETE FROM scenarios WHERE user_id = ? AND project_id = ?",
+            (USER_ID, PROJECT_ID),
+        )
 
     existing = list_scenarios(USER_ID, project_id=PROJECT_ID, include_archived=True, limit=10)
     if len(existing) < 4:
