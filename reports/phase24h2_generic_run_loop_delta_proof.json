@@ -1,0 +1,148 @@
+{
+  "phase": "24-H-2",
+  "title": "Generic Edit → Save → Run → Output Delta Proof",
+  "type": "tests-only + docs + report (no production code change)",
+  "status": "DRAFT (review-only; not merged)",
+  "date": "2026-06-09",
+  "branch": "phase24h2-generic-run-loop-delta-proof",
+  "base_sha": "eb1a13225f5e6b9a37a252f4fae6ffc910137c4e",
+  "head_sha": "PENDING (commit pending)",
+  "builds_on": [
+    "PR #573 (Phase 24-H, merged at eb1a132, the labeling PR)",
+    "PR #572 (Phase 24-G closure review, merged at f53fd6d, sprint planning input)"
+  ],
+  "primary_objective": "Prove that the Generic Solar / Generic Wind editable project loop is real, not just labeled.",
+  "proofs_delivered": {
+    "input_persistence": {
+      "fields_tested": [
+        "tariff_eur_mwh", "p50_hours", "opex_y1_keur", "total_capex_keur",
+        "capacity_mw", "gearing_pct", "interest_rate_pct", "tenor_years",
+        "target_dscr", "cod_date"
+      ],
+      "tests": 14,
+      "approach": "snapshot dict → build_projectinputs_from_snapshot → assert ProjectInputs field matches",
+      "result": "all 14 pass"
+    },
+    "run_output_delta": {
+      "inputs_tested": [
+        "tariff_eur_mwh", "p50_hours", "opex_y1_keur", "total_capex_keur",
+        "gearing_pct", "interest_rate_pct", "tenor_years", "target_dscr"
+      ],
+      "tests": 16,
+      "approach": "baseline run → edit one input → rerun → assert at least one kpi changed",
+      "result": "all 16 pass",
+      "kpi_deltas_observed": {
+        "tariff_90_to_120": {
+          "total_revenue_keur_delta_pct": 33.3,
+          "project_irr_delta_pp": 4.05,
+          "min_dscr_delta": 0.85
+        },
+        "p50_1800_to_2200": {
+          "total_revenue_keur_ratio": 1.222,
+          "project_irr_delta_pp": 2.77
+        },
+        "opex_800_to_1600": {
+          "total_opex_keur_ratio": 2.0,
+          "project_irr_delta_pp": -1.55
+        },
+        "capex_50000_to_70000": {
+          "project_irr_delta_pp": -3.61,
+          "min_dscr_delta": -0.65
+        },
+        "gearing_70_to_85": {
+          "equity_irr_delta_pp": 3.16,
+          "min_dscr_delta": -0.41
+        }
+      }
+    },
+    "ui_evidence": {
+      "warning_sites": [
+        "app/templates/partials/inputs_section.html",
+        "app/templates/partials/_last_run_indicator.html",
+        "app/templates/partials/export_registry.html"
+      ],
+      "data_attributes_verified": [
+        'data-exploratory-warning="true"',
+        'data-exploration-source="inputs-section"',
+        'data-exploration-source="runtime-summary"',
+        'data-exploration-source="export-registry"'
+      ],
+      "safeguard_copy_verified": [
+        "lender-ready",
+        "audit",
+        "bank",
+        "Excel-parity",
+        "artefact"
+      ],
+      "tests": 9
+    },
+    "factory_reference_guard": {
+      "factory_path_uses_create_default": true,
+      "factory_path_gate": 'runtime_origin == "saved_state"',
+      "factory_inputs_readonly": "editable=is_user_project (False for factory)",
+      "factory_readonly_notice_in_inputs_section": true,
+      "user_cannot_inject_edits_via_snapshot": true,
+      "factory_runs_deterministic": true,
+      "tests": 6
+    },
+    "stale_fresh_state": {
+      "workspace_state_has_separate_draft_and_runtime": true,
+      "edit_lives_in_draft": true,
+      "tests": 2
+    }
+  },
+  "deliverables": {
+    "implementation": [],
+    "tests": [
+      "tests/test_phase24h2_generic_run_loop_delta_proof.py (55 tests, all passing)"
+    ],
+    "docs": [
+      "docs/phase24h2_generic_run_loop_delta_proof.md"
+    ],
+    "reports": [
+      "reports/phase24h2_generic_run_loop_delta_proof.json"
+    ]
+  },
+  "hard_constraints_honored": {
+    "tests_only": true,
+    "no_production_code_change": true,
+    "generic_exploratory_path_only": true,
+    "no_tuho_oberovo_reference_parity_drift": true,
+    "no_new_financial_formulas": true,
+    "no_fake_outputs": true,
+    "no_fake_runtime_ids": true,
+    "no_fake_validation_status": true,
+    "no_fake_timestamps": true,
+    "no_model_formula_tax_debt_depreciation_idc_changes": true,
+    "no_c10_rpar_construction_promotion": true,
+    "no_schema_migration": true,
+    "no_app_js_changes": true,
+    "no_tailwind_alpine": true,
+    "no_construction_flag_changes": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "rc1_untouched": true,
+    "css_root_count_unchanged": 3,
+    "no_24h_labeling_changes": true,
+    "no_factory_project_mutation": true
+  },
+  "files_changed": {
+    "tests": [
+      {"path": "tests/test_phase24h2_generic_run_loop_delta_proof.py", "lines_added": 768, "change_type": "new test file", "tests": 55}
+    ],
+    "docs": [
+      {"path": "docs/phase24h2_generic_run_loop_delta_proof.md", "change_type": "new doc"}
+    ],
+    "reports": [
+      {"path": "reports/phase24h2_generic_run_loop_delta_proof.json", "change_type": "new report"}
+    ]
+  },
+  "tests": {
+    "new": 55,
+    "regression_24h": 29,
+    "regression_g_track": 238,
+    "total_phase_targeted": 322,
+    "all_passing": true
+  },
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}
