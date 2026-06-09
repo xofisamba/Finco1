@@ -61,13 +61,21 @@ class TestPlainStringErrors:
         assert "field X is required" in out
         assert "validation-group--error" in out
 
-    def test_plain_string_no_warning_group(self):
+    def test_plain_string_warning_group_empty(self):
+        # Phase 24-G-2: all three severity groups are always rendered
+        # (in strict order: Error → Warning → Information) so the user
+        # always sees the severity hierarchy. Empty groups render with
+        # the .validation-group--empty modifier and a "no items" hint
+        # inside the body.
         out = _render_validation({"valid": False, "errors": ["oops"]})
-        assert "validation-group--warning" not in out
+        assert "validation-group--warning" in out
+        assert "validation-group--empty" in out
 
-    def test_plain_string_no_information_group(self):
+    def test_plain_string_information_group_empty(self):
+        # Phase 24-G-2: see test_plain_string_warning_group_empty.
         out = _render_validation({"valid": False, "errors": ["oops"]})
-        assert "validation-group--information" not in out
+        assert "validation-group--information" in out
+        assert "validation-group--empty" in out
 
 
 # ============================================================
