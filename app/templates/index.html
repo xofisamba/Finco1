@@ -37,7 +37,7 @@
    This is presentation only — no backend changes. #}
 {% from "partials/empty_states_notice.html" import stale_run %}
 {% if workspace_state and workspace_state.dirty and workspace_state.last_runtime_snapshot_id %}
-  {{ stale_run() }}
+  {{ stale_run(workspace_state_meta) }}
 {% endif %}
 
 <!-- Workspace Shell - tab panels loaded here -->

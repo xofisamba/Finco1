@@ -1,11 +1,11 @@
 section,metric,runtime_source,workbook_target_sheet,currently_bound,currently_missing,reason_if_missing,confidence_level,classification,notes
 Revenue,Electricity Revenue,Commercial,Revenue Reconciliation,yes,no,,high,PASS,
-Revenue,CO2 Revenue,Commercial,Revenue Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Do not silently roll this into zero or total revenue.
-Revenue,Balancing Revenue,Commercial,Revenue Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Total revenue remains the authoritative comparable line.
+Revenue,CO2 Revenue,Commercial,Revenue Reconciliation,yes,no,,medium,SOURCE_NOT_AVAILABLE,Do not silently roll this into zero or total revenue.
+Revenue,Balancing Revenue,Commercial,Revenue Reconciliation,yes,no,,medium,SOURCE_NOT_AVAILABLE,Total revenue remains the authoritative comparable line.
 Revenue,Total Revenue,Commercial,Revenue Reconciliation,yes,no,,high,PASS,
 CO2 / Balancing,Electricity Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,yes,no,,high,PASS,Electricity revenue is the only revenue sub-line with strong committed evidence on both sides.
-CO2 / Balancing,CO2 Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,Neither the committed Excel evidence set nor runtime period exports expose a standalone CO2 revenue row.,low,MISSING_EVIDENCE,Do not synthesize a CO2 split from total revenue.
-CO2 / Balancing,Balancing Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,Standalone balancing revenue is not committed in the current Excel extracts or runtime export fields.,low,MISSING_EVIDENCE,Missing balancing evidence should stay explicit rather than being netted into a guessed split.
+CO2 / Balancing,CO2 Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,Neither the committed Excel evidence set nor runtime period exports expose a standalone CO2 revenue row.,low,SOURCE_NOT_AVAILABLE,Do not synthesize a CO2 split from total revenue.
+CO2 / Balancing,Balancing Revenue,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,Standalone balancing revenue is not committed in the current Excel extracts or runtime export fields.,low,SOURCE_NOT_AVAILABLE,Missing balancing evidence should stay explicit rather than being netted into a guessed split.
 CO2 / Balancing,Grouped Revenue Evidence,Commercial / Audit,CO2 & Balancing Reconciliation,yes,no,,high,GROUPED_SOURCE_ONLY,This grouped row helps reviewers separate evidence limitations from runtime-total concerns.
 CO2 / Balancing,Runtime Aggregation Boundary,Commercial / Audit,CO2 & Balancing Reconciliation,yes,no,,high,EVIDENCE_LIMITATION,"This is a reporting/source-map limitation, not a runtime revenue defect."
 CO2 / Balancing,Excel Extraction Boundary,Commercial / Audit,CO2 & Balancing Reconciliation,no,yes,The committed Excel bridge gives a total revenue row but not a durable CO2-versus-balancing split.,low,EVIDENCE_LIMITATION,This should be treated as an extraction/evidence-quality issue rather than a model defect.
@@ -18,26 +18,26 @@ Senior Debt,Principal Repayment,Debt,Senior Debt Reconciliation,yes,no,,high,WAR
 Senior Debt,Debt Service,Debt,Senior Debt Reconciliation,yes,no,,high,WARN,Derived from existing interest and principal rows.
 Senior Debt,Closing Balance,Debt,Senior Debt Reconciliation,yes,no,,high,WARN,No runtime change implied.
 Senior Debt,DSCR,Debt,Senior Debt Reconciliation,yes,no,,high,WARN,"Known review residual, not a debt sizing bug."
-SHL,Opening Balance,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Missing evidence is not a zero opening balance.
+SHL,Opening Balance,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Missing evidence is not a zero opening balance.
 SHL,Gross Accrued Interest,Sponsor / SHL,SHL Reconciliation,yes,no,,high,WARN,Gross accrued interest is the authoritative model-side SHL P&L bridge.
-SHL,Cash Interest Paid,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Runtime field is real; Excel side is the missing piece.
-SHL,PIK Capitalized,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Do not net PIK into cash interest.
+SHL,Cash Interest Paid,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Runtime field is real; Excel side is the missing piece.
+SHL,PIK Capitalized,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Do not net PIK into cash interest.
 SHL,Principal Repaid,Sponsor / SHL,SHL Reconciliation,yes,no,,high,WARN,No new SHL timing change is made here.
-SHL,Closing Balance,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EVIDENCE,"Explicit evidence gap, not a silent zero."
-SHL,Total SHL Service,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EVIDENCE,Expands runtime-side SHL visibility without changing mechanics.
-Tax,Book Depreciation,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Explicitly kept separate from tax depreciation.
-Tax,Tax Depreciation,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,No silent zero-fill.
+SHL,Closing Balance,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EXCEL_EVIDENCE,"Explicit evidence gap, not a silent zero."
+SHL,Total SHL Service,Sponsor / SHL,SHL Reconciliation,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Expands runtime-side SHL visibility without changing mechanics.
+Tax,Book Depreciation,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Explicitly kept separate from tax depreciation.
+Tax,Tax Depreciation,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,No silent zero-fill.
 Tax,R35 Taxable Income Before Losses,Tax,Tax R35-R67-R69,yes,no,,high,WARN,"Residual is documented, not runtime-fixed."
-Tax,R67 CIT Cash,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Runtime tax cash remains visible.
-Tax,Losses Opening,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Audit field available runtime-side.
-Tax,Losses Used,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Do not synthesize Excel values.
-Tax,Losses Closing,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Improves tax loss visibility without fabricating Excel values.
-Tax,Taxable Profit After Losses,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Useful for lender and tax reviewers even where Excel parity remains incomplete.
-Tax,CIT Accrual,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Improves tax bridge completeness without changing formulas.
-Tax,Cash Tax Current Period,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EVIDENCE,Avoids treating runtime-available tax evidence as missing on both sides.
+Tax,R67 CIT Cash,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Runtime tax cash remains visible.
+Tax,Losses Opening,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Audit field available runtime-side.
+Tax,Losses Used,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Do not synthesize Excel values.
+Tax,Losses Closing,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Improves tax loss visibility without fabricating Excel values.
+Tax,Taxable Profit After Losses,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Useful for lender and tax reviewers even where Excel parity remains incomplete.
+Tax,CIT Accrual,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Improves tax bridge completeness without changing formulas.
+Tax,Cash Tax Current Period,Tax,Tax R35-R67-R69,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Avoids treating runtime-available tax evidence as missing on both sides.
 CFADS,EBITDA Cash Proxy,Waterfall / Finance,CFADS Waterfall,yes,no,,high,PASS,
-CFADS,Tax Cash,Waterfall / Finance,CFADS Waterfall,yes,no,,medium,MISSING_EVIDENCE,Missing evidence is explicit.
-CFADS,CFADS / R69,Waterfall / Finance,CFADS Waterfall,yes,no,,medium,MISSING_EVIDENCE,Runtime value is available.
+CFADS,Tax Cash,Waterfall / Finance,CFADS Waterfall,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Missing evidence is explicit.
+CFADS,CFADS / R69,Waterfall / Finance,CFADS Waterfall,yes,no,,medium,MISSING_EXCEL_EVIDENCE,Runtime value is available.
 CFADS,FCF for Distribution / R99,Waterfall / Finance,CFADS Waterfall,yes,no,,high,GOVERNANCE_BLOCKER,Shown for audit visibility only.
 CFADS,FCF for SHL / R102,Waterfall / Finance,CFADS Waterfall,yes,no,,high,GOVERNANCE_BLOCKER,No runtime promotion implied.
 Distributions,Excel Dividends / Distribution,Governance / Sponsor,Distributions Sponsor,yes,no,,high,ACCEPTED_CONVENTION,No mixed flag-state values.
@@ -45,13 +45,13 @@ Distributions,DA-Wired / Pre-G20 Staging,Governance / Sponsor,Distributions Spon
 Distributions,Legacy Runtime Distribution,Governance / Sponsor,Distributions Sponsor,yes,no,,high,ACCEPTED_CONVENTION,Separate from default runtime distribution row.
 Returns,Project IRR,Finance / Governance,Returns Reconciliation,yes,no,,high,PASS,See Total column for scalar value.
 Returns,Equity IRR,Finance / Governance,Returns Reconciliation,yes,no,,high,WARN,See Total column for scalar value.
-Returns,Reconciliation IRR,Finance / Governance,Returns Reconciliation,no,yes,Reconciliation IRR view has not been implemented as a reporting-only layer.,low,MISSING_EVIDENCE,Missing evidence is explicit.
+Returns,Reconciliation IRR,Finance / Governance,Returns Reconciliation,no,yes,Reconciliation IRR view has not been implemented as a reporting-only layer.,low,MISSING_REVIEW_SCALAR,Missing reviewer scalar is explicit.
 Returns,MOIC,Finance / Governance,Returns Reconciliation,no,yes,MOIC is not yet exported as a first-class runtime/reporting metric in the current workbook foundations.,low,RUNTIME_BINDING_PENDING,Do not invent a proxy here.
 Returns,Average DSCR,Finance / Governance,Returns Reconciliation,yes,no,,high,WARN,See Total column for scalar value.
-Returns,Minimum DSCR,Finance / Governance,Returns Reconciliation,yes,no,,medium,MISSING_EVIDENCE,See Total column for scalar value.
+Returns,Minimum DSCR,Finance / Governance,Returns Reconciliation,yes,no,,medium,MISSING_EXCEL_EVIDENCE,See Total column for scalar value.
 IRR Reporting,Project IRR,Finance / Governance,IRR Reconciliation,yes,no,,high,PASS,This is not a runtime-calculation issue in the current review pack.
 IRR Reporting,Equity IRR,Finance / Governance,IRR Reconciliation,yes,no,,high,GOVERNANCE_REVIEW,This row explains the remaining equity IRR discussion; it does not change runtime IRR logic.
-IRR Reporting,Reconciliation IRR,Finance / Governance,IRR Reconciliation,no,yes,"A dedicated reconciliation IRR reporting view has not existed in the committed workbook layer until this branch, and there is still no separate approved scalar target to compute against automatically.",low,MISSING_EVIDENCE,Missing evidence is preserved honestly; no proxy IRR is fabricated here.
+IRR Reporting,Reconciliation IRR,Finance / Governance,IRR Reconciliation,no,yes,"A dedicated reconciliation IRR reporting view has not existed in the committed workbook layer until this branch, and there is still no separate approved scalar target to compute against automatically.",low,MISSING_REVIEW_SCALAR,Missing reviewer scalar is preserved honestly; no proxy IRR is fabricated here.
 IRR Reporting,XIRR Date Convention,Finance / Governance,IRR Reconciliation,yes,no,,high,ACCEPTED_CONVENTION,Accept waiver or request phase9-tuho-equity-irr-reporting-view-implementation.
 IRR Reporting,Distribution Timing / Definition,Finance / Governance,IRR Reconciliation,yes,no,,high,ACCEPTED_CONVENTION,Default runtime distribution is authoritative; DA-wired staging is audit-only.
 IRR Reporting,SHL IDC Investment-Base Treatment,Finance / Governance,IRR Reconciliation,yes,no,,high,GOVERNANCE_REVIEW,Stakeholder should accept or request a separate reporting view.

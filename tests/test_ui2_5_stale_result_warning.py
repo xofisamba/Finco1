@@ -89,9 +89,12 @@ class TestExplicitStaleSignal:
         text = INDEX_HTML.read_text()
         # The stale_run() call should be inside a guard that does NOT
         # reference runtime_summary
-        # Find the if block that contains {{ stale_run() }}
-        stale_pos = text.find("{{ stale_run() }}")
-        assert stale_pos > 0
+        # Find the if block that contains {{ stale_run(...) }} (with
+        # or without an argument — Phase 24-G-1 enhancement passes
+        # workspace_state_meta explicitly)
+        stale_match = re.search(r"\{\{\s*stale_run\([^}]*\)\s*\}\}", text)
+        assert stale_match is not None
+        stale_pos = stale_match.start()
         # Find the most recent {% if ... %} before stale_pos
         if_pattern = re.compile(r"\{% if [^%]+%\}", re.MULTILINE)
         matches = list(if_pattern.finditer(text, 0, stale_pos))
@@ -264,7 +267,17 @@ class TestNoForbiddenFileChanges:
 
     def test_empty_states_unchanged(self):
         text = EMPTY_STATES.read_text()
-        assert "{% macro stale_run() %}" in text
+        # Phase 24-G-1 enhancement: stale_run() may now accept an
+        # optional workspace_state_meta argument (default None) so the
+        # "what changed" hint can be rendered. The macro signature
+        # remains backward-compatible: callers without the keyword
+        # arg continue to work and the macro renders nothing extra
+        # when workspace_state_meta is None / missing.
+        assert (
+            "{% macro stale_run() %}" in text
+            or "{% macro stale_run(workspace_state_meta=None) %}" in text
+            or "{% macro stale_run(workspace_state_meta=none) %}" in text
+        )
 
 
 # ============================================================

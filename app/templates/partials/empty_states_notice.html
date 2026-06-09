@@ -29,11 +29,38 @@
 {% endmacro %}
 
 {# ── Stale run ── #}
-{% macro stale_run() %}
-<div class="empty-state-notice empty-state-notice--warn">
-  <div class="esn-icon">⏱️</div>
+{% macro stale_run(workspace_state_meta=None) %}
+{# Phase 24-G-1: enhanced stale run macro.
+   - keeps the original visible "Stale run" copy (existing tests
+     assert "Stale run" string and "previous run" / "run again" copy)
+   - adds a visible "STALE" badge and a "Re-run" anchor link to the
+     sidebar Run button (no JS, no app.js change, no backend change)
+   - adds a read-only "what changed" hint pulled from
+     workspace_state_meta.dirty_label (already in context, optional)
+   - does NOT alter calculations, does NOT trigger auto-runs, and
+     does NOT persist anything. Presentation only. #}
+<div class="empty-state-notice empty-state-notice--warn empty-state-notice--stale">
+  <div class="esn-icon esn-icon--stale">
+    <span class="esn-stale-badge" title="Outputs are from a previous run">STALE</span>
+  </div>
   <div class="esn-title">Stale run</div>
-  <div class="esn-desc">The current outputs are from a previous run. If you changed the draft after the last run, run again to reflect your changes. Export will use the last clean run.</div>
+  <div class="esn-desc">
+    The current outputs are from a previous run. If you changed the
+    draft after the last run, run again to reflect your changes.
+    Export will use the last clean run.
+  </div>
+  <div class="esn-stale-actions">
+    <a class="esn-stale-rerun" href="#btn-run-model-sidebar"
+       title="Jump to the Run button in the sidebar">
+      Re-run
+    </a>
+    {% if workspace_state_meta and workspace_state_meta.dirty_label %}
+    <span class="esn-stale-changed"
+          title="Inputs changed since the last clean run">
+      {{ workspace_state_meta.dirty_label }}
+    </span>
+    {% endif %}
+  </div>
 </div>
 {% endmacro %}
 
@@ -102,5 +129,77 @@
 
 .empty-state-notice--warn .esn-desc {
   color: var(--text-2, #6b7280);
+}
+
+/* ── Phase 24-G-1: Stale run enhancements ──────────────────────────── */
+.empty-state-notice--stale {
+  align-items: center;
+}
+
+.esn-icon--stale {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  font-size: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+.esn-stale-badge {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  border-radius: 4px;
+  background: #b45309;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.esn-stale-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.esn-stale-rerun {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  background: #b45309;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  border: 1px solid #92400e;
+}
+
+.esn-stale-rerun:hover,
+.esn-stale-rerun:focus {
+  background: #92400e;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.esn-stale-changed {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(180, 83, 9, 0.12);
+  color: #7c2d12;
+  font-size: 0.7rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
