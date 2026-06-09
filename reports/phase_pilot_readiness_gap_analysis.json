@@ -1,0 +1,124 @@
+{
+  "phase": "pilot-readiness-gap-analysis",
+  "date": "2026-06-09",
+  "type": "report-only",
+  "base_sha": "72f3ab6",
+  "status": "DRAFT",
+  "horizons": [
+    "pilot",
+    "paid-product",
+    "enterprise"
+  ],
+  "pilot_blockers_count": 20,
+  "paid_blockers_count": 10,
+  "enterprise_blockers_count": 10,
+  "parity_baseline": {
+    "tests_passed": 1681,
+    "tests_failed": 88,
+    "xfailed": 4,
+    "xpassed": 1,
+    "skipped": 2,
+    "regressions_from_c_series": 0
+  },
+  "classification_taxonomy": [
+    "architecture",
+    "parity",
+    "ux",
+    "governance",
+    "testing",
+    "commercial/product"
+  ],
+  "risk_levels": [
+    "Low",
+    "Medium",
+    "High",
+    "Critical"
+  ],
+  "effort_estimates": {
+    "S": "<=2w",
+    "M": "2-6w",
+    "L": "6w+",
+    "XL": "multi-quarter"
+  },
+  "pilot_blockers": [
+    "R-PAR-2 senior IDC effective-rate caveat",
+    "R-PAR-5 equity_total_keur derived-field parity",
+    "R67 cash-tax bridge residual (TUHO)",
+    "R99 audit-chain (R84/R98/R99/R102)",
+    "Debt sculpting parity (TUHO and Oborovo)",
+    "Depreciation shadow (Oborovo)",
+    "C10 implementation not started",
+    "Generic wind/solar not validated for external claims",
+    "Live sculpting / debt re-sizing not promoted",
+    "Construction IDC M1-M18 / C.16 Project Rights not implemented",
+    "Multi-user / RBAC / SSO not implemented",
+    "Bank/lender/external audit certification not in scope",
+    "Approval / signoff orchestration not wired",
+    "Replay-engine behavior not implemented",
+    "R102 SHL runtime wiring not approved",
+    "Generic wind CO2 path not validated",
+    "Oborovo distribution lockup policy residual",
+    "Oborovo SHL opening balance bridge test isolation",
+    "Oborovo pre/post-correction parity snapshots (N, P)",
+    "Auto-backup observability (logs only)"
+  ],
+  "paid_blockers": [
+    "R-PAR-2 senior IDC",
+    "C10 not started",
+    "Generic path not validated",
+    "Multi-user / RBAC / SSO",
+    "Audit-export package for paid tier",
+    "Commercial packaging (pricing, claim scope)",
+    "Replay-engine behavior",
+    "Approval / signoff orchestration",
+    "External-model-review package for paid customers",
+    "SLA / support / on-call rotation"
+  ],
+  "enterprise_blockers": [
+    "Multi-user / RBAC / SSO",
+    "Approval / signoff orchestration",
+    "Bank / lender / external audit certification",
+    "Replay-engine behavior",
+    "Audit-export package for regulated use",
+    "Live sculpting / debt re-sizing",
+    "Generic wind/solar for enterprise (multi-project)",
+    "R99 / R102 audit chain closure",
+    "SLA, observability, on-call, escalation",
+    "Enterprise billing / contract / data-residency"
+  ],
+  "critical_path_pilot": [
+    "R-PAR-2",
+    "R-PAR-5",
+    "C10-impl"
+  ],
+  "critical_path_paid": [
+    "R-PAR-2",
+    "C10-impl",
+    "audit-export",
+    "commercial-packaging",
+    "external-model-review"
+  ],
+  "critical_path_enterprise": [
+    "multi-user",
+    "signoff",
+    "audit-export",
+    "SLA",
+    "replay",
+    "debt",
+    "multi-project"
+  ],
+  "recommended_next_sprint": "R-PAR-2 Decision Sprint (Sprint 24-A)",
+  "recommended_parallel_low_risk": "See Step 4 PR (next-sprint decision matrix)",
+  "nogo_list": [
+    "C10 implementation",
+    "Oborovo promotion",
+    "Senior IDC runtime change",
+    "Live sculpting / debt re-sizing",
+    "Multi-user / RBAC",
+    "Bank / lender / external audit certification",
+    "Generic wind/solar for external decisions",
+    "Replay engine"
+  ],
+  "hard_rules_respected": true,
+  "no_production_code_change": true
+}
