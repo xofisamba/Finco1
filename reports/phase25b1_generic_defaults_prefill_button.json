@@ -1,0 +1,260 @@
+{
+  "phase": "25B-1",
+  "title": "Generic Defaults Prefill Button",
+  "type": "implementation + docs + report + tests",
+  "status": "DRAFT (awaiting review)",
+  "date": "2026-06-09",
+  "branch": "phase25b1-generic-defaults-prefill-button",
+  "base_sha": "c6d506b6d5849069760b4696eaf9fbe08e8b8a85",
+  "head_sha": "PENDING (commit pending)",
+  "primary_user_story": "As a user, I can open /projects/new, choose Generic Solar or Generic Wind, click 'Use generic defaults', and get a reasonable prefilled exploratory case that I can immediately save, run, and modify.",
+  "scope": "Generic exploratory path only. TUHO / Oborovo factory paths preserved.",
+  "what_was_delivered": {
+    "server": [
+      {
+        "route": "GET /projects/new/defaults",
+        "purpose": "Read-only JSON endpoint that returns all 16 form fields for generic_solar / generic_wind.",
+        "auth": "Required (401 if not authenticated)",
+        "factory_sources_rejected": ["tuho", "oborovo", "unknown"],
+        "prefill_sources_accepted": ["generic_solar", "generic_wind"]
+      },
+      {
+        "route": "GET /projects/new/prefill",
+        "purpose": "Server-side prefill for non-JS clients. Renders the form with all 16 fields populated.",
+        "auth": "Required (302 if not authenticated)",
+        "factory_sources_rejected": "renders blank form (no factory leakage)",
+        "prefill_sources_accepted": ["generic_solar", "generic_wind"]
+      }
+    ],
+    "helper": {
+      "name": "_generic_prefill_values",
+      "location": "main_web.py",
+      "purpose": "Pure function: returns dict[str, str] of form fields for a given template_source, or None for non-generic sources.",
+      "depends_on": [
+        "create_default_solar_project (existing, app/project_factories.py)",
+        "create_default_wind_project (existing, app/project_factories.py)"
+      ],
+      "mutates_factory": false
+    },
+    "ui": [
+      {
+        "file": "app/templates/partials/new_project_form.html",
+        "changes": [
+          "EXPLORATORY notice (inp-exploratory-notice) at the top of the form",
+          "np-prefill-row (visible only for generic_solar / generic_wind)",
+          "np-prefill-btn ('Use generic defaults' button)",
+          "np-prefill-hint (small text explaining the source of the defaults)",
+          "All 16 input fields have id='np-...' attributes",
+          "Inline vanilla-JS shim (no jQuery, no Tailwind, no Alpine)"
+        ]
+      },
+      {
+        "file": "static/styles.css",
+        "changes": [
+          ".np-prefill-row / .np-prefill-row[data-state='visible|hidden']",
+          ".np-prefill-hint",
+          ":root count = 3 preserved (UI-2.5 invariant)"
+        ]
+      }
+    ]
+  },
+  "test_coverage": {
+    "total": 52,
+    "blocks": [
+      {
+        "block": 1,
+        "name": "Prefill Helper (Pure Unit)",
+        "tests": 12,
+        "covers": [
+          "allowed-sources set is exactly {generic_solar, generic_wind}",
+          "helper rejects tuho / oborovo / empty / unknown",
+          "helper returns Solar for generic_solar, Wind for generic_wind",
+          "all 16 form fields present and non-empty",
+          "opex_y1_keur matches sum of opex items",
+          "interest_rate_pct equals base + margin_bps/10000",
+          "capacity_mw matches factory",
+          "ppa_term_years matches factory"
+        ]
+      },
+      {
+        "block": 2,
+        "name": "Prefill Route (GET /projects/new/defaults)",
+        "tests": 8,
+        "covers": [
+          "route registered",
+          "unauthenticated returns 401",
+          "tuho / oborovo / unknown return 400 (no factory leakage)",
+          "generic_solar / generic_wind return 200 + values + warning",
+          "response has all 16 form fields"
+        ]
+      },
+      {
+        "block": 3,
+        "name": "Server-Side Prefill (GET /projects/new/prefill)",
+        "tests": 6,
+        "covers": [
+          "route registered",
+          "unauthenticated returns 302",
+          "generic_solar pre-fills form with all 16 fields",
+          "generic_wind pre-fills form with all 16 fields",
+          "tuho source renders blank form (no factory leakage)",
+          "EXPLORATORY notice visible in any prefill path"
+        ]
+      },
+      {
+        "block": 4,
+        "name": "UI Form Template",
+        "tests": 7,
+        "covers": [
+          "EXPLORATORY notice present",
+          "np-prefill-row with data-state attribute",
+          "'Use generic defaults' button",
+          "hint text references factory functions",
+          "inline JS shim (__npPrefillApply / __npPrefillClear + fetch)",
+          "data-prefill-url attribute on form",
+          "all 16 input fields have id='np-...'"
+        ]
+      },
+      {
+        "block": 5,
+        "name": "Prefill Safety Constraints",
+        "tests": 8,
+        "covers": [
+          "helper rejects factory sources",
+          "helper does not mutate factory inputs",
+          "use_construction_schedule_engine still False",
+          "no rc1 in prefill block",
+          ":root count = 3",
+          "no new financial formulas",
+          "app/project_factories.py unchanged (zero diff)",
+          "no construction flag flips"
+        ]
+      },
+      {
+        "block": 6,
+        "name": "End-to-End Integration",
+        "tests": 5,
+        "covers": [
+          "Generic Solar prefill -> create project -> DB record",
+          "Generic Wind prefill -> create project -> DB record",
+          "prefill values round-trip through build_projectinputs_from_snapshot -> run_project",
+          "_submitted_new_project_defaults() not mutated",
+          "repeated calls return same values"
+        ]
+      },
+      {
+        "block": 7,
+        "name": "No-JS Required",
+        "tests": 2,
+        "covers": [
+          "server-side prefill works for solar without JS",
+          "server-side prefill works for wind without JS"
+        ]
+      },
+      {
+        "block": 8,
+        "name": "CSS Style Guard",
+        "tests": 4,
+        "covers": [
+          "CSS has .np-prefill-row styles",
+          "CSS has .np-prefill-hint styles",
+          ":root count = 3 (UI-2.5 invariant)",
+          "no Tailwind / Alpine classes"
+        ]
+      }
+    ]
+  },
+  "regression_tests": {
+    "total_phase_targeted": 502,
+    "all_passing": true,
+    "suites": {
+      "25B-1_new": 52,
+      "24H_closure_regression": 34,
+      "24H4_regression": 58,
+      "24H3_regression": 53,
+      "24H2_regression": 55,
+      "24H_regression": 29,
+      "24G_closure_regression": 30,
+      "24G1_regression": 47,
+      "24G2_regression": 75,
+      "24G3_regression": 69
+    }
+  },
+  "hard_constraints_honored": {
+    "no_new_financial_formulas": true,
+    "no_formula_refactor": true,
+    "no_construction_promotion": true,
+    "no_c10_rpar_work": true,
+    "no_senior_idc_changes": true,
+    "no_schema_migration": true,
+    "no_tailwind_or_alpine": true,
+    "no_fake_outputs": true,
+    "no_fake_runtime_ids": true,
+    "no_persistence_changes": true,
+    "rc1_untouched": true,
+    "factory_paths_preserved": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "css_root_count_unchanged": 3,
+    "project_factories_unchanged": true,
+    "waterfall_core_unchanged": true
+  },
+  "files_changed": {
+    "implementation": [
+      {"path": "main_web.py", "change_type": "modified", "lines_added": 120, "notes": "New helper + 2 new routes (GET /projects/new/defaults, GET /projects/new/prefill)"},
+      {"path": "app/templates/partials/new_project_form.html", "change_type": "modified", "lines_added": 160, "notes": "EXPLORATORY notice, prefill row, button, hint, inline JS shim, IDs"},
+      {"path": "static/styles.css", "change_type": "modified", "lines_added": 50, "notes": ".np-prefill-row / .np-prefill-hint styles"}
+    ],
+    "tests": [
+      {"path": "tests/test_phase25b1_generic_defaults_prefill_button.py", "change_type": "new", "lines_added": 893, "tests": 52, "test_blocks": 8}
+    ],
+    "docs": [
+      {"path": "docs/phase25b1_generic_defaults_prefill_button.md", "change_type": "new", "lines_added": 580}
+    ],
+    "reports": [
+      {"path": "reports/phase25b1_generic_defaults_prefill_button.json", "change_type": "new"}
+    ],
+    "unchanged_but_referenced": [
+      "app/project_factories.py (zero diff; create_default_solar_project / create_default_wind_project are read-only)",
+      "app/waterfall_core.py (zero diff; use_construction_schedule_engine still False)",
+      "app/services/projects_create_service.py (zero diff; prefill is orthogonal to creation)"
+    ]
+  },
+  "user_flow": {
+    "before_25B1": [
+      "Open /projects/new",
+      "See form with 16 empty fields",
+      "Type 16 numbers from scratch"
+    ],
+    "after_25B1": [
+      "Open /projects/new",
+      "See form with EXPLORATORY notice at the top",
+      "Choose 'Generic Solar ⚠️ Unvalidated' in template_source",
+      "See '⚙ Use generic defaults' button appear",
+      "Click the button",
+      "All 16 fields populated with round-number factory defaults",
+      "Edit any field as needed",
+      "Click 'Create Project'",
+      "Land on project page with EXPLORATORY notice carried over",
+      "Click 'Run Model' to compute kpis",
+      "Save / export / compare (unchanged from 24-H)"
+    ],
+    "no_js_path": [
+      "Open GET /projects/new/prefill?template_source=generic_solar",
+      "Form is rendered with all 16 fields already populated",
+      "Button is still there for further refresh"
+    ]
+  },
+  "what_is_NOT_in_this_phase": [
+    "No Excel-parity validation for generic projects (requires Excel reference workbook)",
+    "No CO2 / certificates / balancing parity (requires Excel reference data)",
+    "No sculpting / live debt-sizing (out of scope, requires R-PAR)",
+    "No 3-way / 4-way scenario compare (deferred to Phase 25B-2)",
+    "No 'What changed' delta indicator (deferred to Phase 25B-3)",
+    "No auto-save on dirty (deferred to Phase 25B-4)",
+    "No PDF export (deferred to Phase 25B-6)",
+    "No factory exports extended to generic (deferred to Phase 25B-5)"
+  ],
+  "recommended_next_phase": "25B-2 (3-way / 4-way scenario compare table) or 25B-3 ('What changed' delta indicator in runtime summary).",
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}
