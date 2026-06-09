@@ -1,0 +1,66 @@
+{
+  "phase": "24-G-3",
+  "title": "CAPEX Sheet Readability + Export / Download Clarity",
+  "status": "DRAFT (UI-only / export-surface clarity) — PR OPEN, NOT MERGED",
+  "branch": "phase24g3-capex-sheet-readability-export-download-clarity",
+  "base_sha": "d1dbe870ee6c5b29a521fc9b644ebc7d83537dae",
+  "head_sha": "a874baf10eebe51991bae645e9cf68d5b9f1b7d6",
+  "pr_number": 569,
+  "pr_url": "https://github.com/xofisamba/Finco1/pull/569",
+  "builds_on": [
+    "PR #564 (Pilot UX Safe Track scaffolding)",
+    "PR #566/#567 (24-G-1)",
+    "PR #565/#568 (24-G-2)"
+  ],
+  "files_changed": {
+    "production": [
+      "app/templates/partials/sheet_capex.html",
+      "app/templates/partials/export_registry.html",
+      "static/styles.css"
+    ],
+    "tests": [
+      "tests/test_phase24g3_capex_sheet_readability.py",
+      "tests/test_phase24g3_export_download_clarity.py"
+    ],
+    "docs": [
+      "docs/phase24g3_capex_sheet_readability_export_download_clarity.md"
+    ]
+  },
+  "production_diff": {
+    "files": 3,
+    "additions": 282,
+    "deletions": 61
+  },
+  "tests_added": 69,
+  "tests_passing": {
+    "phase24g3": 69,
+    "phase24g1": 28,
+    "phase24g2": 75,
+    "phase57a10f": 42,
+    "phase57a10g": 52,
+    "phase57a10h": 53,
+    "total_regression": 250
+  },
+  "route_smoke": "PENDING (will run on DRAFT PR CI)",
+  "parity_guardrails": "PENDING (will run on DRAFT PR CI)",
+  "hard_constraints_honored": {
+    "no_model_changes": true,
+    "no_formula_changes": true,
+    "no_capex_calculation_changes": true,
+    "no_tax_debt_depreciation_idc_changes": true,
+    "no_construction_c10_rpar_promotion": true,
+    "no_feature_flag_changes": true,
+    "no_backend_runtime_changes": true,
+    "no_static_app_js_changes": true,
+    "no_tailwind_alpine": true,
+    "rc1_untouched": true
+  },
+  "css_invariant": {
+    "root_block_count": 5,
+    "unchanged": true
+  },
+  "capex_legend_unchanged": true,
+  "capex_summary_strip_format_unchanged": true,
+  "export_formula_unchanged": true,
+  "next_step": "Open DRAFT PR (DONE #569); do not mark ready; do not merge; stop after report.status — awaiting review approval."
+}

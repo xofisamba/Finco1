@@ -5633,3 +5633,143 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   font-size: 0.72rem;
   color: var(--muted, #6b7280);
 }
+
+/* ============================================================
+   Phase 24-G-3: CAPEX Sheet Readability + Export / Download Clarity
+   (all additive — no :root mods, no removal of existing rules)
+   ============================================================ */
+
+/* ---- CAPEX legend lead (under status legend) ---- */
+.capex-legend-lead {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text, #111827);
+}
+
+/* ---- CAPEX deferred placeholders ---- */
+.capex-deferred-lead {
+  margin: 0.4rem 0 0.5rem 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface-2, #f9fafb);
+  border-left: 3px solid var(--muted-border, #d1d5db);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text, #111827);
+}
+
+.capex-deferred-detail {
+  display: inline;
+  color: var(--muted, #6b7280);
+  font-size: 0.78rem;
+}
+
+/* ---- CAPEX Sources & Uses bridge (compact) ---- */
+.capex-sources-uses-bridge {
+  margin: 0.6rem 0 0.8rem 0;
+  padding: 0.6rem 0.85rem;
+  background: var(--surface-2, #f9fafb);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+}
+
+.capex-su-lead {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text, #111827);
+}
+
+.capex-su-summary {
+  margin: 0 0 0.4rem 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface-3, #ffffff);
+  border-left: 3px solid var(--info-fg, #1d4ed8);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.capex-su-tag {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  margin: 0 0.2rem 0 0.2rem;
+  background: var(--info-bg, #eff6ff);
+  color: var(--info-fg, #1e40af);
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+}
+
+.capex-su-note {
+  margin: 0.3rem 0 0 0;
+  font-size: 0.74rem;
+  color: var(--muted, #6b7280);
+}
+
+/* ---- Export registry lead ---- */
+.export-registry-lead {
+  margin: 0.5rem 0 0.8rem 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--info-bg, #eff6ff);
+  border-left: 3px solid var(--info-fg, #1d4ed8);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text, #111827);
+}
+
+/* ---- Export card lineage row ---- */
+.export-card-lineage {
+  margin: 0.3rem 0 0.3rem 0;
+  padding: 0.3rem 0.5rem;
+  background: var(--surface-2, #f9fafb);
+  border-left: 2px solid var(--muted-border, #d1d5db);
+  border-radius: 3px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted, #6b7280);
+}
+
+/* ---- Export empty state ---- */
+.export-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin: 1.5rem 0;
+  padding: 1.5rem 1rem;
+  background: var(--surface-2, #f9fafb);
+  border: 1px dashed var(--border, #d1d5db);
+  border-radius: var(--radius-md, 8px);
+}
+
+.export-empty-state__icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.export-empty-state__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text, #111827);
+  margin-bottom: 0.4rem;
+}
+
+.export-empty-state__desc {
+  font-size: 0.82rem;
+  color: var(--text, #111827);
+  max-width: 540px;
+  line-height: 1.5;
+  margin: 0 0 0.5rem 0;
+}
+
+.export-empty-state__hint {
+  font-size: 0.74rem;
+  color: var(--muted, #6b7280);
+  max-width: 540px;
+  line-height: 1.4;
+  margin: 0;
+}
