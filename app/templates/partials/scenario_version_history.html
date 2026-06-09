@@ -24,6 +24,14 @@
         {% if card.scenario_id == workspace_state.active_scenario_id %}
           <span class="badge badge-pass svh-badge">Active</span>
         {% endif %}
+        {# Phase 25B-4 — per-scenario dirty dot (active + workspace dirty) #}
+        {% if dirty_state_ui and dirty_state_ui.scenario_dots %}
+          {% for dot in dirty_state_ui.scenario_dots %}
+            {% if dot.scenario_id == card.scenario_id and dot.is_dirty %}
+              <span class="{{ dot.css_class }}" title="{{ dot.title }}" aria-label="{{ dot.title }}"></span>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
       </div>
 
       <!-- Metadata row -->

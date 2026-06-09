@@ -1,0 +1,99 @@
+{
+  "phase": "25B-4",
+  "title": "Dirty State + Unsaved Changes (visual only)",
+  "branch": "phase25b4-dirty-state-unsaved-changes",
+  "head_sha": "to-be-filled-after-final-commit",
+  "base_sha": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
+  "pr_number": null,
+  "pr_state": "draft-pending",
+  "scope_classification": "UI-only (read-only, no model/state/schema changes)",
+  "what_changed": {
+    "new_files": [
+      "app/ui/dirty_state.py",
+      "app/templates/partials/dirty_state_indicators.html"
+    ],
+    "modified_files": [
+      "app/templates/partials/scenario_workspace.html",
+      "app/templates/partials/scenario_version_history.html",
+      "main_web.py",
+      "static/styles.css"
+    ],
+    "test_files": [
+      "tests/test_phase25b4_dirty_state_helpers.py",
+      "tests/test_phase25b4_dirty_state_rendering.py",
+      "tests/test_phase25b4_factory_safety.py",
+      "tests/test_phase25b4_no_regression.py"
+    ],
+    "doc_files": [
+      "docs/phase25b4_dirty_state_unsaved_changes.md"
+    ]
+  },
+  "ui_surfaces": [
+    "workspace-top saved-state chip (saved/unsaved/stale/factory)",
+    "changes-not-yet-saved notice (yellow, with title + body)",
+    "run-disabled warning chip (orange, only when stale)",
+    "per-scenario dirty dot (yellow pulsing, on active scenario when workspace dirty)"
+  ],
+  "behaviour_matrix": {
+    "clean_user_project": {
+      "chip": "Saved",
+      "chip_color": "green",
+      "notice": null,
+      "run_warning": null,
+      "active_scenario_dot": false
+    },
+    "unsaved_user_project": {
+      "chip": "Unsaved edits",
+      "chip_color": "yellow",
+      "notice": "Changes not yet saved",
+      "run_warning": null,
+      "active_scenario_dot": true
+    },
+    "stale_user_project": {
+      "chip": "Stale — older than current draft",
+      "chip_color": "orange",
+      "notice": "Changes not yet saved",
+      "run_warning": "Run will use older than current draft",
+      "active_scenario_dot": true
+    },
+    "factory_project": {
+      "chip": "Read-only baseline",
+      "chip_color": "gray",
+      "notice": "Factory baseline — Use Duplicate or Save As",
+      "run_warning": null,
+      "active_scenario_dot": false
+    }
+  },
+  "tests": {
+    "total": 77,
+    "helpers": 28,
+    "rendering": 14,
+    "factory_safety": 26,
+    "no_regression": 9,
+    "all_passing": true
+  },
+  "hard_constraints": {
+    "no_formula_changes": true,
+    "no_model_runtime_changes": true,
+    "no_tax_debt_depreciation_idc_changes": true,
+    "no_construction_c10_rpar_senior_idc": true,
+    "no_schema_migration": true,
+    "no_flag_flips": true,
+    "no_tailwind_alpine_inline_script": true,
+    "no_autosave": true,
+    "rc1_preserved": true,
+    "parity_path_preserved": true,
+    "tuho_preserved": true,
+    "oborovo_preserved": true,
+    "use_construction_schedule_engine_false": true,
+    "root_count_unchanged": 3
+  },
+  "css_impact": {
+    "lines_added": 173,
+    "new_classes": 17,
+    "root_blocks_added": 0,
+    "important_used": false
+  },
+  "open_as_draft": true,
+  "stop_after_report": true
+}

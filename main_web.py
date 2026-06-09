@@ -82,6 +82,8 @@ from app.persistence.provenance import build_replay_metadata, utc_now_iso
 from app.ui.project_context import build_project_context_for_record, get_project_context
 from app.ui.runtime_summary import runtime_summary_to_dict, NOT_AVAILABLE
 from app.ui.what_changed import build_scenario_card_deltas
+# Phase 25B-4 — dirty-state UI helpers (pure functions, no DB, no I/O)
+from app.ui.dirty_state import build_dirty_state_ui
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
@@ -1574,7 +1576,24 @@ def _render_scenario_workspace(
     multi_compare_result: dict | None = None,
     multi_compare_error: str | None = None,
     multi_compare_parsed_ids: list | None = None,
+    dirty_state_ui: dict | None = None,
 ):
+    if dirty_state_ui is None:
+        # Phase 25B-4 — defensive default. _workspace_refresh_payload
+        # should always populate this, but a None here keeps the
+        # workspace renderable when called from older code paths.
+        from app.ui.dirty_state import build_dirty_state_ui
+        workspace_meta = _workspace_state_meta(workspace_state)
+        dirty_state_ui = build_dirty_state_ui(
+            dirty=bool(workspace_meta.get("dirty", False)),
+            has_runtime_snapshot=bool(workspace_meta.get("last_runtime_snapshot_id", "")),
+            is_user_project=project_record.project_origin == "user_created",
+            active_scenario_id=workspace_meta.get("active_scenario_id", "") or "",
+            scenarios=[
+                {"scenario_id": c.get("scenario_id"), "scenario_name": c.get("scenario_name")}
+                for c in (scenario_summary_cards or [])
+            ],
+        )
     return templates.TemplateResponse(
         request=request,
         name="partials/scenario_workspace.html",
@@ -1601,11 +1620,13 @@ def _render_scenario_workspace(
                 and (project_record.template_source or "").strip().lower()
                 in {"generic_solar", "generic_wind"}
             ),
+            # Phase 25B-4 — visual dirty-state UI payload
+            "dirty_state_ui": dirty_state_ui,
         },
     )
 
 
-def _workspace_refresh_payload(user, project_record):
+def _workspace_refresh_payload(user, project_record, workspace_state=None):
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
     history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
@@ -1636,7 +1657,47 @@ def _workspace_refresh_payload(user, project_record):
         }
         card = build_scenario_card_deltas(card)
         scenario_summary_cards.append(card)
-    return scenarios, history, exports, export_lineage, scenario_summary_cards
+
+    # Phase 25B-4 — build the dirty-state UI payload (visual only).
+    # Pure helper, no DB, no I/O. The same workspace_state is used by
+    # the caller when rendering the workspace shell, so we keep this
+    # read-only and side-effect free.
+    if workspace_state is None:
+        # Lazy-import to avoid pulling the helper when the workspace is
+        # being rendered via paths that don't surface dirty state.
+        from app.services.scenario_state_service import (
+            build_workspace_state_metadata,
+        )
+        workspace_state = getattr(project_record, "_workspace_state", None)
+        if workspace_state is not None:
+            workspace_meta = build_workspace_state_metadata(workspace_state)
+        else:
+            workspace_meta = {
+                "dirty": False,
+                "last_runtime_snapshot_id": "",
+                "active_scenario_id": "",
+            }
+    else:
+        workspace_meta = _workspace_state_meta(workspace_state)
+
+    active_scenario_id = workspace_meta.get("active_scenario_id", "") or ""
+    has_runtime_snapshot = bool(workspace_meta.get("last_runtime_snapshot_id", ""))
+    is_user_project = is_user_project_flag
+
+    # Map scenario card fields to the dot-builder's expected shape.
+    dot_input_scenarios = [
+        {"scenario_id": c.get("scenario_id"), "scenario_name": c.get("scenario_name")}
+        for c in scenario_summary_cards
+    ]
+    dirty_state_ui = build_dirty_state_ui(
+        dirty=bool(workspace_meta.get("dirty", False)),
+        has_runtime_snapshot=has_runtime_snapshot,
+        is_user_project=is_user_project,
+        active_scenario_id=active_scenario_id,
+        scenarios=dot_input_scenarios,
+    )
+
+    return scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui
 
 # -- Helpers ------------------------------------------------------------------
 
@@ -2674,7 +2735,7 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
-    scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
+    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui = _workspace_refresh_payload(user, project_record, workspace_state)
     return _render_scenario_workspace(
         request,
         user,
@@ -2685,6 +2746,7 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
         exports,
         export_lineage,
         scenario_summary_cards,
+        dirty_state_ui=dirty_state_ui,
         message="Refreshed scenario history and export lineage.",
     )
 
@@ -2703,7 +2765,7 @@ async def scenario_compare_endpoint(
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
-    scenarios, history, exports, export_lineage, scenario_summary_cards = _workspace_refresh_payload(user, project_record)
+    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui = _workspace_refresh_payload(user, project_record, workspace_state)
 
     compare_result = None
     message = "Select two saved scenarios to compare."
@@ -2725,6 +2787,7 @@ async def scenario_compare_endpoint(
         exports,
         export_lineage,
         scenario_summary_cards,
+        dirty_state_ui=dirty_state_ui,
         message=message,
         compare_result=compare_result,
     )
