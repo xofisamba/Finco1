@@ -1,0 +1,270 @@
+{
+  "phase": "rpar-blocker-register",
+  "date": "2026-06-09",
+  "type": "report-only",
+  "base_sha": "72f3ab6",
+  "status": "DRAFT",
+  "register": [
+    {
+      "id": "R-PAR-1",
+      "status": "CLOSED",
+      "severity": "High-was",
+      "owner": "domain/construction/",
+      "blocks": "shl_idc_keur promotion",
+      "allowed": "reference C2 design",
+      "forbidden": "reopen convention",
+      "resolution": "C2 design doc"
+    },
+    {
+      "id": "R-PAR-2",
+      "status": "DISCOVERY",
+      "severity": "High",
+      "owner": "opening_balance_bridge + seam guard",
+      "blocks": "senior_idc_keur, senior_opening_balance_keur",
+      "allowed": "governance decision A/B/C",
+      "forbidden": "promote senior IDC",
+      "resolution": "pick option in PR #556 thread"
+    },
+    {
+      "id": "R-PAR-3",
+      "status": "CLOSED",
+      "severity": "Medium",
+      "owner": "domain/construction/",
+      "blocks": "none",
+      "allowed": "reference C-series",
+      "forbidden": "reintroduce pre-COD lump default",
+      "resolution": "C1 design"
+    },
+    {
+      "id": "R-PAR-4",
+      "status": "CLOSED",
+      "severity": "Medium",
+      "owner": "opening_balance_bridge",
+      "blocks": "none",
+      "allowed": "reference C7",
+      "forbidden": "mix senior/SHL conventions",
+      "resolution": "C7 PR #549"
+    },
+    {
+      "id": "R-PAR-5",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "opening_balance_bridge + seam guard",
+      "blocks": "C10 promotion",
+      "allowed": "reclassify or fix parity",
+      "forbidden": "promote without green parity",
+      "resolution": "Sprint 24-A"
+    },
+    {
+      "id": "R67",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "tax_bridge/",
+      "blocks": "TUHO tax-cash parity \u00b10.5pp",
+      "allowed": "diagnostic review",
+      "forbidden": "rewrite tax-bridge core",
+      "resolution": "Sprint 24-B"
+    },
+    {
+      "id": "R84",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "audit-export",
+      "blocks": "R99 audit chain",
+      "allowed": "audit-export refactor",
+      "forbidden": "skip chain",
+      "resolution": "Sprint 24-C"
+    },
+    {
+      "id": "R98",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "audit-export",
+      "blocks": "R99 audit chain",
+      "allowed": "per R84",
+      "forbidden": "per R84",
+      "resolution": "Sprint 24-C"
+    },
+    {
+      "id": "R99",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "audit-export",
+      "blocks": "pilot signoff, paid claim",
+      "allowed": "Sprint 24-C",
+      "forbidden": "claim audit-readiness without green",
+      "resolution": "Sprint 24-C"
+    },
+    {
+      "id": "R102",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "waterfall_runner SHL",
+      "blocks": "R99 chain, SHL promotion",
+      "allowed": "Phase 9/20R/20S follow-up",
+      "forbidden": "wire SHL outside approved sprint",
+      "resolution": "Sprint 24-C"
+    },
+    {
+      "id": "DEBT-SCULPT",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "waterfall_runner sculpting",
+      "blocks": "live sculpting",
+      "allowed": "Sprint 24-D",
+      "forbidden": "promote without parity",
+      "resolution": "Sprint 24-D"
+    },
+    {
+      "id": "DEP-SHADOW",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "export/calibration_reconciliation",
+      "blocks": "Oborovo depreciation parity",
+      "allowed": "Sprint 24-E",
+      "forbidden": "promote depreciation change without parity",
+      "resolution": "Sprint 24-E"
+    },
+    {
+      "id": "OB-SHL-OB",
+      "status": "OPEN",
+      "severity": "Low",
+      "owner": "tests/test_phase23k",
+      "blocks": "test cleanliness",
+      "allowed": "test refactor",
+      "forbidden": "skip test",
+      "resolution": "on-call"
+    },
+    {
+      "id": "OB-DIST-LOCKUP",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "distribution_lockup",
+      "blocks": "Oborovo distribution parity",
+      "allowed": "Sprint 24-F",
+      "forbidden": "change policy without parity",
+      "resolution": "Sprint 24-F"
+    },
+    {
+      "id": "OB-SNAP",
+      "status": "OPEN",
+      "severity": "Low",
+      "owner": "tests/test_phase23{n,p}",
+      "blocks": "test cleanup",
+      "allowed": "on-call",
+      "forbidden": "delete failing snapshots",
+      "resolution": "on-call"
+    },
+    {
+      "id": "OPEX-VIS",
+      "status": "PARTIAL",
+      "severity": "Medium",
+      "owner": "ui/project_context OPEX grid",
+      "blocks": "pilot OPEX confidence",
+      "allowed": "Phase 20O/20U",
+      "forbidden": "hide sub-lines",
+      "resolution": "Sprint 25-B"
+    },
+    {
+      "id": "CAPEX-2.0",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "ui/project_context CAPEX",
+      "blocks": "pilot CAPEX UI confidence",
+      "allowed": "Phase 58+",
+      "forbidden": "touch 57A-10F/G/H",
+      "resolution": "Sprint 25-C"
+    },
+    {
+      "id": "CONST-IDC",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "C-series C11+",
+      "blocks": "full construction parity",
+      "allowed": "C11+ design",
+      "forbidden": "promote in this stack",
+      "resolution": "long-term"
+    },
+    {
+      "id": "REPLAY",
+      "status": "OPEN",
+      "severity": "Medium",
+      "owner": "runtime snapshot store",
+      "blocks": "enterprise audit replay",
+      "allowed": "design + characterization",
+      "forbidden": "wire replay",
+      "resolution": "post-C10"
+    },
+    {
+      "id": "MULTI-USER",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "auth surface",
+      "blocks": "enterprise/paid external",
+      "allowed": "strategic roadmap",
+      "forbidden": "promote multi-user",
+      "resolution": "pre-enterprise"
+    },
+    {
+      "id": "SIGNOFF",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "workflow surface",
+      "blocks": "enterprise/paid external",
+      "allowed": "design + characterization",
+      "forbidden": "wire signoff",
+      "resolution": "pre-enterprise"
+    },
+    {
+      "id": "CERT",
+      "status": "OUT-OF-SCOPE",
+      "severity": "Critical",
+      "owner": "external partner",
+      "blocks": "none internally",
+      "allowed": "engage external",
+      "forbidden": "claim certification",
+      "resolution": "external"
+    },
+    {
+      "id": "COMMERCIAL",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "product/commercial",
+      "blocks": "paid external",
+      "allowed": "product workstream",
+      "forbidden": "ship without packaging",
+      "resolution": "pre-paid"
+    },
+    {
+      "id": "F3",
+      "status": "OPEN",
+      "severity": "High",
+      "owner": "domain/generic/",
+      "blocks": "generic-path external use",
+      "allowed": "Sprint 25-A",
+      "forbidden": "use for external decisions",
+      "resolution": "Sprint 25-A"
+    }
+  ],
+  "counts_by_status": {
+    "CLOSED": 3,
+    "DISCOVERY": 1,
+    "PARTIAL": 1,
+    "OPEN": 18,
+    "OUT-OF-SCOPE": 1,
+    "DESIGN": 0,
+    "DEFERRED": 0
+  },
+  "counts_by_severity": {
+    "Critical": 1,
+    "High": 9,
+    "Medium": 11,
+    "Low": 3
+  },
+  "total_blockers": 24,
+  "hard_rules_respected": true,
+  "no_production_code_change": true,
+  "no_promotion": true,
+  "no_runtime_change": true,
+  "rc1_untouched": true
+}
