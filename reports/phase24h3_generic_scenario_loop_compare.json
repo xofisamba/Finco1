@@ -1,0 +1,203 @@
+{
+  "phase": "24-H-3",
+  "title": "Generic Scenario Loop + Compare",
+  "type": "tests-only + docs + report (no production code change)",
+  "status": "DRAFT (review-only; not merged)",
+  "date": "2026-06-09",
+  "branch": "phase24h3-generic-scenario-loop-compare",
+  "base_sha": "e8fca68d0d8b23aa9dc2249c819eb76e593fb770",
+  "head_sha": "PENDING (commit pending)",
+  "builds_on": [
+    "PR #575 (Phase 24-H-2, merged at e8fca68, the delta-proof PR)",
+    "PR #573 (Phase 24-H, merged at eb1a132, the labeling PR)",
+    "PR #572 (Phase 24-G closure review, merged at f53fd6d, sprint planning input)"
+  ],
+  "primary_objective": "Make the Generic Solar / Generic Wind workflow usable for basic scenario testing (Base + Downside + Upside + Compare).",
+  "user_story": "As a finance user, I can create a Generic Solar/Wind project, save a Base case, create an Upside or Downside scenario, change assumptions, run both, and compare key outputs.",
+  "proofs_delivered": {
+    "scenario_infrastructure": {
+      "functions_verified": [
+        "resolve_scenario_snapshot",
+        "add_scenario",
+        "update_scenario_overrides",
+        "duplicate_scenario",
+        "compare_scenarios",
+        "_metric_value",
+        "_safe_number"
+      ],
+      "routes_verified": [
+        "/scenarios/add",
+        "/scenarios/save",
+        "/scenarios/compare",
+        "/scenarios/{scenario_id}/duplicate",
+        "/scenarios/{scenario_id}/update-overrides",
+        "/scenarios/{scenario_id}/select",
+        "/scenarios/{scenario_id}/load"
+      ],
+      "allowlist_verified": "SCENARIO_INPUT_FIELDS contains 21 safe fields (tariff, opex, p50, capex, gearing, etc.)",
+      "tests": 7
+    },
+    "resolve_scenario_snapshot_semantics": {
+      "behaviors_verified": [
+        "Empty overrides returns a copy of base",
+        "Overrides applied to resolved snapshot",
+        "Base is immutable (resolve does not mutate)",
+        "Unknown keys silently dropped (allowlist enforced)",
+        "Multiple overrides applied correctly",
+        "Two scenarios derived from the same base are independent"
+      ],
+      "tests": 6
+    },
+    "scenario_output_delta": {
+      "kpi_vectors_observed": {
+        "base": {
+          "total_revenue_keur": 201550,
+          "total_opex_keur": 25621,
+          "total_ebitda_keur": 175930,
+          "project_irr": 0.1101,
+          "equity_irr": 0.0455,
+          "min_dscr": 2.33,
+          "avg_dscr": 2.44
+        },
+        "downside_tariff_75_opex_1200_p50_1600": {
+          "total_revenue_keur": 149297,
+          "total_opex_keur": 38431,
+          "total_ebitda_keur": 110865,
+          "project_irr": 0.0634,
+          "equity_irr": 0.0228,
+          "min_dscr": 1.53,
+          "avg_dscr": 1.59
+        },
+        "upside_tariff_120_opex_600_p50_2200": {
+          "total_revenue_keur": 328452,
+          "total_opex_keur": 19216,
+          "total_ebitda_keur": 309237,
+          "project_irr": 0.1854,
+          "equity_irr": 0.0747,
+          "min_dscr": 4.00,
+          "avg_dscr": 4.20
+        }
+      },
+      "all_three_different_on_every_dimension": true,
+      "tests": 6
+    },
+    "scenario_mutation_isolation": {
+      "behaviors_verified": [
+        "Base snapshot unchanged after downside resolve",
+        "Downside independent of upside (no cross-contamination)",
+        "Resolve does not mutate the overrides dict"
+      ],
+      "tests": 3
+    },
+    "compare_scenarios_structure": {
+      "metric_labels": [
+        "Revenue", "OPEX", "EBITDA", "Senior Debt", "SHL",
+        "DSCR", "Project IRR", "Equity IRR", "CAPEX", "Distributions"
+      ],
+      "governance_rows": ["G20", "R99/R102"],
+      "delta_computation": "right - left",
+      "tests": 9
+    },
+    "exploratory_safety_on_compare": {
+      "warning_sites": [
+        "app/templates/partials/inputs_section.html",
+        "app/templates/partials/_last_run_indicator.html",
+        "app/templates/partials/export_registry.html"
+      ],
+      "data_attributes_verified": [
+        'data-exploratory-warning="true"',
+        'data-exploration-source="inputs-section"',
+        'data-exploration-source="runtime-summary"',
+        'data-exploration-source="export-registry"'
+      ],
+      "safeguard_copy_verified": ["lender-ready", "audit", "bank", "Excel-parity", "artefact"],
+      "tests": 6
+    },
+    "reference_path_guard": {
+      "factory_origin_intact": true,
+      "scenarios_add_requires_user_created": true,
+      "scenarios_add_returns_403_for_factory": true,
+      "factory_uses_create_default": true,
+      "factory_inputs_unchanged_after_generic_scenario": true,
+      "factory_runs_deterministic": true,
+      "tests": 5
+    },
+    "css_additive": {
+      "root_count_unchanged": 3,
+      "tests": 1
+    },
+    "hard_constraints": {
+      "rc1_untouched": true,
+      "no_construction_flag_flips": true,
+      "waterfall_gate_still_defaults_false": true,
+      "no_production_code_changed": true,
+      "24h_labeling_preserved": true,
+      "tests": 5
+    },
+    "full_scenario_loop": {
+      "end_to_end_test": "Base + Downside + Upside produce kpis in the expected order (revenue: up > base > down; opex: down > base > up; ebitda: up > base > down; irr: up > base > down)",
+      "tests": 2
+    },
+    "snapshot_persistence": {
+      "resolved_snapshot_passes_input_adapter": true,
+      "missing_required_field_fails": true,
+      "tests": 2
+    }
+  },
+  "deliverables": {
+    "implementation": [],
+    "tests": [
+      "tests/test_phase24h3_generic_scenario_loop_compare.py (53 tests, all passing)"
+    ],
+    "docs": [
+      "docs/phase24h3_generic_scenario_loop_compare.md"
+    ],
+    "reports": [
+      "reports/phase24h3_generic_scenario_loop_compare.json"
+    ]
+  },
+  "hard_constraints_honored": {
+    "tests_only": true,
+    "no_production_code_change": true,
+    "generic_exploratory_path_only": true,
+    "no_tuho_oberovo_reference_parity_drift": true,
+    "no_new_financial_formulas": true,
+    "no_fake_outputs": true,
+    "no_fake_runtime_ids": true,
+    "no_fake_validation_status": true,
+    "no_fake_timestamps": true,
+    "no_model_formula_tax_debt_depreciation_idc_changes": true,
+    "no_c10_rpar_construction_promotion": true,
+    "no_schema_migration": true,
+    "no_app_js_changes": true,
+    "no_tailwind_alpine": true,
+    "no_construction_flag_changes": true,
+    "use_construction_schedule_engine_remains_false": true,
+    "rc1_untouched": true,
+    "css_root_count_unchanged": 3,
+    "no_24h_labeling_changes": true,
+    "no_24h2_delta_proof_changes": true,
+    "no_factory_project_mutation": true
+  },
+  "files_changed": {
+    "tests": [
+      {"path": "tests/test_phase24h3_generic_scenario_loop_compare.py", "lines_added": 1024, "change_type": "new test file", "tests": 53}
+    ],
+    "docs": [
+      {"path": "docs/phase24h3_generic_scenario_loop_compare.md", "change_type": "new doc"}
+    ],
+    "reports": [
+      {"path": "reports/phase24h3_generic_scenario_loop_compare.json", "change_type": "new report"}
+    ]
+  },
+  "tests": {
+    "new": 53,
+    "regression_24h2": 55,
+    "regression_24h": 29,
+    "regression_g_track": 238,
+    "total_phase_targeted": 375,
+    "all_passing": true
+  },
+  "ci_status": "PENDING (will run on DRAFT PR)",
+  "next_step": "Open DRAFT PR (no merge); do not mark ready; stop after report"
+}
