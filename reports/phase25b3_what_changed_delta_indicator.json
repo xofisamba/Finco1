@@ -3,7 +3,7 @@
   "title": "Runtime \"What Changed\" Delta Indicator",
   "branch": "phase25b3-what-changed-delta-indicator",
   "base_sha": "92c5a33f03a3c49ad37f5b8ea9f0900c58d90920",
-  "head_sha": "<to-be-filled-after-commit>",
+  "head_sha": "c195feecdac9aa43df620401787cd7ff3dca282a",
   "status": "DRAFT",
   "created_at": "2026-06-09T19:23:49+02:00",
   "deliverables": {
