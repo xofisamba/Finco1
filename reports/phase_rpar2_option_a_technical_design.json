@@ -1,0 +1,80 @@
+{
+  "phase": "rpar2-option-a-technical-design",
+  "date": "2026-06-09",
+  "type": "design-only",
+  "base_sha": "233981e4",
+  "status": "DRAFT",
+  "scope_label": "HYPOTHETICAL ASSUMPTION OF OPTION A. NO IMPLEMENTATION.",
+  "what_changes": [
+    "Senior IDC accrual in domain/construction/ uses base-rate method",
+    "Senior opening balance at COD re-baselined",
+    "C7 POLICY_TABLE: senior_idc_keur, senior_opening_balance_keur -> replaced",
+    "C9 guard: rpar2_resolved default for senior IDC fields -> True (post-ratification)",
+    "C10 readiness: senior IDC fields added to allowed list"
+  ],
+  "what_does_not_change": [
+    "Runtime waterfall routing not auto-promoted",
+    "Construction-period drawdown logic (spending_profile)",
+    "Tax, depreciation, OPEX, revenue, distributions",
+    "use_construction_schedule_engine remains False",
+    "Oborovo not promoted before TUHO"
+  ],
+  "base_rate_formula": "senior_idc_t = senior_outstanding_balance_{t-1} * (base_rate / 12) * time_fraction_t",
+  "new_inputs_required": [
+    {
+      "name": "senior_idc_day_count_convention",
+      "type": "string",
+      "default": "30/360"
+    },
+    {
+      "name": "senior_idc_capitalize",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "parity_gates": {
+    "per_period_senior_idc_tolerance": "+/-1%",
+    "senior_opening_balance_at_cod_tolerance": "+/-1%",
+    "cumulative_senior_idc_tolerance": "+/-1%",
+    "dscr_parity_preserved": true
+  },
+  "test_classes_required": [
+    "TestSeniorIDCBaseRateAccrual (~8 unit tests)",
+    "TestSeniorIDCParityVsExcel (~6 parity tests)",
+    "TestNoParityRegressionFromOptionA (~5 regression tests)",
+    "TestC9GuardWithROptionAResolved (~3 guard tests)",
+    "TestOborovoAfterTUHO (~2 Oborovo-guard tests)"
+  ],
+  "test_count_estimate": 28,
+  "no_go_criteria": [
+    "R-PAR-2 decision is B or C, not A",
+    "rpar2_resolved flag not set in rpar2_decision.json",
+    "Senior lender has not signed off on base-rate method",
+    "Audit team has not signed off on parity plan",
+    "TUHO parity is not green",
+    "C10 implementation is not in flight (sequential, not parallel)",
+    "No spending_profile extension for monthly drawdown granularity",
+    "No governance decision recorded"
+  ],
+  "implementation_order": [
+    "Design lock-in (this doc)",
+    "C11+ construction bridge refactor (monthly draws)",
+    "Senior IDC base-rate module (new service)",
+    "C7 POLICY_TABLE update (replaced, no blocker ref)",
+    "C9 guard update (rpar2_resolved default True)",
+    "Test suite (~28 new tests)",
+    "TUHO parity validation",
+    "Oborovo parity validation (after TUHO)",
+    "C10 readiness update (add senior IDC to allowed)",
+    "Promotion PR (first C10 with senior IDC fields)"
+  ],
+  "estimated_effort": "L (multi-quarter)",
+  "critical_path": "bridge refactor + parity validation",
+  "hard_rules_respected": true,
+  "no_production_code_change": true,
+  "no_promotion": true,
+  "no_runtime_change": true,
+  "no_model_change": true,
+  "no_formula_change": true,
+  "rc1_untouched": true
+}
