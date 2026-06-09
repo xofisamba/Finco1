@@ -1,0 +1,211 @@
+{
+  "package": {
+    "name": "Finco1 What Changed Delta Indicator Governance Review Pack",
+    "workstream": "B43",
+    "branch": "parallel-b41-b47-generic-modelling-governance-pack",
+    "branch_base_sha_at_creation": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
+    "package_base_sha_at_creation": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
+    "review_pack_version": "0.1.0",
+    "review_pack_status": "initial_draft",
+    "intended_use": "internal_what_changed_governance_review_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/what_changed_delta_indicator_governance_review.md",
+  "b41_post_phase25b_pointer": "docs/governance/post_phase25b_generic_modelling_governance_refresh.md",
+  "b42_scenario_loop_evidence_pointer": "docs/validation/generic_scenario_loop_evidence_matrix.md",
+  "b44_generic_solar_wind_pointer": "docs/commercial/generic_solar_wind_demo_guardrail_refresh.md",
+  "b45_controlled_pilot_runbook_pointer": "docs/pilot/controlled_generic_scenario_pilot_runbook.md",
+  "b46_compare_export_register_pointer": "docs/validation/scenario_compare_export_evidence_register.md",
+  "b47_readiness_delta_cadence_pointer": "docs/governance/post25b_readiness_delta_refresh_cadence.md",
+  "b1_no_go_claims_pointer": "docs/external_review/no_go_claims.md",
+  "b11_commercial_pointer": "docs/commercial/no_go_claims_commercial_guardrail.md",
+  "b19_demo_pointer": "docs/commercial/demo_claims_checklist.json",
+  "b22_qa_pointer": "docs/commercial/qa_claims_matrix.json",
+  "disclaimers": {
+    "agent_b_does_not_approve_code_correctness": true,
+    "agent_b_does_not_validate_persistence_implementation": true,
+    "agent_b_records_governance_evidence_requirements_only": true,
+    "what_changed_is_ux_explanation_feature_not_valuation_tool": true,
+    "what_changed_is_not_investment_tool": true,
+    "deltas_are_explanatory_indicators_not_guaranteed_accuracy_claims": true,
+    "what_changed_does_not_provide_investment_advice": true,
+    "what_changed_does_not_provide_guaranteed_returns": true,
+    "what_changed_is_exploratory_for_generic_solar_wind": true,
+    "exploratory_banner_required_for_generic_solar_wind": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_template_or_static_changes_by_agent_b": true,
+    "no_app_code_changes_by_agent_b": true,
+    "no_route_or_service_changes_by_agent_b": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_schema_migration_changes": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "pr_586_fact_record": {
+    "pr_number": 586,
+    "title": "Phase 25B-3 — Runtime \"What Changed\" Delta Indicator (UI + minimal metadata-persistence rotation)",
+    "state": "closed",
+    "merged": true,
+    "merge_commit_sha": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
+    "pre_merge_head_sha": "f6fd993412ac889f4bc827ac1f42bb8f391a6e78",
+    "base_sha": "92c5a33f03a3c49ad37f5b8ea9f0900c58d90920",
+    "additions": 2749,
+    "deletions": 28,
+    "changed_files": 14,
+    "scope_classification": "UI + minimal metadata-persistence rotation. NOT UI-only, NOT read-only in the strict sense.",
+    "tests_reported_green_in_pr_body": 84,
+    "b43_does_not_claim": "B43 does not claim Agent B has performed a visual review. B43 does not claim Agent B has approved the persistence implementation. B43 records the governance / evidence requirements only."
+  },
+  "ui_panel_scope": {
+    "feature": "Runtime What Changed delta indicator",
+    "trigger": "After editing and re-running a Generic Solar / Generic Wind scenario, the scenario-version-history panel shows a compact 'What changed since previous run?' comparison.",
+    "kpis_displayed": ["Project IRR", "Equity IRR", "Avg DSCR", "Min DSCR", "Revenue", "OPEX", "EBITDA", "CAPEX", "Distributions", "Senior Debt"],
+    "kpi_count": 10,
+    "read_only": true,
+    "gated_on": "card.is_user_project",
+    "factory_projects_render_panel": false,
+    "exploratory_banner_required_for": ["generic_solar", "generic_wind"],
+    "helper_module": "app/ui/what_changed.py",
+    "helper_module_properties": "pure: no DB, no I/O, no time, no random"
+  },
+  "persistence_rotation": {
+    "function": "update_scenario_last_run_summary",
+    "behavior": "Stamps the previous run summary into replay_metadata.previous_run_summary before overwriting last_run_summary_json",
+    "rotation_table": {
+      "run_1": {"previous_run_summary": "absent", "second_last_run_summary": "absent"},
+      "run_2": {"previous_run_summary": "run 1 summary", "second_last_run_summary": "absent"},
+      "run_3": {"previous_run_summary": "run 2 summary", "second_last_run_summary": "run 1 summary"},
+      "run_4_plus": {"previous_run_summary": "run N-1 summary", "second_last_run_summary": "run N-2 summary"}
+    },
+    "other_replay_metadata_keys_preserved": true,
+    "corrupted_metadata_tolerated": true,
+    "missing_metadata_tolerated": true,
+    "factory_output_byte_identical_to_pre_phase_25b_3": true
+  },
+  "replay_metadata_optional_keys": [
+    {"key": "previous_run_summary", "purpose": "The previous run's summary. Used by the What Changed panel to compute deltas. Rotated on each new run.", "type": "object (run summary)"},
+    {"key": "second_last_run_summary", "purpose": "The run before the previous run's summary. Used by the What Changed panel for multi-run comparison. Rotated on each new run.", "type": "object (run summary)"},
+    {"key": "previous_run_at", "purpose": "An ISO timestamp of the previous run. Used by the What Changed panel to display when the previous run occurred.", "type": "string (ISO timestamp)"}
+  ],
+  "no_schema_migration": {
+    "no_new_columns": true,
+    "no_column_type_changes": true,
+    "no_data_backfill": true,
+    "replay_metadata_column_unchanged": true,
+    "replay_metadata_carries_additional_optional_keys": true,
+    "backwards_compatibility_preserved": true
+  },
+  "corrupted_missing_metadata_tolerance": {
+    "null_replay_metadata_initializes_fresh_dict": true,
+    "corrupted_replay_metadata_initializes_fresh_dict": true,
+    "missing_key_initializes_key": true,
+    "tolerance_is_defensive": true
+  },
+  "factory_output_byte_identical_claim": {
+    "claim": "Factory project run summary output is byte-identical to the pre-Phase-25B-3 path.",
+    "scope": "factory project run summary output only (not user project output)",
+    "is_internal_test_evidence": true,
+    "is_not_external_validation": true,
+    "verified_by_internal_tests": true
+  },
+  "10_kpi_delta_list": [
+    {"kpi": "Project IRR", "unit": "pct"},
+    {"kpi": "Equity IRR", "unit": "pct"},
+    {"kpi": "Avg DSCR", "unit": "x"},
+    {"kpi": "Min DSCR", "unit": "x"},
+    {"kpi": "Revenue", "unit": "kEUR"},
+    {"kpi": "OPEX", "unit": "kEUR"},
+    {"kpi": "EBITDA", "unit": "kEUR"},
+    {"kpi": "CAPEX", "unit": "kEUR"},
+    {"kpi": "Distributions", "unit": "kEUR"},
+    {"kpi": "Senior Debt", "unit": "kEUR"}
+  ],
+  "delta_computation": {
+    "method": "subtraction + percentage",
+    "explanatory_not_guaranteed": true,
+    "no_model_formula_change": true
+  },
+  "exploratory_banner_requirement": {
+    "required_for": ["generic_solar", "generic_wind"],
+    "purpose": "Make it clear that the deltas are not Excel-parity validated.",
+    "without_banner_risk": "Generic deltas could be misread as Excel-parity validated"
+  },
+  "user_project_gating": {
+    "gated_on": "card.is_user_project",
+    "factory_projects_render_panel": false,
+    "factory_rotation_still_happens": true,
+    "factory_rotation_purpose": "maintain byte-identical output"
+  },
+  "factory_project_safety": {
+    "output_byte_identical_to_pre_phase_25b_3": true,
+    "verified_by_internal_tests": true,
+    "is_not_external_validation": true
+  },
+  "no_model_formula_change": {
+    "no_tax_changes": true,
+    "no_debt_changes": true,
+    "no_depreciation_changes": true,
+    "no_idc_changes": true,
+    "no_construction_c10_rpar_promotion": true,
+    "no_senior_idc_changes": true,
+    "no_new_financial_formulas": true,
+    "helper_module_only_subtraction_and_percentage": true,
+    "financial_model_unchanged": true
+  },
+  "what_must_be_visually_reviewed": [
+    "The What Changed panel renders correctly for a Generic Solar scenario with at least 2 runs.",
+    "The What Changed panel renders correctly for a Generic Wind scenario with at least 2 runs.",
+    "The What Changed panel does NOT render for a factory project (TUHO / Oborovo).",
+    "The exploratory banner is visible for Generic Solar / Generic Wind scenarios.",
+    "The 10 KPIs are displayed with the correct units (pct, x, kEUR).",
+    "The delta values are computed correctly (subtraction + percentage).",
+    "The panel is accessible (keyboard navigation, screen reader).",
+    "The panel is responsive (desktop, tablet, mobile)."
+  ],
+  "what_must_be_regression_tested": [
+    "The factory project run summary output is byte-identical to the pre-Phase-25B-3 path.",
+    "The user project run summary output includes the new What Changed data.",
+    "The replay_metadata rotation is correct for runs 1, 2, 3, 4+.",
+    "Corrupted replay_metadata is tolerated.",
+    "Missing replay_metadata is tolerated.",
+    "Other replay_metadata keys are preserved across writes.",
+    "The exploratory banner is rendered for Generic Solar / Generic Wind scenarios.",
+    "The panel is gated on card.is_user_project.",
+    "The parity-core lock is unchanged for TUHO and Oborovo.",
+    "No model output drift for any project."
+  ],
+  "what_should_block_pilot_demo_if_broken": [
+    "The factory project run summary output is NOT byte-identical to the pre-Phase-25B-3 path. Hard blocker.",
+    "The user project run summary output is corrupted (e.g., NaN, infinity, missing fields). Hard blocker.",
+    "The exploratory banner is missing for Generic Solar / Generic Wind scenarios. Hard blocker.",
+    "The panel renders for a factory project (TUHO / Oborovo). Hard blocker.",
+    "The parity-core lock is broken for TUHO or Oborovo. Hard blocker.",
+    "Any model output drift is detected. Hard blocker.",
+    "Any schema migration is performed without explicit governance approval. Hard blocker.",
+    "Any new financial formula is introduced without explicit governance approval. Hard blocker."
+  ],
+  "no_claim_categories": {
+    "what_changed_is_valuation_tool": false,
+    "what_changed_deltas_are_guaranteed_accuracy_claims": false,
+    "what_changed_provides_investment_advice": false,
+    "what_changed_provides_guaranteed_returns": false,
+    "what_changed_is_excel_parity_validated_for_generic": false,
+    "factory_output_is_external_validation": false,
+    "what_changed_authorizes_paid_pilot": false,
+    "agent_b_performed_visual_review": false,
+    "agent_b_approved_persistence_implementation": false
+  },
+  "global_notes": [
+    "Agent B does not approve code correctness. Agent B does not validate persistence implementation. Agent B records governance / evidence requirements only.",
+    "The What Changed panel is a UX explanation feature, not a valuation or investment tool. The deltas are explanatory indicators, not guaranteed accuracy claims.",
+    "The What Changed panel does not provide investment advice. The What Changed panel does not provide guaranteed returns.",
+    "The exploratory banner is required for generic_solar / generic_wind. Without the banner, the generic deltas could be misread as Excel-parity validated.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}
