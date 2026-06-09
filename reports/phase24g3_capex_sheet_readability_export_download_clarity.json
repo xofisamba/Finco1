@@ -1,11 +1,12 @@
 {
   "phase": "24-G-3",
   "title": "CAPEX Sheet Readability + Export / Download Clarity",
-  "status": "DRAFT (UI-only / export-surface clarity)",
+  "status": "DRAFT (UI-only / export-surface clarity) — PR OPEN, NOT MERGED",
   "branch": "phase24g3-capex-sheet-readability-export-download-clarity",
   "base_sha": "d1dbe870ee6c5b29a521fc9b644ebc7d83537dae",
-  "head_sha": "PENDING (commit pending)",
-  "pr_number": "PENDING (DRAFT PR open, not marked ready, not merged)",
+  "head_sha": "a874baf10eebe51991bae645e9cf68d5b9f1b7d6",
+  "pr_number": 569,
+  "pr_url": "https://github.com/xofisamba/Finco1/pull/569",
   "builds_on": [
     "PR #564 (Pilot UX Safe Track scaffolding)",
     "PR #566/#567 (24-G-1)",
@@ -61,5 +62,5 @@
   "capex_legend_unchanged": true,
   "capex_summary_strip_format_unchanged": true,
   "export_formula_unchanged": true,
-  "next_step": "Open DRAFT PR; do not mark ready; do not merge; stop after report.status"
+  "next_step": "Open DRAFT PR (DONE #569); do not mark ready; do not merge; stop after report.status — awaiting review approval."
 }
