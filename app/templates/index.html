@@ -43,7 +43,25 @@
 <!-- Workspace Shell - tab panels loaded here -->
 {% include "partials/workspace_shell.html" %}
 
-{# ── UI-2.6: Last run / run-source indicator (renders nothing if no runtime_summary) ── #}
+{# ── Phase 24-G-2: Empty-state review ──────────────────────────────────────────
+   Three new empty-state partials. Each renders nothing if its gate
+   condition is false (i.e. a project / scenario / run already exists).
+   These are top-of-page notices that complement the in-tab macros
+   in empty_states_notice.html (which are still used by tab panels).
+
+   - _empty_no_project.html  — no project selected
+   - _empty_no_scenario.html — no scenario for the project
+   - _empty_no_run.html      — no run performed yet
+#}
+{% include "partials/_empty_no_project.html" %}
+{% include "partials/_empty_no_scenario.html" %}
+{% include "partials/_empty_no_run.html" %}
+
+{# ── UI-2.6 + Phase 24-G-2: Last run / run-source indicator (renders nothing if no runtime_summary) ──
+   Run status clarity: OK / ERROR / BLOCKED / NO RUN badge.
+   Project + scenario association.
+   Stale / fresh state inline (same gate as stale_run() above).
+#}
 {% include "partials/_last_run_indicator.html" %}
 
 {% endblock %}

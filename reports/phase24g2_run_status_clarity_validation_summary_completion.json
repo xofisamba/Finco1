@@ -1,0 +1,113 @@
+{
+  "phase": "24-G-2",
+  "title": "Run Status Clarity + Validation Summary Completion",
+  "date": "2026-06-09",
+  "type": "ui-only-implementation",
+  "base_sha": "07cb4d0",
+  "stacked_on": "07cb4d0 (24-G-1)",
+  "status": "DRAFT",
+  "source_inventory": "PR #564 (pilot-ux-safe-track-inventory)",
+  "sprint_position": "24-G-2 (G-track, parallel to C10/R-PAR-2 chain)",
+  "items_implemented": [
+    {
+      "id": 1,
+      "name": "run_status_clarity",
+      "composite_score": 9,
+      "user_value": 5,
+      "parity_risk": 0,
+      "changes": [
+        "Last-run indicator extended with status badge (OK / ERROR / BLOCKED / NO RUN)",
+        "Project association shown when project_record has a code",
+        "Scenario association shown when base_case_record has a name",
+        "Inline stale/fresh state row (same gate as stale_run macro)",
+        "Run error message surfaced in a dedicated row",
+        "data-stale-state and data-run-status attributes for downstream CSS",
+        "All data sourced from existing context, no fake IDs or timestamps"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "validation_summary_completion",
+      "composite_score": 9,
+      "user_value": 5,
+      "parity_risk": 0,
+      "changes": [
+        "Strict severity order: Error -> Warning -> Information, always rendered",
+        "Empty groups show a 'no items' hint row (e.g. 'No errors. Inputs are clear for run.')",
+        "Hint subtitle per group ('Must be fixed', 'Review before run', 'FYI only')",
+        "data-severity and data-count attributes on each group",
+        "aria-label and role attributes on header / passed message"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "empty_state_review",
+      "composite_score": 7,
+      "user_value": 4,
+      "parity_risk": 0,
+      "changes": [
+        "New _empty_no_project.html partial (renders when no project selected)",
+        "New _empty_no_scenario.html partial (renders when no scenario for project)",
+        "New _empty_no_run.html partial (renders when no run performed yet)",
+        "Wired into index.html in order: project -> scenario -> run"
+      ]
+    }
+  ],
+  "files_changed": [
+    "app/templates/partials/_last_run_indicator.html",
+    "app/templates/partials/validation.html",
+    "app/templates/partials/_empty_no_project.html",
+    "app/templates/partials/_empty_no_scenario.html",
+    "app/templates/partials/_empty_no_run.html",
+    "app/templates/index.html",
+    "static/styles.css",
+    "tests/test_phase24g1_validation_summary_clarity.py",
+    "tests/test_phase24g2_run_status_clarity.py",
+    "tests/test_phase24g2_validation_summary_completion.py",
+    "docs/phase24g2_run_status_clarity_validation_summary_completion.md",
+    "reports/phase24g2_run_status_clarity_validation_summary_completion.json"
+  ],
+  "production_code_change": false,
+  "files_untouched": [
+    "main_web.py",
+    "app/services/",
+    "app/persistence/",
+    "app/api/",
+    "domain/",
+    "tax_bridge/",
+    "waterfall_core.py",
+    "static/app.js",
+    "app/templates/partials/empty_states_notice.html",
+    "app/templates/partials/runtime_summary.html"
+  ],
+  "use_construction_schedule_engine": false,
+  "no_promotion": true,
+  "no_runtime_change": true,
+  "no_model_change": true,
+  "no_formula_change": true,
+  "no_persistence_change": true,
+  "no_new_javascript": true,
+  "no_tailwind_alpine": true,
+  "no_fake_runtime_ids": true,
+  "no_fake_timestamps": true,
+  "no_invented_scenario_ids": true,
+  "tuho_parity_unchanged": true,
+  "oborovo_parity_unchanged": true,
+  "rc1_untouched": true,
+  "test_counts": {
+    "phase24g2_run_status_clarity": 47,
+    "phase24g2_validation_summary_completion": 28,
+    "phase24g1_stale_run_warning": 19,
+    "phase24g1_validation_summary_clarity_relaxed": 28,
+    "ui2_5_stale_result_warning": 48,
+    "ui2_3_validation_summary_bar": 38,
+    "ui2_1_state_banner_partial": 39,
+    "ui2_4_factory_lock_indicator": 29,
+    "phase55g_banner_context": 36,
+    "phase55f_validation_summary_context": 33,
+    "phase57c_validation_bar_semantics_fix": 53,
+    "total": 400
+  },
+  "hard_rules_respected": true,
+  "branch": "phase24g2-run-status-clarity-validation-summary-completion"
+}
