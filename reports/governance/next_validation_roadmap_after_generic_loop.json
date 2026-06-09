@@ -1,0 +1,93 @@
+{
+  "package": {
+    "name": "Finco1 Next Validation Roadmap after Generic Loop",
+    "workstream": "B53",
+    "branch": "parallel-b48-b53-pilot-review-consolidation-pack",
+    "branch_base_sha_at_creation": "c76959c77732eb71eef0f65b74b72a256899df1b",
+    "package_base_sha_at_creation": "c76959c77732eb71eef0f65b74b72a256899df1b",
+    "roadmap_version": "0.1.0",
+    "roadmap_status": "initial_draft_post_ui_generic_loop",
+    "intended_use": "internal_next_validation_roadmap_only",
+    "external_claim_scope": "none"
+  },
+  "narrative_pointer": "docs/governance/next_validation_roadmap_after_generic_loop.md",
+  "b48_scope_snapshot_pointer": "docs/governance/current_product_scope_snapshot_after_ui_generic_loop.md",
+  "b49_internal_pilot_readiness_pointer": "docs/pilot/internal_pilot_readiness_matrix.md",
+  "b50_external_reviewer_evidence_pointer": "docs/review/external_reviewer_evidence_index_refresh.md",
+  "b51_no_go_claims_pointer": "docs/governance/known_limitations_no_go_claims_consolidation.md",
+  "b52_data_room_pointer": "docs/pilot/controlled_pilot_data_room_index.md",
+  "b41_post_phase25b_pointer": "docs/governance/post_phase25b_generic_modelling_governance_refresh.md",
+  "b47_readiness_delta_cadence_pointer": "docs/governance/post25b_readiness_delta_refresh_cadence.md",
+  "b33_stop_go_pointer": "docs/governance/phase53_stop_go_checklist.md",
+  "disclaimers": {
+    "roadmap_is_not_approval": true,
+    "paid_pilot_requires_separate_gate_review": true,
+    "external_review_requires_external_reviewer_feedback": true,
+    "generic_output_parity_must_be_proven_against_reference_models": true,
+    "agent_b_does_not_implement_code": true,
+    "no_persistence_or_repository_code_changes_by_agent_b": true,
+    "no_template_or_static_changes_by_agent_b": true,
+    "no_app_code_changes_by_agent_b": true,
+    "no_route_or_service_changes_by_agent_b": true,
+    "no_financial_formula_changes": true,
+    "no_model_output_changes": true,
+    "no_fixture_csv_changes": true,
+    "no_schema_migration_changes": true,
+    "no_external_validation_claim": true,
+    "no_paid_pilot_authorization": true,
+    "no_customer_reference": true,
+    "no_marketing_launch_approval": true,
+    "no_production_ready_claim": true,
+    "no_enterprise_saas_ready_claim": true,
+    "no_lender_bank_audit_certification_regulatory_saas_claim": true,
+    "no_investment_advice": true,
+    "no_guaranteed_returns": true,
+    "claude_review_separate": true,
+    "post_51t_review_separate": true
+  },
+  "roadmap_tracks": [
+    "Generic Solar reference model validation",
+    "Generic Wind reference model validation",
+    "CAPEX 2.0 / editable workspace validation",
+    "Scenario compare validation",
+    "Export / download validation",
+    "What Changed validation",
+    "Persistence metadata validation",
+    "UI / UX visual validation",
+    "External reviewer preparation",
+    "Controlled pilot evidence collection",
+    "Paid pilot gate review"
+  ],
+  "roadmap_rows": [
+    {"roadmap_id": "RM-01", "objective": "Validate Generic Solar output against a real reference solar model.", "current_status": "not_started", "blocker": "No reference solar model is available.", "required_evidence": "reference solar model; reference solar output (IRR, EBITDA, DSCR, etc.); comparison report (Generic Solar vs reference solar)", "recommended_next_PR_or_phase": "Phase 26-A (Reference Solar Model Onboarding) — TBD", "owner": "User (reference-model validation) + Agent A (implementation) + Agent B (governance)", "priority": "high", "dependency": "reference solar model must be available", "success_criteria": "Generic Solar output is Excel-parity validated against the reference solar model", "hard_stop_condition": "Reference solar model unavailable; comparison report indicates non-trivial delta"},
+    {"roadmap_id": "RM-02", "objective": "Validate Generic Wind output against a real reference wind model.", "current_status": "not_started", "blocker": "No reference wind model is available.", "required_evidence": "reference wind model; reference wind output (IRR, EBITDA, DSCR, etc.); comparison report (Generic Wind vs reference wind)", "recommended_next_PR_or_phase": "Phase 26-B (Reference Wind Model Onboarding) — TBD", "owner": "User (reference-model validation) + Agent A (implementation) + Agent B (governance)", "priority": "high", "dependency": "reference wind model must be available", "success_criteria": "Generic Wind output is Excel-parity validated against the reference wind model", "hard_stop_condition": "Reference wind model unavailable; comparison report indicates non-trivial delta"},
+    {"roadmap_id": "RM-03", "objective": "Validate the CAPEX 2.0 editable workspace (the editable CAPEX sub-lines) against the existing CAPEX model.", "current_status": "partially_done", "blocker": "None", "required_evidence": "Per-PR validation evidence (Phase 57A-9B, 57A-9C, 57A-9D, 57A-9E, 57A-10, and later phases)", "recommended_next_PR_or_phase": "Phase 57A-9C (Save/Load wiring), 57A-9D (Run integration), 57A-9E (Excel export)", "owner": "Agent A (implementation) + Agent B (governance)", "priority": "medium", "dependency": "None", "success_criteria": "CAPEX sub-lines are saved, loaded, run, and exported correctly", "hard_stop_condition": "CAPEX sub-line delta detected for TUHO or Oborovo"},
+    {"roadmap_id": "RM-04", "objective": "Validate the scenario compare (2-way, 3-way, 4-way) internal functionality.", "current_status": "partially_done", "blocker": "None", "required_evidence": "Per-PR validation evidence (Phase 24-H-3, 25B-2, 25B-2.1)", "recommended_next_PR_or_phase": "User visual review of the compare panel; controlled pilot run per B45", "owner": "Agent A (implementation) + Agent B (governance) + User (visual review)", "priority": "medium", "dependency": "None", "success_criteria": "Compare panel renders correctly; 3-way / 4-way compare renders correctly; multi-compare picker integrates with the compare panel", "hard_stop_condition": "Compare panel broken; multi-compare picker broken"},
+    {"roadmap_id": "RM-05", "objective": "Validate the export / download pack (Generic scenarios).", "current_status": "partially_done", "blocker": "None", "required_evidence": "Per-PR validation evidence (Phase 24-H-4); export artifact evidence (collected during the controlled pilot, per B45 task T9)", "recommended_next_PR_or_phase": "User visual review of the export / download artifacts; controlled pilot run per B45", "owner": "Agent A (implementation) + Agent B (governance) + User (visual review)", "priority": "medium", "dependency": "None", "success_criteria": "Export artifacts are generated correctly; the exploratory banner is visible for Generic Solar / Wind exports", "hard_stop_condition": "Export artifacts broken; exploratory banner missing for Generic Solar / Wind exports"},
+    {"roadmap_id": "RM-06", "objective": "Validate the What Changed Delta Indicator (Phase 25B-3 / PR #586).", "current_status": "partially_done", "blocker": "None", "required_evidence": "Per-PR validation evidence (Phase 25B-3 / PR #586, 84 new tests reported green in the PR body)", "recommended_next_PR_or_phase": "User visual review of the What Changed panel; controlled pilot run per B45", "owner": "Agent A (implementation) + Agent B (governance) + User (visual review)", "priority": "medium", "dependency": "None", "success_criteria": "What Changed panel renders correctly; the exploratory banner is visible for Generic Solar / Wind; the panel is gated on card.is_user_project; factory projects do not render the panel", "hard_stop_condition": "What Changed panel broken; exploratory banner missing for Generic Solar / Wind; panel rendering for factory projects"},
+    {"roadmap_id": "RM-07", "objective": "Validate the persistence metadata rotation (Phase 25B-3 / PR #586).", "current_status": "partially_done", "blocker": "None", "required_evidence": "Per-PR validation evidence (Phase 25B-3 / PR #586); persistence and records guardrails CI green", "recommended_next_PR_or_phase": "Long-term persistence reliability evidence (multi-month save-load cycles)", "owner": "Agent A (implementation) + Agent B (governance)", "priority": "medium", "dependency": "None", "success_criteria": "Persistence rotation is correct for runs 1, 2, 3, 4+; corrupted / missing replay_metadata is tolerated; other replay_metadata keys are preserved across writes; factory project run summary output is byte-identical to pre-Phase-25B-3 path", "hard_stop_condition": "Factory project run summary output is NOT byte-identical; persistence rotation drift detected"},
+    {"roadmap_id": "RM-08", "objective": "Validate the UI / UX (post-Phase 54-56 + post-Phase 25B-3) via user visual review and controlled pilot runs.", "current_status": "partially_done", "blocker": "None", "required_evidence": "User visual review of the UI; controlled pilot runs per B18, B39, B45", "recommended_next_PR_or_phase": "Controlled pilot runs per B45 task list (T1-T12)", "owner": "Agent A (implementation) + Agent B (governance) + User (visual review)", "priority": "medium", "dependency": "None", "success_criteria": "UI is clear and understandable; UX is consistent; no-regression", "hard_stop_condition": "High-severity UX issue that blocks one or more tasks"},
+    {"roadmap_id": "RM-09", "objective": "Prepare the external reviewer evidence index and onboard an external reviewer.", "current_status": "not_started", "blocker": "No external reviewer is onboarded.", "required_evidence": "B50 external reviewer evidence index; B23 reviewer question bank; external reviewer feedback", "recommended_next_PR_or_phase": "Identify and onboard an external reviewer; collect external reviewer feedback", "owner": "User (external review) + Agent B (governance)", "priority": "high", "dependency": "External reviewer must be available", "success_criteria": "External reviewer feedback is collected; external reviewer sign-off is received", "hard_stop_condition": "External reviewer unavailable; external reviewer feedback not collected"},
+    {"roadmap_id": "RM-10", "objective": "Collect controlled pilot evidence (per B45, B18, B39).", "current_status": "not_started", "blocker": "No controlled pilot has been performed.", "required_evidence": "B18 / B39 / B45 controlled pilot runbooks; B52 controlled pilot data room index; controlled pilot run results", "recommended_next_PR_or_phase": "First controlled pilot run per B45", "owner": "User (controlled pilot) + Agent B (governance)", "priority": "medium", "dependency": "Controlled pilot must be authorized by the user", "success_criteria": "Controlled pilot run is complete; controlled pilot evidence is collected", "hard_stop_condition": "High-severity UX issue; critical data integrity issue; financial output drift on TUHO or Oborovo"},
+    {"roadmap_id": "RM-11", "objective": "Review the paid pilot gate per the B25 / B33 / B35 stop / go checklists.", "current_status": "not_started", "blocker": "Paid pilot gate review is gated on the completion of RM-01 / RM-02 / RM-09 / RM-10.", "required_evidence": "Reference-model validation (RM-01, RM-02); external reviewer feedback (RM-09); controlled pilot evidence (RM-10); B25 / B33 / B35 stop / go checklists", "recommended_next_PR_or_phase": "Per the B25 / B33 / B35 stop / go checklists", "owner": "User (paid pilot gate review) + Agent B (governance)", "priority": "high", "dependency": "RM-01, RM-02, RM-09, RM-10 must be complete", "success_criteria": "Paid pilot gate review passes; paid pilot is authorized by the user", "hard_stop_condition": "Any hard-stop condition in the B25 / B33 / B35 stop / go checklists; reference-model validation fails; external reviewer feedback negative; controlled pilot evidence missing"}
+  ],
+  "roadmap_summary": {
+    "not_started": ["RM-01", "RM-02", "RM-09", "RM-10", "RM-11"],
+    "partially_done": ["RM-03", "RM-04", "RM-05", "RM-06", "RM-07", "RM-08"],
+    "high_priority": ["RM-01", "RM-02", "RM-09", "RM-11"],
+    "medium_priority": ["RM-03", "RM-04", "RM-05", "RM-06", "RM-07", "RM-08", "RM-10"]
+  },
+  "no_claim_categories": {
+    "roadmap_is_external_validation": false,
+    "roadmap_is_paid_pilot_authorization": false,
+    "roadmap_approves_customer_reference": false,
+    "roadmap_approves_production_readiness": false,
+    "roadmap_approves_enterprise_saas_readiness": false,
+    "roadmap_validates_financial_model": false,
+    "roadmap_equals_bankability": false
+  },
+  "global_notes": [
+    "Validation roadmap is not approval. Paid pilot requires separate gate review. External review requires external reviewer feedback. Generic output parity must be proven against reference models before any parity claim.",
+    "Claude review / post-51T review are separate workstreams. They are referenced only as review evidence, not external validation or certification."
+  ]
+}
