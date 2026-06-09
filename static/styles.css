@@ -5850,3 +5850,47 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   flex-shrink: 0;
   margin-top: 0.05rem;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Phase 25B-1: Generic Defaults Prefill Button
+   On /projects/new, the prefill button is hidden for factory
+   templates (tuho / oborovo) and shown for generic_solar /
+   generic_wind. The visibility is driven by JS
+   (data-state="visible"|"hidden"). The button uses the
+   existing .btn-secondary style and the hint is small / muted
+   to keep the form compact.
+   ───────────────────────────────────────────────────────────────────── */
+
+.np-prefill-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0 0.5rem 0;
+  margin: 0.25rem 0 0.75rem 0;
+  border-top: 1px dashed var(--border, #e5e7eb);
+  border-bottom: 1px dashed var(--border, #e5e7eb);
+}
+
+.np-prefill-row[data-state="hidden"] {
+  display: none;
+}
+
+.np-prefill-row[data-state="visible"] {
+  display: flex;
+}
+
+.np-prefill-hint {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted, #6b7280);
+  flex: 1 1 320px;
+  min-width: 240px;
+}
+
+.np-prefill-hint code {
+  font-size: 0.76rem;
+  padding: 0.05rem 0.3rem;
+  background: var(--surface-2, #f3f4f6);
+  border-radius: var(--radius-sm, 4px);
+}

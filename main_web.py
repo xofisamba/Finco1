@@ -506,6 +506,82 @@ def _submitted_new_project_defaults() -> dict[str, str]:
     }
 
 
+# Phase 25B-1: Generic defaults prefill helper (UI-driven, read-only).
+# The form has a "Use generic defaults" button that calls
+# GET /projects/new/defaults?template_source=generic_solar|generic_wind.
+# This helper produces a dict of all 16 form fields, derived from
+# the EXISTING generic factory functions
+# (create_default_solar_project / create_default_wind_project) -- no
+# new financial formulas are introduced. The prefill is for round-
+# number exploratory sketching only; the user is expected to review
+# every field before saving.
+#
+# Hard contract:
+# - Only the two generic template sources are accepted.
+#   Any other template_source (tuho, oborovo, etc.) is rejected.
+# - The factory functions are read-only; we map their existing
+#   ProjectInputs to form fields, never mutate them.
+# - Returns a JSON-serializable dict[str, str] of form field values.
+# - The prefill is EXPLICITLY marked as exploratory; the form
+#   shows an EXPLORATORY badge when the user clicks the button.
+_GENERIC_PREFILL_ALLOWED_SOURCES = {"generic_solar", "generic_wind"}
+
+
+def _generic_prefill_values(template_source: str) -> dict[str, str] | None:
+    """Return prefill values for the new project form, or None if
+    the template_source is not generic.
+
+    The values come from the existing generic factory functions
+    in app/project_factories.py -- no new financial formulas
+    are introduced. The factory functions are read-only: we
+    only read attributes and stringify them.
+    """
+    if template_source not in _GENERIC_PREFILL_ALLOWED_SOURCES:
+        return None
+    # Lazy import to avoid pulling the project_factories module
+    # into /projects/new if not needed.
+    from app.project_factories import (
+        create_default_solar_project,
+        create_default_wind_project,
+    )
+    if template_source == "generic_solar":
+        pi = create_default_solar_project()
+        project_type = "Solar"
+        default_name = "Generic Solar Project"
+    else:
+        pi = create_default_wind_project()
+        project_type = "Wind"
+        default_name = "Generic Wind Project"
+    # OPEX Y1 is the sum of all opex items, mirroring the
+    # existing _project_baseline_snapshot mapping.
+    opex_y1 = sum(float(getattr(item, "y1_amount_keur", 0.0) or 0.0)
+                  for item in pi.opex)
+    # Interest rate: base + margin (bps -> decimal).
+    margin_dec = float(getattr(pi.financing, "margin_bps", 0) or 0) / 10_000.0
+    interest = float(getattr(pi.financing, "base_rate", 0.0) or 0.0) + margin_dec
+    # Gearing: ratio -> percentage string with one decimal.
+    gearing_pct = float(getattr(pi.financing, "gearing_ratio", 0.0) or 0.0) * 100.0
+    return {
+        "project_name": default_name,
+        "project_type": project_type,
+        "template_source": template_source,
+        "country_market": str(pi.info.country_iso or "Croatia"),
+        "capacity_mw": f"{float(pi.technical.capacity_mw):.1f}",
+        "cod_date": str(pi.info.cod_date),
+        "construction_months": str(int(pi.info.construction_months)),
+        "horizon_years": str(int(pi.info.horizon_years)),
+        "tariff_eur_mwh": f"{float(pi.revenue.ppa_base_tariff):.1f}",
+        "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+        "p50_hours": f"{float(pi.technical.operating_hours_p50):.0f}",
+        "opex_y1_keur": f"{opex_y1:.1f}",
+        "total_capex_keur": f"{float(pi.capex.total_capex):.0f}",
+        "gearing_pct": f"{gearing_pct:.1f}",
+        "interest_rate_pct": f"{interest * 100:.2f}",
+        "tenor_years": str(int(pi.financing.senior_tenor_years)),
+        "target_dscr": f"{float(pi.financing.target_dscr):.2f}",
+    }
+
+
 def _parse_iso_date(value: str | None) -> dt | None:
     """Parse an ISO-8601 date (YYYY-MM-DD) string into a ``datetime``,
     or return ``None`` if the value is empty / malformed. Phase 56D."""
@@ -2243,6 +2319,77 @@ async def new_project_form(request: Request):
             "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
             "validation_errors": [],
             "submitted": _submitted_new_project_defaults(),
+        },
+    )
+
+
+# Phase 25B-1: Generic defaults prefill endpoint.
+# Returns JSON with the 16 form-field values derived from the
+# existing generic factory functions. Read-only. Accepts only
+# generic_solar / generic_wind; any other template_source
+# returns 400 to prevent factory leakage.
+@app.get("/projects/new/defaults")
+async def new_project_defaults(
+    request: Request,
+    template_source: str = "generic_solar",
+):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"detail": "auth required"}, status_code=401)
+    if template_source not in _GENERIC_PREFILL_ALLOWED_SOURCES:
+        return JSONResponse(
+            {
+                "detail": (
+                    "prefill only available for generic_solar / generic_wind; "
+                    f"got {template_source!r}"
+                ),
+                "allowed": sorted(_GENERIC_PREFILL_ALLOWED_SOURCES),
+            },
+            status_code=400,
+        )
+    values = _generic_prefill_values(template_source)
+    if values is None:
+        # Defensive: should be unreachable because of the
+        # _GENERIC_PREFILL_ALLOWED_SOURCES check above.
+        return JSONResponse({"detail": "prefill unavailable"}, status_code=400)
+    return JSONResponse({
+        "template_source": template_source,
+        "values": values,
+        "warning": (
+            "EXPLORATORY / not Excel-parity validated. "
+            "Not lender / bank / external-audit ready. "
+            "Defaults are round numbers for sketching only."
+        ),
+    })
+
+
+# Phase 25B-1: Server-side prefill (non-JS fallback).
+# If the user opens /projects/new?template_source=generic_solar
+# directly (or clicks a link from the docs), the form is
+# rendered with all 16 fields prefilled. The form template
+# still has the EXPLORATORY notice and the prefill button
+# for further refresh.
+@app.get("/projects/new/prefill")
+async def new_project_form_prefilled(
+    request: Request,
+    template_source: str = "generic_solar",
+):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    submitted = _submitted_new_project_defaults()
+    if template_source in _GENERIC_PREFILL_ALLOWED_SOURCES:
+        prefill = _generic_prefill_values(template_source)
+        if prefill:
+            submitted.update(prefill)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/new_project_form.html",
+        context={
+            "project_types": PROJECT_TYPES,
+            "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
+            "validation_errors": [],
+            "submitted": submitted,
         },
     )
 
