@@ -24,6 +24,7 @@ class RevenueInput(BaseModel):
     tariff_eur_mwh: Optional[float] = Field(None, gt=0, description="Feed-in tariff EUR/MWh")
     p50_hours: Optional[float] = Field(None, gt=0, description="P50 annual generation hours")
     degradation_pct: Optional[float] = Field(None, ge=0, le=5, description="Annual degradation %")
+    ppa_term_years: Optional[int] = Field(None, gt=0, le=30, description="PPA term in years")
 
 
 class CapexInput(BaseModel):
@@ -51,11 +52,28 @@ class ProjectInputsSchema(BaseModel):
 
     All fields are optional — unspecified fields inherit factory defaults.
     The adapter layer (input_adapter.py) merges this schema with factory defaults.
+
+    Phase S1: the schema accepts the SAME set of optional
+    input fields as the user-project snapshot dict. This
+    means the form path and the snapshot path can produce
+    identical ProjectInputs for identical user inputs
+    (the S1 unified-resolver contract). Old form-path
+    callers that pass only the nested objects continue
+    to work (backward compatible).
     """
     project_type: str = "Solar"
     project_name: Optional[str] = None
-    capacity_mw: Optional[float] = Field(None, gt=0, description="Capacity in MW")
     scenario: str = "Base"
+    # ── Info / identity (Phase S1) ─────────────────────────
+    country_iso: Optional[str] = Field(None, description="Country ISO code")
+    cod_date: Optional[str] = Field(None, description="ISO date string YYYY-MM-DD")
+    construction_months: Optional[int] = Field(None, gt=0, description="Construction period in months")
+    horizon_years: Optional[int] = Field(None, gt=0, description="Project horizon in years")
+    # ── Technical (Phase S1) ──────────────────────────────
+    capacity_mw: Optional[float] = Field(None, gt=0, description="Capacity in MW")
+    operating_hours_p90_10y: Optional[float] = Field(None, gt=0, description="P90 10y operating hours")
+    operating_hours_p99_1y: Optional[float] = Field(None, gt=0, description="P99 1y operating hours")
+    # ── Nested legacy groups (backward compat) ───────────
     revenue: Optional[RevenueInput] = None
     capex: Optional[CapexInput] = None
     opex: Optional[OpexInput] = None
