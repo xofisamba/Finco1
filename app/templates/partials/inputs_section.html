@@ -2,7 +2,7 @@
 <!-- Used by sheet_inputs.html (main inputs tab) -->
 
 {# ── Helper: field row ─────────────────────────────────────────────────── #}
-{%- macro field_row(label, value, badge=None, badge_class="badge-muted", editable=False, field_name="") -%}
+{%- macro field_row(label, value, badge=None, badge_class="badge-muted", editable=False, field_name="", badge_title=None) -%}
 <div class="inp-row">
   <span class="inp-label">{{ label }}</span>
   <span class="inp-cell">
@@ -19,7 +19,12 @@
   </span>
   <span class="inp-badge">
     {% if badge %}
-    <span class="badge {{ badge_class }}">{{ badge }}</span>
+    <span class="badge {{ badge_class }}"
+          {% if badge_title %}title="{{ badge_title }}"{% endif %}
+          data-driver-status="{{ badge }}"
+          data-field-name="{{ field_name }}">
+      {{ badge }}
+    </span>
     {% endif %}
   </span>
 </div>
@@ -56,7 +61,7 @@
 {% set schedule_rows %}
   {{ field_row("Financial Close", project_ctx.financial_close or "—", badge="Saved", badge_class="badge-pass") }}
   {{ field_row("COD Date", project_ctx.cod_date or "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="cod_date") }}
-  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="construction_months") }}
+  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Metadata only", badge_class="badge-metadata", editable=is_user_project, field_name="construction_months", badge_title="This field is saved/displayed for context but is not currently used by the Generic runtime calculation.") }}
   {{ field_row("Project Horizon", "{} years".format(project_ctx.horizon_years) if project_ctx.horizon_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="horizon_years") }}
   {{ field_row("Period Frequency", project_ctx.period_frequency or "Quarterly", badge="Model default", badge_class="badge-muted") }}
 {% endset %}
@@ -80,7 +85,7 @@
    ══════════════════════════════════════════════════════════════════════ #}
 {% set revenue_rows %}
   {{ field_row("Base Tariff", "{:.2f} EUR/MWh".format(project_ctx.ppa_tariff_eur_mwh) if project_ctx.ppa_tariff_eur_mwh else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="tariff_eur_mwh") }}
-  {{ field_row("PPA Term", "{} years".format(project_ctx.ppa_term_years) if project_ctx.ppa_term_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="ppa_term_years") }}
+  {{ field_row("PPA Term", "{} years".format(project_ctx.ppa_term_years) if project_ctx.ppa_term_years else "—", badge="Metadata only", badge_class="badge-metadata", editable=is_user_project, field_name="ppa_term_years", badge_title="This field is saved/displayed for context but is not currently used by the Generic runtime calculation.") }}
   {{ field_row("PPA Index", "{:.1f}% annually".format(project_ctx.ppa_index_pct * 100) if project_ctx.ppa_index_pct else "—", badge="Template", badge_class="badge-muted") }}
   {{ field_row("CO2 Revenue", "Enabled — {:.3f} EUR/MWh".format(project_ctx.co2_price_eur_mwh) if project_ctx.co2_enabled else "Disabled", badge="Saved" if project_ctx.co2_enabled else "Template", badge_class="badge-info" if project_ctx.co2_enabled else "badge-muted") }}
 {% endset %}
@@ -110,10 +115,10 @@
    FINANCING SUMMARY
    ══════════════════════════════════════════════════════════════════════ #}
 {% set financing_rows %}
-  {{ field_row("Gearing", "{:.1f}%".format(project_ctx.gearing_pct * 100) if project_ctx.gearing_pct else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="gearing_pct") }}
-  {{ field_row("Target DSCR", "{:.2f}x".format(project_ctx.target_dscr) if project_ctx.target_dscr else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="target_dscr") }}
-  {{ field_row("Interest Rate", "{:.2f}%".format(project_ctx.interest_rate_pct * 100) if project_ctx.interest_rate_pct else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="interest_rate_pct") }}
-  {{ field_row("Senior Tenor", "{} years".format(project_ctx.senior_tenor_years) if project_ctx.senior_tenor_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="tenor_years") }}
+  {{ field_row("Gearing", "{:.1f}%".format(project_ctx.gearing_pct * 100) if project_ctx.gearing_pct else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="gearing_pct", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
+  {{ field_row("Target DSCR", "{:.2f}x".format(project_ctx.target_dscr) if project_ctx.target_dscr else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="target_dscr", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
+  {{ field_row("Interest Rate", "{:.2f}%".format(project_ctx.interest_rate_pct * 100) if project_ctx.interest_rate_pct else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="interest_rate_pct", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
+  {{ field_row("Senior Tenor", "{} years".format(project_ctx.senior_tenor_years) if project_ctx.senior_tenor_years else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="tenor_years", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
   {{ field_row("SHL Amount", "{:,.0f} kEUR".format(project_ctx.shl_amount_keur) if project_ctx.shl_amount_keur else "—", badge="Calculated", badge_class="badge-info") }}
 {% endset %}
 {{ section_card("Financing Summary", financing_rows) }}
@@ -158,6 +163,29 @@
     against an Excel reference. Outputs are <em>not</em>
     lender-ready, audit-ready, or bank-approved. Use only for
     exploratory analysis.
+  </span>
+</div>
+<div class="inp-driver-status-note"
+     role="note"
+     aria-label="Driver status legend"
+     data-driver-status-legend="true"
+     data-exploration-source="inputs-section">
+  <span class="badge badge-metadata">METADATA ONLY</span>
+  <span>
+    <strong>ppa_term_years</strong> and
+    <strong>construction_months</strong> are saved for context but
+    are not currently used by the Generic runtime calculation
+    (see the <span class="badge badge-metadata">Metadata only</span>
+    badges next to those fields).
+  </span>
+  <span class="badge badge-dscr-sculpt">DSCR SCULPT DRIVER</span>
+  <span>
+    <strong>gearing_pct</strong>, <strong>interest_rate_pct</strong>,
+    <strong>tenor_years</strong>, and <strong>target_dscr</strong> affect
+    debt / equity / DSCR outputs under the current DSCR sculpting
+    method, but <strong>project IRR may not change</strong>
+    (see the <span class="badge badge-dscr-sculpt">DSCR sculpt
+    driver</span> badges next to those fields).
   </span>
 </div>
 {% endif %}

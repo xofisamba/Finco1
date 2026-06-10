@@ -2582,6 +2582,38 @@ body {
   font-size: 0.75rem;
 }
 
+/* ── Phase P1-B: Driver status badges ───────────────────────────────── */
+/* Metadata-only: shown for fields that are saved/displayed
+   but not currently used by the Generic runtime. */
+.badge-metadata {
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #d1d5db;
+  padding: 0.18rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* DSCR sculpt driver: shown for fields that affect
+   debt / equity / DSCR outputs under the current
+   DSCR sculpting method, where project IRR may
+   not change. */
+.badge-dscr-sculpt {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  padding: 0.18rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    PHASE 20D — Inputs Tab Primary Surface
    Excel-like structured rows: label | value | badge
@@ -5798,6 +5830,33 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   font-size: 0.82rem;
   line-height: 1.45;
   color: var(--text, #111827);
+}
+/* ── Phase P1-B: Driver status legend ────────────────────────────────── */
+/* Shows after the exploratory warning, lists the
+   METADATA_ONLY and DSCR SCULPT DRIVER badges so the
+   user understands which fields do and don't move
+   project IRR. */
+.inp-driver-status-note {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+.inp-driver-status-note strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.inp-driver-status-note .badge {
+  align-self: flex-start;
+  margin-right: 0.25rem;
 }
 
 .inp-exploratory-notice .badge {
