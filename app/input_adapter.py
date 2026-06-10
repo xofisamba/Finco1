@@ -261,22 +261,31 @@ def _country_iso(value: str) -> str:
 def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     """Build runtime inputs for a user-created project from saved assumptions.
 
-    This path is intentionally separate from ``build_projectinputs``: it does
-    not start from TUHO, Oborovo, or generic factory defaults. Secondary values
-    that Phase 17B does not yet collect are explicit system defaults documented
-    in the Phase 17C remaining-gaps report.
+    Phase S1: this path now uses the same Generic factory default
+    (DSCR_SCULPT) as the form path, so the user-created snapshot
+    path and the user-created form path produce the same senior
+    debt amount and KPIs for identical inputs.
+
+    Gearing is preserved as a derived / reporting metric
+    (``gearing_ratio``); the runtime sizes senior debt to hit
+    ``target_dscr`` via DSCR sculpting. This matches the
+    Excel-confirmed behavior of TUHO and Oborovo (both pure
+    sculpting) and the Generic form path.
+
+    Secondary values that Phase 17B does not yet collect are taken
+    from the Generic Solar / Wind factory defaults and remain
+    documented in the Phase 17C remaining-gaps report.
     """
+    from app.project_factories import (
+        create_default_solar_project,
+        create_default_wind_project,
+    )
     from domain.inputs import (
-        AssetClass,
         CapexItem,
-        CapexStructure,
-        FinancingParams,
         OpexItem,
         PeriodFrequency,
         ProjectInfo,
         ProjectInputs,
-        RevenueParams,
-        TaxParams,
         TechnicalParams,
     )
 
@@ -311,6 +320,21 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     tenor_years = _snapshot_int(snapshot, "tenor_years", positive=True)
     target_dscr = _snapshot_float(snapshot, "target_dscr", positive=True)
 
+    # ── Start from the Generic factory default ──────────────────────
+    # Phase S1: same factory as the form path. This is the
+    # pivot that aligns debt-sizing semantics across both
+    # user-created runtime paths.
+    factory_map = {
+        "Solar": create_default_solar_project,
+        "Wind": create_default_wind_project,
+    }
+    proj: "ProjectInputs" = factory_map[project_type](
+        capacity_mw=capacity_mw,
+        horizon_years=horizon_years,
+        construction_months=construction_months,
+    )
+
+    # ── Identity / Info ────────────────────────────────────────────
     financial_close = _subtract_months(cod_date, construction_months)
     code = (
         str(snapshot.get("active_project") or snapshot.get("project_code") or project_name)
@@ -318,44 +342,11 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
         .upper()
         .replace(" ", "_")
     )
-    degradation = 0.004 if project_type == "Solar" else 0.0
-    capex_asset = AssetClass.SOLAR_PANELS if project_type == "Solar" else AssetClass.WIND_TURBINES
-    senior_debt_keur = total_capex_keur * (gearing_pct / 100.0)
-
-    def capex_item(
-        name: str,
-        amount_keur: float = 0.0,
-        asset_class: AssetClass = AssetClass.CIVIL_GRID,
-    ) -> CapexItem:
-        return CapexItem(
-            name=name,
-            amount_keur=amount_keur,
-            y0_share=1.0 if amount_keur else 0.0,
-            asset_class=asset_class,
-        )
-
-    capex = CapexStructure(
-        epc_contract=capex_item("User provided total CAPEX", total_capex_keur, capex_asset),
-        production_units=capex_item("System default production units"),
-        epc_other=capex_item("System default EPC other"),
-        grid_connection=capex_item("System default grid connection"),
-        ops_prep=capex_item("System default operations preparation"),
-        insurances=capex_item("System default insurances"),
-        lease_tax=capex_item("System default lease tax"),
-        construction_mgmt_a=capex_item("System default construction management A"),
-        commissioning=capex_item("System default commissioning"),
-        audit_legal=capex_item("System default audit and legal"),
-        construction_mgmt_b=capex_item("System default construction management B"),
-        contingencies=capex_item("System default contingencies"),
-        taxes=capex_item("System default taxes"),
-        project_acquisition=capex_item("System default project acquisition"),
-        project_rights=capex_item("System default project rights"),
-    )
-
-    return ProjectInputs(
-        info=ProjectInfo(
+    proj = dc_replace(
+        proj,
+        info=dc_replace(
+            proj.info,
             name=project_name,
-            company="User-created project record",
             code=code,
             country_iso=_country_iso(country_market),
             financial_close=financial_close,
@@ -364,17 +355,71 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
             horizon_years=horizon_years,
             period_frequency=PeriodFrequency.SEMESTRIAL,
         ),
+    )
+
+    # ── Technical ──────────────────────────────────────────────────
+    proj = dc_replace(
+        proj,
         technical=TechnicalParams(
             capacity_mw=capacity_mw,
             yield_scenario="P_50",
             operating_hours_p50=p50_hours,
             operating_hours_p90_10y=p50_hours * 0.9,
             operating_hours_p99_1y=p50_hours * 0.8,
-            pv_degradation=degradation,
+            pv_degradation=0.004 if project_type == "Solar" else 0.0,
             plant_availability=0.99,
             grid_availability=0.99,
         ),
-        capex=capex,
+    )
+
+    # ── CAPEX (scale epc_contract to hit the user-supplied total) ──
+    # Phase S1: Snapshot path no longer pre-computes senior debt
+    # as capex * gearing. CAPEX is still user-driven: the user's
+    # `total_capex_keur` IS the runtime CAPEX. Financial cost
+    # sub-fields (idc, bank_fees, commitment_fees, vat_costs,
+    # reserve_accounts, other_financial) come from the Generic
+    # factory defaults and are NOT driven by user input here.
+    # We zero them out so the runtime CAPEX == user-supplied
+    # total_capex_keur (preserving the snapshot-path invariant
+    # that user inputs drive the result).
+    other_keur = sum(
+        getattr(proj.capex, f.name).amount_keur
+        for f in proj.capex.__dataclass_fields__.values()
+        if f.name not in ("idc_keur", "commitment_fees_keur", "bank_fees_keur",
+                          "other_financial_keur", "vat_costs_keur", "reserve_accounts_keur",
+                          "epc_contract")
+        and getattr(proj.capex, f.name).amount_keur > 0
+    )
+    # Phase S1: clamp epc_target to 0 if user-supplied
+    # total_capex_keur is below the factory other_keur. This
+    # preserves the factory reference structure for "wild"
+    # inputs (e.g. pilot sketching tiny capex) without
+    # touching the factory's own state.
+    epc_target = max(total_capex_keur - other_keur, 0.0)
+    new_epc = dc_replace(proj.capex.epc_contract, amount_keur=epc_target)
+    proj = dc_replace(
+        proj,
+        capex=dc_replace(
+            proj.capex,
+            epc_contract=new_epc,
+            # Phase S1: zero out financial cost sub-fields so
+            # user-supplied total_capex_keur maps to runtime
+            # CAPEX 1:1 (within the clamp logic above). These
+            # factory defaults represent implicit cost-of-debt
+            # modelling that the snapshot path does NOT derive
+            # from user inputs.
+            idc_keur=0.0,
+            commitment_fees_keur=0.0,
+            bank_fees_keur=0.0,
+            other_financial_keur=0.0,
+            vat_costs_keur=0.0,
+            reserve_accounts_keur=0.0,
+        ),
+    )
+
+    # ── OPEX (single user-supplied Y1 line) ────────────────────────
+    proj = dc_replace(
+        proj,
         opex=(
             OpexItem(
                 name="User provided year 1 operating expense",
@@ -382,33 +427,26 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
                 annual_inflation=0.02,
             ),
         ),
-        revenue=RevenueParams(
+    )
+
+    # ── Revenue (PPA + market defaults) ────────────────────────────
+    proj = dc_replace(
+        proj,
+        revenue=dc_replace(
+            proj.revenue,
             ppa_base_tariff=tariff_eur_mwh,
             ppa_term_years=ppa_term_years,
-            ppa_index=0.02,
-            ppa_production_share=1.0,
-            market_scenario="Central",
-            market_prices_curve=(),
-            market_inflation=0.02,
-            balancing_cost_eur_per_mwh=0.0,
-            co2_enabled=False,
-        ),
-        financing=FinancingParams(
-            share_capital_keur=max(total_capex_keur - senior_debt_keur, 0.0),
-            shl_amount_keur=0.0,
-            shl_rate=0.0,
-            shl_tenor_years=tenor_years,
-            gearing_ratio=gearing_pct / 100.0,
-            senior_debt_amount_keur=senior_debt_keur,
-            senior_tenor_years=tenor_years,
-            base_rate=0.0,
-            margin_bps=int(round(interest_rate_pct * 100.0)),
-            target_dscr=target_dscr,
-            debt_sizing_method="gearing_cap",
-            fixed_debt_keur=senior_debt_keur,
-        ),
-        tax=TaxParams(
-            corporate_rate=0.10,
-            loss_carryforward_years=5,
         ),
     )
+
+    # ── Financing (DSCR sculpt semantics, same as form path) ─────
+    # Phase S1: gearing is a derived / reporting metric.
+    # Senior debt is sized by the runtime to hit target_dscr via
+    # DSCR_SCULPT (the Generic factory default debt_sizing_method).
+    # We do NOT pre-compute senior_debt = capex * gearing here.
+    proj = _set_financing_gearing(proj, gearing_pct)
+    proj = _set_financing_interest_rate(proj, interest_rate_pct)
+    proj = _set_financing_tenor(proj, tenor_years)
+    proj = _set_financing_target_dscr(proj, target_dscr)
+
+    return proj
