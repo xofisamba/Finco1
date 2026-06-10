@@ -6416,6 +6416,149 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   border: 1px solid transparent;
   background: var(--muted-bg, #f1f3f5);
   color: var(--muted, #555);
+
+   Phase 25B-5 — Scenario workflow polish (.svh-* + .sw-*)
+   Purely additive. No :root changes. No resets.
+
+   The .svh-card--active class existed in the template but had NO
+   CSS rules — the active scenario highlight was invisible. This
+   block also adds the missing .svh-card base styles so the
+   scenario version history card has a usable visual surface.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.svh-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.svh-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.svh-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--fg, #1a1a1a);
+}
+
+.svh-subtitle {
+  font-size: 0.72rem;
+  color: var(--muted, #666);
+}
+
+.svh-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.svh-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.svh-card--active {
+  border-color: #4a7c59;
+  box-shadow: 0 0 0 2px #d6eadb, 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: #f7fbf8;
+}
+
+.svh-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  flex-wrap: wrap;
+}
+
+.svh-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted, #666);
+}
+
+.svh-meta-item {
+  white-space: nowrap;
+}
+
+.svh-card-gov {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.svh-badge {
+  font-size: 0.7rem;
+  padding: 0.12rem 0.45rem;
+}
+
+.svh-empty {
+  font-size: 0.8rem;
+  color: var(--muted, #666);
+  padding: 0.4rem 0.5rem;
+  background: #f7f8fa;
+  border: 1px dashed #d8dde3;
+  border-radius: 6px;
+}
+
+.svh-explainer {
+  font-size: 0.72rem;
+  color: var(--muted, #666);
+  padding: 0.4rem 0.55rem;
+  background: #f7f8fa;
+  border: 1px solid #e8eaef;
+  border-radius: 6px;
+}
+
+.svh-explainer-title {
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.svh-explainer-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.svh-explainer-list li {
+  margin-bottom: 0.15rem;
+}
+
+.svh-warning {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.6rem;
+  background: #fff4d6;
+  border: 1px solid #f0d27a;
+  border-radius: 6px;
+  color: #6b4900;
+}
+
+/* ── .sw-* (scenario workflow polish) ─────────────────────────────────── */
+
+.sw-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border: 1px solid transparent;
   vertical-align: middle;
   user-select: none;
 }
@@ -6449,6 +6592,44 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 
 .ds-badge--factory {
   background: #eef0f3;
+
+.sw-label__icon {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  text-align: center;
+  line-height: 1rem;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.65);
+  flex-shrink: 0;
+}
+
+.sw-label__text {
+  white-space: nowrap;
+}
+
+.sw-label--base {
+  background: #e6f0fb;
+  color: #1a4a82;
+  border-color: #b8d3ee;
+}
+
+.sw-label--downside {
+  background: #fbe6e6;
+  color: #8a1a1a;
+  border-color: #eeb8b8;
+}
+
+.sw-label--upside {
+  background: #e6f7ec;
+  color: #1f7a3a;
+  border-color: #b6e2c2;
+}
+
+.sw-label--custom {
+  background: #f0f1f3;
   color: #4a5566;
   border-color: #cdd3dc;
 }
@@ -6563,4 +6744,128 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   letter-spacing: 0.04em;
   font-weight: 600;
   margin-right: 0.25rem;
+
+.sw-quick-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  background: #fafbfc;
+  border: 1px solid #e8eaef;
+  border-radius: 4px;
+  font-size: 0.74rem;
+}
+
+.sw-quick-summary__row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.sw-quick-summary__label {
+  color: var(--muted, #666);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sw-quick-summary__value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-state--good {
+  color: #1f7a3a;
+}
+
+.sw-state--ok {
+  color: #8a5a00;
+}
+
+.sw-state--bad {
+  color: #8a1a1a;
+}
+
+.sw-state--n_a {
+  color: var(--muted, #999);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.sw-compare-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  background: #f7f8fa;
+  border: 1px solid #d8dde3;
+  color: #1a1a1a;
+  text-decoration: none;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.sw-compare-link:hover {
+  background: #eef0f3;
+  border-color: #c0c6d0;
+  text-decoration: none;
+}
+
+.sw-compare-link__arrow {
+  font-size: 0.9em;
+  color: var(--muted, #666);
+}
+
+.sw-compare-link__label {
+  white-space: nowrap;
+}
+
+.sw-empty-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  border: 1px solid #e8eaef;
+  margin-bottom: 0.4rem;
+}
+
+.sw-empty-notice__icon {
+  font-size: 0.95rem;
+  font-weight: 700;
+  width: 1.2rem;
+  text-align: center;
+  color: var(--muted, #666);
+  flex-shrink: 0;
+}
+
+.sw-empty-notice__text {
+  flex: 1 1 auto;
+}
+
+.sw-empty--empty {
+  background: #f7f8fa;
+  border-color: #d8dde3;
+  color: var(--muted, #666);
+}
+
+.sw-empty--one {
+  background: #fff8e1;
+  border-color: #f0d27a;
+  color: #6b4900;
+}
+
+.sw-empty--two {
+  background: #e6f0fb;
+  border-color: #b8d3ee;
+  color: #1a4a82;
+}
+
+.sw-empty--many {
+  background: #e6f7ec;
+  border-color: #b6e2c2;
+  color: #1f7a3a;
 }
