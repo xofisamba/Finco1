@@ -1,0 +1,92 @@
+{
+  "phase": "25B-5",
+  "title": "Scenario Workflow Polish (Base / Downside / Upside obvious)",
+  "branch": "phase25b5-scenario-workflow-polish",
+  "head_sha": "to-be-filled-after-final-commit",
+  "base_sha": "8042d0e8aadef7be05d97ccfde9f73ec86a954e5",
+  "pr_number": null,
+  "pr_state": "draft-pending",
+  "scope_classification": "UI-only polish (no model / state / schema changes)",
+  "what_changed": {
+    "new_files": [
+      "app/ui/scenario_workflow.py",
+      "app/templates/partials/scenario_workflow_indicators.html"
+    ],
+    "modified_files": [
+      "app/templates/partials/scenario_version_history.html",
+      "main_web.py",
+      "static/styles.css"
+    ],
+    "test_files": [
+      "tests/test_phase25b5_workflow_helpers.py",
+      "tests/test_phase25b5_factory_safety.py",
+      "tests/test_phase25b5_no_regression.py"
+    ],
+    "doc_files": [
+      "docs/phase25b5_scenario_workflow_polish.md"
+    ]
+  },
+  "ui_surfaces": [
+    "scenario label chip (Base / Downside / Upside / Custom)",
+    "quick summary card (mini IRR / Project IRR / Avg DSCR per card)",
+    "Compare with X shortcut links on the active card",
+    "empty / one / two / many scenario-count notice",
+    "svh-card--active visual highlight (CSS rule was MISSING before)"
+  ],
+  "label_kinds": ["base", "downside", "upside", "custom"],
+  "quick_summary_thresholds": {
+    "irr": {"good": ">= 12%", "ok": ">= 8%", "bad": "< 8%"},
+    "dscr": {"good": ">= 1.50", "ok": ">= 1.20", "bad": "< 1.20"}
+  },
+  "behaviour_matrix": {
+    "zero_scenarios": {
+      "notice": "No saved scenarios yet. Save a snapshot to start comparing.",
+      "compare_links_on_active": 0
+    },
+    "one_scenario": {
+      "notice": "One scenario saved. Add at least one more (Downside or Upside) to enable side-by-side compare.",
+      "compare_links_on_active": 0
+    },
+    "two_scenarios": {
+      "notice": "Two scenarios ready. Use compare to view the delta.",
+      "compare_links_on_active": 1
+    },
+    "many_scenarios": {
+      "notice": "N scenarios saved. Pick a pair or run a multi-compare.",
+      "compare_links_on_active": 1
+    }
+  },
+  "tests": {
+    "total": 88,
+    "helpers": 51,
+    "factory_safety": 25,
+    "no_regression": 12,
+    "all_passing": true
+  },
+  "hard_constraints": {
+    "no_formula_changes": true,
+    "no_model_runtime_changes": true,
+    "no_tax_debt_depreciation_idc_changes": true,
+    "no_construction_c10_rpar_senior_idc": true,
+    "no_schema_migration": true,
+    "no_flag_flips": true,
+    "no_tailwind_alpine_inline_script": true,
+    "no_autosave": true,
+    "rc1_preserved": true,
+    "parity_path_preserved": true,
+    "tuho_preserved": true,
+    "oborovo_preserved": true,
+    "use_construction_schedule_engine_false": true,
+    "root_count_unchanged": 3
+  },
+  "css_impact": {
+    "lines_added": 140,
+    "svh_classes_added": 9,
+    "sw_classes_added": 17,
+    "root_blocks_added": 0,
+    "important_used": false,
+    "missing_svh_card_active_rule_fixed": true
+  },
+  "open_as_draft": true,
+  "stop_after_report": true
+}

@@ -2,7 +2,19 @@
      Lightweight UI to expose existing versioning capabilities.
      Draft/saved/runtime semantics and stale-runtime warning included.
      No financial logic - purely informational.
+
+     Phase 25B-5 — adds the scenario workflow polish surfaces:
+       - per-scenario label (Base / Downside / Upside / custom)
+       - quick summary card (mini IRR / Project IRR / Avg DSCR)
+       - "Compare with X" shortcut links on the active card
+       - empty / one / two / many state notice at the top
+       - sw-* macros from partials/scenario_workflow_indicators.html
 -->
+{% if scenario_workflow_ui %}
+  {% from "partials/scenario_workflow_indicators.html" import
+       scenario_label, quick_summary_card, compare_link, workflow_state_notice %}
+{% endif %}
+
 <div class="svh-container">
 
   <!-- Heading -->
@@ -11,6 +23,11 @@
     <span class="svh-subtitle">- preserve input snapshots</span>
   </div>
 
+  {# Phase 25B-5 — workflow state notice (empty / one / two / many) #}
+  {% if scenario_workflow_ui and scenario_workflow_ui.state %}
+    {{ workflow_state_notice(scenario_workflow_ui.state) }}
+  {% endif %}
+
   <!-- Version list -->
   {% if scenario_summary_cards and scenario_summary_cards|length > 0 %}
   <div class="svh-list">
@@ -18,9 +35,14 @@
     {% for card in scenario_summary_cards %}
     <div class="svh-card{% if card.scenario_id == workspace_state.active_scenario_id %} svh-card--active{% endif %}">
 
-      <!-- Scenario name + active badge -->
+      <!-- Scenario name + active badge + workflow label -->
       <div class="svh-card-title">
-        {{ card.scenario_name }}
+        {# Phase 25B-5 — workflow label (Base / Downside / Upside / custom) #}
+        {% if scenario_workflow_ui and scenario_workflow_ui.by_scenario.get(card.scenario_id) %}
+          {{ scenario_label(scenario_workflow_ui.by_scenario[card.scenario_id].label) }}
+        {% else %}
+          {{ card.scenario_name }}
+        {% endif %}
         {% if card.scenario_id == workspace_state.active_scenario_id %}
           <span class="badge badge-pass svh-badge">Active</span>
         {% endif %}
@@ -33,6 +55,21 @@
           {% endfor %}
         {% endif %}
       </div>
+
+      {# Phase 25B-5 — quick summary card (mini IRR / Project IRR / Avg DSCR) #}
+      {% if scenario_workflow_ui and scenario_workflow_ui.by_scenario.get(card.scenario_id) %}
+        {{ quick_summary_card(scenario_workflow_ui.by_scenario[card.scenario_id].quick_summary) }}
+      {% endif %}
+
+      {# Phase 25B-5 — "Compare with X" shortcut links (only on active card) #}
+      {% if card.scenario_id == workspace_state.active_scenario_id
+            and scenario_workflow_ui and scenario_workflow_ui.compare_links %}
+        <div class="svh-compare-shortcuts">
+          {% for link in scenario_workflow_ui.compare_links %}
+            {{ compare_link(link) }}
+          {% endfor %}
+        </div>
+      {% endif %}
 
       <!-- Metadata row -->
       <div class="svh-card-meta">
