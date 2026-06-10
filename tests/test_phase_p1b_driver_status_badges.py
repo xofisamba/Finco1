@@ -95,12 +95,23 @@ class TestFieldStatusMapping:
     audit (PR #600)."""
 
     def test_metadata_only_fields(self):
-        assert is_metadata_only_field("ppa_term_years")
-        assert is_metadata_only_field("construction_months")
-        assert not is_dscr_sculpt_driver_field("ppa_term_years")
-        assert not is_dscr_sculpt_driver_field("construction_months")
-        assert not is_wired_field("ppa_term_years")
-        assert not is_wired_field("construction_months")
+        # Phase S3: METADATA_ONLY is empty. The
+        # S1 resolver added _set_revenue_ppa_term
+        # (which applies ppa_term_years) and the
+        # schema extension (which accepts
+        # construction_months), so both fields
+        # are now model-affecting. They moved out
+        # of METADATA_ONLY in Phase S3.
+        assert len(METADATA_ONLY_FIELDS) == 0
+        # No field should be classified as
+        # METADATA_ONLY.
+        for f in (
+            "tariff_eur_mwh", "p50_hours", "capacity_mw",
+            "total_capex_keur", "opex_y1_keur", "ppa_term_years",
+            "interest_rate_pct", "tenor_years", "target_dscr",
+            "construction_months", "gearing_pct",
+        ):
+            assert not is_metadata_only_field(f), f
 
     def test_dscr_sculpt_driver_fields(self):
         # Phase S2: gearing_pct moved to
@@ -134,21 +145,24 @@ class TestFieldStatusMapping:
             assert is_dscr_sculpt_driver_field(f) is False
             assert is_wired_field(f) is False
 
-    def test_counts_match_s2(self):
-        # Per Phase S2 mapping (PR #600 base + S2
-        # amendment):
-        # - WIRED=5
-        # - DSCR_SCULPT_DRIVER=3 (interest_rate_pct,
-        #   tenor_years, target_dscr; gearing_pct
-        #   moved to REPORTING_DERIVED)
+    def test_counts_match_s3(self):
+        # Per Phase S3 mapping (PR #600 base + S2
+        # amendment + S3 binding suite):
+        # - WIRED=6 (tariff, p50, capacity, capex,
+        #   opex, ppa_term)
+        # - DSCR_SCULPT_DRIVER=4 (interest_rate_pct,
+        #   tenor_years, target_dscr,
+        #   construction_months; gearing_pct moved
+        #   to REPORTING_DERIVED in S2;
+        #   construction_months added in S3)
         # - REPORTING_DERIVED=1 (gearing_pct)
-        # - METADATA_ONLY=2 (ppa_term_years,
-        #   construction_months)
+        # - METADATA_ONLY=0 (ppa_term_years and
+        #   construction_months moved out in S3)
         # - NOT_WIRED=0
-        assert len(WIRED_FIELDS) == 5
-        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 3
+        assert len(WIRED_FIELDS) == 6
+        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 4
         assert len(REPORTING_DERIVED_FIELDS) == 1
-        assert len(METADATA_ONLY_FIELDS) == 2
+        assert len(METADATA_ONLY_FIELDS) == 0
         assert len(NOT_WIRED_FIELDS) == 0
 
 
@@ -164,8 +178,19 @@ class TestGetFieldStatus:
     @pytest.mark.parametrize(
         "field,expected",
         [
-            ("ppa_term_years", STATUS_METADATA_ONLY),
-            ("construction_months", STATUS_METADATA_ONLY),
+            # Phase S3: ppa_term_years moved from
+            # STATUS_METADATA_ONLY to STATUS_WIRED
+            # (the S1 resolver added
+            # _set_revenue_ppa_term; the field is
+            # now model-affecting).
+            ("ppa_term_years", STATUS_WIRED),
+            # Phase S3: construction_months moved
+            # from STATUS_METADATA_ONLY to
+            # STATUS_WIRED_PARTIAL (the S1 schema
+            # extension accepts it; the resolver
+            # applies it via info override /
+            # financial_close timing).
+            ("construction_months", STATUS_WIRED_PARTIAL),
             # Phase S2: gearing_pct moved from
             # WIRED_PARTIAL to REPORTING_DERIVED.
             ("gearing_pct", STATUS_REPORTING_DERIVED),
@@ -198,11 +223,15 @@ class TestGetFieldBadge:
     and tooltip."""
 
     def test_metadata_badge_text(self):
+        # Phase S3: ppa_term_years is now WIRED
+        # (no badge), so it does NOT carry the
+        # metadata badge. The helper still exposes
+        # the metadata vocabulary for future use,
+        # but no field currently maps to it.
         b = get_field_badge("ppa_term_years")
-        assert b.badge_text == BADGE_METADATA_ONLY
-        assert b.badge_class == CSS_CLASS_METADATA
-        assert b.badge_title == TOOLTIP_METADATA_ONLY
-        assert b.status == STATUS_METADATA_ONLY
+        assert b.badge_text is None  # WIRED: no badge
+        assert b.badge_class is None
+        assert b.status == STATUS_WIRED
 
     def test_dscr_sculpt_badge_text(self):
         b = get_field_badge("gearing_pct")
@@ -352,24 +381,38 @@ class TestInputsSectionRenders:
                     break
         return src[start:end]
 
-    def test_partial_has_metadata_badge_for_ppa_term(self):
+    def test_partial_ppa_term_years_no_metadata_badge(self):
+        # Phase S3: ppa_term_years is now WIRED
+        # (no badge, fully wired). The partial
+        # renders the ppa_term_years row without
+        # the metadata badge.
         src = self._read_partial()
         row = self._extract_field_row(src, "ppa_term_years")
-        assert BADGE_METADATA_ONLY in row, (
-            f"PPA Term row must carry 'Metadata only' "
-            f"badge; row: {row[:200]}"
-        )
-        assert CSS_CLASS_METADATA in row
-        assert TOOLTIP_METADATA_ONLY in row
+        # The row must NOT carry the metadata
+        # badge (Phase S3 reclassification).
+        assert BADGE_METADATA_ONLY not in row
+        assert CSS_CLASS_METADATA not in row
 
-    def test_partial_has_metadata_badge_for_construction_months(self):
+    def test_partial_construction_months_has_dscr_sculpt_badge(self):
+        # Phase S3: construction_months is now
+        # WIRED_PARTIAL (DSCR sculpt driver CSS
+        # class). The partial renders the
+        # construction_months row with the
+        # "Model driver" badge text (Phase S3
+        # renamed the badge text to reflect that
+        # construction_months is not a strict
+        # sculpt driver, but it still carries
+        # the same CSS class for visual
+        # consistency).
         src = self._read_partial()
         row = self._extract_field_row(
             src, "construction_months"
         )
-        assert BADGE_METADATA_ONLY in row
-        assert CSS_CLASS_METADATA in row
-        assert TOOLTIP_METADATA_ONLY in row
+        # The CSS class is shared.
+        assert CSS_CLASS_DSCR_SCULPT in row
+        # The badge text is the more honest
+        # "Model driver" label.
+        assert "Model driver" in row
 
     @pytest.mark.parametrize(
         "field",

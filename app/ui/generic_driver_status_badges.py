@@ -1,4 +1,4 @@
-"""Phase P1-B + Phase S2 — Generic Driver Status Badges / Metadata helpers.
+"""Phase P1-B + Phase S2 + Phase S3 — Generic Driver Status Badges / Metadata helpers.
 
 Pure read-side helper module. Provides the driver
 status vocabulary, badge class names, tooltip
@@ -6,32 +6,53 @@ copy, and the field-to-status mapping for the
 Generic Solar / Wind input form.
 
 This is the UI explanation layer that follows the
-Phase P1-A driver-response audit and the Phase S2
-gearing-as-output rule. The helper does NOT mutate
-any input, does NOT call the runtime, does NOT
-change formulas.
+Phase P1-A driver-response audit, the Phase S2
+gearing-as-output rule, and the Phase S3
+driver-to-KPI binding suite. The helper does NOT
+mutate any input, does NOT call the runtime, does
+NOT change formulas.
 
 Mapping (per PR #600 audit, branch f8ae191; refined
-by Phase S2):
+by Phase S2; refined again by Phase S3 binding
+suite):
 
-  METADATA_ONLY (2 fields):
-    - ppa_term_years
-    - construction_months
-
-  REPORTING_DERIVED (1 field, NEW in Phase S2):
-    - gearing_pct
-
-  DSCR SCULPT DRIVER (3 fields, after S2):
-    - interest_rate_pct
-    - tenor_years
-    - target_dscr
-
-  WIRED (5 fields, no badge by default):
+  WIRED (6 fields, no badge by default):
     - tariff_eur_mwh
     - p50_hours
     - capacity_mw
     - total_capex_keur
     - opex_y1_keur
+    - ppa_term_years (Phase S3 reclassification: the
+      S1 resolver now applies ppa_term_years via
+      _set_revenue_ppa_term, so changing the input
+      moves total_revenue_keur, total_ebitda_keur,
+      and total_distributions_keur. Pre-S1 this
+      was classified as METADATA_ONLY because the
+      resolver had no _set_revenue_ppa_term helper.)
+
+  WIRED_PARTIAL (4 fields):
+    - interest_rate_pct
+    - tenor_years
+    - target_dscr
+    - construction_months (Phase S3 reclassification:
+      the S1 resolver applies construction_months
+      via _set_revenue_ppa_term / info override,
+      which moves financial_close. This produces a
+      small but measurable equity_irr effect
+      (~10bps spread between 6mo and 36mo
+      construction periods) but does not change
+      revenue, EBITDA, or senior debt. Pre-S1
+      this was METADATA_ONLY because the resolver
+      had no _set_revenue_ppa_term helper.)
+
+  REPORTING_DERIVED (1 field, Phase S2):
+    - gearing_pct
+
+  DSCR SCULPT DRIVER (3 fields, after S2): now part
+    of WIRED_PARTIAL. Same set:
+    - interest_rate_pct
+    - tenor_years
+    - target_dscr
 
   NOT_WIRED: 0 fields.
 
@@ -44,6 +65,17 @@ gearing_ratio is a DERIVED OUTPUT computed as
 senior_debt_keur / total_capex_keur. The user-facing
 label is now "Indicative (derived)" with copy that
 explains the relationship.
+
+Phase S3 amendment: ppa_term_years and
+construction_months moved out of METADATA_ONLY. The
+S1 resolver added _set_revenue_ppa_term (which
+applies ppa_term_years) and the schema extension
+(which accepts construction_months), so both
+fields are now model-affecting. ppa_term_years is
+fully wired (moves revenue/EBITDA). construction_months
+is wired-partial (moves financial_close timing and
+thus equity_irr by a small amount, but does not
+move revenue/EBITDA or senior debt).
 """
 
 from __future__ import annotations
@@ -141,8 +173,13 @@ TOOLTIP_REPORTING_DERIVED: str = (
 
 
 METADATA_ONLY_FIELDS: tuple[str, ...] = (
-    "ppa_term_years",
-    "construction_months",
+    # Phase S3: ppa_term_years and construction_months
+    # are no longer METADATA_ONLY. The S1 resolver
+    # added _set_revenue_ppa_term (which applies
+    # ppa_term_years) and the schema extension
+    # (which accepts construction_months), so both
+    # fields are now model-affecting. See
+    # WIRED_FIELDS and DSCR_SCULPT_DRIVER_FIELDS.
 )
 
 # Phase S2: gearing_pct is no longer a DSCR sculpt
@@ -157,17 +194,32 @@ REPORTING_DERIVED_FIELDS: tuple[str, ...] = (
 DSCR_SCULPT_DRIVER_FIELDS: tuple[str, ...] = (
     # Phase S2: gearing_pct removed (moved to
     # REPORTING_DERIVED_FIELDS).
+    # Phase S3: construction_months added (it moves
+    # equity_irr via the financial_close timeline,
+    # so it is now a model-affecting field). The
+    # badge text remains "DSCR sculpt driver" for
+    # visual consistency; the tooltip distinguishes
+    # the 3 binding sculpt drivers from
+    # construction_months.
     "interest_rate_pct",
     "tenor_years",
     "target_dscr",
+    "construction_months",
 )
 
 WIRED_FIELDS: tuple[str, ...] = (
+    # Phase S3: ppa_term_years added. The S1
+    # resolver added _set_revenue_ppa_term, so
+    # changing ppa_term_years moves total_revenue_keur
+    # and total_ebitda_keur. Pre-S1 this was
+    # classified as METADATA_ONLY because the
+    # resolver had no _set_revenue_ppa_term helper.
     "tariff_eur_mwh",
     "p50_hours",
     "capacity_mw",
     "total_capex_keur",
     "opex_y1_keur",
+    "ppa_term_years",
 )
 
 NOT_WIRED_FIELDS: tuple[str, ...] = ()

@@ -177,23 +177,33 @@ class TestInputsSectionTemplate:
         # The narrative note in inputs_section.html
         # must mention interest_rate_pct, tenor_years,
         # target_dscr (NOT gearing_pct).
+        # Phase S3 renamed the badge from "DSCR
+        # SCULPT DRIVER" to "MODEL DRIVER" (because
+        # construction_months joined the set in S3
+        # and is not a strict sculpt driver, just
+        # a model-affecting field). The narrative
+        # anchor is therefore "MODEL DRIVER".
         src = _read_template("app/templates/partials/inputs_section.html")
-        # Find the "DSCR SCULPT DRIVER" narrative.
-        marker = "DSCR SCULPT DRIVER"
+        # Find the "MODEL DRIVER" narrative
+        # (Phase S3).
+        marker = "MODEL DRIVER"
         idx = src.find(marker)
         assert idx >= 0
-        # Read the next 600 chars of narrative.
-        narrative = src[idx : idx + 1200]
+        # Read the next 1500 chars of narrative.
+        narrative = src[idx : idx + 1500]
         assert "interest_rate_pct" in narrative
         assert "tenor_years" in narrative
         assert "target_dscr" in narrative
+        # construction_months is also in the
+        # narrative (S3 added it).
+        assert "construction_months" in narrative
         # The narrative should not list gearing_pct
-        # in the same DSCR sculpt driver bullet.
+        # in the same MODEL DRIVER bullet.
         # (S2 added a separate bullet for
         # "Indicative (derived)" that mentions
         # gearing_pct, so it IS mentioned in the
-        # template, but not in the DSCR sculpt
-        # driver bullet.)
+        # template, but not in the MODEL DRIVER
+        # bullet.)
 
     def test_reporting_derived_narrative_present(self):
         # Phase S2 adds a separate "INDICATIVE
