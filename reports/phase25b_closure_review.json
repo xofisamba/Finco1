@@ -1,0 +1,151 @@
+{
+  "phase": "25B Closure",
+  "title": "Honest Readiness Audit (post 25B-4/5/6 merge)",
+  "type": "docs_audit_helper_tests_only",
+  "status": "DRAFT",
+  "base_sha": "f1421f7543cc13a0ba44f6236d38a9f7a49b63ae",
+  "branch": "phase25b-closure-merge",
+  "audit": {
+    "workflows": [
+      {
+        "workflow": "create_project",
+        "label": "User can create a new (non-factory) project from the UI.",
+        "score": 100,
+        "summary": "User can create a new (non-factory) project from the UI.",
+        "supporting_surfaces": [
+          "partials/_empty_no_project.html",
+          "partials/new_project_form.html",
+          "partials/project_browser.html"
+        ],
+        "gaps": []
+      },
+      {
+        "workflow": "edit_assumptions",
+        "label": "User can edit inputs / assumptions inline.",
+        "score": 67,
+        "summary": "User can edit inputs / assumptions inline.",
+        "supporting_surfaces": [
+          "partials/inputs_section.html",
+          "partials/scenario_tab.html"
+        ],
+        "gaps": [
+          "surface 'ui.input_helpers' not detected"
+        ]
+      },
+      {
+        "workflow": "save",
+        "label": "User can save a scenario / run state.",
+        "score": 100,
+        "summary": "User can save a scenario / run state.",
+        "supporting_surfaces": [
+          "partials/dirty_state_indicators.html",
+          "partials/save_result.html",
+          "services.save_run_service",
+          "ui.dirty_state"
+        ],
+        "gaps": []
+      },
+      {
+        "workflow": "run",
+        "label": "User can run the model from the UI.",
+        "score": 67,
+        "summary": "User can run the model from the UI.",
+        "supporting_surfaces": [
+          "partials/_last_run_indicator.html",
+          "partials/run_history.html"
+        ],
+        "gaps": [
+          "surface 'ui.run_summary' not detected"
+        ]
+      },
+      {
+        "workflow": "compare",
+        "label": "User can compare scenarios side-by-side.",
+        "score": 100,
+        "summary": "User can compare scenarios side-by-side.",
+        "supporting_surfaces": [
+          "partials/scenario_compare.html",
+          "partials/scenario_compare_multi.html",
+          "ui.scenario_workflow"
+        ],
+        "gaps": []
+      },
+      {
+        "workflow": "export",
+        "label": "User can export the workbook to Excel / download.",
+        "score": 100,
+        "summary": "User can export the workbook to Excel / download.",
+        "supporting_surfaces": [
+          "excel_export.build_excel_export",
+          "partials/export_registry.html"
+        ],
+        "gaps": []
+      },
+      {
+        "workflow": "understand_outputs",
+        "label": "User can read KPIs / returns / DSCR / waterfall.",
+        "score": 100,
+        "summary": "User can read KPIs / returns / DSCR / waterfall.",
+        "supporting_surfaces": [
+          "partials/_runtime_impact_chip.html",
+          "partials/kpis.html",
+          "partials/runtime_summary.html",
+          "ui.what_changed"
+        ],
+        "gaps": []
+      },
+      {
+        "workflow": "understand_limitations",
+        "label": "User sees what's supported and what's not.",
+        "score": 100,
+        "summary": "User sees what's supported and what's not.",
+        "supporting_surfaces": [
+          "partials/_empty_no_run.html",
+          "partials/pilot_limitations_notice.html",
+          "ui.project_review"
+        ],
+        "gaps": []
+      }
+    ],
+    "overall_score": 92,
+    "bucket": "pilot_ready",
+    "verdict": "Pilot-ready. A new finance user can complete the 8 core workflows without significant gaps.",
+    "generated_at": "2026-06-10T08:00:00Z",
+    "detected_surfaces": [
+      "excel_export.build_excel_export",
+      "partials/_empty_no_project.html",
+      "partials/_empty_no_run.html",
+      "partials/_last_run_indicator.html",
+      "partials/_runtime_impact_chip.html",
+      "partials/dirty_state_indicators.html",
+      "partials/export_registry.html",
+      "partials/inputs_section.html",
+      "partials/kpis.html",
+      "partials/new_project_form.html",
+      "partials/pilot_limitations_notice.html",
+      "partials/project_browser.html",
+      "partials/run_history.html",
+      "partials/runtime_summary.html",
+      "partials/save_result.html",
+      "partials/scenario_compare.html",
+      "partials/scenario_compare_multi.html",
+      "partials/scenario_tab.html",
+      "services.save_run_service",
+      "ui.dirty_state",
+      "ui.project_review",
+      "ui.scenario_workflow",
+      "ui.what_changed"
+    ]
+  },
+  "comparison_to_pre_merge_audit": {
+    "pre_25b_4_5_6_audit": "71% (close_to_pilot)",
+    "post_25b_4_5_6_audit": "92% (pilot_ready)",
+    "delta": "+21 percentage points"
+  },
+  "recommendation": {
+    "overall_score": 92,
+    "bucket": "pilot_ready",
+    "verdict": "Pilot-ready. A new finance user can complete the 8 core workflows without significant gaps.",
+    "next_step": "Pilot readiness achieved. The 8-workflow audit now reports pilot_ready (>=90%). Recommend internal-pilot kickoff with one TUHO and one generic Solar project to validate third-party-finance-user testability end-to-end."
+  }
+}
