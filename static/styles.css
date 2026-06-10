@@ -7453,3 +7453,27 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   border-color: var(--primary);
   color: var(--primary);
 }
+
+/* ── Phase P2-min-2: Generic status line ─────────────────────────── */
+
+.generic-status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  background: rgba(107, 114, 128, 0.10);
+  border: 1px solid rgba(107, 114, 128, 0.30);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.generic-status-line__icon {
+  color: var(--text-2);
+  font-size: 0.65rem;
+}
+
+.generic-status-line__text {
+  font-weight: 500;
+}

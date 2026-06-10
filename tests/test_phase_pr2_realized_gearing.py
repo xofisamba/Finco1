@@ -593,7 +593,16 @@ class TestFileScope:
             "app/templates/partials/project_selector.html",
             "static/styles.css",
             "tests/test_phase_p2min1_project_home.py",
+            "docs/phase_p2min1_project_home.md",
+            "reports/phase_p2min1_project_home.md",
             "main_web.py",
+            # P2-min-2 (Hide Internal Vocabulary)
+            # follow-up allowlist.
+            "app/templates/partials/_generic_status_line.html",
+            "app/templates/partials/workspace_shell.html",
+            "docs/phase_p2min2_hide_internal_vocabulary.md",
+            "reports/phase_p2min2_hide_internal_vocabulary.md",
+            "tests/test_phase_p2min2_hide_internal_vocabulary.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected
