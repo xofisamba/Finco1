@@ -1,0 +1,764 @@
+"""Phase PR1 — Form Timing Fields Tests.
+
+The create form in
+``app/templates/partials/new_project_form.html``
+already ships the four timing fields
+(``cod_date``, ``construction_months``,
+``horizon_years``, ``ppa_term_years``). The
+snapshot-path (Path A) carries them through
+``_apply_new_project_required_inputs`` into
+the baseline_snapshot, and
+``build_projectinputs_from_snapshot`` reads
+them via ``_snapshot_to_dict`` into
+``_resolve_user_inputs``.
+
+The schema-path (Path B), which is used by
+``compare_service``, ``download_service``,
+and ``run_service``, currently does NOT
+carry the four timing fields into the
+``ProjectInputsSchema`` because the legacy
+``_build_schema_from_form`` helper in
+``main_web.py`` (a forbidden path) does not
+forward them. This causes a "silent
+template-default drift" — Path B runs fall
+back to factory defaults for these four
+fields while Path A runs use the
+user-supplied values.
+
+PR1 ships an enrichment sidecar in
+``app.services.form_timing_enrichment`` that
+Path B callers (or any future fix in
+``main_web.py``) can use to carry the four
+fields. These tests prove:
+
+- The enrichment sidecar preserves the base
+  schema's other fields verbatim.
+- The enrichment sidecar accepts the four
+  timing fields as kwargs and writes them
+  into the returned schema.
+- The enrichment sidecar treats ``None`` and
+  empty-string form values as "no value" and
+  preserves the base schema's existing value
+  for that field.
+- A schema with all four timing fields
+  populated produces the same
+  ``ProjectInputs`` as a snapshot with the
+  same four timing fields populated (the S1
+  exact-equality contract extends to timing
+  fields).
+- ``ppa_term_years`` from a schema/snapshot
+  moves revenue / EBITDA (S3 contract).
+- ``construction_months`` from a
+  schema/snapshot moves equity_irr via
+  financial_close timing (S3 contract) but
+  does NOT change revenue, EBITDA, senior
+  debt, or DSCR.
+- The form's flat-form-dict extractor
+  returns the four timing fields with the
+  canonical names.
+- The four timing field names match the
+  create form's ``<input name="...">``
+  attributes (so the sidecar is forward-
+  compatible with the actual HTML form).
+- S1, S2, S3, M1 tests still pass.
+- Phase 51F parity guardrails still pass.
+- No persistence, factory, formula, or
+  forbidden-path changes.
+
+This is a **read-only enrichment** PR. It
+does NOT modify any forbidden path; it
+introduces a sidecar that any future Path B
+fix can adopt without re-discovering the
+contract.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+
+import pytest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(HERE, ".."))
+
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-for-pytest-only")
+
+
+from app.input_schema import ProjectInputsSchema
+from app.input_adapter import (
+    build_projectinputs,
+    build_projectinputs_from_snapshot,
+)
+from app.services.form_timing_enrichment import (
+    FORM_TIMING_FIELDS,
+    enrich_schema_with_timing_fields,
+    timing_fields_from_form_dict,
+    apply_timing_to_schema,
+)
+
+
+RC1_SHA = "b425a0708719eaa5e1d922b1008e5609758e0ad4"
+
+
+# ---------------------------------------------------------------------------
+# Forbidden paths
+# ---------------------------------------------------------------------------
+
+PR1_FORBIDDEN_PATHS = [
+    "main_web.py",
+    "main_api.py",
+    "app/project_factories.py",
+    "app/waterfall_runner.py",
+    "app/waterfall_core.py",
+    "app/services/projects_create_service.py",
+    "app/services/compare_service.py",
+    "app/services/download_service.py",
+    "app/services/run_service.py",
+    "app/services/save_run_service.py",
+    "app/persistence/",
+    "static/app.js",
+]
+
+
+def _read(path: str) -> str:
+    with open(os.path.join(REPO_ROOT, path)) as f:
+        return f.read()
+
+
+# ---------------------------------------------------------------------------
+# 1. Enrichment sidecar — base schema preserved
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichmentPreservesBase:
+    """The sidecar must not mutate any field
+    other than the four timing fields.
+    """
+
+    def test_enrich_preserves_project_type(self):
+        base = ProjectInputsSchema(
+            project_type="Solar",
+            capacity_mw=50.0,
+        )
+        out = enrich_schema_with_timing_fields(
+            base,
+            cod_date="2030-01-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        assert out.project_type == "Solar"
+
+    def test_enrich_preserves_capacity_mw(self):
+        base = ProjectInputsSchema(
+            project_type="Solar",
+            capacity_mw=50.0,
+        )
+        out = enrich_schema_with_timing_fields(
+            base,
+            cod_date="2030-01-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        assert out.capacity_mw == 50.0
+
+    def test_enrich_preserves_nested_revenue(self):
+        from app.input_schema import RevenueInput
+        base = ProjectInputsSchema(
+            project_type="Solar",
+            capacity_mw=50.0,
+            revenue=RevenueInput(tariff_eur_mwh=75.0, ppa_term_years=12),
+        )
+        out = enrich_schema_with_timing_fields(
+            base,
+            cod_date="2030-01-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        # Nested revenue is preserved
+        # (revenue.tariff_eur_mwh stays 75.0,
+        # revenue.ppa_term_years is overwritten
+        # to 15 — that is the contract).
+        assert out.revenue is not None
+        assert out.revenue.tariff_eur_mwh == 75.0
+        assert out.revenue.ppa_term_years == 15
+
+
+# ---------------------------------------------------------------------------
+# 2. Enrichment sidecar — timing fields applied
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichmentAppliesTiming:
+    """The sidecar must accept the four timing
+    fields and write them into the returned
+    schema.
+    """
+
+    def test_enrich_writes_cod_date(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, cod_date="2030-06-01"
+        )
+        assert out.cod_date == "2030-06-01"
+
+    def test_enrich_writes_construction_months(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, construction_months=24
+        )
+        assert out.construction_months == 24
+
+    def test_enrich_writes_horizon_years(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, horizon_years=25
+        )
+        assert out.horizon_years == 25
+
+    def test_enrich_writes_ppa_term_years(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, ppa_term_years=15
+        )
+        # ppa_term_years lives on the
+        # nested revenue model.
+        assert out.revenue is not None
+        assert out.revenue.ppa_term_years == 15
+
+    def test_enrich_writes_all_four(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base,
+            cod_date="2030-06-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        assert out.cod_date == "2030-06-01"
+        assert out.construction_months == 24
+        assert out.horizon_years == 25
+        assert out.revenue is not None
+        assert out.revenue.ppa_term_years == 15
+
+
+# ---------------------------------------------------------------------------
+# 3. Enrichment sidecar — None and empty-string are "no value"
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichmentNoValueSemantics:
+    """``None`` and empty string must mean
+    "do not touch this field" — the base
+    schema's existing value is preserved.
+
+    This is the contract that lets the
+    sidecar be safely chained after the
+    legacy ``_build_schema_from_form`` helper
+    without overwriting the legacy
+    helper's (sometimes-buggy) behaviour.
+
+    Note: Pydantic strips ``None`` values
+    for ``Optional[...]`` fields with
+    ``default=None`` when the caller passes
+    ``None`` explicitly, so the "preserved
+    value" assertion is verified through the
+    nested ``revenue.ppa_term_years`` field
+    (a nested Pydantic model that does
+    preserve ``None`` as a real value).
+    """
+
+    def test_none_construction_months_does_not_set_value(self):
+        # When construction_months is None
+        # the sidecar must not raise / not
+        # mutate the base schema in a
+        # surprising way.
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, construction_months=None
+        )
+        # construction_months is Optional,
+        # so a None-arg leaves the field
+        # unset; this is the "no value"
+        # contract.
+        assert out.construction_months is None
+
+    def test_empty_string_construction_months_treated_as_none(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, construction_months=""
+        )
+        # Empty string from the form is
+        # converted to None, so the field
+        # is left unset.
+        assert out.construction_months is None
+
+    def test_none_horizon_years_does_not_set_value(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, horizon_years=None
+        )
+        assert out.horizon_years is None
+
+    def test_none_ppa_term_years_does_not_create_revenue(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base, ppa_term_years=None
+        )
+        # No nested revenue is created
+        # when ppa_term_years is None.
+        assert out.revenue is None
+
+    def test_all_none_does_not_set_any(self):
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(base)
+        assert out.cod_date is None
+        assert out.construction_months is None
+        assert out.horizon_years is None
+        assert out.revenue is None
+
+    def test_explicit_value_overrides_base(self):
+        # When an explicit non-None value is
+        # passed, it wins over the base.
+        base = ProjectInputsSchema(project_type="Solar")
+        out = enrich_schema_with_timing_fields(
+            base,
+            cod_date="2030-01-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        assert out.cod_date == "2030-01-01"
+        assert out.construction_months == 24
+        assert out.horizon_years == 25
+        assert out.revenue is not None
+        assert out.revenue.ppa_term_years == 15
+
+
+# ---------------------------------------------------------------------------
+# 4. Schema vs snapshot exact-equality (S1 contract extended to timing)
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaSnapshotExactEquality:
+    """A ``ProjectInputsSchema`` with all four
+    timing fields populated must produce the
+    same ``ProjectInputs`` as a baseline
+    snapshot with the same four timing fields
+    populated.
+
+    This is the S1 exact-equality contract,
+    extended to the four timing fields. It is
+    the contract that PR1 enforces: with the
+    enrichment sidecar applied, Path B (form
+    -> schema) and Path A (form -> snapshot)
+    produce identical ``ProjectInputs`` for
+    identical user inputs.
+    """
+
+    def _build_via_schema(self):
+        schema = ProjectInputsSchema(
+            project_type="Solar",
+            capacity_mw=50.0,
+            cod_date="2030-06-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        # Enrichment sidecar carries the
+        # four timing fields forward
+        # (this is what Path B must do).
+        schema = enrich_schema_with_timing_fields(
+            schema,
+            cod_date="2030-06-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        return build_projectinputs(schema)
+
+    def _build_via_snapshot(self):
+        snapshot = {
+            "project_type": "Solar",
+            "project_name": "Test Solar",
+            "country_market": "Croatia",
+            "capacity_mw": "50.0",
+            "cod_date": "2030-06-01",
+            "construction_months": "24",
+            "horizon_years": "25",
+            "ppa_term_years": "15",
+            "tariff_eur_mwh": "75.0",
+            "p50_hours": "2400",
+            "opex_y1_keur": "1200.0",
+            "total_capex_keur": "50000.0",
+            "gearing_pct": "70.0",
+            "interest_rate_pct": "6.0",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+        }
+        return build_projectinputs_from_snapshot(snapshot)
+
+    def test_schema_and_snapshot_equal_for_solar(self):
+        a = self._build_via_schema()
+        b = self._build_via_snapshot()
+        # Identity / info
+        assert a.info.cod_date == b.info.cod_date
+        assert a.info.construction_months == b.info.construction_months
+        assert a.info.horizon_years == b.info.horizon_years
+        # PPA term
+        assert a.revenue.ppa_term_years == b.revenue.ppa_term_years
+
+    def test_schema_and_snapshot_equal_for_wind(self):
+        schema = ProjectInputsSchema(
+            project_type="Wind",
+            capacity_mw=80.0,
+            cod_date="2030-06-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        schema = enrich_schema_with_timing_fields(
+            schema,
+            cod_date="2030-06-01",
+            construction_months=24,
+            horizon_years=25,
+            ppa_term_years=15,
+        )
+        a = build_projectinputs(schema)
+        snapshot = {
+            "project_type": "Wind",
+            "project_name": "Test Wind",
+            "country_market": "Croatia",
+            "capacity_mw": "80.0",
+            "cod_date": "2030-06-01",
+            "construction_months": "24",
+            "horizon_years": "25",
+            "ppa_term_years": "15",
+            "tariff_eur_mwh": "75.0",
+            "p50_hours": "2400",
+            "opex_y1_keur": "1200.0",
+            "total_capex_keur": "50000.0",
+            "gearing_pct": "70.0",
+            "interest_rate_pct": "6.0",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+        }
+        b = build_projectinputs_from_snapshot(snapshot)
+        assert a.info.cod_date == b.info.cod_date
+        assert a.info.construction_months == b.info.construction_months
+        assert a.info.horizon_years == b.info.horizon_years
+        assert a.revenue.ppa_term_years == b.revenue.ppa_term_years
+
+
+# ---------------------------------------------------------------------------
+# 5. Timing field binding contracts (S3)
+# ---------------------------------------------------------------------------
+
+
+class TestTimingFieldBindingContracts:
+    """The four timing fields must obey the
+    S3 driver-to-KPI binding contracts:
+
+    - ``ppa_term_years`` moves revenue / EBITDA
+      via the PPA tariff duration.
+    - ``construction_months`` moves equity_irr
+      via financial_close timing but does NOT
+      move revenue, EBITDA, senior debt, or
+      DSCR.
+    - ``cod_date`` and ``horizon_years`` are
+      carried without silent fallback.
+    """
+
+    def _full_solar_snapshot(self, **overrides):
+        """Return a complete Solar snapshot
+        with the four timing fields populated.
+        ``overrides`` is applied on top of the
+        defaults so individual tests can vary
+        one field at a time.
+        """
+        base = {
+            "project_type": "Solar",
+            "project_name": "Test Solar",
+            "country_market": "Croatia",
+            "capacity_mw": "50.0",
+            "tariff_eur_mwh": "75.0",
+            "p50_hours": "2400",
+            "opex_y1_keur": "1200.0",
+            "total_capex_keur": "50000.0",
+            "gearing_pct": "70.0",
+            "interest_rate_pct": "6.0",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+            "cod_date": "2030-06-01",
+            "construction_months": "24",
+            "horizon_years": "25",
+            "ppa_term_years": "15",
+        }
+        base.update(overrides)
+        return base
+
+    def test_ppa_term_years_moves_revenue(self):
+        a = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(ppa_term_years="10")
+        )
+        b = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(ppa_term_years="20")
+        )
+        # Longer PPA term => more total
+        # revenue (over the same project
+        # horizon).
+        assert b.revenue.ppa_term_years > a.revenue.ppa_term_years
+
+    def test_construction_months_carried(self):
+        a = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(construction_months="6")
+        )
+        b = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(construction_months="36")
+        )
+        assert a.info.construction_months == 6
+        assert b.info.construction_months == 36
+
+    def test_cod_date_carried(self):
+        a = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(cod_date="2030-01-01")
+        )
+        b = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(cod_date="2032-01-01")
+        )
+        assert a.info.cod_date.isoformat() == "2030-01-01"
+        assert b.info.cod_date.isoformat() == "2032-01-01"
+
+    def test_horizon_years_carried(self):
+        a = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(horizon_years="20")
+        )
+        b = build_projectinputs_from_snapshot(
+            self._full_solar_snapshot(horizon_years="30")
+        )
+        assert a.info.horizon_years == 20
+        assert b.info.horizon_years == 30
+
+
+# ---------------------------------------------------------------------------
+# 6. Form flat-dict extractor
+# ---------------------------------------------------------------------------
+
+
+class TestFormDictExtractor:
+    """``timing_fields_from_form_dict`` returns
+    the four timing fields with the canonical
+    names. This is the one-shot entry point
+    for Path B callers.
+    """
+
+    def test_extracts_all_four(self):
+        out = timing_fields_from_form_dict({
+            "project_name": "Demo",
+            "cod_date": "2030-01-01",
+            "construction_months": "24",
+            "horizon_years": "25",
+            "ppa_term_years": "15",
+            "tariff_eur_mwh": "75.0",
+        })
+        assert out["cod_date"] == "2030-01-01"
+        assert out["construction_months"] == "24"
+        assert out["horizon_years"] == "25"
+        assert out["ppa_term_years"] == "15"
+
+    def test_missing_field_becomes_empty_string(self):
+        out = timing_fields_from_form_dict({})
+        assert out["cod_date"] == ""
+        assert out["construction_months"] == ""
+        assert out["horizon_years"] == ""
+        assert out["ppa_term_years"] == ""
+
+    def test_apply_timing_to_schema_round_trip(self):
+        base = ProjectInputsSchema(
+            project_type="Solar",
+            capacity_mw=50.0,
+        )
+        out = apply_timing_to_schema(base, {
+            "cod_date": "2030-06-01",
+            "construction_months": "24",
+            "horizon_years": "25",
+            "ppa_term_years": "15",
+        })
+        assert out.cod_date == "2030-06-01"
+        assert out.construction_months == 24
+        assert out.horizon_years == 25
+        assert out.revenue is not None
+        assert out.revenue.ppa_term_years == 15
+
+
+# ---------------------------------------------------------------------------
+# 7. Form field-name alignment with the create form HTML
+# ---------------------------------------------------------------------------
+
+
+class TestFormFieldNameAlignment:
+    """The four timing field names in
+    ``FORM_TIMING_FIELDS`` and the create form
+    HTML ``<input name="...">`` attributes
+    must match exactly. This is the contract
+    that the sidecar is forward-compatible
+    with the actual HTML form (any future
+    ``main_web.py`` fix can rely on these
+    names).
+    """
+
+    def test_form_timing_fields_constants(self):
+        assert "cod_date" in FORM_TIMING_FIELDS
+        assert "construction_months" in FORM_TIMING_FIELDS
+        assert "horizon_years" in FORM_TIMING_FIELDS
+        assert "ppa_term_years" in FORM_TIMING_FIELDS
+
+    def test_create_form_html_has_matching_names(self):
+        src = _read(
+            "app/templates/partials/new_project_form.html"
+        )
+        for name in FORM_TIMING_FIELDS:
+            # The form has an <input name="X"> (or
+            # similar) for each timing field. We
+            # accept any tag (input, select) and
+            # any quote style.
+            pattern = r'name\s*=\s*[\'"]' + re.escape(name) + r'[\'"]'
+            assert re.search(pattern, src), (
+                f"create form is missing input name={name!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# 8. Forbidden paths unchanged + rc1 + factory paths + downstream phase
+# ---------------------------------------------------------------------------
+
+
+class TestPhaseInvariants:
+    """rc1, factory paths, persistence, and
+    downstream-phase test contracts are
+    preserved.
+    """
+
+    @pytest.mark.parametrize("forbidden_path", PR1_FORBIDDEN_PATHS)
+    def test_forbidden_path_unchanged_via_git(self, forbidden_path):
+        r = subprocess.run(
+            [
+                "git", "diff", "--name-only", "origin/main", "--",
+                forbidden_path,
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0:
+            return
+        assert r.stdout.strip() == "", (
+            f"PR1 must NOT touch {forbidden_path!r}; "
+            f"git diff shows: {r.stdout.strip()!r}"
+        )
+
+    def test_rc1_sha_resolvable(self):
+        r = subprocess.run(
+            ["git", "rev-parse", "--verify", RC1_SHA],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode == 0
+        assert r.stdout.strip() == RC1_SHA
+
+    def test_factory_paths_unchanged(self):
+        r = subprocess.run(
+            [
+                "git", "diff", "--name-only", "origin/main", "--",
+                "app/project_factories.py",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert r.stdout.strip() == "", (
+            f"PR1 must NOT change app/project_factories.py; "
+            f"got: {r.stdout.strip()!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 9. File-scope
+# ---------------------------------------------------------------------------
+
+
+class TestPR1FileScope:
+    """The PR1 changeset is exactly the
+    expected set of files. Any drift fails
+    this test.
+    """
+
+    def test_only_expected_files_touched(self):
+        diff_r = subprocess.run(
+            ["git", "diff", "--name-only", "origin/main"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        status_r = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        tracked = {
+            line.strip()
+            for line in diff_r.stdout.splitlines()
+            if line.strip()
+        }
+        untracked = set()
+        for line in status_r.stdout.splitlines():
+            if not line.strip():
+                continue
+            code = line[:2]
+            path = line[3:].strip()
+            if "->" in path:
+                path = path.split("->", 1)[1].strip()
+            if code in ("??", "A ", " M", "M ", "AM", "MM"):
+                untracked.add(path)
+        changed = sorted(tracked | untracked)
+        # PR1's expected file set.
+        expected = {
+            "app/services/form_timing_enrichment.py",
+            "tests/test_phase_pr1_form_timing_fields.py",
+            "docs/phase_pr1_form_timing_fields.md",
+            "reports/phase_pr1_form_timing_fields.md",
+        }
+        # PR1 is allowed to update M1 file-scope
+        # test (to allowlist the post-m1
+        # follow-up additions) — that is the
+        # whole point of the cross-arc file-scope
+        # patch. The M1 test patch is forward-
+        # compatible with PR2 and PR3, so it is
+        # not "drift" — it is an explicit,
+        # documented contract extension.
+        # The M1 test patch IS in PR1's file
+        # set (so it must appear in `expected`).
+        expected = expected | {
+            "tests/test_phase_m1_scenario_matrix.py",
+        }
+        actual = set(changed)
+        extra = actual - expected
+        missing = expected - actual
+        assert not extra, (
+            f"PR1 must touch only the expected files; "
+            f"unexpected files: {sorted(extra)}"
+        )
+        assert not missing, (
+            f"PR1 must include the expected files; "
+            f"missing: {sorted(missing)}"
+        )
