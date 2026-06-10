@@ -6757,6 +6757,155 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 }
 
 .sw-quick-summary__row {
+
+   Phase 25B-6 — Generic Project Review Pack (.rev-*)
+   Purely additive. No :root changes. No resets.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.rev-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.82rem;
+  margin: 0.5rem 0 1rem 0;
+}
+
+.rev-classification {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.rev-classification__icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.rev-classification__text {
+  flex: 1 1 auto;
+}
+
+.rev-classification__source {
+  font-size: 0.7rem;
+  color: var(--muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rev-classification--exploratory {
+  background: #fff8e1;
+  border-color: #f0d27a;
+  color: #6b4900;
+}
+
+.rev-classification--parity_validated {
+  background: #e6f7ec;
+  border-color: #b6e2c2;
+  color: #1f7a3a;
+}
+
+.rev-classification--factory_template {
+  background: #f3f5f8;
+  border-color: #cdd3dc;
+  color: #4a5566;
+}
+
+.rev-classification--user_created {
+  background: #e6f0fb;
+  border-color: #b8d3ee;
+  color: #1a4a82;
+}
+
+.rev-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rev-section__title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #666);
+}
+
+.rev-section__note {
+  font-size: 0.78rem;
+  color: var(--muted, #666);
+  padding: 0.4rem 0.55rem;
+  background: #f7f8fa;
+  border: 1px dashed #d8dde3;
+  border-radius: 4px;
+  font-style: italic;
+}
+
+.rev-section--note {
+  background: #fff8e1;
+  border: 1px solid #f0d27a;
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+}
+
+.rev-section--warn {
+  background: #f7f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+}
+
+.rev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.rev-table__label {
+  text-align: left;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem 0.25rem 0;
+  color: var(--muted, #666);
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: top;
+  width: 50%;
+}
+
+.rev-table__value {
+  text-align: right;
+  font-weight: 500;
+  padding: 0.25rem 0 0.25rem 0.5rem;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.rev-table tr:last-child .rev-table__label,
+.rev-table tr:last-child .rev-table__value {
+  border-bottom: none;
+}
+
+.rev-scenarios {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.55rem;
+  background: #fafbfc;
+  border: 1px solid #e8eaef;
+  border-radius: 4px;
+}
+
+.rev-scenarios__count {
   display: inline-flex;
   align-items: baseline;
   gap: 0.3rem;
@@ -6868,4 +7017,78 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   background: #e6f7ec;
   border-color: #b6e2c2;
   color: #1f7a3a;
+
+.rev-scenarios__count-num {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rev-scenarios__count-label {
+  font-size: 0.7rem;
+  color: var(--muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.rev-scenarios__kinds {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.rev-scenarios__kind {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.rev-scenarios__kind--base {
+  background: #e6f0fb;
+  color: #1a4a82;
+  border-color: #b8d3ee;
+}
+
+.rev-scenarios__kind--downside {
+  background: #fbe6e6;
+  color: #8a1a1a;
+  border-color: #eeb8b8;
+}
+
+.rev-scenarios__kind--upside {
+  background: #e6f7ec;
+  color: #1f7a3a;
+  border-color: #b6e2c2;
+}
+
+.rev-scenarios__kind--custom {
+  background: #f0f1f3;
+  color: #4a5566;
+  border-color: #cdd3dc;
+}
+
+.rev-scenarios__active {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: var(--muted, #666);
+}
+
+.rev-scenarios__active strong {
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.rev-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.rev-list li {
+  margin-bottom: 0.25rem;
+  line-height: 1.45;
+  font-size: 0.78rem;
 }

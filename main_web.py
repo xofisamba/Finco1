@@ -86,7 +86,8 @@ from app.ui.what_changed import build_scenario_card_deltas
 from app.ui.dirty_state import build_dirty_state_ui
 # Phase 25B-5 — scenario workflow polish helpers (pure functions, no DB, no I/O)
 from app.ui.scenario_workflow import build_scenario_workflow_ui
-from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
+# Phase 25B-6 — generic project review pack helpers (pure functions, no DB, no I/O)
+from app.ui.project_review import build_project_review_uifrom app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
@@ -1580,7 +1581,41 @@ def _render_scenario_workspace(
     multi_compare_parsed_ids: list | None = None,
     dirty_state_ui: dict | None = None,
     scenario_workflow_ui: dict | None = None,
+    project_review_ui: dict | None = None,
 ):
+    if dirty_state_ui is None:
+        # Phase 25B-4 — defensive default.
+        from app.ui.dirty_state import build_dirty_state_ui
+        workspace_meta = _workspace_state_meta(workspace_state)
+        dirty_state_ui = build_dirty_state_ui(
+            dirty=bool(workspace_meta.get("dirty", False)),
+            has_runtime_snapshot=bool(workspace_meta.get("last_runtime_snapshot_id", "")),
+            is_user_project=project_record.project_origin == "user_created",
+            active_scenario_id=workspace_meta.get("active_scenario_id", "") or "",
+            scenarios=[
+                {"scenario_id": c.get("scenario_id"), "scenario_name": c.get("scenario_name")}
+                for c in (scenario_summary_cards or [])
+            ],
+        )
+    if scenario_workflow_ui is None:
+        # Phase 25B-5 — defensive default.
+        from app.ui.scenario_workflow import build_scenario_workflow_ui
+        scenario_workflow_ui = build_scenario_workflow_ui(
+            cards=list(scenario_summary_cards or []),
+            active_scenario_id=(
+                str(getattr(workspace_state, "active_scenario_id", "") or "")
+                if workspace_state is not None
+                else ""
+            ),
+        )
+    if project_review_ui is None:
+        # Phase 25B-6 — defensive default.
+        from app.ui.project_review import build_project_review_ui
+        project_review_ui = build_project_review_ui(
+            project_record=project_record,
+            workspace_state=workspace_state,
+            runtime_summary=runtime_summary,
+        )):
     if dirty_state_ui is None:
         # Phase 25B-4 — defensive default. _workspace_refresh_payload
         # should always populate this, but a None here keeps the
@@ -1642,7 +1677,8 @@ def _render_scenario_workspace(
             "dirty_state_ui": dirty_state_ui,
             # Phase 25B-5 — scenario workflow polish UI payload
             "scenario_workflow_ui": scenario_workflow_ui,
-        },
+            # Phase 25B-6: Generic project review pack (read-only UI payload)
+            "project_review_ui": project_review_ui,        },
     )
 
 
@@ -1706,12 +1742,6 @@ def _workspace_refresh_payload(user, project_record, workspace_state=None):
     )
 
     # Phase 25B-5 — build the scenario workflow polish UI payload.
-    # Pure helper, no DB, no I/O. The active scenario id is
-    # optional (empty when the workspace has no active
-    # scenario). This enriches the template with per-scenario
-    # labels (Base / Downside / Upside / custom), quick
-    # summary cards (mini IRR / DSCR), and "Compare with X"
-    # shortcut links.
     active_sid_for_workflow = ""
     if workspace_state is not None and getattr(
         workspace_state, "active_scenario_id", None
@@ -1728,6 +1758,17 @@ def _workspace_refresh_payload(user, project_record, workspace_state=None):
         active_scenario_id=active_sid_for_workflow,
     )
 
+    # Phase 25B-6 — build the project review pack UI payload.
+    # Pure helper, no DB, no I/O. Returns the review
+    # sections (assumptions / KPIs / scenarios /
+    # exploratory notes / known exclusions) keyed
+    # by project context.
+    project_review_ui = build_project_review_ui(
+        project_record=project_record,
+        workspace_state=workspace_state,
+        runtime_summary=runtime_summary,
+    )
+
     return (
         scenarios,
         history,
@@ -1736,8 +1777,8 @@ def _workspace_refresh_payload(user, project_record, workspace_state=None):
         scenario_summary_cards,
         dirty_state_ui,
         scenario_workflow_ui,
+        project_review_ui,
     )
-
 # -- Helpers ------------------------------------------------------------------
 
 def _build_schema_from_form(
@@ -2774,8 +2815,7 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
-    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui = _workspace_refresh_payload(user, project_record, workspace_state)
-    return _render_scenario_workspace(
+    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui, project_review_ui = _workspace_refresh_payload(user, project_record, workspace_state)    return _render_scenario_workspace(
         request,
         user,
         project_record,
@@ -2785,8 +2825,7 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
         exports,
         export_lineage,
         scenario_summary_cards,
-    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui = _workspace_refresh_payload(user, project_record, workspace_state)
-        message="Refreshed scenario history and export lineage.",
+    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui, project_review_ui = _workspace_refresh_payload(user, project_record, workspace_state)        message="Refreshed scenario history and export lineage.",
     )
 
 
@@ -2806,7 +2845,7 @@ async def scenario_compare_endpoint(
     project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
         dirty_state_ui=dirty_state_ui,
         scenario_workflow_ui=scenario_workflow_ui,
-
+        project_review_ui=project_review_ui,
     compare_result = None
     message = "Select two saved scenarios to compare."
     if left_scenario_id and right_scenario_id:
@@ -2829,7 +2868,7 @@ async def scenario_compare_endpoint(
         scenario_summary_cards,
         dirty_state_ui=dirty_state_ui,
         scenario_workflow_ui=scenario_workflow_ui,
-        message=message,
+        project_review_ui=project_review_ui,        message=message,
         compare_result=compare_result,
     )
 

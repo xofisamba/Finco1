@@ -61,6 +61,14 @@
   </div>
   {% endif %}
 
+  <!-- Phase 25B-6: Generic Project Review Pack (read-only) -->
+  {% if project_review_ui %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% import "partials/project_review_card.html" as rev %}
+    {{ rev.project_review_card(project_review_ui) }}
+  </div>
+  {% endif %}
+
   <!-- Phase 33: Scenario Version History — lightweight version list + draft/saved/runtime explainer -->
   {% if is_user_project %}
   <div class="ps-section" style="margin-top:0.75rem;">
