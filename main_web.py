@@ -2201,6 +2201,14 @@ async def index(request: Request, project: str | None = None):
             "export_lineage_ui": _build_export_lineage_ui_context(project_record, workspace_state, export_lineage),
             "scenario_summary_cards": scenario_summary_cards,
             "compare_result": None,
+            # Phase P2-min-3: Dashboard v1 (presentation only).
+            # Inline dashboard data: 8 KPI cards + 3 inline-SVG
+            # charts. Server-rendered. NO Chart.js / Plotly / D3.
+            # NO JS calc. NO formula / factory / model change.
+            **(_build_index_dashboard_context(
+                project_record=project_record,
+                realized_gearing_pct=getattr(ctx, "realized_gearing_pct", None),
+            ) if project_record.project_origin == "user_created" else {}),
             "workspace_message": None,
             "is_user_project": project_record.project_origin == "user_created",
             # Phase 24-H: exploratory warning flag (user_created + generic)
@@ -2690,6 +2698,57 @@ def _home_user_projects(user) -> list:
 # technology-only (no other selector). The user can change it
 # later from the workspace inputs.
 P2_MIN_DEFAULT_TEMPLATE_SOURCE = "generic_solar"
+
+
+def _build_index_dashboard_context(
+    project_record,
+    realized_gearing_pct=None,
+) -> dict:
+    """Phase P2-min-3: build the inline
+    Dashboard v1 data (KPI cards + 3 SVG
+    charts) for the workspace Overview.
+
+    Server-rendered. Pure-Python: reads
+    values from the project record and the
+    realized gearing helper. NO Chart.js /
+    Plotly / D3 / JS calc. NO formula /
+    factory / model change.
+    """
+    from app.ui.dashboard import (
+        build_dashboard_kpis,
+        build_revenue_ebitda_series,
+        build_dscr_series,
+        build_debt_balance_series,
+        render_svg_line_chart,
+        render_svg_dscr_chart,
+        render_svg_debt_chart,
+    )
+
+    waterfall_result = getattr(project_record, "last_waterfall_result", None)
+    kpis = build_dashboard_kpis(
+        waterfall_result=waterfall_result,
+        project_record=project_record,
+        realized_gearing_pct=realized_gearing_pct,
+    )
+    revenue_ebitda_series = build_revenue_ebitda_series(waterfall_result)
+    dscr_series = build_dscr_series(waterfall_result)
+    debt_series = build_debt_balance_series(waterfall_result)
+
+    return {
+        "dashboard_enabled": True,
+        "dashboard_kpis": kpis,
+        "dashboard_chart_revenue_ebitda_svg": render_svg_line_chart(
+            revenue_ebitda_series,
+            series_specs=[
+                {"key": "revenue", "color": "var(--primary)",
+                 "label": "Revenue"},
+                {"key": "ebitda", "color": "var(--success, #2e7d32)",
+                 "label": "EBITDA"},
+            ],
+        ),
+        "dashboard_chart_dscr_svg": render_svg_dscr_chart(dscr_series),
+        "dashboard_chart_debt_svg": render_svg_debt_chart(debt_series),
+    }
 
 
 @app.get("/home", response_class=HTMLResponse)

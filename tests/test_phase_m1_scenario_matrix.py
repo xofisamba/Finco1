@@ -852,6 +852,11 @@ class TestM1FileScope:
             "docs/phase_p2min2_hide_internal_vocabulary.md",
             "reports/phase_p2min2_hide_internal_vocabulary.md",
             "tests/test_phase_p2min2_hide_internal_vocabulary.py",
+            "app/ui/dashboard.py",
+            "app/templates/partials/_dashboard.html",
+            "docs/phase_p2min3_dashboard_v1.md",
+            "reports/phase_p2min3_dashboard_v1.md",
+            "tests/test_phase_p2min3_dashboard_v1.py",
         }
         actual = set(changed)
         extra = actual - expected
