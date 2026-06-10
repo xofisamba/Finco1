@@ -6391,3 +6391,176 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 .wc-footer-note {
   font-style: italic;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Phase 25B-4 — Dirty state visual indicators (.ds-*)
+   Purely additive. No :root changes. No resets.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.ds-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  font-weight: 500;
+  border: 1px solid transparent;
+  background: var(--muted-bg, #f1f3f5);
+  color: var(--muted, #555);
+  vertical-align: middle;
+  user-select: none;
+}
+
+.ds-badge__icon {
+  font-size: 0.85em;
+  line-height: 1;
+}
+
+.ds-badge__label {
+  white-space: nowrap;
+}
+
+.ds-badge--saved {
+  background: #e6f7ec;
+  color: #1f7a3a;
+  border-color: #b6e2c2;
+}
+
+.ds-badge--unsaved {
+  background: #fff4d6;
+  color: #8a5a00;
+  border-color: #f0d27a;
+}
+
+.ds-badge--stale {
+  background: #fde7d2;
+  color: #a04a00;
+  border-color: #f1b67a;
+}
+
+.ds-badge--factory {
+  background: #eef0f3;
+  color: #4a5566;
+  border-color: #cdd3dc;
+}
+
+.ds-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0.5rem 0;
+}
+
+.ds-notice__icon {
+  font-size: 1rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.ds-notice__body {
+  flex: 1 1 auto;
+}
+
+.ds-notice__title {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.ds-notice__text {
+  color: inherit;
+  opacity: 0.92;
+}
+
+.ds-notice--unsaved {
+  background: #fff8e1;
+  border-color: #f0d27a;
+  color: #6b4900;
+}
+
+.ds-notice--factory {
+  background: #f3f5f8;
+  border-color: #cdd3dc;
+  color: #4a5566;
+}
+
+.ds-run-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  font-weight: 500;
+  border: 1px solid #f1b67a;
+  background: #fde7d2;
+  color: #a04a00;
+  vertical-align: middle;
+  cursor: help;
+  user-select: none;
+}
+
+.ds-run-warning__icon {
+  font-size: 0.85em;
+}
+
+.ds-run-warning__label {
+  white-space: nowrap;
+}
+
+.ds-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.ds-dot--dirty {
+  background: #d4a017;
+  box-shadow: 0 0 0 2px #fff4d6;
+  animation: ds-dirty-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes ds-dirty-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+/* Layout hooks for embedding in existing workspace shell */
+.workspace-dirty-state-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel-bg, #fafbfc);
+  border: 1px solid var(--panel-border, #e1e4e8);
+  border-radius: 6px;
+}
+
+.workspace-dirty-state-bar__title {
+  font-size: 0.78rem;
+  color: var(--muted, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
