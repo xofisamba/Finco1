@@ -1,0 +1,133 @@
+{
+  "phase": "25B-4",
+  "title": "Dirty State + Save Clarity",
+  "type": "ui_only",
+  "status": "DRAFT",
+  "base_sha": "361b4fad63119a7183d9071b7ee0fa0035d5ffc9",
+  "branch": "phase25b4-dirty-state-save-clarity",
+  "files_changed": [
+    {
+      "path": "app/ui/dirty_state.py",
+      "type": "A",
+      "lines_added": 340,
+      "lines_removed": 0,
+      "rationale": "Pure read-side helper module. Classifies workspace_state + runtime_summary + save_state into a 6-state machine (saved / dirty / unsaved / needs_rerun / stale / unknown). Returns a frozen DirtyState dataclass. NO persistence calls, NO mutation, NO imports from app.persistence / app.services / app.waterfall / app.construction / app.debt / app.tax / app.depreciation / app.idc."
+    },
+    {
+      "path": "app/templates/partials/_dirty_state_badge.html",
+      "type": "A",
+      "lines_added": 72,
+      "lines_removed": 0,
+      "rationale": "Jinja partial that renders nothing when dirty_state is missing, otherwise renders exactly ONE badge with the pre-classified label / tone. Reuses the existing badge vocabulary (badge-pass / badge-warn / badge-dirty / badge-blocked). NO autosave. NO mutation. NO backend calls."
+    },
+    {
+      "path": "tests/test_phase25b4_dirty_state_helpers.py",
+      "type": "A",
+      "lines_added": 400,
+      "lines_removed": 0,
+      "rationale": "Helper unit tests pinning: state vocabulary (6 entries), classification matrix (7 combinations), read-only accessors, helper-does-not-mutate invariant, no-persistence-calls invariant, pre-classified fields."
+    },
+    {
+      "path": "tests/test_phase25b4_dirty_state_template.py",
+      "type": "A",
+      "lines_added": 200,
+      "lines_removed": 0,
+      "rationale": "Template partial tests pinning: renders nothing when context missing, renders exactly ONE badge per state, applies the correct tone class, exposes data-* attributes for downstream consumers."
+    },
+    {
+      "path": "tests/test_phase25b4_factory_safety.py",
+      "type": "A",
+      "lines_added": 220,
+      "lines_removed": 0,
+      "rationale": "Factory safety tests pinning: determinism, no forbidden imports, no feature flag enablement, rc1 frozen, no schema changes, no autosave, factory projects safe (TUHO / Oborovo inputs unchanged)."
+    },
+    {
+      "path": "docs/phase25b4_dirty_state_save_clarity.md",
+      "type": "A",
+      "lines_added": 200,
+      "lines_removed": 0,
+      "rationale": "8-section design + change doc with goal, scope, state machine table, file change list, self-review findings, pre-merge audit, hard no-go list, stop-after-report contract."
+    },
+    {
+      "path": "reports/phase25b4_dirty_state_save_clarity.json",
+      "type": "A",
+      "lines_added": 110,
+      "lines_removed": 0,
+      "rationale": "Machine-readable summary."
+    }
+  ],
+  "no_autosave": true,
+  "no_persistence_schema_change": true,
+  "no_feature_flag_enablement": true,
+  "no_formula_changes": true,
+  "no_depreciation_changes": true,
+  "no_tax_changes": true,
+  "no_debt_changes": true,
+  "no_idc_changes": true,
+  "no_construction_promotion": true,
+  "no_rpar_changes": true,
+  "no_waterfall_core_changes": true,
+  "no_waterfall_runner_changes": true,
+  "no_services_changes": true,
+  "no_generic_depreciation_claims": true,
+  "no_apps_persistence_imports": true,
+  "no_apps_services_imports": true,
+  "no_main_web_changes": true,
+  "no_main_api_changes": true,
+  "no_static_changes": true,
+  "no_domain_changes": true,
+  "no_excel_export_changes": true,
+  "self_review_findings": [
+    "Initial draft proposed auto-wiring the partial into app/templates/index.html. Mitigation: the partial is intentionally NOT wired into index.html in this phase. The helper is exported and the partial is in place, but the wiring step is deferred to a future phase that has explicit go-ahead for live UI integration. This phase ships the building blocks only.",
+    "The 'stale' state is reserved for future timestamp-aware logic (e.g. comparing last_saved_at vs last_run_at). In this phase, the conservative classifier treats 'clean + prior run + save record' as 'saved' and never invents a 'stale' classification.",
+    "The helper is exposed as a pure function with no side effects, so it is safe to call from any context (partial wiring, future JS, future tests, future API)."
+  ],
+  "fix_commits_applied": 0,
+  "test_counts": {
+    "25B-4_helper_tests": "see tests/test_phase25b4_dirty_state_helpers.py",
+    "25B-4_template_tests": "see tests/test_phase25b4_dirty_state_template.py",
+    "25B-4_factory_safety_tests": "see tests/test_phase25b4_factory_safety.py",
+    "phase_51F_parity_guardrails": "21/21 PASS (green)",
+    "phase_57pre_route_smoke": "50 pass / 17 skip (green)",
+    "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4"
+  },
+  "numeric_invariance": {
+    "TUHO": {
+      "CapEx": 145988.42,
+      "CapEx_Items": 70706.54,
+      "Inputs": 79580.2375,
+      "Depreciation_Assumptions": 45.0
+    },
+    "Oborovo": {
+      "CapEx": 115758.5053,
+      "CapEx_Items": 56104.09,
+      "Inputs": 61272.8532,
+      "Depreciation_Assumptions": 45.0
+    }
+  },
+  "hard_no_go": [
+    "no_autosave",
+    "no_persistence_schema_change",
+    "no_feature_flag_enablement",
+    "no_formula_changes",
+    "no_depreciation_changes",
+    "no_tax_changes",
+    "no_debt_changes",
+    "no_idc_changes",
+    "no_construction_promotion",
+    "no_rpar_changes",
+    "no_waterfall_core_changes",
+    "no_waterfall_runner_changes",
+    "no_services_changes",
+    "no_generic_depreciation_claims",
+    "rc1_frozen (b425a0708719eaa5e1d922b1008e5609758e0ad4)"
+  ],
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "rc1_frozen_verified": true,
+  "stop_after_report_contract": {
+    "type": "DRAFT PR",
+    "merge": "NO auto-merge",
+    "next_phase_start": "Phase 25B-5 — Scenario Workflow Polish",
+    "rationale": "25B-4 ships the dirty-state building blocks only. The partial is not wired into index.html in this phase. Future wiring requires explicit go-ahead."
+  }
+}

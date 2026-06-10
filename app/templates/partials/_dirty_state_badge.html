@@ -1,0 +1,68 @@
+{# ── Phase 25B-4: Dirty State + Save Clarity Badge ───────────────────────
+   Renders a single status badge that answers the user's
+   question: "Is my work saved, is it stale, do I need to
+   re-run?"
+
+   Render conditions:
+   - Renders NOTHING if `dirty_state` is missing from
+     the context.
+   - When `dirty_state` is present, renders exactly ONE
+     badge with the pre-classified state / label / tone
+     from `app/ui/dirty_state.py`.
+   - When the state is "saved" AND the active project
+     is generic / user-created, also shows the
+     "last saved at" timestamp as supplementary text.
+
+   Behavior:
+   - Pure read-side. No backend calls. No mutation of
+     workspace_state, project record, or scenario
+     record. The helper does not write to the DB.
+   - No autosave. The badge only reflects the current
+     dirty / save / run state, never persists anything.
+   - No fake timestamps. If a save context is missing
+     or has no timestamp, the timestamp section is
+     suppressed.
+   - Conservative copy. No no-go claims. #}
+{% if dirty_state is defined and dirty_state %}
+  {% set _ds = dirty_state %}
+  {% set _state = _ds.state|default('unknown') %}
+  {% set _label = _ds.label|default('—') %}
+  {% set _tone = _ds.tone|default('none') %}
+  {% set _hint = _ds.hint|default('') %}
+  {% set _rerun = _ds.rerun_recommended|default(false) %}
+  {% set _unsaved = _ds.unsaved_warning|default(false) %}
+  {% set _is_stale = _ds.stale|default(false) %}
+
+  <aside class="dirty-state-badge dirty-state-badge--{{ _tone }}"
+         role="status"
+         aria-label="Save state: {{ _label }}"
+         data-dirty-state="{{ _state }}"
+         data-rerun-recommended="{{ 'true' if _rerun else 'false' }}"
+         data-unsaved-warning="{{ 'true' if _unsaved else 'false' }}"
+         data-stale="{{ 'true' if _is_stale else 'false' }}">
+    <div class="dirty-state-badge__row dirty-state-badge__row--header">
+      <span class="dirty-state-badge__label">Save state</span>
+      <span class="badge badge-{{ _tone }}"
+            title="{{ _hint }}"
+            aria-label="{{ _hint }}">{{ _label }}</span>
+    </div>
+
+    {% if _is_stale or _rerun %}
+    <div class="dirty-state-badge__row dirty-state-badge__row--rerun"
+         role="note" aria-label="Rerun recommended">
+      <span class="dirty-state-badge__rerun-hint">
+        {{ _hint }}
+      </span>
+    </div>
+    {% endif %}
+
+    {% if _unsaved %}
+    <div class="dirty-state-badge__row dirty-state-badge__row--unsaved"
+         role="note" aria-label="Unsaved changes">
+      <span class="dirty-state-badge__unsaved-hint">
+        {{ _hint }}
+      </span>
+    </div>
+    {% endif %}
+  </aside>
+{% endif %}
