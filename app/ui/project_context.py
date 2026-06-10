@@ -24,6 +24,42 @@ MISSING = "MISSING"
 NOT_AVAILABLE = "NOT_AVAILABLE"
 
 
+# ---------------------------------------------------------------------------
+# Phase PR2 — Realized gearing KPI helper
+# ---------------------------------------------------------------------------
+
+def _compute_realized_gearing_pct(
+    senior_debt_keur: float | None,
+    total_capex_keur: float | None,
+) -> float | None:
+    """Compute realized gearing as senior_debt / total_capex * 100.
+
+    Returns ``None`` when:
+    - ``senior_debt_keur`` is None or negative
+    - ``total_capex_keur`` is None, zero, or negative
+
+    Returns a float in [0, 100] (i.e. percentage) otherwise.
+
+    This is a **read-only derived KPI** for the Scenario Matrix
+    (Phase PR2). It does NOT change debt sizing semantics,
+    DSCR sculpting, financial formulas, factory paths,
+    or the indicative gearing_pct input. It is computed at
+    snapshot build time from values that the runtime has
+    already produced.
+
+    Locked by tests:
+    - test_phase_pr2_realized_gearing.py
+      ::TestRealizedGearingComputation
+    """
+    if senior_debt_keur is None or total_capex_keur is None:
+        return None
+    if total_capex_keur <= 0:
+        return None
+    if senior_debt_keur < 0:
+        return None
+    return (senior_debt_keur / total_capex_keur) * 100.0
+
+
 @dataclass(frozen=True)
 class ProjectContext:
     """Read-only UI context for one project."""
@@ -68,6 +104,14 @@ class ProjectContext:
     senior_tenor_years: int = 0
     target_dscr: float = 0.0
     gearing_pct: float | None = None
+    # Phase PR2 — read-only derived output.
+    # realized_gearing_pct = senior_debt / total_capex * 100
+    # (computed at snapshot build time, not bound
+    # to the indicative gearing input). This is a
+    # read-only derived KPI for the Scenario Matrix;
+    # no financial formula / sizing logic is
+    # changed by PR2.
+    realized_gearing_pct: float | None = None
     shl_amount_keur: float = 0.0
     shl_rate_pct: float = 0.0
     shl_idc_keur: float = 0.0
@@ -2289,6 +2333,13 @@ def _build_context_from_project_inputs(
         idc_keur=capex.idc_keur,
         bank_fees_keur=capex.bank_fees_keur,
         senior_debt_keur=financing.fixed_debt_keur,
+        # Phase PR2: realized gearing = senior_debt / total_capex * 100.
+        # Read-only derived KPI (output). Not bound to the
+        # indicative gearing_pct input. None when total_capex is 0
+        # (uninitialised CAPEX -> em-dash fallback in UI).
+        realized_gearing_pct=_compute_realized_gearing_pct(
+            financing.fixed_debt_keur, capex.total_capex
+        ),
         interest_rate_pct=financing.base_rate + financing.margin_bps / 10_000,
         senior_tenor_years=financing.senior_tenor_years,
         target_dscr=financing.target_dscr,
@@ -2481,6 +2532,14 @@ def build_project_context_for_record(
         senior_tenor_years=senior_tenor_years,
         target_dscr=target_dscr,
         gearing_pct=gearing_ratio,
+        # Phase PR2: realized gearing (read-only derived KPI).
+        # In user-snapshot path the senior_debt_keur is the
+        # already-computed DSCR-sculpted value from the
+        # baseline ProjectInputs (financing.fixed_debt_keur);
+        # we re-derive it from base.senior_debt_keur.
+        realized_gearing_pct=_compute_realized_gearing_pct(
+            base.senior_debt_keur, total_capex_keur
+        ),
         data_source=(
             "User-created project record - runtime built from saved project assumptions. "
             "Some secondary assumptions still use system defaults until later phases."

@@ -885,6 +885,22 @@ class TestM1FileScope:
             # PR3 (post-m1-taxonomy-brief-alignment)
             # (forward-extended; will be
             # added when those PRs land)
+            # PR2 realized gearing KPI
+            # (scenario_matrix KPI section
+            # + ProjectContext field + helper)
+            "app/ui/project_context.py",
+            "app/ui/scenario_matrix.py",
+            "app/templates/partials/scenario_matrix.html",
+            "tests/test_phase_pr2_realized_gearing.py",
+            "docs/phase_pr2_realized_gearing.md",
+            "reports/phase_pr2_realized_gearing.md",
+            # PR2 cross-arc test patches:
+            # PR2 updates S2 and P1-B
+            # file-scope / forbidden-paths
+            # tests to allowlist the post-m1
+            # follow-up additions.
+            "tests/test_phase_s2_gearing_as_output.py",
+            "tests/test_phase_p1b_driver_status_badges.py",
         }
         true_extra = [
             p for p in extra

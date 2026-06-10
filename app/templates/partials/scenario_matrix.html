@@ -160,8 +160,11 @@
           <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
         </tr>
 
-        <tr data-m1-row="gearing_pct" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">Indicative Gearing</th>
+        <tr data-m1-row="gearing_pct" data-m1-row-kind="input" data-pr2-badge="indicative-gearing">
+          <th scope="row" class="matrix-row-label">
+            Indicative Gearing (input)
+            <span class="badge badge-input-pr2" data-pr2-badge="indicative-gearing-tag" title="Indicative gearing input. The debt is sized by DSCR sculpt, not by this input. See the 'Realized Gearing' output below for the actual senior_debt / total_CAPEX ratio.">input</span>
+          </th>
           <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
             {%- if _has_ctx and project_ctx.gearing_pct is defined and project_ctx.gearing_pct is not none -%}
               {{ "{:.1f}".format(project_ctx.gearing_pct * 100) }}%
@@ -254,6 +257,21 @@
           <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
             {%- if _has_ctx and project_ctx.senior_debt_amount_keur is defined and project_ctx.senior_debt_amount_keur is not none -%}
               {{ "{:,.0f}".format(project_ctx.senior_debt_amount_keur) }} kEUR
+            {%- else -%}—{%- endif -%}
+          </td>
+          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
+          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
+          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
+        </tr>
+
+        <tr data-m1-row="realized_gearing_pct" data-m1-row-kind="kpi" data-pr2-badge="realized-gearing">
+          <th scope="row" class="matrix-row-label">
+            Realized Gearing
+            <span class="badge badge-kpi-pr2" data-pr2-badge="realized-gearing-tag" title="Read-only derived KPI: realized gearing = senior debt / total CAPEX. NOT a binding driver.">derived</span>
+          </th>
+          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
+            {%- if _has_ctx and project_ctx.realized_gearing_pct is defined and project_ctx.realized_gearing_pct is not none -%}
+              {{ "{:.1f}".format(project_ctx.realized_gearing_pct) }}%
             {%- else -%}—{%- endif -%}
           </td>
           <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
