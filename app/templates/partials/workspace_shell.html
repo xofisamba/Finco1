@@ -459,6 +459,12 @@
         </div>
       </div>
     </div>
+
+    {# ── Phase M1: Read-Only Scenario Matrix Prototype (UI only) ───────── #}
+    {# Renders a 4-column Base | Downside | Upside | Custom matrix with   #}
+    {# input rows + KPI rows. Base is live (reads project_ctx). The other  #}
+    {# three columns are placeholders. NO scenario persistence, NO CRUD.  #}
+    {% include "partials/scenario_matrix.html" %}
   </div>
 
   <!-- ----------------------------------------------- INPUTS -- -->

@@ -7194,3 +7194,150 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   line-height: 1.45;
   font-size: 0.78rem;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PHASE M1 — Read-Only Scenario Matrix Prototype (UI only)
+   Visual styling for the Base | Downside | Upside | Custom matrix.
+   No scenario persistence, no scenario CRUD, no scenario engine.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.scenario-matrix-card {
+  margin: 1.25rem 0;
+  padding: 0.5rem 0.85rem 0.85rem 0.85rem;
+}
+
+.scenario-matrix-inheritance-note {
+  font-size: 0.78rem;
+  color: var(--text-2);
+  padding: 0.5rem 0.7rem;
+  margin: 0.5rem 0 0.85rem 0;
+  background: var(--surface-2);
+  border-left: 3px solid var(--primary);
+  border-radius: 4px;
+}
+
+.scenario-matrix-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0 0.85rem 0;
+}
+
+.scenario-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  background: var(--surface);
+}
+
+.scenario-matrix-table thead th {
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  font-weight: 600;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.scenario-matrix-table thead th.matrix-corner {
+  width: 18%;
+}
+
+.scenario-matrix-table thead th.matrix-col-header {
+  width: 20.5%;
+}
+
+.scenario-matrix-table thead th .matrix-col-name {
+  display: inline-block;
+  margin-right: 0.4rem;
+  color: var(--text);
+}
+
+.scenario-matrix-table tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.scenario-matrix-table tbody tr.matrix-section-row {
+  background: var(--surface-2);
+}
+
+.scenario-matrix-table tbody th.matrix-section-header {
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.scenario-matrix-table tbody th.matrix-row-label {
+  text-align: left;
+  padding: 0.35rem 0.55rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  background: transparent;
+}
+
+.scenario-matrix-table tbody td.matrix-cell {
+  padding: 0.35rem 0.55rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  vertical-align: middle;
+}
+
+.scenario-matrix-table tbody td.matrix-cell-base {
+  background: rgba(16, 185, 129, 0.05);
+  color: var(--text);
+  font-weight: 600;
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.scenario-matrix-table tbody td.matrix-cell-inherit {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.scenario-matrix-table tbody td.matrix-cell-future {
+  color: var(--muted);
+}
+
+.scenario-matrix-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  margin-top: 0.5rem;
+  font-size: 0.74rem;
+  color: var(--text-2);
+  border-top: 1px solid var(--border);
+}
+
+.scenario-matrix-legend .badge {
+  font-size: 0.65rem;
+}
+
+/* M1 column header badges (color-coded placeholders). */
+.badge-base {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.35);
+  font-size: 0.65rem;
+}
+
+.badge-inherit {
+  background: rgba(99, 102, 241, 0.10);
+  color: #4338ca;
+  border-color: rgba(99, 102, 241, 0.30);
+  font-size: 0.65rem;
+}
+
+.badge-future {
+  background: rgba(107, 114, 128, 0.10);
+  color: #4b5563;
+  border-color: rgba(107, 114, 128, 0.30);
+  font-size: 0.65rem;
+}
