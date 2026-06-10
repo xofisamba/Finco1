@@ -7477,3 +7477,82 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 .generic-status-line__text {
   font-weight: 500;
 }
+
+/* ── Phase P2-min-3: Dashboard v1 ─────────────────────────── */
+
+.dashboard {
+  margin: 1.25rem 0;
+}
+
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard-kpi-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.75rem 0.85rem;
+  position: relative;
+}
+
+.dashboard-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, #4b5563);
+  margin-bottom: 0.25rem;
+}
+
+.dashboard-kpi-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text, #111827);
+}
+
+.dashboard-kpi-value[data-p2min3-kpi-status="derived"] {
+  color: var(--text-2, #4b5563);
+}
+
+.dashboard-kpi-value[data-p2min3-kpi-status="missing"] {
+  color: var(--text-2, #9ca3af);
+}
+
+.dashboard-kpi-tooltip {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-2, #9ca3af);
+  cursor: help;
+}
+
+.dashboard-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.85rem;
+}
+
+.dashboard-chart-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.85rem;
+}
+
+.dashboard-chart-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text, #111827);
+  margin-bottom: 0.5rem;
+}
+
+.dashboard-svg {
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+}
