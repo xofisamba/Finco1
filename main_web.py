@@ -87,7 +87,8 @@ from app.ui.dirty_state import build_dirty_state_ui
 # Phase 25B-5 — scenario workflow polish helpers (pure functions, no DB, no I/O)
 from app.ui.scenario_workflow import build_scenario_workflow_ui
 # Phase 25B-6 — generic project review pack helpers (pure functions, no DB, no I/O)
-from app.ui.project_review import build_project_review_uifrom app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
+from app.ui.project_review import build_project_review_ui
+from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
@@ -1583,6 +1584,9 @@ def _render_scenario_workspace(
     scenario_workflow_ui: dict | None = None,
     project_review_ui: dict | None = None,
 ):
+    # Phase 25B-6 — defensive default for runtime_summary
+    # (used by project_review_ui when not pre-populated).
+    runtime_summary = _runtime_summary_for_index(workspace_state)
     if dirty_state_ui is None:
         # Phase 25B-4 — defensive default.
         from app.ui.dirty_state import build_dirty_state_ui
@@ -1612,10 +1616,9 @@ def _render_scenario_workspace(
         # Phase 25B-6 — defensive default.
         from app.ui.project_review import build_project_review_ui
         project_review_ui = build_project_review_ui(
-            project_record=project_record,
-            workspace_state=workspace_state,
-            runtime_summary=runtime_summary,
-        )):
+            project_ctx=project_record,
+            last_run_summary=runtime_summary,
+        )
     if dirty_state_ui is None:
         # Phase 25B-4 — defensive default. _workspace_refresh_payload
         # should always populate this, but a None here keeps the
@@ -1646,7 +1649,6 @@ def _render_scenario_workspace(
                 else ""
             ),
         )
-        )
     return templates.TemplateResponse(
         request=request,
         name="partials/scenario_workspace.html",
@@ -1673,16 +1675,24 @@ def _render_scenario_workspace(
                 and (project_record.template_source or "").strip().lower()
                 in {"generic_solar", "generic_wind"}
             ),
+            # Phase 25B-6 — runtime summary (used by
+            # project review card + debt DSCR/SHL panel)
+            "runtime_summary": runtime_summary,
             # Phase 25B-4 — visual dirty-state UI payload
             "dirty_state_ui": dirty_state_ui,
             # Phase 25B-5 — scenario workflow polish UI payload
             "scenario_workflow_ui": scenario_workflow_ui,
             # Phase 25B-6: Generic project review pack (read-only UI payload)
-            "project_review_ui": project_review_ui,        },
+            "project_review_ui": project_review_ui,
+        },
     )
 
 
 def _workspace_refresh_payload(user, project_record, workspace_state=None):
+    # Phase 25B-6 — build the runtime_summary dict
+    # once so the project_review_ui payload has
+    # access to it.
+    runtime_summary = _runtime_summary_for_index(workspace_state)
     scenarios = list_scenarios(user.user_id, project_id=project_record.project_id, include_archived=False, limit=12)
     history = get_scenario_history(user.user_id, project_id=project_record.project_id, limit=20)
     exports = list_exports(user.user_id, project_id=project_record.project_id, limit=8)
@@ -1764,9 +1774,8 @@ def _workspace_refresh_payload(user, project_record, workspace_state=None):
     # exploratory notes / known exclusions) keyed
     # by project context.
     project_review_ui = build_project_review_ui(
-        project_record=project_record,
-        workspace_state=workspace_state,
-        runtime_summary=runtime_summary,
+        project_ctx=project_record,
+        last_run_summary=runtime_summary,
     )
 
     return (
@@ -2815,7 +2824,8 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
-    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui, project_review_ui = _workspace_refresh_payload(user, project_record, workspace_state)    return _render_scenario_workspace(
+    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui, project_review_ui = _workspace_refresh_payload(user, project_record, workspace_state)
+    return _render_scenario_workspace(
         request,
         user,
         project_record,
@@ -2825,7 +2835,10 @@ async def scenario_history_endpoint(request: Request, project: str = "tuho"):
         exports,
         export_lineage,
         scenario_summary_cards,
-    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui, project_review_ui = _workspace_refresh_payload(user, project_record, workspace_state)        message="Refreshed scenario history and export lineage.",
+        dirty_state_ui=dirty_state_ui,
+        scenario_workflow_ui=scenario_workflow_ui,
+        project_review_ui=project_review_ui,
+        message="Refreshed scenario history and export lineage.",
     )
 
 
@@ -2843,9 +2856,7 @@ async def scenario_compare_endpoint(
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
-        dirty_state_ui=dirty_state_ui,
-        scenario_workflow_ui=scenario_workflow_ui,
-        project_review_ui=project_review_ui,
+    scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui, project_review_ui = _workspace_refresh_payload(user, project_record, workspace_state)
     compare_result = None
     message = "Select two saved scenarios to compare."
     if left_scenario_id and right_scenario_id:

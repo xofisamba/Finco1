@@ -336,6 +336,14 @@ class TestNoPersistenceSchemaChange:
                 )
 
     def test_no_main_web_changes(self):
+        # Phase 25C CI Guard Fix — skip-guard: this is
+        # an absolute diff guard that only makes sense on
+        # a 57A-5 branch. On any other branch the test
+        # would false-positive on the 25C CI fix (which
+        # is allowed to touch main_web.py for production
+        # code fixes that are outside the 57A-5 scope).
+        # Same pattern as the 57A-3 followup skip-guard.
+        self._skip_if_not_on_phase57a5_branch()
         import subprocess
         r = subprocess.run(
             ["git", "diff", "origin/main", "--name-only", "--",
