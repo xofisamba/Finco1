@@ -1,0 +1,36 @@
+{
+  "phase": "25C-3",
+  "title": "Pilot Feedback Capture (Generic Solar / Wind)",
+  "type": "ui_only",
+  "status": "DRAFT",
+  "base_sha": "c80fa3391e1c475d575c981244812e16c859a8dc",
+  "branch": "phase25c-3-feedback-capture",
+  "field_count": 6,
+  "fields": [
+    "project",
+    "scenario",
+    "what_i_tried",
+    "what_i_expected",
+    "what_happened",
+    "screenshot"
+  ],
+  "short_template_lines": 3,
+  "disclaimer_mentions_humans": true,
+  "disclaimer_warns_against_secrets": true,
+  "disclaimer_warns_against_pii": true,
+  "disclaimer_says_exploratory": true,
+  "no_db_writes": true,
+  "no_ticket_id_generation": true,
+  "no_pii_capture": true,
+  "no_persistence_writes": true,
+  "no_schema_migration": true,
+  "no_feature_flag_enablement": true,
+  "use_construction_schedule_engine": false,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "test_count": {
+    "helper_tests": 62,
+    "factory_safety_tests": 24,
+    "total_new": 86
+  },
+  "next_step": "25C Closure \u2014 Third-Party Test Readiness Gate"
+}
