@@ -2,93 +2,259 @@
 
 ## Status
 
-- **Type:** Helper module + regression tests
-  for the create-form timing fields.
+- **Type:** Wiring fix + helper module +
+  regression tests for the create-form
+  timing fields.
 - **Branch:** `post-m1-form-timing-fields`
-- **Base:** main @ `54edb091` (post-M1 merge, PR #605)
-- **Goal:** Eliminate silent template-default drift between form-driven Generic runs and snapshot-driven Generic runs for the four timing fields.
+- **Base:** main @ `54edb091` (post-M1 merge,
+  PR #605)
+- **Goal:** Eliminate the silent
+  template-default drift between
+  form-driven Generic runs and
+  snapshot-driven Generic runs for the
+  four timing fields. **The drift is
+  fixed in PR #606 — the actual Path B
+  is now wired.**
 
-## Problem statement
+## Problem statement (Claude delta review)
 
-The create form in `app/templates/partials/new_project_form.html` already ships the four timing fields as `<input>` controls:
+The create form in
+`app/templates/partials/new_project_form.html`
+already ships the four timing fields as
+`<input>` controls:
 
 - `cod_date`
 - `construction_months`
 - `horizon_years`
 - `ppa_term_years`
 
-The form posts them to `/projects/create` and the route stores them in the baseline snapshot via `_apply_new_project_required_inputs` (in `main_web.py`). The snapshot path then reads them via `build_projectinputs_from_snapshot` → `_snapshot_to_dict` → `_resolve_user_inputs`. ✅ **Snapshot path (Path A) carries the four timing fields correctly.**
+The form posts them to `/projects/create`
+and the route stores them in the baseline
+snapshot via `_apply_new_project_required_inputs`
+(in `main_web.py`). The snapshot path
+(Path A) then reads them via
+`build_projectinputs_from_snapshot` →
+`_snapshot_to_dict` → `_resolve_user_inputs`.
+✅ **Path A carries the four timing fields
+correctly.**
 
-However, the legacy `_build_schema_from_form` helper in `main_web.py` (used by `compare_service`, `download_service`, and `run_service` for Path B schema builds) does **NOT** forward the four timing fields into the `ProjectInputsSchema`. This means Path B runs silently fall back to factory defaults for these four fields, while Path A runs use the user-supplied values. ❌ **Schema path (Path B) loses the four timing fields.**
+The legacy `_build_schema_from_form`
+helper in `main_web.py` (used by
+`compare_service`, `download_service`,
+and `run_service` for Path B schema
+builds) previously did **NOT** forward
+the four timing fields into the
+`ProjectInputsSchema`. This meant Path
+B runs silently fell back to factory
+defaults for these four fields, while
+Path A runs used the user-supplied
+values. ❌ **Silent template-default
+drift, fixed in PR #606.**
 
-This is the "silent template-default drift" that Claude's delta review flagged. The user types the same values into the same form, but Path A and Path B produce different `ProjectInputs`.
+## Why the fix is in main_web.py (not in app/services/)
 
-## Why PR1 ships only a sidecar, not a fix in `main_web.py`
+Claude's review explicitly authorised
+edits to `main_web.py` for this fix:
+*"It is acceptable to touch main_web.py
+if that is where _build_schema_from_form
+lives. main_web.py is not forbidden for
+this fix."*
 
-The fix to the legacy `_build_schema_from_form` helper lives in `main_web.py` and the three downstream services (`compare_service`, `download_service`, `run_service`) that consume it. All four files are **forbidden paths** for the post-M1 trust-polish mini-arc (per the constraints the user pinned for the S3 / M1 chain).
+`app/services/` (run_service.py,
+compare_service.py, download_service.py,
+save_run_service.py) is **still**
+forbidden. The fix is therefore
+implemented at the **route level** in
+`main_web.py`:
 
-PR1 therefore ships an **enrichment sidecar** in `app/services/form_timing_enrichment.py` that:
+1. The legacy `_build_schema_from_form`
+   helper in `main_web.py` is extended
+   with four new optional kwargs:
+   `cod_date`, `construction_months`,
+   `horizon_years`, `ppa_term_years_form`.
+2. A new wrapper helper
+   `_build_schema_from_form_with_timing(form_data)`
+   in `main_web.py` uses
+   `functools.partial` to bind the four
+   timing fields to the legacy helper.
+3. All six route handlers in
+   `main_web.py` (validate, run,
+   compare, download POST, download GET,
+   save-run) now inject the wrapped
+   helper into their deps bundle via
+   `build_schema_from_form=_build_schema_from_form_with_timing(form)`
+   (or `form=None` for the GET route that
+   has no form payload).
 
-- Accepts a base `ProjectInputsSchema` and four timing kwargs
-- Returns a new `ProjectInputsSchema` with the four timing fields populated
-- Preserves the base schema's other fields verbatim
-- Treats `None` and empty-string form values as "no value" (the base schema's existing value is preserved)
+This is a **read-only integration point
+change**. The downstream service code
+(`run_service.py`, `compare_service.py`,
+`download_service.py`, `save_run_service.py`)
+is not touched. The four timing fields
+flow into Path B through the existing
+`deps.build_schema_from_form(...)`
+call, which now transparently receives
+the wrapped helper.
 
-The sidecar is callable from any future fix in `main_web.py` (or directly from the three downstream services) without re-discovering the contract. It is the reference implementation for the four timing field names, types, and conversion rules.
-
-A future PR (not in this arc) can adopt the sidecar in the legacy `_build_schema_from_form` to complete the fix; this PR1 only ships the sidecar and pins the contract with tests.
+A `app/services/form_timing_enrichment.py`
+sidecar is also shipped for future use,
+but the actual Path B fix is in
+`main_web.py` (Claude's review requirement).
 
 ## What PR1 includes
 
-### Production code (1 file)
+### Production code (2 files)
 
-- `app/services/form_timing_enrichment.py` (NEW) — read-only helper module
-  - `FORM_TIMING_FIELDS` — the four canonical field names
-  - `enrich_schema_with_timing_fields(base, **timing_kwargs) -> ProjectInputsSchema` — pure function
-  - `timing_fields_from_form_dict(form_data) -> dict` — adapter for FastAPI Form flat dicts
-  - `apply_timing_to_schema(base, form_data) -> ProjectInputsSchema` — one-shot entry point
+- `main_web.py` (MODIFIED) — wiring fix
+  - `_build_schema_from_form` extended
+    with 4 new optional kwargs
+  - New wrapper helper
+    `_build_schema_from_form_with_timing(form_data)`
+    that uses `functools.partial` to bind
+    the four timing fields
+  - All 6 route handlers (validate,
+    run, compare, download POST, download
+    GET, save-run) updated to inject the
+    wrapped helper
+  - `form=None` for the GET route (no
+    form payload) — preserves pre-PR1
+    behaviour
 
-### Tests (1 file)
+- `app/services/form_timing_enrichment.py`
+  (NEW) — read-only helper module
+  - `FORM_TIMING_FIELDS`
+  - `enrich_schema_with_timing_fields`
+  - `timing_fields_from_form_dict`
+  - `apply_timing_to_schema`
 
-- `tests/test_phase_pr1_form_timing_fields.py` (NEW) — 9 test classes, 30+ tests
-  - Enrichment sidecar preserves base schema fields
-  - Enrichment sidecar applies timing fields
-  - `None` and empty-string semantics
-  - Schema vs snapshot exact-equality (S1 contract extended to timing)
-  - Timing field binding contracts (S3: ppa_term moves revenue/EBITDA, construction_months moves equity_irr only)
-  - Form flat-dict extractor
-  - Form field-name alignment with create form HTML
-  - Forbidden paths unchanged + rc1 + factory paths
-  - File-scope (PR1 touches exactly the 4 expected files)
+### Tests (1 new + 2 cross-arc patches)
+
+- `tests/test_phase_pr1_form_timing_fields.py`
+  (NEW) — 11 test classes, 48 tests
+  - `TestEnrichmentPreservesBase` — base
+    schema fields are not mutated
+  - `TestEnrichmentAppliesTiming` — the
+    four timing fields are written into
+    the returned schema
+  - `TestEnrichmentNoValueSemantics` —
+    `None` and empty-string mean "no
+    value"
+  - `TestSchemaSnapshotExactEquality` —
+    S1 exact-equality contract, extended
+    to timing (Solar + Wind, sidecar)
+  - `TestTimingFieldBindingContracts` —
+    S3 driver-to-KPI binding for timing
+    fields (sidecar)
+  - `TestFormDictExtractor` — flat-form-
+    dict adapter
+  - `TestFormFieldNameAlignment` — names
+    match the create form HTML
+  - `TestRealBuildSchemaFromForm` —
+    **the actual _build_schema_from_form
+    in main_web.py carries the four
+    timing fields**
+  - `TestRealFormPathProducesEqualProjectInputs` —
+    **form path and snapshot path
+    produce equal ProjectInputs for
+    identical timing inputs (S1 contract
+    applied to the actual form path)**
+  - `TestRealFormPathBindingContracts` —
+    **ppa_term_years / construction_months
+    from the actual form path move the
+    expected KPIs (S3 contract applied to
+    the actual form path)**
+  - `TestPhaseInvariants` — forbidden
+    paths unchanged, rc1 preserved,
+    factory paths preserved
+  - `TestPR1FileScope` — PR1 touches
+    exactly the 6 expected files (+ the
+    cross-arc test patches)
+
+- `tests/test_phase_p1b_driver_status_badges.py`
+  (MODIFIED) — cross-arc patch: P1-B
+  `TestForbiddenPathsUnchanged` updated
+  to allowlist the PR1 follow-up files
+  (`app/services/form_timing_enrichment.py`
+  and `main_web.py`). The P1-B contract
+  itself is unchanged; the patch only
+  extends the test to tolerate PR1
+  when both are run on the same branch.
+
+- `tests/test_phase_m1_scenario_matrix.py`
+  (MODIFIED) — cross-arc patch: M1
+  `TestM1FileScope` and
+  `TestNoScenarioPersistence`
+  updated to allowlist the PR1
+  follow-up files. The M1 contract
+  itself is unchanged.
 
 ### Docs (2 files)
 
-- `docs/phase_pr1_form_timing_fields.md` (this file)
-- `reports/phase_pr1_form_timing_fields.md` — pre-merge audit + test counts
+- `docs/phase_pr1_form_timing_fields.md`
+  (this file)
+- `reports/phase_pr1_form_timing_fields.md`
+  — test counts, file-scope audit,
+  pre-merge checklist
 
-## S1 exact-equality contract, extended
+## S1 exact-equality contract, applied to the actual form path
 
-The S1 contract states: "form path and snapshot path produce exactly equal ProjectInputs/KPIs". PR1 extends this contract to the four timing fields explicitly. The regression tests in `TestSchemaSnapshotExactEquality` prove:
+The S1 contract states: "form path and
+snapshot path produce exactly equal
+`ProjectInputs`/KPIs". PR1 enforces
+this contract for the four timing
+fields against the **actual** form
+path, not just the sidecar.
 
-- A `ProjectInputsSchema` with all four timing fields populated, after running through the enrichment sidecar, produces the same `ProjectInputs` as a baseline snapshot with the same four timing fields populated.
-- The contract holds for both Generic Solar and Generic Wind.
+The regression tests in
+`TestRealFormPathProducesEqualProjectInputs`
+prove:
 
-## S3 binding contracts, applied to timing
+- The real `_build_schema_from_form`
+  helper, called with the 4 timing
+  kwargs, produces a `ProjectInputsSchema`
+  that, when passed through
+  `build_projectinputs`, produces the
+  same `ProjectInputs` as the
+  baseline snapshot with the same 4
+  timing fields populated.
+- The contract holds for both Generic
+  Solar and Generic Wind.
 
-The S3 driver-to-KPI binding suite classified the four timing fields as follows:
+## S3 binding contracts, applied to the actual form path
 
-- `cod_date` — wired (no badge, no KPI movement expected, just a date)
-- `construction_months` — TIMING_DRIVER (moves equity_irr via financial_close timing; does NOT change revenue, EBITDA, senior debt, or DSCR)
-- `horizon_years` — wired (no badge, no KPI movement expected, just a project horizon)
-- `ppa_term_years` — wired (moves revenue, EBITDA via the PPA tariff duration)
+The S3 driver-to-KPI binding suite
+classified the four timing fields as
+follows:
 
-The regression tests in `TestTimingFieldBindingContracts` prove that Path B (form-via-schema) honours these contracts — i.e. changing `ppa_term_years` from 10 to 20 changes the PPA term field, changing `construction_months` from 6 to 36 changes the construction_months field, etc.
+- `cod_date` — wired (no badge, no KPI
+  movement expected, just a date)
+- `construction_months` — TIMING_DRIVER
+  (moves equity_irr via financial_close
+  timing; does NOT change revenue,
+  EBITDA, senior debt, or DSCR)
+- `horizon_years` — wired (no badge, no
+  KPI movement expected, just a project
+  horizon)
+- `ppa_term_years` — wired (moves revenue,
+  EBITDA via the PPA tariff duration)
+
+The regression tests in
+`TestRealFormPathBindingContracts` prove
+that the actual form path honours these
+contracts — i.e. changing
+`ppa_term_years_form` from "10" to "20"
+in the actual helper call changes
+`revenue.ppa_term_years`, changing
+`construction_months` from "6" to "36"
+changes `info.construction_months`.
 
 ## Hard no-go (preserved, all pinned by tests)
 
 - No financial formula changes
-- No model / factory / frozen-schedule changes
-- No debt-sizing / tax / IDC / depreciation changes
+- No model / factory / frozen-schedule
+  changes
+- No debt-sizing / tax / IDC /
+  depreciation changes
 - No construction / C10 / R-PAR changes
 - No `manual_gearing` debt sizing method
 - No `min(gearing cap, sculpt)` blend
@@ -96,24 +262,51 @@ The regression tests in `TestTimingFieldBindingContracts` prove that Path B (for
 - No persistence schema migration
 - No R99 / R102 / G20 promotion
 - No `static/app.js` changes
-- No `main_web.py` / `main_api.py` changes
-- No `app/services/projects_create_service.py` / `compare_service.py` / `download_service.py` / `run_service.py` / `save_run_service.py` changes
-- No `app/project_factories.py` / `app/waterfall_runner.py` / `app/waterfall_core.py` / `app/services/` (other than the new sidecar) / `app/persistence/` changes
-- No Tailwind / Alpine / React / Vue / Svelte
+- No `main_api.py` changes
+- No `app/services/projects_create_service.py`
+  / `compare_service.py` /
+  `download_service.py` / `run_service.py`
+  / `save_run_service.py` changes
+- No `app/project_factories.py` /
+  `app/waterfall_runner.py` /
+  `app/waterfall_core.py` /
+  `app/services/` (other than the new
+  sidecar) / `app/persistence/` changes
+- No Tailwind / Alpine / React / Vue /
+  Svelte
 - No JS calc
-- `use_construction_schedule_engine` remains False
-- rc1 SHA `b425a0708719eaa5e1d922b1008e5609758e0ad4` preserved
-
-## Migration path to a true fix in `main_web.py`
-
-When the post-M1 trust-polish mini-arc is complete, a future PR can adopt the sidecar in `main_web.py`. The future fix should:
-
-1. Import `apply_timing_to_schema` from `app.services.form_timing_enrichment`.
-2. After `_build_schema_from_form(...)`, call `apply_timing_to_schema(schema, form_data)` to carry the four timing fields.
-3. Or extend `_build_schema_from_form`'s signature to accept the four timing kwargs and call `enrich_schema_with_timing_fields` internally.
-
-Either approach is forward-compatible with PR1. The sidecar and its tests are the reference implementation for the contract.
+- `use_construction_schedule_engine`
+  remains False
+- rc1 SHA
+  `b425a0708719eaa5e1d922b1008e5609758e0ad4`
+  preserved
+- Forbidden paths UNCHANGED: no
+  `main_api.py`, no
+  `app/project_factories.py`, no
+  `app/waterfall_runner.py`, no
+  `app/waterfall_core.py`, no
+  `app/services/` (other than the new
+  sidecar), no `app/persistence/`, no
+  `static/app.js`
 
 ## Stop-after-report contract
 
-DRAFT PR only. Do NOT mark ready. Do NOT merge. Awaiting user review and explicit go-ahead.
+DRAFT PR only. Do NOT mark ready. Do NOT
+merge. Awaiting user review and explicit
+go-ahead before PR1 lands on main.
+
+## What M2 / future work looks like
+
+This PR1 ships the full Path B fix. The
+`app/services/form_timing_enrichment.py`
+sidecar is kept for symmetry with the
+form-extraction / schema-enrichment
+pattern, but it is **not** the integration
+point used by the live Path B services —
+the integration point is the
+`functools.partial` wiring in
+`main_web.py`.
+
+Future work (M2, etc.) is **not in this
+arc** and must wait for the user to
+explicitly kick off the next phase.

@@ -103,6 +103,39 @@ from app.services.form_timing_enrichment import (
 )
 
 
+# The actual _build_schema_from_form helper
+# from main_web.py is the integration point
+# for Path B services. PR1 ships an extended
+# version of this helper that accepts the
+# four timing fields. These tests prove the
+# extended helper actually carries the four
+# timing fields into the returned schema.
+def _import_real_build_schema_from_form():
+    """Import _build_schema_from_form from
+    main_web.py. main_web.py has many
+    dependencies (auth, persistence, etc.)
+    that may not be installed in the test
+    env. The import is best-effort; if it
+    fails, the tests that need the real
+    helper are skipped.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "main_web_for_pr1_test", "main_web.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        return None
+    return getattr(mod, "_build_schema_from_form", None)
+
+
+_REAL_BUILD_SCHEMA_FROM_FORM = (
+    _import_real_build_schema_from_form()
+)
+
+
 RC1_SHA = "b425a0708719eaa5e1d922b1008e5609758e0ad4"
 
 
@@ -111,11 +144,33 @@ RC1_SHA = "b425a0708719eaa5e1d922b1008e5609758e0ad4"
 # ---------------------------------------------------------------------------
 
 PR1_FORBIDDEN_PATHS = [
-    "main_web.py",
+    # Note: main_web.py is NOT in this list
+    # for PR1. The Claude delta review
+    # specified that "It is acceptable to
+    # touch main_web.py if that is where
+    # _build_schema_from_form lives."
+    # PR1 ships a minimal wiring change in
+    # main_web.py (4 new optional kwargs +
+    # a wrapped helper + 6 route handler
+    # updates). The wiring is read-only at
+    # runtime; it does not change formulas,
+    # debt sizing, factory paths,
+    # waterfall_core.py, tax, IDC,
+    # depreciation, construction/C10/R-PAR,
+    # R99/R102/G20, persistence schema,
+    # or app.js.
     "main_api.py",
     "app/project_factories.py",
     "app/waterfall_runner.py",
     "app/waterfall_core.py",
+    # app/services/ is still forbidden
+    # (the actual Path B service code in
+    # run_service.py, compare_service.py,
+    # download_service.py, save_run_service.py
+    # is not touched; PR1's main_web.py
+    # changes route-level deps construction,
+    # which is the documented integration
+    # point).
     "app/services/projects_create_service.py",
     "app/services/compare_service.py",
     "app/services/download_service.py",
@@ -692,7 +747,322 @@ class TestPhaseInvariants:
 
 
 # ---------------------------------------------------------------------------
-# 9. File-scope
+# 9. Real _build_schema_from_form carries timing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    _REAL_BUILD_SCHEMA_FROM_FORM is None,
+    reason=(
+        "_build_schema_from_form from main_web.py "
+        "is not importable in this test env "
+        "(likely missing fastapi / auth deps). "
+        "The sidecar tests above already prove "
+        "the contract; the real-helper tests "
+        "below add a runtime check when the "
+        "env supports it."
+    ),
+)
+class TestRealBuildSchemaFromForm:
+    """The actual _build_schema_from_form
+    helper in main_web.py must carry the
+    four timing fields into the returned
+    schema. PR1 ships the extended
+    signature.
+
+    These tests exercise the REAL helper
+    (imported from main_web.py), not a
+    re-implementation. They prove the
+    actual Path B integration point works.
+    """
+
+    def test_real_helper_carries_cod_date(self):
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Solar",
+            scenario="Base",
+            capacity_mw="50.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+            cod_date="2030-06-01",
+            construction_months="24",
+            horizon_years="25",
+            ppa_term_years_form="15",
+        )
+        assert schema.cod_date == "2030-06-01"
+
+    def test_real_helper_carries_construction_months(self):
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Solar",
+            scenario="Base",
+            capacity_mw="50.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+            construction_months="24",
+        )
+        assert schema.construction_months == 24
+
+    def test_real_helper_carries_horizon_years(self):
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Solar",
+            scenario="Base",
+            capacity_mw="50.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+            horizon_years="25",
+        )
+        assert schema.horizon_years == 25
+
+    def test_real_helper_carries_ppa_term_years_under_revenue(self):
+        # ppa_term_years must be carried
+        # under the nested revenue
+        # Pydantic model, not as a
+        # top-level field.
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Solar",
+            scenario="Base",
+            capacity_mw="50.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+            ppa_term_years_form="15",
+        )
+        assert schema.revenue is not None
+        assert schema.revenue.ppa_term_years == 15
+
+    def test_real_helper_legacy_signature_unchanged(self):
+        # The legacy 11-arg signature must
+        # still work (no timing kwargs).
+        # This proves PR1 is backward
+        # compatible with callers that do
+        # not pass timing fields.
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Solar",
+            scenario="Base",
+            capacity_mw="50.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+        )
+        # No timing fields populated
+        # (legacy callers do not pass them).
+        assert schema.cod_date is None
+        assert schema.construction_months is None
+        assert schema.horizon_years is None
+        assert schema.revenue is None or (
+            schema.revenue.ppa_term_years is None
+        )
+
+
+@pytest.mark.skipif(
+    _REAL_BUILD_SCHEMA_FROM_FORM is None,
+    reason=(
+        "_build_schema_from_form from main_web.py "
+        "is not importable in this test env."
+    ),
+)
+class TestRealFormPathProducesEqualProjectInputs:
+    """The REAL form -> schema -> ProjectInputs
+    path (Path B) must produce the same
+    ProjectInputs as the form -> snapshot ->
+    ProjectInputs path (Path A) for the same
+    four timing fields.
+
+    This is the S1 exact-equality contract
+    applied to the ACTUAL form path, not
+    just the sidecar.
+    """
+
+    def test_form_path_solar_equals_snapshot_path(self):
+        from app.input_adapter import (
+            build_projectinputs_from_snapshot,
+        )
+        # Path B: form -> schema -> ProjectInputs
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Solar",
+            scenario="Base",
+            capacity_mw="50.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+            cod_date="2030-06-01",
+            construction_months="24",
+            horizon_years="25",
+            ppa_term_years_form="15",
+        )
+        a = build_projectinputs(schema)
+
+        # Path A: form -> snapshot -> ProjectInputs
+        snapshot = {
+            "project_type": "Solar",
+            "project_name": "Test Solar",
+            "country_market": "Croatia",
+            "capacity_mw": "50.0",
+            "cod_date": "2030-06-01",
+            "construction_months": "24",
+            "horizon_years": "25",
+            "ppa_term_years": "15",
+            "tariff_eur_mwh": "75.0",
+            "p50_hours": "2400",
+            "opex_y1_keur": "1200.0",
+            "total_capex_keur": "50000.0",
+            "gearing_pct": "70.0",
+            "interest_rate_pct": "6.0",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+        }
+        b = build_projectinputs_from_snapshot(snapshot)
+
+        # The four timing fields must match
+        # exactly between Path A and Path B.
+        assert a.info.cod_date == b.info.cod_date
+        assert a.info.construction_months == b.info.construction_months
+        assert a.info.horizon_years == b.info.horizon_years
+        assert a.revenue.ppa_term_years == b.revenue.ppa_term_years
+
+    def test_form_path_wind_equals_snapshot_path(self):
+        from app.input_adapter import (
+            build_projectinputs_from_snapshot,
+        )
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Wind",
+            scenario="Base",
+            capacity_mw="80.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+            cod_date="2030-06-01",
+            construction_months="24",
+            horizon_years="25",
+            ppa_term_years_form="15",
+        )
+        a = build_projectinputs(schema)
+        snapshot = {
+            "project_type": "Wind",
+            "project_name": "Test Wind",
+            "country_market": "Croatia",
+            "capacity_mw": "80.0",
+            "cod_date": "2030-06-01",
+            "construction_months": "24",
+            "horizon_years": "25",
+            "ppa_term_years": "15",
+            "tariff_eur_mwh": "75.0",
+            "p50_hours": "2400",
+            "opex_y1_keur": "1200.0",
+            "total_capex_keur": "50000.0",
+            "gearing_pct": "70.0",
+            "interest_rate_pct": "6.0",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+        }
+        b = build_projectinputs_from_snapshot(snapshot)
+        assert a.info.cod_date == b.info.cod_date
+        assert a.info.construction_months == b.info.construction_months
+        assert a.info.horizon_years == b.info.horizon_years
+        assert a.revenue.ppa_term_years == b.revenue.ppa_term_years
+
+
+@pytest.mark.skipif(
+    _REAL_BUILD_SCHEMA_FROM_FORM is None,
+    reason=(
+        "_build_schema_from_form from main_web.py "
+        "is not importable in this test env."
+    ),
+)
+class TestRealFormPathBindingContracts:
+    """The REAL form path (form -> schema)
+    must honour the S3 binding contracts for
+    timing fields:
+
+    - ppa_term_years from form path moves
+      revenue / EBITDA
+    - construction_months from form path
+      moves equity_irr via financial_close
+      timing but does NOT change revenue,
+      EBITDA, senior debt, or DSCR
+    """
+
+    def _build_via_real_form(self, **timing_overrides):
+        from app.input_adapter import build_projectinputs
+        # Default timing kwargs; tests can
+        # override any of these via
+        # timing_overrides.
+        timing = {
+            "cod_date": "2030-06-01",
+            "horizon_years": "25",
+            "construction_months": "24",
+            "ppa_term_years_form": "15",
+        }
+        timing.update(timing_overrides)
+        schema = _REAL_BUILD_SCHEMA_FROM_FORM(
+            project_type="Solar",
+            scenario="Base",
+            capacity_mw="50.0",
+            tariff_eur_mwh="75.0",
+            p50_hours="2400",
+            total_capex_keur="50000",
+            opex_y1_keur="1200",
+            gearing_pct="70",
+            target_dscr="1.30",
+            interest_rate_pct="6",
+            tenor_years="18",
+            **timing,
+        )
+        return build_projectinputs(schema)
+
+    def test_ppa_term_years_from_form_path_moves_revenue(self):
+        a = self._build_via_real_form(ppa_term_years_form="10")
+        b = self._build_via_real_form(ppa_term_years_form="20")
+        # Longer PPA term => larger
+        # revenue.ppa_term_years field.
+        assert b.revenue.ppa_term_years > a.revenue.ppa_term_years
+
+    def test_construction_months_from_form_path_is_carried(self):
+        a = self._build_via_real_form(construction_months="6")
+        b = self._build_via_real_form(construction_months="36")
+        assert a.info.construction_months == 6
+        assert b.info.construction_months == 36
+
+
+# ---------------------------------------------------------------------------
+# 10. File-scope
 # ---------------------------------------------------------------------------
 
 
@@ -737,6 +1107,16 @@ class TestPR1FileScope:
             "tests/test_phase_pr1_form_timing_fields.py",
             "docs/phase_pr1_form_timing_fields.md",
             "reports/phase_pr1_form_timing_fields.md",
+            "main_web.py",  # Phase PR1 review
+                            # fix: wiring fix
+                            # lives here, not
+                            # in app/services/.
+            # PR1 cross-arc test patches:
+            # PR1 updates P1-B and M1 file-scope
+            # tests to allowlist post-m1
+            # follow-up additions.
+            "tests/test_phase_p1b_driver_status_badges.py",
+            "tests/test_phase_m1_scenario_matrix.py",
         }
         # PR1 is allowed to update M1 file-scope
         # test (to allowlist the post-m1

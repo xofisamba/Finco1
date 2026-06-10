@@ -1802,11 +1802,41 @@ def _build_schema_from_form(
     target_dscr: Optional[str] = None,
     interest_rate_pct: Optional[str] = None,
     tenor_years: Optional[str] = None,
+    cod_date: Optional[str] = None,
+    construction_months: Optional[str] = None,
+    horizon_years: Optional[str] = None,
+    ppa_term_years_form: Optional[str] = None,
 ) -> ProjectInputsSchema:
     """Build ProjectInputsSchema from form fields.
-    
+
     Blank optional fields -> None -> factory defaults preserved.
     Raises ValueError for invalid numeric values.
+
+    Phase PR1: the four timing fields
+    (cod_date, construction_months,
+    horizon_years, ppa_term_years) are now
+    carried into the ProjectInputsSchema
+    directly. This eliminates the silent
+    template-default drift between Path A
+    (form -> snapshot, used by
+    /projects/create) and Path B
+    (form -> schema, used by
+    compare_service, download_service,
+    run_service). The two paths now
+    produce identical ProjectInputs for
+    identical form inputs.
+
+    The four new kwargs are all optional
+    with default None. Callers that do not
+    pass them get the same behaviour as
+    before PR1 (factory defaults preserved).
+
+    ``ppa_term_years_form`` is the form-side
+    name (to avoid colliding with the
+    nested ``RevenueInput.ppa_term_years``
+    in case the legacy caller passed the
+    nested one). The form name in the
+    create form is ``ppa_term_years``.
     """
     def _float(val: Optional[str]) -> Optional[float]:
         if val is None or val.strip() == "":
@@ -1825,10 +1855,11 @@ def _build_schema_from_form(
         return i
 
     revenue = None
-    if tariff_eur_mwh or p50_hours:
+    if tariff_eur_mwh or p50_hours or ppa_term_years_form:
         revenue = RevenueInput(
             tariff_eur_mwh=_float(tariff_eur_mwh),
             p50_hours=_float(p50_hours),
+            ppa_term_years=_int(ppa_term_years_form) if ppa_term_years_form else None,
         )
 
     capex = None
@@ -1852,11 +1883,84 @@ def _build_schema_from_form(
         project_type=project_type,
         scenario=scenario,
         capacity_mw=_float(capacity_mw) if capacity_mw else None,
+        cod_date=(cod_date or None) if cod_date else None,
+        construction_months=_int(construction_months) if construction_months else None,
+        horizon_years=_int(horizon_years) if horizon_years else None,
         revenue=revenue,
         capex=capex,
         opex=opex,
         debt=debt,
     )
+
+
+def _build_schema_from_form_with_timing(form_data) -> "Callable[..., ProjectInputsSchema]":
+    """Return a callable that wraps
+    ``_build_schema_from_form`` with the four
+    timing fields already bound from
+    ``form_data``.
+
+    Phase PR1: this is the integration point
+    for Path B services
+    (``run_service``, ``compare_service``,
+    ``download_service``,
+    ``save_run_service``). The four timing
+    fields (cod_date, construction_months,
+    horizon_years, ppa_term_years) are
+    extracted from the FastAPI form payload
+    once at the route level, then bound
+    into the schema-build helper via
+    ``functools.partial``.
+
+    The wrapped helper has the SAME 11-arg
+    signature that Path B services already
+    expect, so no service-side changes are
+    needed. The four timing fields are
+    forwarded transparently.
+
+    If a form field is missing or empty
+    (e.g. a service does not include the
+    form's timing fields), the wrapped
+    helper still works — the missing fields
+    are treated as ``None`` and the schema
+    falls back to factory defaults for
+    those fields (preserving pre-PR1
+    behaviour).
+    """
+    import functools
+    timing = timing_fields_from_form_data(form_data)
+    return functools.partial(
+        _build_schema_from_form,
+        cod_date=timing.get("cod_date"),
+        construction_months=timing.get("construction_months"),
+        horizon_years=timing.get("horizon_years"),
+        ppa_term_years_form=timing.get("ppa_term_years"),
+    )
+
+
+def timing_fields_from_form_data(form_data) -> dict:
+    """Extract the four timing fields from a
+    FastAPI ``Form(...)`` flat dict (or any
+    mapping). Empty / missing values map to
+    ``None`` so the wrapped
+    ``_build_schema_from_form`` treats them
+    as "no value" and the base schema is
+    preserved for that field.
+    """
+    def _opt(key: str):
+        if form_data is None:
+            return None
+        v = form_data.get(key)
+        if v is None:
+            return None
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+    return {
+        "cod_date": _opt("cod_date"),
+        "construction_months": _opt("construction_months"),
+        "horizon_years": _opt("horizon_years"),
+        "ppa_term_years": _opt("ppa_term_years"),
+    }
 
 
 def _validate_form(project_type: str, scenario: str, errors: list[str]) -> bool:
@@ -2153,7 +2257,7 @@ async def validate(request: Request):
         normalize_template_source=_normalize_template_source,
         check_runtime_allowed=check_runtime_allowed,
         resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
-        build_schema_from_form=_build_schema_from_form,
+        build_schema_from_form=_build_schema_from_form_with_timing(form),
         validate_numeric_field=_validate_numeric_field,
         project_types=PROJECT_TYPES,
         scenarios=SCENARIOS,
@@ -2199,7 +2303,7 @@ async def run(request: Request):
         canonical_project_type=_canonical_project_type,
         check_runtime_allowed=check_runtime_allowed,
         resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
-        build_schema_from_form=_build_schema_from_form,
+        build_schema_from_form=_build_schema_from_form_with_timing(form),
         validate_form=_validate_form,
         format_kpis=_format_kpis,
         default_workspace_snapshot=_default_workspace_snapshot,
@@ -2266,7 +2370,7 @@ async def compare(request: Request):
         normalize_template_source=_normalize_template_source,
         check_runtime_allowed=check_runtime_allowed,
         resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
-        build_schema_from_form=_build_schema_from_form,
+        build_schema_from_form=_build_schema_from_form_with_timing(form),
         build_projectinputs=build_projectinputs,
         build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
         scenarios=SCENARIOS,
@@ -2306,7 +2410,7 @@ async def download_post(request: Request):
         normalize_template_source=_normalize_template_source,
         check_runtime_allowed=check_runtime_allowed,
         resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
-        build_schema_from_form=_build_schema_from_form,
+        build_schema_from_form=_build_schema_from_form_with_timing(form),
         build_projectinputs=build_projectinputs,
         build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
         scenario_provenance_for_record=_scenario_provenance_for_record,
@@ -2357,7 +2461,7 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         normalize_template_source=_normalize_template_source,
         check_runtime_allowed=check_runtime_allowed,
         resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
-        build_schema_from_form=_build_schema_from_form,
+        build_schema_from_form=_build_schema_from_form_with_timing(form=None),
         build_projectinputs=build_projectinputs,
         build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
         scenario_provenance_for_record=_scenario_provenance_for_record,
@@ -3562,7 +3666,7 @@ async def save_run_endpoint(request: Request):
         clean_user_project_runtime_snapshot=_clean_user_project_runtime_snapshot,
         canonical_project_type=_canonical_project_type,
         build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
-        build_schema_from_form=_build_schema_from_form,
+        build_schema_from_form=_build_schema_from_form_with_timing(form),
         build_projectinputs=build_projectinputs,
         normalize_template_source=_normalize_template_source,
         run_project=run_project,
