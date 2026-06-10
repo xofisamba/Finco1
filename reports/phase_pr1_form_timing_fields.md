@@ -4,12 +4,17 @@
 
 - **Type:** Wiring fix (main_web.py) +
   helper module + regression tests for
-  the create-form timing fields.
+  the create-form timing fields + M1
+  template fixup + route smoke
+  positional-arg fix.
 - **Branch:** `post-m1-form-timing-fields`
 - **Base:** main @ `54edb091` (post-M1
   merge, PR #605)
+- **Head:** `ca0fa13971adaf3cc16fa0c3fd0364a819b7f0b6`
 - **PR:** DRAFT only. Do NOT mark ready.
   Do NOT merge. Awaiting user review.
+- **CI:** 5/5 GitHub jobs GREEN on
+  `ca0fa13`.
 
 ## Summary
 
@@ -50,7 +55,61 @@ point** is the `main_web.py` wiring
 (per Claude's review requirement that
 "the full Path B fix be in PR1").
 
-## Files in PR1 (6)
+## Files in PR1 (Round 2 + followup, 7)
+
+### Production code (3)
+
+- `main_web.py` (MODIFIED) — wiring fix
+  - `_build_schema_from_form` extended
+    with 4 new optional kwargs:
+    `cod_date`, `construction_months`,
+    `horizon_years`,
+    `ppa_term_years_form`
+  - New wrapper helper
+    `_build_schema_from_form_with_timing(form_data)`
+    uses `functools.partial` to bind the
+    four timing fields
+  - All 6 route handlers (validate,
+    run, compare, download POST, download
+    GET, save-run) updated to inject the
+    wrapped helper
+  - `form=None` for the GET route (no
+    form payload) — preserves pre-PR1
+    behaviour
+  - **CI followup:** `/download` GET
+    route deps `form=None` →
+    positional `None` (the wrapper is
+    positional-arg; the deps constructor
+    was calling it as a keyword)
+
+- `app/services/form_timing_enrichment.py`
+  (NEW) — read-only helper module
+  - `FORM_TIMING_FIELDS` — the four
+    canonical field names
+  - `enrich_schema_with_timing_fields` —
+    pure function that returns a new
+    `ProjectInputsSchema` with the four
+    timing fields populated
+  - `timing_fields_from_form_dict` —
+    adapter for FastAPI Form flat dicts
+  - `apply_timing_to_schema` — one-shot
+    entry point for Path B callers
+
+- `app/templates/partials/scenario_matrix.html`
+  (MODIFIED) — **M1 latent-bug fixup
+  under PR1**
+  - 17 `is defined` guards on
+    `project_ctx.X` attribute access
+  - Jinja2 does not short-circuit `and`
+    the way Python does, so
+    `{{ format(project_ctx.X) }}` was
+    evaluated even when the outer
+    `is not none` guard was False,
+    crashing on `TypeError: unsupported
+    format string passed to
+    Undefined.__format__`
+  - em-dash UX preserved (None-attribute
+    case still shows `—`)
 
 ### Production code (2)
 
@@ -85,10 +144,51 @@ point** is the `main_web.py` wiring
   - `apply_timing_to_schema` — one-shot
     entry point for Path B callers
 
-### Tests (3 — 1 new + 2 cross-arc patches)
+### Tests (4 — 1 new + 1 PR1 file-scope patch + 2 cross-arc patches)
 
 - `tests/test_phase_pr1_form_timing_fields.py`
-  (NEW) — 11 test classes, 48 tests
+  (NEW + MODIFIED) — 11 test classes,
+  48 tests + 1 followup file-scope
+  allowlist patch
+  - `TestEnrichmentPreservesBase` — base
+    schema fields are not mutated
+  - `TestEnrichmentAppliesTiming` — the
+    four timing fields are written into
+    the returned schema
+  - `TestEnrichmentNoValueSemantics` —
+    `None` and empty-string mean "no
+    value"
+  - `TestSchemaSnapshotExactEquality` —
+    S1 exact-equality contract, extended
+    to timing (Solar + Wind, sidecar)
+  - `TestTimingFieldBindingContracts` —
+    S3 driver-to-KPI binding for timing
+    fields (sidecar)
+  - `TestFormDictExtractor` — flat-form-
+    dict adapter
+  - `TestFormFieldNameAlignment` — names
+    match the create form HTML
+  - `TestRealBuildSchemaFromForm` —
+    **the actual `_build_schema_from_form`
+    in main_web.py carries the four
+    timing fields**
+  - `TestRealFormPathProducesEqualProjectInputs` —
+    **form path and snapshot path
+    produce equal `ProjectInputs` for
+    identical timing inputs**
+  - `TestRealFormPathBindingContracts` —
+    **ppa_term_years / construction_months
+    from the actual form path move the
+    expected KPIs**
+  - `TestPhaseInvariants` — forbidden
+    paths unchanged, rc1 preserved,
+    factory paths preserved
+  - `TestPR1FileScope` — PR1 touches
+    exactly the 7 expected files
+    (followup commit adds
+    `app/templates/partials/scenario_matrix.html`
+    as the documented M1 latent-bug
+    fixup)
   - `TestEnrichmentPreservesBase` — base
     schema fields are not mutated
   - `TestEnrichmentAppliesTiming` — the
@@ -145,6 +245,32 @@ point** is the `main_web.py` wiring
   (NEW) — governance doc
 - `reports/phase_pr1_form_timing_fields.md`
   (this file)
+
+## CI history
+
+- **PR1 Round 1 head** (`0e03a84`): CI
+  not run (was DRAFT, no wiring fix)
+- **PR1 Round 2 head** (`dacfe58`):
+  - 4/5 GREEN
+  - 1 FAIL: CAPEX persistence and route
+    smoke (10 tests failing)
+  - **Root causes (verified):**
+    1. `scenario_matrix.html` Jinja2
+       template crash on None-attribute
+       access (M1 latent regression,
+       pre-existing on main `54edb091`)
+    2. `/download` route 500 because
+       `_build_schema_from_form_with_timing`
+       was called as keyword `form=None`
+       (PR1-introduced)
+- **PR1 Round 2 followup head**
+  (`ca0fa13`):
+  - 5/5 GREEN
+  - 0 fail
+  - All 51 route smoke tests PASS
+  - 421/421 S3 + S2 + S1 + P1-B + P1-A +
+    Phase 51F parity + M1 + PR1 + route
+    smoke
 
 ## Pre-merge audit (all pinned by tests)
 
@@ -214,9 +340,12 @@ The diff is confined to:
 ## Test counts (final, PR1)
 
 - **48 / 48 PR1 tests PASS**
-- **370 / 370** S3 + S2 + S1 + P1-B +
+- **421 / 421** S3 + S2 + S1 + P1-B +
   P1-A + Phase 51F parity guardrails +
-  M1 + PR1 (preserved)
+  M1 + PR1 + route smoke (preserved)
+- **51 / 51** route smoke (was 41/51 on
+  the Round 2 head; the followup commit
+  fixes all 10)
 - **21 / 21** Phase 51F parity
   guardrails PASS (no model change)
 - M1 contract preserved (M1 file-scope

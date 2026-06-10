@@ -8,6 +8,9 @@
 - **Branch:** `post-m1-form-timing-fields`
 - **Base:** main @ `54edb091` (post-M1 merge,
   PR #605)
+- **Head:** `ca0fa13971adaf3cc16fa0c3fd0364a819b7f0b6`
+- **CI:** 5/5 GitHub jobs GREEN on
+  `ca0fa13`.
 - **Goal:** Eliminate the silent
   template-default drift between
   form-driven Generic runs and
