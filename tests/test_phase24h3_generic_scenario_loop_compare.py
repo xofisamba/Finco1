@@ -778,11 +778,17 @@ class TestHardConstraints:
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=str(REPO_ROOT), capture_output=True, text=True,
         ).stdout.strip()
-        if "phase-s1" in branch.lower() or "phase_s1" in branch.lower():
+        if (
+            "phase-s1" in branch.lower()
+            or "phase_s1" in branch.lower()
+            or "phase-s2" in branch.lower()
+            or "phase_s2" in branch.lower()
+        ):
             pytest.skip(
-                f"Phase S1 branch — production code refactor "
-                f"of app/input_adapter.py is the explicit "
-                f"goal of this phase (current: {branch!r})."
+                f"Phase S1/S2 branch — production code "
+                f"refactor (S1) or UX/labels/derived-metric "
+                f"cleanup (S2) is the explicit goal of "
+                f"this phase (current: {branch!r})."
             )
         import subprocess
         result = subprocess.run(

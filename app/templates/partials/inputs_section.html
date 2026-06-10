@@ -115,7 +115,7 @@
    FINANCING SUMMARY
    ══════════════════════════════════════════════════════════════════════ #}
 {% set financing_rows %}
-  {{ field_row("Gearing", "{:.1f}%".format(project_ctx.gearing_pct * 100) if project_ctx.gearing_pct else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="gearing_pct", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
+  {{ field_row("Indicative gearing (input)", "{:.1f}%".format(project_ctx.gearing_pct * 100) if project_ctx.gearing_pct else "—", badge="Indicative (derived)", badge_class="badge-reporting", editable=is_user_project, field_name="gearing_pct", badge_title="Indicative gearing assumption. The realized gearing is shown as a derived output (senior debt / total CAPEX). Under DSCR sculpt sizing, senior debt is sized to hit target DSCR, so the user-supplied gearing_pct is preserved as a reporting metric, not as a binding senior debt sizing driver.") }}
   {{ field_row("Target DSCR", "{:.2f}x".format(project_ctx.target_dscr) if project_ctx.target_dscr else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="target_dscr", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
   {{ field_row("Interest Rate", "{:.2f}%".format(project_ctx.interest_rate_pct * 100) if project_ctx.interest_rate_pct else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="interest_rate_pct", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
   {{ field_row("Senior Tenor", "{} years".format(project_ctx.senior_tenor_years) if project_ctx.senior_tenor_years else "—", badge="DSCR sculpt driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="tenor_years", badge_title="This field affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
@@ -180,12 +180,23 @@
   </span>
   <span class="badge badge-dscr-sculpt">DSCR SCULPT DRIVER</span>
   <span>
-    <strong>gearing_pct</strong>, <strong>interest_rate_pct</strong>,
+    <strong>interest_rate_pct</strong>,
     <strong>tenor_years</strong>, and <strong>target_dscr</strong> affect
     debt / equity / DSCR outputs under the current DSCR sculpting
     method, but <strong>project IRR may not change</strong>
     (see the <span class="badge badge-dscr-sculpt">DSCR sculpt
     driver</span> badges next to those fields).
+  </span>
+  <span class="badge badge-reporting">INDICATIVE (DERIVED)</span>
+  <span>
+    <strong>gearing_pct</strong> is an indicative gearing assumption.
+    The <strong>realized gearing</strong> is shown as a derived
+    output (senior debt / total CAPEX). Under DSCR sculpt sizing,
+    senior debt is sized to hit target DSCR, so the
+    user-supplied gearing_pct is preserved as a reporting
+    metric, not as a binding senior debt sizing driver
+    (see the <span class="badge badge-reporting">Indicative
+    (derived)</span> badge next to that field).
   </span>
 </div>
 {% endif %}

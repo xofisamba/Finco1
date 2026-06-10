@@ -87,7 +87,7 @@ def build_inputs_summary_table(project_inputs) -> pd.DataFrame:
         )
         rows.extend([
             ("Target DSCR", getattr(financing, 'target_dscr', 'n/a')),
-            ("Gearing (%)", getattr(financing, 'gearing_ratio', 'n/a') * 100 if getattr(financing, 'gearing_ratio', None) is not None else 'n/a'),
+            ("Gearing (%, indicative input)", getattr(financing, 'gearing_ratio', 'n/a') * 100 if getattr(financing, 'gearing_ratio', None) is not None else 'n/a'),
             ("Senior Tenor (years)", getattr(financing, 'senior_tenor_years', 'n/a')),
             ("All-in Rate", all_in_rate),
         ])

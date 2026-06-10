@@ -178,7 +178,7 @@ def build_assumptions_summary(project_ctx: Any) -> list[dict[str, Any]]:
     rows.append({"label": "Interest rate", "value": _fmt_pct(getattr(project_ctx, "interest_rate_pct", None))})
     rows.append({"label": "Senior tenor", "value": _fmt_years(getattr(project_ctx, "senior_tenor_years", None))})
     rows.append({"label": "Target DSCR", "value": _fmt_x(getattr(project_ctx, "target_dscr", None))})
-    rows.append({"label": "Gearing", "value": _fmt_pct(getattr(project_ctx, "gearing_pct", None))})
+    rows.append({"label": "Indicative gearing (input)", "value": _fmt_pct(getattr(project_ctx, "gearing_pct", None))})
 
     return rows
 

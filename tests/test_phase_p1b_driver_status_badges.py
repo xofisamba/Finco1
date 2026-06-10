@@ -46,13 +46,30 @@ from app.ui.generic_driver_status_badges import (
     STATUS_WIRED_PARTIAL,
     STATUS_METADATA_ONLY,
     STATUS_NOT_WIRED,
+    # Phase S2: REPORTING_DERIVED is a new status
+    # for fields like gearing_pct (user-supplied
+    # indicative assumption; realized value is a
+    # derived output).
+    STATUS_REPORTING_DERIVED,
     BADGE_METADATA_ONLY,
     BADGE_DSCR_SCULPT_DRIVER,
+    # Phase S2: new badge for REPORTING_DERIVED
+    # fields.
+    BADGE_REPORTING_DERIVED,
     CSS_CLASS_METADATA,
     CSS_CLASS_DSCR_SCULPT,
+    # Phase S2: new CSS class for REPORTING_DERIVED
+    # fields.
+    CSS_CLASS_REPORTING,
     TOOLTIP_METADATA_ONLY,
     TOOLTIP_DSCR_SCULPT_DRIVER,
+    # Phase S2: new tooltip for REPORTING_DERIVED
+    # fields.
+    TOOLTIP_REPORTING_DERIVED,
     METADATA_ONLY_FIELDS,
+    # Phase S2: REPORTING_DERIVED_FIELDS replaces
+    # gearing_pct in DSCR_SCULPT_DRIVER_FIELDS.
+    REPORTING_DERIVED_FIELDS,
     DSCR_SCULPT_DRIVER_FIELDS,
     WIRED_FIELDS,
     NOT_WIRED_FIELDS,
@@ -60,6 +77,8 @@ from app.ui.generic_driver_status_badges import (
     is_metadata_only_field,
     is_dscr_sculpt_driver_field,
     is_wired_field,
+    # Phase S2: new is_reporting_derived_field helper.
+    is_reporting_derived_field,
     get_field_status,
     get_field_badge,
     EXPLORATORY_NOTICE_TEXT,
@@ -84,8 +103,9 @@ class TestFieldStatusMapping:
         assert not is_wired_field("construction_months")
 
     def test_dscr_sculpt_driver_fields(self):
+        # Phase S2: gearing_pct moved to
+        # REPORTING_DERIVED_FIELDS.
         for f in (
-            "gearing_pct",
             "interest_rate_pct",
             "tenor_years",
             "target_dscr",
@@ -93,6 +113,7 @@ class TestFieldStatusMapping:
             assert is_dscr_sculpt_driver_field(f), f
             assert not is_metadata_only_field(f), f
             assert not is_wired_field(f), f
+            assert not is_reporting_derived_field(f), f
 
     def test_wired_fields(self):
         for f in (
@@ -113,14 +134,20 @@ class TestFieldStatusMapping:
             assert is_dscr_sculpt_driver_field(f) is False
             assert is_wired_field(f) is False
 
-    def test_counts_match_pr600(self):
-        # Per PR #600 audit:
+    def test_counts_match_s2(self):
+        # Per Phase S2 mapping (PR #600 base + S2
+        # amendment):
         # - WIRED=5
-        # - WIRED_PARTIAL=4 (DSCR SCULPT DRIVER)
-        # - METADATA_ONLY=2
+        # - DSCR_SCULPT_DRIVER=3 (interest_rate_pct,
+        #   tenor_years, target_dscr; gearing_pct
+        #   moved to REPORTING_DERIVED)
+        # - REPORTING_DERIVED=1 (gearing_pct)
+        # - METADATA_ONLY=2 (ppa_term_years,
+        #   construction_months)
         # - NOT_WIRED=0
         assert len(WIRED_FIELDS) == 5
-        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 4
+        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 3
+        assert len(REPORTING_DERIVED_FIELDS) == 1
         assert len(METADATA_ONLY_FIELDS) == 2
         assert len(NOT_WIRED_FIELDS) == 0
 
@@ -139,7 +166,9 @@ class TestGetFieldStatus:
         [
             ("ppa_term_years", STATUS_METADATA_ONLY),
             ("construction_months", STATUS_METADATA_ONLY),
-            ("gearing_pct", STATUS_WIRED_PARTIAL),
+            # Phase S2: gearing_pct moved from
+            # WIRED_PARTIAL to REPORTING_DERIVED.
+            ("gearing_pct", STATUS_REPORTING_DERIVED),
             ("interest_rate_pct", STATUS_WIRED_PARTIAL),
             ("tenor_years", STATUS_WIRED_PARTIAL),
             ("target_dscr", STATUS_WIRED_PARTIAL),
@@ -177,10 +206,12 @@ class TestGetFieldBadge:
 
     def test_dscr_sculpt_badge_text(self):
         b = get_field_badge("gearing_pct")
-        assert b.badge_text == BADGE_DSCR_SCULPT_DRIVER
-        assert b.badge_class == CSS_CLASS_DSCR_SCULPT
-        assert b.badge_title == TOOLTIP_DSCR_SCULPT_DRIVER
-        assert b.status == STATUS_WIRED_PARTIAL
+        # Phase S2: gearing_pct is REPORTING_DERIVED,
+        # not DSCR_SCULPT_DRIVER.
+        assert b.badge_text == BADGE_REPORTING_DERIVED
+        assert b.badge_class == CSS_CLASS_REPORTING
+        assert b.badge_title == TOOLTIP_REPORTING_DERIVED
+        assert b.status == STATUS_REPORTING_DERIVED
 
     def test_wired_field_has_no_badge(self):
         b = get_field_badge("tariff_eur_mwh")
@@ -343,7 +374,8 @@ class TestInputsSectionRenders:
     @pytest.mark.parametrize(
         "field",
         [
-            "gearing_pct",
+            # Phase S2: gearing_pct moved out of
+            # DSCR_SCULPT_DRIVER to REPORTING_DERIVED.
             "interest_rate_pct",
             "tenor_years",
             "target_dscr",
@@ -358,6 +390,19 @@ class TestInputsSectionRenders:
         )
         assert CSS_CLASS_DSCR_SCULPT in row
         assert TOOLTIP_DSCR_SCULPT_DRIVER in row
+
+    def test_partial_has_reporting_derived_badge_for_gearing(self):
+        # Phase S2: gearing_pct carries the
+        # REPORTING_DERIVED badge, not the DSCR
+        # sculpt badge.
+        src = self._read_partial()
+        row = self._extract_field_row(src, "gearing_pct")
+        assert BADGE_REPORTING_DERIVED in row, (
+            f"gearing_pct row must carry 'Indicative "
+            f"(derived)' badge; row: {row[:200]}"
+        )
+        assert CSS_CLASS_REPORTING in row
+        assert TOOLTIP_REPORTING_DERIVED in row
 
     def test_partial_has_exploratory_warning_unchanged(self):
         # The exploratory warning is wrapped in a

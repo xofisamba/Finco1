@@ -2614,6 +2614,26 @@ body {
   white-space: nowrap;
 }
 
+/* Phase S2: badge for fields that are reporting /
+   derived (e.g. gearing_pct). Visually distinct
+   from both metadata-only (gray, "no effect")
+   and DSCR sculpt driver (blue, "binds"). The
+   reporting/derived badge uses a soft green
+   palette to signal "non-binding output / input
+   preserved for context". */
+.badge-reporting {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  padding: 0.18rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    PHASE 20D — Inputs Tab Primary Surface
    Excel-like structured rows: label | value | badge
