@@ -355,6 +355,11 @@
       <div class="panel-desc">Key performance indicators and governance status for the active project.</div>
     </div>
 
+    {# Phase P2-min-2: single clear status line per screen
+       (Generic disclosure rule). Renders nothing when the
+       project is not exploratory. #}
+    {% include "partials/_generic_status_line.html" %}
+
     <div class="kpi-grid" id="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-label">Project IRR</div>
