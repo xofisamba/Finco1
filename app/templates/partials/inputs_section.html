@@ -61,7 +61,7 @@
 {% set schedule_rows %}
   {{ field_row("Financial Close", project_ctx.financial_close or "—", badge="Saved", badge_class="badge-pass") }}
   {{ field_row("COD Date", project_ctx.cod_date or "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="cod_date") }}
-  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Metadata only", badge_class="badge-metadata", editable=is_user_project, field_name="construction_months", badge_title="This field is saved/displayed for context but is not currently used by the Generic runtime calculation.") }}
+  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Timing driver", badge_class="badge-timing", editable=is_user_project, field_name="construction_months", badge_title="This field is a timing driver. It affects the construction-period timeline and can move equity IRR via the financial_close timing, but it does NOT change revenue, EBITDA, senior debt, or DSCR in the current Generic runtime. Phase S3 review fix: split out of DSCR sculpt driver set into a separate TIMING_DRIVER set.") }}
   {{ field_row("Project Horizon", "{} years".format(project_ctx.horizon_years) if project_ctx.horizon_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="horizon_years") }}
   {{ field_row("Period Frequency", project_ctx.period_frequency or "Quarterly", badge="Model default", badge_class="badge-muted") }}
 {% endset %}
@@ -85,7 +85,7 @@
    ══════════════════════════════════════════════════════════════════════ #}
 {% set revenue_rows %}
   {{ field_row("Base Tariff", "{:.2f} EUR/MWh".format(project_ctx.ppa_tariff_eur_mwh) if project_ctx.ppa_tariff_eur_mwh else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="tariff_eur_mwh") }}
-  {{ field_row("PPA Term", "{} years".format(project_ctx.ppa_term_years) if project_ctx.ppa_term_years else "—", badge="Metadata only", badge_class="badge-metadata", editable=is_user_project, field_name="ppa_term_years", badge_title="This field is saved/displayed for context but is not currently used by the Generic runtime calculation.") }}
+  {{ field_row("PPA Term", "{} years".format(project_ctx.ppa_term_years) if project_ctx.ppa_term_years else "—", editable=is_user_project, field_name="ppa_term_years", badge_title="This field affects total_revenue_keur and total_ebitda_keur via the PPA tariff duration. Phase S3 reclassification: WIRED (no badge, fully wired driver).") }}
   {{ field_row("PPA Index", "{:.1f}% annually".format(project_ctx.ppa_index_pct * 100) if project_ctx.ppa_index_pct else "—", badge="Template", badge_class="badge-muted") }}
   {{ field_row("CO2 Revenue", "Enabled — {:.3f} EUR/MWh".format(project_ctx.co2_price_eur_mwh) if project_ctx.co2_enabled else "Disabled", badge="Saved" if project_ctx.co2_enabled else "Template", badge_class="badge-info" if project_ctx.co2_enabled else "badge-muted") }}
 {% endset %}
@@ -170,22 +170,25 @@
      aria-label="Driver status legend"
      data-driver-status-legend="true"
      data-exploration-source="inputs-section">
-  <span class="badge badge-metadata">METADATA ONLY</span>
-  <span>
-    <strong>ppa_term_years</strong> and
-    <strong>construction_months</strong> are saved for context but
-    are not currently used by the Generic runtime calculation
-    (see the <span class="badge badge-metadata">Metadata only</span>
-    badges next to those fields).
-  </span>
   <span class="badge badge-dscr-sculpt">DSCR SCULPT DRIVER</span>
   <span>
     <strong>interest_rate_pct</strong>,
-    <strong>tenor_years</strong>, and <strong>target_dscr</strong> affect
-    debt / equity / DSCR outputs under the current DSCR sculpting
-    method, but <strong>project IRR may not change</strong>
+    <strong>tenor_years</strong>, and <strong>target_dscr</strong> are
+    DSCR sculpt drivers and affect senior debt / DSCR outputs
     (see the <span class="badge badge-dscr-sculpt">DSCR sculpt
-    driver</span> badges next to those fields).
+    driver</span> badges next to those fields). Project IRR
+    may not change.
+  </span>
+
+
+  <span class="badge badge-timing">TIMING DRIVER</span>
+  <span>
+    <strong>construction_months</strong> is a timing driver. It
+    can move equity IRR via the financial_close timing, but
+    does not change revenue, EBITDA, senior debt, or DSCR
+    in the current Generic runtime
+    (see the <span class="badge badge-timing">Timing
+    driver</span> badge next to that field).
   </span>
   <span class="badge badge-reporting">INDICATIVE (DERIVED)</span>
   <span>

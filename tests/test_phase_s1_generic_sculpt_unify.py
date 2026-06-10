@@ -1219,7 +1219,7 @@ class TestPilotUserImplications:
         )
         src = open(partial, encoding="utf-8").read()
         assert 'data-driver-status-legend="true"' in src
-        assert "project IRR may not change" in src
+        assert "Project IRR" in src and "may not change" in src
         # Gearing is labeled as a DSCR sculpt driver
         # (per P1-B semantics).
         assert "DSCR sculpt" in src or "dscr-sculpt" in src

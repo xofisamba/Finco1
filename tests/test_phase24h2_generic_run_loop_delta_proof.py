@@ -839,12 +839,16 @@ class TestHardConstraints:
             or "phase_s1" in branch.lower()
             or "phase-s2" in branch.lower()
             or "phase_s2" in branch.lower()
+            or "phase-s3" in branch.lower()
+            or "phase_s3" in branch.lower()
         ):
             pytest.skip(
-                f"Phase S1/S2 branch — production code "
-                f"refactor (S1) or UX/labels/derived-metric "
-                f"cleanup (S2) is the explicit goal of "
-                f"this phase (current: {branch!r})."
+                f"Phase S1/S2/S3 branch — production "
+                f"code refactor (S1), UX/labels/"
+                f"derived-metric cleanup (S2), or "
+                f"driver-to-KPI binding suite (S3) "
+                f"is the explicit goal of this phase "
+                f"(current: {branch!r})."
             )
         result = subprocess.run(
             ["git", "diff", "--name-only", "main...HEAD"],

@@ -174,19 +174,41 @@ class TestInputsSectionTemplate:
         )
 
     def test_sculpt_driver_set_mentions_only_3_fields(self):
-        # The narrative note in inputs_section.html
-        # must mention interest_rate_pct, tenor_years,
-        # target_dscr (NOT gearing_pct).
+        # Phase S3 review fix: the narrative note
+        # in inputs_section.html now has TWO
+        # separate bullets — one for the 3 true
+        # DSCR sculpt drivers and one for the
+        # Timing driver (construction_months).
+        # The previous "Model driver" wording
+        # (which lumped construction_months with
+        # the 3 sculpt drivers) was misleading.
         src = _read_template("app/templates/partials/inputs_section.html")
-        # Find the "DSCR SCULPT DRIVER" narrative.
+        # Find the "DSCR SCULPT DRIVER" narrative
+        # (the 3 binding sculpt drivers).
         marker = "DSCR SCULPT DRIVER"
         idx = src.find(marker)
         assert idx >= 0
-        # Read the next 600 chars of narrative.
-        narrative = src[idx : idx + 1200]
+        # Read ONLY up to the next bullet ("TIMING
+        # DRIVER" or "INDICATIVE (DERIVED)" or
+        # end of legend). The DSCR sculpt driver
+        # bullet is bounded by the closing
+        # </span> before the next bullet starts.
+        next_bullet_markers = ("TIMING DRIVER", "INDICATIVE (DERIVED)")
+        end_idx = len(src)
+        for m in next_bullet_markers:
+            i = src.find(m, idx)
+            if i > 0 and i < end_idx:
+                end_idx = i
+        narrative = src[idx:end_idx]
         assert "interest_rate_pct" in narrative
         assert "tenor_years" in narrative
         assert "target_dscr" in narrative
+        # The DSCR sculpt driver bullet must NOT
+        # mention construction_months (the
+        # S3 review fix split construction_months
+        # out into a separate Timing driver
+        # bullet).
+        assert "construction_months" not in narrative
         # The narrative should not list gearing_pct
         # in the same DSCR sculpt driver bullet.
         # (S2 added a separate bullet for
@@ -194,6 +216,34 @@ class TestInputsSectionTemplate:
         # gearing_pct, so it IS mentioned in the
         # template, but not in the DSCR sculpt
         # driver bullet.)
+        assert "gearing_pct" not in narrative
+
+    def test_timing_driver_bullet_present(self):
+        # Phase S3 review fix: construction_months
+        # has its own "TIMING DRIVER" bullet
+        # (separate from the 3 DSCR sculpt
+        # drivers). The narrative must explicitly
+        # call out construction_months as a
+        # timing driver and explain what it does
+        # (moves equity_irr via financial_close
+        # timing, does not change revenue, EBITDA,
+        # senior debt, or DSCR).
+        src = _read_template("app/templates/partials/inputs_section.html")
+        marker = "TIMING DRIVER"
+        idx = src.find(marker)
+        assert idx >= 0
+        # Read the next 1500 chars of narrative.
+        narrative = src[idx : idx + 1500]
+        assert "construction_months" in narrative
+        # The narrative must explicitly say
+        # construction_months does NOT change
+        # revenue, EBITDA, senior debt, or DSCR.
+        assert "does not change revenue" in narrative or "does NOT change revenue" in narrative
+        assert "DSCR" in narrative
+        # The narrative must mention that
+        # construction_months can move equity IRR
+        # via financial_close timing.
+        assert "equity IRR" in narrative or "equity_irr" in narrative
 
     def test_reporting_derived_narrative_present(self):
         # Phase S2 adds a separate "INDICATIVE
@@ -555,16 +605,18 @@ class TestDriverBadgeConsistency:
         from app.ui.generic_driver_status_badges import (
             WIRED_FIELDS,
             DSCR_SCULPT_DRIVER_FIELDS,
+            TIMING_DRIVER_FIELDS,
             REPORTING_DERIVED_FIELDS,
             METADATA_ONLY_FIELDS,
         )
         total = (
             len(WIRED_FIELDS)
             + len(DSCR_SCULPT_DRIVER_FIELDS)
+            + len(TIMING_DRIVER_FIELDS)
             + len(REPORTING_DERIVED_FIELDS)
             + len(METADATA_ONLY_FIELDS)
         )
-        # 5 + 3 + 1 + 2 = 11.
+        # 6 + 3 + 1 + 1 + 0 = 11.
         assert total == 11
 
     def test_no_field_appears_twice(self):
