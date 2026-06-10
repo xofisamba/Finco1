@@ -144,7 +144,7 @@ def test_workbook_artifact_opens_and_exposes_user_project_metadata_when_openpyxl
     assert float(inputs["P50 Hours"]) == pytest.approx(1600.0)
     assert float(inputs["Year 1 OPEX (kEUR)"]) == pytest.approx(1000.0)
     assert float(inputs["Total CapEx (kEUR)"]) == pytest.approx(50000.0)
-    assert float(inputs["Gearing (%)"]) == pytest.approx(70.0)
+    assert float(inputs["Gearing (%, indicative input)"]) == pytest.approx(70.0)
     assert float(inputs["All-in Rate"]) == pytest.approx(0.05)
     assert int(inputs["Senior Tenor (years)"]) == 15
     assert float(inputs["Target DSCR"]) == pytest.approx(1.30)
