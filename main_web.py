@@ -2461,7 +2461,7 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         normalize_template_source=_normalize_template_source,
         check_runtime_allowed=check_runtime_allowed,
         resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
-        build_schema_from_form=_build_schema_from_form_with_timing(form=None),
+        build_schema_from_form=_build_schema_from_form_with_timing(None),
         build_projectinputs=build_projectinputs,
         build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
         scenario_provenance_for_record=_scenario_provenance_for_record,

@@ -1130,6 +1130,16 @@ class TestPR1FileScope:
         # set (so it must appear in `expected`).
         expected = expected | {
             "tests/test_phase_m1_scenario_matrix.py",
+            # PR1 also patches a latent M1
+            # template-None bug in
+            # scenario_matrix.html (the
+            # ``{{ format }}`` expression
+            # crashed when ``project_ctx`` was
+            # None). The fix is template-only,
+            # additive (``is defined`` guard
+            # on attribute access), and
+            # preserves the M1 em-dash UX.
+            "app/templates/partials/scenario_matrix.html",
         }
         actual = set(changed)
         extra = actual - expected
