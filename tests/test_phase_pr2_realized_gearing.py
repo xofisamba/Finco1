@@ -559,6 +559,18 @@ class TestFileScope:
             # post-merge / post-PR1 follow-
             # up branches).
             "tests/test_phase_pr1_form_timing_fields.py",
+            # PR3 (post-m1-taxonomy-brief-alignment)
+            # follow-up allowlist: PR3 adds a
+            # canonical taxonomy module
+            # (``app/ui/driver_taxonomy.py``)
+            # + a PR3 test file + PR3 docs
+            # and report. PR2 does not touch
+            # these; the file-scope test is
+            # forward-compatible.
+            "app/ui/driver_taxonomy.py",
+            "tests/test_phase_pr3_taxonomy.py",
+            "docs/phase_pr3_taxonomy_brief_alignment.md",
+            "reports/phase_pr3_taxonomy_brief_alignment.md",
         }
         actual_set = set(actual)
         extra = actual_set - expected

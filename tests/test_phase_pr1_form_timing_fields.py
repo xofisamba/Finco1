@@ -1156,6 +1156,18 @@ class TestPR1FileScope:
             "tests/test_phase_pr2_realized_gearing.py",
             "docs/phase_pr2_realized_gearing.md",
             "reports/phase_pr2_realized_gearing.md",
+            # PR3 (post-m1-taxonomy-brief-alignment)
+            # follow-up allowlist: PR3 adds a
+            # canonical taxonomy module
+            # (``app/ui/driver_taxonomy.py``)
+            # + a PR3 test file + PR3 docs and
+            # report. PR1 does not touch
+            # these; the file-scope test is
+            # forward-compatible.
+            "app/ui/driver_taxonomy.py",
+            "tests/test_phase_pr3_taxonomy.py",
+            "docs/phase_pr3_taxonomy_brief_alignment.md",
+            "reports/phase_pr3_taxonomy_brief_alignment.md",
         }
         actual = set(changed)
         extra = actual - expected
