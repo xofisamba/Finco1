@@ -14,7 +14,9 @@ NOT change formulas.
 
 Mapping (per PR #600 audit, branch f8ae191; refined
 by Phase S2; refined again by Phase S3 binding
-suite):
+suite; refined once more by the S3 review fix
+that split the sculpt-driver and timing-driver
+concepts):
 
   WIRED (6 fields, no badge by default):
     - tariff_eur_mwh
@@ -22,39 +24,37 @@ suite):
     - capacity_mw
     - total_capex_keur
     - opex_y1_keur
-    - ppa_term_years (Phase S3 reclassification: the
-      S1 resolver now applies ppa_term_years via
-      _set_revenue_ppa_term, so changing the input
-      moves total_revenue_keur, total_ebitda_keur,
-      and total_distributions_keur. Pre-S1 this
-      was classified as METADATA_ONLY because the
-      resolver had no _set_revenue_ppa_term helper.)
+    - ppa_term_years
 
-  WIRED_PARTIAL (4 fields):
+  DSCR SCULPT DRIVER (3 fields, "DSCR sculpt driver"
+    badge):
     - interest_rate_pct
     - tenor_years
     - target_dscr
-    - construction_months (Phase S3 reclassification:
-      the S1 resolver applies construction_months
-      via _set_revenue_ppa_term / info override,
-      which moves financial_close. This produces a
-      small but measurable equity_irr effect
-      (~10bps spread between 6mo and 36mo
-      construction periods) but does not change
-      revenue, EBITDA, or senior debt. Pre-S1
-      this was METADATA_ONLY because the resolver
-      had no _set_revenue_ppa_term helper.)
+
+  TIMING DRIVER (1 field, "Timing driver" badge, NEW
+    in S3 review fix): this is a separate concept
+    from the DSCR sculpt drivers. A timing driver
+    is a model-affecting field that influences the
+    construction-period timeline (and therefore
+    equity_irr via financial_close timing), but
+    does NOT change revenue, EBITDA, senior debt,
+    or DSCR.
+    - construction_months (moves equity_irr via
+      the financial_close timeline by ~10bps
+      spread between 6mo and 36mo construction
+      periods, but does not move revenue, EBITDA,
+      senior debt, or DSCR. Pre-S1 was
+      METADATA_ONLY; the S1 schema extension
+      accepts it; the resolver applies it via
+      info override / financial_close timing.)
 
   REPORTING_DERIVED (1 field, Phase S2):
     - gearing_pct
 
-  DSCR SCULPT DRIVER (3 fields, after S2): now part
-    of WIRED_PARTIAL. Same set:
-    - interest_rate_pct
-    - tenor_years
-    - target_dscr
-
-  NOT_WIRED: 0 fields.
+  METADATA_ONLY: 0 fields (Phase S3 emptied this
+    set)
+  NOT_WIRED: 0 fields
 
 Phase S2 amendment: gearing_pct is no longer labeled
 as a DSCR sculpt driver. Under DSCR sculpt, the
@@ -66,16 +66,39 @@ senior_debt_keur / total_capex_keur. The user-facing
 label is now "Indicative (derived)" with copy that
 explains the relationship.
 
-Phase S3 amendment: ppa_term_years and
-construction_months moved out of METADATA_ONLY. The
-S1 resolver added _set_revenue_ppa_term (which
-applies ppa_term_years) and the schema extension
-(which accepts construction_months), so both
-fields are now model-affecting. ppa_term_years is
-fully wired (moves revenue/EBITDA). construction_months
-is wired-partial (moves financial_close timing and
-thus equity_irr by a small amount, but does not
-move revenue/EBITDA or senior debt).
+Phase S3 amendment: ppa_term_years moved out of
+METADATA_ONLY. The S1 resolver added
+_set_revenue_ppa_term, which applies
+ppa_term_years to the revenue duration. Changing
+ppa_term_years moves total_revenue_keur and
+total_ebitda_keur. ppa_term_years is now WIRED.
+
+Phase S3 review fix: construction_months is split
+out of DSCR_SCULPT_DRIVER_FIELDS into a new
+TIMING_DRIVER_FIELDS set. The previous S3 mapping
+incorrectly grouped construction_months with the
+3 binding sculpt drivers. The correct semantic is
+that construction_months affects the
+construction-period timing (and therefore
+equity_irr by a small amount), but does not bind
+senior debt, DSCR, revenue, or EBITDA. The 3 true
+DSCR sculpt drivers (interest_rate_pct,
+tenor_years, target_dscr) are kept in
+DSCR_SCULPT_DRIVER_FIELDS with the "DSCR sculpt
+driver" badge. construction_months gets a new
+"Timing driver" badge with a separate CSS class
+(badge-timing, soft amber palette) to make the
+distinction visually clear.
+
+CSS class reuse note: TIMING_DRIVER reuses the
+existing badge-metadata and badge-dscr-sculpt CSS
+classes internally for layout (border, padding,
+font-size) but uses a new badge-timing class for
+the color palette (soft amber) and a new
+TOOLTIP_TIMING_DRIVER copy that explicitly
+distinguishes it from the DSCR sculpt drivers.
+The user-facing badge text is "Timing driver"
+(never "DSCR sculpt driver").
 """
 
 from __future__ import annotations
@@ -97,6 +120,17 @@ STATUS_NOT_WIRED = "NOT_WIRED"
 # (the realized gearing is a derived output, the
 # input value is an indicative assumption).
 STATUS_REPORTING_DERIVED = "REPORTING_DERIVED"
+# Phase S3 review fix: construction_months is now
+# STATUS_TIMING_DRIVER (a separate concept from
+# STATUS_WIRED_PARTIAL). Timing drivers are
+# model-affecting fields that influence the
+# construction-period timeline (and therefore
+# equity_irr via financial_close timing), but do
+# NOT change revenue, EBITDA, senior debt, or
+# DSCR. This is a tighter classification than
+# the previous S3 round-1 placement in
+# DSCR_SCULPT_DRIVER_FIELDS.
+STATUS_TIMING_DRIVER = "TIMING_DRIVER"
 
 ALL_STATUSES: tuple[str, ...] = (
     STATUS_WIRED,
@@ -104,6 +138,7 @@ ALL_STATUSES: tuple[str, ...] = (
     STATUS_METADATA_ONLY,
     STATUS_NOT_WIRED,
     STATUS_REPORTING_DERIVED,
+    STATUS_TIMING_DRIVER,
 )
 
 # P1-B badge vocabulary (the labels we render in the UI).
@@ -114,6 +149,16 @@ BADGE_DSCR_SCULPT_DRIVER = "DSCR sculpt driver"
 # indicative assumption and the realized gearing is
 # computed as a derived output.
 BADGE_REPORTING_DERIVED = "Indicative (derived)"
+# Phase S3 review fix: badge for construction_months.
+# "Timing driver" tells the pilot user that this
+# field is model-affecting via the construction-
+# period timeline (and therefore equity_irr via
+# financial_close timing) but does NOT change
+# revenue, EBITDA, senior debt, or DSCR. This is
+# honest copy: the previous "DSCR sculpt driver"
+# label implied construction_months binds senior
+# debt / DSCR, which it does not.
+BADGE_TIMING_DRIVER = "Timing driver"
 # Fully wired fields get no badge by default
 # (the form stays uncluttered per the P1-B brief).
 BADGE_NONE: Optional[str] = None
@@ -127,6 +172,15 @@ CSS_CLASS_DSCR_SCULPT = "badge-dscr-sculpt"
 # (which is a "no effect" badge) and from
 # DSCR sculpt (which is a "binds" badge).
 CSS_CLASS_REPORTING = "badge-reporting"
+# Phase S3 review fix: new CSS class for timing
+# drivers. Visually distinct from metadata-only
+# (gray), DSCR sculpt (blue), and reporting
+# (green). Soft amber palette signals "model-
+# affecting via the timeline, not the engine".
+# Internal layout (border, padding, font-size) is
+# shared with the other badge classes for visual
+# consistency.
+CSS_CLASS_TIMING = "badge-timing"
 CSS_CLASS_NONE: Optional[str] = None
 
 
@@ -145,6 +199,23 @@ TOOLTIP_DSCR_SCULPT_DRIVER: str = (
     "This field affects debt / equity / DSCR outputs "
     "under the current DSCR sculpting method. "
     "Project IRR may not change."
+)
+
+# Phase S3 review fix: tooltip for construction_months.
+# Honest copy: timing drivers are model-affecting
+# fields that influence the construction-period
+# timeline (and therefore equity_irr via financial_close
+# timing), but do NOT change revenue, EBITDA,
+# senior debt, or DSCR. This is the explicit
+# distinction from the DSCR sculpt drivers above
+# (which DO bind senior debt / DSCR).
+TOOLTIP_TIMING_DRIVER: str = (
+    "This field is a timing driver. It affects the "
+    "construction-period timeline and can move "
+    "equity IRR via the financial_close timing, "
+    "but it does NOT change revenue, EBITDA, "
+    "senior debt, or DSCR in the current Generic "
+    "runtime."
 )
 
 # Phase S2: tooltip for the gearing_pct field.
@@ -194,16 +265,26 @@ REPORTING_DERIVED_FIELDS: tuple[str, ...] = (
 DSCR_SCULPT_DRIVER_FIELDS: tuple[str, ...] = (
     # Phase S2: gearing_pct removed (moved to
     # REPORTING_DERIVED_FIELDS).
-    # Phase S3: construction_months added (it moves
-    # equity_irr via the financial_close timeline,
-    # so it is now a model-affecting field). The
-    # badge text remains "DSCR sculpt driver" for
-    # visual consistency; the tooltip distinguishes
-    # the 3 binding sculpt drivers from
-    # construction_months.
+    # Phase S3 review fix: construction_months
+    # removed (moved to TIMING_DRIVER_FIELDS). It
+    # is NOT a DSCR sculpt driver; it is a timing
+    # driver (moves equity_irr via financial_close
+    # timing, does not change revenue/EBITDA/senior
+    # debt/DSCR). The 3 fields below are the
+    # true DSCR sculpt drivers.
     "interest_rate_pct",
     "tenor_years",
     "target_dscr",
+)
+
+# Phase S3 review fix: construction_months is a
+# timing driver, not a DSCR sculpt driver. It is
+# model-affecting (the S1 schema extension accepts
+# it; the resolver applies it via info override /
+# financial_close timing) but it does NOT bind
+# senior debt or DSCR; it only moves equity_irr
+# via the construction-period timeline.
+TIMING_DRIVER_FIELDS: tuple[str, ...] = (
     "construction_months",
 )
 
@@ -271,8 +352,20 @@ def is_reporting_derived_field(field: str) -> bool:
 
 def is_dscr_sculpt_driver_field(field: str) -> bool:
     """Return True if the field is in the DSCR
-    SCULPT DRIVER set."""
+    SCULPT DRIVER set (3 fields:
+    interest_rate_pct, tenor_years, target_dscr).
+
+    Note: construction_months is NOT a DSCR sculpt
+    driver; it is a TIMING driver (see
+    is_timing_driver_field)."""
     return field in DSCR_SCULPT_DRIVER_FIELDS
+
+
+def is_timing_driver_field(field: str) -> bool:
+    """Phase S3 review fix: return True if the
+    field is in the TIMING_DRIVER set (currently
+    just construction_months)."""
+    return field in TIMING_DRIVER_FIELDS
 
 
 def is_wired_field(field: str) -> bool:
@@ -286,6 +379,11 @@ def get_field_status(field: str) -> str:
         return STATUS_METADATA_ONLY
     if is_reporting_derived_field(field):
         return STATUS_REPORTING_DERIVED
+    # Phase S3 review fix: TIMING_DRIVER is checked
+    # before DSCR_SCULPT_DRIVER. construction_months
+    # is a timing driver, not a DSCR sculpt driver.
+    if is_timing_driver_field(field):
+        return STATUS_TIMING_DRIVER
     if is_dscr_sculpt_driver_field(field):
         return STATUS_WIRED_PARTIAL
     if is_wired_field(field):
@@ -318,6 +416,17 @@ def get_field_badge(field: str) -> FieldDriverStatus:
             badge_text=BADGE_REPORTING_DERIVED,
             badge_class=CSS_CLASS_REPORTING,
             badge_title=TOOLTIP_REPORTING_DERIVED,
+        )
+    # Phase S3 review fix: TIMING_DRIVER is checked
+    # before DSCR_SCULPT_DRIVER. construction_months
+    # is a timing driver, not a DSCR sculpt driver.
+    if is_timing_driver_field(field):
+        return FieldDriverStatus(
+            field=field,
+            status=STATUS_TIMING_DRIVER,
+            badge_text=BADGE_TIMING_DRIVER,
+            badge_class=CSS_CLASS_TIMING,
+            badge_title=TOOLTIP_TIMING_DRIVER,
         )
     if is_dscr_sculpt_driver_field(field):
         return FieldDriverStatus(
@@ -364,27 +473,42 @@ __all__ = [
     "STATUS_METADATA_ONLY",
     "STATUS_NOT_WIRED",
     "STATUS_REPORTING_DERIVED",
+    # Phase S3 review fix: TIMING_DRIVER is a
+    # separate concept from WIRED_PARTIAL.
+    "STATUS_TIMING_DRIVER",
     "ALL_STATUSES",
     "BADGE_METADATA_ONLY",
     "BADGE_DSCR_SCULPT_DRIVER",
     "BADGE_REPORTING_DERIVED",
+    # Phase S3 review fix: badge for TIMING_DRIVER
+    # (currently just construction_months).
+    "BADGE_TIMING_DRIVER",
     "BADGE_NONE",
     "CSS_CLASS_METADATA",
     "CSS_CLASS_DSCR_SCULPT",
     "CSS_CLASS_REPORTING",
+    # Phase S3 review fix: new CSS class for
+    # TIMING_DRIVER.
+    "CSS_CLASS_TIMING",
     "CSS_CLASS_NONE",
     "TOOLTIP_METADATA_ONLY",
     "TOOLTIP_DSCR_SCULPT_DRIVER",
     "TOOLTIP_REPORTING_DERIVED",
+    # Phase S3 review fix: tooltip for TIMING_DRIVER.
+    "TOOLTIP_TIMING_DRIVER",
     "METADATA_ONLY_FIELDS",
     "REPORTING_DERIVED_FIELDS",
     "DSCR_SCULPT_DRIVER_FIELDS",
+    # Phase S3 review fix: new field set.
+    "TIMING_DRIVER_FIELDS",
     "WIRED_FIELDS",
     "NOT_WIRED_FIELDS",
     "FieldDriverStatus",
     "is_metadata_only_field",
     "is_reporting_derived_field",
     "is_dscr_sculpt_driver_field",
+    # Phase S3 review fix: new helper.
+    "is_timing_driver_field",
     "is_wired_field",
     "get_field_status",
     "get_field_badge",

@@ -61,7 +61,7 @@
 {% set schedule_rows %}
   {{ field_row("Financial Close", project_ctx.financial_close or "—", badge="Saved", badge_class="badge-pass") }}
   {{ field_row("COD Date", project_ctx.cod_date or "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="cod_date") }}
-  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Model driver", badge_class="badge-dscr-sculpt", editable=is_user_project, field_name="construction_months", badge_title="This field affects financial_close and project timeline. It moves equity_irr (via timing) but not revenue, EBITDA, or senior debt. Pre-S1 this field was classified as metadata-only; the S1 resolver now applies it. Phase S3 reclassification: WIRED_PARTIAL.") }}
+  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", badge="Timing driver", badge_class="badge-timing", editable=is_user_project, field_name="construction_months", badge_title="This field is a timing driver. It affects the construction-period timeline and can move equity IRR via the financial_close timing, but it does NOT change revenue, EBITDA, senior debt, or DSCR in the current Generic runtime. Phase S3 review fix: split out of DSCR sculpt driver set into a separate TIMING_DRIVER set.") }}
   {{ field_row("Project Horizon", "{} years".format(project_ctx.horizon_years) if project_ctx.horizon_years else "—", badge="Saved", badge_class="badge-pass", editable=is_user_project, field_name="horizon_years") }}
   {{ field_row("Period Frequency", project_ctx.period_frequency or "Quarterly", badge="Model default", badge_class="badge-muted") }}
 {% endset %}
@@ -170,26 +170,25 @@
      aria-label="Driver status legend"
      data-driver-status-legend="true"
      data-exploration-source="inputs-section">
-  <span class="badge badge-dscr-sculpt">MODEL DRIVER</span>
+  <span class="badge badge-dscr-sculpt">DSCR SCULPT DRIVER</span>
   <span>
     <strong>interest_rate_pct</strong>,
-    <strong>tenor_years</strong>,
-    <strong>target_dscr</strong>, and
-    <strong>construction_months</strong> affect debt / equity /
-    DSCR outputs (the first three are binding DSCR sculpt
-    drivers; construction_months moves equity_irr via the
-    financial_close timeline but does not change revenue,
-    EBITDA, or senior debt). Project IRR may not change
-    (see the <span class="badge badge-dscr-sculpt">Model
-    driver</span> badges next to those fields).
-  </span>
-  <span>
-    <strong>interest_rate_pct</strong>,
-    <strong>tenor_years</strong>, and <strong>target_dscr</strong> affect
-    debt / equity / DSCR outputs under the current DSCR sculpting
-    method, but <strong>project IRR may not change</strong>
+    <strong>tenor_years</strong>, and <strong>target_dscr</strong> are
+    DSCR sculpt drivers and affect senior debt / DSCR outputs
     (see the <span class="badge badge-dscr-sculpt">DSCR sculpt
-    driver</span> badges next to those fields).
+    driver</span> badges next to those fields). Project IRR
+    may not change.
+  </span>
+
+
+  <span class="badge badge-timing">TIMING DRIVER</span>
+  <span>
+    <strong>construction_months</strong> is a timing driver. It
+    can move equity IRR via the financial_close timing, but
+    does not change revenue, EBITDA, senior debt, or DSCR
+    in the current Generic runtime
+    (see the <span class="badge badge-timing">Timing
+    driver</span> badge next to that field).
   </span>
   <span class="badge badge-reporting">INDICATIVE (DERIVED)</span>
   <span>

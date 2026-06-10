@@ -46,6 +46,9 @@ from app.ui.generic_driver_status_badges import (
     STATUS_WIRED_PARTIAL,
     STATUS_METADATA_ONLY,
     STATUS_NOT_WIRED,
+    # Phase S3 review fix: TIMING_DRIVER is a
+    # separate concept from WIRED_PARTIAL.
+    STATUS_TIMING_DRIVER,
     # Phase S2: REPORTING_DERIVED is a new status
     # for fields like gearing_pct (user-supplied
     # indicative assumption; realized value is a
@@ -147,20 +150,27 @@ class TestFieldStatusMapping:
 
     def test_counts_match_s3(self):
         # Per Phase S3 mapping (PR #600 base + S2
-        # amendment + S3 binding suite):
+        # amendment + S3 binding suite + S3 review
+        # fix):
         # - WIRED=6 (tariff, p50, capacity, capex,
         #   opex, ppa_term)
-        # - DSCR_SCULPT_DRIVER=4 (interest_rate_pct,
-        #   tenor_years, target_dscr,
-        #   construction_months; gearing_pct moved
-        #   to REPORTING_DERIVED in S2;
-        #   construction_months added in S3)
+        # - DSCR_SCULPT_DRIVER=3 (interest_rate_pct,
+        #   tenor_years, target_dscr; gearing_pct
+        #   moved to REPORTING_DERIVED in S2;
+        #   construction_months split out into
+        #   TIMING_DRIVER in the S3 review fix)
+        # - TIMING_DRIVER=1 (construction_months;
+        #   Phase S3 review fix)
         # - REPORTING_DERIVED=1 (gearing_pct)
         # - METADATA_ONLY=0 (ppa_term_years and
         #   construction_months moved out in S3)
         # - NOT_WIRED=0
+        from app.ui.generic_driver_status_badges import (
+            TIMING_DRIVER_FIELDS,
+        )
         assert len(WIRED_FIELDS) == 6
-        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 4
+        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 3
+        assert len(TIMING_DRIVER_FIELDS) == 1
         assert len(REPORTING_DERIVED_FIELDS) == 1
         assert len(METADATA_ONLY_FIELDS) == 0
         assert len(NOT_WIRED_FIELDS) == 0
@@ -184,13 +194,13 @@ class TestGetFieldStatus:
             # _set_revenue_ppa_term; the field is
             # now model-affecting).
             ("ppa_term_years", STATUS_WIRED),
-            # Phase S3: construction_months moved
-            # from STATUS_METADATA_ONLY to
-            # STATUS_WIRED_PARTIAL (the S1 schema
-            # extension accepts it; the resolver
-            # applies it via info override /
-            # financial_close timing).
-            ("construction_months", STATUS_WIRED_PARTIAL),
+            # Phase S3 review fix: construction_months
+            # moved from STATUS_WIRED_PARTIAL to
+            # STATUS_TIMING_DRIVER (a separate
+            # concept from the 3 binding sculpt
+            # drivers). The 3 sculpt drivers remain
+            # STATUS_WIRED_PARTIAL.
+            ("construction_months", STATUS_TIMING_DRIVER),
             # Phase S2: gearing_pct moved from
             # WIRED_PARTIAL to REPORTING_DERIVED.
             ("gearing_pct", STATUS_REPORTING_DERIVED),
@@ -393,26 +403,36 @@ class TestInputsSectionRenders:
         assert BADGE_METADATA_ONLY not in row
         assert CSS_CLASS_METADATA not in row
 
-    def test_partial_construction_months_has_dscr_sculpt_badge(self):
-        # Phase S3: construction_months is now
-        # WIRED_PARTIAL (DSCR sculpt driver CSS
-        # class). The partial renders the
+    def test_partial_construction_months_has_timing_driver_badge(self):
+        # Phase S3 review fix: construction_months
+        # is a TIMING_DRIVER, NOT a DSCR sculpt
+        # driver. The partial renders the
         # construction_months row with the
-        # "Model driver" badge text (Phase S3
-        # renamed the badge text to reflect that
-        # construction_months is not a strict
-        # sculpt driver, but it still carries
-        # the same CSS class for visual
-        # consistency).
+        # "Timing driver" badge and the
+        # badge-timing CSS class.
         src = self._read_partial()
         row = self._extract_field_row(
             src, "construction_months"
         )
-        # The CSS class is shared.
-        assert CSS_CLASS_DSCR_SCULPT in row
-        # The badge text is the more honest
-        # "Model driver" label.
-        assert "Model driver" in row
+        # The Timing driver CSS class is used.
+        assert "badge-timing" in row
+        # The badge text is "Timing driver" (NOT
+        # "DSCR sculpt driver" or "Model driver").
+        assert 'badge="Timing driver"' in row
+        # The user-facing badge kwarg must be
+        # "Timing driver" (not "DSCR sculpt
+        # driver"). The tooltip may mention "DSCR
+        # sculpt driver" as historical context,
+        # but the badge kwarg is the authoritative
+        # user-facing label.
+        # Specifically, the badge="..." kwarg
+        # must be exactly "Timing driver".
+        assert 'badge="Timing driver"' in row
+        # The badge_class is badge-timing.
+        assert 'badge_class="badge-timing"' in row
+        # The DSCR sculpt driver CSS class is NOT
+        # applied to this row.
+        assert 'badge-dscr-sculpt' not in row
 
     @pytest.mark.parametrize(
         "field",
@@ -465,9 +485,15 @@ class TestInputsSectionRenders:
         assert "bank-approved" in src
 
     def test_partial_has_driver_status_legend(self):
-        # The new "driver status legend" block lists
-        # the metadata-only and dscr-sculpt fields
-        # so the user understands the badges.
+        # The "driver status legend" block lists
+        # the metadata-only, dscr-sculpt, timing
+        # driver, and reporting/derived fields so
+        # the user understands the badges. Phase
+        # S3 review fix added a separate Timing
+        # driver legend bullet (the previous
+        # "Model driver" bullet lumped
+        # construction_months with the 3 binding
+        # sculpt drivers, which was misleading).
         partial = os.path.join(
             REPO_ROOT,
             "app",
@@ -477,13 +503,39 @@ class TestInputsSectionRenders:
         )
         src = open(partial).read()
         assert 'data-driver-status-legend="true"' in src
-        assert "ppa_term_years" in src
+        # ppa_term_years is now WIRED (no badge);
+        # the legend no longer mentions it in a
+        # separate bullet. The legend must
+        # distinguish the 3 DSCR sculpt drivers
+        # from the Timing driver.
         assert "construction_months" in src
         assert "gearing_pct" in src
+        # The legend must contain the "Timing
+        # driver" bullet (Phase S3 review fix).
+        assert "TIMING DRIVER" in src
+        # The legend must contain the "DSCR sculpt
+        # driver" bullet (the 3 true sculpt
+        # drivers).
+        assert "DSCR SCULPT DRIVER" in src
+        # The legend must NOT say construction_months
+        # is a "Model driver" (Phase S3 review
+        # fix: that was the previous misleading
+        # label).
+        assert "MODEL DRIVER" not in src
+        # The legend mentions "Project IRR may not
+        # change" in the DSCR sculpt driver
+        # bullet (this text is the contract:
+        # DSCR sculpt drivers affect
+        # debt/equity/DSCR but project IRR may not
+        # change).
+        # Note: the legend has been split into 3
+        # separate bullets; the "Project IRR may
+        # not change" copy is in the DSCR sculpt
+        # driver bullet.
+        assert "IRR" in src and "may not change" in src
         assert "interest_rate_pct" in src
         assert "tenor_years" in src
         assert "target_dscr" in src
-        assert "project IRR may not change" in src
 
 
 # ---------------------------------------------------------------------------

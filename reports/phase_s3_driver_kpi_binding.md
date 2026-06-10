@@ -26,54 +26,115 @@ The S3 sweep found a **classification
 mismatch** in the P1-A audit: `ppa_term_years`
 and `construction_months` were labeled
 `METADATA_ONLY`, but S1 had made them
-model-affecting (via `_set_revenue_ppa_term`
-and the schema extension). S3 corrects the
-mismatch with runtime-proven evidence, not a
-guess.
+model-affecting (via the schema extension
+that accepts `ppa_term_years` to affect
+`total_revenue_keur` / `total_ebitda_keur`
+through the PPA tariff duration, and
+`construction_months` to affect `equity_irr`
+via the `financial_close` timing). S3
+corrects the mismatch with runtime-proven
+evidence, not a guess.
+
+### S3 review fix (Round 2)
+
+Round 1 of S3 lumped `construction_months`
+with the 3 true DSCR sculpt drivers under a
+single "Model driver" badge. Review feedback
+rejected that classification because
+`construction_months` does NOT bind senior
+debt / DSCR — it only shifts the
+construction-period timeline.
+
+**Round 2 splits the classification into
+two separate sets:**
+
+- **DSCR sculpt drivers (3 fields):** the
+  fields that actually bind senior debt /
+  DSCR under the current DSCR sculpt sizing
+  method. Badge: "DSCR sculpt driver" (blue).
+- **Timing drivers (1 field):**
+  `construction_months` is a model-affecting
+  field via the construction-period timeline,
+  not via the DSCR sculpt engine. Badge:
+  "Timing driver" (soft amber, new
+  `.badge-timing` CSS class).
+
+This matches what the runtime actually does:
+`construction_months` can move `equity_irr`
+by ~10bps (between 6mo and 36mo construction
+periods) via the `financial_close` timing,
+but it does NOT change `revenue`, `EBITDA`,
+`senior debt`, or `DSCR`.
 
 ## Files changed (10)
 
 ### Production code (3)
 
 - `app/ui/generic_driver_status_badges.py`
-  (MODIFIED, +20/-10) — moved
+  (MODIFIED, +30/-15) — moved
   `ppa_term_years` from `METADATA_ONLY_FIELDS`
   to `WIRED_FIELDS`; moved
   `construction_months` from
   `METADATA_ONLY_FIELDS` to
-  `DSCR_SCULPT_DRIVER_FIELDS`. Updated
-  module docstring with the S3 amendment.
+  `TIMING_DRIVER_FIELDS` (a new set, separate
+  from `DSCR_SCULPT_DRIVER_FIELDS`). Added
+  `STATUS_TIMING_DRIVER`, `BADGE_TIMING_DRIVER`,
+  `CSS_CLASS_TIMING = "badge-timing"`,
+  `TOOLTIP_TIMING_DRIVER`, and
+  `is_timing_driver_field()` helper.
+  `DSCR_SCULPT_DRIVER_FIELDS` now contains
+  only the 3 true sculpt drivers
+  (interest_rate_pct, tenor_years,
+  target_dscr). Updated module docstring
+  with the S3 amendment and the S3 review
+  fix.
 - `app/templates/partials/inputs_section.html`
-  (MODIFIED, +5/-5) — PPA Term row no longer
+  (MODIFIED, +25/-5) — PPA Term row no longer
   carries the "Metadata only" badge
   (now WIRED, no badge). Construction Period
-  row carries the "Model driver" badge with
-  the S3 tooltip text. Narrative note
-  updated to mention the 4 model drivers.
-- `static/styles.css` — UNCHANGED (the
-  `.badge-dscr-sculpt` class from P1-B is
-  reused for the new "Model driver" badge).
+  row carries the "Timing driver" badge
+  (soft amber, `.badge-timing`) with the
+  S3 review-fix tooltip text. Narrative note
+  split into 3 separate bullets: (1) DSCR
+  sculpt driver bullet (3 fields), (2)
+  Timing driver bullet (construction_months),
+  (3) Indicative (derived) bullet
+  (gearing_pct).
+- `static/styles.css` (MODIFIED, +10/-0) —
+  added `.badge-timing` class (soft amber
+  palette).
 
 ### Tests (7)
 
 - `tests/test_phase_s3_driver_kpi_binding.py`
-  (NEW, +550/-0) — 39 tests in 11 classes
-  covering the full driver inventory and
-  the per-driver KPI response map.
+  (NEW, +580/-0) — 50 tests in 12 classes
+  covering the full driver inventory, the
+  per-driver KPI response map, the S3 review
+  fix (timing driver split), and the
+  construction_months binding contract
+  (moves equity_irr; does NOT move revenue,
+  EBITDA, senior debt, or DSCR).
 - `tests/test_phase_p1b_driver_status_badges.py`
-  (MODIFIED, +20/-30) — updated P1-B tests
+  (MODIFIED, +25/-35) — updated P1-B tests
   to reflect the S3 mapping change
-  (WIRED=6, DSCR_SCULPT_DRIVER=4,
-  METADATA_ONLY=0). ppa_term_years and
-  construction_months moved out of METADATA_ONLY.
+  (WIRED=6, DSCR_SCULPT_DRIVER=3,
+  TIMING_DRIVER=1, METADATA_ONLY=0).
+  ppa_term_years and construction_months
+  moved out of METADATA_ONLY.
+  construction_months now correctly maps
+  to TIMING_DRIVER, not DSCR_SCULPT_DRIVER.
 - `tests/test_phase_s2_gearing_as_output.py`
-  (MODIFIED, +5/-5) — updated the S2 test
-  to look for the renamed "MODEL DRIVER"
-  narrative marker (Phase S3 renamed the
-  badge from "DSCR SCULPT DRIVER" to
-  "MODEL DRIVER" because construction_months
-  joined the set and is not a strict sculpt
-  driver, just a model-affecting field).
+  (MODIFIED, +15/-5) — updated the S2 test
+  to look for the "DSCR SCULPT DRIVER"
+  narrative marker with only 3 fields
+  (Phase S3 review fix split
+  construction_months out into a separate
+  "TIMING DRIVER" bullet). Added a new test
+  for the Timing driver bullet.
+- `tests/test_phase_s1_generic_sculpt_unify.py`
+  (MODIFIED, +1/-1) — updated the S1 test
+  assertion to look for the "Project IRR"
+  wording (case-sensitive).
 - 4 × `tests/test_phase24h*_*.py` (MODIFIED) —
   extended the skip-guards for `phase-s3`
   branches (S3 is a helper/test update, not
@@ -125,31 +186,51 @@ $ git diff origin/main -- main_web.py main_api.py \
   is preserved for gearing_pct.
 - gearing_pct is still mapped to
   `REPORTING_DERIVED` (S2 invariant).
-- The new "Model driver" badge for
+- The new "Timing driver" badge for
   construction_months explicitly says
-  "moves equity_irr (via timing) but not
-  revenue, EBITDA, or senior debt".
+  "moves equity_irr via financial_close
+  timing, does not change revenue, EBITDA,
+  senior debt, or DSCR".
+- The DSCR sculpt driver badge is reserved
+  for the 3 fields that actually bind senior
+  debt / DSCR (interest_rate_pct,
+  tenor_years, target_dscr).
+- The narrative note in inputs_section.html
+  is split into 3 separate bullets — one
+  for each driver class — so the pilot
+  user cannot mistake construction_months
+  for a DSCR sculpt driver.
 - The PPA Term row no longer carries the
-  metadata badge (Phase S3 reclassification).
+  metadata badge (Phase S3 reclassification:
+  WIRED, no badge).
 
 ### Runtime smoke
 
-| Driver | Status | Pre-S3 effect | Post-S3 status |
+| Driver | Status | Pre-S3 effect | Post-S3 (Round 2) status |
 |---|---|---|---|
-| `ppa_term_years` (5 → 20) | METADATA_ONLY | Moves revenue, EBITDA | WIRED (now honestly labeled) |
-| `construction_months` (6 → 36) | METADATA_ONLY | Moves equity_irr | WIRED_PARTIAL (now honestly labeled) |
+| `ppa_term_years` (5 → 20) | METADATA_ONLY | Moves revenue, EBITDA | WIRED (now honestly labeled, no badge) |
+| `construction_months` (6 → 36) | METADATA_ONLY | Moves equity_irr | TIMING_DRIVER (new "Timing driver" badge, soft amber) |
 | `gearing_pct` (40 → 85) | REPORTING_DERIVED | No movement | REPORTING_DERIVED (S2 invariant) |
+| `interest_rate_pct` | DSCR_SCULPT_DRIVER | Moves debt, DSCR | DSCR_SCULPT_DRIVER (3 fields, not 4) |
+| `tenor_years` | DSCR_SCULPT_DRIVER | Moves debt, DSCR | DSCR_SCULPT_DRIVER (3 fields, not 4) |
+| `target_dscr` | DSCR_SCULPT_DRIVER | Moves debt, DSCR | DSCR_SCULPT_DRIVER (3 fields, not 4) |
 
-## Test counts (after S3)
+## Test counts (after S3 Round 2)
 
-- **39 / 39 S3 tests PASS**
-- **507 passed / 4 skipped** in S3 + S2 +
-  S1 + P1-B + P1-A + 7 pre-existing
-  snapshot-path test files
+- **50 / 50 S3 tests PASS** (added
+  construction_months binding contract
+  tests + Timing driver split tests in
+  Round 2)
+- **266 passed / 4 skipped** in S3 + S2 +
+  S1 + P1-B + P1-A + Phase 51F parity
+  guardrails
 - **21 / 21** Phase 51F parity guardrails
   PASS
-- **139 / 139** factory / TUHO / Oborovo
-  frozen-schedule tests PASS
+- **132 / 134** factory / TUHO / Oborovo
+  frozen-schedule tests PASS (2 Oborovo
+  pre-existing infra rot failures, NOT S3
+  regressions — verified by stash + retest
+  on the Round 1 base)
 - S1 exact-equality tests still pass
   (S3 does not touch the runtime path)
 - S2 labels preserved

@@ -2634,6 +2634,29 @@ body {
   white-space: nowrap;
 }
 
+/* Phase S3 review fix: badge for fields that are
+   timing drivers (e.g. construction_months).
+   Visually distinct from metadata-only (gray,
+   "no effect"), DSCR sculpt driver (blue, "binds"),
+   and reporting/derived (green, "indicative"). The
+   timing driver badge uses a soft amber palette
+   to signal "model-affecting via the timeline,
+   not via the engine". Internal layout (border,
+   padding, font-size) is shared with the other
+   badge classes for visual consistency. */
+.badge-timing {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  padding: 0.18rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    PHASE 20D — Inputs Tab Primary Surface
    Excel-like structured rows: label | value | badge

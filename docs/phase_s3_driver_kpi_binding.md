@@ -17,18 +17,50 @@
 ## The S3 finding (key insight)
 
 S1 unified Generic on DSCR sculpt and added
-`_set_revenue_ppa_term` (which applies
-`ppa_term_years`) and a schema extension (which
-accepts `construction_months`). After S1, the
-runtime consumes both fields, but the P1-A
-classification still labels them as
-`METADATA_ONLY`. This is a classification
-mismatch.
+`ppa_term_years` to the schema (which affects
+`total_revenue_keur` and `total_ebitda_keur`
+via the PPA tariff duration) and
+`construction_months` (which affects
+`equity_irr` via the `financial_close` timing
+shift). After S1, the runtime consumes both
+fields, but the P1-A classification still
+labels them as `METADATA_ONLY`. This is a
+classification mismatch.
 
 S3 corrects the mismatch with a **runtime
 sweep** (not a guess): for each driver, the
 test suite perturbs the value by a meaningful
 amount and asserts which KPIs move.
+
+## S3 review fix (Round 2)
+
+Round 1 of S3 lumped `construction_months`
+with the 3 true DSCR sculpt drivers under a
+single "Model driver" badge. Review feedback
+rejected that classification because
+`construction_months` does NOT bind senior
+debt / DSCR — it only shifts the
+construction-period timeline.
+
+**Round 2 splits the classification into
+two separate sets:**
+
+- **DSCR sculpt drivers (3 fields):** the
+  fields that actually bind senior debt /
+  DSCR under the current DSCR sculpt sizing
+  method. Badge: "DSCR sculpt driver" (blue).
+- **Timing drivers (1 field):**
+  `construction_months` is a model-affecting
+  field via the construction-period timeline,
+  not via the DSCR sculpt engine. Badge:
+  "Timing driver" (soft amber).
+
+This matches what the runtime actually does:
+`construction_months` can move `equity_irr`
+by ~10bps (between 6mo and 36mo construction
+periods) via the `financial_close` timing,
+but it does NOT change `revenue`, `EBITDA`,
+`senior debt`, or `DSCR`.
 
 ## The S3 driver inventory (locked by tests)
 
@@ -43,13 +75,32 @@ amount and asserts which KPIs move.
 | `opex_y1_keur` | EBITDA, OPEX, IRR, DSCR, debt | Yes |
 | `ppa_term_years` | revenue, EBITDA (S3 reclassification) | Yes |
 
-### WIRED_PARTIAL (4 fields, "Model driver" badge)
+### DSCR SCULPT DRIVERS (3 fields, "DSCR sculpt driver" badge, blue)
+
+These are the fields that actually bind
+senior debt / DSCR under the current DSCR
+sculpt sizing method. Moving these changes
+`min_dscr` and `senior_debt_amount_keur`
+directly.
 
 | Field | Moves | Tested |
 |---|---|---|
 | `interest_rate_pct` | DSCR, debt | Yes |
 | `tenor_years` | DSCR, debt | Yes |
 | `target_dscr` | DSCR, debt | Yes |
+
+### TIMING DRIVERS (1 field, "Timing driver" badge, soft amber)
+
+`construction_months` is **not** a DSCR
+sculpt driver. It is a model-affecting field
+via the construction-period timeline (shifts
+`financial_close`). It can move `equity_irr`
+by ~10bps (between 6mo and 36mo construction
+periods) but does **NOT** change `revenue`,
+`EBITDA`, `senior debt`, or `DSCR`.
+
+| Field | Moves | Tested |
+|---|---|---|
 | `construction_months` | equity_irr (via financial_close timing) | Yes |
 
 ### REPORTING_DERIVED (1 field, "Indicative (derived)" badge)
@@ -105,13 +156,17 @@ No editable field is `NOT_WIRED`.
    therefore `total_ebitda_keur`.
 5. **DSCR sculpt drivers** (interest_rate,
    tenor, target_dscr) move senior debt and
-   the realized DSCR profile.
-6. **construction_months** moves
-   `financial_close` (and therefore the
+   the realized DSCR profile. These are the
+   only fields that change `min_dscr` and
+   `senior_debt_amount_keur` directly.
+6. **Timing drivers** (construction_months)
+   move `financial_close` (and therefore the
    construction-period timing), which affects
    equity_irr by a small amount (~10bps
    spread between 6mo and 36mo) but does NOT
-   change revenue, EBITDA, or senior debt.
+   change revenue, EBITDA, senior debt, or
+   DSCR. Construction_months is NOT a DSCR
+   sculpt driver.
 7. **gearing_pct** is `REPORTING_DERIVED`:
    under DSCR sculpt, the user-supplied
    gearing is preserved as a reporting metric

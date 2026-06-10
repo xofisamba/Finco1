@@ -88,9 +88,20 @@ class TestDriverInventory:
         assert len(WIRED_FIELDS) == 6
 
     def test_dscr_sculpt_driver_field_count(self):
-        # 4 WIRED_PARTIAL fields: interest, tenor,
-        # target_dscr, construction_months.
-        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 4
+        # 3 DSCR_SCULPT_DRIVER fields: interest,
+        # tenor, target_dscr. Phase S3 review fix
+        # split out construction_months into a
+        # separate TIMING_DRIVER_FIELDS set.
+        assert len(DSCR_SCULPT_DRIVER_FIELDS) == 3
+
+    def test_timing_driver_field_count(self):
+        # 1 TIMING_DRIVER field: construction_months.
+        # Phase S3 review fix: construction_months
+        # is a timing driver, not a DSCR sculpt
+        # driver. It is a separate concept.
+        from app.ui.generic_driver_status_badges import TIMING_DRIVER_FIELDS
+        assert len(TIMING_DRIVER_FIELDS) == 1
+        assert "construction_months" in TIMING_DRIVER_FIELDS
 
     def test_reporting_derived_field_count(self):
         # 1 REPORTING_DERIVED field: gearing_pct.
@@ -106,10 +117,14 @@ class TestDriverInventory:
         assert len(NOT_WIRED_FIELDS) == 0
 
     def test_total_inventory_size(self):
-        # 6 + 4 + 1 + 0 + 0 = 11 fields.
+        # 6 + 3 + 1 + 1 + 0 + 0 = 11 fields.
+        # WIRED=6, DSCR_SCULPT_DRIVER=3, TIMING_DRIVER=1,
+        # REPORTING_DERIVED=1, METADATA_ONLY=0, NOT_WIRED=0.
+        from app.ui.generic_driver_status_badges import TIMING_DRIVER_FIELDS
         total = (
             len(WIRED_FIELDS)
             + len(DSCR_SCULPT_DRIVER_FIELDS)
+            + len(TIMING_DRIVER_FIELDS)
             + len(REPORTING_DERIVED_FIELDS)
             + len(METADATA_ONLY_FIELDS)
             + len(NOT_WIRED_FIELDS)
@@ -118,9 +133,11 @@ class TestDriverInventory:
 
     def test_no_field_in_two_sets(self):
         # Each field must appear in exactly one set.
+        from app.ui.generic_driver_status_badges import TIMING_DRIVER_FIELDS
         all_fields = (
             list(WIRED_FIELDS)
             + list(DSCR_SCULPT_DRIVER_FIELDS)
+            + list(TIMING_DRIVER_FIELDS)
             + list(REPORTING_DERIVED_FIELDS)
             + list(METADATA_ONLY_FIELDS)
             + list(NOT_WIRED_FIELDS)
@@ -128,6 +145,19 @@ class TestDriverInventory:
         assert len(all_fields) == len(set(all_fields)), (
             f"duplicate field: {all_fields}"
         )
+
+    def test_construction_months_not_in_dscr_sculpt(self):
+        # Phase S3 review fix: construction_months
+        # is a timing driver, NOT a DSCR sculpt
+        # driver. It must not appear in
+        # DSCR_SCULPT_DRIVER_FIELDS.
+        assert "construction_months" not in DSCR_SCULPT_DRIVER_FIELDS
+
+    def test_interest_tenor_target_dscr_remain_dscr_sculpt(self):
+        # The 3 true DSCR sculpt drivers must
+        # remain in DSCR_SCULPT_DRIVER_FIELDS.
+        for f in ("interest_rate_pct", "tenor_years", "target_dscr"):
+            assert f in DSCR_SCULPT_DRIVER_FIELDS, f
 
 
 # ---------------------------------------------------------------------------
@@ -287,11 +317,14 @@ class TestWiredDriversMoveKPIs:
 
 
 class TestWiredPartialDriversMoveKPIs:
-    """Each WIRED_PARTIAL driver must have a
-    documented expected KPI relationship. The
-    3 binding sculpt drivers move senior debt
-    / DSCR; construction_months moves equity_irr
-    via the financial_close timeline."""
+    """Each DSCR_SCULPT_DRIVER (WIRED_PARTIAL in
+    helper status) must have a documented expected
+    KPI relationship. The 3 binding sculpt drivers
+    move senior debt / DSCR.
+
+    Phase S3 review fix: construction_months is
+    no longer in this class; it has its own
+    TestTimingDriverMovesKPIs class below."""
 
     @pytest.mark.parametrize("project_type", ["Wind", "Solar"])
     def test_interest_rate_moves_dscr_and_debt(self, project_type):
@@ -317,30 +350,64 @@ class TestWiredPartialDriversMoveKPIs:
             "min_dscr", "avg_dscr", "senior_debt",
         ])
 
+
+class TestTimingDriverMovesKPIs:
+    """Phase S3 review fix: construction_months is
+    a timing driver (TIMING_DRIVER_FIELDS), NOT
+    a DSCR sculpt driver. The S3 sweep proved
+    that changing construction_months moves
+    equity_irr via the financial_close timeline
+    (small but measurable spread between 6mo
+    and 36mo construction periods), but does
+    NOT change revenue, EBITDA, senior debt, or
+    DSCR.
+
+    This class documents that exact contract.
+    """
+
     @pytest.mark.parametrize("project_type", ["Wind", "Solar"])
     def test_construction_months_moves_equity_irr(self, project_type):
-        # Phase S3: construction_months is
-        # WIRED_PARTIAL. The S3 sweep proved that
-        # changing construction_months moves
-        # equity_irr via the financial_close
-        # timeline (small but measurable spread
-        # between 6mo and 36mo construction
-        # periods), but does NOT change revenue,
-        # EBITDA, or senior debt.
         baseline = _run(_build_snap(project_type, construction_months=6))
         perturbed = _run(_build_snap(project_type, construction_months=36))
         # equity_irr MUST move.
         assert baseline["kpis"]["equity_irr"] != perturbed["kpis"]["equity_irr"]
-        # Revenue and EBITDA MUST NOT move
+
+    @pytest.mark.parametrize("project_type", ["Wind", "Solar"])
+    def test_construction_months_does_not_move_revenue(self, project_type):
+        baseline = _run(_build_snap(project_type, construction_months=6))
+        perturbed = _run(_build_snap(project_type, construction_months=36))
+        # Revenue MUST NOT move
         # (construction_months only affects
         # financial_close timing, not the
-        # operating-period revenue or EBITDA).
+        # operating-period revenue).
         assert baseline["kpis"]["total_revenue_keur"] == perturbed["kpis"]["total_revenue_keur"]
+
+    @pytest.mark.parametrize("project_type", ["Wind", "Solar"])
+    def test_construction_months_does_not_move_ebitda(self, project_type):
+        baseline = _run(_build_snap(project_type, construction_months=6))
+        perturbed = _run(_build_snap(project_type, construction_months=36))
+        # EBITDA MUST NOT move.
         assert baseline["kpis"]["total_ebitda_keur"] == perturbed["kpis"]["total_ebitda_keur"]
+
+    @pytest.mark.parametrize("project_type", ["Wind", "Solar"])
+    def test_construction_months_does_not_move_senior_debt(self, project_type):
+        baseline = _run(_build_snap(project_type, construction_months=6))
+        perturbed = _run(_build_snap(project_type, construction_months=36))
         # Senior debt MUST NOT move (sculpt is
         # unchanged because operating CFADS is
         # unchanged).
         assert baseline["senior_debt"] == perturbed["senior_debt"]
+
+    @pytest.mark.parametrize("project_type", ["Wind", "Solar"])
+    def test_construction_months_does_not_move_dscr(self, project_type):
+        baseline = _run(_build_snap(project_type, construction_months=6))
+        perturbed = _run(_build_snap(project_type, construction_months=36))
+        # min_dscr and avg_dscr MUST NOT move.
+        # (construction_months does not bind
+        # the DSCR sculpt engine; it only moves
+        # financial_close timing.)
+        assert baseline["kpis"]["min_dscr"] == perturbed["kpis"]["min_dscr"]
+        assert baseline["kpis"]["avg_dscr"] == perturbed["kpis"]["avg_dscr"]
 
 
 # ---------------------------------------------------------------------------
