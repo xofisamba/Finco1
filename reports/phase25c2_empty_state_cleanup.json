@@ -1,0 +1,36 @@
+{
+  "phase": "25C-2",
+  "title": "User-Facing Error / Empty State Cleanup (Generic Solar / Wind)",
+  "type": "ui_only",
+  "status": "DRAFT",
+  "base_sha": "c80fa3391e1c475d575c981244812e16c859a8dc",
+  "branch": "phase25c-2-empty-state-cleanup",
+  "condition_count": 7,
+  "conditions": [
+    "no_project",
+    "no_scenario",
+    "not_run",
+    "lt_2_scenarios",
+    "export_before_run",
+    "dirty_unsaved",
+    "stale_run"
+  ],
+  "severity_distribution": {
+    "info": 4,
+    "warning": 3,
+    "error": 0
+  },
+  "routes_are_pre_existing": true,
+  "no_stack_traces_in_messages": true,
+  "no_persistence_writes": true,
+  "no_schema_migration": true,
+  "no_feature_flag_enablement": true,
+  "use_construction_schedule_engine": false,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "test_count": {
+    "helper_tests": 72,
+    "factory_safety_tests": 41,
+    "total_new": 113
+  },
+  "next_step": "25C-3 \u2014 Pilot Feedback Capture"
+}
