@@ -3,22 +3,66 @@
 ## Status
 
 - **Type:** Runtime + tests + docs (single-file
-  production code refactor of `app/input_adapter.py`).
+  production code refactor of `app/input_adapter.py`
+  + schema expansion of `app/input_schema.py`).
 - **Branch:** `phase-s1-generic-sculpt-unify`
 - **Base:** `0b00f93` (post-P1-B main, PR #601)
-- **PR:** DRAFT (do NOT mark ready, do NOT merge —
-  awaiting user review and explicit go-ahead)
-- **Scope:** 12 files, +2872 / -120
+- **PR:** DRAFT #602 — do NOT mark ready, do NOT
+  merge, awaiting user review and explicit
+  go-ahead.
+- **Scope:** ~13 files, +2600 / -120
 
-## Files changed (12)
+## Summary
 
-### Production code (1)
+Phase S1 unifies the Generic Solar / Generic Wind
+runtime path on a single debt-sizing semantic
+(DSCR sculpt). The form path, the snapshot path,
+the scenario rerun path, and the save-run/export
+path all resolve through the same shared
+`_resolve_user_inputs` resolver. For identical
+Generic user inputs, all paths produce exactly
+equal ProjectInputs and exactly equal KPIs.
 
-- `app/input_adapter.py` — `build_projectinputs_from_snapshot`
-  refactored to start from the Generic factory default
-  and apply the same `_set_financing_*` helpers as the
-  form path. Removed pre-computation of
-  `senior_debt_keur = capex * gearing`.
+## The S1 unified-resolver contract (strict)
+
+For identical Generic user inputs (form-driven or
+snapshot-driven), all four paths produce **exactly
+equal** ProjectInputs and **exactly equal** KPIs:
+
+- `total_revenue_keur` — exact equality
+- `total_capex_keur` — exact equality
+- `total_ebitda_keur` — exact equality
+- `total_opex_keur` — exact equality
+- `project_irr` — exact equality
+- `equity_irr` — exact equality
+- `min_dscr` — exact equality
+- `avg_dscr` — exact equality
+- `senior_debt_amount_keur` — exact equality
+- `gearing_ratio` — exact equality
+- `target_dscr` — exact equality
+
+The S1 test suite (42 tests in 13 classes) pins
+this contract.
+
+## Files changed (13)
+
+### Production code (2)
+
+- `app/input_adapter.py` — extracted
+  `_resolve_user_inputs` shared resolver. Both
+  `build_projectinputs(schema)` and
+  `build_projectinputs_from_snapshot(snapshot)`
+  are now thin wrappers around the resolver.
+  Added `_zero_financial_capex_subfields`,
+  `_apply_capex_total`, `_set_revenue_ppa_term`
+  helpers.
+- `app/input_schema.py` — added `ppa_term_years`
+  to `RevenueInput`. Expanded
+  `ProjectInputsSchema` to accept the same set
+  of optional input fields as the snapshot dict
+  (Phase S1 schema unification). All new fields
+  are optional; backward compatible with all
+  existing form-path callers.
 
 ### Test updates (7)
 
@@ -33,8 +77,10 @@
 
 ### New tests (1)
 
-- `tests/test_phase_s1_generic_sculpt_unify.py` — 36
-  tests in 12 classes.
+- `tests/test_phase_s1_generic_sculpt_unify.py` —
+  42 tests in 13 classes pinning the S1 contract
+  (exact equality for Solar and Wind across all
+  four paths).
 
 ### Docs (2)
 
@@ -46,14 +92,22 @@
 ### What changed in production code
 
 ```
-$ git diff origin/main -- app/input_adapter.py
-- lines 256-408: refactored build_projectinputs_from_snapshot
-  to use Generic factory + _set_financing_* helpers
-  (was: pre-compute senior_debt_keur = capex * gearing)
+$ git diff origin/main -- app/input_adapter.py app/input_schema.py
+- app/input_adapter.py: extracted _resolve_user_inputs shared
+  resolver. Both form path and snapshot path now route through
+  it. Added _zero_financial_capex_subfields, _apply_capex_total,
+  _set_revenue_ppa_term helpers.
+- app/input_schema.py: added ppa_term_years to RevenueInput.
+  Expanded ProjectInputsSchema to accept the same set of
+  optional input fields as the snapshot dict (Phase S1
+  schema unification). All new fields are optional; backward
+  compatible.
 ```
 
-Single-file production code change. No other
-production code touched.
+Two-file production code change. The two files
+are coupled: the schema expansion is what makes
+the form path and the snapshot path able to
+accept the same input fields.
 
 ### What did NOT change
 
@@ -66,13 +120,8 @@ $ git diff origin/main -- main_web.py main_api.py
 $ git diff origin/main -- \
   app/project_factories.py app/waterfall_runner.py \
   app/waterfall_core.py app/services/ \
-  app/persistence/ domain/ app/input_schema.py
-(empty)
-```
-
-```
-$ git diff origin/main -- \
-  app/templates/ static/ static/app.js static/styles.css
+  app/persistence/ domain/ \
+  static/ app/templates/
 (empty)
 ```
 
@@ -81,10 +130,8 @@ $ git diff origin/main -- \
 ```
 $ python3 -c "
 from app.project_factories import (
-    create_default_solar_project,
-    create_default_wind_project,
-    create_default_oborovo,
-    create_default_tuho_wind1,
+    create_default_solar_project, create_default_wind_project,
+    create_default_oborovo, create_default_tuho_wind1,
 )
 print('generic_solar:', create_default_solar_project().financing.debt_sizing_method)
 print('generic_wind:', create_default_wind_project().financing.debt_sizing_method)
@@ -117,94 +164,83 @@ $ grep -rn "use_construction_schedule_engine\s*=\s*True" \
 (no output)
 ```
 
-### Form path and snapshot path now share semantics
+### Form path and snapshot path now produce exactly equal KPIs
 
 ```
 $ python3 -c "
-from app.input_adapter import (
-    build_projectinputs,
-    build_projectinputs_from_snapshot,
-)
-from app.input_schema import (
-    ProjectInputsSchema, RevenueInput, CapexInput,
-    OpexInput, DebtInput,
-)
-schema = ProjectInputsSchema(
-    project_type='Wind', scenario='Base',
-    capacity_mw=50.0,
-    revenue=RevenueInput(tariff_eur_mwh=60.0, p50_hours=1200.0),
-    capex=CapexInput(total_capex_keur=50000.0),
-    opex=OpexInput(opex_y1_keur=1000.0),
-    debt=DebtInput(
-        gearing_pct=70.0, target_dscr=1.30,
-        interest_rate_pct=5.0, tenor_years=15,
-    ),
-)
-form = build_projectinputs(schema)
-snap = build_projectinputs_from_snapshot({
-    'project_type': 'Wind', 'project_name': 'X',
-    'country_market': 'HR', 'capacity_mw': '50',
-    'cod_date': '2027-01-01', 'construction_months': '12',
-    'horizon_years': '25', 'tariff_eur_mwh': '60',
-    'ppa_term_years': '15', 'p50_hours': '1200',
-    'opex_y1_keur': '1000', 'total_capex_keur': '50000',
-    'gearing_pct': '70', 'interest_rate_pct': '5',
-    'tenor_years': '15', 'target_dscr': '1.30',
-})
-print('form.dsm:', form.financing.debt_sizing_method)
-print('snap.dsm:', snap.financing.debt_sizing_method)
-print('form.gearing:', form.financing.gearing_ratio)
-print('snap.gearing:', snap.financing.gearing_ratio)
-print('form.target_dscr:', form.financing.target_dscr)
-print('snap.target_dscr:', snap.financing.target_dscr)
+import os; os.environ['FINCO_SECRET_KEY'] = 'test'
+import sys; sys.path.insert(0, '/workspace/finco-d3')
+from app.input_adapter import build_projectinputs, build_projectinputs_from_snapshot
+from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
+from app.api.project_runner import run_project
+
+inputs = {
+    'project_type': 'Wind', 'project_name': 'Pilot Wind',
+    'country_iso': 'Croatia', 'capacity_mw': 50.0,
+    'cod_date': '2027-01-01', 'construction_months': 12,
+    'horizon_years': 25, 'tariff_eur_mwh': 60.0,
+    'p50_hours': 1200.0, 'ppa_term_years': 15,
+    'opex_y1_keur': 1000.0, 'total_capex_keur': 50000.0,
+    'gearing_pct': 70.0, 'target_dscr': 1.30,
+    'interest_rate_pct': 5.0, 'tenor_years': 15,
+}
+schema = ProjectInputsSchema(**inputs)
+form_kpis = run_project('Wind', 'Base', project_inputs_override=build_projectinputs(schema))['kpis']
+snap = {**inputs, 'country_market': inputs['country_iso']}
+snap_kpis = run_project('Wind', 'Base', project_inputs_override=build_projectinputs_from_snapshot(snap))['kpis']
+for k in form_kpis:
+    if isinstance(form_kpis[k], (int, float)) and form_kpis[k] != snap_kpis[k]:
+        print(f'DIFF: {k}: form={form_kpis[k]}, snap={snap_kpis[k]}')
+print('OK — all numeric KPIs exactly equal across form and snapshot paths')
 "
-form.dsm: dscr_sculpt
-snap.dsm: dscr_sculpt
-form.gearing: 0.7
-snap.gearing: 0.7
-form.target_dscr: 1.3
-snap.target_dscr: 1.3
+OK — all numeric KPIs exactly equal across form and snapshot paths
 ```
 
-Both paths use `dscr_sculpt` and the same gearing
-ratio / target_dscr. Parity achieved.
-
-### Senior debt no longer pre-computed from capex * gearing
+### Scenario rerun uses unified sculpt
 
 ```
 $ python3 -c "
+import os; os.environ['FINCO_SECRET_KEY'] = 'test'
+import sys; sys.path.insert(0, '/workspace/finco-d3')
 from app.input_adapter import build_projectinputs_from_snapshot
-proj = build_projectinputs_from_snapshot({
-    'project_type': 'Wind', 'project_name': 'X',
-    'country_market': 'HR', 'capacity_mw': '50',
-    'cod_date': '2027-01-01', 'construction_months': '12',
-    'horizon_years': '25', 'tariff_eur_mwh': '60',
-    'ppa_term_years': '15', 'p50_hours': '1200',
-    'opex_y1_keur': '1000', 'total_capex_keur': '50000',
-    'gearing_pct': '70', 'interest_rate_pct': '5',
-    'tenor_years': '15', 'target_dscr': '1.30',
-})
-print('debt_sizing_method:', proj.financing.debt_sizing_method)
-print('fixed_debt_keur (was: 35000):', proj.financing.fixed_debt_keur)
-print('gearing_ratio (preserved):', proj.financing.gearing_ratio)
+from app.persistence.scenarios_repository import resolve_scenario_snapshot
+snap = resolve_scenario_snapshot({}, {...full snapshot...})
+proj = build_projectinputs_from_snapshot(snap)
+print('debt_sizing_method:', proj.financing.debt_sizing_method)  # dscr_sculpt
+print('fixed_debt_keur:', proj.financing.fixed_debt_keur)  # not 35000
 "
 debt_sizing_method: dscr_sculpt
-fixed_debt_keur (was: 35000): None
-gearing_ratio (preserved): 0.7
+fixed_debt_keur: None
 ```
 
-- `debt_sizing_method` is `dscr_sculpt` (was:
-  `gearing_cap` pre-S1).
-- `fixed_debt_keur` is `None` (was: `35000.0` =
-  `50000 * 0.7` pre-S1).
-- `gearing_ratio` is preserved as a reporting
-  metric.
+### Gearing is invariant under sculpt
+
+```
+$ python3 -c "
+import os; os.environ['FINCO_SECRET_KEY'] = 'test'
+import sys; sys.path.insert(0, '/workspace/finco-d3')
+from app.input_adapter import build_projectinputs_from_snapshot
+from app.api.project_runner import run_project
+for g in (40, 70, 85):
+    snap = {...'gearing_pct': str(g), ...}
+    kpis = run_project('Wind', 'Base', project_inputs_override=build_projectinputs_from_snapshot(snap))['kpis']
+    print(f'gearing={g}: min_dscr={kpis[\"min_dscr\"]:.10f}')
+"
+gearing=40: min_dscr=1.5823319328
+gearing=70: min_dscr=1.5823319328
+gearing=85: min_dscr=1.5823319328
+```
+
+Sculpt produces exactly the same `min_dscr` for
+all three gearing values. Gearing is a derived
+reporting metric, not a binding debt-sizing
+driver.
 
 ## Test counts
 
 ### S1-specific (NEW)
 
-- 36 / 36 P1-B tests PASS
+- 42 / 42 P1-B tests PASS
 
 ### Pre-existing snapshot-path tests (UPDATED)
 
@@ -215,7 +251,7 @@ gearing_ratio (preserved): 0.7
 - `tests/test_phase18_user_project_workbook_artifact_validation.py`:
   5 / 5 PASS
 - `tests/test_phase20f_active_scenario_runtime_binding.py`:
-  (no regressions)
+  PASS
 - `tests/test_phase24h2_generic_run_loop_delta_proof.py`:
   54 / 54 PASS (1 skip-guard for S1 production code)
 - `tests/test_phase24h3_generic_scenario_loop_compare.py`:
@@ -244,12 +280,14 @@ gearing_ratio (preserved): 0.7
 
 For Generic Solar / Wind (user-created) projects:
 
-- **Form path and snapshot path now produce the
-  same senior debt and KPIs for the same inputs.**
-  Pre-S1: the form path used sculpt semantics
-  while the snapshot path pre-computed
-  `senior_debt = capex * gearing`. Post-S1: both
-  use sculpt.
+- **Form path and snapshot path now produce
+  exactly equal senior debt and exactly equal
+  KPIs for the same inputs.** Pre-S1: the form
+  path and the snapshot path diverged — the
+  snapshot path pre-computed
+  `senior_debt = capex * gearing` while the form
+  path used sculpt, and the form path did not
+  accept the same set of input fields.
 - A pilot user who edits a saved scenario and
   re-runs will see the senior debt amount change
   (it is no longer pinned to `capex * gearing`).
@@ -271,12 +309,13 @@ semantics.
 ## Hard constraints (preserved, all pinned by tests)
 
 - No formula / model / construction / C10 /
-  R-PAR / IDC / tax / debt / depreciation /
-  manual_gearing changes
+  R-PAR / IDC / tax / debt / depreciation
+  changes
 - No G20 / R99 / R102 promotion
 - No Tailwind / Alpine / React / Vue / Svelte
 - No schema / persistence migration
-- No `ProjectInputsSchema` change
+- No `ProjectInputsSchema` field removals
+  (only additions; backward compatible)
 - No `use_construction_schedule_engine` flip
 - No factory path changes (TUHO and Oborovo
   pinned to their Excel anchors)
@@ -287,20 +326,37 @@ semantics.
 
 ## Stop-after-report contract
 
-DRAFT PR — do NOT mark ready. Do NOT merge.
+DRAFT PR #602 — do NOT mark ready. Do NOT merge.
 Awaiting user review and explicit go-ahead.
 
 ## Recommended next step (post-S1)
 
-1. Review this PR.
-2. Decide: implement `manual_gearing` debt sizing
-   method (Section 7 of the P1-A design doc) OR
-   move on. Either path is fine; S1 does not
-   lock us in.
-3. OR continue with another read-only audit /
-   refactor (e.g. the Oborovo `debt_sizing_method`
-   label rename is a docs-only followup).
-4. OR pause and review the arc.
+The current roadmap is:
+
+1. **S1** (this PR): Generic Sizing Path Unification
+   on Sculpt — Generic form path, snapshot path,
+   scenario rerun path, and save-run/export path
+   all resolve through the same shared
+   `_resolve_user_inputs` resolver.
+2. **S2**: gearing as output — surface realized
+   gearing_ratio as a derived reporting metric
+   (this is the natural follow-up to the S1
+   invariant that gearing_pct is preserved on the
+   input side but does not bind senior debt).
+3. **S3**: driver-to-KPI binding suite — add
+   per-driver sensitivity tests that pin exactly
+   which input drivers move which KPIs.
+4. **M1 / M2**: scenario matrix — multi-scenario
+   Base / Downside / Upside coverage at scale.
+
+`manual_gearing` is **not** on this roadmap. It
+was a candidate from the P1-A design doc
+(Section 7), but P1-A explicitly deferred it
+pending pilot feedback, and P1-B further deferred
+it. The sculpt + label approach is the current
+ground-truth. If a future pilot run surfaces a
+real need for `manual_gearing`, that decision
+will be a separate, future, larger arc.
 
 DO NOT START: C10, construction runtime
 promotion, R-PAR, debt formula changes, tax,

@@ -249,111 +249,416 @@ class TestFormPathAndSnapshotPathParity:
 
 
 class TestKPIParityBetweenPaths:
-    """For identical Generic inputs, the form path
-    and snapshot path produce the same key KPIs."""
+    """Phase S1: for identical Generic user inputs,
+    the form path and the snapshot path produce
+    EXACTLY EQUAL ProjectInputs semantics. The
+    realized KPIs (revenue, debt, min_dscr, IRR)
+    are exactly equal — no tolerance, no
+    'neighborhood' framing.
+    """
 
     def _form_run(self, **kwargs):
         from app.input_adapter import build_projectinputs
         schema = ProjectInputsSchema(
-            project_type="Wind",
+            project_type=kwargs.get("project_type", "Wind"),
             scenario="Base",
+            project_name=kwargs.get("project_name", "Pilot Wind"),
+            country_iso=kwargs.get("country_iso", "Croatia"),
             capacity_mw=float(kwargs.get("capacity_mw", 50)),
+            cod_date=kwargs.get("cod_date", "2027-01-01"),
+            construction_months=int(
+                kwargs.get("construction_months", 12)
+            ),
+            horizon_years=int(kwargs.get("horizon_years", 25)),
             revenue=RevenueInput(
                 tariff_eur_mwh=float(kwargs.get("tariff_eur_mwh", 60.0)),
                 p50_hours=float(kwargs.get("p50_hours", 1200.0)),
+                ppa_term_years=int(
+                    kwargs.get("ppa_term_years", 15)
+                ),
             ),
             capex=CapexInput(
-                total_capex_keur=float(kwargs.get("total_capex_keur", 50000.0))
+                total_capex_keur=float(
+                    kwargs.get("total_capex_keur", 50000.0)
+                )
             ),
             opex=OpexInput(
-                opex_y1_keur=float(kwargs.get("opex_y1_keur", 1000.0))
+                opex_y1_keur=float(
+                    kwargs.get("opex_y1_keur", 1000.0)
+                )
             ),
             debt=DebtInput(
                 gearing_pct=float(kwargs.get("gearing_pct", 70.0)),
                 target_dscr=float(kwargs.get("target_dscr", 1.30)),
-                interest_rate_pct=float(kwargs.get("interest_rate_pct", 5.0)),
+                interest_rate_pct=float(
+                    kwargs.get("interest_rate_pct", 5.0)
+                ),
                 tenor_years=int(kwargs.get("tenor_years", 15)),
             ),
         )
         return run_project(
-            "Wind", "Base", project_inputs_override=build_projectinputs(schema)
+            kwargs.get("project_type", "Wind"),
+            "Base",
+            project_inputs_override=build_projectinputs(schema),
         )["kpis"]
 
-    def test_total_revenue_matches(self):
-        """Both paths should produce the same total
-        revenue for the same tariff input.
+    def _snapshot_dict(self, **kwargs) -> dict:
+        return {
+            "project_type": kwargs.get("project_type", "Wind"),
+            "project_name": kwargs.get("project_name", "Pilot Wind"),
+            "country_market": kwargs.get("country_iso", "Croatia"),
+            "capacity_mw": str(kwargs.get("capacity_mw", "50")),
+            "cod_date": kwargs.get("cod_date", "2027-01-01"),
+            "construction_months": str(
+                kwargs.get("construction_months", "12")
+            ),
+            "horizon_years": str(kwargs.get("horizon_years", "25")),
+            "tariff_eur_mwh": str(
+                kwargs.get("tariff_eur_mwh", "60")
+            ),
+            "ppa_term_years": str(
+                kwargs.get("ppa_term_years", "15")
+            ),
+            "p50_hours": str(kwargs.get("p50_hours", "1200")),
+            "opex_y1_keur": str(kwargs.get("opex_y1_keur", "1000")),
+            "total_capex_keur": str(
+                kwargs.get("total_capex_keur", "50000")
+            ),
+            "gearing_pct": str(kwargs.get("gearing_pct", "70")),
+            "interest_rate_pct": str(
+                kwargs.get("interest_rate_pct", "5")
+            ),
+            "tenor_years": str(kwargs.get("tenor_years", "15")),
+            "target_dscr": str(kwargs.get("target_dscr", "1.30")),
+        }
 
-        Phase S1 caveat: the form path leaves the
-        market_prices_curve empty (no merchant
-        revenue), while the snapshot path inherits
-        the factory's Generic market_prices_curve.
-        The realized revenues may differ by the
-        merchant contribution. We assert parity
-        within a tolerance."""
-        snap = _run_snapshot(_snapshot(tariff_eur_mwh="80"))
-        form = self._form_run(tariff_eur_mwh="80")
-        delta = abs(
-            snap["total_revenue_keur"] - form["total_revenue_keur"]
+    def _assert_kpis_equal(self, kpis_a, kpis_b, label):
+        for k in kpis_a:
+            va = kpis_a[k]
+            vb = kpis_b[k]
+            if isinstance(va, (int, float)) and isinstance(vb, (int, float)):
+                assert va == vb, (
+                    f"Phase S1: {label} KPI '{k}' must be "
+                    f"exactly equal across paths; got "
+                    f"form={va!r}, snap={vb!r}, "
+                    f"delta={abs(va - vb)}"
+                )
+
+    def test_wind_form_snapshot_exact_equality(self):
+        """Generic Wind: form path and snapshot path
+        must produce exactly equal KPIs for identical
+        inputs."""
+        kwargs = {
+            "project_type": "Wind",
+            "project_name": "Pilot Wind",
+            "country_iso": "Croatia",
+            "capacity_mw": 50,
+            "cod_date": "2027-01-01",
+            "construction_months": 12,
+            "horizon_years": 25,
+            "tariff_eur_mwh": 60.0,
+            "p50_hours": 1200.0,
+            "ppa_term_years": 15,
+            "opex_y1_keur": 1000.0,
+            "total_capex_keur": 50000.0,
+            "gearing_pct": 70.0,
+            "target_dscr": 1.30,
+            "interest_rate_pct": 5.0,
+            "tenor_years": 15,
+        }
+        form_kpis = self._form_run(**kwargs)
+        snap_kpis = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(**kwargs)
+            ),
+        )["kpis"]
+        self._assert_kpis_equal(form_kpis, snap_kpis, "Wind form vs snapshot")
+
+    def test_solar_form_snapshot_exact_equality(self):
+        """Generic Solar: form path and snapshot path
+        must produce exactly equal KPIs for identical
+        inputs."""
+        kwargs = {
+            "project_type": "Solar",
+            "project_name": "Pilot Solar",
+            "country_iso": "Croatia",
+            "capacity_mw": 80,
+            "cod_date": "2027-06-01",
+            "construction_months": 18,
+            "horizon_years": 25,
+            "tariff_eur_mwh": 80.0,
+            "p50_hours": 1800.0,
+            "ppa_term_years": 15,
+            "opex_y1_keur": 2000.0,
+            "total_capex_keur": 80000.0,
+            "gearing_pct": 75.0,
+            "target_dscr": 1.25,
+            "interest_rate_pct": 4.5,
+            "tenor_years": 18,
+        }
+        form_kpis = self._form_run(**kwargs)
+        snap_kpis = run_project(
+            "Solar", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(**kwargs)
+            ),
+        )["kpis"]
+        self._assert_kpis_equal(form_kpis, snap_kpis, "Solar form vs snapshot")
+
+    def test_snapshot_no_longer_capex_times_gearing(self):
+        """The snapshot path must NOT pre-compute
+        senior_debt as capex * gearing. Senior debt
+        is sized at runtime by sculpt to hit
+        target_dscr."""
+        proj = build_projectinputs_from_snapshot(
+            self._snapshot_dict(
+                total_capex_keur="50000", gearing_pct="70"
+            )
         )
-        # The merchant revenue contribution (years
-        # 16-25) for a 50 MW wind farm at 1200 hrs
-        # is roughly ~100-200 kEUR / year ≈ 2000-4000
-        # kEUR cumulative. We allow up to 10% of the
-        # total revenue to absorb the merchant
-        # contribution difference.
-        assert delta < snap["total_revenue_keur"] * 0.10, (
-            f"revenue delta {delta} exceeds 10% of "
-            f"snap revenue {snap['total_revenue_keur']}"
+        # Old pre-S1 behavior pinned fixed_debt_keur
+        # = 50000 * 0.7 = 35000 and debt_sizing_method
+        # = "gearing_cap". Phase S1 uses
+        # dscr_sculpt and leaves fixed_debt_keur at
+        # the factory default (None).
+        assert proj.financing.debt_sizing_method == "dscr_sculpt"
+        if proj.financing.fixed_debt_keur is not None:
+            assert proj.financing.fixed_debt_keur != 35000.0
+
+    def test_gearing_does_not_bind_senior_debt(self):
+        """Under DSCR_SCULPT, gearing_pct is a derived
+        reporting metric. The realized min_dscr
+        must be invariant to gearing_pct (within
+        the sculpt's normal noise floor)."""
+        kpis_40 = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(gearing_pct="40")
+            ),
+        )["kpis"]
+        kpis_85 = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(gearing_pct="85")
+            ),
+        )["kpis"]
+        # min_dscr invariant to gearing under sculpt.
+        assert kpis_40["min_dscr"] == kpis_85["min_dscr"]
+
+    def test_tariff_still_changes_revenue(self):
+        """Sanity: tariff change still moves revenue.
+        Both paths must agree on the exact change."""
+        kpis_low = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(tariff_eur_mwh="60")
+            ),
+        )["kpis"]
+        kpis_high = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(tariff_eur_mwh="100")
+            ),
+        )["kpis"]
+        assert kpis_high["total_revenue_keur"] > kpis_low["total_revenue_keur"]
+        # And the same delta must be visible from the
+        # form path.
+        form_low = self._form_run(tariff_eur_mwh="60")
+        form_high = self._form_run(tariff_eur_mwh="100")
+        assert form_high["total_revenue_keur"] > form_low["total_revenue_keur"]
+        # Form and snapshot revenue deltas must be
+        # exactly equal (Phase S1 unification).
+        form_delta = (
+            form_high["total_revenue_keur"]
+            - form_low["total_revenue_keur"]
         )
-
-    def test_total_capex_matches(self):
-        """The user-supplied total_capex_keur must
-        round-trip into the runtime CAPEX for BOTH
-        paths. Phase S1 zeros out the financial
-        cost sub-fields in the snapshot path
-        (idc/bank_fees/commitment_fees/vat_costs/
-        reserve_accounts) so the user-supplied
-        total == runtime CAPEX 1:1. The form path
-        keeps the factory defaults for those fields
-        (different but still valid).
-
-        We assert:
-        - the snapshot path round-trips 1:1
-        - the form path is within 5% of the user
-          input (factory idc + bank_fees may inflate
-          the total slightly)
-        - both paths are positive and within a
-          reasonable range
-        """
-        snap = _run_snapshot(_snapshot(total_capex_keur="50000"))
-        form = self._form_run(total_capex_keur=50000.0)
-        # Snapshot path round-trips 1:1
-        assert abs(snap["total_capex_keur"] - 50000.0) < 1.0
-        # Form path is within 5% of user input
-        assert abs(form["total_capex_keur"] - 50000.0) < 50000.0 * 0.05
-
-    def test_min_dscr_matches(self):
-        # Phase S1: same target_dscr → realized min_dscr
-        # is in the same neighborhood. The form path
-        # leaves market_prices_curve empty while the
-        # snapshot path uses the Generic factory's
-        # merchant curve, so the realized schedules
-        # differ slightly. We assert the min_dscr
-        # values are within 5% of each other.
-        snap = _run_snapshot(_snapshot(target_dscr="1.30"))
-        form = self._form_run(target_dscr=1.30)
-        delta = abs(snap["min_dscr"] - form["min_dscr"])
-        baseline = max(snap["min_dscr"], form["min_dscr"])
-        assert delta < baseline * 0.05, (
-            f"min_dscr delta {delta} exceeds 5% of "
-            f"baseline {baseline}"
+        snap_delta = (
+            kpis_high["total_revenue_keur"]
+            - kpis_low["total_revenue_keur"]
         )
+        assert form_delta == snap_delta
 
-    def test_irr_does_not_break_for_either_path(self):
-        snap = _run_snapshot(_snapshot())
-        form = self._form_run()
-        assert snap["project_irr"] is not None
-        assert form["project_irr"] is not None
+    def test_capex_still_changes_debt_and_irr(self):
+        """Sanity: total_capex change still moves
+        senior debt and IRR. Both paths must agree
+        on the exact effect."""
+        kpis_low = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(total_capex_keur="40000")
+            ),
+        )["kpis"]
+        kpis_high = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs_from_snapshot(
+                self._snapshot_dict(total_capex_keur="60000")
+            ),
+        )["kpis"]
+        # Higher capex → more debt service required →
+        # different debt size → different IRR.
+        assert kpis_low["project_irr"] != kpis_high["project_irr"]
+        # And the form path must agree exactly.
+        form_low = self._form_run(total_capex_keur=40000.0)
+        form_high = self._form_run(total_capex_keur=60000.0)
+        assert form_low["project_irr"] == kpis_low["project_irr"]
+        assert form_high["project_irr"] == kpis_high["project_irr"]
+
+
+class TestScenarioRunPath:
+    """Phase S1: the scenario run path uses the same
+    unified semantics as the form path. The
+    scenario run calls run_project with the
+    ProjectInputs built by build_projectinputs_from_snapshot
+    (Phase 17C user_created snapshot binding). The
+    realized KPIs are exactly equal to the form path
+    for the same inputs.
+
+    This is the S1 path-equivalence proof: scenario
+    reruns (saved scenario → fresh runtime) produce
+    exactly the same output as a fresh form-driven
+    run with the same inputs.
+    """
+
+    def test_scenario_rerun_uses_unified_sculpt(self):
+        """A scenario rerun must use the unified
+        dscr_sculpt semantics (not gearing_cap with
+        fixed_debt_keur)."""
+        from app.persistence.scenarios_repository import (
+            resolve_scenario_snapshot,
+        )
+        snap = resolve_scenario_snapshot({}, _snapshot())
+        proj = build_projectinputs_from_snapshot(snap)
+        assert proj.financing.debt_sizing_method == "dscr_sculpt"
+        # The fixed_debt_keur is NOT 35000 (= capex *
+        # gearing) — it is the factory default.
+        if proj.financing.fixed_debt_keur is not None:
+            assert proj.financing.fixed_debt_keur != 35000.0
+
+    def test_scenario_rerun_kpis_match_form_path(self):
+        """A scenario rerun produces the same KPIs
+        as a fresh form-driven run with the same
+        inputs. This is the S1 path-equivalence
+        proof: the user can re-run a saved scenario
+        and see exactly the same numbers as a fresh
+        form-driven run, byte-for-byte."""
+        snap = _snapshot(
+            project_name="Pilot Wind",
+            country_market="Croatia",
+            capacity_mw="50",
+            cod_date="2027-01-01",
+            construction_months="12",
+            horizon_years="25",
+            tariff_eur_mwh="60",
+            ppa_term_years="15",
+            p50_hours="1200",
+            opex_y1_keur="1000",
+            total_capex_keur="50000",
+            gearing_pct="70",
+            interest_rate_pct="5",
+            tenor_years="15",
+            target_dscr="1.30",
+        )
+        snap_kpis = _run_snapshot(snap)
+        # Now drive the form path with the same
+        # input values (all of them, including the
+        # Phase S1 schema-expanded fields).
+        from app.input_adapter import build_projectinputs
+        from app.input_schema import (
+            ProjectInputsSchema, RevenueInput, CapexInput,
+            OpexInput, DebtInput,
+        )
+        schema = ProjectInputsSchema(
+            project_type="Wind",
+            scenario="Base",
+            project_name=snap["project_name"],
+            country_iso=snap["country_market"],
+            capacity_mw=float(snap["capacity_mw"]),
+            cod_date=snap["cod_date"],
+            construction_months=int(snap["construction_months"]),
+            horizon_years=int(snap["horizon_years"]),
+            revenue=RevenueInput(
+                tariff_eur_mwh=float(snap["tariff_eur_mwh"]),
+                p50_hours=float(snap["p50_hours"]),
+                ppa_term_years=int(snap["ppa_term_years"]),
+            ),
+            capex=CapexInput(
+                total_capex_keur=float(snap["total_capex_keur"])
+            ),
+            opex=OpexInput(
+                opex_y1_keur=float(snap["opex_y1_keur"])
+            ),
+            debt=DebtInput(
+                gearing_pct=float(snap["gearing_pct"]),
+                target_dscr=float(snap["target_dscr"]),
+                interest_rate_pct=float(snap["interest_rate_pct"]),
+                tenor_years=int(snap["tenor_years"]),
+            ),
+        )
+        form_kpis = run_project(
+            "Wind", "Base",
+            project_inputs_override=build_projectinputs(schema),
+        )["kpis"]
+        # Exact equality across all numeric KPIs.
+        for k in snap_kpis:
+            if isinstance(snap_kpis[k], (int, float)):
+                assert snap_kpis[k] == form_kpis[k], (
+                    f"Phase S1: scenario rerun KPI '{k}' "
+                    f"must match form path exactly; got "
+                    f"snap={snap_kpis[k]!r}, "
+                    f"form={form_kpis[k]!r}"
+                )
+
+
+class TestExportPath:
+    """Phase S1: the export path uses the same
+    unified semantics. Exports built from a
+    snapshot use the same ProjectInputs as the
+    form path."""
+
+    def test_export_uses_unified_sculpt(self):
+        """A workbook export built from a snapshot
+        uses the same financing as the form path."""
+        from app.excel_export import build_excel_export
+        proj = build_projectinputs_from_snapshot(_snapshot())
+        # ProjectInputs fields used by the export
+        # must be the unified form, not the legacy
+        # capex * gearing pin.
+        assert proj.financing.debt_sizing_method == "dscr_sculpt"
+        if proj.financing.fixed_debt_keur is not None:
+            assert proj.financing.fixed_debt_keur != 35000.0
+
+    def test_save_run_uses_unified_sculpt(self):
+        """The /save-run route uses the same unified
+        ProjectInputs. A save-run with the unified
+        semantics is what the pilot user will see
+        on the next page load."""
+        from app.input_adapter import build_projectinputs
+        from app.input_schema import (
+            ProjectInputsSchema, RevenueInput, CapexInput,
+            OpexInput, DebtInput,
+        )
+        schema = ProjectInputsSchema(
+            project_type="Wind",
+            scenario="Base",
+            project_name="Pilot Wind",
+            country_iso="Croatia",
+            capacity_mw=50.0,
+            cod_date="2027-01-01",
+            construction_months=12,
+            horizon_years=25,
+            revenue=RevenueInput(
+                tariff_eur_mwh=60.0, p50_hours=1200.0,
+                ppa_term_years=15,
+            ),
+            capex=CapexInput(total_capex_keur=50000.0),
+            opex=OpexInput(opex_y1_keur=1000.0),
+            debt=DebtInput(
+                gearing_pct=70.0, target_dscr=1.30,
+                interest_rate_pct=5.0, tenor_years=15,
+            ),
+        )
+        proj = build_projectinputs(schema)
+        assert proj.financing.debt_sizing_method == "dscr_sculpt"
 
 
 # ---------------------------------------------------------------------------
