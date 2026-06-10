@@ -247,6 +247,11 @@ KPI_ROWS: Tuple[MatrixRow, ...] = (
     MatrixRow("Project IRR", ROW_KIND_KPI, "project_irr", _fmt_pct),
     MatrixRow("Equity IRR", ROW_KIND_KPI, "equity_irr", _fmt_pct),
     MatrixRow("Senior Debt", ROW_KIND_KPI, "senior_debt_amount_keur", _fmt_keur),
+    # Phase PR2 — read-only realized gearing KPI.
+    # realized_gearing_pct = senior_debt / total_capex * 100.
+    # Read-only derived output (NOT a binding driver).
+    # Distinct from the indicative gearing input above.
+    MatrixRow("Realized Gearing", ROW_KIND_KPI, "realized_gearing_pct", _fmt_pct),
     MatrixRow("Min DSCR", ROW_KIND_KPI, "min_dscr", _fmt_dscr),
 )
 
