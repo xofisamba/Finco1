@@ -1,0 +1,51 @@
+{
+  "phase": "P1-A",
+  "title": "Generic Driver Response Audit (Generic Solar / Wind)",
+  "type": "read_only_audit",
+  "status": "DRAFT",
+  "base_sha": "1e807e53933362b4e5ff9a8d574ab45fa8ca010b",
+  "branch": "phase-p1a-generic-driver-response-audit",
+  "field_count": 11,
+  "status_breakdown": {
+    "WIRED": 5,
+    "WIRED_PARTIAL": 4,
+    "METADATA_ONLY": 2,
+    "NOT_WIRED": 0
+  },
+  "wired_fields": [
+    "tariff_eur_mwh",
+    "p50_hours",
+    "capacity_mw",
+    "opex_y1_keur",
+    "total_capex_keur"
+  ],
+  "wired_partial_fields": [
+    "gearing_pct",
+    "interest_rate_pct",
+    "tenor_years",
+    "target_dscr"
+  ],
+  "metadata_only_fields": [
+    "ppa_term_years",
+    "construction_months"
+  ],
+  "not_wired_fields": [],
+  "claude_review_finding": "CONFIRMED: gearing_pct 70->85 does not change project_irr",
+  "claude_review_root_cause": "runtime uses debt_sizing_method=DSCR_SCULPT, so project_irr is invariant to gearing_pct",
+  "test_count": {
+    "total": 43,
+    "helper_self_tests": 4,
+    "solar_drivers": 19,
+    "wind_drivers": 5,
+    "metadata_tests": 4,
+    "aggregation": 1,
+    "safety": 9
+  },
+  "recommendation": "LABEL ppa_term_years and construction_months as metadata; decide on gearing_pct fix separately",
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "use_construction_schedule_engine": false,
+  "no_formula_changes": true,
+  "no_runtime_path_changes": true,
+  "no_schema_changes": true,
+  "next_step": "DRAFT PR \u2014 do NOT mark ready; awaiting review"
+}
