@@ -1,0 +1,53 @@
+{
+  "phase": "25C Closure",
+  "title": "Third-Party Test Readiness Gate",
+  "type": "ui_only",
+  "status": "DRAFT",
+  "base_sha": "c80fa3391e1c475d575c981244812e16c859a8dc",
+  "branch": "phase25c-closure-third-party-gate",
+  "workflow_count": 10,
+  "workflows": [
+    "create_project",
+    "prefill_defaults",
+    "save",
+    "run",
+    "edit",
+    "rerun",
+    "compare",
+    "export",
+    "understand_limitations",
+    "report_feedback"
+  ],
+  "bucket_count": 4,
+  "buckets": {
+    "pilot_ready": ">= 90",
+    "close_to_pilot": ">= 70",
+    "pilot_blocked": ">= 50",
+    "not_ready": "< 50"
+  },
+  "scoring_dimensions": [
+    "helper_present",
+    "partial_present",
+    "helper_tests_pass",
+    "factory_safety_tests_pass"
+  ],
+  "is_pure_audit": true,
+  "is_pure_read_side": true,
+  "no_persistence_writes": true,
+  "no_schema_migration": true,
+  "no_feature_flag_enablement": true,
+  "use_construction_schedule_engine": false,
+  "rc1_frozen_sha": "b425a0708719eaa5e1d922b1008e5609758e0ad4",
+  "test_count": {
+    "helper_tests": 62,
+    "factory_safety_tests": 22,
+    "total_new": 84
+  },
+  "phase_25c_link": [
+    "25C-1: First-User Pilot Script (PR #594)",
+    "25C-2: User-Facing Error / Empty State Cleanup (PR #595)",
+    "25C-3: Pilot Feedback Capture (PR #596)",
+    "25C Closure: Third-Party Test Readiness Gate (this PR)"
+  ],
+  "next_step": "STOP. Do NOT start C10 / construction / R-PAR / debt / tax / IDC."
+}
