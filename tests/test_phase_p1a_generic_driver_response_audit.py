@@ -520,21 +520,31 @@ class TestTargetDscrDriver:
 
 
 class TestPpaTermDriver:
-    """ppa_term_years is exposed in the UI but NOT
-    in ProjectInputsSchema. Therefore it cannot
-    reach the runtime path. Status: METADATA_ONLY.
+    """ppa_term_years is exposed in the UI.
 
-    This test documents the gap. It does not
-    attempt to fix it.
+    Phase S1 (post-audit): ppa_term_years is now in
+    RevenueInput (ProjectInputsSchema accepts it via
+    the shared resolver). The runtime path can carry
+    the value, but the P1-A audit-status semantics
+    (METADATA_ONLY) reflect the model-level reality
+    that ppa_term_years is a disclosure parameter,
+    not a KPI-binding driver.
+
+    This test class is preserved as the historical
+    P1-A audit record. The schema gap it documented
+    is now closed by S1.
     """
 
-    def test_ppa_term_not_in_schema(self):
-        # Per Phase P1-A brief: ppa_term_years is a
-        # UI field but the runtime schema does NOT
-        # carry it. Document the gap.
+    def test_ppa_term_now_in_revenue_input(self):
+        # Phase S1: ppa_term_years is now in
+        # RevenueInput (was NOT in any schema during
+        # the P1-A audit; that gap is now closed).
         from app.input_schema import ProjectInputsSchema
+        assert "ppa_term_years" in RevenueInput.model_fields
+        # Not at the top level (Phase S1 nested it
+        # under RevenueInput to match the snapshot's
+        # revenue group).
         assert "ppa_term_years" not in ProjectInputsSchema.model_fields
-        assert "ppa_term_years" not in RevenueInput.model_fields
         assert "ppa_term_years" not in DebtInput.model_fields
         assert "ppa_term_years" not in OpexInput.model_fields
         assert "ppa_term_years" not in CapexInput.model_fields
@@ -564,17 +574,25 @@ class TestPpaTermDriver:
 
 
 class TestConstructionMonthsDriver:
-    """construction_months is exposed in the UI but
-    cannot be passed through the runtime path
-    schema (which uses build_projectinputs with
-    only 8 fields).
+    """construction_months is exposed in the UI.
 
-    Status: METADATA_ONLY.
+    Phase S1 (post-audit): construction_months is
+    now an optional top-level field on
+    ProjectInputsSchema. The runtime path can carry
+    the value, but the P1-A audit-status semantics
+    (METADATA_ONLY) reflect the model-level reality
+    that construction_months is a parameter, not a
+    KPI-binding driver for the user-created Generic
+    path.
+
+    This test class is preserved as the historical
+    P1-A audit record. The schema gap it documented
+    is now closed by S1.
     """
 
-    def test_construction_months_not_in_schema(self):
+    def test_construction_months_now_in_schema(self):
         from app.input_schema import ProjectInputsSchema
-        assert "construction_months" not in ProjectInputsSchema.model_fields
+        assert "construction_months" in ProjectInputsSchema.model_fields
 
     def test_construction_months_status_metadata_only(self):
         entry = DriverEntry(

@@ -429,17 +429,28 @@ class TestBadgeCSS:
 
 
 class TestSchemaUnchanged:
-    """P1-B does NOT change ProjectInputsSchema."""
+    """P1-B does NOT change ProjectInputsSchema.
 
-    def test_ppa_term_years_not_in_schema(self):
-        # Per PR #600: ppa_term_years was never in
-        # the schema; it remains absent.
+    Phase S1 amendment: the schema is now extended
+    with OPTIONAL fields (country_iso, cod_date,
+    construction_months, horizon_years, capacity_mw,
+    operating_hours_p90_10y, operating_hours_p99_1y)
+    and ppa_term_years is added to RevenueInput. The
+    extension is ADDITIVE and BACKWARD COMPATIBLE.
+    Original 8 fields are preserved.
+    """
+
+    def test_ppa_term_years_not_in_schema_top_level(self):
+        # Phase S1: ppa_term_years is in RevenueInput
+        # (nested), not at the top-level schema.
         from app.input_schema import ProjectInputsSchema
         assert "ppa_term_years" not in ProjectInputsSchema.model_fields
 
-    def test_construction_months_not_in_schema(self):
+    def test_construction_months_now_in_schema(self):
+        # Phase S1: construction_months is now an
+        # optional top-level schema field.
         from app.input_schema import ProjectInputsSchema
-        assert "construction_months" not in ProjectInputsSchema.model_fields
+        assert "construction_months" in ProjectInputsSchema.model_fields
 
     def test_gearing_in_schema(self):
         from app.input_schema import ProjectInputsSchema
@@ -451,10 +462,22 @@ class TestSchemaUnchanged:
     def test_no_new_field_added(self):
         from app.input_schema import ProjectInputsSchema
         fields = list(ProjectInputsSchema.model_fields.keys())
-        # 8 fields (project_type, project_name,
-        # capacity_mw, scenario, revenue, capex,
-        # opex, debt). No new field.
-        assert len(fields) == 8
+        # Phase S1 expanded the schema to 14 fields
+        # (project_type, project_name, scenario, plus
+        # 6 new optional fields country_iso, cod_date,
+        # construction_months, horizon_years,
+        # capacity_mw, operating_hours_p90_10y,
+        # operating_hours_p99_1y, plus the legacy
+        # nested revenue/capex/opex/debt). All new
+        # fields are OPTIONAL and BACKWARD COMPATIBLE.
+        # P1-B no-new-field claim is REPLACED by the
+        # S1 additive-only invariant.
+        assert len(fields) == 14
+        # Verify the original 8 still exist.
+        for original in ("project_type", "project_name",
+                         "scenario", "revenue", "capex",
+                         "opex", "debt"):
+            assert original in fields
 
 
 # ---------------------------------------------------------------------------
@@ -464,14 +487,20 @@ class TestSchemaUnchanged:
 
 class TestNoFormulaChanges:
     """P1-B does NOT change any model formula file.
-    The audit pins the invariant via subprocess."""
+    The audit pins the invariant via subprocess.
+
+    Phase S1 amendment: app/input_adapter.py is
+    explicitly EXCLUDED from this invariant because
+    S1 refactors it to extract a shared
+    _resolve_user_inputs resolver. The other 5 paths
+    remain P1-B-hard-locked.
+    """
 
     @pytest.mark.parametrize(
         "path",
         [
             "app/waterfall_core.py",
             "app/waterfall_runner.py",
-            "app/input_adapter.py",
             "app/ui_runner.py",
             "app/project_factories.py",
             "app/services/run_service.py",
