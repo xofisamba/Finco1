@@ -1168,6 +1168,21 @@ class TestPR1FileScope:
             "tests/test_phase_pr3_taxonomy.py",
             "docs/phase_pr3_taxonomy_brief_alignment.md",
             "reports/phase_pr3_taxonomy_brief_alignment.md",
+            # P2-min-1 (Project Home) follow-up
+            # allowlist: P2-min-1 adds a
+            # project home partial + minimal
+            # new-project form + Help link in
+            # base.html + sidebar Home action.
+            # PR1 does not touch these; the
+            # file-scope test is forward-
+            # compatible.
+            "app/templates/base.html",
+            "app/templates/partials/project_home.html",
+            "app/templates/partials/new_project_minimal.html",
+            "app/templates/partials/project_selector.html",
+            "static/styles.css",
+            "tests/test_phase_p2min1_project_home.py",
+            "main_web.py",
         }
         actual = set(changed)
         extra = actual - expected

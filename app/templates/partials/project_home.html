@@ -1,0 +1,52 @@
+{# ── Phase P2-min-1: Project Home (presentation entry point) ───────
+   This is a NEW, product-shaped first screen for the user.
+   - Lists user projects (presentation filter: factory templates
+     and baseline parity fixtures are intentionally hidden from
+     this view, see PR1 brief).
+   - Exposes a single "Create New Project" CTA.
+   - Shows a one-line status (Generic disclosure rule).
+   - Hides the internal vocabulary (factory / baseline / parity /
+     calibration / TUHO / Oborovo / G20 / R99 / R102 / runtime-
+     source labels / exploratory warning copy) — the PR2
+     followup deepens the vocabulary cleanup; PR1 only hides
+     factory templates from the home list itself.
+   Hidden ≠ deleted. The factory templates remain reachable
+   from /projects/browse (presentation-filter only).
+#}
+
+{% if home_user_projects %}
+<div class="ph-section">
+  <div class="ph-section-label">My projects</div>
+  <div class="ph-grid">
+    {% for item in home_user_projects %}
+    <div class="ph-card ph-card--user"
+         data-ph-card="user"
+         data-project-code="{{ item.project_code }}"
+         role="button"
+         tabindex="0"
+         onclick="switchToProject('{{ item.project_code }}')"
+         onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
+      <div class="ph-card-info">
+        <div class="ph-card-name">{{ item.label }}</div>
+        <div class="ph-card-meta">{{ item.meta }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="ph-empty">
+  <div class="ph-empty-title">No projects yet</div>
+  <div class="ph-empty-desc">Create your first project to get started.</div>
+</div>
+{% endif %}
+
+<div class="ph-actions">
+  <a class="btn btn-primary ph-cta"
+     href="/projects/new/minimal"
+     hx-get="/projects/new/minimal"
+     hx-target="#new-project-result"
+     hx-swap="innerHTML">+ Create New Project</a>
+</div>
+
+<div id="new-project-result"></div>

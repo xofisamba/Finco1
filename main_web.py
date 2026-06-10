@@ -2671,6 +2671,71 @@ async def new_project_form_prefilled(
     )
 
 
+# ---------------------------------------------------------------------------
+# Phase P2-min-1: Project Home (presentation entry point)
+# ---------------------------------------------------------------------------
+
+def _home_user_projects(user) -> list:
+    """Return the user-created project items for the Project Home
+    partial. Factory templates, baselines, and parity fixtures
+    are intentionally hidden from this view (presentation filter
+    only). They remain reachable from /projects/browse and the
+    audit fixture paths.
+    """
+    return _user_project_selector_items(user)
+
+
+# Default template source for the minimal new-project form.
+# Generic Solar is the default because the brief asks for
+# technology-only (no other selector). The user can change it
+# later from the workspace inputs.
+P2_MIN_DEFAULT_TEMPLATE_SOURCE = "generic_solar"
+
+
+@app.get("/home", response_class=HTMLResponse)
+async def project_home(request: Request):
+    """Phase P2-min-1: product-shaped Project Home.
+    Lists user projects (factory templates and baselines
+    hidden via presentation filter) and exposes a single
+    'Create New Project' CTA. Rendered as a partial; can be
+    loaded by the sidebar home button.
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/project_home.html",
+        context={
+            "home_user_projects": _home_user_projects(user),
+        },
+    )
+
+
+@app.get("/projects/new/minimal", response_class=HTMLResponse)
+async def new_project_minimal(request: Request):
+    """Phase P2-min-1: minimal new-project form (4 fields only).
+    Everything else (timing, drivers, defaults) comes from the
+    existing template defaults via the /projects/create
+    handler. The backend /projects/create contract is preserved
+    (the hidden template_source field is auto-populated).
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/new_project_minimal.html",
+        context={
+            "project_types": PROJECT_TYPES,
+            "validation_errors": [],
+            "submitted": _submitted_new_project_defaults(),
+            "default_template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
+        },
+    )
+
+
 @app.get("/projects/browse")
 async def project_browser(request: Request):
     """Render project browser partial — factory templates, baselines, user projects."""

@@ -1,0 +1,66 @@
+{# ── Phase P2-min-1: Minimal New Project form ───────────────────────
+   P2-min-1 brief: ask only Project Name, Technology, Country, MW.
+   Everything else (timing fields, drivers, defaults) comes from
+   the existing template defaults (via /projects/new/defaults
+   prefill endpoint). The user is expected to review the auto-
+   populated values in the workspace sidebar after creation.
+   This is presentation only — no backend / no persistence change.
+   Timing-field fix from PR1 is preserved: the 4 timing fields
+   still flow through _apply_new_project_required_inputs and
+   _build_schema_from_form (with timing enrichments).
+#}
+
+<div class="scenario-message">
+  <strong>New project</strong> — fill in the basics. All other fields
+  use template defaults. You can review and adjust them in the
+  workspace after creation.
+</div>
+
+{% if validation_errors %}
+<div class="scenario-message">
+  {% for error in validation_errors %}
+  <div>{{ error }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem;">
+  <button type="button" class="btn btn-ghost" onclick="closeNewProjectPanel()">✕ Close</button>
+</div>
+
+<form hx-post="/projects/create"
+      hx-target="#new-project-result"
+      hx-swap="innerHTML"
+      hx-on:after-request="if(event.detail.successful) location.reload()"
+      class="ps-compare-form"
+      id="new-project-minimal-form">
+  <label class="ps-compare-label">
+    Project name
+    <input type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Technology
+    <select name="project_type" id="npm-project_type" required>
+      {% for item in project_types %}
+      <option value="{{ item }}" {% if submitted.project_type == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ps-compare-label">
+    Country or market
+    <input type="text" name="country_market" id="npm-country_market" value="{{ submitted.country_market or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Capacity (MW)
+    <input type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required />
+  </label>
+  {# Hidden fields auto-populated by the server-side minimal
+     create handler (template_source + remaining driver defaults
+     from the canonical generic factory). The user does not see
+     these in the P2-min minimal flow but they are submitted with
+     the form so the existing /projects/create endpoint contract
+     is preserved (no backend / no persistence change). #}
+  <input type="hidden" name="template_source" id="npm-template_source" value="{{ submitted.template_source or default_template_source }}" />
+  <div id="new-project-result"></div>
+  <button class="ps-mini-btn" type="submit">Create Project</button>
+</form>
