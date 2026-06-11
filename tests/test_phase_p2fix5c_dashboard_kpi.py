@@ -268,7 +268,10 @@ class TestFileScope:
         ]
         allowed_prefixes = (
             "app/templates/partials/workspace_shell.html",
+            "static/styles.css",
+            "tests/test_phase_p2fix5b_normal_mode_shell_strip.py",
             "tests/test_phase_p2fix5c_dashboard_kpi.py",
+            "tests/test_phase_p2fix5d_five_area_navigation.py",
             "docs/phase_p2fix5c_",
             "reports/phase_p2fix5c_",
         )
@@ -280,7 +283,6 @@ class TestFileScope:
             "app/excel_export.py",
             "main_api.py",
             "static/app.js",
-            "static/styles.css",
             "app/ui/dashboard.py",
         )
         for f in changed:
