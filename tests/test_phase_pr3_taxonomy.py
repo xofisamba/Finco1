@@ -778,6 +778,10 @@ class TestFileScope:
             "docs/phase_p2min3_dashboard_v1.md",
             "reports/phase_p2min3_dashboard_v1.md",
             "tests/test_phase_p2min3_dashboard_v1.py",
+            "app/templates/partials/_nav_compression.html",
+            "docs/phase_p2min4_navigation_compression.md",
+            "reports/phase_p2min4_navigation_compression.md",
+            "tests/test_phase_p2min4_navigation_compression.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected
