@@ -13,6 +13,46 @@
 
 <section class="dashboard" id="dashboard-v1" data-p2min3-dashboard="v1">
 
+  {# ── Phase P2-FIX-4: Run CTA (presentation only) ───────────
+     If the runtime has not produced a snapshot
+     yet, the dashboard shows a 'Run model' CTA
+     so the user has a clear next step. #}
+  {% if not runtime_summary or not runtime_summary.last_runtime_snapshot_id %}
+    <div class="dashboard-run-cta"
+         id="dashboard-run-cta"
+         data-p2fix4-cta="run-model"
+         role="region"
+         aria-label="Run model call to action">
+      <div class="dashboard-run-cta-title">No run yet</div>
+      <div class="dashboard-run-cta-desc">
+        Run the model to populate the dashboard with
+        Project IRR, Equity IRR, Min / Avg DSCR,
+        Senior debt balance, Revenue, and EBITDA.
+      </div>
+      <a href="/run" class="btn btn-primary dashboard-run-cta-btn"
+         data-p2fix4-cta-action="run"
+         hx-post="/run"
+         hx-target="#model-output-area"
+         hx-swap="innerHTML">Run model</a>
+    </div>
+  {% endif %}
+
+  {# Run status (Phase P2-FIX-4): if the runtime has
+     produced a snapshot, show a small status chip
+     with the last-run origin label. #}
+  {% if runtime_summary and runtime_summary.last_runtime_snapshot_id %}
+    <div class="dashboard-run-status"
+         id="dashboard-run-status"
+         data-p2fix4-cta="run-status"
+         role="status"
+         aria-label="Last run status">
+      <span class="badge badge-pass">Last run completed</span>
+      <span class="dashboard-run-status-label">
+        {{ runtime_summary.last_runtime_origin_label or "Backend runtime" }}
+      </span>
+    </div>
+  {% endif %}
+
   {# KPI cards row (8 cards) #}
   <div class="dashboard-kpi-grid" data-p2min3-kpi-grid="true">
     {% for key, kpi in dashboard_kpis.items() %}

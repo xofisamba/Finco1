@@ -2338,23 +2338,39 @@ async def index(request: Request, project: str | None = None):
             "export_lineage_ui": _build_export_lineage_ui_context(project_record, workspace_state, export_lineage),
             "scenario_summary_cards": scenario_summary_cards,
             "compare_result": None,
-            # Phase P2-min-4: Navigation Compression
-            # (presentation only). The compressed
-            # nav bar is rendered above the
-            # existing ws-tab ribbon. The existing
-            # ws-tab buttons + panel panels +
-            # routes are preserved (hidden != deleted).
-            "nav_compression_enabled": (
-                project_record.project_origin == "user_created"
-            ),
-            # Phase P2-min-3: Dashboard v1 (presentation only).
+            # Phase P2-FIX-4: Five-Area Navigation.
+            # The compressed nav bar is rendered
+            # above the existing ws-tab ribbon for
+            # EVERY project (factory_template,
+            # user_created, saved_baseline). The
+            # previous P2-min-4 gate that only
+            # enabled the compressed nav for
+            # user_created projects was removed.
+            # The compressed view is the new normal
+            # for every project, including protected
+            # references (TUHO / Oborovo). The
+            # existing ws-tab buttons + panel panels
+            # + routes are preserved (hidden != deleted).
+            "nav_compression_enabled": True,
+            # Phase P2-FIX-4: Dashboard v1 (presentation only).
             # Inline dashboard data: 8 KPI cards + 3 inline-SVG
             # charts. Server-rendered. NO Chart.js / Plotly / D3.
             # NO JS calc. NO formula / factory / model change.
+            #
+            # The dashboard is now enabled for EVERY project
+            # (user_created, factory_template,
+            # saved_baseline). For protected references
+            # (TUHO / Oborovo) the dashboard shows a
+            # "No run yet" CTA because the runtime snapshot
+            # belongs to the working copy, not the read-only
+            # reference. The CTA lets the user open / run
+            # from a clear next-step surface.
             **(_build_index_dashboard_context(
                 project_record=project_record,
                 realized_gearing_pct=getattr(ctx, "realized_gearing_pct", None),
-            ) if project_record.project_origin == "user_created" else {}),
+            ) if project_record.project_origin in (
+                "user_created", "factory_template", "saved_baseline"
+            ) else {}),
             "workspace_message": None,
             "is_user_project": project_record.project_origin == "user_created",
             # Phase 24-H: exploratory warning flag (user_created + generic)

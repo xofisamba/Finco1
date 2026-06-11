@@ -464,6 +464,21 @@ class TestShellStripFileScope:
             "tests/test_phase_p2fix2_shell_strip.py",
             "docs/phase_p2fix2_",
             "reports/phase_p2fix2_",
+            # ── Phase P2-FIX-4 cross-arc test patch ─────
+            # P2-FIX-4 modifies _nav_compression.html,
+            # _results_subnav.html, _dashboard.html,
+            # workspace_shell.html, app/ui/dashboard.py,
+            # and main_web.py — all of which are already
+            # covered by the app/templates/ and app/ui/
+            # allowlist above. The P2-FIX-4 test,
+            # docs, and report files are also allowed
+            # because they are part of the same
+            # cross-arc P2-FIX arc (rebase on top of
+            # P2-FIX-3 main).
+            "tests/test_phase_p2fix4_",
+            "tests/test_phase_p2fix3_",
+            "docs/phase_p2fix4_",
+            "reports/phase_p2fix4_",
         )
         # Disallowed locations that must not change.
         disallowed_prefixes = (
