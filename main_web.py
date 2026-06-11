@@ -1384,6 +1384,63 @@ def _user_project_selector_items(user) -> list[dict[str, str]]:
     return items
 
 
+def _consolidated_project_records(user) -> list[dict[str, str]]:
+    """Phase P2-FIX-1: single project list (presentation only).
+
+    Returns ALL projects visible to this user as a single
+    list: factory fixtures (TUHO Wind, Oborovo Solar PV)
+    plus user_created projects. No "Factory Templates" /
+    "Saved Baselines" / "My Projects" split in the UI.
+    Origin distinction lives in the data model, not in
+    the rendered visible text.
+
+    The list is deduped by ``project_code`` and ordered
+    with reference projects first (TUHO Wind, Oborovo
+    Solar PV), then user_created projects alphabetically.
+    """
+    seen: set[str] = set()
+    items: list[dict[str, str]] = []
+    for opt in FACTORY_TEMPLATE_OPTIONS:
+        code = opt["project_code"]
+        if code in seen:
+            continue
+        seen.add(code)
+        items.append(
+            {
+                "project_code": code,
+                "label": opt["label"],
+                "meta": opt.get("meta", ""),
+                "project_type": opt.get("project_type", ""),
+                "origin_class": "project",
+            }
+        )
+    for record in list_project_records(user_id=user.user_id):
+        if record.project_origin != "user_created":
+            continue
+        if record.project_code in seen:
+            continue
+        seen.add(record.project_code)
+        items.append(
+            {
+                "project_code": record.project_code,
+                "label": record.project_name,
+                "meta": (
+                    f"{record.project_type or 'Unknown'} · "
+                    f"{_template_source_label(record.template_source)} seed"
+                ),
+                "project_type": record.project_type or "",
+                "origin_class": "project",
+            }
+        )
+    items.sort(
+        key=lambda it: (
+            0 if it["project_code"] in {"tuho", "oborovo"} else 1,
+            it["label"].lower(),
+        )
+    )
+    return items
+
+
 def _resolve_project_record(user, project_selection: str | None, form_snapshot: dict | None = None):
     selection = (project_selection or "").strip().lower()
     if selection:
@@ -2189,6 +2246,12 @@ async def index(request: Request, project: str | None = None):
             "workspace_state": workspace_state,
             "workspace_state_meta": _workspace_state_meta(workspace_state),
             "active_project_code": project_record.project_code,
+            # Phase P2-FIX-1: single consolidated project
+            # list (presentation only). The underlying
+            # factory_template / user_created / saved_
+            # baseline distinction lives in the data
+            # model, NOT in the visible UI.
+            "consolidated_project_records": _consolidated_project_records(user),
             "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
             "user_project_records": _user_project_selector_items(user),
             "baseline_project_records": baseline_project_items,
@@ -2826,6 +2889,9 @@ async def project_browser(request: Request):
         request=request,
         name="partials/project_browser.html",
         context={
+            # Phase P2-FIX-1: single consolidated project
+            # list (presentation only).
+            "consolidated_project_records": _consolidated_project_records(user),
             "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
             "baseline_project_records": baseline_project_items,
             "user_project_records": _user_project_selector_items(user),
