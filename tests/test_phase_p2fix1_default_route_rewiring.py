@@ -123,10 +123,13 @@ class TestNoInternalTerminology:
     def test_browser_partial_no_factory_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
         # "Factory" must NOT appear in the
         # rendered visible text of the
         # browser. (case-insensitive)
-        assert "factory" not in text.lower(), (
+        assert "factory" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'factory' in "
             "rendered text (C2 architecture)"
         )
@@ -134,9 +137,12 @@ class TestNoInternalTerminology:
     def test_browser_partial_no_baseline_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
         # "Baseline" / "Saved Baselines" must
         # NOT appear in the rendered text.
-        assert "baseline" not in text.lower(), (
+        assert "baseline" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'baseline' in "
             "rendered text (C2 architecture)"
         )
@@ -144,39 +150,59 @@ class TestNoInternalTerminology:
     def test_browser_partial_no_calibration_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
-        assert "calibration" not in text.lower(), (
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
+        assert "calibration" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'calibration'"
         )
 
     def test_browser_partial_no_golden_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
-        assert "golden" not in text.lower(), (
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
+        assert "golden" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'golden'"
         )
 
     def test_browser_partial_no_parity_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
-        assert "parity" not in text.lower(), (
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
+        assert "parity" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'parity'"
         )
 
     def test_browser_partial_no_save_as_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
-        assert "save as" not in text.lower(), (
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
+        assert "save as" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'Save As'"
         )
 
     def test_browser_partial_no_duplicate_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
+        # Strip HTML comments and docstrings
+        # (the partial's header comment
+        # explains the C2 design including
+        # the "duplicate a baseline" warning
+        # that was removed).
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
         # The browser note used to say
         # "Duplicate a baseline to create an
         # editable copy." — that wording
         # exposes internal mechanics.
-        assert "duplicate" not in text.lower(), (
+        assert "duplicate" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'duplicate' "
             "(C2 hides the working-copy mechanism; first-edit/save "
             "triggers the copy prompt in P2-FIX-3)"
@@ -185,7 +211,10 @@ class TestNoInternalTerminology:
     def test_browser_partial_no_fixture_word(self):
         path = REPO_ROOT / "app/templates/partials/project_browser.html"
         text = path.read_text(encoding="utf-8")
-        assert "fixture" not in text.lower(), (
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', text, flags=re.S)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.S)
+        assert "fixture" not in no_comments.lower(), (
             "Project browser partial must NOT mention 'fixture'"
         )
 
@@ -337,6 +366,260 @@ class TestPhaseInvariants:
             f"returncode={r.returncode}\n"
             f"stdout={r.stdout[-1000:]}\n"
             f"stderr={r.stderr[-500:]}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: GET / default route renders Project Home
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultRouteRendersProjectHome:
+    def test_get_root_no_project_param_renders_project_home(self, logged_in_client):
+        """``GET /`` with no project param must
+        render the Project Home (My Projects
+        + Create New Project CTA), not the
+        old workspace machinery.
+        """
+        r = logged_in_client.get("/", follow_redirects=False)
+        assert r.status_code == 200
+        text = r.text
+        # The Project Home partial exposes
+        # the "My projects" section label
+        # and the Create New Project CTA.
+        assert "My projects" in text or "Create New Project" in text, (
+            "GET / (no project) must render Project Home markers"
+        )
+        # The home partial uses the
+        # ph-cta class for the Create
+        # New Project button.
+        assert "ph-cta" in text or "Create New Project" in text
+
+    def test_get_root_no_project_param_does_not_contain_old_workspace_machinery(self, logged_in_client):
+        """The old workspace machinery (inputs
+        section, scenario matrix, governance
+        cards) must NOT be rendered when no
+        project is selected.
+        """
+        r = logged_in_client.get("/", follow_redirects=False)
+        assert r.status_code == 200
+        text = r.text
+        # The Project Home does not show
+        # the inputs section.
+        assert 'id="panel-inputs"' not in text, (
+            "GET / (no project) must NOT render the old inputs section"
+        )
+        # The Project Home does not show
+        # the audit / governance / parity
+        # panels.
+        assert 'id="panel-audit"' not in text, (
+            "GET / (no project) must NOT render the old audit panel"
+        )
+
+    def test_get_root_with_project_param_opens_workspace(self, logged_in_client):
+        """``GET /?project=tuho`` must open the
+        workspace (not the Project Home).
+        """
+        r = logged_in_client.get(
+            "/?project=tuho", follow_redirects=False
+        )
+        assert r.status_code == 200
+        text = r.text
+        # The workspace shell renders the
+        # panel-overview div.
+        assert 'id="panel-overview"' in text, (
+            "GET /?project=tuho must render the workspace overview"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: /home redirect
+# ---------------------------------------------------------------------------
+
+
+class TestHomeRouteRedirect:
+    def test_get_home_redirects_to_root(self, logged_in_client):
+        """The legacy /home route must
+        redirect to / (canonicalisation).
+        """
+        r = logged_in_client.get("/home", follow_redirects=False)
+        assert r.status_code in (301, 302, 303, 307, 308), (
+            f"GET /home must return a redirect status; got {r.status_code}"
+        )
+        assert r.headers.get("location", "").endswith("/"), (
+            f"GET /home must redirect to /; got {r.headers.get('location')}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: /projects/new minimal form
+# ---------------------------------------------------------------------------
+
+
+class TestNewProjectMinimalForm:
+    def test_get_projects_new_renders_minimal_form(self, logged_in_client):
+        """``GET /projects/new`` must render
+        only the minimal form (4 fields).
+        """
+        r = logged_in_client.get("/projects/new", follow_redirects=False)
+        assert r.status_code == 200
+        text = r.text
+        # Visible form fields.
+        assert "project_name" in text, (
+            "Minimal form must include project_name"
+        )
+        assert "project_type" in text, (
+            "Minimal form must include project_type (Technology)"
+        )
+        assert "country_market" in text, (
+            "Minimal form must include country_market"
+        )
+        assert "capacity_mw" in text, (
+            "Minimal form must include capacity_mw"
+        )
+        # NOT rendered: tariff, PPA, P50,
+        # OPEX, CAPEX, gearing, interest,
+        # tenor, DSCR.
+        for forbidden in [
+            'name="tariff_eur_mwh"',
+            'name="p50_hours"',
+            'name="opex_y1_keur"',
+            'name="total_capex_keur"',
+            'name="gearing_pct"',
+            'name="interest_rate_pct"',
+            'name="tenor_years"',
+            'name="target_dscr"',
+            'name="ppa_term_years"',
+        ]:
+            assert forbidden not in text, (
+                f"Minimal form must NOT render field {forbidden!r}"
+            )
+        # NOT rendered: factory function
+        # names.
+        for forbidden in [
+            "create_default_solar_project",
+            "create_default_wind_project",
+        ]:
+            assert forbidden not in text, (
+                f"Minimal form must NOT mention {forbidden!r}"
+            )
+        # NOT rendered: EXPLORATORY banner
+        # block.
+        assert "EXPLORATORY" not in text, (
+            "Minimal form must NOT include the EXPLORATORY banner block"
+        )
+
+    def test_get_projects_new_minimal_redirects_to_new(self, logged_in_client):
+        """The legacy /projects/new/minimal
+        route must redirect to /projects/new
+        (canonicalisation).
+        """
+        r = logged_in_client.get(
+            "/projects/new/minimal", follow_redirects=False
+        )
+        assert r.status_code in (301, 302, 303, 307, 308), (
+            f"GET /projects/new/minimal must return a redirect; "
+            f"got {r.status_code}"
+        )
+        assert r.headers.get("location", "").endswith("/projects/new"), (
+            f"GET /projects/new/minimal must redirect to "
+            f"/projects/new; got {r.headers.get('location')}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: Create -> workspace flow
+# ---------------------------------------------------------------------------
+
+
+class TestCreateToWorkspaceFlow:
+    def test_post_create_with_minimal_fields_creates_project(self, logged_in_client):
+        """POST /projects/create with only
+        project_name / project_type /
+        country_market / capacity_mw must
+        create the project and return
+        200/302. All other driver fields
+        remain optional.
+        """
+        import uuid
+        unique = uuid.uuid4().hex[:8]
+        project_name = f"P2FIX1-Test-{unique}"
+        r = logged_in_client.post(
+            "/projects/create",
+            data={
+                "project_name": project_name,
+                "project_type": "Wind",
+                "template_source": "generic_wind",
+                "country_market": "Croatia",
+                "capacity_mw": "50.0",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code in (200, 302), (
+            f"POST /projects/create (minimal) must return 200/302; "
+            f"got {r.status_code}: {r.text[:500]}"
+        )
+
+    def test_post_create_with_minimal_fields_redirects_to_workspace(self, logged_in_client):
+        """After POST /projects/create (minimal),
+        the response should land on the
+        workspace (or hx-redirect to the
+        workspace).
+        """
+        import uuid
+        unique = uuid.uuid4().hex[:8]
+        project_name = f"P2FIX1-WS-{unique}"
+        r = logged_in_client.post(
+            "/projects/create",
+            data={
+                "project_name": project_name,
+                "project_type": "Wind",
+                "template_source": "generic_wind",
+                "country_market": "Croatia",
+                "capacity_mw": "60.0",
+            },
+            follow_redirects=False,
+        )
+        # 200 OK (rendered panel) or 302
+        # (redirect). Either way the
+        # workspace must be reachable.
+        if r.status_code == 302:
+            # The redirect target may be
+            # /?project=<code> or /home
+            loc = r.headers.get("location", "")
+            assert "project=" in loc or loc.endswith("/"), (
+                f"POST /projects/create redirect target should land "
+                f"on workspace or home; got {loc}"
+            )
+        else:
+            assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Test: Sidebar / project selector links
+# ---------------------------------------------------------------------------
+
+
+class TestSidebarProjectSelectorLinks:
+    def test_project_home_create_new_project_links_to_projects_new(self):
+        """The Project Home "Create New Project"
+        button must point to /projects/new
+        (not the legacy /projects/new/minimal).
+        """
+        path = REPO_ROOT / "app/templates/partials/project_home.html"
+        text = path.read_text(encoding="utf-8")
+        assert "href=\"/projects/new\"" in text, (
+            "Project Home Create New Project button must link to "
+            "/projects/new"
+        )
+        assert "href=\"/projects/new/minimal\"" not in text, (
+            "Project Home must NOT link to legacy /projects/new/minimal"
+        )
+        assert "hx-get=\"/projects/new\"" in text, (
+            "Project Home must hx-get /projects/new"
+        )
+        assert "hx-get=\"/projects/new/minimal\"" not in text, (
+            "Project Home must NOT hx-get legacy /projects/new/minimal"
         )
 
 

@@ -10,16 +10,16 @@
 
 P2-min arc smanjio je izloženost interne terminologije, ali **nije riješio arhitektonski problem**: `factory_template` origin i dalje postoji u bazi, project browser je imao 3 odvojena taba ("Factory Templates", "Saved Baselines", "My Projects") koji su izlagali tu terminologiju.
 
-P2-FIX-1 (C2 architecture, modified C1):
+P2-FIX-1 (C2 architecture, modified C1) sadrži 6 review-fix proširenja:
 
 1. **TUHO Wind i Oborovo Solar PV** pojavljuju se u My Projects kao **normalni projekti**
 2. Normal UI **ne izlaže**: factory, fixture, baseline, calibration, golden, parity
-3. **Open akcija** na reference projektu otvara izravno (read-only), **ne kreira working copy**
-4. **Prvi edit/save pokušaj** triggerira eksplicitni prompt: "This is a protected reference project. Create your editable copy?" — implementacija u P2-FIX-3
-5. Fixture nikad ne mutira
-6. Scenario matrix samo na working copy (u P2-FIX-3)
-7. Export identificira project čisto, bez internal terminologije u normal mode
-8. Reviewer/Audit mode može izložiti provenance (u P2-FIX-4)
+3. **GET /** (no project) → Project Home (canonical landing)
+4. **GET /home** → redirect na **GET /** (canonicalisation)
+5. **GET /projects/new** → minimal form (4 visible fields)
+6. **GET /projects/new/minimal** → redirect na **GET /projects/new** (canonicalisation)
+7. **POST /projects/create** sa samo 4 polja → kreira projekt, otvara workspace
+8. Sidebar / project selector linkovi preusmjereni na /projects/new
 
 **Hidden ≠ deleted.** `factory_template` / `user_created` / `saved_baseline` origin literali ostaju u data modelu, ne izlažu se u UI.
 
@@ -27,52 +27,56 @@ P2-FIX-1 (C2 architecture, modified C1):
 
 ## C2 reason (over C1)
 
-Open-trigger copy creation (C1) odbijen jer stvara skrivene record-e samo browsingom. To pravi persistence noise, ownership confusion, i buduće SaaS cleanup probleme. C2 odgađa working copy kreaciju do eksplicitnog edit/save pokušaja.
+Open-trigger copy creation (C1) odbijen jer stvara skrivene record-e samo browsingom. To pravi persistence noise, ownership confusion, i buduće SaaS cleanup probleme. C2 odgađa working copy kreaciju do eksplicitnog edit/save pokušaja (P2-FIX-3).
 
 ---
 
-## What changed
+## What changed (review-fix extension)
 
-### `app/templates/partials/project_browser.html` (MODIFIED)
+### `main_web.py` (MODIFIED, +143)
 
-**Prije**: 3 taba (Factory Templates / Saved Baselines / My Projects) + `switchPbTab` JS funkcija + 3 `pb-section` elementa + "Factory templates are read-only reference models. Duplicate a baseline to create an editable copy." note + "Saved baselines are read-only reference projects. Use 'Save As' to create an editable copy." note.
+**Novi helper `_render_project_home(request, user)`**: vraća `TemplateResponse("partials/project_home.html", ...)`. Koristi se u:
+1. `GET /` (canonical landing) — kad nema `?project=` query parametra
+2. (legacy) `/home` route — kreirao ju je P2-min-1, sada redirecta
 
-**Poslije**: 1 sekcija (`id="pb-all"`) s konsolidiranom listom. Bez tab navigacije. Bez `switchPbTab` JS. Bez "Factory", "Saved Baselines", "My Projects" u tekstu. Bez "factory", "fixture", "baseline", "calibration", "golden", "parity", "Save As", "duplicate", "exploratory" u renderiranom vidljivom tekstu.
+**Novi helper `_minimal_submitted_new_project_defaults()`**: vraća samo 4 polja (project_name, project_type, template_source, country_market, capacity_mw). Bez driver defaults (tariff, p50, opex, capex, gearing, interest, tenor, dscr, ppa_term).
 
-Refaktor:
-- `-147 / +91` linija (53 linije manje)
-- SwitchPbTab JS funkcija obrisana
-- 3 CSS klase (`.pb-tabs`, `.pb-section`, `.pb-card--baseline`, `.pb-card-icon--baseline`, `.pb-card-icon--user`) zamijenjene s jednom klasom (`.pb-section` ostaje samo za `#pb-all`)
-- Tekst "Project Browser" → "Projects"
+**Novi helper `_new_project_minimal_validation_error_context()`**: vraća context za `new_project_minimal.html` template pri validation errors. Proslijeđen u `ProjectsCreateRouteDeps.new_project_minimal_validation_error_context`.
 
-### `main_web.py` (MODIFIED)
+**`GET /` route** (linija 2193): Ako nema `?project=` query parametra, renderira Project Home. Inače, otvara workspace.
 
-**Novi helper `_consolidated_project_records(user)`**: vraća jednu listu svih projekata vidljivih korisniku:
-1. TUHO Wind (`FACTORY_TEMPLATE_OPTIONS[0]`)
-2. Oborovo Solar PV (`FACTORY_TEMPLATE_OPTIONS[1]`)
-3. Svi `user_created` projekti korisnika
+**`GET /home` route** (linija 2826): Redirect (302) na `/` (canonicalisation). Stari route je obrisan, samo redirect.
 
-Sortirano: reference projekti prvo (po abecedi), onda user_created (po abecedi labela).
+**`GET /projects/new` route** (linija 2682): Koristi `partials/new_project_minimal.html` umjesto `partials/new_project_form.html`. Vidljiva polja: project_name, project_type, country_market, capacity_mw. Bez EXPLORATORY banner block-a.
 
-Deduplikacija po `project_code`. Svaki unos ima `origin_class="project"` (presentation filter, ne izlaže `user_created` / `factory_template`).
+**`GET /projects/new/minimal` route** (linija 2901): Redirect (302) na `/projects/new` (canonicalisation).
 
-**Template context update** u dva mjesta:
-1. `GET /` (index route, linija ~2244) — dodan `consolidated_project_records`
-2. `GET /projects/browse` (linija ~2888) — dodan `consolidated_project_records`
+**`_validate_new_project_payload`**: COD validacija je postala **opciona** u P2-FIX-1 minimalan form. Ako nema `cod_date` i nema `construction_start_date` / `construction_duration_months` parova, validacija ne faila. Ako ima par, COD se derivira kao i prije.
 
-Legacy ključevi (`factory_template_projects`, `user_project_records`, `baseline_project_records`) **ostaju** u context-u jer ih drugi partial-i mogu koristiti (backward compat).
+### `app/services/projects_create_service.py` (MODIFIED, +25)
 
-### `tests/test_phase_p2fix1_default_route_rewiring.py` (NEW)
+**Novi `ProjectsCreateRouteDeps` field**: `new_project_minimal_validation_error_context: Callable[..., dict] | None = None`.
 
-378 linija, 15 testova, 7 test classes:
+**Validation error early-return logika** (linija ~316):
+- Ako `deps.new_project_minimal_validation_error_context` je None (legacy poziv), koristi `partials/new_project_form.html` (backward compat)
+- Ako je provided (P2-FIX-1 path), koristi `partials/new_project_minimal.html` + minimal context
 
-- `TestProjectBrowserSingleList` (3 tests) — partial exists, no 3 tabs, single section
-- `TestNoInternalTerminology` (9 tests) — no factory, baseline, calibration, golden, parity, Save As, duplicate, fixture, exploratory
-- `TestReferenceProjectsInList` (3 tests) — TUHO + Oborovo in consolidated list, deduped
-- `TestBackwardCompatContext` (1 test) — legacy context keys still passed
-- `TestRoutesUnchanged` (1 test) — no route renames or deletions
-- `TestPhaseInvariants` (3 tests) — rc1, use_construction_schedule_engine=False, Phase 51F parity
-- `TestPriorPhaseTestsPreserved` (1 test) — full prior-phase test stack
+### `app/templates/partials/project_home.html` (MODIFIED, +2/-2)
+
+Link `href="/projects/new/minimal"` → `href="/projects/new"`
+Link `hx-get="/projects/new/minimal"` → `hx-get="/projects/new"`
+
+### `tests/test_phase_p2fix1_default_route_rewiring.py` (MODIFIED, +299/-2)
+
+15 → 30 testova. Dodano 5 novih test klasa:
+
+- `TestDefaultRouteRendersProjectHome` (3) — GET / no project renders Project Home, no old workspace, ?project= opens workspace
+- `TestHomeRouteRedirect` (1) — /home returns 30x to /
+- `TestNewProjectMinimalForm` (2) — /projects/new minimal form (no driver fields, no factory function names, no EXPLORATORY), /projects/new/minimal returns 30x to /projects/new
+- `TestCreateToWorkspaceFlow` (2) — POST /projects/create with minimal fields returns 200/302, lands on workspace
+- `TestSidebarProjectSelectorLinks` (1) — project_home.html links to /projects/new (not /projects/new/minimal)
+
+Svi TestNoInternalTerminology testovi sada strip-aju HTML/Jinja komentare (koji sadrže "fixture", "duplicate" kao dio objašnjenja C2 dizajna).
 
 ---
 
@@ -102,7 +106,6 @@ Legacy ključevi (`factory_template_projects`, `user_project_records`, `baseline
 - No `manual_gearing` / `gearing_cap` / `min(gearing_cap, sculpt)` blend
 - No R99 / R102 / G20 promotion
 - No persistence schema migration
-- No `app/services/` downstream service code changes
 - No `app/persistence/` changes
 - No `static/app.js` changes (0 lines diff)
 - No `main_api.py` changes
@@ -118,7 +121,7 @@ Legacy ključevi (`factory_template_projects`, `user_project_records`, `baseline
 
 ## Roadmap (post-P2-FIX-1)
 
-1. **P2-FIX-1** (this PR) — default route / new project / project picker rewiring
+1. **P2-FIX-1** (this PR) — default route / new project / project picker rewiring (REVIEW-FIX)
 2. **P2-FIX-2** — shell strip / move governance-lineage to Audit (presentation-only)
 3. **P2-FIX-3** — reference projects as normal projects using C2 first-edit/create-copy behavior
 4. **P2-FIX-4** — five-area navigation + dashboard landing + reviewer mode
@@ -127,10 +130,10 @@ Legacy ključevi (`factory_template_projects`, `user_project_records`, `baseline
 
 ---
 
-## Test results (after recovery)
+## Test results (local)
 
-- 15 / 15 P2-FIX-1 tests PASS (pending local test run; harness was hung during initial test run; **GitHub CI will run once PR is opened**)
-- 5/5 GitHub CI expected (Parity Guardrails, Legacy quarantined sentinels, CAPEX persistence and route smoke, Core model tests, Persistence and records guardrails)
+- 30 / 30 P2-FIX-1 tests PASS (local)
+- 5/5 GitHub CI expected (after DRAFT PR is updated and ready)
 - 21 / 21 Phase 51F parity guardrails expected PASS
 - rc1 SHA preserved
 - `use_construction_schedule_engine` remains False
