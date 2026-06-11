@@ -2,12 +2,21 @@
 
 {% block body %}
 
-{# ── Phase P2-FIX-2: Governance Banner is the reviewer surface.
-   In normal mode we render a single neutral disclosure line.
+{# ── Phase P2-FIX-2 (review-fix): Governance Banner is the
+   reviewer surface. In normal mode we render a project-type-aware
+   neutral disclosure line.
+
+   - Generic / user-created projects: a single short line,
+     "Internal-use model — results are indicative." No reference
+     or template language.
+   - TUHO / Oborovo protected originals: a single short line,
+     "Protected original — open for review, run and export.
+     Create an editable copy before changing assumptions."
+
    The full Governance / G20 / R99 / R102 copy lives in the
    Audit / Reference tab. #}
 {% if audit_mode %}
-<!-- Governance Banner -->
+<!-- Governance Banner (audit / reviewer surface) -->
 <div class="gov-banner gov-blocked" style="margin-bottom:1.5rem;">
   <div class="gov-icon">Gate</div>
   <div class="gov-content">
@@ -17,15 +26,40 @@
   <span class="badge badge-blocked">Blocked</span>
 </div>
 {% else %}
-<div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
-     data-p2fix2-relocated="governance-banner">
-  <div class="gov-icon">Info</div>
-  <div class="gov-content">
-    <div class="gov-title">Reference project</div>
-    <div class="gov-desc">This is a reference template. Internal-use model — results are indicative. See the Audit / Reference tab for the reviewer notes.</div>
-  </div>
-  <span class="badge badge-info">Reference</span>
-</div>
+  {% if is_user_project %}
+    {# User-created / Generic projects: single neutral line. #}
+    <div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
+         data-p2fix2-disclosure="internal-use-model">
+      <div class="gov-icon">Info</div>
+      <div class="gov-content">
+        <div class="gov-title">Internal-use model</div>
+        <div class="gov-desc">Internal-use model — results are indicative.</div>
+      </div>
+      <span class="badge badge-info">Internal</span>
+    </div>
+  {% elif template_source in ("generic_solar", "generic_wind") %}
+    {# Generic factory templates are internal-use model only. #}
+    <div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
+         data-p2fix2-disclosure="internal-use-model">
+      <div class="gov-icon">Info</div>
+      <div class="gov-content">
+        <div class="gov-title">Internal-use model</div>
+        <div class="gov-desc">Internal-use model — results are indicative.</div>
+      </div>
+      <span class="badge badge-info">Internal</span>
+    </div>
+  {% else %}
+    {# TUHO / Oborovo protected originals: read-only disclosure. #}
+    <div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
+         data-p2fix2-disclosure="protected-original">
+      <div class="gov-icon">Info</div>
+      <div class="gov-content">
+        <div class="gov-title">Protected original</div>
+        <div class="gov-desc">Protected original — open for review, run and export. Create an editable copy before changing assumptions.</div>
+      </div>
+      <span class="badge badge-info">Protected</span>
+    </div>
+  {% endif %}
 {% endif %}
 
 {# UI-2.1: State clarity banner partial (renders nothing if banner_context is missing) #}

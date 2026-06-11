@@ -534,3 +534,184 @@ class TestShellStripHiddenNotDeleted:
             "app/persistence/. This is presentation-only; the "
             "data model must not change."
         )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# P2-FIX-2 review-fix: normal-mode banner copy is project-type-aware
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestShellStripNormalModeBanner:
+    """P2-FIX-2 review-fix:
+
+    - Generic / user-created projects: one short line,
+      "Internal-use model — results are indicative." No reference
+      or template language.
+    - TUHO / Oborovo protected originals: one short line,
+      "Protected original — open for review, run and export.
+      Create an editable copy before changing assumptions."
+      No factory / template / baseline / parity / golden / calibration
+      language.
+
+    Audit / Reference tab may still contain relocated governance /
+    provenance details.
+    """
+
+    @pytest.fixture(autouse=True)
+    def inject(self, logged_in_client):
+        self.client = logged_in_client
+
+    def _visible_no_audit(self, project_code: str) -> str:
+        """Render the workspace for the project, strip the
+        audit panel, and return the user-visible text."""
+        resp = self.client.get(
+            f"/?project={project_code}", follow_redirects=True
+        )
+        html = resp.text
+        audit_start = html.find('id="panel-audit"')
+        if audit_start != -1:
+            div_start = html.rfind("<div", 0, audit_start)
+            depth = 0
+            i = div_start
+            while i < len(html):
+                if html[i:i + 5] == "<div " or html[i:i + 5] == "<div>":
+                    depth += 1
+                    i += 5
+                elif html[i:i + 6] == "</div>":
+                    depth -= 1
+                    i += 6
+                    if depth == 0:
+                        break
+                else:
+                    i += 1
+            html = html[:div_start] + html[i:]
+        return _extract_visible_text(html)
+
+    def test_generic_normal_mode_has_internal_use_model_line(self):
+        """Generic / user-created projects show the
+        'Internal-use model — results are indicative.' line in
+        normal mode."""
+        visible = self._visible_no_audit("generic_solar")
+        assert "Internal-use model — results are indicative." in visible, (
+            "Generic normal-mode banner missing "
+            "'Internal-use model — results are indicative.' line"
+        )
+
+    def test_generic_normal_mode_forbidden_terms_absent(self):
+        """Generic / user-created normal-mode workspace does
+        NOT contain: reference template, Reference project,
+        factory, baseline, parity, calibration, golden, G20,
+        R99, R102."""
+        visible = self._visible_no_audit("generic_solar")
+        lower = visible.lower()
+        for term in (
+            "reference template",
+            "reference project",
+            "factory",
+            "baseline",
+            "parity",
+            "calibration",
+            "golden",
+            "g20",
+            "r99",
+            "r102",
+        ):
+            assert term not in lower, (
+                f"Generic normal-mode workspace contains forbidden "
+                f"term: {term!r}"
+            )
+
+    def test_tuho_normal_mode_has_protected_original_disclosure(self):
+        """TUHO / Oborovo protected originals show the
+        'Protected original — open for review, run and export.
+        Create an editable copy before changing assumptions.'
+        line in normal mode."""
+        for project_code in ("tuho", "oborovo"):
+            visible = self._visible_no_audit(project_code)
+            assert "Protected original" in visible, (
+                f"TUHO/Oborovo normal-mode banner missing "
+                f"'Protected original' line for {project_code}"
+            )
+            assert (
+                "open for review, run and export" in visible
+            ), (
+                f"TUHO/Oborovo normal-mode banner missing "
+                f"'open for review, run and export' for {project_code}"
+            )
+            assert (
+                "Create an editable copy before changing assumptions"
+                in visible
+            ), (
+                f"TUHO/Oborovo normal-mode banner missing "
+                f"'Create an editable copy before changing assumptions' "
+                f"for {project_code}"
+            )
+
+    def test_tuho_normal_mode_forbidden_terms_absent(self):
+        """TUHO / Oborovo normal-mode workspace does NOT contain:
+        reference template, factory, baseline, parity, calibration,
+        golden, G20, R99, R102. (TUHO and Oborovo as plain project
+        names ARE allowed.)"""
+        for project_code in ("tuho", "oborovo"):
+            visible = self._visible_no_audit(project_code)
+            # Strip allowed project name literals before checking.
+            stripped = visible.replace("TUHO Wind", "").replace(
+                "Oborovo Solar PV", ""
+            )
+            lower = stripped.lower()
+            for term in (
+                "reference template",
+                "factory",
+                "baseline",
+                "parity",
+                "calibration",
+                "golden",
+                "g20",
+                "r99",
+                "r102",
+            ):
+                assert term not in lower, (
+                    f"TUHO/Oborovo normal-mode workspace contains "
+                    f"forbidden term {term!r} for {project_code}"
+                )
+
+    def test_audit_tab_still_contains_relocated_information(self):
+        """The audit / Reference tab must still contain the
+        relocated governance / lineage / runtime-source
+        information (no information loss)."""
+        resp = self.client.get(
+            "/?project=tuho", follow_redirects=True
+        )
+        html = resp.text
+        # Locate the audit panel and check it contains the
+        # relocated information.
+        audit_start = html.find('id="panel-audit"')
+        assert audit_start != -1, "Audit panel not found"
+        div_start = html.rfind("<div", 0, audit_start)
+        depth = 0
+        i = div_start
+        while i < len(html):
+            if html[i:i + 5] == "<div " or html[i:i + 5] == "<div>":
+                depth += 1
+                i += 5
+            elif html[i:i + 6] == "</div>":
+                depth -= 1
+                i += 6
+                if depth == 0:
+                    break
+            else:
+                i += 1
+        audit_panel = html[div_start:i]
+        visible = _extract_visible_text(audit_panel)
+        # The relocated information must still be present.
+        for term in (
+            "Lifecycle Clarity",
+            "Export Lineage",
+            "Governance Status",
+            "G20 BLOCKED",
+            "R99/R102",
+            "Review boundary",
+        ):
+            assert term in visible, (
+                f"Audit tab missing relocated information: {term!r}"
+            )
