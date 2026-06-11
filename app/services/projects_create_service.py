@@ -248,6 +248,15 @@ class ProjectsCreateRouteDeps:
     # Response render
     render_template_response: Callable[..., Any]
 
+    # Phase P2-FIX-1: minimal template for the
+    # C2 minimal new-project flow. The
+    # default template_name in the outcome
+    # is used when no minimal_template
+    # override is supplied. Marked Optional
+    # for backward compat with the legacy
+    # full-form path.
+    new_project_minimal_validation_error_context: Callable[..., dict] | None = None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Service entry point
@@ -316,6 +325,22 @@ async def execute_projects_create_route(
 
     # ── 400 validation error early return ────────────────────────────
     if validation_errors:
+        # Phase P2-FIX-1: if the minimal validation
+        # error context is provided, use the
+        # minimal template + minimal context.
+        # Otherwise fall back to the legacy
+        # full-form template + context (default
+        # Phase 51M-1 behaviour for backward
+        # compat with older PR1/PR2/M1/S1/S2
+        # tests).
+        if deps.new_project_minimal_validation_error_context is not None:
+            return ProjectsCreateRouteOutcome(
+                template_name="partials/new_project_minimal.html",
+                context=deps.new_project_minimal_validation_error_context(
+                    submitted, validation_errors
+                ),
+                status_code=400,
+            )
         return ProjectsCreateRouteOutcome(
             template_name="partials/new_project_form.html",
             context=deps.new_project_validation_error_context(

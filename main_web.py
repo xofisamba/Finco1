@@ -513,6 +513,24 @@ def _submitted_new_project_defaults() -> dict[str, str]:
     }
 
 
+def _minimal_submitted_new_project_defaults() -> dict[str, str]:
+    """Phase P2-FIX-1: minimal submitted defaults.
+
+    Only the 4 visible fields (project_name,
+    project_type, country_market, capacity_mw)
+    + template_source. No tariff, PPA, P50,
+    OPEX, CAPEX, gearing, interest, tenor,
+    DSCR, factory function names.
+    """
+    return {
+        "project_name": "",
+        "project_type": "Wind",
+        "template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
+        "country_market": "Croatia",
+        "capacity_mw": "",
+    }
+
+
 # Phase 25B-1: Generic defaults prefill helper (UI-driven, read-only).
 # The form has a "Use generic defaults" button that calls
 # GET /projects/new/defaults?template_source=generic_solar|generic_wind.
@@ -759,6 +777,24 @@ def _new_project_validation_error_context(submitted: dict[str, str], validation_
     }
 
 
+def _new_project_minimal_validation_error_context(submitted: dict[str, str], validation_errors: list[str]) -> dict[str, object]:
+    """Phase P2-FIX-1: minimal context for the
+    C2 minimal new-project flow. Renders
+    the same fields as
+    ``_render_new_project_minimal_form``
+    so the error response shows the same
+    4 visible fields the user just
+    submitted (not the legacy full-form
+    with 17 driver fields).
+    """
+    return {
+        "project_types": PROJECT_TYPES,
+        "validation_errors": validation_errors,
+        "submitted": _minimal_submitted_new_project_defaults() | dict(submitted),
+        "default_template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
+    }
+
+
 def _validate_new_project_payload(submitted: dict[str, str]) -> list[str]:
     errors: list[str] = []
     project_name = _coerce_form_text(submitted.get("project_name"))
@@ -822,8 +858,28 @@ def _validate_new_project_payload(submitted: dict[str, str]) -> list[str]:
             errors.append(f"{label} must be <= {max_value}.")
         return value
 
-    if not _coerce_form_text(submitted.get("cod_date")):
-        errors.append("COD date is required.")
+    # COD is OPTIONAL in P2-FIX-1 (C2 minimal
+    # form). The full form still validates
+    # it via the construction_start_date +
+    # construction_duration_months
+    # derivation, but a minimal form
+    # submission (4 visible fields) may
+    # legitimately have no COD yet — COD can
+    # be edited later in the workspace.
+    _has_construction_start = bool(
+        _coerce_form_text(submitted.get("construction_start_date"))
+    )
+    _has_construction_duration = bool(
+        _coerce_form_text(submitted.get("construction_duration_months"))
+    )
+    _has_explicit_cod = bool(_coerce_form_text(submitted.get("cod_date")))
+    if not _has_explicit_cod and not (
+        _has_construction_start and _has_construction_duration
+    ):
+        # No explicit COD and no derivation
+        # inputs. P2-FIX-1: this is allowed in
+        # the C2 minimal flow. Skip the error.
+        pass
 
     capacity_mw = require_float("capacity_mw", "Capacity (MW)", strictly_positive=True)
 
@@ -1381,6 +1437,63 @@ def _user_project_selector_items(user) -> list[dict[str, str]]:
                 "meta": f"{record.project_type or 'Unknown'} · {_template_source_label(record.template_source)} seed",
             }
         )
+    return items
+
+
+def _consolidated_project_records(user) -> list[dict[str, str]]:
+    """Phase P2-FIX-1: single project list (presentation only).
+
+    Returns ALL projects visible to this user as a single
+    list: factory fixtures (TUHO Wind, Oborovo Solar PV)
+    plus user_created projects. No "Factory Templates" /
+    "Saved Baselines" / "My Projects" split in the UI.
+    Origin distinction lives in the data model, not in
+    the rendered visible text.
+
+    The list is deduped by ``project_code`` and ordered
+    with reference projects first (TUHO Wind, Oborovo
+    Solar PV), then user_created projects alphabetically.
+    """
+    seen: set[str] = set()
+    items: list[dict[str, str]] = []
+    for opt in FACTORY_TEMPLATE_OPTIONS:
+        code = opt["project_code"]
+        if code in seen:
+            continue
+        seen.add(code)
+        items.append(
+            {
+                "project_code": code,
+                "label": opt["label"],
+                "meta": opt.get("meta", ""),
+                "project_type": opt.get("project_type", ""),
+                "origin_class": "project",
+            }
+        )
+    for record in list_project_records(user_id=user.user_id):
+        if record.project_origin != "user_created":
+            continue
+        if record.project_code in seen:
+            continue
+        seen.add(record.project_code)
+        items.append(
+            {
+                "project_code": record.project_code,
+                "label": record.project_name,
+                "meta": (
+                    f"{record.project_type or 'Unknown'} · "
+                    f"{_template_source_label(record.template_source)} seed"
+                ),
+                "project_type": record.project_type or "",
+                "origin_class": "project",
+            }
+        )
+    items.sort(
+        key=lambda it: (
+            0 if it["project_code"] in {"tuho", "oborovo"} else 1,
+            it["label"].lower(),
+        )
+    )
     return items
 
 
@@ -2135,10 +2248,26 @@ async def health(request: Request):
 
 @app.get("/")
 async def index(request: Request, project: str | None = None):
-    """Main input form. Requires auth. Supports ?project=tuho|oborovo."""
+    """Landing route. Requires auth. Supports ?project=tuho|oborovo.
+
+    Phase P2-FIX-1: ``GET /`` is the canonical
+    Project Home URL. The legacy ``/home`` route
+    redirects here (canonicalisation).
+
+    Behaviour:
+    - ``GET /`` (no project) renders the Project
+      Home (My Projects + Create New Project CTA).
+    - ``GET /?project=tuho`` (or any project) opens
+      that project's workspace.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+
+    if not (project or "").strip():
+        # No project selected: render Project Home
+        # (the same view that /home used to render).
+        return _render_project_home(request, user)
 
     project_record = _resolve_project_record(user, project)
     (
@@ -2189,6 +2318,12 @@ async def index(request: Request, project: str | None = None):
             "workspace_state": workspace_state,
             "workspace_state_meta": _workspace_state_meta(workspace_state),
             "active_project_code": project_record.project_code,
+            # Phase P2-FIX-1: single consolidated project
+            # list (presentation only). The underlying
+            # factory_template / user_created / saved_
+            # baseline distinction lives in the data
+            # model, NOT in the visible UI.
+            "consolidated_project_records": _consolidated_project_records(user),
             "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
             "user_project_records": _user_project_selector_items(user),
             "baseline_project_records": baseline_project_items,
@@ -2602,17 +2737,32 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
 
 @app.get("/projects/new")
 async def new_project_form(request: Request):
+    """Phase P2-FIX-1: minimal new-project form.
+
+    Renders the same minimal form as
+    ``/projects/new/minimal`` (4 visible
+    fields: project name, technology,
+    country, capacity MW + optional COD).
+    All other driver values come from the
+    canonical generic factory defaults
+    (server-side, hidden inputs).
+
+    Does NOT render: tariff, PPA, P50,
+    OPEX, CAPEX, gearing, interest, tenor,
+    DSCR, factory function names, or the
+    EXPLORATORY banner block.
+    """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
         request=request,
-        name="partials/new_project_form.html",
+        name="partials/new_project_minimal.html",
         context={
             "project_types": PROJECT_TYPES,
-            "template_options": NEW_PROJECT_TEMPLATE_OPTIONS,
             "validation_errors": [],
-            "submitted": _submitted_new_project_defaults(),
+            "submitted": _minimal_submitted_new_project_defaults(),
+            "default_template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
         },
     )
 
@@ -2762,16 +2912,21 @@ def _build_index_dashboard_context(
 
 @app.get("/home", response_class=HTMLResponse)
 async def project_home(request: Request):
-    """Phase P2-min-1: product-shaped Project Home.
-    Lists user projects (factory templates and baselines
-    hidden via presentation filter) and exposes a single
-    'Create New Project' CTA. Rendered as a partial; can be
-    loaded by the sidebar home button.
+    """Phase P2-FIX-1: legacy /home redirects to /
+    (canonicalisation). GET / now renders the
+    Project Home directly.
     """
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url="/", status_code=302)
 
+
+def _render_project_home(request: Request, user):
+    """Phase P2-FIX-1: shared Project Home renderer.
+
+    Used by ``GET /`` (canonical) and ``GET /home``
+    (legacy redirect target). Renders the
+    product-shaped Project Home (My Projects +
+    Create New Project CTA).
+    """
     return templates.TemplateResponse(
         request=request,
         name="partials/project_home.html",
@@ -2783,25 +2938,11 @@ async def project_home(request: Request):
 
 @app.get("/projects/new/minimal", response_class=HTMLResponse)
 async def new_project_minimal(request: Request):
-    """Phase P2-min-1: minimal new-project form (4 fields only).
-    Everything else (timing, drivers, defaults) comes from the
-    existing template defaults via the /projects/create
-    handler. The backend /projects/create contract is preserved
-    (the hidden template_source field is auto-populated).
+    """Phase P2-FIX-1: legacy /projects/new/minimal
+    redirects to /projects/new (canonicalisation).
+    Both routes now serve the same minimal form.
     """
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
-    return templates.TemplateResponse(
-        request=request,
-        name="partials/new_project_minimal.html",
-        context={
-            "project_types": PROJECT_TYPES,
-            "validation_errors": [],
-            "submitted": _submitted_new_project_defaults(),
-            "default_template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
-        },
-    )
+    return RedirectResponse(url="/projects/new", status_code=302)
 
 
 @app.get("/projects/browse")
@@ -2826,6 +2967,9 @@ async def project_browser(request: Request):
         request=request,
         name="partials/project_browser.html",
         context={
+            # Phase P2-FIX-1: single consolidated project
+            # list (presentation only).
+            "consolidated_project_records": _consolidated_project_records(user),
             "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
             "baseline_project_records": baseline_project_items,
             "user_project_records": _user_project_selector_items(user),
@@ -2933,6 +3077,7 @@ async def create_project_route(
         governance_snapshot=_governance_snapshot,
         replay_metadata_for_project=_replay_metadata_for_project,
         new_project_validation_error_context=_new_project_validation_error_context,
+        new_project_minimal_validation_error_context=_new_project_minimal_validation_error_context,
         template_source_label=_template_source_label,
         render_template_response=templates.TemplateResponse,
     )
