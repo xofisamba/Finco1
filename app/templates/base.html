@@ -37,6 +37,14 @@
 </header>
 
 <div class="app-layout">
+  {# Phase P2-min-4: Navigation Compression (presentation only).
+     5 top-level tabs (Dashboard, Inputs, Scenarios, Outputs,
+     Export & Audit, Help). The underlying ws-tab buttons + panel
+     panels + routes are preserved. No route deletion. No panel
+     deletion. Hidden != deleted. #}
+  {% if nav_compression_enabled|default(false) %}
+    {% include "partials/_nav_compression.html" %}
+  {% endif %}
   {% include "partials/workspace_tabs.html" %}
 
   <nav class="project-sidebar" id="project-sidebar">

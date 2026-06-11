@@ -1,0 +1,76 @@
+{# ── Phase P2-min-4: Navigation Compression (presentation only) ─────
+   5 top-level tabs (compressed view). All
+   underlying ws-tab buttons + panel
+   panels + routes are preserved. The
+   compressed view is a presentation-only
+   shortcut that calls the existing
+   switchTab JS function.
+
+   5 top-level tabs:
+     1. Dashboard (default view; existing
+        overview)
+     2. Inputs (existing inputs)
+     3. Scenarios (existing scenarios)
+     4. Outputs (existing construction +
+        production + revenue + opex + capex
+        + senior-debt + shl + tax + pl +
+        cashflow + balance + distributions
+        + sponsor)
+     5. Export & Audit (existing audit +
+        downloads)
+   6. Help (existing help, kept as is)
+
+   No route deletion. No backend deletion.
+   No panel deletion. No ws-tab button
+   deletion. The compressed view is a
+   presentation-only navigation bar. #}
+<div class="nav-compression" id="nav-compression" data-p2min4-nav="compressed">
+  <button class="nav-compression-tab active"
+          id="nav-compression-tab-dashboard"
+          data-target-tab="overview"
+          data-p2min4-compressed-tab="dashboard"
+          aria-controls="panel-overview"
+          onclick="switchTab('overview')">
+    Dashboard
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-inputs"
+          data-target-tab="inputs"
+          data-p2min4-compressed-tab="inputs"
+          aria-controls="panel-inputs"
+          onclick="switchTab('inputs')">
+    Inputs
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-scenarios"
+          data-target-tab="scenario"
+          data-p2min4-compressed-tab="scenarios"
+          aria-controls="panel-scenario"
+          onclick="switchTab('scenario')">
+    Scenarios
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-outputs"
+          data-target-tab="capex"
+          data-p2min4-compressed-tab="outputs"
+          aria-controls="panel-capex"
+          onclick="switchTab('capex')">
+    Outputs
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-export-audit"
+          data-target-tab="audit"
+          data-p2min4-compressed-tab="export-audit"
+          aria-controls="panel-audit"
+          onclick="switchTab('audit')">
+    Export &amp; Audit
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-help"
+          data-target-tab="help"
+          data-p2min4-compressed-tab="help"
+          aria-controls="panel-help"
+          onclick="switchTab('help')">
+    Help
+  </button>
+</div>
