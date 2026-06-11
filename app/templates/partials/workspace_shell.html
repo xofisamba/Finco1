@@ -465,6 +465,15 @@
       </div>
     </div>
 
+    {# ── Phase P2-min-3: Dashboard v1 (presentation only) ─────────────── #}
+    {# The Dashboard v1 partial renders 8 KPI cards + 3 inline-SVG    #}
+    {# charts. Server-rendered. NO Chart.js / Plotly / D3 / JS calc.   #}
+    {# The existing Overview KPI grid + Governance Status panel +     #}
+    {# TUHO Parity panel remain above this section (hidden != deleted). #}
+    {% if dashboard_enabled|default(false) %}
+      {% include "partials/_dashboard.html" %}
+    {% endif %}
+
     {# ── Phase M1: Read-Only Scenario Matrix Prototype (UI only) ───────── #}
     {# Renders a 4-column Base | Downside | Upside | Custom matrix with   #}
     {# input rows + KPI rows. Base is live (reads project_ctx). The other  #}
