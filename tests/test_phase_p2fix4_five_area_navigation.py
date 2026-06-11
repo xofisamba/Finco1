@@ -477,17 +477,44 @@ class TestPriorBehaviorPreserved:
         """P2-FIX-3: first edit attempt on TUHO returns 409
         with needs_copy_confirmation=true.
 
-        NOTE: P2-FIX-3 is not yet merged at the time of
-        P2-FIX-4 authoring (the base is P2-FIX-2 merge).
-        This test is therefore SKIPPED here; the
-        P2-FIX-3 tests in test_phase_p2fix3_c2_first_edit.py
-        cover this behavior once P2-FIX-3 is merged.
-        After P2-FIX-3 merge, this test should be
-        uncommented to verify the integration."""
-        pytest.skip(
-            "P2-FIX-3 not yet merged at this base; the "
-            "P2-FIX-3 tests cover this behavior in their "
-            "own file."
+        P2-FIX-3 is now MERGED into main (post-rebase).
+        This test verifies the C2 first-edit guard still
+        works correctly under the P2-FIX-4 five-area
+        navigation. The guard is in main_web.py
+        (save_workspace_draft_endpoint) and the
+        confirm route is also in main_web.py; the
+        P2-FIX-4 navigation change does not touch
+        those paths.
+        """
+        r = self.client.post(
+            "/scenarios/state/draft",
+            data={
+                "active_project": "tuho",
+                "project_name": "TUHO",
+                "technology": "Wind",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 409, (
+            f"Expected 409 first-edit guard, got {r.status_code}"
+        )
+        body = r.json()
+        assert body["error"] == "protected_reference"
+        assert body["needs_copy_confirmation"] is True
+
+    def test_p2fix3_confirm_route_still_active(self):
+        """P2-FIX-3: confirm-first-edit-copy route still
+        creates a working copy under P2-FIX-4 nav."""
+        r = self.client.post(
+            "/projects/tuho/confirm-first-edit-copy",
+            data={},
+            follow_redirects=False,
+        )
+        # 302 redirect to the new working copy OR 200 OK
+        # with project_code reference — both valid.
+        assert r.status_code in (200, 302), (
+            f"Expected 200/302 from confirm route, got "
+            f"{r.status_code}"
         )
 
     def test_p2fix2_audit_tab_preserved(self):
@@ -595,6 +622,15 @@ class TestFileScope:
             "app/ui/dashboard.py",
             "main_web.py",
             "tests/test_phase_p2fix4_five_area_navigation.py",
+            # ── Phase P2-FIX-4 cross-arc test patch ─────
+            # The P2-FIX-3 file-scope test is extended
+            # in this branch to allowlist the P2-FIX-4
+            # dashboard.py / template / docs / reports
+            # additions. This is the same cross-arc
+            # pattern used in P2-min-1 / P2-min-2 / etc.
+            "tests/test_phase_p2fix3_c2_first_edit.py",
+            "tests/test_phase_p2fix2_shell_strip.py",
+            "tests/test_phase51f_parallel_work_guardrails.py",
             "docs/phase_p2fix4_",
             "reports/phase_p2fix4_",
         )

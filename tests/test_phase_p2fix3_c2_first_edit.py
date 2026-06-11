@@ -736,6 +736,25 @@ class TestFileScope:
             "tests/test_phase_p2fix3_c2_first_edit.py",
             "docs/phase_p2fix3_",
             "reports/phase_p2fix3_",
+            # ── Phase P2-FIX-4 cross-arc allowlist ───────
+            # P2-FIX-4 is a stacked navigation cleanup
+            # branch that adds _nav_compression.html,
+            # _results_subnav.html, _dashboard.html, and
+            # modifies app/ui/dashboard.py. The P2-FIX-3
+            # first-edit guard is preserved (verified
+            # independently in P2-FIX-4's
+            # test_p2fix3_first_edit_guard_still_active
+            # and test_p2fix3_confirm_route_still_active).
+            "app/ui/dashboard.py",
+            "tests/test_phase_p2fix4_",
+            "tests/test_phase_p2fix2_shell_strip.py",
+            "app/templates/partials/_nav_compression.html",
+            "app/templates/partials/_results_subnav.html",
+            "app/templates/partials/_dashboard.html",
+            "app/templates/partials/workspace_shell.html",
+            "app/ui/dashboard.py",
+            "docs/phase_p2fix4_",
+            "reports/phase_p2fix4_",
         )
         for f in changed:
             assert f.startswith(allowed_prefixes), (
