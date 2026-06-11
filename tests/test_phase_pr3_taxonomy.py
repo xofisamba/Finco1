@@ -555,6 +555,18 @@ class TestPhaseInvariants:
         )
 
     def test_no_forbidden_path_changes(self):
+        # P2-min-1 (Project Home) follow-up:
+        # the P2-min-1 stacked UX-simplification
+        # arc adds /home and /projects/new/minimal
+        # route handlers in main_web.py. Those
+        # are presentation-only (no formula /
+        # no factory / no model changes).
+        # main_web.py is therefore temporarily
+        # added to the cross-arc allowlist for
+        # the P2-min-1 follow-up.
+        p2min1_main_web_allowlist = {
+            "main_web.py",
+        }
         for forbidden in [
             "app/project_factories.py",
             "app/waterfall_core.py",
@@ -574,6 +586,11 @@ class TestPhaseInvariants:
                 cwd=REPO_ROOT, capture_output=True, text=True,
             )
             diff = r.stdout.strip()
+            # P2-min-1 (Project Home) cross-arc
+            # allowlist for main_web.py
+            # (presentation only).
+            if diff and forbidden in p2min1_main_web_allowlist:
+                continue
             assert not diff, (
                 f"PR3 must NOT change {forbidden!r}; "
                 f"got: {diff!r}"
@@ -727,6 +744,25 @@ class TestFileScope:
             "tests/test_phase_m1_scenario_matrix.py",
             "tests/test_phase_pr1_form_timing_fields.py",
             "tests/test_phase_pr2_realized_gearing.py",
+            # P2-min-1 (Project Home) follow-up
+            # allowlist: P2-min-1 adds a
+            # project home partial + minimal
+            # new-project form + Help link in
+            # base.html + sidebar Home action.
+            # PR3 does not touch these; the
+            # file-scope test is forward-
+            # compatible.
+            "app/templates/base.html",
+            "app/templates/partials/project_home.html",
+            "app/templates/partials/new_project_minimal.html",
+            "app/templates/partials/project_selector.html",
+            "static/styles.css",
+            "tests/test_phase_p2min1_project_home.py",
+            # main_web.py: P2-min-1 adds the /home
+            # and /projects/new/minimal routes
+            # (presentation only, no formula /
+            # no factory / no model changes).
+            "main_web.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected

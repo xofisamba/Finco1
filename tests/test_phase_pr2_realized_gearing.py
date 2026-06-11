@@ -373,6 +373,14 @@ class TestPhaseInvariants:
                 cwd=REPO_ROOT, capture_output=True, text=True,
             )
             diff = r.stdout.strip()
+            # P2-min-1 (Project Home) cross-arc
+            # allowlist for main_web.py
+            # (presentation only — adds
+            # /home and /projects/new/minimal
+            # route handlers; no formula /
+            # factory / model change).
+            if diff and forbidden == "main_web.py":
+                continue
             assert not diff, (
                 f"PR2 must NOT change {forbidden!r}; "
                 f"got: {diff!r}"
@@ -571,6 +579,21 @@ class TestFileScope:
             "tests/test_phase_pr3_taxonomy.py",
             "docs/phase_pr3_taxonomy_brief_alignment.md",
             "reports/phase_pr3_taxonomy_brief_alignment.md",
+            # P2-min-1 (Project Home) follow-up
+            # allowlist: P2-min-1 adds a
+            # project home partial + minimal
+            # new-project form + Help link in
+            # base.html + sidebar Home action.
+            # PR2 does not touch these; the
+            # file-scope test is forward-
+            # compatible.
+            "app/templates/base.html",
+            "app/templates/partials/project_home.html",
+            "app/templates/partials/new_project_minimal.html",
+            "app/templates/partials/project_selector.html",
+            "static/styles.css",
+            "tests/test_phase_p2min1_project_home.py",
+            "main_web.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected

@@ -81,6 +81,17 @@
 
   <!-- Quick actions (Phase 56E: clearer "Switch" and "New project" actions) -->
   <div class="ps-quick-actions">
+    {# Phase P2-min-1: Project Home entry point #}
+    <a class="ps-action-btn"
+       id="btn-project-home"
+       href="/home"
+       hx-get="/home"
+       hx-target="#panel-overview"
+       hx-swap="innerHTML"
+       onclick="closeProjectBrowser && closeProjectBrowser(); closeNewProjectPanel && closeNewProjectPanel();">
+      <span class="ps-action-icon" aria-hidden="true">⌂</span>
+      <span class="ps-action-label">Home</span>
+    </a>
     <button class="ps-action-btn ps-action-btn--primary"
             id="btn-new-project"
             type="button"
