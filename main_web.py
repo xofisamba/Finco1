@@ -1797,6 +1797,8 @@ def _render_scenario_workspace(
             "scenario_workflow_ui": scenario_workflow_ui,
             # Phase 25B-6: Generic project review pack (read-only UI payload)
             "project_review_ui": project_review_ui,
+            # Phase P2-FIX-2: Audit / reviewer mode flag (default False).
+            "audit_mode": False,
         },
     )
 
@@ -2384,6 +2386,14 @@ async def index(request: Request, project: str | None = None):
             "banner_context": _banner_context_for_index(
                 project_record, workspace_state, validation_errors
             ),
+            # Phase P2-FIX-2: Audit / reviewer mode flag.
+            # Default False (normal mode). Relocated governance /
+            # lineage / runtime-source / review-boundary content
+            # renders only in the audit tab (which always includes
+            # _audit_governance_relocated.html), and the overview
+            # shell suppresses the same content unless audit_mode
+            # is True. This is presentation-only.
+            "audit_mode": False,
         },
     )
 

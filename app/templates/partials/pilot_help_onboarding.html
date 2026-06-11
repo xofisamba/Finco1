@@ -26,13 +26,13 @@
     <div class="pho-section">
       <div class="pho-section-title">Reference templates</div>
       <div class="pho-item">
-        [Reference] <strong>TUHO Wind (72 MW, Croatia)</strong> - frozen-template, has parity evidence against Excel (senior debt, SHL opening, distributions, CO2 revenue)
+        [Reference] <strong>TUHO Wind (72 MW, Croatia)</strong> - frozen-template, has reference evidence against Excel (senior debt, SHL opening, distributions, CO2 revenue)
       </div>
       <div class="pho-item">
-        [Reference] <strong>Oborovo Solar (53.63 MW, Croatia)</strong> - frozen-template, has parity evidence against Excel
+        [Reference] <strong>Oborovo Solar (53.63 MW, Croatia)</strong> - frozen-template, has reference evidence against Excel
       </div>
       <div class="pho-item pho-item--warn">
-        [Warning] <strong>Generic / new projects</strong> - exploratory; assumptions and outputs should be reviewed independently before drawing conclusions
+        [Warning] <strong>Generic / new projects</strong> - internal-use model only; assumptions and outputs should be reviewed independently before drawing conclusions
       </div>
     </div>
 
@@ -52,7 +52,7 @@
     <div class="pho-section">
       <div class="pho-section-title">How to run a pilot workflow</div>
       <div class="pho-item">
-        <strong>1. Select project</strong> - Choose TUHO or Oborovo reference template for parity-reviewed results, or generic for exploration only
+        <strong>1. Select project</strong> - Choose TUHO or Oborovo reference template for reference-reviewed results, or generic for exploration only
       </div>
       <div class="pho-item">
         <strong>2. Review assumptions</strong> - Check inputs in the sidebar before running
@@ -67,24 +67,24 @@
         <strong>5. Review results</strong> - KPIs (IRR, DSCR) and debt/equity panels appear after run
       </div>
       <div class="pho-item">
-        <strong>6. Review audit</strong> - Audit / Parity tab shows parity evidence against Excel
+        <strong>6. Review audit</strong> - Audit / Reference tab shows reference evidence against Excel
       </div>
       {# Phase 56B: removed positive "validated" language. "parity evidence" remains factual. #}
       <div class="pho-item">
-        <strong>7. Export</strong> - Downloads tab provides XLSX, CSV, and parity workbooks
+        <strong>7. Export</strong> - Downloads tab provides XLSX, CSV, and reference workbooks
       </div>
     </div>
 
     <!-- How to read audit / reconciliation -->
     <div class="pho-section">
-      <div class="pho-section-title">How to read Audit / Parity</div>
+      <div class="pho-section-title">How to read Audit / Reference</div>
       <div class="pho-item">
-        The Audit / Parity tab summarises parity evidence for TUHO and Oborovo.
+        The Audit / Reference tab summarises reference evidence for TUHO and Oborovo.
         It is <em>internal review tooling</em>, not a certified external audit.
         Green = within tolerance. Yellow = accepted convention difference. Red = gap.
       </div>
       <div class="pho-item">
-        Senior Debt, SHL Opening, and Distributions are the primary parity anchors.
+        Senior Debt, SHL Opening, and Distributions are the primary reference anchors.
         Equity IRR has a +/-1.0pp tolerance; Project IRR has a +/-0.5pp tolerance.
       </div>
     </div>
@@ -97,7 +97,7 @@
         If you changed inputs after the last run, save the scenario and run again before exporting.
       </div>
       <div class="pho-item">
-        Available exports: Values-only Excel, Runtime Summary CSV, Institutional Workbook, Parity Workbook, Gap Register, Source Map.
+        Available exports: Values-only Excel, Runtime Summary CSV, Institutional Workbook, Reference Workbook, Gap Register, Source Map.
       </div>
     </div>
 
@@ -121,7 +121,7 @@
         [Not included] <strong>Not a lender or bank approval</strong> - this app does not provide credit analysis or lender approval
       </div>
       <div class="pho-item pho-item--err">
-        [Not included] <strong>Not an external audit or certification</strong> - the Audit / Parity tab is internal review tooling
+        [Not included] <strong>Not an external audit or certification</strong> - the Audit / Reference tab is internal review tooling
       </div>
       <div class="pho-item pho-item--err">
         [Not included] <strong>Not SaaS-ready</strong> - single-user internal pilot mode; no multi-tenant isolation or RBAC

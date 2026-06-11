@@ -78,6 +78,9 @@
       {% include "partials/scenario_workspace.html" %}
     </div>
 
+    {# ── Phase P2-FIX-2: Governance / R99/R102 / G20 panel is
+       the reviewer surface. Hidden in normal mode. #}
+    {% if audit_mode %}
     <div class="ps-section">
       <div class="ps-section-label">Governance</div>
       <div class="ps-gov-list">
@@ -91,6 +94,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
     <div class="ps-section">
       <div class="ps-section-label">Downloads</div>

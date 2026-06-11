@@ -3,7 +3,7 @@
 <div class="sheet-banner">
   <span class="sheet-banner-tag">🏛️ Tax</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+    <span class="badge badge-preview">Reference project</span>
   </span>
 </div>
 
@@ -20,6 +20,13 @@
       <span class="rb-metric-label">CIT Status</span>
       <span class="rb-metric-value" id="tax-status">NOT_AVAILABLE</span>
     </div>
+    {# P2-FIX-2: G20 / R99 / R102 governance posture relocated
+       to the audit / reviewer surface. Hidden != deleted. #}
+  </div>
+  <div class="runtime-block-secondary"
+       id="tax-secondary-metrics-audit"
+       data-p2fix2-relocated="governance-posture">
+    {% if audit_mode %}
     <div class="rb-metric">
       <span class="rb-metric-label">G20 Gate</span>
       <span class="rb-metric-value rb-blocked">BLOCKED</span>
@@ -28,6 +35,7 @@
       <span class="rb-metric-label">R99/R102</span>
       <span class="rb-metric-value rb-blocked">NOT APPROVED</span>
     </div>
+    {% endif %}
   </div>
 </div>
 
@@ -59,12 +67,12 @@
   <div class="section-header">Output Preview</div>
   <div class="preview-notice">
     <span>📋</span>
-    <span><strong>Preview schedule</strong> — static factory values, not live calculated output. Run the model to see actual tax output above.</span>
+    <span><strong>Preview schedule</strong> — static reference values, not live calculated output. Run the model to see actual tax output above.</span>
   </div>
 </div>
 
 <div class="table-note">
-  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+  <span class="badge badge-preview">Reference project</span>
 </div>
 
 <script>

@@ -26,24 +26,24 @@ KNOWN_EXCLUSIONS = [
     "Construction schedule engine (use_construction_schedule_engine=False) — not promoted.",
     "Senior IDC (Interest During Construction) is not promoted to the senior debt schedule.",
     "Debt sculpting solver — the senior debt schedule is fixture-backed, not live.",
-    "R-PAR implementation (Reserves / Pari-passu) — not active in the runtime.",
+    "Pari-passu reserves / construction reserves engine — not active in the runtime.",
     "Tax engine (CIT, loss carryforward) is fixture-backed; not a live computation.",
     "Depreciation schedule is fixture-backed; not a live computation.",
     "Multi-user / multi-tenant — single-user internal pilot mode only.",
     "Lender / bank approval — this app does not provide credit analysis.",
-    "External audit / certification — the Audit / Parity tab is internal review tooling.",
+    "External audit / certification — the Audit / Reference tab is internal review tooling.",
     "Enterprise SaaS / RBAC — no production deployment; not certified.",
 ]
 
 EXPLORATORY_LIMITATIONS = [
     (
-        "Generic Solar / Generic Wind projects are exploratory only. "
+        "Generic Solar / Generic Wind projects are internal-use model only. "
         "They are NOT validated against the Excel reference model."
     ),
     (
         "The 'What changed since previous run?' delta panel compares the "
         "current run to the previous one for the same scenario, but the "
-        "absolute values are not Excel-parity-validated."
+        "absolute values are not Excel-validated."
     ),
     (
         "Saved scenarios preserve a snapshot of the input form, not the "

@@ -1,0 +1,201 @@
+{# ── Phase P2-FIX-2: Audit / Governance Relocated Content ─────────
+   This partial contains the governance / lineage / runtime-source
+   / review-boundary content that USED to be shown in the normal
+   workspace overview (workspace_shell.html). It is now only
+   rendered when the workspace is in audit / reviewer mode
+   (``audit_mode`` context flag is true). The audit tab
+   (panel-audit) ALWAYS renders this content.
+
+   Hidden != deleted: all underlying information is preserved.
+   The information is just relocated to the audit / reviewer
+   surface, not removed from the codebase.
+
+   The normal-mode user (the pilot / day-to-day user) does NOT
+   see any of this content in their workspace. They only see:
+   - Project name, technology, country, capacity
+   - Status: Draft / Saved / Unsaved changes / Needs rerun / Run completed
+   - Active scenario
+   - Actions: Run / Save / Save As / Duplicate / Export
+
+   Allowed exception: TUHO Wind and Oborovo Solar PV may appear
+   as plain project names. They appear as plain names in the
+   normal mode; the audit / reviewer surface exposes the
+   provenance and reference status if needed.
+#}
+
+<div class="audit-governance-relocated"
+     data-p2fix2-audit-relocated="true"
+     aria-label="Audit and governance information">
+
+  {# ── Review boundary note (relocated from normal shell) ───── #}
+  <div class="audit-review-boundary"
+       id="audit-review-boundary"
+       role="note"
+       aria-label="Reviewer guidance for draft, saved, and runtime boundaries">
+    <strong>Review boundary:</strong>
+    the draft workspace may differ from the saved scenario,
+    and the saved scenario may differ from the last runtime
+    snapshot. Runtime cards and exported outputs reflect the
+    last clean backend run, not browser-side draft edits.
+  </div>
+
+  {# ── Lifecycle Clarity panel (relocated from normal shell) ─ #}
+  <div class="workspace-lifecycle-panel" id="workspace-lifecycle-panel"
+       data-p2fix2-audit-relocated-component="lifecycle-clarity"
+       aria-label="Model lifecycle clarity">
+    <div class="workspace-lifecycle-panel__header">
+      <div>
+        <div class="workspace-lifecycle-panel__title">Lifecycle Clarity</div>
+        <div class="workspace-lifecycle-panel__desc">
+          Follow the modelling boundary in order: edit inputs,
+          save the project or scenario, run the model, review
+          runtime outputs, then export reviewer-facing workbooks.
+        </div>
+      </div>
+    </div>
+    <div class="workspace-lifecycle-grid">
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Project state</div>
+        <div class="workspace-lifecycle-card__value">
+          {{ "User-created project" if is_user_project else "Protected original" }}
+        </div>
+        <div class="workspace-lifecycle-card__meta">
+          {% if is_user_project %}
+            Saved project inputs remain editable here. Runtime
+            outputs still stay tied to the last completed run
+            until you save and run again.
+          {% else %}
+            Reference projects are read-only. Use Save As
+            before editing controlled assumptions.
+          {% endif %}
+        </div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Runtime state</div>
+        <div class="workspace-lifecycle-card__value">Last completed run</div>
+        <div class="workspace-lifecycle-card__meta">
+          Runtime summary reflects the last completed run.
+        </div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Export state</div>
+        <div class="workspace-lifecycle-card__value">
+          Backend-authored audit output
+        </div>
+        <div class="workspace-lifecycle-card__meta">
+          Export workbook is generated from backend-authoritative
+          saved/run state.
+        </div>
+        <div class="workspace-lifecycle-card__meta">
+          Export is an audit output, not a free-form Excel model.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Export Lineage panel (relocated from normal shell) ────── #}
+  <div class="export-lineage-panel" id="export-lineage-panel"
+       data-p2fix2-audit-relocated-component="export-lineage"
+       aria-label="Export lineage summary">
+    <div class="export-lineage-panel__header">
+      <div>
+        <div class="export-lineage-panel__title">Export Lineage</div>
+        <div class="export-lineage-panel__desc">
+          Reviewer-facing lineage only. Exports remain descriptive
+          and do not become the calculation authority.
+        </div>
+      </div>
+    </div>
+    <div class="export-lineage-grid">
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Active project</div>
+        <div class="export-lineage-card__value">
+          {{ export_lineage_ui.current_context.project_label if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">
+          {{ export_lineage_ui.current_context.project_code if export_lineage_ui else "—" }}
+        </div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Saved scenario boundary</div>
+        <div class="export-lineage-card__value">
+          {{ export_lineage_ui.current_context.active_scenario_name if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">
+          Scenario ID {{ export_lineage_ui.current_context.active_scenario_id if export_lineage_ui else "—" }}
+        </div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Last runtime snapshot</div>
+        <div class="export-lineage-card__value">
+          {{ export_lineage_ui.current_context.runtime_snapshot_id if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">
+          {{ export_lineage_ui.current_context.runtime_origin_label if export_lineage_ui else "—" }}
+        </div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Runtime generated at</div>
+        <div class="export-lineage-card__value">
+          {{ export_lineage_ui.current_context.runtime_generated_at if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">Last clean backend run</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Governance posture</div>
+        <div class="export-lineage-card__value">G20 BLOCKED</div>
+        <div class="export-lineage-card__meta">R99 / R102 NOT APPROVED</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Governance Status (relocated from normal shell) ──────── #}
+  <div class="audit-panel" style="margin:1.25rem 0;"
+       data-p2fix2-audit-relocated-component="governance-status">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Governance Status</div>
+        <span class="badge badge-blocked">Blocked</span>
+      </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">G20 Gate</span>
+          <span class="badge badge-blocked">BLOCKED</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">R99 / R102 Promotion</span>
+          <span class="badge badge-notapproved">NOT APPROVED</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+          <span style="color:var(--text-2); font-weight:500;">Equity IRR residual</span>
+          <span style="font-weight:600; color:var(--text);">Within tolerance</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Reference Evidence</div>
+        <span class="badge badge-convention">DA-Wired Audit</span>
+      </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
+          <span class="badge badge-pass">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">SHL Opening</span>
+          <span class="badge badge-pass">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Distributions</span>
+          <span class="badge badge-convention">ACCEPTED CONV</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+          <span style="color:var(--text-2); font-weight:500;">Tax / CFADS</span>
+          <span class="badge badge-missing">MISSING_EVIDENCE</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

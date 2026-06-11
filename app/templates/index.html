@@ -2,6 +2,11 @@
 
 {% block body %}
 
+{# ── Phase P2-FIX-2: Governance Banner is the reviewer surface.
+   In normal mode we render a single neutral disclosure line.
+   The full Governance / G20 / R99 / R102 copy lives in the
+   Audit / Reference tab. #}
+{% if audit_mode %}
 <!-- Governance Banner -->
 <div class="gov-banner gov-blocked" style="margin-bottom:1.5rem;">
   <div class="gov-icon">Gate</div>
@@ -11,6 +16,17 @@
   </div>
   <span class="badge badge-blocked">Blocked</span>
 </div>
+{% else %}
+<div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
+     data-p2fix2-relocated="governance-banner">
+  <div class="gov-icon">Info</div>
+  <div class="gov-content">
+    <div class="gov-title">Reference project</div>
+    <div class="gov-desc">This is a reference template. Internal-use model — results are indicative. See the Audit / Reference tab for the reviewer notes.</div>
+  </div>
+  <span class="badge badge-info">Reference</span>
+</div>
+{% endif %}
 
 {# UI-2.1: State clarity banner partial (renders nothing if banner_context is missing) #}
 {% include "partials/_state_banner.html" %}

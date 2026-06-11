@@ -3,7 +3,7 @@
 <div class="sheet-banner">
   <span class="sheet-banner-tag">📊 OPEX</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+    <span class="badge badge-preview">Reference project</span>
   </span>
 </div>
 
@@ -12,7 +12,7 @@
 <div class="inp-readonly-notice inp-readonly-notice--opex">
   <span class="inp-readonly-notice__icon">🔒</span>
   <div class="inp-readonly-notice__body">
-    <strong>Baseline template — read only</strong>
+    <strong>Reference template — read only</strong>
     <p>Edit is disabled for factory templates. Use <strong>Duplicate / Save As</strong> to create your own project copy, then edit OPEX assumptions there.</p>
   </div>
 </div>
@@ -417,7 +417,7 @@
 
   {# Footer note #}
   <div class="table-note">
-    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+    <span class="badge badge-preview">Reference project</span>
     <span class="table-note__text">
       {% set default_esc = 2.0 if not project_ctx.opex_items else (project_ctx.opex_items[0].escalation_pct or 2.0) %}
       OPEX escalates at {{ "%.1f"|format(default_esc) }}% annually

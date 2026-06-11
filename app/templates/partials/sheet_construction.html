@@ -3,7 +3,7 @@
 <div class="sheet-banner">
   <span class="sheet-banner-tag">🏗️ Construction</span>
   <span class="sheet-banner-badge">
-    <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+    <span class="badge badge-preview">Reference project</span>
   </span>
 </div>
 
@@ -12,7 +12,7 @@
 <div class="inp-readonly-notice inp-readonly-notice--construction">
   <span class="inp-readonly-notice__icon">🔒</span>
   <div class="inp-readonly-notice__body">
-    <strong>Baseline template — read only</strong>
+    <strong>Reference template — read only</strong>
     <p>Construction schedule is derived from CAPEX assumptions. Edit via <strong>Duplicate / Save As</strong> to create your own project.</p>
   </div>
 </div>
@@ -155,7 +155,7 @@
 {% endif %}
 
 <div class="table-note">
-  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+  <span class="badge badge-preview">Reference project</span>
   <span class="table-note__text">
     IDC: {{ (project_ctx.idc_keur if project_ctx.idc_keur is string else "{:,.0f}".format(project_ctx.idc_keur or 0)) }} kEUR
     · SHL Rate: {{ "%.2f"|format(project_ctx.shl_rate_pct * 100) }}%

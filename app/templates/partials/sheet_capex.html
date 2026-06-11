@@ -239,7 +239,7 @@
   <span class="sheet-banner-tag">🏗️ CAPEX</span>
   <span class="sheet-banner-badge">
     {% if not is_user_project %}
-    <span class="badge badge-muted">Factory Reference — read-only</span>
+    <span class="badge badge-muted">Reference — read-only</span>
     {% else %}
     <span class="badge badge-pass">User Project — editable</span>
     {% endif %}
@@ -251,8 +251,8 @@
 <div class="inp-readonly-notice inp-readonly-notice--capex">
   <span class="inp-readonly-notice__icon">🔒</span>
   <div class="inp-readonly-notice__body">
-    <strong>Factory template — read only</strong>
-    <p>This is a factory template. Use <strong>Duplicate / Save As</strong>
+    <strong>Reference template — read only</strong>
+    <p>This is a reference template. Use <strong>Duplicate / Save As</strong>
     to create your own copy, then edit CAPEX assumptions.</p>
     <p class="inp-readonly-notice__hint">
       The app is the source of truth. Edit line items directly in
@@ -917,7 +917,7 @@
 {# ── Read-only notice (footer) ─────────────────────────────────── #}
 {% if not is_user_project %}
 <div class="inp-readonly-notice inp-readonly-notice--capex">
-  <span class="badge badge-muted">Factory Reference</span>
+  <span class="badge badge-muted">Reference</span>
   &nbsp;CAPEX values are template defaults — edit is disabled.
   Use <strong>Duplicate / Save As</strong> to create an editable user project.
 </div>
@@ -930,7 +930,7 @@
 
 {# ── Footer note ─────────────────────────────────────────────── #}
 <div class="table-note">
-  <span class="badge badge-preview">{{ project_ctx.data_source }}</span>
+  <span class="badge badge-preview">Reference project</span>
   &nbsp;App is source of truth · CAPEX is the C.01–C.18
   hierarchy with sub-lines
 </div>
