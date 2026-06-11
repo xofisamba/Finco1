@@ -2783,7 +2783,7 @@ async def new_project_form(request: Request):
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
         request=request,
-        name="partials/new_project_minimal.html",
+        name="project_new_page.html",
         context={
             "project_types": PROJECT_TYPES,
             "validation_errors": [],
@@ -2946,16 +2946,26 @@ async def project_home(request: Request):
 
 
 def _render_project_home(request: Request, user):
-    """Phase P2-FIX-1: shared Project Home renderer.
+    """Phase P2-FIX-1 + P2-FIX-5A: shared Project Home
+    renderer. Used by ``GET /`` (canonical) and
+    ``GET /home`` (legacy redirect target).
 
-    Used by ``GET /`` (canonical) and ``GET /home``
-    (legacy redirect target). Renders the
-    product-shaped Project Home (My Projects +
-    Create New Project CTA).
+    Phase P2-FIX-1 originally returned
+    ``partials/project_home.html`` directly (no
+    ``base.html``), which produced a raw HTML
+    fragment. Phase P2-FIX-5A renders the wrapper
+    ``project_home_page.html`` which is a full
+    standalone HTML document (DOCTYPE, head, body,
+    CSS bundle, JS bundle, top header, brand).
+    The workspace-context base.html is not
+    extended because it requires ``workspace_state``
+    and other workspace-only context that the
+    Project Home / new-project / project-browser
+    pages do not have.
     """
     return templates.TemplateResponse(
         request=request,
-        name="partials/project_home.html",
+        name="project_home_page.html",
         context={
             "home_user_projects": _home_user_projects(user),
         },
@@ -2991,7 +3001,7 @@ async def project_browser(request: Request):
 
     return templates.TemplateResponse(
         request=request,
-        name="partials/project_browser.html",
+        name="project_browse_page.html",
         context={
             # Phase P2-FIX-1: single consolidated project
             # list (presentation only).
