@@ -1434,7 +1434,10 @@ def _user_project_selector_items(user) -> list[dict[str, str]]:
             {
                 "project_code": record.project_code,
                 "label": record.project_name,
-                "meta": f"{record.project_type or 'Unknown'} · {_template_source_label(record.template_source)} seed",
+                # Phase P2-FIX-5E: drop the 'seed' suffix;
+                # the user does not need to know the
+                # underlying template_source code.
+                "meta": f"{record.project_type or 'Unknown'}",
             }
         )
     return items
@@ -1480,10 +1483,9 @@ def _consolidated_project_records(user) -> list[dict[str, str]]:
             {
                 "project_code": record.project_code,
                 "label": record.project_name,
-                "meta": (
-                    f"{record.project_type or 'Unknown'} · "
-                    f"{_template_source_label(record.template_source)} seed"
-                ),
+                # Phase P2-FIX-5E: drop the 'seed' suffix
+                # from user-facing meta line.
+                "meta": f"{record.project_type or 'Unknown'}",
                 "project_type": record.project_type or "",
                 "origin_class": "project",
             }
