@@ -169,6 +169,22 @@ def build_dashboard_kpis(
     # in the dashboard layer).
     y1_revenue = _safe_float(summary.get("y1_revenue_keur"))
     y1_ebitda = _safe_float(summary.get("y1_ebitda_keur"))
+
+    # ── Phase P2-FIX-4: NPV (project net present value, EUR).
+    # NPV is read defensively from the runtime
+    # summary; if not available, the KPI is
+    # shown as "missing" status (same as other
+    # optional KPIs). No recalculation in the
+    # dashboard layer.
+    npv = _safe_float(summary.get("project_npv_keur"))
+    kpis["project_npv"] = {
+        "label": "Project NPV",
+        "value": _fmt_money_keur(npv),
+        "raw": npv,
+        "status": "pass" if npv is not None else "missing",
+        "tooltip": "Project Net Present Value (computed by the runtime)",
+    }
+
     kpis["y1_revenue"] = {
         "label": "Y1 Revenue",
         "value": _fmt_money_keur(y1_revenue),
