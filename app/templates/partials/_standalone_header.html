@@ -1,0 +1,31 @@
+{# ── Phase P2-FIX-5A: shared standalone-page header.
+   Used by project_home_page.html, project_new_page.html,
+   project_browse_page.html. Mirrors the top-header
+   markup from base.html but does NOT depend on
+   base.html's workspace-only context (workspace_state,
+   scenario_workspace partial, nav-compression).
+
+   Hidden != deleted: the original top-header in
+   base.html is unchanged. This is a parallel
+   include for standalone pages only. #}
+<header class="top-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <div class="brand-logo">F</div>
+      <div class="brand-text">
+        <span class="brand-name">Finco One</span>
+        <span class="brand-sub">Project Finance Model</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="env-badge">INTERNAL DEMO</span>
+      <span class="version-badge">v1.7 Pilot</span>
+      <a class="header-help-link" href="/help" title="Help">?</a>
+      {% if user %}
+      <form method="POST" action="/logout" style="display:inline;">
+        <button type="submit" class="logout-btn">Sign out</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</header>
