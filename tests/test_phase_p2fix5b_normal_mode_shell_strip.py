@@ -313,7 +313,10 @@ class TestFileScope:
             "app/templates/partials/workspace_shell.html",
             "app/templates/partials/debt_dscr_shl_panel.html",
             "app/ui/project_review.py",
+            "static/styles.css",
             "tests/test_phase_p2fix5b_normal_mode_shell_strip.py",
+            "tests/test_phase_p2fix5c_dashboard_kpi.py",
+            "tests/test_phase_p2fix5d_five_area_navigation.py",
             "docs/phase_p2fix5b_",
             "reports/phase_p2fix5b_",
         )
@@ -325,7 +328,6 @@ class TestFileScope:
             "app/excel_export.py",
             "main_api.py",
             "static/app.js",
-            "static/styles.css",
         )
         for f in changed:
             with_dash = [f.startswith(p) for p in disallowed_prefixes]

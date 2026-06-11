@@ -1367,6 +1367,16 @@ body {
   align-items: center;
 }
 
+/* ── Phase P2-FIX-5D: hide the legacy 20-tab ws-tab ribbon.
+   The P2-FIX-4 five-area nav is the user-facing
+   navigation. The underlying ws-tab buttons remain
+   in the DOM (hidden != deleted) so switchTab JS
+   keeps working when called from the 5-area nav.
+   The underlying panels / routes are unchanged. */
+.top-tabs-bar {
+  display: none !important;
+}
+
 .top-tabs-inner {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
