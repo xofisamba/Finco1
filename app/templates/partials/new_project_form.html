@@ -14,17 +14,18 @@
   <button type="button" class="btn btn-ghost" onclick="closeNewProjectPanel()">✕ Close</button>
 </div>
 
-{# ── Phase 25B-1: Generic defaults prefill (EXPLORATORY) ───────────── #}
-{# Generic Solar / Generic Wind templates are exploratory and not
-   Excel-parity validated. The prefill button populates the form with
-   round-number defaults from the existing generic factories
-   (create_default_solar_project / create_default_wind_project). No
-   new financial formulas. The user is expected to review, adjust,
-   and save; the EXPLORATORY warning is visible at all times.       #}
+{# ── Phase 25B-1: Generic defaults prefill (Internal-use model) ───── #}
+{# Generic Solar / Generic Wind templates are internal-use model
+   only and not Excel-parity validated. The prefill button
+   populates the form with round-number defaults from the existing
+   generic factories (create_default_solar_project /
+   create_default_wind_project). No new financial formulas. The
+   user is expected to review, adjust, and save; the disclosure
+   notice is visible at all times. #}
 <div class="inp-exploratory-notice" id="np-exploratory-notice" role="note" aria-live="polite">
-  <span class="badge badge-warn">EXPLORATORY</span>
+  <span class="badge badge-warn">Internal-use model</span>
   <div>
-    <strong>Generic Solar / Wind templates are exploratory.</strong>
+    <strong>Generic Solar / Wind templates are internal-use model only.</strong>
     They are <strong>not Excel-parity validated</strong> and
     <strong>not lender / bank / external-audit ready</strong>.
     Defaults are round numbers for sketching only — review every

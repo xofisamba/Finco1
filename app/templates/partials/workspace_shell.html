@@ -162,9 +162,9 @@
               <option value="{{ option.value }}">{{ option.label }}</option>
               {% endfor %}
             </select>
-            <div class="np-warning" role="note" aria-label="Exploratory warning for generic templates">
+            <div class="np-warning" role="note" aria-label="Internal-use model warning for generic templates">
               <span class="badge badge-warn">Warning</span>
-              Generic templates are exploratory / unvalidated. They are not part of the trusted pilot evidence and should be reviewed independently before drawing conclusions.
+              Generic templates are internal-use model only. They are not part of the trusted pilot evidence and should be reviewed independently before drawing conclusions.
             </div>
           </div>
         </div>
@@ -251,6 +251,12 @@
     </div>
   </div>
 
+  {# ── Phase P2-FIX-2: Reviewer note + Lifecycle panel + Export
+     Lineage panel + Governance Status + Reference Parity card
+     are now RELOCATED to the audit / reviewer surface.
+     See: partials/_audit_governance_relocated.html
+     Normal-mode users do NOT see this content here. #}
+  {% if audit_mode %}
   <div class="workspace-reviewer-note" id="workspace-state-guidance" role="note" aria-label="Reviewer guidance for draft, saved, and runtime boundaries">
     Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
   </div>
@@ -298,7 +304,10 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
+  {# ── Phase P2-FIX-2: Export Lineage panel also relocated ─ #}
+  {% if audit_mode %}
   <div class="export-lineage-panel" id="export-lineage-panel" aria-label="Export lineage summary">
     <div class="export-lineage-panel__header">
       <div>
@@ -347,6 +356,7 @@
       {{ export_lineage_ui.current_context.action_note }}
     </div>
   </div>
+  {% endif %}
 
   <!-- ----------------------------------------------- OVERVIEW -- -->
   <div class="tab-panel active" id="panel-overview">
@@ -408,7 +418,8 @@
     <!-- Runtime summary HTMX swap target -->
     <div id="model-output-area"></div>
 
-    <!-- Governance Cards Row -->
+    <!-- Governance Cards Row (relocated to audit in P2-FIX-2) -->
+    {% if audit_mode %}
     <div class="audit-panel" style="margin:1.25rem 0;">
       <div class="card">
         <div class="card-header">
@@ -464,6 +475,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
     {# ── Phase P2-min-3: Dashboard v1 (presentation only) ─────────────── #}
     {# The Dashboard v1 partial renders 8 KPI cards + 3 inline-SVG    #}
@@ -571,7 +583,11 @@
       <div class="placeholder-icon">Cash</div>
       <div class="placeholder-title">Equity Distributions</div>
       <div class="placeholder-desc">Distribution schedule with lockup, sweep, and constraints will appear after a model run.</div>
+      {% if audit_mode %}
       <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. TUHO/Oborovo frozen-template path is validated; generic projects remain unvalidated.</div>
+      {% else %}
+      <div class="placeholder-note">Internal-use model — results are indicative. See the Audit tab for the reviewer notes.</div>
+      {% endif %}
     </div>
   </div>
 
@@ -586,20 +602,29 @@
       <div class="placeholder-icon">User</div>
       <div class="placeholder-title">Sponsor / Equity Returns</div>
       <div class="placeholder-desc">Equity contribution, return metrics, and sponsor waterfall will appear after a model run.</div>
+      {% if audit_mode %}
       <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. Backend remains source of truth.</div>
+      {% else %}
+      <div class="placeholder-note">Internal-use model — results are indicative. See the Audit tab for the reviewer notes.</div>
+      {% endif %}
     </div>
   </div>
 
   <!-- ----------------------------------------------- AUDIT / PARITY -- -->
   <div class="tab-panel" id="panel-audit">
     <div class="panel-header">
-      <div class="panel-title">Audit / Parity</div>
-      <div class="panel-desc">TUHO horizontal parity review: source map, gap register, and convention acceptance log.</div>
+      <div class="panel-title">Audit / Reference</div>
+      <div class="panel-desc">Reviewer-facing governance, lineage, runtime-source and reference evidence. Normal-mode users do not see this content in the overview; it lives here.</div>
     </div>
+
+    {# ── Phase P2-FIX-2: Relocated governance / lineage / runtime #}
+    {# source / review-boundary content. This is the audit /      #}
+    {# reviewer surface that contains the relocated information.#}
+    {% include "partials/_audit_governance_relocated.html" %}
 
     <div class="sheet-card">
       <div class="card-header">
-        <div class="card-title">TUHO Parity - Audit-Only Status</div>
+        <div class="card-title">TUHO Reference - Audit-Only Status</div>
         <span class="badge badge-convention">Audit-Only</span>
       </div>
       <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
@@ -650,7 +675,7 @@
 
     <div style="margin-top:1rem;">
       <a href="#download-parity" class="btn btn-outline" style="width:auto; display:inline-flex;">
-        Open Parity Workbook
+        Open Reference Workbook
       </a>
     </div>
   </div>
@@ -659,7 +684,7 @@
   <div class="tab-panel" id="panel-downloads">
     <div class="panel-header">
       <div class="panel-title">Downloads &amp; Audit Artefacts</div>
-      <div class="panel-desc">Export model outputs, parity workbooks, gap registers, and source maps with reviewer-readable lineage before download.</div>
+      <div class="panel-desc">Export model outputs, reference workbooks, gap registers, and source maps with reviewer-readable lineage before download.</div>
     </div>
 
     {# Phase 25A: Pilot limitations notice in Downloads tab #}
@@ -674,7 +699,7 @@
         Export workbook is generated from backend-authoritative saved/run state. It remains a reviewer-facing audit output, not a free-form Excel model.
       </div>
       <div class="export-lineage-history__desc">
-        Trusted pilot evidence is limited to TUHO and Oborovo frozen-template paths. Generic projects remain exploratory and unvalidated.
+        Trusted pilot evidence is limited to TUHO and Oborovo frozen-template paths. Generic projects remain internal-use model only.
       </div>
       <div class="export-lineage-grid">
         <div class="export-lineage-card">
@@ -702,11 +727,10 @@
           <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_generated_at }}</div>
           <div class="export-lineage-card__meta">Last clean backend run</div>
         </div>
-        <div class="export-lineage-card">
-          <div class="export-lineage-card__label">Governance posture</div>
-          <div class="export-lineage-card__value">G20 BLOCKED</div>
-          <div class="export-lineage-card__meta">R99/R102 NOT APPROVED</div>
-        </div>
+        {# P2-FIX-2: Governance posture card (G20 BLOCKED /
+           R99/R102 NOT APPROVED) relocated to the audit tab.
+           Hidden != deleted: the relocated card lives in
+           partials/_audit_governance_relocated.html. #}
       </div>
     </div>
 
@@ -723,7 +747,7 @@
         <div class="download-icon">CSV</div>
         <div class="download-info">
           <div class="download-name">Runtime Summary CSV</div>
-          <div class="download-desc">Compact machine-readable snapshot of the last clean backend run, including provenance and governance posture.</div>
+          <div class="download-desc">Compact machine-readable snapshot of the last clean backend run, with reviewer notes included.</div>
           <div class="download-lineage-meta">Uses the last clean backend runtime context. Save and run again before sharing if the current draft should be reflected.</div>
         </div>
       </a>
@@ -736,10 +760,10 @@
         </div>
       </a>
       <a href="#download-parity" class="download-item">
-        <div class="download-icon">Parity</div>
+        <div class="download-icon">Reference</div>
         <div class="download-info">
-          <div class="download-name">Parity Workbook</div>
-          <div class="download-desc">Validated frozen-template parity evidence workbook for TUHO and Oborovo review context.</div>
+          <div class="download-name">Reference Workbook</div>
+          <div class="download-desc">Validated frozen-template reference evidence workbook for TUHO and Oborovo review context.</div>
         </div>
       </a>
       <a href="#download-gap" class="download-item">
@@ -772,7 +796,7 @@
   <div class="tab-panel" id="panel-help" role="region" aria-label="Help, onboarding, and model guidance">
     <div class="panel-header">
       <div class="panel-title">Help &amp; Model Guidance</div>
-      <div class="panel-desc">Pilot workflow, onboarding, and reviewer-facing limitations. Reference templates and internal parity evidence only — not a lender approval, bank approval, external audit, or SaaS certification.</div>
+      <div class="panel-desc">Pilot workflow, onboarding, and reviewer-facing limitations. Reference and internal reference evidence only — not a lender approval, bank approval, external audit, or SaaS certification.</div>
     </div>
 
     {% include "partials/pilot_workflow_guide.html" %}

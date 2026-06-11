@@ -59,7 +59,7 @@ RUN_DISABLED_BODY = (
 )
 
 FACTORY_NO_DIRTY_BODY = (
-    "Factory baseline is read-only. Use Duplicate or Save As to create "
+    "Protected original is read-only. Use Duplicate or Save As to create "
     "an editable copy before modifying."
 )
 
@@ -96,7 +96,7 @@ def badge_saved_state(
     """
     if not is_user_project:
         return {
-            "label": "Read-only baseline",
+            "label": "Read-only protected original",
             "state": "factory",
             "css_class": "ds-badge--factory",
             "icon": "🔒",
@@ -151,7 +151,7 @@ def scenario_dirty_indicator(
         return {
             "is_dirty": False,
             "css_class": "",
-            "title": "Factory baseline — read-only",
+            "title": "Protected original — read-only",
         }
     if is_active_scenario and workspace_dirty:
         return {
@@ -179,7 +179,7 @@ def changes_not_saved_notice(
     """
     if not is_user_project:
         return {
-            "title": "Factory baseline",
+            "title": "Protected original",
             "body": FACTORY_NO_DIRTY_BODY,
             "css_class": "ds-notice--factory",
             "icon": "🔒",

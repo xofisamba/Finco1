@@ -51,7 +51,7 @@
   {{ field_row("Type", project_ctx.technology, badge="Template" if project_ctx.data_source == "Factory Reference" else "Saved", badge_class="badge-muted") }}
   {{ field_row("Country", project_ctx.country_iso, badge="Saved", badge_class="badge-pass") }}
   {{ field_row("Capacity", "~{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", badge="Calculated", badge_class="badge-info") }}
-  {{ field_row("Template Origin", project_ctx.template_source or "TUHO" if "tuho" in project_ctx.code|lower else "Oborovo" if "oborovo" in project_ctx.code|lower else "Unknown", badge="Factory Reference", badge_class="badge-muted") }}
+  {{ field_row("Template Origin", project_ctx.template_source or "TUHO" if "tuho" in project_ctx.code|lower else "Oborovo" if "oborovo" in project_ctx.code|lower else "Unknown", badge="Reference", badge_class="badge-muted") }}
 {% endset %}
 {{ section_card("Identity", identity_rows) }}
 
@@ -132,7 +132,19 @@
   {{ field_row("G20 Status", project_ctx.g20_status or "BLOCKED", badge=project_ctx.g20_status or "BLOCKED", badge_class="badge-warn") }}
   {{ field_row("R99/R102", project_ctx.r99_r102_status or "NOT_APPROVED", badge=project_ctx.r99_r102_status or "NOT_APPROVED", badge_class="badge-warn") }}
 {% endset %}
-{{ section_card("Tax Summary", tax_rows, section_note="Tax template override not yet configured. Country-specific defaults apply.") }}
+{% if audit_mode %}
+  {{ section_card("Tax Summary", tax_rows, section_note="Tax template override not yet configured. Country-specific defaults apply.") }}
+{% else %}
+  {# P2-FIX-2: G20 / R99/R102 governance posture is the
+     reviewer surface. In normal mode we expose only a
+     neutral Tax summary without the G20 / R99/R102
+     governance posture rows. #}
+  {% set tax_rows_normal = [
+      field_row("CIT Rate", "{:.1f}%".format(project_ctx.cit_rate_pct * 100) if project_ctx.cit_rate_pct else "—", badge="Template", badge_class="badge-muted"),
+      field_row("Loss Carryforward", "{} years".format(project_ctx.loss_carryforward_years) if project_ctx.loss_carryforward_years else "—", badge="Template", badge_class="badge-muted"),
+  ] %}
+  {{ section_card("Tax Summary", tax_rows_normal, section_note="Tax template override not yet configured. Country-specific defaults apply. See the Audit / Reference tab for the reviewer notes.") }}
+{% endif %}
 
 {# ── Dirty-state indicator ─────────────────────────────────────────────── #}
 <div id="dirty-indicator" class="inp-dirty-indicator" style="display:none;">
@@ -140,11 +152,11 @@
   <span style="font-size:0.75rem;color:var(--muted);">Save to persist · Run does not auto-save</span>
 </div>
 
-{# ── Read-only baseline notice ────────────────────────────────────────── #}
+{# ── Read-only protected-original notice (P2-FIX-2 relabel) ──── #}
 {% if not is_user_project %}
 <div class="inp-readonly-notice">
   <span class="badge badge-muted">Read-only</span>
-  <span>Factory baseline — use <strong>Duplicate</strong> or <strong>Save As</strong> to create an editable copy before modifying.</span>
+  <span>Protected original — use <strong>Duplicate</strong> or <strong>Save As</strong> to create an editable copy before modifying.</span>
 </div>
 {% endif %}
 

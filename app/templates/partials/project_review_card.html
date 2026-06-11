@@ -31,7 +31,7 @@
     {% elif review.classification == "parity_validated" %}
     Parity-validated reference project
     {% elif review.classification == "factory_template" %}
-    Factory baseline — read-only reference
+    Protected original — read-only reference
     {% else %}
     User-created project
     {% endif %}
@@ -122,7 +122,7 @@
 {%- macro exploratory_notes(review) -%}
 {% if review and review.exploratory_limitations %}
 <div class="rev-section rev-section--note">
-  <div class="rev-section__title">Exploratory Limitations</div>
+  <div class="rev-section__title">Internal-use model notes</div>
   <ul class="rev-list">
     {% for note in review.exploratory_limitations %}
     <li>{{ note }}</li>
