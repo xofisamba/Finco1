@@ -25,13 +25,13 @@ from typing import Any, Optional
 KNOWN_EXCLUSIONS = [
     "Construction schedule engine (use_construction_schedule_engine=False) — not promoted.",
     "Senior IDC (Interest During Construction) is not promoted to the senior debt schedule.",
-    "Debt sculpting solver — the senior debt schedule is fixture-backed, not live.",
+    "Debt sculpting solver — the senior debt schedule is Excel-anchored, not live.",
     "Pari-passu reserves / construction reserves engine — not active in the runtime.",
-    "Tax engine (CIT, loss carryforward) is fixture-backed; not a live computation.",
-    "Depreciation schedule is fixture-backed; not a live computation.",
+    "Tax engine (CIT, loss carryforward) is Excel-anchored; not a live computation.",
+    "Depreciation schedule is Excel-anchored; not a live computation.",
     "Multi-user / multi-tenant — single-user internal pilot mode only.",
     "Lender / bank approval — this app does not provide credit analysis.",
-    "External audit / certification — the Audit / Reference tab is internal review tooling.",
+    "External audit / certification — the Audit tab is internal review tooling.",
     "Enterprise SaaS / RBAC — no production deployment; not certified.",
 ]
 
