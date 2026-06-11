@@ -370,40 +370,13 @@
        project is not exploratory. #}
     {% include "partials/_generic_status_line.html" %}
 
-    <div class="kpi-grid" id="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-label">Project IRR</div>
-        <div class="kpi-value" id="kpi-project-irr">-</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Equity IRR</div>
-        <div class="kpi-value" id="kpi-equity-irr">-</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Avg DSCR</div>
-        <div class="kpi-value" id="kpi-avg-dscr">-</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Senior Debt</div>
-        <div class="kpi-value" id="kpi-senior-debt">-</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Total Revenue</div>
-        <div class="kpi-value" id="kpi-revenue">-</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">EBITDA</div>
-        <div class="kpi-value" id="kpi-ebitda">-</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Distributions</div>
-        <div class="kpi-value" id="kpi-distributions">-</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Warnings</div>
-        <div class="kpi-value warning" id="kpi-warnings">-</div>
-      </div>
-    </div>
+    {# Phase P2-FIX-5C: legacy KPI grid (8 dash-only placeholders) #}
+    {# removed. The single source of truth is the Phase P2-min-3 #}
+    {# Dashboard v1 below, which uses runtime values and has its #}
+    {# own "Run model" CTA. Showing two KPI grids side-by-side #}
+    {# confused pilots. Hidden != deleted: the original markup #}
+    {# lived at this position; removing it does not change the #}
+    {# data model or the runtime. #}
 
     {# Phase 56B: Compact contextual Help pointer replaces the full inline Help block.
        The full Help content (workflow guide + onboarding) now lives in the dedicated
