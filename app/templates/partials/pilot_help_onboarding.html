@@ -22,14 +22,14 @@
       </div>
     </div>
 
-    <!-- Reference (Phase 56B: rephrased from "Validated templates") -->
+    <!-- Project types (Phase P2-FIX-5B: 'Reference' badge -> 'Protected'. User-facing copy.) -->
     <div class="pho-section">
-      <div class="pho-section-title">Reference</div>
+      <div class="pho-section-title">Project types</div>
       <div class="pho-item">
-        [Reference] <strong>TUHO Wind (72 MW, Croatia)</strong> - frozen reference, has reference evidence against Excel (senior debt, SHL opening, distributions, CO2 revenue)
+        [Protected] <strong>TUHO Wind (72 MW, Croatia)</strong> - read-only protected original. Senior debt, SHL opening, distributions, and CO2 revenue are anchored to Excel values.
       </div>
       <div class="pho-item">
-        [Reference] <strong>Oborovo Solar (53.63 MW, Croatia)</strong> - frozen reference, has reference evidence against Excel
+        [Protected] <strong>Oborovo Solar (53.63 MW, Croatia)</strong> - read-only protected original. Outputs are anchored to Excel values.
       </div>
       <div class="pho-item pho-item--warn">
         [Warning] <strong>Generic / new projects</strong> - internal-use model only; assumptions and outputs should be reviewed independently before drawing conclusions
@@ -52,7 +52,7 @@
     <div class="pho-section">
       <div class="pho-section-title">How to run a pilot workflow</div>
       <div class="pho-item">
-        <strong>1. Select project</strong> - Choose TUHO or Oborovo reference for reference-reviewed results, or generic for exploration only
+        <strong>1. Select project</strong> - Choose TUHO or Oborovo for Excel-anchored results, or generic for exploration only
       </div>
       <div class="pho-item">
         <strong>2. Review assumptions</strong> - Check inputs in the sidebar before running
@@ -67,24 +67,24 @@
         <strong>5. Review results</strong> - KPIs (IRR, DSCR) and debt/equity panels appear after run
       </div>
       <div class="pho-item">
-        <strong>6. Review audit</strong> - Audit / Reference tab shows reference evidence against Excel
+        <strong>6. Review audit</strong> - Audit tab shows Excel-anchored evidence for TUHO and Oborovo
       </div>
       {# Phase 56B: removed positive "validated" language. "parity evidence" remains factual. #}
       <div class="pho-item">
-        <strong>7. Export</strong> - Downloads tab provides XLSX, CSV, and reference workbooks
+        <strong>7. Export</strong> - Downloads tab provides XLSX, CSV, and Excel-anchored workbooks
       </div>
     </div>
 
     <!-- How to read audit / reconciliation -->
     <div class="pho-section">
-      <div class="pho-section-title">How to read Audit / Reference</div>
+      <div class="pho-section-title">How to read the Audit tab</div>
       <div class="pho-item">
-        The Audit / Reference tab summarises reference evidence for TUHO and Oborovo.
+        The Audit tab summarises Excel-anchored evidence for TUHO and Oborovo.
         It is <em>internal review tooling</em>, not a certified external audit.
         Green = within tolerance. Yellow = accepted convention difference. Red = gap.
       </div>
       <div class="pho-item">
-        Senior Debt, SHL Opening, and Distributions are the primary reference anchors.
+        Senior Debt, SHL Opening, and Distributions are the primary Excel-anchored values.
         Equity IRR has a +/-1.0pp tolerance; Project IRR has a +/-0.5pp tolerance.
       </div>
     </div>
@@ -97,7 +97,7 @@
         If you changed inputs after the last run, save the scenario and run again before exporting.
       </div>
       <div class="pho-item">
-        Available exports: Values-only Excel, Runtime Summary CSV, Institutional Workbook, Reference Workbook, Gap Register, Source Map.
+        Available exports: Values-only Excel, Runtime Summary CSV, Institutional Workbook, Audit Workbook, Gap Register, Source Map.
       </div>
     </div>
 
@@ -121,13 +121,13 @@
         [Not included] <strong>Not a lender or bank approval</strong> - this app does not provide credit analysis or lender approval
       </div>
       <div class="pho-item pho-item--err">
-        [Not included] <strong>Not an external audit or certification</strong> - the Audit / Reference tab is internal review tooling
+        [Not included] <strong>Not an external audit or certification</strong> - the Audit tab is internal review tooling
       </div>
       <div class="pho-item pho-item--err">
         [Not included] <strong>Not SaaS-ready</strong> - single-user internal pilot mode; no multi-tenant isolation or RBAC
       </div>
       <div class="pho-item pho-item--err">
-        [Not included] <strong>Not a live sculpting solver</strong> - the frozen senior debt schedule is fixture-backed from Excel; it is not a dynamic sculpting calculation
+        [Not included] <strong>Not a live sculpting solver</strong> - the frozen senior debt schedule is anchored to Excel; it is not a dynamic sculpting calculation
       </div>
       <div class="pho-item">
         All model outputs are produced by the backend Python engine. Browser-side JS is display-only and does not calculate financial outputs.
