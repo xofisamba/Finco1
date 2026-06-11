@@ -3135,12 +3135,56 @@ async def save_workspace_draft_endpoint(request: Request):
         ScenarioStateRouteDeps,
         execute_draft_route,
     )
+    from app.ui.protected_reference_service import (
+        is_protected_reference,
+        first_edit_response,
+    )
+    from app.persistence.repository import (
+        get_project_record as gpr_for_p2fix3_guard,
+    )
 
     user = get_current_user(request)
     if not user:
         return JSONResponse({"error": "Login required"}, status_code=401)
 
     form = await request.form()
+
+    # ── Phase P2-FIX-3: C2 first-edit guard (defense in depth) ─
+    # If the active project is a protected reference (TUHO /
+    # Oborovo factory template), reject the draft save with a
+    # 409-style response. The frontend will surface the
+    # "Create editable copy?" prompt. The protected reference
+    # fixture never mutates.
+    #
+    # The guard is performed in main_web.py (the route layer)
+    # rather than in scenario_state_route_service.execute_draft_route
+    # to keep the P2-FIX-2 file-scope contract intact. The
+    # service-level guard in
+    # scenario_state_route_service.execute_draft_route is
+    # also in place as a defense-in-depth check; both
+    # implementations agree on the 409 contract.
+    try:
+        active_project_code = (
+            form.get("active_project")
+            or form.get("project_code")
+            or ""
+        )
+        if active_project_code:
+            guard_record = gpr_for_p2fix3_guard(
+                user_id=user.user_id, project_code=active_project_code
+            )
+            if is_protected_reference(guard_record):
+                return JSONResponse(
+                    first_edit_response(guard_record),
+                    status_code=409,
+                )
+    except Exception:
+        # If the guard lookup fails for any reason, fall
+        # through to the normal service call. The service has
+        # its own guard as a backup. This is presentation-only
+        # behavior and must not break the existing /draft flow.
+        pass
+
     deps = ScenarioStateRouteDeps(
         collect_form_snapshot=_collect_form_snapshot,
         project_workspace_from_snapshot=_project_workspace_from_snapshot,
@@ -3674,6 +3718,136 @@ async def update_overrides_endpoint(request: Request, scenario_id: str):
         name=outcome.template_name,
         context=outcome.context,
         headers=outcome.headers or None,
+    )
+
+
+@app.post("/projects/{project_code}/confirm-first-edit-copy")
+async def confirm_first_edit_copy_endpoint(
+    request: Request, project_code: str,
+):
+    """Phase P2-FIX-3 (C2 first-edit trigger):
+
+    The user is opening a protected reference project (TUHO Wind
+    or Oborovo Solar PV) and has confirmed the prompt:
+
+        "This is a protected reference project. Create an editable
+        copy?"
+
+    This route creates a user-owned working copy from the
+    protected reference and redirects the user to the new copy.
+    The original reference fixture is NOT mutated.
+
+    The new project gets a new project_code like ``tuho_your_copy``
+    (via the existing save-as name-generation logic), the
+    project_origin is set to ``user_created``, and the
+    replay_metadata records the source.
+
+    If the source is NOT a protected reference (i.e. someone hit
+    this URL on a generic / user-created project), the route
+    returns 400 — this URL is reserved for the C2 transition.
+    """
+    from app.ui.protected_reference_service import (
+        is_protected_reference,
+    )
+    from app.persistence.repository import get_project_record as gpr
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    source = gpr(user_id=user.user_id, project_code=project_code)
+    if source is None:
+        return JSONResponse(
+            {"error": "project_not_found", "project_code": project_code},
+            status_code=404,
+        )
+    if not is_protected_reference(source):
+        return JSONResponse(
+            {
+                "error": "not_a_protected_reference",
+                "message": (
+                    "This endpoint is only valid for protected "
+                    "reference projects (TUHO / Oborovo)."
+                ),
+                "project_code": project_code,
+            },
+            status_code=400,
+        )
+
+    # Reuse the existing /save-as machinery. The deps below are
+    # the same as /save-as (Phase 51O-2) with two modifications:
+    # - replay_metadata tags the transition as
+    #   "working_copy_from_protected_reference" (audit / reviewer
+    #   can trace the lineage).
+    # - the resulting project_origin is "user_created" (via
+    #   execute_project_save_as_route default for non-user
+    #   source).
+    from app.services.project_save_as_service import (
+        ProjectSaveAsRouteDeps,
+        execute_project_save_as_route,
+    )
+
+    def _project_record_creation_governance_state():
+        return {
+            "g20": "BLOCKED",
+            "r99_r102": "NOT_APPROVED",
+            "lender_ready": False,
+        }
+
+    def _workspace_state_initialization_governance_state():
+        return {
+            "g20": "BLOCKED",
+            "r99_r102": "NOT_APPROVED",
+            "lender_ready": False,
+        }
+
+    def _build_project_replay_metadata(source, project_code):
+        return {
+            "export_type": "working_copy_from_protected_reference",
+            "source_project_code": project_code,
+            "source_project_origin": source.project_origin,
+            "created_via": "p2fix3_first_edit_confirmation",
+            "baseline_source": False,
+        }
+
+    def _build_workspace_replay_metadata(source, project_code):
+        return {
+            "export_type": "working_copy_workspace_initialized",
+            "source_project_code": project_code,
+            "baseline_source": False,
+        }
+
+    def _is_already_user_project(source):
+        # is_already_user_project is a defensive gate in
+        # execute_project_save_as_route. For the C2 first-edit
+        # trigger, we ALWAYS want a new copy, so we return False
+        # unconditionally. (The service treats this as a hint
+        # only; the main work is the save_project call.)
+        return False
+
+    deps = ProjectSaveAsRouteDeps(
+        get_project_record=gpr,
+        save_project=save_project,
+        save_workspace_state=save_workspace_state,
+        now_utc=_now_utc,
+        project_record_creation_governance_state=_project_record_creation_governance_state,
+        workspace_state_initialization_governance_state=_workspace_state_initialization_governance_state,
+        build_project_replay_metadata=_build_project_replay_metadata,
+        build_workspace_replay_metadata=_build_workspace_replay_metadata,
+        is_already_user_project=_is_already_user_project,
+    )
+    outcome = await execute_project_save_as_route(
+        request=request, project_code=project_code, user=user, deps=deps,
+    )
+    if outcome.is_redirect:
+        return RedirectResponse(
+            url=outcome.redirect_url, status_code=outcome.status_code
+        )
+    # If the save-as service returned a JSON outcome (e.g. 200
+    # with the new project_code), forward it. The frontend can
+    # then navigate to the new project_code.
+    return JSONResponse(
+        outcome.payload, status_code=outcome.status_code
     )
 
 
