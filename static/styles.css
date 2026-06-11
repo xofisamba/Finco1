@@ -7556,3 +7556,38 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   height: auto;
   max-height: 220px;
 }
+
+/* ── Phase P2-min-4: Navigation Compression ─────────────────────────── */
+
+.nav-compression {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.nav-compression-tab {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-2, #4b5563);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.45rem 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.nav-compression-tab:hover {
+  background: rgba(107, 114, 128, 0.08);
+  color: var(--text, #111827);
+}
+
+.nav-compression-tab.active {
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border-color: var(--primary, #2563eb);
+}

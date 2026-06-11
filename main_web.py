@@ -2201,6 +2201,15 @@ async def index(request: Request, project: str | None = None):
             "export_lineage_ui": _build_export_lineage_ui_context(project_record, workspace_state, export_lineage),
             "scenario_summary_cards": scenario_summary_cards,
             "compare_result": None,
+            # Phase P2-min-4: Navigation Compression
+            # (presentation only). The compressed
+            # nav bar is rendered above the
+            # existing ws-tab ribbon. The existing
+            # ws-tab buttons + panel panels +
+            # routes are preserved (hidden != deleted).
+            "nav_compression_enabled": (
+                project_record.project_origin == "user_created"
+            ),
             # Phase P2-min-3: Dashboard v1 (presentation only).
             # Inline dashboard data: 8 KPI cards + 3 inline-SVG
             # charts. Server-rendered. NO Chart.js / Plotly / D3.
