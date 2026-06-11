@@ -229,15 +229,15 @@ class TestIndexContextContract:
         )
 
     def test_get_root_has_workspace_marker(self, client):
-        """GET / response must include workspace / sidebar marker.
+        """GET /?project=tuho must render the workspace.
 
-        The 56E sidebar uses `.ps-ap-name` for the active project
-        name. The 56B help tab uses `data-tab="help"`. The 56F
-        banner uses `.banner-56f`. We accept any of these as a
-        workspace marker; together they confirm the workspace
-        shell rendered without crashing.
+        Phase P2-FIX-1: ``GET /`` (no project) now
+        renders the Project Home (presentation
+        landing). To verify the workspace shell
+        still renders, query with an explicit
+        ``?project=tuho`` parameter.
         """
-        r = client.get("/", follow_redirects=True)
+        r = client.get("/?project=tuho", follow_redirects=True)
         body = r.text
         markers = [
             "ps-ap-name",        # 56E sidebar
@@ -251,9 +251,55 @@ class TestIndexContextContract:
                 # Found at least one workspace marker.
                 return
         pytest.fail(
-            "GET / response is missing every workspace marker. "
-            "Expected at least one of: " + ", ".join(markers)
+            "GET /?project=tuho response is missing every workspace "
+            "marker. Expected at least one of: " + ", ".join(markers)
         )
+
+    def test_get_root_no_project_renders_project_home(self, client):
+        """Phase P2-FIX-1: ``GET /`` (no project)
+        renders the Project Home (My Projects +
+        Create New Project CTA), not the old
+        workspace shell.
+        """
+        r = client.get("/", follow_redirects=True)
+        body = r.text
+        # The Project Home partial exposes
+        # the "My projects" section label
+        # and the Create New Project CTA.
+        home_markers = [
+            "ph-cta",            # Create New Project CTA class
+            "ph-section",        # My projects section class
+            "ph-grid",           # Project grid
+            "ph-card",           # Project card
+        ]
+        for marker in home_markers:
+            if marker in body:
+                return
+        pytest.fail(
+            "GET / (no project) response is missing every Project Home "
+            "marker. Expected at least one of: " + ", ".join(home_markers)
+        )
+
+    def test_get_root_no_project_does_not_render_workspace_machinery(self, client):
+        """Phase P2-FIX-1: ``GET /`` (no project)
+        must NOT render the old workspace
+        machinery (inputs section, audit
+        panel, scenario matrix).
+        """
+        r = client.get("/", follow_redirects=True)
+        body = r.text
+        # The Project Home does not show
+        # the inputs section.
+        if 'id="panel-inputs"' in body:
+            pytest.fail(
+                "GET / (no project) must NOT render the old inputs section"
+            )
+        # The Project Home does not show
+        # the audit panel.
+        if 'id="panel-audit"' in body:
+            pytest.fail(
+                "GET / (no project) must NOT render the old audit panel"
+            )
 
     def test_get_root_no_validation_errors_nameerror(self, client):
         """The 56H-1 fix: GET / must not raise NameError on
