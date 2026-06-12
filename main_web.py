@@ -19,6 +19,11 @@ from app.capex_engine import build_capex_line_items_from_defaults
 from app.project_factories import create_default_oborovo, create_default_tuho_wind1
 from app.project_factories import create_default_solar_project, create_default_wind_project
 
+# Phase P2-FIX-6: C2 first-edit UX. The state banner
+# uses ``is_protected_reference`` to decide whether
+# to render the 'Create editable copy' button.
+from app.ui.protected_reference_service import is_protected_reference
+
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
 from app.input_adapter import SnapshotInputError, build_projectinputs, build_projectinputs_from_snapshot
@@ -2322,6 +2327,15 @@ async def index(request: Request, project: str | None = None):
             "workspace_state": workspace_state,
             "workspace_state_meta": _workspace_state_meta(workspace_state),
             "active_project_code": project_record.project_code,
+            # Phase P2-FIX-6: C2 first-edit UX. The state
+            # banner uses this flag to decide whether
+            # to render the 'Create editable copy' button
+            # for the active project. Only TUHO /
+            # Oborovo are protected references. User-
+            # created working copies of these are not
+            # protected (they have project_origin =
+            # 'user_created').
+            "is_protected_reference": is_protected_reference(project_record),
             # Phase P2-FIX-1: single consolidated project
             # list (presentation only). The underlying
             # factory_template / user_created / saved_
