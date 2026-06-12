@@ -2573,6 +2573,37 @@ async def run(request: Request):
         body_str = body_str.replace("<body", outcome.prepend_html + "<body")
     else:
         body_str = outcome.prepend_html + body_str
+
+    # OOB dashboard KPI update — append after the runtime_summary HTML so
+    # HTMX swaps #dashboard-v1 in-place without a full page reload.
+    # Read raw KPIs from the workspace state that record_workspace_runtime
+    # just saved; extract project from form (available in this route scope).
+    if outcome.template_name == "partials/runtime_summary.html":
+        _active_project_code = form.get("active_project", "").strip().lower()
+        _project_rec = _resolve_project_record(user, _active_project_code, {"active_project": _active_project_code})
+        if _project_rec:
+            _ws = get_workspace_state(user.user_id, _project_rec.project_id)
+            raw_kpis = getattr(_ws, "last_runtime_summary", None) or {} if _ws else {}
+            if raw_kpis:
+                from app.ui.dashboard import build_dashboard_kpis_from_raw_kpis
+                import datetime as _dt
+                oob_kpis = build_dashboard_kpis_from_raw_kpis(raw_kpis)
+                rs = outcome.context.get("runtime_summary", {})
+                run_status_label = (
+                    rs.get("last_runtime_origin_label", "Backend runtime")
+                    if isinstance(rs, dict) else "Backend runtime"
+                )
+                oob_rendered = templates.TemplateResponse(
+                    request=request,
+                    name="partials/_dashboard_oob.html",
+                    context={
+                        "dashboard_kpis": oob_kpis,
+                        "run_status_label": run_status_label,
+                        "run_timestamp": _dt.datetime.now(tz=_dt.timezone.utc).strftime("%H:%M UTC"),
+                    },
+                )
+                body_str += oob_rendered.body.decode("utf-8")
+
     return HTMLResponse(content=body_str, status_code=rendered.status_code)
 
 
