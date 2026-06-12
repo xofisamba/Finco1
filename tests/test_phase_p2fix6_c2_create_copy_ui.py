@@ -309,6 +309,9 @@ class TestFileScope:
             "tests/test_phase_wf1_",
             "tests/test_phase_wf2_",
             "tests/test_phase_wf3_",
+            "tests/test_phase_wf4_",
+            "tests/test_phase_wf5_",
+            "app/templates/partials/_results_subnav.html",
         )
         disallowed_prefixes = (
             "app/persistence/",

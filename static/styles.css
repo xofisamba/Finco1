@@ -8637,3 +8637,65 @@ tr.fc-grid-header--sub th {
 }
 
 /* ── End WF-4 ────────────────────────────────────────────────────── */
+
+/* ── Phase WF-5: Grouped Results sub-navigation ──────────────────── */
+.results-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  padding: 0.6rem 0.75rem 0.5rem;
+  background: var(--surface-2, #f8f9fb);
+  border-bottom: 1px solid var(--border, #dde4ed);
+  align-items: flex-start;
+}
+.results-subnav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding-right: 1rem;
+  border-right: 1px solid var(--border, #dde4ed);
+}
+.results-subnav-group:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+.results-subnav-group-label {
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3, #9ca3af);
+  margin-bottom: 0.1rem;
+  white-space: nowrap;
+}
+.results-subnav-tab {
+  background: none;
+  border: none;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-2, #4b5563);
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+.results-subnav-tab:hover {
+  background: var(--surface-3, #eef2f7);
+  color: var(--text, #111827);
+}
+.results-subnav-tab.active,
+.results-subnav-tab[aria-selected="true"] {
+  background: var(--accent-light, #eff6ff);
+  color: var(--accent, #2563eb);
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  .results-subnav {
+    gap: 0.4rem 0.75rem;
+  }
+  .results-subnav-group {
+    padding-right: 0.6rem;
+  }
+}
+/* ── End WF-5 ────────────────────────────────────────────────────── */
