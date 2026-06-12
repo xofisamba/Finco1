@@ -479,6 +479,18 @@ class TestShellStripFileScope:
             "tests/test_phase_p2fix3_",
             "docs/phase_p2fix4_",
             "reports/phase_p2fix4_",
+            # Phase P2-FIX-7 / P2-FIX-7A allowlists.
+            "tests/test_phase_p2fix7_production_cleanup.py",
+            "tests/test_phase_p2fix7a_css_parser_cleanup.py",
+            "tests/test_phase_p2fix5b_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix5c_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix5d_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix5e_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix6_",  # P2-FIX-7A cross-arc
+            "docs/phase_p2fix7_",
+            "reports/phase_p2fix7_",
+            "docs/phase_p2fix7a_",
+            "reports/phase_p2fix7a_",
         )
         # Disallowed locations that must not change.
         disallowed_prefixes = (
@@ -490,7 +502,10 @@ class TestShellStripFileScope:
             "main_api.py",
             "static/app.js",
         )
+        # Phase P2-FIX-7 / P2-FIX-7A: allow static/styles.css.
         for f in changed:
+            if f == "static/styles.css":
+                continue
             with_dash = [f.startswith(p) for p in disallowed_prefixes]
             assert not any(with_dash), (
                 f"Disallowed file changed: {f}"

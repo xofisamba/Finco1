@@ -84,17 +84,39 @@ class TestStandalonePageCSS:
         )
 
     def test_inline_style_fallback_in_standalone_header(self):
-        """P2-FIX-7 also adds the same rules as an
-        inline <style> in _standalone_header.html so
-        that browsers can apply them even when a
-        pre-existing CSS syntax error in main branch
-        prevents the external sheet from being fully
-        parsed. The inline <style> is the runtime
-        guarantee; the external CSS is the long-term
-        source of truth."""
+        """P2-FIX-7A: the temporary inline <style>
+        fallback that P2-FIX-7 added in
+        _standalone_header.html has been removed
+        now that the CSS parser bugs in
+        ``static/styles.css`` are fixed. The
+        standalone page rules now load from the
+        external stylesheet only.
+
+        Hidden != deleted: the original
+        _standalone_header.html (P2-FIX-5A) never
+        had an inline <style> block; P2-FIX-7
+        added it as a runtime fallback. P2-FIX-7A
+        removes it because the underlying CSS
+        parser bugs are now fixed, so the
+        external stylesheet delivers the
+        standalone rules on its own.
+        """
         header = (REPO_ROOT / "app" / "templates" / "partials" / "_standalone_header.html").read_text()
-        assert "body.standalone-page" in header
-        assert "page-shell" in header
+        # Strip Jinja {# ... #} comments first so
+        # the assertion does not match the literal
+        # text "<style>" inside a docstring/comment.
+        header_no_comments = re.sub(
+            r"\{#.*?#\}", "", header, flags=re.DOTALL
+        )
+        # Inline <style> block must be GONE.
+        assert "<style>" not in header_no_comments, (
+            "Inline <style> fallback must be removed "
+            "in P2-FIX-7A"
+        )
+        # The header still has its normal P2-FIX-5A
+        # markup (top-header, header-inner, etc.).
+        assert "top-header" in header
+        assert "header-inner" in header
 
     def test_standalone_main_class_defined(self):
         assert re.search(r"\.standalone-main\s*{", self.css), (
@@ -336,6 +358,7 @@ class TestFileScope:
             "app/templates/partials/_standalone_header.html",
             "app/templates/index.html",  # extended for Fix 3 closure
             "tests/test_phase_p2fix7_",
+            "tests/test_phase_p2fix7a_",  # P2-FIX-7A cross-arc
             "tests/test_phase_p2fix6_",  # cross-arc allowlist
             "tests/test_phase_p2fix5a_",  # cross-arc allowlist
             "tests/test_phase_p2fix5b_",  # cross-arc allowlist
@@ -343,8 +366,12 @@ class TestFileScope:
             "tests/test_phase_p2fix5d_",  # cross-arc allowlist
             "tests/test_phase_p2fix5e_",  # cross-arc allowlist
             "tests/test_phase_p2fix3_",   # cross-arc allowlist
+            "tests/test_phase_p2fix2_",   # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix4_",   # P2-FIX-7A cross-arc
             "docs/phase_p2fix7_",
             "reports/phase_p2fix7_",
+            "docs/phase_p2fix7a_",
+            "reports/phase_p2fix7a_",
         )
         disallowed_prefixes = (
             "app/persistence/",
