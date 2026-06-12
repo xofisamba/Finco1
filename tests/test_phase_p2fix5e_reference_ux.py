@@ -325,6 +325,18 @@ class TestFileScope:
             "reports/phase_p2fix7_",
             "docs/phase_p2fix7a_",
             "reports/phase_p2fix7a_",
+            # P2-FIX-8 cross-arc allowlist
+            "app/templates/base.html",
+            "app/templates/project_home_page.html",
+            "app/templates/project_new_page.html",
+            "app/templates/project_browse_page.html",
+            "app/templates/partials/workspace_tabs.html",
+            "app/templates/partials/workspace_shell.html",
+            "app/templates/partials/project_home.html",
+            "app/middleware/security_headers.py",
+            "scripts/",
+            "tests/test_phase_p2fix8_",
+            "tests/test_phase_p2fix5a_",
         )
         disallowed_prefixes = (
             "app/persistence/",

@@ -1,37 +1,51 @@
-{# ── Phase P2-min-1: Project Home (presentation entry point) ───────
-   This is a NEW, product-shaped first screen for the user.
-   - Lists user projects (presentation filter: factory templates
-     and baseline parity fixtures are intentionally hidden from
-     this view, see PR1 brief).
-   - Exposes a single "Create New Project" CTA.
-   - Shows a one-line status (Generic disclosure rule).
-   - Hides the internal vocabulary (factory / baseline / parity /
-     calibration / TUHO / Oborovo / G20 / R99 / R102 / runtime-
-     source labels / exploratory warning copy) — the PR2
-     followup deepens the vocabulary cleanup; PR1 only hides
-     factory templates from the home list itself.
-   Hidden ≠ deleted. The factory templates remain reachable
-   from /projects/browse (presentation-filter only).
+{# ── P2-FIX-8 PR3: My Projects table ─────────────────────────────────
+   Table view: name, technology (from record — never run state),
+   country, size MW, last edited, last run, status, actions.
+   Technology is resolved server-side from ProjectRecord fields so
+   "Unknown" never appears. Factory templates, baselines and parity
+   fixtures remain hidden (presentation filter — reachable via Browse).
 #}
 
 {% if home_user_projects %}
 <div class="ph-section">
   <div class="ph-section-label">My projects</div>
-  <div class="ph-grid">
-    {% for item in home_user_projects %}
-    <div class="ph-card ph-card--user"
-         data-ph-card="user"
-         data-project-code="{{ item.project_code }}"
-         role="button"
-         tabindex="0"
-         onclick="switchToProject('{{ item.project_code }}')"
-         onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
-      <div class="ph-card-info">
-        <div class="ph-card-name">{{ item.label }}</div>
-        <div class="ph-card-meta">{{ item.meta }}</div>
-      </div>
-    </div>
-    {% endfor %}
+  <div class="ph-table-wrap">
+    <table class="ph-table" role="grid" aria-label="My projects">
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Technology</th>
+          <th scope="col">Country</th>
+          <th scope="col">Size (MW)</th>
+          <th scope="col">Last edited</th>
+          <th scope="col">Last run</th>
+          <th scope="col">Status</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in home_user_projects %}
+        <tr class="ph-table-row" data-project-code="{{ item.project_code }}">
+          <td class="ph-table-name">
+            <a href="/?project={{ item.project_code }}" class="ph-table-link">{{ item.name }}</a>
+          </td>
+          <td>{{ item.technology }}</td>
+          <td>{{ item.country }}</td>
+          <td>{{ item.capacity_mw }}</td>
+          <td class="ph-table-date">{{ item.last_edited }}</td>
+          <td class="ph-table-date">{{ item.last_run }}</td>
+          <td>
+            <span class="ph-status ph-status--{{ item.status | lower | replace(' ', '-') }}">
+              {{ item.status }}
+            </span>
+          </td>
+          <td class="ph-table-actions">
+            <a href="/?project={{ item.project_code }}" class="ph-action-link">Open</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% else %}
@@ -42,11 +56,7 @@
 {% endif %}
 
 <div class="ph-actions">
-  <a class="btn btn-primary ph-cta"
-     href="/projects/new"
-     hx-get="/projects/new"
-     hx-target="#new-project-result"
-     hx-swap="innerHTML">+ Create New Project</a>
+  <a class="btn btn-primary ph-cta" href="/projects/new">+ Create New Project</a>
 </div>
 
 <div id="new-project-result"></div>

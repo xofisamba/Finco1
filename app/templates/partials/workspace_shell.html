@@ -592,10 +592,13 @@
       <div class="panel-desc">Reviewer-facing governance, lineage, runtime-source and reference evidence. Normal-mode users do not see this content in the overview; it lives here.</div>
     </div>
 
-    {# ── Phase P2-FIX-2: Relocated governance / lineage / runtime #}
-    {# source / review-boundary content. This is the audit /      #}
-    {# reviewer surface that contains the relocated information.#}
+    {# P2-FIX-8 PR2: Governance / lineage / review-boundary content
+       rendered only in reviewer/audit mode. Normal mode does not
+       ship forbidden terms (G20, R99/R102, Lifecycle Clarity, etc.)
+       to the client at all — not even in hidden tab panels. #}
+    {% if audit_mode %}
     {% include "partials/_audit_governance_relocated.html" %}
+    {% endif %}
 
     <div class="sheet-card">
       <div class="card-header">
@@ -626,7 +629,8 @@
       </div>
     </div>
 
-    <!-- Governance status cards -->
+    {% if audit_mode %}
+    <!-- Governance status cards (audit/reviewer mode only) -->
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-top:1rem;">
       <div class="card">
         <div class="card-header">
@@ -653,6 +657,7 @@
         Open Reference Workbook
       </a>
     </div>
+    {% endif %}
   </div>
 
   <!-- ----------------------------------------------- DOWNLOADS -- -->

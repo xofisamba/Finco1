@@ -1,4 +1,8 @@
 <!-- Workspace Tabs — Excel-like tab ribbon — Phase 9.5 -->
+{# P2-FIX-8 PR2: Old 20-tab ribbon not rendered in normal mode.
+   Five-area nav (workspace_shell ph-nav) is the normal-mode nav.
+   In reviewer/audit mode the legacy ribbon is available for reference. #}
+{% if audit_mode %}
 <div class="top-tabs-bar" id="top-tabs-bar">
   <div class="top-tabs-inner">
     <div class="tab-ribbon" id="tab-ribbon">
@@ -27,3 +31,4 @@
     </div>
   </div>
 </div>
+{% endif %}

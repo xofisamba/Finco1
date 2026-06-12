@@ -1367,15 +1367,10 @@ body {
   align-items: center;
 }
 
-/* ── Phase P2-FIX-5D: hide the legacy 20-tab ws-tab ribbon.
-   The P2-FIX-4 five-area nav is the user-facing
-   navigation. The underlying ws-tab buttons remain
-   in the DOM (hidden != deleted) so switchTab JS
-   keeps working when called from the 5-area nav.
-   The underlying panels / routes are unchanged. */
-.top-tabs-bar {
-  display: none !important;
-}
+/* P2-FIX-8 PR2: The legacy 20-tab ribbon is now conditionally
+   rendered server-side (only in audit/reviewer mode), so this
+   CSS override is no longer needed. The ws-tab DOM is absent
+   from normal-mode HTML entirely. */
 
 .top-tabs-inner {
   overflow-x: auto;
@@ -7485,6 +7480,79 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   gap: 0.4rem;
   font-weight: 600;
 }
+
+/* ── P2-FIX-8 PR3: My Projects table ──────────────────────────────── */
+
+.ph-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.ph-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ph-table th {
+  text-align: left;
+  padding: 0.6rem 1rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.ph-table td {
+  padding: 0.7rem 1rem;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.ph-table-row:last-child td { border-bottom: none; }
+
+.ph-table-row:hover { background: var(--surface-2); }
+
+.ph-table-link {
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+}
+.ph-table-link:hover { text-decoration: underline; }
+
+.ph-table-date { color: var(--text-2); white-space: nowrap; }
+
+.ph-table-actions { white-space: nowrap; }
+
+.ph-action-link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+}
+.ph-action-link:hover { background: var(--primary); color: #fff; }
+
+.ph-status {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ph-status--draft { background: #f1f5f9; color: #64748b; }
+.ph-status--run-completed { background: #d1fae5; color: #065f46; }
+.ph-status--needs-rerun { background: #fef3c7; color: #92400e; }
 
 /* ── Phase P2-min-1: Header Help link ─────────────────────────────── */
 

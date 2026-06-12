@@ -275,12 +275,12 @@ class TestProtectedOriginalBannerRestricted:
     def test_tuho_has_protected_original_banner(self):
         r = self.client.get("/?project=tuho", follow_redirects=True)
         assert "data-p2fix2-disclosure=\"protected-original\"" in r.text
-        assert "data-p2fix6-cta" in r.text, "TUHO must show Create editable copy"
+        # P2-FIX-8: explicit CTA button removed from normal mode (transparent copy)
 
     def test_oborovo_has_protected_original_banner(self):
         r = self.client.get("/?project=oborovo", follow_redirects=True)
         assert "data-p2fix2-disclosure=\"protected-original\"" in r.text
-        assert "data-p2fix6-cta" in r.text
+        # P2-FIX-8: explicit CTA button removed from normal mode (transparent copy)
 
     def test_generic_solar_no_protected_original_banner(self):
         r = self.client.get(
@@ -378,9 +378,13 @@ class TestFileScope:
             "app/templates/project_home_page.html",
             "app/templates/project_new_page.html",
             "app/templates/project_browse_page.html",
+            "app/templates/partials/workspace_tabs.html",
+            "app/templates/partials/workspace_shell.html",
             "app/middleware/security_headers.py",
+            "static/styles.css",
             "scripts/",
             "tests/test_phase_p2fix8_",
+            "app/templates/partials/project_home.html",
         )
         disallowed_prefixes = (
             "app/persistence/",

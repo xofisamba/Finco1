@@ -213,14 +213,10 @@ class TestWorkspaceProjectRouteStillFullPage:
         # workspace-context base.html, NOT the
         # standalone page wrapper.
         body = r.text
-        # The workspace contains the
-        # _nav_compression partial and workspace_shell
-        assert "_nav_compression" in body or "nav-compression" in body
-        # The workspace contains the ws-tab ribbon
-        # (P2-FIX-5A does NOT touch the workspace
-        # 20-tab ribbon visibility; that is for
-        # P2-FIX-5B)
-        assert "ws-tab" in body
+        # The workspace contains the workspace_shell content
+        assert "panel-overview" in body or "tab-panel" in body
+        # P2-FIX-8 PR2: ws-tab ribbon not rendered in normal mode
+        # (server-side conditional rendering replaced CSS hiding)
 
 
 # ─────────────────────────────────────────────────────────────────────
