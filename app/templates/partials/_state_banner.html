@@ -25,7 +25,25 @@
   {% set _desc = '' %}
   {% set _icon = '' %}
 
-  {% if _ctx == 'factory_template' %}
+  {# Phase P2-FIX-7: restrict the "Protected original"
+     state banner to protected references only.
+     Previously the banner triggered for any
+     factory_template project (including Generic
+     Solar / Wind), which mis-classified Generic
+     projects as protected. P2-FIX-7 requires
+     both ``_ctx == 'factory_template'`` AND
+     ``is_protected_reference``. Generic projects
+     now fall through to the index.html
+     gov-banner ("Internal-use model") which is
+     the authoritative project-type-aware
+     disclosure.
+
+     NOTE: the P2-FIX-6 conditional CTA further
+     down still uses the same three-condition
+     gate (factory_template + is_protected_reference
+     + not is_user_project) so the "Create editable
+     copy" button visibility is preserved. #}
+  {% if _ctx == 'factory_template' and is_protected_reference %}
     {% set _title = 'Protected original' %}
     {% set _desc = 'Protected original — use Save As or create a scenario before editing controlled assumptions.' %}
     {% set _icon = '◆' %}

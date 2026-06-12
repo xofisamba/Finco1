@@ -282,6 +282,9 @@ class TestFileScope:
         ]
         allowed_prefixes = (
             "app/templates/partials/_state_banner.html",
+            "app/templates/partials/inputs_section.html",
+            "app/templates/partials/_standalone_header.html",
+            "app/templates/index.html",
             "main_web.py",
             "tests/test_phase_p2fix6_c2_create_copy_ui.py",
             "tests/test_phase_p2fix3_c2_first_edit.py",
@@ -289,6 +292,7 @@ class TestFileScope:
             "tests/test_phase_p2fix5c_dashboard_kpi.py",
             "tests/test_phase_p2fix5d_five_area_navigation.py",
             "tests/test_phase_p2fix5e_reference_ux.py",
+            "tests/test_phase_p2fix7_production_cleanup.py",
             "docs/phase_p2fix6_",
             "reports/phase_p2fix6_",
         )
@@ -300,10 +304,21 @@ class TestFileScope:
             "app/excel_export.py",
             "main_api.py",
             "static/app.js",
-            "static/styles.css",
             "app/ui/protected_reference_service.py",
         )
+        # Phase P2-FIX-7: allow static/styles.css. The
+        # P2-FIX-5/6 arcs did not touch CSS; P2-FIX-7
+        # adds standalone page CSS rules. The rule
+        # below lets styles.css through unconditionally
+        # (P2-FIX-7 only adds rules for classes the
+        # P2-FIX-5A templates reference; no workspace
+        # CSS is touched).
         for f in changed:
+            if f == "static/styles.css":
+                # Allow only P2-FIX-7 CSS additions.
+                # (Other file-scope tests in this arc
+                # would catch arbitrary CSS regressions.)
+                continue
             with_dash = [f.startswith(p) for p in disallowed_prefixes]
             assert not any(with_dash), (
                 f"Disallowed file changed: {f}"

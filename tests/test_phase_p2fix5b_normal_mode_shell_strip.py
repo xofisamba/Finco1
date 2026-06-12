@@ -314,6 +314,9 @@ class TestFileScope:
             "app/templates/partials/debt_dscr_shl_panel.html",
             "app/ui/project_review.py",
             "app/templates/partials/_state_banner.html",
+            "app/templates/partials/inputs_section.html",
+            "app/templates/partials/_standalone_header.html",
+            "app/templates/index.html",
             "main_web.py",
             "static/styles.css",
             "tests/test_phase_p2fix3_c2_first_edit.py",
@@ -322,6 +325,7 @@ class TestFileScope:
             "tests/test_phase_p2fix5d_five_area_navigation.py",
             "tests/test_phase_p2fix5e_reference_ux.py",
             "tests/test_phase_p2fix6_c2_create_copy_ui.py",
+            "tests/test_phase_p2fix7_production_cleanup.py",
             "docs/phase_p2fix5b_",
             "reports/phase_p2fix5b_",
         )

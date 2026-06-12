@@ -51,7 +51,25 @@
   {{ field_row("Type", project_ctx.technology, badge="Template" if project_ctx.data_source == "Factory Reference" else "Saved", badge_class="badge-muted") }}
   {{ field_row("Country", project_ctx.country_iso, badge="Saved", badge_class="badge-pass") }}
   {{ field_row("Capacity", "~{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", badge="Calculated", badge_class="badge-info") }}
-  {{ field_row("Template Origin", project_ctx.template_source or "TUHO" if "tuho" in project_ctx.code|lower else "Oborovo" if "oborovo" in project_ctx.code|lower else "Unknown", badge="Reference", badge_class="badge-muted") }}
+  {# Phase P2-FIX-7: project-type-aware Template Origin
+     label. The previous one-liner ternary only
+     recognised TUHO / Oborovo and rendered a literal
+     "Unknown" for Generic Solar / Generic Wind, which
+     is internal vocabulary leaking into the user
+     surface. P2-FIX-7 splits this into explicit
+     branches so Generic projects show a user-safe
+     label and the appropriate badge. No forbidden
+     terms (Unknown / factory / baseline / calibration
+     / golden / parity) are emitted. #}
+  {% if project_ctx.template_source %}
+    {{ field_row("Template Origin", project_ctx.template_source, badge="Protected", badge_class="badge-muted") }}
+  {% elif "tuho" in project_ctx.code|lower %}
+    {{ field_row("Template Origin", "TUHO", badge="Protected", badge_class="badge-muted") }}
+  {% elif "oborovo" in project_ctx.code|lower %}
+    {{ field_row("Template Origin", "Oborovo", badge="Protected", badge_class="badge-muted") }}
+  {% else %}
+    {{ field_row("Template Origin", "Generic", badge="Internal", badge_class="badge-info") }}
+  {% endif %}
 {% endset %}
 {{ section_card("Identity", identity_rows) }}
 
