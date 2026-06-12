@@ -378,7 +378,10 @@ class TestFileScope:
             "app/templates/project_home_page.html",
             "app/templates/project_new_page.html",
             "app/templates/project_browse_page.html",
+            "app/templates/partials/workspace_tabs.html",
+            "app/templates/partials/workspace_shell.html",
             "app/middleware/security_headers.py",
+            "static/styles.css",
             "scripts/",
             "tests/test_phase_p2fix8_",
         )

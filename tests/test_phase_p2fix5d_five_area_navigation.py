@@ -141,8 +141,9 @@ class TestLegacyRibbonPreservedInDOM:
     def inject(self, logged_in_client):
         self.client = logged_in_client
 
-    def test_legacy_ws_tab_buttons_in_dom(self):
-        """The 20 ws-tab buttons remain in the DOM."""
+    def test_legacy_ws_tab_buttons_not_in_normal_dom(self):
+        """P2-FIX-8 PR2: ws-tab buttons no longer rendered in normal mode.
+        Server-side conditional rendering replaced CSS hiding."""
         r = self.client.get(
             "/?project=tuho", follow_redirects=True
         )
@@ -150,9 +151,9 @@ class TestLegacyRibbonPreservedInDOM:
             r'<button class="ws-tab[^"]*"[^>]*>([^<]+)</button>',
             r.text,
         )
-        assert len(ws_tabs) >= 17, (
-            f"Expected >= 17 ws-tab buttons in DOM (hidden != "
-            f"deleted), found {len(ws_tabs)}"
+        assert len(ws_tabs) == 0, (
+            f"P2-FIX-8: ws-tab buttons must not be in normal-mode DOM, "
+            f"found {len(ws_tabs)}"
         )
 
     def test_underlying_panels_in_dom(self):
@@ -168,29 +169,26 @@ class TestLegacyRibbonPreservedInDOM:
             f"Expected >= 17 tab-panels in DOM, found {len(panel_ids)}"
         )
 
-    def test_legacy_ribbon_css_hides_top_tabs_bar(self):
-        """The .top-tabs-bar has display:none in CSS so
-        the legacy ribbon is hidden visually. The
-        underlying ws-tab buttons remain in the DOM
-        but are not rendered."""
+    def test_legacy_ribbon_server_side_hidden(self):
+        """P2-FIX-8 PR2: The legacy ribbon is hidden server-side
+        (not via CSS). The CSS display:none rule is removed; the
+        template wraps the ribbon in audit_mode."""
         css_path = REPO_ROOT / "static" / "styles.css"
         css = css_path.read_text(encoding="utf-8")
-        # Find the .top-tabs-bar rule with display:none
-        assert ".top-tabs-bar" in css, "Missing .top-tabs-bar in CSS"
-        # Find the P2-FIX-5D block
-        assert "P2-FIX-5D" in css, "P2-FIX-5D marker missing in CSS"
-        # Verify display:none on top-tabs-bar
+        assert ".top-tabs-bar" in css, "Missing .top-tabs-bar styles in CSS"
+        # P2-FIX-8: display:none !important must be gone (server-side now)
         m = re.search(
             r"\.top-tabs-bar\s*\{[^}]*display\s*:\s*none\s*!important",
             css,
             re.DOTALL,
         )
-        assert m is not None, (
-            "P2-FIX-5D must set display:none !important on "
-            ".top-tabs-bar (hidden != deleted: the underlying "
-            "elements remain in the DOM but the ribbon is "
-            "not rendered visually)"
+        assert m is None, (
+            "P2-FIX-8: CSS display:none !important on .top-tabs-bar "
+            "must be removed — server-side conditional rendering handles this now"
         )
+        # Template must have audit_mode wrapping
+        tabs_tmpl = (REPO_ROOT / "app" / "templates" / "partials" / "workspace_tabs.html").read_text()
+        assert "{% if audit_mode %}" in tabs_tmpl
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -310,6 +308,19 @@ class TestFileScope:
             "reports/phase_p2fix7_",
             "docs/phase_p2fix7a_",
             "reports/phase_p2fix7a_",
+            # P2-FIX-8 cross-arc allowlist
+            "app/templates/partials/workspace_tabs.html",
+            "app/templates/partials/workspace_shell.html",
+            "app/middleware/security_headers.py",
+            "app/templates/base.html",
+            "app/templates/project_home_page.html",
+            "app/templates/project_new_page.html",
+            "app/templates/project_browse_page.html",
+            "app/templates/partials/_standalone_header.html",
+            "app/templates/index.html",
+            "scripts/",
+            "tests/test_phase_p2fix8_",
+            "tests/test_phase_p2fix5a_",
         )
         disallowed_prefixes = (
             "app/persistence/",
