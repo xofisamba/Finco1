@@ -8743,3 +8743,15 @@ tr.fc-grid-header--sub th {
   color: #065f46;
 }
 /* ── End M2 ────────────────────────────────────────────────────────── */
+
+/* ── Phase M3 — Inline Matrix Override Editing ─── */
+.matrix-cell-editable { cursor: pointer; }
+.matrix-cell-editable:hover { background: #fffbeb; border-color: #fbbf24; }
+.matrix-cell-edit-hint { font-size: 0.7rem; color: #9ca3af; margin-left: 0.3rem; }
+.matrix-cell-editing { background: #fffbeb !important; padding: 0.1rem; }
+.matrix-cell-edit-form { display: flex; align-items: center; gap: 0.25rem; }
+.matrix-cell-input { width: 7rem; font-size: 0.8rem; padding: 0.15rem 0.3rem; border: 1px solid #f59e0b; border-radius: 3px; }
+.matrix-cell-save-btn { font-size: 0.75rem; background: #059669; color: #fff; border: none; border-radius: 3px; padding: 0.1rem 0.3rem; cursor: pointer; }
+.matrix-cell-cancel-btn { font-size: 0.75rem; background: #6b7280; color: #fff; border: none; border-radius: 3px; padding: 0.1rem 0.3rem; cursor: pointer; }
+.matrix-cell-saved { border-color: #059669 !important; }
+/* ── End M3 ─────────────────────────────────────── */
