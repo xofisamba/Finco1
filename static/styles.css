@@ -8501,3 +8501,39 @@ tr.fc-grid-header--sub th {
 }
 
 /* ── End Phase WF-2 ──────────────────────────────────────────────── */
+
+/* ── Phase WF-3: Sidebar two-group navigation ────────────────────── */
+.ps-nav-group {
+  padding: 0.5rem 0 0.25rem;
+  border-top: 1px solid var(--sidebar-border, rgba(255,255,255,0.08));
+}
+.ps-nav-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sidebar-muted, rgba(255,255,255,0.4));
+  padding: 0 0.75rem 0.3rem;
+}
+.ps-nav-link {
+  display: block;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--sidebar-text, rgba(255,255,255,0.75));
+  text-decoration: none;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.12s;
+}
+.ps-nav-link:hover {
+  background: var(--sidebar-hover, rgba(255,255,255,0.08));
+  color: #fff;
+}
+.ps-nav-link--active {
+  background: var(--sidebar-active-bg, rgba(255,255,255,0.12));
+  color: #fff;
+  font-weight: 600;
+}
+/* ── End WF-3 ────────────────────────────────────────────────────── */

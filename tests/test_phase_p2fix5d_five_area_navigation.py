@@ -325,7 +325,10 @@ class TestFileScope:
             # WF cross-arc allowlist
             "app/ui/dashboard.py",
             "app/templates/partials/_dashboard_oob.html",
+            "app/templates/partials/project_selector.html",
             "tests/test_phase_wf1_",
+            "tests/test_phase_wf2_",
+            "tests/test_phase_wf3_",
         )
         disallowed_prefixes = (
             "app/persistence/",

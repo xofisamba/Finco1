@@ -3117,6 +3117,15 @@ async def new_project_minimal(request: Request):
     return RedirectResponse(url="/projects/new", status_code=302)
 
 
+@app.get("/projects")
+async def projects_redirect(request: Request):
+    """WF-3: /projects is the canonical full-table view (alias for /projects/browse)."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url="/projects/browse", status_code=302)
+
+
 @app.get("/projects/browse")
 async def project_browser(request: Request):
     """Render project browser partial — factory templates, baselines, user projects."""
