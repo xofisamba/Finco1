@@ -180,15 +180,6 @@ class TestCSSParserBugsFixed:
             standalone_count += self.css.lower().count(".standalone-main")
             standalone_count += self.css.lower().count(".standalone-main--")
             pageshell_count = self.css.lower().count(".page-shell")
-        standalone_count = 0
-        pageshell_count = 0
-        for r in rules:
-            sel = getattr(r, "selectorText", None)
-            if sel:
-                if "standalone" in sel.lower():
-                    standalone_count += 1
-                if "page-shell" in sel.lower():
-                    pageshell_count += 1
         assert standalone_count >= 5, (
             f"Expected >=5 standalone rules, got {standalone_count}. "
             f"cssutils cannot parse the standalone page rules, "
