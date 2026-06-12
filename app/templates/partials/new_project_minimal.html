@@ -1,66 +1,52 @@
-{# ── Phase P2-min-1: Minimal New Project form ───────────────────────
-   P2-min-1 brief: ask only Project Name, Technology, Country, MW.
-   Everything else (timing fields, drivers, defaults) comes from
-   the existing template defaults (via /projects/new/defaults
-   prefill endpoint). The user is expected to review the auto-
-   populated values in the workspace sidebar after creation.
-   This is presentation only — no backend / no persistence change.
-   Timing-field fix from PR1 is preserved: the 4 timing fields
-   still flow through _apply_new_project_required_inputs and
-   _build_schema_from_form (with timing enrichments).
+{# ── WF-4: Minimal New Project form ────────────────────────────────
+   4 fields: Project name, Technology, Country, Capacity (MW).
+   All other fields use template defaults. Template source hidden.
 #}
 
-<div class="scenario-message">
-  <strong>New project</strong> — fill in the basics. All other fields
-  use template defaults. You can review and adjust them in the
-  workspace after creation.
+<div class="create-form-header">
+  <h2 class="create-form-title">New project</h2>
+  <p class="create-form-desc">Fill in the basics — all other fields use template defaults. Review and adjust them in the workspace after creation.</p>
 </div>
 
 {% if validation_errors %}
-<div class="scenario-message">
+<div class="create-form-errors">
   {% for error in validation_errors %}
-  <div>{{ error }}</div>
+  <div class="create-form-error-item">{{ error }}</div>
   {% endfor %}
 </div>
 {% endif %}
 
-<div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem;">
-  <button type="button" class="btn btn-ghost" onclick="closeNewProjectPanel()">✕ Close</button>
-</div>
-
 <form hx-post="/projects/create"
       hx-target="#new-project-result"
       hx-swap="innerHTML"
-      hx-on:after-request="if(event.detail.successful) location.reload()"
-      class="ps-compare-form"
+      hx-on:after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('HX-Redirect')) { setTimeout(function(){ window.location.href = event.detail.xhr.getResponseHeader('HX-Redirect'); }, 600); }"
+      class="create-form"
       id="new-project-minimal-form">
-  <label class="ps-compare-label">
+  <label class="create-form-label">
     Project name
-    <input type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required />
+    <input class="create-form-input" type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required placeholder="e.g. Dalmatia Solar 1" />
   </label>
-  <label class="ps-compare-label">
+  <label class="create-form-label">
     Technology
-    <select name="project_type" id="npm-project_type" required>
+    <select class="create-form-select" name="project_type" id="npm-project_type" required>
       {% for item in project_types %}
       <option value="{{ item }}" {% if submitted.project_type == item %}selected{% endif %}>{{ item }}</option>
       {% endfor %}
     </select>
   </label>
-  <label class="ps-compare-label">
+  <label class="create-form-label">
     Country or market
-    <input type="text" name="country_market" id="npm-country_market" value="{{ submitted.country_market or '' }}" required />
+    <input class="create-form-input" type="text" name="country_market" id="npm-country_market" value="{{ submitted.country_market or '' }}" required placeholder="e.g. Croatia" />
   </label>
-  <label class="ps-compare-label">
+  <label class="create-form-label">
     Capacity (MW)
-    <input type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required />
+    <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required placeholder="e.g. 50" />
   </label>
-  {# Hidden fields auto-populated by the server-side minimal
-     create handler (template_source + remaining driver defaults
-     from the canonical generic factory). The user does not see
-     these in the P2-min minimal flow but they are submitted with
-     the form so the existing /projects/create endpoint contract
-     is preserved (no backend / no persistence change). #}
+  {# Hidden: template source (generic_solar default, user does not select in minimal flow) #}
   <input type="hidden" name="template_source" id="npm-template_source" value="{{ submitted.template_source or default_template_source }}" />
   <div id="new-project-result"></div>
-  <button class="ps-mini-btn" type="submit">Create Project</button>
+  <div class="create-form-actions">
+    <button class="btn btn-primary" type="submit">Create project</button>
+    <a class="btn btn-ghost" href="/">Cancel</a>
+  </div>
 </form>

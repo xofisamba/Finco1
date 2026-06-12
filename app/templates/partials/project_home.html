@@ -29,7 +29,12 @@
           <td class="ph-table-name">
             <a href="/?project={{ item.project_code }}" class="ph-table-link">{{ item.name }}</a>
           </td>
-          <td>{{ item.technology }}</td>
+          <td>
+            {# WF-4: technology badge pill #}
+            {% if item.technology %}
+            <span class="ph-tech-badge ph-tech-badge--{{ item.technology | lower }}">{{ item.technology }}</span>
+            {% else %}—{% endif %}
+          </td>
           <td>{{ item.country }}</td>
           <td>{{ item.capacity_mw }}</td>
           <td class="ph-table-date">{{ item.last_edited }}</td>
