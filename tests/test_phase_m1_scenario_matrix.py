@@ -943,6 +943,31 @@ class TestM1FileScope:
             "tests/test_phase_pr3_taxonomy.py",
             "docs/phase_pr3_taxonomy_brief_alignment.md",
             "reports/phase_pr3_taxonomy_brief_alignment.md",
+            # M2 (live scenario matrix) follow-up allowlist:
+            # M2 extends M1 with live scenario column data.
+            "tests/test_phase_m2_scenario_matrix_live.py",
+            # WF cross-arc test patches (WF-2 through WF-5)
+            "tests/test_phase_wf2_sheet_styling.py",
+            "tests/test_phase_wf3_home_and_projects_split.py",
+            "tests/test_phase_wf4_minimal_create_and_list_hygiene.py",
+            "tests/test_phase_wf5_grouped_results_nav.py",
+            "app/templates/partials/_results_subnav.html",
+            "app/templates/partials/project_selector.html",
+            "app/templates/partials/project_home.html",
+            "app/templates/partials/new_project_minimal.html",
+            "app/templates/partials/new_project_result.html",
+            # P2-FIX cross-arc test patches
+            "tests/test_phase_p2fix2_shell_strip.py",
+            "tests/test_phase_p2fix3_c2_first_edit.py",
+            "tests/test_phase_p2fix4_five_area_navigation.py",
+            "tests/test_phase_p2fix5b_normal_mode_shell_strip.py",
+            "tests/test_phase_p2fix5c_dashboard_kpi.py",
+            "tests/test_phase_p2fix5d_five_area_navigation.py",
+            "tests/test_phase_p2fix5e_reference_ux.py",
+            "tests/test_phase_p2fix6_c2_create_copy_ui.py",
+            "tests/test_phase_p2fix7_production_cleanup.py",
+            "tests/test_phase_p2fix7a_css_parser_cleanup.py",
+            "app/templates/partials/_dashboard_oob.html",
         }
         true_extra = [
             p for p in extra

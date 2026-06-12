@@ -8699,3 +8699,47 @@ tr.fc-grid-header--sub th {
   }
 }
 /* ── End WF-5 ────────────────────────────────────────────────────── */
+
+/* ── Phase M2 — Live Scenario Matrix ─────────────────────────────── */
+/* Extends M1 matrix classes with live-scenario column states.        */
+.badge-m2-live {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.badge-m2-scenario {
+  background: #059669;
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.matrix-col-header-live {
+  background: #f0fdf4;
+  border-bottom: 2px solid #059669;
+}
+.matrix-cell-scenario {
+  background: #f0fdf4;
+  color: var(--text, #111827);
+  border: 1px solid #a7f3d0;
+  padding: 0.3rem 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+.scenario-matrix-m2-note {
+  margin: 0.5rem 1rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #f0fdf4;
+  border-left: 3px solid #059669;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.8rem;
+  color: #065f46;
+}
+/* ── End M2 ────────────────────────────────────────────────────────── */

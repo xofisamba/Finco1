@@ -353,6 +353,10 @@ class TestFileScope:
             "tests/test_phase_wf4_",
             "tests/test_phase_wf5_",
             "app/templates/partials/_results_subnav.html",
+            "app/ui/scenario_matrix.py",
+            "app/templates/partials/scenario_matrix.html",
+            "tests/test_phase_m2_",
+            "tests/test_phase_m1_",
         )
         disallowed_prefixes = (
             "app/persistence/",

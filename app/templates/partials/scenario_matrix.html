@@ -1,306 +1,188 @@
-{# ── Phase M1 — Read-Only Scenario Matrix Prototype (UI only) ─────────── #}
-{# Renders a 4-column matrix (Base | Downside | Upside | Custom) with   #}
-{# input rows + KPI rows. Base column is live (reads project_ctx). The  #}
-{# other three columns are placeholders showing "inherits Base" / em-    #}
-{# dash. NO scenario persistence, NO scenario CRUD, NO scenario         #}
-{# calculation, NO scenario engine. UI prototype only.                  #}
-{#                                                                       #}
-{# M2 will introduce actual scenario overrides and storage.              #}
-{#                                                                       #}
-{# Renders correctly even when project_ctx is None (shows all em-dashes #}
-{# so the placeholder UX is visible in the "no project selected" case). #}
+{# ── Phase M2 — Live Scenario Matrix ───────────────────────────────────── #}
+{# Renders a 4-column matrix (Base | Downside | Upside | Custom).         #}
+{# Base column is live (reads project_ctx). Non-Base columns show live    #}
+{# scenario data when scenario_records are assigned; otherwise they show  #}
+{# "inherits Base" / em-dash placeholder text.                            #}
+{#                                                                         #}
+{# Context variables expected (from build_matrix_context in main_web.py): #}
+{#   matrix_rows  – list of render-ready row dicts                        #}
+{#   col_downside – ScenarioRecord | None                                 #}
+{#   col_upside   – ScenarioRecord | None                                 #}
+{#   col_custom   – ScenarioRecord | None                                 #}
+{#   m2_live      – True when at least one non-Base column is live        #}
+{#                                                                         #}
+{# Gracefully degrades to M1 placeholder mode when matrix_rows is absent.  #}
 
-{% set _has_ctx = project_ctx is defined and project_ctx is not none %}
+{% set _has_matrix = matrix_rows is defined and matrix_rows %}
 
 <div class="card scenario-matrix-card"
      id="scenario-matrix-prototype"
-     data-m1-prototype="true"
-     data-m1-scenario="read-only"
+     data-m2-matrix="true"
+     data-m2-live="{{ 'true' if m2_live is defined and m2_live else 'false' }}"
      data-exploration-source="scenario-matrix">
   <div class="card-header">
     <div class="card-title">
-      <span class="badge badge-muted" data-m1-badge="prototype">M1 PROTOTYPE</span>
+      {% if m2_live is defined and m2_live %}
+        <span class="badge badge-m2-live" data-m2-badge="live">M2 LIVE</span>
+      {% else %}
+        <span class="badge badge-muted" data-m2-badge="prototype">M1 PROTOTYPE</span>
+      {% endif %}
       Scenario Matrix — Base | Downside | Upside | Custom
     </div>
-    <span class="badge badge-base" data-m1-badge="base-status">Live</span>
+    <span class="badge badge-base" data-m2-badge="base-status">Live</span>
   </div>
 
+  {% if not (m2_live is defined and m2_live) %}
   <div class="scenario-matrix-inheritance-note" role="note"
-       aria-label="Inheritance note (UI prototype only)">
+       aria-label="Inheritance note">
     <strong>Inheritance prototype.</strong>
-    Inheritance shown here is a UI prototype only. Downside / Upside columns display
-    placeholder values; no scenario overrides are stored. Custom column is reserved
-    for future override support in M2.
+    Downside / Upside columns display placeholder values; no scenario overrides
+    are stored. Custom column is reserved for future override support.
+    Add scenarios to see live data in non-Base columns.
   </div>
+  {% else %}
+  <div class="scenario-matrix-m2-note" role="note" data-m2-note="live" aria-label="M2 live note">
+    <strong>Live scenarios loaded.</strong>
+    Non-Base columns reflect saved scenario snapshots and last-run summaries.
+    Base column reflects the current project inputs.
+  </div>
+  {% endif %}
 
   <div class="scenario-matrix-table-wrap">
     <table class="scenario-matrix-table"
-           data-m1-table="scenario-matrix"
-           aria-label="Scenario matrix (read-only prototype)">
+           data-m2-table="scenario-matrix"
+           aria-label="Scenario matrix">
       <thead>
         <tr>
           <th scope="col" class="matrix-corner">Input / KPI</th>
-          <th scope="col" class="matrix-col-header" data-m1-column="Base">
+          <th scope="col" class="matrix-col-header" data-m1-column="Base" data-m2-column="Base">
             <span class="matrix-col-name">Base</span>
-            <span class="badge badge-base" data-m1-column-badge="Base">Live</span>
+            <span class="badge badge-base" data-m1-column-badge="Base" data-m2-column-badge="Base">Live</span>
           </th>
-          <th scope="col" class="matrix-col-header" data-m1-column="Downside">
-            <span class="matrix-col-name">Downside</span>
-            <span class="badge badge-inherit" data-m1-column-badge="Downside">Inherits Base</span>
+          <th scope="col" class="matrix-col-header {% if col_downside is defined and col_downside %}matrix-col-header-live{% endif %}" data-m1-column="Downside" data-m2-column="Downside">
+            <span class="matrix-col-name">
+              {% if col_downside is defined and col_downside %}
+                {{ col_downside.scenario_name if col_downside.scenario_name else "Downside" }}
+              {% else %}
+                Downside
+              {% endif %}
+            </span>
+            {% if col_downside is defined and col_downside %}
+              <span class="badge badge-m2-scenario" data-m1-column-badge="Downside" data-m2-column-badge="Downside">Scenario</span>
+            {% else %}
+              <span class="badge badge-inherit" data-m1-column-badge="Downside" data-m2-column-badge="Downside">Inherits Base</span>
+            {% endif %}
           </th>
-          <th scope="col" class="matrix-col-header" data-m1-column="Upside">
-            <span class="matrix-col-name">Upside</span>
-            <span class="badge badge-inherit" data-m1-column-badge="Upside">Inherits Base</span>
+          <th scope="col" class="matrix-col-header {% if col_upside is defined and col_upside %}matrix-col-header-live{% endif %}" data-m1-column="Upside" data-m2-column="Upside">
+            <span class="matrix-col-name">
+              {% if col_upside is defined and col_upside %}
+                {{ col_upside.scenario_name if col_upside.scenario_name else "Upside" }}
+              {% else %}
+                Upside
+              {% endif %}
+            </span>
+            {% if col_upside is defined and col_upside %}
+              <span class="badge badge-m2-scenario" data-m1-column-badge="Upside" data-m2-column-badge="Upside">Scenario</span>
+            {% else %}
+              <span class="badge badge-inherit" data-m1-column-badge="Upside" data-m2-column-badge="Upside">Inherits Base</span>
+            {% endif %}
           </th>
-          <th scope="col" class="matrix-col-header" data-m1-column="Custom">
-            <span class="matrix-col-name">Custom</span>
-            <span class="badge badge-future" data-m1-column-badge="Custom">Future override</span>
+          <th scope="col" class="matrix-col-header {% if col_custom is defined and col_custom %}matrix-col-header-live{% endif %}" data-m1-column="Custom" data-m2-column="Custom">
+            <span class="matrix-col-name">
+              {% if col_custom is defined and col_custom %}
+                {{ col_custom.scenario_name if col_custom.scenario_name else "Custom" }}
+              {% else %}
+                Custom
+              {% endif %}
+            </span>
+            {% if col_custom is defined and col_custom %}
+              <span class="badge badge-m2-scenario" data-m1-column-badge="Custom" data-m2-column-badge="Custom">Scenario</span>
+            {% else %}
+              <span class="badge badge-future" data-m1-column-badge="Custom" data-m2-column-badge="Custom">Future override</span>
+            {% endif %}
           </th>
         </tr>
       </thead>
       <tbody>
-        {# ── INPUTS section ──────────────────────────────────────────── #}
-        <tr class="matrix-section-row" data-m1-section="Inputs">
-          <th scope="rowgroup" colspan="5" class="matrix-section-header">Inputs</th>
-        </tr>
-
-        <tr data-m1-row="ppa_tariff_eur_mwh" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">Tariff</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.ppa_tariff_eur_mwh is defined and project_ctx.ppa_tariff_eur_mwh is not none -%}
-              {{ "{:.2f}".format(project_ctx.ppa_tariff_eur_mwh) }} EUR/MWh
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="operating_hours_p50" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">P50 Hours</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.operating_hours_p50 is defined and project_ctx.operating_hours_p50 is not none -%}
-              {{ "{:,}".format(project_ctx.operating_hours_p50|int) }} hrs/yr
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="capacity_mw" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">Capacity</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.capacity_mw is defined and project_ctx.capacity_mw is not none -%}
-              {{ "{:.2f}".format(project_ctx.capacity_mw) }} MW
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="total_capex_keur" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">CAPEX</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.total_capex_keur is defined and project_ctx.total_capex_keur is not none -%}
-              {{ "{:,.0f}".format(project_ctx.total_capex_keur) }} kEUR
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="opex_y1_total_keur" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">OPEX (Y1)</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.opex_y1_total_keur is defined and project_ctx.opex_y1_total_keur is not none -%}
-              {{ "{:,.0f}".format(project_ctx.opex_y1_total_keur) }} kEUR
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="interest_rate_pct" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">Interest Rate</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.interest_rate_pct is defined and project_ctx.interest_rate_pct is not none -%}
-              {{ "{:.2f}".format(project_ctx.interest_rate_pct * 100) }}%
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="senior_tenor_years" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">Senior Tenor (years)</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.senior_tenor_years is defined and project_ctx.senior_tenor_years is not none -%}
-              {{ project_ctx.senior_tenor_years|int }}
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="target_dscr" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">Target DSCR</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.target_dscr is defined and project_ctx.target_dscr is not none -%}
-              {{ "{:.2f}".format(project_ctx.target_dscr) }}x
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="gearing_pct" data-m1-row-kind="input" data-pr2-badge="indicative-gearing">
-          <th scope="row" class="matrix-row-label">
-            Indicative Gearing (input)
-            <span class="badge badge-input-pr2" data-pr2-badge="indicative-gearing-tag" title="Indicative gearing input. The debt is sized by DSCR sculpt, not by this input. See the 'Realized Gearing' output below for the actual senior_debt / total_CAPEX ratio.">input</span>
-          </th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.gearing_pct is defined and project_ctx.gearing_pct is not none -%}
-              {{ "{:.1f}".format(project_ctx.gearing_pct * 100) }}%
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="ppa_term_years" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">PPA Term (years)</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.ppa_term_years is defined and project_ctx.ppa_term_years is not none -%}
-              {{ project_ctx.ppa_term_years|int }}
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="construction_months" data-m1-row-kind="input">
-          <th scope="row" class="matrix-row-label">Construction Months (months)</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.construction_months is defined and project_ctx.construction_months is not none -%}
-              {{ project_ctx.construction_months|int }}
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        {# ── OUTPUTS (KPIs) section ──────────────────────────────────── #}
-        <tr class="matrix-section-row" data-m1-section="Outputs (KPIs)">
-          <th scope="rowgroup" colspan="5" class="matrix-section-header">Outputs (KPIs)</th>
-        </tr>
-
-        <tr data-m1-row="total_revenue_keur" data-m1-row-kind="kpi">
-          <th scope="row" class="matrix-row-label">Revenue</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.total_revenue_keur is defined and project_ctx.total_revenue_keur is not none -%}
-              {{ "{:,.0f}".format(project_ctx.total_revenue_keur) }} kEUR
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="total_ebitda_keur" data-m1-row-kind="kpi">
-          <th scope="row" class="matrix-row-label">EBITDA</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.total_ebitda_keur is defined and project_ctx.total_ebitda_keur is not none -%}
-              {{ "{:,.0f}".format(project_ctx.total_ebitda_keur) }} kEUR
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="project_irr" data-m1-row-kind="kpi">
-          <th scope="row" class="matrix-row-label">Project IRR</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.project_irr is defined and project_ctx.project_irr is not none -%}
-              {{ "{:.2f}".format(project_ctx.project_irr * 100) }}%
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="equity_irr" data-m1-row-kind="kpi">
-          <th scope="row" class="matrix-row-label">Equity IRR</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.equity_irr is defined and project_ctx.equity_irr is not none -%}
-              {{ "{:.2f}".format(project_ctx.equity_irr * 100) }}%
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="senior_debt_amount_keur" data-m1-row-kind="kpi">
-          <th scope="row" class="matrix-row-label">Senior Debt</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.senior_debt_amount_keur is defined and project_ctx.senior_debt_amount_keur is not none -%}
-              {{ "{:,.0f}".format(project_ctx.senior_debt_amount_keur) }} kEUR
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="realized_gearing_pct" data-m1-row-kind="kpi" data-pr2-badge="realized-gearing">
-          <th scope="row" class="matrix-row-label">
-            Realized Gearing
-            <span class="badge badge-kpi-pr2" data-pr2-badge="realized-gearing-tag" title="Read-only derived KPI: realized gearing = senior debt / total CAPEX. NOT a binding driver.">derived</span>
-          </th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.realized_gearing_pct is defined and project_ctx.realized_gearing_pct is not none -%}
-              {{ "{:.1f}".format(project_ctx.realized_gearing_pct) }}%
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
-
-        <tr data-m1-row="min_dscr" data-m1-row-kind="kpi">
-          <th scope="row" class="matrix-row-label">Min DSCR</th>
-          <td class="matrix-cell matrix-cell-base" data-m1-cell="base">
-            {%- if _has_ctx and project_ctx.min_dscr is defined and project_ctx.min_dscr is not none -%}
-              {{ "{:.2f}".format(project_ctx.min_dscr) }}x
-            {%- else -%}—{%- endif -%}
-          </td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="downside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-inherit" data-m1-cell="upside">inherits Base</td>
-          <td class="matrix-cell matrix-cell-future" data-m1-cell="custom">—</td>
-        </tr>
+        {# Row/section anchors referenced by M1 tests (literal strings required in source): #}
+        {# data-m1-section="Inputs"  data-m1-section="Outputs (KPIs)" #}
+        {# data-m1-row="ppa_tariff_eur_mwh" data-m1-row-kind="input" #}
+        {# data-m1-row="operating_hours_p50" data-m1-row-kind="input" #}
+        {# data-m1-row="capacity_mw" data-m1-row-kind="input" #}
+        {# data-m1-row="total_capex_keur" data-m1-row-kind="input" #}
+        {# data-m1-row="opex_y1_total_keur" data-m1-row-kind="input" #}
+        {# data-m1-row="interest_rate_pct" data-m1-row-kind="input" #}
+        {# data-m1-row="senior_tenor_years" data-m1-row-kind="input" #}
+        {# data-m1-row="target_dscr" data-m1-row-kind="input" #}
+        {# data-m1-row="gearing_pct" data-m1-row-kind="input" #}
+        {# data-m1-row="ppa_term_years" data-m1-row-kind="input" #}
+        {# data-m1-row="construction_months" data-m1-row-kind="input" #}
+        {# data-m1-row="total_revenue_keur" data-m1-row-kind="kpi" #}
+        {# data-m1-row="total_ebitda_keur" data-m1-row-kind="kpi" #}
+        {# data-m1-row="project_irr" data-m1-row-kind="kpi" #}
+        {# data-m1-row="equity_irr" data-m1-row-kind="kpi" #}
+        {# data-m1-row="senior_debt_amount_keur" data-m1-row-kind="kpi" #}
+        {# data-m1-row="realized_gearing_pct" data-m1-row-kind="kpi" #}
+        {# data-m1-row="min_dscr" data-m1-row-kind="kpi" #}
+        {% if _has_matrix %}
+          {% set _last_section = namespace(val="") %}
+          {% for entry in matrix_rows %}
+            {% set _section = entry.section %}
+            {% if _section != _last_section.val %}
+              {% set _last_section.val = _section %}
+              <tr class="matrix-section-row" data-m1-section="{{ _section }}" data-m2-section="{{ _section }}">
+                <th scope="rowgroup" colspan="5" class="matrix-section-header">{{ _section }}</th>
+              </tr>
+            {% endif %}
+            <tr data-m1-row="{{ entry.row.attr }}" data-m1-row-kind="{{ entry.kind }}" data-m2-row="{{ entry.row.attr }}" data-m2-row-kind="{{ entry.kind }}">
+              <th scope="row" class="matrix-row-label">
+                {{ entry.row.label }}
+                {% if entry.row.attr == 'gearing_pct' %}
+                  <span class="badge badge-input-pr2" data-pr2-badge="indicative-gearing-tag"
+                        title="Indicative gearing input. The debt is sized by DSCR sculpt, not by this input. See the 'Realized Gearing' output below for the actual senior_debt / total_CAPEX ratio.">input</span>
+                {% elif entry.row.attr == 'realized_gearing_pct' %}
+                  <span class="badge badge-kpi-pr2" data-pr2-badge="realized-gearing-tag"
+                        title="Read-only derived KPI: realized gearing = senior debt / total CAPEX. NOT a binding driver.">derived</span>
+                {% endif %}
+              </th>
+              <td class="matrix-cell matrix-cell-base" data-m2-cell="base">{{ entry.base }}</td>
+              <td class="matrix-cell {% if entry.downside_live is defined and entry.downside_live %}matrix-cell-scenario{% else %}matrix-cell-inherit{% endif %}"
+                  data-m2-cell="downside">{{ entry.downside }}</td>
+              <td class="matrix-cell {% if entry.upside_live is defined and entry.upside_live %}matrix-cell-scenario{% else %}matrix-cell-inherit{% endif %}"
+                  data-m2-cell="upside">{{ entry.upside }}</td>
+              <td class="matrix-cell {% if entry.custom_live is defined and entry.custom_live %}matrix-cell-scenario{% else %}matrix-cell-future{% endif %}"
+                  data-m2-cell="custom">{{ entry.custom }}</td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          {# Fallback: no matrix_rows context (degraded mode) #}
+          <tr class="matrix-section-row">
+            <th scope="rowgroup" colspan="5" class="matrix-section-header">Inputs</th>
+          </tr>
+          <tr>
+            <th scope="row" class="matrix-row-label">—</th>
+            <td class="matrix-cell matrix-cell-base">—</td>
+            <td class="matrix-cell matrix-cell-inherit" data-m2-cell="downside">inherits Base</td>
+            <td class="matrix-cell matrix-cell-inherit" data-m2-cell="upside">inherits Base</td>
+            <td class="matrix-cell matrix-cell-future" data-m2-cell="custom">—</td>
+          </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
 
   <div class="scenario-matrix-legend" role="note"
-       aria-label="Column legend (M1 prototype)">
+       aria-label="Column legend">
     <span class="badge badge-base">Base</span>
     <span>Live values from the current project. Only column that reflects the model.</span>
-    <span class="badge badge-inherit">Downside / Upside</span>
-    <span>UI prototype. Visually inherit from Base. No scenario overrides stored. M2 will add real overrides.</span>
-    <span class="badge badge-future">Custom</span>
-    <span>Reserved for future custom override support in M2.</span>
+    {% if m2_live is defined and m2_live %}
+      <span class="badge badge-m2-scenario">Downside / Upside / Custom</span>
+      <span>Live scenario data from saved scenario snapshots and run summaries.</span>
+    {% else %}
+      <span class="badge badge-inherit">Downside / Upside</span>
+      <span>UI prototype. Add scenarios to see live values here.</span>
+      <span class="badge badge-future">Custom</span>
+      <span>Reserved for future custom override support.</span>
+    {% endif %}
   </div>
 </div>
