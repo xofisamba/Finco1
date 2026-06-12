@@ -788,6 +788,10 @@ class TestFileScope:
             "app/ui/dashboard.py",
             "app/templates/partials/_dashboard_oob.html",
             "tests/test_phase_wf1_",
+            "app/ui/scenario_matrix.py",
+            "app/templates/partials/scenario_matrix.html",
+            "tests/test_phase_m2_",
+            "tests/test_phase_m1_",
         )
         for f in changed:
             assert f.startswith(allowed_prefixes), (

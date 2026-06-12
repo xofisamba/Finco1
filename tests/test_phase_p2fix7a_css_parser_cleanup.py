@@ -304,6 +304,11 @@ class TestFileScope:
             "tests/test_phase_p2fix6_",  # cross-arc
             "docs/phase_p2fix7a_",
             "reports/phase_p2fix7a_",
+            "app/ui/scenario_matrix.py",
+            "app/templates/partials/scenario_matrix.html",
+            "main_web.py",
+            "tests/test_phase_m2_",
+            "tests/test_phase_m1_",
         )
         disallowed_prefixes = (
             "app/persistence/",

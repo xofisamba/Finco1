@@ -2431,6 +2431,10 @@ async def index(request: Request, project: str | None = None):
             "base_case_record": next((s for s in scenario_records if s.is_base_case), None),
             "non_base_scenarios": [s for s in scenario_records if not s.is_base_case],
             "scenario_editable_fields": SCENARIO_EDITABLE_FIELDS,
+            # Phase M2: live scenario matrix context
+            **__import__("app.ui.scenario_matrix", fromlist=["build_matrix_context"]).build_matrix_context(
+                ctx, scenario_records
+            ),
             # Phase 55E: UI-2.6 run-source indicator context
             # Derived from existing workspace_state (last_runtime_snapshot_id,
             # last_runtime_at). None when no real runtime data exists.

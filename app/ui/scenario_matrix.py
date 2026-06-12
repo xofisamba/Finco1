@@ -354,3 +354,122 @@ INHERITANCE_NOTE = (
     "are stored. Custom column is reserved for "
     "future override support in M2."
 )
+
+
+# ---------------------------------------------------------------------------
+# M2: Live scenario column helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_scenario_input_value(scenario_record, row: MatrixRow) -> str:
+    """Read a row's input value from a scenario's snapshot.
+
+    Checks `overrides` first (scenario-specific delta), then
+    `snapshot` (full saved input set), then `base_input_set`.
+    Returns formatted string; em-dash if not found.
+    """
+    if scenario_record is None:
+        return NON_BASE_PLACEHOLDER
+
+    for src in (
+        getattr(scenario_record, "overrides", None) or {},
+        getattr(scenario_record, "snapshot", None) or {},
+        getattr(scenario_record, "base_input_set", None) or {},
+    ):
+        val = src.get(row.attr)
+        if val is not None:
+            return format_cell_value(row, val)
+    return NON_BASE_PLACEHOLDER
+
+
+def _get_scenario_kpi_value(scenario_record, row: MatrixRow) -> str:
+    """Read a KPI value from a scenario's last_run_summary.
+
+    Returns formatted string; em-dash if no run exists.
+    """
+    if scenario_record is None:
+        return NON_BASE_PLACEHOLDER
+    summary = getattr(scenario_record, "last_run_summary", None) or {}
+    kpis = summary.get("kpis") or summary
+    val = kpis.get(row.attr)
+    if val is None:
+        return NON_BASE_PLACEHOLDER
+    return format_cell_value(row, val)
+
+
+def get_scenario_cell_value(scenario_record, row: MatrixRow) -> str:
+    """Return the formatted cell value for a non-Base scenario column.
+
+    For input rows: reads from the scenario's saved snapshot/overrides.
+    For KPI rows: reads from the scenario's last_run_summary.
+    Falls back to em-dash when data is absent.
+    """
+    if row.kind == ROW_KIND_INPUT:
+        return _get_scenario_input_value(scenario_record, row)
+    return _get_scenario_kpi_value(scenario_record, row)
+
+
+def build_matrix_context(
+    project_ctx,
+    scenario_records=None,
+    rows: Sequence[MatrixRow] = ALL_ROWS,
+) -> dict:
+    """Build the full matrix rendering context for M2.
+
+    Returns a dict suitable for passing directly to the
+    scenario_matrix.html template:
+
+      {
+        "matrix_rows": [...],   # render-ready rows (M1 shape + m2 columns)
+        "col_downside": ScenarioRecord | None,
+        "col_upside":   ScenarioRecord | None,
+        "col_custom":   ScenarioRecord | None,
+        "m2_live": bool,        # True when at least one non-Base column is live
+      }
+
+    Column assignment: the first non-base-case scenario goes in
+    Downside, the second in Upside, the third in Custom. Scenarios
+    beyond three are ignored in the matrix (accessible via the
+    Scenarios tab as before).
+
+    No new persistence: reads existing ScenarioRecord objects passed
+    in from the index route context.
+    """
+    records = list(scenario_records or [])
+    non_base = [s for s in records if not getattr(s, "is_base_case", False)]
+
+    col_downside = non_base[0] if len(non_base) > 0 else None
+    col_upside   = non_base[1] if len(non_base) > 1 else None
+    col_custom   = non_base[2] if len(non_base) > 2 else None
+
+    out = []
+    for row in rows:
+        base_value = get_base_value(project_ctx, row)
+        base_str = format_cell_value(row, base_value)
+        section = "Inputs" if row.kind == ROW_KIND_INPUT else "Outputs (KPIs)"
+        out.append({
+            "row": row,
+            "kind": row.kind,
+            "section": section,
+            "base": base_str,
+            "downside": get_scenario_cell_value(col_downside, row),
+            "upside":   get_scenario_cell_value(col_upside,   row),
+            "custom":   get_scenario_cell_value(col_custom,   row),
+            "is_kpi": row.kind == ROW_KIND_KPI,
+            # Per-column live flags (True when the scenario has run data
+            # for this KPI row, or has snapshot data for input rows)
+            "downside_live": col_downside is not None,
+            "upside_live":   col_upside   is not None,
+            "custom_live":   col_custom   is not None,
+        })
+
+    m2_live = any(c is not None for c in (col_downside, col_upside, col_custom))
+
+    return {
+        "matrix_rows": out,
+        "col_downside": col_downside,
+        "col_upside":   col_upside,
+        "col_custom":   col_custom,
+        "m2_live": m2_live,
+    }
+

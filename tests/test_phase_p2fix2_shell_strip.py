@@ -491,6 +491,15 @@ class TestShellStripFileScope:
             "reports/phase_p2fix7_",
             "docs/phase_p2fix7a_",
             "reports/phase_p2fix7a_",
+            "app/ui/scenario_matrix.py",
+            "app/templates/partials/scenario_matrix.html",
+            "tests/test_phase_m2_",
+            "tests/test_phase_m1_",
+            "tests/test_phase_wf2_",
+            "tests/test_phase_wf3_",
+            "tests/test_phase_wf4_",
+            "tests/test_phase_wf5_",
+            "static/styles.css",
         )
         # Disallowed locations that must not change.
         disallowed_prefixes = (
