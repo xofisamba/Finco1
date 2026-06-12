@@ -6528,8 +6528,33 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   border: 1px solid transparent;
   background: var(--muted-bg, #f1f3f5);
   color: var(--muted, #555);
+}
 
-   Phase 25B-5 — Scenario workflow polish (.svh-* + .sw-*)
+/* Phase P2-FIX-7A: CSS parser cleanup.
+   The two bugs below were both introduced in commit
+   8c85168 (Phase 25B-5, June 10 2026):
+     1. The block of text starting "Phase 25B-5 —
+        Scenario workflow polish" was inserted
+        without an opening ``/*``. The closing
+        ``*/`` alone produced a malformed comment
+        that browsers (and cssutils) treated as a
+        parse error, silently dropping every CSS
+        rule after it on the stylesheet.
+     2. ``.ds-badge--factory {`` was opened on
+        line 6705 and never closed; the next
+        selector (``.sw-label__icon``) replaced the
+        missing ``}``.
+   Both bugs together caused browsers to abort
+   CSS parsing on the external stylesheet, which
+   is why P2-FIX-5A's standalone page templates
+   rendered as plain text on ``/``, ``/projects/new``,
+   and ``/projects/browse`` and why P2-FIX-7 had to
+   ship a temporary inline <style> fallback.
+   Fix: the malformed block is now a real comment
+   that closes the .ds-badge block above and opens
+   a new section header below. */
+
+/* Phase 25B-5 — Scenario workflow polish (.svh-* + .sw-*)
    Purely additive. No :root changes. No resets.
 
    The .svh-card--active class existed in the template but had NO
@@ -6704,6 +6729,9 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 
 .ds-badge--factory {
   background: #eef0f3;
+  color: #4a5566;
+  border-color: #cdd3dc;
+}
 
 .sw-label__icon {
   display: inline-block;
@@ -6856,6 +6884,7 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   letter-spacing: 0.04em;
   font-weight: 600;
   margin-right: 0.25rem;
+}
 
 .sw-quick-summary {
   display: flex;
@@ -6869,8 +6898,23 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 }
 
 .sw-quick-summary__row {
+}
 
-   Phase 25B-6 — Generic Project Review Pack (.rev-*)
+/* Phase P2-FIX-7A: CSS parser cleanup (continued).
+   See the comment above .svh-container for the full
+   history. The two remaining bugs from commit
+   8c85168 (Phase 25B-5) and the equivalent bug
+   from commit 554599e (Phase 25B-6) were:
+     3. ``.workspace-dirty-state-bar__title {``
+        was opened and not closed.
+     4. The block of text "Phase 25B-6 — Generic
+        Project Review Pack" was inserted without
+        an opening ``/*``.
+   Both are now fixed by closing the prior block
+   and turning the malformed text into a real
+   comment header. */
+
+/* Phase 25B-6 — Generic Project Review Pack (.rev-*)
    Purely additive. No :root changes. No resets.
    ════════════════════════════════════════════════════════════════════════ */
 
@@ -7129,6 +7173,7 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   background: #e6f7ec;
   border-color: #b6e2c2;
   color: #1f7a3a;
+}
 
 .rev-scenarios__count-num {
   font-size: 1.1rem;

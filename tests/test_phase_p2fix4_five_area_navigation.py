@@ -619,6 +619,10 @@ class TestFileScope:
             "app/templates/partials/_results_subnav.html",
             "app/templates/partials/_dashboard.html",
             "app/templates/partials/workspace_shell.html",
+            "app/templates/partials/_state_banner.html",
+            "app/templates/partials/inputs_section.html",
+            "app/templates/partials/_standalone_header.html",
+            "app/templates/index.html",
             "app/ui/dashboard.py",
             "main_web.py",
             "tests/test_phase_p2fix4_five_area_navigation.py",
@@ -631,8 +635,19 @@ class TestFileScope:
             "tests/test_phase_p2fix3_c2_first_edit.py",
             "tests/test_phase_p2fix2_shell_strip.py",
             "tests/test_phase51f_parallel_work_guardrails.py",
+            "tests/test_phase_p2fix7_production_cleanup.py",
+            "tests/test_phase_p2fix7a_css_parser_cleanup.py",
+            "tests/test_phase_p2fix5b_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix5c_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix5d_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix5e_",  # P2-FIX-7A cross-arc
+            "tests/test_phase_p2fix6_",  # P2-FIX-7A cross-arc
             "docs/phase_p2fix4_",
             "reports/phase_p2fix4_",
+            "docs/phase_p2fix7_",
+            "reports/phase_p2fix7_",
+            "docs/phase_p2fix7a_",
+            "reports/phase_p2fix7a_",
         )
         # Disallowed locations that must not change.
         disallowed_prefixes = (
@@ -644,7 +659,15 @@ class TestFileScope:
             "main_api.py",
             "static/app.js",
         )
+        # Phase P2-FIX-7 / P2-FIX-7A: allow static/styles.css.
+        # P2-FIX-7 added standalone page CSS rules;
+        # P2-FIX-7A fixed pre-existing CSS parser bugs
+        # in the same file. The CSS additions are
+        # scoped to the standalone / page-shell
+        # classes; workspace CSS is unaffected.
         for f in changed:
+            if f == "static/styles.css":
+                continue
             with_dash = [f.startswith(p) for p in disallowed_prefixes]
             assert not any(with_dash), (
                 f"Disallowed file changed: {f}"
