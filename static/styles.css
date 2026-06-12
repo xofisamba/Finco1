@@ -7814,3 +7814,690 @@ body.standalone-page .top-header {
 }
 
 /* ── End Phase P2-FIX-7 standalone page styles ──────────────────── */
+
+/* ══════════════════════════════════════════════════════════════════════
+   Phase WF-2 — Results Sheet Styling
+   Adds rules for all sheet_*.html class names that had zero coverage.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── fc-data-row ─────────────────────────────────────────────────── */
+tr.fc-data-row {
+  border-bottom: 1px solid var(--border, #dde4ed);
+}
+tr.fc-data-row:hover td {
+  background: var(--row-hover, #f5f7fb);
+}
+tr.fc-data-row--child td {
+  padding-left: 2rem;
+  color: var(--text-2, #4b5563);
+  font-size: 0.88rem;
+}
+
+/* ── fc-cell modifiers ───────────────────────────────────────────── */
+td.fc-cell--label,
+th.fc-cell--label {
+  text-align: left;
+  font-weight: 500;
+}
+td.fc-cell--col-label,
+th.fc-cell--col-label {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text, #111827);
+}
+td.fc-cell--year,
+th.fc-cell--year {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 5.5rem;
+}
+td.fc-cell--month,
+th.fc-cell--month {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 4.5rem;
+  font-size: 0.82rem;
+}
+td.fc-cell--pct,
+th.fc-cell--pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 4rem;
+}
+td.fc-cell--val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+td.fc-cell--status,
+th.fc-cell--status {
+  text-align: center;
+  min-width: 5.5rem;
+}
+td.fc-cell--muted {
+  color: var(--text-3, #9ca3af);
+  font-size: 0.85rem;
+}
+td.fc-cell--indented {
+  padding-left: 2rem;
+}
+td.fc-cell--cat-total {
+  font-weight: 700;
+  border-top: 2px solid var(--border, #dde4ed);
+  background: var(--surface-2, #f8f9fb);
+}
+td.fc-cell--inactive-year {
+  color: var(--text-3, #9ca3af);
+  font-style: italic;
+}
+
+/* ── fc-th column headers ────────────────────────────────────────── */
+th.fc-th--year,
+th.fc-th--year-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 5.5rem;
+  background: var(--surface-2, #f8f9fb);
+}
+th.fc-th--month,
+th.fc-th--month-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 4.5rem;
+  font-size: 0.82rem;
+  background: var(--surface-2, #f8f9fb);
+}
+th.fc-th--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+th.fc-th--pct {
+  text-align: right;
+  min-width: 4rem;
+}
+th.fc-th--status {
+  text-align: center;
+}
+th.fc-th--notes {
+  text-align: left;
+  min-width: 12rem;
+}
+th.fc-th--sticky {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface, #fff);
+  border-right: 1px solid var(--border, #dde4ed);
+}
+
+/* ── fc-grid-header row variants ─────────────────────────────────── */
+tr.fc-grid-header--groups th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2, #4b5563);
+  border-bottom: 1px solid var(--border, #dde4ed);
+  background: var(--surface-3, #f0f3f8);
+}
+tr.fc-grid-header--sub th {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-2, #4b5563);
+  background: var(--surface-2, #f8f9fb);
+  border-bottom: 1px solid var(--border, #dde4ed);
+}
+
+/* ── fc-grid-scroll-wrapper ──────────────────────────────────────── */
+.fc-grid-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+}
+
+/* ── fc-section-band variant ─────────────────────────────────────── */
+.fc-section-band__code {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  color: var(--text-3, #9ca3af);
+  margin-left: 0.4rem;
+}
+
+/* ── fc-val, fc-flag, fc-rt-dot, fc-sched, fc-child-indicator ───── */
+.fc-val {
+  font-variant-numeric: tabular-nums;
+}
+.fc-flag {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent, #2563eb);
+  vertical-align: middle;
+  margin-right: 0.25rem;
+}
+.fc-rt-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--green, #22c55e);
+  vertical-align: middle;
+  margin-right: 0.3rem;
+}
+.fc-sched {
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+}
+.fc-child-indicator {
+  color: var(--text-3, #9ca3af);
+  margin-right: 0.3rem;
+}
+.fc-auth-src {
+  font-size: 0.75rem;
+  color: var(--text-3, #9ca3af);
+  font-style: italic;
+}
+
+/* ── CAPEX grid classes ───────────────────────────────────────────── */
+.fc-capex-detail-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.fc-capex-group-header td {
+  font-weight: 700;
+  background: var(--surface-2, #f8f9fb);
+  padding: 0.5rem 0.75rem;
+  border-top: 2px solid var(--border, #dde4ed);
+}
+.fc-capex-cat-row td {
+  font-weight: 600;
+  background: var(--surface-3, #f0f3f8);
+  padding: 0.4rem 0.75rem;
+}
+.fc-capex-child td {
+  padding: 0.3rem 0.75rem 0.3rem 2rem;
+  color: var(--text-2, #4b5563);
+  font-size: 0.85rem;
+}
+.fc-capex-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+  margin: 0.5rem 0;
+}
+
+/* ── CAPEX summary strip & cards ─────────────────────────────────── */
+.capex-summary-strip {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+}
+.capex-summary-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+  padding: 0.6rem 1rem;
+  min-width: 9rem;
+  flex: 1 1 9rem;
+}
+.capex-summary-card--total {
+  border-color: var(--accent, #2563eb);
+  background: var(--accent-light, #eff6ff);
+  font-weight: 600;
+}
+.capex-summary-card__label {
+  font-size: 0.78rem;
+  color: var(--text-2, #4b5563);
+  margin-bottom: 0.2rem;
+}
+.capex-summary-card__value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #111827);
+}
+.capex-summary-card__unit {
+  font-size: 0.75rem;
+  color: var(--text-3, #9ca3af);
+  margin-top: 0.15rem;
+}
+
+/* ── CAPEX auth strip ────────────────────────────────────────────── */
+.capex-auth-strip {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--surface-2, #f8f9fb);
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+}
+.capex-auth-label {
+  font-weight: 600;
+  color: var(--text-2, #4b5563);
+  margin-right: 0.25rem;
+}
+.capex-auth-card {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border, #dde4ed);
+  background: var(--surface, #fff);
+}
+.capex-auth-card--backend { border-color: #22c55e; }
+.capex-auth-card--app     { border-color: #3b82f6; }
+.capex-auth-card--excel   { border-color: #f59e0b; }
+.capex-auth-card--missing { border-color: #ef4444; }
+.capex-auth-card--mismatch { border-color: #f97316; }
+.capex-auth-card--scope-mismatch { border-color: #a855f7; }
+.capex-auth-card--deferred { border-color: #6b7280; }
+.capex-auth-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.capex-auth-name {
+  color: var(--text-2, #4b5563);
+}
+.capex-auth-total {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-2, #4b5563);
+}
+.capex-auth-total__label { font-weight: 500; }
+.capex-auth-total__count { font-weight: 700; }
+
+/* ── CAPEX column key ────────────────────────────────────────────── */
+.capex-column-key {
+  background: var(--surface-2, #f8f9fb);
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+}
+.capex-column-key__title {
+  font-weight: 700;
+  color: var(--text, #111827);
+  margin-bottom: 0.4rem;
+}
+.capex-column-key__section {
+  margin-top: 0.4rem;
+}
+.capex-column-key__section-title {
+  font-weight: 600;
+  color: var(--text-2, #4b5563);
+  margin-bottom: 0.2rem;
+}
+.capex-column-key__lead {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.capex-column-key__chips {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+}
+.capex-column-key__chip-desc {
+  font-size: 0.75rem;
+  color: var(--text-3, #9ca3af);
+}
+.capex-column-key__group-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--accent, #2563eb);
+  vertical-align: middle;
+  margin-right: 0.2rem;
+}
+
+/* ── CAPEX toolbar & controls ────────────────────────────────────── */
+.capex-grid-toolbar,
+.opex-grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.capex-toolbar-label,
+.opex-toolbar-label {
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+  margin-right: 0.25rem;
+}
+.capex-mode-btn,
+.opex-mode-btn,
+.capex-m-btn,
+.opex-yr-btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: 4px;
+  background: var(--surface, #fff);
+  cursor: pointer;
+  color: var(--text-2, #4b5563);
+}
+.capex-mode-btn:hover,
+.opex-mode-btn:hover,
+.capex-m-btn:hover,
+.opex-yr-btn:hover {
+  background: var(--surface-2, #f8f9fb);
+}
+.capex-display-mode,
+.opex-display-mode {
+  font-size: 0.8rem;
+  color: var(--text-3, #9ca3af);
+}
+.capex-month-range,
+.opex-year-range {
+  font-size: 0.8rem;
+  color: var(--text-3, #9ca3af);
+}
+.capex-collapse-controls,
+.opex-collapse-controls {
+  margin-left: auto;
+  display: flex;
+  gap: 0.35rem;
+}
+.capex-collapse-btn,
+.opex-collapse-btn {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.78rem;
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: 3px;
+  background: var(--surface, #fff);
+  cursor: pointer;
+  color: var(--text-2, #4b5563);
+}
+
+/* ── CAPEX misc ──────────────────────────────────────────────────── */
+.capex-display-only-banner {
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: var(--radius, 6px);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+.capex-driving-copy {
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+  font-style: italic;
+}
+.capex-deferred-note {
+  font-size: 0.82rem;
+  color: var(--text-3, #9ca3af);
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+.capex-metadata-disclaimer {
+  font-size: 0.78rem;
+  color: var(--text-3, #9ca3af);
+  margin-top: 0.4rem;
+}
+.capex-status-legend {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-2, #4b5563);
+  margin: 0.4rem 0;
+}
+.capex-add-line-preview-totals-detail {
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+  margin-top: 0.4rem;
+}
+
+/* ── OPEX summary ────────────────────────────────────────────────── */
+.opex-summary-strip {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+}
+.opex-summary-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+  padding: 0.6rem 1rem;
+  min-width: 9rem;
+  flex: 1 1 9rem;
+}
+.opex-summary-card__label {
+  font-size: 0.78rem;
+  color: var(--text-2, #4b5563);
+  margin-bottom: 0.2rem;
+}
+.opex-summary-card__value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #111827);
+}
+.opex-summary-card__unit {
+  font-size: 0.75rem;
+  color: var(--text-3, #9ca3af);
+  margin-top: 0.15rem;
+}
+.opex-legacy-summary {
+  border: 1px dashed var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--text-2, #4b5563);
+}
+.opex-legacy-summary__toggle {
+  cursor: pointer;
+  color: var(--accent, #2563eb);
+  font-size: 0.82rem;
+}
+.fc-opex-detail-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.fc-opex-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+  margin: 0.5rem 0;
+}
+
+/* ── CAPEX/OPEX cat rows ─────────────────────────────────────────── */
+.fc-cat-row {
+  background: var(--surface-2, #f8f9fb);
+}
+.fc-cat-row td {
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+}
+.fc-cat-child td {
+  padding: 0.3rem 0.75rem 0.3rem 1.75rem;
+  font-size: 0.85rem;
+  color: var(--text-2, #4b5563);
+}
+.fc-cat-tbody tr:last-child td {
+  border-bottom: 2px solid var(--border, #dde4ed);
+}
+.fc-cat-toggle-icon {
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.7rem;
+  margin-right: 0.3rem;
+  color: var(--text-3, #9ca3af);
+}
+
+/* ── runtime-block (Senior Debt live KPI overlay) ─────────────────── */
+.runtime-block {
+  background: var(--surface-2, #f8f9fb);
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.runtime-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.runtime-block-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text, #111827);
+}
+.runtime-block-project {
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+  margin-left: auto;
+}
+.runtime-block-kpis {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.runtime-block-secondary {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border, #dde4ed);
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* ── rb-metric ───────────────────────────────────────────────────── */
+.rb-metric {
+  display: flex;
+  flex-direction: column;
+  min-width: 7rem;
+}
+.rb-metric-label {
+  font-size: 0.75rem;
+  color: var(--text-2, #4b5563);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.1rem;
+}
+.rb-metric-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #111827);
+}
+.rb-blocked {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── inp-readonly-notice ─────────────────────────────────────────── */
+.inp-readonly-notice {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: var(--radius, 6px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+.inp-readonly-notice__icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.inp-readonly-notice__body {
+  flex: 1;
+}
+.inp-readonly-notice__body p {
+  margin: 0.25rem 0 0;
+  color: var(--text-2, #4b5563);
+}
+.inp-readonly-notice__hint {
+  font-size: 0.82rem;
+  color: var(--text-3, #9ca3af);
+  margin-top: 0.35rem !important;
+}
+
+/* ── badge variants (sheet audit badges) ─────────────────────────── */
+.badge-mapped     { background: #dcfce7; color: #166534; }
+.badge-partial    { background: #fef9c3; color: #854d0e; }
+.badge-mismatch   { background: #fee2e2; color: #991b1b; }
+.badge-warning    { background: #ffedd5; color: #9a3412; }
+.badge-unmapped   { background: #f3f4f6; color: #374151; }
+.badge-backend    { background: #dbeafe; color: #1e40af; }
+.badge-contingency { background: #e0e7ff; color: #3730a3; }
+.badge-design-only { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.badge-export-only { background: #fafafa; color: #6b7280; border: 1px solid #d1d5db; }
+.badge-factory    { background: #fdf4ff; color: #7e22ce; }
+.badge-metadata-only { background: #f3f4f6; color: #6b7280; }
+.badge-runtime-used { background: #dcfce7; color: #15803d; }
+.badge-rt         { background: #dbeafe; color: #1d4ed8; font-size: 0.72rem; }
+.badge-rt-display-only       { background: #f3f4f6; color: #6b7280; font-size: 0.72rem; }
+.badge-rt-drives-model       { background: #dcfce7; color: #15803d; font-size: 0.72rem; }
+.badge-rt-needs-review       { background: #fef9c3; color: #92400e; font-size: 0.72rem; }
+.badge-rt-not-applicable     { background: #f3f4f6; color: #9ca3af; font-size: 0.72rem; }
+.badge-rt-not-comparable     { background: #f3f4f6; color: #9ca3af; font-size: 0.72rem; }
+.badge-rt-pending-runtime-source { background: #ffedd5; color: #9a3412; font-size: 0.72rem; }
+.badge-rt-pending-treatment  { background: #fef9c3; color: #92400e; font-size: 0.72rem; }
+.badge-rt-reference-only     { background: #f0f9ff; color: #0369a1; font-size: 0.72rem; }
+.badge-rt-timing-only        { background: #fdf4ff; color: #7e22ce; font-size: 0.72rem; }
+.badge-scope-aggregate        { background: #dbeafe; color: #1e40af; font-size: 0.72rem; }
+.badge-scope-fee-only         { background: #f3f4f6; color: #6b7280; font-size: 0.72rem; }
+.badge-scope-payment-batch    { background: #e0e7ff; color: #3730a3; font-size: 0.72rem; }
+.badge-scope-project-rights   { background: #fdf4ff; color: #7e22ce; font-size: 0.72rem; }
+.badge-scope-timing-only      { background: #fef9c3; color: #92400e; font-size: 0.72rem; }
+.badge-auth-app         { background: #dbeafe; color: #1e40af; }
+.badge-auth-backend     { background: #dcfce7; color: #15803d; }
+.badge-auth-deferred    { background: #f3f4f6; color: #6b7280; }
+.badge-auth-excel       { background: #fef9c3; color: #92400e; }
+.badge-auth-mismatch    { background: #fee2e2; color: #991b1b; }
+.badge-auth-missing     { background: #fee2e2; color: #991b1b; }
+.badge-auth-na          { background: #f3f4f6; color: #9ca3af; }
+.badge-auth-scope-mismatch { background: #fdf4ff; color: #7e22ce; }
+
+/* ── banner-sub ──────────────────────────────────────────────────── */
+.banner-sub {
+  font-size: 0.82rem;
+  color: var(--text-2, #4b5563);
+  margin-top: 0.2rem;
+}
+
+/* ── preview-notice ──────────────────────────────────────────────── */
+.preview-notice {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  background: var(--surface-2, #f8f9fb);
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: var(--radius, 6px);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-2, #4b5563);
+  margin-bottom: 0.75rem;
+}
+
+/* ── End Phase WF-2 ──────────────────────────────────────────────── */
