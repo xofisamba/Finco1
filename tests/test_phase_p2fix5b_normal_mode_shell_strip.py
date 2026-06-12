@@ -339,6 +339,7 @@ class TestFileScope:
             "scripts/",
             "tests/test_phase_p2fix8_",
             "tests/test_phase_p2fix5a_",
+            "app/templates/partials/project_home.html",
         )
         disallowed_prefixes = (
             "app/persistence/",

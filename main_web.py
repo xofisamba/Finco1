@@ -2916,14 +2916,71 @@ async def new_project_form_prefilled(
 # Phase P2-min-1: Project Home (presentation entry point)
 # ---------------------------------------------------------------------------
 
+def _resolve_technology(record) -> str:
+    """Derive technology label from record fields — never from run state."""
+    if record.project_type:
+        return record.project_type
+    snap = record.baseline_snapshot or {}
+    if snap.get("project_type"):
+        return snap["project_type"]
+    # Derive from template_source as last resort
+    ts = (record.template_source or record.source_project_template or "").lower()
+    if "solar" in ts or ts == "oborovo":
+        return "Solar PV"
+    if "wind" in ts or ts == "tuho":
+        return "Wind"
+    return "—"
+
+
+def _find_existing_working_copy(user_id: str, source_project_code: str):
+    """Return the first user-owned working copy of source_project_code, or None."""
+    for record in list_project_records(user_id=user_id):
+        if record.project_origin != "user_created":
+            continue
+        meta = record.replay_metadata or {}
+        if (
+            meta.get("export_type") == "working_copy_from_protected_reference"
+            and meta.get("source_project_code") == source_project_code
+        ):
+            return record
+    return None
+
+
 def _home_user_projects(user) -> list:
-    """Return the user-created project items for the Project Home
-    partial. Factory templates, baselines, and parity fixtures
-    are intentionally hidden from this view (presentation filter
-    only). They remain reachable from /projects/browse and the
-    audit fixture paths.
+    """Return the user-created project items for the Project Home table.
+
+    Returns richer data than the old card grid: technology (from record,
+    never run state), country, capacity, last-edited, last-run, status.
+    Factory templates, baselines, and parity fixtures are hidden (presentation
+    filter only — they remain reachable from /projects/browse).
     """
-    return _user_project_selector_items(user)
+    rows = []
+    for record in list_project_records(user_id=user.user_id):
+        if record.project_origin != "user_created":
+            continue
+        snap = record.baseline_snapshot or {}
+        last_run = record.last_run_summary or {}
+        # Status
+        if last_run:
+            run_at = last_run.get("run_at") or last_run.get("timestamp") or ""
+            updated = str(record.updated_at or "")
+            if run_at and updated and updated > run_at:
+                status = "Needs rerun"
+            else:
+                status = "Run completed"
+        else:
+            status = "Draft"
+        rows.append({
+            "project_code": record.project_code,
+            "name": record.project_name,
+            "technology": _resolve_technology(record),
+            "country": snap.get("country_market") or "—",
+            "capacity_mw": snap.get("capacity_mw") or "—",
+            "last_edited": str(record.updated_at)[:10] if record.updated_at else "—",
+            "last_run": str(last_run.get("run_at") or last_run.get("timestamp") or "")[:10] or "—",
+            "status": status,
+        })
+    return rows
 
 
 # Default template source for the minimal new-project form.
@@ -3223,20 +3280,14 @@ async def save_workspace_draft_endpoint(request: Request):
 
     form = await request.form()
 
-    # ── Phase P2-FIX-3: C2 first-edit guard (defense in depth) ─
+    # ── P2-FIX-8 PR3: Transparent copy-on-first-save ────────────
     # If the active project is a protected reference (TUHO /
-    # Oborovo factory template), reject the draft save with a
-    # 409-style response. The frontend will surface the
-    # "Create editable copy?" prompt. The protected reference
-    # fixture never mutates.
+    # Oborovo), automatically route through the copy mechanism
+    # instead of returning 409. The user's first Save lands in
+    # their working copy — no explicit button needed.
     #
-    # The guard is performed in main_web.py (the route layer)
-    # rather than in scenario_state_route_service.execute_draft_route
-    # to keep the P2-FIX-2 file-scope contract intact. The
-    # service-level guard in
-    # scenario_state_route_service.execute_draft_route is
-    # also in place as a defense-in-depth check; both
-    # implementations agree on the 409 contract.
+    # Dedup: if a working copy of the same source already exists
+    # for this user, redirect to that instead of creating a new one.
     try:
         active_project_code = (
             form.get("active_project")
@@ -3248,15 +3299,27 @@ async def save_workspace_draft_endpoint(request: Request):
                 user_id=user.user_id, project_code=active_project_code
             )
             if is_protected_reference(guard_record):
+                # Dedup: redirect to existing copy if one exists
+                existing = _find_existing_working_copy(
+                    user.user_id, active_project_code
+                )
+                if existing:
+                    redirect_url = f"/?project={existing.project_code}"
+                    return JSONResponse(
+                        {"redirect": redirect_url},
+                        status_code=200,
+                        headers={"HX-Redirect": redirect_url},
+                    )
+                # No existing copy — create one transparently
+                redirect_url = (
+                    f"/projects/{active_project_code}/confirm-first-edit-copy"
+                )
                 return JSONResponse(
-                    first_edit_response(guard_record),
-                    status_code=409,
+                    {"redirect": redirect_url},
+                    status_code=200,
+                    headers={"HX-Redirect": redirect_url},
                 )
     except Exception:
-        # If the guard lookup fails for any reason, fall
-        # through to the normal service call. The service has
-        # its own guard as a backup. This is presentation-only
-        # behavior and must not break the existing /draft flow.
         pass
 
     deps = ScenarioStateRouteDeps(
@@ -3846,6 +3909,14 @@ async def confirm_first_edit_copy_endpoint(
                 "project_code": project_code,
             },
             status_code=400,
+        )
+
+    # P2-FIX-8 PR3: Dedup — if user already has a working copy of
+    # this source, redirect to it instead of creating another.
+    existing = _find_existing_working_copy(user.user_id, project_code)
+    if existing:
+        return RedirectResponse(
+            url=f"/?project={existing.project_code}", status_code=302
         )
 
     # Reuse the existing /save-as machinery. The deps below are

@@ -98,16 +98,12 @@
     <div class="banner-body">
       <span class="banner-title">{{ _title }}</span>
       {% if _desc %}<span class="banner-desc">{{ _desc }}</span>{% endif %}
-      {# Phase P2-FIX-6: C2 first-edit copy button.
-         Shown only when (a) the banner context is
-         factory_template AND (b) the active project
-         is a protected reference (TUHO / Oborovo)
-         AND (c) the user is NOT already viewing a
-         user-created working copy of the reference.
-         The button POSTs to the existing backend
-         route ``/projects/{code}/confirm-first-edit-copy``
-         which returns 302 to the new working copy. #}
-      {% if _ctx == 'factory_template' and is_protected_reference and not is_user_project %}
+      {# P2-FIX-8 PR3: Transparent copy-on-first-save. In normal mode
+         the explicit button is retired — the first Save triggers
+         the copy mechanism automatically via the draft route.
+         In reviewer/audit mode the button is kept as an explicit
+         affordance for reviewers who need to understand the mechanic. #}
+      {% if audit_mode and _ctx == 'factory_template' and is_protected_reference and not is_user_project %}
         <form class="banner-action"
               method="POST"
               action="/projects/{{ active_project_code }}/confirm-first-edit-copy"
