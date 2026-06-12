@@ -203,6 +203,74 @@ def build_dashboard_kpis(
     return kpis
 
 
+def build_dashboard_kpis_from_raw_kpis(raw_kpis: dict) -> Dict[str, Dict[str, Any]]:
+    """Build dashboard KPIs from a raw ``result["kpis"]`` dict.
+
+    This is used after a successful run to populate the OOB
+    dashboard update.  The field names in ``raw_kpis`` (from
+    ``run_project`` → ``waterfall_core``) differ slightly from
+    the ``.summary`` attribute on the waterfall result object:
+    ``project_irr`` vs ``project_irr_pct``, etc.
+    """
+    project_irr = _safe_float(raw_kpis.get("project_irr"))
+    equity_irr = _safe_float(raw_kpis.get("equity_irr"))
+    senior_debt = _safe_float(raw_kpis.get("senior_debt_keur"))
+    min_dscr = _safe_float(raw_kpis.get("min_dscr"))
+    avg_dscr = _safe_float(raw_kpis.get("avg_dscr"))
+    target_dscr = _safe_float(raw_kpis.get("target_dscr"))
+    y1_revenue = _safe_float(raw_kpis.get("y1_revenue_keur") or raw_kpis.get("total_revenue_keur"))
+    y1_ebitda = _safe_float(raw_kpis.get("y1_ebitda_keur") or raw_kpis.get("total_ebitda_keur"))
+    npv = _safe_float(raw_kpis.get("project_npv_keur"))
+
+    kpis: Dict[str, Dict[str, Any]] = {}
+    kpis["project_irr"] = {
+        "label": "Project IRR", "value": _fmt_pct(project_irr),
+        "raw": project_irr, "status": "pass" if project_irr is not None else "missing",
+        "tooltip": "Project Internal Rate of Return (computed by the runtime)",
+    }
+    kpis["equity_irr"] = {
+        "label": "Equity IRR", "value": _fmt_pct(equity_irr),
+        "raw": equity_irr, "status": "pass" if equity_irr is not None else "missing",
+        "tooltip": "Equity Internal Rate of Return",
+    }
+    kpis["senior_debt"] = {
+        "label": "Senior Debt", "value": _fmt_money_keur(senior_debt),
+        "raw": senior_debt, "status": "pass" if senior_debt is not None else "missing",
+        "tooltip": "Total senior debt (kEUR)",
+    }
+    kpis["realized_gearing"] = {
+        "label": "Realized Gearing", "value": "—",
+        "raw": None, "status": "missing",
+        "tooltip": "Realized gearing (derived at workspace load)",
+    }
+    kpis["min_dscr"] = {
+        "label": "Min DSCR", "value": _fmt_number(min_dscr, 2),
+        "raw": min_dscr, "status": "pass" if min_dscr is not None else "missing",
+        "tooltip": "Minimum Debt Service Coverage Ratio across the operating period",
+    }
+    kpis["avg_dscr"] = {
+        "label": "Avg DSCR", "value": _fmt_number(avg_dscr, 2),
+        "raw": avg_dscr, "status": "pass" if avg_dscr is not None else "missing",
+        "tooltip": "Average Debt Service Coverage Ratio",
+    }
+    kpis["project_npv"] = {
+        "label": "Project NPV", "value": _fmt_money_keur(npv),
+        "raw": npv, "status": "pass" if npv is not None else "missing",
+        "tooltip": "Project Net Present Value (computed by the runtime)",
+    }
+    kpis["y1_revenue"] = {
+        "label": "Y1 Revenue", "value": _fmt_money_keur(y1_revenue),
+        "raw": y1_revenue, "status": "pass" if y1_revenue is not None else "missing",
+        "tooltip": "Year 1 revenue (kEUR)",
+    }
+    kpis["y1_ebitda"] = {
+        "label": "Y1 EBITDA", "value": _fmt_money_keur(y1_ebitda),
+        "raw": y1_ebitda, "status": "pass" if y1_ebitda is not None else "missing",
+        "tooltip": "Year 1 EBITDA (kEUR)",
+    }
+    return kpis
+
+
 # ---------------------------------------------------------------------------
 # SVG chart series helpers
 # ---------------------------------------------------------------------------

@@ -58,8 +58,14 @@
     <div class="ps-section">
       <div class="ps-section-label">Actions</div>
       <div class="ps-actions">
-        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button">
+        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button"
+                hx-post="/run"
+                hx-include="#main-form"
+                hx-target="#model-output-area"
+                hx-swap="innerHTML"
+                hx-indicator="#run-spinner">
           <span class="ps-action-icon">▶</span> Run
+          <span id="run-spinner" class="htmx-indicator run-spinner">…</span>
         </button>
         <button class="ps-action-btn"
                 id="btn-save"
