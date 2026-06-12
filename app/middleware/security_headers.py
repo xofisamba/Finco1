@@ -55,6 +55,13 @@ class SecurityHeadersMiddleware:
                 # Add security headers
                 for name, value in self.HEADERS.items():
                     headers.append([name.encode(), value.encode()])
+                # HTML responses must not be cached — static assets use ?v= for cache busting
+                content_type = next(
+                    (v.decode() for k, v in headers if k.decode().lower() == "content-type"),
+                    "",
+                )
+                if "text/html" in content_type:
+                    headers.append([b"cache-control", b"no-store"])
                 await send({
                     "type": "http.response.start",
                     "status": status_code,

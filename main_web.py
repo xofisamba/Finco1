@@ -1,7 +1,10 @@
-import json
 """HTMX internal demo web interface for Finco1 model."""
+import hashlib
+import json
+import logging
 import os
 import re
+import subprocess
 from datetime import datetime as dt
 from dateutil.relativedelta import relativedelta
 
@@ -102,6 +105,34 @@ from app.services.compare_service import CompareRouteDeps, execute_compare_route
 from app.services.validation_service import ValidateRouteDeps, execute_validate_route
 from app.services.download_service import DownloadRouteDeps, execute_post_download_route, execute_get_download_route
 
+# -- Asset versioning ---------------------------------------------------------
+# Derived from git commit SHA so every deploy gets a unique cache-busting token.
+# Falls back to an MD5 of styles.css mtime if git is unavailable.
+def _compute_asset_version() -> str:
+    try:
+        sha = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        ).decode().strip()
+        if sha:
+            return sha
+    except Exception:
+        pass
+    css_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "styles.css")
+    try:
+        mtime = str(os.path.getmtime(css_path))
+        return hashlib.md5(mtime.encode()).hexdigest()[:8]
+    except Exception:
+        return "dev"
+
+
+ASSET_VERSION = _compute_asset_version()
+
+_logger = logging.getLogger(__name__)
+_logger.info("FincoGPT startup: asset_version=%s", ASSET_VERSION)
+
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
 
@@ -109,6 +140,7 @@ app = FastAPI(title="FincoGPT Internal Demo")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"))
 templates.env.globals["htmx"] = True
+templates.env.globals["asset_version"] = ASSET_VERSION
 
 # -- Static files -------------------------------------------------------------
 if os.path.exists(os.path.join(BASE_DIR, "static")):
