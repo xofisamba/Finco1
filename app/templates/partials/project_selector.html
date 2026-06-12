@@ -81,14 +81,10 @@
 
   <!-- Quick actions (Phase 56E: clearer "Switch" and "New project" actions) -->
   <div class="ps-quick-actions">
-    {# Phase P2-min-1: Project Home entry point #}
+    {# WF-3: Home → canonical / route #}
     <a class="ps-action-btn"
        id="btn-project-home"
-       href="/home"
-       hx-get="/home"
-       hx-target="#panel-overview"
-       hx-swap="innerHTML"
-       onclick="closeProjectBrowser && closeProjectBrowser(); closeNewProjectPanel && closeNewProjectPanel();">
+       href="/">
       <span class="ps-action-icon" aria-hidden="true">⌂</span>
       <span class="ps-action-label">Home</span>
     </a>
@@ -101,17 +97,38 @@
       <span class="ps-action-icon" aria-hidden="true">+</span>
       <span class="ps-action-label">New project</span>
     </button>
-    <button class="ps-action-btn"
-            id="btn-load-project"
-            type="button"
-            hx-get="/projects/browse"
-            hx-target="#project-browser-container"
-            hx-swap="innerHTML"
-            onclick="openProjectBrowser()">
+    <a class="ps-action-btn"
+       id="btn-load-project"
+       href="/projects">
       <span class="ps-action-icon" aria-hidden="true">⇄</span>
-      <span class="ps-action-label">Switch project</span>
-    </button>
+      <span class="ps-action-label">All projects</span>
+    </a>
   </div>
+
+  {# WF-3: Two labelled sidebar nav groups #}
+  {% if user_project_records %}
+  <div class="ps-nav-group" id="ps-nav-my-projects">
+    <div class="ps-nav-group-label">My projects</div>
+    {% for item in user_project_records %}
+    <a class="ps-nav-link{% if active_project_code == item.project_code %} ps-nav-link--active{% endif %}"
+       href="/?project={{ item.project_code }}">
+      {{ item.label }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if factory_template_projects %}
+  <div class="ps-nav-group" id="ps-nav-reference-projects">
+    <div class="ps-nav-group-label">Reference</div>
+    {% for item in factory_template_projects %}
+    <a class="ps-nav-link{% if active_project_code == item.project_code %} ps-nav-link--active{% endif %}"
+       href="/?project={{ item.project_code }}">
+      {{ item.label }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
 
 </div>
 
