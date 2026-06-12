@@ -743,8 +743,11 @@ class TestFileScope:
             "app/templates/partials/_standalone_header.html",
             "app/templates/index.html",
             "tests/test_phase_p2fix7_production_cleanup.py",
+            "tests/test_phase_p2fix7a_css_parser_cleanup.py",
             "docs/phase_p2fix7_",
             "reports/phase_p2fix7_",
+            "docs/phase_p2fix7a_",
+            "reports/phase_p2fix7a_",
             # ── Phase P2-FIX-4 cross-arc allowlist ───────
             # P2-FIX-4 is a stacked navigation cleanup
             # branch that adds _nav_compression.html,
