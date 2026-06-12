@@ -322,6 +322,9 @@ class TestFileScope:
             "tests/test_phase_p2fix8_",
             "tests/test_phase_p2fix5a_",
             "app/templates/partials/project_home.html",
+            "app/templates/partials/new_project_minimal.html",
+            "app/templates/partials/new_project_result.html",
+            "tests/test_phase_wf4_",
             # WF cross-arc allowlist
             "app/ui/dashboard.py",
             "app/templates/partials/_dashboard_oob.html",
