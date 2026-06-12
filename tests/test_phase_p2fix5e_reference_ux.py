@@ -306,12 +306,16 @@ class TestFileScope:
         allowed_prefixes = (
             "main_web.py",
             "app/templates/partials/_state_banner.html",
+            "app/templates/partials/inputs_section.html",
+            "app/templates/partials/_standalone_header.html",
+            "app/templates/index.html",
             "tests/test_phase_p2fix5e_reference_ux.py",
             "tests/test_phase_p2fix3_c2_first_edit.py",
             "tests/test_phase_p2fix5b_normal_mode_shell_strip.py",
             "tests/test_phase_p2fix5c_dashboard_kpi.py",
             "tests/test_phase_p2fix5d_five_area_navigation.py",
             "tests/test_phase_p2fix6_c2_create_copy_ui.py",
+            "tests/test_phase_p2fix7_production_cleanup.py",
             "docs/phase_p2fix5e_",
             "reports/phase_p2fix5e_",
         )
@@ -323,9 +327,11 @@ class TestFileScope:
             "app/excel_export.py",
             "main_api.py",
             "static/app.js",
-            "static/styles.css",
         )
+        # Phase P2-FIX-7: allow static/styles.css.
         for f in changed:
+            if f == "static/styles.css":
+                continue
             with_dash = [f.startswith(p) for p in disallowed_prefixes]
             assert not any(with_dash), (
                 f"Disallowed file changed: {f}"

@@ -37,8 +37,17 @@
       </div>
       <span class="badge badge-info">Internal</span>
     </div>
-  {% elif template_source in ("generic_solar", "generic_wind") %}
-    {# Generic factory templates are internal-use model only. #}
+  {% elif template_source in ("generic_solar", "generic_wind") or (project_ctx.code and "generic" in project_ctx.code|lower) %}
+    {# Phase P2-FIX-7: Generic factory templates are internal-use
+       model only. P2-FIX-2 originally matched on
+       ``template_source`` only, but factory-seeded
+       Generic Solar / Wind records do not populate
+       ``template_source`` (it lives on
+       ``source_project_template``). P2-FIX-7 adds
+       ``project_ctx.code`` as a second signal so the
+       Generic factory seed path lands in the
+       internal-use model branch instead of leaking
+       the "Protected original" copy. #}
     <div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
          data-p2fix2-disclosure="internal-use-model">
       <div class="gov-icon">Info</div>

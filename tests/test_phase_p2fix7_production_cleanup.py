@@ -1,0 +1,368 @@
+"""Phase P2-FIX-7 — Production Reality Cleanup.
+
+Three production-facing mismatches from
+P2-FIX-VERIFY, all addressed:
+
+1. Standalone page templates (P2-FIX-5A) had
+   classes that were never defined in
+   static/styles.css. P2-FIX-7 adds the CSS.
+
+2. inputs_section.html showed "Unknown" as
+   Template Origin for Generic Solar / Wind
+   (Phase 20D bug, March 2026). P2-FIX-7 makes
+   the fallback project-type-aware.
+
+3. _state_banner.html showed the "Protected
+   original" banner for ANY non-user-created
+   project, including Generic Solar / Wind.
+   P2-FIX-7 restricts the banner to protected
+   references only.
+
+4. index.html P2-FIX-2 logic matched on
+   ``template_source`` only, which is empty
+   for factory-seeded Generic projects. P2-FIX-7
+   adds ``project_ctx.code`` (case-insensitive
+   contains 'generic') as a second signal.
+
+Hard constraints preserved:
+- rc1 SHA unchanged
+- No formula / model / debt / tax / IDC /
+  construction / R-PAR / C10 / R99/R102 / G20
+- No persistence schema migration
+- No static/app.js changes
+- No main_api.py changes
+- No dependencies added
+- File scope: static/styles.css,
+  app/templates/partials/inputs_section.html,
+  app/templates/partials/_state_banner.html,
+  app/templates/index.html (extended for Fix 3
+  closure), tests, docs
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-key-p2fix7")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.auth import create_session_token  # noqa: E402
+from main_web import app  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="module")
+def logged_in_client():
+    client = TestClient(app)
+    token = create_session_token(user_id="1", username="test")
+    client.cookies.set("finco_session", token)
+    return client
+
+
+# ─────────────────────────────────────────────────────────────────
+# Fix 1: standalone page CSS
+# ─────────────────────────────────────────────────────────────────
+
+
+class TestStandalonePageCSS:
+    @pytest.fixture(autouse=True)
+    def inject(self):
+        self.css = (REPO_ROOT / "static" / "styles.css").read_text()
+
+    def test_standalone_page_class_defined(self):
+        assert re.search(r"body\.standalone-page\s*{", self.css), (
+            "body.standalone-page CSS rule must be defined "
+            "(P2-FIX-7 Fix 1)"
+        )
+
+    def test_inline_style_fallback_in_standalone_header(self):
+        """P2-FIX-7 also adds the same rules as an
+        inline <style> in _standalone_header.html so
+        that browsers can apply them even when a
+        pre-existing CSS syntax error in main branch
+        prevents the external sheet from being fully
+        parsed. The inline <style> is the runtime
+        guarantee; the external CSS is the long-term
+        source of truth."""
+        header = (REPO_ROOT / "app" / "templates" / "partials" / "_standalone_header.html").read_text()
+        assert "body.standalone-page" in header
+        assert "page-shell" in header
+
+    def test_standalone_main_class_defined(self):
+        assert re.search(r"\.standalone-main\s*{", self.css), (
+            ".standalone-main CSS rule must be defined"
+        )
+
+    def test_page_shell_class_defined(self):
+        assert re.search(r"\.page-shell\s*{", self.css), (
+            ".page-shell CSS rule must be defined"
+        )
+
+    def test_page_shell_header_class_defined(self):
+        assert re.search(r"\.page-shell-header\s*{", self.css), (
+            ".page-shell-header CSS rule must be defined"
+        )
+
+    def test_page_shell_title_class_defined(self):
+        assert re.search(r"\.page-shell-title\s*{", self.css), (
+            ".page-shell-title CSS rule must be defined"
+        )
+
+    def test_page_shell_desc_class_defined(self):
+        assert re.search(r"\.page-shell-desc\s*{", self.css), (
+            ".page-shell-desc CSS rule must be defined"
+        )
+
+    def test_page_shell_footer_class_defined(self):
+        assert re.search(r"\.page-shell-footer\s*{", self.css), (
+            ".page-shell-footer CSS rule must be defined"
+        )
+
+    def test_p2fix7_marker_comment_present(self):
+        assert "Phase P2-FIX-7" in self.css, (
+            "P2-FIX-7 marker comment must be present in CSS"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────
+# Fix 1 (rendered): standalone pages include the styled classes
+# ─────────────────────────────────────────────────────────────────
+
+
+class TestStandalonePagesRendered:
+    @pytest.fixture(autouse=True)
+    def inject(self, logged_in_client):
+        self.client = logged_in_client
+
+    def test_root_has_standalone_page_class(self):
+        r = self.client.get("/", follow_redirects=True)
+        assert "standalone-page" in r.text, (
+            "GET / must include standalone-page class"
+        )
+        assert "page-shell" in r.text, (
+            "GET / must include page-shell class"
+        )
+
+    def test_projects_new_has_standalone_page_class(self):
+        r = self.client.get("/projects/new", follow_redirects=True)
+        assert "standalone-page" in r.text
+        assert "page-shell" in r.text
+
+    def test_projects_browse_has_standalone_page_class(self):
+        r = self.client.get("/projects/browse", follow_redirects=True)
+        assert "standalone-page" in r.text
+        assert "page-shell" in r.text
+
+    def test_workspace_pages_unaffected(self):
+        r = self.client.get("/?project=tuho", follow_redirects=True)
+        # workspace pages use base.html body, not standalone-page
+        assert "data-p2fix5a-page" not in r.text, (
+            "Workspace page must NOT have standalone-page body class"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────
+# Fix 2: Template Origin no longer "Unknown" for Generic
+# ─────────────────────────────────────────────────────────────────
+
+
+class TestTemplateOriginNoUnknown:
+    @pytest.fixture(autouse=True)
+    def inject(self, logged_in_client):
+        self.client = logged_in_client
+
+    @staticmethod
+    def _extract_template_origin(html: str) -> str | None:
+        """Extract the value of the 'Template Origin' field
+        from the inputs_section.html rendered output."""
+        m = re.search(
+            r"Template Origin.{0,2000}?class=\"inp-value\">([^<]+)</span>",
+            html,
+            re.DOTALL,
+        )
+        return m.group(1).strip() if m else None
+
+    def test_generic_solar_not_unknown(self):
+        r = self.client.get(
+            "/?project=generic_solar", follow_redirects=True
+        )
+        val = self._extract_template_origin(r.text)
+        assert val != "Unknown", (
+            f"Generic Solar Template Origin must NOT be 'Unknown', got {val!r}"
+        )
+        assert val is not None
+        # User-safe label expected
+        assert val.lower() in {"generic", "generic solar", "internal-use model", "generic template"}, (
+            f"Generic Solar should show 'Generic' or similar, got {val!r}"
+        )
+
+    def test_generic_wind_not_unknown(self):
+        r = self.client.get(
+            "/?project=generic_wind", follow_redirects=True
+        )
+        val = self._extract_template_origin(r.text)
+        assert val != "Unknown", (
+            f"Generic Wind Template Origin must NOT be 'Unknown', got {val!r}"
+        )
+        assert val is not None
+        assert val.lower() in {"generic", "generic wind", "internal-use model", "generic template"}
+
+    def test_tuho_template_origin_unchanged(self):
+        r = self.client.get("/?project=tuho", follow_redirects=True)
+        val = self._extract_template_origin(r.text)
+        assert val == "TUHO", f"TUHO should still show 'TUHO', got {val!r}"
+
+    def test_oborovo_template_origin_unchanged(self):
+        r = self.client.get("/?project=oborovo", follow_redirects=True)
+        val = self._extract_template_origin(r.text)
+        assert val == "Oborovo", f"Oborovo should still show 'Oborovo', got {val!r}"
+
+    def test_no_forbidden_internal_vocabulary_in_template_origin(self):
+        for code in ("generic_solar", "generic_wind"):
+            r = self.client.get(
+                f"/?project={code}", follow_redirects=True
+            )
+            val = self._extract_template_origin(r.text)
+            assert val is not None
+            low = val.lower()
+            for forbidden in ("factory", "baseline", "calibration", "golden", "parity"):
+                assert forbidden not in low, (
+                    f"Forbidden internal term {forbidden!r} leaked into "
+                    f"Template Origin for {code}: {val!r}"
+                )
+
+
+# ─────────────────────────────────────────────────────────────────
+# Fix 3: Protected original banner only for protected references
+# ─────────────────────────────────────────────────────────────────
+
+
+class TestProtectedOriginalBannerRestricted:
+    @pytest.fixture(autouse=True)
+    def inject(self, logged_in_client):
+        self.client = logged_in_client
+
+    def test_tuho_has_protected_original_banner(self):
+        r = self.client.get("/?project=tuho", follow_redirects=True)
+        assert "data-p2fix2-disclosure=\"protected-original\"" in r.text
+        assert "data-p2fix6-cta" in r.text, "TUHO must show Create editable copy"
+
+    def test_oborovo_has_protected_original_banner(self):
+        r = self.client.get("/?project=oborovo", follow_redirects=True)
+        assert "data-p2fix2-disclosure=\"protected-original\"" in r.text
+        assert "data-p2fix6-cta" in r.text
+
+    def test_generic_solar_no_protected_original_banner(self):
+        r = self.client.get(
+            "/?project=generic_solar", follow_redirects=True
+        )
+        assert "data-p2fix2-disclosure=\"protected-original\"" not in r.text, (
+            "Generic Solar must NOT show Protected original banner"
+        )
+        assert "data-p2fix2-disclosure=\"internal-use-model\"" in r.text
+        assert "data-p2fix6-cta" not in r.text
+
+    def test_generic_wind_no_protected_original_banner(self):
+        r = self.client.get(
+            "/?project=generic_wind", follow_redirects=True
+        )
+        assert "data-p2fix2-disclosure=\"protected-original\"" not in r.text
+        assert "data-p2fix2-disclosure=\"internal-use-model\"" in r.text
+        assert "data-p2fix6-cta" not in r.text
+
+    def test_working_copy_no_protected_original_banner(self):
+        # Create a working copy via C2 confirm
+        r = self.client.post(
+            "/projects/tuho/confirm-first-edit-copy",
+            data={},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        new_url = r.headers.get("location", "")
+        assert new_url
+        r2 = self.client.get(new_url, follow_redirects=True)
+        assert "data-p2fix2-disclosure=\"protected-original\"" not in r2.text, (
+            "Working copy must NOT show Protected original banner"
+        )
+        assert "data-p2fix2-disclosure=\"internal-use-model\"" in r2.text
+        assert "data-p2fix6-cta" not in r2.text
+
+    def test_state_banner_factory_template_restricted_to_protected(self):
+        """The _state_banner.html factory_template branch must
+        require is_protected_reference. Verify by reading the
+        template source."""
+        template = (REPO_ROOT / "app" / "templates" / "partials" / "_state_banner.html").read_text()
+        # P2-FIX-7 added "and is_protected_reference" to the
+        # factory_template condition
+        assert (
+            "factory_template' and is_protected_reference" in template
+            or "factory_template'and is_protected_reference" in template
+        ), (
+            "_state_banner.html factory_template branch must require "
+            "is_protected_reference"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────
+# File-scope: only allowed files changed
+# ─────────────────────────────────────────────────────────────────
+
+
+class TestFileScope:
+    def test_only_allowed_files_changed(self):
+        if shutil.which("git") is None or not (REPO_ROOT / ".git").exists():
+            pytest.skip("git not available")
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "diff", "--name-only", "origin/main"],
+            capture_output=True,
+            text=True,
+        )
+        changed = [
+            f.strip() for f in result.stdout.strip().split("\n")
+            if f.strip()
+        ]
+        allowed_prefixes = (
+            "static/styles.css",
+            "app/templates/partials/inputs_section.html",
+            "app/templates/partials/_state_banner.html",
+            "app/templates/partials/_standalone_header.html",
+            "app/templates/index.html",  # extended for Fix 3 closure
+            "tests/test_phase_p2fix7_",
+            "tests/test_phase_p2fix6_",  # cross-arc allowlist
+            "tests/test_phase_p2fix5a_",  # cross-arc allowlist
+            "tests/test_phase_p2fix5b_",  # cross-arc allowlist
+            "tests/test_phase_p2fix5c_",  # cross-arc allowlist
+            "tests/test_phase_p2fix5d_",  # cross-arc allowlist
+            "tests/test_phase_p2fix5e_",  # cross-arc allowlist
+            "tests/test_phase_p2fix3_",   # cross-arc allowlist
+            "docs/phase_p2fix7_",
+            "reports/phase_p2fix7_",
+        )
+        disallowed_prefixes = (
+            "app/persistence/",
+            "app/services/",
+            "app/waterfall_core.py",
+            "app/project_factories.py",
+            "app/excel_export.py",
+            "app/capex_engine.py",
+            "app/ui/protected_reference_service.py",
+            "main_api.py",
+            "static/app.js",
+        )
+        for f in changed:
+            disallowed = [f.startswith(p) for p in disallowed_prefixes]
+            assert not any(disallowed), (
+                f"Disallowed file changed: {f}"
+            )
+            allowed = [f.startswith(p) for p in allowed_prefixes]
+            assert any(allowed), (
+                f"File outside allowed scope: {f}"
+            )

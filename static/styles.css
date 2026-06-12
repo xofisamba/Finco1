@@ -7601,3 +7601,103 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   color: #fff;
   border-color: var(--primary, #2563eb);
 }
+
+/* ── Phase P2-FIX-7: Standalone page styles ────────────────────────
+   P2-FIX-5A added full-page standalone templates
+   (project_home_page.html, project_new_page.html,
+   project_browse_page.html) that use the following
+   classes. The CSS rules for these classes were not
+   added in P2-FIX-5A, so the standalone pages
+   rendered as plain text. P2-FIX-7 adds the rules.
+   Scope: ONLY the standalone pages. Workspace
+   pages and the Finco One header are unaffected. */
+
+body.standalone-page {
+  margin: 0;
+  background: var(--bg, #f0f4f8);
+  color: var(--text, #111827);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body.standalone-page .top-header {
+  flex: 0 0 auto;
+}
+
+.standalone-main {
+  flex: 1 1 auto;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 3rem;
+  box-sizing: border-box;
+}
+
+.standalone-main--minimal {
+  max-width: 720px;
+}
+
+.standalone-main--browse {
+  max-width: 1100px;
+}
+
+.page-shell {
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #dde4ed);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 2px rgba(15, 27, 45, 0.04);
+}
+
+.page-shell--project-home,
+.page-shell--project-browse,
+.page-shell--project-new {
+  /* Each variant shares the base card; future variant-specific
+     overrides can target these modifier classes. */
+}
+
+.page-shell-header {
+  margin: 0 0 1.5rem;
+  padding: 0 0 1rem;
+  border-bottom: 1px solid var(--border, #dde4ed);
+}
+
+.page-shell-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text, #111827);
+  margin: 0 0 0.5rem;
+  line-height: 1.2;
+}
+
+.page-shell-desc {
+  color: var(--text-2, #4b5563);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.page-shell-footer {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, #dde4ed);
+  color: var(--text-2, #4b5563);
+  font-size: 0.85rem;
+}
+
+/* Responsive: tighten padding on small screens */
+@media (max-width: 640px) {
+  .standalone-main {
+    padding: 1.5rem 1rem 2rem;
+  }
+  .page-shell {
+    padding: 1.25rem;
+  }
+  .page-shell-title {
+    font-size: 1.4rem;
+  }
+}
+
+/* ── End Phase P2-FIX-7 standalone page styles ──────────────────── */
