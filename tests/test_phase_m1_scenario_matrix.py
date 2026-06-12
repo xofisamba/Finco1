@@ -968,6 +968,10 @@ class TestM1FileScope:
             "tests/test_phase_p2fix7_production_cleanup.py",
             "tests/test_phase_p2fix7a_css_parser_cleanup.py",
             "app/templates/partials/_dashboard_oob.html",
+            "tests/test_phase_m3_",
+            "tests/test_phase_m3_scenario_matrix_overrides.py",
+            "app/templates/partials/_matrix_cell_updated.html",
+            "app/templates/partials/_matrix_cell_edit.html",
         }
         true_extra = [
             p for p in extra

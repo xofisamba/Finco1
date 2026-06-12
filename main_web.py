@@ -85,6 +85,7 @@ from app.persistence.repository import (
     snapshots_equal,
     update_project_record,
     update_scenario_last_run_summary,
+    update_scenario_overrides,
 )
 from app.persistence.provenance import build_replay_metadata, utc_now_iso
 from app.ui.project_context import build_project_context_for_record, get_project_context
@@ -4377,6 +4378,192 @@ async def get_run_endpoint(request: Request, run_id: str):
         },
     )
 
+
+# ── Phase M3 — Inline Matrix Override Editing ────────────────────────────────
+
+def _m3_get_scenario_or_422(scenario_id: str, user):
+    """Lookup scenario; return (scenario, err_response) where err_response is
+    non-None when the lookup fails or the scenario is the base case."""
+    from app.ui.scenario_matrix import ALL_ROWS
+    scenario = get_scenario(scenario_id, user.user_id)
+    if scenario is None:
+        return None, JSONResponse({"error": "Scenario not found"}, status_code=422)
+    if getattr(scenario, "is_base_case", False):
+        return None, JSONResponse({"error": "Base case is read-only"}, status_code=422)
+    return scenario, None
+
+
+def _m3_col_key_for_scenario(scenario_id: str, col_downside, col_upside, col_custom) -> str:
+    """Return the column key string for a scenario record."""
+    if col_downside and getattr(col_downside, "scenario_id", None) == scenario_id:
+        return "downside"
+    if col_upside and getattr(col_upside, "scenario_id", None) == scenario_id:
+        return "upside"
+    if col_custom and getattr(col_custom, "scenario_id", None) == scenario_id:
+        return "custom"
+    return "downside"  # fallback
+
+
+def _m3_cell_class(col_key: str) -> str:
+    return "matrix-cell-scenario"
+
+
+@app.post("/matrix/scenario/{scenario_id}/set-field")
+async def m3_set_field(
+    request: Request,
+    scenario_id: str,
+    field: str = Form(...),
+    value: str = Form(...),
+):
+    """M3: Save a single field override for a non-base scenario cell."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    from app.ui.scenario_matrix import ALL_ROWS, INPUT_ROWS, _get_scenario_input_value
+
+    # Validate field
+    valid_attrs = {r.attr for r in ALL_ROWS}
+    if field not in valid_attrs:
+        return JSONResponse({"error": f"Unknown field: {field}"}, status_code=422)
+
+    # Find the row
+    row = next((r for r in ALL_ROWS if r.attr == field), None)
+
+    # Parse numeric value
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        return JSONResponse({"error": f"Non-numeric value for field {field}"}, status_code=422)
+
+    scenario, err = _m3_get_scenario_or_422(scenario_id, user)
+    if err is not None:
+        return err
+
+    # Save override
+    update_scenario_overrides(
+        user_id=user.user_id,
+        scenario_id=scenario_id,
+        overrides={field: numeric_value},
+    )
+
+    # Re-read updated scenario
+    updated_scenario = get_scenario(scenario_id, user.user_id)
+
+    # Get display value
+    display_value = _get_scenario_input_value(updated_scenario, row)
+
+    # Determine col_key from query param or default
+    col_key = request.query_params.get("col", "downside")
+
+    cell_class = _m3_cell_class(col_key)
+
+    response = templates.TemplateResponse(
+        request=request,
+        name="partials/_matrix_cell_updated.html",
+        context={
+            "scenario_id": scenario_id,
+            "field": field,
+            "col_key": col_key,
+            "cell_class": cell_class,
+            "display_value": display_value,
+        },
+    )
+    response.headers["HX-Trigger"] = "matrixCellSaved"
+    return response
+
+
+@app.get("/matrix/scenario/{scenario_id}/cell-edit")
+async def m3_cell_edit(
+    request: Request,
+    scenario_id: str,
+    field: str,
+    col: str = "downside",
+):
+    """M3: Return the inline edit form for a matrix cell."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    from app.ui.scenario_matrix import ALL_ROWS, _get_scenario_input_value
+
+    scenario, err = _m3_get_scenario_or_422(scenario_id, user)
+    if err is not None:
+        return err
+
+    valid_attrs = {r.attr for r in ALL_ROWS}
+    if field not in valid_attrs:
+        return JSONResponse({"error": f"Unknown field: {field}"}, status_code=422)
+
+    row = next((r for r in ALL_ROWS if r.attr == field), None)
+
+    # Get raw value from overrides/snapshot/base_input_set
+    raw_val = None
+    for src in (
+        getattr(scenario, "overrides", None) or {},
+        getattr(scenario, "snapshot", None) or {},
+        getattr(scenario, "base_input_set", None) or {},
+    ):
+        v = src.get(field)
+        if v is not None:
+            raw_val = v
+            break
+
+    raw_value = str(raw_val) if raw_val is not None else ""
+    cell_class = _m3_cell_class(col)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/_matrix_cell_edit.html",
+        context={
+            "scenario_id": scenario_id,
+            "field": field,
+            "col_key": col,
+            "cell_class": cell_class,
+            "raw_value": raw_value,
+        },
+    )
+
+
+@app.get("/matrix/scenario/{scenario_id}/cell-view")
+async def m3_cell_view(
+    request: Request,
+    scenario_id: str,
+    field: str,
+    col: str = "downside",
+):
+    """M3: Return the cell view (cancel/reset to current value)."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    from app.ui.scenario_matrix import ALL_ROWS, _get_scenario_input_value
+
+    scenario, err = _m3_get_scenario_or_422(scenario_id, user)
+    if err is not None:
+        return err
+
+    valid_attrs = {r.attr for r in ALL_ROWS}
+    if field not in valid_attrs:
+        return JSONResponse({"error": f"Unknown field: {field}"}, status_code=422)
+
+    row = next((r for r in ALL_ROWS if r.attr == field), None)
+    display_value = _get_scenario_input_value(scenario, row)
+    cell_class = _m3_cell_class(col)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/_matrix_cell_updated.html",
+        context={
+            "scenario_id": scenario_id,
+            "field": field,
+            "col_key": col,
+            "cell_class": cell_class,
+            "display_value": display_value,
+        },
+    )
+
+# ── End M3 ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

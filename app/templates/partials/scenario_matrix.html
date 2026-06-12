@@ -146,12 +146,60 @@
                 {% endif %}
               </th>
               <td class="matrix-cell matrix-cell-base" data-m2-cell="base">{{ entry.base }}</td>
+              {% if entry.downside_live is defined and entry.downside_live and not entry.is_kpi %}
+              <td class="matrix-cell matrix-cell-scenario matrix-cell-editable"
+                  data-m2-cell="downside"
+                  data-m3-editable="true"
+                  data-m3-scenario-id="{{ col_downside.scenario_id }}"
+                  data-m3-field="{{ entry.row.attr }}"
+                  hx-get="/matrix/scenario/{{ col_downside.scenario_id }}/cell-edit?field={{ entry.row.attr }}&col=downside"
+                  hx-target="this"
+                  hx-swap="outerHTML"
+                  hx-trigger="click"
+                  title="Click to edit">
+                <span class="matrix-cell-value">{{ entry.downside }}</span>
+                <span class="matrix-cell-edit-hint">✎</span>
+              </td>
+              {% else %}
               <td class="matrix-cell {% if entry.downside_live is defined and entry.downside_live %}matrix-cell-scenario{% else %}matrix-cell-inherit{% endif %}"
                   data-m2-cell="downside">{{ entry.downside }}</td>
+              {% endif %}
+              {% if entry.upside_live is defined and entry.upside_live and not entry.is_kpi %}
+              <td class="matrix-cell matrix-cell-scenario matrix-cell-editable"
+                  data-m2-cell="upside"
+                  data-m3-editable="true"
+                  data-m3-scenario-id="{{ col_upside.scenario_id }}"
+                  data-m3-field="{{ entry.row.attr }}"
+                  hx-get="/matrix/scenario/{{ col_upside.scenario_id }}/cell-edit?field={{ entry.row.attr }}&col=upside"
+                  hx-target="this"
+                  hx-swap="outerHTML"
+                  hx-trigger="click"
+                  title="Click to edit">
+                <span class="matrix-cell-value">{{ entry.upside }}</span>
+                <span class="matrix-cell-edit-hint">✎</span>
+              </td>
+              {% else %}
               <td class="matrix-cell {% if entry.upside_live is defined and entry.upside_live %}matrix-cell-scenario{% else %}matrix-cell-inherit{% endif %}"
                   data-m2-cell="upside">{{ entry.upside }}</td>
+              {% endif %}
+              {% if entry.custom_live is defined and entry.custom_live and not entry.is_kpi %}
+              <td class="matrix-cell matrix-cell-scenario matrix-cell-editable"
+                  data-m2-cell="custom"
+                  data-m3-editable="true"
+                  data-m3-scenario-id="{{ col_custom.scenario_id }}"
+                  data-m3-field="{{ entry.row.attr }}"
+                  hx-get="/matrix/scenario/{{ col_custom.scenario_id }}/cell-edit?field={{ entry.row.attr }}&col=custom"
+                  hx-target="this"
+                  hx-swap="outerHTML"
+                  hx-trigger="click"
+                  title="Click to edit">
+                <span class="matrix-cell-value">{{ entry.custom }}</span>
+                <span class="matrix-cell-edit-hint">✎</span>
+              </td>
+              {% else %}
               <td class="matrix-cell {% if entry.custom_live is defined and entry.custom_live %}matrix-cell-scenario{% else %}matrix-cell-future{% endif %}"
                   data-m2-cell="custom">{{ entry.custom }}</td>
+              {% endif %}
             </tr>
           {% endfor %}
         {% else %}

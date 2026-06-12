@@ -500,6 +500,9 @@ class TestShellStripFileScope:
             "tests/test_phase_wf4_",
             "tests/test_phase_wf5_",
             "static/styles.css",
+            "tests/test_phase_m3_",
+            "app/templates/partials/_matrix_cell_updated.html",
+            "app/templates/partials/_matrix_cell_edit.html",
         )
         # Disallowed locations that must not change.
         disallowed_prefixes = (

@@ -428,6 +428,9 @@ class TestFileScope:
             "app/templates/partials/new_project_result.html",
             "app/ui/dashboard.py",
             "app/templates/partials/_dashboard_oob.html",
+            "tests/test_phase_m3_",
+            "app/templates/partials/_matrix_cell_updated.html",
+            "app/templates/partials/_matrix_cell_edit.html",
         )
         disallowed_prefixes = (
             "app/persistence/",

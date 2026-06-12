@@ -229,6 +229,9 @@ class TestFileScope:
             "main_web.py",
             "tests/test_phase_m2_",
             "tests/test_phase_m1_",
+            "tests/test_phase_m3_",
+            "app/templates/partials/_matrix_cell_updated.html",
+            "app/templates/partials/_matrix_cell_edit.html",
         )
         disallowed_prefixes = (
             "app/persistence/",
