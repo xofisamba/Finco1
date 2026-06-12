@@ -80,6 +80,33 @@
     <div class="banner-body">
       <span class="banner-title">{{ _title }}</span>
       {% if _desc %}<span class="banner-desc">{{ _desc }}</span>{% endif %}
+      {# Phase P2-FIX-6: C2 first-edit copy button.
+         Shown only when (a) the banner context is
+         factory_template AND (b) the active project
+         is a protected reference (TUHO / Oborovo)
+         AND (c) the user is NOT already viewing a
+         user-created working copy of the reference.
+         The button POSTs to the existing backend
+         route ``/projects/{code}/confirm-first-edit-copy``
+         which returns 302 to the new working copy. #}
+      {% if _ctx == 'factory_template' and is_protected_reference and not is_user_project %}
+        <form class="banner-action"
+              method="POST"
+              action="/projects/{{ active_project_code }}/confirm-first-edit-copy"
+              data-p2fix6-form="create-editable-copy"
+              data-p2fix6-source="{{ active_project_code }}">
+          <button type="submit"
+                  class="btn btn-primary banner-action-btn"
+                  data-p2fix6-cta="create-editable-copy"
+                  aria-label="Create editable copy of {{ active_project_code }}">
+            Create editable copy
+          </button>
+          <span class="banner-action-hint">
+            The copy will be a new project you can edit. The
+            original {{ active_project_code }} stays read-only.
+          </span>
+        </form>
+      {% endif %}
     </div>
   </div>
   {% endif %}

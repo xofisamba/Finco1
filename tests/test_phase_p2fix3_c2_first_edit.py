@@ -755,6 +755,24 @@ class TestFileScope:
             "app/ui/dashboard.py",
             "docs/phase_p2fix4_",
             "reports/phase_p2fix4_",
+            # ── Phase P2-FIX-5 / P2-FIX-6 cross-arc
+            # allowlist (stacked presentation cleanup).
+            "static/styles.css",
+            "app/templates/partials/_state_banner.html",
+            "app/ui/project_review.py",
+            "app/templates/partials/pilot_help_onboarding.html",
+            "app/templates/partials/pilot_limitations_notice.html",
+            "app/templates/partials/pilot_workflow_guide.html",
+            "app/templates/partials/debt_dscr_shl_panel.html",
+            "tests/test_phase_p2fix5b_normal_mode_shell_strip.py",
+            "tests/test_phase_p2fix5c_dashboard_kpi.py",
+            "tests/test_phase_p2fix5d_five_area_navigation.py",
+            "tests/test_phase_p2fix5e_reference_ux.py",
+            "tests/test_phase_p2fix6_c2_create_copy_ui.py",
+            "docs/phase_p2fix5_",
+            "reports/phase_p2fix5_",
+            "docs/phase_p2fix6_",
+            "reports/phase_p2fix6_",
         )
         for f in changed:
             assert f.startswith(allowed_prefixes), (
