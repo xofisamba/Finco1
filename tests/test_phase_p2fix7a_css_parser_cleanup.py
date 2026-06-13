@@ -312,6 +312,9 @@ class TestFileScope:
             "tests/test_phase_m3_",
             "app/templates/partials/_matrix_cell_updated.html",
             "app/templates/partials/_matrix_cell_edit.html",
+            # WF-6 cross-arc patches
+            "tests/test_phase_wf6_",
+            "app/templates/partials/scenario_tab.html",
         )
         disallowed_prefixes = (
             "app/persistence/",

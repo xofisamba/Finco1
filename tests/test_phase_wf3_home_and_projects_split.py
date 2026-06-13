@@ -209,6 +209,7 @@ class TestFileScope:
             "tests/test_phase_wf1_",
             "tests/test_phase_wf4_",
             "tests/test_phase_wf5_",
+            "tests/test_phase_wf6_",
             "tests/test_phase_p2fix",
             "app/templates/",
             "docs/phase_wf",

@@ -422,6 +422,7 @@ class TestFileScope:
             "tests/test_phase_wf3_",
             "tests/test_phase_wf4_",
             "tests/test_phase_wf5_",
+            "tests/test_phase_wf6_",
             "tests/test_phase_p2fix",
             "app/templates/partials/_results_subnav.html",
             "app/templates/partials/project_selector.html",

@@ -147,6 +147,7 @@ class TestFileScope:
             "tests/test_phase_wf3_",
             "tests/test_phase_wf4_",
             "tests/test_phase_wf5_",
+            "tests/test_phase_wf6_",
             # cross-arc
             "app/templates/partials/",
             "app/templates/base.html",
