@@ -166,6 +166,7 @@ class TestFileScope:
             "tests/test_phase_m1_",
             "tests/test_phase_m2_",
             "tests/test_phase_m3_",
+            "tests/test_phase_m4_",
             "app/templates/",
             "docs/phase_wf",
             "reports/phase_wf",

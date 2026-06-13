@@ -310,8 +310,10 @@ class TestFileScope:
             "tests/test_phase_m2_",
             "tests/test_phase_m1_",
             "tests/test_phase_m3_",
+            "tests/test_phase_m4_",
             "app/templates/partials/_matrix_cell_updated.html",
             "app/templates/partials/_matrix_cell_edit.html",
+            "app/templates/partials/_matrix_run_result.html",
             # WF-6 cross-arc patches
             "tests/test_phase_wf6_",
             "app/templates/partials/scenario_tab.html",

@@ -4563,7 +4563,95 @@ async def m3_cell_view(
         },
     )
 
-# ── End M3 ───────────────────────────────────────────────────────────────────
+def _m4_template_to_project_type(source_project_template: str) -> str:
+    """Map source_project_template to project_type string for run_project."""
+    return "Solar" if source_project_template in ("oborovo", "generic_solar") else "Wind"
+
+
+@app.post("/matrix/scenario/{scenario_id}/run")
+async def m4_run_scenario(request: Request, scenario_id: str):
+    """M4: Run the engine for a non-base scenario and save the summary."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    scenario = get_scenario(scenario_id, user.user_id)
+    if scenario is None or scenario.is_base_case:
+        return JSONResponse({"error": "Scenario not found or is base case"}, status_code=422)
+
+    col_key = request.query_params.get("col", "downside")
+
+    # Build effective snapshot: snapshot field is pre-resolved (base_input_set + overrides).
+    # Fall back to manual merge if snapshot is sparse.
+    effective_snapshot = dict(scenario.snapshot or {})
+    if not effective_snapshot:
+        effective_snapshot = {**(scenario.base_input_set or {}), **(scenario.overrides or {})}
+    # Always apply current overrides on top (M3 edits may postdate snapshot)
+    effective_snapshot.update(scenario.overrides or {})
+
+    # Determine project_type from template source; look up project if blank
+    template_source = scenario.source_project_template or ""
+    if not template_source:
+        proj_rec = get_project_record(user_id=scenario.user_id, project_id=scenario.project_id)
+        template_source = (proj_rec.template_source if proj_rec else None) or "generic_wind"
+    project_type = _m4_template_to_project_type(template_source)
+
+    try:
+        project_inputs = build_projectinputs_from_snapshot(effective_snapshot)
+        result = run_project(
+            project_type=project_type,
+            scenario="Base",
+            project_inputs_override=project_inputs,
+        )
+        summary = runtime_summary_to_dict(
+            result,
+            project_id=scenario.project_id,
+            project_name=scenario.scenario_name,
+        )
+        update_scenario_last_run_summary(
+            user_id=user.user_id,
+            scenario_id=scenario_id,
+            last_run_summary=summary,
+        )
+
+        kpis = result.get("kpis", {})
+        min_dscr_raw = kpis.get("min_dscr")
+        equity_irr_raw = kpis.get("equity_irr")
+        min_dscr = f"{min_dscr_raw:.4f}" if min_dscr_raw is not None else None
+        equity_irr = f"{float(equity_irr_raw) * 100:.2f}%" if equity_irr_raw is not None else None
+
+        response = templates.TemplateResponse(
+            request=request,
+            name="partials/_matrix_run_result.html",
+            context={
+                "scenario_id": scenario_id,
+                "col_key": col_key,
+                "run_ok": True,
+                "min_dscr": min_dscr,
+                "equity_irr": equity_irr,
+                "error_msg": None,
+            },
+        )
+        response.headers["HX-Trigger"] = "matrixRunComplete"
+        return response
+
+    except Exception as exc:
+        response = templates.TemplateResponse(
+            request=request,
+            name="partials/_matrix_run_result.html",
+            context={
+                "scenario_id": scenario_id,
+                "col_key": col_key,
+                "run_ok": False,
+                "min_dscr": None,
+                "equity_irr": None,
+                "error_msg": str(exc)[:120],
+            },
+        )
+        response.headers["HX-Trigger"] = "matrixRunComplete"
+        return response
+
+# ── End M4 ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

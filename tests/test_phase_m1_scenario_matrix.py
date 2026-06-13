@@ -969,9 +969,11 @@ class TestM1FileScope:
             "tests/test_phase_p2fix7a_css_parser_cleanup.py",
             "app/templates/partials/_dashboard_oob.html",
             "tests/test_phase_m3_",
+            "tests/test_phase_m4_",
             "tests/test_phase_m3_scenario_matrix_overrides.py",
             "app/templates/partials/_matrix_cell_updated.html",
             "app/templates/partials/_matrix_cell_edit.html",
+            "app/templates/partials/_matrix_run_result.html",
             # WF-6 cross-arc patches
             "tests/test_phase_wf6_scenario_status_badges.py",
             "app/templates/partials/scenario_tab.html",
