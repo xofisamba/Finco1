@@ -1003,6 +1003,7 @@ class TestM1FileScope:
             "tests/test_phase_p2fix7_production_cleanup.py",
             "tests/test_phase_p2fix7a_css_parser_cleanup.py",
             "tests/test_phase_stab1_run_refreshes_kpis.py",
+            "tests/test_phase_stab2_realized_gearing_scale.py",
         }
         true_extra = [
             p for p in extra

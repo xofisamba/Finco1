@@ -1235,6 +1235,7 @@ class TestPR1FileScope:
             "tests/test_phase_wf6_scenario_status_badges.py",
             "tests/test_phase_stab",
             "tests/test_phase_stab1_run_refreshes_kpis.py",
+            "tests/test_phase_stab2_realized_gearing_scale.py",
         }
         actual = set(changed)
         extra = actual - expected
