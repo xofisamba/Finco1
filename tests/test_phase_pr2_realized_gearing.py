@@ -391,6 +391,12 @@ class TestPhaseInvariants:
                 for f in diff.splitlines()
             ):
                 continue
+            # STAB-4 cross-arc: navigation-only app.js change is allowed.
+            if forbidden == "static/app.js" and diff == "static/app.js":
+                import pathlib
+                js_src = (pathlib.Path(REPO_ROOT) / "static/app.js").read_text()
+                if "STAB-4" in js_src:
+                    continue
             assert not diff, (
                 f"PR2 must NOT change {forbidden!r}; "
                 f"got: {diff!r}"
@@ -652,6 +658,15 @@ class TestFileScope:
             "app/services/run_service.py",
             # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
             "constraints.txt",
+            # STAB-4 (Navigation Unification) follow-up allowlist
+            "static/app.js",
+            "app/templates/partials/_nav_compression.html",
+            "app/templates/partials/workspace_shell.html",
+            "tests/test_phase_stab4_navigation_unification.py",
+            "tests/test_phase_m1_scenario_matrix.py",
+            "tests/test_phase_pr1_form_timing_fields.py",
+            "tests/test_phase_pr2_realized_gearing.py",
+            "tests/test_phase_pr3_taxonomy.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected

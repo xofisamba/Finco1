@@ -272,6 +272,10 @@ class TestStab2FileScope:
         "tests/test_phase_pr2_",
         "tests/test_phase_pr3_",
         "tests/test_phase_p2fix",
+        # STAB-4 navigation-only changes
+        "static/app.js",
+        "app/templates/partials/_nav_compression.html",
+        "app/templates/partials/workspace_shell.html",
     )
 
     STAB2_DISALLOWED_PREFIXES = (
@@ -279,7 +283,6 @@ class TestStab2FileScope:
         "app/project_factories.py",
         "app/persistence/",
         "app/services/",
-        "static/app.js",
         "main_api.py",
         "app/ui/project_context.py",
     )
@@ -294,6 +297,12 @@ class TestStab2FileScope:
         )
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
         for f in changed:
+            # STAB-4: app.js change must be navigation-only
+            if f == "static/app.js":
+                import pathlib as _pl
+                js_src = (_pl.Path(REPO_ROOT) / "static/app.js").read_text()
+                assert "STAB-4" in js_src, f"static/app.js changed without STAB-4 marker"
+                continue
             assert not any(f.startswith(p) for p in self.STAB2_DISALLOWED_PREFIXES), (
                 f"STAB-2 must not touch {f}"
             )

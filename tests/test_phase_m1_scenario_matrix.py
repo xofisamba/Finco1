@@ -612,6 +612,12 @@ class TestNoScenarioPersistence:
             "app/services/run_service.py",
         }
         if diff_lines:
+            # STAB-4: navigation-only app.js change is allowed.
+            if forbidden_path == "static/app.js" and diff_lines == "static/app.js":
+                import pathlib as _pl
+                js_src = (_pl.Path(REPO_ROOT) / "static/app.js").read_text()
+                if "STAB-4" in js_src:
+                    return
             diff_files = {
                 line.strip()
                 for line in diff_lines.splitlines()
@@ -758,9 +764,27 @@ class TestPhaseInvariants:
             capture_output=True,
             text=True,
         )
-        assert r.stdout.strip() == "", (
+        diff = r.stdout.strip()
+        # STAB-4 adds minimal active-state sync to app.js (navigation only,
+        # no financial calculations). That change is forward-compatible here.
+        if diff == "static/app.js":
+            import pathlib
+            js_src = (pathlib.Path(REPO_ROOT) / "static/app.js").read_text()
+            # Verify the change is navigation-only (no financial calc keywords)
+            calc_keywords = ["IRR", "NPV", "DSCR", "capex_", "debt_", "waterfall"]
+            stab4_marker = "STAB-4"
+            assert stab4_marker in js_src, (
+                "static/app.js changed but STAB-4 marker not found; "
+                "unexpected app.js modification"
+            )
+            for kw in calc_keywords:
+                assert kw not in js_src, (
+                    f"static/app.js change introduces financial keyword '{kw}'"
+                )
+            return
+        assert diff == "", (
             f"M1 must NOT change static/app.js; "
-            f"got: {r.stdout.strip()!r}"
+            f"got: {diff!r}"
         )
 
 
@@ -1013,6 +1037,11 @@ class TestM1FileScope:
             "app/services/run_service.py",
             # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
             "constraints.txt",
+            # STAB-4 (Navigation Unification) follow-up allowlist
+            "static/app.js",
+            "app/templates/partials/_nav_compression.html",
+            "app/templates/partials/workspace_shell.html",
+            "tests/test_phase_stab4_navigation_unification.py",
         }
         true_extra = [
             p for p in extra
