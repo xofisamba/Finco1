@@ -191,6 +191,21 @@ def _fmt_pct(val):
         return str(val)
 
 
+def _fmt_pct_already_pct(val):
+    """Format a value that is already in percentage units (e.g. 59.4 → '59.40%').
+
+    Used for realized_gearing_pct, which project_context.py stores as
+    senior_debt / total_capex * 100 (a percentage, not a fraction).
+    Using _fmt_pct here would multiply by 100 a second time (~5940%).
+    """
+    if val is None:
+        return "—"
+    try:
+        return f"{float(val):.2f}%"
+    except (TypeError, ValueError):
+        return str(val)
+
+
 def _fmt_dscr(val):
     """Format a DSCR multiplier."""
     if val is None:
@@ -251,7 +266,7 @@ KPI_ROWS: Tuple[MatrixRow, ...] = (
     # realized_gearing_pct = senior_debt / total_capex * 100.
     # Read-only derived output (NOT a binding driver).
     # Distinct from the indicative gearing input above.
-    MatrixRow("Realized Gearing", ROW_KIND_KPI, "realized_gearing_pct", _fmt_pct),
+    MatrixRow("Realized Gearing", ROW_KIND_KPI, "realized_gearing_pct", _fmt_pct_already_pct),
     MatrixRow("Min DSCR", ROW_KIND_KPI, "min_dscr", _fmt_dscr),
 )
 

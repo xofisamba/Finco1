@@ -635,6 +635,9 @@ class TestFileScope:
             "tests/test_phase_wf6_scenario_status_badges.py",
             "tests/test_phase_stab",
             "tests/test_phase_stab1_run_refreshes_kpis.py",
+            "tests/test_phase_stab2_realized_gearing_scale.py",
+            # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
+            "constraints.txt",
         }
         actual_set = set(actual)
         extra = actual_set - expected
