@@ -545,6 +545,10 @@ class TestStab3FileScope:
         "main_web.py",
         "app/ui/dashboard.py",
         "app/ui/project_context.py",
+        # STAB-5 export route fix
+        "app/export/runtime_summary.py",
+        "app/export/institutional_workbook.py",
+        "tests/test_phase_stab5_",
     )
 
     STAB3_DISALLOWED_PREFIXES = (

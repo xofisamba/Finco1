@@ -1042,6 +1042,10 @@ class TestM1FileScope:
             "app/templates/partials/_nav_compression.html",
             "app/templates/partials/workspace_shell.html",
             "tests/test_phase_stab4_navigation_unification.py",
+            # STAB-5 export route fix
+            "app/export/runtime_summary.py",
+            "app/export/institutional_workbook.py",
+            "tests/test_phase_stab5_export_route_fix.py",
         }
         true_extra = [
             p for p in extra

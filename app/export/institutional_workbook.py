@@ -508,11 +508,11 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 def _write_capex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "template + runtime")
     financing = bundle.project_inputs.financing
-    total_capex = bundle.context.total_capex_keur
-    senior = bundle.context.senior_debt_keur
-    shl = bundle.context.shl_amount_keur + bundle.context.shl_idc_keur
-    share_capital = getattr(financing, "share_capital_keur", 0.0)
-    share_premium = getattr(financing, "share_premium_keur", 0.0)
+    total_capex = bundle.context.total_capex_keur or 0.0
+    senior = bundle.context.senior_debt_keur or 0.0
+    shl = (bundle.context.shl_amount_keur or 0.0) + (bundle.context.shl_idc_keur or 0.0)
+    share_capital = getattr(financing, "share_capital_keur", None) or 0.0
+    share_premium = getattr(financing, "share_premium_keur", None) or 0.0
     implied_gap = total_capex - senior - shl - share_capital - share_premium
     rows = [
         ("Total CAPEX", total_capex, "template assumption", "Project context total CAPEX.", K_EUR_FORMAT),
