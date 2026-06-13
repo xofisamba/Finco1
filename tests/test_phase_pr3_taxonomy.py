@@ -839,6 +839,10 @@ class TestFileScope:
             "tests/test_phase_pr1_form_timing_fields.py",
             "tests/test_phase_pr2_realized_gearing.py",
             "tests/test_phase_pr3_taxonomy.py",
+            # STAB-5 export route fix
+            "app/export/runtime_summary.py",
+            "app/export/institutional_workbook.py",
+            "tests/test_phase_stab5_export_route_fix.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected

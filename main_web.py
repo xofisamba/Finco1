@@ -2804,8 +2804,8 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
 
     record_runtime_summary_export(
         user_id=user.user_id,
-        safe_project=safe_project,
-        export_filename=export.filename,
+        project_code=safe_project,
+        artifact_name=export.filename,
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
         replay_metadata=_replay_metadata_for_project(
@@ -2848,8 +2848,8 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
 
     record_institutional_workbook_export(
         user_id=user.user_id,
-        safe_project=safe_project,
-        export_filename=export.filename,
+        project_code=safe_project,
+        artifact_name=export.filename,
         project_id=project_record.project_id if project_record else None,
         governance_state=_governance_snapshot(safe_project),
         replay_metadata=_replay_metadata_for_project(

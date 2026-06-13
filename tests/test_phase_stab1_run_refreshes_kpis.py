@@ -355,6 +355,10 @@ class TestStab1FileScope:
         "static/app.js",
         "app/templates/partials/_nav_compression.html",
         "app/templates/partials/workspace_shell.html",
+        # STAB-5 export route fix
+        "app/export/runtime_summary.py",
+        "app/export/institutional_workbook.py",
+        "tests/test_phase_stab5_",
     )
 
     STAB1_DISALLOWED_PREFIXES = (

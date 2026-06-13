@@ -13,7 +13,12 @@ import csv
 import os
 
 from app.persistence.provenance import build_replay_metadata
-from app.project_factories import create_default_oborovo, create_default_tuho_wind1
+from app.project_factories import (
+    create_default_oborovo,
+    create_default_solar_project,
+    create_default_tuho_wind1,
+    create_default_wind_project,
+)
 from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 from domain.period_engine import PeriodEngine
 
@@ -55,13 +60,17 @@ RUNTIME_SUMMARY_COLUMNS = [
 PROJECT_FACTORIES = {
     "tuho": create_default_tuho_wind1,
     "oborovo": create_default_oborovo,
+    "generic_solar": create_default_solar_project,
+    "generic_wind": create_default_wind_project,
 }
 
 
 def _project_key(project: str) -> str:
     key = (project or "").strip().lower()
     if key not in PROJECT_FACTORIES:
-        raise ValueError("project must be one of: tuho, oborovo")
+        raise ValueError(
+            f"project must be one of: {', '.join(sorted(PROJECT_FACTORIES))}"
+        )
     return key
 
 
