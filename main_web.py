@@ -2630,8 +2630,13 @@ async def run(request: Request):
                         context={**_matrix_ctx},
                     )
                     body_str += oob_matrix.body.decode("utf-8")
-                except Exception:
-                    pass  # matrix OOB is best-effort; never block the main run response
+                except Exception as exc:
+                    _logger.warning(
+                        "scenario_matrix_oob failed (non-blocking): "
+                        "project_code=%r route=/run component=scenario_matrix_oob exc=%r",
+                        getattr(_project_rec, "project_code", None),
+                        repr(exc),
+                    )
 
     return HTMLResponse(content=body_str, status_code=rendered.status_code)
 
