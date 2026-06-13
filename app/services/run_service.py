@@ -127,6 +127,14 @@ async def execute_run_route(
     # /run route. Only the wrapper code (record/persistence calls) was
     # delegated to helper closures to remove repetition.
     if project_record.project_origin == "user_created":
+        # CAPEX-PERSIST-1: persist any CAPEX sub-line form edits before
+        # running, so the fold step in _execute_user_created_path
+        # picks up the latest values. Phase 57A-8 temporary rows
+        # (no name attr) are not submitted and remain non-persisted.
+        from app.services.capex_sub_lines_integration import (
+            persist_sub_line_form_edits,
+        )
+        persist_sub_line_form_edits(project_record.project_id, form)
         return await _execute_user_created_path(
             request=request, user=user, snapshot=snapshot, scenario=scenario,
             project_record=project_record, workspace_state=workspace_state,
@@ -258,10 +266,13 @@ async def _execute_user_created_path(
             )
         else:
             _scenario_overrides_for_fold = None
+        # CAPEX-PERSIST-1: use replace-semantics fold so sub-line amounts
+        # ARE the category total (not added on top of the base).
+        # TUHO/Oborovo short-circuit (no sub-lines) is preserved.
         from app.services.capex_sub_lines_integration import (
-            _apply_user_sub_lines_to_capex,
+            apply_user_sub_lines_replacing_base,
         )
-        folded_capex = _apply_user_sub_lines_to_capex(
+        folded_capex = apply_user_sub_lines_replacing_base(
             override.capex,
             project_id=project_record.project_id,
             scenario_overrides=_scenario_overrides_for_fold,

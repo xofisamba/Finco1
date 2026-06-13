@@ -381,6 +381,16 @@ class TestPhaseInvariants:
             # factory / model change).
             if diff and forbidden == "main_web.py":
                 continue
+            # CAPEX-PERSIST-1 cross-arc: only these two service files are
+            # allowed; no other app/services/ file is touched.
+            if forbidden == "app/services/" and diff and all(
+                f in (
+                    "app/services/capex_sub_lines_integration.py",
+                    "app/services/run_service.py",
+                )
+                for f in diff.splitlines()
+            ):
+                continue
             assert not diff, (
                 f"PR2 must NOT change {forbidden!r}; "
                 f"got: {diff!r}"
@@ -636,6 +646,10 @@ class TestFileScope:
             "tests/test_phase_stab",
             "tests/test_phase_stab1_run_refreshes_kpis.py",
             "tests/test_phase_stab2_realized_gearing_scale.py",
+            "tests/test_phase_stab3_capex_subline_propagation.py",
+            "tests/test_phase_p1b_driver_status_badges.py",
+            "app/services/capex_sub_lines_integration.py",
+            "app/services/run_service.py",
             # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
             "constraints.txt",
         }

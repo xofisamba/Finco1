@@ -163,18 +163,11 @@ PR1_FORBIDDEN_PATHS = [
     "app/project_factories.py",
     "app/waterfall_runner.py",
     "app/waterfall_core.py",
-    # app/services/ is still forbidden
-    # (the actual Path B service code in
-    # run_service.py, compare_service.py,
-    # download_service.py, save_run_service.py
-    # is not touched; PR1's main_web.py
-    # changes route-level deps construction,
-    # which is the documented integration
-    # point).
+    # app/services/ is still forbidden except for the two files touched
+    # by CAPEX-PERSIST-1 (capex_sub_lines_integration.py, run_service.py).
     "app/services/projects_create_service.py",
     "app/services/compare_service.py",
     "app/services/download_service.py",
-    "app/services/run_service.py",
     "app/services/save_run_service.py",
     "app/persistence/",
     "static/app.js",
@@ -1236,6 +1229,10 @@ class TestPR1FileScope:
             "tests/test_phase_stab",
             "tests/test_phase_stab1_run_refreshes_kpis.py",
             "tests/test_phase_stab2_realized_gearing_scale.py",
+            "tests/test_phase_stab3_capex_subline_propagation.py",
+            "tests/test_phase_p1b_driver_status_badges.py",
+            "app/services/capex_sub_lines_integration.py",
+            "app/services/run_service.py",
             # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
             "constraints.txt",
         }

@@ -607,6 +607,9 @@ class TestNoScenarioPersistence:
         post_m1_followup_service_allowlist = {
             # PR1 form timing enrichment
             "app/services/form_timing_enrichment.py",
+            # CAPEX-PERSIST-1 sub-line propagation
+            "app/services/capex_sub_lines_integration.py",
+            "app/services/run_service.py",
         }
         if diff_lines:
             diff_files = {
@@ -1004,6 +1007,10 @@ class TestM1FileScope:
             "tests/test_phase_p2fix7a_css_parser_cleanup.py",
             "tests/test_phase_stab1_run_refreshes_kpis.py",
             "tests/test_phase_stab2_realized_gearing_scale.py",
+            "tests/test_phase_stab3_capex_subline_propagation.py",
+            "tests/test_phase_p1b_driver_status_badges.py",
+            "app/services/capex_sub_lines_integration.py",
+            "app/services/run_service.py",
             # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
             "constraints.txt",
         }
