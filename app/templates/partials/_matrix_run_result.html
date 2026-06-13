@@ -1,0 +1,20 @@
+{# Phase M4 — Matrix Run Result fragment.
+   Replaces the matrix-run-badge-wrap div after a successful scenario run.
+   Context: scenario_id, col_key, min_dscr, equity_irr, run_ok, error_msg
+#}
+<div id="matrix-run-badge-{{ scenario_id }}" class="matrix-run-badge-wrap" data-m4-run-result="true" data-m4-run-wrap="{{ col_key }}">
+  {% if run_ok %}
+    <span class="matrix-run-badge matrix-run-badge--run" data-m4-run-badge="run">Run ✓</span>
+    {% if min_dscr is not none %}
+      <span class="matrix-run-kpi" data-m4-kpi="min_dscr">DSCR {{ min_dscr }}</span>
+    {% endif %}
+    {% if equity_irr is not none %}
+      <span class="matrix-run-kpi" data-m4-kpi="equity_irr">IRR {{ equity_irr }}</span>
+    {% endif %}
+  {% else %}
+    <span class="matrix-run-badge matrix-run-badge--error" data-m4-run-badge="error">Run ✗</span>
+    {% if error_msg %}
+      <span class="matrix-run-error-msg" data-m4-run-error="{{ error_msg }}">{{ error_msg }}</span>
+    {% endif %}
+  {% endif %}
+</div>

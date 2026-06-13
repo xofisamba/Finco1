@@ -69,6 +69,18 @@
             </span>
             {% if col_downside is defined and col_downside %}
               <span class="badge badge-m2-scenario" data-m1-column-badge="Downside" data-m2-column-badge="Downside">Scenario</span>
+              <div id="matrix-run-badge-{{ col_downside.scenario_id }}" class="matrix-run-badge-wrap" data-m4-run-wrap="downside">
+                {% if col_downside.last_run_summary %}
+                  <span class="matrix-run-badge matrix-run-badge--run" data-m4-run-badge="run">Run ✓</span>
+                {% else %}
+                  <span class="matrix-run-badge matrix-run-badge--not-run" data-m4-run-badge="not-run">Not run</span>
+                {% endif %}
+                <button class="matrix-run-btn"
+                        data-m4-run-btn="{{ col_downside.scenario_id }}"
+                        hx-post="/matrix/scenario/{{ col_downside.scenario_id }}/run"
+                        hx-target="#matrix-run-badge-{{ col_downside.scenario_id }}"
+                        hx-swap="outerHTML">Run ▶</button>
+              </div>
             {% else %}
               <span class="badge badge-inherit" data-m1-column-badge="Downside" data-m2-column-badge="Downside">Inherits Base</span>
             {% endif %}
@@ -83,6 +95,18 @@
             </span>
             {% if col_upside is defined and col_upside %}
               <span class="badge badge-m2-scenario" data-m1-column-badge="Upside" data-m2-column-badge="Upside">Scenario</span>
+              <div id="matrix-run-badge-{{ col_upside.scenario_id }}" class="matrix-run-badge-wrap" data-m4-run-wrap="upside">
+                {% if col_upside.last_run_summary %}
+                  <span class="matrix-run-badge matrix-run-badge--run" data-m4-run-badge="run">Run ✓</span>
+                {% else %}
+                  <span class="matrix-run-badge matrix-run-badge--not-run" data-m4-run-badge="not-run">Not run</span>
+                {% endif %}
+                <button class="matrix-run-btn"
+                        data-m4-run-btn="{{ col_upside.scenario_id }}"
+                        hx-post="/matrix/scenario/{{ col_upside.scenario_id }}/run"
+                        hx-target="#matrix-run-badge-{{ col_upside.scenario_id }}"
+                        hx-swap="outerHTML">Run ▶</button>
+              </div>
             {% else %}
               <span class="badge badge-inherit" data-m1-column-badge="Upside" data-m2-column-badge="Upside">Inherits Base</span>
             {% endif %}
@@ -97,6 +121,18 @@
             </span>
             {% if col_custom is defined and col_custom %}
               <span class="badge badge-m2-scenario" data-m1-column-badge="Custom" data-m2-column-badge="Custom">Scenario</span>
+              <div id="matrix-run-badge-{{ col_custom.scenario_id }}" class="matrix-run-badge-wrap" data-m4-run-wrap="custom">
+                {% if col_custom.last_run_summary %}
+                  <span class="matrix-run-badge matrix-run-badge--run" data-m4-run-badge="run">Run ✓</span>
+                {% else %}
+                  <span class="matrix-run-badge matrix-run-badge--not-run" data-m4-run-badge="not-run">Not run</span>
+                {% endif %}
+                <button class="matrix-run-btn"
+                        data-m4-run-btn="{{ col_custom.scenario_id }}"
+                        hx-post="/matrix/scenario/{{ col_custom.scenario_id }}/run"
+                        hx-target="#matrix-run-badge-{{ col_custom.scenario_id }}"
+                        hx-swap="outerHTML">Run ▶</button>
+              </div>
             {% else %}
               <span class="badge badge-future" data-m1-column-badge="Custom" data-m2-column-badge="Custom">Future override</span>
             {% endif %}

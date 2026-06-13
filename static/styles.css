@@ -8791,3 +8791,62 @@ tr.fc-grid-header--sub th {
   border: 1px solid #d1d5db;
 }
 /* ── End WF-6 ────────────────────────────────────────────────────── */
+
+/* ── Phase M4 — Scenario Matrix Run Integration ──────────────────── */
+.matrix-run-badge-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+.matrix-run-btn {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #6366f1;
+  background: #eef2ff;
+  color: #4338ca;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.matrix-run-btn:hover {
+  background: #c7d2fe;
+}
+.matrix-run-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+.matrix-run-badge--run {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.matrix-run-badge--not-run {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+.matrix-run-badge--error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+.matrix-run-kpi {
+  font-size: 0.6rem;
+  color: #374151;
+  font-weight: 500;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+}
+.matrix-run-error-msg {
+  font-size: 0.6rem;
+  color: #991b1b;
+}
+/* ── End M4 ──────────────────────────────────────────────────────── */
