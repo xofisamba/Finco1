@@ -1212,6 +1212,41 @@ class TestPR1FileScope:
             "docs/phase_p2min4_navigation_compression.md",
             "reports/phase_p2min4_navigation_compression.md",
             "tests/test_phase_p2min4_navigation_compression.py",
+            # P2-FIX-8 PRs and follow-up WF / p2fix test files.
+            "app/templates/partials/_dashboard_oob.html",
+            "app/templates/partials/_matrix_cell_edit.html",
+            "app/templates/partials/_matrix_cell_updated.html",
+            "app/templates/partials/_matrix_run_result.html",
+            "app/templates/partials/_results_subnav.html",
+            "app/templates/partials/_scenario_matrix_oob.html",
+            "app/templates/partials/new_project_result.html",
+            "app/templates/partials/scenario_tab.html",
+            "tests/test_phase_m2_scenario_matrix_live.py",
+            "tests/test_phase_m3_scenario_matrix_overrides.py",
+            "tests/test_phase_m4_scenario_matrix_run.py",
+            "tests/test_phase_p2fix2_shell_strip.py",
+            "tests/test_phase_p2fix3_c2_first_edit.py",
+            "tests/test_phase_p2fix4_five_area_navigation.py",
+            "tests/test_phase_p2fix5b_normal_mode_shell_strip.py",
+            "tests/test_phase_p2fix5c_dashboard_kpi.py",
+            "tests/test_phase_p2fix5d_five_area_navigation.py",
+            "tests/test_phase_p2fix5e_reference_ux.py",
+            "tests/test_phase_p2fix6_c2_create_copy_ui.py",
+            "tests/test_phase_p2fix7_production_cleanup.py",
+            "tests/test_phase_p2fix7a_css_parser_cleanup.py",
+            "tests/test_phase_wf1_run_refreshes_dashboard.py",
+            "tests/test_phase_wf2_sheet_styling.py",
+            "tests/test_phase_wf3_home_and_projects_split.py",
+            "tests/test_phase_wf4_minimal_create_and_list_hygiene.py",
+            "tests/test_phase_wf5_grouped_results_nav.py",
+            "tests/test_phase_wf6_scenario_status_badges.py",
+            # STAB-1 and STAB-2 follow-up test files.
+            "tests/test_phase_stab1_run_refreshes_kpis.py",
+            "tests/test_phase_stab2_realized_gearing_scale.py",
+            # constraints.txt: bcrypt==4.2.0 for Python 3.12 CI.
+            "constraints.txt",
+            # CI-INFRA-1 runner failure documentation.
+            "docs/ci_infra_runner_failure_2026_06_13.md",
         }
         actual = set(changed)
         extra = actual - expected
