@@ -644,7 +644,6 @@ class TestNoFormulaChanges:
             "app/waterfall_runner.py",
             "app/ui_runner.py",
             "app/project_factories.py",
-            "app/services/run_service.py",
         ],
     )
     def test_formula_file_unchanged(self, path):
@@ -748,6 +747,9 @@ class TestForbiddenPathsUnchanged:
             # PR1 fix that eliminates the
             # silent template-default drift.
             "main_web.py",
+            # CAPEX-PERSIST-1 sub-line propagation
+            "app/services/capex_sub_lines_integration.py",
+            "app/services/run_service.py",
         }
         non_allowlist = diff_files - post_m1_followup_allowlist
         assert not non_allowlist, (
