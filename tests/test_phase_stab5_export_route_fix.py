@@ -328,6 +328,9 @@ class TestStab5FileScope:
         "app/templates/partials/workspace_shell.html",
         # STAB-6 new-project first-run fix
         "tests/test_phase_stab6_",
+        # STAB-7 generic dashboard parity
+        "app/services/run_service.py",
+        "tests/test_phase_stab7_",
     )
 
     STAB5_DISALLOWED_PREFIXES = (
@@ -335,7 +338,7 @@ class TestStab5FileScope:
         "app/project_factories.py",
         "app/persistence/",
         "app/services/export_audit_service.py",
-        "app/services/",
+        # app/services/ narrowed: run_service.py allowed from STAB-7 onwards
         "app/ui/",
         "static/app.js",
     )

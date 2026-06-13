@@ -541,6 +541,8 @@ async def _execute_generic_path(
         )
         result = deps.run_project(runtime_project_key, scenario_name, project_inputs_override=override)
         kpis = deps.format_kpis(result["kpis"])
+        # STAB-7: compute runtime_summary so dashboard OOB refresh works for generic projects.
+        runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
         runtime_snapshot_id = _utc_now_iso_compact()
         scenario_provenance = deps.scenario_provenance_for_record(project_record, active_scenario_record)
         bound_scenario_id = active_scenario_record.scenario_id if active_scenario_record else None
@@ -595,10 +597,19 @@ async def _execute_generic_path(
         if runtime_warning:
             result_messages.append(runtime_warning)
 
+        # STAB-7: generate sessionStorage script so main_web.py wires up the
+        # OOB dashboard refresh (same as template-seeded path).
+        prepend_html = _build_sessionstorage_save_tag(
+            runtime_summary=runtime_summary,
+            runtime_origin=runtime_origin,
+            workspace_state=workspace_state,
+            runtime_snapshot_id=runtime_snapshot_id,
+        )
         return RunRouteOutcome(
             template_name="partials/kpis.html",
             context={
                 "kpis": kpis,
+                "runtime_summary": runtime_summary,
                 "run_data": {
                     "project_type": effective_project_type,
                     "scenario": scenario_name,
@@ -610,6 +621,7 @@ async def _execute_generic_path(
                 "messages": result_messages,
                 "integration_status": result.get("integration_status", "full"),
             },
+            prepend_html=prepend_html,
         )
     except Exception as e:  # noqa: BLE001
         return RunRouteOutcome(
