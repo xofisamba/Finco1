@@ -61,9 +61,13 @@
           id="nav-compression-tab-scenarios"
           data-target-tab="scenario"
           data-p2fix4-area="scenarios"
+          data-wf6-scenario-count="{{ non_base_scenarios|length if non_base_scenarios is defined else 0 }}"
           aria-controls="panel-scenario"
           onclick="switchTab('scenario')">
     Scenarios
+    {% if non_base_scenarios is defined and non_base_scenarios %}
+      <span class="nav-scenario-count-badge" data-wf6-count-badge="{{ non_base_scenarios|length }}">{{ non_base_scenarios|length }}</span>
+    {% endif %}
   </button>
   <button class="nav-compression-tab"
           id="nav-compression-tab-export-audit"

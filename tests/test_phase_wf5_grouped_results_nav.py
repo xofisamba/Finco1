@@ -215,6 +215,7 @@ class TestFileScope:
             "static/styles.css",
             "app/templates/partials/_results_subnav.html",
             "tests/test_phase_wf5_",
+            "tests/test_phase_wf6_",
             "tests/test_phase_wf4_",
             "tests/test_phase_wf3_",
             "tests/test_phase_wf2_",

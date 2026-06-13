@@ -8755,3 +8755,39 @@ tr.fc-grid-header--sub th {
 .matrix-cell-cancel-btn { font-size: 0.75rem; background: #6b7280; color: #fff; border: none; border-radius: 3px; padding: 0.1rem 0.3rem; cursor: pointer; }
 .matrix-cell-saved { border-color: #059669 !important; }
 /* ── End M3 ─────────────────────────────────────── */
+
+/* ── Phase WF-6 — Scenario Status Badges ────────────────────────── */
+.nav-scenario-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 0 0.25rem;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+}
+.sc-run-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  margin-top: 0.2rem;
+}
+.sc-run-badge--run {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.sc-run-badge--not-run {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+/* ── End WF-6 ────────────────────────────────────────────────────── */

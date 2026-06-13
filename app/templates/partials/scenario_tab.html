@@ -108,6 +108,11 @@
             <div class="sc-col-header">
               <div class="sc-col-name" title="{{ scen.scenario_name }}">{{ scen.scenario_name }}</div>
               <div class="sc-col-meta">
+                {% if scen.last_run_summary %}
+                  <span class="sc-run-badge sc-run-badge--run" data-wf6-run-badge="run">Run ✓</span>
+                {% else %}
+                  <span class="sc-run-badge sc-run-badge--not-run" data-wf6-run-badge="not-run">Not run</span>
+                {% endif %}
                 {% if scen.scenario_id == workspace_state.active_scenario_id %}
                   <span class="badge badge-pass">Active</span>
                 {% else %}

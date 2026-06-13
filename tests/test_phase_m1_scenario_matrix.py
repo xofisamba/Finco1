@@ -972,6 +972,9 @@ class TestM1FileScope:
             "tests/test_phase_m3_scenario_matrix_overrides.py",
             "app/templates/partials/_matrix_cell_updated.html",
             "app/templates/partials/_matrix_cell_edit.html",
+            # WF-6 cross-arc patches
+            "tests/test_phase_wf6_scenario_status_badges.py",
+            "app/templates/partials/scenario_tab.html",
         }
         true_extra = [
             p for p in extra

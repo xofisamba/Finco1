@@ -499,6 +499,7 @@ class TestShellStripFileScope:
             "tests/test_phase_wf3_",
             "tests/test_phase_wf4_",
             "tests/test_phase_wf5_",
+            "tests/test_phase_wf6_",
             "static/styles.css",
             "tests/test_phase_m3_",
             "app/templates/partials/_matrix_cell_updated.html",
