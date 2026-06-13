@@ -1260,6 +1260,8 @@ class TestPR1FileScope:
             "app/export/runtime_summary.py",
             "app/export/institutional_workbook.py",
             "tests/test_phase_stab5_export_route_fix.py",
+            # STAB-6 new-project first-run fix
+            "tests/test_phase_stab6_new_project_first_run.py",
         }
         actual = set(changed)
         extra = actual - expected

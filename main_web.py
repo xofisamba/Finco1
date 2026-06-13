@@ -383,6 +383,9 @@ def _collect_form_snapshot(form) -> dict:
         # Phase 20L — Construction / IDC snapshot fields
         "construction_months",
         "idc_keur",
+        # STAB-6: Phase 56C added currency to the baseline saved_snapshot.
+        # Must be collected here so saved_norm and current_norm both contain it.
+        "currency",
     ]
     return {field: form.get(field, "") for field in fields}
 

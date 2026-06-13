@@ -36,6 +36,8 @@
   <input type="hidden" name="horizon_years" value="{{ form_data.get('horizon_years', '') }}" />
   <input type="hidden" name="capacity_factor" value="{{ form_data.get('capacity_factor', '') }}" />
   <input type="hidden" name="ppa_term_years" value="{{ form_data.get('ppa_term_years', '') }}" />
+  {# STAB-6: currency added so saved_snapshot["currency"] = "EUR" matches collected form snapshot. #}
+  <input type="hidden" name="currency" value="{{ form_data.get('currency', 'EUR') }}" />
   <input type="hidden" name="capex_epc_contract_keur" value="{{ form_data.get('capex_epc_contract_keur', '') }}" />
   <input type="hidden" name="capex_production_units_keur" value="{{ form_data.get('capex_production_units_keur', '') }}" />
   <input type="hidden" name="capex_epc_other_keur" value="{{ form_data.get('capex_epc_other_keur', '') }}" />

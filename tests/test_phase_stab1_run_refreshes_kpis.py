@@ -359,6 +359,8 @@ class TestStab1FileScope:
         "app/export/runtime_summary.py",
         "app/export/institutional_workbook.py",
         "tests/test_phase_stab5_",
+        # STAB-6 new-project first-run fix
+        "tests/test_phase_stab6_",
     )
 
     STAB1_DISALLOWED_PREFIXES = (

@@ -326,6 +326,8 @@ class TestStab5FileScope:
         "static/app.js",
         "app/templates/partials/_nav_compression.html",
         "app/templates/partials/workspace_shell.html",
+        # STAB-6 new-project first-run fix
+        "tests/test_phase_stab6_",
     )
 
     STAB5_DISALLOWED_PREFIXES = (
