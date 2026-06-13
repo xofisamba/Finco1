@@ -2432,9 +2432,12 @@ async def index(request: Request, project: str | None = None):
             "base_case_record": next((s for s in scenario_records if s.is_base_case), None),
             "non_base_scenarios": [s for s in scenario_records if not s.is_base_case],
             "scenario_editable_fields": SCENARIO_EDITABLE_FIELDS,
-            # Phase M2: live scenario matrix context
+            # Phase M2 / STAB-1: live scenario matrix context.
+            # Pass last_runtime_summary (raw kpis dict) so Base KPI rows
+            # populate from the last run result rather than showing "—".
             **__import__("app.ui.scenario_matrix", fromlist=["build_matrix_context"]).build_matrix_context(
-                ctx, scenario_records
+                ctx, scenario_records,
+                runtime_kpis=getattr(workspace_state, "last_runtime_summary", None) or None,
             ),
             # Phase 55E: UI-2.6 run-source indicator context
             # Derived from existing workspace_state (last_runtime_snapshot_id,
@@ -2583,6 +2586,7 @@ async def run(request: Request):
     # HTMX swaps #dashboard-v1 in-place without a full page reload.
     # Read raw KPIs from the workspace state that record_workspace_runtime
     # just saved; extract project from form (available in this route scope).
+    # STAB-1: OOB dashboard KPI + scenario matrix refresh after a successful run.
     if outcome.template_name == "partials/runtime_summary.html":
         _active_project_code = form.get("active_project", "").strip().lower()
         _project_rec = _resolve_project_record(user, _active_project_code, {"active_project": _active_project_code})
@@ -2591,14 +2595,18 @@ async def run(request: Request):
             raw_kpis = getattr(_ws, "last_runtime_summary", None) or {} if _ws else {}
             if raw_kpis:
                 from app.ui.dashboard import build_dashboard_kpis_from_raw_kpis
+                from app.ui.scenario_matrix import build_matrix_context as _bmc
+                from app.ui.project_context import get_project_context as _get_ctx
                 import datetime as _dt
+
+                # ── 1. Dashboard OOB ─────────────────────────────────────
                 oob_kpis = build_dashboard_kpis_from_raw_kpis(raw_kpis)
                 rs = outcome.context.get("runtime_summary", {})
                 run_status_label = (
                     rs.get("last_runtime_origin_label", "Backend runtime")
                     if isinstance(rs, dict) else "Backend runtime"
                 )
-                oob_rendered = templates.TemplateResponse(
+                oob_dash = templates.TemplateResponse(
                     request=request,
                     name="partials/_dashboard_oob.html",
                     context={
@@ -2607,7 +2615,23 @@ async def run(request: Request):
                         "run_timestamp": _dt.datetime.now(tz=_dt.timezone.utc).strftime("%H:%M UTC"),
                     },
                 )
-                body_str += oob_rendered.body.decode("utf-8")
+                body_str += oob_dash.body.decode("utf-8")
+
+                # ── 2. Scenario Matrix OOB ───────────────────────────────
+                try:
+                    _oob_ctx = _get_ctx(_project_rec.project_code)
+                    _oob_scenarios = list_scenarios(user.user_id, project_id=_project_rec.project_id)
+                    _matrix_ctx = _bmc(
+                        _oob_ctx, _oob_scenarios, runtime_kpis=raw_kpis,
+                    )
+                    oob_matrix = templates.TemplateResponse(
+                        request=request,
+                        name="partials/_scenario_matrix_oob.html",
+                        context={**_matrix_ctx},
+                    )
+                    body_str += oob_matrix.body.decode("utf-8")
+                except Exception:
+                    pass  # matrix OOB is best-effort; never block the main run response
 
     return HTMLResponse(content=body_str, status_code=rendered.status_code)
 

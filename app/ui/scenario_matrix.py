@@ -413,6 +413,7 @@ def build_matrix_context(
     project_ctx,
     scenario_records=None,
     rows: Sequence[MatrixRow] = ALL_ROWS,
+    runtime_kpis: dict | None = None,
 ) -> dict:
     """Build the full matrix rendering context for M2.
 
@@ -444,7 +445,11 @@ def build_matrix_context(
 
     out = []
     for row in rows:
-        base_value = get_base_value(project_ctx, row)
+        # For KPI rows, prefer runtime_kpis (last run result) over project_ctx
+        if row.kind == ROW_KIND_KPI and runtime_kpis:
+            base_value = runtime_kpis.get(row.attr)
+        else:
+            base_value = get_base_value(project_ctx, row)
         base_str = format_cell_value(row, base_value)
         section = "Inputs" if row.kind == ROW_KIND_INPUT else "Outputs (KPIs)"
         out.append({

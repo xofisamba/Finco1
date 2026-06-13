@@ -19,7 +19,9 @@
      id="scenario-matrix-prototype"
      data-m2-matrix="true"
      data-m2-live="{{ 'true' if m2_live is defined and m2_live else 'false' }}"
-     data-exploration-source="scenario-matrix">
+     data-exploration-source="scenario-matrix"
+     {% if matrix_oob is defined and matrix_oob %}hx-swap-oob="true"{% endif %}
+     data-stab1-matrix="live">
   <div class="card-header">
     <div class="card-title">
       {% if m2_live is defined and m2_live %}
@@ -174,10 +176,11 @@
               <th scope="row" class="matrix-row-label">
                 {{ entry.row.label }}
                 {% if entry.row.attr == 'gearing_pct' %}
+                  {# PR2: relabelled as "Indicative Gearing (input)" in matrix row #}
                   <span class="badge badge-input-pr2" data-pr2-badge="indicative-gearing-tag"
                         title="Indicative gearing input. The debt is sized by DSCR sculpt, not by this input. See the 'Realized Gearing' output below for the actual senior_debt / total_CAPEX ratio.">input</span>
                 {% elif entry.row.attr == 'realized_gearing_pct' %}
-                  <span class="badge badge-kpi-pr2" data-pr2-badge="realized-gearing-tag"
+                  <span class="badge badge-kpi-pr2" data-pr2-badge="realized-gearing" data-pr2-badge-alt="realized-gearing-tag"
                         title="Read-only derived KPI: realized gearing = senior debt / total CAPEX. NOT a binding driver.">derived</span>
                 {% endif %}
               </th>
