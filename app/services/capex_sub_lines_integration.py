@@ -272,3 +272,206 @@ def _apply_user_sub_lines_to_capex(
             )
 
     return folded
+
+
+# ---------------------------------------------------------------------------
+# STAB-3: Persist sub-line form edits + replace-semantics fold
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+_SUB_LINE_FORM_RE = _re.compile(r"^capex_(C_\d{2}_U\d{3})_keur$")
+
+
+def _parse_capex_sub_line_form_fields(form: Any) -> dict[str, float]:
+    """Parse ``capex_C_NN_UYYY_keur`` form fields → ``{business_code: amount_keur}``.
+
+    Business codes use the format ``C.NN.UYYY`` (e.g. ``C.06.U001``).
+    The form field name is the business code with dots replaced by
+    underscores and the prefix ``capex_`` added:
+    ``capex_C_06_U001_keur`` → ``C.06.U001``.
+
+    Phase 57A-8 temporary rows have no ``name`` attribute and
+    therefore never appear here — they remain non-persisted.
+    Temp codes (``C.NN.TMP-N``) would not match this regex anyway.
+    """
+    result: dict[str, float] = {}
+    for key in form:
+        m = _SUB_LINE_FORM_RE.match(key)
+        if not m:
+            continue
+        raw_code = m.group(1)
+        business_code = raw_code.replace("_", ".")  # C_06_01 → C.06.01
+        try:
+            amount = float(form.get(key) or 0)
+        except (ValueError, TypeError):
+            amount = 0.0
+        result[business_code] = amount
+    return result
+
+
+def _upsert_sub_line_by_business_code(
+    cursor: Any,
+    project_id: str,
+    business_code: str,
+    amount_keur: float,
+) -> None:
+    """Update amount for an existing sub-line, or create it if missing.
+
+    The parent category is derived from the business code prefix
+    (e.g. C.06.01 → C.06). The label defaults to the business
+    code when creating a new row. Soft-deleted rows (is_active=0)
+    with a matching business_code are reactivated.
+    """
+    from app.persistence.capex_sub_lines import (
+        CAPEX_CATEGORY_TO_FIELD,
+        create_sub_line,
+        validate_business_code,
+        validate_parent_category,
+    )
+    from datetime import datetime, timezone
+
+    validate_business_code(business_code)
+    # Derive parent category: C.06.01 → C.06
+    parts = business_code.rsplit(".", 1)
+    parent_category_code = parts[0]
+    validate_parent_category(parent_category_code)
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Check for an existing row (active or soft-deleted).
+    cursor.execute(
+        """
+        SELECT id FROM capex_sub_lines
+        WHERE project_id = ? AND business_code = ?
+        LIMIT 1
+        """,
+        (project_id, business_code),
+    )
+    row = cursor.fetchone()
+    if row:
+        cursor.execute(
+            """
+            UPDATE capex_sub_lines
+            SET amount_keur = ?, is_active = 1, updated_at = ?
+            WHERE project_id = ? AND business_code = ?
+            """,
+            (amount_keur, now, project_id, business_code),
+        )
+    else:
+        create_sub_line(
+            cursor,
+            project_id=project_id,
+            parent_category_code=parent_category_code,
+            label=business_code,
+            amount_keur=amount_keur,
+            business_code=business_code,
+        )
+
+
+def persist_sub_line_form_edits(project_id: str, form: Any) -> None:
+    """Parse CAPEX sub-line form fields and upsert them to the DB.
+
+    Called in the user-created run path (STAB-3) before the fold
+    step, so that edited sub-line amounts are visible to
+    ``_apply_user_sub_lines_to_capex`` / ``apply_user_sub_lines_replacing_base``
+    in the same request.
+
+    Phase 57A-8 temporary rows are explicitly excluded: they
+    carry no ``name`` attribute so they never appear in the form
+    POST and are never persisted here. New-line persistence for
+    those rows is deferred to a future phase.
+    """
+    if not project_id:
+        return
+    sub_line_edits = _parse_capex_sub_line_form_fields(form)
+    if not sub_line_edits:
+        return
+
+    from app.persistence.db import get_cursor
+    import sqlite3
+    with get_cursor() as cursor:
+        for business_code, amount_keur in sub_line_edits.items():
+            try:
+                _upsert_sub_line_by_business_code(
+                    cursor, project_id, business_code, amount_keur,
+                )
+            except (ValueError, sqlite3.Error) as exc:
+                logger.warning(
+                    "STAB-3: skipping sub-line form field %s "
+                    "for project %s: %s",
+                    business_code, project_id, exc,
+                )
+    # get_cursor() commits on context-manager exit.
+
+
+def apply_user_sub_lines_replacing_base(
+    capex: Any,
+    *,
+    project_id: str,
+    scenario_overrides: Optional[Mapping[str, Any]] = None,
+) -> Any:
+    """Fold persisted user sub-lines with REPLACE semantics.
+
+    Unlike ``_apply_user_sub_lines_to_capex`` (which ADDS
+    sub-line amounts to the existing category base), this
+    function ZEROS the category base for any field that has
+    persisted sub-lines, then folds in the sub-line sum.
+    Result: the category total = sum(sub_lines), not
+    base + sum(sub_lines).
+
+    This is correct for the user-project CAPEX grid where
+    sub-lines ARE the breakdown of the category: the user
+    edits individual line amounts and expects the category
+    subtotal to equal their entries.
+
+    TUHO/Oborovo parity: factory projects have no persisted
+    sub-lines → empty user_sub_lines → returns capex
+    unchanged (no zeroing, no folding).
+    """
+    if not project_id:
+        return capex
+
+    user_sub_lines = _load_active_sub_lines(project_id)
+    if not user_sub_lines:
+        return capex
+
+    # Determine which CapexStructure fields have active sub-lines.
+    from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+    import dataclasses
+
+    fields_with_sub_lines: set[str] = set()
+    for sub in user_sub_lines:
+        if sub.is_active:
+            field_name = CAPEX_CATEGORY_TO_FIELD.get(sub.parent_category_code)
+            if field_name:
+                fields_with_sub_lines.add(field_name)
+
+    # Zero out the base amounts for those fields.
+    zero_updates: dict[str, Any] = {}
+    for field_name in fields_with_sub_lines:
+        existing_item = getattr(capex, field_name)
+        zero_updates[field_name] = dataclasses.replace(
+            existing_item, amount_keur=0.0
+        )
+    zeroed_capex = (
+        dataclasses.replace(capex, **zero_updates) if zero_updates else capex
+    )
+
+    # Fold (add sub-line amounts to the now-zero base).
+    sub_line_overrides = _extract_sub_line_overrides(scenario_overrides)
+    folded = fold_sub_lines_into_capex(
+        zeroed_capex, user_sub_lines, scenario_overrides=sub_line_overrides,
+    )
+
+    # Warn on stale scenario overrides (same as _apply_user_sub_lines_to_capex).
+    if sub_line_overrides:
+        active_uuids = {sub.sub_line_id for sub in user_sub_lines}
+        for stale_uuid in set(sub_line_overrides) - active_uuids:
+            logger.warning(
+                "STAB-3: scenario override for sub_line_id %s "
+                "does not match any active sub-line; ignoring.",
+                stale_uuid,
+            )
+
+    return folded

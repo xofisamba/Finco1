@@ -643,6 +643,7 @@ class TestFileScope:
             # STAB-1 and STAB-2 follow-up test files.
             "tests/test_phase_stab1_run_refreshes_kpis.py",
             "tests/test_phase_stab2_realized_gearing_scale.py",
+            "tests/test_phase_stab3_capex_subline_propagation.py",
             # constraints.txt: bcrypt==4.2.0 for Python 3.12 CI.
             "constraints.txt",
             # CI-INFRA-1 runner failure documentation.
