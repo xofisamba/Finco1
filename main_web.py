@@ -2590,7 +2590,9 @@ async def run(request: Request):
     # Read raw KPIs from the workspace state that record_workspace_runtime
     # just saved; extract project from form (available in this route scope).
     # STAB-1: OOB dashboard KPI + scenario matrix refresh after a successful run.
-    if outcome.template_name == "partials/runtime_summary.html":
+    # STAB-7: kpis.html (generic path) now also carries prepend_html + runtime_summary,
+    # so extend the gate to include it alongside runtime_summary.html.
+    if outcome.template_name in {"partials/runtime_summary.html", "partials/kpis.html"}:
         _active_project_code = form.get("active_project", "").strip().lower()
         _project_rec = _resolve_project_record(user, _active_project_code, {"active_project": _active_project_code})
         if _project_rec:

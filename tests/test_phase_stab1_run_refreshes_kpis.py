@@ -361,13 +361,17 @@ class TestStab1FileScope:
         "tests/test_phase_stab5_",
         # STAB-6 new-project first-run fix
         "tests/test_phase_stab6_",
+        # STAB-7 generic dashboard parity
+        "app/services/run_service.py",
+        "tests/test_phase_stab7_",
     )
 
     STAB1_DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
         "app/project_factories.py",
         "app/persistence/",
-        "app/services/",
+        # app/services/ narrowed: run_service.py allowed from STAB-7 onwards
+        "app/services/export_audit_service.py",
         "main_api.py",
     )
 

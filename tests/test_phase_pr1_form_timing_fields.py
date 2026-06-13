@@ -1262,6 +1262,9 @@ class TestPR1FileScope:
             "tests/test_phase_stab5_export_route_fix.py",
             # STAB-6 new-project first-run fix
             "tests/test_phase_stab6_new_project_first_run.py",
+            # STAB-7 generic dashboard parity
+            "app/services/run_service.py",
+            "tests/test_phase_stab7_generic_dashboard_parity.py",
         }
         actual = set(changed)
         extra = actual - expected

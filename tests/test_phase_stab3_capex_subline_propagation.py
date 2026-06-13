@@ -551,6 +551,9 @@ class TestStab3FileScope:
         "tests/test_phase_stab5_",
         # STAB-6 new-project first-run fix
         "tests/test_phase_stab6_",
+        # STAB-7 generic dashboard parity
+        "app/services/run_service.py",
+        "tests/test_phase_stab7_",
     )
 
     STAB3_DISALLOWED_PREFIXES = (
