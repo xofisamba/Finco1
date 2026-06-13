@@ -417,6 +417,9 @@ class TestFileScope:
             "static/styles.css",
             "tests/test_phase_m3_",
             "tests/test_phase_m4_",
+            "tests/test_phase_stab",
+            "app/templates/partials/_scenario_matrix_oob.html",
+            "app/ui/dashboard.py",
             "tests/test_phase_m2_",
             "tests/test_phase_m1_",
             "tests/test_phase_wf1_",
@@ -433,6 +436,9 @@ class TestFileScope:
             "app/templates/partials/new_project_result.html",
             "app/ui/dashboard.py",
             "app/templates/partials/_dashboard_oob.html",
+            "tests/test_phase_pr1_",
+            "tests/test_phase_pr2_",
+            "tests/test_phase_pr3_",
         )
         disallowed_prefixes = (
             "app/persistence/",

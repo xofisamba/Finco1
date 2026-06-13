@@ -170,8 +170,8 @@ class TestRunReturnsOOBDashboard:
 class TestBuildDashboardKpisFromRawKpis:
     def _raw(self):
         return {
-            "project_irr": 8.5,
-            "equity_irr": 12.3,
+            "project_irr": 0.085,
+            "equity_irr": 0.123,
             "senior_debt_keur": 50000.0,
             "min_dscr": 1.12,
             "avg_dscr": 1.45,

@@ -207,17 +207,20 @@ def build_dashboard_kpis_from_raw_kpis(raw_kpis: dict) -> Dict[str, Dict[str, An
     """Build dashboard KPIs from a raw ``result["kpis"]`` dict.
 
     This is used after a successful run to populate the OOB
-    dashboard update.  The field names in ``raw_kpis`` (from
-    ``run_project`` → ``waterfall_core``) differ slightly from
-    the ``.summary`` attribute on the waterfall result object:
-    ``project_irr`` vs ``project_irr_pct``, etc.
+    dashboard update.  ``raw_kpis`` comes from ``run_project()``
+    which returns IRR values as fractions (0.10 = 10%), so they
+    are multiplied by 100 before formatting.
     """
-    project_irr = _safe_float(raw_kpis.get("project_irr"))
-    equity_irr = _safe_float(raw_kpis.get("equity_irr"))
+    project_irr_frac = _safe_float(raw_kpis.get("project_irr"))
+    equity_irr_frac = _safe_float(raw_kpis.get("equity_irr"))
+    # Convert fraction → percentage for _fmt_pct
+    project_irr = project_irr_frac * 100 if project_irr_frac is not None else None
+    equity_irr = equity_irr_frac * 100 if equity_irr_frac is not None else None
     senior_debt = _safe_float(raw_kpis.get("senior_debt_keur"))
     min_dscr = _safe_float(raw_kpis.get("min_dscr"))
     avg_dscr = _safe_float(raw_kpis.get("avg_dscr"))
     target_dscr = _safe_float(raw_kpis.get("target_dscr"))
+    # total_revenue/ebitda are the available lifecycle totals; y1 values not in raw_kpis
     y1_revenue = _safe_float(raw_kpis.get("y1_revenue_keur") or raw_kpis.get("total_revenue_keur"))
     y1_ebitda = _safe_float(raw_kpis.get("y1_ebitda_keur") or raw_kpis.get("total_ebitda_keur"))
     npv = _safe_float(raw_kpis.get("project_npv_keur"))
