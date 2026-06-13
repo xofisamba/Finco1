@@ -8698,6 +8698,8 @@ tr.fc-grid-header--sub th {
     padding-right: 0.6rem;
   }
 }
+/* STAB-4: results subnav wrapper visibility */
+.results-subnav-wrapper--hidden { display: none !important; }
 /* ── End WF-5 ────────────────────────────────────────────────────── */
 
 /* ── Phase M2 — Live Scenario Matrix ─────────────────────────────── */

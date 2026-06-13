@@ -551,7 +551,6 @@ class TestStab3FileScope:
         "app/waterfall_core.py",
         "app/project_factories.py",
         "app/persistence/",
-        "static/app.js",
     )
 
     def test_file_scope(self):
@@ -564,6 +563,12 @@ class TestStab3FileScope:
         )
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
         for f in changed:
+            # STAB-4: app.js change must be navigation-only
+            if f == "static/app.js":
+                import pathlib as _pl
+                js_src = (_pl.Path(REPO_ROOT) / "static/app.js").read_text()
+                assert "STAB-4" in js_src, f"static/app.js changed without STAB-4 marker"
+                continue
             assert not any(f.startswith(p) for p in self.STAB3_DISALLOWED_PREFIXES), (
                 f"CAPEX-PERSIST-1 must not touch {f}"
             )

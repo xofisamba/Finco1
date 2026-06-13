@@ -115,6 +115,39 @@ function switchTab(tabId) {
   if (workspace) workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 
+  // STAB-4: sync five-area nav active state
+  var RESULTS_TABS = ['construction','production','revenue','opex','capex',
+    'senior-debt','shl','tax','pl','cashflow','balance','distributions','sponsor'];
+  var NAV_AREA_MAP = {
+    'overview': 'dashboard',
+    'inputs': 'inputs',
+    'scenario': 'scenarios',
+    'audit': 'export-audit',
+    'downloads': 'export-audit',
+    'help': 'help'
+  };
+  document.querySelectorAll('.nav-compression-tab').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+  var navArea = RESULTS_TABS.indexOf(tabId) !== -1 ? 'results' : (NAV_AREA_MAP[tabId] || null);
+  if (navArea) {
+    var navBtn = document.querySelector('.nav-compression-tab[data-p2fix4-area="' + navArea + '"]');
+    if (navBtn) navBtn.classList.add('active');
+  }
+
+  // STAB-4: sync results sub-nav active state and wrapper visibility
+  document.querySelectorAll('.results-subnav-tab').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+  var subnavWrapper = document.getElementById('results-subnav-wrapper');
+  if (RESULTS_TABS.indexOf(tabId) !== -1) {
+    var subnavBtn = document.getElementById('results-subnav-tab-' + tabId);
+    if (subnavBtn) subnavBtn.classList.add('active');
+    if (subnavWrapper) subnavWrapper.classList.remove('results-subnav-wrapper--hidden');
+  } else {
+    if (subnavWrapper) subnavWrapper.classList.add('results-subnav-wrapper--hidden');
+  }
+
   document.dispatchEvent(new CustomEvent('tabChanged', { detail: { tab: tabId } }));
 }
 

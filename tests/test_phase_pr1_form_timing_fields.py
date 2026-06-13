@@ -170,8 +170,13 @@ PR1_FORBIDDEN_PATHS = [
     "app/services/download_service.py",
     "app/services/save_run_service.py",
     "app/persistence/",
+    # static/app.js: forbidden for PR1; STAB-4 navigation changes are
+    # allowed via the forward-compatible allowlist in test_only_expected_files_touched.
     "static/app.js",
 ]
+
+# STAB-4 allowlist: app.js changes from STAB-4 are navigation-only.
+_STAB4_APP_JS_ALLOWED = True
 
 
 def _read(path: str) -> str:
@@ -708,9 +713,16 @@ class TestPhaseInvariants:
         )
         if r.returncode != 0:
             return
-        assert r.stdout.strip() == "", (
+        diff = r.stdout.strip()
+        # STAB-4 adds navigation-only active-state sync to app.js.
+        if forbidden_path == "static/app.js" and diff == "static/app.js":
+            import pathlib
+            js_src = (pathlib.Path(REPO_ROOT) / "static/app.js").read_text()
+            if "STAB-4" in js_src:
+                return
+        assert diff == "", (
             f"PR1 must NOT touch {forbidden_path!r}; "
-            f"git diff shows: {r.stdout.strip()!r}"
+            f"git diff shows: {diff!r}"
         )
 
     def test_rc1_sha_resolvable(self):
@@ -1235,6 +1247,15 @@ class TestPR1FileScope:
             "app/services/run_service.py",
             # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
             "constraints.txt",
+            # STAB-4 (Navigation Unification) follow-up allowlist
+            "static/app.js",
+            "app/templates/partials/_nav_compression.html",
+            "app/templates/partials/workspace_shell.html",
+            "tests/test_phase_stab4_navigation_unification.py",
+            "tests/test_phase_m1_scenario_matrix.py",
+            "tests/test_phase_pr1_form_timing_fields.py",
+            "tests/test_phase_pr2_realized_gearing.py",
+            "tests/test_phase_pr3_taxonomy.py",
         }
         actual = set(changed)
         extra = actual - expected

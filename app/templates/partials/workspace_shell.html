@@ -476,6 +476,12 @@
     {% include "partials/scenario_tab.html" %}
   </div>
 
+  {# ── STAB-4: Results sub-nav wrapper — visible whenever any results sheet is active.
+     Moved out of panel-capex so it persists across all 13 result sheets. #}
+  <div id="results-subnav-wrapper" class="results-subnav-wrapper results-subnav-wrapper--hidden">
+    {% include "partials/_results_subnav.html" %}
+  </div>
+
   <!-- ----------------------------------------------- CONSTRUCTION -- -->
   <div class="tab-panel" id="panel-construction">
     {% include "partials/sheet_construction.html" %}
@@ -506,8 +512,6 @@
     tab.
   -->
   <div class="tab-panel" id="panel-capex">
-    {# ── Phase P2-FIX-4: Results sub-nav (Revenue / OPEX / CAPEX / Senior Debt / SHL / Tax / P&L / Cash Flow / Balance / Distributions / Sponsor / Construction / Production). Lets the user jump to a specific output sheet without scrolling the 20-tab underlying ribbon. #}
-    {% include "partials/_results_subnav.html" %}
     {% include "partials/sheet_capex.html" %}
   </div>
 
