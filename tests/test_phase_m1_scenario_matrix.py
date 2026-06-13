@@ -1051,6 +1051,8 @@ class TestM1FileScope:
             # STAB-7 generic dashboard parity
             "app/services/run_service.py",
             "tests/test_phase_stab7_generic_dashboard_parity.py",
+            # STAB-8 e2e runtime validation
+            "tests/test_phase_stab8_e2e_runtime_validation.py",
         }
         true_extra = [
             p for p in extra

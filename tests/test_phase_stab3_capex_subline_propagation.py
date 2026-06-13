@@ -554,6 +554,8 @@ class TestStab3FileScope:
         # STAB-7 generic dashboard parity
         "app/services/run_service.py",
         "tests/test_phase_stab7_",
+        # STAB-8 e2e runtime validation
+        "tests/test_phase_stab8_",
     )
 
     STAB3_DISALLOWED_PREFIXES = (

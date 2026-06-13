@@ -516,6 +516,8 @@ class TestStab7FileScope:
         "app/templates/partials/workspace_shell.html",
         "app/export/runtime_summary.py",
         "app/export/institutional_workbook.py",
+        # STAB-8 e2e runtime validation
+        "tests/test_phase_stab8_",
     )
 
     STAB7_DISALLOWED_PREFIXES = (
