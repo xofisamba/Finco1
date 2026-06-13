@@ -13,7 +13,7 @@
 #   Intentional single-package upgrades only, tested before merge.
 #   No automatic broad upgrades in pilot-use branches.
 
-bcrypt==3.2.2
+bcrypt==4.2.0
 fastapi==0.136.1
 httpx==0.28.1
 itsdangerous==2.2.0

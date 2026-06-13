@@ -1004,6 +1004,8 @@ class TestM1FileScope:
             "tests/test_phase_p2fix7a_css_parser_cleanup.py",
             "tests/test_phase_stab1_run_refreshes_kpis.py",
             "tests/test_phase_stab2_realized_gearing_scale.py",
+            # STAB-2 CI fix: bcrypt 3.2.2 has no Python 3.12 wheels
+            "constraints.txt",
         }
         true_extra = [
             p for p in extra
