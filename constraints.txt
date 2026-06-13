@@ -12,6 +12,10 @@
 # Upgrade policy:
 #   Intentional single-package upgrades only, tested before merge.
 #   No automatic broad upgrades in pilot-use branches.
+#
+# Python 3.12 compatibility note (STAB-2):
+#   bcrypt 3.x uses cffi/C extensions; no cp312 wheels exist.
+#   bcrypt 4.x is Rust-based with cp312 wheels — use 4.2.0+.
 
 bcrypt==4.2.0
 fastapi==0.136.1
