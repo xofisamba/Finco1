@@ -280,6 +280,11 @@ class TestUX1FileScope:
     UX1_ALLOWED_PREFIXES = (
         "app/templates/partials/inputs_section.html",
         "tests/test_phase_ux1_",
+        # UX-2 active sheet refresh
+        "app/templates/partials/shared_runtime_block.html",
+        "app/templates/partials/_sheet_distributions_partial.html",
+        "app/templates/partials/_sheet_sponsor_partial.html",
+        "tests/test_phase_ux2_",
         # cross-arc: allowlist updates in prior test files
         "tests/test_phase_stab",
         "tests/test_phase_pr1_",

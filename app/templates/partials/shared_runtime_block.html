@@ -111,7 +111,9 @@
   "use strict";
 
   // Read last runtime summary from sessionStorage and populate the block.
-  // Called on page load AND after every HTMX swap.
+  // UX-2: scope to the nearest ancestor block so all panels update correctly
+  // (there are multiple #shared-runtime-block instances on the page, one per
+  // result sheet; getElementById only reaches the first, so we scope by script).
   function _populateRuntimeBlock() {
     var raw = sessionStorage.getItem("lastRuntimeSummary");
     if (!raw) return; // no run yet — stay hidden
@@ -119,18 +121,25 @@
     var data;
     try { data = JSON.parse(raw); } catch(e) { return; }
 
-    var block = document.getElementById("shared-runtime-block");
+    // Scope to the container that owns this script instance.
+    var scriptEl = document.currentScript || (function() {
+      var scripts = document.querySelectorAll('script');
+      return scripts[scripts.length - 1];
+    })();
+    var block = scriptEl
+      ? scriptEl.closest('.runtime-block') || document.getElementById("shared-runtime-block")
+      : document.getElementById("shared-runtime-block");
     if (!block) return;
 
     // Show the block
     block.style.display = "";
 
     // Project name
-    var proj = document.getElementById("runtime-block-project");
+    var proj = block.querySelector("#runtime-block-project");
     if (proj) proj.textContent = data.project_name ? data.project_name : "";
 
     // KPI grid
-    var kpiGrid = document.getElementById("runtime-block-kpis");
+    var kpiGrid = block.querySelector("#runtime-block-kpis");
     if (kpiGrid) {
       var kpis = [
         { label: "Project IRR",      key: "project_irr",         suffix: "" },
@@ -156,13 +165,49 @@
     }
   }
 
-  // Expose globally so HTMX onSwap can call it after each run response
-  window._populateRuntimeBlock = _populateRuntimeBlock;
+  // Expose globally so the run response script can call it after each run.
+  // UX-2: _populateAllRuntimeBlocks updates every runtime block in the DOM
+  // so all result-sheet panels refresh from sessionStorage after a Run.
+  if (!window._populateRuntimeBlock) {
+    window._populateRuntimeBlock = function() {
+      document.querySelectorAll('.runtime-block').forEach(function(block) {
+        var raw = sessionStorage.getItem("lastRuntimeSummary");
+        if (!raw) return;
+        var data;
+        try { data = JSON.parse(raw); } catch(e) { return; }
+        block.style.display = "";
+        var proj = block.querySelector("#runtime-block-project");
+        if (proj) proj.textContent = data.project_name || "";
+        var kpiGrid = block.querySelector("#runtime-block-kpis");
+        if (kpiGrid) {
+          var kpis = [
+            { label: "Project IRR",   key: "project_irr" },
+            { label: "Equity IRR",    key: "equity_irr" },
+            { label: "Avg DSCR",      key: "avg_dscr" },
+            { label: "Min DSCR",      key: "min_dscr" },
+            { label: "Senior Debt",   key: "senior_debt_keur" },
+            { label: "Total Revenue", key: "total_revenue_keur" },
+            { label: "EBITDA",        key: "total_ebitda_keur" },
+            { label: "Total OPEX",    key: "total_opex_keur" },
+          ];
+          var html = "";
+          for (var i = 0; i < kpis.length; i++) {
+            var kv = kpis[i];
+            var val = data[kv.key] || "NOT_AVAILABLE";
+            var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+            html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label +
+                    '</span><span class="' + cls + '">' + val + '</span></div>';
+          }
+          kpiGrid.innerHTML = html;
+        }
+      });
+    };
+  }
 
   // Auto-populate whenever HTMX swaps #model-output-area (POST /run response)
   document.addEventListener("htmx:afterSwap", function(e) {
     if (e.target && e.target.id === "model-output-area") {
-      _populateRuntimeBlock();
+      window._populateRuntimeBlock();
     }
   });
 

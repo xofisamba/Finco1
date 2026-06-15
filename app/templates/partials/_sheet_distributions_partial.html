@@ -1,0 +1,15 @@
+<!-- UX-2: Distributions panel body (shared_runtime_block is prepended separately by OOB assembly). -->
+<div class="panel-header">
+  <div class="panel-title">Distributions</div>
+  <div class="panel-desc">Equity distribution schedule, lockup periods, and distribution constraints.</div>
+</div>
+<div class="placeholder-panel">
+  <div class="placeholder-icon">Cash</div>
+  <div class="placeholder-title">Equity Distributions</div>
+  <div class="placeholder-desc">Distribution schedule with lockup, sweep, and constraints will appear after a model run.</div>
+  {% if audit_mode %}
+  <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. TUHO/Oborovo frozen-template path is validated; generic projects remain unvalidated.</div>
+  {% else %}
+  <div class="placeholder-note">Internal-use model — results are indicative. See the Audit tab for the reviewer notes.</div>
+  {% endif %}
+</div>

@@ -369,6 +369,11 @@ class TestStab1FileScope:
         # UX-1 inputs badge cleanup
         "app/templates/partials/inputs_section.html",
         "tests/test_phase_ux1_",
+        # UX-2 active sheet refresh
+        "app/templates/partials/shared_runtime_block.html",
+        "app/templates/partials/_sheet_distributions_partial.html",
+        "app/templates/partials/_sheet_sponsor_partial.html",
+        "tests/test_phase_ux2_",
     )
 
     STAB1_DISALLOWED_PREFIXES = (

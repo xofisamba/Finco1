@@ -853,6 +853,11 @@ class TestFileScope:
             # UX-1 inputs badge cleanup
             "app/templates/partials/inputs_section.html",
             "tests/test_phase_ux1_inputs_badge_cleanup.py",
+            # UX-2 active sheet refresh
+            "app/templates/partials/shared_runtime_block.html",
+            "app/templates/partials/_sheet_distributions_partial.html",
+            "app/templates/partials/_sheet_sponsor_partial.html",
+            "tests/test_phase_ux2_active_sheet_refresh.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected

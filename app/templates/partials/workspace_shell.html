@@ -80,6 +80,8 @@
   <input type="hidden" name="rev_co2_price" value="{{ form_data.get('rev_co2_price', '') }}" />
   <input type="hidden" name="construction_months" value="{{ form_data.get('construction_months', '') }}" />
   <input type="hidden" name="idc_keur" value="{{ form_data.get('idc_keur', '') }}" />
+  {# UX-2: active tab tracking so POST /run can OOB-refresh the visible result sheet. #}
+  <input type="hidden" name="active_tab" id="hidden-active-tab" value="overview" />
 </form>
 
 <div class="workspace-content" id="workspace-content"

@@ -2643,6 +2643,52 @@ async def run(request: Request):
                         repr(exc),
                     )
 
+                # ── 3. Active Result Sheet OOB ───────────────────────────
+                # UX-2: if the user is viewing a runtime-backed result sheet,
+                # refresh it so the shared_runtime_block shows the new KPIs.
+                _RUNTIME_SHEET_MAP = {
+                    "senior-debt":   "partials/sheet_senior_debt.html",
+                    "shl":           "partials/sheet_shl.html",
+                    "tax":           "partials/sheet_tax.html",
+                    "pl":            "partials/sheet_financials.html",
+                    "cashflow":      "partials/sheet_financials.html",
+                    "balance":       "partials/sheet_financials.html",
+                    "distributions": "partials/_sheet_distributions_partial.html",
+                    "sponsor":       "partials/_sheet_sponsor_partial.html",
+                }
+                _active_tab = (form.get("active_tab") or "overview").strip().lower()
+                _sheet_template = _RUNTIME_SHEET_MAP.get(_active_tab)
+                if _sheet_template:
+                    try:
+                        _shared_block = templates.TemplateResponse(
+                            request=request,
+                            name="partials/shared_runtime_block.html",
+                            context={},
+                        )
+                        _sheet_inner = templates.TemplateResponse(
+                            request=request,
+                            name=_sheet_template,
+                            context={
+                                "project_ctx": _get_ctx(_project_rec.project_code),
+                                "audit_mode": False,
+                            },
+                        )
+                        oob_sheet_html = (
+                            '<div id="panel-' + _active_tab + '" hx-swap-oob="true">'
+                            + _shared_block.body.decode("utf-8")
+                            + _sheet_inner.body.decode("utf-8")
+                            + '</div>'
+                        )
+                        body_str += oob_sheet_html
+                    except Exception as exc:
+                        _logger.warning(
+                            "active_sheet_oob failed (non-blocking): "
+                            "active_tab=%r template=%r exc=%r",
+                            _active_tab,
+                            _sheet_template,
+                            repr(exc),
+                        )
+
     return HTMLResponse(content=body_str, status_code=rendered.status_code)
 
 
