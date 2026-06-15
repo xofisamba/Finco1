@@ -210,6 +210,10 @@ class ProjectSaveAsRouteDeps:
     # Source gating
     is_already_user_project: Callable[..., bool]
 
+    # SCENARIO-1: initialize base case so /scenarios/add never finds an
+    # empty scenario list.  Optional for backward-compat with older tests.
+    get_or_create_base_case_scenario: Callable[..., Any] | None = None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Service entry point
@@ -295,6 +299,21 @@ async def execute_project_save_as_route(
             source, project_code
         ),
     )
+
+    # ── Initialize Base Case scenario (SCENARIO-1) ────────────────────
+    if deps.get_or_create_base_case_scenario is not None:
+        deps.get_or_create_base_case_scenario(
+            user_id=user.user_id,
+            project_id=new_record.project_id,
+            project_code=new_record.project_code,
+            project_name=new_name,
+            project_type=new_record.project_type,
+            source_project_template=new_record.source_project_template,
+            base_input_set=dict(source.baseline_snapshot or {}),
+            governance_state=deps.project_record_creation_governance_state(),
+            replay_metadata={"export_type": "base_case_scenario_created",
+                             "source_project_code": project_code},
+        )
 
     return ProjectSaveAsRouteOutcome(
         status_code=302,

@@ -50,6 +50,7 @@ from app.auth import (
 from app.persistence.repository import (
     _now_utc,
     add_scenario,
+    get_or_create_base_case_scenario,
     archive_scenario,
     base_vs_active_compare,
     bind_workspace_to_scenario,
@@ -3340,6 +3341,7 @@ async def create_project_route(
         apply_new_project_required_inputs=_apply_new_project_required_inputs,
         create_project_record=create_project_record,
         save_workspace_state=save_workspace_state,
+        get_or_create_base_case_scenario=get_or_create_base_case_scenario,
         governance_snapshot=_governance_snapshot,
         replay_metadata_for_project=_replay_metadata_for_project,
         new_project_validation_error_context=_new_project_validation_error_context,
@@ -4105,6 +4107,7 @@ async def confirm_first_edit_copy_endpoint(
         build_project_replay_metadata=_build_project_replay_metadata,
         build_workspace_replay_metadata=_build_workspace_replay_metadata,
         is_already_user_project=_is_already_user_project,
+        get_or_create_base_case_scenario=get_or_create_base_case_scenario,
     )
     outcome = await execute_project_save_as_route(
         request=request, project_code=project_code, user=user, deps=deps,
@@ -4180,6 +4183,7 @@ async def save_project_as_endpoint(request: Request, project_code: str):
         build_project_replay_metadata=_build_project_replay_metadata,
         build_workspace_replay_metadata=_build_workspace_replay_metadata,
         is_already_user_project=_is_already_user_project,
+        get_or_create_base_case_scenario=get_or_create_base_case_scenario,
     )
     outcome = await execute_project_save_as_route(
         request=request, project_code=project_code, user=user, deps=deps,
