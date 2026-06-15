@@ -45,7 +45,7 @@
      copy" button visibility is preserved. #}
   {% if _ctx == 'factory_template' and is_protected_reference %}
     {% set _title = 'Protected original' %}
-    {% set _desc = 'Protected original — use Save As or create a scenario before editing controlled assumptions.' %}
+    {% set _desc = 'Protected original — create a working copy to edit inputs.' %}
     {% set _icon = '◆' %}
   {% elif _ctx == 'user_created_project' %}
     {% set _title = 'User-created project' %}
@@ -103,7 +103,7 @@
          the copy mechanism automatically via the draft route.
          In reviewer/audit mode the button is kept as an explicit
          affordance for reviewers who need to understand the mechanic. #}
-      {% if audit_mode and _ctx == 'factory_template' and is_protected_reference and not is_user_project %}
+      {% if _ctx == 'factory_template' and is_protected_reference and not is_user_project %}
         <form class="banner-action"
               method="POST"
               action="/projects/{{ active_project_code }}/confirm-first-edit-copy"
@@ -111,13 +111,12 @@
               data-p2fix6-source="{{ active_project_code }}">
           <button type="submit"
                   class="btn btn-primary banner-action-btn"
-                  data-p2fix6-cta="create-editable-copy"
-                  aria-label="Create editable copy of {{ active_project_code }}">
-            Create editable copy
+                  data-p2fix6-cta="create-working-copy"
+                  aria-label="Create working copy of {{ active_project_code }}">
+            Create Working Copy
           </button>
           <span class="banner-action-hint">
-            The copy will be a new project you can edit. The
-            original {{ active_project_code }} stays read-only.
+            Creates an editable copy. The original stays read-only.
           </span>
         </form>
       {% endif %}
