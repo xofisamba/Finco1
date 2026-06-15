@@ -850,6 +850,9 @@ class TestFileScope:
             "tests/test_phase_stab7_generic_dashboard_parity.py",
             # STAB-8 e2e runtime validation
             "tests/test_phase_stab8_e2e_runtime_validation.py",
+            # UX-1 inputs badge cleanup
+            "app/templates/partials/inputs_section.html",
+            "tests/test_phase_ux1_inputs_badge_cleanup.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected

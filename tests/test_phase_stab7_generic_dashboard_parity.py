@@ -518,6 +518,9 @@ class TestStab7FileScope:
         "app/export/institutional_workbook.py",
         # STAB-8 e2e runtime validation
         "tests/test_phase_stab8_",
+        # UX-1 inputs badge cleanup
+        "app/templates/partials/inputs_section.html",
+        "tests/test_phase_ux1_",
     )
 
     STAB7_DISALLOWED_PREFIXES = (
