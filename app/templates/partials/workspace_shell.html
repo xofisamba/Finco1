@@ -661,9 +661,10 @@
     </div>
 
     <div style="margin-top:1rem;">
-      <a href="#download-parity" class="btn btn-outline" style="width:auto; display:inline-flex;">
-        Open Reference Workbook
-      </a>
+      <span class="btn btn-outline" style="width:auto; display:inline-flex; opacity:0.5; cursor:not-allowed;"
+            title="Reference Workbook not yet available">
+        Reference Workbook — Coming Soon
+      </span>
     </div>
     {% endif %}
   </div>
@@ -747,24 +748,30 @@
           <div class="download-lineage-meta">Descriptive only. Numeric sheets remain tied to backend runtime/export behavior, not browser-side calculations.</div>
         </div>
       </a>
-      <a href="#download-parity" class="download-item">
-        <div class="download-icon">Audit</div>
+      <div class="download-item download-item--disabled"
+           aria-disabled="true"
+           title="Not yet available — coming in a future release">
+        <div class="download-icon" style="opacity:0.4;">Audit</div>
         <div class="download-info">
-          <div class="download-name">Audit Workbook</div>
+          <div class="download-name">Audit Workbook <span class="badge badge-muted" style="font-size:0.65rem; vertical-align:middle;">Coming Soon</span></div>
           <div class="download-desc">Validated Excel-anchored workbook for TUHO and Oborovo review context.</div>
         </div>
-      </a>
-      <a href="#download-gap" class="download-item">
-        <div class="download-icon">Review</div>
+      </div>
+      <div class="download-item download-item--disabled"
+           aria-disabled="true"
+           title="Not yet available — coming in a future release">
+        <div class="download-icon" style="opacity:0.4;">Review</div>
         <div class="download-info">
-          <div class="download-name">Gap Register</div>
+          <div class="download-name">Gap Register <span class="badge badge-muted" style="font-size:0.65rem; vertical-align:middle;">Coming Soon</span></div>
           <div class="download-desc">Open gaps, pending items, and out-of-scope rows that still need reviewer judgement.</div>
         </div>
-      </a>
-      <a href="#download-source" class="download-item">
-        <div class="download-icon">Source</div>
+      </div>
+      <div class="download-item download-item--disabled"
+           aria-disabled="true"
+           title="Not yet available — coming in a future release">
+        <div class="download-icon" style="opacity:0.4;">Source</div>
         <div class="download-info">
-          <div class="download-name">Source Map</div>
+          <div class="download-name">Source Map <span class="badge badge-muted" style="font-size:0.65rem; vertical-align:middle;">Coming Soon</span></div>
           <div class="download-desc">Column-by-column provenance map showing where reviewed figures came from.</div>
         </div>
       </a>

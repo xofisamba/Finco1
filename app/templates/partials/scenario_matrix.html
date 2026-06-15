@@ -24,11 +24,6 @@
      data-stab1-matrix="live">
   <div class="card-header">
     <div class="card-title">
-      {% if m2_live is defined and m2_live %}
-        <span class="badge badge-m2-live" data-m2-badge="live">M2 LIVE</span>
-      {% else %}
-        <span class="badge badge-muted" data-m2-badge="prototype">M1 PROTOTYPE</span>
-      {% endif %}
       Scenario Matrix — Base | Downside | Upside | Custom
     </div>
     <span class="badge badge-base" data-m2-badge="base-status">Live</span>
@@ -37,10 +32,9 @@
   {% if not (m2_live is defined and m2_live) %}
   <div class="scenario-matrix-inheritance-note" role="note"
        aria-label="Inheritance note">
-    <strong>Inheritance prototype.</strong>
-    Downside / Upside columns display placeholder values; no scenario overrides
-    are stored. Custom column is reserved for future override support.
-    Add scenarios to see live data in non-Base columns.
+    <strong>No scenarios yet.</strong>
+    Downside / Upside / Custom columns will show live data once scenarios are added.
+    Add a scenario in the Scenarios tab to populate these columns.
   </div>
   {% else %}
   <div class="scenario-matrix-m2-note" role="note" data-m2-note="live" aria-label="M2 live note">

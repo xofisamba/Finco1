@@ -19,7 +19,7 @@
   {% endif %}
   <div class="card-header">
     <div>
-      <div class="card-title">Phase 10 Export Registry</div>
+      <div class="card-title">Export Registry</div>
       <div class="panel-desc">Institutional review artifacts grouped by category and governance status.</div>
     </div>
     <span class="badge badge-convention">Runtime binding</span>
@@ -74,21 +74,19 @@
       <div class="export-card-meta">runtime &middot; XLSX &middot; lender / IC / audit ready structure</div>
     </a>
 
-    <a href="#download-calibration-pack" class="export-card" data-artifact="Phase 10 calibration reconciliation pack"
-       data-export-card-enabled="true"
-       data-export-card-category="audit"
-       data-export-card-lineage="calibration + signoff + reconciliation">
+    <div class="export-card export-card--disabled" data-artifact="calibration-reconciliation-pack"
+         data-export-card-enabled="false"
+         data-export-card-category="audit"
+         aria-disabled="true"
+         title="Not yet available — coming in a future release">
       <div class="export-card-top">
         <span class="export-category-badge">audit</span>
-        <span class="badge badge-blocked">G20 BLOCKED</span>
+        <span class="badge badge-muted">Coming Soon</span>
       </div>
       <div class="export-card-name">Calibration Reconciliation Pack</div>
       <div class="export-card-desc">Executive, lender, and audit review pack with polished navigation, signoff flow, governance framing, and source-backed reconciliation actions.</div>
-      <div class="export-card-lineage" data-export-card-lineage-text="true">
-        <strong>Lineage:</strong> calibration inputs, reconciliation actions, signoff status.
-      </div>
-      <div class="export-card-meta">review &middot; XLSX &middot; executive review pack &middot; print/PDF ready</div>
-    </a>
+      <div class="export-card-meta">review &middot; XLSX &middot; not yet available</div>
+    </div>
 
     <a href="/exports/runtime-summary.csv?project=tuho" class="export-card" data-artifact="Phase 10 runtime summary export"
        data-export-card-enabled="true"
@@ -122,69 +120,61 @@
       <div class="export-card-meta">runtime &middot; CSV &middot; Oborovo</div>
     </a>
 
-    <a href="#download-parity" class="export-card" data-artifact="TUHO full line-item horizontal review workbook"
-       data-export-card-enabled="true"
-       data-export-card-category="parity"
-       data-export-card-lineage="parity evidence + source map">
+    <div class="export-card export-card--disabled" data-artifact="tuho-horizontal-review-workbook"
+         data-export-card-enabled="false"
+         data-export-card-category="reference"
+         aria-disabled="true"
+         title="Not yet available — coming in a future release">
       <div class="export-card-top">
         <span class="export-category-badge">reference</span>
-        <span class="badge badge-warn">minor follow-up</span>
+        <span class="badge badge-muted">Coming Soon</span>
       </div>
       <div class="export-card-name">TUHO Horizontal Review Workbook</div>
-      <div class="export-card-desc">Corrected Phase 9 reviewer workbook for reference evidence and source-map review.</div>
-      <div class="export-card-lineage" data-export-card-lineage-text="true">
-        <strong>Lineage:</strong> TUHO line-item reference evidence and source map.
-      </div>
-      <div class="export-card-meta">review &middot; XLSX &middot; TUHO</div>
-    </a>
+      <div class="export-card-desc">Line-item reference evidence and source-map review workbook.</div>
+      <div class="export-card-meta">review &middot; XLSX &middot; not yet available</div>
+    </div>
 
-    <a href="#download-gap" class="export-card" data-artifact="TUHO horizontal gap analysis"
-       data-export-card-enabled="true"
-       data-export-card-category="audit"
-       data-export-card-lineage="gap register + classifications">
+    <div class="export-card export-card--disabled" data-artifact="gap-analysis"
+         data-export-card-enabled="false"
+         data-export-card-category="audit"
+         aria-disabled="true"
+         title="Not yet available — coming in a future release">
       <div class="export-card-top">
         <span class="export-category-badge">audit</span>
-        <span class="badge badge-convention">review</span>
+        <span class="badge badge-muted">Coming Soon</span>
       </div>
       <div class="export-card-name">Gap Analysis</div>
       <div class="export-card-desc">Reviewer-facing gap register with PASS/WARN/MISSING_EVIDENCE/BLOCKER classifications.</div>
-      <div class="export-card-lineage" data-export-card-lineage-text="true">
-        <strong>Lineage:</strong> TUHO gap register (PASS / WARN / MISSING_EVIDENCE / BLOCKER).
-      </div>
-      <div class="export-card-meta">review &middot; CSV &middot; TUHO</div>
-    </a>
+      <div class="export-card-meta">review &middot; CSV &middot; not yet available</div>
+    </div>
 
-    <a href="#download-source" class="export-card" data-artifact="TUHO horizontal source map"
-       data-export-card-enabled="true"
-       data-export-card-category="source_map"
-       data-export-card-lineage="column-by-column provenance">
+    <div class="export-card export-card--disabled" data-artifact="source-map"
+         data-export-card-enabled="false"
+         data-export-card-category="source_map"
+         aria-disabled="true"
+         title="Not yet available — coming in a future release">
       <div class="export-card-top">
-        <span class="export-category-badge">source_map</span>
-        <span class="badge badge-convention">provenance</span>
+        <span class="export-category-badge">source map</span>
+        <span class="badge badge-muted">Coming Soon</span>
       </div>
       <div class="export-card-name">Source Map</div>
       <div class="export-card-desc">Column-by-column provenance for available evidence and exact missing-source reasons.</div>
-      <div class="export-card-lineage" data-export-card-lineage-text="true">
-        <strong>Lineage:</strong> column-by-column provenance for available evidence.
-      </div>
-      <div class="export-card-meta">review &middot; CSV &middot; TUHO</div>
-    </a>
+      <div class="export-card-meta">review &middot; CSV &middot; not yet available</div>
+    </div>
 
-    <a href="#download-governance" class="export-card" data-artifact="TUHO final parity closeout status"
-       data-export-card-enabled="true"
-       data-export-card-category="governance"
-       data-export-card-lineage="G20 gate + decision registers">
+    <div class="export-card export-card--disabled" data-artifact="final-closeout-registers"
+         data-export-card-enabled="false"
+         data-export-card-category="governance"
+         aria-disabled="true"
+         title="Not yet available — coming in a future release">
       <div class="export-card-top">
         <span class="export-category-badge">governance</span>
-        <span class="badge badge-blocked">stakeholder gate</span>
+        <span class="badge badge-muted">Coming Soon</span>
       </div>
       <div class="export-card-name">Final Closeout Registers</div>
       <div class="export-card-desc">G20 gate checklist, accepted conventions, and stakeholder decision registers.</div>
-      <div class="export-card-lineage" data-export-card-lineage-text="true">
-        <strong>Lineage:</strong> G20 gate checklist, accepted conventions, decision registers.
-      </div>
-      <div class="export-card-meta">review &middot; CSV &middot; TUHO</div>
-    </a>
+      <div class="export-card-meta">review &middot; CSV &middot; not yet available</div>
+    </div>
   </div>
   {% endif %}
 </div>
