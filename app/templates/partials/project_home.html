@@ -1,11 +1,71 @@
-{# ── P2-FIX-8 PR3: My Projects table ─────────────────────────────────
-   Table view: name, technology (from record — never run state),
-   country, size MW, last edited, last run, status, actions.
-   Technology is resolved server-side from ProjectRecord fields so
-   "Unknown" never appears. Factory templates, baselines and parity
-   fixtures remain hidden (presentation filter — reachable via Browse).
+{# ── UX-3: Reference Projects + My Projects home ──────────────────────
+   Reference section always appears first with four canonical cards.
+   My Projects table below — unchanged from P2-FIX-8 PR3.
+   Factory templates, baselines and parity fixtures remain hidden.
 #}
 
+{# ── Reference Projects ─────────────────────────────────────────────── #}
+<div class="ph-section ph-section--ref">
+  <div class="ph-section-label">Reference Projects</div>
+  <p class="ph-section-hint">
+    Start here. Open a reference to explore the model, or create a working copy to edit assumptions.
+  </p>
+  <div class="ph-grid ph-grid--ref">
+
+    {# TUHO Wind Farm #}
+    <div class="ph-card ph-card--ref">
+      <div class="ph-card-info">
+        <div class="ph-card-name">TUHO Wind Farm</div>
+        <div class="ph-card-meta">Wind · Reference · 150 MW</div>
+      </div>
+      <div class="ph-card-actions">
+        <a href="/?project=tuho" class="btn btn-sm btn-secondary">Open</a>
+        <form method="post" action="/projects/tuho/confirm-first-edit-copy" style="display:inline;">
+          <button type="submit" class="btn btn-sm btn-primary">Create Working Copy</button>
+        </form>
+      </div>
+    </div>
+
+    {# Oborovo Wind Farm #}
+    <div class="ph-card ph-card--ref">
+      <div class="ph-card-info">
+        <div class="ph-card-name">Oborovo Wind Farm</div>
+        <div class="ph-card-meta">Wind · Reference · 52 MW</div>
+      </div>
+      <div class="ph-card-actions">
+        <a href="/?project=oborovo" class="btn btn-sm btn-secondary">Open</a>
+        <form method="post" action="/projects/oborovo/confirm-first-edit-copy" style="display:inline;">
+          <button type="submit" class="btn btn-sm btn-primary">Create Working Copy</button>
+        </form>
+      </div>
+    </div>
+
+    {# Generic Solar #}
+    <div class="ph-card ph-card--ref">
+      <div class="ph-card-info">
+        <div class="ph-card-name">Generic Solar</div>
+        <div class="ph-card-meta">Solar · Template · Configurable</div>
+      </div>
+      <div class="ph-card-actions">
+        <a href="/projects/new/prefill?template_source=generic_solar" class="btn btn-sm btn-primary">Create New Project</a>
+      </div>
+    </div>
+
+    {# Generic Wind #}
+    <div class="ph-card ph-card--ref">
+      <div class="ph-card-info">
+        <div class="ph-card-name">Generic Wind</div>
+        <div class="ph-card-meta">Wind · Template · Configurable</div>
+      </div>
+      <div class="ph-card-actions">
+        <a href="/projects/new/prefill?template_source=generic_wind" class="btn btn-sm btn-primary">Create New Project</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# ── My Projects ─────────────────────────────────────────────────────── #}
 {% if home_user_projects %}
 <div class="ph-section">
   <div class="ph-section-label">My projects</div>
@@ -56,7 +116,7 @@
 {% else %}
 <div class="ph-empty">
   <div class="ph-empty-title">No projects yet</div>
-  <div class="ph-empty-desc">Create your first project to get started.</div>
+  <div class="ph-empty-desc">Create a working copy from a reference above, or start a new project.</div>
 </div>
 {% endif %}
 
