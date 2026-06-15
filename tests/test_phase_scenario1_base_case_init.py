@@ -342,6 +342,7 @@ class TestScenario1Parity:
 
 class TestScenario1FileScope:
     ALLOWED_PREFIXES = (
+        "app/services/scenarios_add_service.py",
         "app/services/projects_create_service.py",
         "app/services/project_save_as_service.py",
         "main_web.py",

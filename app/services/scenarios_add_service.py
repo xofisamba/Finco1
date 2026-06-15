@@ -240,6 +240,11 @@ class ScenariosAddRouteDeps:
     # Render context assembly
     build_scenario_tab_context: Callable[..., Any]
 
+    # SCENARIO-1 lazy repair: create Base Case on first /scenarios/add
+    # for legacy projects that have zero scenario rows.  Optional for
+    # backward-compat with tests that don't supply it.
+    get_or_create_base_case_scenario: Callable[..., Any] | None = None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Service entry point
@@ -355,6 +360,41 @@ async def execute_scenarios_add_route(
             )
         else:
             base_case = None
+
+    # ── SCENARIO-1 lazy repair: zero-scenario legacy projects ─────────
+    # Projects created before the SCENARIO-1 fix have no scenario rows.
+    # The promotion fallback above only fires when scenarios is non-empty.
+    # For the empty case we lazily create the Base Case now so that this
+    # and all future /scenarios/add calls succeed without a migration.
+    if base_case is None and deps.get_or_create_base_case_scenario is not None:
+        ws_state = deps.get_workspace_state(
+            user.user_id, project_record.project_id
+        )
+        base_input = {}
+        if ws_state is not None:
+            base_input = (
+                ws_state.saved_snapshot
+                or ws_state.draft_snapshot
+                or {}
+            )
+        base_case = deps.get_or_create_base_case_scenario(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_record.project_code,
+            project_name=project_record.project_name,
+            project_type=project_record.project_type,
+            source_project_template=project_record.source_project_template,
+            base_input_set=base_input,
+            governance_state={},
+        )
+
+    # Safety: if base_case is still None (not wired or all repair paths
+    # failed), return a clean 500 rather than crashing with AttributeError.
+    if base_case is None:
+        return ScenariosAddRouteOutcome(
+            status_code=500,
+            payload={"error": "No base case scenario found for this project"},
+        )
 
     # ── Add scenario (Quirks 5, 6, 7, 9) ─────────────────────────────
     new_scenario = deps.add_scenario(
