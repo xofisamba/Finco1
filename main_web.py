@@ -3877,6 +3877,7 @@ async def add_scenario_endpoint(request: Request):
         add_scenario=add_scenario,
         get_workspace_state=get_workspace_state,
         build_scenario_tab_context=_build_scenario_tab_context,
+        get_or_create_base_case_scenario=get_or_create_base_case_scenario,
     )
     result = await execute_scenarios_add_route(
         request=request, form=form, user=user, deps=deps,
