@@ -397,8 +397,11 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "total_capex_keur": _snapshot_float(
             snapshot, "total_capex_keur", positive=True
         ),
-        "gearing_pct": _snapshot_float(
-            snapshot, "gearing_pct", non_negative=True
+        # gearing_pct is optional: empty/absent means use the template default.
+        "gearing_pct": (
+            _snapshot_float(snapshot, "gearing_pct", non_negative=True)
+            if str(snapshot.get("gearing_pct", "") or "").strip()
+            else None
         ),
         "interest_rate_pct": _snapshot_float(
             snapshot, "interest_rate_pct", non_negative=True
@@ -522,10 +525,15 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     and exactly equal KPIs.
     """
     # Validate required fields (preserve SnapshotInputError
-    # behavior).
+    # behavior).  gearing_pct is excluded from the "must be non-empty"
+    # check because the engine handles None gearing gracefully (DSCR-
+    # sculpted debt sizing).  An empty-string gearing is treated as
+    # "not overriding the template default" rather than an error.
+    _OPTIONAL_EMPTY = frozenset({"gearing_pct"})
     missing = [
         key for key in REQUIRED_USER_PROJECT_SNAPSHOT_FIELDS
-        if snapshot.get(key) is None or str(snapshot.get(key)).strip() == ""
+        if key not in _OPTIONAL_EMPTY
+        and (snapshot.get(key) is None or str(snapshot.get(key)).strip() == "")
     ]
     if missing:
         raise SnapshotInputError(
@@ -533,15 +541,15 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
             + ", ".join(missing)
         )
 
-    # Validate gearing_pct range (preflight, before delegating
-    # to the resolver).
-    gearing_raw = _snapshot_float(
-        snapshot, "gearing_pct", non_negative=True
-    )
-    if gearing_raw > 100:
-        raise SnapshotInputError(
-            "gearing_pct must be between 0 and 100 for user-created project runtime"
-        )
+    # Validate gearing_pct range only when it is present (it is optional;
+    # empty string means "use template default", not an error).
+    _gearing_str = str(snapshot.get("gearing_pct", "") or "").strip()
+    if _gearing_str:
+        gearing_raw = _snapshot_float(snapshot, "gearing_pct", non_negative=True)
+        if gearing_raw > 100:
+            raise SnapshotInputError(
+                "gearing_pct must be between 0 and 100 for user-created project runtime"
+            )
 
     # Validate project_type is Solar or Wind (preserved
     # behavior).

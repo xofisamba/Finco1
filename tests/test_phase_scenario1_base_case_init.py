@@ -369,6 +369,8 @@ class TestScenario1FileScope:
         "app/persistence/records.py",
         "app/persistence/_helpers.py",
         "app/persistence/scenarios_repository.py",
+        # SCENARIO-2 input_adapter gearing_pct optional fix
+        "app/input_adapter.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

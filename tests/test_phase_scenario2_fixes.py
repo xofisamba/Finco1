@@ -290,6 +290,7 @@ class TestScenario2FileScope:
         "app/persistence/scenarios_repository.py",
         "app/persistence/records.py",
         "app/persistence/_helpers.py",
+        "app/input_adapter.py",
         "main_web.py",
         "tests/test_phase_scenario2_",
         # Also allow scenario1 test files that may have been modified
