@@ -95,6 +95,10 @@ function switchTab(tabId) {
   if (!tabId) return;
   activeTab = tabId;
 
+  // UX-2: keep hidden form field in sync so POST /run knows the active tab.
+  var _atInput = document.getElementById('hidden-active-tab');
+  if (_atInput) _atInput.value = tabId;
+
   document.querySelectorAll('.ws-tab').forEach(function(btn) {
     btn.classList.remove('active');
   });
