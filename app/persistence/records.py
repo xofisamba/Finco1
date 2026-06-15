@@ -143,6 +143,30 @@ class ScenarioRecord:
 
     @classmethod
     def from_row(cls, row) -> "ScenarioRecord":
+        raw_snapshot = _from_json(row["snapshot_json"], {})
+        raw_bis = _from_json(
+            row["base_input_set_json"] if "base_input_set_json" in row.keys() else "{}", {}
+        )
+        raw_gov = _from_json(row["governance_state_json"], {})
+
+        # SCENARIO-2 runtime repair for Base Case records written before the
+        # snapshot/governance_state INSERT swap was fixed.  Symptoms of a
+        # corrupted record: snapshot contains only governance keys while
+        # base_input_set contains real project assumptions.  When detected,
+        # swap them in memory so readers always see correct data without a
+        # schema migration.
+        _GOVERNANCE_ONLY_KEYS = frozenset({"g20", "lender_ready", "r99_r102"})
+        _snap_keys = frozenset(raw_snapshot.keys())
+        if (
+            raw_snapshot          # non-empty
+            and _snap_keys <= _GOVERNANCE_ONLY_KEYS   # only governance keys
+            and raw_bis           # base_input_set has real data
+            and not (frozenset(raw_bis.keys()) <= _GOVERNANCE_ONLY_KEYS)
+        ):
+            # Corrupted record: snapshot and governance_state were swapped at
+            # write time.  Restore correct semantics in memory.
+            raw_snapshot, raw_gov = raw_bis, raw_snapshot
+
         return cls(
             scenario_id=row["scenario_id"],
             project_id=row["project_id"],
@@ -154,11 +178,11 @@ class ScenarioRecord:
             archived=bool(row["archived"]),
             is_base_case=bool(row["is_base_case"]) if "is_base_case" in row.keys() else False,
             parent_scenario_id=row["parent_scenario_id"] if "parent_scenario_id" in row.keys() else None,
-            base_input_set=_from_json(row["base_input_set_json"] if "base_input_set_json" in row.keys() else "{}", {}),
+            base_input_set=raw_bis,
             overrides=_from_json(row["overrides_json"] if "overrides_json" in row.keys() else "{}", {}),
             schema_version=row["schema_version"] if "schema_version" in row.keys() else "1.0",
-            snapshot=_from_json(row["snapshot_json"], {}),
-            governance_state=_from_json(row["governance_state_json"], {}),
+            snapshot=raw_snapshot,
+            governance_state=raw_gov,
             last_run_summary=_from_json(row["last_run_summary_json"], {}),
             replay_metadata=_from_json(row["replay_metadata_json"], {}),
             created_at=_from_iso(row["created_at"]),

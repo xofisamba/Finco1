@@ -3839,6 +3839,9 @@ def _build_scenario_tab_context(user, project_record, scenarios, workspace_state
             and (project_record.template_source or "").strip().lower()
             in {"generic_solar", "generic_wind"}
         ),
+        # SCENARIO-2 fix: HTMX partial must include editable fields so the
+        # scenario matrix tbody renders immediately after Add Scenario.
+        "scenario_editable_fields": SCENARIO_EDITABLE_FIELDS,
     }
 
 
@@ -4666,20 +4669,43 @@ async def m4_run_scenario(request: Request, scenario_id: str):
 
     col_key = request.query_params.get("col", "downside")
 
-    # Build effective snapshot: snapshot field is pre-resolved (base_input_set + overrides).
-    # Fall back to manual merge if snapshot is sparse.
-    effective_snapshot = dict(scenario.snapshot or {})
-    if not effective_snapshot:
-        effective_snapshot = {**(scenario.base_input_set or {}), **(scenario.overrides or {})}
-    # Always apply current overrides on top (M3 edits may postdate snapshot)
-    effective_snapshot.update(scenario.overrides or {})
+    # Build effective snapshot: start from template defaults, overlay
+    # base_input_set, then snapshot, then current overrides.  Strip
+    # empty-string values so legacy records whose numeric fields were
+    # stored as '' (e.g. TUHO gearing_pct) don't shadow a valid default.
+    def _nonempty(d):
+        return {k: v for k, v in (d or {}).items() if v is not None and str(v).strip() != ""}
 
-    # Determine project_type from template source; look up project if blank
+    # Determine template source first (needed to choose defaults layer)
     template_source = scenario.source_project_template or ""
     if not template_source:
         proj_rec = get_project_record(user_id=scenario.user_id, project_id=scenario.project_id)
         template_source = (proj_rec.template_source if proj_rec else None) or "generic_wind"
     project_type = _m4_template_to_project_type(template_source)
+
+    # Map from matrix display field names (attr) to canonical engine field names.
+    # The scenario matrix stores overrides using the attr names from ALL_ROWS,
+    # but build_projectinputs_from_snapshot expects the canonical snapshot names.
+    _MATRIX_ALIAS_TO_CANONICAL = {
+        "ppa_tariff_eur_mwh":   "tariff_eur_mwh",
+        "operating_hours_p50":  "p50_hours",
+        "opex_y1_total_keur":   "opex_y1_keur",
+        "senior_tenor_years":   "tenor_years",
+    }
+
+    def _resolve_aliases(d):
+        out = {}
+        for k, v in (d or {}).items():
+            out[_MATRIX_ALIAS_TO_CANONICAL.get(k, k)] = v
+        return out
+
+    template_defaults = _nonempty(_default_workspace_snapshot(template_source))
+    effective_snapshot = {
+        **template_defaults,
+        **_nonempty(_resolve_aliases(scenario.base_input_set)),
+        **_nonempty(_resolve_aliases(scenario.snapshot)),
+        **_nonempty(_resolve_aliases(scenario.overrides)),
+    }
 
     try:
         project_inputs = build_projectinputs_from_snapshot(effective_snapshot)

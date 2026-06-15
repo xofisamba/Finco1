@@ -652,8 +652,12 @@ def get_or_create_base_case_scenario(
                 source_project_template,
                 _to_json(base_input_set),
                 _to_json({}),  # overrides_json
-                _to_json(governance_state),
-                _to_json(base_input_set),  # snapshot_json = full input (effective = base + empty overrides)
+                # SCENARIO-2 fix: snapshot_json must be base_input_set (not governance_state).
+                # Original code had these two values swapped, causing Base Case snapshot to
+                # contain only governance keys {g20, lender_ready, r99_r102} and therefore
+                # child scenarios inherited governance keys instead of real assumptions.
+                _to_json(base_input_set),  # snapshot_json = full input (base + empty overrides)
+                _to_json(governance_state),  # governance_state_json
                 _to_json({}),  # last_run_summary_json
                 _to_json(rm),
                 now.isoformat(),
