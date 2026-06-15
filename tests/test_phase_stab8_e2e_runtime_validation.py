@@ -713,6 +713,9 @@ class TestStab8FileScope:
         "app/templates/partials/workspace_shell.html",
         "app/export/runtime_summary.py",
         "app/export/institutional_workbook.py",
+        # UX-1 inputs badge cleanup
+        "app/templates/partials/inputs_section.html",
+        "tests/test_phase_ux1_",
     )
 
     STAB8_DISALLOWED_PREFIXES = (

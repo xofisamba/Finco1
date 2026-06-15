@@ -333,6 +333,9 @@ class TestStab5FileScope:
         "tests/test_phase_stab7_",
         # STAB-8 e2e runtime validation
         "tests/test_phase_stab8_",
+        # UX-1 inputs badge cleanup
+        "app/templates/partials/inputs_section.html",
+        "tests/test_phase_ux1_",
     )
 
     STAB5_DISALLOWED_PREFIXES = (
