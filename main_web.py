@@ -3839,6 +3839,9 @@ def _build_scenario_tab_context(user, project_record, scenarios, workspace_state
             and (project_record.template_source or "").strip().lower()
             in {"generic_solar", "generic_wind"}
         ),
+        # SCENARIO-2 fix: HTMX partial must include editable fields so the
+        # scenario matrix tbody renders immediately after Add Scenario.
+        "scenario_editable_fields": SCENARIO_EDITABLE_FIELDS,
     }
 
 

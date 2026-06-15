@@ -541,11 +541,15 @@ class TestScenario1ReviewFixFileScope:
         "tests/test_phase_p2fix",
         "tests/test_phase_ux1_",
         "tests/test_phase_ux2_",
+        "tests/test_phase_scenario2_",
+        # SCENARIO-2 persistence fixes are allowed in later phases
+        "app/persistence/records.py",
+        "app/persistence/_helpers.py",
+        "app/persistence/scenarios_repository.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
         "app/project_factories.py",
-        "app/persistence/",
         "static/",
         "app/templates/",
     )

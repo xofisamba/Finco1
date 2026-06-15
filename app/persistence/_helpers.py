@@ -76,6 +76,12 @@ SCENARIO_INPUT_FIELDS: set[str] = {
     "horizon_years",
     "capacity_factor",
     "ppa_term_years",
+    # SCENARIO-2 fix: matrix uses these aliases; they must be in the allowlist
+    # so update_scenario_overrides does not silently drop them.
+    "ppa_tariff_eur_mwh",
+    "operating_hours_p50",
+    "opex_y1_total_keur",
+    "senior_tenor_years",
 }
 
 
