@@ -365,6 +365,7 @@ class TestScenario1FileScope:
         "tests/test_phase_p2fix",
         "tests/test_phase_ux1_",
         "tests/test_phase_ux2_",
+        "tests/test_phase_ux4a_",
         # SCENARIO-2 persistence fixes are allowed in later phases
         "app/persistence/records.py",
         "app/persistence/_helpers.py",
