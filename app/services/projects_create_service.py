@@ -257,6 +257,11 @@ class ProjectsCreateRouteDeps:
     # full-form path.
     new_project_minimal_validation_error_context: Callable[..., dict] | None = None
 
+    # SCENARIO-1: initialize base case on creation so /scenarios/add never
+    # finds an empty scenario list.  Optional for backward-compat with tests
+    # that don't supply it; callers should always wire it in production.
+    get_or_create_base_case_scenario: Callable[..., Any] | None = None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Service entry point
@@ -400,6 +405,26 @@ async def execute_projects_create_route(
             export_type="workspace_project_created",
         ),
     )
+
+    # ── Initialize Base Case scenario (SCENARIO-1) ────────────────────
+    # Every user-created project must have a Base Case scenario record so
+    # that POST /scenarios/add never encounters an empty scenario list.
+    if deps.get_or_create_base_case_scenario is not None:
+        deps.get_or_create_base_case_scenario(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_record.project_code,
+            project_name=clean_name,
+            project_type=canonical_type,
+            source_project_template=normalized_source,
+            base_input_set=baseline_snapshot,
+            governance_state=deps.governance_snapshot(project_code),
+            replay_metadata=deps.replay_metadata_for_project(
+                project_code,
+                project_id=project_record.project_id,
+                export_type="base_case_scenario_created",
+            ),
+        )
 
     # ── Success response render (Quirks 2, 3) ─────────────────────────
     return ProjectsCreateRouteOutcome(
