@@ -368,6 +368,7 @@ class TestScenario1FileScope:
         "tests/test_phase_ux4a_",
         "tests/test_phase_ux4b_",
         "tests/test_phase_ux4cde_",
+        "tests/test_p1_compare_validation",
         # SCENARIO-2 persistence fixes are allowed in later phases
         "app/persistence/records.py",
         "app/persistence/_helpers.py",
