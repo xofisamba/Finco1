@@ -295,6 +295,8 @@ class TestScenario2FileScope:
         "tests/test_phase_scenario2_",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "docs/phase_irr_",
+        "reports/phase_irr_",
         "app/templates/partials/_matrix_run_result.html",
         # Also allow scenario1 test files that may have been modified
         "tests/test_phase_scenario1_",

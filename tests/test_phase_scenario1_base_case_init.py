@@ -369,6 +369,8 @@ class TestScenario1FileScope:
         "tests/test_phase_ux4b_",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "docs/phase_irr_",
+        "reports/phase_irr_",
         "tests/test_phase_ux4cde_",
         "tests/test_p1_compare_validation",
         # SCENARIO-2 persistence fixes are allowed in later phases

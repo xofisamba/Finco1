@@ -213,6 +213,8 @@ class TestUX4CDEFileScope:
         "tests/test_p1_compare_validation.py",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "docs/phase_irr_",
+        "reports/phase_irr_",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

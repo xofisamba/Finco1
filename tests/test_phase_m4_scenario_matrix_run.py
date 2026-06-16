@@ -310,6 +310,8 @@ class TestFileScope:
             "tests/test_phase_ux4cde_",
             "tests/test_phase_scenario1_",
             "tests/test_phase_scenario2_",
+            "docs/phase_irr_",
+            "reports/phase_irr_",
             "app/templates/partials/_scenario_matrix_oob.html",
             "app/ui/dashboard.py",
             "tests/test_phase_m3_",

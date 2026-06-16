@@ -382,6 +382,8 @@ class TestCompareValidationFileScope:
         "tests/test_phase_m4_",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "docs/phase_irr_",
+        "reports/phase_irr_",
         "app/templates/partials/_matrix_run_result.html",
     )
     DISALLOWED_PREFIXES = (
