@@ -367,6 +367,8 @@ class TestScenario1FileScope:
         "tests/test_phase_ux2_",
         "tests/test_phase_ux4a_",
         "tests/test_phase_ux4b_",
+        # IRR-ANOMALY-1-FIX display mapping followup
+        "tests/test_phase_irr_",
         "tests/test_phase_ux4cde_",
         "tests/test_p1_compare_validation",
         # SCENARIO-2 persistence fixes are allowed in later phases
@@ -383,12 +385,14 @@ class TestScenario1FileScope:
         "app/templates/",
     )
     # UX-4A/4B/4C/D/E: template and style fixes allowed on this branch
+    # IRR-ANOMALY-1-FIX: matrix run result template + test prefix allowed
     DISALLOWED_EXCEPTIONS = (
         "app/templates/partials/scenario_tab.html",
         "app/templates/partials/_state_banner.html",
         "app/templates/partials/export_registry.html",
         "app/templates/partials/workspace_shell.html",
         "app/templates/partials/scenario_matrix.html",
+        "app/templates/partials/_matrix_run_result.html",
         "static/styles.css",
     )
 

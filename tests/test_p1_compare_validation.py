@@ -378,6 +378,11 @@ class TestCompareValidationFileScope:
         "tests/test_p1_compare_validation",
         "tests/test_phase_ux4cde_",
         "tests/test_phase_scenario1_",
+        "tests/test_phase_scenario2_",
+        "tests/test_phase_m4_",
+        # IRR-ANOMALY-1-FIX display mapping followup
+        "tests/test_phase_irr_",
+        "app/templates/partials/_matrix_run_result.html",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

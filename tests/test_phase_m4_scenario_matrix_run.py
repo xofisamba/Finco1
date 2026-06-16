@@ -303,7 +303,13 @@ class TestFileScope:
             "main_web.py",
             "static/styles.css",
             "tests/test_phase_m4_",
+            # Cross-arc allowlist patches accumulated since M4:
             "tests/test_phase_stab",
+            "tests/test_p1_compare_validation.py",
+            "tests/test_phase_irr_",
+            "tests/test_phase_ux4cde_",
+            "tests/test_phase_scenario1_",
+            "tests/test_phase_scenario2_",
             "app/templates/partials/_scenario_matrix_oob.html",
             "app/ui/dashboard.py",
             "tests/test_phase_m3_",
