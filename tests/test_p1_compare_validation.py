@@ -384,7 +384,9 @@ class TestCompareValidationFileScope:
         "tests/test_phase_irr_",
         "tests/test_phase_pilot_blocker_1",
         "docs/phase_irr_",
+        "docs/phase_pilot_blocker_1",
         "reports/phase_irr_",
+        "reports/phase_pilot_blocker_1",
         "app/templates/partials/_matrix_run_result.html",
         # HOTFIX-PILOT-BLOCKER-1: presentation/routing fix
         # touches main_web.py (already in ALLOWED_PREFIXES),

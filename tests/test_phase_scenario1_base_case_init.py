@@ -371,7 +371,9 @@ class TestScenario1FileScope:
         "tests/test_phase_irr_",
         "tests/test_phase_pilot_blocker_1",
         "docs/phase_irr_",
+        "docs/phase_pilot_blocker_1",
         "reports/phase_irr_",
+        "reports/phase_pilot_blocker_1",
         "tests/test_phase_ux4cde_",
         "tests/test_p1_compare_validation",
         # SCENARIO-2 persistence fixes are allowed in later phases

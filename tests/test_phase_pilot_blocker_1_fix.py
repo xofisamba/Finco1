@@ -590,6 +590,14 @@ class TestFileScope:
         "static/app.js",
         "static/styles.css",
     )
+    # HOTFIX-PILOT-BLOCKER-1 explicitly allows
+    # app/services/project_save_as_service.py (F1),
+    # but the general service-layer guard remains
+    # for all other service files. Filter it out of
+    # forbidden-prefix checks.
+    ALLOWED_FOR_F1 = (
+        "app/services/project_save_as_service.py",
+    )
 
     def test_no_forbidden_files_changed(self):
         import subprocess
@@ -602,6 +610,8 @@ class TestFileScope:
             pytest.skip(f"git diff failed: {result.stderr[:200]}")
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
         for f in changed:
+            if any(f.startswith(a) for a in self.ALLOWED_FOR_F1):
+                continue
             for forbidden in self.FORBIDDEN_PREFIXES:
                 assert not f.startswith(forbidden), (
                     f"HOTFIX-PILOT-BLOCKER-1 must not touch {forbidden}, "

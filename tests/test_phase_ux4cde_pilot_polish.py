@@ -215,7 +215,9 @@ class TestUX4CDEFileScope:
         "tests/test_phase_irr_",
         "tests/test_phase_pilot_blocker_1",
         "docs/phase_irr_",
+        "docs/phase_pilot_blocker_1",
         "reports/phase_irr_",
+        "reports/phase_pilot_blocker_1",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
