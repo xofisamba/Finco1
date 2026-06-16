@@ -75,6 +75,48 @@ class WorkbookExportBundle:
     debt_table: object
 
 
+def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
+    """Return the senior debt value to display in the export.
+
+    Phase S1-A (low-risk, presentation-only):
+
+    - For TUHO and Oborovo, ``bundle.context.senior_debt_keur`` is the
+      frozen Excel-derived senior debt amount (input field). The
+      runtime uses this value as the ``fixed_debt_keur`` override, so
+      the runtime result equals the input. We return the input value
+      directly to preserve bit-identical parity with the prior
+      export.
+
+    - For Generic projects, ``bundle.context.senior_debt_keur`` is 0.0
+      because the Generic factory does not set
+      ``financing.fixed_debt_keur``. The runtime computes the senior
+      debt amount from the DSCR-sculpt formula (with optional gearing
+      cap). We return ``runtime_result.sculpting_result.debt_keur``
+      in this case so the export shows the actual runtime value
+      instead of 0.
+
+    The function never invents a value: it returns either the input
+    (when non-zero) or the runtime result. For TUHO and Oborovo the
+    two are bit-identical, so this preserves the parity contract.
+    For Generic, the runtime result is the authoritative value.
+    """
+    ctx_debt = bundle.context.senior_debt_keur or 0.0
+    if ctx_debt > 0.0:
+        # TUHO, Oborovo, or any future project with explicit
+        # fixed_debt_keur. Input is authoritative (runtime
+        # result is bit-identical to input because fixed_debt_keur
+        # overrides the runtime calculation).
+        return float(ctx_debt)
+    # Generic (or any project without fixed_debt_keur): fall
+    # back to the runtime result. sculpting_result is always
+    # present when the runtime completes successfully.
+    rt = bundle.runtime_result
+    sculpting = getattr(rt, "sculpting_result", None) if rt is not None else None
+    if sculpting is not None and getattr(sculpting, "debt_keur", None) is not None:
+        return float(sculpting.debt_keur)
+    return 0.0
+
+
 INSTITUTIONAL_SHEET_DEFINITIONS = (
     WorkbookSheetDefinition(0, "Export_Metadata", "implemented", "review", True, "Export provenance, trust hygiene, and non-claims. Added Phase 47."),
     WorkbookSheetDefinition(1, "Workbook_Index", "implemented", "review", True, "Sheet inventory and workbook guide. Added Phase 48."),
@@ -472,7 +514,7 @@ def _write_construction_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Total CAPEX", bundle.context.total_capex_keur, "template assumption", "Factory-bound CAPEX total.", K_EUR_FORMAT),
         ("IDC", bundle.context.idc_keur, "template assumption", "Factory-bound financing cost assumption.", K_EUR_FORMAT),
         ("Bank fees", bundle.context.bank_fees_keur, "template assumption", "Factory-bound financing cost assumption.", K_EUR_FORMAT),
-        ("Senior debt anchor", bundle.context.senior_debt_keur, "template assumption", "Financing assumption feeding runtime.", K_EUR_FORMAT),
+        ("Senior debt anchor", _resolve_export_senior_debt_keur(bundle), "template assumption + runtime", "For TUHO/Oborovo: frozen Excel-derived anchor. For Generic: runtime DSCR-sculpted value.", K_EUR_FORMAT),
         ("SHL anchor", bundle.context.shl_amount_keur + bundle.context.shl_idc_keur, "template assumption", "Opening SHL assumption including IDC.", K_EUR_FORMAT),
         ("Share capital", getattr(financing, "share_capital_keur", 0.0), "template assumption", "Existing financing input.", K_EUR_FORMAT),
         ("Share premium", getattr(financing, "share_premium_keur", 0.0), "template assumption", "Existing financing input.", K_EUR_FORMAT),
@@ -509,7 +551,7 @@ def _write_capex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "template + runtime")
     financing = bundle.project_inputs.financing
     total_capex = bundle.context.total_capex_keur or 0.0
-    senior = bundle.context.senior_debt_keur or 0.0
+    senior = _resolve_export_senior_debt_keur(bundle)
     shl = (bundle.context.shl_amount_keur or 0.0) + (bundle.context.shl_idc_keur or 0.0)
     share_capital = getattr(financing, "share_capital_keur", None) or 0.0
     share_premium = getattr(financing, "share_premium_keur", None) or 0.0
@@ -573,7 +615,7 @@ def _write_senior_debt_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime + template assumptions")
     financing = bundle.project_inputs.financing
     rows = [
-        ("Senior debt amount", bundle.context.senior_debt_keur, "template assumption", "Read-only project context.", K_EUR_FORMAT),
+        ("Senior debt amount", _resolve_export_senior_debt_keur(bundle), "template assumption + runtime", "For TUHO/Oborovo: frozen Excel-derived anchor. For Generic: runtime DSCR-sculpted value.", K_EUR_FORMAT),
         ("Senior tenor years", bundle.context.senior_tenor_years, "template assumption", "Read-only project context.", K_EUR_FORMAT),
         ("Interest assumption", bundle.context.interest_rate_pct, "template assumption", "Base rate plus margin from project context.", RATIO_FORMAT),
         ("Target DSCR", bundle.context.target_dscr, "template assumption", "Read-only project context.", MULTIPLE_FORMAT),
