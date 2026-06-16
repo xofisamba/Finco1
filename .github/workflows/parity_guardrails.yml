@@ -18,6 +18,14 @@ on:
   push:
     branches: [main]
 
+# CI-INFRA-2: serialize workflow runs per ref to avoid burst runner
+# contention on the free plan. New runs on the same ref cancel the
+# previous in-progress run, which is safe because every commit
+# gets a fresh CI signal from the latest push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
