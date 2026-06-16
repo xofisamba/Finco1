@@ -4739,10 +4739,16 @@ async def m4_run_scenario(request: Request, scenario_id: str):
         )
 
         kpis = result.get("kpis", {})
-        min_dscr_raw = kpis.get("min_dscr")
-        equity_irr_raw = kpis.get("equity_irr")
-        min_dscr = f"{min_dscr_raw:.4f}" if min_dscr_raw is not None else None
-        equity_irr = f"{float(equity_irr_raw) * 100:.2f}%" if equity_irr_raw is not None else None
+        # IRR-ANOMALY-1-FIX: matrix badge now uses the same top-level
+        # metrics as the Dashboard Run summary (project_irr + avg_dscr)
+        # so Base vs Downside comparisons are not misled by mixing
+        # Project IRR with Equity IRR, or Avg DSCR with Min DSCR.
+        # Phase: presentation-only fix. Engine output and overrides
+        # are unchanged.
+        project_irr_raw = kpis.get("project_irr")
+        avg_dscr_raw = kpis.get("avg_dscr")
+        project_irr = f"{float(project_irr_raw) * 100:.2f}%" if project_irr_raw is not None else None
+        avg_dscr = f"{avg_dscr_raw:.2f}x".replace(".00x", ".0x") if avg_dscr_raw is not None else None
 
         response = templates.TemplateResponse(
             request=request,
@@ -4751,8 +4757,8 @@ async def m4_run_scenario(request: Request, scenario_id: str):
                 "scenario_id": scenario_id,
                 "col_key": col_key,
                 "run_ok": True,
-                "min_dscr": min_dscr,
-                "equity_irr": equity_irr,
+                "project_irr": project_irr,
+                "avg_dscr": avg_dscr,
                 "error_msg": None,
             },
         )
@@ -4767,8 +4773,8 @@ async def m4_run_scenario(request: Request, scenario_id: str):
                 "scenario_id": scenario_id,
                 "col_key": col_key,
                 "run_ok": False,
-                "min_dscr": None,
-                "equity_irr": None,
+                "project_irr": None,
+                "avg_dscr": None,
                 "error_msg": str(exc)[:120],
             },
         )

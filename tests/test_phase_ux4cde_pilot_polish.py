@@ -197,6 +197,7 @@ class TestUX4CDEFileScope:
         "app/templates/partials/workspace_shell.html",
         "app/templates/partials/scenario_tab.html",
         "app/templates/partials/scenario_matrix.html",
+        "app/templates/partials/_matrix_run_result.html",
         "static/styles.css",
         "tests/test_phase_ux4cde_",
         "tests/test_phase_ux4b_",
@@ -208,6 +209,12 @@ class TestUX4CDEFileScope:
         "tests/test_phase_pr2_",
         "tests/test_phase_pr3_",
         "tests/test_phase_m1_",
+        "tests/test_phase_m4_",
+        "tests/test_p1_compare_validation.py",
+        # IRR-ANOMALY-1-FIX display mapping followup
+        "tests/test_phase_irr_",
+        "docs/phase_irr_",
+        "reports/phase_irr_",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
@@ -219,9 +226,13 @@ class TestUX4CDEFileScope:
     )
     # P1-COMPARE-VALIDATION landed after UX-4CDE; its main_web.py + test file
     # are acceptable on branches that build on this one.
+    # IRR-ANOMALY-1-FIX display mapping followup: main_web.py + template
+    # + test prefix are acceptable on branches that build on this one.
     DISALLOWED_EXCEPTIONS = (
         "main_web.py",
         "tests/test_p1_compare_validation",
+        "app/templates/partials/_matrix_run_result.html",
+        "tests/test_phase_irr_",
     )
 
     def test_file_scope(self):

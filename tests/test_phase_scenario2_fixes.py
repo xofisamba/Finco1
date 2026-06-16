@@ -293,6 +293,11 @@ class TestScenario2FileScope:
         "app/input_adapter.py",
         "main_web.py",
         "tests/test_phase_scenario2_",
+        # IRR-ANOMALY-1-FIX display mapping followup
+        "tests/test_phase_irr_",
+        "docs/phase_irr_",
+        "reports/phase_irr_",
+        "app/templates/partials/_matrix_run_result.html",
         # Also allow scenario1 test files that may have been modified
         "tests/test_phase_scenario1_",
         "tests/test_phase_stab",
@@ -320,6 +325,7 @@ class TestScenario2FileScope:
         "app/templates/partials/export_registry.html",
         "app/templates/partials/workspace_shell.html",
         "app/templates/partials/scenario_matrix.html",
+        "app/templates/partials/_matrix_run_result.html",
         "static/styles.css",
     )
 
