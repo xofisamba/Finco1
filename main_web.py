@@ -3560,12 +3560,25 @@ async def scenario_compare_endpoint(
     compare_result = None
     message = "Select two saved scenarios to compare."
     if left_scenario_id and right_scenario_id:
-        compare_result = compare_scenarios(user.user_id, left_scenario_id, right_scenario_id)
-        if compare_result is None:
-            message = "Could not compare those scenarios."
+        # P1-COMPARE-VALIDATION: validate ownership before comparing.
+        # Both scenarios must exist, belong to the same user, and belong to
+        # the project currently loaded in the workspace. Without this check a
+        # caller could pass scenario IDs from a different project and get back
+        # a misleading "Scenario compare ready" banner with no numeric data.
+        _left_sc = get_scenario(left_scenario_id, user.user_id)
+        _right_sc = get_scenario(right_scenario_id, user.user_id)
+        _project_id = project_record.project_id if project_record else None
+        if _left_sc is None or _right_sc is None:
+            message = "One or both scenarios could not be found."
+        elif _left_sc.project_id != _project_id or _right_sc.project_id != _project_id:
+            message = "Selected scenarios do not belong to the same project."
         else:
-            compare_result = _build_compare_ui_context(compare_result, workspace_state)
-            message = "Scenario compare ready. Review numeric deltas together with governance posture."
+            compare_result = compare_scenarios(user.user_id, left_scenario_id, right_scenario_id)
+            if compare_result is None:
+                message = "Could not compare those scenarios."
+            else:
+                compare_result = _build_compare_ui_context(compare_result, workspace_state)
+                message = "Scenario compare ready. Review numeric deltas together with governance posture."
 
     return _render_scenario_workspace(
         request,

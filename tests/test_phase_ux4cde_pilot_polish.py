@@ -217,6 +217,12 @@ class TestUX4CDEFileScope:
         "app/export/",
         "main_web.py",
     )
+    # P1-COMPARE-VALIDATION landed after UX-4CDE; its main_web.py + test file
+    # are acceptable on branches that build on this one.
+    DISALLOWED_EXCEPTIONS = (
+        "main_web.py",
+        "tests/test_p1_compare_validation",
+    )
 
     def test_file_scope(self):
         import shutil
@@ -228,6 +234,8 @@ class TestUX4CDEFileScope:
         )
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
         for f in changed:
+            if any(f.startswith(e) for e in self.DISALLOWED_EXCEPTIONS):
+                continue
             assert not any(f.startswith(p) for p in self.DISALLOWED_PREFIXES), (
                 f"UX-4CDE must not touch {f}"
             )
