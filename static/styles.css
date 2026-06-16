@@ -8852,3 +8852,23 @@ tr.fc-grid-header--sub th {
   color: #991b1b;
 }
 /* ── End M4 ──────────────────────────────────────────────────────── */
+
+/* ── UX-4C: Disabled export cards ──────────────────────────────────── */
+.export-card--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  background: #f9fafb;
+  border: 1px dashed #d1d5db;
+}
+.export-card--disabled .export-card-name {
+  color: #6b7280;
+}
+
+/* ── UX-4C: Disabled download items ────────────────────────────────── */
+.download-item--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  background: #f9fafb;
+}

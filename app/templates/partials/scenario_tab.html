@@ -138,10 +138,10 @@
                   <span class="badge badge-pass">Active</span>
                 {% else %}
                   <button class="sc-select-btn"
-                          title="Make active"
+                          title="Set as active scenario"
                           hx-post="/scenarios/{{ scen.scenario_id }}/select"
                           hx-target="#scenario-tab"
-                          hx-swap="innerHTML">Use</button>
+                          hx-swap="innerHTML">Activate</button>
                 {% endif %}
               </div>
             </div>
@@ -242,9 +242,11 @@
       fieldEl.value = fieldName;
       input.value   = currentVal;
 
-      // Label: field name + scenario name
+      // Label: use the row's human-readable label cell, fall back to field name
+      var labelCell = tdCell.closest('tr').querySelector('.sc-td--label');
+      var fieldLabel = (labelCell ? labelCell.textContent.trim() : '') || fieldName || 'Edit';
       var scenName = tdCell.closest('table').querySelector('#col-' + scenarioId + ' .sc-col-name');
-      title.textContent = (fieldName || 'Edit') + ' — ' + (scenName ? scenName.textContent.trim() : '');
+      title.textContent = fieldLabel + ' — ' + (scenName ? scenName.textContent.trim() : '');
 
       // Position near the cell
       var rect = tdCell.getBoundingClientRect();

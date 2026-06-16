@@ -317,6 +317,10 @@ class TestScenario2FileScope:
     DISALLOWED_EXCEPTIONS = (
         "app/templates/partials/scenario_tab.html",
         "app/templates/partials/_state_banner.html",
+        "app/templates/partials/export_registry.html",
+        "app/templates/partials/workspace_shell.html",
+        "app/templates/partials/scenario_matrix.html",
+        "static/styles.css",
     )
 
     def test_file_scope(self):

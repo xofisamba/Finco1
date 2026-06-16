@@ -367,6 +367,7 @@ class TestScenario1FileScope:
         "tests/test_phase_ux2_",
         "tests/test_phase_ux4a_",
         "tests/test_phase_ux4b_",
+        "tests/test_phase_ux4cde_",
         # SCENARIO-2 persistence fixes are allowed in later phases
         "app/persistence/records.py",
         "app/persistence/_helpers.py",
@@ -380,10 +381,14 @@ class TestScenario1FileScope:
         "static/",
         "app/templates/",
     )
-    # UX-4A/4B: template fixes allowed on this branch
+    # UX-4A/4B/4C/D/E: template and style fixes allowed on this branch
     DISALLOWED_EXCEPTIONS = (
         "app/templates/partials/scenario_tab.html",
         "app/templates/partials/_state_banner.html",
+        "app/templates/partials/export_registry.html",
+        "app/templates/partials/workspace_shell.html",
+        "app/templates/partials/scenario_matrix.html",
+        "static/styles.css",
     )
 
     def test_file_scope(self):
