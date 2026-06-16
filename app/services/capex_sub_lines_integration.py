@@ -388,18 +388,34 @@ def persist_sub_line_form_edits(project_id: str, form: Any) -> None:
     if not sub_line_edits:
         return
 
+    from app.persistence.capex_sub_lines import (
+        validate_business_code,
+        validate_parent_category,
+    )
     from app.persistence.db import get_cursor
-    import sqlite3
     with get_cursor() as cursor:
         for business_code, amount_keur in sub_line_edits.items():
+            # Pre-validate so the DB try block below only covers sqlite writes.
+            parts = business_code.rsplit(".", 1)
+            try:
+                validate_business_code(business_code)
+                validate_parent_category(parts[0])
+            except ValueError as exc:
+                logger.warning(
+                    "CAPEX-PERSIST-1: skipping invalid sub-line code %s "
+                    "for project %s: %s",
+                    business_code, project_id, exc,
+                )
+                continue
+            # Validation passed — only DB-level errors can reach here.
             try:
                 _upsert_sub_line_by_business_code(
                     cursor, project_id, business_code, amount_keur,
                 )
-            except (ValueError, sqlite3.Error) as exc:
+            except Exception as exc:
                 logger.warning(
-                    "CAPEX-PERSIST-1: skipping sub-line form field %s "
-                    "for project %s: %s",
+                    "CAPEX-PERSIST-1: DB error for sub-line %s "
+                    "in project %s: %s",
                     business_code, project_id, exc,
                 )
     # get_cursor() commits on context-manager exit.

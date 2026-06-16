@@ -1340,16 +1340,18 @@ class TestScenarioOverrideAllowlist:
     def test_scenario_input_fields_count_unchanged(
         self, test_db, user_id, project_id
     ):
-        """The SCENARIO_INPUT_FIELDS tuple must still have
-        its original 21 keys. The additive allowlist for
-        sub-line reserved keys does NOT change the
-        flat-path contract."""
+        """The SCENARIO_INPUT_FIELDS tuple count must match the
+        documented allowlist. 21 original flat-path keys +
+        4 SCENARIO-2 alias additions (ppa_tariff_eur_mwh,
+        operating_hours_p50, opex_y1_total_keur,
+        senior_tenor_years) = 25. Sub-line reserved keys
+        are NOT in this set."""
         from app.persistence.scenarios_repository import (
             SCENARIO_INPUT_FIELDS,
         )
-        assert len(SCENARIO_INPUT_FIELDS) == 21, (
-            f"expected 21 flat-path keys, got "
-            f"{len(SCENARIO_INPUT_FIELDS)}"
+        assert len(SCENARIO_INPUT_FIELDS) == 25, (
+            f"expected 25 flat-path keys (21 original + 4 SCENARIO-2 "
+            f"alias additions), got {len(SCENARIO_INPUT_FIELDS)}"
         )
 
     def test_base_case_rejects_overrides(
