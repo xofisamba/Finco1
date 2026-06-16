@@ -389,14 +389,13 @@ def persist_sub_line_form_edits(project_id: str, form: Any) -> None:
         return
 
     from app.persistence.db import get_cursor
-    import sqlite3
     with get_cursor() as cursor:
         for business_code, amount_keur in sub_line_edits.items():
             try:
                 _upsert_sub_line_by_business_code(
                     cursor, project_id, business_code, amount_keur,
                 )
-            except (ValueError, sqlite3.Error) as exc:
+            except Exception as exc:
                 logger.warning(
                     "CAPEX-PERSIST-1: skipping sub-line form field %s "
                     "for project %s: %s",

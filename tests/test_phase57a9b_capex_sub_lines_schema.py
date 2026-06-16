@@ -1141,11 +1141,14 @@ class TestCrossArcConsistency:
 
     def test_no_overrides_json_allowlist_change(self):
         """The ``SCENARIO_INPUT_FIELDS`` set in ``_helpers.py`` must
-        be unchanged (Phase 20B silent-drop preserved). The
-        add-list extension lands in 57A-9C, NOT 57A-9B."""
+        only grow via explicit, documented additions. The
+        add-list extension lands in 57A-9C, NOT 57A-9B.
+        SCENARIO-2 intentionally added 4 matrix alias fields:
+        ppa_tariff_eur_mwh, operating_hours_p50,
+        opex_y1_total_keur, senior_tenor_years. Count is now 25."""
         from app.persistence._helpers import SCENARIO_INPUT_FIELDS
-        # Locked: 21 flat keys, no sub-line keys.
-        assert len(SCENARIO_INPUT_FIELDS) == 21
+        # 21 original flat keys + 4 SCENARIO-2 alias additions = 25.
+        assert len(SCENARIO_INPUT_FIELDS) == 25
         assert "_capex_sub_line_overrides" not in SCENARIO_INPUT_FIELDS
         assert "_capex_sub_line_overrides_metadata" not in SCENARIO_INPUT_FIELDS
 
