@@ -213,6 +213,7 @@ class TestUX4CDEFileScope:
         "tests/test_p1_compare_validation.py",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "tests/test_phase_pilot_blocker_1",
         "docs/phase_irr_",
         "reports/phase_irr_",
     )
@@ -228,11 +229,20 @@ class TestUX4CDEFileScope:
     # are acceptable on branches that build on this one.
     # IRR-ANOMALY-1-FIX display mapping followup: main_web.py + template
     # + test prefix are acceptable on branches that build on this one.
+    # HOTFIX-PILOT-BLOCKER-1: presentation/routing fix touches
+    # main_web.py (F4), app/services/project_save_as_service.py
+    # (F1), app/templates/partials/_factory_lock_indicator.html
+    # (F2), and app/ui/dashboard.py (F3). All are
+    # presentation/routing only; allowlist them.
     DISALLOWED_EXCEPTIONS = (
         "main_web.py",
         "tests/test_p1_compare_validation",
         "app/templates/partials/_matrix_run_result.html",
         "tests/test_phase_irr_",
+        "tests/test_phase_pilot_blocker_1",
+        "app/services/project_save_as_service.py",
+        "app/templates/partials/_factory_lock_indicator.html",
+        "app/ui/dashboard.py",
     )
 
     def test_file_scope(self):

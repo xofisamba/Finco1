@@ -369,6 +369,7 @@ class TestScenario1FileScope:
         "tests/test_phase_ux4b_",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "tests/test_phase_pilot_blocker_1",
         "docs/phase_irr_",
         "reports/phase_irr_",
         "tests/test_phase_ux4cde_",
@@ -379,6 +380,8 @@ class TestScenario1FileScope:
         "app/persistence/scenarios_repository.py",
         # SCENARIO-2 input_adapter gearing_pct optional fix
         "app/input_adapter.py",
+        # HOTFIX-PILOT-BLOCKER-1: F3 refactors build_dashboard_kpis
+        "app/ui/dashboard.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
@@ -388,6 +391,8 @@ class TestScenario1FileScope:
     )
     # UX-4A/4B/4C/D/E: template and style fixes allowed on this branch
     # IRR-ANOMALY-1-FIX: matrix run result template + test prefix allowed
+    # HOTFIX-PILOT-BLOCKER-1: factory lock indicator template
+    # fix (F2) is presentation-only; allowlist it.
     DISALLOWED_EXCEPTIONS = (
         "app/templates/partials/scenario_tab.html",
         "app/templates/partials/_state_banner.html",
@@ -395,6 +400,7 @@ class TestScenario1FileScope:
         "app/templates/partials/workspace_shell.html",
         "app/templates/partials/scenario_matrix.html",
         "app/templates/partials/_matrix_run_result.html",
+        "app/templates/partials/_factory_lock_indicator.html",
         "static/styles.css",
     )
 

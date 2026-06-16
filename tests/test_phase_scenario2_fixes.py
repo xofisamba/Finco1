@@ -295,6 +295,7 @@ class TestScenario2FileScope:
         "tests/test_phase_scenario2_",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "tests/test_phase_pilot_blocker_1",
         "docs/phase_irr_",
         "reports/phase_irr_",
         "app/templates/partials/_matrix_run_result.html",
@@ -319,6 +320,8 @@ class TestScenario2FileScope:
         "app/templates/",
     )
     # UX-4A/4B: template fixes allowed on this branch
+    # HOTFIX-PILOT-BLOCKER-1: factory lock indicator template
+    # fix (F2) is presentation-only; allowlist it.
     DISALLOWED_EXCEPTIONS = (
         "app/templates/partials/scenario_tab.html",
         "app/templates/partials/_state_banner.html",
@@ -326,6 +329,7 @@ class TestScenario2FileScope:
         "app/templates/partials/workspace_shell.html",
         "app/templates/partials/scenario_matrix.html",
         "app/templates/partials/_matrix_run_result.html",
+        "app/templates/partials/_factory_lock_indicator.html",
         "static/styles.css",
     )
 
