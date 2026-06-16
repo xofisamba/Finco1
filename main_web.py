@@ -2421,6 +2421,7 @@ async def index(request: Request, project: str | None = None):
             **(_build_index_dashboard_context(
                 project_record=project_record,
                 realized_gearing_pct=getattr(ctx, "realized_gearing_pct", None),
+                workspace_state=workspace_state,
             ) if project_record.project_origin in (
                 "user_created", "factory_template", "saved_baseline"
             ) else {}),
@@ -3110,6 +3111,7 @@ P2_MIN_DEFAULT_TEMPLATE_SOURCE = "generic_solar"
 def _build_index_dashboard_context(
     project_record,
     realized_gearing_pct=None,
+    workspace_state=None,
 ) -> dict:
     """Phase P2-min-3: build the inline
     Dashboard v1 data (KPI cards + 3 SVG
@@ -3120,6 +3122,15 @@ def _build_index_dashboard_context(
     realized gearing helper. NO Chart.js /
     Plotly / D3 / JS calc. NO formula /
     factory / model change.
+
+    HOTFIX-PILOT-BLOCKER-1 (F3): The dashboard
+    now reads KPIs from
+    ``workspace_state.last_runtime_summary`` (the
+    authoritative source already used by the
+    runtime update path). The previous
+    ``getattr(project_record, "last_waterfall_result")``
+    always returned None, which made the dashboard
+    render all KPIs as "—" after a successful run.
     """
     from app.ui.dashboard import (
         build_dashboard_kpis,
@@ -3131,12 +3142,24 @@ def _build_index_dashboard_context(
         render_svg_debt_chart,
     )
 
-    waterfall_result = getattr(project_record, "last_waterfall_result", None)
+    last_runtime_summary = (
+        getattr(workspace_state, "last_runtime_summary", None) if workspace_state else None
+    )
     kpis = build_dashboard_kpis(
-        waterfall_result=waterfall_result,
+        last_runtime_summary=last_runtime_summary,
         project_record=project_record,
         realized_gearing_pct=realized_gearing_pct,
     )
+    # For the revenue/ebitda chart we still need a WaterfallResult-like
+    # shape. Reuse the previously-stub waterfall_result by wrapping the
+    # last_runtime_summary into a SimpleNamespace with ``summary`` and
+    # ``yearly_series`` attributes so the existing chart builders
+    # continue to work without API change.
+    class _StubW:
+        def __init__(self, kpis_dict):
+            self.summary = kpis_dict or {}
+            self.yearly_series = {}
+    waterfall_result = _StubW(last_runtime_summary or {})
     revenue_ebitda_series = build_revenue_ebitda_series(waterfall_result)
     dscr_series = build_dscr_series(waterfall_result)
     debt_series = build_debt_balance_series(waterfall_result)
@@ -4409,6 +4432,29 @@ async def save_run_endpoint(request: Request):
 
     form = await request.form()
     snapshot = _collect_form_snapshot(form)
+
+    # HOTFIX-PILOT-BLOCKER-1 (F4): Defense in depth for /run
+    # routing. The hidden form's active_project may carry a stale
+    # value (the source reference's identity, copied via the
+    # draft_snapshot chain). The URL ?project= param is the
+    # authoritative source for which workspace the user is
+    # actually viewing. If URL and form disagree, prefer URL.
+    # This prevents record_workspace_runtime from updating the
+    # wrong workspace.
+    _url_project = request.query_params.get("project", "").strip().lower()
+    _form_active = (snapshot.get("active_project", "") or "").strip().lower()
+    if _url_project and _form_active and _url_project != _form_active:
+        # Verify URL project is a real user-owned project for this
+        # user. If so, override the snapshot's active_project.
+        _url_rec = get_project_record(
+            user_id=user.user_id, project_code=_url_project
+        )
+        if _url_rec is not None:
+            snapshot["active_project"] = _url_rec.project_code
+            # Also fix project_origin if URL rec is user_created
+            # (working copy / new project) but form has factory_template.
+            if _url_rec.project_origin == "user_created":
+                snapshot["project_origin"] = "user_created"
 
     deps = SaveRunRouteDeps(
         project_workspace_from_snapshot=_project_workspace_from_snapshot,

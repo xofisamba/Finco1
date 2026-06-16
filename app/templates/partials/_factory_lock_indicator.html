@@ -5,9 +5,14 @@
    this partial retains the lock signal but uses neutral,
    user-facing wording.
 
-   Per Phase 54F-J guidance: is_factory_template context key is currently
-   missing. Use the documented workaround: check form_data.template_source
-   and form_data.project_origin if available.
+   HOTFIX-PILOT-BLOCKER-1 (F2): Reuse the same protection logic
+   already used by _state_banner.html (P2-FIX-7) and the /run
+   defense in depth. The previous template_source-based gate
+   produced false positives for working copies whose
+   template_source is "tuho" but project_origin is
+   "user_created". Now the gate is is_protected_reference only
+   (True for TUHO and Oborovo factory templates, False for
+   everything else including working copies).
 
    If no safe protected-original signal is found, render NOTHING.
 
@@ -18,31 +23,12 @@
    "approved model", "bank-ready template", "production control".
 #}
 
-{% set _ts = template_source|default('') %}
-{% set _po = project_origin|default('') %}
-{% set _explicit = is_factory_template|default('') %}
-{% set _ts_l = _ts|lower %}
-{% set _po_l = _po|lower %}
-
-{% if _explicit == true or _explicit == 'true' or _explicit == '1' %}
-  {% set _is_factory = true %}
-  {% set _name = factory_template_name|default('Factory') %}
-{% elif _ts_l and ('tuho' in _ts_l or 'oborovo' in _ts_l or 'factory' in _ts_l) %}
-  {% set _is_factory = true %}
-  {% set _name = _ts %}
-{% elif _po_l and ('tuho' in _po_l or 'oborovo' in _po_l) %}
-  {% set _is_factory = true %}
-  {% set _name = _po %}
-{% else %}
-  {% set _is_factory = false %}
-  {% set _name = '' %}
-{% endif %}
-
-{% if _is_factory %}
+{% set _is_protected = is_protected_reference|default(false) %}
+{% if _is_protected %}
 <div class="factory-lock-indicator" role="status" aria-label="Protected original indicator">
   <span class="factory-lock-icon" aria-hidden="true">PL</span>
   <div class="factory-lock-body">
-    <span class="factory-lock-title">Protected original — {{ _name }}</span>
+    <span class="factory-lock-title">Protected original — {{ template_source|default('') }}</span>
     <span class="factory-lock-desc">Create a scenario or use Save As before editing controlled assumptions.</span>
   </div>
 </div>

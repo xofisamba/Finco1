@@ -286,13 +286,29 @@ async def execute_project_save_as_route(
         ),
     )
 
+    # HOTFIX-PILOT-BLOCKER-1 (F1): Sanitize the inherited snapshot
+    # so the working copy has its OWN identity, not the source's.
+    # Without this, draft_snapshot/saved_snapshot still contain
+    # active_project="tuho" / project_origin="factory_template",
+    # which causes (a) the /run route to resolve the WRONG project
+    # via _resolve_project_record(), and (b) the workspace to be
+    # recorded under the TUHO reference, leaving the working copy
+    # workspace empty. We overwrite the three identity fields
+    # (active_project, project_origin, project_name) with the new
+    # copy's values. template_source stays as source.template_source
+    # so the engine still picks the right factory defaults.
+    working_copy_snapshot = dict(source.baseline_snapshot or {})
+    working_copy_snapshot["active_project"] = new_record.project_code
+    working_copy_snapshot["project_origin"] = "user_created"
+    working_copy_snapshot["project_name"] = new_record.project_name
+
     # Initialize the new workspace (Quirk: draft=saved=baseline, dirty=False)
     deps.save_workspace_state(
         user_id=user.user_id,
         project_id=new_record.project_id,
         project_code=new_record.project_code,
-        draft_snapshot=source.baseline_snapshot,
-        saved_snapshot=source.baseline_snapshot,
+        draft_snapshot=working_copy_snapshot,
+        saved_snapshot=working_copy_snapshot,
         dirty=False,
         governance_state=deps.workspace_state_initialization_governance_state(),
         replay_metadata=deps.build_workspace_replay_metadata(

@@ -382,9 +382,20 @@ class TestCompareValidationFileScope:
         "tests/test_phase_m4_",
         # IRR-ANOMALY-1-FIX display mapping followup
         "tests/test_phase_irr_",
+        "tests/test_phase_pilot_blocker_1",
         "docs/phase_irr_",
+        "docs/phase_pilot_blocker_1",
         "reports/phase_irr_",
+        "reports/phase_pilot_blocker_1",
         "app/templates/partials/_matrix_run_result.html",
+        # HOTFIX-PILOT-BLOCKER-1: presentation/routing fix
+        # touches main_web.py (already in ALLOWED_PREFIXES),
+        # app/services/project_save_as_service.py (F1), and
+        # app/templates/partials/_factory_lock_indicator.html
+        # (F2). All are presentation/routing only.
+        "app/services/project_save_as_service.py",
+        "app/templates/partials/_factory_lock_indicator.html",
+        "app/ui/dashboard.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

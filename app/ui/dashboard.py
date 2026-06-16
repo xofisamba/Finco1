@@ -76,7 +76,7 @@ def _fmt_number(value: Optional[float], digits: int = 2) -> str:
 
 
 def build_dashboard_kpis(
-    waterfall_result: Any,
+    last_runtime_summary: Optional[dict],
     project_record: Any,
     realized_gearing_pct: Optional[float],
 ) -> Dict[str, Dict[str, Any]]:
@@ -84,9 +84,28 @@ def build_dashboard_kpis(
     the Dashboard v1 view. Eight KPI cards.
 
     The function is pure: it reads values from the
-    runtime result object and the project record,
-    but it does NOT mutate them and does NOT call
-    any factory / persistence / model function.
+    workspace's ``last_runtime_summary`` dict (the
+    authoritative source already used by the
+    successful runtime update path and by
+    build_dashboard_kpis_from_raw_kpis) and from the
+    project record. It does NOT mutate them and does
+    NOT call any factory / persistence / model
+    function.
+
+    HOTFIX-PILOT-BLOCKER-1 (F3): the previous signature
+    took ``waterfall_result`` and called
+    ``getattr(waterfall_result, "summary", None)``.
+    ``waterfall_result`` is a WaterfallResult object
+    that the dashboard path never had access to
+    (only run_service builds it), and ProjectRecord
+    does not carry a ``last_waterfall_result`` field.
+    This caused the dashboard to always render all
+    KPIs as "—" after a successful run. The fix is
+    to read the same raw kpis dict the OOB update
+    path uses (workspace.last_runtime_summary),
+    reuse build_dashboard_kpis_from_raw_kpis for
+    the value formatting, and add realized_gearing
+    from the call site (Phase PR2 helper).
 
     Returns:
         Dict of 8 keys: project_irr, equity_irr,
@@ -98,41 +117,33 @@ def build_dashboard_kpis(
         or None), ``status`` ('pass' / 'warn' /
         'missing' / None), ``tooltip``.
     """
-    summary = getattr(waterfall_result, "summary", None) or {}
+    raw_kpis = last_runtime_summary or {}
     kpis: Dict[str, Dict[str, Any]] = {}
 
-    project_irr = _safe_float(summary.get("project_irr_pct"))
-    kpis["project_irr"] = {
-        "label": "Project IRR",
-        "value": _fmt_pct(project_irr),
-        "raw": project_irr,
-        "status": "pass" if project_irr is not None else "missing",
-        "tooltip": "Project Internal Rate of Return (computed by "
-                   "the runtime)",
-    }
+    # If the runtime produced a summary, prefer the
+    # path that has been validated by the OOB update
+    # flow (it multiplies IRR fractions by 100 and
+    # uses the correct key names). The two paths now
+    # share the same source of truth: workspace
+    # state last_runtime_summary.
+    if raw_kpis:
+        try:
+            kpis = build_dashboard_kpis_from_raw_kpis(raw_kpis)
+        except Exception:
+            kpis = {}
+    if not kpis:
+        kpis = {key: {"label": "", "value": "—", "raw": None,
+                       "status": "missing", "tooltip": ""}
+                for key in ("project_irr", "equity_irr",
+                            "senior_debt", "realized_gearing",
+                            "min_dscr", "avg_dscr", "y1_revenue",
+                            "y1_ebitda", "project_npv")}
 
-    equity_irr = _safe_float(summary.get("equity_irr_pct"))
-    kpis["equity_irr"] = {
-        "label": "Equity IRR",
-        "value": _fmt_pct(equity_irr),
-        "raw": equity_irr,
-        "status": "pass" if equity_irr is not None else "missing",
-        "tooltip": "Equity Internal Rate of Return",
-    }
-
-    senior_debt = _safe_float(summary.get("senior_debt_keur"))
-    kpis["senior_debt"] = {
-        "label": "Senior Debt",
-        "value": _fmt_money_keur(senior_debt),
-        "raw": senior_debt,
-        "status": "pass" if senior_debt is not None else "missing",
-        "tooltip": "Total senior debt (kEUR)",
-    }
-
-    # Realized gearing is computed at the
-    # ProjectContext build time by
-    # _compute_realized_gearing_pct
-    # (Phase PR2 helper, re-used here).
+    # Realized gearing comes from a derived computation
+    # at the ProjectContext build time
+    # (_compute_realized_gearing_pct, Phase PR2).
+    # It is not in last_runtime_summary directly, so
+    # it must be set from the call site parameter.
     rg = _safe_float(realized_gearing_pct)
     kpis["realized_gearing"] = {
         "label": "Realized Gearing",
@@ -141,63 +152,6 @@ def build_dashboard_kpis(
         "status": "derived" if rg is not None else "missing",
         "tooltip": "Realized gearing = senior_debt / "
                    "total_CAPEX × 100 (read-only derived KPI)",
-    }
-
-    min_dscr = _safe_float(summary.get("min_dscr"))
-    avg_dscr = _safe_float(summary.get("avg_dscr"))
-    target_dscr = _safe_float(summary.get("target_dscr"))
-
-    kpis["min_dscr"] = {
-        "label": "Min DSCR",
-        "value": _fmt_number(min_dscr, 2),
-        "raw": min_dscr,
-        "status": "pass" if min_dscr is not None else "missing",
-        "tooltip": "Minimum Debt Service Coverage Ratio across "
-                   "the operating period",
-    }
-    kpis["avg_dscr"] = {
-        "label": "Avg DSCR",
-        "value": _fmt_number(avg_dscr, 2),
-        "raw": avg_dscr,
-        "status": "pass" if avg_dscr is not None else "missing",
-        "tooltip": "Average Debt Service Coverage Ratio",
-    }
-
-    # Y1 revenue / Y1 EBITDA are read from
-    # the per-year stream that the runtime
-    # has already produced (NOT recomputed
-    # in the dashboard layer).
-    y1_revenue = _safe_float(summary.get("y1_revenue_keur"))
-    y1_ebitda = _safe_float(summary.get("y1_ebitda_keur"))
-
-    # ── Phase P2-FIX-4: NPV (project net present value, EUR).
-    # NPV is read defensively from the runtime
-    # summary; if not available, the KPI is
-    # shown as "missing" status (same as other
-    # optional KPIs). No recalculation in the
-    # dashboard layer.
-    npv = _safe_float(summary.get("project_npv_keur"))
-    kpis["project_npv"] = {
-        "label": "Project NPV",
-        "value": _fmt_money_keur(npv),
-        "raw": npv,
-        "status": "pass" if npv is not None else "missing",
-        "tooltip": "Project Net Present Value (computed by the runtime)",
-    }
-
-    kpis["y1_revenue"] = {
-        "label": "Y1 Revenue",
-        "value": _fmt_money_keur(y1_revenue),
-        "raw": y1_revenue,
-        "status": "pass" if y1_revenue is not None else "missing",
-        "tooltip": "Year 1 revenue (kEUR)",
-    }
-    kpis["y1_ebitda"] = {
-        "label": "Y1 EBITDA",
-        "value": _fmt_money_keur(y1_ebitda),
-        "raw": y1_ebitda,
-        "status": "pass" if y1_ebitda is not None else "missing",
-        "tooltip": "Year 1 EBITDA (kEUR)",
     }
 
     return kpis
