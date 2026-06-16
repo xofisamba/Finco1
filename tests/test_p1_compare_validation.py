@@ -377,6 +377,7 @@ class TestCompareValidationFileScope:
         "main_web.py",
         "tests/test_p1_compare_validation",
         "tests/test_phase_ux4cde_",
+        "tests/test_phase_scenario1_",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
