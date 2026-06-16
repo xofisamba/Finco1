@@ -84,8 +84,9 @@
             <span class="badge badge-pass scm-pick-row-active">Active</span>
           {% endif %}
           {% if card.equity_irr is not none %}
+            {%- set _irr_num = card.equity_irr | float(default=none) -%}
             <span class="scm-pick-row-meta">
-              IRR {{ "%.1f"|format(card.equity_irr * 100) if card.equity_irr else "-" }}%
+              IRR {{ "%.1f"|format(_irr_num * 100) if _irr_num is not none else "—" }}%
             </span>
           {% endif %}
         </label>

@@ -381,13 +381,15 @@ class TestScenario1FileScope:
         "static/",
         "app/templates/",
     )
-    # UX-4A/4B/4C/D/E: template and style fixes allowed on this branch
+    # UX-4A/4B/4C/D/E + HOTFIX-1: template and style fixes allowed on this branch
     DISALLOWED_EXCEPTIONS = (
         "app/templates/partials/scenario_tab.html",
         "app/templates/partials/_state_banner.html",
         "app/templates/partials/export_registry.html",
         "app/templates/partials/workspace_shell.html",
         "app/templates/partials/scenario_matrix.html",
+        "app/templates/partials/scenario_version_history.html",
+        "app/templates/partials/scenario_multi_compare_picker.html",
         "static/styles.css",
     )
 
