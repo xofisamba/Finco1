@@ -305,18 +305,50 @@ async def execute_post_download_route(
     # ── 4. Runtime guard + snapshot resolution ───────────────────────
     if project_record.project_origin == "user_created":
         # user_created branch
-        allow_run, runtime_origin, guard_message = deps.check_runtime_allowed(workspace_state, snapshot)
-        if not allow_run:
+        # Phase PILOT-HOTFIX-3: export uses the latest successful runtime
+        # evidence (last_runtime_snapshot + last_runtime_summary) when
+        # present, instead of requiring the current form snapshot to
+        # bit-match the saved runtime boundary. The /run endpoint still
+        # enforces the strict boundary (Section 3 of execute_run_route);
+        # export only needs a frozen, project-scoped runtime result.
+        # - If last_runtime_snapshot exists, use it. The current form
+        #   boundary is irrelevant for export — the user is asking for
+        #   a workbook derived from a successful run, not a fresh run.
+        # - If no last_runtime_snapshot exists, fail with a clear
+        #   user-facing message ("Run the model before exporting.")
+        #   rather than the generic runtime-boundary message.
+        if (
+            workspace_state is not None
+            and workspace_state.last_runtime_snapshot
+            and len(workspace_state.last_runtime_snapshot) > 0
+        ):
+            # Latest runtime evidence is available — use it directly.
+            # PILOT-HOTFIX-3: skip the strict form-boundary check and
+            # skip resolve_runtime_snapshot_source (which would re-resolve
+            # from saved_snapshot or baseline_snapshot, potentially
+            # missing the scenario override). The last_runtime_snapshot
+            # was written by the most recent successful /run and is
+            # the authoritative export input.
+            runtime_snapshot = workspace_state.last_runtime_snapshot
+            # Re-resolve active_scenario_record from active_scenario_id
+            # so the workbook carries the right scenario provenance.
+            if workspace_state.active_scenario_id:
+                try:
+                    from app.persistence.scenarios_repository import get_scenario as _ph3_get_scenario
+                    active_scenario_record = _ph3_get_scenario(
+                        workspace_state.active_scenario_id, user.user_id,
+                    )
+                except Exception:
+                    active_scenario_record = None
+            runtime_origin = "saved_state"
+            runtime_warning = None
+        else:
+            # No successful runtime yet — give a clear, user-friendly
+            # error instead of the strict form-boundary message.
             return _build_inline_error_outcome(
-                message=guard_message, status_code=400,
+                message="Run the model before exporting. The export uses the most recent successful runtime result for this project.",
+                status_code=400,
             )
-        # Parity quirk 11: 4th tuple element (effective_runtime_origin)
-        # is captured into a local that is never read.
-        runtime_snapshot, active_scenario_record, runtime_warning, _effective_runtime_origin = (
-            deps.resolve_runtime_snapshot_source(
-                user, project_record, workspace_state, runtime_origin,
-            )
-        )
         override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
         runtime_project_key = (
             "Solar"
