@@ -77,7 +77,7 @@ PARITY_CORE_FILES: dict[str, str] = {
         "d8ab56fdb5c01847be605f68a3710c14ddf91f097db86a107e2073eebff21a63"
     ),
     "app/project_factories.py": (
-        "1b795b96bfaf3e2795d6e5c389c447cd8c157de720e13ebab0484949b387258a"
+        "a0d71a8ad6836ea61dd2db8d0445ca5efb39de80a57328d3422a9d13c7b5c73e"
     ),
     "reports/phase7_tuho_senior_debt_sizing_extraction.csv": (
         "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442"
