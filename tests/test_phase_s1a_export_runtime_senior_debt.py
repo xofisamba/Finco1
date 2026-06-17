@@ -333,11 +333,26 @@ class TestNoRuntimeChange:
         )
 
     def test_factories_md5_unchanged(self):
+        # Phase S1-C intentionally updated Generic factory
+        # financial CAPEX sub-field defaults to zero (so
+        # factory-direct and resolver paths produce bit-identical
+        # ProjectInputs for identical user inputs). The MD5
+        # baseline therefore shifts from 3350c93a... to the
+        # new post-S1-C value.
+        # - Pre-S1-C MD5 (factory with non-zero generic
+        #   idc_keur/bank_fees_keur):
+        #   3350c93a7689bb3f5e717a064adcd106
+        # - Post-S1-C MD5 (factory with zeroed generic
+        #   financial sub-fields):
+        #   cf73065b8a26aa3f19629829e46260d9
+        # TUHO and Oborovo factories are unchanged (their
+        # idc_keur/bank_fees_keur stay frozen Excel-derived).
         import hashlib
         path = REPO_ROOT / "app" / "project_factories.py"
         md5 = hashlib.md5(path.read_bytes()).hexdigest()
-        assert md5 == "3350c93a7689bb3f5e717a064adcd106", (
-            f"app/project_factories.py MD5 changed: {md5}"
+        assert md5 == "cf73065b8a26aa3f19629829e46260d9", (
+            f"app/project_factories.py MD5 changed unexpectedly "
+            f"(expected post-S1-C baseline): {md5}"
         )
 
     def test_waterfall_engine_md5_unchanged(self):

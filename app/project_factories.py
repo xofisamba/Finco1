@@ -483,7 +483,7 @@ def create_default_solar_project(
         audit_legal=z, construction_mgmt_b=z,
         contingencies=z, taxes=z,
         project_acquisition=z, project_rights=z,
-        idc_keur=500.0, bank_fees_keur=200.0,
+        idc_keur=0.0, bank_fees_keur=0.0,  # S1-C: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
     )
     opex = [
         OpexItem(name="Technical Management", y1_amount_keur=150.0, annual_inflation=0.02),
@@ -538,7 +538,7 @@ def create_default_wind_project(
         audit_legal=z, construction_mgmt_b=z,
         contingencies=z, taxes=z,
         project_acquisition=z, project_rights=z,
-        idc_keur=800.0, bank_fees_keur=300.0,
+        idc_keur=0.0, bank_fees_keur=0.0,  # S1-C: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
     )
     opex = [
         OpexItem(name="Technical Management", y1_amount_keur=200.0, annual_inflation=0.02),
@@ -596,7 +596,7 @@ def create_default_bess_project(
         audit_legal=z, construction_mgmt_b=z,
         contingencies=z, taxes=z,
         project_acquisition=z, project_rights=z,
-        idc_keur=500.0, bank_fees_keur=200.0,
+        idc_keur=0.0, bank_fees_keur=0.0,  # S1-C: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
     )
     opex = [
         OpexItem(name="Technical Management", y1_amount_keur=150.0, annual_inflation=0.02),
@@ -661,7 +661,7 @@ def create_default_solar_bess_project(
         audit_legal=z, construction_mgmt_b=z,
         contingencies=z, taxes=z,
         project_acquisition=z, project_rights=z,
-        idc_keur=500.0, bank_fees_keur=200.0,
+        idc_keur=0.0, bank_fees_keur=0.0,  # S1-C: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
     )
     opex = [
         OpexItem(name="Technical Management", y1_amount_keur=150.0, annual_inflation=0.02),
@@ -736,7 +736,7 @@ def create_default_wind_bess_project(
         audit_legal=z, construction_mgmt_b=z,
         contingencies=z, taxes=z,
         project_acquisition=z, project_rights=z,
-        idc_keur=800.0, bank_fees_keur=300.0,
+        idc_keur=0.0, bank_fees_keur=0.0,  # S1-C: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
     )
     opex = [
         OpexItem(name="Technical Management", y1_amount_keur=200.0, annual_inflation=0.02),
