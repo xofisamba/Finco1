@@ -3981,10 +3981,16 @@ async def select_scenario_endpoint(request: Request, scenario_id: str):
 
 @app.post("/scenarios/{scenario_id}/update-overrides")
 async def update_overrides_endpoint(request: Request, scenario_id: str):
-    """Patch overrides for a non-base scenario. Expects JSON body with field overrides.
+    """Patch overrides for a non-base scenario. Accepts JSON body or form-data.
+
+    P1-CLEANUP-SPRINT-2: Accepts both ``application/json`` and
+    ``application/x-www-form-urlencoded`` (or ``multipart/form-data``).
+    JSON behaviour is unchanged. Form-data fallback parses submitted
+    fields into an overrides dict. Invalid payloads return a friendly
+    HTTP 400 instead of a 500.
 
     Thin orchestration wrapper (Phase 51R-2). The route is
-    responsible for auth, JSON body parse, deps bundle construction,
+    responsible for auth, body parsing, deps bundle construction,
     and final response rendering. The full
     /scenarios/{scenario_id}/update-overrides orchestration body
     (scenario lookup, is_base_case gate, update_scenario_overrides,
@@ -4000,8 +4006,44 @@ async def update_overrides_endpoint(request: Request, scenario_id: str):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    body = await request.json()
-    overrides = body if isinstance(body, dict) else {}
+    # P1-CLEANUP-SPRINT-2: dual body parsing (JSON or form-data).
+    # Detection: content-type header. Fallback order is
+    # "if JSON works, use JSON; else try form-data; else 400".
+    overrides: dict = {}
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        if isinstance(body, dict):
+            overrides = body
+        elif body is None:
+            return JSONResponse(
+                content={"error": "Invalid JSON body. Expected JSON object."},
+                status_code=400,
+            )
+        else:
+            return JSONResponse(
+                content={"error": "Invalid JSON body. Expected a JSON object."},
+                status_code=400,
+            )
+    else:
+        try:
+            form = await request.form()
+        except Exception:
+            return JSONResponse(
+                content={"error": "Invalid form-data body."},
+                status_code=400,
+            )
+        # Form-data: parse all submitted fields into overrides dict.
+        # Skip known framework fields (project_code, scenario_id, csrf, _)
+        # so the dict represents only user override values.
+        _SKIP_KEYS = {"project_code", "scenario_id", "csrf_token", "csrf"}
+        for key, val in form.multi_items() if hasattr(form, "multi_items") else form.items():
+            if key in _SKIP_KEYS or key.startswith("_"):
+                continue
+            overrides[key] = val
 
     deps = ScenarioUpdateOverridesRouteDeps(
         get_scenario=get_scenario,
