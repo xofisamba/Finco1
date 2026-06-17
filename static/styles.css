@@ -7394,6 +7394,109 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 
 /* ── Phase P2-min-1: Project Home (presentation entry point) ─────── */
 
+/* ── P1-CLEANUP-SPRINT-2 TASK C: Quick action cards ──────────── */
+.ph-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.ph-quick-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.ph-quick-card:hover {
+  border-color: var(--accent, #1a56db);
+  transform: translateY(-1px);
+}
+
+.ph-quick-card--primary {
+  border-color: var(--accent, #1a56db);
+  background: linear-gradient(135deg, #f0f5ff 0%, #ffffff 100%);
+}
+
+.ph-quick-card--accent {
+  border-color: #16a34a;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.ph-quick-icon {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--accent, #1a56db);
+}
+
+.ph-quick-card--accent .ph-quick-icon { color: #16a34a; }
+
+.ph-quick-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ph-quick-desc {
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+
+/* ── P1-CLEANUP-SPRINT-2 TASK C: Section tab strip ────────────── */
+.ph-section-tabs {
+  margin-bottom: 1.5rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ph-section-tabs-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+
+.ph-section-tabs-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ph-section-tab {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--bg, #ffffff);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ph-section-tab:hover {
+  border-color: var(--accent, #1a56db);
+  background: #f0f5ff;
+}
+
+.ph-section-tab--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--surface-2, #f6f7f9);
+}
+
 .ph-section {
   margin-bottom: 1.5rem;
 }
