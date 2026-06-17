@@ -82,6 +82,7 @@ async def execute_run_route(
     active_project = form.get("active_project", "").strip().lower()  # type: ignore[arg-type]
     project_type = form.get("project_type", "")
     scenario = form.get("scenario", "")
+    scenario_id_from_form = form.get("scenario_id", "")
     capacity_mw = form.get("capacity_mw", "")
     tariff_eur_mwh = form.get("tariff_eur_mwh", "")
     p50_hours = form.get("p50_hours", "")
@@ -97,6 +98,114 @@ async def execute_run_route(
     project_record, workspace_state = deps.project_workspace_from_snapshot(user, snapshot)
     project_code = project_record.project_code
     project_name = project_record.project_name
+
+    # ── 2b. PILOT-HOTFIX-2: Auto-select scenario from form. ─────────────
+    # Bug: prior to this fix, ``/run`` always read
+    # ``workspace_state.active_scenario_id`` for the runtime snapshot.
+    # If the user picked Downside from the dropdown without first
+    # POSTing ``/scenarios/{id}/select``, ``active_scenario_id``
+    # stayed on the Base scenario, and the runtime produced Base
+    # results (no override applied). This hook honours the form's
+    # ``scenario_id`` so a /run after /scenarios/save reflects the
+    # override without a separate /scenarios/{id}/select call.
+    # - User-created projects only.
+    # - Skip when form lacks scenario_id (let the existing path run).
+    # - Skip when active_scenario_id already matches.
+    # - When auto-select succeeds, also update ``saved_snapshot`` to
+    #   the active scenario's resolved snapshot so the runtime guard
+    #   (§3) treats the form mismatch as an intentional scenario
+    #   override rather than a stale draft. The form-state vs.
+    #   runtime-boundary contract is preserved for the Base case
+    #   (saved_snapshot stays at base values); only the auto-select
+    #   path explicitly synchronises the bound snapshot.
+    if (
+        project_record.project_origin == "user_created"
+        and scenario_id_from_form
+        and (workspace_state is None
+             or workspace_state.active_scenario_id != scenario_id_from_form)
+    ):
+        from app.persistence.scenarios_repository import (
+            select_scenario,
+            get_scenario as _get_scenario_for_select,
+        )
+        _target_scenario = _get_scenario_for_select(
+            scenario_id_from_form, user.user_id,
+        )
+        if (
+            _target_scenario is not None
+            and _target_scenario.project_id == project_record.project_id
+            and not _target_scenario.archived
+        ):
+            select_scenario(
+                user.user_id, project_record.project_id, scenario_id_from_form,
+            )
+            # Refresh workspace_state so the snapshot resolver below
+            # sees the newly-active scenario.
+            project_record, workspace_state = deps.project_workspace_from_snapshot(
+                user, snapshot,
+            )
+            # Synchronise saved_snapshot to the form snapshot so the
+            # runtime guard (§3) accepts the boundary. We mirror the
+            # form's view (including any 'scenario' / 'scenario_id'
+            # fields the form may have submitted) so that
+            # ``snapshots_equal(saved, current)`` holds and the guard
+            # returns ``runtime_origin='saved_state'``. The scenario's
+            # resolved snapshot (base + override) is still used for
+            # the actual runtime run via ``resolve_runtime_snapshot_source``
+            # (which reads ``active_scenario_id``). The next /save
+            # overwrites this with the canonical workspace state.
+            from app.persistence.repository import save_workspace_state
+            _form_synced_snap = dict(snapshot or {})
+            _form_synced_snap.setdefault(
+                "project_name", project_record.project_name,
+            )
+            _form_synced_snap.setdefault(
+                "project_type", project_record.project_type,
+            )
+            _form_synced_snap.setdefault(
+                "project_origin", project_record.project_origin,
+            )
+            _form_synced_snap.setdefault(
+                "template_source",
+                project_record.template_source
+                or project_record.source_project_template,
+            )
+            _form_synced_snap.setdefault(
+                "active_project", project_record.project_code.lower(),
+            )
+            save_workspace_state(
+                user_id=user.user_id,
+                project_id=project_record.project_id,
+                project_code=project_record.project_code,
+                active_scenario_id=scenario_id_from_form,
+                active_scenario_name=_target_scenario.scenario_name,
+                draft_snapshot=_form_synced_snap,
+                saved_snapshot=_form_synced_snap,
+                last_runtime_snapshot=(
+                    workspace_state.last_runtime_snapshot
+                    if workspace_state else {}
+                ),
+                last_runtime_summary=(
+                    workspace_state.last_runtime_summary
+                    if workspace_state else {}
+                ),
+                last_runtime_snapshot_id=(
+                    workspace_state.last_runtime_snapshot_id
+                    if workspace_state else None
+                ),
+                last_runtime_origin=(
+                    workspace_state.last_runtime_origin
+                    if workspace_state else None
+                ),
+                last_runtime_scenario_id=(
+                    workspace_state.last_runtime_scenario_id
+                    if workspace_state else None
+                ),
+                dirty=False,
+            )
+            project_record, workspace_state = deps.project_workspace_from_snapshot(
+                user, snapshot,
+            )
 
     # ── 3. Runtime guard ────────────────────────────────────────────────
     allow_run, runtime_origin, guard_message = deps.check_runtime_allowed(workspace_state, snapshot)
