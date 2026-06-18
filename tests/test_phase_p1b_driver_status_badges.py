@@ -751,6 +751,12 @@ class TestForbiddenPathsUnchanged:
             "app/services/capex_sub_lines_integration.py",
             "app/services/run_service.py",
         }
+        # P1-UX-FIX-1 (cross-arc): scenarios_repository.py is
+        # allowed for the runtime-safety fix. No schema change.
+        if path == "app/persistence/" and diff_files == {
+            "app/persistence/scenarios_repository.py"
+        }:
+            return
         non_allowlist = diff_files - post_m1_followup_allowlist
         assert not non_allowlist, (
             f"P1-B must NOT touch {path!r}; "

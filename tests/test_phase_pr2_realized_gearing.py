@@ -397,6 +397,16 @@ class TestPhaseInvariants:
                 js_src = (pathlib.Path(REPO_ROOT) / "static/app.js").read_text()
                 if "STAB-4" in js_src:
                     continue
+            # P1-UX-FIX-1 cross-arc: scenarios_repository.py is allowed
+            # for the runtime-safety fix (clearing last_runtime_* on
+            # scenario select). No schema change; just a behavioural
+            # addition to select_scenario(). Other persistence files
+            # remain forbidden.
+            if forbidden == "app/persistence/" and diff and all(
+                f == "app/persistence/scenarios_repository.py"
+                for f in diff.splitlines()
+            ):
+                continue
             assert not diff, (
                 f"PR2 must NOT change {forbidden!r}; "
                 f"got: {diff!r}"
@@ -686,6 +696,15 @@ class TestFileScope:
             "app/templates/partials/_sheet_distributions_partial.html",
             "app/templates/partials/_sheet_sponsor_partial.html",
             "tests/test_phase_ux2_active_sheet_refresh.py",
+            # P1-UX-FIX-1 (Pilot UX Polish): realized gearing for Generic,
+            # scenario switch runtime safety, dashboard empty hint,
+            # working copy badge. Cross-arc allowlist.
+            "app/ui/project_context.py",
+            "app/persistence/scenarios_repository.py",
+            "app/templates/partials/_dashboard.html",
+            "app/templates/partials/project_selector.html",
+            "static/styles.css",
+            "tests/test_phase_p1_ux_fix_1_pilot_polish.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected

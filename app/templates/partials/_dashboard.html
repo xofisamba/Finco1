@@ -71,6 +71,38 @@
     {% endfor %}
   </div>
 
+  {# ── Phase P1-UX-FIX-1: Empty-state hint when all KPI cards are missing ──
+     Different from the P2-FIX-4 "No run yet" CTA above (which
+     fires when there is no runtime snapshot at all). This hint
+     fires when a runtime snapshot EXISTS but the dashboard KPIs
+     cannot be populated (e.g. after a scenario select cleared
+     runtime evidence, or for a fresh user-created project where
+     the most-recent run pre-dates the dashboard enhancement).
+     Both branches may render briefly during a save+run cycle. #}
+  {% if runtime_summary and runtime_summary.last_runtime_snapshot_id %}
+    {% set _all_missing = true %}
+    {% for key, kpi in dashboard_kpis.items() %}
+      {% if kpi.status not in ('missing',) %}
+        {% set _all_missing = false %}
+      {% endif %}
+    {% endfor %}
+    {% if _all_missing %}
+      <div class="dashboard-empty-hint"
+           id="dashboard-empty-hint"
+           data-p1uxfix1-component="empty-hint"
+           role="status"
+           aria-label="Dashboard empty state hint">
+        <span class="badge badge-muted">No KPIs</span>
+        <span>
+          Run the model to see KPIs here.
+          {% if active_scenario_id %}
+            Scenario <code>{{ active_scenario_id[:8] }}</code> is selected but has not been run yet.
+          {% endif %}
+        </span>
+      </div>
+    {% endif %}
+  {% endif %}
+
   {# Inline SVG charts (3 charts) #}
   <div class="dashboard-charts" data-p2min3-charts="true">
     <div class="dashboard-chart-card"

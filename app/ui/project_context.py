@@ -31,11 +31,12 @@ NOT_AVAILABLE = "NOT_AVAILABLE"
 def _compute_realized_gearing_pct(
     senior_debt_keur: float | None,
     total_capex_keur: float | None,
+    runtime_senior_debt_keur: float | None = None,
 ) -> float | None:
     """Compute realized gearing as senior_debt / total_capex * 100.
 
     Returns ``None`` when:
-    - ``senior_debt_keur`` is None or negative
+    - the resolved senior_debt is None or negative
     - ``total_capex_keur`` is None, zero, or negative
 
     Returns a float in [0, 100] (i.e. percentage) otherwise.
@@ -47,17 +48,31 @@ def _compute_realized_gearing_pct(
     snapshot build time from values that the runtime has
     already produced.
 
+    P1-UX-FIX-1: When ``runtime_senior_debt_keur`` is provided
+    AND ``senior_debt_keur`` (input-driven) is None or zero,
+    the function falls back to the runtime value. This fixes
+    the Generic Solar/Wind case where
+    ``financing.fixed_debt_keur=0`` and the DSCR-sculpted
+    senior debt amount is the authoritative value. For TUHO
+    and Oborovo the two values are bit-identical (input
+    overrides runtime) so behaviour is unchanged.
+
     Locked by tests:
     - test_phase_pr2_realized_gearing.py
       ::TestRealizedGearingComputation
+    - test_phase_p1_ux_fix_1_pilot_polish.py
+      ::TestRealizedGearingForGeneric
     """
-    if senior_debt_keur is None or total_capex_keur is None:
+    if total_capex_keur is None or total_capex_keur <= 0:
         return None
-    if total_capex_keur <= 0:
+    # Resolve senior_debt: prefer input; fall back to runtime if input is
+    # None or zero. Negative values are still rejected.
+    resolved_senior_debt = senior_debt_keur
+    if resolved_senior_debt is None or resolved_senior_debt == 0:
+        resolved_senior_debt = runtime_senior_debt_keur
+    if resolved_senior_debt is None or resolved_senior_debt <= 0:
         return None
-    if senior_debt_keur < 0:
-        return None
-    return (senior_debt_keur / total_capex_keur) * 100.0
+    return (resolved_senior_debt / total_capex_keur) * 100.0
 
 
 @dataclass(frozen=True)
