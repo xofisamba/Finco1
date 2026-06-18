@@ -1,7 +1,7 @@
 {
   "project": "generic_wind",
   "source_workbook": "validation/reference_models/GenericWind_ReferenceModel.xlsx",
-  "workbook_sha256": "b889d03020c12332e21ea80446f8f019cfdd344423babe42a52b8a8651c3df4b",
+  "workbook_sha256": "5f84881063ce6f47277cfe6f238e955c67343394d6659621cd3c4af3f356591c",
   "extraction_note": "Tier-1 anchors extracted from the bootstrap reference workbook's cached formula values via openpyxl only; no formula evaluation engine or Finco1 runtime code was executed by this script. The source workbook is committed to the repository (it is the deliverable, not a private artifact).",
   "extraction_date": "2026-06-18T13:24:41",
   "spec_version": "0.1",

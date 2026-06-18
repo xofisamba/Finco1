@@ -1,7 +1,7 @@
 {
   "project": "generic_solar",
   "source_workbook": "validation/reference_models/GenericSolar_ReferenceModel.xlsx",
-  "workbook_sha256": "58db92c99185199eec1ca19101a4ba5bedca444aa31840a2a56d00e3a05bde00",
+  "workbook_sha256": "e0c9a558f88f001eb534111a5098dfed4269680c592abce5d8b889aac1034441",
   "extraction_note": "Tier-1 anchors extracted from the bootstrap reference workbook's cached formula values via openpyxl only; no formula evaluation engine or Finco1 runtime code was executed by this script. The source workbook is committed to the repository (it is the deliverable, not a private artifact).",
   "extraction_date": "2026-06-18T13:24:41",
   "spec_version": "0.1",
