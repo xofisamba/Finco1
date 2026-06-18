@@ -1,11 +1,14 @@
-"""G1B-FACTORY-DEFAULTS-FIX: focused tests for the Generic Solar/Wind factory
-default fixes identified by the G1B anchor parity dry run.
+"""G1B/G1C-FACTORY-DEFAULTS-FIX: focused tests for the Generic Solar/Wind
+factory default fixes identified by the G1B/G1C anchor parity dry runs.
 
-Covers two confirmed defects in app/project_factories.py:
-  1. The "Soft Costs" CapexItem was constructed but never wired into the
-     CapexStructure, silently dropping it from total_capex.
-  2. market_prices_curve was a hardcoded linear ramp that did not honor
-     market_inflation=0.02 / the G1A spec's stated 2%/yr compounding.
+Covers three confirmed defects in app/project_factories.py:
+  1. (G1B) The "Soft Costs" CapexItem was constructed but never wired into
+     the CapexStructure, silently dropping it from total_capex.
+  2. (G1B) market_prices_curve was a hardcoded linear ramp that did not
+     honor market_inflation=0.02 / the G1A spec's stated 2%/yr compounding.
+  3. (G1C) RevenueParams.balancing_cost_pv defaulted to 0.025 (a 2.5%-of-
+     revenue "PV balancing" deduction) which has no counterpart in the
+     G1A reference Excel workbooks; the factories now zero it explicitly.
 
 These tests do not touch waterfall_core.py, input_adapter.py, domain/*, or
 any other runtime/engine code; they only assert on the factory outputs.
@@ -21,6 +24,8 @@ from app.project_factories import (
     create_default_tuho_wind1,
     create_default_wind_project,
 )
+from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
+from domain.period_engine import PeriodEngine
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -75,11 +80,46 @@ def test_generic_wind_market_curve_matches_2pct_compounding() -> None:
         assert curve[idx] == expected, f"index {idx}: {curve[idx]} != {expected}"
 
 
+def test_generic_solar_balancing_cost_pv_zeroed() -> None:
+    """G1C: the G1A reference workbook has no PV-revenue-based balancing
+    deduction; the domain default of 0.025 must be zeroed for Solar."""
+    inputs = create_default_solar_project()
+    assert inputs.revenue.balancing_cost_pv == 0.0
+
+
+def test_generic_wind_balancing_cost_pv_zeroed() -> None:
+    """G1C: same as Solar -- Wind's balancing cost is fully modeled via the
+    flat balancing_cost_wind_eur_mwh field, so the PV-style deduction must
+    be zeroed too."""
+    inputs = create_default_wind_project()
+    assert inputs.revenue.balancing_cost_pv == 0.0
+
+
+def _run(factory):
+    inputs = factory()
+    engine = PeriodEngine(
+        financial_close=inputs.info.financial_close,
+        construction_months=inputs.info.construction_months,
+        horizon_years=inputs.info.horizon_years,
+        ppa_years=inputs.revenue.ppa_term_years,
+    )
+    config = WaterfallRunConfig.from_inputs(inputs, engine)
+    result = WaterfallRunner(inputs, engine).run(config)
+    return inputs, result
+
+
 def test_tuho_wind1_unchanged() -> None:
     """TUHO is out of scope for this fix; pin its factory output."""
     inputs = create_default_tuho_wind1()
     assert inputs.capex.total_capex == 72_993.70999999999
     assert inputs.revenue.market_prices_curve[:3] == (94.554, 100.969, 102.6256)
+
+
+def test_tuho_senior_debt_unchanged() -> None:
+    """G1C: TUHO debt sizing must remain unaffected by the Solar/Wind-only
+    balancing_cost_pv fix."""
+    _, result = _run(create_default_tuho_wind1)
+    assert round(result.sculpting_result.debt_keur, 2) == 43_359.0
 
 
 def test_oborovo_unchanged() -> None:
@@ -89,12 +129,22 @@ def test_oborovo_unchanged() -> None:
     assert inputs.revenue.market_prices_curve[:3] == (0, 0, 0)
 
 
+def test_oborovo_senior_debt_unchanged() -> None:
+    """G1C: Oborovo debt sizing must remain unaffected by the Solar/Wind-only
+    balancing_cost_pv fix."""
+    _, result = _run(create_default_oborovo)
+    assert round(result.sculpting_result.debt_keur, 2) == 42_852.27
+
+
 def test_engine_files_unchanged() -> None:
-    """waterfall_core.py and input_adapter.py must not be touched by this fix."""
+    """waterfall_core.py, input_adapter.py, domain/inputs.py, and
+    domain/revenue/generation.py must not be touched by this fix."""
     expected_hashes = {
         "app/waterfall_core.py": "6bf49f33efc989736c17cea0cb9b7723",
         "app/input_adapter.py": "ab296e927a3bc5869726519f68e58bec",
         "domain/inputs.py": "73dd17f60203e4121934381ef72964b6",
+        "domain/revenue/generation.py": "177ef500f38bdb3c1379438c9e1d4f29",
+        "domain/waterfall/waterfall_engine.py": "ddd93874e776ada65b94dda9aef678b6",
     }
     for rel_path, expected_md5 in expected_hashes.items():
         path = REPO_ROOT / rel_path

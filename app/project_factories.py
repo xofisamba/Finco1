@@ -505,9 +505,12 @@ def create_default_solar_project(
     solar_market_curve = (solar_market_y1, solar_market_y2) + tuple(
         solar_market_y2 * (1 + solar_market_escalation) ** (i - 1) for i in range(2, 30)
     )
+    # G1C: the G1A reference workbook has no PV-revenue-based balancing
+    # deduction (only the flat EUR/MWh row, zero for Solar), so the domain
+    # default balancing_cost_pv=0.025 must be zeroed here to match the spec.
     revenue = RevenueParams(ppa_base_tariff=55.0, ppa_term_years=10, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=solar_market_curve,
-        market_inflation=0.02, co2_enabled=False)
+        market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0)
     financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=5_000.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
@@ -567,10 +570,14 @@ def create_default_wind_project(
     wind_market_curve = (wind_market_y1, wind_market_y2) + tuple(
         wind_market_y2 * (1 + wind_market_escalation) ** (i - 1) for i in range(2, 30)
     )
+    # G1C: the G1A reference workbook has no PV-revenue-based balancing
+    # deduction (only the flat 8 EUR/MWh row, already modeled via
+    # balancing_cost_wind_eur_mwh below), so the domain default
+    # balancing_cost_pv=0.025 must be zeroed here to match the spec.
     revenue = RevenueParams(ppa_base_tariff=60.0, ppa_term_years=12, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=wind_market_curve,
         market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
-        co2_enabled=True, co2_price_eur=5.0)
+        co2_enabled=True, co2_price_eur=5.0, balancing_cost_pv=0.0)
     financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=6_000.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
