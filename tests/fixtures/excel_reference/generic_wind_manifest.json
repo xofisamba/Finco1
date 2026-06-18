@@ -1,0 +1,26 @@
+{
+  "workbook_filename": "GenericWind_ReferenceModel.xlsx",
+  "workbook_path": "validation/reference_models/GenericWind_ReferenceModel.xlsx",
+  "workbook_sha256": "b889d03020c12332e21ea80446f8f019cfdd344423babe42a52b8a8651c3df4b",
+  "extractor_version": "1.0.0",
+  "extraction_script": "scripts/extract_generic_golden.py",
+  "spec_version": "0.1",
+  "anchor_list": [
+    "avg_dscr",
+    "bank_fees_keur",
+    "equity_irr",
+    "idc_keur",
+    "min_dscr",
+    "project_irr",
+    "realized_gearing",
+    "senior_debt_keur",
+    "senior_debt_service_p1_keur",
+    "senior_debt_service_p2_keur",
+    "senior_debt_service_p3_keur",
+    "total_capex_keur",
+    "total_ebitda_keur",
+    "total_opex_keur",
+    "total_revenue_keur"
+  ],
+  "fixture_path": "tests/fixtures/excel_golden_generic_wind.json"
+}
