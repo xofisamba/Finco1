@@ -618,6 +618,17 @@ class TestNoScenarioPersistence:
                 js_src = (_pl.Path(REPO_ROOT) / "static/app.js").read_text()
                 if "STAB-4" in js_src:
                     return
+            # P1-UX-FIX-1 (cross-arc): scenarios_repository.py is
+            # allowed for the runtime-safety fix (clearing
+            # last_runtime_* on scenario select). No schema change.
+            if forbidden_path == "app/persistence/":
+                diff_files = {
+                    line.strip()
+                    for line in diff_lines.splitlines()
+                    if line.strip()
+                }
+                if diff_files == {"app/persistence/scenarios_repository.py"}:
+                    return
             diff_files = {
                 line.strip()
                 for line in diff_lines.splitlines()
@@ -749,6 +760,16 @@ class TestPhaseInvariants:
             capture_output=True,
             text=True,
         )
+        # P1-UX-FIX-1 (cross-arc): scenarios_repository.py is
+        # allowed for the runtime-safety fix. No schema change;
+        # same tables, only a behavioural addition to select_scenario.
+        diff_files = {
+            line.strip()
+            for line in r.stdout.splitlines()
+            if line.strip()
+        }
+        if diff_files == {"app/persistence/scenarios_repository.py"}:
+            return
         assert r.stdout.strip() == "", (
             f"M1 must NOT change persistence; "
             f"got: {r.stdout.strip()!r}"
@@ -1053,6 +1074,15 @@ class TestM1FileScope:
             "tests/test_phase_stab7_generic_dashboard_parity.py",
             # STAB-8 e2e runtime validation
             "tests/test_phase_stab8_e2e_runtime_validation.py",
+            # P1-UX-FIX-1 (Pilot UX Polish): cross-arc allowlist.
+            # Realized gearing for Generic, scenario switch
+            # runtime safety, dashboard empty hint, WC badge.
+            "app/ui/project_context.py",
+            "app/persistence/scenarios_repository.py",
+            "app/templates/partials/_dashboard.html",
+            "app/templates/partials/project_selector.html",
+            "static/styles.css",
+            "tests/test_phase_p1_ux_fix_1_pilot_polish.py",
         }
         true_extra = [
             p for p in extra

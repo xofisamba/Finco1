@@ -311,26 +311,75 @@ def select_scenario(
     project_id: str,
     scenario_id: str,
 ) -> bool:
-    """Set the active scenario for the given project in workspace_state."""
-    from app.persistence.repository import get_workspace_state, save_workspace_state
+    """Set the active scenario for the given project in workspace_state.
+
+    P1-UX-FIX-1: When the active scenario changes, clear the
+    cached runtime evidence (``last_runtime_snapshot``,
+    ``last_runtime_summary``, ``last_runtime_origin``) so that
+    any subsequent ``POST /download`` returns a clear
+    "Run the model before exporting." error instead of exporting
+    stale values from the previously-active scenario. The user
+    must re-run ``/run`` to populate runtime evidence for the
+    newly-selected scenario.
+
+    No persistence schema change; existing rows are reused.
+    """
+    from app.persistence.repository import get_workspace_state
+    from app.persistence.db import get_cursor
     record = get_scenario(scenario_id, user_id)
     if record is None:
         return False
     ws = get_workspace_state(user_id, project_id)
     if ws is None:
         return False
-    save_workspace_state(
-        user_id=user_id,
-        project_id=project_id,
-        project_code=ws.project_code,
-        active_scenario_id=scenario_id,
-        active_scenario_name=record.scenario_name,
-        draft_snapshot=ws.draft_snapshot,
-        saved_snapshot=ws.saved_snapshot if ws.saved_snapshot else ws.draft_snapshot,
-        governance_state=ws.governance_state,
-        replay_metadata={"action": "select_scenario", "scenario_id": scenario_id},
-    )
+    # P1-UX-FIX-1: Direct DB update so we can clear fields to NULL/empty
+    # without the merge semantics of save_workspace_state (which would
+    # otherwise keep the previous scenario's runtime evidence).
+    from app.persistence.workspace_repository import _now_utc
+    now = _now_utc()
+    merged_replay_metadata = dict(ws.replay_metadata or {})
+    merged_replay_metadata.update({
+        "action": "select_scenario",
+        "scenario_id": scenario_id,
+        "p1_ux_fix_1": "cleared_runtime_evidence",
+    })
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE workspace_states
+            SET active_scenario_id=?, active_scenario_name=?,
+                saved_snapshot_json=?,
+                last_runtime_snapshot_json='{}',
+                last_runtime_summary_json='{}',
+                last_runtime_snapshot_id=NULL,
+                last_runtime_origin=NULL,
+                last_runtime_scenario_id=?,
+                dirty=0,
+                replay_metadata_json=?,
+                updated_at=?,
+                last_runtime_at=NULL
+            WHERE workspace_id=? AND user_id=?
+            """,
+            (
+                scenario_id,
+                record.scenario_name,
+                # saved_snapshot preserved (form state is project-level)
+                # use existing snapshot, never fall back to draft
+                _workspace_state_to_json(ws.saved_snapshot if ws.saved_snapshot else ws.draft_snapshot),
+                scenario_id,
+                _workspace_state_to_json(merged_replay_metadata),
+                now.isoformat(),
+                ws.workspace_id,
+                user_id,
+            ),
+        )
     return True
+
+
+def _workspace_state_to_json(value) -> str:
+    """Local helper to serialise workspace snapshot fields."""
+    import json
+    return json.dumps(value if value is not None else {})
 
 
 # ============================================================

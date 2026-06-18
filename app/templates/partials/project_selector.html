@@ -24,6 +24,21 @@
       <span class="ps-ap-origin ps-ap-origin--factory">Reference</span>
       {% elif project_record.project_origin == 'user_created' %}
       <span class="ps-ap-origin ps-ap-origin--user">My project</span>
+      {# P1-UX-FIX-1: Working Copy badge for user-created projects
+         that were created from a reference template (TUHO / Oborovo
+         / Generic). Signals at-a-glance that this is a copy, not the
+         original. Visible only when source_project_template is set,
+         which the working-copy flow always populates. #}
+      {% if project_record.source_project_template or project_record.template_source %}
+        {% set _src = (project_record.template_source or project_record.source_project_template or '').strip().lower() %}
+        {% if _src in ('tuho', 'oborovo', 'generic_solar', 'generic_wind') %}
+        <span class="ps-ap-origin ps-ap-origin--wc"
+              data-p1uxfix1-component="working-copy-badge"
+              title="Editable copy of the {{ _src|upper }} reference template">
+          Working Copy
+        </span>
+        {% endif %}
+      {% endif %}
       {% elif project_record.project_origin == 'saved_baseline' %}
       <span class="ps-ap-origin ps-ap-origin--baseline">Saved baseline</span>
       {% endif %}

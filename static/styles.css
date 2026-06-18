@@ -5231,6 +5231,41 @@ input[aria-readonly="true"] {
   color: #ffd060;
   border-color: rgba(255, 183, 0, 0.2);
 }
+/* P1-UX-FIX-1: Working Copy badge for user-created projects
+   derived from a reference template. Distinct colour so users
+   see at-a-glance that they are editing a copy, not the
+   original. */
+.ps-ap-origin--wc {
+  background: rgba(154, 122, 230, 0.12);
+  color: #9a7ae6;
+  border-color: rgba(154, 122, 230, 0.25);
+  font-weight: 600;
+}
+
+/* P1-UX-FIX-1: Dashboard empty-state hint shown when runtime
+   evidence exists (P2-FIX-4 CTA already handles "no run at
+   all") but KPI cards cannot be populated (e.g. scenario
+   select cleared runtime, or fresh project). Inline badge +
+   text, no border, matches dashboard card style. */
+.dashboard-empty-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  margin: 0.75rem 0;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.dashboard-empty-hint code {
+  background: var(--bg-2, #f6f7f9);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
 .ps-ap-scenario-label {
   text-transform: uppercase;
   letter-spacing: 0.05em;
