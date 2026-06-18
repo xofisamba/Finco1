@@ -480,7 +480,7 @@ def create_default_solar_project(
         epc_other=civil, grid_connection=grid,
         ops_prep=z, insurances=z, lease_tax=z,
         construction_mgmt_a=z, commissioning=z,
-        audit_legal=z, construction_mgmt_b=z,
+        audit_legal=soft, construction_mgmt_b=z,
         contingencies=z, taxes=z,
         project_acquisition=z, project_rights=z,
         idc_keur=0.0, bank_fees_keur=0.0,  # S1-C: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
@@ -498,8 +498,15 @@ def create_default_solar_project(
     technical = TechnicalParams(capacity_mw=capacity_mw, yield_scenario="P_50",
         operating_hours_p50=1500.0, operating_hours_p90_10y=1400.0,
         pv_degradation=0.004, bess_enabled=False)
+    # Market price curve: Y1/Y2 explicit per the G1A reference spec, then 2%/yr
+    # compounding from Y2 (matches market_inflation and the bootstrap Excel
+    # reference workbook's Revenue-tab formula, =Y2*(1+esc)^(year-2)).
+    solar_market_y1, solar_market_y2, solar_market_escalation = 60.0, 61.0, 0.02
+    solar_market_curve = (solar_market_y1, solar_market_y2) + tuple(
+        solar_market_y2 * (1 + solar_market_escalation) ** (i - 1) for i in range(2, 30)
+    )
     revenue = RevenueParams(ppa_base_tariff=55.0, ppa_term_years=10, ppa_index=0.02,
-        market_scenario="Central", market_prices_curve=tuple(60.0 + i for i in range(30)),
+        market_scenario="Central", market_prices_curve=solar_market_curve,
         market_inflation=0.02, co2_enabled=False)
     financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=5_000.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
@@ -535,7 +542,7 @@ def create_default_wind_project(
         epc_other=civil, grid_connection=grid,
         ops_prep=z, insurances=z, lease_tax=z,
         construction_mgmt_a=z, commissioning=z,
-        audit_legal=z, construction_mgmt_b=z,
+        audit_legal=soft, construction_mgmt_b=z,
         contingencies=z, taxes=z,
         project_acquisition=z, project_rights=z,
         idc_keur=0.0, bank_fees_keur=0.0,  # S1-C: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
@@ -553,8 +560,15 @@ def create_default_wind_project(
     technical = TechnicalParams(capacity_mw=capacity_mw, yield_scenario="P_50",
         operating_hours_p50=3000.0, operating_hours_p90_10y=2700.0,
         pv_degradation=0.0, bess_enabled=False)
+    # Market price curve: Y1/Y2 explicit per the G1A reference spec, then 2%/yr
+    # compounding from Y2 (matches market_inflation and the bootstrap Excel
+    # reference workbook's Revenue-tab formula, =Y2*(1+esc)^(year-2)).
+    wind_market_y1, wind_market_y2, wind_market_escalation = 65.0, 66.3, 0.02
+    wind_market_curve = (wind_market_y1, wind_market_y2) + tuple(
+        wind_market_y2 * (1 + wind_market_escalation) ** (i - 1) for i in range(2, 30)
+    )
     revenue = RevenueParams(ppa_base_tariff=60.0, ppa_term_years=12, ppa_index=0.02,
-        market_scenario="Central", market_prices_curve=tuple(65.0 + i * 1.2 for i in range(30)),
+        market_scenario="Central", market_prices_curve=wind_market_curve,
         market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
         co2_enabled=True, co2_price_eur=5.0)
     financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=6_000.0, shl_rate=0.08,
