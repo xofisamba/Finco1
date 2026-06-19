@@ -105,7 +105,10 @@
         </div>
       {% endfor %}
 
-      {# Governance rows: G20 + R99/R102 across all scenarios #}
+      {# U7-ERROR-WARNING-CLEANUP: governance rows (G20 + R99/R102) are a
+         reviewer/audit-only concept and must never reach the normal user
+         path -- only render in audit_mode. #}
+      {% if audit_mode %}
       {% for gov in multi_compare_result['governance_rows'] %}
         {% set gv = gov['values'] %}
         <div class="scm-multi-row scm-multi-row--gov">
@@ -118,6 +121,7 @@
           {% endif %}
         </div>
       {% endfor %}
+      {% endif %}
     </div>
 
   {% else %}

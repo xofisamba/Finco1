@@ -337,14 +337,16 @@ class TestMultiCompareRoute_GET:
         ):
             assert label in r.text, f"missing label: {label}"
 
-    def test_response_includes_governance_rows(self, auth_client, four_scenarios):
-        """Response has g20_status and r99_r102_status governance rows."""
+    def test_response_hides_governance_rows_from_normal_users(self, auth_client, four_scenarios):
+        """U7-ERROR-WARNING-CLEANUP: governance codes (g20_status /
+        r99_r102_status) are a reviewer/audit-only concept and must not
+        leak into the normal (non-audit_mode) user response."""
         ids = four_scenarios["scenario_ids"]
         r = auth_client.get(f"/scenarios/compare-multi?scenario_ids={','.join(ids)}")
         assert r.status_code == 200
-        assert "g20_status" in r.text
-        assert "r99_r102_status" in r.text
-        assert "scm-multi-row--gov" in r.text
+        assert "g20_status" not in r.text
+        assert "r99_r102_status" not in r.text
+        assert "scm-multi-row--gov" not in r.text
 
     def test_response_includes_base_chip_marker(self, auth_client, four_scenarios):
         """The first scenario is marked with the 'Base' badge + chip--base class."""

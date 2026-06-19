@@ -367,6 +367,14 @@ class TestFileScope:
             "app/templates/partials/project_browser.html",
             "tests/test_u3_saved_project_flow_cleanup.py",
             "tests/test_phase56e_project_switch_simplification.py",
+            # U7-ERROR-WARNING-CLEANUP cross-arc allowlist
+            "app/templates/partials/scenario_compare.html",
+            "app/templates/partials/scenario_compare_multi.html",
+            "app/templates/partials/scenario_version_history.html",
+            "app/validation_status.py",
+            "tests/test_g1d_validation_status_reporting.py",
+            "tests/test_phase25b2_multi_scenario_compare.py",
+            "tests/test_u7_error_warning_cleanup.py",
         )
         disallowed_prefixes = (
             "app/persistence/",

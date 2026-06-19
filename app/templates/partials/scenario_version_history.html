@@ -86,8 +86,10 @@
         {% endif %}
       </div>
 
-      <!-- Governance badges (G20/R99/R102) -->
-      {% if card.governance_state %}
+      <!-- U7-ERROR-WARNING-CLEANUP: governance codes (G20/R99/R102) are
+           a reviewer/audit-only concept and must never reach the normal
+           user path -- only render in audit_mode. -->
+      {% if audit_mode and card.governance_state %}
         <div class="svh-card-gov">
           {% if card.governance_state.get('g20_status') %}
             <span class="badge badge-{{ 'pass' if card.governance_state.g20_status == 'APPROVED' else 'warn' }}">

@@ -118,8 +118,8 @@ def test_no_forbidden_internal_terms_in_user_facing_text() -> None:
 @pytest.mark.parametrize(
     "project_key,expected_tier_label",
     [
-        ("tuho", "Calibrated reference project"),
-        ("oborovo", "Calibrated reference project"),
+        ("tuho", "Validated reference project"),
+        ("oborovo", "Validated reference project"),
         ("generic_solar", "Validated model with caveats"),
         ("generic_wind", "Validated model with caveats"),
         ("solar_bess", "Design-only, not externally validated"),
@@ -139,8 +139,8 @@ def test_validation_status_sheet_present_in_excel_export(
 
 def test_validation_status_sheet_runs_for_all_runnable_projects() -> None:
     for project_key, expected_tier_label in (
-        ("tuho", "Calibrated reference project"),
-        ("oborovo", "Calibrated reference project"),
+        ("tuho", "Validated reference project"),
+        ("oborovo", "Validated reference project"),
         ("generic_solar", "Validated model with caveats"),
         ("generic_wind", "Validated model with caveats"),
     ):
