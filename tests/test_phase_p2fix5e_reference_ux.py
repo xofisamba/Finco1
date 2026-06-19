@@ -363,6 +363,10 @@ class TestFileScope:
             "app/templates/partials/_matrix_cell_updated.html",
             "app/templates/partials/_matrix_cell_edit.html",
             "app/templates/partials/_matrix_run_result.html",
+            # U3-SAVED-PROJECT-FLOW-CLEANUP cross-arc allowlist
+            "app/templates/partials/project_browser.html",
+            "tests/test_u3_saved_project_flow_cleanup.py",
+            "tests/test_phase56e_project_switch_simplification.py",
         )
         disallowed_prefixes = (
             "app/persistence/",

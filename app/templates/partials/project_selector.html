@@ -21,7 +21,7 @@
       {% endif %}
       {# Phase 56E: project origin pill (factory template / user created / saved baseline) #}
       {% if project_record.project_origin == 'factory_template' %}
-      <span class="ps-ap-origin ps-ap-origin--factory">Reference</span>
+      <span class="ps-ap-origin ps-ap-origin--factory">Example Project</span>
       {% elif project_record.project_origin == 'user_created' %}
       <span class="ps-ap-origin ps-ap-origin--user">My project</span>
       {# P1-UX-FIX-1: Working Copy badge for user-created projects
@@ -40,7 +40,7 @@
         {% endif %}
       {% endif %}
       {% elif project_record.project_origin == 'saved_baseline' %}
-      <span class="ps-ap-origin ps-ap-origin--baseline">Saved baseline</span>
+      <span class="ps-ap-origin ps-ap-origin--baseline">Example Project</span>
       {% endif %}
     </div>
     {% if workspace_state and workspace_state.active_scenario_name %}
@@ -135,7 +135,7 @@
 
   {% if factory_template_projects %}
   <div class="ps-nav-group" id="ps-nav-reference-projects">
-    <div class="ps-nav-group-label">Reference</div>
+    <div class="ps-nav-group-label">Example Projects</div>
     {% for item in factory_template_projects %}
     <a class="ps-nav-link{% if active_project_code == item.project_code %} ps-nav-link--active{% endif %}"
        href="/?project={{ item.project_code }}">
