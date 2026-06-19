@@ -52,12 +52,14 @@ def test_reference_projects_are_calibrated_frozen_reference(project_key: str) ->
     status = get_validation_status(project_key)
     assert status.tier == ValidationTier.CALIBRATED_FROZEN_REFERENCE
     assert status.metrics == ()
+    assert status.internal_classification == "calibrated frozen internal reference"
 
 
 @pytest.mark.parametrize("project_key", ["generic_solar", "solar", "generic_wind", "wind"])
 def test_generic_solar_wind_are_validated_with_caveats(project_key: str) -> None:
     status = get_validation_status(project_key)
     assert status.tier == ValidationTier.VALIDATED_WITH_CAVEATS
+    assert status.internal_classification == "validated generic bootstrap model with caveats"
 
     validated_keys = {m.metric_key for m in status.validated_metrics()}
     caveat_keys = {m.metric_key for m in status.caveated_metrics()}
@@ -72,11 +74,15 @@ def test_generic_solar_wind_are_validated_with_caveats(project_key: str) -> None
 def test_bess_hybrid_is_design_only(project_key: str) -> None:
     status = get_validation_status(project_key)
     assert status.tier == ValidationTier.DESIGN_ONLY
+    assert status.internal_classification == "design-only / not externally validated"
+    assert "not externally validated" in " ".join(status.disclosures).lower()
 
 
 def test_portfolio_is_experimental() -> None:
     status = get_validation_status("portfolio")
     assert status.tier == ValidationTier.EXPERIMENTAL
+    assert status.internal_classification == "experimental / internal only"
+    assert "not externally validated" in " ".join(status.disclosures).lower()
 
 
 def test_unknown_project_key_falls_back_to_experimental_without_raising() -> None:

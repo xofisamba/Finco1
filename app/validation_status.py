@@ -67,6 +67,12 @@ class ProjectValidationStatus:
     tier_description: str
     metrics: tuple[MetricValidationLabel, ...]
     disclosures: tuple[str, ...]
+    # Audit/dev-facing classification string (e.g. for docs/, reports/,
+    # internal review tooling). May use internal terms such as "factory" or
+    # "bootstrap reference workbook" -- never render this in the UI or in
+    # an end-user-facing export; use ``tier_label``/``tier_description``
+    # for that instead.
+    internal_classification: str = ""
 
     def metric(self, metric_key: str) -> MetricValidationLabel | None:
         for entry in self.metrics:
@@ -94,8 +100,11 @@ DISCLOSURE_METHODOLOGY_CAVEAT = (
     "caveat versus the reference workbooks (see validation notes)."
 )
 DISCLOSURE_NOT_ADVICE = (
-    "All outputs are modelling estimates only and do not constitute legal, "
-    "tax, accounting, or investment advice."
+    "All outputs are financial modelling estimates only and do not "
+    "constitute legal, tax, accounting, or investment advice."
+)
+DISCLOSURE_NOT_EXTERNALLY_VALIDATED = (
+    "This configuration is not externally validated."
 )
 
 DISCLOSURE_TEXT: tuple[str, ...] = (
@@ -105,6 +114,10 @@ DISCLOSURE_TEXT: tuple[str, ...] = (
 )
 
 _NOT_ADVICE_ONLY: tuple[str, ...] = (DISCLOSURE_NOT_ADVICE,)
+_NOT_EXTERNALLY_VALIDATED: tuple[str, ...] = (
+    DISCLOSURE_NOT_EXTERNALLY_VALIDATED,
+    DISCLOSURE_NOT_ADVICE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +197,7 @@ def _reference_project_status(project_key: str, display_name: str) -> ProjectVal
         ),
         metrics=(),
         disclosures=_NOT_ADVICE_ONLY,
+        internal_classification="calibrated frozen internal reference",
     )
 
 
@@ -201,6 +215,7 @@ def _generic_project_status(project_key: str, display_name: str) -> ProjectValid
         ),
         metrics=_generic_metrics(),
         disclosures=DISCLOSURE_TEXT,
+        internal_classification="validated generic bootstrap model with caveats",
     )
 
 
@@ -217,7 +232,8 @@ def _design_only_project_status(project_key: str, display_name: str) -> ProjectV
             "validated."
         ),
         metrics=(),
-        disclosures=_NOT_ADVICE_ONLY,
+        disclosures=_NOT_EXTERNALLY_VALIDATED,
+        internal_classification="design-only / not externally validated",
     )
 
 
@@ -233,7 +249,8 @@ def _experimental_project_status(project_key: str, display_name: str) -> Project
             "not validated and is not intended for external use."
         ),
         metrics=(),
-        disclosures=_NOT_ADVICE_ONLY,
+        disclosures=_NOT_EXTERNALLY_VALIDATED,
+        internal_classification="experimental / internal only",
     )
 
 

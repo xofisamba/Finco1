@@ -57,8 +57,11 @@ Solar/Wind.
 - `MetricValidationLevel` — `validated` or `methodology_caveat`.
 - `MetricValidationLabel` — one metric's display name, level, and
   (for caveated metrics) caveat text.
-- `ProjectValidationStatus` — a project's tier, tier label/description,
-  tuple of metric labels, and tuple of disclosure strings.
+- `ProjectValidationStatus` — a project's tier, user-facing tier
+  label/description, tuple of metric labels, tuple of disclosure strings,
+  and an `internal_classification` string (audit/dev-facing only, e.g.
+  `"validated generic bootstrap model with caveats"` — never rendered in
+  the UI or an export; use `tier_label`/`tier_description` there).
 - `get_validation_status(project_key)` — the lookup entry point, tolerant
   of the various spellings already used elsewhere in the codebase
   (`"tuho"`, `"oborovo"`, `"solar"`/`"generic_solar"`,
