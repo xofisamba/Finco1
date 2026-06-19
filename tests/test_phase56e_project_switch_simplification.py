@@ -341,11 +341,15 @@ class TestProjectOriginPill:
 
     def test_origin_pill_uses_product_neutral_wording(self):
         """The origin pill must use neutral product wording
-        (Reference / My project / Saved baseline) — NOT 'Validated'."""
+        (Example Project / My project) — NOT 'Validated'.
+
+        U3-SAVED-PROJECT-FLOW-CLEANUP: 'Reference' and 'Saved baseline'
+        were replaced with the external-friendly 'Example Project' label
+        for both the factory_template and saved_baseline origins.
+        """
         text = PROJECT_SELECTOR.read_text()
-        assert "Reference" in text
+        assert "Example Project" in text
         assert "My project" in text
-        assert "Saved baseline" in text
 
 
 # ============================================================

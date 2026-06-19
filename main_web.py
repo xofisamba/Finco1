@@ -27,6 +27,10 @@ from app.project_factories import create_default_solar_project, create_default_w
 # to render the 'Create editable copy' button.
 from app.ui.protected_reference_service import is_protected_reference
 
+# U3-SAVED-PROJECT-FLOW-CLEANUP: per-project validation tier badge for
+# the project browser cards. Presentation-only; no engine/formula impact.
+from app.validation_status import get_validation_status
+
 # Import schema and adapter for custom inputs
 from app.input_schema import ProjectInputsSchema, RevenueInput, CapexInput, OpexInput, DebtInput
 from app.input_adapter import SnapshotInputError, build_projectinputs, build_projectinputs_from_snapshot
@@ -1556,6 +1560,63 @@ def _consolidated_project_records(user) -> list[dict[str, str]]:
         )
     )
     return items
+
+
+def _project_validation_badge(template_source: str) -> dict[str, str]:
+    """Map a template_source (e.g. tuho/oborovo/generic_solar/generic_wind)
+    to a user-facing validation tier label + tone for the project browser
+    card. Presentation-only -- does not call any engine or validation
+    logic, just labels the existing static classification."""
+    status = get_validation_status(template_source or "")
+    return {"label": status.tier_label, "tone": status.tier_tone}
+
+
+def _my_project_card(record) -> dict[str, str]:
+    snapshot = record.baseline_snapshot or {}
+    return {
+        "project_code": record.project_code,
+        "name": record.project_name,
+        "project_type": record.project_type or "",
+        "country": snapshot.get("country_market", "") or "",
+        "capacity_mw": snapshot.get("capacity_mw", "") or "",
+        "last_saved": _format_ui_timestamp(getattr(record, "updated_at", None)),
+        "validation": _project_validation_badge(record.template_source or ""),
+    }
+
+
+def _my_project_cards(user) -> list[dict[str, str]]:
+    """U3-SAVED-PROJECT-FLOW-CLEANUP: 'My Projects' cards for the project
+    browser. User-created projects only, most-recently-saved first."""
+    records = [
+        r for r in list_project_records(user_id=user.user_id)
+        if r.project_origin == "user_created"
+    ]
+    records.sort(
+        key=lambda r: getattr(r, "updated_at", None).timestamp() if getattr(r, "updated_at", None) else 0,
+        reverse=True,
+    )
+    return [_my_project_card(r) for r in records]
+
+
+def _example_project_cards() -> list[dict[str, str]]:
+    """U3-SAVED-PROJECT-FLOW-CLEANUP: 'Example Projects' cards for the
+    project browser. Static reference projects (TUHO / Oborovo) -- always
+    available, not user-saved, shown separately from My Projects."""
+    cards = []
+    for opt in FACTORY_TEMPLATE_OPTIONS:
+        capacity_mw, _, country = opt.get("meta", "").partition(" MW · ")
+        cards.append(
+            {
+                "project_code": opt["project_code"],
+                "name": opt["label"],
+                "project_type": opt.get("project_type", ""),
+                "country": country.strip(),
+                "capacity_mw": capacity_mw.strip(),
+                "last_saved": "",
+                "validation": _project_validation_badge(opt.get("project_code", "")),
+            }
+        )
+    return cards
 
 
 def _resolve_project_record(user, project_selection: str | None, form_snapshot: dict | None = None):
@@ -3280,6 +3341,8 @@ async def project_browser(request: Request):
             "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
             "baseline_project_records": baseline_project_items,
             "user_project_records": _user_project_selector_items(user),
+            "my_project_cards": _my_project_cards(user),
+            "example_project_cards": _example_project_cards(),
             "active_project_code": request.query_params.get("active") or "",
         },
     )

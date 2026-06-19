@@ -1,17 +1,11 @@
-<!-- Project Browser — Phase P2-FIX-1
-     Single-list project browser (no internal terminology).
-     All projects (TUHO Wind, Oborovo Solar PV, Generic Solar,
-     Generic Wind, user-created) appear as normal projects.
-     No "Factory Templates" / "Saved Baselines" / "My Projects"
-     tabs. No "factory" / "fixture" / "baseline" / "calibration" /
-     "parity" / "golden" / "duplicate a baseline" / "Save As"
-     wording in normal mode.
-     Reference projects (TUHO, Oborovo) remain read-only and are
-     labelled as reference projects in the audit / reviewer mode
-     only. In normal mode they appear as ordinary projects.
-     Hidden != deleted: the underlying factory_template /
-     saved_baseline / user_created origin distinction lives in
-     the data model, not in the visible UI.
+<!-- Project Browser — U3-SAVED-PROJECT-FLOW-CLEANUP
+     Two sections, in this order:
+       1. My Projects   — user-created, most-recently-saved first.
+       2. Example Projects — TUHO / Oborovo reference projects, always
+          available, clearly distinguished from user-created work.
+     Cards show: name, technology, country, capacity, last saved (My
+     Projects only), and a validation-status badge. No template_source,
+     factory identifiers, or internal IDs are shown.
      Triggered by "Load / Switch" in sidebar. -->
 
 <div class="project-browser" id="project-browser">
@@ -22,11 +16,12 @@
     <button type="button" class="btn btn-ghost pb-close" onclick="closeProjectBrowser()">✕ Close</button>
   </div>
 
-  <div class="pb-section active" id="pb-all">
-    {% if consolidated_project_records %}
+  <div class="pb-section active" id="pb-my-projects">
+    <div class="pb-section-title">My Projects</div>
+    {% if my_project_cards %}
     <div class="pb-grid">
-      {% for item in consolidated_project_records %}
-      <div class="pb-card pb-card--{{ item.origin_class }} {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
+      {% for item in my_project_cards %}
+      <div class="pb-card pb-card--mine {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
            onclick="switchToProject('{{ item.project_code }}')"
            role="button"
            tabindex="0"
@@ -35,17 +30,57 @@
           {{ item.project_type or 'Project' }}
         </div>
         <div class="pb-card-info">
-          <div class="pb-card-name">{{ item.label }}</div>
-          <div class="pb-card-meta">{{ item.meta }}</div>
+          <div class="pb-card-name">{{ item.name }}</div>
+          <div class="pb-card-meta">
+            {{ item.project_type }}{% if item.country %} · {{ item.country }}{% endif %}{% if item.capacity_mw %} · {{ item.capacity_mw }} MW{% endif %}
+          </div>
+          <div class="pb-card-saved">Last saved {{ item.last_saved }}</div>
         </div>
-        {% if active_project_code == item.project_code %}
-        <div class="pb-card-active-badge">● Active</div>
-        {% endif %}
+        <div class="pb-card-badges">
+          <span class="pb-validation-badge pb-validation-badge--{{ item.validation.tone }}">{{ item.validation.label }}</span>
+          {% if active_project_code == item.project_code %}
+          <div class="pb-card-active-badge">● Active</div>
+          {% endif %}
+        </div>
       </div>
       {% endfor %}
     </div>
     {% else %}
     <div class="pb-empty">No projects yet. Create a new project to get started.</div>
+    {% endif %}
+  </div>
+
+  <div class="pb-section active" id="pb-example-projects">
+    <div class="pb-section-title">Example Projects</div>
+    <div class="pb-section-subtitle">Reference projects you can open, explore, and copy. Always available.</div>
+    {% if example_project_cards %}
+    <div class="pb-grid">
+      {% for item in example_project_cards %}
+      <div class="pb-card pb-card--example {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
+           onclick="switchToProject('{{ item.project_code }}')"
+           role="button"
+           tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
+        <div class="pb-card-icon pb-card-icon--{% if item.project_type == 'Wind' %}wind{% elif item.project_type == 'Solar' %}solar{% else %}project{% endif %}">
+          {{ item.project_type or 'Project' }}
+        </div>
+        <div class="pb-card-info">
+          <div class="pb-card-name">{{ item.name }}</div>
+          <div class="pb-card-meta">
+            {{ item.project_type }}{% if item.country %} · {{ item.country }}{% endif %}{% if item.capacity_mw %} · {{ item.capacity_mw }} MW{% endif %}
+          </div>
+        </div>
+        <div class="pb-card-badges">
+          <span class="pb-validation-badge pb-validation-badge--{{ item.validation.tone }}">{{ item.validation.label }}</span>
+          {% if active_project_code == item.project_code %}
+          <div class="pb-card-active-badge">● Active</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pb-empty">No example projects available.</div>
     {% endif %}
   </div>
 
@@ -90,8 +125,19 @@
 }
 
 /* ── Sections ───────────────────────────────────────────────────────────── */
-.pb-section { display: none; }
-.pb-section.active { display: block; }
+.pb-section { margin-bottom: 1.5rem; }
+.pb-section:last-child { margin-bottom: 0; }
+.pb-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+.pb-section-subtitle {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.6rem;
+}
 
 /* ── Project grid ───────────────────────────────────────────────────────── */
 .pb-grid {
@@ -153,6 +199,30 @@
   color: var(--muted);
   margin-top: 0.15rem;
 }
+.pb-card-saved {
+  font-size: 0.66rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.pb-card-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.pb-validation-badge {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pb-validation-badge--pass { background: rgba(0,180,120,0.15); color: #2eb87c; }
+.pb-validation-badge--warn { background: rgba(255,183,0,0.15); color: #cf9b1f; }
+.pb-validation-badge--fail { background: rgba(220,60,60,0.15); color: #d6473f; }
 
 .pb-card-active-badge {
   font-size: 0.68rem;
