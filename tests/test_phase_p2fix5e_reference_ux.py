@@ -375,6 +375,9 @@ class TestFileScope:
             "tests/test_g1d_validation_status_reporting.py",
             "tests/test_phase25b2_multi_scenario_compare.py",
             "tests/test_u7_error_warning_cleanup.py",
+            # U8-EXTERNAL-PILOT-GUIDE cross-arc allowlist (docs-only)
+            "docs/external_pilot_guide.md",
+            "tests/test_u8_external_pilot_guide.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
