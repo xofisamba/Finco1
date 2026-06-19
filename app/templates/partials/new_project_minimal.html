@@ -42,8 +42,13 @@
     Capacity (MW)
     <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required placeholder="e.g. 50" />
   </label>
-  {# Hidden: template source (generic_solar default, user does not select in minimal flow) #}
-  <input type="hidden" name="template_source" id="npm-template_source" value="{{ submitted.template_source or default_template_source }}" />
+  {# Hidden: template source is intentionally left blank here. The
+     server derives the correct generic template (Solar/Wind) from the
+     Technology field above via _normalize_template_source(), so a
+     hardcoded value here would silently mismatch whenever the user
+     picks a technology other than the hardcoded default and fail
+     validation ("X templates require project type X"). #}
+  <input type="hidden" name="template_source" id="npm-template_source" value="" />
   <div id="new-project-result"></div>
   <div class="create-form-actions">
     <button class="btn btn-primary" type="submit">Create project</button>

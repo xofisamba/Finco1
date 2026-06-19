@@ -982,7 +982,24 @@ def _apply_new_project_required_inputs(
     template_source: str,
     submitted: dict[str, str],
 ) -> dict[str, str]:
+    """Layer the user's submitted form values onto the factory-derived
+    baseline snapshot.
+
+    U2-NEW-PROJECT-SIMPLIFICATION: the minimal create form only submits
+    project_name/project_type/country_market/capacity_mw -- every other
+    field arrives as an empty string. A blank submitted value must NOT
+    blank out the factory default already present in ``baseline_snapshot``
+    (e.g. tariff, PPA term, OPEX, CAPEX, gearing, interest rate, tenor,
+    DSCR, COD, construction/horizon years); it should simply leave that
+    default in place so the created project remains runnable/exportable
+    with the same assumptions as the underlying generic template. Only
+    a non-blank submitted value overrides the baseline default.
+    """
     snapshot = dict(baseline_snapshot)
+
+    def _override_or_keep(field_name: str, formatted_value: str) -> str:
+        return formatted_value if formatted_value else snapshot.get(field_name, "")
+
     snapshot.update(
         {
             "active_project": project_code,
@@ -990,20 +1007,20 @@ def _apply_new_project_required_inputs(
             "project_type": project_type,
             "project_origin": project_origin,
             "template_source": template_source,
-            "country_market": _coerce_form_text(submitted.get("country_market")),
-            "capacity_mw": _format_snapshot_number(_coerce_form_float(submitted.get("capacity_mw"))),
-            "cod_date": _coerce_form_text(submitted.get("cod_date")),
-            "construction_months": _format_snapshot_number(_coerce_form_int(submitted.get("construction_months"))),
-            "horizon_years": _format_snapshot_number(_coerce_form_int(submitted.get("horizon_years"))),
-            "tariff_eur_mwh": _format_snapshot_number(_coerce_form_float(submitted.get("tariff_eur_mwh"))),
-            "ppa_term_years": _format_snapshot_number(_coerce_form_int(submitted.get("ppa_term_years"))),
-            "p50_hours": _format_snapshot_number(_coerce_form_float(submitted.get("p50_hours"))),
-            "opex_y1_keur": _format_snapshot_number(_coerce_form_float(submitted.get("opex_y1_keur"))),
-            "total_capex_keur": _format_snapshot_number(_coerce_form_float(submitted.get("total_capex_keur"))),
-            "gearing_pct": _format_snapshot_number(_coerce_form_float(submitted.get("gearing_pct"))),
-            "interest_rate_pct": _format_snapshot_number(_coerce_form_float(submitted.get("interest_rate_pct"))),
-            "tenor_years": _format_snapshot_number(_coerce_form_int(submitted.get("tenor_years"))),
-            "target_dscr": _format_snapshot_number(_coerce_form_float(submitted.get("target_dscr")), decimals=2),
+            "country_market": _coerce_form_text(submitted.get("country_market")) or snapshot.get("country_market", ""),
+            "capacity_mw": _override_or_keep("capacity_mw", _format_snapshot_number(_coerce_form_float(submitted.get("capacity_mw")))),
+            "cod_date": _coerce_form_text(submitted.get("cod_date")) or snapshot.get("cod_date", ""),
+            "construction_months": _override_or_keep("construction_months", _format_snapshot_number(_coerce_form_int(submitted.get("construction_months")))),
+            "horizon_years": _override_or_keep("horizon_years", _format_snapshot_number(_coerce_form_int(submitted.get("horizon_years")))),
+            "tariff_eur_mwh": _override_or_keep("tariff_eur_mwh", _format_snapshot_number(_coerce_form_float(submitted.get("tariff_eur_mwh")))),
+            "ppa_term_years": _override_or_keep("ppa_term_years", _format_snapshot_number(_coerce_form_int(submitted.get("ppa_term_years")))),
+            "p50_hours": _override_or_keep("p50_hours", _format_snapshot_number(_coerce_form_float(submitted.get("p50_hours")))),
+            "opex_y1_keur": _override_or_keep("opex_y1_keur", _format_snapshot_number(_coerce_form_float(submitted.get("opex_y1_keur")))),
+            "total_capex_keur": _override_or_keep("total_capex_keur", _format_snapshot_number(_coerce_form_float(submitted.get("total_capex_keur")))),
+            "gearing_pct": _override_or_keep("gearing_pct", _format_snapshot_number(_coerce_form_float(submitted.get("gearing_pct")))),
+            "interest_rate_pct": _override_or_keep("interest_rate_pct", _format_snapshot_number(_coerce_form_float(submitted.get("interest_rate_pct")))),
+            "tenor_years": _override_or_keep("tenor_years", _format_snapshot_number(_coerce_form_int(submitted.get("tenor_years")))),
+            "target_dscr": _override_or_keep("target_dscr", _format_snapshot_number(_coerce_form_float(submitted.get("target_dscr")), decimals=2)),
         }
     )
     # Phase 56C + 56D: write the new v1 master-data fields and
