@@ -29,6 +29,7 @@ from app.input_helpers import (
 )
 from app.output_tables import build_debt_table, build_revenue_table
 from app.ui.project_context import ProjectContext, get_project_context
+from app.validation_status import MetricValidationLevel, get_validation_status
 from domain.financial_statements import assemble_financial_statements
 
 
@@ -136,6 +137,7 @@ INSTITUTIONAL_SHEET_DEFINITIONS = (
     WorkbookSheetDefinition(14, "Balance Sheet", "runtime_bound", "runtime", True, "Offline balance sheet assembly from existing runtime result."),
     WorkbookSheetDefinition(15, "Audit", "runtime_bound", "review", True, "Runtime source notes, provenance, and audit boundary statements."),
     WorkbookSheetDefinition(16, "Gap Register", "runtime_bound", "review", True, "Known gaps and accepted conventions reused from existing documentation."),
+    WorkbookSheetDefinition(17, "Validation Status", "implemented", "review", True, "G1D: project validation tier and per-metric validated/methodology-caveat labels."),
 )
 
 
@@ -226,6 +228,7 @@ def export_institutional_workbook_skeleton(project: str) -> bytes:
     _write_balance_sheet(workbook.create_sheet("Balance Sheet"), bundle)
     _write_audit_sheet(workbook.create_sheet("Audit"), bundle)
     _write_gap_register_sheet(workbook.create_sheet("Gap Register"), bundle)
+    _write_validation_status_sheet(workbook.create_sheet("Validation Status"), bundle)
 
     for sheet in workbook.worksheets:
         _format_sheet(sheet)
@@ -820,6 +823,42 @@ def _write_gap_register_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         rows,
         fill_column=3,
     )
+
+
+def _write_validation_status_sheet(sheet, bundle: WorkbookExportBundle) -> None:
+    """G1D: project validation tier and per-metric validation labels.
+
+    Presentation-only — classifies and labels existing runtime outputs.
+    Does not change any model formula or factory default.
+    """
+    _write_metadata_block(sheet, bundle, "review")
+    status = get_validation_status(bundle.active_project)
+    rows = [
+        ("Project", status.display_name, "review", "Validation classification subject."),
+        ("Validation tier", status.tier_label, "review", status.tier_description),
+    ]
+    next_row = _write_key_value_section(sheet, 6, "Validation tier", rows)
+
+    if status.metrics:
+        metric_rows = [
+            (
+                entry.display_name,
+                "Validated" if entry.level == MetricValidationLevel.VALIDATED else "Methodology caveat",
+                entry.caveat_text or "Validated against the internal reference workbook.",
+            )
+            for entry in status.metrics
+        ]
+        next_row = _write_simple_table(
+            sheet,
+            next_row,
+            "Metric-level validation labels",
+            ("Metric", "Status", "Notes"),
+            metric_rows,
+            fill_column=1,
+        )
+
+    disclosure_rows = [("Disclosure", text, "review", "") for text in status.disclosures]
+    _write_key_value_section(sheet, next_row, "Disclosures", disclosure_rows)
 
 
 def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
