@@ -28,7 +28,7 @@ class ValidationTier(str, Enum):
 
 
 TIER_LABELS: dict[ValidationTier, str] = {
-    ValidationTier.CALIBRATED_FROZEN_REFERENCE: "Calibrated reference project",
+    ValidationTier.CALIBRATED_FROZEN_REFERENCE: "Validated reference project",
     ValidationTier.VALIDATED_WITH_CAVEATS: "Validated model with caveats",
     ValidationTier.DESIGN_ONLY: "Design-only, not externally validated",
     ValidationTier.EXPERIMENTAL: "Experimental, internal only",
@@ -191,7 +191,7 @@ def _reference_project_status(project_key: str, display_name: str) -> ProjectVal
         tier_label=TIER_LABELS[ValidationTier.CALIBRATED_FROZEN_REFERENCE],
         tier_tone=TIER_TONE[ValidationTier.CALIBRATED_FROZEN_REFERENCE],
         tier_description=(
-            f"{display_name} is an internal calibrated reference project. Its "
+            f"{display_name} is a validated reference project. Its "
             "inputs and results are held fixed and used as a known-good anchor "
             "for testing the model."
         ),
