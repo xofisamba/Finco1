@@ -3313,6 +3313,28 @@ async def projects_redirect(request: Request):
     return RedirectResponse(url="/projects/browse", status_code=302)
 
 
+@app.get("/known-limitations")
+async def known_limitations_page(request: Request):
+    """U6: standalone Known Limitations page, reachable from Help and footer."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        request=request,
+        name="known_limitations_page.html",
+        context={"user": user},
+    )
+
+
+@app.get("/help")
+async def help_page(request: Request):
+    """Redirect the header Help link to the project browser's Help/Guidance entry point."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url="/projects/browse", status_code=302)
+
+
 @app.get("/projects/browse")
 async def project_browser(request: Request):
     """Render project browser partial — factory templates, baselines, user projects."""

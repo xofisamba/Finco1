@@ -378,6 +378,10 @@ class TestFileScope:
             # U8-EXTERNAL-PILOT-GUIDE cross-arc allowlist (docs-only)
             "docs/external_pilot_guide.md",
             "tests/test_u8_external_pilot_guide.py",
+            # U6-KNOWN-LIMITATIONS-PAGE cross-arc allowlist
+            "app/templates/known_limitations_page.html",
+            "app/templates/partials/_app_footer.html",
+            "tests/test_u6_known_limitations_page.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
