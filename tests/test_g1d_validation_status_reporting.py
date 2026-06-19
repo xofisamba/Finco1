@@ -151,6 +151,42 @@ def test_validation_status_sheet_runs_for_all_runnable_projects() -> None:
         assert expected_tier_label in values, f"{project_key}: missing tier label in Validation Status sheet"
 
 
+@pytest.mark.parametrize("project_key", ["tuho", "oborovo", "generic_solar", "generic_wind"])
+def test_export_metadata_non_claims_block_does_not_contradict_validation_status(
+    project_key: str,
+) -> None:
+    """The institutional workbook's Export_Metadata non-claims block must
+    not contradict the Validation Status sheet added by G1D: Generic
+    Solar/Wind are now classified as validated-with-caveats, so the old
+    'exploratory and unvalidated' / 'do not use for financial decisions'
+    wording (written before G1D) is no longer accurate and must be gone."""
+    workbook_bytes = export_institutional_workbook_skeleton(project_key)
+    workbook = load_workbook(filename=__import__("io").BytesIO(workbook_bytes))
+    sheet = workbook["Export_Metadata"]
+    values = [str(cell.value) for row in sheet.iter_rows() for cell in row if cell.value]
+    text = " ".join(values)
+
+    assert "Generic solar/wind paths remain exploratory and unvalidated" not in text
+    assert "Do not use generic paths for financial decisions" not in text
+
+    assert (
+        "Generic Solar/Wind are validated generic models with documented methodology caveats"
+        in text
+    )
+    assert "BESS/Hybrid and Portfolio remain not externally validated" in text
+    assert (
+        "All outputs are financial modelling estimates only and do not constitute "
+        "legal, tax, accounting, or investment advice" in text
+    )
+
+    # Stronger warnings must remain untouched.
+    assert "NOT bank/lender approval" in text
+    assert "NOT external audit certification" in text
+    assert "NOT SaaS-ready or enterprise-ready" in text
+    assert "G20 remains BLOCKED" in text
+    assert "R99/R102 remain NOT APPROVED" in text
+
+
 def test_engine_files_unchanged() -> None:
     """This validation-reporting-only branch must not touch runtime/domain
     code or factory defaults."""

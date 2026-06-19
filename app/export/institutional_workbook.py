@@ -885,6 +885,26 @@ def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     )
 
     rows_data = metadata_rows(meta)
+    rows_data = [
+        (
+            (
+                "Generic boundary",
+                (
+                    "TUHO and Oborovo are calibrated reference projects within "
+                    "controlled trusted pilot scope. Generic Solar/Wind are "
+                    "validated generic models with documented methodology "
+                    "caveats; use outputs only within the documented validation "
+                    "scope and caveats (see Validation Status sheet). BESS/Hybrid "
+                    "and Portfolio remain not externally validated. All outputs "
+                    "are financial modelling estimates only and do not "
+                    "constitute legal, tax, accounting, or investment advice."
+                ),
+            )
+            if label == "Generic boundary"
+            else (label, value)
+        )
+        for label, value in rows_data
+    ]
 
     start_row = 4
     sheet.cell(row=start_row, column=1, value="Field")
@@ -916,9 +936,11 @@ def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         "INTERNAL REVIEW EVIDENCE ONLY.",
         "NOT bank/lender approval. NOT external audit certification.",
         "NOT SaaS-ready or enterprise-ready. Controlled trusted pilot scope only.",
-        "TUHO and Oborovo are within controlled trusted pilot scope.",
-        "Generic solar/wind paths remain exploratory and unvalidated.",
-        "Do not use generic paths for financial decisions.",
+        "TUHO and Oborovo are calibrated reference projects within controlled trusted pilot scope.",
+        "Generic Solar/Wind are validated generic models with documented methodology caveats.",
+        "Use outputs only within the documented validation scope and caveats.",
+        "BESS/Hybrid and Portfolio remain not externally validated.",
+        "All outputs are financial modelling estimates only and do not constitute legal, tax, accounting, or investment advice.",
         "Backend is source of truth. Exports reflect the last clean backend run.",
         "G20 remains BLOCKED. R99/R102 remain NOT APPROVED.",
         "partial_pay_sweep not promoted. flat/min DSCR sculpting not promoted.",
