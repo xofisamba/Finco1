@@ -1,7 +1,7 @@
 {
   "workbook_filename": "GenericWind_ReferenceModel.xlsx",
   "workbook_path": "validation/reference_models/GenericWind_ReferenceModel.xlsx",
-  "workbook_sha256": "b889d03020c12332e21ea80446f8f019cfdd344423babe42a52b8a8651c3df4b",
+  "workbook_sha256": "6b370fc3799c916c6bf4a9fa1f48d4bd34122497ee247d0c82e59a50e4f24b5c",
   "extractor_version": "1.0.0",
   "extraction_script": "scripts/extract_generic_golden.py",
   "spec_version": "0.1",

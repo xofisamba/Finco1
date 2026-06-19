@@ -1,7 +1,7 @@
 {
   "project": "generic_wind",
   "source_workbook": "validation/reference_models/GenericWind_ReferenceModel.xlsx",
-  "workbook_sha256": "b889d03020c12332e21ea80446f8f019cfdd344423babe42a52b8a8651c3df4b",
+  "workbook_sha256": "6b370fc3799c916c6bf4a9fa1f48d4bd34122497ee247d0c82e59a50e4f24b5c",
   "extraction_note": "Tier-1 anchors extracted from the bootstrap reference workbook's cached formula values via openpyxl only; no formula evaluation engine or Finco1 runtime code was executed by this script. The source workbook is committed to the repository (it is the deliverable, not a private artifact).",
   "extraction_date": "2026-06-18T13:24:41",
   "spec_version": "0.1",
@@ -16,91 +16,91 @@
       "sheet": "Summary",
       "cell": "C15",
       "formula": "=AVERAGEIF('Cash Flow'!F11:BC11,\">0\")",
-      "value": 1.2528217841265776
+      "value": 2.38764620203107
     },
     "bank_fees_keur": {
       "sheet": "Summary",
       "cell": "C10",
-      "formula": "='Inputs'!$C$36",
-      "value": 0.0
+      "formula": "=Inputs!$C$36",
+      "value": 0
     },
     "equity_irr": {
       "sheet": "Summary",
       "cell": "C18",
-      "formula": "='Equity'!$C$13",
-      "value": 0.1864790926440129
+      "formula": "=Equity!$C$13",
+      "value": 0.227674746413752
     },
     "idc_keur": {
       "sheet": "Summary",
       "cell": "C9",
-      "formula": "='IDC'!$C$30",
-      "value": 0.0
+      "formula": "=IDC!$C$30",
+      "value": 0
     },
     "min_dscr": {
       "sheet": "Summary",
       "cell": "C16",
       "formula": "=MIN('Cash Flow'!F11:BC11)",
-      "value": 1.2127340608825135
+      "value": 2.30396158800782
     },
     "project_irr": {
       "sheet": "Summary",
       "cell": "C17",
       "formula": "='Cash Flow'!$C$14",
-      "value": 0.15843160935527992
+      "value": 0.160907156743545
     },
     "realized_gearing": {
       "sheet": "Summary",
       "cell": "C19",
       "formula": "=C11/C8*100",
-      "value": 75.0
+      "value": 75
     },
     "senior_debt_keur": {
       "sheet": "Summary",
       "cell": "C11",
       "formula": "='Debt Service'!$C$16",
-      "value": 32250.0
+      "value": 32250
     },
     "senior_debt_service_p1_keur": {
       "sheet": "Summary",
       "cell": "C12",
       "formula": "='Debt Service'!F22",
-      "value": 2670.788020833333
+      "value": 1395.1101965681
     },
     "senior_debt_service_p2_keur": {
       "sheet": "Summary",
       "cell": "C13",
       "formula": "='Debt Service'!G22",
-      "value": 2670.788020833333
+      "value": 1395.1101965681
     },
     "senior_debt_service_p3_keur": {
       "sheet": "Summary",
       "cell": "C14",
       "formula": "='Debt Service'!H22",
-      "value": 2722.481145833333
+      "value": 1422.11256636212
     },
     "total_capex_keur": {
       "sheet": "Summary",
       "cell": "C8",
-      "formula": "='CapEx'!$BE$10",
-      "value": 43000.0
+      "formula": "=CapEx!$BE$10",
+      "value": 43000
     },
     "total_ebitda_keur": {
       "sheet": "Summary",
       "cell": "C7",
       "formula": "=SUM('P&L'!C7:BC7)",
-      "value": 267579.0616930717
+      "value": 267579.061693072
     },
     "total_opex_keur": {
       "sheet": "Summary",
       "cell": "C6",
-      "formula": "='OpEx'!$C$12",
-      "value": 17616.664847780077
+      "formula": "=OpEx!$C$12",
+      "value": 17616.6648477801
     },
     "total_revenue_keur": {
       "sheet": "Summary",
       "cell": "C5",
-      "formula": "='Revenue'!$C$15",
-      "value": 285195.7265408518
+      "formula": "=Revenue!$C$15",
+      "value": 285195.726540852
     }
   },
   "initial_tolerances": {

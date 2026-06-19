@@ -1,7 +1,7 @@
 {
   "workbook_filename": "GenericSolar_ReferenceModel.xlsx",
   "workbook_path": "validation/reference_models/GenericSolar_ReferenceModel.xlsx",
-  "workbook_sha256": "58db92c99185199eec1ca19101a4ba5bedca444aa31840a2a56d00e3a05bde00",
+  "workbook_sha256": "4452efc62336b617731717ba1383165d3e21c0e1a70b8ff73fb2b7fd4d25ecd3",
   "extractor_version": "1.0.0",
   "extraction_script": "scripts/extract_generic_golden.py",
   "spec_version": "0.1",

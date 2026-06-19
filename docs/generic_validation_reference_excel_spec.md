@@ -263,6 +263,37 @@ The senior debt amount is sized so that the resulting DSCR schedule's average (o
 
 **Important**: The modeler may use any equivalent iterative solver (Excel Solver, Goal Seek, manual bisection) but the final senior_debt amount must equal what the iterative DSCR-sculpt formula yields. Do NOT cap the result at gearing × capex unless the spec explicitly requires it.
 
+### 5.6a Gearing Cap Binding: Rescale Convention (G1E)
+
+For Generic Solar and Generic Wind, the gearing cap (`gearing_ratio × sizing_base`) is *below* the uncapped DSCR-sized debt amount, so the gearing cap binds:
+
+```
+dscr_debt        = NPV of debt-service capacity, uncapped (Section 5.6, step 2-5)
+gearing_cap_keur = gearing_ratio × sizing_base_keur
+senior_debt      = MIN(dscr_debt, gearing_cap_keur)     # gearing wins here
+```
+
+When `senior_debt < dscr_debt`, there are two structurally different ways to absorb the shortfall, and they produce different debt-service *shapes* (not different total principal — both repay exactly `senior_debt`):
+
+- **Truncate-tenor convention (legacy bootstrap convention, deprecated by this revision)**: keep the original per-period debt-service-capacity row (`cfads_sizing / target_dscr`) unchanged, and let the smaller principal amortize faster. `senior_ds_period = MIN(capacity_period, opening_balance + interest_period)`. The realized DSCR stays exactly at `target_dscr` while debt is outstanding, then the debt pays off early (well before the stated senior tenor) and DSCR becomes undefined/`n/a` for the remaining tenor periods.
+- **Schedule-rescale convention (runtime/production convention, now authoritative — see Section 6 rationale)**: scale the entire per-period debt-service-capacity row by `scale = senior_debt / dscr_debt` and amortize over the **full original tenor**:
+  ```
+  scale                  = MIN(1, senior_debt / dscr_debt)
+  capacity_period_scaled = capacity_period × scale
+  senior_ds_period       = MIN(capacity_period_scaled, opening_balance + interest_period)
+  ```
+  Because the schedule is rescaled instead of truncated, the realized DSCR is **flat at `target_dscr / scale`** (higher than `target_dscr`, since `scale < 1`) across the *entire* stated senior tenor, and debt is never paid off early.
+
+`scale = 1` (no rescale, identical to the truncate convention) whenever the gearing cap does not bind. The rescale step only changes anything when `senior_debt < dscr_debt`.
+
+**Required reference workbook formulas** (Debt Service tab):
+```
+C17 (Schedule rescale factor) = IF(C14 > 0, MIN(1, C16 / C14), 1)
+E18:AH18 (Rescaled debt service capacity) = E13:AH13 × $C$17   [period columns, mirrors row 13's range]
+E22:AH22 (Senior debt service) = MIN(E18:AH18, E20:AH20 + E21:AH21)   [was MIN(E13:AH13, ...) under the legacy truncate convention]
+```
+Row 13 (the uncapped capacity used to size `C14` via NPV) is left unchanged, to avoid a circular reference between the sizing NPV and the rescale factor that depends on the sizing result.
+
 ### 5.7 Senior Debt Service
 
 For each operating period:
@@ -349,6 +380,11 @@ Where `equity_cashflow_series` includes:
 | 13 | Named ranges | Use named ranges for clarity (e.g. `ppa_tariff`, `capacity_mw`) |
 | 14 | Negative numbers | Show as `(123)` or `-123` (be consistent) |
 | 15 | Color coding | Optional but recommended: blue for inputs, black for formulas |
+| 16 | Gearing-cap-binding convention | **Schedule-rescale convention** (Section 5.6a) is authoritative whenever `senior_debt < dscr_debt`. Do NOT use the truncate-tenor convention. |
+
+### 6.1 Why the Rescale Convention Is Authoritative for Generic Bootstrap Validation (G1E)
+
+When Generic Solar/Wind's gearing cap binds, `domain/waterfall/waterfall_engine.py`'s `run_waterfall()` (the shared production sculpting/amortization engine) always rescales the debt-service-capacity schedule across the full senior tenor rather than truncating it (see the `scale = sizing_debt / dscr_debt` block). This is not a Generic-specific choice — it is shared engine behavior also exercised by the TUHO and Oborovo bootstrap projects, whose anchor parity already depends on it. Changing the engine to match the bootstrap workbooks' legacy truncate-tenor convention would risk regressing TUHO/Oborovo parity (out of scope and explicitly forbidden), whereas revising the two Generic reference workbooks to mirror the engine's convention is local, low-risk, and brings the *reference* in line with the one convention the runtime actually implements everywhere. The reference workbooks were a bootstrap stand-in built ahead of the engine's debt-sizing logic being finalized; this revision retires the bootstrap-era convention in favor of the now-confirmed production behavior.
 
 ---
 
