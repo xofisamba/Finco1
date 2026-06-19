@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Known Limitations - Finco One</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
+  <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="standalone-page standalone-page--known-limitations"
+      data-page="known-limitations">
+
+  {% include "partials/_standalone_header.html" %}
+
+  <main class="standalone-main" id="standalone-main">
+    <div class="page-shell page-shell--known-limitations" id="page-shell-known-limitations">
+      <div class="page-shell-header">
+        <h1 class="page-shell-title">Known Limitations</h1>
+        <p class="page-shell-desc">
+          What is validated, what carries a methodology caveat, what is not
+          yet validated, and what is not yet supported across Finco One
+          projects.
+        </p>
+      </div>
+
+      <section class="kl-section" id="kl-validated-models">
+        <h2 class="kl-section-title">Validated Models</h2>
+        <p>
+          <strong>Generic Solar</strong> and <strong>Generic Wind</strong>
+          are validated against internal reference workbooks, not a full
+          external bank model review. Core cost and revenue figures —
+          CAPEX, Revenue, OPEX, EBITDA, IDC, bank fees, senior debt amount,
+          realized gearing, and equity funding stack — agree with the
+          reference workbook to well under 0.2%.
+        </p>
+        <p>
+          TUHO and Oborovo are held as fixed, validated reference projects
+          and are used as a known-good anchor for testing the model; they
+          are not editable in place (see the "Protected original" notice
+          on those projects).
+        </p>
+      </section>
+
+      <section class="kl-section" id="kl-methodology-caveats">
+        <h2 class="kl-section-title">Methodology Caveats</h2>
+        <ul class="kl-list">
+          <li>
+            <strong>Debt sizing proxy.</strong> Debt service shape, DSCR,
+            and IRR figures carry a documented methodology caveat versus
+            the reference workbooks. The runtime model's debt-sizing proxy
+            differs structurally from the reference workbook's own proxy:
+            senior debt service amortization shape can differ even though
+            the total senior debt amount and gearing match the reference
+            workbook closely.
+          </li>
+          <li>
+            <strong>Project IRR definition.</strong> Project IRR is
+            calculated on an unlevered basis and can diverge from the
+            reference workbook, which nets real interest expense through
+            tax. This is a deliberate, documented modelling choice, not an
+            error.
+          </li>
+          <li>
+            <strong>Scenario assumptions.</strong> Scenario comparisons
+            (compare and multi-compare) are descriptive: they compare
+            saved scenario snapshots and saved runtime summaries, not
+            unsaved draft values. For projects without full Excel-parity
+            validation, comparison results are illustrative and should
+            not be used for external decisions.
+          </li>
+        </ul>
+      </section>
+
+      <section class="kl-section" id="kl-not-yet-validated">
+        <h2 class="kl-section-title">Not Yet Validated</h2>
+        <p>
+          The following configurations run and produce results, but have
+          not been validated against a reference workbook:
+        </p>
+        <ul class="kl-list">
+          <li><strong>BESS</strong> (Generic BESS)</li>
+          <li><strong>Hybrid</strong> (Generic Solar + BESS, Generic Wind + BESS)</li>
+          <li><strong>Portfolio</strong> (experimental, internal use only)</li>
+        </ul>
+      </section>
+
+      <section class="kl-section" id="kl-not-yet-supported">
+        <h2 class="kl-section-title">Not Yet Supported</h2>
+        <ul class="kl-list">
+          <li><strong>Multi-lender debt</strong> — only a single senior debt instrument is modelled; no mezzanine, junior debt, or multi-lender syndication.</li>
+          <li><strong>Advanced tax structures</strong> — beyond loss carryforward, complex tax equity or partnership structures are not modelled.</li>
+          <li><strong>R99/R102 promoted workflow</strong> — R99/R102 are audit-only fields, presented for traceability only. They are not approved for runtime cash routing, distribution triggers, or SHL service decisions.</li>
+        </ul>
+      </section>
+
+      <section class="kl-section kl-disclaimer" id="kl-disclaimer">
+        <p>
+          <strong>Disclaimer:</strong> Outputs are financial modelling estimates and not legal, tax, accounting or investment advice.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  {% include "partials/_app_footer.html" %}
+
+</body>
+</html>
