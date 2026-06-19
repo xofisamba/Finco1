@@ -95,6 +95,22 @@ def test_generic_wind_balancing_cost_pv_zeroed() -> None:
     assert inputs.revenue.balancing_cost_pv == 0.0
 
 
+def test_generic_solar_equity_funding_matches_gearing_complement() -> None:
+    """G1H: share_capital_keur + shl_amount_keur must fund the full
+    non-senior-debt share implied by gearing_ratio=0.75 (33,000 * 0.25 =
+    8,250 kEUR), closing the funding gap identified in G1F."""
+    inputs = create_default_solar_project()
+    total = inputs.financing.share_capital_keur + inputs.financing.shl_amount_keur
+    assert total == 8_250.0
+
+
+def test_generic_wind_equity_funding_matches_gearing_complement() -> None:
+    """G1H: same as Solar -- 43,000 * 0.25 = 10,750 kEUR."""
+    inputs = create_default_wind_project()
+    total = inputs.financing.share_capital_keur + inputs.financing.shl_amount_keur
+    assert total == 10_750.0
+
+
 def _run(factory):
     inputs = factory()
     engine = PeriodEngine(
@@ -106,6 +122,33 @@ def _run(factory):
     config = WaterfallRunConfig.from_inputs(inputs, engine)
     result = WaterfallRunner(inputs, engine).run(config)
     return inputs, result
+
+
+def test_generic_solar_senior_debt_unchanged_by_equity_fix() -> None:
+    """G1H: closing the equity/SHL funding gap must not move senior debt
+    sizing -- the gearing cap binds on total_capex, not on equity funding."""
+    _, result = _run(create_default_solar_project)
+    assert round(result.sculpting_result.debt_keur, 2) == 24_750.0
+
+
+def test_generic_wind_senior_debt_unchanged_by_equity_fix() -> None:
+    """G1H: same as Solar."""
+    _, result = _run(create_default_wind_project)
+    assert round(result.sculpting_result.debt_keur, 2) == 32_250.0
+
+
+def test_generic_solar_realized_gearing_still_75_pct() -> None:
+    """G1H: realized_gearing = senior_debt / total_capex * 100 must remain 75%."""
+    inputs, result = _run(create_default_solar_project)
+    realized_gearing = result.sculpting_result.debt_keur / inputs.capex.total_capex * 100
+    assert round(realized_gearing, 4) == 75.0
+
+
+def test_generic_wind_realized_gearing_still_75_pct() -> None:
+    """G1H: same as Solar."""
+    inputs, result = _run(create_default_wind_project)
+    realized_gearing = result.sculpting_result.debt_keur / inputs.capex.total_capex * 100
+    assert round(realized_gearing, 4) == 75.0
 
 
 def test_tuho_wind1_unchanged() -> None:

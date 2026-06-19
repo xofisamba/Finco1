@@ -208,7 +208,11 @@ def test_generic_anchor_set_is_complete(project: str) -> None:
 
 
 def test_engine_files_unchanged() -> None:
-    """This test-only branch must not touch runtime/domain/factory code."""
+    """This test-only branch must not touch runtime/domain code.
+
+    app/project_factories.py is intentionally excluded here: G1H legitimately
+    updates it (Generic Solar/Wind equity/SHL funding fix), and that change is
+    separately pinned by tests/test_g1b_factory_defaults_fix.py."""
     import hashlib
 
     expected_hashes = {
@@ -217,7 +221,6 @@ def test_engine_files_unchanged() -> None:
         "domain/inputs.py": "73dd17f60203e4121934381ef72964b6",
         "domain/revenue/generation.py": "177ef500f38bdb3c1379438c9e1d4f29",
         "domain/waterfall/waterfall_engine.py": "ddd93874e776ada65b94dda9aef678b6",
-        "app/project_factories.py": "eb1fc95ef5e0302960501670a1ff9768",
     }
     for rel_path, expected_md5 in expected_hashes.items():
         path = REPO_ROOT / rel_path

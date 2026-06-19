@@ -511,7 +511,12 @@ def create_default_solar_project(
     revenue = RevenueParams(ppa_base_tariff=55.0, ppa_term_years=10, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=solar_market_curve,
         market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0)
-    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=5_000.0, shl_rate=0.08,
+    # G1H: share_capital_keur + shl_amount_keur must fund the full
+    # non-senior-debt share implied by gearing_ratio=0.75, i.e.
+    # 33,000 kEUR total_capex * 0.25 = 8,250 kEUR. Previously only
+    # 500 + 5,000 = 5,500 kEUR was funded, leaving a 2,750 kEUR gap that
+    # degenerated the equity cash-flow stream (equity_irr computed to 0.0).
+    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=7_750.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
         target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
@@ -578,7 +583,11 @@ def create_default_wind_project(
         market_scenario="Central", market_prices_curve=wind_market_curve,
         market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
         co2_enabled=True, co2_price_eur=5.0, balancing_cost_pv=0.0)
-    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=6_000.0, shl_rate=0.08,
+    # G1H: share_capital_keur + shl_amount_keur must fund the full
+    # non-senior-debt share implied by gearing_ratio=0.75, i.e.
+    # 43,000 kEUR total_capex * 0.25 = 10,750 kEUR. Previously only
+    # 500 + 6,000 = 6,500 kEUR was funded, leaving a 4,250 kEUR gap.
+    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=10_250.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
         target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
