@@ -411,6 +411,10 @@ class TestFileScope:
         allowed_prefixes = (
             "app/ui/scenario_matrix.py",
             "app/templates/partials/scenario_matrix.html",
+            # U4-SCENARIO-MATRIX-MVP cross-arc allowlist
+            "app/templates/partials/_scenario_unified_entry.html",
+            "app/templates/partials/workspace_shell.html",
+            "tests/test_u4_",
             "main_web.py",
             "static/styles.css",
             "tests/test_phase_m2_",

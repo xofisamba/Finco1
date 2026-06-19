@@ -267,6 +267,10 @@ KPI_ROWS: Tuple[MatrixRow, ...] = (
     # Read-only derived output (NOT a binding driver).
     # Distinct from the indicative gearing input above.
     MatrixRow("Realized Gearing", ROW_KIND_KPI, "realized_gearing_pct", _fmt_pct_already_pct),
+    # U4: Avg DSCR added alongside the existing Min DSCR row. Reads the
+    # same pre-existing "avg_dscr" kpi key already produced by the
+    # runtime summary builder -- no new modelling, no math changes.
+    MatrixRow("Avg DSCR", ROW_KIND_KPI, "avg_dscr", _fmt_dscr),
     MatrixRow("Min DSCR", ROW_KIND_KPI, "min_dscr", _fmt_dscr),
 )
 

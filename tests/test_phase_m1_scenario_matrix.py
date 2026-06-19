@@ -1083,6 +1083,9 @@ class TestM1FileScope:
             "app/templates/partials/project_selector.html",
             "static/styles.css",
             "tests/test_phase_p1_ux_fix_1_pilot_polish.py",
+            # U4-SCENARIO-MATRIX-MVP follow-up allowlist
+            "app/templates/partials/_scenario_unified_entry.html",
+            "tests/test_u4_scenario_matrix_mvp.py",
         }
         true_extra = [
             p for p in extra
