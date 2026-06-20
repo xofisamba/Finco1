@@ -381,8 +381,8 @@ def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Scenario name", bundle.scenario_name),
         ("Scenario revision", bundle.scenario_revision),
         ("Runtime snapshot ID", bundle.runtime_snapshot_id),
-        ("Runtime origin", bundle.runtime_origin),
-        ("Template origin", bundle.template_origin),
+        ("Runtime origin", _display_runtime_origin(bundle.runtime_origin)),
+        ("Template origin", _display_template_origin(bundle.template_origin)),
         ("Template revision", bundle.template_revision),
         ("Export template version", bundle.export_template_version),
         ("Workbook version", "Institutional Runtime Workbook — presentation edition"),
@@ -429,13 +429,13 @@ def _write_governance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Scenario name", bundle.scenario_name, "review", "Explicitly marked not_applicable when no saved scenario boundary exists."),
         ("Scenario revision", bundle.scenario_revision, "review", "Saved snapshot or scenario boundary marker where available."),
         ("Runtime snapshot ID", bundle.runtime_snapshot_id, "review", "Explicitly marked unavailable when this export path has no persisted runtime snapshot record."),
-        ("Runtime origin", bundle.runtime_origin, "review", "Descriptive runtime boundary label only."),
-        ("Template origin", bundle.template_origin, "template assumption", "Factory/template source for the project context."),
+        ("Runtime origin", _display_runtime_origin(bundle.runtime_origin), "review", "Descriptive runtime boundary label only."),
+        ("Template origin", _display_template_origin(bundle.template_origin), "template assumption", "Template source for the project context."),
         ("Template revision", bundle.template_revision, "template assumption", "Lightweight template provenance; no separate semantic version exists."),
         ("Export template version", bundle.export_template_version, "review", "Export packaging/version metadata only."),
         ("Runtime flags captured", bundle.runtime_flag_count, "review", "Replay provenance only; flags remain non-authoritative metadata."),
         ("Project code", bundle.context.code, "template assumption", "Read-only project context."),
-        ("Scenario label", "Factory-bound base runtime", "runtime", "No scenario overrides introduced here."),
+        ("Scenario label", "Template-based base runtime", "runtime", "No scenario overrides introduced here."),
         ("Data provenance", "Project context + runtime result + offline financial statements", "review", "No workbook-only formulas."),
         ("Replay limitations", bundle.replay_limitations, "review", "Traceability improved without implying a full replay engine."),
     ]
@@ -490,9 +490,9 @@ def _write_runtime_summary_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 def _write_inputs_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime + template assumptions")
     rows = [
-        ("Project name", bundle.context.name, "template assumption", "Factory-bound project context."),
-        ("Project company", bundle.context.company, "template assumption", "Factory-bound project context."),
-        ("Project code", bundle.context.code, "template assumption", "Factory-bound project context."),
+        ("Project name", bundle.context.name, "template assumption", "Project assumptions context."),
+        ("Project company", bundle.context.company, "template assumption", "Project assumptions context."),
+        ("Project code", bundle.context.code, "template assumption", "Project assumptions context."),
         ("Technology", bundle.context.technology, "template assumption", "Read-only project context."),
         ("Country", bundle.context.country_iso, "template assumption", "Read-only project context."),
         ("Capacity MW", bundle.context.capacity_mw, "template assumption", "Read-only project context.", K_EUR_FORMAT),
@@ -522,9 +522,9 @@ def _write_construction_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Construction start proxy", bundle.context.financial_close, "template assumption", "Financial close used as workbook anchor."),
         ("COD", bundle.context.cod_date, "template assumption", "Project context COD."),
         ("Construction duration months", bundle.context.construction_months, "template assumption", "Project context."),
-        ("Total CAPEX", bundle.context.total_capex_keur, "template assumption", "Factory-bound CAPEX total.", K_EUR_FORMAT),
-        ("IDC", bundle.context.idc_keur, "template assumption", "Factory-bound financing cost assumption.", K_EUR_FORMAT),
-        ("Bank fees", bundle.context.bank_fees_keur, "template assumption", "Factory-bound financing cost assumption.", K_EUR_FORMAT),
+        ("Total CAPEX", bundle.context.total_capex_keur, "template assumption", "Project assumptions CAPEX total.", K_EUR_FORMAT),
+        ("IDC", bundle.context.idc_keur, "template assumption", "Project assumptions financing cost assumption.", K_EUR_FORMAT),
+        ("Bank fees", bundle.context.bank_fees_keur, "template assumption", "Project assumptions financing cost assumption.", K_EUR_FORMAT),
         ("Senior debt anchor", _resolve_export_senior_debt_keur(bundle), "template assumption + runtime", "For TUHO/Oborovo: frozen Excel-derived anchor. For Generic: runtime DSCR-sculpted value.", K_EUR_FORMAT),
         ("SHL anchor", bundle.context.shl_amount_keur + bundle.context.shl_idc_keur, "template assumption", "Opening SHL assumption including IDC.", K_EUR_FORMAT),
         ("Share capital", getattr(financing, "share_capital_keur", 0.0), "template assumption", "Existing financing input.", K_EUR_FORMAT),
@@ -538,14 +538,14 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime + template assumptions")
     rows = [
         ("Runtime total OPEX", bundle.runtime_result.total_opex_keur, "runtime", "Existing runtime output.", K_EUR_FORMAT),
-        ("Factory Y1 total OPEX", bundle.context.opex_y1_total_keur, "template assumption", "Read-only project context.", K_EUR_FORMAT),
+        ("Template Y1 total OPEX", bundle.context.opex_y1_total_keur, "template assumption", "Read-only project context.", K_EUR_FORMAT),
         ("Contingency method", bundle.context.opex_contingency_method, "template assumption", "Read-only project context."),
         ("Contingency percent", bundle.context.opex_contingency_pct / 100.0, "template assumption", "Read-only project context.", RATIO_FORMAT),
         ("Runtime/preview boundary", "Line items below are template assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
     ]
     next_row = _write_key_value_section(sheet, 6, "OPEX summary", rows, include_format=True)
     item_rows = [
-        (item["name"], item["y1_keur"], item["inflation_pct"], "template assumption", "Factory OPEX item")
+        (item["name"], item["y1_keur"], item["inflation_pct"], "template assumption", "Template OPEX item")
         for item in bundle.context.opex_items
     ]
     _write_simple_table(
@@ -967,13 +967,34 @@ def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     sheet.column_dimensions["B"].width = 72
 
 
+# Internal sentinel identifiers (e.g. "factory_base_runtime",
+# "project_factory:tuho") are stable system identifiers used elsewhere
+# for replay/audit metadata. They are never renamed; this mapping only
+# affects how the values are displayed in exported workbook cells.
+_RUNTIME_ORIGIN_DISPLAY = {
+    "factory_base_runtime": "Template-based runtime",
+}
+_TEMPLATE_ORIGIN_DISPLAY = {
+    "project_factory:tuho": "Example project: TUHO",
+    "project_factory:oborovo": "Example project: Oborovo",
+}
+
+
+def _display_runtime_origin(value: str) -> str:
+    return _RUNTIME_ORIGIN_DISPLAY.get(value, value)
+
+
+def _display_template_origin(value: str) -> str:
+    return _TEMPLATE_ORIGIN_DISPLAY.get(value, value)
+
+
 def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> None:
     metadata = (
         ("Project", bundle.project_name),
         ("Export generated at", bundle.generated_at),
         ("Runtime / preview", marker),
-        ("Runtime boundary", f"{bundle.runtime_timestamp} | {bundle.runtime_origin} | {bundle.runtime_snapshot_id}"),
-        ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {bundle.template_origin} | {bundle.scenario_name}"),
+        ("Runtime boundary", f"{bundle.runtime_timestamp} | {_display_runtime_origin(bundle.runtime_origin)} | {bundle.runtime_snapshot_id}"),
+        ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {_display_template_origin(bundle.template_origin)} | {bundle.scenario_name}"),
     )
     for row_idx, (label, value) in enumerate(metadata, start=1):
         sheet.cell(row=row_idx, column=1, value=label)

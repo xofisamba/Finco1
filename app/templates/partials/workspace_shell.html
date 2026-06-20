@@ -265,8 +265,8 @@
     Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
   </div>
 
-  {% set _lifecycle_project_label = "User-created project" if is_user_project else "Factory reference" %}
-  {% set _lifecycle_project_note = "Factory references are read-only. Duplicate or Save As before editing controlled assumptions." if not is_user_project else "Saved project inputs remain editable here. Runtime outputs still stay tied to the last completed run until you save and run again." %}
+  {% set _lifecycle_project_label = "User-created project" if is_user_project else "Example project" %}
+  {% set _lifecycle_project_note = "Example projects are read-only. Duplicate or Save As before editing controlled assumptions." if not is_user_project else "Saved project inputs remain editable here. Runtime outputs still stay tied to the last completed run until you save and run again." %}
   {% set _lifecycle_runtime_project = runtime_summary.project_name if runtime_summary and runtime_summary.project_name else export_lineage_ui.current_context.project_label %}
   {% set _lifecycle_runtime_scenario = runtime_summary.active_scenario_name if runtime_summary and runtime_summary.active_scenario_name else export_lineage_ui.current_context.active_scenario_name %}
   <div class="workspace-lifecycle-panel" id="workspace-lifecycle-panel" aria-label="Model lifecycle clarity">

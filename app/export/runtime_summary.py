@@ -124,7 +124,7 @@ def build_runtime_summary_rows(
     )
 
     values = [
-        ("active_project", project_name, "", "Factory-bound active project runtime output."),
+        ("active_project", project_name, "", "Template-based active project runtime output."),
         ("project_irr", result.project_irr, "ratio", "Existing runtime summary value."),
         ("equity_irr", result.equity_irr, "ratio", "Existing runtime summary value."),
         ("total_revenue_keur", result.total_revenue_keur, "kEUR", "Existing runtime total."),
