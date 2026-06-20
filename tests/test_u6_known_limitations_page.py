@@ -90,6 +90,31 @@ def test_known_limitations_mentions_not_yet_supported_items(client):
     assert "R99/R102" in resp.text
 
 
+def test_known_limitations_mentions_dscr_methodology_caveat(client):
+    _login(client, "u6_dscr")
+    resp = client.get("/known-limitations")
+    assert "DSCR methodology" in resp.text
+
+
+def test_known_limitations_mentions_sensitivity_testing_observation(client):
+    _login(client, "u6_sensitivity")
+    resp = client.get("/known-limitations")
+    assert "Sensitivity-testing observations" in resp.text
+    # No internal G1/G2/G3 test-harness terminology leaks to the
+    # user-facing page.
+    forbidden = ("G1D", "G1F", "G2 ", "G3 ", "g1d", "g2_", "g3_")
+    lowered = resp.text
+    for term in forbidden:
+        assert term not in lowered, f"internal terminology leaked: {term!r}"
+
+
+def test_known_limitations_mentions_debt_sculpting_not_promoted(client):
+    _login(client, "u6_sculpting")
+    resp = client.get("/known-limitations")
+    assert "cash-sweep" in resp.text.lower()
+    assert "G20" not in resp.text
+
+
 def test_known_limitations_reachable_from_footer(client):
     _login(client, "u6_footer")
     resp = client.get("/projects/browse", follow_redirects=True)

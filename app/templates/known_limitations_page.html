@@ -70,6 +70,25 @@
             validation, comparison results are illustrative and should
             not be used for external decisions.
           </li>
+          <li>
+            <strong>DSCR methodology.</strong> Average and Minimum DSCR
+            move in the expected direction when key assumptions change
+            (debt margin, tenor, gearing, OPEX, generation), but exact
+            DSCR figures inherit the same debt-sizing proxy caveat noted
+            above and should be read as directionally reliable rather
+            than bank-model-exact.
+          </li>
+          <li>
+            <strong>Sensitivity-testing observations.</strong> Stress
+            testing key assumptions (cost, revenue, financing terms) moves
+            results in the expected direction in almost all cases. One
+            small, documented exception exists: for Generic Solar, a
+            revenue increase produces a tiny (well under 0.1 percentage
+            point) decrease in Equity IRR instead of an increase, even
+            though every other metric improves as expected. This is
+            flagged as an open methodology question, not hidden or
+            silently accepted.
+          </li>
         </ul>
       </section>
 
@@ -92,6 +111,7 @@
           <li><strong>Multi-lender debt</strong> — only a single senior debt instrument is modelled; no mezzanine, junior debt, or multi-lender syndication.</li>
           <li><strong>Advanced tax structures</strong> — beyond loss carryforward, complex tax equity or partnership structures are not modelled.</li>
           <li><strong>R99/R102 promoted workflow</strong> — R99/R102 are audit-only fields, presented for traceability only. They are not approved for runtime cash routing, distribution triggers, or SHL service decisions.</li>
+          <li><strong>Advanced debt-sculpting and cash-sweep methods</strong> — experimental sculpting and sweep methods exist in the codebase for testing purposes but are not yet promoted for use in standard project runs.</li>
         </ul>
       </section>
 
