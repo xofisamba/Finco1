@@ -128,12 +128,18 @@ external decision. In short:
 - **Methodology caveats:** the debt-sizing proxy used by the runtime model
   differs structurally from the reference workbook's own proxy; Project
   IRR is calculated on an unlevered basis; scenario comparisons are
-  descriptive, not Excel-parity validated for most project types.
+  descriptive, not Excel-parity validated for most project types; DSCR
+  figures move directionally as expected under sensitivity but inherit
+  the same debt-sizing caveat; one small, documented sensitivity-testing
+  exception exists for Generic Solar's Equity IRR direction under a
+  revenue increase.
 - **Not yet validated:** BESS, Hybrid (Solar+BESS, Wind+BESS), and
   Portfolio configurations.
 - **Not yet supported:** multi-lender debt structures, advanced tax
-  structures beyond loss carryforward, and the R99/R102 promoted
-  workflow (these audit fields are visible for traceability only and are
-  not approved for runtime cash-routing or distribution decisions).
+  structures beyond loss carryforward, the R99/R102 promoted workflow
+  (these audit fields are visible for traceability only and are not
+  approved for runtime cash-routing or distribution decisions), and
+  advanced debt-sculpting/cash-sweep methods (not yet promoted for
+  standard project runs).
 
 > **Disclaimer:** Outputs are financial modelling estimates and not legal, tax, accounting or investment advice.
