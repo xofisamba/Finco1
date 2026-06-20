@@ -385,6 +385,10 @@ class TestFileScope:
             # U4-SCENARIO-MATRIX-MVP cross-arc allowlist
             "app/templates/partials/_scenario_unified_entry.html",
             "tests/test_u4_",
+            # U5-EXPORT-POLISH cross-arc allowlist
+            "app/export/institutional_workbook.py",
+            "app/export/workbook_index.py",
+            "tests/test_u5_",
         )
         disallowed_prefixes = (
             "app/persistence/",

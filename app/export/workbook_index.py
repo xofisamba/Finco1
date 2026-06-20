@@ -29,7 +29,7 @@ INSTITUTIONAL_SHEET_INVENTORY = [
     ("Workbook_Index", "This sheet — sheet inventory and workbook guide", "All users", "Review", "Phase 48 added"),
     ("Cover", "Cover page with project name and workbook type", "All users", "Review", ""),
     ("Governance", "Governance metadata and approval status", "Reviewers", "Review", ""),
-    ("Runtime Summary", "Summary KPIs: Project IRR, Equity IRR, Avg DSCR, etc.", "All users", "Runtime", "Factory-bound runtime values"),
+    ("Runtime Summary", "Summary KPIs: Project IRR, Equity IRR, Avg DSCR, etc.", "All users", "Runtime", "Template-bound runtime values"),
     ("Inputs", "Project metadata and assumption binding", "Reviewers", "Runtime+Template", ""),
     ("Construction", "Construction timing and funding summary", "Reviewers", "Template+Runtime", ""),
     ("OPEX", "OPEX assumptions and runtime total", "Reviewers", "Runtime+Template", ""),
@@ -43,6 +43,7 @@ INSTITUTIONAL_SHEET_INVENTORY = [
     ("Balance Sheet", "Offline balance sheet assembly from runtime result", "Reviewers", "Runtime", ""),
     ("Audit", "Runtime source notes, provenance, audit boundary", "Reviewers", "Review", ""),
     ("Gap Register", "Known gaps and accepted conventions", "Reviewers", "Review", ""),
+    ("Validation Status", "Per-metric validation tier and disclosures", "All users", "Review", "Last sheet"),
 ]
 
 CALIBRATION_SHEET_INVENTORY = [
