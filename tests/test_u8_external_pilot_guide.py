@@ -59,3 +59,15 @@ def test_guide_is_reasonably_substantial():
         f"guide should be substantial (5-10 pages equivalent), got "
         f"{word_count} words"
     )
+
+
+def test_guide_section_8_stays_in_sync_with_known_limitations_page():
+    """U6 added a DSCR caveat, a sensitivity-testing observation, and an
+    advanced debt-sculpting/cash-sweep "not yet supported" item to the
+    Known Limitations page. Section 8 of this guide summarizes that page,
+    so it must mention the same items rather than going stale."""
+    text = GUIDE_PATH.read_text(encoding="utf-8")
+    section_8 = text[text.index("## 8. Known Limitations"):]
+    assert "sensitivity-testing" in section_8.lower()
+    assert "cash-sweep" in section_8.lower()
+    assert "DSCR figures" in section_8 or "DSCR" in section_8
