@@ -389,6 +389,15 @@ class TestFileScope:
             "app/export/institutional_workbook.py",
             "app/export/workbook_index.py",
             "tests/test_u5_",
+            # U9-REMAINING-EXTERNAL-TERMINOLOGY-CLEANUP cross-arc allowlist
+            "app/templates/partials/sheet_opex.html",
+            "app/templates/partials/sheet_capex_detail.html",
+            "app/templates/partials/sheet_opex_detail.html",
+            "app/export/runtime_summary.py",
+            "tests/test_u9_",
+            "tests/test_phase57a2_capex_single_sheet_direction_characterization.py",
+            "tests/test_phase57a3_capex_single_sheet_runtime.py",
+            "tests/test_phase57a4_single_capex_sheet_layout.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
