@@ -381,8 +381,8 @@ def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Scenario name", bundle.scenario_name),
         ("Scenario revision", bundle.scenario_revision),
         ("Runtime snapshot ID", bundle.runtime_snapshot_id),
-        ("Runtime origin", bundle.runtime_origin),
-        ("Template origin", bundle.template_origin),
+        ("Runtime origin", _display_runtime_origin(bundle.runtime_origin)),
+        ("Template origin", _display_template_origin(bundle.template_origin)),
         ("Template revision", bundle.template_revision),
         ("Export template version", bundle.export_template_version),
         ("Workbook version", "Institutional Runtime Workbook — presentation edition"),
@@ -429,8 +429,8 @@ def _write_governance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Scenario name", bundle.scenario_name, "review", "Explicitly marked not_applicable when no saved scenario boundary exists."),
         ("Scenario revision", bundle.scenario_revision, "review", "Saved snapshot or scenario boundary marker where available."),
         ("Runtime snapshot ID", bundle.runtime_snapshot_id, "review", "Explicitly marked unavailable when this export path has no persisted runtime snapshot record."),
-        ("Runtime origin", bundle.runtime_origin, "review", "Descriptive runtime boundary label only."),
-        ("Template origin", bundle.template_origin, "template assumption", "Template source for the project context."),
+        ("Runtime origin", _display_runtime_origin(bundle.runtime_origin), "review", "Descriptive runtime boundary label only."),
+        ("Template origin", _display_template_origin(bundle.template_origin), "template assumption", "Template source for the project context."),
         ("Template revision", bundle.template_revision, "template assumption", "Lightweight template provenance; no separate semantic version exists."),
         ("Export template version", bundle.export_template_version, "review", "Export packaging/version metadata only."),
         ("Runtime flags captured", bundle.runtime_flag_count, "review", "Replay provenance only; flags remain non-authoritative metadata."),
@@ -967,13 +967,34 @@ def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     sheet.column_dimensions["B"].width = 72
 
 
+# Internal sentinel identifiers (e.g. "factory_base_runtime",
+# "project_factory:tuho") are stable system identifiers used elsewhere
+# for replay/audit metadata. They are never renamed; this mapping only
+# affects how the values are displayed in exported workbook cells.
+_RUNTIME_ORIGIN_DISPLAY = {
+    "factory_base_runtime": "Template-based runtime",
+}
+_TEMPLATE_ORIGIN_DISPLAY = {
+    "project_factory:tuho": "Example project: TUHO",
+    "project_factory:oborovo": "Example project: Oborovo",
+}
+
+
+def _display_runtime_origin(value: str) -> str:
+    return _RUNTIME_ORIGIN_DISPLAY.get(value, value)
+
+
+def _display_template_origin(value: str) -> str:
+    return _TEMPLATE_ORIGIN_DISPLAY.get(value, value)
+
+
 def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> None:
     metadata = (
         ("Project", bundle.project_name),
         ("Export generated at", bundle.generated_at),
         ("Runtime / preview", marker),
-        ("Runtime boundary", f"{bundle.runtime_timestamp} | {bundle.runtime_origin} | {bundle.runtime_snapshot_id}"),
-        ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {bundle.template_origin} | {bundle.scenario_name}"),
+        ("Runtime boundary", f"{bundle.runtime_timestamp} | {_display_runtime_origin(bundle.runtime_origin)} | {bundle.runtime_snapshot_id}"),
+        ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {_display_template_origin(bundle.template_origin)} | {bundle.scenario_name}"),
     )
     for row_idx, (label, value) in enumerate(metadata, start=1):
         sheet.cell(row=row_idx, column=1, value=label)

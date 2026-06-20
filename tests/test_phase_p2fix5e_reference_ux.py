@@ -398,6 +398,10 @@ class TestFileScope:
             "tests/test_phase57a2_capex_single_sheet_direction_characterization.py",
             "tests/test_phase57a3_capex_single_sheet_runtime.py",
             "tests/test_phase57a4_single_capex_sheet_layout.py",
+            # PR #686 fix-before-merge: export registry / institutional
+            # workbook external-facing terminology cleanup.
+            "app/templates/partials/export_registry.html",
+            "app/export/institutional_workbook.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
