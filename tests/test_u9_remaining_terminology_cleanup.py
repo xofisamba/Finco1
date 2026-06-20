@@ -85,14 +85,27 @@ class TestInstitutionalWorkbookNoFactoryWording:
             assert term not in text, f"forbidden term leaked into workbook cells: {term!r}"
 
     def test_no_factory_bound_prose_in_exported_cells(self, workbook):
-        # Internal runtime_origin/template_origin sentinel identifiers
-        # (e.g. "factory_base_runtime", "project_factory:tuho") are out
-        # of scope for this presentation-text-only sweep -- they are
-        # shared enum-like values defined in app/services/* (disallowed
-        # for this task) and used for internal classification, not
-        # free-form prose. Only "Factory-bound"-style prose is checked.
         text = _all_cell_text(workbook)
         assert "Factory-bound" not in text
+
+    def test_no_factory_sentinel_text_in_exported_cells(self, workbook):
+        # The internal runtime_origin/template_origin sentinel values
+        # (e.g. "factory_base_runtime", "project_factory:tuho") remain
+        # unchanged everywhere they are produced (replay/audit
+        # provenance). They are mapped to external-friendly display
+        # strings only at the point workbook cells are written.
+        text = _all_cell_text(workbook).lower()
+        assert "factory" not in text, (
+            "internal sentinel text leaked into exported workbook cells"
+        )
+
+    def test_factory_origin_displayed_as_template_based_runtime(self, workbook):
+        text = _all_cell_text(workbook)
+        assert "Template-based runtime" in text
+
+    def test_template_origin_displayed_as_example_project(self, workbook):
+        text = _all_cell_text(workbook)
+        assert "Example project: TUHO" in text
 
 
 # ---------------------------------------------------------------------------
@@ -145,3 +158,39 @@ class TestWorkspaceShellAndHomeNoFactoryWording:
     def test_project_home_partial_source_no_forbidden_terms(self):
         text = (REPO_ROOT / "app/templates/partials/project_home.html").read_text()
         assert "Browse factory references" not in text
+
+
+# ---------------------------------------------------------------------------
+# 5. Export registry rendered text (PR #686 fix-before-merge)
+# ---------------------------------------------------------------------------
+
+
+class TestExportRegistryNoFactoryWording:
+    def _registry_text(self):
+        return (
+            REPO_ROOT / "app/templates/partials/export_registry.html"
+        ).read_text()
+
+    def test_export_registry_template_no_factory_wording(self):
+        text = self._registry_text()
+        assert "factory" not in text.lower()
+
+    def test_export_registry_no_pending_r99_r102_approval_wording(self):
+        text = self._registry_text()
+        assert "pending R99 / R102 approval" not in text
+        assert "pending R99/R102 approval" not in text
+
+    def test_export_registry_external_friendly_replacement_wording(self):
+        text = self._registry_text()
+        assert "Oborovo example-project runtime output" in text
+        assert (
+            "internal governance workflow not available in standard exports"
+            in text
+        )
+
+    def test_export_registry_route_no_forbidden_terms(self, client):
+        _login(client, "u9_export_registry")
+        resp = client.get("/?project=tuho")
+        assert resp.status_code == 200
+        assert "factory-bound" not in resp.text.lower()
+        assert "pending R99 / R102 approval" not in resp.text
