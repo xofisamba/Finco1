@@ -228,10 +228,17 @@ def export_institutional_workbook_skeleton(project: str) -> bytes:
     _write_balance_sheet(workbook.create_sheet("Balance Sheet"), bundle)
     _write_audit_sheet(workbook.create_sheet("Audit"), bundle)
     _write_gap_register_sheet(workbook.create_sheet("Gap Register"), bundle)
-    _write_validation_status_sheet(workbook.create_sheet("Validation Status"), bundle)
+    validation_status = workbook.create_sheet("Validation Status")
+    _write_validation_status_sheet(validation_status, bundle)
 
     for sheet in workbook.worksheets:
         _format_sheet(sheet)
+
+    # Presentation-only: highlight the navigation/landing and validation
+    # tabs so reviewers can find them at a glance. No content/value change.
+    cover.sheet_properties.tabColor = "1F4E79"
+    index_sheet.sheet_properties.tabColor = "1F4E79"
+    validation_status.sheet_properties.tabColor = "2E7D32"
 
     output = BytesIO()
     workbook.save(output)
@@ -378,12 +385,13 @@ def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Template origin", bundle.template_origin),
         ("Template revision", bundle.template_revision),
         ("Export template version", bundle.export_template_version),
-        ("Workbook version", "Phase 11 institutional export polish"),
+        ("Workbook version", "Institutional Runtime Workbook — presentation edition"),
         ("Runtime / preview", "runtime-bound workbook with explicit assumption sections"),
         ("Governance status", bundle.governance_posture_summary),
         ("Runtime flag snapshot", f"{bundle.runtime_flag_count} flags captured for replay provenance"),
         ("Purpose", "Institutional review workbook fed from existing runtime outputs and documented assumptions."),
-        ("Status", "Phase 11 product polish layer - not final bankability"),
+        ("Status", "Presentation and provenance layer — not a final bankability determination"),
+        ("Validation & limitations", "See the Validation Status sheet (final tab) for per-metric validation tier and disclosures."),
     ]
     for row_idx, (label, value) in enumerate(rows, start=5):
         sheet.cell(row=row_idx, column=1, value=label)
@@ -533,7 +541,7 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Factory Y1 total OPEX", bundle.context.opex_y1_total_keur, "template assumption", "Read-only project context.", K_EUR_FORMAT),
         ("Contingency method", bundle.context.opex_contingency_method, "template assumption", "Read-only project context."),
         ("Contingency percent", bundle.context.opex_contingency_pct / 100.0, "template assumption", "Read-only project context.", RATIO_FORMAT),
-        ("Runtime/preview boundary", "Line items below are factory assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
+        ("Runtime/preview boundary", "Line items below are template assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
     ]
     next_row = _write_key_value_section(sheet, 6, "OPEX summary", rows, include_format=True)
     item_rows = [
@@ -774,7 +782,7 @@ def _write_audit_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "review")
     rows = [
         ("Runtime source", "WaterfallRunner(project_inputs, engine).run(config)", "runtime", "Existing runtime authority."),
-        ("Project assumption source", "ProjectContext + factory-bound ProjectInputs", "template assumption", "Read-only context layer."),
+        ("Project assumption source", "ProjectContext + template-bound ProjectInputs", "template assumption", "Read-only context layer."),
         ("P&L / tax / BS source", "assemble_financial_statements(runtime_result)", "runtime", "Offline assembly from existing runtime result."),
         ("Revenue period source", "build_revenue_table(runtime_result)", "runtime", "Existing output table builder."),
         ("Debt period source", "build_debt_table(runtime_result)", "runtime", "Existing output table builder."),
@@ -1124,7 +1132,7 @@ def _format_sheet(sheet) -> None:
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     sheet.oddHeader.left.text = "Institutional runtime workbook"
     sheet.oddHeader.center.text = sheet.title
-    sheet.oddHeader.right.text = "Phase 11 polish"
+    sheet.oddHeader.right.text = "Institutional Runtime Workbook"
     for letter, width in (("A", 28), ("B", 22), ("C", 18), ("D", 48), ("E", 16)):
         sheet.column_dimensions[letter].width = width
     for row in sheet.iter_rows():
