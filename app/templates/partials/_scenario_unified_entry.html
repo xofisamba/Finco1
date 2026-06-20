@@ -1,0 +1,60 @@
+{# ── U4: Scenario Matrix MVP — minimal unified entry point ─────────────── #}
+{# UI orchestration only. No new modelling, no scenario math changes.     #}
+{# Surfaces the headline KPIs (Revenue, EBITDA, Senior Debt, Avg DSCR,    #}
+{# Min DSCR, Project IRR, Equity IRR) for Base | Downside | Upside |      #}
+{# Custom at the top of the Scenarios tab. Reuses the same matrix_rows    #}
+{# context already built by build_matrix_context() for the Dashboard tab #}
+{# -- no duplicate data fetch, no duplicate computation. This is a       #}
+{# read-only summary (not the interactive matrix) so it does not         #}
+{# duplicate the DOM ids used by the M3/M4 inline-edit and run controls   #}
+{# on the full matrix card in the Dashboard tab. #}
+
+{% set _has_matrix = matrix_rows is defined and matrix_rows %}
+
+<div class="card scenario-unified-entry" id="scenario-unified-entry" data-u4-unified-entry="true">
+  <div class="card-header">
+    <div class="card-title">Scenario Workflow — Base | Downside | Upside | Custom</div>
+  </div>
+  <div class="scenario-unified-entry-desc">
+    Headline results across your saved scenarios. Save additional
+    scenarios below to populate the Downside / Upside / Custom columns.
+    Use the Dashboard tab's Scenario Matrix card for inline editing and
+    per-scenario runs, or Compare for a detailed side-by-side breakdown.
+  </div>
+
+  {% if _has_matrix %}
+  <div class="scenario-unified-entry-table-wrapper">
+    <table class="scenario-unified-entry-table" data-u4-kpi-summary="true">
+      <thead>
+        <tr>
+          <th>KPI</th>
+          <th data-u4-column="Base">Base</th>
+          <th data-u4-column="Downside">Downside</th>
+          <th data-u4-column="Upside">Upside</th>
+          <th data-u4-column="Custom">Custom</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in matrix_rows %}
+          {% if entry.is_kpi %}
+          <tr data-u4-kpi-row="{{ entry.row.attr }}">
+            <td class="scenario-unified-entry-label">{{ entry.row.label }}</td>
+            <td>{{ entry.base }}</td>
+            <td>{{ entry.downside }}</td>
+            <td>{{ entry.upside }}</td>
+            <td>{{ entry.custom }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="scenario-unified-entry-empty">No KPI data available yet. Run the model to populate results.</div>
+  {% endif %}
+
+  <div class="scenario-unified-entry-links">
+    <a class="scenario-unified-entry-link" href="#compare" onclick="switchTab('compare')">Compare scenarios &rarr;</a>
+    <span class="scenario-unified-entry-link-note">Saved versions and the active scenario are shown in the sidebar.</span>
+  </div>
+</div>

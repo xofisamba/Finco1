@@ -382,6 +382,9 @@ class TestFileScope:
             "app/templates/known_limitations_page.html",
             "app/templates/partials/_app_footer.html",
             "tests/test_u6_known_limitations_page.py",
+            # U4-SCENARIO-MATRIX-MVP cross-arc allowlist
+            "app/templates/partials/_scenario_unified_entry.html",
+            "tests/test_u4_",
         )
         disallowed_prefixes = (
             "app/persistence/",
