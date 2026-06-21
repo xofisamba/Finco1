@@ -402,6 +402,14 @@ class TestFileScope:
             # workbook external-facing terminology cleanup.
             "app/templates/partials/export_registry.html",
             "app/export/institutional_workbook.py",
+            # FINAL-PILOT-CLEANUP-A: remaining terminology cleanup,
+            # pilot guide recalibration note, CI hygiene.
+            "app/templates/partials/new_project_form.html",
+            "docs/external_pilot_guide.md",
+            "requirements.txt",
+            "constraints.txt",
+            "tests/test_final_pilot_cleanup_a.py",
+            "tests/test_phase51f_parallel_work_guardrails.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
