@@ -74,11 +74,11 @@ The validation badge and its detail panel are visible on the project
 browser and within each project's workspace.
 
 > **Note on Generic Solar / Wind outputs:** Generic Solar and Generic Wind
-> defaults were recalibrated during the G1 validation sprint to align core
+> defaults were recalibrated during the validation program to align core
 > cost and revenue figures with internal reference workbooks. If you saved
-> a Generic Solar or Generic Wind project before this sprint, its runtime
-> outputs may differ from a project created from today's defaults. This is
-> expected and reflects validation alignment, not model instability.
+> a Generic Solar or Generic Wind project before this recalibration, its
+> runtime outputs may differ from a project created from today's defaults.
+> This reflects validation improvements and does not indicate model instability.
 
 ## 5. Create a Scenario
 

@@ -7,9 +7,10 @@ from the Big Claude Review before External Friendly Pilot preparation:
    for pilot users (e.g. the new-project form prefill hint).
 2. No "golden" wording in user-facing templates intended for pilot users.
 3. The external pilot guide documents that Generic Solar/Wind defaults
-   were recalibrated during the G1 validation sprint, and that saved
-   Generic outputs from before this sprint may differ from current
-   outputs as a result.
+   were recalibrated during the validation program, and that saved
+   Generic outputs from before this recalibration may differ from
+   current outputs as a result. Plain finance-user language only --
+   no internal phase jargon (G1/G2/G3).
 4. The pytest-asyncio dependency addition and the refreshed
    project_factories.py guardrail SHA do not weaken the parity-core
    guardrail mechanism itself (the guardrail still fails on an
@@ -43,6 +44,7 @@ PILOT_FACING_TEMPLATES = (
     "app/templates/partials/project_browser.html",
     "app/templates/partials/workspace_shell.html",
     "app/templates/partials/inputs_section.html",
+    "app/templates/partials/export_registry.html",
 )
 
 PILOT_FACING_DOCS = (
@@ -84,21 +86,36 @@ class TestNoGoldenWordingInPilotSurfaces:
             )
 
 
+class TestNoCalibrationWordingInExportRegistry:
+    def test_export_registry_card_name_has_no_calibration_wording(self):
+        text = _strip_jinja_and_html_comments(
+            (REPO_ROOT / "app/templates/partials/export_registry.html").read_text()
+        ).lower()
+        assert "calibration" not in text, (
+            "export_registry.html must not contain 'calibration' in "
+            "user-facing export card copy"
+        )
+
+
 class TestPilotGuideRecalibrationNote:
     def _guide_text(self):
         return (REPO_ROOT / "docs/external_pilot_guide.md").read_text()
 
-    def test_guide_mentions_g1_validation_sprint_recalibration(self):
+    def test_guide_mentions_validation_program_recalibration(self):
         text = self._guide_text()
-        assert "G1 validation sprint" in text
+        assert "validation program" in text
         assert "recalibrated" in text
+        # Plain finance-user language only -- no internal phase jargon.
+        assert "G1" not in text
+        assert "G2" not in text
+        assert "G3" not in text
 
     def test_guide_explains_saved_generic_output_drift_is_expected(self):
         text = self._guide_text()
         lowered = text.lower()
         assert "may differ from" in lowered
-        assert "expected" in lowered
-        assert "not model instability" in lowered
+        assert "reflects validation improvements" in lowered
+        assert "does not indicate model instability" in lowered
 
 
 class TestGuardrailMechanismNotWeakened:
