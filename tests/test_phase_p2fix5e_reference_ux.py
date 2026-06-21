@@ -410,6 +410,16 @@ class TestFileScope:
             "constraints.txt",
             "tests/test_final_pilot_cleanup_a.py",
             "tests/test_phase51f_parallel_work_guardrails.py",
+            # EXTERNAL-FRIENDLY-PILOT-PREP-A: pilot guide page, footer
+            # discoverability links, pilot caveat, checklist/script docs.
+            "app/templates/base.html",
+            "app/templates/partials/_app_footer.html",
+            "app/templates/partials/_standalone_header.html",
+            "app/templates/pilot_guide_page.html",
+            "docs/pilot_readiness_checklist.md",
+            "docs/pilot_user_script.md",
+            "main_web.py",
+            "tests/test_external_friendly_pilot_prep_a.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
