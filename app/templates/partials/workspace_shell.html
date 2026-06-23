@@ -85,7 +85,7 @@
 </form>
 
 <div class="workspace-content" id="workspace-content"
-     hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p && p.style.display==='none' && p.querySelector('form')){ p.style.display='block'; p.classList.add('active'); }">
+     hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p && p.style.display==='none' && p.contains(event.target) && p.querySelector('form')){ p.style.display='block'; p.classList.add('active'); }">
 
   <!-- New Project Setup - main workspace entry point -->
   {# Phase 56C: Inline new-project form is now v1 (master data only).
