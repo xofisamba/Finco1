@@ -410,6 +410,9 @@ class TestUX2FileScope:
         "tests/test_phase_wf6_",
         "tests/test_phase_p2fix",
         "tests/test_phase_ux1_",
+        # UX-1B-INPUTS-BADGE-CLEANUP cross-arc allowlist
+        "app/templates/partials/inputs_section.html",
+        "tests/test_ux1b_",
         # infrastructure
         "static/styles.css",
         "constraints.txt",
