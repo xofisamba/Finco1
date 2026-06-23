@@ -93,11 +93,25 @@ function updateExportLineageGuidance(meta) {
 
 function switchTab(tabId) {
   if (!tabId) return;
+  // UX-1A: don't switch into a panel that doesn't exist in the current
+  // render (e.g. a stale hash from a previous project). Leave the
+  // current tab showing rather than silently falling through.
+  if (!document.getElementById('panel-' + tabId)) return;
   activeTab = tabId;
 
   // UX-2: keep hidden form field in sync so POST /run knows the active tab.
   var _atInput = document.getElementById('hidden-active-tab');
   if (_atInput) _atInput.value = tabId;
+
+  // UX-1A: an unrelated htmx swap elsewhere in the workspace (Save,
+  // Run, scenario actions) can leave the New Project panel forced
+  // visible (see the htmx:afterSwap handlers below). Any real tab
+  // switch should always close it.
+  var newProjectPanel = document.getElementById('panel-new-project');
+  if (newProjectPanel) {
+    newProjectPanel.style.display = 'none';
+    newProjectPanel.classList.remove('active');
+  }
 
   document.querySelectorAll('.ws-tab').forEach(function(btn) {
     btn.classList.remove('active');
@@ -442,9 +456,15 @@ document.addEventListener('htmx:afterSwap', function(evt) {
   if (window.syncEditableGridMirrors) {
     window.syncEditableGridMirrors();
   }
-  // Show panel-new-project after HTMX swaps content into it
+  // UX-1A: only re-show the New Project panel when the swap actually
+  // landed inside it (e.g. submitting the create-project form posts
+  // its result into #new-project-result). Previously this checked a
+  // static condition (panel hidden + contains a form) that is true
+  // after almost any unrelated swap in the workspace, which forced
+  // the New Project panel open whenever a user ran the model, saved,
+  // or created a scenario while viewing a different tab.
   var panel = document.getElementById('panel-new-project');
-  if (panel && panel.style.display === 'none' && panel.querySelector('form')) {
+  if (panel && panel.style.display === 'none' && panel.contains(target) && panel.querySelector('form')) {
     panel.style.display = 'block';
     panel.classList.add('active');
   }

@@ -428,6 +428,11 @@ class TestFileScope:
             "docs/pilot_issue_log_template.md",
             "docs/pilot_success_criteria.md",
             "docs/pilot_execution_plan.md",
+            # UX-1A-NAVIGATION-CONTEXT-FIX: scope afterSwap handlers to
+            # the actual swap target so an unrelated htmx swap doesn't
+            # force-show the New Project panel; defensive switchTab()
+            # reset/guard.
+            "tests/test_ux1a_navigation_context_fix.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
@@ -439,8 +444,13 @@ class TestFileScope:
             "static/app.js",
         )
         # Phase P2-FIX-7: allow static/styles.css.
+        # UX-1A-NAVIGATION-CONTEXT-FIX: allow static/app.js for the
+        # navigation/afterSwap-handler fix. static/app.js is otherwise
+        # disallowed to prevent JS-based financial calculation logic
+        # (see test_no_javascript_financial_calculations); this change
+        # is DOM/tab-state navigation logic only, no calculations.
         for f in changed:
-            if f == "static/styles.css":
+            if f in ("static/styles.css", "static/app.js"):
                 continue
             with_dash = [f.startswith(p) for p in disallowed_prefixes]
             assert not any(with_dash), (
