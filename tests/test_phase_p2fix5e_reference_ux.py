@@ -420,6 +420,14 @@ class TestFileScope:
             "docs/pilot_user_script.md",
             "main_web.py",
             "tests/test_external_friendly_pilot_prep_a.py",
+            # PILOT-LAUNCH-PACKAGE-A: documentation-only pilot launch
+            # package (candidate profile, feedback form, issue log
+            # template, success criteria, execution plan).
+            "docs/pilot_candidate_profile.md",
+            "docs/pilot_feedback_form.md",
+            "docs/pilot_issue_log_template.md",
+            "docs/pilot_success_criteria.md",
+            "docs/pilot_execution_plan.md",
         )
         disallowed_prefixes = (
             "app/persistence/",
