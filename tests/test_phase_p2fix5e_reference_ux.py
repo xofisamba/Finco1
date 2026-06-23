@@ -433,6 +433,14 @@ class TestFileScope:
             # force-show the New Project panel; defensive switchTab()
             # reset/guard.
             "tests/test_ux1a_navigation_context_fix.py",
+            # UX-1B-INPUTS-BADGE-CLEANUP: remove noisy per-row admin
+            # badges (Saved/Template/Internal/Model default/Protected)
+            # from the Inputs tab; keep modelling caveats (Calculated /
+            # Timing driver / DSCR sculpt / Indicative) as a compact
+            # icon + tooltip instead of a full-text badge.
+            "tests/test_phase_ux1_inputs_badge_cleanup.py",
+            "tests/test_ux1b_inputs_badge_cleanup.py",
+            "tests/test_phase_ux2_active_sheet_refresh.py",
         )
         disallowed_prefixes = (
             "app/persistence/",

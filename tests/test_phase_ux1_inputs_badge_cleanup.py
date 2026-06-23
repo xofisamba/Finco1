@@ -1,25 +1,33 @@
-"""UX-1: Inputs Badge Cleanup for User Projects.
+"""UX-1 / UX-1B: Inputs Badge Cleanup for User Projects.
 
-Problem: Editable fields in user-created projects showed TEMPLATE/CALCULATED badges,
-creating a false impression the fields are read-only.
+Original UX-1 problem: editable fields in user-created projects showed
+TEMPLATE/CALCULATED badges, creating a false impression the fields are
+read-only. Fixed via conditional badge suppression for two fields
+(Installed Capacity, P50 Hours).
 
-Fix: Suppress those badges conditionally via Jinja2 expression:
-  badge=(None if is_user_project else "Calculated")
-  badge=(None if is_user_project else "Template")
-
-Only two fields required changes (lines 92-93 of inputs_section.html):
-  - Installed Capacity: badge="Calculated" → conditional
-  - P50 Hours:          badge="Template"   → conditional
-
-All other fields either: already have informative badges (Saved, DSCR sculpt driver,
-Timing driver, Indicative derived), are not editable in user projects, or had no badge.
+UX-1B (superseding fix): the Excel-lookalike UX review found the badge
+approach itself was the bigger problem -- every row in the Inputs tab
+carried a loud admin/provenance badge (SAVED, TEMPLATE, INTERNAL, MODEL
+DEFAULT, PROTECTED, plus CALCULATED on its own), making the page look
+like an internal validation tool. UX-1B removes those per-row admin
+badges entirely; editable vs read-only is now conveyed by the
+input-vs-value cell style, and the protected/reference state is shown
+once at the top of the sheet. Modelling caveats that affect
+interpretation (Calculated, Timing driver, DSCR sculpt driver,
+Indicative) are kept, but as a small icon + tooltip via
+caveat_icon/caveat_title rather than a full-text badge.
 
 These tests prove:
-  A. inputs_section.html uses conditional badge for Installed Capacity.
-  B. inputs_section.html uses conditional badge for P50 Hours.
-  C. Non-editable fields (P90/P10, Availability, Capacity Factor, Degradation) unchanged.
-  D. field_row macro: badge=None suppresses badge rendering.
-  E. Reference project badge strings are preserved (not suppressed for non-user projects).
+  A. Installed Capacity keeps its calculated-caveat icon for reference
+     projects, and has no caveat icon when editable in a user project.
+  B. P50 Hours is editable in user projects and carries no badge/caveat.
+  C. Non-editable technical fields (P90/P10, Availability, Capacity
+     Factor, Degradation) render without a loud per-row admin badge;
+     Capacity Factor keeps its "Calculated" caveat as an icon+tooltip.
+  D. field_row macro: badge=None / caveat_icon=None suppress rendering.
+  E. The loud SAVED/TEMPLATE/INTERNAL/MODEL DEFAULT/PROTECTED badge
+     strings used as field_row(badge=...) kwargs are gone from the file
+     (no longer used as inputs-tab badges).
   F. Field names (capacity_mw, p50_hours) unchanged — no form regression.
   G. No backend model changes: engine MD5 unchanged.
   H. Export services unaffected (TUHO / Oborovo parity).
@@ -52,13 +60,14 @@ INPUTS_SECTION = Path(REPO_ROOT) / "app/templates/partials/inputs_section.html"
 # ---------------------------------------------------------------------------
 
 class TestInstalledCapacityConditionalBadge:
-    def test_capacity_badge_is_conditional(self):
+    def test_capacity_caveat_icon_is_conditional(self):
         src = INPUTS_SECTION.read_text()
-        # Must not be a plain badge="Calculated" for the capacity_mw editable row
-        # The conditional form: badge=(None if is_user_project else "Calculated")
-        assert 'badge=(None if is_user_project else "Calculated")' in src or \
-               "badge=(None if is_user_project else 'Calculated')" in src, (
-            "Installed Capacity field_row must use conditional badge suppression for user projects"
+        # UX-1B: the loud "Calculated" badge became a conditional
+        # caveat_icon -- only shown for reference (non-user) projects,
+        # where the field is read-only and genuinely calculated.
+        assert 'caveat_icon=(None if is_user_project else "ƒ")' in src, (
+            "Installed Capacity field_row must use conditional caveat_icon "
+            "suppression for user projects"
         )
 
     def test_capacity_mw_field_name_preserved(self):
@@ -84,12 +93,18 @@ class TestInstalledCapacityConditionalBadge:
 # ---------------------------------------------------------------------------
 
 class TestP50HoursConditionalBadge:
-    def test_p50_badge_is_conditional(self):
+    def test_p50_has_no_loud_badge(self):
         src = INPUTS_SECTION.read_text()
-        assert 'badge=(None if is_user_project else "Template")' in src or \
-               "badge=(None if is_user_project else 'Template')" in src, (
-            "P50 Hours field_row must use conditional badge suppression for user projects"
-        )
+        # UX-1B: P50 Hours no longer carries a per-row "Template" badge
+        # at all (for either user or reference projects) -- editability
+        # is conveyed by the input-vs-value cell style alone.
+        lines = src.splitlines()
+        for line in lines:
+            if 'field_name="p50_hours"' in line:
+                assert 'badge=' not in line, (
+                    "P50 Hours field_row must not carry a per-row badge kwarg"
+                )
+                break
 
     def test_p50_hours_field_name_preserved(self):
         src = INPUTS_SECTION.read_text()
@@ -97,55 +112,60 @@ class TestP50HoursConditionalBadge:
             "field_name='p50_hours' must remain in the template"
         )
 
-    def test_p50_not_hardcoded_template_on_editable_row(self):
-        src = INPUTS_SECTION.read_text()
-        lines = src.splitlines()
-        for line in lines:
-            if 'field_name="p50_hours"' in line and 'editable=is_user_project' in line:
-                assert 'badge="Template"' not in line and "badge='Template'" not in line, (
-                    "Editable p50_hours row must not use plain badge='Template' string"
-                )
+    def test_p50_field_row_unaffected_by_editable_state(self):
+        # Already covered by test_p50_has_no_loud_badge: no badge kwarg
+        # regardless of editable state.
+        pass
 
 
 # ---------------------------------------------------------------------------
-# C. Non-editable technical fields: badges unchanged
+# C. Non-editable technical fields: no loud per-row admin badge
 # ---------------------------------------------------------------------------
 
 class TestNonEditableFieldBadgesUnchanged:
-    def test_p90_p10_still_has_template_badge(self):
+    def test_p90_p10_has_no_loud_template_badge(self):
         src = INPUTS_SECTION.read_text()
-        # P90/P10 row has no editable/field_name → badge stays hardcoded
-        assert re.search(r'P90/P10 Hours.*badge="Template"', src, re.DOTALL) or \
-               re.search(r"P90/P10 Hours.*badge='Template'", src, re.DOTALL), (
-            "P90/P10 Hours must still have hardcoded badge='Template'"
-        )
-
-    def test_availability_still_has_template_badge(self):
-        src = INPUTS_SECTION.read_text()
-        assert "Availability" in src, "Availability field must still be present"
-        # Find Availability line specifically
+        assert "P90/P10 Hours" in src
         for line in src.splitlines():
-            if "Availability" in line and "field_row" in line and "field_name" not in line:
-                assert 'badge="Template"' in line or "badge='Template'" in line, (
-                    "Availability (non-editable) must keep badge='Template'"
+            if "P90/P10 Hours" in line and "field_row" in line:
+                assert 'badge="Template"' not in line and "badge='Template'" not in line, (
+                    "UX-1B: P90/P10 Hours must not carry a loud "
+                    "badge='Template' string"
                 )
                 break
 
-    def test_capacity_factor_still_has_calculated_badge(self):
+    def test_availability_has_no_loud_template_badge(self):
+        src = INPUTS_SECTION.read_text()
+        assert "Availability" in src, "Availability field must still be present"
+        for line in src.splitlines():
+            if "Availability" in line and "field_row" in line and "field_name" not in line:
+                assert 'badge="Template"' not in line and "badge='Template'" not in line, (
+                    "UX-1B: Availability (non-editable) must not carry a "
+                    "loud badge='Template' string"
+                )
+                break
+
+    def test_capacity_factor_keeps_calculated_caveat_icon(self):
         src = INPUTS_SECTION.read_text()
         for line in src.splitlines():
             if "Capacity Factor" in line and "field_row" in line:
-                assert 'badge="Calculated"' in line or "badge='Calculated'" in line, (
-                    "Capacity Factor (non-editable) must keep badge='Calculated'"
+                assert 'badge="Calculated"' not in line and "badge='Calculated'" not in line, (
+                    "UX-1B: Capacity Factor must not carry a loud "
+                    "badge='Calculated' string"
+                )
+                assert 'caveat_icon="ƒ"' in line and "calculated=True" in line, (
+                    "Capacity Factor (non-editable) must keep its "
+                    "Calculated caveat as a compact icon + tooltip"
                 )
                 break
 
-    def test_degradation_still_has_template_badge(self):
+    def test_degradation_has_no_loud_template_badge(self):
         src = INPUTS_SECTION.read_text()
         for line in src.splitlines():
             if "Degradation" in line and "field_row" in line:
-                assert 'badge="Template"' in line or "badge='Template'" in line, (
-                    "Degradation (non-editable) must keep badge='Template'"
+                assert 'badge="Template"' not in line and "badge='Template'" not in line, (
+                    "UX-1B: Degradation (non-editable) must not carry a "
+                    "loud badge='Template' string"
                 )
                 break
 
@@ -171,27 +191,43 @@ class TestFieldRowMacroBadgeNone:
 
 
 # ---------------------------------------------------------------------------
-# E. Reference project badge strings preserved
+# E. UX-1B: loud admin/provenance badges removed from the inputs tab
 # ---------------------------------------------------------------------------
 
 class TestReferenceBadgesPreserved:
-    def test_template_badge_string_still_exists(self):
+    """UX-1B superseded the per-row badge approach: SAVED, TEMPLATE,
+    INTERNAL, MODEL DEFAULT, and PROTECTED are no longer used as
+    field_row(badge=...) values anywhere in the inputs tab. These
+    tests assert the noisy badge kwargs are gone, not merely demoted.
+    """
+
+    @pytest.mark.parametrize("noisy_badge", ["Saved", "Template", "Internal", "Protected"])
+    def test_noisy_badge_kwarg_not_used(self, noisy_badge):
         src = INPUTS_SECTION.read_text()
-        # "Template" badge string must still appear for non-editable fields
-        assert '"Template"' in src or "'Template'" in src, (
-            "'Template' badge string must still appear in inputs_section.html"
+        assert f'badge="{noisy_badge}"' not in src and f"badge='{noisy_badge}'" not in src, (
+            f"UX-1B: badge='{noisy_badge}' must not be used as a "
+            "field_row kwarg in the inputs tab"
         )
 
-    def test_calculated_badge_string_still_exists(self):
+    def test_model_default_badge_removed(self):
         src = INPUTS_SECTION.read_text()
-        assert '"Calculated"' in src or "'Calculated'" in src, (
-            "'Calculated' badge string must still appear in inputs_section.html"
+        assert 'badge="Model default"' not in src and "badge='Model default'" not in src, (
+            "UX-1B: 'Model default' must no longer be used as a "
+            "field_row badge kwarg"
         )
 
-    def test_model_default_badge_still_present(self):
+    def test_calculated_kept_only_as_caveat_icon(self):
         src = INPUTS_SECTION.read_text()
-        assert "Model default" in src or "Model Default" in src, (
-            "Model default badge must still appear for non-editable period frequency field"
+        # "Calculated" must no longer appear as a loud badge=... kwarg ...
+        assert 'badge="Calculated"' not in src and "badge='Calculated'" not in src, (
+            "UX-1B: 'Calculated' must not be used as a loud field_row "
+            "badge kwarg -- it is kept only as a caveat_icon + tooltip"
+        )
+        # ... but the caveat must still be available via the icon/tooltip
+        # mechanism so the calculated-field caveat isn't lost entirely.
+        assert 'caveat_icon="ƒ"' in src, (
+            "UX-1B: the Calculated caveat must still be available as a "
+            "compact icon (caveat_icon='ƒ') somewhere in the inputs tab"
         )
 
 
@@ -280,6 +316,8 @@ class TestUX1FileScope:
     UX1_ALLOWED_PREFIXES = (
         "app/templates/partials/inputs_section.html",
         "tests/test_phase_ux1_",
+        # UX-1B inputs badge noise reduction
+        "tests/test_ux1b_",
         # UX-2 active sheet refresh
         "app/templates/partials/shared_runtime_block.html",
         "app/templates/partials/_sheet_distributions_partial.html",

@@ -2738,7 +2738,9 @@ body {
   border-radius: 4px;
   font-size: 0.85rem;
   font-weight: 600;
-  background: var(--surface);
+  /* UX-1B: subtle tint so editable cells read as "input" at a glance,
+     without relying on a per-row "Saved" badge to convey editability. */
+  background: var(--editable-bg, #f8fafc);
   color: var(--text);
   transition: border-color 0.15s, background-color 0.15s;
 }
@@ -2753,8 +2755,40 @@ body {
 }
 
 .inp-badge {
-  min-width: 80px;
+  min-width: 24px;
   text-align: right;
+}
+
+/* ── UX-1B: compact top-of-sheet legend ─────────────────────────────── */
+.inp-legend {
+  font-size: 0.78rem;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 1rem;
+}
+
+/* ── UX-1B: calculated/derived field — muted, read-only style ───────── */
+.inp-value-calculated {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* ── UX-1B: compact caveat icon (replaces loud per-row text badges
+   like "DSCR sculpt driver" / "Timing driver" / "Indicative (derived)").
+   Caveat text is available via the title attribute (tooltip). ──────── */
+.inp-caveat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  cursor: help;
 }
 
 /* ── Dirty indicator ─────────────────────────────────────────────────── */
@@ -3275,7 +3309,8 @@ body {
   border-radius: 4px;
   font-size: 0.85rem;
   font-weight: 600;
-  background: var(--surface);
+  /* UX-1B: subtle tint so editable cells read as "input" at a glance. */
+  background: var(--editable-bg, #f8fafc);
   color: var(--text);
   transition: border-color 0.15s, background-color 0.15s;
 }
