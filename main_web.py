@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import pathlib
 import re
 import subprocess
 from datetime import datetime as dt
@@ -3323,6 +3324,23 @@ async def known_limitations_page(request: Request):
         request=request,
         name="known_limitations_page.html",
         context={"user": user},
+    )
+
+
+@app.get("/pilot-guide")
+async def pilot_guide_page(request: Request):
+    """EXTERNAL-FRIENDLY-PILOT-PREP-A: standalone Pilot Guide page,
+    reachable from Help and the footer. Renders the existing
+    docs/external_pilot_guide.md content; presentation only."""
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    guide_path = pathlib.Path(__file__).resolve().parent / "docs" / "external_pilot_guide.md"
+    guide_text = guide_path.read_text()
+    return templates.TemplateResponse(
+        request=request,
+        name="pilot_guide_page.html",
+        context={"user": user, "guide_text": guide_text},
     )
 
 

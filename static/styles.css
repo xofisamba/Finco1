@@ -9010,3 +9010,16 @@ tr.fc-grid-header--sub th {
   pointer-events: none;
   background: #f9fafb;
 }
+
+/* ── EXTERNAL-FRIENDLY-PILOT-PREP-A: footer caveat + pilot guide page ── */
+.app-footer-caveat {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+.pilot-guide-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
