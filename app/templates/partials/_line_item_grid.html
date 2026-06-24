@@ -159,7 +159,15 @@
             {%- for k, v in (row.attrs or {}).items() %} {{ k }}="{{ v }}"{% endfor -%}>
           {%- for cell in row.cells -%}
             {# cell may be a string (already-rendered HTML) or a dict #}
-            {%- if cell is mapping -%}
+            {%- if cell is mapping and cell.kind == "section_band_label" -%}
+              <td class="lig-cell fc-section-band__label{% if cell.classes %} {{ cell.classes | join(' ') }}{% endif %}" colspan="3">
+                {%- if cell["safe_html"] -%}
+                  {{ cell.value | safe }}
+                {%- else -%}
+                  {{ cell.value }}
+                {%- endif -%}
+              </td>
+            {%- elif cell is mapping -%}
               {%- set cell_classes = ["lig-cell"] -%}
               {%- if cell.kind == "label" -%}
                 {%- set _ = cell_classes.append("fc-grid-col-label") -%}

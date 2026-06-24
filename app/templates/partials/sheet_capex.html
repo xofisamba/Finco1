@@ -318,13 +318,32 @@
         and cat.code not in ["C.17", "C.18"]
       ) else ""
     ) %}
+    {# Category code/name are server-defined constants (not request
+       data), so plain concatenation is used here rather than the
+       autoescape `e` filter, which would coerce the whole string to
+       Markup and double-escape the literal HTML built below. #}
+    {% set _band_label = cat.code ~ "  " ~ cat.name %}
+    {% if _add_line %}
+      {% set _band_cell_html = (
+        '<span class="fc-section-band__label-text">' ~ _band_label ~ '</span>'
+        ~ '<button type="button" class="capex-add-line-btn capex-add-line-btn--inline"'
+        ~ ' data-capex-add-line-btn="' ~ cat.code ~ '"'
+        ~ ' data-capex-cat-name="' ~ cat.name ~ '"'
+        ~ ' aria-label="Add temporary line to ' ~ cat.name ~ '">'
+        ~ '<span class="capex-add-line-btn-icon" aria-hidden="true">+</span>'
+        ~ '<span class="capex-add-line-btn-text">Add line</span>'
+        ~ '</button>'
+      ) %}
+    {% else %}
+      {% set _band_cell_html = _band_label %}
+    {% endif %}
     {% set _ = lig_rows.append({
       "type": "section_band",
       "attrs": {
         "data-capex-category": cat.code,
         "data-capex-add-line": _add_line,
       },
-      "cells": [cat.code ~ "  " ~ cat.name],
+      "cells": [{"kind": "section_band_label", "value": _band_cell_html, "safe_html": True}],
     }) %}
     {# Sub-lines under the category #}
     {% for child in cat.children %}
@@ -682,41 +701,36 @@
   </p>
 </div>
 
-{# ── Add-line toolbar (in-memory preview, C.01..C.16 only) ─────── #}
-{# 57A-8: pure-UI affordance. Toolbar of small + buttons,
-   one per C.01..C.16 category. C.17 and C.18 do NOT
-   appear here. Behaviour lives in static/app.js. #}
-<div class="capex-add-line-toolbar" id="capex-add-line-toolbar"
-     data-capex-add-line-toolbar="true"
-     data-capex-toolbar-in-memory="true">
-  <p class="capex-add-line-copy" data-capex-add-line-copy="true">
-    <strong>Add line preview</strong> — Added lines are temporary in this preview and will be persisted in a later phase. They are not included in model runs yet.
-  </p>
-  <div class="capex-add-line-buttons" role="group"
-       aria-label="Add temporary CAPEX line per category">
-    {% for cat in capex_categories %}
-      {% if (not cat.is_backend_calculated)
-         and (cat.code not in ["C.17", "C.18"]) %}
-        <button type="button"
-                class="capex-add-line-btn"
-                data-capex-add-line-btn="{{ cat.code }}"
-                data-capex-cat-name="{{ cat.name }}"
-                aria-label="Add temporary line to {{ cat.name }}">
-          <span class="capex-add-line-btn-code">{{ cat.code }}</span>
-          <span class="capex-add-line-btn-icon" aria-hidden="true">+</span>
-          <span class="capex-add-line-btn-text">Add line</span>
-        </button>
-      {% endif %}
-    {% endfor %}
-  </div>
-  <p class="capex-add-line-preview-totals"
-     data-capex-add-line-preview-totals="true"
-     hidden>
-    <strong>Preview only — not used by Run until persistence is implemented.</strong>
-    <span class="capex-add-line-preview-totals-detail"
-          data-capex-add-line-preview-detail="true"></span>
-  </p>
+{# ── Workbook grid (rendered via shared LineItemGrid) ────────────── #}
+{# UX-2A: the grid is the primary working surface and now appears ── #}
+{# immediately after the summary strip / driving copy, ahead of ──── #}
+{# the (collapsed-by-default) CAPEX Sheet Guide below. ────────────── #}
+<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet">
+  {{ lig_render(
+       table_label="CAPEX input sheet for " ~ project_ctx.name,
+       columns=[
+         {"key": "label",  "label": "Line Item", "kind": "label",  "classes": "fc-grid-col-label"},
+         {"key": "code",   "label": "Code",      "kind": "code",   "classes": "fc-th fc-th--code"},
+         {"key": "amount", "label": "Amount (kEUR)", "kind": "amount", "classes": "fc-th fc-th--amount"},
+       ],
+       rows=lig_rows,
+       editable=is_user_project,
+       input_field_template="capex_{code}_keur",
+       table_id="capex-single-sheet-grid",
+     ) }}
 </div>
+
+{# ── Add-line preview totals (UX-2A: buttons relocated into ─────── #}
+{#    each category's section band inside the grid itself; ──────── #}
+{#    this strip only surfaces the running preview total). ──────── #}
+{# 57A-8: pure-UI affordance. Behaviour lives in static/app.js. #}
+<p class="capex-add-line-preview-totals"
+   data-capex-add-line-preview-totals="true"
+   hidden>
+  <strong>Preview only — not used by Run until persistence is implemented.</strong>
+  <span class="capex-add-line-preview-totals-detail"
+        data-capex-add-line-preview-detail="true"></span>
+</p>
 
 {# ── Run/Save warning (only shown when temporary rows exist) ─────── #}
 <div class="capex-tmp-run-warning" id="capex-tmp-run-warning"
@@ -734,185 +748,181 @@
   </p>
 </div>
 
-{# ── Phase 57A-10H: Unified CAPEX column key (status + groups) ─── #}
-<div class="capex-column-key" data-capex-column-key="true"
-     data-capex-column-groups="true"
-     aria-label="CAPEX column key">
-  <p class="capex-column-key__title">
-    <strong>CAPEX column key</strong>
-  </p>
-  <p class="capex-column-key__lead">
-    Each column in the detail grid belongs to one of these groups
-    and carries one of these status labels. Status is the source of
-    truth for whether a column affects Run.
-  </p>
+{# ── UX-2A: CAPEX Sheet Guide ─────────────────────────────────────── #}
+{# Column key, status legend, deferred-note and Sources & Uses ────── #}
+{# bridge governance/architecture copy collapsed into a single, ──── #}
+{# collapsed-by-default help section so the working grid above is ── #}
+{# the primary focus of the page. #}
+<details class="capex-sheet-guide" data-capex-sheet-guide="true">
+  <summary class="capex-sheet-guide__summary"
+           data-capex-sheet-guide-summary="true">
+    <span aria-hidden="true">?</span> CAPEX Sheet Guide
+  </summary>
 
-  <div class="capex-column-key__section"
-       data-capex-column-key-section="status">
-    <p class="capex-column-key__section-title">Status labels</p>
-    <ul class="capex-column-key__chips">
-      <li><span class="badge badge-runtime-used">Runtime-used</span>
+  {# ── Phase 57A-10H: Unified CAPEX column key (status + groups) ─── #}
+  <div class="capex-column-key" data-capex-column-key="true"
+       data-capex-column-groups="true"
+       aria-label="CAPEX column key">
+    <p class="capex-column-key__title">
+      <strong>CAPEX column key</strong>
+    </p>
+    <p class="capex-column-key__lead">
+      Each column in the detail grid belongs to one of these groups
+      and carries one of these status labels. Status is the source of
+      truth for whether a column affects Run.
+    </p>
+
+    <div class="capex-column-key__section"
+         data-capex-column-key-section="status">
+      <p class="capex-column-key__section-title">Status labels</p>
+      <ul class="capex-column-key__chips">
+        <li><span class="badge badge-runtime-used">Runtime-used</span>
+            <span class="capex-column-key__chip-desc">
+              feeds the model
+            </span></li>
+        <li><span class="badge badge-metadata-only">Metadata-only</span>
+            <span class="capex-column-key__chip-desc">
+              captured for audit; does not affect Run
+            </span></li>
+        <li><span class="badge badge-design-only">Design-only</span>
+            <span class="capex-column-key__chip-desc">
+              designed for a future phase; not yet wired
+            </span></li>
+        <li><span class="badge badge-export-only">Export-only</span>
+            <span class="capex-column-key__chip-desc">
+              surfaced in export / audit artefacts only
+            </span></li>
+      </ul>
+    </div>
+
+    <div class="capex-column-key__section"
+         data-capex-column-key-section="groups">
+      <p class="capex-column-key__section-title">Column groups</p>
+      <ul class="capex-column-key__chips">
+        <li data-capex-group="core">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="core" aria-hidden="true"></span>
+          <strong>Core</strong>
           <span class="capex-column-key__chip-desc">
-            feeds the model
-          </span></li>
+            Line Item, Code, Amount
+          </span>
+          <span class="badge badge-runtime-used">Runtime-used</span>
+        </li>
+        <li data-capex-group="costing">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="costing" aria-hidden="true"></span>
+          <strong>Costing</strong>
+          <span class="capex-column-key__chip-desc">
+            Contingency %, Per MW
+          </span>
+          <span class="badge badge-metadata-only">Metadata-only</span>
+        </li>
+        <li data-capex-group="tax">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="tax" aria-hidden="true"></span>
+          <strong>Tax</strong>
+          <span class="capex-column-key__chip-desc">
+            VAT %, WHT %
+          </span>
+          <span class="badge badge-metadata-only">Metadata-only</span>
+        </li>
+        <li data-capex-group="schedule">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="schedule" aria-hidden="true"></span>
+          <strong>Schedule</strong>
+          <span class="capex-column-key__chip-desc">
+            M1–M18 (spending profile, construction utilisation)
+          </span>
+          <span class="badge badge-runtime-used">Runtime-used</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  {# ── CAPEX column status legend (Phase 57A-10F) ─────────────── #}
+  <div class="capex-status-legend" data-capex-status-legend="true">
+    <p class="capex-legend-lead" data-capex-legend-lead="true">
+      <strong>Quick reference:</strong> status labels below mirror the
+      column-key panel above. Use this list as a fast lookup after
+      scrolling through the grid.
+    </p>
+    <ul>
+      <li><span class="badge badge-runtime-used">Runtime-used</span> — feeds the model</li>
+      <li><span class="badge badge-metadata-only">Metadata-only</span> — captured for audit; does not affect Run</li>
+      <li><span class="badge badge-design-only">Design-only</span> — designed for a future phase; not yet wired</li>
+      <li><span class="badge badge-export-only">Export-only</span> — surfaced in export / audit artefacts only</li>
+    </ul>
+  </div>
+
+  {# ── Deferred placeholders / future model inputs ─────────────── #}
+  <div class="capex-deferred-note" data-capex-deferred="true">
+    <p class="capex-metadata-disclaimer" data-capex-metadata-disclaimer="true">
+      <span class="badge badge-metadata-only">Metadata only — does not affect Run.</span>
+      The placeholders below are visible for design / planning but
+      they do not affect the current model calculations.
+    </p>
+    <p class="capex-deferred-lead" data-capex-deferred-lead="true">
+      These six items are CAPEX detail columns that the
+      current runtime does not yet consume. They are captured
+      for design / planning, will be visible in audit exports,
+      and are documented here as a forward-looking contract.
+    </p>
+    <ul>
       <li><span class="badge badge-metadata-only">Metadata-only</span>
-          <span class="capex-column-key__chip-desc">
-            captured for audit; does not affect Run
-          </span></li>
+          <strong>VAT % / WHT % / Contingency %</strong>
+          <span class="capex-deferred-detail">— captured in CAPEX
+          detail columns; not yet fed to tax / model.</span></li>
       <li><span class="badge badge-design-only">Design-only</span>
-          <span class="capex-column-key__chip-desc">
-            designed for a future phase; not yet wired
-          </span></li>
-      <li><span class="badge badge-export-only">Export-only</span>
-          <span class="capex-column-key__chip-desc">
-            surfaced in export / audit artefacts only
-          </span></li>
+          <strong>Payment schedule by construction month</strong>
+          <span class="capex-deferred-detail">— equity / senior /
+          SHL drawdown, IDC, opening balances at COD.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>Depreciation category / useful life / flag</strong>
+          <span class="capex-deferred-detail">— P&amp;L and fixed
+          asset schedule.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>VAT applicability / rate / cost</strong>
+          <span class="capex-deferred-detail">— cash flow /
+          balance sheet / working capital / tax receivable.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>WHT rate / cost</strong>
+          <span class="capex-deferred-detail">— tax / cash flow
+          treatment.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>Utilisation of funds during construction</strong>
+          <span class="capex-deferred-detail">— derived from the
+          payment schedule.</span></li>
     </ul>
   </div>
 
-  <div class="capex-column-key__section"
-       data-capex-column-key-section="groups">
-    <p class="capex-column-key__section-title">Column groups</p>
-    <ul class="capex-column-key__chips">
-      <li data-capex-group="core">
-        <span class="capex-column-key__group-dot"
-              data-capex-group-dot="core" aria-hidden="true"></span>
-        <strong>Core</strong>
-        <span class="capex-column-key__chip-desc">
-          Line Item, Code, Amount
-        </span>
-        <span class="badge badge-runtime-used">Runtime-used</span>
-      </li>
-      <li data-capex-group="costing">
-        <span class="capex-column-key__group-dot"
-              data-capex-group-dot="costing" aria-hidden="true"></span>
-        <strong>Costing</strong>
-        <span class="capex-column-key__chip-desc">
-          Contingency %, Per MW
-        </span>
-        <span class="badge badge-metadata-only">Metadata-only</span>
-      </li>
-      <li data-capex-group="tax">
-        <span class="capex-column-key__group-dot"
-              data-capex-group-dot="tax" aria-hidden="true"></span>
-        <strong>Tax</strong>
-        <span class="capex-column-key__chip-desc">
-          VAT %, WHT %
-        </span>
-        <span class="badge badge-metadata-only">Metadata-only</span>
-      </li>
-      <li data-capex-group="schedule">
-        <span class="capex-column-key__group-dot"
-              data-capex-group-dot="schedule" aria-hidden="true"></span>
-        <strong>Schedule</strong>
-        <span class="capex-column-key__chip-desc">
-          M1–M18 (spending profile, construction utilisation)
-        </span>
-        <span class="badge badge-runtime-used">Runtime-used</span>
-      </li>
-    </ul>
+  {# ── Sources & Uses bridge (future model wiring) ─────────────── #}
+  <div class="capex-sources-uses-bridge" data-capex-su-bridge="true">
+    <p class="capex-su-lead" data-capex-su-lead="true">
+      <strong>Sources &amp; Uses bridge (future model wiring):</strong>
+      this CAPEX sheet is one of the core input engines. Once
+      VAT / WHT / depreciation / payment schedule are wired, the
+      CAPEX inputs will feed drawdowns (equity / senior / SHL),
+      IDC, opening debt balances at COD, fixed asset base, tax
+      and cash flow.
+    </p>
+    <p class="capex-su-summary" data-capex-su-summary="true">
+      <strong>What feeds what:</strong>
+      <span class="capex-su-tag">Payment schedule</span> →
+      Sources &amp; Uses, equity / senior / SHL drawdown, IDC.
+      <span class="capex-su-tag">VAT / WHT rates</span> →
+      cash flow, balance sheet, tax receivable / payable.
+      <span class="capex-su-tag">Depreciation flags</span> →
+      P&amp;L, fixed asset schedule.
+      <span class="capex-su-tag">Cumulative drawdowns</span> →
+      opening senior and SHL balances at COD.
+    </p>
+    <p class="capex-su-note" data-capex-su-note="true">
+      <em>This sheet is a UI input surface; the backend model
+      wiring above is a separate, larger effort and is not
+      implemented in this UI phase.</em>
+    </p>
   </div>
-</div>
-
-{# ── Workbook grid (rendered via shared LineItemGrid) ────────────── #}
-<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet">
-  {{ lig_render(
-       table_label="CAPEX input sheet for " ~ project_ctx.name,
-       columns=[
-         {"key": "label",  "label": "Line Item", "kind": "label",  "classes": "fc-grid-col-label"},
-         {"key": "code",   "label": "Code",      "kind": "code",   "classes": "fc-th fc-th--code"},
-         {"key": "amount", "label": "Amount (kEUR)", "kind": "amount", "classes": "fc-th fc-th--amount"},
-       ],
-       rows=lig_rows,
-       editable=is_user_project,
-       input_field_template="capex_{code}_keur",
-       table_id="capex-single-sheet-grid",
-     ) }}
-</div>
-
-{# ── CAPEX column status legend (Phase 57A-10F) ─────────────── #}
-<div class="capex-status-legend" data-capex-status-legend="true">
-  <p class="capex-legend-lead" data-capex-legend-lead="true">
-    <strong>Quick reference:</strong> status labels below mirror the
-    column-key panel above. Use this list as a fast lookup after
-    scrolling through the grid.
-  </p>
-  <ul>
-    <li><span class="badge badge-runtime-used">Runtime-used</span> — feeds the model</li>
-    <li><span class="badge badge-metadata-only">Metadata-only</span> — captured for audit; does not affect Run</li>
-    <li><span class="badge badge-design-only">Design-only</span> — designed for a future phase; not yet wired</li>
-    <li><span class="badge badge-export-only">Export-only</span> — surfaced in export / audit artefacts only</li>
-  </ul>
-</div>
-
-{# ── Deferred placeholders / future model inputs ─────────────── #}
-<div class="capex-deferred-note" data-capex-deferred="true">
-  <p class="capex-metadata-disclaimer" data-capex-metadata-disclaimer="true">
-    <span class="badge badge-metadata-only">Metadata only — does not affect Run.</span>
-    The placeholders below are visible for design / planning but
-    they do not affect the current model calculations.
-  </p>
-  <p class="capex-deferred-lead" data-capex-deferred-lead="true">
-    These six items are CAPEX detail columns that the
-    current runtime does not yet consume. They are captured
-    for design / planning, will be visible in audit exports,
-    and are documented here as a forward-looking contract.
-  </p>
-  <ul>
-    <li><span class="badge badge-metadata-only">Metadata-only</span>
-        <strong>VAT % / WHT % / Contingency %</strong>
-        <span class="capex-deferred-detail">— captured in CAPEX
-        detail columns; not yet fed to tax / model.</span></li>
-    <li><span class="badge badge-design-only">Design-only</span>
-        <strong>Payment schedule by construction month</strong>
-        <span class="capex-deferred-detail">— equity / senior /
-        SHL drawdown, IDC, opening balances at COD.</span></li>
-    <li><span class="badge badge-design-only">Design-only</span>
-        <strong>Depreciation category / useful life / flag</strong>
-        <span class="capex-deferred-detail">— P&amp;L and fixed
-        asset schedule.</span></li>
-    <li><span class="badge badge-design-only">Design-only</span>
-        <strong>VAT applicability / rate / cost</strong>
-        <span class="capex-deferred-detail">— cash flow /
-        balance sheet / working capital / tax receivable.</span></li>
-    <li><span class="badge badge-design-only">Design-only</span>
-        <strong>WHT rate / cost</strong>
-        <span class="capex-deferred-detail">— tax / cash flow
-        treatment.</span></li>
-    <li><span class="badge badge-design-only">Design-only</span>
-        <strong>Utilisation of funds during construction</strong>
-        <span class="capex-deferred-detail">— derived from the
-        payment schedule.</span></li>
-  </ul>
-</div>
-
-{# ── Sources & Uses bridge (future model wiring) ─────────────── #}
-<div class="capex-sources-uses-bridge" data-capex-su-bridge="true">
-  <p class="capex-su-lead" data-capex-su-lead="true">
-    <strong>Sources &amp; Uses bridge (future model wiring):</strong>
-    this CAPEX sheet is one of the core input engines. Once
-    VAT / WHT / depreciation / payment schedule are wired, the
-    CAPEX inputs will feed drawdowns (equity / senior / SHL),
-    IDC, opening debt balances at COD, fixed asset base, tax
-    and cash flow.
-  </p>
-  <p class="capex-su-summary" data-capex-su-summary="true">
-    <strong>What feeds what:</strong>
-    <span class="capex-su-tag">Payment schedule</span> →
-    Sources &amp; Uses, equity / senior / SHL drawdown, IDC.
-    <span class="capex-su-tag">VAT / WHT rates</span> →
-    cash flow, balance sheet, tax receivable / payable.
-    <span class="capex-su-tag">Depreciation flags</span> →
-    P&amp;L, fixed asset schedule.
-    <span class="capex-su-tag">Cumulative drawdowns</span> →
-    opening senior and SHL balances at COD.
-  </p>
-  <p class="capex-su-note" data-capex-su-note="true">
-    <em>This sheet is a UI input surface; the backend model
-    wiring above is a separate, larger effort and is not
-    implemented in this UI phase.</em>
-  </p>
-</div>
+</details>
 
 {# ── Read-only notice (footer) ─────────────────────────────────── #}
 {% if not is_user_project %}

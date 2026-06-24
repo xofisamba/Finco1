@@ -294,11 +294,15 @@ class TestSingleSheetGroupsPanel:
     def test_panel_has_four_entries(self, sheet_capex_html_text):
         # Phase 57A-10H unified the "column groups" panel under
         # the new class "capex-column-key" with the "groups"
-        # section. Fall back to the legacy "capex-column-groups"
+        # section. UX-2A moved this panel inside the collapsed-
+        # by-default "CAPEX Sheet Guide" <details> block, so it
+        # no longer immediately precedes the Workbook grid comment;
+        # locate it by its own groups-section / chips wrapper
+        # instead. Fall back to the legacy "capex-column-groups"
         # panel if the new one is not present.
         match = re.search(
-            r'<div[^>]*class="capex-column-key"[^>]*data-capex-column-groups="true"[^>]*>'
-            r'(.*?)</div>\s*</div>\s*\{#\s*\u2500\u2500 Workbook grid',
+            r'data-capex-column-key-section="groups">'
+            r'(.*?)</div>\s*</div>',
             sheet_capex_html_text,
             re.DOTALL,
         )
