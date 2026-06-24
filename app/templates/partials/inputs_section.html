@@ -25,7 +25,7 @@
            data-original-value="{{ value }}"
            onchange="var v=this.value; var f=document.getElementById('main-form'); if(f&&f.elements['{{ field_name }}']){ f.elements['{{ field_name }}'].value=v; } var ind=document.getElementById('dirty-indicator'); if(ind) ind.style.display='flex'; markInputDirty&&markInputDirty(this);" />
     {% else %}
-    <span class="inp-value{% if calculated %} inp-value-calculated{% endif %}">{{ value }}</span>
+    <span class="inp-value{% if calculated %} inp-value-calculated inp-value-formula-cell{% endif %}">{{ value }}</span>
     {% endif %}
   </span>
   <span class="inp-badge">
@@ -168,7 +168,7 @@
   {{ field_row("Senior Tenor", "{} years".format(project_ctx.senior_tenor_years) if project_ctx.senior_tenor_years else "—", editable=is_user_project, field_name="tenor_years", caveat_icon="⚠", caveat_title="DSCR sculpt driver — affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.") }}
   {{ field_row("SHL Amount", "{:,.0f} kEUR".format(project_ctx.shl_amount_keur) if project_ctx.shl_amount_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.") }}
 {% endset %}
-{{ section_card("Financing Summary", financing_rows) }}
+{{ section_card("Debt Summary", financing_rows) }}
 
 {# ══════════════════════════════════════════════════════════════════════
    TAX SUMMARY
@@ -214,40 +214,6 @@
     against an Excel reference. Outputs are <em>not</em>
     lender-ready, audit-ready, or bank-approved. Use only for
     exploratory analysis.
-  </span>
-</div>
-<div class="inp-driver-status-note"
-     role="note"
-     aria-label="Driver status legend"
-     data-driver-status-legend="true"
-     data-exploration-source="inputs-section">
-  <span class="inp-caveat-icon" aria-hidden="true">⚠</span>
-  <span>
-    <strong>interest_rate_pct</strong>,
-    <strong>tenor_years</strong>, and <strong>target_dscr</strong> are
-    DSCR sculpt drivers and affect senior debt / DSCR outputs
-    (see the warning icon next to those fields). Project IRR
-    may not change.
-  </span>
-
-
-  <span class="inp-caveat-icon" aria-hidden="true">⚠</span>
-  <span>
-    <strong>construction_months</strong> is a timing driver. It
-    can move equity IRR via the financial_close timing, but
-    does not change revenue, EBITDA, senior debt, or DSCR
-    in the current Generic runtime
-    (see the warning icon next to that field).
-  </span>
-  <span class="inp-caveat-icon" aria-hidden="true">ⓘ</span>
-  <span>
-    <strong>gearing_pct</strong> is an indicative gearing assumption.
-    The <strong>realized gearing</strong> is shown as a derived
-    output (senior debt / total CAPEX). Under DSCR sculpt sizing,
-    senior debt is sized to hit target DSCR, so the
-    user-supplied gearing_pct is preserved as a reporting
-    metric, not as a binding senior debt sizing driver
-    (see the info icon next to that field).
   </span>
 </div>
 {% endif %}
