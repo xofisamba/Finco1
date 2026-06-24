@@ -53,8 +53,16 @@
 {# ── 3. Compare-with shortcut link ────────────────────────────────────── #}
 {%- macro compare_link(link) -%}
 {% if link %}
+{# UX-1C: hx-get into the sidebar scenario panel (same swap target/shape
+   as Save), so this renders inside the styled app shell instead of
+   navigating the whole browser tab to a bare, unstyled fragment route.
+   href is kept as a no-JS fallback. #}
 <a class="sw-compare-link {{ link.css_class }}"
    href="{{ link.href }}"
+   hx-get="{{ link.href }}"
+   hx-target="#saved-scenario-panel"
+   hx-swap="outerHTML"
+   hx-push-url="true"
    title="Compare active scenario with {{ link.right_scenario_name }}">
   <span class="sw-compare-link__arrow" aria-hidden="true">⇄</span>
   <span class="sw-compare-link__label">{{ link.label }}</span>

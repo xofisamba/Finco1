@@ -84,8 +84,11 @@
   <input type="hidden" name="active_tab" id="hidden-active-tab" value="overview" />
 </form>
 
-<div class="workspace-content" id="workspace-content"
-     hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p && p.style.display==='none' && p.contains(event.target) && p.querySelector('form')){ p.style.display='block'; p.classList.add('active'); }">
+<!-- UX-1C: the New Project panel re-show logic lives once, in the
+     document-level swap listener in static/app.js. This element used
+     to carry a duplicate inline copy of the same check (pre-UX-1A);
+     removed to avoid two copies drifting out of sync. -->
+<div class="workspace-content" id="workspace-content">
 
   <!-- New Project Setup - main workspace entry point -->
   {# Phase 56C: Inline new-project form is now v1 (master data only).

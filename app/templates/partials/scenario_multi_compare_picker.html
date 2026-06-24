@@ -97,6 +97,9 @@
               id="scm-pick-count">0 of 2-4 selected</span>
         <a href="#" class="scm-pick-compare-btn" id="scm-pick-compare-btn"
            data-testid="multi-compare-picker-submit"
+           hx-target="#saved-scenario-panel"
+           hx-swap="outerHTML"
+           hx-push-url="true"
            role="button" aria-disabled="true"
            aria-label="Compare selected scenarios (open the multi-compare table)">
           Compare selected scenarios
@@ -140,6 +143,7 @@
       btn.setAttribute('aria-disabled', 'true');
       btn.classList.add('scm-pick-compare-btn--disabled');
       btn.removeAttribute('href');
+      btn.removeAttribute('hx-get');
       return;
     }
     if (n > maxN) {
@@ -147,12 +151,19 @@
       btn.setAttribute('aria-disabled', 'true');
       btn.classList.add('scm-pick-compare-btn--disabled');
       btn.removeAttribute('href');
+      btn.removeAttribute('hx-get');
       return;
     }
     var href = '/scenarios/compare-multi?project='
       + encodeURIComponent(root.getAttribute('data-project-code') || '')
       + '&scenario_ids=' + encodeURIComponent(checked.join(','));
     btn.setAttribute('href', href);
+    // UX-1C: keep hx-get in sync with href so the click is an htmx swap
+    // into the sidebar panel, not a full-page navigation to a bare
+    // unstyled fragment route. htmx.process() re-scans the element so
+    // the updated hx-get attribute takes effect.
+    btn.setAttribute('hx-get', href);
+    if (window.htmx) window.htmx.process(btn);
     btn.setAttribute('aria-disabled', 'false');
     btn.classList.remove('scm-pick-compare-btn--disabled');
   }

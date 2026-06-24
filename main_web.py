@@ -3697,6 +3697,14 @@ async def scenario_compare_endpoint(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    # UX-1C: this route renders a bare sidebar-panel fragment (no
+    # <html>/<head>/styles) — it is only safe as an htmx swap target.
+    # A direct/top-level navigation (typed URL, bookmark, no-JS
+    # fallback) must not render that fragment as the whole page, since
+    # it would show up unstyled. Redirect to the full workspace page.
+    if not request.headers.get("hx-request"):
+        return RedirectResponse(url=f"/?project={project}", status_code=302)
+
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
     scenarios, history, exports, export_lineage, scenario_summary_cards, dirty_state_ui, scenario_workflow_ui, project_review_ui = _workspace_refresh_payload(user, project_record, workspace_state)
@@ -3766,6 +3774,11 @@ async def scenario_compare_multi_endpoint(
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+
+    # UX-1C: same rationale as /scenarios/compare — this route renders a
+    # bare sidebar-panel fragment, only safe as an htmx swap target.
+    if not request.headers.get("hx-request"):
+        return RedirectResponse(url=f"/?project={project}", status_code=302)
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (

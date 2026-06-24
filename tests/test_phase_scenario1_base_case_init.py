@@ -384,6 +384,10 @@ class TestScenario1FileScope:
         "app/input_adapter.py",
         # HOTFIX-PILOT-BLOCKER-1: F3 refactors build_dashboard_kpis
         "app/ui/dashboard.py",
+        # UX-1C: active workspace cleanup follow-up allowlist
+        "tests/test_phase57a4_single_capex_sheet_layout.py",
+        "tests/test_phase51a_run_route_golden_characterization.py",
+        "tests/test_ux1a_navigation_context_fix.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
@@ -404,6 +408,10 @@ class TestScenario1FileScope:
         "app/templates/partials/_matrix_run_result.html",
         "app/templates/partials/_factory_lock_indicator.html",
         "static/styles.css",
+        # UX-1C: active workspace cleanup follow-up allowlist
+        "app/templates/partials/kpis.html",
+        "app/templates/partials/scenario_multi_compare_picker.html",
+        "app/templates/partials/scenario_workflow_indicators.html",
     )
 
     def test_file_scope(self):

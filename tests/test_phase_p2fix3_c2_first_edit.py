@@ -803,6 +803,33 @@ class TestFileScope:
             # WF-6 cross-arc patches
             "tests/test_phase_wf6_",
             "app/templates/partials/scenario_tab.html",
+            # UX-1C: active workspace cleanup follow-up allowlist
+            "tests/test_phase_pr1_form_timing_fields.py",
+            "tests/test_phase_pr2_realized_gearing.py",
+            "tests/test_phase_pr3_taxonomy.py",
+            "tests/test_phase_stab7_generic_dashboard_parity.py",
+            "tests/test_phase_m1_scenario_matrix.py",
+            "tests/test_phase_m2_scenario_matrix_live.py",
+            "tests/test_phase_m3_scenario_matrix_overrides.py",
+            "tests/test_phase_m4_scenario_matrix_run.py",
+            "app/templates/partials/kpis.html",
+            "app/templates/partials/scenario_multi_compare_picker.html",
+            "app/templates/partials/scenario_workflow_indicators.html",
+            "tests/test_phase51a_run_route_golden_characterization.py",
+            "tests/test_ux1a_navigation_context_fix.py",
+            "tests/test_p1_compare_validation.py",
+            "tests/test_phase_ux1_inputs_badge_cleanup.py",
+            "tests/test_phase_ux2_active_sheet_refresh.py",
+            "tests/test_phase_ux4cde_pilot_polish.py",
+            "tests/test_phase_wf2_",
+            "tests/test_phase_wf3_",
+            "tests/test_phase_wf4_",
+            "tests/test_phase_wf5_",
+            "tests/test_phase57a4_single_capex_sheet_layout.py",
+            "tests/test_phase_scenario1_base_case_init.py",
+            "tests/test_phase_scenario1_review_fix.py",
+            "tests/test_phase_scenario2_fixes.py",
+            "tests/test_phase_ux4b_save_as_button.py",
         )
         for f in changed:
             assert f.startswith(allowed_prefixes), (

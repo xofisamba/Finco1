@@ -556,7 +556,22 @@ class TestStab3FileScope:
         "tests/test_phase_stab7_",
         # STAB-8 e2e runtime validation
         "tests/test_phase_stab8_",
-    )
+            # UX-1C: active workspace cleanup follow-up allowlist
+        "app/templates/partials/kpis.html",
+        "app/templates/partials/scenario_multi_compare_picker.html",
+        "app/templates/partials/scenario_workflow_indicators.html",
+        "tests/test_phase51a_run_route_golden_characterization.py",
+        "tests/test_ux1a_navigation_context_fix.py",
+        "tests/test_p1_compare_validation.py",
+        "tests/test_phase_ux1_inputs_badge_cleanup.py",
+        "tests/test_phase_ux2_active_sheet_refresh.py",
+        "tests/test_phase_ux4cde_pilot_polish.py",
+        "tests/test_phase57a4_single_capex_sheet_layout.py",
+        "tests/test_phase_scenario1_base_case_init.py",
+        "tests/test_phase_scenario1_review_fix.py",
+        "tests/test_phase_scenario2_fixes.py",
+        "tests/test_phase_ux4b_save_as_button.py",
+)
 
     STAB3_DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

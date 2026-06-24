@@ -105,13 +105,23 @@ class TestAfterSwapHandlerScoped:
         )
 
     def test_inline_handler_checks_event_target(self):
+        # UX-1C: the duplicate inline hx-on handler on #workspace-content
+        # was removed (it was a stale pre-UX-1A copy of the same check
+        # now living once in static/app.js's document-level listener).
+        # Guard against a duplicate handler creeping back in without the
+        # scoped check.
         text = (
             REPO_ROOT / "app" / "templates" / "partials" / "workspace_shell.html"
         ).read_text()
-        assert "p.contains(event.target)" in text, (
-            "The inline hx-on afterSwap handler on #workspace-content "
-            "must check event.target before force-showing "
-            "panel-new-project"
+        assert "htmx:afterSwap" not in text, (
+            "workspace_shell.html should not carry its own afterSwap "
+            "handler for panel-new-project; that logic lives once in "
+            "static/app.js"
+        )
+        app_js_text = (REPO_ROOT / "static" / "app.js").read_text()
+        assert "panel.contains(target)" in app_js_text, (
+            "static/app.js must check the actual swap target before "
+            "force-showing panel-new-project"
         )
 
 

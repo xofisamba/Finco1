@@ -495,6 +495,12 @@ class TestFileScope:
             "app/templates/partials/project_selector.html",
         }
         unexpected -= u9_files
+        # UX-1C: active workspace cleanup follow-up allowlist
+        unexpected -= {
+            "app/templates/partials/kpis.html",
+            "app/templates/partials/scenario_multi_compare_picker.html",
+            "app/templates/partials/scenario_workflow_indicators.html",
+        }
         assert not unexpected, (
             f"57A-4 must only modify sheet_capex.html. "
             f"Unexpected: {sorted(unexpected)}"

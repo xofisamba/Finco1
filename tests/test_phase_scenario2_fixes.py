@@ -314,6 +314,14 @@ class TestScenario2FileScope:
         "app/services/scenarios_add_service.py",
         "app/services/projects_create_service.py",
         "app/services/project_save_as_service.py",
+        # UX-1C: active workspace cleanup follow-up allowlist
+        "tests/test_phase51a_run_route_golden_characterization.py",
+        "tests/test_ux1a_navigation_context_fix.py",
+        "tests/test_p1_compare_validation.py",
+        "tests/test_phase_ux1_inputs_badge_cleanup.py",
+        "tests/test_phase_ux2_active_sheet_refresh.py",
+        "tests/test_phase_ux4cde_pilot_polish.py",
+        "tests/test_phase57a4_single_capex_sheet_layout.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
@@ -333,6 +341,10 @@ class TestScenario2FileScope:
         "app/templates/partials/_matrix_run_result.html",
         "app/templates/partials/_factory_lock_indicator.html",
         "static/styles.css",
+        # UX-1C: active workspace cleanup follow-up allowlist
+        "app/templates/partials/kpis.html",
+        "app/templates/partials/scenario_multi_compare_picker.html",
+        "app/templates/partials/scenario_workflow_indicators.html",
     )
 
     def test_file_scope(self):

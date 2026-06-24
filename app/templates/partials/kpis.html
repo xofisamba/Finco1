@@ -10,24 +10,12 @@
   </div>
   {% endif %}
 
-  <div class="kpi-grid">
-    {% for kpi in kpis %}
-    <div class="kpi-card">
-      <div class="kpi-label">{{ kpi.label }}</div>
-      <div class="kpi-value
-        {%- if kpi.key in ('project_irr', 'equity_irr') -%}
-          {%- if kpi.value != '—' -%}
-            {%- set v = kpi.value|replace('%','')|float -%}
-            {%- if v > 0.10 -%} positive
-            {%- elif v < 0.05 -%} warning
-            {%- endif -%}
-          {%- endif -%}
-        {%- endif -%}">
-        {{ kpi.value }}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
+  {# UX-1C: the per-run KPI card grid that used to render here duplicated
+     the Dashboard v1 KPI cards (partials/_dashboard.html), which this
+     same /run response already OOB-refreshes (see main_web.py's
+     "partials/kpis.html" branch of the dashboard-OOB gate). Dashboard
+     v1 is the single KPI dashboard; this card now only confirms the
+     run completed and surfaces any run messages. #}
 
   {% if messages %}
   <div style="margin-top:0.85rem;">

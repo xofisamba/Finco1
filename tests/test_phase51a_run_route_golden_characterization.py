@@ -440,6 +440,13 @@ def test_no_production_code_changes():
         "app/services/validation_service.py",
         "app/services/download_service.py",
         "main_web.py",
+        # UX-1C: active workspace cleanup (frontend/template only —
+        # New Project panel reopen fix, Compare bare-fragment-page
+        # fix, KPI dashboard de-duplication). No domain/engine code.
+        "app/templates/partials/kpis.html",
+        "app/templates/partials/scenario_multi_compare_picker.html",
+        "app/templates/partials/scenario_workflow_indicators.html",
+        "app/templates/partials/workspace_shell.html",
     }
     unexpected = [c for c in changed if c not in allowed]
     assert unexpected == [], f"Production code changed unexpectedly: {unexpected}"

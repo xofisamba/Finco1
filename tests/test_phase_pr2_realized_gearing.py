@@ -705,6 +705,19 @@ class TestFileScope:
             "app/templates/partials/project_selector.html",
             "static/styles.css",
             "tests/test_phase_p1_ux_fix_1_pilot_polish.py",
+            # UX-1C: active workspace cleanup follow-up allowlist
+            "tests/test_p1_compare_validation.py",
+            "tests/test_phase57a4_single_capex_sheet_layout.py",
+            "tests/test_phase_scenario1_base_case_init.py",
+            "tests/test_phase_scenario1_review_fix.py",
+            "tests/test_phase_scenario2_fixes.py",
+            "tests/test_phase_ux4b_save_as_button.py",
+            "tests/test_phase_ux4cde_pilot_polish.py",
+            "app/templates/partials/kpis.html",
+            "app/templates/partials/scenario_multi_compare_picker.html",
+            "app/templates/partials/scenario_workflow_indicators.html",
+            "tests/test_phase51a_run_route_golden_characterization.py",
+            "tests/test_ux1a_navigation_context_fix.py",
         }
         actual_set = set(actual)
         extra = actual_set - expected
