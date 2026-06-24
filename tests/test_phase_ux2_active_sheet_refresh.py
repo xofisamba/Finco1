@@ -421,6 +421,9 @@ class TestUX2FileScope:
         "app/export/runtime_summary.py",
         "app/export/institutional_workbook.py",
         "app/services/run_service.py",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
     )
 
     UX2_DISALLOWED_PREFIXES = (

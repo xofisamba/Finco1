@@ -483,6 +483,7 @@ class TestFileScope:
             # UX-2A (later phase) extends the shared grid macro with
             # the previously-documented section_band_label kind.
             "app/templates/partials/_line_item_grid.html",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
         }
         unexpected = changed - allowed
         # U9-REMAINING-EXTERNAL-TERMINOLOGY-CLEANUP: presentation-text

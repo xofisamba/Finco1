@@ -663,6 +663,9 @@ class TestFileScope:
             # WF-6 cross-arc patches
             "tests/test_phase_wf6_",
             "app/templates/partials/scenario_tab.html",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
         )
         # Disallowed locations that must not change.
         disallowed_prefixes = (

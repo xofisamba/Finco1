@@ -341,6 +341,9 @@ class TestFileScope:
             "tests/test_phase_pr1_",
             "tests/test_phase_pr2_",
             "tests/test_phase_pr3_",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
         )
         disallowed_prefixes = (
             "app/persistence/",

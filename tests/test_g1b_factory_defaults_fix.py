@@ -210,6 +210,14 @@ def test_rc1_and_forbidden_areas_untouched() -> None:
     changed = [line for line in diff.stdout.splitlines() if line.strip()]
     if not changed:
         return
-    allowed_prefixes = ("app/project_factories.py", "tests/", "docs/", "reports/")
+    allowed_prefixes = (
+        "app/project_factories.py",
+        "tests/",
+        "docs/",
+        "reports/",
+        "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+        "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+        "tests/test_ux2c1_",  # UX-2C-1 cross-arc
+    )
     for f in changed:
         assert f.startswith(allowed_prefixes), f"unexpected file changed: {f}"

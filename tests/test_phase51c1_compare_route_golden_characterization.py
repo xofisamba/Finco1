@@ -520,7 +520,9 @@ def test_no_production_code_changed_outside_compare_extraction():
     changed = [l for l in result.stdout.strip().split("\n") if l]
     # Filter: only main_web.py is allowed to be in the diff (and only
     # the /compare route body inside it).
-    forbidden = [c for c in changed if c != "main_web.py"]
+    # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
+    ux2c1_allowed = ("app/ui/dashboard.py",)  # UX-2C-1 cross-arc
+    forbidden = [c for c in changed if c != "main_web.py" and c not in ux2c1_allowed]
     assert forbidden == [], (
         f"Phase 51C-2 may only change main_web.py and add "
         f"compare_service.py; unexpected changes: {forbidden}"

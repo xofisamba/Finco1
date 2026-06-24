@@ -137,7 +137,7 @@ def build_dashboard_kpis(
                 for key in ("project_irr", "equity_irr",
                             "senior_debt", "realized_gearing",
                             "min_dscr", "avg_dscr", "y1_revenue",
-                            "y1_ebitda", "project_npv")}
+                            "y1_ebitda", "project_npv", "total_capex")}
 
     # Realized gearing comes from a derived computation
     # at the ProjectContext build time
@@ -178,6 +178,7 @@ def build_dashboard_kpis_from_raw_kpis(raw_kpis: dict) -> Dict[str, Dict[str, An
     y1_revenue = _safe_float(raw_kpis.get("y1_revenue_keur") or raw_kpis.get("total_revenue_keur"))
     y1_ebitda = _safe_float(raw_kpis.get("y1_ebitda_keur") or raw_kpis.get("total_ebitda_keur"))
     npv = _safe_float(raw_kpis.get("project_npv_keur"))
+    total_capex = _safe_float(raw_kpis.get("total_capex_keur"))
 
     kpis: Dict[str, Dict[str, Any]] = {}
     kpis["project_irr"] = {
@@ -224,6 +225,11 @@ def build_dashboard_kpis_from_raw_kpis(raw_kpis: dict) -> Dict[str, Dict[str, An
         "label": "Y1 EBITDA", "value": _fmt_money_keur(y1_ebitda),
         "raw": y1_ebitda, "status": "pass" if y1_ebitda is not None else "missing",
         "tooltip": "Year 1 EBITDA (kEUR)",
+    }
+    kpis["total_capex"] = {
+        "label": "CAPEX", "value": _fmt_money_keur(total_capex),
+        "raw": total_capex, "status": "pass" if total_capex is not None else "missing",
+        "tooltip": "Total CAPEX (kEUR)",
     }
     return kpis
 

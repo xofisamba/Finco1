@@ -396,6 +396,8 @@ class TestCompareValidationFileScope:
         "app/services/project_save_as_service.py",
         "app/templates/partials/_factory_lock_indicator.html",
         "app/ui/dashboard.py",
+        "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+        "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

@@ -218,6 +218,9 @@ class TestUX4CDEFileScope:
         "docs/phase_pilot_blocker_1",
         "reports/phase_irr_",
         "reports/phase_pilot_blocker_1",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

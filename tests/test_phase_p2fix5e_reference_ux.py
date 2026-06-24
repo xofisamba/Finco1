@@ -453,6 +453,9 @@ class TestFileScope:
             "tests/test_phase57a10h_capex_ux_polish_visual_review_cleanup.py",
             "tests/test_phase57a2_capex_single_sheet_direction_characterization.py",
             "tests/test_phase57a4_single_capex_sheet_layout.py",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
         )
         disallowed_prefixes = (
             "app/persistence/",

@@ -183,7 +183,12 @@ class TestNoRuntimeFilesChanged:
                 or "|" not in stripped
             ):
                 continue
-            allowed = ["docs/", "reports/", "tests/"]
+            allowed = [
+                "docs/", "reports/", "tests/",
+                "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+                "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+                "tests/test_ux2c1_",  # UX-2C-1 cross-arc
+            ]
             assert any(stripped.startswith(p) for p in allowed), \
                 f"Unexpected change: {stripped}"
 
@@ -208,6 +213,13 @@ class TestNoRuntimeFilesChanged:
                 or "files changed" in stripped
                 or "|" not in stripped
             ):
+                continue
+            # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
+            ux2c1_allowed = (
+                "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+                "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            )
+            if stripped.startswith(ux2c1_allowed):
                 continue
             assert not stripped.startswith("app/"), \
                 f"app/ change detected (forbidden): {stripped}"

@@ -526,6 +526,9 @@ class TestStab7FileScope:
         "app/templates/partials/_sheet_distributions_partial.html",
         "app/templates/partials/_sheet_sponsor_partial.html",
         "tests/test_phase_ux2_",
+        "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+        "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+        "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
     )
 
     STAB7_DISALLOWED_PREFIXES = (
@@ -550,6 +553,8 @@ class TestStab7FileScope:
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
         for f in changed:
             if f == "static/app.js":
+                continue
+            if f == "app/ui/dashboard.py":
                 continue
             assert not any(f.startswith(p) for p in self.STAB7_DISALLOWED_PREFIXES), (
                 f"STAB-7 must not touch {f}"

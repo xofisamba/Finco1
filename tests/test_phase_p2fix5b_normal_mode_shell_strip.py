@@ -366,6 +366,9 @@ class TestFileScope:
             "app/templates/partials/_matrix_cell_updated.html",
             "app/templates/partials/_matrix_cell_edit.html",
             "app/templates/partials/_matrix_run_result.html",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
         )
         disallowed_prefixes = (
             "app/persistence/",

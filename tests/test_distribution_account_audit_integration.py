@@ -221,10 +221,18 @@ class TestNoAppChanges:
     def test_no_app_waterfall_core_changes(self):
         """Verify no app/ files are changed by this branch."""
         import subprocess
+        # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
+        allowed_prefixes = (
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/test_ux2c1_",  # UX-2C-1 cross-arc
+        )
         result = subprocess.run(
-            ["git", "diff", "--stat", "origin/main...HEAD", "--", "app/"],
+            ["git", "diff", "--name-only", "origin/main...HEAD", "--", "app/"],
             cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True,
             text=True,
         )
-        assert result.stdout.strip() == "", f"app/ changes found: {result.stdout}"
+        changed = [line for line in result.stdout.strip().splitlines() if line]
+        unexpected = [f for f in changed if not f.startswith(allowed_prefixes)]
+        assert unexpected == [], f"app/ changes found: {unexpected}"

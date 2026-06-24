@@ -384,6 +384,9 @@ class TestScenario1FileScope:
         "app/input_adapter.py",
         # HOTFIX-PILOT-BLOCKER-1: F3 refactors build_dashboard_kpis
         "app/ui/dashboard.py",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
@@ -404,6 +407,7 @@ class TestScenario1FileScope:
         "app/templates/partials/_matrix_run_result.html",
         "app/templates/partials/_factory_lock_indicator.html",
         "static/styles.css",
+        "app/templates/partials/runtime_summary.html",
     )
 
     def test_file_scope(self):

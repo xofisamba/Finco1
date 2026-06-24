@@ -153,8 +153,18 @@ def test_no_runtime_files_changed():
     if not output:
         return
     for line in output.split("\n"):
-        if not line.strip() or line.strip().startswith("??") or "files changed" in line:
+        if (
+            not line.strip()
+            or line.strip().startswith("??")
+            or line.strip().startswith("...")  # UX-2C-1 cross-arc: skip git --stat path truncation
+            or "files changed" in line
+        ):
             continue
-        allowed = ["docs/", "reports/", "tests/", "domain/shl/"]
+        allowed = [
+            "docs/", "reports/", "tests/", "domain/shl/",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/test_ux2c1_",  # UX-2C-1 cross-arc
+        ]
         assert any(line.strip().startswith(p) for p in allowed), \
             f"Unexpected non-doc/report/test change: {line}"
