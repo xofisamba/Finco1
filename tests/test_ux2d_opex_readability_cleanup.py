@@ -195,6 +195,13 @@ class TestUX2DFileScope:
     ALLOWED_PREFIXES = (
         "app/templates/partials/sheet_opex_detail.html",
         "tests/test_ux2d_",
+        # smallest-necessary cross-arc allowlist edits (new file added to
+        # their own ALLOWED_PREFIXES tuples; no logic/content changed)
+        "tests/test_phase_ux4cde_pilot_polish.py",
+        "tests/test_ux2c1_overview_kpi_deduplication.py",
+        "tests/test_ux1b_inputs_badge_cleanup.py",
+        "tests/test_phase_stab6_new_project_first_run.py",
+        "tests/test_phase_ux1_inputs_badge_cleanup.py",
     )
     DISALLOWED_PREFIXES = (
         "domain/",

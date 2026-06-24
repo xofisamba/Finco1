@@ -222,6 +222,8 @@ class TestUX4CDEFileScope:
             "app/ui/dashboard.py",  # UX-2C-1 cross-arc
             "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
             "app/templates/partials/inputs_section.html",  # UX-2C-2 cross-arc
+            "app/templates/partials/sheet_opex_detail.html",  # UX-2D cross-arc
+            "tests/test_ux2d_",  # UX-2D cross-arc
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

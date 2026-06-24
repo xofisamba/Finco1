@@ -282,6 +282,9 @@ class TestUX1BFileScope:
         "tests/test_phase_stab3_capex_subline_propagation.py",
         "tests/test_phase_stab5_export_route_fix.py",
         "tests/test_phase_stab6_new_project_first_run.py",
+        "app/templates/partials/sheet_opex_detail.html",  # UX-2D cross-arc
+        "tests/test_ux2d_",  # UX-2D cross-arc
+        "tests/test_ux2c1_",  # UX-2D cross-arc allowlist edit
     )
     UX1B_DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

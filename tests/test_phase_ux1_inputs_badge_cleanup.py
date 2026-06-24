@@ -355,6 +355,10 @@ class TestUX1FileScope:
         "tests/test_phase_ux4cde_",
         "tests/test_ux2c2_",
         "app/services/run_service.py",
+        # UX-2D OPEX readability cleanup
+        "app/templates/partials/sheet_opex_detail.html",
+        "tests/test_ux2d_",
+        "tests/test_ux2c1_",
     )
 
     UX1_DISALLOWED_PREFIXES = (
