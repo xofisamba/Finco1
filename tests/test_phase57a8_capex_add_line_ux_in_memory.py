@@ -273,21 +273,23 @@ class TestReuseExistingHooks:
 
 
 class TestToolbarCopy:
-    def test_copy_block_present(self, rendered_user):
+    # UX-2A: the single top toolbar (with its own "Add line preview"
+    # copy block) was removed; add-line buttons now live inline in
+    # each category's section band. The preview-only explanation is
+    # carried by the (still present) preview-totals strip instead.
+    def test_old_toolbar_copy_block_removed(self, rendered_user):
         assert (
-            'data-capex-add-line-copy="true"' in
+            'data-capex-add-line-copy="true"' not in
             rendered_user
         )
 
-    def test_copy_text_explains_preview(self, rendered_user):
-        # The copy must explain that added lines are
-        # temporary and not included in model runs.
+    def test_preview_totals_strip_explains_preview(self, rendered_user):
         assert (
-            "Added lines are temporary in this preview"
-            in rendered_user
+            'data-capex-add-line-preview-totals="true"' in
+            rendered_user
         )
         assert (
-            "not included in model runs yet" in
+            "Preview only" in
             rendered_user
         )
 

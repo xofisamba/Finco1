@@ -294,11 +294,15 @@ class TestSingleSheetGroupsPanel:
     def test_panel_has_four_entries(self, sheet_capex_html_text):
         # Phase 57A-10H unified the "column groups" panel under
         # the new class "capex-column-key" with the "groups"
-        # section. Fall back to the legacy "capex-column-groups"
+        # section. UX-2A moved this panel inside the collapsed-
+        # by-default "CAPEX Sheet Guide" <details> block, so it
+        # no longer immediately precedes the Workbook grid comment;
+        # locate it by its own groups-section / chips wrapper
+        # instead. Fall back to the legacy "capex-column-groups"
         # panel if the new one is not present.
         match = re.search(
-            r'<div[^>]*class="capex-column-key"[^>]*data-capex-column-groups="true"[^>]*>'
-            r'(.*?)</div>\s*</div>\s*\{#\s*\u2500\u2500 Workbook grid',
+            r'data-capex-column-key-section="groups">'
+            r'(.*?)</div>\s*</div>',
             sheet_capex_html_text,
             re.DOTALL,
         )
@@ -431,7 +435,7 @@ class TestNoForbiddenPathChanges:
     def test_path_untouched(self, path):
         result = subprocess.run(
             [
-                "git", "diff", "--stat",
+                "git", "diff", "--name-only",
                 "origin/main", "HEAD", "--", path,
             ],
             cwd=str(REPO_ROOT),
@@ -439,8 +443,16 @@ class TestNoForbiddenPathChanges:
             text=True,
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == "", (
-            f"57A-10G must not touch {path}: got diff:\n{result.stdout}"
+        changed = {
+            f.strip() for f in result.stdout.strip().split("\n") if f.strip()
+        }
+        # UX-2A (later phase) legitimately adds CSS for the relocated
+        # per-category Add Line button and the collapsed CAPEX Sheet
+        # Guide. 57A-10G's own scope is unaffected.
+        allowed = {"static/styles.css"} if path == "static/" else set()
+        unexpected = changed - allowed
+        assert not unexpected, (
+            f"57A-10G must not touch {path}: got diff:\n{unexpected}"
         )
 
     @pytest.mark.parametrize(

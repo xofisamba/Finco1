@@ -441,6 +441,18 @@ class TestFileScope:
             "tests/test_phase_ux1_inputs_badge_cleanup.py",
             "tests/test_ux1b_inputs_badge_cleanup.py",
             "tests/test_phase_ux2_active_sheet_refresh.py",
+            # UX-2A-CAPEX-EXCEL-FEEL-CLEANUP: relocate per-category
+            # Add Line buttons into the grid, collapse explanatory
+            # copy into a CAPEX Sheet Guide.
+            "app/templates/partials/sheet_capex.html",
+            "app/templates/partials/_line_item_grid.html",
+            "static/styles.css",
+            "tests/test_phase57a8_capex_add_line_ux_in_memory.py",
+            "tests/test_phase57a10g_capex_advanced_column_groups.py",
+            "tests/test_phase57a10f_capex_advanced_metadata_ui_audit_surface.py",
+            "tests/test_phase57a10h_capex_ux_polish_visual_review_cleanup.py",
+            "tests/test_phase57a2_capex_single_sheet_direction_characterization.py",
+            "tests/test_phase57a4_single_capex_sheet_layout.py",
         )
         disallowed_prefixes = (
             "app/persistence/",
