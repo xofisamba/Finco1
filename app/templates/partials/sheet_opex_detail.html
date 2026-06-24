@@ -17,8 +17,7 @@
     <p>This is a protected original. Use <strong>Duplicate / Save As</strong> to create
     your own copy, then edit OPEX assumptions.</p>
     <p class="inp-readonly-notice__hint">
-      <strong>Note:</strong> Yearly OPEX values shown are for display reference only.
-      Line editing / add-line deferred to a future phase.
+      Values shown are for reference; line editing is deferred.
     </p>
   </div>
 </div>
@@ -154,7 +153,7 @@
           {% if loop.index0 >= 2 %}▶{% else %}▼{% endif %}
         </span>
         <span class="fc-section-band__code">{{ cat.code }}</span>
-        {{ cat.name }}
+        <span class="fc-cat-name">{{ cat.name }}</span>
         {% if cat.is_contingency %}
           <span class="badge badge-contingency">derived: {{ (cat.contingency_pct or 0)|int }}% × non-contingency OPEX</span>
         {% endif %}
@@ -176,7 +175,7 @@
             data-yrange-17-24="{{ 'true' if y >= 17 and y <= 24 else 'false' }}"
             data-yrange-{{ max_y - 5 }}-{{ max_y }}="{{ 'true' if y >= max_y - 5 else 'false' }}"
             data-yrange-all="true">
-          {{ "%.2f"|format(y_val) }}
+          {{ "{:,.2f}".format(y_val) }}
         </td>
       {% endfor %}
       <td class="fc-cell fc-cell--notes">
@@ -203,9 +202,9 @@
         {# Budget #}
         <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="3">
           {% if is_user_project and not cat.is_contingency %}
-            <span class="fc-cell-runtime" title="Line editing deferred">{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
+            <span class="fc-cell-runtime" title="Line editing deferred">{{ "{:,.2f}".format(child.budget_y1_keur or 0) }}</span>
           {% else %}
-            <span class="fc-cell-runtime">{{ "%.2f"|format(child.budget_y1_keur or 0) }}</span>
+            <span class="fc-cell-runtime">{{ "{:,.2f}".format(child.budget_y1_keur or 0) }}</span>
           {% endif %}
         </td>
 
@@ -247,7 +246,7 @@
               data-active="{{ active }}"
           data-cat="{{ cat_index }}"
               title="{{ 'Active' if active else 'Inactive' }}{% if active and y_val > 0 %} — {{ "%.2f"|format(y_val) }} kEUR{% endif %}">
-            <span class="fc-val">{{ "%.2f"|format(y_val) }}</span>
+            <span class="fc-val">{{ "{:,.2f}".format(y_val) }}</span>
             <span class="fc-flag" style="display:none">{{ 1 if active else 0 }}</span>
           </td>
         {% endfor %}
@@ -282,13 +281,9 @@
 
   {# ── Legend ─────────────────────────────────────────────────────────────────── #}
   <div class="fc-opex-legend">
-    <span class="badge badge-factory">reference</span> reference/default value
-    <span class="badge badge-contingency">contingency</span> derived (formula, not editable)
-    <span class="badge badge-preview">user</span> user-editable (your copy) — line editing deferred
-    <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> child row
-    <span class="fc-cell--inactive-year" style="color:#999;font-style:italic;">—</span> inactive year
-    | <strong>Note:</strong> Yearly values include step-changes and inflation. Display reference only.
-    | <strong>Click category</strong> row to collapse/expand children.
+    <span class="badge badge-contingency">contingency</span> formula-derived
+    <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> cost line
+    <span class="fc-opex-legend__note">Click a category to collapse / expand.</span>
   </div>
 
   {# ── OPEX Summary (from flat view — for reference) ──────────────────────────────── #}
@@ -487,10 +482,23 @@
 
 
   /* ── Category rows ──────────────────────────────────────────────────────── */
-  .fc-cat-row { cursor: pointer; user-select: none; }
-  .fc-cat-row:hover { background: rgba(26,86,219,0.04); }
+  .fc-cat-row { cursor: pointer; user-select: none; background: var(--surface-2); }
+  .fc-cat-row:hover { background: rgba(26,86,219,0.08); }
   .fc-cat-toggle-icon { margin-right: 0.4rem; font-size: 0.75rem; color: var(--primary); }
   .fc-cat-row .fc-section-band__label { font-weight: 700; }
+  .fc-cat-row .fc-cat-name { text-transform: uppercase; letter-spacing: 0.03em; }
+  .fc-cat-row td.fc-cell--cat-total { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+  /* ── Spreadsheet feel: zebra striping on child rows ───────────────────────── */
+  .fc-cat-child:nth-of-type(even) { background: var(--surface-2); }
+  .fc-cat-child:nth-of-type(even) td.fc-th--sticky { background: var(--surface-2); }
+
+  /* ── Year-group banding — distinguishes Y1-8 / Y9-16 / Y17-24 / tail ─────── */
+  th.yr-early, td.yr-early { background-color: rgba(26,86,219,0.03); }
+  th.yr-mid, td.yr-mid { background-color: rgba(26,86,219,0.00); }
+  th.yr-late, td.yr-late { background-color: rgba(26,86,219,0.03); }
+  th.yr-end, td.yr-end { background-color: rgba(184,92,0,0.04); }
+  th.fc-th--year:first-of-type, td.fc-cell--year:first-of-type { border-left: 1px solid var(--border); }
 
   /* ── Category collapse ──────────────────────────────────────────────────── */
   .fc-cat-tbody--collapsed .fc-cat-child { display: none; }
@@ -563,6 +571,7 @@
     padding: 0.5rem 0;
     border-top: 1px solid #eee;
   }
+  .fc-opex-legend__note { color: #999; margin-left: 0.25rem; }
   .opex-legacy-summary { margin-top: 1rem; border-top: 1px dashed #ccc; padding-top: 0.5rem; }
   .opex-legacy-summary__toggle { cursor: pointer; font-size: 0.85rem; color: #666; padding: 0.25rem 0; }
   .opex-legacy-summary__toggle:hover { color: #333; }

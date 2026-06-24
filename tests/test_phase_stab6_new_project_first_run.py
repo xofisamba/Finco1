@@ -354,6 +354,10 @@ class TestStab6FileScope:
         "app/templates/partials/_sheet_distributions_partial.html",
         "app/templates/partials/_sheet_sponsor_partial.html",
         "tests/test_phase_ux2_",
+        # UX-2D OPEX readability cleanup
+        "app/templates/partials/sheet_opex_detail.html",
+        "tests/test_ux2d_",
+        "tests/test_ux2c1_",
     )
 
     STAB6_DISALLOWED_PREFIXES = (
