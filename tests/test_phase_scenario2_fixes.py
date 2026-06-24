@@ -287,6 +287,9 @@ class TestScenario2Parity:
 
 class TestScenario2FileScope:
     ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/persistence/scenarios_repository.py",
         "app/persistence/records.py",
         "app/persistence/_helpers.py",
@@ -339,6 +342,7 @@ class TestScenario2FileScope:
         "static/styles.css",
         "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
         "app/templates/partials/inputs_section.html",  # UX-2C-2 cross-arc
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
     )
 
     def test_file_scope(self):

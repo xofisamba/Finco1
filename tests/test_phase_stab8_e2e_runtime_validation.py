@@ -686,6 +686,8 @@ class TestStab8Parity:
 
 class TestStab8FileScope:
     STAB8_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/test_phase56",  # UX-2E cross-arc
         "tests/test_phase_stab8_",
         # forward-compatible: all prior stabilization and phase files
         "app/services/run_service.py",

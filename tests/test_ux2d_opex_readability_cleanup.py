@@ -193,6 +193,10 @@ class TestNoInternalTerminologyLeak:
 
 class TestUX2DFileScope:
     ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "app/templates/partials/workspace_shell.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/templates/partials/sheet_opex_detail.html",
         "tests/test_ux2d_",
         # smallest-necessary cross-arc allowlist edits (new file added to

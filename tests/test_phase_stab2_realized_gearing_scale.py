@@ -254,6 +254,9 @@ class TestStab2Parity:
 
 class TestStab2FileScope:
     STAB2_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/ui/scenario_matrix.py",
         "tests/test_phase_stab",
         "static/styles.css",

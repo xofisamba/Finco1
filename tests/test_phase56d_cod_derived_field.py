@@ -251,73 +251,25 @@ class TestInlineFormReadonlyCodDate:
         return text[body_start:]
 
     def test_cod_date_input_is_readonly(self):
+        # UX-2E superseded 56C/56D: cod_date is no longer a visible
+        # readonly field on the inline form (the construction-date
+        # inputs that fed it moved to Inputs). It remains wired as a
+        # hidden default input so the server-derivation contract and
+        # backend tests are unaffected.
         body = self._inline_panel_body()
-        # The cod_date input must be readonly
-        m = re.search(
-            r'<input[^>]*id="np-cod_date"[^>]*>',
-            body,
-        )
+        m = re.search(r'<input[^>]*name="cod_date"[^>]*>', body)
         assert m is not None
         tag = m.group(0)
-        assert (
-            "readonly" in tag or 'aria-readonly="true"' in tag
-        ), f"cod_date input must be readonly. Got: {tag}"
+        assert 'type="hidden"' in tag, f"cod_date must be a hidden default input. Got: {tag}"
 
     def test_cod_date_input_no_required(self):
-        """The readonly cod_date field should NOT have `required` —
-        the value is server-derived. The HTML5 browser would block
-        form submission on a readonly + required + empty field."""
         body = self._inline_panel_body()
-        m = re.search(
-            r'<input[^>]*id="np-cod_date"[^>]*>',
-            body,
-        )
+        m = re.search(r'<input[^>]*name="cod_date"[^>]*>', body)
         assert m is not None
         tag = m.group(0)
         assert "required" not in tag, (
-            "readonly cod_date must not have `required` attribute — "
-            "value is server-derived. Got: " + tag
+            "hidden cod_date default must not have `required` attribute. Got: " + tag
         )
-
-    def test_cod_date_label_mentions_derivation(self):
-        body = self._inline_panel_body()
-        m = re.search(
-            r'<label\s+for="np-cod_date"[^>]*>(.*?)</label>',
-            body,
-            flags=re.DOTALL,
-        )
-        assert m is not None
-        label_text = m.group(1)
-        assert "derived" in label_text.lower() or "auto" in label_text.lower(), (
-            f"COD Date label should mention derivation. Got: {label_text!r}"
-        )
-
-    def test_np_derived_note_block_exists(self):
-        body = self._inline_panel_body()
-        assert "np-derived-note" in body, (
-            "Inline form must include the .np-derived-note block "
-            "explaining server-side derivation."
-        )
-
-    def test_np_derived_note_explains_logic(self):
-        body = self._inline_panel_body()
-        m = re.search(
-            r'<div class="np-derived-note"[^>]*>(.*?)</div>\s*</div>',
-            body,
-            flags=re.DOTALL,
-        )
-        assert m is not None
-        note_text = m.group(1)
-        # Should explain: start + duration => COD
-        assert (
-            "Start of Construction" in note_text
-            or "construction" in note_text.lower()
-        )
-        assert (
-            "Duration" in note_text
-            or "duration" in note_text.lower()
-        )
-        assert "COD" in note_text or "derive" in note_text.lower()
 
 
 # ============================================================

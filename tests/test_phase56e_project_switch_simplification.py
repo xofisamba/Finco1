@@ -545,12 +545,15 @@ class TestPreviousPhasesPreserved:
         assert 'id="panel-help"' in text
 
     def test_cod_date_readonly_preserved(self):
+        # UX-2E superseded 56C: cod_date is no longer a visible
+        # readonly field on the inline form; it remains wired as a
+        # hidden default input so the backend contract is unchanged.
         ws = REPO_ROOT / "app" / "templates" / "partials" / "workspace_shell.html"
         text = ws.read_text()
-        m = re.search(r'<input[^>]*id="np-cod_date"[^>]*>', text)
+        m = re.search(r'<input[^>]*name="cod_date"[^>]*>', text)
         assert m is not None
         tag = m.group(0)
-        assert "readonly" in tag or "aria-readonly" in tag
+        assert 'type="hidden"' in tag
 
     def test_new_project_v1_form_preserved(self):
         """56C v1 form fields must still be present."""
