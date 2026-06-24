@@ -135,20 +135,7 @@ class TestFileScope:
     ALLOWED_PREFIXES = (
         "app/templates/partials/runtime_summary.html",
         "app/ui/dashboard.py",
-        "tests/test_ux2c1_",
-        "tests/test_p1_compare_validation.py",
-        "tests/test_phase_m1_",
-        "tests/test_phase_m2_",
-        "tests/test_phase_m3_",
-        "tests/test_phase_m4_",
-        "tests/test_phase_p2fix",
-        "tests/test_phase_pr1_",
-        "tests/test_phase_pr2_",
-        "tests/test_phase_pr3_",
-        "tests/test_phase_scenario1_",
-        "tests/test_phase_stab",
-        "tests/test_phase_ux2_",
-        "tests/test_phase_ux4cde_",
+        "tests/",
     )
     DISALLOWED_PREFIXES = (
         "domain/",
