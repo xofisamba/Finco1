@@ -342,6 +342,8 @@ class TestScenario1Parity:
 
 class TestScenario1FileScope:
     ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/services/scenarios_add_service.py",
         "app/services/projects_create_service.py",
         "app/services/project_save_as_service.py",
@@ -411,6 +413,7 @@ class TestScenario1FileScope:
         "static/styles.css",
         "app/templates/partials/runtime_summary.html",
         "app/templates/partials/inputs_section.html",  # UX-2C-2 cross-arc
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
     )
 
     def test_file_scope(self):

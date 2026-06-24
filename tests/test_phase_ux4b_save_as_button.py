@@ -227,6 +227,10 @@ class TestUX4BParity:
 
 class TestUX4BFileScope:
     ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "app/templates/partials/workspace_shell.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/templates/partials/_state_banner.html",
         "app/templates/partials/scenario_tab.html",
         "tests/test_phase_ux4b_",

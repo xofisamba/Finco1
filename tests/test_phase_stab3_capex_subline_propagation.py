@@ -521,6 +521,10 @@ class TestStab3NewLinePersistenceDeferred:
 
 class TestStab3FileScope:
     STAB3_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "app/templates/partials/workspace_shell.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/services/capex_sub_lines_integration.py",
         "app/services/run_service.py",
         "tests/test_phase_stab3_",

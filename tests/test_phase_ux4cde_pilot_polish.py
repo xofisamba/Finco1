@@ -193,6 +193,8 @@ class TestUX4CDEParity:
 
 class TestUX4CDEFileScope:
     ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/templates/partials/export_registry.html",
         "app/templates/partials/workspace_shell.html",
         "app/templates/partials/scenario_tab.html",

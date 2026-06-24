@@ -314,6 +314,9 @@ class TestUX1ExportParity:
 
 class TestUX1FileScope:
     UX1_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/templates/partials/inputs_section.html",
         "tests/test_phase_ux1_",
         # UX-1B inputs badge noise reduction

@@ -1,11 +1,11 @@
-{# ── WF-4: Minimal New Project form ────────────────────────────────
-   4 fields: Project name, Technology, Country, Capacity (MW).
-   All other fields use template defaults. Template source hidden.
+{# ── UX-2E: Minimal New Project form ───────────────────────────────
+   Required: Project name, Technology, Country, Capacity (MW).
+   Optional: Currency. Everything else is entered later in Inputs.
 #}
 
 <div class="create-form-header">
   <h2 class="create-form-title">New project</h2>
-  <p class="create-form-desc">Fill in the basics — all other fields use template defaults. Review and adjust them in the workspace after creation.</p>
+  <p class="create-form-desc">Just the basics for now — you'll fill in the rest on the Inputs sheet.</p>
 </div>
 
 {% if validation_errors %}
@@ -19,7 +19,7 @@
 <form hx-post="/projects/create"
       hx-target="#new-project-result"
       hx-swap="innerHTML"
-      hx-on:after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('HX-Redirect')) { setTimeout(function(){ window.location.href = event.detail.xhr.getResponseHeader('HX-Redirect'); }, 600); }"
+      hx-on:after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('HX-Redirect')) { setTimeout(function(){ window.location.href = event.detail.xhr.getResponseHeader('HX-Redirect') + '#inputs'; }, 600); }"
       class="create-form"
       id="new-project-minimal-form">
   <label class="create-form-label">
@@ -41,6 +41,14 @@
   <label class="create-form-label">
     Capacity (MW)
     <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required placeholder="e.g. 50" />
+  </label>
+  <label class="create-form-label">
+    Currency <span class="create-form-optional">(optional)</span>
+    <select class="create-form-select" name="currency" id="npm-currency">
+      <option value="EUR" {% if not submitted.currency or submitted.currency == 'EUR' %}selected{% endif %}>EUR</option>
+      <option value="USD" {% if submitted.currency == 'USD' %}selected{% endif %}>USD</option>
+      <option value="HRK" {% if submitted.currency == 'HRK' %}selected{% endif %}>HRK</option>
+    </select>
   </label>
   {# Hidden: template source is intentionally left blank here. The
      server derives the correct generic template (Solar/Wind) from the

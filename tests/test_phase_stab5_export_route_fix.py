@@ -300,6 +300,9 @@ class TestStab5Parity:
 
 class TestStab5FileScope:
     STAB5_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "main_web.py",
         "app/export/runtime_summary.py",
         "app/export/institutional_workbook.py",

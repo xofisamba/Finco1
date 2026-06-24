@@ -386,6 +386,8 @@ class TestUX2DSCRParity:
 
 class TestUX2FileScope:
     UX2_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/templates/partials/workspace_shell.html",
         "static/app.js",
         "main_web.py",

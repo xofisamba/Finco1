@@ -140,6 +140,8 @@ class TestFileScope:
         "static/styles.css",  # UX-2C-2 cross-arc
         "app/templates/partials/sheet_opex_detail.html",  # UX-2D cross-arc
         "tests/test_ux2d_",  # UX-2D cross-arc
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "app/templates/partials/workspace_shell.html",  # UX-2E cross-arc
     )
     DISALLOWED_PREFIXES = (
         "domain/",

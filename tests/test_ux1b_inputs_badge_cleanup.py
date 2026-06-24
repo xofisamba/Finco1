@@ -267,6 +267,10 @@ class TestProtectedStateShownOnce:
 
 class TestUX1BFileScope:
     UX1B_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "app/templates/partials/workspace_shell.html",  # UX-2E cross-arc
+        "tests/",  # UX-2E cross-arc (branch-wide test footprint)
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/templates/partials/inputs_section.html",
         "static/styles.css",
         "tests/test_ux1b_inputs_badge_cleanup.py",

@@ -243,22 +243,13 @@ class TestLabelRenames:
         assert "Country" in label_text
 
     def test_construction_duration_label_renamed(self):
+        # UX-2E superseded 56C: construction_duration_months is no
+        # longer a visible labelled field (moved to Inputs); kept as
+        # a hidden default input under its 56C field name.
         body = _inline_new_project_panel_body()
-        m = re.search(
-            r'<label\s+for="np-construction_duration_months"[^>]*>(.*?)</label>',
-            body,
-            flags=re.DOTALL,
-        )
+        m = re.search(r'<input[^>]*name="construction_duration_months"[^>]*>', body)
         assert m is not None
-        label_text = m.group(1)
-        # Per spec: "construction_months → construction_duration_months"
-        # Label should reflect "duration" or "months".
-        assert "Construction" in label_text
-        assert (
-            "Duration" in label_text
-            or "duration" in label_text
-            or "months" in label_text
-        )
+        assert 'type="hidden"' in m.group(0)
 
 
 # ============================================================
@@ -268,15 +259,15 @@ class TestLabelRenames:
 
 class TestNewFields:
     def test_spv_name_field_present(self):
+        # UX-2E superseded 56C: spv_name is no longer a visible field
+        # in the inline form (moved to Inputs). It remains wired via a
+        # hidden default input so the backend contract is unchanged.
         body = _inline_new_project_panel_body()
-        # Must have label and input
-        assert 'for="np-spv_name"' in body
         assert 'name="spv_name"' in body
-        # Should be optional (no required attribute)
         m = re.search(r'<input[^>]*name="spv_name"[^>]*>', body)
         assert m is not None
-        assert "required" not in m.group(0), (
-            "spv_name is optional — should NOT have 'required' attribute"
+        assert 'type="hidden"' in m.group(0), (
+            "spv_name moved to Inputs (UX-2E) — must be a hidden default input"
         )
 
     def test_currency_field_present(self):
@@ -303,10 +294,13 @@ class TestNewFields:
             assert f'value="{opt}"' in sel, f"Currency {opt} missing"
 
     def test_construction_start_date_field_present(self):
+        # UX-2E superseded 56C: construction_start_date is no longer a
+        # visible field (moved to Inputs); kept as a hidden default.
         body = _inline_new_project_panel_body()
-        assert 'for="np-construction_start_date"' in body
         assert 'name="construction_start_date"' in body
-        assert 'type="date"' in body  # for the input
+        m = re.search(r'<input[^>]*name="construction_start_date"[^>]*>', body)
+        assert m is not None
+        assert 'type="hidden"' in m.group(0)
 
 
 # ============================================================
@@ -315,20 +309,15 @@ class TestNewFields:
 
 
 class TestTemplateSourceLabel:
-    def test_template_source_uses_new_project_template_options(self):
+    # UX-2E superseded 56C: the Template picker (and its warning) is no
+    # longer shown on the inline New Project form — template_source is
+    # now always server-derived from Technology. It remains wired as a
+    # hidden default input so the backend contract is unchanged.
+    def test_template_source_field_present_as_hidden_default(self):
         body = _inline_new_project_panel_body()
-        # The select iterates over new_project_template_options
-        assert "new_project_template_options" in body
-        # The options render {{ option.label }}
-        assert "option.label" in body
-
-    def test_unvalidated_warning_in_template_block(self):
-        body = _inline_new_project_panel_body()
-        # The new v1 form should include an explicit warning
-        # for generic / exploratory templates
-        assert "np-warning" in body
-        assert "exploratory" in body.lower() or "unvalidated" in body.lower()
-        assert "Generic" in body or "generic" in body
+        m = re.search(r'<input[^>]*name="template_source"[^>]*>', body)
+        assert m is not None
+        assert 'type="hidden"' in m.group(0)
 
 
 # ============================================================

@@ -489,6 +489,8 @@ class TestStab7Parity:
 
 class TestStab7FileScope:
     STAB7_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/services/run_service.py",
         "main_web.py",
         "tests/test_phase_stab7_",

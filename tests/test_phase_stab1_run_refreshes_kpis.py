@@ -330,6 +330,8 @@ class TestStab1FileScope:
     """STAB-1 touches only the expected files."""
 
     STAB1_ALLOWED_PREFIXES = (
+        "app/templates/partials/new_project_minimal.html",  # UX-2E cross-arc
+        "tests/test_phase56",  # UX-2E cross-arc
         "app/ui/dashboard.py",
         "app/ui/scenario_matrix.py",
         "app/templates/partials/scenario_matrix.html",

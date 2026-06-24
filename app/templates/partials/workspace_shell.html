@@ -88,15 +88,14 @@
      hx-on="htmx:afterSwap: var p=document.getElementById('panel-new-project'); if(p && p.style.display==='none' && p.contains(event.target) && p.querySelector('form')){ p.style.display='block'; p.classList.add('active'); }">
 
   <!-- New Project Setup - main workspace entry point -->
-  {# Phase 56C: Inline new-project form is now v1 (master data only).
-     Detailed financial assumptions are hidden (with safe defaults) and
-     will be entered later in the Inputs sheet. COD is shown as
-     readonly-derived for now; full server-side derivation lands in
-     Phase 56D. #}
+  {# UX-2E: New project form keeps only the minimum needed to start a
+     project. Everything else (SPV name, construction dates, COD,
+     template) is entered or shown later in the Inputs sheet, via
+     hidden defaults that keep the backend contract intact. #}
   <div class="tab-panel" id="panel-new-project" style="display:none;">
     <div class="panel-header">
-      <div class="panel-title">New Project Setup</div>
-      <div class="panel-desc">Master data only. Detailed financial assumptions will be available in the Inputs sheet after creation.</div>
+      <div class="panel-title">New project</div>
+      <div class="panel-desc">Just the basics for now — you'll fill in the rest on the Inputs sheet.</div>
       <button class="btn btn-ghost" onclick="closeNewProjectPanel()" style="margin-left:auto;">Close</button>
     </div>
     <div class="new-project-main-card">
@@ -116,10 +115,6 @@
             <input type="text" id="np-project_name" name="project_name" required placeholder="e.g. Oborovo Solar" />
           </div>
           <div class="field">
-            <label for="np-spv_name">SPV / Company Name</label>
-            <input type="text" id="np-spv_name" name="spv_name" placeholder="e.g. Oborovo Solar d.o.o." />
-          </div>
-          <div class="field">
             <label for="np-country_market">Country / Market</label>
             <input type="text" id="np-country_market" name="country_market" required placeholder="e.g. Croatia" />
           </div>
@@ -136,49 +131,26 @@
             <input type="number" id="np-capacity_mw" name="capacity_mw" step="any" min="0" required placeholder="e.g. 50" />
           </div>
           <div class="field">
-            <label for="np-currency">Currency</label>
+            <label for="np-currency">Currency <span class="np-helper">(optional)</span></label>
             <select id="np-currency" name="currency">
               <option value="EUR" selected>EUR</option>
               <option value="USD">USD</option>
               <option value="HRK">HRK</option>
             </select>
           </div>
-          <div class="field">
-            <label for="np-construction_start_date">Start of Construction</label>
-            <input type="date" id="np-construction_start_date" name="construction_start_date" />
-          </div>
-          <div class="field">
-            <label for="np-construction_duration_months">Construction Duration (months)</label>
-            <input type="number" id="np-construction_duration_months" name="construction_duration_months" step="1" min="1" placeholder="e.g. 24" />
-          </div>
-          <div class="field">
-            <label for="np-cod_date">COD Date <span class="np-helper">(derived from Start of Construction + Duration; server-side)</span></label>
-            <input type="date" id="np-cod_date" name="cod_date" readonly aria-readonly="true" placeholder="auto-derived" />
-            <div class="np-derived-note" id="np-cod-derived-note" role="note" aria-label="Auto-derived COD display">
-              <span class="np-derived-note__label">Auto-derived</span>
-              <span class="np-derived-note__text">Enter Start of Construction and Construction Duration above. The backend will compute COD = start + duration and save it into the project.</span>
-            </div>
-          </div>
-          <div class="field">
-            <label for="np-template_source">Template</label>
-            <select id="np-template_source" name="template_source">
-              {% for option in new_project_template_options %}
-              <option value="{{ option.value }}">{{ option.label }}</option>
-              {% endfor %}
-            </select>
-            <div class="np-warning" role="note" aria-label="Internal-use model warning for generic templates">
-              <span class="badge badge-warn">Warning</span>
-              Generic templates are internal-use model only. They are not part of the trusted pilot evidence and should be reviewed independently before drawing conclusions.
-            </div>
-          </div>
         </div>
 
-        {# Phase 56C: hidden inputs for the 11 detailed assumptions that
-           were previously user-facing. Safe defaults (from
+        {# Hidden defaults for fields removed from this form (Phase
+           56C/UX-2E). Safe defaults (from
            _submitted_new_project_defaults) keep the backend contract
-           intact so existing create-route tests still pass. Users will
-           enter real values later in the Inputs sheet. #}
+           intact so existing create-route tests still pass. Users
+           edit real values later in the Inputs sheet. #}
         <div class="np-hidden-defaults" hidden aria-hidden="true">
+          <input type="hidden" name="spv_name" value="" />
+          <input type="hidden" name="construction_start_date" value="" />
+          <input type="hidden" name="construction_duration_months" value="" />
+          <input type="hidden" name="cod_date" value="" />
+          <input type="hidden" name="template_source" value="" />
           <input type="hidden" name="horizon_years" value="" />
           <input type="hidden" name="tariff_eur_mwh" value="" />
           <input type="hidden" name="ppa_term_years" value="" />
@@ -193,8 +165,8 @@
         </div>
 
         <div class="new-project-actions">
-          <button type="submit" class="btn btn-primary">Create Project</button>
-          <span style="color:var(--muted);font-size:0.8rem;">Detailed assumptions are entered in the Inputs sheet after creation.</span>
+          <button type="submit" class="btn btn-primary">Create project</button>
+          <span style="color:var(--muted);font-size:0.8rem;">You can fill in the rest on the Inputs sheet.</span>
         </div>
         <div id="new-project-result"></div>
       </form>
