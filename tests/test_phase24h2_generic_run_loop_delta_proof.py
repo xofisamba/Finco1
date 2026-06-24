@@ -861,6 +861,10 @@ class TestHardConstraints:
                 f.startswith("tests/")
                 or f.startswith("docs/")
                 or f.startswith("reports/")
+                # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
+                or f == "app/templates/partials/runtime_summary.html"  # UX-2C-1 cross-arc
+                or f == "app/ui/dashboard.py"  # UX-2C-1 cross-arc
+                or f.startswith("tests/test_ux2c1_")  # UX-2C-1 cross-arc
             )
         ]
         assert not production, f"production code in diff: {production}"

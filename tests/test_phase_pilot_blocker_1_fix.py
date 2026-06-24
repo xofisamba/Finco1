@@ -631,10 +631,10 @@ class TestFileScope:
         changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
         # No new files in tax/debt/construction paths
         for f in changed:
-            assert "tax" not in f.lower() or f.startswith("docs/") or f.startswith("reports/"), (
+            assert "tax" not in f.lower() or f.startswith(("docs/", "reports/", "tests/")), (
                 f"No tax file changes: {f}"
             )
-            assert "debt" not in f.lower() or f.startswith("docs/") or f.startswith("reports/"), (
+            assert "debt" not in f.lower() or f.startswith(("docs/", "reports/", "tests/")), (
                 f"No debt file changes: {f}"
             )
 

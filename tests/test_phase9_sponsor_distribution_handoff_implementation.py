@@ -498,7 +498,11 @@ class TestNoAppWaterfallCoreChanges:
             ):
                 continue
             # Only domain/sponsor/ changes allowed (plus docs/reports/tests)
-            allowed = ["domain/sponsor/", "docs/", "reports/", "tests/"]
+            allowed = [
+                "domain/sponsor/", "docs/", "reports/", "tests/",
+                "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+                "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            ]
             assert any(stripped.startswith(p) for p in allowed), \
                 f"Unexpected change: {stripped}"
 

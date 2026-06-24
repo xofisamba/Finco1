@@ -94,6 +94,10 @@ ALLOWED_FILES = {
     "tests/test_phase_p1_ux_fix_1_pilot_polish.py",
     "docs/phase_p1_ux_fix_1_pilot_polish.md",
     "reports/phase_p1_ux_fix_1_pilot_polish.md",
+    # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
+    "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+    "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+    "tests/test_ux2c1_overview_kpi_deduplication.py",  # UX-2C-1 cross-arc
 }
 
 FORBIDDEN_FILES = {

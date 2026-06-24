@@ -33,8 +33,9 @@
 
     <div class="rs-lifecycle-note" role="note" aria-label="Runtime summary lifecycle guidance">
       <strong>Runtime summary reflects the last completed run.</strong>
+      Only backend-authoritative runtime results are shown here for the project and scenario named above.
       {% if workspace_state is defined and workspace_state and workspace_state.dirty %}
-      Unsaved changes — Save/Run to refresh.
+      Unsaved changes may require Save/Run before outputs are current.
       {% else %}
       Saved.
       {% endif %}
@@ -415,7 +416,9 @@
     <div class="rs-notice">
       <span class="badge badge-runtime">Runtime</span>
       <span class="rs-notice-text">
-        Backend-authored result for the run above. Unsaved draft edits won't change this until you save and run again.
+        <strong>Current workspace draft vs last completed run:</strong> Backend-authored result for the run above.
+        Unsaved draft edits won't change this until you save and run again.
+        Exports reflect the last clean backend run, not unsaved draft edits.
       </span>
     </div>
 

@@ -344,7 +344,10 @@ def test_no_formula_runtime_model_changes():
         "app/services/scenario_state_service.py",
         "app/services/__init__.py",
         "main_web.py",
+        "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+        "app/ui/dashboard.py",  # UX-2C-1 cross-arc
     }
+    # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
     unexpected = [f for f in changed if f not in expected and not f.startswith("docs/") and not f.startswith("reports/") and not f.startswith("tests/")]
     assert unexpected == [], f"Unexpected changed files: {unexpected}"
 

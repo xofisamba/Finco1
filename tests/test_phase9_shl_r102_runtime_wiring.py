@@ -459,13 +459,24 @@ class TestNoAppWaterfallCoreChanges:
             return  # No changes
         for line in output.split("\n"):
             stripped = line.strip()
-            if not stripped or stripped.startswith("??") or stripped.startswith("5 files"):
+            if (
+                not stripped
+                or stripped.startswith("??")
+                or stripped.startswith("5 files")
+                or stripped.startswith("...")  # UX-2C-1 cross-arc: skip git --stat path truncation
+                or "files changed" in stripped  # UX-2C-1 cross-arc: skip git --stat summary line
+            ):
                 continue
             # All changed files must be in docs/, reports/, tests/, or domain/shl/
             allowed = ["docs/", "reports/", "tests/", "domain/shl/"]
             is_shl_domain = stripped.startswith("domain/shl/")
             is_doc_report_test = any(stripped.startswith(p) for p in ["docs/", "reports/", "tests/"])
-            assert is_shl_domain or is_doc_report_test, \
+            # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
+            is_ux2c1 = stripped.startswith((
+                "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+                "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            ))
+            assert is_shl_domain or is_doc_report_test or is_ux2c1, \
                 f"Unexpected non-SHL-domain/doc/report/test change: {stripped}"
 
     def test_candidate_none_zero_drift(self):

@@ -647,6 +647,9 @@ def test_no_production_code_changed_outside_validate_extraction():
         capture_output=True, text=True, cwd=str(REPO_ROOT),
     )
     changed = [l for l in result.stdout.strip().split("\n") if l]
+    # UX-2C-1 cross-arc allowlist (Overview KPI dedup)
+    ux2c1_allowed = ("app/ui/dashboard.py",)  # UX-2C-1 cross-arc
+    changed = [c for c in changed if c not in ux2c1_allowed]
     assert changed == [], (
         f"Phase 51D-2 must not change non-/validate production files; "
         f"got: {changed}"

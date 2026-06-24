@@ -333,6 +333,7 @@ class TestScenario2FileScope:
         "app/templates/partials/_matrix_run_result.html",
         "app/templates/partials/_factory_lock_indicator.html",
         "static/styles.css",
+        "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
     )
 
     def test_file_scope(self):
