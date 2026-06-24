@@ -2707,7 +2707,7 @@ body {
   grid-template-columns: minmax(140px, 180px) 1fr auto;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.45rem 0;
+  padding: 0.28rem 0;
   border-bottom: 1px solid rgba(0,0,0,0.04);
 }
 .inp-row:last-child {
@@ -2729,6 +2729,19 @@ body {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text);
+}
+
+/* ── UX-2C-2: read-only/calculated cells read as locked "formula"
+   cells (Excel-style), distinct from the editable input-cell tint
+   above -- a muted background instead of a plain text value. ──────── */
+.inp-value-formula-cell {
+  display: inline-block;
+  background: var(--readonly-bg, #f3f4f6);
+  color: var(--muted);
+  font-weight: 500;
+  font-style: italic;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
 }
 
 .inp-input {
@@ -3330,7 +3343,7 @@ body {
   grid-template-columns: minmax(140px, 180px) 1fr auto;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.45rem 0;
+  padding: 0.28rem 0;
   border-bottom: 1px solid var(--border-muted);
 }
 .inp-row:last-child {

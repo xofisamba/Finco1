@@ -545,6 +545,13 @@ class TestStab3FileScope:
         "main_web.py",
         "app/ui/dashboard.py",
         "app/ui/project_context.py",
+        # UX-2C-2 cross-arc
+        "tests/test_phase_scenario1_",
+        "tests/test_phase_scenario2_",
+        "tests/test_phase_ux4cde_",
+        "tests/test_ux1b_",
+        "tests/test_ux2c2_",
+        "tests/test_phase_ux1_",
         # STAB-5 export route fix
         "app/export/runtime_summary.py",
         "app/export/institutional_workbook.py",

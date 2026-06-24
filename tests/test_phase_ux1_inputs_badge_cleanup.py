@@ -349,6 +349,11 @@ class TestUX1FileScope:
         "main_web.py",
         "app/export/runtime_summary.py",
         "app/export/institutional_workbook.py",
+        # UX-2C-2 cross-arc
+        "tests/test_phase_scenario1_",
+        "tests/test_phase_scenario2_",
+        "tests/test_phase_ux4cde_",
+        "tests/test_ux2c2_",
         "app/services/run_service.py",
     )
 

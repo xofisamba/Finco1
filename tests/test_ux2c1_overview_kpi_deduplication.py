@@ -136,6 +136,8 @@ class TestFileScope:
         "app/templates/partials/runtime_summary.html",
         "app/ui/dashboard.py",
         "tests/",
+        "app/templates/partials/inputs_section.html",  # UX-2C-2 cross-arc
+        "static/styles.css",  # UX-2C-2 cross-arc
     )
     DISALLOWED_PREFIXES = (
         "domain/",

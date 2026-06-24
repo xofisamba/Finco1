@@ -273,6 +273,15 @@ class TestUX1BFileScope:
         "tests/test_phase_ux1_inputs_badge_cleanup.py",
         "tests/test_phase_p2fix5e_reference_ux.py",
         "tests/test_phase_ux2_active_sheet_refresh.py",
+        # UX-2C-2 cross-arc
+        "tests/test_ux2c2_inputs_sheet_simplification.py",
+        "tests/test_phase_scenario1_base_case_init.py",
+        "tests/test_phase_scenario2_fixes.py",
+        "tests/test_phase_ux4cde_pilot_polish.py",
+        "tests/test_phase_stab2_realized_gearing_scale.py",
+        "tests/test_phase_stab3_capex_subline_propagation.py",
+        "tests/test_phase_stab5_export_route_fix.py",
+        "tests/test_phase_stab6_new_project_first_run.py",
     )
     UX1B_DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

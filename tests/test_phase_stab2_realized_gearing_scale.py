@@ -272,6 +272,12 @@ class TestStab2FileScope:
         "tests/test_phase_pr2_",
         "tests/test_phase_pr3_",
         "tests/test_phase_p2fix",
+        # UX-2C-2 cross-arc
+        "tests/test_phase_scenario1_",
+        "tests/test_phase_scenario2_",
+        "tests/test_phase_ux4cde_",
+        "tests/test_ux1b_",
+        "tests/test_ux2c2_",
         # STAB-4 navigation-only changes
         "static/app.js",
         "app/templates/partials/_nav_compression.html",

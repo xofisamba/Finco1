@@ -328,6 +328,12 @@ class TestStab5FileScope:
         "app/templates/partials/workspace_shell.html",
         # STAB-6 new-project first-run fix
         "tests/test_phase_stab6_",
+        # UX-2C-2 cross-arc
+        "tests/test_phase_scenario1_",
+        "tests/test_phase_scenario2_",
+        "tests/test_phase_ux4cde_",
+        "tests/test_ux1b_",
+        "tests/test_ux2c2_",
         # STAB-7 generic dashboard parity
         "app/services/run_service.py",
         "tests/test_phase_stab7_",

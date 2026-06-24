@@ -314,6 +314,10 @@ class TestScenario2FileScope:
         "app/services/scenarios_add_service.py",
         "app/services/projects_create_service.py",
         "app/services/project_save_as_service.py",
+        "app/templates/partials/inputs_section.html",  # UX-2C-2 cross-arc
+        "static/styles.css",  # UX-2C-2 cross-arc
+        "tests/test_ux1b_",  # UX-2C-2 cross-arc
+        "tests/test_ux2c2_",  # UX-2C-2 cross-arc
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
@@ -334,6 +338,7 @@ class TestScenario2FileScope:
         "app/templates/partials/_factory_lock_indicator.html",
         "static/styles.css",
         "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+        "app/templates/partials/inputs_section.html",  # UX-2C-2 cross-arc
     )
 
     def test_file_scope(self):

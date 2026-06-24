@@ -343,6 +343,12 @@ class TestStab6FileScope:
         # UX-1 inputs badge cleanup
         "app/templates/partials/inputs_section.html",
         "tests/test_phase_ux1_",
+        # UX-2C-2 cross-arc
+        "tests/test_phase_scenario1_",
+        "tests/test_phase_scenario2_",
+        "tests/test_phase_ux4cde_",
+        "tests/test_ux1b_",
+        "tests/test_ux2c2_",
         # UX-2 active sheet refresh
         "app/templates/partials/shared_runtime_block.html",
         "app/templates/partials/_sheet_distributions_partial.html",
