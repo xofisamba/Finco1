@@ -411,6 +411,20 @@ class TestFileScope:
             "app/templates/partials/_matrix_cell_updated.html",
             "app/templates/partials/_matrix_cell_edit.html",
             "app/templates/partials/_matrix_run_result.html",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/test_ux2c1_",  # UX-2C-1 cross-arc
+            "tests/test_p1_compare_validation.py",  # UX-2C-1 cross-arc
+            "tests/test_phase_scenario1_",  # UX-2C-1 cross-arc
+            "tests/test_phase_ux2_",  # UX-2C-1 cross-arc
+            "tests/test_phase_ux4cde_",  # UX-2C-1 cross-arc
+            "tests/test_phase_pr1_",  # UX-2C-1 cross-arc
+            "tests/test_phase_pr2_",  # UX-2C-1 cross-arc
+            "tests/test_phase_pr3_",  # UX-2C-1 cross-arc
+            "tests/test_phase_m1_",  # UX-2C-1 cross-arc
+            "tests/test_phase_m2_",  # UX-2C-1 cross-arc
+            "tests/test_phase_m3_",  # UX-2C-1 cross-arc
+            "tests/test_phase_m4_",  # UX-2C-1 cross-arc
         )
         disallowed_prefixes = (
             "app/persistence/",

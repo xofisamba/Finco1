@@ -374,6 +374,13 @@ class TestStab1FileScope:
         "app/templates/partials/_sheet_distributions_partial.html",
         "app/templates/partials/_sheet_sponsor_partial.html",
         "tests/test_phase_ux2_",
+            "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
+            "app/ui/dashboard.py",  # UX-2C-1 cross-arc
+            "tests/test_ux2c1_",  # UX-2C-1 cross-arc
+            "tests/test_p1_compare_validation.py",  # UX-2C-1 cross-arc
+            "tests/test_phase_scenario1_",  # UX-2C-1 cross-arc
+            "tests/test_phase_ux2_",  # UX-2C-1 cross-arc
+            "tests/test_phase_ux4cde_",  # UX-2C-1 cross-arc
     )
 
     STAB1_DISALLOWED_PREFIXES = (
