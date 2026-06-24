@@ -480,6 +480,9 @@ class TestFileScope:
         # Allow only sheet_capex.html and our test file.
         allowed = {
             "app/templates/partials/sheet_capex.html",
+            # UX-2A (later phase) extends the shared grid macro with
+            # the previously-documented section_band_label kind.
+            "app/templates/partials/_line_item_grid.html",
         }
         unexpected = changed - allowed
         # U9-REMAINING-EXTERNAL-TERMINOLOGY-CLEANUP: presentation-text

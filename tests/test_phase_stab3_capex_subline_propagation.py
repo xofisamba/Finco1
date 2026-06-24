@@ -556,6 +556,14 @@ class TestStab3FileScope:
         "tests/test_phase_stab7_",
         # STAB-8 e2e runtime validation
         "tests/test_phase_stab8_",
+        # UX-2A-CAPEX-EXCEL-FEEL-CLEANUP
+        "tests/test_phase57a8_capex_add_line_ux_in_memory.py",
+        "tests/test_phase57a10g_capex_advanced_column_groups.py",
+        "tests/test_phase57a10f_capex_advanced_metadata_ui_audit_surface.py",
+        "tests/test_phase57a10h_capex_ux_polish_visual_review_cleanup.py",
+        "tests/test_phase57a2_capex_single_sheet_direction_characterization.py",
+        "tests/test_phase57a4_single_capex_sheet_layout.py",
+        "tests/test_phase57a3_capex_single_sheet_runtime.py",
     )
 
     STAB3_DISALLOWED_PREFIXES = (

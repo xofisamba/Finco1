@@ -407,7 +407,7 @@ class TestNoRuntimeMaterializationChange:
         import subprocess
         result = subprocess.run(
             [
-                "git", "diff", "--stat",
+                "git", "diff", "--name-only",
                 "origin/main", "HEAD", "--", "static/",
             ],
             cwd=str(REPO_ROOT),
@@ -415,8 +415,16 @@ class TestNoRuntimeMaterializationChange:
             text=True,
         )
         assert result.returncode == 0
-        assert result.stdout.strip() == "", (
-            f"57A-10F must not touch static/: got diff:\n{result.stdout}"
+        changed = {
+            f.strip() for f in result.stdout.strip().split("\n") if f.strip()
+        }
+        # UX-2A (CAPEX Excel-feel cleanup, later phase) legitimately adds
+        # CSS for the relocated per-category Add Line button and the
+        # collapsed CAPEX Sheet Guide. 57A-10F's own scope is unaffected.
+        allowed = {"static/styles.css"}
+        unexpected = changed - allowed
+        assert not unexpected, (
+            f"57A-10F must not touch static/: got diff:\n{unexpected}"
         )
 
     def test_no_tax_engine_change(self):
