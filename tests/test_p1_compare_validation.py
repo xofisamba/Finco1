@@ -397,19 +397,7 @@ class TestCompareValidationFileScope:
         "app/templates/partials/_factory_lock_indicator.html",
         "app/ui/dashboard.py",
         "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
-        "tests/test_ux2c1_",  # UX-2C-1 cross-arc
-        "tests/test_phase_pr1_",  # UX-2C-1 cross-arc
-        "tests/test_phase_pr2_",  # UX-2C-1 cross-arc
-        "tests/test_phase_pr3_",  # UX-2C-1 cross-arc
-        "tests/test_phase_m1_",  # UX-2C-1 cross-arc
-        "tests/test_phase_m2_",  # UX-2C-1 cross-arc
-        "tests/test_phase_m3_",  # UX-2C-1 cross-arc
-        "tests/test_phase_m4_",  # UX-2C-1 cross-arc
-        "tests/test_phase_p2fix",  # UX-2C-1 cross-arc
-        "tests/test_phase_scenario1_",  # UX-2C-1 cross-arc
-        "tests/test_phase_stab",  # UX-2C-1 cross-arc
-        "tests/test_phase_ux2_",  # UX-2C-1 cross-arc
-        "tests/test_phase_ux4cde_",  # UX-2C-1 cross-arc
+        "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
