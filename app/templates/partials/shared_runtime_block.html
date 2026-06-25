@@ -170,6 +170,27 @@
   // so all result-sheet panels refresh from sessionStorage after a Run.
   if (!window._populateRuntimeBlock) {
     window._populateRuntimeBlock = function() {
+      // UX-2I-PILOT-POLISH-FOLLOWUP: the "No run performed yet" notice
+      // (partials/_empty_no_run.html) is rendered once on the initial
+      // full-page load and is never re-rendered by any later htmx swap
+      // (Run/Save only swap #model-output-area), so it used to stay
+      // visible even after a real run completed. Hide it here -- the
+      // same place that already reacts to a fresh lastRuntimeSummary
+      // after Run/Save -- once a real, non-error run result exists.
+      // No runtime/calculation data is read or changed; this only
+      // toggles the notice's visibility.
+      var _rawForNoRun = sessionStorage.getItem("lastRuntimeSummary");
+      if (_rawForNoRun) {
+        try {
+          var _dataForNoRun = JSON.parse(_rawForNoRun);
+          if (_dataForNoRun && !_dataForNoRun.error_message) {
+            document.querySelectorAll('.empty-state-notice--no-run').forEach(function(notice) {
+              notice.style.display = "none";
+            });
+          }
+        } catch (e) { /* malformed/absent -- leave the notice as-is */ }
+      }
+
       document.querySelectorAll('.runtime-block').forEach(function(block) {
         var raw = sessionStorage.getItem("lastRuntimeSummary");
         if (!raw) return;

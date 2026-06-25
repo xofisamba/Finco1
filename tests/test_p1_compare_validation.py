@@ -406,6 +406,14 @@ class TestCompareValidationFileScope:
         # changes.
         "app/templates/partials/scenario_workflow_indicators.html",
         "app/ui/scenario_workflow.py",
+        # UX-2I-PILOT-POLISH-FOLLOWUP: reliable Compare tab activation
+        # (static/app.js) + stale no-run banner cleanup
+        # (shared_runtime_block.html) + sessionStorage serialization fix
+        # (run_service.py). Presentation/routing only -- no engine/formula
+        # changes.
+        "static/app.js",
+        "app/templates/partials/shared_runtime_block.html",
+        "app/services/run_service.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",

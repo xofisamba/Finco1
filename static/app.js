@@ -468,6 +468,16 @@ document.addEventListener('htmx:afterSwap', function(evt) {
     panel.style.display = 'block';
     panel.classList.add('active');
   }
+
+  // UX-2I: activate the Compare tab once the swap that populated
+  // #panel-compare-mount has actually landed. Listening for the swap
+  // itself (rather than relying on the triggering link's own
+  // hx-on::after-request, which can fire before/without a successful
+  // target resolution) guarantees the tab only switches once the
+  // comparison table is really in the DOM.
+  if (target && target.id === 'panel-compare-mount') {
+    switchTab('compare');
+  }
 });
 
 /* ─────────────────────────────────────────────────────────────────────
