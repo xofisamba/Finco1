@@ -789,7 +789,7 @@ def _build_sessionstorage_save_tag(
         last_origin_label = "Runtime bound to clean workspace base"
     return (
         '<script>'
-        'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(runtime_summary) + ');'
+        'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
         'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
             "dirty": False if is_clean else True,
             "dirty_label": dirty_label,

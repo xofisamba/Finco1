@@ -109,7 +109,14 @@ class TestCompareShortcutNeverLeavesSPA:
         assert "hx-get=" in tpl
         assert 'hx-target="#panel-compare-mount"' in tpl
         assert "hx-swap=" in tpl
-        assert "switchTab('compare')" in tpl
+        # UX-2I-PILOT-POLISH-FOLLOWUP: tab activation moved out of this
+        # macro's own hx-on::after-request attribute (unreliable -- could
+        # fire before/without the swap actually landing) into a single
+        # document-level htmx:afterSwap listener in static/app.js keyed on
+        # the #panel-compare-mount swap target. See test_ux2i_pilot_polish_followup.py.
+        app_js = (REPO_ROOT / "static/app.js").read_text()
+        assert "panel-compare-mount" in app_js
+        assert "switchTab('compare')" in app_js
 
     def test_compare_link_hx_get_targets_fragment_only_endpoint(self):
         tpl = (REPO_ROOT / "app/templates/partials/scenario_workflow_indicators.html").read_text()
@@ -242,6 +249,14 @@ class TestUX2GFileScope:
         "app/templates/partials/scenario_workflow_indicators.html",
         "app/templates/partials/workspace_shell.html",
         "tests/test_ux2g_compare_fix.py",
+        # UX-2I-PILOT-POLISH-FOLLOWUP: reliable Compare tab activation
+        # (static/app.js) + stale no-run banner cleanup
+        # (shared_runtime_block.html) + sessionStorage serialization fix
+        # (run_service.py). Presentation/routing only.
+        "static/app.js",
+        "app/templates/partials/shared_runtime_block.html",
+        "app/services/run_service.py",
+        "tests/test_ux2i_pilot_polish_followup.py",
     )
     DISALLOWED_PREFIXES = (
         "domain/",
