@@ -51,10 +51,20 @@
 {%- endmacro -%}
 
 {# ── 3. Compare-with shortcut link ────────────────────────────────────── #}
+{# UX-2G-COMPARE-FIX: this used to be a plain <a href="/scenarios/compare?...">
+   which navigated the whole browser away from the SPA to an unstyled
+   standalone page. It now issues an htmx GET against the fragment-only
+   ``/scenarios/compare-panel`` endpoint, swaps the result into the
+   Compare tab's mount point, and switches to that tab -- the workspace
+   shell is never left. #}
 {%- macro compare_link(link) -%}
 {% if link %}
 <a class="sw-compare-link {{ link.css_class }}"
    href="{{ link.href }}"
+   hx-get="{{ link.href|replace('/scenarios/compare?', '/scenarios/compare-panel?') }}"
+   hx-target="#panel-compare-mount"
+   hx-swap="innerHTML"
+   hx-on::after-request="switchTab('compare')"
    title="Compare active scenario with {{ link.right_scenario_name }}">
   <span class="sw-compare-link__arrow" aria-hidden="true">⇄</span>
   <span class="sw-compare-link__label">{{ link.label }}</span>
