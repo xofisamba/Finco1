@@ -1847,6 +1847,7 @@ def _render_scenario_workspace(
                 if workspace_state is not None
                 else ""
             ),
+            project_code=getattr(project_record, "project_code", "") or "",
         )
     if project_review_ui is None:
         # Phase 25B-6 — defensive default.
@@ -1884,6 +1885,7 @@ def _render_scenario_workspace(
                 if workspace_state is not None
                 else ""
             ),
+            project_code=getattr(project_record, "project_code", "") or "",
         )
     return templates.TemplateResponse(
         request=request,
@@ -2004,6 +2006,7 @@ def _workspace_refresh_payload(user, project_record, workspace_state=None):
     scenario_workflow_ui = build_scenario_workflow_ui(
         cards=scenario_summary_cards,
         active_scenario_id=active_sid_for_workflow,
+        project_code=getattr(project_record, "project_code", "") or "",
     )
 
     # Phase 25B-6 — build the project review pack UI payload.
@@ -3737,6 +3740,62 @@ async def scenario_compare_endpoint(
         scenario_workflow_ui=scenario_workflow_ui,
         project_review_ui=project_review_ui,        message=message,
         compare_result=compare_result,
+    )
+
+
+@app.get("/scenarios/compare-panel")
+async def scenario_compare_panel_endpoint(
+    request: Request,
+    project: str = "",
+    left_scenario_id: str | None = None,
+    right_scenario_id: str | None = None,
+):
+    """UX-2G-COMPARE-FIX: HTMX-only fragment for the in-workspace Compare tab.
+
+    Returns just the ``scenario_compare.html`` markup (no shell, no
+    ``<head>``) so the "Compare with X" shortcut and the Compare tab
+    can swap content into ``#panel-compare`` without ever leaving the
+    SPA. Unlike the legacy ``/scenarios/compare`` route, ``project``
+    has no silent default here -- a missing/blank project resolves to
+    the empty-state fragment rather than guessing a project, which is
+    what previously let scenarios from the wrong project (e.g. tuho)
+    leak into the comparison.
+    """
+    user = get_current_user(request)
+    if not user:
+        return HTMLResponse(
+            '<div class="ps-mini-empty" data-testid="compare-empty-state">'
+            '<div class="ps-history-item"><div class="ps-history-title">Session expired</div>'
+            '<div class="ps-history-meta">Sign in again to compare scenarios.</div></div></div>',
+            status_code=401,
+        )
+
+    compare_result = None
+    if project and left_scenario_id and right_scenario_id:
+        project_record = _resolve_project_record(user, project)
+        _project_id = project_record.project_id if project_record else None
+        _left_sc = get_scenario(left_scenario_id, user.user_id)
+        _right_sc = get_scenario(right_scenario_id, user.user_id)
+        if (
+            _left_sc is not None
+            and _right_sc is not None
+            and _project_id is not None
+            and _left_sc.project_id == _project_id
+            and _right_sc.project_id == _project_id
+        ):
+            _, workspace_state, _, _, _, _, _ = _current_project_workspace(user, project_record)
+            raw_compare_result = compare_scenarios(user.user_id, left_scenario_id, right_scenario_id)
+            if raw_compare_result is not None:
+                compare_result = _build_compare_ui_context(raw_compare_result, workspace_state)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/scenario_compare.html",
+        context={
+            "compare_panel": True,
+            "compare_result": compare_result,
+            "audit_mode": False,
+        },
     )
 
 

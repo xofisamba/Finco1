@@ -753,8 +753,13 @@
 
   <!-- ----------------------------------------------- COMPARE -- -->
   <div class="tab-panel" id="panel-compare">
-    {% set compare_panel = True %}
-    {% include "partials/scenario_compare.html" %}
+    {# UX-2G-COMPARE-FIX: #panel-compare-mount is the htmx swap target for
+       the "Compare with X" shortcut (see scenario_workflow_indicators.html)
+       and is re-rendered in place without ever leaving the workspace. #}
+    <div id="panel-compare-mount">
+      {% set compare_panel = True %}
+      {% include "partials/scenario_compare.html" %}
+    </div>
   </div>
 
   <!-- ----------------------------------------------- HELP (Phase 56B) -- -->

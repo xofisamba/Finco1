@@ -150,6 +150,7 @@ def quick_summary_card(card: dict[str, Any]) -> dict[str, Any]:
 def build_compare_shortcut_links(
     cards: list[dict[str, Any]],
     active_scenario_id: str = "",
+    project_code: str = "",
 ) -> list[dict[str, Any]]:
     """Build a list of "Compare with X" shortcut links for the active
     scenario.
@@ -157,7 +158,11 @@ def build_compare_shortcut_links(
     Each item is a dict suitable for the template:
 
       - ``href``: the ``/scenarios/compare`` URL with the appropriate
-        ``left_scenario_id`` and ``right_scenario_id`` query params
+        ``left_scenario_id``, ``right_scenario_id`` and ``project``
+        query params. ``project`` is always the currently loaded
+        project's code -- UX-2G-COMPARE-FIX -- so the link never
+        silently falls back to the route's "tuho" default and
+        resolves scenarios from the wrong project.
       - ``label``: "Compare with <name>"
       - ``kind``: "base" | "downside" | "upside" | "custom"
       - ``css_class``: visual chip class
@@ -192,10 +197,11 @@ def build_compare_shortcut_links(
         else:
             # Compare with custom scenarios too.
             pass
+        _project_qs = f"&project={project_code}" if project_code else ""
         links.append({
             "href": (
                 f"/scenarios/compare?left_scenario_id={active_scenario_id}"
-                f"&right_scenario_id={cid}"
+                f"&right_scenario_id={cid}{_project_qs}"
             ),
             "label": f"Compare with {target_name}",
             "kind": target_label["kind"],
@@ -261,6 +267,7 @@ def build_scenario_workflow_ui(
     cards: list[dict[str, Any]],
     *,
     active_scenario_id: str = "",
+    project_code: str = "",
 ) -> dict[str, Any]:
     """Build the full ``scenario_workflow_ui`` payload for the template.
 
@@ -289,7 +296,9 @@ def build_scenario_workflow_ui(
     return {
         "by_scenario": by_scenario,
         "compare_links": build_compare_shortcut_links(
-            list(cards or []), active_scenario_id=active_scenario_id,
+            list(cards or []),
+            active_scenario_id=active_scenario_id,
+            project_code=project_code,
         ),
         "state": workflow_state(list(cards or [])),
     }

@@ -401,6 +401,11 @@ class TestCompareValidationFileScope:
         "app/ui/dashboard.py",
         "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
         "tests/",  # UX-2C-1 cross-arc (branch-wide test footprint)
+        # UX-2G-COMPARE-FIX: htmx-only Compare shortcut + in-workspace
+        # Compare panel. Presentation/routing only -- no engine/formula
+        # changes.
+        "app/templates/partials/scenario_workflow_indicators.html",
+        "app/ui/scenario_workflow.py",
     )
     DISALLOWED_PREFIXES = (
         "app/waterfall_core.py",
