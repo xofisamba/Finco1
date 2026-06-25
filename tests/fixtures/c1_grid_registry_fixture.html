@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>C1-PR1 GridRegistry fixture</title>
+</head>
+<body>
+  <!--
+    Minimal standalone fixture for unit-testing FcGridRegistry in
+    isolation, independent of any real Finco1 sheet template.
+    Layout deliberately mirrors a CAPEX-style grid: two editable
+    data rows plus a non-editable subtotal row, so the registry's
+    "navigable but not editable" handling is exercised.
+  -->
+  <table data-fc-grid="fixture-grid">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.row1.label" data-fc-kind="label">Line 1</td>
+        <td data-fc-cell data-fc-addr="fixture.row1.amount" data-fc-editable="true" data-fc-kind="amount">10</td>
+      </tr>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.row2.label" data-fc-kind="label">Line 2</td>
+        <td data-fc-cell data-fc-addr="fixture.row2.amount" data-fc-editable="true" data-fc-kind="amount">20</td>
+      </tr>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.subtotal.label" data-fc-kind="label">Subtotal</td>
+        <td data-fc-cell data-fc-addr="fixture.subtotal.amount" data-fc-kind="amount">30</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- A second, independent grid root to prove multi-grid isolation. -->
+  <table data-fc-grid="fixture-grid-two">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture2.row1.amount" data-fc-editable="true" data-fc-kind="amount">5</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- A late-arriving subtree, simulating an htmx swap target, left
+       out of the initial scanAll() pass on purpose. -->
+  <div id="swap-target"></div>
+
+  <!-- Relative path: this fixture is loaded via file://, where an
+       absolute "/static/..." src would resolve against the
+       filesystem root, not the project directory. -->
+  <script src="../../static/interaction/grid-registry.js"></script>
+</body>
+</html>
