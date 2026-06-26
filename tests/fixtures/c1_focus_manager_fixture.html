@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>C1-PR4 FocusManager fixture</title>
+</head>
+<body>
+  <!--
+    Minimal standalone fixture for unit-testing FcFocusManager in
+    isolation, mirroring the PR1-PR3 fixtures.
+  -->
+  <table data-fc-grid="fixture-grid">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.row1.label" data-fc-kind="label">Line 1</td>
+        <td data-fc-cell data-fc-addr="fixture.row1.amount" data-fc-editable="true" data-fc-kind="amount">10</td>
+      </tr>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.row2.label" data-fc-kind="label">Line 2</td>
+        <td data-fc-cell data-fc-addr="fixture.row2.amount" data-fc-editable="true" data-fc-kind="amount">20</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table data-fc-grid="fixture-grid-two">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture2.row1.amount" data-fc-editable="true" data-fc-kind="amount">5</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- An ordinary focusable control outside any grid, to prove this
+       module never traps focus on cells. -->
+  <input id="outside-input" type="text" />
+
+  <!-- Relative paths: this fixture is loaded via file://. -->
+  <script src="../../static/interaction/grid-registry.js"></script>
+  <script src="../../static/interaction/engine.js"></script>
+  <script src="../../static/interaction/active-cell.js"></script>
+  <script src="../../static/interaction/swap-lifecycle.js"></script>
+  <script src="../../static/interaction/focus-manager.js"></script>
+</body>
+</html>
