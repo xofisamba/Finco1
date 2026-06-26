@@ -23,6 +23,11 @@
      cell and survives compatible htmx swaps; no keyboard navigation.
      See docs/C1_PR4_IMPLEMENTATION_NOTE.md #}
   <script src="/static/interaction/focus-manager.js" defer></script>
+  {# C1-PR5: Keyboard Navigation Foundation — moves the active cell
+     with Arrow/Enter/Tab/Home/End/Ctrl+Arrow, only when focus is on
+     a registered grid cell; no selection/clipboard/undo. See
+     docs/C1_PR5_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/keyboard-router.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
