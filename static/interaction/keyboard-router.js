@@ -8,7 +8,15 @@
  *            docs/C1_PR2_IMPLEMENTATION_NOTE.md,
  *            docs/C1_PR3_IMPLEMENTATION_NOTE.md,
  *            docs/C1_PR4_IMPLEMENTATION_NOTE.md,
- *            docs/C1_PR5_IMPLEMENTATION_NOTE.md.
+ *            docs/C1_PR5_IMPLEMENTATION_NOTE.md,
+ *            docs/C1_PR6_IMPLEMENTATION_NOTE.md.
+ *
+ * C1-PR6 addendum: after moving the active cell, this module also
+ * tells FcSelectionManager (if loaded) to either extend the
+ * selection range (Shift+Arrow) or collapse it to the new active
+ * cell (every other move) — see the bottom of _onKeyDown(). This is
+ * the only change made in PR6; all movement/guard logic above is
+ * unchanged from PR5.
  *
  * Responsibility in this PR is limited to:
  *   - moving the active cell with ArrowUp/Down/Left/Right, Enter,
@@ -42,6 +50,13 @@
   var NAV_KEYS = {
     ArrowRight: 1, ArrowLeft: 1, ArrowDown: 1, ArrowUp: 1,
     Enter: 1, Tab: 1, Home: 1, End: 1
+  };
+
+  // C1-PR6: keys for which Shift means "extend the selection range"
+  // rather than "move and collapse" — everything else (Enter/Tab's
+  // own Shift-for-direction meaning, Home/End) always collapses.
+  var ARROW_KEYS = {
+    ArrowRight: 1, ArrowLeft: 1, ArrowDown: 1, ArrowUp: 1
   };
 
   function _isGridCellFocused() {
@@ -123,6 +138,20 @@
     if (!target || target === current.cell) return;
 
     window.FcActiveCellManager.setActiveCell(current.gridId, target);
+
+    // C1-PR6: Shift+Arrow extends the selection range (anchor stays
+    // fixed); every other move collapses the selection to the new
+    // active cell, mirroring how the active cell itself always
+    // collapses to exactly one cell. FcSelectionManager is optional —
+    // this module still works (active cell + focus only) if it isn't
+    // loaded.
+    if (ARROW_KEYS.hasOwnProperty(evt.key) && evt.shiftKey &&
+        window.FcSelectionManager && window.FcSelectionManager.extendTo) {
+      window.FcSelectionManager.extendTo(current.gridId, target);
+    } else if (window.FcSelectionManager && window.FcSelectionManager.collapseToActive) {
+      window.FcSelectionManager.collapseToActive();
+    }
+
     if (window.FcFocusManager && window.FcFocusManager.syncFocus) {
       window.FcFocusManager.syncFocus();
     }
