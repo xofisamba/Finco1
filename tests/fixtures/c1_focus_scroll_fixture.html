@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>C1-PR3 FocusScroll fixture</title>
+  <style>
+    [data-fc-scroll-container] {
+      height: 80px;
+      overflow: auto;
+    }
+    td { height: 40px; }
+  </style>
+</head>
+<body>
+  <!--
+    Minimal standalone fixture for unit-testing FcSwapLifecycle in
+    isolation. One scrollable grid (enough rows to actually scroll)
+    and one non-scrollable grid, mirroring the PR1/PR2 fixtures.
+  -->
+  <div data-fc-scroll-container id="scroll-wrap">
+    <table data-fc-grid="fixture-grid">
+      <tbody>
+        <tr data-fc-row>
+          <td data-fc-cell data-fc-addr="fixture.row1.amount" data-fc-editable="true" data-fc-kind="amount">10</td>
+        </tr>
+        <tr data-fc-row>
+          <td data-fc-cell data-fc-addr="fixture.row2.amount" data-fc-editable="true" data-fc-kind="amount">20</td>
+        </tr>
+        <tr data-fc-row>
+          <td data-fc-cell data-fc-addr="fixture.row3.amount" data-fc-editable="true" data-fc-kind="amount">30</td>
+        </tr>
+        <tr data-fc-row>
+          <td data-fc-cell data-fc-addr="fixture.row4.amount" data-fc-editable="true" data-fc-kind="amount">40</td>
+        </tr>
+        <tr data-fc-row>
+          <td data-fc-cell data-fc-addr="fixture.row5.amount" data-fc-editable="true" data-fc-kind="amount">50</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <table data-fc-grid="fixture-grid-two">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture2.row1.amount" data-fc-editable="true" data-fc-kind="amount">5</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Relative paths: this fixture is loaded via file://. -->
+  <script src="../../static/interaction/grid-registry.js"></script>
+  <script src="../../static/interaction/engine.js"></script>
+  <script src="../../static/interaction/active-cell.js"></script>
+  <script src="../../static/interaction/swap-lifecycle.js"></script>
+</body>
+</html>

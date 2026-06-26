@@ -19,6 +19,12 @@
  *   data-fc-addr="<address>"       unique cell address string
  *   data-fc-editable="true|false"  defaults to "false" when absent
  *   data-fc-kind="amount|label|select|date"
+ *   data-fc-scroll-container       (C1-PR3, optional) marks the
+ *                                   nearest scrollable ancestor of a
+ *                                   grid, used only for scroll-position
+ *                                   capture/restore in FcSwapLifecycle.
+ *                                   Purely opt-in — grids without it
+ *                                   simply have no scroll preservation.
  *
  * Rows that contain no data-fc-editable="true" cell (category band
  * rows, subtotal rows, total rows) are still indexed for row/col
@@ -82,7 +88,9 @@
       if (addr) cellsByAddr[addr] = record;
     }
 
-    return { root: gridRoot, rows: rows, cellsByAddr: cellsByAddr, active: null };
+    var container = gridRoot.closest('[data-fc-scroll-container]') || null;
+
+    return { root: gridRoot, rows: rows, cellsByAddr: cellsByAddr, active: null, container: container };
   }
 
   // Cheap stable identity key for a DOM node, used only as a map key
@@ -140,6 +148,10 @@
 
   function getGrid(gridId) {
     return _grids[gridId] || null;
+  }
+
+  function getGridIds() {
+    return Object.keys(_grids);
   }
 
   function getCell(gridId, row, col) {
@@ -213,6 +225,7 @@
     scan: scan,
     scanAll: scanAll,
     getGrid: getGrid,
+    getGridIds: getGridIds,
     getCell: getCell,
     getAddr: getAddr,
     neighbors: neighbors,
