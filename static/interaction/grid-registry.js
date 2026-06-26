@@ -82,7 +82,7 @@
       if (addr) cellsByAddr[addr] = record;
     }
 
-    return { root: gridRoot, rows: rows, cellsByAddr: cellsByAddr };
+    return { root: gridRoot, rows: rows, cellsByAddr: cellsByAddr, active: null };
   }
 
   // Cheap stable identity key for a DOM node, used only as a map key
@@ -119,7 +119,16 @@
       var gridRoot = gridRoots[j];
       var gridId = gridRoot.getAttribute('data-fc-grid');
       if (!gridId) continue;
-      _grids[gridId] = _buildIndex(gridRoot);
+
+      var previousActiveAddr = (_grids[gridId] && _grids[gridId].active)
+        ? _grids[gridId].active.addr
+        : null;
+
+      var rebuilt = _buildIndex(gridRoot);
+      if (previousActiveAddr && rebuilt.cellsByAddr[previousActiveAddr]) {
+        rebuilt.active = rebuilt.cellsByAddr[previousActiveAddr];
+      }
+      _grids[gridId] = rebuilt;
       registered.push(gridId);
     }
     return registered;
@@ -171,6 +180,30 @@
     return grid.rows[targetRow][targetCol] || null;
   }
 
+  /**
+   * Active-cell bookkeeping (C1-PR2). The registry only stores which
+   * cell record is active per grid — it does not touch the DOM (no
+   * classes, no focus) and does not infer neighbours. Visual state
+   * and click handling live in FcActiveCellManager.
+   */
+  function setActiveCell(gridId, cell) {
+    var grid = _grids[gridId];
+    if (!grid) return null;
+    grid.active = cell || null;
+    return grid.active;
+  }
+
+  function clearActiveCell(gridId) {
+    var grid = _grids[gridId];
+    if (!grid) return;
+    grid.active = null;
+  }
+
+  function getActiveCell(gridId) {
+    var grid = _grids[gridId];
+    return grid ? grid.active : null;
+  }
+
   function _reset() {
     // Test-only helper: clears all registered grids.
     _grids = {};
@@ -183,6 +216,9 @@
     getCell: getCell,
     getAddr: getAddr,
     neighbors: neighbors,
+    setActiveCell: setActiveCell,
+    clearActiveCell: clearActiveCell,
+    getActiveCell: getActiveCell,
     _reset: _reset
   };
 })();

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>C1-PR2 ActiveCell fixture</title>
+</head>
+<body>
+  <!--
+    Minimal standalone fixture for unit-testing FcActiveCellManager
+    in isolation. Two grids, mirroring the PR1 fixture, so cross-grid
+    "exactly one active cell" behaviour can be exercised.
+  -->
+  <table data-fc-grid="fixture-grid">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.row1.label" data-fc-kind="label">Line 1</td>
+        <td data-fc-cell data-fc-addr="fixture.row1.amount" data-fc-editable="true" data-fc-kind="amount">10</td>
+      </tr>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.row2.label" data-fc-kind="label">Line 2</td>
+        <td data-fc-cell data-fc-addr="fixture.row2.amount" data-fc-editable="true" data-fc-kind="amount">20</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table data-fc-grid="fixture-grid-two">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture2.row1.amount" data-fc-editable="true" data-fc-kind="amount">5</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- A late-arriving subtree, simulating an htmx swap target. -->
+  <div id="swap-target"></div>
+
+  <!-- Relative paths: this fixture is loaded via file://. -->
+  <script src="../../static/interaction/grid-registry.js"></script>
+  <script src="../../static/interaction/engine.js"></script>
+  <script src="../../static/interaction/active-cell.js"></script>
+</body>
+</html>

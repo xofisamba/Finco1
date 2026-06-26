@@ -9103,3 +9103,9 @@ tr.fc-grid-header--sub th {
   font-size: 0.9rem;
   line-height: 1.5;
 }
+
+/* ── C1-PR2: Active Cell foundation — visual state only ── */
+.fc-active-cell {
+  outline: 2px solid #1a56db;
+  outline-offset: -1px;
+}
