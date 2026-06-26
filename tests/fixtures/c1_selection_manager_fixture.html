@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>C1-PR6 SelectionManager fixture</title>
+</head>
+<body>
+  <!--
+    Minimal standalone fixture for unit-testing FcSelectionManager in
+    isolation, mirroring the PR1-PR5 fixtures. A 3x3 grid for range
+    selection, plus a second grid and an ordinary text input to prove
+    selection stays scoped to grid cells only.
+  -->
+  <table data-fc-grid="fixture-grid">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.r1.c1" data-fc-editable="true">11</td>
+        <td data-fc-cell data-fc-addr="fixture.r1.c2" data-fc-editable="true">12</td>
+        <td data-fc-cell data-fc-addr="fixture.r1.c3" data-fc-editable="true">13</td>
+      </tr>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.r2.c1" data-fc-editable="true">21</td>
+        <td data-fc-cell data-fc-addr="fixture.r2.c2" data-fc-editable="true">22</td>
+        <td data-fc-cell data-fc-addr="fixture.r2.c3" data-fc-editable="true">23</td>
+      </tr>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.r3.c1" data-fc-editable="true">31</td>
+        <td data-fc-cell data-fc-addr="fixture.r3.c2" data-fc-editable="true">32</td>
+        <td data-fc-cell data-fc-addr="fixture.r3.c3" data-fc-editable="true">33</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table data-fc-grid="fixture-grid-two">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture2.r1.c1" data-fc-editable="true">5</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- An ordinary text input, outside the grid. -->
+  <input id="outside-input" type="text" value="" />
+
+  <!-- Relative paths: this fixture is loaded via file://. -->
+  <script src="../../static/interaction/grid-registry.js"></script>
+  <script src="../../static/interaction/engine.js"></script>
+  <script src="../../static/interaction/active-cell.js"></script>
+  <script src="../../static/interaction/swap-lifecycle.js"></script>
+  <script src="../../static/interaction/focus-manager.js"></script>
+  <script src="../../static/interaction/keyboard-router.js"></script>
+  <script src="../../static/interaction/selection-manager.js"></script>
+</body>
+</html>
