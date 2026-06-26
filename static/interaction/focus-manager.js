@@ -112,7 +112,11 @@
   }
 
   window.FcFocusManager = {
-    init: init
+    init: init,
+    // C1-PR5: exposed so FcKeyboardRouter can re-sync DOM focus to the
+    // active cell after moving it, reusing this module's existing
+    // focus-application logic instead of duplicating it.
+    syncFocus: _sync
   };
 
   init();
