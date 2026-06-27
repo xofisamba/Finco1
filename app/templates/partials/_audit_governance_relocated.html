@@ -25,6 +25,8 @@
 
 <div class="audit-governance-relocated"
      data-p2fix2-audit-relocated="true"
+     data-fc-grid="audit"
+     data-fc-scroll-container="true"
      aria-label="Audit and governance information">
 
   {# ── Review boundary note (relocated from normal shell) ───── #}
@@ -107,43 +109,43 @@
       </div>
     </div>
     <div class="export-lineage-grid">
-      <div class="export-lineage-card">
+      <div class="export-lineage-card" data-fc-row="true">
         <div class="export-lineage-card__label">Active project</div>
-        <div class="export-lineage-card__value">
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.project" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.project_label if export_lineage_ui else '' }}">
           {{ export_lineage_ui.current_context.project_label if export_lineage_ui else "—" }}
         </div>
         <div class="export-lineage-card__meta">
           {{ export_lineage_ui.current_context.project_code if export_lineage_ui else "—" }}
         </div>
       </div>
-      <div class="export-lineage-card">
+      <div class="export-lineage-card" data-fc-row="true">
         <div class="export-lineage-card__label">Saved scenario boundary</div>
-        <div class="export-lineage-card__value">
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.scenario" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.active_scenario_name if export_lineage_ui else '' }}">
           {{ export_lineage_ui.current_context.active_scenario_name if export_lineage_ui else "—" }}
         </div>
         <div class="export-lineage-card__meta">
           Scenario ID {{ export_lineage_ui.current_context.active_scenario_id if export_lineage_ui else "—" }}
         </div>
       </div>
-      <div class="export-lineage-card">
+      <div class="export-lineage-card" data-fc-row="true">
         <div class="export-lineage-card__label">Last runtime snapshot</div>
-        <div class="export-lineage-card__value">
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.runtime_snapshot_id" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_snapshot_id if export_lineage_ui else '' }}">
           {{ export_lineage_ui.current_context.runtime_snapshot_id if export_lineage_ui else "—" }}
         </div>
         <div class="export-lineage-card__meta">
           {{ export_lineage_ui.current_context.runtime_origin_label if export_lineage_ui else "—" }}
         </div>
       </div>
-      <div class="export-lineage-card">
+      <div class="export-lineage-card" data-fc-row="true">
         <div class="export-lineage-card__label">Runtime generated at</div>
-        <div class="export-lineage-card__value">
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.runtime_generated_at" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_generated_at if export_lineage_ui else '' }}">
           {{ export_lineage_ui.current_context.runtime_generated_at if export_lineage_ui else "—" }}
         </div>
         <div class="export-lineage-card__meta">Last clean backend run</div>
       </div>
-      <div class="export-lineage-card">
+      <div class="export-lineage-card" data-fc-row="true">
         <div class="export-lineage-card__label">Governance posture</div>
-        <div class="export-lineage-card__value">G20 BLOCKED</div>
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!governance_posture" data-fc-kind="text" data-fc-editable="false" data-fc-raw="G20 BLOCKED / R99 R102 NOT APPROVED">G20 BLOCKED</div>
         <div class="export-lineage-card__meta">R99 / R102 NOT APPROVED</div>
       </div>
     </div>
@@ -158,17 +160,17 @@
         <span class="badge badge-blocked">Blocked</span>
       </div>
       <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
           <span style="color:var(--text-2); font-weight:500;">G20 Gate</span>
-          <span class="badge badge-blocked">BLOCKED</span>
+          <span class="badge badge-blocked" data-fc-cell="true" data-fc-addr="audit!governance_status.g20_gate" data-fc-kind="text" data-fc-editable="false" data-fc-raw="BLOCKED">BLOCKED</span>
         </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
           <span style="color:var(--text-2); font-weight:500;">R99 / R102 Promotion</span>
-          <span class="badge badge-notapproved">NOT APPROVED</span>
+          <span class="badge badge-notapproved" data-fc-cell="true" data-fc-addr="audit!governance_status.r99_r102_promotion" data-fc-kind="text" data-fc-editable="false" data-fc-raw="NOT APPROVED">NOT APPROVED</span>
         </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;" data-fc-row="true">
           <span style="color:var(--text-2); font-weight:500;">Equity IRR residual</span>
-          <span style="font-weight:600; color:var(--text);">Within tolerance</span>
+          <span style="font-weight:600; color:var(--text);" data-fc-cell="true" data-fc-addr="audit!governance_status.equity_irr_residual" data-fc-kind="text" data-fc-editable="false" data-fc-raw="Within tolerance">Within tolerance</span>
         </div>
       </div>
     </div>
@@ -179,21 +181,21 @@
         <span class="badge badge-convention">DA-Wired Audit</span>
       </div>
       <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
           <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
-          <span class="badge badge-pass">PASS</span>
+          <span class="badge badge-pass" data-fc-cell="true" data-fc-addr="audit!reference_evidence.senior_debt" data-fc-kind="text" data-fc-editable="false" data-fc-raw="PASS">PASS</span>
         </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
           <span style="color:var(--text-2); font-weight:500;">SHL Opening</span>
-          <span class="badge badge-pass">PASS</span>
+          <span class="badge badge-pass" data-fc-cell="true" data-fc-addr="audit!reference_evidence.shl_opening" data-fc-kind="text" data-fc-editable="false" data-fc-raw="PASS">PASS</span>
         </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
           <span style="color:var(--text-2); font-weight:500;">Distributions</span>
-          <span class="badge badge-convention">ACCEPTED CONV</span>
+          <span class="badge badge-convention" data-fc-cell="true" data-fc-addr="audit!reference_evidence.distributions" data-fc-kind="text" data-fc-editable="false" data-fc-raw="ACCEPTED CONV">ACCEPTED CONV</span>
         </div>
-        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;" data-fc-row="true">
           <span style="color:var(--text-2); font-weight:500;">Tax / CFADS</span>
-          <span class="badge badge-missing">MISSING_EVIDENCE</span>
+          <span class="badge badge-missing" data-fc-cell="true" data-fc-addr="audit!reference_evidence.tax_cfads" data-fc-kind="text" data-fc-editable="false" data-fc-raw="MISSING_EVIDENCE">MISSING_EVIDENCE</span>
         </div>
       </div>
     </div>

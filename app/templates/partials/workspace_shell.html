@@ -652,7 +652,7 @@
     {# Phase 25A: Pilot limitations notice in Downloads tab #}
     {% include "partials/pilot_limitations_notice.html" %}
 
-    <div class="export-lineage-history">
+    <div class="export-lineage-history" data-fc-grid="export" data-fc-scroll-container="true">
       <div class="export-lineage-history__title">Current Export Context</div>
       <div class="export-lineage-history__desc" id="export-lineage-guidance">
         {{ export_lineage_ui.current_context.action_note }}
@@ -664,29 +664,29 @@
         Trusted pilot evidence is limited to TUHO and Oborovo (Excel-anchored). Generic projects remain internal-use model only.
       </div>
       <div class="export-lineage-grid">
-        <div class="export-lineage-card">
+        <div class="export-lineage-card" data-fc-row="true">
           <div class="export-lineage-card__label">Active project</div>
-          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.project_label }}</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.project" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.project_label }}">{{ export_lineage_ui.current_context.project_label }}</div>
           <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.project_code }}</div>
         </div>
-        <div class="export-lineage-card">
+        <div class="export-lineage-card" data-fc-row="true">
           <div class="export-lineage-card__label">Saved scenario</div>
-          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.active_scenario_name }}</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.scenario" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.active_scenario_name }}">{{ export_lineage_ui.current_context.active_scenario_name }}</div>
           <div class="export-lineage-card__meta">Scenario ID {{ export_lineage_ui.current_context.active_scenario_id }}</div>
         </div>
-        <div class="export-lineage-card">
+        <div class="export-lineage-card" data-fc-row="true">
           <div class="export-lineage-card__label">Scenario revision</div>
-          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.scenario_revision }}</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.scenario_revision" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.scenario_revision }}">{{ export_lineage_ui.current_context.scenario_revision }}</div>
           <div class="export-lineage-card__meta">Saved boundary timestamp</div>
         </div>
-        <div class="export-lineage-card">
+        <div class="export-lineage-card" data-fc-row="true">
           <div class="export-lineage-card__label">Last runtime snapshot</div>
-          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_snapshot_id }}</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.runtime_snapshot_id" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_snapshot_id }}">{{ export_lineage_ui.current_context.runtime_snapshot_id }}</div>
           <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.runtime_origin_label }}</div>
         </div>
-        <div class="export-lineage-card">
+        <div class="export-lineage-card" data-fc-row="true">
           <div class="export-lineage-card__label">Runtime generated at</div>
-          <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_generated_at }}</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.runtime_generated_at" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_generated_at }}">{{ export_lineage_ui.current_context.runtime_generated_at }}</div>
           <div class="export-lineage-card__meta">Last clean backend run</div>
         </div>
         {# P2-FIX-2: Governance posture card (G20 BLOCKED /
@@ -697,7 +697,7 @@
     </div>
 
     <div class="downloads-grid">
-      <a href="/download" class="download-item">
+      <a href="/download" class="download-item" data-fc-row="true" data-fc-cell="true" data-fc-addr="export!workbook_download.values_only" data-fc-kind="text" data-fc-editable="false" data-fc-raw="/download">
         <div class="download-icon">Download</div>
         <div class="download-info">
           <div class="download-name">Values-only Excel Export (.xlsx)</div>
@@ -705,7 +705,7 @@
           <div class="download-lineage-meta">Backend-authored and descriptive only. This does not promote dirty draft values into runtime truth.</div>
         </div>
       </a>
-      <a href="/exports/runtime-summary.csv?project={{ project_record.project_code }}" class="download-item">
+      <a href="/exports/runtime-summary.csv?project={{ project_record.project_code }}" class="download-item" data-fc-row="true" data-fc-cell="true" data-fc-addr="export!workbook_download.runtime_summary_csv" data-fc-kind="text" data-fc-editable="false" data-fc-raw="/exports/runtime-summary.csv?project={{ project_record.project_code }}">
         <div class="download-icon">CSV</div>
         <div class="download-info">
           <div class="download-name">Runtime Summary CSV</div>
@@ -713,7 +713,7 @@
           <div class="download-lineage-meta">Uses the last clean backend runtime context. Save and run again before sharing if the current draft should be reflected.</div>
         </div>
       </a>
-      <a href="/exports/institutional-workbook.xlsx?project={{ project_record.project_code }}" class="download-item">
+      <a href="/exports/institutional-workbook.xlsx?project={{ project_record.project_code }}" class="download-item" data-fc-row="true" data-fc-cell="true" data-fc-addr="export!workbook_download.institutional_workbook" data-fc-kind="text" data-fc-editable="false" data-fc-raw="/exports/institutional-workbook.xlsx?project={{ project_record.project_code }}">
         <div class="download-icon">Workbook</div>
         <div class="download-info">
           <div class="download-name">Institutional Workbook</div>
