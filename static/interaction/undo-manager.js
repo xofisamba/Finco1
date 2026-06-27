@@ -43,9 +43,25 @@
  *     ones typed into a real input/select/textarea inside a
  *     [data-fc-cell]; everything else flows through recordTransaction()
  *     called by another module (e.g. paste)
+ *
+ * C1-Final-Hardening: the undo stack is bounded to MAX_UNDO entries
+ * (FIFO eviction of the oldest transaction once the stack would
+ * exceed MAX_UNDO) so a long editing session cannot grow this stack
+ * unboundedly. 300 was chosen as a generous-but-bounded session
+ * history: far more than a user is likely to need to step back
+ * through in one sitting, while keeping worst-case memory use for the
+ * transaction history fixed and small (each transaction holds only a
+ * handful of {addr, before, after} primitives plus tiny snapshot
+ * objects, never DOM nodes). The redo stack is intentionally NOT
+ * bounded by MAX_UNDO directly — it only ever contains transactions
+ * popped off the undo stack by undo(), so it can never exceed the
+ * undo stack's own bound; recordTransaction() still clears it on any
+ * new transaction, unchanged from prior behaviour.
  */
 (function () {
   'use strict';
+
+  var MAX_UNDO = 300;
 
   var _undoStack = [];
   var _redoStack = [];
@@ -82,6 +98,12 @@
   function recordTransaction(tx) {
     if (!tx || !tx.changes || !tx.changes.length) return;
     _undoStack.push(tx);
+    if (_undoStack.length > MAX_UNDO) {
+      // FIFO eviction: drop the oldest transaction(s) first, always
+      // preserving the newest. Stays a no-op in the common case where
+      // a single push never exceeds the cap by more than one.
+      _undoStack.splice(0, _undoStack.length - MAX_UNDO);
+    }
     _redoStack = [];
   }
 
@@ -268,7 +290,8 @@
     undo: undo,
     redo: redo,
     canUndo: canUndo,
-    canRedo: canRedo
+    canRedo: canRedo,
+    MAX_UNDO: MAX_UNDO
   };
 
   init();
