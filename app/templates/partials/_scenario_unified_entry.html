@@ -23,7 +23,7 @@
   </div>
 
   {% if _has_matrix %}
-  <div class="scenario-unified-entry-table-wrapper">
+  <div class="scenario-unified-entry-table-wrapper" data-fc-grid="scenario-summary" data-fc-scroll-container="true">
     <table class="scenario-unified-entry-table" data-u4-kpi-summary="true">
       <thead>
         <tr>
@@ -37,12 +37,16 @@
       <tbody>
         {% for entry in matrix_rows %}
           {% if entry.is_kpi %}
-          <tr data-u4-kpi-row="{{ entry.row.attr }}">
+          <tr data-u4-kpi-row="{{ entry.row.attr }}" data-fc-row="true">
             <td class="scenario-unified-entry-label">{{ entry.row.label }}</td>
-            <td>{{ entry.base }}</td>
-            <td>{{ entry.downside }}</td>
-            <td>{{ entry.upside }}</td>
-            <td>{{ entry.custom }}</td>
+            <td data-fc-cell="true" data-fc-addr="scenario-summary!base.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.base }}">{{ entry.base }}</td>
+            <td data-fc-cell="true" data-fc-addr="scenario-summary!downside.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.downside }}">{{ entry.downside }}</td>
+            <td data-fc-cell="true" data-fc-addr="scenario-summary!upside.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.upside }}">{{ entry.upside }}</td>
+            <td data-fc-cell="true" data-fc-addr="scenario-summary!custom.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.custom }}">{{ entry.custom }}</td>
           </tr>
           {% endif %}
         {% endfor %}

@@ -60,7 +60,7 @@
   </div>
 
   {# Metrics table with delta column #}
-  <div class="ps-compare-table">
+  <div class="ps-compare-table" data-fc-grid="scenario-compare" data-fc-scroll-container="true">
     <div class="ps-compare-row ps-compare-row--head">
       <span>Metric</span>
       <span>Base</span>
@@ -68,11 +68,17 @@
       <span>Delta</span>
     </div>
     {% for row in compare_result.metrics %}
-    <div class="ps-compare-row">
+    <div class="ps-compare-row" data-fc-row="true">
       <span>{{ row.key }}</span>
-      <span>{{ "%.2f"|format(row.base_value) if row.base_value is not none else "—" }}</span>
-      <span>{{ "%.2f"|format(row.active_value) if row.active_value is not none else "—" }}</span>
-      <span class="{{ row.sign_class }}">{{ "%+.3f"|format(row.delta) if row.delta is not none else "—" }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ row.key }}.left"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ row.base_value if row.base_value is not none else '' }}">{{ "%.2f"|format(row.base_value) if row.base_value is not none else "—" }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ row.key }}.right"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ row.active_value if row.active_value is not none else '' }}">{{ "%.2f"|format(row.active_value) if row.active_value is not none else "—" }}</span>
+      <span class="{{ row.sign_class }}" data-fc-cell="true" data-fc-addr="scenario-compare!{{ row.key }}.delta"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ row.delta if row.delta is not none else '' }}">{{ "%+.3f"|format(row.delta) if row.delta is not none else "—" }}</span>
     </div>
     {% endfor %}
   </div>
@@ -117,7 +123,7 @@
     Workspace runtime boundary: {{ compare_result.workspace_runtime_origin_label }}. Compare does not auto-save and does not auto-run.
   </div>
 
-  <div class="ps-compare-table">
+  <div class="ps-compare-table" data-fc-grid="scenario-compare" data-fc-scroll-container="true">
     <div class="ps-compare-row ps-compare-row--head">
       <span>Metric</span>
       <span>Left</span>
@@ -125,11 +131,15 @@
       <span>Delta</span>
     </div>
     {% for row in compare_result.metrics %}
-    <div class="ps-compare-row">
+    {% set _slug = row.metric|lower|replace(" ", "_")|replace("/", "_") %}
+    <div class="ps-compare-row" data-fc-row="true">
       <span>{{ row.metric }}</span>
-      <span>{{ row.left_value }}</span>
-      <span>{{ row.right_value }}</span>
-      <span>{{ row.delta }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ _slug }}.left"
+            data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ row.left_value }}">{{ row.left_value }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ _slug }}.right"
+            data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ row.right_value }}">{{ row.right_value }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ _slug }}.delta"
+            data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ row.delta }}">{{ row.delta }}</span>
     </div>
     {% endfor %}
   </div>
