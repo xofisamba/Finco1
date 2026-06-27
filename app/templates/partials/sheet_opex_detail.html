@@ -81,7 +81,8 @@
   </div>
 
   {# ── Grid ──────────────────────────────────────────────────────────────────── #}
-  <div class="fc-grid-scroll-wrapper" id="opex-grid-scroll">
+  <div class="fc-grid-scroll-wrapper" id="opex-grid-scroll"
+       data-fc-grid="opex" data-fc-scroll-container="true">
     <table class="fc-grid fc-opex-detail-grid" id="opex-detail-grid"
            data-yrange="1-8" data-display="values">
 
@@ -145,6 +146,7 @@
   <tbody class="fc-cat-tbody" id="fc-cat-{{ loop.index0 }}" data-cat-index="{{ loop.index0 }}">
     <tr class="fc-section-band fc-cat-row"
         data-cat="{{ loop.index0 }}"
+        data-fc-row="true"
         onclick="opexToggleCategory({{ loop.index0 }})"
         title="Click to collapse/expand">
       <td class="fc-section-band__label" colspan="5">
@@ -174,7 +176,12 @@
             data-yrange-9-16="{{ 'true' if y >= 9 and y <= 16 else 'false' }}"
             data-yrange-17-24="{{ 'true' if y >= 17 and y <= 24 else 'false' }}"
             data-yrange-{{ max_y - 5 }}-{{ max_y }}="{{ 'true' if y >= max_y - 5 else 'false' }}"
-            data-yrange-all="true">
+            data-yrange-all="true"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ cat.code }}.Y{{ y }}.subtotal"
+            data-fc-kind="subtotal"
+            data-fc-editable="false"
+            data-fc-raw="{{ y_val }}">
           {{ "{:,.2f}".format(y_val) }}
         </td>
       {% endfor %}
@@ -192,7 +199,8 @@
     {% for child in cat.children %}
       <tr class="fc-data-row fc-data-row--child fc-cat-child"
           data-cat="{{ cat_index }}"
-          data-child-index="{{ loop.index }}">
+          data-child-index="{{ loop.index }}"
+          data-fc-row="true">
         <td class="fc-cell fc-cell--label fc-grid-col-label fc-cell--indented fc-th--sticky" data-col="1">
           <span class="fc-child-indicator"></span>
           {{ child.name }}
@@ -200,7 +208,12 @@
         <td class="fc-cell fc-cell--code fc-th--sticky" data-col="2">{{ child.code }}</td>
 
         {# Budget #}
-        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="3">
+        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="3"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ child.code }}.budget"
+            data-fc-kind="amount"
+            data-fc-editable="false"
+            data-fc-raw="{{ child.budget_y1_keur or 0 }}">
           {% if is_user_project and not cat.is_contingency %}
             <span class="fc-cell-runtime" title="Line editing deferred">{{ "{:,.2f}".format(child.budget_y1_keur or 0) }}</span>
           {% else %}
@@ -209,7 +222,12 @@
         </td>
 
         {# Inflation % #}
-        <td class="fc-cell fc-cell--pct" data-col="4">
+        <td class="fc-cell fc-cell--pct" data-col="4"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ child.code }}.inflation"
+            data-fc-kind="amount"
+            data-fc-editable="false"
+            data-fc-raw="{{ child.inflation_pct or 0 }}">
           {% if child.inflation_pct == 0 %}
             <span class="fc-cell--muted">flat</span>
           {% else %}
@@ -218,7 +236,12 @@
         </td>
 
         {# WHT % #}
-        <td class="fc-cell fc-cell--pct" data-col="5">
+        <td class="fc-cell fc-cell--pct" data-col="5"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ child.code }}.wht"
+            data-fc-kind="amount"
+            data-fc-editable="false"
+            data-fc-raw="{{ child.wth_rate or 0 }}">
           {% if child.wth_rate and child.wth_rate > 0 %}
             <span class="fc-cell-runtime">{{ "%.1f"|format(child.wth_rate) }}%</span>
           {% else %}
@@ -245,6 +268,11 @@
               data-yrange-all="true"
               data-active="{{ active }}"
           data-cat="{{ cat_index }}"
+              data-fc-cell="true"
+              data-fc-addr="opex!{{ child.code }}.Y{{ y }}"
+              data-fc-kind="amount"
+              data-fc-editable="false"
+              data-fc-raw="{{ y_val }}"
               title="{{ 'Active' if active else 'Inactive' }}{% if active and y_val > 0 %} — {{ "%.2f"|format(y_val) }} kEUR{% endif %}">
             <span class="fc-val">{{ "{:,.2f}".format(y_val) }}</span>
             <span class="fc-flag" style="display:none">{{ 1 if active else 0 }}</span>
