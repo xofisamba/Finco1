@@ -12,7 +12,7 @@
 
 {# ── Phase 20D: 8-section Inputs surface ─────────────────────────────── #}
 {% if is_user_project %}
-<div class="inp-sheet-wrapper">
+<div class="inp-sheet-wrapper" data-fc-grid="inputs" data-fc-scroll-container="true">
   {% include "partials/inputs_section.html" %}
 </div>
 {% else %}
@@ -22,7 +22,7 @@
     <span class="badge badge-muted">Read-only</span>
     <span>This is a protected original. Use <strong>Duplicate</strong> in the sidebar to create an editable copy before modifying any values.</span>
   </div>
-  <div class="inp-sheet-wrapper">
+  <div class="inp-sheet-wrapper" data-fc-grid="inputs" data-fc-scroll-container="true">
     {% include "partials/inputs_section.html" %}
   </div>
 </div>
