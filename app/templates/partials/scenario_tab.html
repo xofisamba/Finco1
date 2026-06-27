@@ -93,7 +93,7 @@
   {% endif %}
 
   <!-- Scenario matrix -->
-  <div class="sc-matrix-wrapper" id="sc-matrix-wrapper">
+  <div class="sc-matrix-wrapper" id="sc-matrix-wrapper" data-fc-grid="scenario-inputs" data-fc-scroll-container="true">
     <table class="sc-matrix" id="sc-matrix">
 
       <!-- Column header row (sticky) -->
@@ -160,14 +160,16 @@
         </tr>
 
         {% for fieldName, fieldLabel in fields %}
-        <tr class="sc-row" data-field="{{ fieldName }}">
+        <tr class="sc-row" data-field="{{ fieldName }}" data-fc-row="true">
 
           <!-- Label cell (frozen first column) -->
           <td class="sc-td sc-td--label">{{ fieldLabel }}</td>
 
           <!-- Base Case value cell -->
           {% if base_case_record %}
-          <td class="{{ cellClass(base_case_record, fieldName) }}" data-scenario="{{ base_case_record.scenario_id }}" data-field="{{ fieldName }}">
+          <td class="{{ cellClass(base_case_record, fieldName) }}" data-scenario="{{ base_case_record.scenario_id }}" data-field="{{ fieldName }}"
+              data-fc-cell="true" data-fc-addr="scenario-inputs!base.{{ fieldName }}"
+              data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ effectiveValue(base_case_record, fieldName) }}">
             {% if is_user_project %}
               {# Base Case fields are read-only in Scenario tab for now (edit via Inputs tab) #}
               <span class="sc-value sc-value--base">{{ effectiveValue(base_case_record, fieldName) }}</span>
@@ -182,7 +184,10 @@
           <td class="{{ cellClass(scen, fieldName) }} sc-editable-td"
               data-scenario="{{ scen.scenario_id }}"
               data-field="{{ fieldName }}"
-              {% if is_user_project %}ondblclick="window.startScenarioEdit(this)"{% endif %}>
+              {% if is_user_project %}ondblclick="window.startScenarioEdit(this)"{% endif %}
+              data-fc-cell="true" data-fc-addr="scenario-inputs!{{ scen.scenario_id }}.{{ fieldName }}"
+              data-fc-kind="text" data-fc-editable="{{ 'true' if is_user_project else 'false' }}"
+              data-fc-raw="{{ effectiveValue(scen, fieldName) }}">
             <span class="sc-value">{{ effectiveValue(scen, fieldName) }}</span>
             {%- set _badge_alias = _SC_CANONICAL_TO_ALIAS.get(fieldName, fieldName) -%}
             {%- set _scen_overrides = scen.overrides or {} -%}

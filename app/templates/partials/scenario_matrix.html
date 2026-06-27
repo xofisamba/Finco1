@@ -44,7 +44,9 @@
   </div>
   {% endif %}
 
-  <div class="scenario-matrix-table-wrap">
+  <div class="scenario-matrix-table-wrap"
+       data-fc-grid="scenarios"
+       data-fc-scroll-container="true">
     <table class="scenario-matrix-table"
            data-m2-table="scenario-matrix"
            aria-label="Scenario matrix">
@@ -167,7 +169,7 @@
                 <th scope="rowgroup" colspan="5" class="matrix-section-header">{{ _section }}</th>
               </tr>
             {% endif %}
-            <tr data-m1-row="{{ entry.row.attr }}" data-m1-row-kind="{{ entry.kind }}" data-m2-row="{{ entry.row.attr }}" data-m2-row-kind="{{ entry.kind }}">
+            <tr data-m1-row="{{ entry.row.attr }}" data-m1-row-kind="{{ entry.kind }}" data-m2-row="{{ entry.row.attr }}" data-m2-row-kind="{{ entry.kind }}" data-fc-row="true">
               <th scope="row" class="matrix-row-label">
                 {{ entry.row.label }}
                 {% if entry.row.attr == 'gearing_pct' %}
@@ -179,7 +181,9 @@
                         title="Read-only derived KPI: realized gearing = senior debt / total CAPEX. NOT a binding driver.">derived</span>
                 {% endif %}
               </th>
-              <td class="matrix-cell matrix-cell-base" data-m2-cell="base">{{ entry.base }}</td>
+              <td class="matrix-cell matrix-cell-base" data-m2-cell="base"
+                  data-fc-cell="true" data-fc-addr="scenarios!base.{{ entry.row.attr }}"
+                  data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.base }}">{{ entry.base }}</td>
               {% if entry.downside_live is defined and entry.downside_live and not entry.is_kpi %}
               <td class="matrix-cell matrix-cell-scenario matrix-cell-editable"
                   data-m2-cell="downside"
@@ -190,13 +194,17 @@
                   hx-target="this"
                   hx-swap="outerHTML"
                   hx-trigger="click"
-                  title="Click to edit">
+                  title="Click to edit"
+                  data-fc-cell="true" data-fc-addr="scenarios!downside.{{ entry.row.attr }}"
+                  data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ entry.downside }}">
                 <span class="matrix-cell-value">{{ entry.downside }}</span>
                 <span class="matrix-cell-edit-hint">✎</span>
               </td>
               {% else %}
               <td class="matrix-cell {% if entry.downside_live is defined and entry.downside_live %}matrix-cell-scenario{% else %}matrix-cell-inherit{% endif %}"
-                  data-m2-cell="downside">{{ entry.downside }}</td>
+                  data-m2-cell="downside"
+                  data-fc-cell="true" data-fc-addr="scenarios!downside.{{ entry.row.attr }}"
+                  data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.downside }}">{{ entry.downside }}</td>
               {% endif %}
               {% if entry.upside_live is defined and entry.upside_live and not entry.is_kpi %}
               <td class="matrix-cell matrix-cell-scenario matrix-cell-editable"
@@ -208,13 +216,17 @@
                   hx-target="this"
                   hx-swap="outerHTML"
                   hx-trigger="click"
-                  title="Click to edit">
+                  title="Click to edit"
+                  data-fc-cell="true" data-fc-addr="scenarios!upside.{{ entry.row.attr }}"
+                  data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ entry.upside }}">
                 <span class="matrix-cell-value">{{ entry.upside }}</span>
                 <span class="matrix-cell-edit-hint">✎</span>
               </td>
               {% else %}
               <td class="matrix-cell {% if entry.upside_live is defined and entry.upside_live %}matrix-cell-scenario{% else %}matrix-cell-inherit{% endif %}"
-                  data-m2-cell="upside">{{ entry.upside }}</td>
+                  data-m2-cell="upside"
+                  data-fc-cell="true" data-fc-addr="scenarios!upside.{{ entry.row.attr }}"
+                  data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.upside }}">{{ entry.upside }}</td>
               {% endif %}
               {% if entry.custom_live is defined and entry.custom_live and not entry.is_kpi %}
               <td class="matrix-cell matrix-cell-scenario matrix-cell-editable"
@@ -226,13 +238,17 @@
                   hx-target="this"
                   hx-swap="outerHTML"
                   hx-trigger="click"
-                  title="Click to edit">
+                  title="Click to edit"
+                  data-fc-cell="true" data-fc-addr="scenarios!custom.{{ entry.row.attr }}"
+                  data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ entry.custom }}">
                 <span class="matrix-cell-value">{{ entry.custom }}</span>
                 <span class="matrix-cell-edit-hint">✎</span>
               </td>
               {% else %}
               <td class="matrix-cell {% if entry.custom_live is defined and entry.custom_live %}matrix-cell-scenario{% else %}matrix-cell-future{% endif %}"
-                  data-m2-cell="custom">{{ entry.custom }}</td>
+                  data-m2-cell="custom"
+                  data-fc-cell="true" data-fc-addr="scenarios!custom.{{ entry.row.attr }}"
+                  data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.custom }}">{{ entry.custom }}</td>
               {% endif %}
             </tr>
           {% endfor %}
