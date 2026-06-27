@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>C2-PR1 LiveModel fixture</title>
+</head>
+<body>
+  <!--
+    Minimal standalone fixture for unit-testing FcLiveModel in
+    isolation, mirroring the C1-PR1-PR9 fixtures. Two cells contain a
+    real <input> (the only genuinely observable edit path today), one
+    non-editable label cell, a second grid to prove dirty/sheet
+    tracking stays scoped per gridId, and an ordinary text input to
+    prove edits outside the grid are never tracked.
+  -->
+  <table data-fc-grid="fixture-grid">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture.r1.c1" data-fc-editable="true"><input value="11" /></td>
+        <td data-fc-cell data-fc-addr="fixture.r1.c2" data-fc-editable="true"><input value="12" /></td>
+        <td data-fc-cell data-fc-addr="fixture.r1.label" data-fc-editable="false">label</td>
+        <td data-fc-cell data-fc-addr="fixture.r1.readonly" data-fc-editable="false"><input value="ro" /></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table data-fc-grid="fixture-grid-two">
+    <tbody>
+      <tr data-fc-row>
+        <td data-fc-cell data-fc-addr="fixture2.r1.c1" data-fc-editable="true"><input value="5" /></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- An ordinary text input, outside the grid. -->
+  <input id="outside-input" type="text" value="" />
+
+  <!-- Relative paths: this fixture is loaded via file://. -->
+  <script src="../../static/interaction/grid-registry.js"></script>
+  <script src="../../static/interaction/engine.js"></script>
+  <script src="../../static/interaction/active-cell.js"></script>
+  <script src="../../static/interaction/swap-lifecycle.js"></script>
+  <script src="../../static/interaction/focus-manager.js"></script>
+  <script src="../../static/interaction/keyboard-router.js"></script>
+  <script src="../../static/interaction/selection-manager.js"></script>
+  <script src="../../static/interaction/clipboard-controller.js"></script>
+  <script src="../../static/interaction/undo-manager.js"></script>
+  <script src="../../static/interaction/fill-controller.js"></script>
+  <script src="../../static/modelling/live-model.js"></script>
+</body>
+</html>
