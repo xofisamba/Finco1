@@ -32,7 +32,7 @@
   {% endif %}
 
   {# ── Grid ──────────────────────────────────────────────────────── #}
-  <div class="fc-grid-wrapper">
+  <div class="fc-grid-wrapper" data-fc-grid="revenue" data-fc-scroll-container="true">
     <table class="fc-grid" id="revenue-grid">
 
       {# ── Sticky Header ───────────────────────────────────────────── #}
@@ -58,10 +58,15 @@
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "Production" %}
-          <tr class="fc-data-row">
+          <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
             <td class="fc-cell fc-cell--code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount">
+            <td class="fc-cell fc-cell--amount"
+                data-fc-cell="true"
+                data-fc-addr="revenue!{{ item.code }}"
+                data-fc-kind="text"
+                data-fc-editable="{{ 'true' if (is_user_project and item.editable) else 'false' }}"
+                data-fc-raw="{{ item.value }}">
               {% if is_user_project and item.editable %}
               <input type="number" step="any"
                      class="fc-input-native"
@@ -89,10 +94,15 @@
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "PPA / Tariff" %}
-          <tr class="fc-data-row">
+          <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
             <td class="fc-cell fc-cell--code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount">
+            <td class="fc-cell fc-cell--amount"
+                data-fc-cell="true"
+                data-fc-addr="revenue!{{ item.code }}"
+                data-fc-kind="text"
+                data-fc-editable="{{ 'true' if (is_user_project and item.editable) else 'false' }}"
+                data-fc-raw="{{ item.value }}">
               {% if is_user_project and item.editable %}
               <input type="number" step="any"
                      class="fc-input-native"
@@ -112,9 +122,14 @@
         {% endfor %}
 
         {# Tariff Y1 subtotal row #}
-        <tr class="fc-subtotal-row">
+        <tr class="fc-subtotal-row" data-fc-row="true">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Tariff Y1 (PPA)</td>
-          <td class="fc-total-cell">{{ "%.2f"|format(project_ctx.ppa_tariff_eur_mwh) }}</td>
+          <td class="fc-total-cell"
+              data-fc-cell="true"
+              data-fc-addr="revenue!summary.tariff_y1"
+              data-fc-kind="text"
+              data-fc-editable="false"
+              data-fc-raw="{{ project_ctx.ppa_tariff_eur_mwh }}">{{ "%.2f"|format(project_ctx.ppa_tariff_eur_mwh) }}</td>
           <td colspan="3"></td>
         </tr>
 
@@ -127,10 +142,15 @@
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "Market / Merchant" %}
-          <tr class="fc-data-row">
+          <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
             <td class="fc-cell fc-cell--code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount">
+            <td class="fc-cell fc-cell--amount"
+                data-fc-cell="true"
+                data-fc-addr="revenue!{{ item.code }}"
+                data-fc-kind="text"
+                data-fc-editable="{{ 'true' if (is_user_project and item.editable) else 'false' }}"
+                data-fc-raw="{{ item.value }}">
               {% if is_user_project and item.editable %}
               <input type="number" step="any"
                      class="fc-input-native"
@@ -158,10 +178,15 @@
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "CO2 / Certificates" %}
-          <tr class="fc-data-row">
+          <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
             <td class="fc-cell fc-cell--code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount">
+            <td class="fc-cell fc-cell--amount"
+                data-fc-cell="true"
+                data-fc-addr="revenue!{{ item.code }}"
+                data-fc-kind="text"
+                data-fc-editable="{{ 'true' if (is_user_project and item.editable and item.code != 'co2_enabled') else 'false' }}"
+                data-fc-raw="{{ item.value }}">
               {% if item.code == "co2_enabled" %}
                 <span class="fc-cell-runtime">{{ "Yes" if item.value == 1.0 else "No" }}</span>
               {% elif is_user_project and item.editable %}
@@ -194,23 +219,38 @@
           {% set merchant_y1 = project_ctx.co2_price_eur_mwh * project_ctx.operating_hours_p50 * project_ctx.capacity_mw * project_ctx.plant_availability / 1000 %}
         {% endif %}
 
-        <tr class="fc-subtotal-row">
+        <tr class="fc-subtotal-row" data-fc-row="true">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Y1 PPA Revenue (kEUR)</td>
-          <td class="fc-total-cell">{{ (ppa_y1 if ppa_y1 is string else "{:,.1f}".format(ppa_y1)) }}</td>
+          <td class="fc-total-cell"
+              data-fc-cell="true"
+              data-fc-addr="revenue!summary.ppa_revenue_y1"
+              data-fc-kind="text"
+              data-fc-editable="false"
+              data-fc-raw="{{ ppa_y1 }}">{{ (ppa_y1 if ppa_y1 is string else "{:,.1f}".format(ppa_y1)) }}</td>
           <td colspan="3"><span class="fc-cell--notes">Informational — backend computes actual</span></td>
         </tr>
 
         {% if merchant_y1 > 0 %}
-        <tr class="fc-subtotal-row">
+        <tr class="fc-subtotal-row" data-fc-row="true">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">Y1 CO2 Revenue (kEUR)</td>
-          <td class="fc-total-cell">{{ (merchant_y1 if merchant_y1 is string else "{:,.1f}".format(merchant_y1)) }}</td>
+          <td class="fc-total-cell"
+              data-fc-cell="true"
+              data-fc-addr="revenue!summary.co2_revenue_y1"
+              data-fc-kind="text"
+              data-fc-editable="false"
+              data-fc-raw="{{ merchant_y1 }}">{{ (merchant_y1 if merchant_y1 is string else "{:,.1f}".format(merchant_y1)) }}</td>
           <td colspan="3"><span class="fc-cell--notes">Informational — backend computes actual</span></td>
         </tr>
         {% endif %}
 
-        <tr class="fc-grand-total">
+        <tr class="fc-grand-total" data-fc-row="true">
           <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="2">Est. Total Y1 Revenue</td>
-          <td class="fc-total-cell fc-total-value fc-grand-total__value">{{ "{:,.1f}".format((ppa_y1 or 0) + (merchant_y1 or 0)) }}</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value"
+              data-fc-cell="true"
+              data-fc-addr="revenue!summary.total_revenue_y1"
+              data-fc-kind="text"
+              data-fc-editable="false"
+              data-fc-raw="{{ (ppa_y1 or 0) + (merchant_y1 or 0) }}">{{ "{:,.1f}".format((ppa_y1 or 0) + (merchant_y1 or 0)) }}</td>
           <td colspan="3"><span class="fc-cell--notes">kEUR — runtime model is authoritative</span></td>
         </tr>
 
