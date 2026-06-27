@@ -33,6 +33,10 @@
      CSS class; no clipboard/fill/undo. See
      docs/C1_PR6_IMPLEMENTATION_NOTE.md #}
   <script src="/static/interaction/selection-manager.js" defer></script>
+  {# Shared cell read/write IO, used by Clipboard/Undo/Fill instead of
+     each duplicating value-read/value-write logic.
+     See docs/CAPEX_C1_MIGRATION_NOTE.md #}
+  <script src="/static/interaction/cell-io.js" defer></script>
   {# C1-PR7: Clipboard Foundation — Excel-compatible TSV copy/paste
      operating on the current Selection Model; no undo/fill/formula.
      See docs/C1_PR7_IMPLEMENTATION_NOTE.md #}
