@@ -41,7 +41,7 @@
 
   function _isGridCellFocused() {
     var el = document.activeElement;
-    return !!(el && el.matches && el.matches('[data-fc-cell]'));
+    return !!(el && el.closest && el.closest('[data-fc-cell]'));
   }
 
   function _currentActive() {
@@ -49,20 +49,21 @@
       ? window.FcActiveCellManager.getActiveCell()
       : null;
     if (!active || !active.cell) return null;
-    if (document.activeElement !== active.cell.el) return null;
+    var el = document.activeElement;
+    if (el !== active.cell.el && !(active.cell.el.contains && active.cell.el.contains(el))) return null;
     return active;
   }
 
   function _cellValue(cell) {
-    if (!cell || !cell.el) return '';
-    var input = cell.el.querySelector('input, select, textarea');
-    if (input) return input.value != null ? String(input.value) : '';
-    return cell.el.textContent != null ? cell.el.textContent.trim() : '';
+    if (window.FcCellIO && window.FcCellIO.readValue) {
+      return window.FcCellIO.readValue(cell);
+    }
+    return '';
   }
 
   function _applyCellValue(cell, value) {
-    if (window.FcClipboardController && window.FcClipboardController.applyCellValue) {
-      window.FcClipboardController.applyCellValue(cell, value);
+    if (window.FcCellIO && window.FcCellIO.writeValue) {
+      window.FcCellIO.writeValue(cell, value);
     }
   }
 

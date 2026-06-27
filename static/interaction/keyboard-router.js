@@ -61,7 +61,7 @@
 
   function _isGridCellFocused() {
     var el = document.activeElement;
-    return !!(el && el.matches && el.matches('[data-fc-cell]'));
+    return !!(el && el.closest && el.closest('[data-fc-cell]'));
   }
 
   function _currentActive() {
@@ -71,7 +71,8 @@
     if (!active || !active.cell) return null;
     // Conservative: only act if the registry's notion of "active"
     // still matches what actually has DOM focus right now.
-    if (document.activeElement !== active.cell.el) return null;
+    var el = document.activeElement;
+    if (el !== active.cell.el && !(active.cell.el.contains && active.cell.el.contains(el))) return null;
     return active;
   }
 

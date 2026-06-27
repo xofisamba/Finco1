@@ -342,6 +342,7 @@
       "attrs": {
         "data-capex-category": cat.code,
         "data-capex-add-line": _add_line,
+        "data-fc-row": "true",
       },
       "cells": [{"kind": "section_band_label", "value": _band_cell_html, "safe_html": True}],
     }) %}
@@ -364,17 +365,25 @@
            row as a 0.00 input (some categories are placeholders
            for items the user has not yet added). #}
         {% set amt = child.amount_keur|default(0)|float %}
+        {% set _fc_addr = "capex!" ~ child.code ~ ".amount" %}
         {% set _ = lig_rows.append({
           "type": "data",
           "attrs": {
             "data-capex-code": sanitized_code,
             "data-capex-code-full": child.code,
             "data-capex-name": child.name,
+            "data-fc-row": "true",
           },
           "cells": [
             {"kind": "label",  "value": child.name},
             {"kind": "code",   "value": child.code},
-            {"kind": "amount", "value": "{:.2f}".format(amt)},
+            {"kind": "amount", "value": "{:.2f}".format(amt), "attrs": {
+              "data-fc-cell": "true",
+              "data-fc-addr": _fc_addr,
+              "data-fc-editable": "true" if is_user_project else "false",
+              "data-fc-kind": "amount",
+              "data-fc-raw": amt,
+            }},
           ],
         }) %}
       {% endif %}
@@ -390,11 +399,18 @@
         "attrs": {
           "data-capex-row": "cat-subtotal-" ~ cat.code,
           "data-capex-category": cat.code,
+          "data-fc-row": "true",
         },
         "cells": [
           {"kind": "label",  "value": cat.code ~ " Subtotal", "safe_html": True},
           {"kind": "code",   "value": ""},
-          {"kind": "amount", "value": "{:,.2f}".format(cat_total.value)},
+          {"kind": "amount", "value": "{:,.2f}".format(cat_total.value), "attrs": {
+            "data-fc-cell": "true",
+            "data-fc-addr": "capex!" ~ cat.code ~ ".subtotal",
+            "data-fc-editable": "false",
+            "data-fc-kind": "subtotal",
+            "data-fc-raw": cat_total.value,
+          }},
         ],
       }) %}
     {% endif %}
@@ -403,11 +419,17 @@
   {# ── Hard CAPEX Total (sum of C.01–C.16 hard categories) ─────── #}
   {% set _ = lig_rows.append({
     "type": "subtotal",
-    "attrs": {"data-capex-row": "hard-capex-total"},
+    "attrs": {"data-capex-row": "hard-capex-total", "data-fc-row": "true"},
     "cells": [
       {"kind": "label",  "value": "<strong>Hard CAPEX Total (C.01–C.16)</strong>", "safe_html": True},
       {"kind": "code",   "value": ""},
-      {"kind": "amount", "value": "{:,.2f}".format(capex_hard_total)},
+      {"kind": "amount", "value": "{:,.2f}".format(capex_hard_total), "attrs": {
+        "data-fc-cell": "true",
+        "data-fc-addr": "capex!hard-capex-total.subtotal",
+        "data-fc-editable": "false",
+        "data-fc-kind": "subtotal",
+        "data-fc-raw": capex_hard_total,
+      }},
     ],
   }) %}
 
@@ -429,11 +451,18 @@
             "data-capex-code": child.code|replace(".", "_"),
             "data-capex-code-full": child.code,
             "data-capex-name": child.name,
+            "data-fc-row": "true",
           },
           "cells": [
             {"kind": "label",  "value": child.name},
             {"kind": "code",   "value": child.code},
-            {"kind": "amount", "value": "{:.2f}".format(amt)},
+            {"kind": "amount", "value": "{:.2f}".format(amt), "attrs": {
+              "data-fc-cell": "true",
+              "data-fc-addr": "capex!" ~ child.code ~ ".amount",
+              "data-fc-editable": "false",
+              "data-fc-kind": "amount",
+              "data-fc-raw": amt,
+            }},
           ],
         }) %}
       {% endfor %}
@@ -455,11 +484,18 @@
             "data-capex-code": child.code|replace(".", "_"),
             "data-capex-code-full": child.code,
             "data-capex-name": child.name,
+            "data-fc-row": "true",
           },
           "cells": [
             {"kind": "label",  "value": child.name},
             {"kind": "code",   "value": child.code},
-            {"kind": "amount", "value": "{:.2f}".format(amt)},
+            {"kind": "amount", "value": "{:.2f}".format(amt), "attrs": {
+              "data-fc-cell": "true",
+              "data-fc-addr": "capex!" ~ child.code ~ ".amount",
+              "data-fc-editable": "false",
+              "data-fc-kind": "amount",
+              "data-fc-raw": amt,
+            }},
           ],
         }) %}
       {% endfor %}
@@ -469,11 +505,17 @@
   {# ── Grand Total CAPEX (derived, read-only) ──────────────────── #}
   {% set _ = lig_rows.append({
     "type": "total",
-    "attrs": {"data-capex-row": "grand-total"},
+    "attrs": {"data-capex-row": "grand-total", "data-fc-row": "true"},
     "cells": [
       {"kind": "label",  "value": "<strong>Total CAPEX (C.01–C.18)</strong>", "safe_html": True},
       {"kind": "code",   "value": ""},
-      {"kind": "amount", "value": "{:,.2f}".format(capex_grand_total)},
+      {"kind": "amount", "value": "{:,.2f}".format(capex_grand_total), "attrs": {
+        "data-fc-cell": "true",
+        "data-fc-addr": "capex!grand-total.total",
+        "data-fc-editable": "false",
+        "data-fc-kind": "total",
+        "data-fc-raw": capex_grand_total,
+      }},
     ],
   }) %}
 {% else %}
@@ -705,7 +747,8 @@
 {# UX-2A: the grid is the primary working surface and now appears ── #}
 {# immediately after the summary strip / driving copy, ahead of ──── #}
 {# the (collapsed-by-default) CAPEX Sheet Guide below. ────────────── #}
-<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet">
+<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet"
+     data-fc-grid="capex" data-fc-scroll-container="true">
   {{ lig_render(
        table_label="CAPEX input sheet for " ~ project_ctx.name,
        columns=[

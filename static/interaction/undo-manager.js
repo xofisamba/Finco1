@@ -52,7 +52,7 @@
 
   function _isGridCellFocused() {
     var el = document.activeElement;
-    return !!(el && el.matches && el.matches('[data-fc-cell]'));
+    return !!(el && el.closest && el.closest('[data-fc-cell]'));
   }
 
   function _currentActive() {
@@ -60,13 +60,14 @@
       ? window.FcActiveCellManager.getActiveCell()
       : null;
     if (!active || !active.cell) return null;
-    if (document.activeElement !== active.cell.el) return null;
+    var el = document.activeElement;
+    if (el !== active.cell.el && !(active.cell.el.contains && active.cell.el.contains(el))) return null;
     return active;
   }
 
   function _applyCellValue(cell, value) {
-    if (window.FcClipboardController && window.FcClipboardController.applyCellValue) {
-      window.FcClipboardController.applyCellValue(cell, value);
+    if (window.FcCellIO && window.FcCellIO.writeValue) {
+      window.FcCellIO.writeValue(cell, value);
     }
   }
 
@@ -223,7 +224,11 @@
     var after = el.value != null ? String(el.value) : '';
     var gridId = _editBefore.gridId;
     var cell = _editBefore.cell;
-    _editBefore = null;
+    // Re-arm rather than clear: a real <input> stays focused across
+    // consecutive commits (e.g. repeated change events without an
+    // intervening blur/focusin), and the next commit's "before" must
+    // be this commit's "after", not a stale or missing baseline.
+    _editBefore.value = after;
 
     if (before === after) return;
     if (!cell.addr) return;
