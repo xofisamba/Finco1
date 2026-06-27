@@ -34,7 +34,7 @@
 <div class="section-divider"></div>
 
 <!-- Debt Facility Summary -->
-<div class="sheet-card">
+<div class="sheet-card" data-fc-grid="seniordebt" data-fc-scroll-container="true">
   <div class="section-header">Debt Facility Summary</div>
   <div class="editable-grid-shell">
     <div class="editable-grid-shell__header">
@@ -54,24 +54,24 @@
           </tr>
         </thead>
         <tbody>
-          <tr>
+          <tr data-fc-row="true">
             <td>Gearing (%)</td>
-            <td><input class="editable-grid-input" type="number" step="any" min="0" max="100" data-grid-source="gearing_pct" inputmode="decimal" aria-label="Draft gearing percentage" /></td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!gearing_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.gearing_pct }}"><input class="editable-grid-input" type="number" step="any" min="0" max="100" data-grid-source="gearing_pct" inputmode="decimal" aria-label="Draft gearing percentage" /></td>
             <td>Runtime remains blocked while edits are unsaved.</td>
           </tr>
-          <tr>
+          <tr data-fc-row="true">
             <td>Target DSCR</td>
-            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="target_dscr" inputmode="decimal" aria-label="Draft target debt service coverage ratio" /></td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!target_dscr" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.target_dscr }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="target_dscr" inputmode="decimal" aria-label="Draft target debt service coverage ratio" /></td>
             <td>Saved scenario snapshot required for runtime execution.</td>
           </tr>
-          <tr>
+          <tr data-fc-row="true">
             <td>Interest Rate (%)</td>
-            <td><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" aria-label="Draft interest rate percentage" /></td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.interest_rate_pct }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" aria-label="Draft interest rate percentage" /></td>
             <td>Browser does not calculate debt service.</td>
           </tr>
-          <tr>
+          <tr data-fc-row="true">
             <td>Tenor (years)</td>
-            <td><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" aria-label="Draft senior debt tenor in years" /></td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!tenor_years" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.senior_tenor_years }}"><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" aria-label="Draft senior debt tenor in years" /></td>
             <td>Preview-only until saved and re-run.</td>
           </tr>
         </tbody>
@@ -79,26 +79,51 @@
     </div>
   </div>
   <div class="assumption-grid">
-    <div class="assumption-item">
+    <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">Facility Amount</span>
-      <span class="metric-value">{% if project_ctx.senior_debt_keur is not none %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR</span>
+      <span class="metric-value"
+            data-fc-cell="true"
+            data-fc-addr="seniordebt!facility_amount"
+            data-fc-kind="text"
+            data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.senior_debt_keur }}">{% if project_ctx.senior_debt_keur is not none %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR</span>
     </div>
-    <div class="assumption-item">
+    <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">Tenor</span>
-      <span class="metric-value">{{ project_ctx.senior_tenor_years }} years</span>
+      <span class="metric-value"
+            data-fc-cell="true"
+            data-fc-addr="seniordebt!tenor_summary"
+            data-fc-kind="text"
+            data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.senior_tenor_years }}">{{ project_ctx.senior_tenor_years }} years</span>
     </div>
-    <div class="assumption-item">
+    <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">All-in Rate</span>
-      <span class="metric-value">{{ "%.2f"|format(project_ctx.interest_rate_pct * 100) }}% p.a.</span>
+      <span class="metric-value"
+            data-fc-cell="true"
+            data-fc-addr="seniordebt!interest_rate_summary"
+            data-fc-kind="text"
+            data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.interest_rate_pct }}">{{ "%.2f"|format(project_ctx.interest_rate_pct * 100) }}% p.a.</span>
     </div>
-    <div class="assumption-item">
+    <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">Target DSCR</span>
-      <span class="metric-value">{{ "%.2f"|format(project_ctx.target_dscr) }}x</span>
+      <span class="metric-value"
+            data-fc-cell="true"
+            data-fc-addr="seniordebt!target_dscr_summary"
+            data-fc-kind="text"
+            data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.target_dscr }}">{{ "%.2f"|format(project_ctx.target_dscr) }}x</span>
     </div>
     {% if project_ctx.gearing_pct %}
-    <div class="assumption-item">
+    <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">Indicative gearing (input)</span>
-      <span class="metric-value">{{ "%.2f"|format(project_ctx.gearing_pct * 100) }}%</span>
+      <span class="metric-value"
+            data-fc-cell="true"
+            data-fc-addr="seniordebt!gearing_pct_summary"
+            data-fc-kind="text"
+            data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.gearing_pct }}">{{ "%.2f"|format(project_ctx.gearing_pct * 100) }}%</span>
     </div>
     {% endif %}
   </div>
