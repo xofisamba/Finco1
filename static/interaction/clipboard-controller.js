@@ -11,7 +11,16 @@
  *            docs/C1_PR4_IMPLEMENTATION_NOTE.md,
  *            docs/C1_PR5_IMPLEMENTATION_NOTE.md,
  *            docs/C1_PR6_IMPLEMENTATION_NOTE.md,
- *            docs/C1_PR7_IMPLEMENTATION_NOTE.md.
+ *            docs/C1_PR7_IMPLEMENTATION_NOTE.md,
+ *            docs/C1_PR8_IMPLEMENTATION_NOTE.md.
+ *
+ * C1-PR8 addendum: pasteText() now records one "paste" transaction
+ * with FcUndoManager (if loaded) covering every cell it actually
+ * wrote, plus the active-cell/selection state before and after, so a
+ * multi-cell paste undoes/redoes as a single user action. This is the
+ * only behavioural change made in PR8; all copy/parse/clip logic
+ * below is unchanged from PR7. FcUndoManager is optional — paste
+ * still works unchanged (no undo history) if it isn't loaded.
  *
  * Responsibility in this PR is limited to:
  *   - copying the current selection (FcSelectionManager) as
@@ -28,7 +37,10 @@
  *     permission prompts
  *
  * This module does NOT:
- *   - implement undo/redo, fill-down/fill-right/drag-fill/autofill
+ *   - implement the undo/redo stack itself (FcUndoManager, PR8, owns
+ *     that) — it only records a "paste" transaction when one is
+ *     available, and never applies undo/redo on its own
+ *   - implement fill-down/fill-right/drag-fill/autofill
  *   - implement cut (Ctrl+X), delete-row behaviour, or any clipboard
  *     operation spanning more than one grid/project
  *   - parse or translate formulas, or trigger recalculation
@@ -183,6 +195,11 @@
     var rows = _parseTsv(text);
     if (!rows.length || !rows[0].length) return false;
 
+    var selectionBefore = window.FcSelectionManager && window.FcSelectionManager.getSelection
+      ? window.FcSelectionManager.getSelection()
+      : null;
+
+    var changes = [];
     var lastCell = origin;
     for (var r = 0; r < rows.length; r++) {
       var targetRow = grid.rows[origin.row + r];
@@ -192,6 +209,9 @@
         var targetCell = targetRow[origin.col + c];
         if (!targetCell) break; // clip safely: no more columns in this row
 
+        if (targetCell.editable && targetCell.addr) {
+          changes.push({ addr: targetCell.addr, before: _cellValue(targetCell), after: rows[r][c] });
+        }
         _setCellValue(targetCell, rows[r][c]);
         lastCell = targetCell;
       }
@@ -206,6 +226,18 @@
 
     if (window.FcFocusManager && window.FcFocusManager.syncFocus) {
       window.FcFocusManager.syncFocus();
+    }
+
+    if (changes.length && window.FcUndoManager && window.FcUndoManager.recordTransaction) {
+      window.FcUndoManager.recordTransaction({
+        type: 'paste',
+        gridId: gridId,
+        changes: changes,
+        activeBefore: { gridId: gridId, addr: origin.addr },
+        activeAfter: { gridId: gridId, addr: origin.addr },
+        selectionBefore: selectionBefore,
+        selectionAfter: { gridId: gridId, anchorAddr: lastCell.addr, activeAddr: origin.addr }
+      });
     }
 
     return true;
@@ -276,7 +308,8 @@
     init: init,
     copySelection: copySelection,
     pasteText: pasteText,
-    getLastCopiedText: getLastCopiedText
+    getLastCopiedText: getLastCopiedText,
+    applyCellValue: _setCellValue
   };
 
   init();
