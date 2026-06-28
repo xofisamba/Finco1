@@ -2833,6 +2833,22 @@ def _c2_pr7_validate_preview_payload(body):
     if project is not None and not isinstance(project, str):
         errors.append("'project' must be a string or null")
 
+    # C2-PR10: capexTotalPreview is additive/optional. If present, it
+    # must be null or a finite real number — never a string, never
+    # NaN/Infinity. This field carries the CLIENT-computed sum of the
+    # live (possibly-unsaved) CAPEX grid cell values; the server only
+    # echoes it back (rounded) under the new "capex" response field,
+    # it never recomputes or second-guesses it against persistence.
+    if "capexTotalPreview" in body:
+        capex_total_preview = body.get("capexTotalPreview")
+        if capex_total_preview is not None and (
+            isinstance(capex_total_preview, bool)
+            or not isinstance(capex_total_preview, (int, float))
+            or capex_total_preview != capex_total_preview  # NaN check
+            or capex_total_preview in (float("inf"), float("-inf"))
+        ):
+            errors.append("'capexTotalPreview' must be a finite number or null")
+
     return (len(errors) == 0), errors
 
 
@@ -2935,23 +2951,41 @@ async def model_preview(request: Request):
     # DSCR, revenue, tax, or waterfall computation is performed or
     # referenced anywhere in this route. See
     # docs/C2_PR8_FIRST_RUNTIME_SLICE.md.
-    return JSONResponse(
-        {
-            "ok": True,
-            "status": "stubbed",
-            "executed": False,
-            "accepted": True,
-            "affectedGroups": affected_groups,
-            "dirtyCells": dirty_cells,
-            "warnings": [],
-            "message": "Preview endpoint contract accepted payload; recalculation is not implemented yet.",
-            "overview": {
-                "runtime_status": "Preview executed",
-                "updated": True,
-            },
+    response_body = {
+        "ok": True,
+        "status": "stubbed",
+        "executed": False,
+        "accepted": True,
+        "affectedGroups": affected_groups,
+        "dirtyCells": dirty_cells,
+        "warnings": [],
+        "message": "Preview endpoint contract accepted payload; recalculation is not implemented yet.",
+        "overview": {
+            "runtime_status": "Preview executed",
+            "updated": True,
         },
-        status_code=200,
-    )
+    }
+
+    # C2-PR10: additive "capex" field. capexTotalPreview is computed
+    # CLIENT-SIDE (static/modelling/recalc-preview.js's
+    # _computeCapexTotalFromDom) from the live, possibly-unsaved CAPEX
+    # grid cell values already in the browser — this route does NOT
+    # recompute it, does NOT read persistence/the database, and does
+    # NOT call app/waterfall_core.py, domain/*, app/input_adapter.py,
+    # or app/project_factories.py. It only validates the client's
+    # number is finite (see _c2_pr7_validate_preview_payload above) and
+    # echoes it back, rounded to 2dp, under a clearly-labelled,
+    # explicitly-a-preview response field. Omitted entirely (no "capex"
+    # key at all) when the client didn't include one (e.g. a flush that
+    # didn't touch the CAPEX grid) — never fabricated as 0.0. See
+    # docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
+    if "capexTotalPreview" in body and body.get("capexTotalPreview") is not None:
+        response_body["capex"] = {
+            "capex_total_preview": round(float(body["capexTotalPreview"]), 2),
+            "currency": "EUR",
+        }
+
+    return JSONResponse(response_body, status_code=200)
 
 
 @app.post("/compare")

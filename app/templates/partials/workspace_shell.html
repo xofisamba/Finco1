@@ -379,6 +379,23 @@
       <span class="runtime-status-indicator__value" id="overview-runtime-status-value" data-c2pr8-runtime-status="idle">Idle</span>
     </div>
 
+    {# C2-PR10: CAPEX Total Preview. A small, always-rendered,
+       explicitly-a-PREVIEW element, patched client-side
+       (static/modelling/runtime-renderer.js) after a CAPEX-grid edit's
+       POST /model/preview round trip resolves. It is deliberately
+       placed next to (not inside/replacing) the C2-PR8 runtime status
+       indicator above, and is visually/textually distinct from any
+       saved/Run-derived CAPEX KPI (e.g. the Total CAPEX figure shown
+       on the CAPEX sheet itself, which always reflects SAVED data).
+       This element starts blank ("—") and is only ever populated from
+       a live, unsaved in-browser sum of the CAPEX grid's editable
+       cells — never from persistence, never from a real financial
+       engine call. See docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md. #}
+    <div class="runtime-status-indicator capex-total-preview-indicator" id="capex-total-preview" role="status" aria-live="polite" aria-label="Unsaved CAPEX total preview, not the saved total">
+      <span class="runtime-status-indicator__label">CAPEX total preview (unsaved):</span>
+      <span class="runtime-status-indicator__value" id="capex-total-preview-value" data-c2pr10-capex-preview="idle">&mdash;</span>
+    </div>
+
     <!-- Runtime summary HTMX swap target -->
     <div id="model-output-area"></div>
 

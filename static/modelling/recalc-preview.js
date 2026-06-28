@@ -8,12 +8,26 @@
  * any dirty-state/recalc-scheduler/dependency-graph/execution state
  * owned by FcLiveModel/FcDependencyGraph/FcRecalcExecutor)
  *
+ * C2-PR10: adds exactly one additive, opt-in computation — a CAPEX
+ * total PREVIEW (a plain sum of the live, possibly-unsaved CAPEX grid
+ * cell values currently in the DOM). This is the first PR in the
+ * entire C1/C2 chain allowed to perform any real numeric computation,
+ * and it is deliberately scoped to nothing more than "sum the editable
+ * CAPEX amount cells currently visible in the browser." It does NOT
+ * call app/waterfall_core.py, domain/*, or any other financial engine
+ * code, client- or server-side. See
+ * docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md for the full design rationale
+ * (in particular: why this sum is computed CLIENT-SIDE from
+ * FcGridRegistry/FcCellIO rather than sent to the server to be
+ * summed there).
+ *
  * Reference: docs/C2_PR1_IMPLEMENTATION_NOTE.md,
  *            docs/C2_PR2_DIRTY_STATE_UNIFICATION_NOTE.md,
  *            docs/C2_PR3_RECALC_SCHEDULER_FOUNDATION_NOTE.md,
  *            docs/C2_PR4_DEPENDENCY_GRAPH_FOUNDATION_NOTE.md,
  *            docs/C2_PR5_INCREMENTAL_RECALC_EXECUTION_STUB_NOTE.md,
- *            docs/C2_PR6_INCREMENTAL_RECALC_PREVIEW_BOUNDARY_NOTE.md.
+ *            docs/C2_PR6_INCREMENTAL_RECALC_PREVIEW_BOUNDARY_NOTE.md,
+ *            docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
  *
  * This module answers exactly one question: "given a flushed recalc
  * snapshot and its (stubbed) execution result, what request payload
@@ -147,6 +161,64 @@
   }
 
   /**
+   * C2-PR10: computes a deterministic, client-only CAPEX total PREVIEW
+   * — a plain sum of every editable CAPEX amount cell's CURRENT (live,
+   * possibly-unsaved) DOM value. This is the only numeric computation
+   * anywhere in this PR; it is not a financial-engine call of any kind
+   * — it is a transparent line-item sum, equivalent to what the user
+   * could compute themselves with a calculator from what's currently
+   * on screen.
+   *
+   * Reads live cell values via the existing C1 read APIs
+   * (window.FcGridRegistry / window.FcCellIO) rather than re-querying
+   * the DOM directly, so this module never duplicates C1's cell-value
+   * read logic. Only cells that are:
+   *   - registered under the "capex" grid id (FcGridRegistry.getGrid),
+   *   - marked editable (cell.editable === true), and
+   *   - of kind "amount" (cell.kind === 'amount')
+   * are included — read-only cells (subtotals/totals/financing rows)
+   * are deliberately excluded, since they are DERIVED values, not
+   * independent line items, and including them would double-count.
+   *
+   * Never throws. Returns null (not 0, not a fabricated number) when
+   * FcGridRegistry/FcCellIO are unavailable, or when the "capex" grid
+   * is not currently registered/rendered (e.g. a different tab is
+   * active, or an isolated test fixture without the CAPEX sheet) —
+   * "no total available" must never be silently rendered as a real
+   * zero total.
+   */
+  function _computeCapexTotalFromDom() {
+    try {
+      if (!window.FcGridRegistry || typeof window.FcGridRegistry.getGrid !== 'function') return null;
+      if (!window.FcCellIO || typeof window.FcCellIO.readValue !== 'function') return null;
+
+      var grid = window.FcGridRegistry.getGrid('capex');
+      if (!grid || !grid.rows) return null;
+
+      var total = 0;
+      var counted = 0;
+      grid.rows.forEach(function (row) {
+        (row || []).forEach(function (cell) {
+          if (!cell || !cell.editable || cell.kind !== 'amount') return;
+          var raw = window.FcCellIO.readValue(cell);
+          var num = parseFloat(raw);
+          if (isNaN(num)) return;
+          total += num;
+          counted += 1;
+        });
+      });
+
+      if (counted === 0) return null;
+      // Round to 2dp to avoid noisy floating-point sums (e.g.
+      // 1234.5599999999999) leaking into the rendered preview — this
+      // is presentation rounding only, not a recalculation.
+      return Math.round(total * 100) / 100;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Reads the "project" query-string parameter from the current page
    * URL, defensively. Returns null (never a fabricated placeholder)
    * if window/window.location/URLSearchParams is unavailable, or if
@@ -185,6 +257,13 @@
     if (typeof payload.reason !== 'string') return false;
     if (payload.executionStatus !== null && typeof payload.executionStatus !== 'string') return false;
     if (payload.project !== null && typeof payload.project !== 'string') return false;
+    // C2-PR10: capexTotalPreview is additive/optional — older payloads
+    // (or hand-constructed ones) without the field still validate, but
+    // if present it must be null or a finite number.
+    if (payload.hasOwnProperty('capexTotalPreview')) {
+      var ctp = payload.capexTotalPreview;
+      if (ctp !== null && (typeof ctp !== 'number' || !isFinite(ctp))) return false;
+    }
     return true;
   }
 
@@ -235,6 +314,18 @@
       ? execution.status
       : null;
 
+    // C2-PR10: additive only. capexTotalPreview is null unless the
+    // dirty set actually includes at least one "capex!..." address —
+    // this keeps the field meaningfully scoped to "this flush touched
+    // the CAPEX grid" rather than always recomputing it on every
+    // unrelated flush (e.g. an OPEX edit). It is always recomputed
+    // from the LIVE DOM (current, possibly-unsaved values), never from
+    // dirtyCells/snapshot data itself.
+    var touchesCapex = dirtyCells.some(function (addr) {
+      return typeof addr === 'string' && addr.indexOf('capex!') === 0;
+    });
+    var capexTotalPreview = touchesCapex ? _computeCapexTotalFromDom() : null;
+
     var payload = {
       valid: valid,
       dirtyCells: dirtyCells,
@@ -242,7 +333,8 @@
       projectDirty: projectDirty,
       reason: reason,
       executionStatus: executionStatus,
-      project: _readProjectFromLocation()
+      project: _readProjectFromLocation(),
+      capexTotalPreview: capexTotalPreview
     };
 
     _lastPreviewPayload = payload;
@@ -295,6 +387,9 @@
     getLastPreviewPayload: getLastPreviewPayload,
     clearLastPreviewPayload: clearLastPreviewPayload,
     buildPreviewRequest: buildPreviewRequest,
-    previewEndpoint: PREVIEW_ENDPOINT
+    previewEndpoint: PREVIEW_ENDPOINT,
+    // C2-PR10: exposed for direct testing of the CAPEX total preview
+    // sum independent of a full snapshot/execution flow.
+    computeCapexTotalFromDom: _computeCapexTotalFromDom
   };
 })();

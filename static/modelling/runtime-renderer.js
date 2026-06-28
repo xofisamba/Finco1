@@ -54,6 +54,24 @@
  * DOM (e.g. an isolated test fixture, or a future page that doesn't
  * render the Overview tab), this is a safe no-op.
  *
+ * C2-PR10: additionally, when the response body carries a "capex"
+ * field ({ capex_total_preview: <number>, currency: "EUR" }), this
+ * module ALSO patches a second, separate, always-rendered element,
+ * #capex-total-preview-value (inside #capex-total-preview, next to —
+ * never replacing or relabelling — the C2-PR8 runtime status
+ * indicator). This is the first and only real numeric value this
+ * whole runtime path is allowed to render anywhere: a plain CAPEX
+ * line-item SUM of the live, unsaved CAPEX grid, computed entirely
+ * client-side (static/modelling/recalc-preview.js) and merely echoed
+ * back by the server — never a real financial-engine output, and
+ * never confused with the saved/Run-derived Total CAPEX figure shown
+ * elsewhere on the CAPEX sheet. Missing/malformed "capex" is a safe
+ * no-op for this part only — it never clears or invalidates a
+ * previously-rendered overview status, and a missing/malformed
+ * "overview" field never blocks rendering a present, valid "capex"
+ * field (the two are rendered independently). See
+ * docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
+ *
  * This module does NOT:
  *   - make any network/AJAX/htmx call of any kind
  *   - evaluate any formula or call app/waterfall_core.py, domain/*,
@@ -70,9 +88,43 @@
   'use strict';
 
   var STATUS_VALUE_ELEMENT_ID = 'overview-runtime-status-value';
+  // C2-PR10: separate target element id for the CAPEX total preview.
+  var CAPEX_PREVIEW_VALUE_ELEMENT_ID = 'capex-total-preview-value';
 
   function _isNonEmptyString(v) {
     return typeof v === 'string' && v.length > 0;
+  }
+
+  /**
+   * C2-PR10: defensive, non-throwing shape-check for a POST
+   * /model/preview response body's "capex" field. Returns true only
+   * when "capex" is an object with a finite-number
+   * "capex_total_preview" field — the only field this module actually
+   * renders. "currency" is tolerated as present-or-absent/any type; it
+   * is informational metadata only.
+   */
+  function _hasRenderableCapexPreview(body) {
+    if (!body || typeof body !== 'object') return false;
+    var capex = body.capex;
+    if (!capex || typeof capex !== 'object') return false;
+    var total = capex.capex_total_preview;
+    return typeof total === 'number' && isFinite(total);
+  }
+
+  /**
+   * C2-PR10: formats a CAPEX total preview number for display. Plain,
+   * fixed 2-decimal formatting with thousands separators — no currency
+   * conversion, no rounding beyond presentation, no calculation beyond
+   * what was already summed/rounded by the caller.
+   */
+  function _formatCapexTotal(total, currency) {
+    var formatted;
+    try {
+      formatted = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } catch (e) {
+      formatted = total.toFixed(2);
+    }
+    return _isNonEmptyString(currency) ? (formatted + ' ' + currency) : formatted;
   }
 
   /**
@@ -112,26 +164,58 @@
       return { rendered: false, reason: 'no-response-body' };
     }
 
-    if (!_hasRenderableOverview(body)) {
-      return { rendered: false, reason: 'missing-or-malformed-overview' };
+    var overviewRendered = false;
+    var overviewReason = 'missing-or-malformed-overview';
+
+    if (_hasRenderableOverview(body)) {
+      var statusEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(STATUS_VALUE_ELEMENT_ID)
+        : null;
+      if (statusEl) {
+        statusEl.textContent = body.overview.runtime_status;
+        statusEl.setAttribute('data-c2pr8-runtime-status', 'patched');
+        overviewRendered = true;
+        overviewReason = 'ok';
+      } else {
+        overviewReason = 'target-element-not-found';
+      }
     }
 
-    var el = (typeof document !== 'undefined' && document.getElementById)
-      ? document.getElementById(STATUS_VALUE_ELEMENT_ID)
-      : null;
-    if (!el) {
-      return { rendered: false, reason: 'target-element-not-found' };
+    // C2-PR10: independent second patch — a missing/malformed "capex"
+    // field never blocks the overview status patch above, and vice
+    // versa. Each is rendered (or safely skipped) on its own merits.
+    var capexRendered = false;
+    var capexReason = 'missing-or-malformed-capex';
+
+    if (_hasRenderableCapexPreview(body)) {
+      var capexEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(CAPEX_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (capexEl) {
+        capexEl.textContent = _formatCapexTotal(body.capex.capex_total_preview, body.capex.currency);
+        capexEl.setAttribute('data-c2pr10-capex-preview', 'patched');
+        capexRendered = true;
+        capexReason = 'ok';
+      } else {
+        capexReason = 'target-element-not-found';
+      }
     }
 
-    var runtimeStatus = body.overview.runtime_status;
-    el.textContent = runtimeStatus;
-    el.setAttribute('data-c2pr8-runtime-status', 'patched');
+    if (!overviewRendered && !capexRendered) {
+      return { rendered: false, reason: overviewReason, capexReason: capexReason };
+    }
 
-    return { rendered: true, reason: 'ok' };
+    return {
+      rendered: overviewRendered || capexRendered,
+      reason: overviewRendered ? 'ok' : overviewReason,
+      capexRendered: capexRendered,
+      capexReason: capexReason
+    };
   }
 
   window.FcRuntimeRenderer = {
     render: render,
-    statusValueElementId: STATUS_VALUE_ELEMENT_ID
+    statusValueElementId: STATUS_VALUE_ELEMENT_ID,
+    capexPreviewValueElementId: CAPEX_PREVIEW_VALUE_ELEMENT_ID
   };
 })();
