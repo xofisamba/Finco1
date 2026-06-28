@@ -45,7 +45,15 @@ def _valid_payload(**overrides):
         "projectDirty": True,
         "reason": "manual-flush",
         "executionStatus": "stubbed",
-        "project": "demo-project",
+        # C2-PR9: project is null by default in this contract-stub test
+        # file. "demo-project" was never a real project the test user
+        # owns (this file predates C2-PR9's project-authorization
+        # check) — null preserves this file's original "no project
+        # scoping" intent and exercises the unchanged null-project path
+        # C2-PR9 explicitly guarantees a no-regression contract for.
+        # Authorization itself is covered by
+        # tests/test_c2_pr9_runtime_request_hardening.py.
+        "project": None,
     }
     payload.update(overrides)
     return payload

@@ -2858,9 +2858,20 @@ async def model_preview(request: Request):
     exception — it always degrades to a safe
     ``{"ok": false, "status": "invalid-payload", ...}`` response.
 
-    See docs/C2_PR7_BACKEND_PREVIEW_ENDPOINT_CONTRACT_STUB_NOTE.md for
-    the full route-choice rationale, request/response schema, and the
-    no-side-effect verification approach.
+    C2-PR9 (Runtime Request Hardening) adds project authorization: if
+    the payload's ``project`` field is non-null, the authenticated
+    user must own that project (the same ``get_project_by_code(user_id,
+    project_code)`` lookup every other project-scoped route in this
+    file already uses to scope access — no new authorization
+    mechanism is invented here). A project the user cannot access
+    yields a safe ``forbidden-project`` JSON response, never a 500 and
+    never any project data belonging to another user. ``project: null``
+    behaves exactly as before this PR (no regression).
+
+    See docs/C2_PR7_BACKEND_PREVIEW_ENDPOINT_CONTRACT_STUB_NOTE.md and
+    docs/C2_PR9_RUNTIME_REQUEST_HARDENING.md for the full route-choice
+    rationale, request/response schema, and no-side-effect/
+    authorization verification approach.
     """
     user = get_current_user(request)
     if not user:
@@ -2889,6 +2900,30 @@ async def model_preview(request: Request):
             },
             status_code=200,
         )
+
+    # C2-PR9: project authorization. ``project`` is optional/nullable
+    # in the payload contract (see docs/C2_PR7_*); when present, the
+    # authenticated user must actually own that project_code. This
+    # reuses the exact same lookup (`get_project_by_code`) every other
+    # project-scoped route in this file (e.g. the export routes above)
+    # already uses for authorization — a project record that does not
+    # belong to this user (or does not exist at all) is indistinguishable
+    # here, by design, so this never leaks whether a project_code exists
+    # for someone else.
+    project_code = body.get("project")
+    if project_code is not None:
+        project_record = get_project_by_code(user.user_id, project_code)
+        if project_record is None:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "status": "forbidden-project",
+                    "accepted": False,
+                    "executed": False,
+                    "warnings": ["Project access denied."],
+                },
+                status_code=200,
+            )
 
     dirty_cells = _c2_pr7_sorted_unique_strings(body.get("dirtyCells"))
     affected_groups = _c2_pr7_sorted_unique_strings(body.get("affectedGroups"))
