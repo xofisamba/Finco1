@@ -57,6 +57,15 @@
      already defined by the time any flush happens. See
      docs/C2_PR4_DEPENDENCY_GRAPH_FOUNDATION_NOTE.md #}
   <script src="/static/modelling/dependency-graph.js" defer></script>
+  {# C2-PR6: Incremental Recalculation Preview Boundary — builds a
+     deterministic preview-request payload from a recalc snapshot +
+     execution result, for a FUTURE backend preview/recalc endpoint
+     that does not exist yet; never calls it, never makes any network
+     request. Loaded before recalc-executor.js so window.FcRecalcPreview
+     is already defined by the time FcRecalcExecutor.execute() calls
+     into it. See
+     docs/C2_PR6_INCREMENTAL_RECALC_PREVIEW_BOUNDARY_NOTE.md #}
+  <script src="/static/modelling/recalc-preview.js" defer></script>
   {# C2-PR5: Incremental Recalculation Execution Stub — a deterministic
      no-op execution boundary consuming a flushed recalc snapshot
      (already annotated with affectedGroups); no financial
