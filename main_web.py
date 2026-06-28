@@ -2776,6 +2776,132 @@ async def run(request: Request):
     return HTMLResponse(content=body_str, status_code=rendered.status_code)
 
 
+def _c2_pr7_sorted_unique_strings(value):
+    """Defensively coerce ``value`` into a deduplicated, sorted list of
+    strings. Non-list input, or a list containing non-string entries,
+    degrades to an empty list rather than raising. Used only to echo
+    back the preview-payload's own ``dirtyCells``/``affectedGroups``
+    arrays — never to invent new entries.
+    """
+    if not isinstance(value, list):
+        return []
+    seen = set()
+    out = []
+    for item in value:
+        if isinstance(item, str) and item not in seen:
+            seen.add(item)
+            out.append(item)
+    out.sort()
+    return out
+
+
+def _c2_pr7_validate_preview_payload(body):
+    """Defensive, non-throwing shape-check mirroring
+    ``FcRecalcPreview.validatePreviewPayload`` in
+    ``static/modelling/recalc-preview.js``. Returns ``(ok, errors)``
+    where ``errors`` is a list of human-readable validation problems
+    (empty when ``ok`` is True). Tolerates missing/extra fields by
+    treating any deviation from the expected shape as invalid rather
+    than raising.
+    """
+    errors = []
+    if not isinstance(body, dict):
+        return False, ["request body must be a JSON object"]
+
+    if not isinstance(body.get("valid"), bool):
+        errors.append("'valid' must be a boolean")
+
+    dirty_cells = body.get("dirtyCells")
+    if not isinstance(dirty_cells, list) or not all(isinstance(v, str) for v in dirty_cells):
+        errors.append("'dirtyCells' must be an array of strings")
+
+    affected_groups = body.get("affectedGroups")
+    if not isinstance(affected_groups, list) or not all(isinstance(v, str) for v in affected_groups):
+        errors.append("'affectedGroups' must be an array of strings")
+
+    if not isinstance(body.get("projectDirty"), bool):
+        errors.append("'projectDirty' must be a boolean")
+
+    if not isinstance(body.get("reason"), str):
+        errors.append("'reason' must be a string")
+
+    execution_status = body.get("executionStatus")
+    if execution_status is not None and not isinstance(execution_status, str):
+        errors.append("'executionStatus' must be a string or null")
+
+    project = body.get("project")
+    if project is not None and not isinstance(project, str):
+        errors.append("'project' must be a string or null")
+
+    return (len(errors) == 0), errors
+
+
+@app.post("/model/preview")
+async def model_preview(request: Request):
+    """C2-PR7: backend preview endpoint CONTRACT STUB. Requires auth.
+
+    Accepts the C2-PR6 client-side preview-payload shape (see
+    ``static/modelling/recalc-preview.js``'s ``buildPreviewPayload``/
+    ``validatePreviewPayload``) and returns a deterministic no-op
+    response. This endpoint is, deliberately, a pure contract stub:
+
+      - It never calls the financial/calculation engine
+        (``app/waterfall_core.py``, ``domain/*``, or any other
+        financial code).
+      - It never mutates persistence, the database, or session state.
+      - It never writes to disk.
+      - It never triggers a model Run.
+      - It never touches export logic.
+      - It has zero side effects beyond returning a response.
+
+    A malformed/incomplete body never produces a 500 or an unhandled
+    exception — it always degrades to a safe
+    ``{"ok": false, "status": "invalid-payload", ...}`` response.
+
+    See docs/C2_PR7_BACKEND_PREVIEW_ENDPOINT_CONTRACT_STUB_NOTE.md for
+    the full route-choice rationale, request/response schema, and the
+    no-side-effect verification approach.
+    """
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"status": "unauthenticated", "detail": "Login required"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+
+    ok, errors = _c2_pr7_validate_preview_payload(body)
+    if not ok:
+        return JSONResponse(
+            {
+                "ok": False,
+                "status": "invalid-payload",
+                "executed": False,
+                "accepted": False,
+                "warnings": errors,
+            },
+            status_code=200,
+        )
+
+    dirty_cells = _c2_pr7_sorted_unique_strings(body.get("dirtyCells"))
+    affected_groups = _c2_pr7_sorted_unique_strings(body.get("affectedGroups"))
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "status": "stubbed",
+            "executed": False,
+            "accepted": True,
+            "affectedGroups": affected_groups,
+            "dirtyCells": dirty_cells,
+            "warnings": [],
+            "message": "Preview endpoint contract accepted payload; recalculation is not implemented yet.",
+        },
+        status_code=200,
+    )
+
+
 @app.post("/compare")
 async def compare(request: Request):
     """Run Base/Downside/Upside comparison. Requires auth.

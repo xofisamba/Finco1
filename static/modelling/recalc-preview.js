@@ -257,10 +257,44 @@
     _lastPreviewPayload = null;
   }
 
+  // C2-PR7: backend preview endpoint contract stub now exists at
+  // POST /model/preview (see main_web.py / docs/
+  // C2_PR7_BACKEND_PREVIEW_ENDPOINT_CONTRACT_STUB_NOTE.md). This is
+  // metadata ONLY — no code in this file, or anywhere else in this
+  // PR, ever reads this constant to actually perform a fetch.
+  var PREVIEW_ENDPOINT = '/model/preview';
+
+  /**
+   * C2-PR7: builds a plain-data, request-SHAPED object describing
+   * what a FUTURE caller would need to send to the backend preview
+   * endpoint contract stub (POST /model/preview) in order to submit
+   * `payload`. This function does NOT send anything — no fetch, no
+   * XMLHttpRequest, no htmx.ajax/htmx.trigger call exists anywhere in
+   * this module. It is inert, unused-by-default infrastructure: no
+   * existing code path (FcRecalcExecutor.execute(),
+   * FcLiveModel.flushScheduledRecalc(), or any other module) calls
+   * this helper automatically. A future PR may choose to wire this up
+   * to an actual network call; this PR deliberately does not.
+   *
+   * Never throws. `payload` is not validated here (callers may pass
+   * the result of buildPreviewPayload() directly, or anything else);
+   * if `payload` is missing, `body` is simply `null`.
+   */
+  function buildPreviewRequest(payload) {
+    return {
+      url: PREVIEW_ENDPOINT,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: (payload && typeof payload === 'object') ? payload : null
+    };
+  }
+
   window.FcRecalcPreview = {
     buildPreviewPayload: buildPreviewPayload,
     validatePreviewPayload: validatePreviewPayload,
     getLastPreviewPayload: getLastPreviewPayload,
-    clearLastPreviewPayload: clearLastPreviewPayload
+    clearLastPreviewPayload: clearLastPreviewPayload,
+    buildPreviewRequest: buildPreviewRequest,
+    previewEndpoint: PREVIEW_ENDPOINT
   };
 })();
