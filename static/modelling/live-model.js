@@ -467,6 +467,19 @@
     if (window.FcDependencyGraph && typeof window.FcDependencyGraph.resolveSnapshot === 'function') {
       snapshot.affectedGroups = window.FcDependencyGraph.resolveSnapshot(snapshot);
     }
+    // C2-PR5: additive only. If window.FcRecalcExecutor is present
+    // (static/modelling/recalc-executor.js, loaded after this file),
+    // hand the snapshot (already annotated with affectedGroups above)
+    // to the deterministic no-op execution stub and attach its result
+    // under snapshot.execution. This module never performs or
+    // duplicates that logic itself — FcRecalcExecutor.execute() is a
+    // pure, non-throwing function that performs no calculation, no
+    // network call, and no dirty-state mutation. If the executor
+    // module isn't loaded, this is a no-op and the snapshot shape is
+    // byte-for-byte identical to C2-PR4's.
+    if (window.FcRecalcExecutor && typeof window.FcRecalcExecutor.execute === 'function') {
+      snapshot.execution = window.FcRecalcExecutor.execute(snapshot, { reason: reason });
+    }
     _emit('recalc-flush-complete', { reason: reason, snapshot: snapshot });
     return snapshot;
   }
