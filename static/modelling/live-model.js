@@ -454,6 +454,19 @@
     var reason = _recalcReason;
     _emit('recalc-flush-start', { reason: reason });
     var snapshot = getPendingRecalcSnapshot();
+    // C2-PR4: additive only. If window.FcDependencyGraph is present
+    // (static/modelling/dependency-graph.js, loaded after this file),
+    // annotate the snapshot with the coarse-grained output groups its
+    // dirty cells/sheets would eventually affect. This module never
+    // computes that mapping itself — it only calls into
+    // FcDependencyGraph.resolveSnapshot(), a read-only function that
+    // performs no calculation and makes no network call. If the
+    // dependency-graph module isn't loaded (e.g. an older page, or a
+    // test fixture that doesn't include it), this is a no-op and the
+    // snapshot shape is byte-for-byte identical to C2-PR3's.
+    if (window.FcDependencyGraph && typeof window.FcDependencyGraph.resolveSnapshot === 'function') {
+      snapshot.affectedGroups = window.FcDependencyGraph.resolveSnapshot(snapshot);
+    }
     _emit('recalc-flush-complete', { reason: reason, snapshot: snapshot });
     return snapshot;
   }

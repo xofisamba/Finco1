@@ -50,6 +50,13 @@
      no drag-fill, formula, or recalc. See
      docs/C1_PR9_IMPLEMENTATION_NOTE.md #}
   <script src="/static/interaction/fill-controller.js" defer></script>
+  {# C2-PR4: Dependency Graph Foundation — maps dirty C1 cells/sheets
+     to coarse-grained model output groups (registry/resolution API
+     only); no financial recalculation, no dependency execution.
+     Loaded before live-model.js so window.FcDependencyGraph is
+     already defined by the time any flush happens. See
+     docs/C2_PR4_DEPENDENCY_GRAPH_FOUNDATION_NOTE.md #}
+  <script src="/static/modelling/dependency-graph.js" defer></script>
   {# C2-PR1: Live Modelling Foundation — dirty-state tracking, change
      batching, live edit session state, and a stub recalculation
      scheduler/event pipeline; no financial recalculation, no
