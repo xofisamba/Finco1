@@ -107,6 +107,14 @@
  * the preview call's response can only ever patch one small,
  * non-financial Overview status DOM element via FcRuntimeRenderer.
  *
+ * C2-PR9 (Runtime Request Hardening) hardens that exact fetch call,
+ * additively, with no new endpoint/behaviour beyond request-lifecycle
+ * safety: (1) an AbortController aborts any still-in-flight previous
+ * preview request before a new one is issued; (2) a monotonic
+ * sequence counter is the authoritative final guard ensuring only the
+ * newest request's response ever reaches FcRuntimeRenderer.render().
+ * See docs/C2_PR9_RUNTIME_REQUEST_HARDENING.md for the full lifecycle.
+ *
  * This module does NOT:
  *   - run any financial recalculation, dependency graph, or formula
  *     evaluation — the scheduler (including the C2-PR3 debounced
@@ -144,6 +152,20 @@
   var _listeners = {}; // eventName -> [handler, ...]
 
   var _schedulerQueue = [];
+
+  // C2-PR9: Runtime Request Hardening. The previous (C2-PR8) fetch
+  // call had no abort/sequencing protection — a slow earlier preview
+  // response could, in principle, resolve after a newer one and patch
+  // the DOM with stale data. This module now tracks the single
+  // in-flight preview request's AbortController (`_previewAbortController`,
+  // aborted-and-replaced on every new flush that issues a fetch) and a
+  // monotonic sequence counter (`_previewRequestSeq`/`_previewLatestSeq`)
+  // used as the authoritative final guard against rendering a stale
+  // response, even in the edge case where an aborted fetch's promise
+  // still resolves. See docs/C2_PR9_RUNTIME_REQUEST_HARDENING.md.
+  var _previewAbortController = null;
+  var _previewRequestSeq = 0;
+  var _previewLatestSeq = 0;
 
   function on(eventName, handler) {
     if (!eventName || typeof handler !== 'function') return;
@@ -525,21 +547,52 @@
       typeof fetch === 'function'
     ) {
       var req = window.FcRecalcPreview.buildPreviewRequest(snapshot.execution.previewPayload);
+
+      // C2-PR9: abort any previous in-flight preview request before
+      // issuing a new one — at most one preview fetch is ever allowed
+      // to be in flight at a time. Then capture this request's own
+      // sequence number before calling fetch(), so the response
+      // handler below can authoritatively detect staleness.
+      if (_previewAbortController) {
+        try {
+          _previewAbortController.abort();
+        } catch (e) {
+          // Defensive: abort() should never throw, but a non-standard
+          // AbortController polyfill must never break the flush path.
+        }
+      }
+      var controller = (typeof AbortController === 'function') ? new AbortController() : null;
+      _previewAbortController = controller;
+
+      _previewRequestSeq += 1;
+      var seq = _previewRequestSeq;
+      _previewLatestSeq = seq;
+
       try {
         fetch(req.url, {
           method: req.method,
           headers: req.headers,
-          body: JSON.stringify(req.body)
+          body: JSON.stringify(req.body),
+          signal: controller ? controller.signal : undefined
         }).then(function (res) {
           return res.json();
         }).then(function (json) {
+          // C2-PR9: sequence check is the authoritative, final guard
+          // against rendering a stale response — defense in depth on
+          // top of AbortController, since an aborted request's
+          // promise could in principle still resolve in some edge
+          // case. Only the newest request's response is ever allowed
+          // to reach FcRuntimeRenderer.render().
+          if (seq !== _previewLatestSeq) return;
           if (window.FcRuntimeRenderer && typeof window.FcRuntimeRenderer.render === 'function') {
             window.FcRuntimeRenderer.render(json);
           }
         }).catch(function () {
-          // Network/parse error: never throws, never breaks the page,
-          // never touches the DOM. FcRuntimeRenderer is intentionally
-          // not called here, since there is no response body to render.
+          // Network/parse/AbortError: never throws, never breaks the
+          // page, never touches the DOM. FcRuntimeRenderer is
+          // intentionally not called here (including for an aborted
+          // request), since there is no response body to render, or
+          // the response is known-stale.
         });
       } catch (e) {
         // Defensive: fetch() itself throwing synchronously (e.g. an
