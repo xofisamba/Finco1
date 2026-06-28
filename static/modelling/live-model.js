@@ -9,7 +9,18 @@
  * Reference: docs/C1_INTERACTION_LAYER_DESIGN.md,
  *            docs/C1_PR1_IMPLEMENTATION_NOTE.md through
  *            docs/C1_PR9_IMPLEMENTATION_NOTE.md,
- *            docs/C2_PR1_IMPLEMENTATION_NOTE.md.
+ *            docs/C2_PR1_IMPLEMENTATION_NOTE.md,
+ *            docs/C2_PR2_DIRTY_STATE_UNIFICATION_NOTE.md.
+ *
+ * C2-PR2 (dirty-state unification) adds clearCellDirty(gridId, addr) /
+ * clearSheetDirty(gridId) / clearAllDirty() as idiomatic aliases/
+ * extensions of the clearDirty(gridId?) this module already exposed,
+ * plus 'sheet-clean' / 'project-clean' pub/sub events emitted on the
+ * transition out of dirty, so static/app.js can become a *consumer*
+ * of this module's dirty state for the legacy dirty banner / Run
+ * gating / Save flow instead of maintaining its own parallel dirty
+ * flag for C1-grid-driven edits. No recalculation, dependency graph,
+ * or formula work was added in C2-PR2 either.
  *
  * Responsibility in this PR is limited to:
  *   - tracking which cells/sheets/the project are "dirty" (have an
@@ -164,12 +175,46 @@
       delete _dirtySheets[gridId];
       delete _pendingBatch[gridId];
       _projectDirty = Object.keys(_dirtySheets).length > 0;
+      _emit('sheet-clean', { gridId: gridId });
+      if (!_projectDirty) _emit('project-clean', {});
       return;
     }
     _dirtyCells = {};
     _dirtySheets = {};
     _pendingBatch = {};
     _projectDirty = false;
+    _emit('project-clean', {});
+  }
+
+  /**
+   * Clears the dirty flag for a single cell. If that cell was the
+   * only dirty cell in its sheet, the sheet (and, transitively, the
+   * project if no other sheet is dirty) is cleared too. C2-PR2:
+   * canonical per-cell clear API used by the dirty-state unification
+   * layer (e.g. a future Save integration could call this per
+   * successfully-persisted cell instead of clearing a whole sheet).
+   */
+  function clearCellDirty(gridId, addr) {
+    if (!gridId || !addr || !_dirtyCells[gridId]) return;
+    delete _dirtyCells[gridId][addr];
+    if (_pendingBatch[gridId]) delete _pendingBatch[gridId][addr];
+    if (Object.keys(_dirtyCells[gridId]).length === 0) {
+      clearDirty(gridId);
+    }
+  }
+
+  // C2-PR2: idiomatic aliases matching the canonical dirty-state API
+  // surface (markCellDirty/clearCellDirty/clearSheetDirty/clearAllDirty)
+  // used by app.js's dirty-state unification. clearSheetDirty/
+  // clearAllDirty are aliases of the pre-existing clearDirty(gridId)/
+  // clearDirty() — no behaviour change, just a name that reads clearly
+  // at every call site that clears a whole sheet or the whole project.
+  function clearSheetDirty(gridId) {
+    clearDirty(gridId);
+  }
+
+  function clearAllDirty() {
+    clearDirty();
   }
 
   /**
@@ -343,6 +388,9 @@
     getDirtyCells: getDirtyCells,
     getDirtySheets: getDirtySheets,
     clearDirty: clearDirty,
+    clearCellDirty: clearCellDirty,
+    clearSheetDirty: clearSheetDirty,
+    clearAllDirty: clearAllDirty,
 
     getBatch: getBatch,
     flushBatch: flushBatch,
