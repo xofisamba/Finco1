@@ -364,6 +364,21 @@
       <span class="help-pointer__text">Need a tour? Open the <a href="#help" class="help-pointer__link">Help</a> tab for model guidance, workflow steps, and pilot limitations.</span>
     </div>
 
+    {# C2-PR8: First End-to-End Incremental Runtime Slice. A small,
+       always-rendered, NON-FINANCIAL runtime status indicator. It is
+       patched client-side (static/modelling/runtime-renderer.js) after
+       a real POST /model/preview round trip following a C1 cell edit.
+       This text starts as a static placeholder and is the ONLY DOM
+       element this whole runtime path is allowed to touch — it is
+       deliberately a plain status string, never an IRR/DSCR/revenue/
+       tax/other real KPI value, so this slice can never be mistaken for
+       a real recalculation having occurred. See
+       docs/C2_PR8_FIRST_RUNTIME_SLICE.md. #}
+    <div class="runtime-status-indicator" id="overview-runtime-status" role="status" aria-live="polite" aria-label="Live runtime preview status">
+      <span class="runtime-status-indicator__label">Runtime preview:</span>
+      <span class="runtime-status-indicator__value" id="overview-runtime-status-value" data-c2pr8-runtime-status="idle">Idle</span>
+    </div>
+
     <!-- Runtime summary HTMX swap target -->
     <div id="model-output-area"></div>
 

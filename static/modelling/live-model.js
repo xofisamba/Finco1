@@ -89,12 +89,31 @@
  * so FcLiveModel remains the single, sole owner of dirty state exactly
  * as it has been since C2-PR1/C2-PR2.
  *
+ * C2-PR8 (First End-to-End Incremental Runtime Slice) makes ONE
+ * explicit, documented exception to the "never makes any network/
+ * AJAX/htmx call" rule every prior C2 PR enforced: at the very end of
+ * flushScheduledRecalc(), after the existing previewPayload has been
+ * built (C2-PR6/PR7), this module now makes exactly one real `fetch`
+ * call per flush to POST /model/preview via
+ * FcRecalcPreview.buildPreviewRequest(), and hands the parsed JSON
+ * response to window.FcRuntimeRenderer.render() (a new, separate
+ * module, static/modelling/runtime-renderer.js) — never inspecting or
+ * acting on the response itself beyond that single call. This is
+ * intentional and required by C2-PR8's spec; it is NOT a regression of
+ * the "never auto-call fetch" discipline C2-PR3 through C2-PR7
+ * documented and tested for — see
+ * docs/C2_PR8_FIRST_RUNTIME_SLICE.md for the full justification. It
+ * still never calls Save, Run, or any persistence/export endpoint, and
+ * the preview call's response can only ever patch one small,
+ * non-financial Overview status DOM element via FcRuntimeRenderer.
+ *
  * This module does NOT:
  *   - run any financial recalculation, dependency graph, or formula
  *     evaluation — the scheduler (including the C2-PR3 debounced
  *     flush API added below) only queues/flushes plain event objects
  *     and snapshot data, it never calls a function or computes a
- *     financial value, and never makes any network/AJAX/htmx
+ *     financial value, and (except for the single documented C2-PR8
+ *     preview fetch described above) never makes any network/AJAX/htmx
  *   - trigger Save, Run, persistence, or export — those remain
  *     entirely separate, unaffected workflows
  *   - duplicate FcGridRegistry/FcActiveCellManager/
@@ -481,6 +500,54 @@
       snapshot.execution = window.FcRecalcExecutor.execute(snapshot, { reason: reason });
     }
     _emit('recalc-flush-complete', { reason: reason, snapshot: snapshot });
+
+    // C2-PR8: First End-to-End Incremental Runtime Slice. This is the
+    // FIRST and ONLY place in the entire C2 chain (PR1 through PR7
+    // explicitly never did this) where a real network call is made
+    // automatically as part of the edit -> dirty -> schedule -> flush
+    // path. This is an intentional, explicit, documented exception to
+    // every prior PR's "never auto-call fetch" guardrail — see
+    // docs/C2_PR8_FIRST_RUNTIME_SLICE.md for the full justification.
+    // It fires at most once per flush (never per keystroke, thanks to
+    // the existing 250ms debounce this block sits after), only when a
+    // previewPayload was actually built above, and only when a real
+    // `fetch` function exists (so this is a safe no-op in any
+    // non-browser/test harness that doesn't define one). The response
+    // is handed, verbatim, to FcRuntimeRenderer.render() — this module
+    // never inspects or acts on the response itself beyond that single
+    // call, and never calls Save, Run, or any persistence/export path.
+    if (
+      window.FcRecalcPreview &&
+      typeof window.FcRecalcPreview.buildPreviewRequest === 'function' &&
+      snapshot.execution &&
+      snapshot.execution.previewPrepared &&
+      snapshot.execution.previewPayload &&
+      typeof fetch === 'function'
+    ) {
+      var req = window.FcRecalcPreview.buildPreviewRequest(snapshot.execution.previewPayload);
+      try {
+        fetch(req.url, {
+          method: req.method,
+          headers: req.headers,
+          body: JSON.stringify(req.body)
+        }).then(function (res) {
+          return res.json();
+        }).then(function (json) {
+          if (window.FcRuntimeRenderer && typeof window.FcRuntimeRenderer.render === 'function') {
+            window.FcRuntimeRenderer.render(json);
+          }
+        }).catch(function () {
+          // Network/parse error: never throws, never breaks the page,
+          // never touches the DOM. FcRuntimeRenderer is intentionally
+          // not called here, since there is no response body to render.
+        });
+      } catch (e) {
+        // Defensive: fetch() itself throwing synchronously (e.g. an
+        // unusual test/polyfill environment) must never break the
+        // flush path or any caller of flushScheduledRecalc().
+      }
+    }
+
     return snapshot;
   }
 
