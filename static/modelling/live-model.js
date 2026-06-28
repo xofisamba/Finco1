@@ -47,10 +47,54 @@
  *     calling into, modifying, or duplicating any of those modules'
  *     state
  *
+ * C2-PR3 (Recalculation Scheduler Foundation) adds a deterministic
+ * recalc-scheduling layer on top of this module's existing dirty
+ * state and pub/sub (Option A: extending FcLiveModel directly, rather
+ * than a separate static/modelling/recalc-scheduler.js module, since
+ * a scheduler-shaped surface — `scheduler` — already lived on this
+ * object since C2-PR1; growing it in place avoids a second module
+ * that would just re-subscribe to the same events this file already
+ * owns). It adds:
+ *
+ *   - scheduleRecalc(reason, meta) — called automatically by
+ *     markCellDirty() for every dirty edit (no new call site needed
+ *     elsewhere); queues the dirty cell/sheet and (re)starts a
+ *     debounce timer. Rapid edits within the debounce window collapse
+ *     into one pending flush — the timer is reset, not stacked.
+ *   - flushScheduledRecalc() — explicit, synchronous flush API (also
+ *     what the debounce timer calls automatically). Returns a
+ *     deterministic snapshot of what's pending (sorted grids, sorted
+ *     addrs per grid, no timestamps in the comparable shape) and
+ *     emits 'recalc-flush-start' then 'recalc-flush-complete'. It
+ *     performs NO calculation of any kind — it only reads
+ *     getDirtySheets()/getDirtyCells() (this module's existing dirty
+ *     state) and shapes them into a snapshot. It does not call Save,
+ *     Run, or any backend endpoint, and it does NOT clear dirty state
+ *     (clearing dirty remains exclusively clearCellDirty/
+ *     clearSheetDirty/clearAllDirty's job, per C2-PR2).
+ *   - cancelScheduledRecalc(reason) — cancels any pending debounce
+ *     timer and clears the scheduler's own pending-flush bookkeeping,
+ *     emitting 'recalc-cancelled'. Called automatically by
+ *     clearDirty() (and therefore by clearCellDirty/clearSheetDirty/
+ *     clearAllDirty, and by the C2-PR2 applyWorkspaceStateMeta ->
+ *     clearAllDirty clean-server-meta sync path) so no stale
+ *     scheduled-recalc state can ever survive a dirty-clear.
+ *   - hasPendingRecalc() / getPendingRecalcSnapshot() — read-only
+ *     accessors mirroring the suggested Option A API shape.
+ *
+ * The scheduler tracks zero dirty state of its own — `_recalcPending`
+ * below is just "is a debounce timer currently armed," not a parallel
+ * copy of which cells are dirty. The pending snapshot is always
+ * derived live from getDirtySheets()/getDirtyCells() at flush time,
+ * so FcLiveModel remains the single, sole owner of dirty state exactly
+ * as it has been since C2-PR1/C2-PR2.
+ *
  * This module does NOT:
  *   - run any financial recalculation, dependency graph, or formula
- *     evaluation — the scheduler only queues/flushes plain event
- *     objects, it never calls a function or computes a value
+ *     evaluation — the scheduler (including the C2-PR3 debounced
+ *     flush API added below) only queues/flushes plain event objects
+ *     and snapshot data, it never calls a function or computes a
+ *     financial value, and never makes any network/AJAX/htmx
  *   - trigger Save, Run, persistence, or export — those remain
  *     entirely separate, unaffected workflows
  *   - duplicate FcGridRegistry/FcActiveCellManager/
@@ -177,6 +221,7 @@
       _projectDirty = Object.keys(_dirtySheets).length > 0;
       _emit('sheet-clean', { gridId: gridId });
       if (!_projectDirty) _emit('project-clean', {});
+      cancelScheduledRecalc('dirty-cleared');
       return;
     }
     _dirtyCells = {};
@@ -184,6 +229,7 @@
     _pendingBatch = {};
     _projectDirty = false;
     _emit('project-clean', {});
+    cancelScheduledRecalc('dirty-cleared');
   }
 
   /**
@@ -252,6 +298,8 @@
     _emit('cell-dirty', { gridId: gridId, addr: addr, before: before, after: after });
     if (!sheetWasDirty) _emit('sheet-dirty', { gridId: gridId });
     _emit('project-dirty', { gridId: gridId });
+
+    scheduleRecalc('cell-changed', { gridId: gridId, addr: addr });
   }
 
   function getBatch(gridId) {
@@ -314,6 +362,101 @@
     flush: schedulerFlush,
     peek: schedulerPeek
   };
+
+  // --- C2-PR3: deterministic recalculation scheduler foundation.
+  // No financial calculation is ever performed here — see the module
+  // header comment. This block only debounces/batches/snapshots the
+  // dirty state this module already owns; it never makes any network
+  // or AJAX call of any kind, and never invokes Save or Run.
+  var RECALC_DEBOUNCE_MS = 250;
+
+  var _recalcTimer = null; // setTimeout handle, or null if nothing scheduled
+  var _recalcReason = null; // the reason string of the most recent schedule call
+
+  function hasPendingRecalc() {
+    return _recalcTimer !== null;
+  }
+
+  /**
+   * Builds a deterministic snapshot of currently-dirty sheets/cells.
+   * Grids are sorted alphabetically by gridId; cell addresses are
+   * sorted alphabetically within each grid. No timestamp or other
+   * non-reproducible field is included, so two snapshots of the same
+   * logical dirty state are deep-equal regardless of edit order or
+   * wall-clock time. This performs zero calculation — it is purely a
+   * read+reshape of getDirtySheets()/getDirtyCells().
+   */
+  function getPendingRecalcSnapshot() {
+    var gridIds = getDirtySheets().slice().sort();
+    var grids = gridIds.map(function (gridId) {
+      var addrs = getDirtyCells(gridId).slice().sort();
+      return { gridId: gridId, addrs: addrs };
+    });
+    return { grids: grids, projectDirty: isProjectDirty() };
+  }
+
+  /**
+   * Schedules (or reschedules) a debounced recalculation flush.
+   * Called automatically by markCellDirty() for every dirty edit, and
+   * safe to call manually (e.g. from a test, or a future caller).
+   * Rapid calls within RECALC_DEBOUNCE_MS collapse into a single
+   * eventual flush — each call resets the timer rather than stacking
+   * another one. Performs no calculation; only arms a timer and emits
+   * 'recalc-scheduled'.
+   */
+  function scheduleRecalc(reason, meta) {
+    _recalcReason = reason || 'cell-changed';
+    if (_recalcTimer !== null) {
+      clearTimeout(_recalcTimer);
+    }
+    _recalcTimer = setTimeout(function () {
+      _recalcTimer = null;
+      flushScheduledRecalc();
+    }, RECALC_DEBOUNCE_MS);
+    _emit('recalc-scheduled', { reason: _recalcReason, meta: meta || null });
+  }
+
+  /**
+   * Cancels any pending debounced recalc flush without flushing it.
+   * Called automatically whenever dirty state is cleared (clearDirty/
+   * clearCellDirty/clearSheetDirty/clearAllDirty), so a scheduled
+   * recalc can never survive past the dirty state it was scheduled
+   * for. Safe to call when nothing is pending (no-op, no event).
+   */
+  function cancelScheduledRecalc(reason) {
+    if (_recalcTimer === null) return false;
+    clearTimeout(_recalcTimer);
+    _recalcTimer = null;
+    _emit('recalc-cancelled', { reason: reason || 'cancelled' });
+    return true;
+  }
+
+  /**
+   * Explicit, synchronous flush API — the same function the debounce
+   * timer calls automatically, also callable manually (tests, or a
+   * future caller that wants to flush immediately rather than wait
+   * out the debounce window). Returns a deterministic pending-recalc
+   * snapshot (see getPendingRecalcSnapshot) and emits
+   * 'recalc-flush-start' then 'recalc-flush-complete' around it.
+   *
+   * Critically, this performs NO calculation: it never evaluates a
+   * formula, never walks a dependency graph (none exists), and never
+   * calls Save, Run, fetch, or any backend endpoint. It also does NOT
+   * clear dirty state — clearing dirty remains exclusively the job of
+   * clearCellDirty/clearSheetDirty/clearAllDirty (C2-PR2's contract),
+   * so a flushed-but-unsaved edit still correctly reports dirty.
+   */
+  function flushScheduledRecalc() {
+    if (_recalcTimer !== null) {
+      clearTimeout(_recalcTimer);
+      _recalcTimer = null;
+    }
+    var reason = _recalcReason;
+    _emit('recalc-flush-start', { reason: reason });
+    var snapshot = getPendingRecalcSnapshot();
+    _emit('recalc-flush-complete', { reason: reason, snapshot: snapshot });
+    return snapshot;
+  }
 
   // --- DOM wiring: the one genuinely observable edit path.
   function _isFormField(el) {
@@ -401,6 +544,13 @@
     getSession: getSession,
 
     scheduler: scheduler,
+
+    // C2-PR3: deterministic recalculation scheduler foundation.
+    scheduleRecalc: scheduleRecalc,
+    flushScheduledRecalc: flushScheduledRecalc,
+    cancelScheduledRecalc: cancelScheduledRecalc,
+    hasPendingRecalc: hasPendingRecalc,
+    getPendingRecalcSnapshot: getPendingRecalcSnapshot,
 
     on: on,
     off: off
