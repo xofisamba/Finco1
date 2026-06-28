@@ -221,8 +221,94 @@ window.syncEditableGridMirrors = function() {
   });
 };
 
+/*
+ * C2-PR2: Dirty-state unification.
+ *
+ * Previously, the legacy dirty banner / Run-gating / Save flow above
+ * was driven exclusively by server-computed `meta.dirty` (a snapshot
+ * diff of `#main-form` against the saved scenario, recomputed by
+ * POST /scenarios/state/draft on a 350ms debounce after any
+ * `#main-form` field change — see queueWorkspaceDraftPersist below).
+ * Separately, FcLiveModel (static/modelling/live-model.js, C2-PR1)
+ * tracked its own, entirely independent, client-side dirty state for
+ * edits made through the C1 spreadsheet interaction layer (typing,
+ * undo/redo, fill, paste — anything that flows through
+ * FcCellIO.writeValue, which all of those already do). Nothing ever
+ * read FcLiveModel's dirty state, and — because C1 grid cells live
+ * outside `#main-form` — a C1 grid edit was invisible to the legacy
+ * mechanism entirely. Two parallel, non-communicating notions of
+ * "dirty" existed for the same workspace.
+ *
+ * FcLiveModel is now the canonical client-side dirty-state source.
+ * `_lastServerMeta` below caches the most recent genuine server-provided
+ * meta (so a client-only FcLiveModel dirty signal can be overlaid onto
+ * it without discarding the other fields — active scenario name,
+ * runtime snapshot id, labels — that only the server knows about).
+ * `_syncDirtyFromLiveModel()` re-applies the dirty banner / Run gating
+ * / lineage guidance whenever FcLiveModel transitions into or out of
+ * a dirty state, via FcLiveModel's existing pub/sub ('project-dirty' /
+ * 'project-clean') rather than polling. The legacy server-driven path
+ * (queueWorkspaceDraftPersist -> applyWorkspaceStateMeta) is left
+ * completely intact for `#main-form` fields (the top-level Inputs
+ * fields it has always covered) — this is strictly additive overlay
+ * logic, not a replacement of the server round trip for those fields.
+ */
+// The most recent meta actually received from the server (never
+// mutated by the FcLiveModel overlay below) — the genuine source of
+// truth for every #main-form-driven field (active scenario name,
+// runtime snapshot id, last_runtime_origin_label, and #main-form's
+// own dirty bit). Kept distinct from what gets painted to the DOM so
+// the overlay in _syncDirtyFromLiveModel always starts from the real
+// last server answer, not from a previously-overlaid value.
+var _lastServerMeta = null;
+var _applyingFromLiveModelSync = false;
+
+function _syncDirtyFromLiveModel() {
+  if (!window.FcLiveModel || _applyingFromLiveModelSync) return;
+  var liveDirty = window.FcLiveModel.isProjectDirty();
+  var base = _lastServerMeta || {};
+  // Once FcLiveModel reports dirty, the workspace is dirty even if the
+  // server-side #main-form snapshot diff says otherwise — a C1 grid
+  // edit is a real unsaved change. Once FcLiveModel reports clean
+  // again (e.g. after clearAllDirty() on Save), defer to whatever the
+  // last genuine server meta said (it may still be dirty for
+  // #main-form reasons FcLiveModel knows nothing about).
+  var effectiveDirty = liveDirty || !!base.dirty;
+  var merged = {};
+  Object.keys(base).forEach(function(k) { merged[k] = base[k]; });
+  merged.dirty = effectiveDirty;
+  if (liveDirty && !base.dirty) {
+    merged.dirty_label = 'Unsaved edits';
+  }
+  _applyingFromLiveModelSync = true;
+  try {
+    window.applyWorkspaceStateMeta(merged);
+  } finally {
+    _applyingFromLiveModelSync = false;
+  }
+}
+
 window.applyWorkspaceStateMeta = function(meta) {
   if (!meta) return;
+  if (!_applyingFromLiveModelSync) {
+    // Only a genuine server-driven call updates the cached "real"
+    // meta; a call made by _syncDirtyFromLiveModel's own overlay (the
+    // _applyingFromLiveModelSync === true branch) must not poison it,
+    // otherwise the next sync would treat its own previous overlay as
+    // the server's answer.
+    _lastServerMeta = meta;
+  }
+  // C2-PR2: when a fresh server meta reports a clean workspace (e.g.
+  // right after Save or Discard succeeds), bring FcLiveModel's
+  // canonical dirty state back into sync too — otherwise a C1 grid
+  // edit made before Save would keep FcLiveModel (and therefore the
+  // banner, via _syncDirtyFromLiveModel above) reporting dirty forever,
+  // since FcLiveModel dirty state is only ever cleared explicitly.
+  // Guarded by _applyingFromLiveModelSync so this can never re-trigger
+  // _syncDirtyFromLiveModel -> applyWorkspaceStateMeta in a loop.
+  if (!_applyingFromLiveModelSync && meta.dirty === false && window.FcLiveModel && window.FcLiveModel.clearAllDirty) {
+    window.FcLiveModel.clearAllDirty();
+  }
   var currentId = document.getElementById('current_saved_scenario_id');
   if (currentId && typeof meta.active_scenario_id !== 'undefined') currentId.value = meta.active_scenario_id || '';
   var dirty = document.getElementById('workspace_dirty_state');
@@ -331,6 +417,17 @@ function bindEditableGridInputs(root) {
   });
 }
 
+// C2-PR2: subscribe to FcLiveModel's existing pub/sub once, rather
+// than polling or adding a redundant DOM listener of our own — every
+// C1-grid-driven write (type, undo/redo, fill, paste) already flows
+// through FcCellIO.writeValue -> a native `change` event -> FcLiveModel
+// markCellDirty(), so this is the single seam needed to make the
+// legacy dirty banner/Run-gating reflect C1 grid edits too.
+if (window.FcLiveModel && window.FcLiveModel.on) {
+  window.FcLiveModel.on('project-dirty', _syncDirtyFromLiveModel);
+  window.FcLiveModel.on('project-clean', _syncDirtyFromLiveModel);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.ws-tab[data-tab]').forEach(function(tabBtn) {
     tabBtn.addEventListener('click', function() {
@@ -391,6 +488,24 @@ document.addEventListener('DOMContentLoaded', function() {
     saveBtn.addEventListener('click', function() {
       var form = document.getElementById('main-form');
       if (form) form.dispatchEvent(new CustomEvent('saveRequested', { bubbles: true }));
+    });
+    // C2-PR2: /scenarios/save's htmx response only swaps
+    // #saved-scenario-panel (the saved-scenario summary cards); unlike
+    // /scenarios/{id}/load or /scenarios/state/discard, it never calls
+    // applyWorkspaceStateMeta itself (the legacy banner/Run-gating was
+    // never live-updated by a Save click before this change either —
+    // that swap target doesn't include the banner element). What a
+    // successful Save click does mean, unambiguously, is "the user's
+    // current edits have just been persisted" — so this clears
+    // FcLiveModel's canonical dirty state on a successful response,
+    // bringing the C1-grid-driven dirty signal back in sync with the
+    // save the user just performed, without touching the legacy
+    // #main-form snapshot-diff mechanism or the /scenarios/save
+    // request/response contract itself.
+    saveBtn.addEventListener('htmx:afterRequest', function(evt) {
+      if (evt && evt.detail && evt.detail.successful && window.FcLiveModel && window.FcLiveModel.clearAllDirty) {
+        window.FcLiveModel.clearAllDirty();
+      }
     });
   }
 

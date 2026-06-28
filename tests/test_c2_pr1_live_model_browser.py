@@ -196,3 +196,101 @@ class TestLiveModelJs:
         assert page.evaluate("window.FcLiveModel.isSheetDirty('fixture-grid-two')") is True
         assert page.evaluate("window.FcLiveModel.isSheetDirty('fixture-grid')") is False
         assert page.evaluate("window.FcLiveModel.isProjectDirty()") is True
+
+
+class TestLiveModelC2PR2DirtyStateUnificationApi:
+    """C2-PR2: the canonical dirty-state API surface (clearCellDirty/
+    clearSheetDirty/clearAllDirty + 'sheet-clean'/'project-clean'
+    pub/sub) that static/app.js now consumes instead of maintaining a
+    second, parallel dirty manager."""
+
+    def test_clear_cell_dirty_clears_only_that_cell(self, fixture_page):
+        page, _ = fixture_page
+        _edit_cell(page, "fixture.r1.c1", "v1")
+        _edit_cell(page, "fixture.r1.c2", "v2")
+
+        page.evaluate("window.FcLiveModel.clearCellDirty('fixture-grid', 'fixture.r1.c1')")
+
+        assert page.evaluate("window.FcLiveModel.isCellDirty('fixture-grid', 'fixture.r1.c1')") is False
+        assert page.evaluate("window.FcLiveModel.isCellDirty('fixture-grid', 'fixture.r1.c2')") is True
+        # Sheet/project stay dirty because a sibling cell is still dirty.
+        assert page.evaluate("window.FcLiveModel.isSheetDirty('fixture-grid')") is True
+        assert page.evaluate("window.FcLiveModel.isProjectDirty()") is True
+
+    def test_clear_cell_dirty_clears_sheet_when_last_cell_cleared(self, fixture_page):
+        page, _ = fixture_page
+        _edit_cell(page, "fixture.r1.c1", "v1")
+
+        page.evaluate("window.FcLiveModel.clearCellDirty('fixture-grid', 'fixture.r1.c1')")
+
+        assert page.evaluate("window.FcLiveModel.isSheetDirty('fixture-grid')") is False
+        assert page.evaluate("window.FcLiveModel.isProjectDirty()") is False
+
+    def test_clear_sheet_dirty_is_alias_of_clear_dirty(self, fixture_page):
+        page, _ = fixture_page
+        _edit_cell(page, "fixture.r1.c1", "v1")
+        _edit_cell(page, "fixture2.r1.c1", "v2")
+
+        page.evaluate("window.FcLiveModel.clearSheetDirty('fixture-grid')")
+
+        assert page.evaluate("window.FcLiveModel.isSheetDirty('fixture-grid')") is False
+        # The other sheet is untouched, so the project is still dirty.
+        assert page.evaluate("window.FcLiveModel.isSheetDirty('fixture-grid-two')") is True
+        assert page.evaluate("window.FcLiveModel.isProjectDirty()") is True
+
+    def test_clear_all_dirty_is_alias_of_clear_dirty_no_arg(self, fixture_page):
+        page, _ = fixture_page
+        _edit_cell(page, "fixture.r1.c1", "v1")
+        _edit_cell(page, "fixture2.r1.c1", "v2")
+
+        page.evaluate("window.FcLiveModel.clearAllDirty()")
+
+        assert page.evaluate("window.FcLiveModel.isProjectDirty()") is False
+        assert page.evaluate("window.FcLiveModel.getDirtySheets().length") == 0
+
+    def test_project_clean_event_emitted_on_clear_all_dirty(self, fixture_page):
+        page, _ = fixture_page
+        _edit_cell(page, "fixture.r1.c1", "v1")
+
+        page.evaluate(
+            """
+            () => {
+              window.__projectCleanFired = false;
+              window.FcLiveModel.on('project-clean', function() { window.__projectCleanFired = true; });
+              window.FcLiveModel.clearAllDirty();
+            }
+            """
+        )
+        assert page.evaluate("window.__projectCleanFired") is True
+
+    def test_project_clean_event_emitted_when_last_dirty_sheet_clears(self, fixture_page):
+        page, _ = fixture_page
+        _edit_cell(page, "fixture.r1.c1", "v1")
+
+        page.evaluate(
+            """
+            () => {
+              window.__projectCleanFired = false;
+              window.FcLiveModel.on('project-clean', function() { window.__projectCleanFired = true; });
+              window.FcLiveModel.clearSheetDirty('fixture-grid');
+            }
+            """
+        )
+        assert page.evaluate("window.__projectCleanFired") is True
+
+    def test_project_clean_not_emitted_while_other_sheet_still_dirty(self, fixture_page):
+        page, _ = fixture_page
+        _edit_cell(page, "fixture.r1.c1", "v1")
+        _edit_cell(page, "fixture2.r1.c1", "v2")
+
+        page.evaluate(
+            """
+            () => {
+              window.__projectCleanFired = false;
+              window.FcLiveModel.on('project-clean', function() { window.__projectCleanFired = true; });
+              window.FcLiveModel.clearSheetDirty('fixture-grid');
+            }
+            """
+        )
+        assert page.evaluate("window.__projectCleanFired") is False
+        assert page.evaluate("window.FcLiveModel.isProjectDirty()") is True
