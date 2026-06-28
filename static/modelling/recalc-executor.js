@@ -178,6 +178,22 @@
       reason: reason
     };
 
+    // C2-PR6: additive only. If window.FcRecalcPreview is present
+    // (static/modelling/recalc-preview.js, loaded before this file),
+    // hand it this stub's own result (plus the original snapshot) so
+    // it can build a deterministic preview-request payload describing
+    // what a FUTURE backend preview/recalc endpoint would need. This
+    // module never builds that payload itself, never sends it
+    // anywhere, and never performs any network call as a result of
+    // this call. If FcRecalcPreview isn't loaded, this is a no-op and
+    // the result shape is byte-for-byte identical to this PR's
+    // predecessor (C2-PR5) — no previewPrepared/previewPayload fields
+    // are added.
+    if (window.FcRecalcPreview && typeof window.FcRecalcPreview.buildPreviewPayload === 'function') {
+      result.previewPrepared = true;
+      result.previewPayload = window.FcRecalcPreview.buildPreviewPayload(snapshot, result, { reason: reason });
+    }
+
     _lastExecution = result;
     return result;
   }
