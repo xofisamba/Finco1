@@ -66,6 +66,15 @@
      into it. See
      docs/C2_PR6_INCREMENTAL_RECALC_PREVIEW_BOUNDARY_NOTE.md #}
   <script src="/static/modelling/recalc-preview.js" defer></script>
+  {# C2-PR8: First End-to-End Incremental Runtime Slice — a tiny,
+     stateless response renderer that patches exactly ONE existing,
+     non-financial Overview status DOM element after a real
+     POST /model/preview round trip made from live-model.js's
+     flushScheduledRecalc(). Loaded after recalc-preview.js (and before
+     live-model.js, which is the caller) so window.FcRuntimeRenderer is
+     already defined by the time any flush's fetch response resolves.
+     See docs/C2_PR8_FIRST_RUNTIME_SLICE.md #}
+  <script src="/static/modelling/runtime-renderer.js" defer></script>
   {# C2-PR5: Incremental Recalculation Execution Stub — a deterministic
      no-op execution boundary consuming a flushed recalc snapshot
      (already annotated with affectedGroups); no financial

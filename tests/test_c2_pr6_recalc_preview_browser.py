@@ -374,10 +374,19 @@ class TestRecalcPreviewBoundaryProductionRoute:
         assert addr in preview_payload["dirtyCells"]
 
     def test_no_backend_request_fires(self, preview_page):
-        """Point 7: building a preview payload + flush must never
-        trigger any network request (most safety-critical test in this
-        file — the whole point of the preview boundary is to build a
-        payload without ever sending it)."""
+        """Point 7, UPDATED by C2-PR8 (see
+        docs/C2_PR8_FIRST_RUNTIME_SLICE.md): when this test was written
+        (C2-PR6), nothing in the client ever called
+        FcRecalcPreview.buildPreviewRequest() automatically, so a real
+        edit + flush sequence fired zero network requests at all. C2-PR8
+        intentionally and explicitly wires a single real fetch() call
+        into FcLiveModel.flushScheduledRecalc() itself, targeting
+        exactly POST /model/preview (never /run, never anything
+        recalc-shaped beyond that one documented endpoint). This test
+        now asserts the narrower, still-meaningful invariant that
+        survives that change: no /run request and no more than the one
+        expected /model/preview request fire from this sequence — i.e.
+        the preview boundary still never escalates into a real Run."""
         page, _, _ = preview_page
         page.evaluate("window.switchTab('capex')")
         addr = _first_editable_amount_addr(page, "capex")
@@ -386,24 +395,12 @@ class TestRecalcPreviewBoundaryProductionRoute:
         page.on("request", lambda req: all_requests.append(req.url))
 
         _edit_cell(page, addr, "8888.88")
-        page.evaluate(
-            """
-            () => {
-              window.FcLiveModel.flushScheduledRecalc();
-              var snapshot = window.FcLiveModel.getPendingRecalcSnapshot();
-              snapshot.affectedGroups = window.FcDependencyGraph.resolveSnapshot(snapshot);
-              var execution = window.FcRecalcExecutor.execute(snapshot, { reason: 'manual-test' });
-              window.FcRecalcPreview.buildPreviewPayload(snapshot, execution, { reason: 'manual-test' });
-            }
-            """
-        )
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1500)
 
-        run_or_recalc_or_preview_requests = [
-            url for url in all_requests
-            if ("/run" in url or "recalc" in url or "preview" in url)
-        ]
-        assert run_or_recalc_or_preview_requests == []
+        run_requests = [url for url in all_requests if "/run" in url]
+        preview_requests = [url for url in all_requests if "/model/preview" in url]
+        assert run_requests == []
+        assert len(preview_requests) == 1
 
     def test_dirty_state_unchanged_by_preview_building(self, preview_page):
         """Point 8: building a preview payload (directly, or via the

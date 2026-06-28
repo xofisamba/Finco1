@@ -2873,6 +2873,12 @@ async def model_preview(request: Request):
 
     ok, errors = _c2_pr7_validate_preview_payload(body)
     if not ok:
+        # C2-PR8: deliberately no "overview" key on the invalid-payload
+        # branch (rather than adding one with updated: false) — an
+        # invalid request never produced anything for the client to
+        # render, so there is nothing to describe; the client-side
+        # runtime renderer (static/modelling/runtime-renderer.js)
+        # already treats a missing "overview" field as a safe no-op.
         return JSONResponse(
             {
                 "ok": False,
@@ -2887,6 +2893,13 @@ async def model_preview(request: Request):
     dirty_cells = _c2_pr7_sorted_unique_strings(body.get("dirtyCells"))
     affected_groups = _c2_pr7_sorted_unique_strings(body.get("affectedGroups"))
 
+    # C2-PR8: additive "overview" field only. This remains a pure,
+    # deterministic stub — "runtime_status"/"updated" are fixed,
+    # non-financial strings/booleans describing that the contract stub
+    # was reached, NOT that any real recalculation occurred. No IRR,
+    # DSCR, revenue, tax, or waterfall computation is performed or
+    # referenced anywhere in this route. See
+    # docs/C2_PR8_FIRST_RUNTIME_SLICE.md.
     return JSONResponse(
         {
             "ok": True,
@@ -2897,6 +2910,10 @@ async def model_preview(request: Request):
             "dirtyCells": dirty_cells,
             "warnings": [],
             "message": "Preview endpoint contract accepted payload; recalculation is not implemented yet.",
+            "overview": {
+                "runtime_status": "Preview executed",
+                "updated": True,
+            },
         },
         status_code=200,
     )

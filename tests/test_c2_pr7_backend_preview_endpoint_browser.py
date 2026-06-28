@@ -193,10 +193,21 @@ def _edit_cell(page, addr, value):
 
 
 class TestBackendPreviewEndpointBrowserSafety:
-    def test_edit_and_flush_never_calls_backend_preview_endpoint(self, preview_page):
-        """Point 10: a real edit + flush + preview-payload-build
-        sequence must fire zero requests to /model/preview (or any
-        other path containing "preview")."""
+    def test_edit_and_flush_calls_backend_preview_endpoint_exactly_once(self, preview_page):
+        """Point 10, UPDATED by C2-PR8 (see
+        docs/C2_PR8_FIRST_RUNTIME_SLICE.md): C2-PR7 originally asserted
+        that a real edit + flush sequence fired ZERO requests to
+        /model/preview, because at that point nothing in the client
+        ever called FcRecalcPreview.buildPreviewRequest() automatically.
+        C2-PR8 is the first PR in this chain to intentionally wire a
+        real fetch() call into FcLiveModel.flushScheduledRecalc() itself
+        (the natural edit -> dirty -> schedule -> flush path), so the
+        same sequence now fires exactly ONE request to /model/preview
+        per flush — never zero (the pipeline is supposed to work now),
+        and never more than one (no duplicate/accidental calls). This
+        is an intentional, documented behaviour change, not a
+        regression; see tests/test_c2_pr8_first_runtime_slice_browser.py
+        for the full C2-PR8 test suite covering this in detail."""
         page, _, _ = preview_page
         page.evaluate("window.switchTab('capex')")
         addr = _first_editable_amount_addr(page, "capex")
@@ -205,24 +216,13 @@ class TestBackendPreviewEndpointBrowserSafety:
         page.on("request", lambda req: all_requests.append(req.url))
 
         _edit_cell(page, addr, "4242.42")
-        page.evaluate(
-            """
-            () => {
-              window.FcLiveModel.flushScheduledRecalc();
-              var snapshot = window.FcLiveModel.getPendingRecalcSnapshot();
-              snapshot.affectedGroups = window.FcDependencyGraph.resolveSnapshot(snapshot);
-              var execution = window.FcRecalcExecutor.execute(snapshot, { reason: 'manual-test' });
-              window.FcRecalcPreview.buildPreviewPayload(snapshot, execution, { reason: 'manual-test' });
-            }
-            """
-        )
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1500)
 
         preview_endpoint_requests = [
             url for url in all_requests
-            if "/model/preview" in url or "preview" in url.lower()
+            if "/model/preview" in url
         ]
-        assert preview_endpoint_requests == []
+        assert len(preview_endpoint_requests) == 1
 
     def test_build_preview_request_returns_shape_without_sending(self, preview_page):
         """Point 11: FcRecalcPreview.buildPreviewRequest() returns the
