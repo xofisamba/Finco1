@@ -28,6 +28,21 @@
  * setActiveCell()/clearActiveCell() here for a cell that is already
  * active is harmless and idempotent. The new scroll-preservation
  * capability does not exist anywhere else in the codebase.
+ *
+ * C1-Final-Hardening: this module is the single authoritative source
+ * for *when* and *how* the active cell is restored after a swap —
+ * it owns the pre-swap snapshot and is the only code that decides,
+ * from that snapshot, whether to call setActiveCell() or
+ * clearActiveCell(). Immediately after making that decision, it
+ * explicitly calls FcActiveCellManager.reconcileAfterScan(grids)
+ * itself (a direct call, not a second event listener), so
+ * ActiveCellManager's own idempotent re-derivation always runs
+ * synchronously right after the authoritative restore, regardless of
+ * what order the two modules' <script> tags were loaded in or which
+ * one called init() first. This removes the prior dependency on
+ * fc:gridsScanned listener *registration order* between the two
+ * modules — there is now exactly one ordering, fixed by this
+ * function's own code, every time.
  */
 (function () {
   'use strict';
@@ -89,6 +104,16 @@
     var grids = (evt && evt.detail && evt.detail.grids) || [];
     _restoreActiveCell(grids);
     _restoreScroll(grids);
+
+    // Authoritative restore is now complete (registry + visual state
+    // for the cell we decided on). Explicitly drive
+    // FcActiveCellManager's idempotent reconciliation right here, in
+    // a fixed order, instead of leaving it to a second independent
+    // fc:gridsScanned listener whose relative firing order would
+    // otherwise depend on script/init order.
+    if (window.FcActiveCellManager && window.FcActiveCellManager.reconcileAfterScan) {
+      window.FcActiveCellManager.reconcileAfterScan(grids);
+    }
   }
 
   var _initialized = false;

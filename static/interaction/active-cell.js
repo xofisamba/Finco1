@@ -84,21 +84,43 @@
    * active record (by address) onto the rebuilt grid when the address
    * still exists; here we just re-apply (or drop) the visual class to
    * match, since rebuilding replaces DOM element references.
+   *
+   * C1-Final-Hardening: this is the module's *only* reaction to a
+   * scan/swap, and it is a pure, idempotent re-derivation from
+   * FcGridRegistry — the single source of truth for "what is active
+   * in grid X right now". It never makes its own independent
+   * set/clear decision based on a separately-held pre-swap snapshot
+   * (that authoritative decision belongs solely to
+   * FcSwapLifecycle.reconcileAfterSwap(), which calls this function
+   * explicitly, in a fixed order, after it has already updated the
+   * registry via setActiveCell()/clearActiveCell()). Calling this
+   * function any number of times, in any order relative to
+   * FcSwapLifecycle, always converges to the same end state: it only
+   * ever reads current registry state and re-applies the matching
+   * visual class — it cannot itself introduce a duplicate restore,
+   * flicker, or stale-state regression, because it has no
+   * independent state of its own to race with.
    */
-  function _onGridsScanned(evt) {
+  function reconcileAfterScan(gridIds) {
+    var grids = gridIds || [];
     if (!_activeGridId || !_activeCell) return;
-
-    var grids = (evt && evt.detail && evt.detail.grids) || [];
     if (grids.indexOf(_activeGridId) === -1) return;
 
     var resolved = window.FcGridRegistry.getActiveCell(_activeGridId);
     if (resolved) {
-      _activeCell = resolved;
+      if (_activeCell !== resolved) {
+        _activeCell = resolved;
+      }
       _applyVisual(resolved);
     } else {
       _activeGridId = null;
       _activeCell = null;
     }
+  }
+
+  function _onGridsScanned(evt) {
+    var grids = (evt && evt.detail && evt.detail.grids) || [];
+    reconcileAfterScan(grids);
   }
 
   function _onCellClick(evt) {
@@ -138,7 +160,8 @@
     init: init,
     setActiveCell: setActiveCell,
     clearActiveCell: clearActiveCell,
-    getActiveCell: getActiveCell
+    getActiveCell: getActiveCell,
+    reconcileAfterScan: reconcileAfterScan
   };
 
   init();
