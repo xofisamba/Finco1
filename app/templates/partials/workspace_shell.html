@@ -528,6 +528,17 @@
       </span>
       <span class="sr-only" id="debt-preview-sr">Debt preview status: Idle</span>
     </div>
+    {#
+     C2-PR30: Tax preview row. Backend-only stub — the value is
+     ALWAYS "—" today (the backend always reports
+     preview-unavailable). The tooltip explicitly tells the user this
+     is a future boundary and Run remains authoritative. The label
+     matches the existing five-indicator pattern. #}
+    <div class="runtime-status-indicator tax-preview-indicator" id="tax-preview" role="status" aria-live="polite" aria-label="Tax preview placeholder; not yet computed" aria-busy="false">
+      <span class="runtime-status-indicator__label">Tax preview:</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="tax-preview-value" data-c2pr30-tax-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
+      <span class="sr-only" id="tax-preview-sr">Tax preview status: Idle</span>
+    </div>
     </div>{# /operating-preview-panel #}
 
     <!-- Runtime summary HTMX swap target -->

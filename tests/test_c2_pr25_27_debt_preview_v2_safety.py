@@ -597,11 +597,11 @@ class TestOperatingPreviewStackUnchanged:
         assert body["status"] == "forbidden-project"
 
     def test_response_top_level_keys_unchanged(self):
-        """Top-level keys for a valid payload must remain exactly:
-        ok, status, executed, accepted, affectedGroups, dirtyCells,
-        warnings, message, overview, capex, revenue, opex, ebitda,
-        operating_cash_flow, debt. PR25 must not add/remove/rename
-        any of those."""
+        """Top-level keys for a valid payload must remain exactly the
+        16 keys PR25/26/27 shipped PLUS the new 'tax' top-level key
+        introduced by C2-PR28/29/30 (PreviewContext + Registry +
+        Tax preview stub). PR25 must not have changed any of the
+        other 16 keys."""
         project_code = _create_user_project("top-level-keys")
         resp = client.post(
             "/model/preview",
@@ -616,11 +616,15 @@ class TestOperatingPreviewStackUnchanged:
             cookies=_auth_cookies(),
         )
         body = resp.json()
+        # The 'tax' top-level key was added by C2-PR28/29/30; the
+        # 16 keys PR25/26/27 shipped are preserved unchanged.
         expected_keys = {
             "ok", "status", "executed", "accepted", "affectedGroups",
             "dirtyCells", "warnings", "message", "overview",
             "capex", "revenue", "opex", "ebitda", "operating_cash_flow",
             "debt",
+            # C2-PR28/29/30 additive:
+            "tax",
         }
         assert set(body.keys()) == expected_keys
 
