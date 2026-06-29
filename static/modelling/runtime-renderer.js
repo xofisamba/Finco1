@@ -176,6 +176,12 @@
   // C2-PR16: separate target element id for the Operating Cash Flow
   // preview. NOT authoritative OCF — see module header comment.
   var OCF_PREVIEW_VALUE_ELEMENT_ID = 'operating-cf-preview-value';
+  // C2-PR24: separate target element id for the Debt preview — the
+  // FIRST backend-computed (not frontend-computed) preview value this
+  // module renders. This module still only formats/patches the DOM;
+  // the computation itself happens server-side
+  // (app/services/model_preview.py's compute_debt_preview()).
+  var DEBT_PREVIEW_VALUE_ELEMENT_ID = 'debt-preview-value';
 
   // C2-PR11: the two parent status-region elements (used for aria-busy)
   // and the two visually-hidden screen-reader announcement spans.
@@ -192,6 +198,8 @@
   var EBITDA_SR_ELEMENT_ID = 'ebitda-preview-sr';
   var OCF_REGION_ELEMENT_ID = 'operating-cf-preview';
   var OCF_SR_ELEMENT_ID = 'operating-cf-preview-sr';
+  var DEBT_REGION_ELEMENT_ID = 'debt-preview';
+  var DEBT_SR_ELEMENT_ID = 'debt-preview-sr';
 
   // C2-PR11: the explicit 5-state machine. See
   // docs/C2_PR11_PREVIEW_UX_POLISH.md for the full description of every
@@ -347,6 +355,21 @@
   }
 
   /**
+   * C2-PR24: transitions the Debt preview region's state-machine
+   * bookkeeping ONLY — mirrors the other `_set*State` helpers exactly.
+   * Never writes to `#debt-preview-value`'s `textContent`. The debt
+   * preview VALUE itself is backend-computed
+   * (app/services/model_preview.py's compute_debt_preview()); this
+   * module still only ever renders it, never computes it.
+   */
+  function _setDebtState(state) {
+    _setBookkeeping(
+      DEBT_PREVIEW_VALUE_ELEMENT_ID, DEBT_REGION_ELEMENT_ID, DEBT_SR_ELEMENT_ID,
+      state, 'Debt preview status: '
+    );
+  }
+
+  /**
    * C2-PR11: call right before a preview fetch is issued (i.e. at the
    * very start of a flush that is about to call fetch(POST
    * /model/preview)). Transitions BOTH the overview and CAPEX status
@@ -360,6 +383,7 @@
     _setOpexState(STATE.UPDATING);
     _setEbitdaState(STATE.UPDATING);
     _setOcfState(STATE.UPDATING);
+    _setDebtState(STATE.UPDATING);
   }
 
   /**
@@ -377,6 +401,7 @@
     _setOpexState(STATE.UNAVAILABLE);
     _setEbitdaState(STATE.UNAVAILABLE);
     _setOcfState(STATE.UNAVAILABLE);
+    _setDebtState(STATE.UNAVAILABLE);
   }
 
   /**
@@ -405,6 +430,7 @@
     _setOpexState(STATE.FAILED);
     _setEbitdaState(STATE.FAILED);
     _setOcfState(STATE.FAILED);
+    _setDebtState(STATE.FAILED);
   }
 
   /**
@@ -478,6 +504,24 @@
     var ocf = body.operating_cash_flow;
     if (!ocf || typeof ocf !== 'object') return false;
     var total = ocf.preview;
+    return typeof total === 'number' && isFinite(total);
+  }
+
+  /**
+   * C2-PR24: defensive, non-throwing shape-check for a POST
+   * /model/preview response body's "debt" field — reads
+   * `debt.senior_debt_preview`. Only renderable when `debt.status` is
+   * the success status `"preview-ready"` AND `senior_debt_preview` is
+   * a finite number; the `"preview-unavailable"`/`null` case is
+   * correctly NOT renderable, leaving the placeholder "—" in place,
+   * exactly like every other preview field in this chain.
+   */
+  function _hasRenderableDebtPreview(body) {
+    if (!body || typeof body !== 'object') return false;
+    var debt = body.debt;
+    if (!debt || typeof debt !== 'object') return false;
+    if (debt.status !== 'preview-ready') return false;
+    var total = debt.senior_debt_preview;
     return typeof total === 'number' && isFinite(total);
   }
 
@@ -677,7 +721,31 @@
       }
     }
 
-    if (!overviewRendered && !capexRendered && !revenueRendered && !opexRendered && !ebitdaRendered && !ocfRendered) {
+    // C2-PR24: independent seventh patch — the FIRST backend-computed
+    // preview field. This module performs zero arithmetic here either:
+    // it only formats and patches the DOM with the already-computed
+    // `senior_debt_preview` number the server sent. A
+    // "preview-unavailable"/null debt field is a safe no-op, exactly
+    // like every other preview field above.
+    var debtRendered = false;
+    var debtReason = 'missing-or-malformed-debt';
+
+    if (_hasRenderableDebtPreview(body)) {
+      var debtEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(DEBT_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (debtEl) {
+        debtEl.textContent = _formatTotalPreview(body.debt.senior_debt_preview, body.debt.currency);
+        debtEl.setAttribute('data-c2pr24-debt-preview', 'patched');
+        _setBookkeeping(DEBT_PREVIEW_VALUE_ELEMENT_ID, DEBT_REGION_ELEMENT_ID, DEBT_SR_ELEMENT_ID, STATE.READY, 'Debt preview status: ');
+        debtRendered = true;
+        debtReason = 'ok';
+      } else {
+        debtReason = 'target-element-not-found';
+      }
+    }
+
+    if (!overviewRendered && !capexRendered && !revenueRendered && !opexRendered && !ebitdaRendered && !ocfRendered && !debtRendered) {
       return {
         rendered: false,
         reason: overviewReason,
@@ -685,12 +753,13 @@
         revenueReason: revenueReason,
         opexReason: opexReason,
         ebitdaReason: ebitdaReason,
-        ocfReason: ocfReason
+        ocfReason: ocfReason,
+        debtReason: debtReason
       };
     }
 
     return {
-      rendered: overviewRendered || capexRendered || revenueRendered || opexRendered || ebitdaRendered || ocfRendered,
+      rendered: overviewRendered || capexRendered || revenueRendered || opexRendered || ebitdaRendered || ocfRendered || debtRendered,
       reason: overviewRendered ? 'ok' : overviewReason,
       capexRendered: capexRendered,
       capexReason: capexReason,
@@ -701,7 +770,9 @@
       ebitdaRendered: ebitdaRendered,
       ebitdaReason: ebitdaReason,
       ocfRendered: ocfRendered,
-      ocfReason: ocfReason
+      ocfReason: ocfReason,
+      debtRendered: debtRendered,
+      debtReason: debtReason
     };
   }
 
@@ -719,6 +790,7 @@
     revenuePreviewValueElementId: REVENUE_PREVIEW_VALUE_ELEMENT_ID,
     opexPreviewValueElementId: OPEX_PREVIEW_VALUE_ELEMENT_ID,
     ebitdaPreviewValueElementId: EBITDA_PREVIEW_VALUE_ELEMENT_ID,
-    ocfPreviewValueElementId: OCF_PREVIEW_VALUE_ELEMENT_ID
+    ocfPreviewValueElementId: OCF_PREVIEW_VALUE_ELEMENT_ID,
+    debtPreviewValueElementId: DEBT_PREVIEW_VALUE_ELEMENT_ID
   };
 })();

@@ -307,7 +307,17 @@ class TestNoRegressionForAuthorizedOrNullProject:
         """Point 13 (authorized-project path): response shape for an
         authorized request is byte-for-byte identical to the documented
         C2-PR8 contract — PR9 adds zero new fields to the success
-        response."""
+        response.
+
+        C2-PR24 NOTE: a "debt" field is now unconditionally present in
+        every valid-payload response (the first backend-computed
+        preview field — see docs/C2_PR24_BACKEND_DEBT_PREVIEW_STUB.md).
+        That is a deliberate, later, additive change unrelated to PR9's
+        own claim (which is specifically that *PR9's authorization
+        work* added no new fields), so it is popped before the
+        exact-equality check below rather than re-asserting stale
+        pre-PR24 behaviour.
+        """
         owner_id = f"owner-{uuid.uuid4().hex[:8]}"
         project_code = _make_owned_project(owner_id)
 
@@ -321,6 +331,7 @@ class TestNoRegressionForAuthorizedOrNullProject:
         )
         assert resp.status_code == 200
         body = resp.json()
+        body.pop("debt", None)
         assert body == {
             "ok": True,
             "status": "stubbed",

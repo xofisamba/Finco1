@@ -503,6 +503,25 @@
       <span class="runtime-status-indicator__value badge badge-preview-only" id="operating-cf-preview-value" data-c2pr16-ocf-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
       <span class="sr-only" id="operating-cf-preview-sr">Operating cash flow preview status: Idle</span>
     </div>
+
+    {# C2-PR24: Debt Preview. The FIRST BACKEND-COMPUTED preview field
+       in this panel — unlike the five indicators above (all pure
+       client-side arithmetic, server only validates/echoes), this
+       value is computed server-side in
+       app/services/model_preview.py's compute_debt_preview() from the
+       SAVED project's total_capex_keur/gearing_pct (never from any
+       unsaved frontend payload field). Deliberately NOT real debt
+       sculpting/DSCR sizing/amortization/an interest schedule — a
+       single placeholder multiplication
+       (saved_capex_total * saved_gearing_pct / 100). This element
+       starts blank ("—") and stays blank whenever the saved inputs are
+       unavailable/invalid — never fabricated. See
+       docs/C2_PR24_BACKEND_DEBT_PREVIEW_STUB.md. #}
+    <div class="runtime-status-indicator debt-preview-indicator" id="debt-preview" role="status" aria-live="polite" aria-label="Unsaved debt preview computed from saved inputs only, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">Debt preview (saved inputs only):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="debt-preview-value" data-c2pr24-debt-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="debt-preview-sr">Debt preview status: Idle</span>
+    </div>
     </div>{# /operating-preview-panel #}
 
     <!-- Runtime summary HTMX swap target -->

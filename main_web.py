@@ -111,6 +111,7 @@ from app.services.scenario_state_service import build_workspace_state_metadata, 
 from app.services.compare_service import CompareRouteDeps, execute_compare_route
 from app.services.validation_service import ValidateRouteDeps, execute_validate_route
 from app.services.download_service import DownloadRouteDeps, execute_post_download_route, execute_get_download_route
+from app.services.model_preview import validate_preview_payload as _model_preview_validate_payload, build_preview_response as _model_preview_build_response
 
 # -- Asset versioning ---------------------------------------------------------
 # Derived from git commit SHA so every deploy gets a unique cache-busting token.
@@ -2776,156 +2777,27 @@ async def run(request: Request):
     return HTMLResponse(content=body_str, status_code=rendered.status_code)
 
 
-def _c2_pr7_sorted_unique_strings(value):
-    """Defensively coerce ``value`` into a deduplicated, sorted list of
-    strings. Non-list input, or a list containing non-string entries,
-    degrades to an empty list rather than raising. Used only to echo
-    back the preview-payload's own ``dirtyCells``/``affectedGroups``
-    arrays — never to invent new entries.
-    """
-    if not isinstance(value, list):
-        return []
-    seen = set()
-    out = []
-    for item in value:
-        if isinstance(item, str) and item not in seen:
-            seen.add(item)
-            out.append(item)
-    out.sort()
-    return out
-
-
-def _c2_pr7_validate_preview_payload(body):
-    """Defensive, non-throwing shape-check mirroring
-    ``FcRecalcPreview.validatePreviewPayload`` in
-    ``static/modelling/recalc-preview.js``. Returns ``(ok, errors)``
-    where ``errors`` is a list of human-readable validation problems
-    (empty when ``ok`` is True). Tolerates missing/extra fields by
-    treating any deviation from the expected shape as invalid rather
-    than raising.
-    """
-    errors = []
-    if not isinstance(body, dict):
-        return False, ["request body must be a JSON object"]
-
-    if not isinstance(body.get("valid"), bool):
-        errors.append("'valid' must be a boolean")
-
-    dirty_cells = body.get("dirtyCells")
-    if not isinstance(dirty_cells, list) or not all(isinstance(v, str) for v in dirty_cells):
-        errors.append("'dirtyCells' must be an array of strings")
-
-    affected_groups = body.get("affectedGroups")
-    if not isinstance(affected_groups, list) or not all(isinstance(v, str) for v in affected_groups):
-        errors.append("'affectedGroups' must be an array of strings")
-
-    if not isinstance(body.get("projectDirty"), bool):
-        errors.append("'projectDirty' must be a boolean")
-
-    if not isinstance(body.get("reason"), str):
-        errors.append("'reason' must be a string")
-
-    execution_status = body.get("executionStatus")
-    if execution_status is not None and not isinstance(execution_status, str):
-        errors.append("'executionStatus' must be a string or null")
-
-    project = body.get("project")
-    if project is not None and not isinstance(project, str):
-        errors.append("'project' must be a string or null")
-
-    # C2-PR10: capexTotalPreview is additive/optional. If present, it
-    # must be null or a finite real number — never a string, never
-    # NaN/Infinity. This field carries the CLIENT-computed sum of the
-    # live (possibly-unsaved) CAPEX grid cell values; the server only
-    # echoes it back (rounded) under the new "capex" response field,
-    # it never recomputes or second-guesses it against persistence.
-    if "capexTotalPreview" in body:
-        capex_total_preview = body.get("capexTotalPreview")
-        if capex_total_preview is not None and (
-            isinstance(capex_total_preview, bool)
-            or not isinstance(capex_total_preview, (int, float))
-            or capex_total_preview != capex_total_preview  # NaN check
-            or capex_total_preview in (float("inf"), float("-inf"))
-        ):
-            errors.append("'capexTotalPreview' must be a finite number or null")
-
-    # C2-PR13: revenueTotalPreview is additive/optional, mirroring
-    # capexTotalPreview's validation exactly. It carries the
-    # CLIENT-computed sum of the live (possibly-unsaved) Revenue grid
-    # editable cell values; the server only echoes it back (rounded)
-    # under the new "revenue" response field, it never recomputes or
-    # second-guesses it against persistence, and never calls any
-    # financial engine.
-    if "revenueTotalPreview" in body:
-        revenue_total_preview = body.get("revenueTotalPreview")
-        if revenue_total_preview is not None and (
-            isinstance(revenue_total_preview, bool)
-            or not isinstance(revenue_total_preview, (int, float))
-            or revenue_total_preview != revenue_total_preview  # NaN check
-            or revenue_total_preview in (float("inf"), float("-inf"))
-        ):
-            errors.append("'revenueTotalPreview' must be a finite number or null")
-
-    # C2-PR14: opexTotalPreview is additive/optional, mirroring
-    # capexTotalPreview/revenueTotalPreview's validation exactly. It
-    # carries the CLIENT-computed sum of the live (possibly-unsaved)
-    # OPEX grid editable "Budget" cell values; the server only echoes
-    # it back (rounded) under the new "opex" response field, it never
-    # recomputes or second-guesses it against persistence, and never
-    # calls any financial engine.
-    if "opexTotalPreview" in body:
-        opex_total_preview = body.get("opexTotalPreview")
-        if opex_total_preview is not None and (
-            isinstance(opex_total_preview, bool)
-            or not isinstance(opex_total_preview, (int, float))
-            or opex_total_preview != opex_total_preview  # NaN check
-            or opex_total_preview in (float("inf"), float("-inf"))
-        ):
-            errors.append("'opexTotalPreview' must be a finite number or null")
-
-    # C2-PR15: ebitdaPreview is additive/optional. It carries the
-    # CLIENT-computed EBITDA = revenue preview - opex preview (pure
-    # arithmetic on numbers already computed client-side); the server
-    # only validates finiteness and echoes it back, rounded, under the
-    # new "ebitda" response field. Never recomputed/second-guessed
-    # server-side, never engine-derived.
-    if "ebitdaPreview" in body:
-        ebitda_preview = body.get("ebitdaPreview")
-        if ebitda_preview is not None and (
-            isinstance(ebitda_preview, bool)
-            or not isinstance(ebitda_preview, (int, float))
-            or ebitda_preview != ebitda_preview  # NaN check
-            or ebitda_preview in (float("inf"), float("-inf"))
-        ):
-            errors.append("'ebitdaPreview' must be a finite number or null")
-
-    # C2-PR16: operatingCashFlowPreview is additive/optional. It carries
-    # the CLIENT-computed Operating Cash Flow preview, which currently
-    # equals ebitdaPreview verbatim (NOT authoritative OCF — see
-    # docs/C2_PR16_OPERATING_CF_PREVIEW.md). The server only validates
-    # finiteness and echoes it back, rounded, under the new
-    # "operating_cash_flow" response field.
-    if "operatingCashFlowPreview" in body:
-        ocf_preview = body.get("operatingCashFlowPreview")
-        if ocf_preview is not None and (
-            isinstance(ocf_preview, bool)
-            or not isinstance(ocf_preview, (int, float))
-            or ocf_preview != ocf_preview  # NaN check
-            or ocf_preview in (float("inf"), float("-inf"))
-        ):
-            errors.append("'operatingCashFlowPreview' must be a finite number or null")
-
-    return (len(errors) == 0), errors
-
-
 @app.post("/model/preview")
 async def model_preview(request: Request):
     """C2-PR7: backend preview endpoint CONTRACT STUB. Requires auth.
 
+    C2-PR23: this route is now a thin adapter over
+    app.services.model_preview's validate_preview_payload() /
+    build_preview_response() — the validation/computation/echo logic
+    itself moved there (see docs/C2_PR23_PREVIEW_SERVICE_BOUNDARY.md
+    for the characterization-test-then-refactor methodology used to
+    prove zero behaviour change). The route itself still owns exactly:
+      (a) auth check
+      (b) project authorization check (get_project_by_code)
+      (c) calling into the service
+      (d) returning the JSON response
+
     Accepts the C2-PR6 client-side preview-payload shape (see
     ``static/modelling/recalc-preview.js``'s ``buildPreviewPayload``/
     ``validatePreviewPayload``) and returns a deterministic no-op
-    response. This endpoint is, deliberately, a pure contract stub:
+    response for the "operating preview" fields. C2-PR24 adds the
+    first backend-computed field ("debt") — see
+    docs/C2_PR24_BACKEND_DEBT_PREVIEW_STUB.md.
 
       - It never calls the financial/calculation engine
         (``app/waterfall_core.py``, ``domain/*``, or any other
@@ -2950,8 +2822,10 @@ async def model_preview(request: Request):
     never any project data belonging to another user. ``project: null``
     behaves exactly as before this PR (no regression).
 
-    See docs/C2_PR7_BACKEND_PREVIEW_ENDPOINT_CONTRACT_STUB_NOTE.md and
-    docs/C2_PR9_RUNTIME_REQUEST_HARDENING.md for the full route-choice
+    See docs/C2_PR7_BACKEND_PREVIEW_ENDPOINT_CONTRACT_STUB_NOTE.md,
+    docs/C2_PR9_RUNTIME_REQUEST_HARDENING.md,
+    docs/C2_PR23_PREVIEW_SERVICE_BOUNDARY.md, and
+    docs/C2_PR24_BACKEND_DEBT_PREVIEW_STUB.md for the full route-choice
     rationale, request/response schema, and no-side-effect/
     authorization verification approach.
     """
@@ -2964,7 +2838,7 @@ async def model_preview(request: Request):
     except Exception:
         body = None
 
-    ok, errors = _c2_pr7_validate_preview_payload(body)
+    ok, errors = _model_preview_validate_payload(body)
     if not ok:
         # C2-PR8: deliberately no "overview" key on the invalid-payload
         # branch (rather than adding one with updated: false) — an
@@ -2993,6 +2867,7 @@ async def model_preview(request: Request):
     # here, by design, so this never leaks whether a project_code exists
     # for someone else.
     project_code = body.get("project")
+    project_record = None
     if project_code is not None:
         project_record = get_project_by_code(user.user_id, project_code)
         if project_record is None:
@@ -3007,121 +2882,10 @@ async def model_preview(request: Request):
                 status_code=200,
             )
 
-    dirty_cells = _c2_pr7_sorted_unique_strings(body.get("dirtyCells"))
-    affected_groups = _c2_pr7_sorted_unique_strings(body.get("affectedGroups"))
-
-    # C2-PR8: additive "overview" field only. This remains a pure,
-    # deterministic stub — "runtime_status"/"updated" are fixed,
-    # non-financial strings/booleans describing that the contract stub
-    # was reached, NOT that any real recalculation occurred. No IRR,
-    # DSCR, revenue, tax, or waterfall computation is performed or
-    # referenced anywhere in this route. See
-    # docs/C2_PR8_FIRST_RUNTIME_SLICE.md.
-    response_body = {
-        "ok": True,
-        "status": "stubbed",
-        "executed": False,
-        "accepted": True,
-        "affectedGroups": affected_groups,
-        "dirtyCells": dirty_cells,
-        "warnings": [],
-        "message": "Preview endpoint contract accepted payload; recalculation is not implemented yet.",
-        "overview": {
-            "runtime_status": "Preview executed",
-            "updated": True,
-        },
-    }
-
-    # C2-PR10: additive "capex" field. capexTotalPreview is computed
-    # CLIENT-SIDE (static/modelling/recalc-preview.js's
-    # _computeCapexTotalFromDom) from the live, possibly-unsaved CAPEX
-    # grid cell values already in the browser — this route does NOT
-    # recompute it, does NOT read persistence/the database, and does
-    # NOT call app/waterfall_core.py, domain/*, app/input_adapter.py,
-    # or app/project_factories.py. It only validates the client's
-    # number is finite (see _c2_pr7_validate_preview_payload above) and
-    # echoes it back, rounded to 2dp, under a clearly-labelled,
-    # explicitly-a-preview response field. Omitted entirely (no "capex"
-    # key at all) when the client didn't include one (e.g. a flush that
-    # didn't touch the CAPEX grid) — never fabricated as 0.0. See
-    # docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
-    if "capexTotalPreview" in body and body.get("capexTotalPreview") is not None:
-        response_body["capex"] = {
-            "capex_total_preview": round(float(body["capexTotalPreview"]), 2),
-            "currency": "EUR",
-        }
-
-    # C2-PR13: additive "revenue" field, mirroring the "capex" field
-    # above exactly. revenueTotalPreview is computed CLIENT-SIDE
-    # (static/modelling/recalc-preview.js's _computeRevenueTotalFromDom)
-    # from the live, possibly-unsaved Revenue grid editable cell values
-    # already in the browser — this route does NOT recompute it, does
-    # NOT read persistence/the database, and does NOT call
-    # app/waterfall_core.py, domain/*, app/input_adapter.py, or
-    # app/project_factories.py. It only validates the client's number is
-    # finite (see _c2_pr7_validate_preview_payload above) and echoes it
-    # back, rounded to 2dp, under a clearly-labelled, explicitly-a-
-    # preview response field. Omitted entirely (no "revenue" key at
-    # all) when the client didn't include one (e.g. a flush that didn't
-    # touch the Revenue grid) — never fabricated as 0.0. See
-    # docs/C2_PR13_REVENUE_PREVIEW.md.
-    if "revenueTotalPreview" in body and body.get("revenueTotalPreview") is not None:
-        response_body["revenue"] = {
-            "preview": round(float(body["revenueTotalPreview"]), 2),
-            "currency": "EUR",
-        }
-
-    # C2-PR14: additive "opex" field, mirroring "capex"/"revenue"
-    # exactly. opexTotalPreview is computed CLIENT-SIDE
-    # (static/modelling/recalc-preview.js's _computeOpexTotalFromDom)
-    # from the live, possibly-unsaved OPEX grid editable "Budget" cell
-    # values already in the browser — this route does NOT recompute it,
-    # does NOT read persistence/the database, and does NOT call
-    # app/waterfall_core.py, domain/*, app/input_adapter.py, or
-    # app/project_factories.py. Omitted entirely when the client didn't
-    # include one — never fabricated as 0.0. See
-    # docs/C2_PR14_OPEX_PREVIEW.md.
-    if "opexTotalPreview" in body and body.get("opexTotalPreview") is not None:
-        response_body["opex"] = {
-            "preview": round(float(body["opexTotalPreview"]), 2),
-            "currency": "EUR",
-        }
-
-    # C2-PR15: additive "ebitda" field. ebitdaPreview is computed
-    # CLIENT-SIDE (static/modelling/recalc-preview.js's
-    # _computeEbitdaFromPreviews) as pure arithmetic — revenue preview
-    # minus opex preview — on the two numbers already computed
-    # client-side in the same flush. This route performs NO arithmetic
-    # of its own here either: it only validates finiteness and echoes
-    # the client's already-computed number back, rounded to 2dp. Never
-    # calls any financial engine. Omitted entirely when the client
-    # didn't include one (e.g. because either revenue or opex preview
-    # was null/unavailable that flush) — never fabricated. See
-    # docs/C2_PR15_EBITDA_PREVIEW.md.
-    if "ebitdaPreview" in body and body.get("ebitdaPreview") is not None:
-        response_body["ebitda"] = {
-            "preview": round(float(body["ebitdaPreview"]), 2),
-            "currency": "EUR",
-        }
-
-    # C2-PR16: additive "operating_cash_flow" field. operatingCashFlowPreview
-    # is computed CLIENT-SIDE (static/modelling/recalc-preview.js's
-    # _computeOcfFromEbitda) as a direct passthrough of ebitdaPreview —
-    # *** THIS IS NOT AUTHORITATIVE OPERATING CASH FLOW ***. No debt
-    # service, tax, depreciation/amortization, working capital, or
-    # financing adjustment of any kind is applied anywhere in this
-    # chain. This field/route exists solely to prove the preview
-    # pipeline can chain a preview of a preview of previews. The server
-    # performs no calculation here either — it only validates finiteness
-    # and echoes the client's number back, rounded to 2dp. See
-    # docs/C2_PR16_OPERATING_CF_PREVIEW.md.
-    if "operatingCashFlowPreview" in body and body.get("operatingCashFlowPreview") is not None:
-        response_body["operating_cash_flow"] = {
-            "preview": round(float(body["operatingCashFlowPreview"]), 2),
-            "currency": "EUR",
-        }
-
+    response_body = _model_preview_build_response(body, project_record)
     return JSONResponse(response_body, status_code=200)
+
+
 
 
 @app.post("/compare")
