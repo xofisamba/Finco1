@@ -23,6 +23,19 @@
 </div>
 {% endif %}
 
+{# ── C2-PR18: preview-only governance note ──────────────────────────────────────
+   Plain-language note: clarifies that OPEX line edits only update the
+   live preview and are not saved yet. Appears ONLY on this sheet (OPEX
+   detail), not on CAPEX/Revenue/Overview. See
+   docs/C2_PR18_OPEX_PREVIEW_ONLY_GOVERNANCE.md. #}
+<div class="opex-preview-only-note" id="opex-preview-only-note" role="note">
+  <span class="opex-preview-only-note__icon" aria-hidden="true">ℹ️</span>
+  <span class="opex-preview-only-note__text">
+    OPEX line edits are preview-only for now. They update the live preview,
+    but are not saved yet. Run uses the saved model inputs.
+  </span>
+</div>
+
 {# ── Summary strip ───────────────────────────────────────────────────────────── #}
 <div class="opex-summary-strip" id="opex-summary-strip">
   <div class="opex-summary-card">
@@ -377,6 +390,22 @@
 </div>
 
 <style>
+  /* ── Preview-only governance note ──────────────────────────────────────── */
+  .opex-preview-only-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    background: #fff8e6;
+    border: 1px solid #f0d999;
+    border-radius: var(--radius-md);
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.82rem;
+    color: #6b5100;
+  }
+  .opex-preview-only-note__icon { flex: 0 0 auto; }
+  .opex-preview-only-note__text { flex: 1 1 auto; line-height: 1.4; }
+
   /* ── Summary strip ─────────────────────────────────────────────────────── */
   .opex-summary-strip {
     display: flex;
