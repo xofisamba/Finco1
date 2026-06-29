@@ -419,6 +419,27 @@
       <span class="sr-only" id="capex-total-preview-sr">CAPEX preview status: Idle</span>
     </div>
 
+    {# C2-PR13: Revenue Total Preview. Follows the C2-PR10 CAPEX total
+       preview pattern exactly — a small, always-rendered,
+       explicitly-a-PREVIEW element, patched client-side
+       (static/modelling/runtime-renderer.js) after a Revenue-grid
+       edit's POST /model/preview round trip resolves. Placed next to
+       (not inside/replacing) the C2-PR8/PR10 indicators above, and is
+       visually/textually distinct from any saved/Run-derived Revenue
+       figure shown on the Revenue sheet itself (e.g. "Est. Total Y1
+       Revenue", which always reflects SAVED data). This element starts
+       blank ("—") and is only ever populated from a live, unsaved
+       in-browser sum of the Revenue grid's editable line-item cells —
+       never from persistence, never from a real financial engine call.
+       Reuses the same `badge`/`badge-preview-only` classes as the
+       CAPEX preview — no new CSS/design invented. See
+       docs/C2_PR13_REVENUE_PREVIEW.md. #}
+    <div class="runtime-status-indicator revenue-total-preview-indicator" id="revenue-total-preview" role="status" aria-live="polite" aria-label="Unsaved Revenue total preview, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">Revenue total preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="revenue-total-preview-value" data-c2pr13-revenue-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="revenue-total-preview-sr">Revenue preview status: Idle</span>
+    </div>
+
     <!-- Runtime summary HTMX swap target -->
     <div id="model-output-area"></div>
 

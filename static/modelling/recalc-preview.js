@@ -21,6 +21,18 @@
  * FcGridRegistry/FcCellIO rather than sent to the server to be
  * summed there).
  *
+ * C2-PR13: adds a second, independent additive computation following
+ * the EXACT same pattern — a Revenue total PREVIEW (a plain sum of the
+ * live, possibly-unsaved Revenue grid editable cell values currently
+ * in the DOM). Revenue grid cells use `data-fc-kind="text"` (not
+ * "amount" like CAPEX) per the existing markup in
+ * app/templates/partials/sheet_revenue.html, so
+ * `_computeRevenueTotalFromDom()` matches on `cell.editable === true`
+ * and `cell.kind === 'text'` instead — the same "editable, plain
+ * line-item" selection rule, just using Revenue's own kind convention.
+ * It never calls any financial engine code either. See
+ * docs/C2_PR13_REVENUE_PREVIEW.md.
+ *
  * Reference: docs/C2_PR1_IMPLEMENTATION_NOTE.md,
  *            docs/C2_PR2_DIRTY_STATE_UNIFICATION_NOTE.md,
  *            docs/C2_PR3_RECALC_SCHEDULER_FOUNDATION_NOTE.md,
@@ -219,6 +231,60 @@
   }
 
   /**
+   * C2-PR13: computes a deterministic, client-only Revenue total
+   * PREVIEW — a plain sum of every editable Revenue line-item cell's
+   * CURRENT (live, possibly-unsaved) DOM value. Exactly mirrors
+   * `_computeCapexTotalFromDom()` above (see its docstring for the
+   * full rationale, which applies identically here), with the one
+   * necessary difference: Revenue editable cells are marked
+   * `data-fc-kind="text"` (not "amount") in
+   * app/templates/partials/sheet_revenue.html, so this function
+   * matches on `cell.editable === true && cell.kind === 'text'`
+   * instead. Read-only subtotal/total rows in the Revenue grid (Tariff
+   * Y1, Y1 PPA Revenue, Y1 CO2 Revenue, Est. Total Y1 Revenue) are all
+   * `editable === false` and are therefore deliberately excluded —
+   * they are DERIVED values, not independent line items, and including
+   * them would double-count exactly as for CAPEX.
+   *
+   * Never throws. Returns null (not 0, not a fabricated number) when
+   * FcGridRegistry/FcCellIO are unavailable, or when the "revenue"
+   * grid is not currently registered/rendered (e.g. a different tab is
+   * active, or a protected/baseline project with no editable revenue
+   * cells at all) — "no total available" must never be silently
+   * rendered as a real zero total.
+   */
+  function _computeRevenueTotalFromDom() {
+    try {
+      if (!window.FcGridRegistry || typeof window.FcGridRegistry.getGrid !== 'function') return null;
+      if (!window.FcCellIO || typeof window.FcCellIO.readValue !== 'function') return null;
+
+      var grid = window.FcGridRegistry.getGrid('revenue');
+      if (!grid || !grid.rows) return null;
+
+      var total = 0;
+      var counted = 0;
+      grid.rows.forEach(function (row) {
+        (row || []).forEach(function (cell) {
+          if (!cell || !cell.editable || cell.kind !== 'text') return;
+          var raw = window.FcCellIO.readValue(cell);
+          var num = parseFloat(raw);
+          if (isNaN(num)) return;
+          total += num;
+          counted += 1;
+        });
+      });
+
+      if (counted === 0) return null;
+      // Round to 2dp to avoid noisy floating-point sums leaking into
+      // the rendered preview — this is presentation rounding only,
+      // not a recalculation.
+      return Math.round(total * 100) / 100;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Reads the "project" query-string parameter from the current page
    * URL, defensively. Returns null (never a fabricated placeholder)
    * if window/window.location/URLSearchParams is unavailable, or if
@@ -263,6 +329,12 @@
     if (payload.hasOwnProperty('capexTotalPreview')) {
       var ctp = payload.capexTotalPreview;
       if (ctp !== null && (typeof ctp !== 'number' || !isFinite(ctp))) return false;
+    }
+    // C2-PR13: revenueTotalPreview is additive/optional, mirroring
+    // capexTotalPreview exactly — null or a finite number only.
+    if (payload.hasOwnProperty('revenueTotalPreview')) {
+      var rtp = payload.revenueTotalPreview;
+      if (rtp !== null && (typeof rtp !== 'number' || !isFinite(rtp))) return false;
     }
     return true;
   }
@@ -326,6 +398,15 @@
     });
     var capexTotalPreview = touchesCapex ? _computeCapexTotalFromDom() : null;
 
+    // C2-PR13: additive only, mirrors capexTotalPreview's "only
+    // recompute when this flush's dirty set actually touched the
+    // relevant grid" scoping exactly, using "revenue!..." addresses
+    // instead of "capex!...".
+    var touchesRevenue = dirtyCells.some(function (addr) {
+      return typeof addr === 'string' && addr.indexOf('revenue!') === 0;
+    });
+    var revenueTotalPreview = touchesRevenue ? _computeRevenueTotalFromDom() : null;
+
     var payload = {
       valid: valid,
       dirtyCells: dirtyCells,
@@ -334,7 +415,8 @@
       reason: reason,
       executionStatus: executionStatus,
       project: _readProjectFromLocation(),
-      capexTotalPreview: capexTotalPreview
+      capexTotalPreview: capexTotalPreview,
+      revenueTotalPreview: revenueTotalPreview
     };
 
     _lastPreviewPayload = payload;
@@ -390,6 +472,9 @@
     previewEndpoint: PREVIEW_ENDPOINT,
     // C2-PR10: exposed for direct testing of the CAPEX total preview
     // sum independent of a full snapshot/execution flow.
-    computeCapexTotalFromDom: _computeCapexTotalFromDom
+    computeCapexTotalFromDom: _computeCapexTotalFromDom,
+    // C2-PR13: exposed for direct testing of the Revenue total preview
+    // sum independent of a full snapshot/execution flow.
+    computeRevenueTotalFromDom: _computeRevenueTotalFromDom
   };
 })();
