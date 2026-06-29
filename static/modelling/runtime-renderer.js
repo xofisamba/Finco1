@@ -72,6 +72,58 @@
  * field (the two are rendered independently). See
  * docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
  *
+ * C2-PR11 (Runtime Preview UX Polish): the previous binary Idle/
+ * "Preview executed" status text is replaced with an explicit 5-state
+ * machine — Idle, "Preview updating…", "Preview ready", "Preview
+ * unavailable", "Preview failed" — driven by THREE new, additive,
+ * non-throwing entry points this module exposes for the request
+ * lifecycle's caller (static/modelling/live-model.js) to call at the
+ * appropriate moment:
+ *
+ *   - setUpdating()    — call right before a preview fetch is issued.
+ *   - setUnavailable() — call when there is nothing to preview yet
+ *                        (e.g. a flush produced no previewPayload, no
+ *                        dirty cells, or fetch/FcRecalcPreview isn't
+ *                        available) instead of issuing a fetch at all.
+ *   - setFailed(seq)   — call from the fetch's .catch()/non-2xx branch.
+ *
+ * `render(body)` itself becomes the "success" transition (-> "Preview
+ * ready"), and is UNCHANGED in its own validation/patch logic — it
+ * still patches `#overview-runtime-status-value`'s text to whatever
+ * `body.overview.runtime_status` says (still just a status string,
+ * still never a financial value) and `#capex-total-preview-value`'s
+ * text/badge class to the formatted CAPEX sum, independently, exactly
+ * as before. C2-PR11 only adds the explicit state machine bookkeeping
+ * (the `data-c2pr11-runtime-state` attribute, the `aria-busy`
+ * attribute on the two parent `.runtime-status-indicator` elements,
+ * and the `#…-sr` visually-hidden announcement spans) around the
+ * existing patches — it does not change what triggers a render or what
+ * value gets rendered on success.
+ *
+ * CRITICAL invariant carried over from C2-PR9's staleness guard,
+ * restated here because it is this PR's most safety-critical
+ * correctness rule: a `setFailed()` call (or any other non-success
+ * state transition) must NEVER blank, reset, or otherwise touch the
+ * last successfully-rendered VALUE text of either
+ * `#overview-runtime-status-value` or `#capex-total-preview-value` —
+ * it only ever changes the STATE label/attributes layered on top of
+ * whatever value is already displayed. Only a genuinely newer
+ * successful `render()` call is ever allowed to replace a displayed
+ * value. `setFailed()`/`setUnavailable()`/`setUpdating()` are pure
+ * state-label transitions; they never write to either `__value`
+ * element's `textContent` at all — they only touch
+ * `data-c2pr11-runtime-state`/`aria-busy`/the `#…-sr` announcement
+ * text. The caller (`live-model.js`) is responsible for the existing
+ * C2-PR9 sequence-token check that already gates whether a given
+ * response is even allowed to reach `render()`/`setFailed()` at all
+ * for a given request; this module does not re-implement or weaken
+ * that guard — it is a pure consumer of "the caller has already
+ * decided this is the response for the newest request."
+ *
+ * See docs/C2_PR11_PREVIEW_UX_POLISH.md for the full state machine
+ * (all 5 states, every valid transition, and exactly what triggers
+ * each).
+ *
  * This module does NOT:
  *   - make any network/AJAX/htmx call of any kind
  *   - evaluate any formula or call app/waterfall_core.py, domain/*,
@@ -91,8 +143,161 @@
   // C2-PR10: separate target element id for the CAPEX total preview.
   var CAPEX_PREVIEW_VALUE_ELEMENT_ID = 'capex-total-preview-value';
 
+  // C2-PR11: the two parent status-region elements (used for aria-busy)
+  // and the two visually-hidden screen-reader announcement spans.
+  var OVERVIEW_REGION_ELEMENT_ID = 'overview-runtime-status';
+  var OVERVIEW_SR_ELEMENT_ID = 'overview-runtime-status-sr';
+  var CAPEX_REGION_ELEMENT_ID = 'capex-total-preview';
+  var CAPEX_SR_ELEMENT_ID = 'capex-total-preview-sr';
+
+  // C2-PR11: the explicit 5-state machine. See
+  // docs/C2_PR11_PREVIEW_UX_POLISH.md for the full description of every
+  // valid transition between these states.
+  var STATE = {
+    IDLE: 'idle',
+    UPDATING: 'updating',
+    READY: 'ready',
+    UNAVAILABLE: 'unavailable',
+    FAILED: 'failed'
+  };
+
+  var STATE_LABEL = {
+    idle: 'Idle',
+    updating: 'Preview updating…',
+    ready: 'Preview ready',
+    unavailable: 'Preview unavailable',
+    failed: 'Preview failed'
+  };
+
   function _isNonEmptyString(v) {
     return typeof v === 'string' && v.length > 0;
+  }
+
+  function _getEl(id) {
+    return (typeof document !== 'undefined' && document.getElementById)
+      ? document.getElementById(id)
+      : null;
+  }
+
+  /**
+   * C2-PR11: shared bookkeeping helper for BOTH status regions —
+   * always sets `data-c2pr11-runtime-state` on the value element,
+   * `aria-busy` on the parent region element, and the visually-hidden
+   * `#…-sr` announcement span's text. Never throws; a missing element
+   * for any of the three ids involved is a safe partial no-op.
+   *
+   * Does NOT touch `textContent` itself — callers decide that
+   * separately (see `_setOverviewState`/`_setCapexState` below), since
+   * the two regions have different value-preservation rules: the
+   * Overview status element's "value" IS the state label itself (its
+   * one and only content is a plain runtime status string — C2-PR8's
+   * own design choice, unchanged here), so it is always safe and
+   * correct to update its displayed text on every transition. The
+   * CAPEX preview element's value is a real computed number that must
+   * NEVER be touched by a non-success transition — only `render()`'s
+   * own value-patching code ever writes that element's text.
+   */
+  function _setBookkeeping(valueElementId, regionElementId, srElementId, state, srPrefix) {
+    var label = STATE_LABEL[state] || STATE_LABEL[STATE.IDLE];
+    var valueEl = _getEl(valueElementId);
+    if (valueEl) {
+      valueEl.setAttribute('data-c2pr11-runtime-state', state);
+    }
+    var regionEl = _getEl(regionElementId);
+    if (regionEl) {
+      regionEl.setAttribute('aria-busy', state === STATE.UPDATING ? 'true' : 'false');
+    }
+    var srEl = _getEl(srElementId);
+    if (srEl) {
+      srEl.textContent = srPrefix + label;
+    }
+    return { state: state, label: label, valueEl: valueEl };
+  }
+
+  /**
+   * C2-PR11: transitions the Overview runtime-status region to `state`.
+   * Unlike the CAPEX region, this element's displayed text IS the
+   * state label (it has never shown anything but a plain status string
+   * since C2-PR8), so every transition safely updates
+   * `#overview-runtime-status-value`'s `textContent` to the new
+   * label — there is no separate "value" to preserve here distinct
+   * from the status itself.
+   */
+  function _setOverviewState(state) {
+    var result = _setBookkeeping(
+      STATUS_VALUE_ELEMENT_ID, OVERVIEW_REGION_ELEMENT_ID, OVERVIEW_SR_ELEMENT_ID,
+      state, 'Runtime preview status: '
+    );
+    if (result.valueEl) {
+      result.valueEl.textContent = result.label;
+    }
+  }
+
+  /**
+   * C2-PR11: transitions the CAPEX preview region's state-machine
+   * bookkeeping ONLY — CRITICALLY, this never writes to
+   * `#capex-total-preview-value`'s `textContent`. That element's text
+   * is a real computed number; only `render()`'s own existing
+   * value-patching code (the success edge) is ever allowed to change
+   * it. A failed/unavailable/updating transition leaves whatever
+   * number (or the initial "—" placeholder) was already displayed
+   * completely untouched — only `data-c2pr11-runtime-state`,
+   * `aria-busy`, and the `#capex-total-preview-sr` announcement change.
+   */
+  function _setCapexState(state) {
+    _setBookkeeping(
+      CAPEX_PREVIEW_VALUE_ELEMENT_ID, CAPEX_REGION_ELEMENT_ID, CAPEX_SR_ELEMENT_ID,
+      state, 'CAPEX preview status: '
+    );
+  }
+
+  /**
+   * C2-PR11: call right before a preview fetch is issued (i.e. at the
+   * very start of a flush that is about to call fetch(POST
+   * /model/preview)). Transitions BOTH the overview and CAPEX status
+   * regions to "Preview updating…" / aria-busy="true". Never throws.
+   * Never touches `#capex-total-preview-value`'s displayed text.
+   */
+  function setUpdating() {
+    _setOverviewState(STATE.UPDATING);
+    _setCapexState(STATE.UPDATING);
+  }
+
+  /**
+   * C2-PR11: call when the pipeline determines there is nothing to
+   * preview yet for this flush (no previewPayload was built, no dirty
+   * cells, FcRecalcPreview/fetch unavailable, etc.) — i.e. instead of
+   * ever issuing a fetch at all. Transitions to "Preview unavailable".
+   * Never throws. Never touches `#capex-total-preview-value`'s
+   * displayed text.
+   */
+  function setUnavailable() {
+    _setOverviewState(STATE.UNAVAILABLE);
+    _setCapexState(STATE.UNAVAILABLE);
+  }
+
+  /**
+   * C2-PR11: call from the fetch's failure path (network error, non-2xx
+   * status, or a JSON parse failure) for the response belonging to the
+   * NEWEST issued request (the caller's existing C2-PR9 sequence-token
+   * check is what decides this — this function does not re-check
+   * staleness itself, it trusts its caller). Transitions to "Preview
+   * failed".
+   *
+   * CRITICAL: this NEVER blanks, resets, or otherwise alters the
+   * previously-rendered CAPEX preview VALUE text — only its state
+   * label/aria-busy/sr-announcement change. The Overview status
+   * element's text DOES change to "Preview failed" (that element's
+   * text has always been a pure status string with no separate "value"
+   * to preserve — see `_setOverviewState`). A user who has a valid
+   * CAPEX preview number on screen and then experiences one failed
+   * request continues to see that exact number, with only the Overview
+   * status text and the CAPEX region's state attributes changing.
+   * Never throws.
+   */
+  function setFailed() {
+    _setOverviewState(STATE.FAILED);
+    _setCapexState(STATE.FAILED);
   }
 
   /**
@@ -174,6 +379,15 @@
       if (statusEl) {
         statusEl.textContent = body.overview.runtime_status;
         statusEl.setAttribute('data-c2pr8-runtime-status', 'patched');
+        // C2-PR11: a successful render is the ONLY transition into
+        // "Preview ready" — the success edge of the state machine.
+        // Uses the shared `_setBookkeeping` helper directly (NOT
+        // `_setOverviewState`, which would overwrite the real
+        // `runtime_status` text just written above with the generic
+        // "Preview ready" label) so only the state-machine bookkeeping
+        // (data-c2pr11-runtime-state/aria-busy/sr text) changes here,
+        // never the just-written value text.
+        _setBookkeeping(STATUS_VALUE_ELEMENT_ID, OVERVIEW_REGION_ELEMENT_ID, OVERVIEW_SR_ELEMENT_ID, STATE.READY, 'Runtime preview status: ');
         overviewRendered = true;
         overviewReason = 'ok';
       } else {
@@ -194,6 +408,12 @@
       if (capexEl) {
         capexEl.textContent = _formatCapexTotal(body.capex.capex_total_preview, body.capex.currency);
         capexEl.setAttribute('data-c2pr10-capex-preview', 'patched');
+        // C2-PR11: success edge -> "Preview ready" bookkeeping for the
+        // CAPEX region, in lockstep with the value patch immediately
+        // above. Uses `_setBookkeeping` directly (not `_setCapexState`,
+        // though they're equivalent here) for symmetry with the
+        // Overview branch above.
+        _setBookkeeping(CAPEX_PREVIEW_VALUE_ELEMENT_ID, CAPEX_REGION_ELEMENT_ID, CAPEX_SR_ELEMENT_ID, STATE.READY, 'CAPEX preview status: ');
         capexRendered = true;
         capexReason = 'ok';
       } else {
@@ -215,6 +435,13 @@
 
   window.FcRuntimeRenderer = {
     render: render,
+    // C2-PR11: explicit state-machine transitions for the request
+    // lifecycle's caller (live-model.js) to drive.
+    setUpdating: setUpdating,
+    setUnavailable: setUnavailable,
+    setFailed: setFailed,
+    states: STATE,
+    stateLabels: STATE_LABEL,
     statusValueElementId: STATUS_VALUE_ELEMENT_ID,
     capexPreviewValueElementId: CAPEX_PREVIEW_VALUE_ELEMENT_ID
   };

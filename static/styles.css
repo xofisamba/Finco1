@@ -629,6 +629,23 @@ body {
   line-height: 1.4;
 }
 
+/* ── Accessibility utility (C2-PR11) ────────────────────────────────────── */
+/* Standard visually-hidden-but-screen-reader-readable utility class, used
+   for explicit state announcements (e.g. "Runtime preview status: ...")
+   alongside a plain-text visible label that doesn't repeat the same
+   wording. Not a new design system — the conventional `.sr-only` pattern. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Status Badges ──────────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
