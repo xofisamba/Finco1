@@ -150,9 +150,17 @@ class TestDebtPreviewReadyForSavedCapexAndGearing:
         debt = body["debt"]
         assert debt["status"] == "preview-ready"
         assert debt["currency"] == "EUR"
-        assert debt["basis"] == "saved-capex-times-saved-gearing"
+        # C2-PR25: basis label simplified to "saved-inputs-only" (was
+        # "saved-capex-times-saved-gearing") to mirror the unavailable
+        # branch and the new sub-line copy. The actual formula
+        # (saved_capex * saved_gearing / 100) is unchanged.
+        assert debt["basis"] == "saved-inputs-only"
         expected = round(64321.00 * (65 / 100.0), 2)
         assert debt["senior_debt_preview"] == expected
+        # C2-PR25: response now carries the two saved inputs it
+        # actually read (rounded to 2dp for display stability).
+        assert debt["saved_total_capex"] == 64321.00
+        assert debt["saved_gearing_pct"] == 65.0
 
     def test_debt_preview_unavailable_when_no_project_context(self):
         """No `project` field -> no saved project record to read from
@@ -163,9 +171,14 @@ class TestDebtPreviewReadyForSavedCapexAndGearing:
             cookies=_auth_cookies(),
         )
         body = resp.json()
+        # C2-PR25: response now carries the two saved-input breakdown
+        # fields (both null when unavailable, as documented in
+        # app/services/model_preview.py::compute_debt_preview).
         assert body["debt"] == {
             "status": "preview-unavailable",
             "senior_debt_preview": None,
+            "saved_total_capex": None,
+            "saved_gearing_pct": None,
             "currency": "EUR",
             "basis": "saved-inputs-only",
         }
@@ -232,9 +245,13 @@ class TestDebtPreviewUnavailableWhenSavedInputsMissingOrInvalid:
             baseline_snapshot = {"total_capex_keur": "50000", "gearing_pct": ""}
 
         result = model_preview_service.compute_debt_preview({}, _FakeRecord())
+        # C2-PR25: response now carries the two saved-input breakdown
+        # fields (both null when unavailable).
         assert result == {
             "status": "preview-unavailable",
             "senior_debt_preview": None,
+            "saved_total_capex": None,
+            "saved_gearing_pct": None,
             "currency": "EUR",
             "basis": "saved-inputs-only",
         }

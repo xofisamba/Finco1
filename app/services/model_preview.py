@@ -163,13 +163,18 @@ def _is_finite_number(value: Any) -> bool:
 
 
 def compute_debt_preview(body: Any, project_record: Optional[Any]) -> dict[str, Any]:
-    """C2-PR24: the FIRST backend-computed (not frontend-computed)
-    preview field.
+    """C2-PR25: backend-computed Debt Preview v2 — saved-inputs
+    breakdown.
 
-    Deliberately tiny and NOT real debt sculpting/amortization/DSCR/
-    interest-schedule/debt-service — see
-    docs/C2_PR24_BACKEND_DEBT_PREVIEW_STUB.md for the full rationale
-    and explicit out-of-scope list.
+    Extends the C2-PR24 single-number placeholder into a small
+    breakdown so the user can see exactly which SAVED inputs the
+    preview is anchored to (without ever reading any unsaved
+    frontend payload field).
+
+    Deliberately NOT real debt sculpting/amortization/DSCR/interest
+    schedule/debt service — see docs/C2_PR24_BACKEND_DEBT_PREVIEW_STUB.md
+    and docs/C2_DEBT_PREVIEW_CHECKPOINT.md for the full rationale and
+    explicit out-of-scope list.
 
     This function may ONLY use SAVED project inputs already available
     server-side via `project_record.baseline_snapshot` (the same
@@ -189,15 +194,25 @@ def compute_debt_preview(body: Any, project_record: Optional[Any]) -> dict[str, 
     `gearing_ratio=value / 100.0`), so dividing by 100.0 here matches
     that exact convention.
 
-    Returns one of:
-      {"status": "preview-unavailable", "senior_debt_preview": None,
-       "currency": "EUR", "basis": "saved-inputs-only"}
-      {"status": "preview-ready", "senior_debt_preview": <float>,
-       "currency": "EUR", "basis": "saved-capex-times-saved-gearing"}
+    Response shape (added vs. C2-PR24):
+      - `senior_debt_preview`: the placeholder number (unchanged)
+      - `saved_total_capex`:    the saved CAPEX the preview is anchored
+                                 to (new, C2-PR25; same value the formula
+                                 reads; None when unavailable)
+      - `saved_gearing_pct`:   the saved gearing percent the preview is
+                                 anchored to (new, C2-PR25; same value
+                                 the formula reads; None when unavailable)
+
+    Unavailable response uses the same `status`/`currency`/`basis`
+    trio (all three are ALWAYS present so the frontend can render a
+    consistent 3-field panel and the renderer can gate on `status`
+    exactly as it does today).
     """
     unavailable = {
         "status": "preview-unavailable",
         "senior_debt_preview": None,
+        "saved_total_capex": None,
+        "saved_gearing_pct": None,
         "currency": "EUR",
         "basis": "saved-inputs-only",
     }
@@ -222,8 +237,10 @@ def compute_debt_preview(body: Any, project_record: Optional[Any]) -> dict[str, 
     return {
         "status": "preview-ready",
         "senior_debt_preview": senior_debt_preview,
+        "saved_total_capex": round(saved_capex_total, 2),
+        "saved_gearing_pct": round(saved_gearing_pct, 2),
         "currency": "EUR",
-        "basis": "saved-capex-times-saved-gearing",
+        "basis": "saved-inputs-only",
     }
 
 

@@ -520,6 +520,12 @@
     <div class="runtime-status-indicator debt-preview-indicator" id="debt-preview" role="status" aria-live="polite" aria-label="Unsaved debt preview computed from saved inputs only, not the saved total" aria-busy="false">
       <span class="runtime-status-indicator__label">Debt preview (saved inputs only):</span>
       <span class="runtime-status-indicator__value badge badge-preview-only" id="debt-preview-value" data-c2pr24-debt-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="debt-preview-basis" id="debt-preview-basis"
+            data-c2pr25-debt-basis="idle"
+            title="Uses saved CAPEX and saved gearing only. Not sculpted. Run remains authoritative.">
+        <span class="debt-preview-basis-row"><span class="debt-preview-basis-label">Saved CAPEX used:</span> <span class="debt-preview-basis-value" id="debt-preview-saved-capex">&mdash;</span></span>
+        <span class="debt-preview-basis-row"><span class="debt-preview-basis-label">Saved gearing used:</span> <span class="debt-preview-basis-value" id="debt-preview-saved-gearing">&mdash;</span></span>
+      </span>
       <span class="sr-only" id="debt-preview-sr">Debt preview status: Idle</span>
     </div>
     </div>{# /operating-preview-panel #}
