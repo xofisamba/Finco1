@@ -142,13 +142,19 @@
   var STATUS_VALUE_ELEMENT_ID = 'overview-runtime-status-value';
   // C2-PR10: separate target element id for the CAPEX total preview.
   var CAPEX_PREVIEW_VALUE_ELEMENT_ID = 'capex-total-preview-value';
+  // C2-PR13: separate target element id for the Revenue total preview,
+  // mirroring CAPEX_PREVIEW_VALUE_ELEMENT_ID exactly.
+  var REVENUE_PREVIEW_VALUE_ELEMENT_ID = 'revenue-total-preview-value';
 
   // C2-PR11: the two parent status-region elements (used for aria-busy)
   // and the two visually-hidden screen-reader announcement spans.
+  // C2-PR13 adds a third region/sr pair for the Revenue preview.
   var OVERVIEW_REGION_ELEMENT_ID = 'overview-runtime-status';
   var OVERVIEW_SR_ELEMENT_ID = 'overview-runtime-status-sr';
   var CAPEX_REGION_ELEMENT_ID = 'capex-total-preview';
   var CAPEX_SR_ELEMENT_ID = 'capex-total-preview-sr';
+  var REVENUE_REGION_ELEMENT_ID = 'revenue-total-preview';
+  var REVENUE_SR_ELEMENT_ID = 'revenue-total-preview-sr';
 
   // C2-PR11: the explicit 5-state machine. See
   // docs/C2_PR11_PREVIEW_UX_POLISH.md for the full description of every
@@ -252,6 +258,20 @@
   }
 
   /**
+   * C2-PR13: transitions the Revenue preview region's state-machine
+   * bookkeeping ONLY — mirrors `_setCapexState` exactly. Never writes
+   * to `#revenue-total-preview-value`'s `textContent`; only `render()`'s
+   * own value-patching code (the success edge) is ever allowed to
+   * change it.
+   */
+  function _setRevenueState(state) {
+    _setBookkeeping(
+      REVENUE_PREVIEW_VALUE_ELEMENT_ID, REVENUE_REGION_ELEMENT_ID, REVENUE_SR_ELEMENT_ID,
+      state, 'Revenue preview status: '
+    );
+  }
+
+  /**
    * C2-PR11: call right before a preview fetch is issued (i.e. at the
    * very start of a flush that is about to call fetch(POST
    * /model/preview)). Transitions BOTH the overview and CAPEX status
@@ -261,6 +281,7 @@
   function setUpdating() {
     _setOverviewState(STATE.UPDATING);
     _setCapexState(STATE.UPDATING);
+    _setRevenueState(STATE.UPDATING);
   }
 
   /**
@@ -274,6 +295,7 @@
   function setUnavailable() {
     _setOverviewState(STATE.UNAVAILABLE);
     _setCapexState(STATE.UNAVAILABLE);
+    _setRevenueState(STATE.UNAVAILABLE);
   }
 
   /**
@@ -298,6 +320,7 @@
   function setFailed() {
     _setOverviewState(STATE.FAILED);
     _setCapexState(STATE.FAILED);
+    _setRevenueState(STATE.FAILED);
   }
 
   /**
@@ -317,12 +340,30 @@
   }
 
   /**
-   * C2-PR10: formats a CAPEX total preview number for display. Plain,
+   * C2-PR13: defensive, non-throwing shape-check for a POST
+   * /model/preview response body's "revenue" field — mirrors
+   * `_hasRenderableCapexPreview` exactly, reading `revenue.preview`
+   * (the field name specified in the task contract) instead of
+   * `capex.capex_total_preview`.
+   */
+  function _hasRenderableRevenuePreview(body) {
+    if (!body || typeof body !== 'object') return false;
+    var revenue = body.revenue;
+    if (!revenue || typeof revenue !== 'object') return false;
+    var total = revenue.preview;
+    return typeof total === 'number' && isFinite(total);
+  }
+
+  /**
+   * C2-PR10: formats a total preview number for display. Plain,
    * fixed 2-decimal formatting with thousands separators — no currency
    * conversion, no rounding beyond presentation, no calculation beyond
-   * what was already summed/rounded by the caller.
+   * what was already summed/rounded by the caller. C2-PR13 reuses this
+   * exact same formatter for the Revenue total preview (renamed from
+   * `_formatCapexTotal` to `_formatTotalPreview` since it is no longer
+   * CAPEX-specific; no formatting behaviour changed).
    */
-  function _formatCapexTotal(total, currency) {
+  function _formatTotalPreview(total, currency) {
     var formatted;
     try {
       formatted = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -406,7 +447,7 @@
         ? document.getElementById(CAPEX_PREVIEW_VALUE_ELEMENT_ID)
         : null;
       if (capexEl) {
-        capexEl.textContent = _formatCapexTotal(body.capex.capex_total_preview, body.capex.currency);
+        capexEl.textContent = _formatTotalPreview(body.capex.capex_total_preview, body.capex.currency);
         capexEl.setAttribute('data-c2pr10-capex-preview', 'patched');
         // C2-PR11: success edge -> "Preview ready" bookkeeping for the
         // CAPEX region, in lockstep with the value patch immediately
@@ -421,15 +462,42 @@
       }
     }
 
-    if (!overviewRendered && !capexRendered) {
-      return { rendered: false, reason: overviewReason, capexReason: capexReason };
+    // C2-PR13: independent third patch — mirrors the CAPEX block above
+    // exactly. A missing/malformed "revenue" field never blocks the
+    // overview/capex patches, and vice versa; each of the three is
+    // rendered (or safely skipped) on its own merits.
+    var revenueRendered = false;
+    var revenueReason = 'missing-or-malformed-revenue';
+
+    if (_hasRenderableRevenuePreview(body)) {
+      var revenueEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(REVENUE_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (revenueEl) {
+        revenueEl.textContent = _formatTotalPreview(body.revenue.preview, body.revenue.currency);
+        revenueEl.setAttribute('data-c2pr13-revenue-preview', 'patched');
+        // C2-PR11-style success edge -> "Preview ready" bookkeeping for
+        // the Revenue region, in lockstep with the value patch
+        // immediately above.
+        _setBookkeeping(REVENUE_PREVIEW_VALUE_ELEMENT_ID, REVENUE_REGION_ELEMENT_ID, REVENUE_SR_ELEMENT_ID, STATE.READY, 'Revenue preview status: ');
+        revenueRendered = true;
+        revenueReason = 'ok';
+      } else {
+        revenueReason = 'target-element-not-found';
+      }
+    }
+
+    if (!overviewRendered && !capexRendered && !revenueRendered) {
+      return { rendered: false, reason: overviewReason, capexReason: capexReason, revenueReason: revenueReason };
     }
 
     return {
-      rendered: overviewRendered || capexRendered,
+      rendered: overviewRendered || capexRendered || revenueRendered,
       reason: overviewRendered ? 'ok' : overviewReason,
       capexRendered: capexRendered,
-      capexReason: capexReason
+      capexReason: capexReason,
+      revenueRendered: revenueRendered,
+      revenueReason: revenueReason
     };
   }
 
@@ -443,6 +511,7 @@
     states: STATE,
     stateLabels: STATE_LABEL,
     statusValueElementId: STATUS_VALUE_ELEMENT_ID,
-    capexPreviewValueElementId: CAPEX_PREVIEW_VALUE_ELEMENT_ID
+    capexPreviewValueElementId: CAPEX_PREVIEW_VALUE_ELEMENT_ID,
+    revenuePreviewValueElementId: REVENUE_PREVIEW_VALUE_ELEMENT_ID
   };
 })();

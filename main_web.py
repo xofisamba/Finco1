@@ -2849,6 +2849,23 @@ def _c2_pr7_validate_preview_payload(body):
         ):
             errors.append("'capexTotalPreview' must be a finite number or null")
 
+    # C2-PR13: revenueTotalPreview is additive/optional, mirroring
+    # capexTotalPreview's validation exactly. It carries the
+    # CLIENT-computed sum of the live (possibly-unsaved) Revenue grid
+    # editable cell values; the server only echoes it back (rounded)
+    # under the new "revenue" response field, it never recomputes or
+    # second-guesses it against persistence, and never calls any
+    # financial engine.
+    if "revenueTotalPreview" in body:
+        revenue_total_preview = body.get("revenueTotalPreview")
+        if revenue_total_preview is not None and (
+            isinstance(revenue_total_preview, bool)
+            or not isinstance(revenue_total_preview, (int, float))
+            or revenue_total_preview != revenue_total_preview  # NaN check
+            or revenue_total_preview in (float("inf"), float("-inf"))
+        ):
+            errors.append("'revenueTotalPreview' must be a finite number or null")
+
     return (len(errors) == 0), errors
 
 
@@ -2982,6 +2999,26 @@ async def model_preview(request: Request):
     if "capexTotalPreview" in body and body.get("capexTotalPreview") is not None:
         response_body["capex"] = {
             "capex_total_preview": round(float(body["capexTotalPreview"]), 2),
+            "currency": "EUR",
+        }
+
+    # C2-PR13: additive "revenue" field, mirroring the "capex" field
+    # above exactly. revenueTotalPreview is computed CLIENT-SIDE
+    # (static/modelling/recalc-preview.js's _computeRevenueTotalFromDom)
+    # from the live, possibly-unsaved Revenue grid editable cell values
+    # already in the browser — this route does NOT recompute it, does
+    # NOT read persistence/the database, and does NOT call
+    # app/waterfall_core.py, domain/*, app/input_adapter.py, or
+    # app/project_factories.py. It only validates the client's number is
+    # finite (see _c2_pr7_validate_preview_payload above) and echoes it
+    # back, rounded to 2dp, under a clearly-labelled, explicitly-a-
+    # preview response field. Omitted entirely (no "revenue" key at
+    # all) when the client didn't include one (e.g. a flush that didn't
+    # touch the Revenue grid) — never fabricated as 0.0. See
+    # docs/C2_PR13_REVENUE_PREVIEW.md.
+    if "revenueTotalPreview" in body and body.get("revenueTotalPreview") is not None:
+        response_body["revenue"] = {
+            "preview": round(float(body["revenueTotalPreview"]), 2),
             "currency": "EUR",
         }
 
