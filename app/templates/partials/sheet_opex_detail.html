@@ -207,15 +207,24 @@
         </td>
         <td class="fc-cell fc-cell--code fc-th--sticky" data-col="2">{{ child.code }}</td>
 
-        {# Budget #}
-        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="3"
+        {# Budget — C2-PR17: editable for non-contingency rows on
+           user projects, mirroring sheet_capex.html's editability
+           convention exactly. Preview-only: there is no wired-up
+           server-side save path for per-line OPEX budget values
+           yet (see docs/C2_PR17_OPEX_LINE_EDITABILITY_BRIDGE.md),
+           so the input deliberately carries no `name=` attribute
+           and is not submitted by the Save form. #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky {% if is_user_project and not cat.is_contingency %}fc-cell-input{% endif %}" data-col="3"
             data-fc-cell="true"
             data-fc-addr="opex!{{ child.code }}.budget"
             data-fc-kind="amount"
-            data-fc-editable="false"
+            data-fc-editable="{{ 'true' if (is_user_project and not cat.is_contingency) else 'false' }}"
             data-fc-raw="{{ child.budget_y1_keur or 0 }}">
           {% if is_user_project and not cat.is_contingency %}
-            <span class="fc-cell-runtime" title="Line editing deferred">{{ "{:,.2f}".format(child.budget_y1_keur or 0) }}</span>
+            <input type="number" step="any" min="0"
+                   value="{{ "%.2f"|format(child.budget_y1_keur or 0) }}"
+                   class="fc-input-native"
+                   aria-label="OPEX budget for {{ child.name }}" />
           {% else %}
             <span class="fc-cell-runtime">{{ "{:,.2f}".format(child.budget_y1_keur or 0) }}</span>
           {% endif %}

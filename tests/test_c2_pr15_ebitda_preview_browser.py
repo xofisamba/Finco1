@@ -227,30 +227,22 @@ def _install_failing_preview(page):
 
 
 class TestEbitdaPreviewBrowser:
-    """NOTE: OPEX line items are not yet wired up as editable in
-    app/templates/partials/sheet_opex_detail.html ("Line editing
-    deferred" there is a pre-existing C1 boundary from Phase 21/24,
-    unrelated to and out of scope for this preview-pipeline PR — see
-    docs/C2_PR15_EBITDA_PREVIEW.md). Consequently OPEX preview always
-    returns null in the real browser today (see
-    tests/test_c2_pr14_opex_preview_browser.py), so EBITDA preview —
-    which requires BOTH Revenue and OPEX preview values to be
-    non-null in the same flush — can never reach a non-null/rendered
-    state via real DOM editing right now either. That is correct,
-    documented "never fabricate" behaviour, not a bug. The tests
-    below verify exactly that: EBITDA preview stays permanently
-    unavailable/unpatched regardless of which other grids are edited.
-    The chained Revenue-minus-OPEX arithmetic and null-propagation
-    logic are covered directly (independent of DOM editability) in
-    tests/test_c2_pr15_ebitda_preview.py.
+    """UPDATED for C2-PR17: OPEX line Budget cells are now real,
+    editable inputs (non-contingency rows, on user projects) — see
+    docs/C2_PR17_OPEX_LINE_EDITABILITY_BRIDGE.md. EBITDA preview can
+    now become non-null via real DOM editing, provided BOTH the
+    Revenue and OPEX grids are edited and settle within the same
+    debounce flush. The tests below restore the "both edited ->
+    EBITDA becomes non-null" scenario, while preserving the
+    "never fabricate" tests for genuinely-null scenarios (only one
+    grid edited, or no edit at all).
     """
 
     def test_ebitda_stays_blank_when_only_revenue_edited(self, runtime_page):
-        """Editing the Revenue grid (OPEX has no editable cells at
-        all today) must NOT produce a rendered EBITDA value — it
-        must remain unpatched/blank, since EBITDA preview is null
-        unless both Revenue and OPEX previews are non-null in the
-        same flush."""
+        """Editing only the Revenue grid must NOT produce a rendered
+        EBITDA value — it must remain unpatched/blank, since EBITDA
+        preview is null unless both Revenue and OPEX previews are
+        non-null in the same flush."""
         page, page_errors, _ = runtime_page
         page.evaluate("window.switchTab('revenue')")
         revenue_addr = _first_editable_cell_addr(page, "revenue", "text")
@@ -266,26 +258,59 @@ class TestEbitdaPreviewBrowser:
             "#ebitda-preview-value", "el => el.getAttribute('data-c2pr15-ebitda-preview')"
         )
         assert ebitda_after == ebitda_before, (
-            "EBITDA preview must not be patched when OPEX preview is "
-            "unavailable (no editable OPEX inputs exist today)"
+            "EBITDA preview must not be patched when only Revenue was "
+            "edited (OPEX preview is still null this flush)"
         )
         assert not page_errors
 
-    def test_ebitda_never_fabricates_a_value_with_no_editable_opex_inputs(self, runtime_page):
+    def test_ebitda_never_fabricates_a_value_before_any_edit(self, runtime_page):
         """EBITDA preview must never render a fabricated numeric
-        value, since one of its two required inputs (OPEX preview)
-        can never become non-null until a future dedicated C1 PR adds
-        real OPEX editability."""
+        value before any Revenue/OPEX edit has happened."""
         page, page_errors, _ = runtime_page
         page.evaluate("window.switchTab('opex')")
         addr = _first_editable_cell_addr(page, "opex", "amount")
-        assert addr is None, (
-            "expected zero editable OPEX cells under the current, "
-            "intentionally-deferred C1 OPEX editing boundary"
+        assert addr is not None, (
+            "expected at least one editable OPEX Budget cell after C2-PR17"
         )
 
         text = page.eval_on_selector("#ebitda-preview-value", "el => el.textContent")
         assert not any(ch.isdigit() for ch in text), (
             f"EBITDA preview must never render a fabricated numeric value; got {text!r}"
+        )
+        assert not page_errors
+
+    def test_ebitda_becomes_revenue_minus_opex_when_both_edited_in_same_flush(self, runtime_page):
+        """C2-PR17 restores the original PR15 scenario: editing BOTH a
+        Revenue cell and an OPEX Budget cell so they settle within the
+        same debounce window must produce EBITDA preview = Revenue
+        preview - OPEX preview."""
+        page, page_errors, _ = runtime_page
+
+        page.evaluate("window.switchTab('opex')")
+        opex_addr = _first_editable_cell_addr(page, "opex", "amount")
+        assert opex_addr is not None
+
+        page.evaluate("window.switchTab('revenue')")
+        revenue_addr = _first_editable_cell_addr(page, "revenue", "text")
+        assert revenue_addr is not None
+
+        # Edit OPEX first, then Revenue immediately after (within the
+        # same debounce window) so both dirty addresses are present in
+        # the same flush.
+        page.evaluate("window.switchTab('opex')")
+        _edit_cell(page, opex_addr, "500.00")
+        page.evaluate("window.switchTab('revenue')")
+        _edit_cell(page, revenue_addr, "1500.00")
+
+        _wait_for_preview_value(page, "ebitda-preview-value", "data-c2pr15-ebitda-preview")
+
+        revenue_text = page.eval_on_selector("#revenue-total-preview-value", "el => el.textContent")
+        opex_text = page.eval_on_selector("#opex-total-preview-value", "el => el.textContent")
+        ebitda_text = page.eval_on_selector("#ebitda-preview-value", "el => el.textContent")
+
+        assert any(ch.isdigit() for ch in revenue_text)
+        assert any(ch.isdigit() for ch in opex_text)
+        assert any(ch.isdigit() for ch in ebitda_text), (
+            f"expected a numeric EBITDA preview value; got {ebitda_text!r}"
         )
         assert not page_errors
