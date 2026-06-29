@@ -83,6 +83,11 @@ class TestTopLevelResponseShapeUnchanged:
         "capex", "revenue", "opex", "ebitda", "operating_cash_flow",
         "debt",
     }
+    # C2-PR30 adds the tax preview top-level key. The full pre-
+    # PR30 set PLUS 'tax' is the post-refactor expected set.
+    EXPECTED_TOP_LEVEL_KEYS_POST_REFACTOR = (
+        EXPECTED_TOP_LEVEL_KEYS_PRE_REFACTOR | {"tax"}
+    )
 
     def test_top_level_keys_for_full_valid_payload(self):
         resp = client.post(
@@ -101,7 +106,7 @@ class TestTopLevelResponseShapeUnchanged:
         )
         body = resp.json()
         assert body["ok"] is True
-        assert set(body.keys()) == self.EXPECTED_TOP_LEVEL_KEYS_PRE_REFACTOR
+        assert set(body.keys()) == self.EXPECTED_TOP_LEVEL_KEYS_POST_REFACTOR
 
     def test_invalid_payload_top_level_keys(self):
         resp = client.post(

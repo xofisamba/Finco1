@@ -208,6 +208,14 @@
   var DEBT_BASIS_CAPEX_ELEMENT_ID = 'debt-preview-saved-capex';
   var DEBT_BASIS_GEARING_ELEMENT_ID = 'debt-preview-saved-gearing';
   var DEBT_BASIS_REGION_ELEMENT_ID = 'debt-preview-basis';
+  // C2-PR30: tax-preview slice — second backend-owned preview row
+  // after debt. The renderer is forbidden from computing any tax
+  // number; it ONLY patches the DOM with whatever the backend
+  // decided to send (today: always preview-unavailable / null /
+  // em-dash placeholder).
+  var TAX_PREVIEW_VALUE_ELEMENT_ID = 'tax-preview-value';
+  var TAX_REGION_ELEMENT_ID = 'tax-preview';
+  var TAX_SR_ELEMENT_ID = 'tax-preview-sr';
 
   // C2-PR11: the explicit 5-state machine. See
   // docs/C2_PR11_PREVIEW_UX_POLISH.md for the full description of every
@@ -378,6 +386,23 @@
   }
 
   /**
+   * C2-PR30: transitions the Tax preview region's state-machine
+   * bookkeeping ONLY — mirrors `_setDebtState` exactly. Never writes
+   * to `#tax-preview-value`'s `textContent`. The tax preview VALUE
+   * itself (when it ever exists) is backend-computed by
+   * app/services/previews/tax_preview.py; this module only ever
+   * renders it, never computes it. Today the backend always reports
+   * preview-unavailable so the renderer's tax branch is mostly a
+   * safe no-op except for bookkeeping state transitions.
+   */
+  function _setTaxState(state) {
+    _setBookkeeping(
+      TAX_PREVIEW_VALUE_ELEMENT_ID, TAX_REGION_ELEMENT_ID, TAX_SR_ELEMENT_ID,
+      state, 'Tax preview status: '
+    );
+  }
+
+  /**
    * C2-PR11: call right before a preview fetch is issued (i.e. at the
    * very start of a flush that is about to call fetch(POST
    * /model/preview)). Transitions BOTH the overview and CAPEX status
@@ -392,6 +417,8 @@
     _setEbitdaState(STATE.UPDATING);
     _setOcfState(STATE.UPDATING);
     _setDebtState(STATE.UPDATING);
+    // C2-PR30: tax preview bookkeeping mirrors the other six slices.
+    _setTaxState(STATE.UPDATING);
   }
 
   /**
@@ -789,7 +816,62 @@
       }
     }
 
-    if (!overviewRendered && !capexRendered && !revenueRendered && !opexRendered && !ebitdaRendered && !ocfRendered && !debtRendered) {
+    // C2-PR30: independent eighth patch — Tax preview. The backend
+    // today always reports `status === "preview-unavailable"` and
+    // `tax_preview === null`, so the DOM is patched with the em-dash
+    // placeholder and a backend-state bookkeeping entry — both are
+    // safe even if the backend later starts returning a real
+    // `preview-ready` value, because `_hasRenderableTaxPreview()`
+    // gates on the same conditions debt uses.
+    var taxRendered = false;
+    var taxReason = 'missing-or-malformed-tax';
+
+    function _hasRenderableTaxPreview(body) {
+      if (!body || typeof body !== 'object') return false;
+      var tax = body.tax;
+      if (!tax || typeof tax !== 'object') return false;
+      if (tax.status !== 'preview-ready') return false;
+      var v = tax.tax_preview;
+      if (v === null || v === undefined) return false;
+      if (typeof v !== 'number' || !isFinite(v)) return false;
+      return true;
+    }
+
+    if (_hasRenderableTaxPreview(body)) {
+      // Future path: the backend will compute a real tax preview
+      // here. Until then, this branch is dead code, but kept
+      // identical to the debt pattern so the architecture is
+      // forward-compatible without further refactor.
+      var taxEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(TAX_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (taxEl) {
+        taxEl.textContent = _formatTotalPreview(body.tax.tax_preview, body.tax.currency);
+        taxEl.setAttribute('data-c2pr30-tax-preview', 'patched');
+        _setBookkeeping(TAX_PREVIEW_VALUE_ELEMENT_ID, TAX_REGION_ELEMENT_ID, TAX_SR_ELEMENT_ID, STATE.READY, 'Tax preview status: ');
+        taxRendered = true;
+        taxReason = 'ok';
+      } else {
+        taxReason = 'target-element-not-found';
+      }
+    } else if (body && body.tax && body.tax.status === 'preview-unavailable') {
+      // C2-PR30: always-unavailable path. Make sure the placeholder
+      // is the em-dash even if a stale render left something behind.
+      var taxElIdle = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(TAX_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (taxElIdle) {
+        taxElIdle.textContent = '\u2014';
+        taxElIdle.setAttribute('data-c2pr30-tax-preview', 'idle');
+        _setBookkeeping(TAX_PREVIEW_VALUE_ELEMENT_ID, TAX_REGION_ELEMENT_ID, TAX_SR_ELEMENT_ID, STATE.READY, 'Tax preview status: ');
+        taxRendered = true;
+        taxReason = 'preview-unavailable-shown-as-placeholder';
+      } else {
+        taxReason = 'target-element-not-found';
+      }
+    }
+
+    if (!overviewRendered && !capexRendered && !revenueRendered && !opexRendered && !ebitdaRendered && !ocfRendered && !debtRendered && !taxRendered) {
       return {
         rendered: false,
         reason: overviewReason,
@@ -798,12 +880,13 @@
         opexReason: opexReason,
         ebitdaReason: ebitdaReason,
         ocfReason: ocfReason,
-        debtReason: debtReason
+        debtReason: debtReason,
+        taxReason: taxReason
       };
     }
 
     return {
-      rendered: overviewRendered || capexRendered || revenueRendered || opexRendered || ebitdaRendered || ocfRendered || debtRendered,
+      rendered: overviewRendered || capexRendered || revenueRendered || opexRendered || ebitdaRendered || ocfRendered || debtRendered || taxRendered,
       reason: overviewRendered ? 'ok' : overviewReason,
       capexRendered: capexRendered,
       capexReason: capexReason,
@@ -816,7 +899,9 @@
       ocfRendered: ocfRendered,
       ocfReason: ocfReason,
       debtRendered: debtRendered,
-      debtReason: debtReason
+      debtReason: debtReason,
+      taxRendered: taxRendered,
+      taxReason: taxReason
     };
   }
 
