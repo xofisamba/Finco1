@@ -625,6 +625,9 @@ class TestOperatingPreviewStackUnchanged:
             "debt",
             # C2-PR28/29/30 additive:
             "tax",
+            # C2-PR31/32/33 additive:
+            "irr",
+            "dscr",
         }
         assert set(body.keys()) == expected_keys
 

@@ -216,6 +216,18 @@
   var TAX_PREVIEW_VALUE_ELEMENT_ID = 'tax-preview-value';
   var TAX_REGION_ELEMENT_ID = 'tax-preview';
   var TAX_SR_ELEMENT_ID = 'tax-preview-sr';
+  // C2-PR31: IRR preview slice — backend-owned. The renderer is
+  // forbidden from computing any IRR number; it ONLY patches the
+  // DOM with whatever the backend decided to send (today: always
+  // preview-unavailable / null / em-dash placeholder).
+  var IRR_PREVIEW_VALUE_ELEMENT_ID = 'irr-preview-value';
+  var IRR_REGION_ELEMENT_ID = 'irr-preview';
+  var IRR_SR_ELEMENT_ID = 'irr-preview-sr';
+  // C2-PR32: DSCR preview slice — backend-owned. Mirrors IRR's
+  // contract exactly.
+  var DSCR_PREVIEW_VALUE_ELEMENT_ID = 'dscr-preview-value';
+  var DSCR_REGION_ELEMENT_ID = 'dscr-preview';
+  var DSCR_SR_ELEMENT_ID = 'dscr-preview-sr';
 
   // C2-PR11: the explicit 5-state machine. See
   // docs/C2_PR11_PREVIEW_UX_POLISH.md for the full description of every
@@ -403,6 +415,40 @@
   }
 
   /**
+   * C2-PR31: transitions the IRR preview region's state-machine
+   * bookkeeping ONLY — mirrors `_setTaxState` exactly. Never writes
+   * to `#irr-preview-value`'s `textContent`. The IRR preview VALUE
+   * itself (when it ever exists) is backend-computed by
+   * app/services/previews/irr_preview.py; this module only ever
+   * renders it, never computes it. Today the backend always reports
+   * preview-unavailable so the renderer's IRR branch is mostly a
+   * safe no-op except for bookkeeping state transitions.
+   */
+  function _setIrrState(state) {
+    _setBookkeeping(
+      IRR_PREVIEW_VALUE_ELEMENT_ID, IRR_REGION_ELEMENT_ID, IRR_SR_ELEMENT_ID,
+      state, 'IRR preview status: '
+    );
+  }
+
+  /**
+   * C2-PR32: transitions the DSCR preview region's state-machine
+   * bookkeeping ONLY — mirrors `_setTaxState` exactly. Never writes
+   * to `#dscr-preview-value`'s `textContent`. The DSCR preview VALUE
+   * itself (when it ever exists) is backend-computed by
+   * app/services/previews/dscr_preview.py; this module only ever
+   * renders it, never computes it. Today the backend always reports
+   * preview-unavailable so the renderer's DSCR branch is mostly a
+   * safe no-op except for bookkeeping state transitions.
+   */
+  function _setDscrState(state) {
+    _setBookkeeping(
+      DSCR_PREVIEW_VALUE_ELEMENT_ID, DSCR_REGION_ELEMENT_ID, DSCR_SR_ELEMENT_ID,
+      state, 'DSCR preview status: '
+    );
+  }
+
+  /**
    * C2-PR11: call right before a preview fetch is issued (i.e. at the
    * very start of a flush that is about to call fetch(POST
    * /model/preview)). Transitions BOTH the overview and CAPEX status
@@ -419,6 +465,10 @@
     _setDebtState(STATE.UPDATING);
     // C2-PR30: tax preview bookkeeping mirrors the other six slices.
     _setTaxState(STATE.UPDATING);
+    // C2-PR31: IRR preview bookkeeping mirrors the other seven slices.
+    _setIrrState(STATE.UPDATING);
+    // C2-PR32: DSCR preview bookkeeping mirrors the other eight slices.
+    _setDscrState(STATE.UPDATING);
   }
 
   /**
@@ -871,7 +921,103 @@
       }
     }
 
-    if (!overviewRendered && !capexRendered && !revenueRendered && !opexRendered && !ebitdaRendered && !ocfRendered && !debtRendered && !taxRendered) {
+    // C2-PR31: independent ninth patch — IRR preview. Mirrors the
+    // tax-preview branch exactly. The backend today always reports
+    // `status === "preview-unavailable"` and `irr_preview === null`,
+    // so the DOM is patched with the em-dash placeholder and a
+    // backend-state bookkeeping entry.
+    var irrRendered = false;
+    var irrReason = 'missing-or-malformed-irr';
+
+    function _hasRenderableIrrPreview(body) {
+      if (!body || typeof body !== 'object') return false;
+      var irr = body.irr;
+      if (!irr || typeof irr !== 'object') return false;
+      if (irr.status !== 'preview-ready') return false;
+      var v = irr.irr_preview;
+      if (v === null || v === undefined) return false;
+      if (typeof v !== 'number' || !isFinite(v)) return false;
+      return true;
+    }
+
+    if (_hasRenderableIrrPreview(body)) {
+      // Future path: the backend will compute a real IRR here. Until
+      // then this branch is dead code, kept identical to the
+      // debt/tax pattern so the architecture is forward-compatible
+      // without further refactor.
+      var irrEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(IRR_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (irrEl) {
+        irrEl.textContent = _formatTotalPreview(body.irr.irr_preview, body.irr.currency);
+        irrEl.setAttribute('data-c2pr31-irr-preview', 'patched');
+        _setBookkeeping(IRR_PREVIEW_VALUE_ELEMENT_ID, IRR_REGION_ELEMENT_ID, IRR_SR_ELEMENT_ID, STATE.READY, 'IRR preview status: ');
+        irrRendered = true;
+        irrReason = 'ok';
+      } else {
+        irrReason = 'target-element-not-found';
+      }
+    } else if (body && body.irr && body.irr.status === 'preview-unavailable') {
+      // Always-unavailable path. Patch with em-dash placeholder.
+      var irrElIdle = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(IRR_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (irrElIdle) {
+        irrElIdle.textContent = '\u2014';
+        irrElIdle.setAttribute('data-c2pr31-irr-preview', 'idle');
+        _setBookkeeping(IRR_PREVIEW_VALUE_ELEMENT_ID, IRR_REGION_ELEMENT_ID, IRR_SR_ELEMENT_ID, STATE.READY, 'IRR preview status: ');
+        irrRendered = true;
+        irrReason = 'preview-unavailable-shown-as-placeholder';
+      } else {
+        irrReason = 'target-element-not-found';
+      }
+    }
+
+    // C2-PR32: independent tenth patch — DSCR preview. Mirrors the
+    // tax/IRR-preview branches exactly.
+    var dscrRendered = false;
+    var dscrReason = 'missing-or-malformed-dscr';
+
+    function _hasRenderableDscrPreview(body) {
+      if (!body || typeof body !== 'object') return false;
+      var dscr = body.dscr;
+      if (!dscr || typeof dscr !== 'object') return false;
+      if (dscr.status !== 'preview-ready') return false;
+      var v = dscr.dscr_preview;
+      if (v === null || v === undefined) return false;
+      if (typeof v !== 'number' || !isFinite(v)) return false;
+      return true;
+    }
+
+    if (_hasRenderableDscrPreview(body)) {
+      var dscrEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(DSCR_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (dscrEl) {
+        dscrEl.textContent = _formatTotalPreview(body.dscr.dscr_preview, body.dscr.currency);
+        dscrEl.setAttribute('data-c2pr32-dscr-preview', 'patched');
+        _setBookkeeping(DSCR_PREVIEW_VALUE_ELEMENT_ID, DSCR_REGION_ELEMENT_ID, DSCR_SR_ELEMENT_ID, STATE.READY, 'DSCR preview status: ');
+        dscrRendered = true;
+        dscrReason = 'ok';
+      } else {
+        dscrReason = 'target-element-not-found';
+      }
+    } else if (body && body.dscr && body.dscr.status === 'preview-unavailable') {
+      var dscrElIdle = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(DSCR_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (dscrElIdle) {
+        dscrElIdle.textContent = '\u2014';
+        dscrElIdle.setAttribute('data-c2pr32-dscr-preview', 'idle');
+        _setBookkeeping(DSCR_PREVIEW_VALUE_ELEMENT_ID, DSCR_REGION_ELEMENT_ID, DSCR_SR_ELEMENT_ID, STATE.READY, 'DSCR preview status: ');
+        dscrRendered = true;
+        dscrReason = 'preview-unavailable-shown-as-placeholder';
+      } else {
+        dscrReason = 'target-element-not-found';
+      }
+    }
+
+    if (!overviewRendered && !capexRendered && !revenueRendered && !opexRendered && !ebitdaRendered && !ocfRendered && !debtRendered && !taxRendered && !irrRendered && !dscrRendered) {
       return {
         rendered: false,
         reason: overviewReason,
@@ -881,12 +1027,14 @@
         ebitdaReason: ebitdaReason,
         ocfReason: ocfReason,
         debtReason: debtReason,
-        taxReason: taxReason
+        taxReason: taxReason,
+        irrReason: irrReason,
+        dscrReason: dscrReason
       };
     }
 
     return {
-      rendered: overviewRendered || capexRendered || revenueRendered || opexRendered || ebitdaRendered || ocfRendered || debtRendered || taxRendered,
+      rendered: overviewRendered || capexRendered || revenueRendered || opexRendered || ebitdaRendered || ocfRendered || debtRendered || taxRendered || irrRendered || dscrRendered,
       reason: overviewRendered ? 'ok' : overviewReason,
       capexRendered: capexRendered,
       capexReason: capexReason,
@@ -901,7 +1049,11 @@
       debtRendered: debtRendered,
       debtReason: debtReason,
       taxRendered: taxRendered,
-      taxReason: taxReason
+      taxReason: taxReason,
+      irrRendered: irrRendered,
+      irrReason: irrReason,
+      dscrRendered: dscrRendered,
+      dscrReason: dscrReason
     };
   }
 
