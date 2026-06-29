@@ -24,6 +24,14 @@ task spec:
 tests/test_c2_pr14_opex_preview.py's
 TestNoFinancialEngineCallOrPersistenceMutation.test_no_persistence_mutation.)
 
+UPDATED for C2-PR17: OPEX line Budget cells are now real, editable
+inputs (non-contingency rows, on user projects) — see
+docs/C2_PR17_OPEX_LINE_EDITABILITY_BRIDGE.md. The
+TestOpexTotalPreviewBrowser class below was updated to cover the
+"edit produces a real preview value" path that PR14 could not
+exercise; the underlying "never fabricate before any edit"
+invariant is preserved.
+
 Uses the same real-uvicorn-subprocess + real-auth + real-project
 fixture pattern as the PR9/PR10/PR11/PR13 browser test suites.
 """
@@ -254,60 +262,64 @@ def _install_ordered_delayed_responses(page, delays_ms):
 
 
 class TestOpexTotalPreviewBrowser:
-    """NOTE: OPEX line items are not yet wired up as editable in
-    app/templates/partials/sheet_opex_detail.html ("Line editing
-    deferred" there is a pre-existing C1 boundary from Phase 21/24,
-    unrelated to and out of scope for this preview-pipeline PR — see
-    docs/C2_PR14_OPEX_PREVIEW.md). Consequently there is currently no
-    way to dirty an "opex!..." address from the real UI, so
-    `_computeOpexTotalFromDom()` always returns null in practice
-    (counted === 0) — this is the correct, documented "never
-    fabricate" behaviour, not a bug. The tests below verify exactly
-    that: the OPEX preview indicator never shows a fabricated value
-    and the rest of the pipeline (no Save/Run, byte-identical Overview
-    KPIs, CAPEX/Revenue previews) is unaffected by OPEX's presence.
-    Points 1, 7, 8, 9 from the original task spec (update-after-edit,
-    failed-request-preserves-value, sequencing, survives-Save) are not
-    independently re-testable for OPEX specifically until a dedicated
-    C1 PR adds real OPEX editability; the underlying arithmetic/
-    null-propagation logic they'd exercise is covered for EBITDA/OCF
-    via direct payload tests in tests/test_c2_pr14_opex_preview.py and
-    tests/test_c2_pr15_ebitda_preview.py, which don't depend on DOM
-    editability at all.
+    """C2-PR17 made the real OPEX Budget cells editable (non-contingency
+    rows, on user projects) — see
+    docs/C2_PR17_OPEX_LINE_EDITABILITY_BRIDGE.md. The tests below now
+    cover the previously-impossible "edit produces a real value" path,
+    while still verifying the pipeline never fabricates a value before
+    any edit, and that the rest of the chain (no Save/Run, byte-
+    identical Overview KPIs, CAPEX/Revenue previews) is unaffected.
     """
 
-    def test_opex_preview_never_fabricates_a_value_with_no_editable_inputs(self, runtime_page):
-        """The OPEX grid currently has zero editable cells, so the
-        preview indicator must never show a fabricated numeric total
-        — it must stay in its initial/unavailable state."""
+    def test_opex_preview_starts_unavailable_before_any_edit(self, runtime_page):
+        """Before any OPEX edit, the preview indicator must not show a
+        fabricated numeric total — it must stay in its initial/
+        unavailable state."""
         page, page_errors, _ = runtime_page
         page.evaluate("window.switchTab('opex')")
         addr = _first_editable_cell_addr(page, "opex", "amount")
-        assert addr is None, (
-            "expected zero editable OPEX cells under the current, "
-            "intentionally-deferred C1 OPEX editing boundary"
+        assert addr is not None, (
+            "expected at least one editable OPEX Budget cell after "
+            "C2-PR17 (non-contingency row, user project)"
         )
 
         text = page.eval_on_selector("#opex-total-preview-value", "el => el.textContent")
         assert not any(ch.isdigit() for ch in text), (
-            f"OPEX preview must never render a fabricated numeric value; got {text!r}"
+            f"OPEX preview must not render a value before any edit; got {text!r}"
         )
         assert not page_errors
 
-    def test_no_save_or_run_triggered_and_opex_stays_unavailable_after_other_edits(self, runtime_page):
-        """Points 3 & 4 (generalised): editing other grids triggers no
-        Save/Run, and never causes the OPEX preview to fabricate a
-        value (it has no inputs of its own to react to)."""
+    def test_opex_preview_becomes_numeric_after_editing_a_budget_cell(self, runtime_page):
+        """C2-PR17: editing an OPEX Budget cell must produce a real,
+        non-null preview value once the debounce window settles."""
         page, page_errors, _ = runtime_page
-        page.evaluate("window.switchTab('revenue')")
-        revenue_addr = _first_editable_cell_addr(page, "revenue", "text")
+        page.evaluate("window.switchTab('opex')")
+        addr = _first_editable_cell_addr(page, "opex", "amount")
+        assert addr is not None
+
+        _edit_cell(page, addr, "321.45")
+        _wait_for_preview_value(page, "opex-total-preview-value", "data-c2pr14-opex-preview")
+
+        text = page.eval_on_selector("#opex-total-preview-value", "el => el.textContent")
+        assert any(ch.isdigit() for ch in text), (
+            f"expected a numeric OPEX preview value after editing; got {text!r}"
+        )
+        assert not page_errors
+
+    def test_no_save_or_run_triggered_by_opex_edit(self, runtime_page):
+        """Editing an OPEX Budget cell must never trigger Save or
+        Run."""
+        page, page_errors, _ = runtime_page
+        page.evaluate("window.switchTab('opex')")
+        addr = _first_editable_cell_addr(page, "opex", "amount")
+        assert addr is not None
 
         all_requests = []
         page.on("request", lambda req: all_requests.append(req.url))
 
-        _edit_cell(page, revenue_addr, "100.00")
+        _edit_cell(page, addr, "100.00")
         page.wait_for_timeout(500)
-        _edit_cell(page, revenue_addr, "200.00")
+        _edit_cell(page, addr, "200.00")
         page.wait_for_timeout(1500)
 
         save_requests = [u for u in all_requests if "/scenarios/save" in u or u.rstrip("/").endswith("/save-run")]
@@ -315,9 +327,6 @@ class TestOpexTotalPreviewBrowser:
 
         assert not save_requests, f"unexpected Save request(s): {save_requests}"
         assert not run_requests, f"unexpected Run request(s): {run_requests}"
-
-        opex_text = page.eval_on_selector("#opex-total-preview-value", "el => el.textContent")
-        assert not any(ch.isdigit() for ch in opex_text)
         assert not page_errors
 
     def test_overview_kpis_byte_identical_pre_and_post_revenue_preview(self, runtime_page):

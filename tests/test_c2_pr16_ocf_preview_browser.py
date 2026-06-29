@@ -7,25 +7,19 @@ working-capital adjustment). Covers the browser-side
 required-behaviour points from the C2-PR16 task spec, for the new OCF
 preview indicator (#operating-cf-preview-value):
 
-NOTE: OPEX line items are not yet wired up as editable in
-app/templates/partials/sheet_opex_detail.html ("Line editing
-deferred" is a pre-existing C1 boundary from Phase 21/24, unrelated
-to and out of scope for this preview-pipeline PR — see
-docs/C2_PR16_OPERATING_CF_PREVIEW.md). Since OPEX preview always
-returns null today, EBITDA preview (which needs both Revenue and
-OPEX previews non-null) can never become non-null via real DOM
-editing either, and therefore neither can OCF preview, which is a
-verbatim passthrough of EBITDA preview. That is correct, documented
-"never fabricate" behaviour, not a bug. The tests below verify that
-OCF preview stays permanently unavailable/unpatched in the real
-browser. The chained passthrough arithmetic and null-propagation
-logic are covered directly (independent of DOM editability) in
-tests/test_c2_pr16_ocf_preview.py.
+UPDATED for C2-PR17: OPEX line Budget cells are now real, editable
+inputs (non-contingency rows, on user projects) — see
+docs/C2_PR17_OPEX_LINE_EDITABILITY_BRIDGE.md. OCF preview can now
+become non-null via real DOM editing when both Revenue and OPEX are
+edited within the same debounce flush. The chained passthrough
+arithmetic and null-propagation logic are also covered directly
+(independent of DOM editability) in tests/test_c2_pr16_ocf_preview.py.
 
-  1. OCF preview never fabricates a value while OPEX has no editable
-     inputs (and therefore EBITDA preview is always null).
-  2. OCF preview remains null/blank after editing other grids
-     (Revenue) that don't make EBITDA preview non-null on their own.
+  1. OCF preview never fabricates a value before any edit.
+  2. OCF preview remains null/blank after editing only one of the two
+     grids (Revenue or OPEX) in a given flush.
+  3. OCF preview equals EBITDA preview verbatim once both Revenue and
+     OPEX are edited within the same flush.
 
 Uses the same real-uvicorn-subprocess + real-auth + real-project
 fixture pattern as the PR9/PR10/PR11/PR13/PR14/PR15 browser test
@@ -236,17 +230,24 @@ def _wait_for_runtime_state(page, expected_state, element_id, timeout_ms=6000):
 
 
 class TestOcfPreviewBrowser:
-    def test_ocf_never_fabricates_a_value_with_no_editable_opex_inputs(self, runtime_page):
-        """OCF preview must never render a fabricated numeric value,
-        since both of its transitive inputs (EBITDA preview, which
-        itself needs OPEX preview) can never become non-null until a
-        future dedicated C1 PR adds real OPEX editability."""
+    """UPDATED for C2-PR17: OPEX line Budget cells are now real,
+    editable inputs (non-contingency rows, on user projects) — see
+    docs/C2_PR17_OPEX_LINE_EDITABILITY_BRIDGE.md. OCF preview can now
+    become non-null via real DOM editing, provided both Revenue and
+    OPEX are edited within the same debounce flush (so EBITDA preview
+    becomes non-null, which OCF preview passes through verbatim). The
+    "never fabricate" tests for genuinely-null scenarios are
+    preserved.
+    """
+
+    def test_ocf_never_fabricates_a_value_before_any_edit(self, runtime_page):
+        """OCF preview must never render a fabricated numeric value
+        before any Revenue/OPEX edit has happened."""
         page, page_errors, _ = runtime_page
         page.evaluate("window.switchTab('opex')")
         addr = _first_editable_cell_addr(page, "opex", "amount")
-        assert addr is None, (
-            "expected zero editable OPEX cells under the current, "
-            "intentionally-deferred C1 OPEX editing boundary"
+        assert addr is not None, (
+            "expected at least one editable OPEX Budget cell after C2-PR17"
         )
 
         text = page.eval_on_selector("#operating-cf-preview-value", "el => el.textContent")
@@ -255,10 +256,10 @@ class TestOcfPreviewBrowser:
         )
         assert not page_errors
 
-    def test_ocf_stays_blank_when_ebitda_is_null(self, runtime_page):
-        """When EBITDA preview is null (OPEX has no editable inputs
-        at all today), OCF preview must also remain
-        unpatched/blank — never fabricated."""
+    def test_ocf_stays_blank_when_only_revenue_edited(self, runtime_page):
+        """When only Revenue is edited (OPEX preview still null this
+        flush, so EBITDA preview is null), OCF preview must also
+        remain unpatched/blank — never fabricated."""
         page, page_errors, _ = runtime_page
         page.evaluate("window.switchTab('revenue')")
         revenue_addr = _first_editable_cell_addr(page, "revenue", "text")
@@ -274,7 +275,40 @@ class TestOcfPreviewBrowser:
             "#operating-cf-preview-value", "el => el.getAttribute('data-c2pr16-ocf-preview')"
         )
         assert ocf_after == ocf_before, (
-            "OCF preview must not be patched when EBITDA preview is "
-            "unavailable (no editable OPEX inputs exist today)"
+            "OCF preview must not be patched when only Revenue was "
+            "edited (EBITDA preview is still null this flush)"
+        )
+        assert not page_errors
+
+    def test_ocf_equals_ebitda_when_both_revenue_and_opex_edited_in_same_flush(self, runtime_page):
+        """C2-PR17 restores the original PR16 scenario: editing both
+        Revenue and OPEX so they settle within the same debounce
+        window must produce OCF preview == EBITDA preview, and the
+        renderer must reach the 'ready'/patched state."""
+        page, page_errors, _ = runtime_page
+
+        page.evaluate("window.switchTab('opex')")
+        opex_addr = _first_editable_cell_addr(page, "opex", "amount")
+        assert opex_addr is not None
+
+        page.evaluate("window.switchTab('revenue')")
+        revenue_addr = _first_editable_cell_addr(page, "revenue", "text")
+        assert revenue_addr is not None
+
+        page.evaluate("window.switchTab('opex')")
+        _edit_cell(page, opex_addr, "750.00")
+        page.evaluate("window.switchTab('revenue')")
+        _edit_cell(page, revenue_addr, "2250.00")
+
+        _wait_for_preview_value(page, "ebitda-preview-value", "data-c2pr15-ebitda-preview")
+        _wait_for_preview_value(page, "operating-cf-preview-value", "data-c2pr16-ocf-preview")
+
+        ebitda_text = page.eval_on_selector("#ebitda-preview-value", "el => el.textContent")
+        ocf_text = page.eval_on_selector("#operating-cf-preview-value", "el => el.textContent")
+
+        assert any(ch.isdigit() for ch in ebitda_text)
+        assert ocf_text == ebitda_text, (
+            f"expected OCF preview to equal EBITDA preview verbatim; "
+            f"got ocf={ocf_text!r} ebitda={ebitda_text!r}"
         )
         assert not page_errors
