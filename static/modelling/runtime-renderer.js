@@ -200,6 +200,14 @@
   var OCF_SR_ELEMENT_ID = 'operating-cf-preview-sr';
   var DEBT_REGION_ELEMENT_ID = 'debt-preview';
   var DEBT_SR_ELEMENT_ID = 'debt-preview-sr';
+  // C2-PR25: the two saved-inputs breakdown sub-elements (one span
+  // each, both inside the existing #debt-preview container). The
+  // renderer ONLY formats/patches these; it never reads or computes
+  // any saved inputs itself. If either element is missing from the
+  // DOM (older templates), this entire branch is a safe no-op.
+  var DEBT_BASIS_CAPEX_ELEMENT_ID = 'debt-preview-saved-capex';
+  var DEBT_BASIS_GEARING_ELEMENT_ID = 'debt-preview-saved-gearing';
+  var DEBT_BASIS_REGION_ELEMENT_ID = 'debt-preview-basis';
 
   // C2-PR11: the explicit 5-state machine. See
   // docs/C2_PR11_PREVIEW_UX_POLISH.md for the full description of every
@@ -730,6 +738,14 @@
     var debtRendered = false;
     var debtReason = 'missing-or-malformed-debt';
 
+    // C2-PR26: basis sub-line element ids (added in this PR).
+    var debtBasisEl = (typeof document !== 'undefined' && document.getElementById)
+      ? document.getElementById(DEBT_BASIS_REGION_ELEMENT_ID) : null;
+    var debtBasisCapexEl = (typeof document !== 'undefined' && document.getElementById)
+      ? document.getElementById(DEBT_BASIS_CAPEX_ELEMENT_ID) : null;
+    var debtBasisGearingEl = (typeof document !== 'undefined' && document.getElementById)
+      ? document.getElementById(DEBT_BASIS_GEARING_ELEMENT_ID) : null;
+
     if (_hasRenderableDebtPreview(body)) {
       var debtEl = (typeof document !== 'undefined' && document.getElementById)
         ? document.getElementById(DEBT_PREVIEW_VALUE_ELEMENT_ID)
@@ -737,11 +753,39 @@
       if (debtEl) {
         debtEl.textContent = _formatTotalPreview(body.debt.senior_debt_preview, body.debt.currency);
         debtEl.setAttribute('data-c2pr24-debt-preview', 'patched');
+        // C2-PR25: patch the saved-inputs breakdown sub-line. The
+        // values are EXACTLY what the server already decided in
+        // app/services/model_preview.py's compute_debt_preview();
+        // the renderer only formats them — it never reads or
+        // computes anything. Both fields are guaranteed to be
+        // finite numbers when status === 'preview-ready' (the same
+        // condition that gated _hasRenderableDebtPreview() above).
+        if (debtBasisCapexEl && body.debt.saved_total_capex !== undefined && body.debt.saved_total_capex !== null) {
+          debtBasisCapexEl.textContent = _formatTotalPreview(body.debt.saved_total_capex, body.debt.currency);
+        }
+        if (debtBasisGearingEl && body.debt.saved_gearing_pct !== undefined && body.debt.saved_gearing_pct !== null) {
+          // Gearing is a 0-100 percentage; show as plain % (no currency).
+          debtBasisGearingEl.textContent = body.debt.saved_gearing_pct.toFixed(2) + ' %';
+        }
+        if (debtBasisEl) {
+          debtBasisEl.setAttribute('data-c2pr25-debt-basis', 'patched');
+        }
         _setBookkeeping(DEBT_PREVIEW_VALUE_ELEMENT_ID, DEBT_REGION_ELEMENT_ID, DEBT_SR_ELEMENT_ID, STATE.READY, 'Debt preview status: ');
         debtRendered = true;
         debtReason = 'ok';
       } else {
         debtReason = 'target-element-not-found';
+      }
+    } else if (body && body.debt && body.debt.status === 'preview-unavailable') {
+      // C2-PR25: when the server explicitly reports "preview-
+      // unavailable", make sure the basis sub-line reverts to the
+      // em-dash placeholder (in case a prior successful render left
+      // stale numbers on screen). Renderer-only behaviour; the
+      // server never sends stale data.
+      if (debtBasisCapexEl) { debtBasisCapexEl.textContent = '\u2014'; }
+      if (debtBasisGearingEl) { debtBasisGearingEl.textContent = '\u2014'; }
+      if (debtBasisEl) {
+        debtBasisEl.setAttribute('data-c2pr25-debt-basis', 'idle');
       }
     }
 

@@ -9161,3 +9161,38 @@ tr.fc-grid-header--sub th {
 .fc-selected-cell {
   background-color: rgba(26, 86, 219, 0.08);
 }
+
+/* C2-PR26: Debt preview basis sub-line. Two stacked micro-rows
+   showing "Saved CAPEX used: X" and "Saved gearing used: Y%" so the
+   user can see exactly which SAVED inputs anchor the placeholder
+   senior-debt preview. Purely presentational; never carries
+   calculation. The `title` attribute provides the safety copy on
+   hover, in addition to the visible label "Debt preview (saved inputs
+   only)" already in the main indicator label. */
+.debt-preview-basis {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  margin-left: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  background: rgba(146, 64, 14, 0.06);
+  border: 1px dashed rgba(146, 64, 14, 0.3);
+  border-radius: 4px;
+  font-size: 0.74rem;
+  color: #6b7280;
+  vertical-align: middle;
+}
+.debt-preview-basis-row {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+.debt-preview-basis-label {
+  font-weight: 500;
+  color: #92400e;
+}
+.debt-preview-basis-value {
+  font-variant-numeric: tabular-nums;
+  color: #374151;
+}
