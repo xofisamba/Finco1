@@ -1711,6 +1711,36 @@ body {
   line-height: 1.5;
 }
 
+/* C2-PR21: Operating Preview Panel — wraps the five existing CAPEX/
+   Revenue/OPEX/EBITDA/Operating-Cash-Flow preview indicators in one
+   cohesive, visually-distinct container. Purely a grouping style; does
+   not alter any existing .runtime-status-indicator/.badge-preview-only
+   rule. See docs/C2_PR21_OPERATING_PREVIEW_PANEL.md. */
+.operating-preview-panel {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius);
+}
+
+.operating-preview-panel__header {
+  margin-bottom: 0.75rem;
+}
+
+.operating-preview-panel__title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #92400e;
+  margin-bottom: 0.2rem;
+}
+
+.operating-preview-panel__desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 /* ── Sheet Card (white card) ────────────────────────────────────────────── */
 .sheet-card {
   background: var(--surface);
