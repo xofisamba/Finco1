@@ -373,10 +373,20 @@
        deliberately a plain status string, never an IRR/DSCR/revenue/
        tax/other real KPI value, so this slice can never be mistaken for
        a real recalculation having occurred. See
-       docs/C2_PR8_FIRST_RUNTIME_SLICE.md. #}
-    <div class="runtime-status-indicator" id="overview-runtime-status" role="status" aria-live="polite" aria-label="Live runtime preview status">
+       docs/C2_PR8_FIRST_RUNTIME_SLICE.md.
+
+       C2-PR11: the single fixed "Idle"/"Preview executed" binary is
+       replaced by an explicit 5-state machine (Idle, Preview updating…,
+       Preview ready, Preview unavailable, Preview failed) — see
+       docs/C2_PR11_PREVIEW_UX_POLISH.md. `aria-busy` reflects whether a
+       preview request is currently in flight, and a visually-hidden
+       `#overview-runtime-status-sr` span gives screen readers an
+       explicit "Runtime preview status: <state>" announcement distinct
+       from the plain visible label. #}
+    <div class="runtime-status-indicator" id="overview-runtime-status" role="status" aria-live="polite" aria-label="Live runtime preview status" aria-busy="false">
       <span class="runtime-status-indicator__label">Runtime preview:</span>
-      <span class="runtime-status-indicator__value" id="overview-runtime-status-value" data-c2pr8-runtime-status="idle">Idle</span>
+      <span class="runtime-status-indicator__value" id="overview-runtime-status-value" data-c2pr8-runtime-status="idle" data-c2pr11-runtime-state="idle">Idle</span>
+      <span class="sr-only" id="overview-runtime-status-sr">Runtime preview status: Idle</span>
     </div>
 
     {# C2-PR10: CAPEX Total Preview. A small, always-rendered,
@@ -390,10 +400,23 @@
        This element starts blank ("—") and is only ever populated from
        a live, unsaved in-browser sum of the CAPEX grid's editable
        cells — never from persistence, never from a real financial
-       engine call. See docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md. #}
-    <div class="runtime-status-indicator capex-total-preview-indicator" id="capex-total-preview" role="status" aria-live="polite" aria-label="Unsaved CAPEX total preview, not the saved total">
+       engine call. See docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
+
+       C2-PR11: the value pill now also carries a `badge`/`badge-*`
+       class (the same convention already used by
+       #workspace-strip-dirty's badge-warn/badge-pass pair, and by the
+       pre-existing `badge-preview-only`/`badge-dirty`/`badge-saved`
+       rules in static/styles.css) so the preview value is visually
+       distinguishable from the page's saved/persisted figures, without
+       inventing any new CSS. It starts `badge-preview-only` (an
+       existing class already meaning "unsaved preview, not the
+       persisted figure" elsewhere in this codebase) and is never
+       cleared back to a "saved" style by this preview path, since this
+       element NEVER shows a saved value. #}
+    <div class="runtime-status-indicator capex-total-preview-indicator" id="capex-total-preview" role="status" aria-live="polite" aria-label="Unsaved CAPEX total preview, not the saved total" aria-busy="false">
       <span class="runtime-status-indicator__label">CAPEX total preview (unsaved):</span>
-      <span class="runtime-status-indicator__value" id="capex-total-preview-value" data-c2pr10-capex-preview="idle">&mdash;</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="capex-total-preview-value" data-c2pr10-capex-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="capex-total-preview-sr">CAPEX preview status: Idle</span>
     </div>
 
     <!-- Runtime summary HTMX swap target -->

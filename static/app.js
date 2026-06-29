@@ -279,6 +279,23 @@ function _syncDirtyFromLiveModel() {
   merged.dirty = effectiveDirty;
   if (liveDirty && !base.dirty) {
     merged.dirty_label = 'Unsaved edits';
+  } else if (!effectiveDirty) {
+    // C2-PR12: dirty-strip-lag fix. Previously this branch was missing,
+    // so `merged.dirty_label` fell through to whatever `_lastServerMeta`
+    // last said (still "Unsaved edits" immediately after a successful
+    // Save, since /scenarios/save's HTMX response never refreshes
+    // `_lastServerMeta` — see the btn-save htmx:afterRequest handler
+    // below). `meta.dirty` itself was always correct (so the banner,
+    // gated on `!meta.dirty`, hid immediately) but the strip TEXT
+    // (`#workspace-strip-dirty`, gated on the now-stale `dirty_label`)
+    // lagged until a later Run's response overwrote `_lastServerMeta`.
+    // Explicitly clamping the label to "Clean saved state" (the same
+    // clean-state wording app/services/scenario_state_service.py and
+    // app/services/run_service.py already use server-side) whenever the
+    // merged state is genuinely clean keeps the strip text and the
+    // banner in sync on the same tick, with no dependency on a
+    // subsequent Run.
+    merged.dirty_label = 'Clean saved state';
   }
   _applyingFromLiveModelSync = true;
   try {

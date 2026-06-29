@@ -568,6 +568,14 @@
       var seq = _previewRequestSeq;
       _previewLatestSeq = seq;
 
+      // C2-PR11: a preview fetch is genuinely about to be issued for
+      // this flush -> "Preview updating…". This is the one and only
+      // place setUpdating() is called, mirroring how this is the one
+      // and only place a preview fetch is issued.
+      if (window.FcRuntimeRenderer && typeof window.FcRuntimeRenderer.setUpdating === 'function') {
+        window.FcRuntimeRenderer.setUpdating();
+      }
+
       try {
         fetch(req.url, {
           method: req.method,
@@ -575,8 +583,20 @@
           body: JSON.stringify(req.body),
           signal: controller ? controller.signal : undefined
         }).then(function (res) {
+          // C2-PR11: a non-2xx HTTP status is a failure for state-
+          // machine purposes even though `fetch()` itself resolves
+          // (rather than rejects) for those responses. The sequence
+          // check still gates whether this is even allowed to react at
+          // all, exactly as it already does for the success path.
+          if (!res.ok) {
+            if (seq === _previewLatestSeq && window.FcRuntimeRenderer && typeof window.FcRuntimeRenderer.setFailed === 'function') {
+              window.FcRuntimeRenderer.setFailed();
+            }
+            return null;
+          }
           return res.json();
         }).then(function (json) {
+          if (json === null) return; // already handled by the !res.ok branch above
           // C2-PR9: sequence check is the authoritative, final guard
           // against rendering a stale response — defense in depth on
           // top of AbortController, since an aborted request's
@@ -589,16 +609,36 @@
           }
         }).catch(function () {
           // Network/parse/AbortError: never throws, never breaks the
-          // page, never touches the DOM. FcRuntimeRenderer is
-          // intentionally not called here (including for an aborted
-          // request), since there is no response body to render, or
-          // the response is known-stale.
+          // page. C2-PR9's invariant (an aborted/superseded request
+          // never patches a preview VALUE) is unchanged — but C2-PR11
+          // additionally surfaces a genuine (non-aborted, still-newest)
+          // failure as the "Preview failed" STATE label, without ever
+          // touching the previously-rendered preview VALUE text. A
+          // request that was itself superseded (seq !== _previewLatestSeq
+          // by the time it lands here) is silently discarded exactly as
+          // before — only the newest request's failure is ever shown.
+          if (seq === _previewLatestSeq && window.FcRuntimeRenderer && typeof window.FcRuntimeRenderer.setFailed === 'function') {
+            window.FcRuntimeRenderer.setFailed();
+          }
         });
       } catch (e) {
         // Defensive: fetch() itself throwing synchronously (e.g. an
         // unusual test/polyfill environment) must never break the
         // flush path or any caller of flushScheduledRecalc().
+        if (window.FcRuntimeRenderer && typeof window.FcRuntimeRenderer.setFailed === 'function') {
+          window.FcRuntimeRenderer.setFailed();
+        }
       }
+    } else if (window.FcRuntimeRenderer && typeof window.FcRuntimeRenderer.setUnavailable === 'function') {
+      // C2-PR11: this flush had nothing preview-able to send (no
+      // previewPayload was built, no fetch global, etc.) — no request
+      // is issued at all, so the state machine reflects that
+      // explicitly as "Preview unavailable" rather than silently
+      // leaving a stale "Preview updating…"/previous state displayed
+      // forever. Only reached when the `if` above's guard fails, i.e.
+      // exactly the existing no-op condition this block already had
+      // before C2-PR11 — no new no-op path was introduced.
+      window.FcRuntimeRenderer.setUnavailable();
     }
 
     return snapshot;
