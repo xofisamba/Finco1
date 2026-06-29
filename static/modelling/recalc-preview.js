@@ -33,13 +33,41 @@
  * It never calls any financial engine code either. See
  * docs/C2_PR13_REVENUE_PREVIEW.md.
  *
+ * C2-PR14 adds a third, independent additive computation following the
+ * EXACT same pattern — an OPEX total PREVIEW (a plain sum of the live,
+ * possibly-unsaved OPEX grid editable "Budget" cell values currently in
+ * the DOM). OPEX grid cells use `data-fc-kind="amount"` (the same
+ * convention as CAPEX, not Revenue's "text") per the existing markup in
+ * app/templates/partials/sheet_opex_detail.html, so
+ * `_computeOpexTotalFromDom()` matches on `cell.editable === true` and
+ * `cell.kind === 'amount'`. See docs/C2_PR14_OPEX_PREVIEW.md.
+ *
+ * C2-PR15 adds EBITDA Preview = Revenue Preview − OPEX Preview, computed
+ * ENTIRELY CLIENT-SIDE, purely arithmetically, from the two preview
+ * numbers already computed above in this same flush
+ * (`revenueTotalPreview`/`opexTotalPreview`) — it never re-reads the
+ * DOM, never reads Overview KPIs, and never calls any engine. If either
+ * input is null, the EBITDA preview is null (never a fabricated partial
+ * value). See docs/C2_PR15_EBITDA_PREVIEW.md for the client-vs-server
+ * design choice rationale.
+ *
+ * C2-PR16 adds Operating Cash Flow Preview = EBITDA Preview (passthrough
+ * only — no debt/tax/depreciation/financing adjustments). This is
+ * DELIBERATELY, EXPLICITLY a non-authoritative simplification that
+ * exists only to prove the preview pipeline can chain a preview of a
+ * preview of previews. See docs/C2_PR16_OPERATING_CF_PREVIEW.md.
+ *
  * Reference: docs/C2_PR1_IMPLEMENTATION_NOTE.md,
  *            docs/C2_PR2_DIRTY_STATE_UNIFICATION_NOTE.md,
  *            docs/C2_PR3_RECALC_SCHEDULER_FOUNDATION_NOTE.md,
  *            docs/C2_PR4_DEPENDENCY_GRAPH_FOUNDATION_NOTE.md,
  *            docs/C2_PR5_INCREMENTAL_RECALC_EXECUTION_STUB_NOTE.md,
  *            docs/C2_PR6_INCREMENTAL_RECALC_PREVIEW_BOUNDARY_NOTE.md,
- *            docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
+ *            docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md,
+ *            docs/C2_PR13_REVENUE_PREVIEW.md,
+ *            docs/C2_PR14_OPEX_PREVIEW.md,
+ *            docs/C2_PR15_EBITDA_PREVIEW.md,
+ *            docs/C2_PR16_OPERATING_CF_PREVIEW.md.
  *
  * This module answers exactly one question: "given a flushed recalc
  * snapshot and its (stubbed) execution result, what request payload
@@ -285,6 +313,100 @@
   }
 
   /**
+   * C2-PR14: computes a deterministic, client-only OPEX total PREVIEW
+   * — a plain sum of every editable OPEX "Budget" cell's CURRENT (live,
+   * possibly-unsaved) DOM value. Exactly mirrors
+   * `_computeCapexTotalFromDom()` (see its docstring for the full
+   * rationale, which applies identically here): the OPEX grid uses
+   * `data-fc-kind="amount"` (the same convention as CAPEX, NOT
+   * Revenue's "text") per the existing markup in
+   * app/templates/partials/sheet_opex_detail.html, so this function
+   * matches on `cell.editable === true && cell.kind === 'amount'`.
+   * Read-only category-subtotal rows (`data-fc-kind="subtotal"`) and
+   * non-contingency-budget metadata cells (inflation/WHT %, which are
+   * also `kind="amount"` but never `editable`) are excluded by the
+   * `editable === true` check alone — only genuinely editable Budget
+   * line items are summed.
+   *
+   * Never throws. Returns null (not 0, not a fabricated number) when
+   * FcGridRegistry/FcCellIO are unavailable, or when the "opex" grid is
+   * not currently registered/rendered, or no editable cell parses as a
+   * number — "no total available" must never be silently rendered as a
+   * real zero total.
+   *
+   * NOTE (as of C2-PR14): OPEX line items are not yet wired up as
+   * editable in app/templates/partials/sheet_opex_detail.html — "Line
+   * editing deferred" there is a pre-existing, intentional C1 boundary
+   * unrelated to this PR. Making OPEX cells editable is out of scope
+   * for a preview-pipeline PR. Until a dedicated C1 PR adds OPEX
+   * editability, this function will always return null in practice
+   * (counted === 0), which is the correct, documented behaviour per
+   * the "never fabricate" rule — not a bug in this function.
+   */
+  function _computeOpexTotalFromDom() {
+    try {
+      if (!window.FcGridRegistry || typeof window.FcGridRegistry.getGrid !== 'function') return null;
+      if (!window.FcCellIO || typeof window.FcCellIO.readValue !== 'function') return null;
+
+      var grid = window.FcGridRegistry.getGrid('opex');
+      if (!grid || !grid.rows) return null;
+
+      var total = 0;
+      var counted = 0;
+      grid.rows.forEach(function (row) {
+        (row || []).forEach(function (cell) {
+          if (!cell || !cell.editable || cell.kind !== 'amount') return;
+          var raw = window.FcCellIO.readValue(cell);
+          var num = parseFloat(raw);
+          if (isNaN(num)) return;
+          total += num;
+          counted += 1;
+        });
+      });
+
+      if (counted === 0) return null;
+      // Round to 2dp to avoid noisy floating-point sums leaking into
+      // the rendered preview — this is presentation rounding only,
+      // not a recalculation.
+      return Math.round(total * 100) / 100;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * C2-PR15: EBITDA Preview = Revenue Preview − OPEX Preview. Pure
+   * arithmetic on the two preview numbers already computed above in
+   * THIS SAME flush — never re-reads the DOM, never reads Overview
+   * KPIs, never calls any engine. If either input is null/unavailable,
+   * returns null (never a fabricated partial value) — this is the
+   * single most important invariant of this function. Never throws.
+   */
+  function _computeEbitdaFromPreviews(revenuePreview, opexPreview) {
+    if (typeof revenuePreview !== 'number' || !isFinite(revenuePreview)) return null;
+    if (typeof opexPreview !== 'number' || !isFinite(opexPreview)) return null;
+    return Math.round((revenuePreview - opexPreview) * 100) / 100;
+  }
+
+  /**
+   * C2-PR16: Operating Cash Flow Preview = EBITDA Preview, verbatim.
+   *
+   * *** THIS IS NOT AUTHORITATIVE OPERATING CASH FLOW. ***
+   * No debt service, no tax, no depreciation/amortization, no working
+   * capital, no financing adjustment of any kind is applied here. This
+   * is a deliberately, explicitly oversimplified placeholder whose sole
+   * purpose is to prove the preview pipeline can chain a preview-of-a-
+   * preview-of-previews (CAPEX/Revenue/OPEX -> EBITDA -> OCF). See
+   * docs/C2_PR16_OPERATING_CF_PREVIEW.md for the full rationale. Never
+   * throws; null propagates straight through (if EBITDA preview is
+   * null, OCF preview is null).
+   */
+  function _computeOcfFromEbitda(ebitdaPreview) {
+    if (typeof ebitdaPreview !== 'number' || !isFinite(ebitdaPreview)) return null;
+    return ebitdaPreview;
+  }
+
+  /**
    * Reads the "project" query-string parameter from the current page
    * URL, defensively. Returns null (never a fabricated placeholder)
    * if window/window.location/URLSearchParams is unavailable, or if
@@ -335,6 +457,27 @@
     if (payload.hasOwnProperty('revenueTotalPreview')) {
       var rtp = payload.revenueTotalPreview;
       if (rtp !== null && (typeof rtp !== 'number' || !isFinite(rtp))) return false;
+    }
+    // C2-PR14: opexTotalPreview is additive/optional, mirroring
+    // capexTotalPreview/revenueTotalPreview exactly — null or a finite
+    // number only.
+    if (payload.hasOwnProperty('opexTotalPreview')) {
+      var otp = payload.opexTotalPreview;
+      if (otp !== null && (typeof otp !== 'number' || !isFinite(otp))) return false;
+    }
+    // C2-PR15: ebitdaPreview is additive/optional — null or a finite
+    // number only. Computed purely client-side from revenue/opex
+    // previews already in this payload (see buildPreviewPayload).
+    if (payload.hasOwnProperty('ebitdaPreview')) {
+      var ebp = payload.ebitdaPreview;
+      if (ebp !== null && (typeof ebp !== 'number' || !isFinite(ebp))) return false;
+    }
+    // C2-PR16: operatingCashFlowPreview is additive/optional — null or
+    // a finite number only. Equals ebitdaPreview verbatim (see
+    // _computeOcfFromEbitda); NOT authoritative OCF.
+    if (payload.hasOwnProperty('operatingCashFlowPreview')) {
+      var ocfp = payload.operatingCashFlowPreview;
+      if (ocfp !== null && (typeof ocfp !== 'number' || !isFinite(ocfp))) return false;
     }
     return true;
   }
@@ -407,6 +550,34 @@
     });
     var revenueTotalPreview = touchesRevenue ? _computeRevenueTotalFromDom() : null;
 
+    // C2-PR14: additive only, mirrors capexTotalPreview/
+    // revenueTotalPreview's "only recompute when this flush's dirty set
+    // actually touched the relevant grid" scoping exactly, using
+    // "opex!..." addresses.
+    var touchesOpex = dirtyCells.some(function (addr) {
+      return typeof addr === 'string' && addr.indexOf('opex!') === 0;
+    });
+    var opexTotalPreview = touchesOpex ? _computeOpexTotalFromDom() : null;
+
+    // C2-PR15: EBITDA Preview = Revenue Preview − OPEX Preview, computed
+    // PURELY from the two preview numbers already computed above in
+    // THIS SAME flush (never re-read from DOM, never from Overview
+    // KPIs, never from any engine). Since revenueTotalPreview/
+    // opexTotalPreview are each independently null unless THIS flush's
+    // dirty set touched their own grid (see touchesRevenue/touchesOpex
+    // above), EBITDA is therefore null unless both the Revenue and OPEX
+    // grids were edited together before the debounce settled (e.g. one
+    // edit in each grid within the same debounce window) — this is
+    // intentional, not a bug: EBITDA must never be computed from a
+    // stale preview value carried over from an earlier, unrelated
+    // flush, only from two values genuinely fresh in this exact flush.
+    var ebitdaPreview = _computeEbitdaFromPreviews(revenueTotalPreview, opexTotalPreview);
+
+    // C2-PR16: Operating Cash Flow Preview = EBITDA Preview, verbatim.
+    // NOT authoritative OCF — see _computeOcfFromEbitda's docstring and
+    // docs/C2_PR16_OPERATING_CF_PREVIEW.md.
+    var operatingCashFlowPreview = _computeOcfFromEbitda(ebitdaPreview);
+
     var payload = {
       valid: valid,
       dirtyCells: dirtyCells,
@@ -416,7 +587,10 @@
       executionStatus: executionStatus,
       project: _readProjectFromLocation(),
       capexTotalPreview: capexTotalPreview,
-      revenueTotalPreview: revenueTotalPreview
+      revenueTotalPreview: revenueTotalPreview,
+      opexTotalPreview: opexTotalPreview,
+      ebitdaPreview: ebitdaPreview,
+      operatingCashFlowPreview: operatingCashFlowPreview
     };
 
     _lastPreviewPayload = payload;
@@ -475,6 +649,15 @@
     computeCapexTotalFromDom: _computeCapexTotalFromDom,
     // C2-PR13: exposed for direct testing of the Revenue total preview
     // sum independent of a full snapshot/execution flow.
-    computeRevenueTotalFromDom: _computeRevenueTotalFromDom
+    computeRevenueTotalFromDom: _computeRevenueTotalFromDom,
+    // C2-PR14: exposed for direct testing of the OPEX total preview
+    // sum independent of a full snapshot/execution flow.
+    computeOpexTotalFromDom: _computeOpexTotalFromDom,
+    // C2-PR15: exposed for direct testing of the EBITDA arithmetic
+    // independent of a full snapshot/execution flow.
+    computeEbitdaFromPreviews: _computeEbitdaFromPreviews,
+    // C2-PR16: exposed for direct testing of the OCF passthrough
+    // independent of a full snapshot/execution flow.
+    computeOcfFromEbitda: _computeOcfFromEbitda
   };
 })();
