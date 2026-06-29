@@ -389,6 +389,25 @@
       <span class="sr-only" id="overview-runtime-status-sr">Runtime preview status: Idle</span>
     </div>
 
+    {# C2-PR21: Operating Preview Panel. Consolidates the five existing,
+       previously-separate preview indicators (C2-PR10 CAPEX, C2-PR13
+       Revenue, C2-PR14 OPEX, C2-PR15 EBITDA, C2-PR16 Operating Cash
+       Flow) into one cohesive, clearly-labeled panel container on the
+       Overview tab. This is a pure markup/grouping change: every
+       element ID, region ID, sr-only label element, and
+       role/aria-live/aria-busy attribute below is preserved byte-for-
+       byte from its pre-PR21 markup (see docs/C2_PR10_*.md through
+       docs/C2_PR16_*.md for each indicator's own history) — only the
+       wrapping `<div class="operating-preview-panel">` container, its
+       heading, and its explanatory copy are new. No calculation logic,
+       request/response shape, or JS state-machine code was touched.
+       See docs/C2_PR21_OPERATING_PREVIEW_PANEL.md. #}
+    <div class="operating-preview-panel" id="operating-preview-panel">
+      <div class="operating-preview-panel__header">
+        <div class="operating-preview-panel__title">Operating preview (unsaved)</div>
+        <div class="operating-preview-panel__desc">These values are live previews only. Save/Run and exports use the saved model.</div>
+      </div>
+
     {# C2-PR10: CAPEX Total Preview. A small, always-rendered,
        explicitly-a-PREVIEW element, patched client-side
        (static/modelling/runtime-renderer.js) after a CAPEX-grid edit's
@@ -484,6 +503,7 @@
       <span class="runtime-status-indicator__value badge badge-preview-only" id="operating-cf-preview-value" data-c2pr16-ocf-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
       <span class="sr-only" id="operating-cf-preview-sr">Operating cash flow preview status: Idle</span>
     </div>
+    </div>{# /operating-preview-panel #}
 
     <!-- Runtime summary HTMX swap target -->
     <div id="model-output-area"></div>
