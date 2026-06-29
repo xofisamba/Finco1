@@ -85,8 +85,9 @@ class TestTopLevelResponseShapeUnchanged:
     }
     # C2-PR30 adds the tax preview top-level key. The full pre-
     # PR30 set PLUS 'tax' is the post-refactor expected set.
+    # C2-PR31/32/33 ADDS two more top-level keys: 'irr' and 'dscr'.
     EXPECTED_TOP_LEVEL_KEYS_POST_REFACTOR = (
-        EXPECTED_TOP_LEVEL_KEYS_PRE_REFACTOR | {"tax"}
+        EXPECTED_TOP_LEVEL_KEYS_PRE_REFACTOR | {"tax", "irr", "dscr"}
     )
 
     def test_top_level_keys_for_full_valid_payload(self):

@@ -46,6 +46,8 @@ from app.services.previews import (
     operating_preview,
     debt_preview,
     tax_preview,
+    irr_preview,
+    dscr_preview,
 )
 
 
@@ -81,7 +83,13 @@ def register(
 
 
 def register_default_slices() -> None:
-    """Register the three default slices, in their pinned order.
+    """Register the five default slices, in their pinned order:
+
+      1. operating  (echo x5 — special-cased in run_all)
+      2. debt       (backend-owned, PR24/25/26/27)
+      3. tax        (backend-owned, PR30 stub)
+      4. irr        (backend-owned, PR31 stub)
+      5. dscr       (backend-owned, PR32 stub)
 
     Called once by `model_preview.py` at module-import time. Idempotent
     — calling twice would append duplicates, so the orchestrator must
@@ -113,6 +121,18 @@ def register_default_slices() -> None:
         name="tax",
         response_key=tax_preview.TAX_RESPONSE_KEY,
         compute=tax_preview.compute,
+    )
+    # C2-PR31: IRR preview stub (backend-owned boundary).
+    register(
+        name="irr",
+        response_key=irr_preview.IRR_RESPONSE_KEY,
+        compute=irr_preview.compute,
+    )
+    # C2-PR32: DSCR preview stub (backend-owned boundary).
+    register(
+        name="dscr",
+        response_key=dscr_preview.DSCR_RESPONSE_KEY,
+        compute=dscr_preview.compute,
     )
 
 

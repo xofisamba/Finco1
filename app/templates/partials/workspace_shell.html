@@ -539,6 +539,30 @@
       <span class="runtime-status-indicator__value badge badge-preview-only" id="tax-preview-value" data-c2pr30-tax-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
       <span class="sr-only" id="tax-preview-sr">Tax preview status: Idle</span>
     </div>
+    {#
+     C2-PR31: IRR preview row. Backend-only stub — the value is
+     ALWAYS "—" today (the backend always reports
+     preview-unavailable). The tooltip explicitly tells the user this
+     is a future boundary and Run remains authoritative. The label
+     matches the existing six-indicator pattern.
+    #}
+    <div class="runtime-status-indicator irr-preview-indicator" id="irr-preview" role="status" aria-live="polite" aria-label="IRR preview placeholder; not yet computed" aria-busy="false">
+      <span class="runtime-status-indicator__label">IRR preview:</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="irr-preview-value" data-c2pr31-irr-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
+      <span class="sr-only" id="irr-preview-sr">IRR preview status: Idle</span>
+    </div>
+    {#
+     C2-PR32: DSCR preview row. Backend-only stub — the value is
+     ALWAYS "—" today (the backend always reports
+     preview-unavailable). The tooltip explicitly tells the user this
+     is a future boundary and Run remains authoritative. The label
+     matches the existing seven-indicator pattern.
+    #}
+    <div class="runtime-status-indicator dscr-preview-indicator" id="dscr-preview" role="status" aria-live="polite" aria-label="DSCR preview placeholder; not yet computed" aria-busy="false">
+      <span class="runtime-status-indicator__label">DSCR preview:</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="dscr-preview-value" data-c2pr32-dscr-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
+      <span class="sr-only" id="dscr-preview-sr">DSCR preview status: Idle</span>
+    </div>
     </div>{# /operating-preview-panel #}
 
     <!-- Runtime summary HTMX swap target -->
