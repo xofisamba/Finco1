@@ -440,6 +440,51 @@
       <span class="sr-only" id="revenue-total-preview-sr">Revenue preview status: Idle</span>
     </div>
 
+    {# C2-PR14: OPEX Total Preview. Follows the C2-PR10 CAPEX total
+       preview pattern exactly — a small, always-rendered,
+       explicitly-a-PREVIEW element, patched client-side
+       (static/modelling/runtime-renderer.js) after an OPEX-grid edit's
+       POST /model/preview round trip resolves. Placed next to (not
+       inside/replacing) the C2-PR8/PR10/PR13 indicators above, and is
+       visually/textually distinct from any saved/Run-derived OPEX
+       figure shown on the OPEX sheet itself (e.g. "Total OPEX (Y1)",
+       which always reflects SAVED data). This element starts blank
+       ("—") and is only ever populated from a live, unsaved in-browser
+       sum of the OPEX grid's editable Budget cells — never from
+       persistence, never from a real financial engine call. Reuses the
+       same `badge`/`badge-preview-only` classes — no new CSS/design
+       invented. See docs/C2_PR14_OPEX_PREVIEW.md. #}
+    <div class="runtime-status-indicator opex-total-preview-indicator" id="opex-total-preview" role="status" aria-live="polite" aria-label="Unsaved OPEX total preview, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">OPEX total preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="opex-total-preview-value" data-c2pr14-opex-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="opex-total-preview-sr">OPEX preview status: Idle</span>
+    </div>
+
+    {# C2-PR15: EBITDA Preview = Revenue Preview − OPEX Preview, computed
+       PURELY client-side from the two preview values above in the same
+       flush (never re-read from DOM, never from Overview KPIs, never
+       from any engine). Null/blank ("—") whenever either input preview
+       is unavailable — never a fabricated partial value. See
+       docs/C2_PR15_EBITDA_PREVIEW.md. #}
+    <div class="runtime-status-indicator ebitda-preview-indicator" id="ebitda-preview" role="status" aria-live="polite" aria-label="Unsaved EBITDA preview, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">EBITDA preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="ebitda-preview-value" data-c2pr15-ebitda-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="ebitda-preview-sr">EBITDA preview status: Idle</span>
+    </div>
+
+    {# C2-PR16: Operating Cash Flow Preview = EBITDA Preview, verbatim.
+       *** NOT AUTHORITATIVE OPERATING CASH FLOW *** — no debt service,
+       tax, depreciation/amortization, working capital, or financing
+       adjustment is applied. This is a deliberately, explicitly
+       oversimplified placeholder that exists ONLY to prove the preview
+       pipeline can chain a preview of a preview of previews. See
+       docs/C2_PR16_OPERATING_CF_PREVIEW.md. #}
+    <div class="runtime-status-indicator operating-cf-preview-indicator" id="operating-cf-preview" role="status" aria-live="polite" aria-label="Unsaved, non-authoritative operating cash flow preview placeholder" aria-busy="false">
+      <span class="runtime-status-indicator__label">Operating cash flow preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="operating-cf-preview-value" data-c2pr16-ocf-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="operating-cf-preview-sr">Operating cash flow preview status: Idle</span>
+    </div>
+
     <!-- Runtime summary HTMX swap target -->
     <div id="model-output-area"></div>
 

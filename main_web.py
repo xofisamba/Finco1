@@ -2866,6 +2866,55 @@ def _c2_pr7_validate_preview_payload(body):
         ):
             errors.append("'revenueTotalPreview' must be a finite number or null")
 
+    # C2-PR14: opexTotalPreview is additive/optional, mirroring
+    # capexTotalPreview/revenueTotalPreview's validation exactly. It
+    # carries the CLIENT-computed sum of the live (possibly-unsaved)
+    # OPEX grid editable "Budget" cell values; the server only echoes
+    # it back (rounded) under the new "opex" response field, it never
+    # recomputes or second-guesses it against persistence, and never
+    # calls any financial engine.
+    if "opexTotalPreview" in body:
+        opex_total_preview = body.get("opexTotalPreview")
+        if opex_total_preview is not None and (
+            isinstance(opex_total_preview, bool)
+            or not isinstance(opex_total_preview, (int, float))
+            or opex_total_preview != opex_total_preview  # NaN check
+            or opex_total_preview in (float("inf"), float("-inf"))
+        ):
+            errors.append("'opexTotalPreview' must be a finite number or null")
+
+    # C2-PR15: ebitdaPreview is additive/optional. It carries the
+    # CLIENT-computed EBITDA = revenue preview - opex preview (pure
+    # arithmetic on numbers already computed client-side); the server
+    # only validates finiteness and echoes it back, rounded, under the
+    # new "ebitda" response field. Never recomputed/second-guessed
+    # server-side, never engine-derived.
+    if "ebitdaPreview" in body:
+        ebitda_preview = body.get("ebitdaPreview")
+        if ebitda_preview is not None and (
+            isinstance(ebitda_preview, bool)
+            or not isinstance(ebitda_preview, (int, float))
+            or ebitda_preview != ebitda_preview  # NaN check
+            or ebitda_preview in (float("inf"), float("-inf"))
+        ):
+            errors.append("'ebitdaPreview' must be a finite number or null")
+
+    # C2-PR16: operatingCashFlowPreview is additive/optional. It carries
+    # the CLIENT-computed Operating Cash Flow preview, which currently
+    # equals ebitdaPreview verbatim (NOT authoritative OCF — see
+    # docs/C2_PR16_OPERATING_CF_PREVIEW.md). The server only validates
+    # finiteness and echoes it back, rounded, under the new
+    # "operating_cash_flow" response field.
+    if "operatingCashFlowPreview" in body:
+        ocf_preview = body.get("operatingCashFlowPreview")
+        if ocf_preview is not None and (
+            isinstance(ocf_preview, bool)
+            or not isinstance(ocf_preview, (int, float))
+            or ocf_preview != ocf_preview  # NaN check
+            or ocf_preview in (float("inf"), float("-inf"))
+        ):
+            errors.append("'operatingCashFlowPreview' must be a finite number or null")
+
     return (len(errors) == 0), errors
 
 
@@ -3019,6 +3068,56 @@ async def model_preview(request: Request):
     if "revenueTotalPreview" in body and body.get("revenueTotalPreview") is not None:
         response_body["revenue"] = {
             "preview": round(float(body["revenueTotalPreview"]), 2),
+            "currency": "EUR",
+        }
+
+    # C2-PR14: additive "opex" field, mirroring "capex"/"revenue"
+    # exactly. opexTotalPreview is computed CLIENT-SIDE
+    # (static/modelling/recalc-preview.js's _computeOpexTotalFromDom)
+    # from the live, possibly-unsaved OPEX grid editable "Budget" cell
+    # values already in the browser — this route does NOT recompute it,
+    # does NOT read persistence/the database, and does NOT call
+    # app/waterfall_core.py, domain/*, app/input_adapter.py, or
+    # app/project_factories.py. Omitted entirely when the client didn't
+    # include one — never fabricated as 0.0. See
+    # docs/C2_PR14_OPEX_PREVIEW.md.
+    if "opexTotalPreview" in body and body.get("opexTotalPreview") is not None:
+        response_body["opex"] = {
+            "preview": round(float(body["opexTotalPreview"]), 2),
+            "currency": "EUR",
+        }
+
+    # C2-PR15: additive "ebitda" field. ebitdaPreview is computed
+    # CLIENT-SIDE (static/modelling/recalc-preview.js's
+    # _computeEbitdaFromPreviews) as pure arithmetic — revenue preview
+    # minus opex preview — on the two numbers already computed
+    # client-side in the same flush. This route performs NO arithmetic
+    # of its own here either: it only validates finiteness and echoes
+    # the client's already-computed number back, rounded to 2dp. Never
+    # calls any financial engine. Omitted entirely when the client
+    # didn't include one (e.g. because either revenue or opex preview
+    # was null/unavailable that flush) — never fabricated. See
+    # docs/C2_PR15_EBITDA_PREVIEW.md.
+    if "ebitdaPreview" in body and body.get("ebitdaPreview") is not None:
+        response_body["ebitda"] = {
+            "preview": round(float(body["ebitdaPreview"]), 2),
+            "currency": "EUR",
+        }
+
+    # C2-PR16: additive "operating_cash_flow" field. operatingCashFlowPreview
+    # is computed CLIENT-SIDE (static/modelling/recalc-preview.js's
+    # _computeOcfFromEbitda) as a direct passthrough of ebitdaPreview —
+    # *** THIS IS NOT AUTHORITATIVE OPERATING CASH FLOW ***. No debt
+    # service, tax, depreciation/amortization, working capital, or
+    # financing adjustment of any kind is applied anywhere in this
+    # chain. This field/route exists solely to prove the preview
+    # pipeline can chain a preview of a preview of previews. The server
+    # performs no calculation here either — it only validates finiteness
+    # and echoes the client's number back, rounded to 2dp. See
+    # docs/C2_PR16_OPERATING_CF_PREVIEW.md.
+    if "operatingCashFlowPreview" in body and body.get("operatingCashFlowPreview") is not None:
+        response_body["operating_cash_flow"] = {
+            "preview": round(float(body["operatingCashFlowPreview"]), 2),
             "currency": "EUR",
         }
 

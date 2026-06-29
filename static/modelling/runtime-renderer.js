@@ -72,6 +72,29 @@
  * field (the two are rendered independently). See
  * docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
  *
+ * C2-PR14: a third independent additive patch, mirroring the C2-PR10/
+ * PR13 capex/revenue patches exactly — when the response body carries
+ * an "opex" field ({ preview: <number>, currency: "EUR" }), this module
+ * ALSO patches #opex-total-preview-value. See docs/C2_PR14_OPEX_PREVIEW.md.
+ *
+ * C2-PR15: a fourth independent additive patch — when the response
+ * body carries an "ebitda" field ({ preview: <number|null>, currency:
+ * "EUR" }), this module ALSO patches #ebitda-preview-value. EBITDA is
+ * never computed here — it arrives already-computed (see
+ * static/modelling/recalc-preview.js's _computeEbitdaFromPreviews and
+ * docs/C2_PR15_EBITDA_PREVIEW.md for the client-side-computation
+ * choice). A null/absent ebitda.preview is a safe no-op for this patch
+ * only, exactly like a missing "capex"/"revenue"/"opex" field.
+ *
+ * C2-PR16: a fifth independent additive patch — when the response body
+ * carries an "operating_cash_flow" field ({ preview: <number|null>,
+ * currency: "EUR" }), this module ALSO patches
+ * #operating-cf-preview-value. *** THIS VALUE IS NOT AUTHORITATIVE
+ * OPERATING CASH FLOW *** — it is EBITDA Preview passed through
+ * verbatim, with no debt/tax/depreciation/financing adjustment, solely
+ * to prove the preview pipeline can chain a preview of a preview of
+ * previews. See docs/C2_PR16_OPERATING_CF_PREVIEW.md.
+ *
  * C2-PR11 (Runtime Preview UX Polish): the previous binary Idle/
  * "Preview executed" status text is replaced with an explicit 5-state
  * machine — Idle, "Preview updating…", "Preview ready", "Preview
@@ -145,16 +168,30 @@
   // C2-PR13: separate target element id for the Revenue total preview,
   // mirroring CAPEX_PREVIEW_VALUE_ELEMENT_ID exactly.
   var REVENUE_PREVIEW_VALUE_ELEMENT_ID = 'revenue-total-preview-value';
+  // C2-PR14: separate target element id for the OPEX total preview,
+  // mirroring CAPEX_PREVIEW_VALUE_ELEMENT_ID/REVENUE_PREVIEW_VALUE_ELEMENT_ID.
+  var OPEX_PREVIEW_VALUE_ELEMENT_ID = 'opex-total-preview-value';
+  // C2-PR15: separate target element id for the EBITDA preview.
+  var EBITDA_PREVIEW_VALUE_ELEMENT_ID = 'ebitda-preview-value';
+  // C2-PR16: separate target element id for the Operating Cash Flow
+  // preview. NOT authoritative OCF — see module header comment.
+  var OCF_PREVIEW_VALUE_ELEMENT_ID = 'operating-cf-preview-value';
 
   // C2-PR11: the two parent status-region elements (used for aria-busy)
   // and the two visually-hidden screen-reader announcement spans.
-  // C2-PR13 adds a third region/sr pair for the Revenue preview.
+  // C2-PR13/14/15/16 each add one more region/sr pair.
   var OVERVIEW_REGION_ELEMENT_ID = 'overview-runtime-status';
   var OVERVIEW_SR_ELEMENT_ID = 'overview-runtime-status-sr';
   var CAPEX_REGION_ELEMENT_ID = 'capex-total-preview';
   var CAPEX_SR_ELEMENT_ID = 'capex-total-preview-sr';
   var REVENUE_REGION_ELEMENT_ID = 'revenue-total-preview';
   var REVENUE_SR_ELEMENT_ID = 'revenue-total-preview-sr';
+  var OPEX_REGION_ELEMENT_ID = 'opex-total-preview';
+  var OPEX_SR_ELEMENT_ID = 'opex-total-preview-sr';
+  var EBITDA_REGION_ELEMENT_ID = 'ebitda-preview';
+  var EBITDA_SR_ELEMENT_ID = 'ebitda-preview-sr';
+  var OCF_REGION_ELEMENT_ID = 'operating-cf-preview';
+  var OCF_SR_ELEMENT_ID = 'operating-cf-preview-sr';
 
   // C2-PR11: the explicit 5-state machine. See
   // docs/C2_PR11_PREVIEW_UX_POLISH.md for the full description of every
@@ -272,6 +309,44 @@
   }
 
   /**
+   * C2-PR14: transitions the OPEX preview region's state-machine
+   * bookkeeping ONLY — mirrors `_setCapexState`/`_setRevenueState`
+   * exactly. Never writes to `#opex-total-preview-value`'s
+   * `textContent`.
+   */
+  function _setOpexState(state) {
+    _setBookkeeping(
+      OPEX_PREVIEW_VALUE_ELEMENT_ID, OPEX_REGION_ELEMENT_ID, OPEX_SR_ELEMENT_ID,
+      state, 'OPEX preview status: '
+    );
+  }
+
+  /**
+   * C2-PR15: transitions the EBITDA preview region's state-machine
+   * bookkeeping ONLY — mirrors the other `_set*State` helpers exactly.
+   * Never writes to `#ebitda-preview-value`'s `textContent`.
+   */
+  function _setEbitdaState(state) {
+    _setBookkeeping(
+      EBITDA_PREVIEW_VALUE_ELEMENT_ID, EBITDA_REGION_ELEMENT_ID, EBITDA_SR_ELEMENT_ID,
+      state, 'EBITDA preview status: '
+    );
+  }
+
+  /**
+   * C2-PR16: transitions the Operating Cash Flow preview region's
+   * state-machine bookkeeping ONLY — mirrors the other `_set*State`
+   * helpers exactly. Never writes to `#operating-cf-preview-value`'s
+   * `textContent`.
+   */
+  function _setOcfState(state) {
+    _setBookkeeping(
+      OCF_PREVIEW_VALUE_ELEMENT_ID, OCF_REGION_ELEMENT_ID, OCF_SR_ELEMENT_ID,
+      state, 'Operating cash flow preview status: '
+    );
+  }
+
+  /**
    * C2-PR11: call right before a preview fetch is issued (i.e. at the
    * very start of a flush that is about to call fetch(POST
    * /model/preview)). Transitions BOTH the overview and CAPEX status
@@ -282,6 +357,9 @@
     _setOverviewState(STATE.UPDATING);
     _setCapexState(STATE.UPDATING);
     _setRevenueState(STATE.UPDATING);
+    _setOpexState(STATE.UPDATING);
+    _setEbitdaState(STATE.UPDATING);
+    _setOcfState(STATE.UPDATING);
   }
 
   /**
@@ -296,6 +374,9 @@
     _setOverviewState(STATE.UNAVAILABLE);
     _setCapexState(STATE.UNAVAILABLE);
     _setRevenueState(STATE.UNAVAILABLE);
+    _setOpexState(STATE.UNAVAILABLE);
+    _setEbitdaState(STATE.UNAVAILABLE);
+    _setOcfState(STATE.UNAVAILABLE);
   }
 
   /**
@@ -321,6 +402,9 @@
     _setOverviewState(STATE.FAILED);
     _setCapexState(STATE.FAILED);
     _setRevenueState(STATE.FAILED);
+    _setOpexState(STATE.FAILED);
+    _setEbitdaState(STATE.FAILED);
+    _setOcfState(STATE.FAILED);
   }
 
   /**
@@ -351,6 +435,49 @@
     var revenue = body.revenue;
     if (!revenue || typeof revenue !== 'object') return false;
     var total = revenue.preview;
+    return typeof total === 'number' && isFinite(total);
+  }
+
+  /**
+   * C2-PR14: defensive, non-throwing shape-check for a POST
+   * /model/preview response body's "opex" field — mirrors
+   * `_hasRenderableRevenuePreview` exactly, reading `opex.preview`.
+   */
+  function _hasRenderableOpexPreview(body) {
+    if (!body || typeof body !== 'object') return false;
+    var opex = body.opex;
+    if (!opex || typeof opex !== 'object') return false;
+    var total = opex.preview;
+    return typeof total === 'number' && isFinite(total);
+  }
+
+  /**
+   * C2-PR15: defensive, non-throwing shape-check for a POST
+   * /model/preview response body's "ebitda" field — reads
+   * `ebitda.preview`. A null/absent preview (e.g. revenue or opex
+   * preview was unavailable this flush) is correctly NOT renderable —
+   * the element keeps showing its last valid value (or the initial "—"
+   * placeholder), exactly like every other preview field in this chain.
+   */
+  function _hasRenderableEbitdaPreview(body) {
+    if (!body || typeof body !== 'object') return false;
+    var ebitda = body.ebitda;
+    if (!ebitda || typeof ebitda !== 'object') return false;
+    var total = ebitda.preview;
+    return typeof total === 'number' && isFinite(total);
+  }
+
+  /**
+   * C2-PR16: defensive, non-throwing shape-check for a POST
+   * /model/preview response body's "operating_cash_flow" field — reads
+   * `operating_cash_flow.preview`. NOT authoritative OCF — see module
+   * header comment.
+   */
+  function _hasRenderableOcfPreview(body) {
+    if (!body || typeof body !== 'object') return false;
+    var ocf = body.operating_cash_flow;
+    if (!ocf || typeof ocf !== 'object') return false;
+    var total = ocf.preview;
     return typeof total === 'number' && isFinite(total);
   }
 
@@ -487,17 +614,94 @@
       }
     }
 
-    if (!overviewRendered && !capexRendered && !revenueRendered) {
-      return { rendered: false, reason: overviewReason, capexReason: capexReason, revenueReason: revenueReason };
+    // C2-PR14: independent fourth patch — mirrors the CAPEX/Revenue
+    // blocks above exactly.
+    var opexRendered = false;
+    var opexReason = 'missing-or-malformed-opex';
+
+    if (_hasRenderableOpexPreview(body)) {
+      var opexEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(OPEX_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (opexEl) {
+        opexEl.textContent = _formatTotalPreview(body.opex.preview, body.opex.currency);
+        opexEl.setAttribute('data-c2pr14-opex-preview', 'patched');
+        _setBookkeeping(OPEX_PREVIEW_VALUE_ELEMENT_ID, OPEX_REGION_ELEMENT_ID, OPEX_SR_ELEMENT_ID, STATE.READY, 'OPEX preview status: ');
+        opexRendered = true;
+        opexReason = 'ok';
+      } else {
+        opexReason = 'target-element-not-found';
+      }
+    }
+
+    // C2-PR15: independent fifth patch. EBITDA arrives already-
+    // computed (client-side arithmetic on revenue/opex previews); this
+    // module only formats and patches the DOM, exactly like every other
+    // preview field.
+    var ebitdaRendered = false;
+    var ebitdaReason = 'missing-or-malformed-ebitda';
+
+    if (_hasRenderableEbitdaPreview(body)) {
+      var ebitdaEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(EBITDA_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (ebitdaEl) {
+        ebitdaEl.textContent = _formatTotalPreview(body.ebitda.preview, body.ebitda.currency);
+        ebitdaEl.setAttribute('data-c2pr15-ebitda-preview', 'patched');
+        _setBookkeeping(EBITDA_PREVIEW_VALUE_ELEMENT_ID, EBITDA_REGION_ELEMENT_ID, EBITDA_SR_ELEMENT_ID, STATE.READY, 'EBITDA preview status: ');
+        ebitdaRendered = true;
+        ebitdaReason = 'ok';
+      } else {
+        ebitdaReason = 'target-element-not-found';
+      }
+    }
+
+    // C2-PR16: independent sixth patch. *** NOT AUTHORITATIVE OCF ***
+    // — this value is EBITDA Preview passed straight through; see the
+    // module header comment and docs/C2_PR16_OPERATING_CF_PREVIEW.md.
+    var ocfRendered = false;
+    var ocfReason = 'missing-or-malformed-operating-cash-flow';
+
+    if (_hasRenderableOcfPreview(body)) {
+      var ocfEl = (typeof document !== 'undefined' && document.getElementById)
+        ? document.getElementById(OCF_PREVIEW_VALUE_ELEMENT_ID)
+        : null;
+      if (ocfEl) {
+        ocfEl.textContent = _formatTotalPreview(body.operating_cash_flow.preview, body.operating_cash_flow.currency);
+        ocfEl.setAttribute('data-c2pr16-ocf-preview', 'patched');
+        _setBookkeeping(OCF_PREVIEW_VALUE_ELEMENT_ID, OCF_REGION_ELEMENT_ID, OCF_SR_ELEMENT_ID, STATE.READY, 'Operating cash flow preview status: ');
+        ocfRendered = true;
+        ocfReason = 'ok';
+      } else {
+        ocfReason = 'target-element-not-found';
+      }
+    }
+
+    if (!overviewRendered && !capexRendered && !revenueRendered && !opexRendered && !ebitdaRendered && !ocfRendered) {
+      return {
+        rendered: false,
+        reason: overviewReason,
+        capexReason: capexReason,
+        revenueReason: revenueReason,
+        opexReason: opexReason,
+        ebitdaReason: ebitdaReason,
+        ocfReason: ocfReason
+      };
     }
 
     return {
-      rendered: overviewRendered || capexRendered || revenueRendered,
+      rendered: overviewRendered || capexRendered || revenueRendered || opexRendered || ebitdaRendered || ocfRendered,
       reason: overviewRendered ? 'ok' : overviewReason,
       capexRendered: capexRendered,
       capexReason: capexReason,
       revenueRendered: revenueRendered,
-      revenueReason: revenueReason
+      revenueReason: revenueReason,
+      opexRendered: opexRendered,
+      opexReason: opexReason,
+      ebitdaRendered: ebitdaRendered,
+      ebitdaReason: ebitdaReason,
+      ocfRendered: ocfRendered,
+      ocfReason: ocfReason
     };
   }
 
@@ -512,6 +716,9 @@
     stateLabels: STATE_LABEL,
     statusValueElementId: STATUS_VALUE_ELEMENT_ID,
     capexPreviewValueElementId: CAPEX_PREVIEW_VALUE_ELEMENT_ID,
-    revenuePreviewValueElementId: REVENUE_PREVIEW_VALUE_ELEMENT_ID
+    revenuePreviewValueElementId: REVENUE_PREVIEW_VALUE_ELEMENT_ID,
+    opexPreviewValueElementId: OPEX_PREVIEW_VALUE_ELEMENT_ID,
+    ebitdaPreviewValueElementId: EBITDA_PREVIEW_VALUE_ELEMENT_ID,
+    ocfPreviewValueElementId: OCF_PREVIEW_VALUE_ELEMENT_ID
   };
 })();
