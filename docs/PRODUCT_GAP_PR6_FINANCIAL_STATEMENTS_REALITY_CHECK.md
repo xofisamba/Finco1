@@ -43,20 +43,17 @@ distinct kinds of content:
    snapshot" and "not live run output" to appear in every sheet partial
    including this one.
 
-   Worse: the static Balance Sheet did not balance. Total Assets
-   (e.g. Y1-H1: 68,854) did not equal Total Debt + Total Equity
-   (77,360 + (−8,506) = 68,854 — coincidentally close in Y1-H1 by
-   construction, but check Y3-H2: Total Assets 59,830 vs. Total Debt +
-   Total Equity = 82,596 + (−22,766) = 59,830). On closer inspection the
-   numbers were tuned to *look* balanced for this specific static
-   snapshot, but they are not derived from any accounting identity tied
-   to real project inputs — they are baked-in display literals that
-   happen to satisfy `Total Assets = Total Debt + Total Equity` for
-   this one canned scenario only. They have no relationship to the
-   project the user is actually editing/running. Per the PR6 spec's
-   "investigate whether it's wired to real run_project() output or
-   hardcoded/static" instruction: **confirmed hardcoded, confirmed
-   misleading, removed.**
+   Worse: even where the static Balance Sheet's literals happened to
+   satisfy `Total Assets = Total Debt + Total Equity` (e.g. Y1-H1:
+   68,854 = 77,360 + (−8,506); Y3-H2: 59,830 = 82,596 + (−22,766)),
+   that arithmetic agreement was never derived from any accounting
+   identity tied to real project inputs — they are baked-in display
+   literals tuned to look balanced for this one canned scenario only.
+   They have no relationship to the project the user is actually
+   editing/running. Per the PR6 spec's "investigate whether it's wired
+   to real run_project() output or hardcoded/static" instruction:
+   **confirmed hardcoded, confirmed not Run-backed, confirmed
+   misleading as a product financial statement, removed.**
 
 No other Financial-Statement-adjacent KPI cards exist outside this one
 template; the Dashboard/Overview KPI cards are out of scope for this

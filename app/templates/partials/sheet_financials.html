@@ -7,9 +7,9 @@
      tables previously rendered below were 100% hardcoded "TUHO
      factory snapshot" example figures (see git history /
      PRODUCT_GAP_PR6 doc for the before/after). They were never bound
-     to real `run_project()` output and the Balance Sheet did not
-     balance (Total Assets != Total Debt + Total Equity by ~78,000
-     kEUR, by construction of the static example numbers). Showing
+     to real `run_project()` output. Even if the canned Balance Sheet
+     appeared internally balanced for the static snapshot, it was not
+     a real accounting identity tied to the active project. Showing
      them as authoritative financial statements was misleading, so
      this PR replaces them with a single honest unavailable-state
      panel below. The only genuinely Run-backed content on this sheet
@@ -75,9 +75,10 @@
    UNAVAILABLE STATE — Income Statement / Cash Flow / Balance Sheet
    ══════════════════════════════════════════════════════════════════════
    Product Gap PR6: the three statement tables previously rendered here
-   were static example figures, not real Run output, and the Balance
-   Sheet did not balance. Per the PR6 "do not show a misleading
-   Balance Sheet" / "show only trustworthy sections" rules, all three
+   were static example figures, not real Run output, and were not a
+   real accounting identity tied to the active project. Per the PR6
+   "do not show a misleading Balance Sheet" / "show only trustworthy
+   sections" rules, all three
    tables are replaced with a single honest unavailable-state panel.
    No financial-statement values are invented or recomputed here. #}
 <div class="empty-state-notice empty-state-notice--warn fs-unavailable-panel"
