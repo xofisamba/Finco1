@@ -1,5 +1,20 @@
 <!-- Sheet: Tax — {{ project_ctx.name }}
-     Phase 9.5 — Output Tabs Runtime Summary Binding -->
+     Product Gap PR9 — Tax Reality Check.
+
+     Investigation summary (see docs/PRODUCT_GAP_PR9_TAX_REALITY_CHECK.md):
+     - CIT Rate / Loss Carryforward are real project_ctx-backed
+       assumptions (project_context.py cit_rate_pct /
+       loss_carryforward_years, sourced from the project's tax
+       template), but there is no safe, already-wired persistence
+       path that lets a user edit them from this screen -- the
+       Inputs tab (inputs_section.html) renders the same two fields
+       read-only too (no editable=True passed to field_row). They
+       stay read-only here for the same reason.
+     - There is no Run-backed tax output anywhere in the codebase:
+       last_runtime_summary (main_web.py) carries no tax/CIT/WHT/
+       depreciation/loss-carryforward keys at all. The former
+       "Output Preview" card had zero Jinja binding and is replaced
+       below with an honest unavailable-state panel. -->
 <div class="sheet-banner">
   <span class="sheet-banner-tag">🏛️ Tax</span>
   <span class="sheet-banner-badge">
@@ -7,7 +22,9 @@
   </span>
 </div>
 
-<!-- Live Runtime Summary -->
+<!-- Live Runtime Summary (project-level KPIs only -- there is no
+     Run-backed tax-specific output to bind here; see investigation
+     note above) -->
 <div class="runtime-block" id="shared-runtime-block" style="display:none;">
   <div class="runtime-block-header">
     <span class="badge badge-runtime">Runtime summary</span>
@@ -15,35 +32,14 @@
     <span class="runtime-block-project" id="runtime-block-project"></span>
   </div>
   <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
-  <div class="runtime-block-secondary" id="tax-secondary-metrics">
-    <div class="rb-metric">
-      <span class="rb-metric-label">CIT Status</span>
-      <span class="rb-metric-value" id="tax-status">NOT_AVAILABLE</span>
-    </div>
-    {# P2-FIX-2: G20 / R99 / R102 governance posture relocated
-       to the audit / reviewer surface. Hidden != deleted. #}
-  </div>
-  <div class="runtime-block-secondary"
-       id="tax-secondary-metrics-audit"
-       data-p2fix2-relocated="governance-posture">
-    {% if audit_mode %}
-    <div class="rb-metric">
-      <span class="rb-metric-label">G20 Gate</span>
-      <span class="rb-metric-value rb-blocked">BLOCKED</span>
-    </div>
-    <div class="rb-metric">
-      <span class="rb-metric-label">R99/R102</span>
-      <span class="rb-metric-value rb-blocked">NOT APPROVED</span>
-    </div>
-    {% endif %}
-  </div>
 </div>
 
 <div class="section-divider"></div>
 
-<!-- CIT Assumptions -->
+<!-- CIT Assumptions: real project assumptions, read-only on this
+     screen (see investigation note above for why). -->
 <div class="sheet-card" data-fc-grid="tax" data-fc-scroll-container="true">
-  <div class="section-header">CIT Assumptions</div>
+  <div class="section-header">Tax Assumptions</div>
   <div class="assumption-grid">
     <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">CIT Rate</span>
@@ -53,31 +49,29 @@
       <span class="metric-label">Loss Carryforward</span>
       <span class="metric-value" data-fc-cell="true" data-fc-addr="tax!loss_carryforward" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ project_ctx.loss_carryforward_years }}">{{ project_ctx.loss_carryforward_years }} years</span>
     </div>
-    <div class="assumption-item" data-fc-row="true">
-      <span class="metric-label">Convention</span>
-      <span class="badge badge-convention" data-fc-cell="true" data-fc-addr="tax!convention" data-fc-kind="text" data-fc-editable="false" data-fc-raw="AUDIT-ONLY">AUDIT-ONLY</span>
-    </div>
-    {% if audit_mode %}
-    <div class="assumption-item" data-fc-row="true">
-      <span class="metric-label">G20 Status</span>
-      <span class="metric-value rb-blocked" data-fc-cell="true" data-fc-addr="tax!g20_status" data-fc-kind="text" data-fc-editable="false" data-fc-raw="BLOCKED">BLOCKED</span>
-    </div>
-    <div class="assumption-item" data-fc-row="true">
-      <span class="metric-label">R99/R102 Status</span>
-      <span class="metric-value rb-blocked" data-fc-cell="true" data-fc-addr="tax!r99_r102_status" data-fc-kind="text" data-fc-editable="false" data-fc-raw="NOT APPROVED">NOT APPROVED</span>
-    </div>
-    {% endif %}
   </div>
+  <div class="table-note">Tax country template assumptions. Read-only on this sheet — not yet editable via a saved input.</div>
 </div>
 
 <div class="section-divider"></div>
 
-<!-- Tax Output Preview -->
+<!-- Tax Output: no Run-backed CIT/depreciation/loss-carryforward/WHT
+     output exists in last_runtime_summary -- replaced with an
+     honest unavailable-state panel (PR6/PR7/PR8 pattern), reusing
+     the empty-state-notice / empty-state-notice--warn classes
+     already defined in static/styles.css. No tax schedule data is
+     invented or recomputed here. -->
 <div class="sheet-card">
-  <div class="section-header">Output Preview</div>
-  <div class="preview-notice">
-    <span>📋</span>
-    <span><strong>Preview schedule</strong> — static reference values, not live calculated output. Run the model to see actual tax output above.</span>
+  <div class="section-header">Tax Output</div>
+  <div class="empty-state-notice empty-state-notice--warn tax-unavailable-panel"
+       role="status" aria-label="Tax output not yet available">
+    <div class="esn-icon" aria-hidden="true">📋</div>
+    <div class="esn-title">Tax output is not available yet</div>
+    <div class="esn-desc">
+      Run-backed taxable income, depreciation, loss carryforward, CIT,
+      and withholding tax results will be shown here once this
+      section is connected to the model engine.
+    </div>
   </div>
 </div>
 
@@ -119,10 +113,6 @@
       }
       kpiGrid.innerHTML = html;
     }
-
-    // Tax/CFADS not yet in RuntimeSummary — show as NOT_AVAILABLE
-    var taxEl = document.getElementById("tax-status");
-    if (taxEl) taxEl.textContent = "AUDIT-ONLY";
   }
   window._populateTaxRuntimeBlock = _populateTaxRuntimeBlock;
   document.addEventListener("htmx:afterSwap", function(e) {
