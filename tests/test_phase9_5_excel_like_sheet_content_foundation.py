@@ -87,6 +87,10 @@ class TestSheetContent:
         assert "0%" in content or "CIT" in content
 
     def test_financials_has_pl_cf_bs_tables(self):
+        # Product Gap PR6: the P&L / Cash Flow / Balance Sheet *tables*
+        # were removed (they were static, not Run-backed, and the
+        # Balance Sheet did not balance). The statement names still
+        # appear in the honest unavailable-state copy referencing them.
         path = os.path.join(PARTIALS, "sheet_financials.html")
         content = open(path, encoding="utf-8").read()
         assert "Income Statement" in content or "P&amp;L" in content
@@ -94,11 +98,12 @@ class TestSheetContent:
         assert "Balance Sheet" in content
 
     def test_financials_has_preview_label(self):
+        # Product Gap PR6: replaced static "TUHO illustrative schedule"
+        # preview copy with an honest unavailable-state message.
         path = os.path.join(PARTIALS, "sheet_financials.html")
         content = open(path, encoding="utf-8").read()
-        assert "Preview financial statements" in content, "Missing preview financial statements label"
-        assert "static illustrative TUHO schedule" in content, "Missing static illustrative TUHO schedule phrase"
-        assert "not live calculated output" in content, "Missing not live calculated output phrase"
+        assert "not connected to Run outputs yet" in content, "Missing financial statements unavailable-state label"
+        assert "fs-unavailable-panel" in content, "Missing unavailable-state panel"
 
 
 class TestGovernanceBadges:
