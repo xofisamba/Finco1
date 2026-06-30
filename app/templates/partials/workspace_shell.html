@@ -636,10 +636,17 @@
       {% include "partials/_dashboard.html" %}
     {% endif %}
 
-    {# ── Phase M1: Read-Only Scenario Matrix Prototype (UI only) ───────── #}
+    {# ── Phase M1/M2: Scenario Matrix (UI only) ─────────────────────────── #}
     {# Renders a 4-column Base | Downside | Upside | Custom matrix with   #}
-    {# input rows + KPI rows. Base is live (reads project_ctx). The other  #}
-    {# three columns are placeholders. NO scenario persistence, NO CRUD.  #}
+    {# input rows + KPI rows. Base is live (reads project_ctx). Downside/  #}
+    {# Upside/Custom show live data from saved scenario snapshots and     #}
+    {# last_run_summary once scenarios exist (see build_matrix_context in #}
+    {# app/ui/scenario_matrix.py); columns with no scenario assigned show #}
+    {# an "inherits Base" / "Future override" placeholder, not fake data. #}
+    {# Product Gap PR10: comment corrected -- this was previously         #}
+    {# inaccurate (it claimed all three non-Base columns were always      #}
+    {# placeholders, which stopped being true once scenario persistence   #}
+    {# was wired in Phase M2/M3/M4). No template/route behavior changed.  #}
     {% include "partials/scenario_matrix.html" %}
   </div>
 
