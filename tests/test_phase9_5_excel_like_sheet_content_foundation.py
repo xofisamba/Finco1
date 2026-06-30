@@ -89,7 +89,7 @@ class TestSheetContent:
     def test_financials_has_pl_cf_bs_tables(self):
         # Product Gap PR6: the P&L / Cash Flow / Balance Sheet *tables*
         # were removed (they were static, not Run-backed, and the
-        # Balance Sheet did not balance). The statement names still
+        # Balance Sheet was not tied to the active project). The statement names still
         # appear in the honest unavailable-state copy referencing them.
         path = os.path.join(PARTIALS, "sheet_financials.html")
         content = open(path, encoding="utf-8").read()

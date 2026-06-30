@@ -48,8 +48,9 @@ class TestFinancialStatementsRendering:
     Product Gap PR6 (Financial Statements Reality Check) removed the
     static "TUHO factory snapshot" Income Statement / Cash Flow /
     Balance Sheet tables that used to render unconditionally here --
-    they were never bound to real run output and the Balance Sheet did
-    not balance. They are replaced by a single honest unavailable-state
+    they were never bound to real run output -- the Balance Sheet was a
+    canned static snapshot, not an active-project accounting output.
+    They are replaced by a single honest unavailable-state
     panel. These assertions are updated narrowly to reflect that; the
     runtime KPI block (genuinely Run-backed) is unchanged and still
     covered below.
