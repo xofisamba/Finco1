@@ -39,7 +39,6 @@
       <thead>
         <tr class="fc-grid-header">
           <th class="fc-grid-col-label fc-th">Line Item</th>
-          <th class="fc-th fc-th--code">Code</th>
           <th class="fc-th fc-th--amount">Value</th>
           <th class="fc-th">Unit</th>
           <th class="fc-th">Group</th>
@@ -53,14 +52,13 @@
            GROUP: Production
            ═══════════════════════════════════════════════════════════════ #}
         <tr class="fc-section-band">
-          <td class="fc-section-band__label" colspan="6">Production</td>
+          <td class="fc-section-band__label" colspan="5">Production</td>
         </tr>
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "Production" %}
           <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
-            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
             <td class="fc-cell fc-cell--amount"
                 data-fc-cell="true"
                 data-fc-addr="revenue!{{ item.code }}"
@@ -89,14 +87,13 @@
            GROUP: PPA / Tariff
            ═══════════════════════════════════════════════════════════════ #}
         <tr class="fc-section-band">
-          <td class="fc-section-band__label" colspan="6">PPA / Tariff</td>
+          <td class="fc-section-band__label" colspan="5">PPA / Tariff</td>
         </tr>
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "PPA / Tariff" %}
           <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
-            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
             <td class="fc-cell fc-cell--amount"
                 data-fc-cell="true"
                 data-fc-addr="revenue!{{ item.code }}"
@@ -137,14 +134,13 @@
            GROUP: Market / Merchant
            ═══════════════════════════════════════════════════════════════ #}
         <tr class="fc-section-band">
-          <td class="fc-section-band__label" colspan="6">Market / Merchant</td>
+          <td class="fc-section-band__label" colspan="5">Market / Merchant</td>
         </tr>
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "Market / Merchant" %}
           <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
-            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
             <td class="fc-cell fc-cell--amount"
                 data-fc-cell="true"
                 data-fc-addr="revenue!{{ item.code }}"
@@ -173,14 +169,13 @@
            GROUP: CO2 / Certificates
            ═══════════════════════════════════════════════════════════════ #}
         <tr class="fc-section-band">
-          <td class="fc-section-band__label" colspan="6">CO2 / Certificates</td>
+          <td class="fc-section-band__label" colspan="5">CO2 / Certificates</td>
         </tr>
 
         {% for item in project_ctx.revenue_items %}
           {% if item.group == "CO2 / Certificates" %}
           <tr class="fc-data-row" data-fc-row="true">
             <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
-            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
             <td class="fc-cell fc-cell--amount"
                 data-fc-cell="true"
                 data-fc-addr="revenue!{{ item.code }}"
@@ -209,7 +204,7 @@
 
         {# ── Revenue Summary ─────────────────────────────────────── #}
         <tr class="fc-section-band">
-          <td class="fc-section-band__label" colspan="6">Revenue Summary</td>
+          <td class="fc-section-band__label" colspan="5">Revenue Summary</td>
         </tr>
 
         {# Y1 Revenue estimate (informational only — backend computes actual) #}
