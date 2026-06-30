@@ -131,17 +131,26 @@
 
 <div class="section-divider"></div>
 
-<!-- Debt Service Preview -->
+<!-- Product Gap PR8 finding: this card previously showed a static
+     "Preview schedule" notice with no Jinja variable binding to
+     project_ctx/runtime_summary -- there was no real repayment
+     schedule, interest/principal table, or DSCR table behind it, just
+     fixed copy. Replaced with a single honest unavailable-state panel
+     reusing the empty-state-notice / empty-state-notice--warn classes
+     already defined in static/styles.css (PR6/PR7 pattern). No debt
+     schedule data is invented or recomputed here. -->
 <div class="sheet-card">
-  <div class="section-header">Output Preview</div>
-  <div class="preview-notice">
-    <span>📋</span>
-    <span><strong>Preview schedule</strong> — static reference values, not live calculated output. Run the model to see actual senior debt output above.</span>
+  <div class="section-header">Debt Schedule Output</div>
+  <div class="empty-state-notice empty-state-notice--warn sd-unavailable-panel"
+       role="status" aria-label="Senior debt schedule output not yet available">
+    <div class="esn-icon" aria-hidden="true">📋</div>
+    <div class="esn-title">Senior debt schedule output is not available yet</div>
+    <div class="esn-desc">
+      Run-backed debt sizing, interest, principal, and covenant results
+      will be shown here once this section is connected to the model
+      engine.
+    </div>
   </div>
-</div>
-
-<div class="table-note">
-  <span class="badge badge-preview">Protected</span>
 </div>
 
 <script>
