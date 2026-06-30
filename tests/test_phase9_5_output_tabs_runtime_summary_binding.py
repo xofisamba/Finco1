@@ -188,21 +188,25 @@ class TestMissingMetricsNotFabricated:
 
 
 class TestGovernanceBadgesUnchanged:
-    """G20 BLOCKED and R99/R102 NOT APPROVED badges must remain visible."""
+    """G20 BLOCKED and R99/R102 NOT APPROVED badges must remain visible
+    where they are still part of the product (e.g. Sponsor tab).
 
-    def test_tax_tab_shows_g20_blocked(self):
-        """Tax tab must still show G20 BLOCKED badge."""
+    Product Gap PR9 removed the internal-jargon G20/R99/R102 governance
+    cells from the user-facing Tax sheet (sheet_tax.html) -- those terms
+    are explicitly banned jargon per the PR9 spec's "no R99/R102/G20"
+    rule and were never real tax output to begin with. See
+    docs/PRODUCT_GAP_PR9_TAX_REALITY_CHECK.md."""
+
+    def test_tax_tab_no_longer_shows_internal_governance_jargon(self):
+        """Product Gap PR9: Tax tab must not leak G20/R99/R102 internal
+        governance jargon into user-facing tax copy."""
         path = os.path.join(PARTIALS, "sheet_tax.html")
         content = open(path, encoding="utf-8").read()
-        assert "G20" in content or "BLOCKED" in content, \
-            "Tax tab must show G20 BLOCKED status"
-
-    def test_tax_tab_shows_r99_not_approved(self):
-        """Tax tab must still show R99/R102 NOT APPROVED badge."""
-        path = os.path.join(PARTIALS, "sheet_tax.html")
-        content = open(path, encoding="utf-8").read()
-        assert "R99" in content or "R102" in content or "NOT APPROVED" in content, \
-            "Tax tab must show R99/R102 NOT APPROVED status"
+        import re
+        visible = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+        assert "G20" not in visible
+        assert "R99" not in visible
+        assert "R102" not in visible
 
     def test_sponsor_tab_shows_r99_not_approved(self):
         """Sponsor tab must still show R99/R102 NOT APPROVED badge."""
@@ -299,14 +303,17 @@ class TestUILabelConsistency:
         assert "Runtime summary" in content, \
             f"{sheet}: must contain 'Runtime summary'"
 
-    def test_governance_labels_present_in_tax_tab(self):
-        """Tax tab must show G20 and R99/R102 governance labels."""
+    def test_no_internal_governance_jargon_in_tax_tab(self):
+        """Product Gap PR9: Tax tab must not contain G20/R99/R102
+        internal governance jargon in user-facing copy (banned per the
+        PR9 spec). See docs/PRODUCT_GAP_PR9_TAX_REALITY_CHECK.md."""
         path = os.path.join(PARTIALS, "sheet_tax.html")
         content = open(path, encoding="utf-8").read()
-        assert "G20" in content or "BLOCKED" in content, \
-            "Tax tab must contain G20 label"
-        assert "R99" in content or "R102" in content or "NOT APPROVED" in content, \
-            "Tax tab must contain R99/R102 label"
+        import re
+        visible = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+        assert "G20" not in visible
+        assert "R99" not in visible
+        assert "R102" not in visible
 
     def test_no_inline_onclick_handlers(self):
         """Rendered output sheets must not contain inline onclick= handlers (except htmx)."""
