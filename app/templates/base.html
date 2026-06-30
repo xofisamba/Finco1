@@ -56,6 +56,13 @@
      Loaded before live-model.js so window.FcDependencyGraph is
      already defined by the time any flush happens. See
      docs/C2_PR4_DEPENDENCY_GRAPH_FOUNDATION_NOTE.md #}
+  {# Product Gap PR1: CAPEX Real Excel Editing + Live Totals — CAPEX-
+     sheet-specific direct-typing + live in-sheet subtotal/total
+     rendering. Scoped entirely to the "capex" grid; does not modify
+     the generic C1 layer above or the C2 preview pipeline below, and
+     adds no new /model/preview payload fields. See
+     docs/PRODUCT_GAP_PR1_CAPEX_EXCEL_EDITING.md #}
+  <script src="/static/modelling/capex-sheet-live-totals.js" defer></script>
   <script src="/static/modelling/dependency-graph.js" defer></script>
   {# C2-PR6: Incremental Recalculation Preview Boundary — builds a
      deterministic preview-request payload from a recalc snapshot +
